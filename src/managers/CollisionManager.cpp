@@ -30,11 +30,11 @@ using ::HammerEngine::ObstacleType;
 bool CollisionManager::init() {
   if (m_initialized)
     return true;
-  m_bodies.clear();
+  m_storage.clear();
   m_staticHash.clear();
   m_dynamicHash.clear();
   subscribeWorldEvents();
-  COLLISION_INFO("Initialized: cleared bodies and spatial hash");
+  COLLISION_INFO("STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
   // Forward collision notifications to EventManager
   addCollisionCallback([](const HammerEngine::CollisionInfo &info) {
     EventManager::Instance().triggerCollision(
@@ -55,8 +55,10 @@ void CollisionManager::clean() {
     return;
   m_isShutdown = true;
 
-  // Clean legacy storage
-  m_bodies.clear();
+  COLLISION_INFO("STORAGE LIFECYCLE: clean() clearing " +
+                 std::to_string(m_storage.size()) + " SOA bodies");
+
+  // Legacy storage removed - using SOA only
 
   // Clean new SOA storage
   m_storage.clear();
@@ -77,10 +79,10 @@ void CollisionManager::prepareForStateTransition() {
     return;
   }
 
-  // Clear all collision bodies (both dynamic and static)
-  size_t legacyBodyCount = m_bodies.size();
+  // Clear all collision bodies
   size_t soaBodyCount = m_storage.size();
-  m_bodies.clear();
+  COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
+                 std::to_string(soaBodyCount) + " SOA bodies");
   m_storage.clear();
 
   // Clear spatial hash completely
@@ -120,7 +122,6 @@ void CollisionManager::prepareForStateTransition() {
   m_verboseLogs = false;
 
   COLLISION_INFO("CollisionManager state transition complete - removed " +
-                 std::to_string(legacyBodyCount) + " legacy bodies and " +
                  std::to_string(soaBodyCount) + " SOA bodies, cleared all state");
 }
 
@@ -200,9 +201,12 @@ void CollisionManager::addBody(EntityPtr entity, const AABB &aabb,
 }
 
 void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end()) {
-    it->second->entityWeak = entity;
+  auto it = m_storage.entityToIndex.find(id);
+  if (it != m_storage.entityToIndex.end()) {
+    size_t index = it->second;
+    if (index < m_storage.coldData.size()) {
+      m_storage.coldData[index].entityWeak = entity;
+    }
   }
 }
 
@@ -269,17 +273,7 @@ void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask,
 }
 
 void CollisionManager::setKinematicPose(EntityID id, const Vector2D &center) {
-  auto it = m_bodies.find(id);
-  if (it == m_bodies.end())
-    return;
-  it->second->aabb.center = center;
-
-  // Update the appropriate spatial hash based on body type
-  if (it->second->type == BodyType::STATIC) {
-    m_staticHash.update(id, it->second->aabb);
-  } else {
-    m_dynamicHash.update(id, it->second->aabb);
-  }
+  updateCollisionBodyPositionSOA(id, center);
   if (m_verboseLogs) {
     COLLISION_DEBUG("setKinematicPose id=" + std::to_string(id) + ", center=(" +
                     std::to_string(center.getX()) + "," +
@@ -288,9 +282,7 @@ void CollisionManager::setKinematicPose(EntityID id, const Vector2D &center) {
 }
 
 void CollisionManager::setVelocity(EntityID id, const Vector2D &v) {
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end())
-    it->second->velocity = v;
+  updateCollisionBodyVelocitySOA(id, v);
   if (m_verboseLogs) {
     COLLISION_DEBUG("setVelocity id=" + std::to_string(id) + ", v=(" +
                     std::to_string(v.getX()) + "," + std::to_string(v.getY()) +
@@ -368,10 +360,13 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
                                              uint32_t layerMask,
                                              uint32_t collideMask) {
   EntityID id = HammerEngine::UniqueID::generate();
-  addBody(id, aabb, BodyType::STATIC);
-  setBodyLayer(id, layerMask, collideMask);
-  setBodyTrigger(id, true);
-  setBodyTriggerTag(id, tag);
+  Vector2D center(aabb.center.getX(), aabb.center.getY());
+  Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
+  size_t index = addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                                   layerMask, collideMask);
+  // Set trigger properties directly in SOA storage
+  m_storage.hotData[index].isTrigger = true;
+  m_storage.hotData[index].triggerTag = static_cast<uint8_t>(tag);
   return id;
 }
 
@@ -415,11 +410,15 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       EntityID id = (static_cast<EntityID>(1ull) << 61) |
                     (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
                     static_cast<EntityID>(static_cast<uint32_t>(x));
-      if (m_bodies.find(id) == m_bodies.end()) {
-        addBody(id, aabb, BodyType::STATIC);
-        setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-        setBodyTrigger(id, true);
-        setBodyTriggerTag(id, tag);
+      // Check if this water trigger already exists in SOA storage
+      if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
+        Vector2D center(aabb.center.getX(), aabb.center.getY());
+        Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
+        size_t index = addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                                         CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        // Set trigger properties directly in SOA storage
+        m_storage.hotData[index].isTrigger = true;
+        m_storage.hotData[index].triggerTag = static_cast<uint8_t>(tag);
         ++created;
       }
     }
@@ -478,11 +477,12 @@ size_t CollisionManager::createStaticObstacleBodies() {
           EntityID id = (static_cast<EntityID>(3ull) << 61) |
                         static_cast<EntityID>(tile.buildingId);
 
-          if (m_bodies.find(id) == m_bodies.end()) {
-            addBody(id, aabb, BodyType::STATIC);
-            setBodyLayer(id, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-            // These are solid bodies, not triggers
-            setBodyTrigger(id, false);
+          // Check if this static body already exists in SOA storage
+          if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
+            Vector2D center(aabb.center.getX(), aabb.center.getY());
+            Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
+            addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                               CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
             ++created;
           }
         }
@@ -516,11 +516,13 @@ void CollisionManager::resizeBody(EntityID id, float halfWidth,
 }
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
-  auto ita = m_bodies.find(a);
-  auto itb = m_bodies.find(b);
-  if (ita == m_bodies.end() || itb == m_bodies.end())
+  size_t indexA, indexB;
+  if (!getCollisionBodySOA(a, indexA) || !getCollisionBodySOA(b, indexB))
     return false;
-  return ita->second->aabb.intersects(itb->second->aabb);
+
+  AABB aabbA = m_storage.computeAABB(indexA);
+  AABB aabbB = m_storage.computeAABB(indexB);
+  return aabbA.intersects(aabbB);
 }
 
 void CollisionManager::queryArea(const AABB &area,
@@ -540,862 +542,46 @@ void CollisionManager::queryArea(const AABB &area,
 }
 
 bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
-  auto it = m_bodies.find(id);
-  if (it == m_bodies.end())
+  size_t index;
+  if (!getCollisionBodySOA(id, index))
     return false;
-  outCenter = it->second->aabb.center;
+  outCenter = m_storage.hotData[index].position;
   return true;
 }
 
 bool CollisionManager::isDynamic(EntityID id) const {
-  auto it = m_bodies.find(id);
-  if (it == m_bodies.end())
+  size_t index;
+  if (!getCollisionBodySOA(id, index))
     return false;
-  return it->second->type == BodyType::DYNAMIC;
+  return static_cast<BodyType>(m_storage.hotData[index].bodyType) == BodyType::DYNAMIC;
 }
 
 bool CollisionManager::isKinematic(EntityID id) const {
-  auto it = m_bodies.find(id);
-  if (it == m_bodies.end())
+  size_t index;
+  if (!getCollisionBodySOA(id, index))
     return false;
-  return it->second->type == BodyType::KINEMATIC;
+  return static_cast<BodyType>(m_storage.hotData[index].bodyType) == BodyType::KINEMATIC;
 }
 
 bool CollisionManager::isTrigger(EntityID id) const {
-  auto it = m_bodies.find(id);
-  if (it == m_bodies.end())
+  size_t index;
+  if (!getCollisionBodySOA(id, index))
     return false;
-  return it->second->isTrigger;
+  return m_storage.hotData[index].isTrigger;
 }
 
-void CollisionManager::broadphase(
-    std::vector<std::pair<EntityID, EntityID>> &pairs) const {
-  pairs.clear();
-  pairs.reserve(m_bodies.size() * 2);
 
-  // OPTIMIZATION: Use member containers to avoid repeated allocations
-  // Access broadphase cache containers that are properly reset each frame
-  auto &dynamicCandidates = m_collisionPool.dynamicCandidates;
-  auto &staticCandidates = m_collisionPool.staticCandidates;
-  auto &seenPairs = m_broadphaseCache.seenPairs;
 
-  // Containers are already cleared by resetFrame() calls
-  // Reserve space based on expected sizes
-  const size_t bodyCount = m_bodies.size();
-  seenPairs.reserve(bodyCount * 2);
-
-  // CRITICAL OPTIMIZATION: Process only dynamic/kinematic bodies (static don't
-  // initiate collisions)
-  for (const auto &kv : m_bodies) {
-    const CollisionBody &body = *kv.second;
-    if (!body.enabled || body.type == BodyType::STATIC)
-      continue;
-
-    // PERFORMANCE BOOST: Separate queries for dynamic vs static bodies
-    // This prevents dynamic bodies from being checked against every static tile
-
-    // 1. Query dynamic hash for dynamic-vs-dynamic collisions
-    dynamicCandidates.clear();
-    m_dynamicHash.query(body.aabb, dynamicCandidates);
-
-    // Process dynamic candidates
-    for (EntityID candidateId : dynamicCandidates) {
-      if (candidateId == body.id)
-        continue;
-
-      auto candidateIt = m_bodies.find(candidateId);
-      if (candidateIt == m_bodies.end())
-        continue;
-
-      const CollisionBody &candidate = *candidateIt->second;
-      if (!candidate.enabled)
-        continue;
-
-      // Quick collision mask check
-      if ((body.collidesWith & candidate.layer) == 0)
-        continue;
-
-      // Create canonical pair key (smaller ID first)
-      uint64_t pairKey;
-      if (body.id < candidateId) {
-        pairKey = (static_cast<uint64_t>(body.id) << 32) | candidateId;
-      } else {
-        pairKey = (static_cast<uint64_t>(candidateId) << 32) | body.id;
-      }
-
-      // Add unique pair
-      if (seenPairs.emplace(pairKey).second) {
-        pairs.emplace_back(std::min(body.id, candidateId),
-                           std::max(body.id, candidateId));
-
-      }
-    }
-
-    // 2. Query static hash for dynamic-vs-static collisions (with caching)
-    staticCandidates.clear();
-
-    // Check if we have cached static bodies for this entity
-    auto cacheIt = m_broadphaseCache.staticCache.find(body.id);
-    bool useCache = (cacheIt != m_broadphaseCache.staticCache.end());
-
-    if (useCache) {
-      // Use cached static bodies if entity hasn't moved significantly
-      auto &cachedQuery = cacheIt->second;
-      Vector2D centerDelta = body.aabb.center - cachedQuery.lastQueryCenter;
-      float distMoved = centerDelta.length();
-
-      if (distMoved <= cachedQuery.maxQueryDistance * 0.25f) {
-        // Entity moved less than 25% of query radius, use cache
-        staticCandidates = cachedQuery.staticBodies;
-      } else {
-        useCache = false; // Cache invalid, need fresh query
-      }
-    }
-
-    if (!useCache) {
-      // Query spatial hash and update cache
-      m_staticHash.query(body.aabb, staticCandidates);
-
-      // Update cache for next frame
-      auto &cachedQuery = m_broadphaseCache.staticCache[body.id];
-      cachedQuery.staticBodies = staticCandidates;
-      cachedQuery.lastQueryCenter = body.aabb.center;
-      cachedQuery.maxQueryDistance =
-          std::max(body.aabb.halfSize.getX(), body.aabb.halfSize.getY()) * 2.0f;
-    }
-
-    // Process static candidates (dynamic body vs static body only)
-    for (EntityID staticId : staticCandidates) {
-      auto staticIt = m_bodies.find(staticId);
-      if (staticIt == m_bodies.end())
-        continue;
-
-      const CollisionBody &staticBody = *staticIt->second;
-      if (!staticBody.enabled)
-        continue;
-
-      // Quick collision mask check
-      if ((body.collidesWith & staticBody.layer) == 0)
-        continue;
-
-      // No need for pair deduplication with static bodies since we don't
-      // reverse check
-      pairs.emplace_back(body.id, staticId);
-
-    }
-  }
-
-  // PERFORMANCE OPTIMIZATIONS IMPLEMENTED:
-  // 1. Separate static and dynamic spatial hash queries
-  // 2. Prevents N×M collision checks between dynamic and static bodies
-  // 3. Static bodies never initiate collision checks (only receive them)
-  // 4. Dynamic-vs-dynamic pairs are deduplicated, dynamic-vs-static are not (no
-  // reverse check)
-  // 5. Persistent cache for static body queries with movement-based
-  // invalidation
-  // 6. Member containers with proper per-frame reset (no thread_local memory
-  // leak)
-  // 7. Expected 20x performance improvement for world with many static tiles
-}
-
-bool CollisionManager::broadphaseThreaded(
-    std::vector<std::pair<EntityID, EntityID>> &pairs,
-    ThreadingStats &stats) {
-  pairs.clear();
-
-  if (!HammerEngine::ThreadSystem::Exists()) {
-    broadphase(pairs);
-    return false;
-  }
-
-  std::vector<EntityID> dynamicIds;
-  dynamicIds.reserve(m_bodies.size());
-  for (const auto &kv : m_bodies) {
-    const CollisionBody &body = *kv.second;
-    if (body.enabled && body.type != BodyType::STATIC) {
-      dynamicIds.push_back(body.id);
-    }
-  }
-
-  if (dynamicIds.empty()) {
-    return false;
-  }
-
-  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
-  if (queueCapacity == 0) {
-    queueCapacity = 1;
-  }
-
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t collisionBudget = std::max<size_t>(1, budget.remaining);
-
-  size_t threadingThresholdValue =
-      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-  size_t optimalWorkers = budget.getOptimalWorkerCount(
-      collisionBudget, dynamicIds.size(), threadingThresholdValue);
-  optimalWorkers = std::max<size_t>(1, optimalWorkers);
-  if (m_maxThreads > 0) {
-    optimalWorkers =
-        std::min(optimalWorkers, static_cast<size_t>(m_maxThreads));
-  }
-
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  size_t baseBatchSize =
-      std::max(threadingThresholdValue / 2, static_cast<size_t>(64));
-  size_t minBodiesPerBatch = baseBatchSize;
-  size_t maxBatches = std::max<size_t>(2, optimalWorkers);
-
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    minBodiesPerBatch =
-        std::min(baseBatchSize * 2, threadingThresholdValue * 2);
-    size_t highPressureMax = std::max<size_t>(2, optimalWorkers / 2);
-    maxBatches = std::max<size_t>(1, highPressureMax);
-  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-    size_t minLowPressure =
-        std::max(threadingThresholdValue / 4, static_cast<size_t>(32));
-    minBodiesPerBatch =
-        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
-    maxBatches = std::max<size_t>(4, optimalWorkers);
-  }
-
-  size_t desiredBatchCount =
-      (dynamicIds.size() + minBodiesPerBatch - 1) / minBodiesPerBatch;
-  size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
-  batchCount = std::min(batchCount, maxBatches);
-  batchCount = std::max<size_t>(1, batchCount);
-
-  if (batchCount <= 1) {
-    broadphase(pairs);
-    return false;
-  }
-
-  size_t bodiesPerBatch = dynamicIds.size() / batchCount;
-  size_t remainingBodies = dynamicIds.size() % batchCount;
-
-  std::vector<std::future<std::vector<std::pair<EntityID, EntityID>>>> futures;
-  futures.reserve(batchCount);
-
-  for (size_t i = 0; i < batchCount; ++i) {
-    size_t start = i * bodiesPerBatch;
-    size_t end = start + bodiesPerBatch;
-    if (i == batchCount - 1) {
-      end += remainingBodies;
-    }
-
-    futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, &dynamicIds]() {
-          std::vector<std::pair<EntityID, EntityID>> localPairs;
-          localPairs.reserve((end > start ? end - start : 0) * 4);
-          std::unordered_set<uint64_t> localSeen;
-          localSeen.reserve((end > start ? end - start : 0) * 4);
-
-          std::vector<EntityID> dynamicCandidates;
-          dynamicCandidates.reserve(32);
-          std::vector<EntityID> staticCandidates;
-          staticCandidates.reserve(64);
-
-          for (size_t idx = start; idx < end; ++idx) {
-            EntityID bodyId = dynamicIds[idx];
-            auto bodyIt = m_bodies.find(bodyId);
-            if (bodyIt == m_bodies.end()) {
-              continue;
-            }
-            const CollisionBody &body = *bodyIt->second;
-            if (!body.enabled) {
-              continue;
-            }
-
-            dynamicCandidates.clear();
-            m_dynamicHash.query(body.aabb, dynamicCandidates);
-            for (EntityID candidateId : dynamicCandidates) {
-              if (candidateId == body.id) {
-                continue;
-              }
-              auto candidateIt = m_bodies.find(candidateId);
-              if (candidateIt == m_bodies.end()) {
-                continue;
-              }
-              const CollisionBody &candidate = *candidateIt->second;
-              if (!candidate.enabled) {
-                continue;
-              }
-              if ((body.collidesWith & candidate.layer) == 0) {
-                continue;
-              }
-
-              EntityID a = std::min(body.id, candidateId);
-              EntityID b = std::max(body.id, candidateId);
-              uint64_t key = (static_cast<uint64_t>(a) << 32) |
-                             static_cast<uint64_t>(b);
-              if (localSeen.emplace(key).second) {
-                localPairs.emplace_back(a, b);
-              }
-            }
-
-            staticCandidates.clear();
-            m_staticHash.query(body.aabb, staticCandidates);
-            for (EntityID staticId : staticCandidates) {
-              auto staticIt = m_bodies.find(staticId);
-              if (staticIt == m_bodies.end()) {
-                continue;
-              }
-              const CollisionBody &staticBody = *staticIt->second;
-              if (!staticBody.enabled) {
-                continue;
-              }
-              if ((body.collidesWith & staticBody.layer) == 0) {
-                continue;
-              }
-              localPairs.emplace_back(body.id, staticId);
-            }
-          }
-
-          return localPairs;
-        },
-        HammerEngine::TaskPriority::High, "Collision_BroadphaseBatch"));
-  }
-
-  std::unordered_set<uint64_t> globalSeen;
-  globalSeen.reserve(dynamicIds.size() * 4);
-  for (auto &future : futures) {
-    auto localPairs = future.get();
-    for (auto &pair : localPairs) {
-      EntityID a = pair.first;
-      EntityID b = pair.second;
-      uint64_t key = (static_cast<uint64_t>(std::min(a, b)) << 32) |
-                     static_cast<uint64_t>(std::max(a, b));
-      if (globalSeen.emplace(key).second) {
-        pairs.emplace_back(a, b);
-      }
-    }
-  }
-
-  stats.optimalWorkers = optimalWorkers;
-  stats.availableWorkers = availableWorkers;
-  stats.budget = collisionBudget;
-  stats.batchCount = batchCount;
-
-  return true;
-}
-
-void CollisionManager::narrowphase(
-    const std::vector<std::pair<EntityID, EntityID>> &pairs,
-    std::vector<CollisionInfo> &collisions) const {
-  collisions.clear();
-  for (auto [aId, bId] : pairs) {
-    const auto ita = m_bodies.find(aId);
-    const auto itb = m_bodies.find(bId);
-    if (ita == m_bodies.end() || itb == m_bodies.end())
-      continue;
-    const CollisionBody &A = *ita->second;
-    const CollisionBody &B = *itb->second;
-
-    if (!A.aabb.intersects(B.aabb))
-      continue;
-    float dxLeft = B.aabb.right() - A.aabb.left();
-    float dxRight = A.aabb.right() - B.aabb.left();
-    float dyTop = B.aabb.bottom() - A.aabb.top();
-    float dyBottom = A.aabb.bottom() - B.aabb.top();
-    float minPen = dxLeft;
-    Vector2D normal(-1, 0);
-    if (dxRight < minPen) {
-      minPen = dxRight;
-      normal = Vector2D(1, 0);
-    }
-    if (dyTop < minPen) {
-      minPen = dyTop;
-      normal = Vector2D(0, -1);
-    }
-    if (dyBottom < minPen) {
-      minPen = dyBottom;
-      normal = Vector2D(0, 1);
-    }
-    collisions.push_back(
-        CollisionInfo{aId, bId, normal, minPen, (A.isTrigger || B.isTrigger)});
-  }
-}
-
-bool CollisionManager::narrowphaseThreaded(
-    const std::vector<std::pair<EntityID, EntityID>> &pairs,
-    std::vector<CollisionInfo> &collisions, ThreadingStats &stats) {
-  collisions.clear();
-
-  if (pairs.empty()) {
-    return false;
-  }
-
-  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
-  if (queueCapacity == 0) {
-    queueCapacity = 1;
-  }
-
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t collisionBudget = std::max<size_t>(1, budget.remaining);
-
-  size_t threadingThreshold =
-      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-  size_t optimalWorkers = budget.getOptimalWorkerCount(
-      collisionBudget, pairs.size(), threadingThreshold);
-
-  optimalWorkers = std::max<size_t>(1, optimalWorkers);
-  if (m_maxThreads > 0) {
-    optimalWorkers = std::min(optimalWorkers, static_cast<size_t>(m_maxThreads));
-  }
-
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  size_t baseBatchSize =
-      std::max(threadingThreshold / 2, static_cast<size_t>(64));
-  size_t minPairsPerBatch = baseBatchSize;
-  size_t maxBatches = std::max<size_t>(2, optimalWorkers);
-
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    minPairsPerBatch = std::min(baseBatchSize * 2, threadingThreshold * 2);
-    size_t highPressureMax = std::max<size_t>(2, optimalWorkers / 2);
-    maxBatches = std::max<size_t>(1, highPressureMax);
-  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-    size_t minLowPressure =
-        std::max(threadingThreshold / 4, static_cast<size_t>(32));
-    minPairsPerBatch =
-        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
-    maxBatches = std::max<size_t>(4, optimalWorkers);
-  }
-
-  size_t desiredBatchCount =
-      (pairs.size() + minPairsPerBatch - 1) / minPairsPerBatch;
-  size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
-  batchCount = std::min(batchCount, maxBatches);
-  batchCount = std::max<size_t>(1, batchCount);
-
-  if (batchCount == 1) {
-    return false;
-  }
-
-  size_t pairsPerBatch = pairs.size() / batchCount;
-  size_t remainingPairs = pairs.size() % batchCount;
-
-  std::vector<std::future<std::vector<CollisionInfo>>> futures;
-  futures.reserve(batchCount);
-
-  for (size_t i = 0; i < batchCount; ++i) {
-    size_t start = i * pairsPerBatch;
-    size_t end = start + pairsPerBatch;
-    if (i == batchCount - 1) {
-      end += remainingPairs;
-    }
-
-    futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, &pairs, start, end]() {
-          std::vector<CollisionInfo> localCollisions;
-          localCollisions.reserve(end > start ? end - start : 0);
-          for (size_t idx = start; idx < end; ++idx) {
-            auto [aId, bId] = pairs[idx];
-            const auto ita = m_bodies.find(aId);
-            const auto itb = m_bodies.find(bId);
-            if (ita == m_bodies.end() || itb == m_bodies.end())
-              continue;
-            const CollisionBody &A = *ita->second;
-            const CollisionBody &B = *itb->second;
-            if (!A.aabb.intersects(B.aabb))
-              continue;
-
-            float dxLeft = B.aabb.right() - A.aabb.left();
-            float dxRight = A.aabb.right() - B.aabb.left();
-            float dyTop = B.aabb.bottom() - A.aabb.top();
-            float dyBottom = A.aabb.bottom() - B.aabb.top();
-            float minPen = dxLeft;
-            Vector2D normal(-1, 0);
-            if (dxRight < minPen) {
-              minPen = dxRight;
-              normal = Vector2D(1, 0);
-            }
-            if (dyTop < minPen) {
-              minPen = dyTop;
-              normal = Vector2D(0, -1);
-            }
-            if (dyBottom < minPen) {
-              minPen = dyBottom;
-              normal = Vector2D(0, 1);
-            }
-
-            localCollisions.push_back(CollisionInfo{
-                aId, bId, normal, minPen, (A.isTrigger || B.isTrigger)});
-          }
-          return localCollisions;
-        },
-        HammerEngine::TaskPriority::High, "Collision_NarrowphaseBatch"));
-  }
-
-  for (auto &future : futures) {
-    auto localCollisions = future.get();
-    collisions.insert(collisions.end(), localCollisions.begin(),
-                      localCollisions.end());
-  }
-
-  stats.optimalWorkers = optimalWorkers;
-  stats.availableWorkers = availableWorkers;
-  stats.budget = collisionBudget;
-  stats.batchCount = batchCount;
-
-  return true;
-}
-
-void CollisionManager::resolve(const CollisionInfo &info) {
-  if (info.trigger)
-    return;
-  auto ita = m_bodies.find(info.a);
-  auto itb = m_bodies.find(info.b);
-  if (ita == m_bodies.end() || itb == m_bodies.end())
-    return;
-  CollisionBody &A = *ita->second;
-  CollisionBody &B = *itb->second;
-  const float push = info.penetration * 0.5f;
-
-  // Apply position corrections (including to kinematic bodies)
-  if (A.type != BodyType::STATIC && B.type != BodyType::STATIC) {
-    A.aabb.center += info.normal * (-push);
-    B.aabb.center += info.normal * (push);
-  } else if (A.type != BodyType::STATIC) {
-    A.aabb.center += info.normal * (-info.penetration);
-  } else if (B.type != BodyType::STATIC) {
-    B.aabb.center += info.normal * (info.penetration);
-  }
-
-  auto dampen = [&](CollisionBody &body) {
-    float nx = info.normal.getX();
-    float ny = info.normal.getY();
-    float vdotn = body.velocity.getX() * nx + body.velocity.getY() * ny;
-    if (vdotn > 0)
-      return;
-    Vector2D vn(nx * vdotn, ny * vdotn);
-    body.velocity -= vn * (1.0f + body.restitution);
-  };
-  dampen(A);
-  dampen(B);
-  // Small tangential slide to reduce clumping for NPC-vs-NPC only (skip Player)
-  auto isPlayer = [](const CollisionBody &b) {
-    return (b.layer & CollisionLayer::Layer_Player) != 0;
-  };
-  if (A.type == BodyType::DYNAMIC && B.type == BodyType::DYNAMIC &&
-      !isPlayer(A) && !isPlayer(B)) {
-    Vector2D tangent(-info.normal.getY(), info.normal.getX());
-    // Scale slide by penetration, clamp to safe range
-    float slideBoost = std::min(5.0f, std::max(0.5f, info.penetration * 5.0f));
-    if (A.id < B.id) {
-      A.velocity += tangent * slideBoost;
-      B.velocity -= tangent * slideBoost;
-    } else {
-      A.velocity -= tangent * slideBoost;
-      B.velocity += tangent * slideBoost;
-    }
-  }
-  auto clampSpeed = [](CollisionBody &body) {
-    const float maxSpeed = 300.0f;
-    float lx = body.velocity.length();
-    if (lx > maxSpeed && lx > 0.0f) {
-      Vector2D dir = body.velocity;
-      dir.normalize();
-      body.velocity = dir * maxSpeed;
-    }
-  };
-  clampSpeed(A);
-  clampSpeed(B);
-
-  // Update the appropriate spatial hash for each body based on type
-  if (A.type == BodyType::STATIC) {
-    m_staticHash.update(A.id, A.aabb);
-  } else {
-    m_dynamicHash.update(A.id, A.aabb);
-  }
-
-  if (B.type == BodyType::STATIC) {
-    m_staticHash.update(B.id, B.aabb);
-  } else {
-    m_dynamicHash.update(B.id, B.aabb);
-  }
-}
 
 void CollisionManager::update(float dt) {
   (void)dt;
   if (!m_initialized || m_isShutdown)
     return;
 
-  // NEW SOA UPDATE PATH: Use SOA storage if available, fallback to legacy
-  bool useSOAPath = !m_storage.empty();
-  size_t totalBodies = useSOAPath ? m_storage.size() : m_bodies.size();
+  // SOA collision system only
+  updateSOA(dt);
+  return;
 
-  if (useSOAPath) {
-    updateSOA(dt);
-    return;
-  }
-
-  // LEGACY UPDATE PATH: Will be removed after migration
-  // Initialize object pools and broadphase cache for this frame
-  m_collisionPool.ensureCapacity(m_bodies.size());
-  m_collisionPool.resetFrame();
-  m_broadphaseCache
-      .resetFrame(); // Clear per-frame tracking (keeps static cache)
-
-  ThreadingStats summaryStats{};
-  bool summaryThreaded = false;
-
-  using clock = std::chrono::steady_clock;
-  auto t0 = clock::now();
-  size_t threadingThresholdValue =
-      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-
-  bool threadingEnabled =
-      m_useThreading.load(std::memory_order_acquire) &&
-      HammerEngine::ThreadSystem::Exists();
-
-  bool broadphaseUsedThreading = false;
-  bool attemptedBroadphaseThreading = false;
-  if (threadingEnabled) {
-    size_t dynamicBodyCount = 0;
-    for (const auto &kv : m_bodies) {
-      const CollisionBody &body = *kv.second;
-      if (body.enabled && body.type != BodyType::STATIC) {
-        ++dynamicBodyCount;
-      }
-    }
-
-    if (dynamicBodyCount >= threadingThresholdValue) {
-      attemptedBroadphaseThreading = true;
-      ThreadingStats stats;
-      broadphaseUsedThreading = broadphaseThreaded(m_collisionPool.pairBuffer, stats);
-      if (broadphaseUsedThreading) {
-        summaryThreaded = true;
-        summaryStats = stats;
-      }
-    } else {
-      broadphase(m_collisionPool.pairBuffer);
-    }
-  }
-  if (!threadingEnabled) {
-    broadphase(m_collisionPool.pairBuffer);
-  } else if (!attemptedBroadphaseThreading) {
-    // Already executed sequential broadphase in the branch above
-  } else if (!broadphaseUsedThreading && m_collisionPool.pairBuffer.empty()) {
-    // Threading was attempted but skipped due to insufficient work; ensure pairs populated
-    broadphase(m_collisionPool.pairBuffer);
-  }
-  auto t1 = clock::now();
-
-  const size_t pairCount = m_collisionPool.pairBuffer.size();
-  if (threadingEnabled && pairCount >= threadingThresholdValue) {
-    ThreadingStats narrowStats;
-    bool narrowphaseUsedThreading = narrowphaseThreaded(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer, narrowStats);
-    if (narrowphaseUsedThreading) {
-      summaryThreaded = true;
-      summaryStats = narrowStats; // Use narrowphase stats if it was threaded
-    } else {
-      narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
-    }
-  } else {
-    narrowphase(m_collisionPool.pairBuffer, m_collisionPool.collisionBuffer);
-  }
-  auto t2 = clock::now();
-
-  for (const auto &c : m_collisionPool.collisionBuffer) {
-    resolve(c);
-    for (const auto &cb : m_callbacks) {
-      cb(c);
-    }
-  }
-  auto t3 = clock::now();
-  if (m_verboseLogs && !m_collisionPool.collisionBuffer.empty()) {
-    COLLISION_DEBUG("Resolved collisions: count=" +
-                    std::to_string(m_collisionPool.collisionBuffer.size()));
-  }
-  // Reflect resolved poses back to entities so callers see corrected transforms
-  // Synchronize collision results back to entities
-  // Skip kinematic bodies since they manage their own positions through
-  // AI/input
-  m_isSyncing = true;
-  for (auto &kv : m_bodies) {
-    auto &b = *kv.second;
-    if (b.type != HammerEngine::BodyType::KINEMATIC) {
-      if (auto ent = b.entityWeak.lock()) {
-        ent->setPosition(b.aabb.center);
-        ent->setVelocity(b.velocity);
-      }
-    }
-  }
-  m_isSyncing = false;
-  auto t4 = clock::now();
-
-  // Trigger-only world events: Player vs Trigger OnEnter
-  auto makeKey = [](EntityID a, EntityID b) -> uint64_t {
-    uint64_t x = static_cast<uint64_t>(a);
-    uint64_t y = static_cast<uint64_t>(b);
-    if (x > y)
-      std::swap(x, y);
-    // Simple mix (not cryptographic); sufficient for set keys
-    return (x * 1469598103934665603ull) ^ (y + 1099511628211ull);
-  };
-
-  auto now = clock::now();
-  std::unordered_set<uint64_t> currentPairs;
-  currentPairs.reserve(m_collisionPool.collisionBuffer.size());
-  for (const auto &c : m_collisionPool.collisionBuffer) {
-    auto ita = m_bodies.find(c.a);
-    auto itb = m_bodies.find(c.b);
-    if (ita == m_bodies.end() || itb == m_bodies.end())
-      continue;
-    const CollisionBody &A = *ita->second;
-    const CollisionBody &B = *itb->second;
-
-    auto isPlayer = [](const CollisionBody &b) {
-      return (b.layer & CollisionLayer::Layer_Player) != 0;
-    };
-    const CollisionBody *playerBody = nullptr;
-    const CollisionBody *triggerBody = nullptr;
-
-    if (isPlayer(A) && B.isTrigger) {
-      playerBody = &A;
-      triggerBody = &B;
-    } else if (isPlayer(B) && A.isTrigger) {
-      playerBody = &B;
-      triggerBody = &A;
-    } else {
-      continue;
-    }
-
-    uint64_t key = makeKey(playerBody->id, triggerBody->id);
-    currentPairs.insert(key);
-    if (!m_activeTriggerPairs.count(key)) {
-      // Cooldown check per trigger
-      auto cdIt = m_triggerCooldownUntil.find(triggerBody->id);
-      bool cooled =
-          (cdIt == m_triggerCooldownUntil.end()) || (now >= cdIt->second);
-      if (cooled) {
-        WorldTriggerEvent evt(playerBody->id, triggerBody->id,
-                              triggerBody->triggerTag, playerBody->aabb.center,
-                              TriggerPhase::Enter);
-        EventManager::Instance().triggerWorldTrigger(
-            evt, EventManager::DispatchMode::Deferred);
-        COLLISION_INFO(
-            "Trigger Enter: player=" + std::to_string(playerBody->id) +
-            ", trigger=" + std::to_string(triggerBody->id) + ", tag=" +
-            std::to_string(static_cast<int>(triggerBody->triggerTag)));
-        if (m_defaultTriggerCooldownSec > 0.0f) {
-          m_triggerCooldownUntil[triggerBody->id] =
-              now +
-              std::chrono::duration_cast<clock::duration>(
-                  std::chrono::duration<double>(m_defaultTriggerCooldownSec));
-        }
-      }
-      m_activeTriggerPairs.emplace(
-          key, std::make_pair(playerBody->id, triggerBody->id));
-    }
-  }
-  // Remove stale pairs (exited triggers) and dispatch Exit events
-  for (auto it = m_activeTriggerPairs.begin();
-       it != m_activeTriggerPairs.end();) {
-    if (!currentPairs.count(it->first)) {
-      // OnExit
-      EntityID playerId = it->second.first;
-      EntityID triggerId = it->second.second;
-      auto bt = m_bodies.find(triggerId);
-      if (bt != m_bodies.end()) {
-        WorldTriggerEvent evt(playerId, triggerId, bt->second->triggerTag,
-                              bt->second->aabb.center, TriggerPhase::Exit);
-        EventManager::Instance().triggerWorldTrigger(
-            evt, EventManager::DispatchMode::Deferred);
-        COLLISION_INFO(
-            "Trigger Exit: player=" + std::to_string(playerId) +
-            ", trigger=" + std::to_string(triggerId) + ", tag=" +
-            std::to_string(static_cast<int>(bt->second->triggerTag)));
-      }
-      it = m_activeTriggerPairs.erase(it);
-    } else {
-      ++it;
-    }
-  }
-
-  // Perf metrics
-  auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count();
-  auto d12 = std::chrono::duration<double, std::milli>(t2 - t1).count();
-  auto d23 = std::chrono::duration<double, std::milli>(t3 - t2).count();
-  auto d34 = std::chrono::duration<double, std::milli>(t4 - t3).count();
-  auto d04 = std::chrono::duration<double, std::milli>(t4 - t0).count();
-  m_perf.lastBroadphaseMs = d01;
-  m_perf.lastNarrowphaseMs = d12;
-  m_perf.lastResolveMs = d23;
-  m_perf.lastSyncMs = d34;
-  m_perf.lastTotalMs = d04;
-  m_perf.lastPairs = m_collisionPool.pairBuffer.size();
-  m_perf.lastCollisions = m_collisionPool.collisionBuffer.size();
-  m_perf.bodyCount = m_bodies.size();
-
-  // Use moving window average instead of cumulative average
-  m_perf.updateAverage(m_perf.lastTotalMs);
-  m_perf.frames += 1;
-  if (m_perf.lastTotalMs > 5.0) {
-    COLLISION_WARN("Slow frame: totalMs=" + std::to_string(m_perf.lastTotalMs) +
-                   ", pairs=" + std::to_string(m_perf.lastPairs) +
-                   ", collisions=" + std::to_string(m_perf.lastCollisions));
-  }
-
-  if (summaryThreaded) {
-    m_lastWasThreaded.store(true, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(summaryStats.batchCount,
-                                 std::memory_order_relaxed);
-    m_lastOptimalWorkerCount.store(summaryStats.optimalWorkers,
-                                   std::memory_order_relaxed);
-    m_lastAvailableWorkers.store(summaryStats.availableWorkers,
-                                 std::memory_order_relaxed);
-    m_lastCollisionBudget.store(summaryStats.budget,
-                                std::memory_order_relaxed);
-  } else {
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
-    m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
-    m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
-    m_lastCollisionBudget.store(0, std::memory_order_relaxed);
-  }
-
-  // Periodic collision statistics (every 300 frames like AIManager)
-  if (m_perf.frames % 300 == 0 && m_perf.bodyCount > 0) {
-    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
-    if (wasThreaded) {
-      size_t optimalWorkers =
-          m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-      size_t availableWorkers =
-          m_lastAvailableWorkers.load(std::memory_order_relaxed);
-      size_t collisionBudget =
-          m_lastCollisionBudget.load(std::memory_order_relaxed);
-      size_t batchCount =
-          std::max<size_t>(1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
-
-      COLLISION_DEBUG(
-          "Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
-          ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
-          ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
-          ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) +
-          "ms" + ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
-          ", Last Collisions: " + std::to_string(m_perf.lastCollisions) +
-          " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-          std::to_string(availableWorkers) + " workers, Budget: " +
-          std::to_string(collisionBudget) + ", Batches: " +
-          std::to_string(batchCount) + "]");
-    } else {
-      COLLISION_DEBUG(
-          "Collision Summary - Bodies: " + std::to_string(m_perf.bodyCount) +
-          ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
-          ", Broadphase: " + std::to_string(m_perf.lastBroadphaseMs) + "ms" +
-          ", Narrowphase: " + std::to_string(m_perf.lastNarrowphaseMs) + "ms" +
-          ", Last Pairs: " + std::to_string(m_perf.lastPairs) +
-          ", Last Collisions: " + std::to_string(m_perf.lastCollisions));
-    }
-  }
 }
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) {
@@ -1455,14 +641,14 @@ void CollisionManager::logCollisionStatistics() const {
 }
 
 size_t CollisionManager::getStaticBodyCount() const {
-  return std::count_if(m_bodies.begin(), m_bodies.end(), [](const auto &kv) {
-    return kv.second->type == BodyType::STATIC;
+  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
+    return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC;
   });
 }
 
 size_t CollisionManager::getKinematicBodyCount() const {
-  return std::count_if(m_bodies.begin(), m_bodies.end(), [](const auto &kv) {
-    return kv.second->type == BodyType::KINEMATIC;
+  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
+    return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC;
   });
 }
 
@@ -1471,14 +657,17 @@ void CollisionManager::rebuildStaticFromWorld() {
   const auto *world = wm.getWorldData();
   if (!world)
     return;
-  // Remove any existing STATIC world bodies
+  // Remove any existing STATIC world bodies from SOA storage
   std::vector<EntityID> toRemove;
-  for (const auto &kv : m_bodies) {
-    if (isStatic(*kv.second))
-      toRemove.push_back(kv.first);
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      toRemove.push_back(m_storage.entityIds[i]);
+    }
   }
-  for (auto id : toRemove)
-    removeBody(id);
+  for (auto id : toRemove) {
+    removeCollisionBodySOA(id);
+  }
 
   // Create solid collision bodies for obstacles and triggers for movement
   // penalties
@@ -1512,19 +701,21 @@ void CollisionManager::onTileChanged(int x, int y) {
       x < static_cast<int>(world->grid[y].size())) {
     const auto &tile = world->grid[y][x];
 
-    // Update water trigger for this tile
+    // Update water trigger for this tile using SOA system
     EntityID trigId = (static_cast<EntityID>(1ull) << 61) |
                       (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
                       static_cast<EntityID>(static_cast<uint32_t>(x));
-    removeBody(trigId);
+    removeCollisionBodySOA(trigId);
     if (tile.isWater) {
       float cx = x * tileSize + tileSize * 0.5f;
       float cy = y * tileSize + tileSize * 0.5f;
-      AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
-      addBody(trigId, aabb, BodyType::STATIC);
-      setBodyLayer(trigId, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-      setBodyTrigger(trigId, true);
-      setBodyTriggerTag(trigId, HammerEngine::TriggerTag::Water);
+      Vector2D center(cx, cy);
+      Vector2D halfSize(tileSize * 0.5f, tileSize * 0.5f);
+      size_t index = addCollisionBodySOA(trigId, center, halfSize, BodyType::STATIC,
+                                       CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+      // Set trigger properties directly in SOA storage
+      m_storage.hotData[index].isTrigger = true;
+      m_storage.hotData[index].triggerTag = static_cast<uint8_t>(HammerEngine::TriggerTag::Water);
     }
 
     // Update solid obstacle collision body for this tile (BUILDING only)
@@ -1548,16 +739,15 @@ void CollisionManager::onTileChanged(int x, int y) {
         EntityID buildingId =
             (static_cast<EntityID>(3ull) << 61) |
             static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-        removeBody(
+        removeCollisionBodySOA(
             buildingId); // Remove existing building collision body if any
 
         float cx = x * tileSize + tileSize;    // Center at 1 tile offset
         float cy = y * tileSize + tileSize;    // Center at 1 tile offset
-        AABB aabb(cx, cy, tileSize, tileSize); // 64x64 collision box
-        addBody(buildingId, aabb, BodyType::STATIC);
-        setBodyLayer(buildingId, CollisionLayer::Layer_Environment,
-                     0xFFFFFFFFu);
-        setBodyTrigger(buildingId, false);
+        Vector2D center(cx, cy);
+        Vector2D halfSize(tileSize, tileSize);
+        addCollisionBodySOA(buildingId, center, halfSize, BodyType::STATIC,
+                           CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
       }
     } else if (tile.obstacleType != ObstacleType::BUILDING &&
                tile.buildingId > 0) {
@@ -1566,7 +756,7 @@ void CollisionManager::onTileChanged(int x, int y) {
       EntityID buildingId =
           (static_cast<EntityID>(3ull) << 61) |
           static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-      removeBody(buildingId);
+      removeCollisionBodySOA(buildingId);
     }
 
     // ROCK and TREE movement penalties are handled by pathfinding system
@@ -1615,11 +805,15 @@ void CollisionManager::subscribeWorldEvents() {
                 std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
           (void)unloaded;
           std::vector<EntityID> toRemove;
-          for (const auto &kv : m_bodies)
-            if (isStatic(*kv.second))
-              toRemove.push_back(kv.first);
-          for (auto id : toRemove)
-            removeBody(id);
+          for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+            const auto& hot = m_storage.hotData[i];
+            if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+              toRemove.push_back(m_storage.entityIds[i]);
+            }
+          }
+          for (auto id : toRemove) {
+            removeCollisionBodySOA(id);
+          }
           COLLISION_INFO("World unloaded - removed static colliders: " +
                          std::to_string(toRemove.size()));
           // Invalidate static cache since static bodies were removed
@@ -1716,9 +910,10 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
   m_storage.entityIds.push_back(id);
   m_storage.entityToIndex[id] = newIndex;
 
-  COLLISION_DEBUG("Added new SOA body for entity " + std::to_string(id) +
-                  " at index " + std::to_string(newIndex) +
-                  ", type: " + std::to_string(static_cast<int>(type)));
+  COLLISION_INFO("STORAGE LIFECYCLE: Added new SOA body for entity " + std::to_string(id) +
+                 " at index " + std::to_string(newIndex) +
+                 ", type: " + std::to_string(static_cast<int>(type)) +
+                 ", total storage size now: " + std::to_string(m_storage.size()));
 
   return newIndex;
 }
@@ -1790,6 +985,16 @@ void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2
   }
 }
 
+void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    m_storage.hotData[index].halfSize = newHalfSize;
+    COLLISION_DEBUG("Updated SOA body size for entity " + std::to_string(id) +
+                    " to (" + std::to_string(newHalfSize.getX()) + ", " +
+                    std::to_string(newHalfSize.getY()) + ")");
+  }
+}
+
 // ========== DOUBLE BUFFERING SYSTEM METHODS ==========
 
 // Buffer management methods moved to private section for implementation
@@ -1803,7 +1008,7 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
   // Reset all pools for this frame
   m_collisionPool.resetFrame();
 
-  COLLISION_DEBUG("Prepared collision buffers for " + std::to_string(bodyCount) + " bodies");
+  // Prepared collision buffers
 }
 
 void CollisionManager::buildActiveIndicesSOA() {
@@ -1828,9 +1033,10 @@ void CollisionManager::buildActiveIndicesSOA() {
     }
   }
 
-  COLLISION_DEBUG("Built active indices: " + std::to_string(pools.activeIndices.size()) +
-                  " total (" + std::to_string(pools.dynamicIndices.size()) + " dynamic, " +
-                  std::to_string(pools.staticIndices.size()) + " static)");
+  COLLISION_INFO("Built active indices: " + std::to_string(pools.activeIndices.size()) +
+                 " total (" + std::to_string(pools.dynamicIndices.size()) + " dynamic, " +
+                 std::to_string(pools.staticIndices.size()) + " static) from " +
+                 std::to_string(m_storage.hotData.size()) + " stored bodies");
 }
 
 // Internal helper methods moved to private section
@@ -1866,6 +1072,8 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     // 1. Query dynamic spatial hash for dynamic-vs-dynamic collisions
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
+    COLLISION_DEBUG("Dynamic query for index " + std::to_string(dynamicIdx) +
+                    " found " + std::to_string(candidates.size()) + " candidates");
     for (size_t candidateIdx : candidates) {
       if (candidateIdx == dynamicIdx || candidateIdx >= m_storage.hotData.size()) continue;
 
@@ -1873,7 +1081,13 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       if (!candidateHot.active) continue;
 
       // Check collision masks
-      if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+      if ((dynamicHot.collidesWith & candidateHot.layers) == 0) {
+        COLLISION_DEBUG("Mask filter rejected pair (" + std::to_string(dynamicIdx) + "," +
+                        std::to_string(candidateIdx) + ") - collidesWith: " +
+                        std::to_string(dynamicHot.collidesWith) + ", layers: " +
+                        std::to_string(candidateHot.layers));
+        continue;
+      }
 
       // Create canonical pair key (smaller index first for deduplication)
       size_t a = std::min(dynamicIdx, candidateIdx);
@@ -2248,8 +1462,14 @@ void CollisionManager::updateSOA(float dt) {
   using clock = std::chrono::steady_clock;
   auto t0 = clock::now();
 
-  // Prepare collision processing for this frame
+  // Pure SOA system - no legacy compatibility
+
+  // Check storage state at start of update
   size_t bodyCount = m_storage.size();
+  COLLISION_INFO("STORAGE LIFECYCLE: updateSOA() called with " +
+                 std::to_string(bodyCount) + " bodies in storage");
+
+  // Prepare collision processing for this frame
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
 
   // Sync spatial hashes with SOA storage
@@ -2332,10 +1552,7 @@ void CollisionManager::updateSOA(float dt) {
                                summaryStats.budget, summaryStats.batchCount,
                                bodyCount, activeDynamicBodies, pairCount, m_collisionPool.collisionBuffer.size());
 
-  COLLISION_DEBUG("SOA Update complete: " + std::to_string(bodyCount) + " bodies, " +
-                  std::to_string(pairCount) + " pairs, " +
-                  std::to_string(m_collisionPool.collisionBuffer.size()) + " collisions" +
-                  (summaryThreaded ? " [Threaded]" : " [Single-threaded]"));
+  // SOA Update complete (reduced logging)
 }
 
 // ========== SOA UPDATE HELPER METHODS ==========

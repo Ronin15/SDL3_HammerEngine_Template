@@ -120,7 +120,7 @@ public:
     void onCollision(CollisionCB cb) { addCollisionCallback(std::move(cb)); }
 
     // Metrics
-    size_t getBodyCount() const { return m_bodies.size(); }
+    size_t getBodyCount() const { return m_storage.size(); }
     bool isSyncing() const { return m_isSyncing; }
     void configureThreading(bool useThreading, unsigned int maxThreads = 0);
     void setThreadingThreshold(size_t threshold);
@@ -134,6 +134,7 @@ public:
     bool getCollisionBodySOA(EntityID id, size_t& outIndex) const;
     void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
     void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
+    void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
 
     // Internal buffer management (simplified public interface)
     void prepareCollisionBuffers(size_t bodyCount);

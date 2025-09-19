@@ -859,7 +859,7 @@ void GameEngine::update(float deltaTime) {
 
   // Physics system - update after AI to apply collision constraints
   if (mp_collisionManager) {
-    mp_collisionManager->update(deltaTime);
+    mp_collisionManager->update(deltaTime);  // Let collision manager choose SOA vs legacy
   } else {
     GAMEENGINE_ERROR("CollisionManager cache is null!");
   }
