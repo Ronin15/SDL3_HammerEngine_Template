@@ -134,6 +134,7 @@ private:
     CoarseCoord getCoarseCoord(const AABB& aabb) const;
     std::vector<CoarseCoord> getCoarseCoordsForAABB(const AABB& aabb) const;
     FineCoord getFineCoord(const AABB& aabb, const CoarseCoord& region) const;
+    std::vector<FineCoord> getFineCoordList(const AABB& aabb, const CoarseCoord& region) const;
     MortonCode computeMortonCode(const FineCoord& coord) const;
     bool hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const;
 

@@ -37,7 +37,7 @@ bool GamePlayState::enter() {
 
   // Create player and position at screen center
   mp_Player = std::make_shared<Player>();
-  mp_Player->registerCollisionBody();
+  mp_Player->ensurePhysicsBodyRegistered();
   mp_Player->initializeInventory();
 
   // Position player at screen center

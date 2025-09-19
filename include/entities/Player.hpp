@@ -66,8 +66,8 @@ public:
   // Initialization - call after construction to setup inventory
   void initializeInventory();
 
-  // Post-construction registration with CollisionManager
-  void registerCollisionBody() { ensurePhysicsBodyRegistered(); }
+  // Physics body registration - call after construction
+  void ensurePhysicsBodyRegistered();
 
 private:
   void handleMovementInput(float deltaTime);
@@ -75,7 +75,6 @@ private:
   void loadDimensionsFromTexture();
   void setupStates();
   void setupInventory();
-  void ensurePhysicsBodyRegistered();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;

@@ -191,7 +191,7 @@ bool AIDemoState::enter() {
 
     // Create player first (the chase behavior will need it)
     m_player = std::make_shared<Player>();
-    m_player->registerCollisionBody();
+    m_player->ensurePhysicsBodyRegistered();
     m_player->initializeInventory(); // Initialize inventory after construction
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 

@@ -222,6 +222,7 @@ void Player::ensurePhysicsBodyRegistered() {
   // Use new SOA-based collision system
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
                         HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+  // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 }
 
@@ -229,7 +230,7 @@ void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
   auto &cm = CollisionManager::Instance();
   if (!cm.isSyncing()) {
-    cm.setVelocity(getID(), velocity);
+    cm.updateCollisionBodyVelocitySOA(getID(), velocity);
   }
 }
 
@@ -237,7 +238,7 @@ void Player::setPosition(const Vector2D& position) {
   m_position = position;
   auto &cm = CollisionManager::Instance();
   if (!cm.isSyncing()) {
-    cm.setKinematicPose(getID(), position);
+    cm.updateCollisionBodyPositionSOA(getID(), position);
   }
 }
 

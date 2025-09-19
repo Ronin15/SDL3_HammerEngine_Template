@@ -17,9 +17,7 @@ class CollisionBenchmark {
 public:
     struct BenchmarkResult {
         size_t bodyCount;
-        double legacyTimeMs;
         double soaTimeMs;
-        double speedupRatio;
         size_t collisionCount;
         size_t pairCount;
     };
@@ -34,8 +32,8 @@ public:
     }
 
     void runBenchmarkSuite() {
-        std::cout << "=== Collision System Benchmark Suite ===" << std::endl;
-        std::cout << "Testing SOA vs Legacy collision detection performance" << std::endl;
+        std::cout << "=== Collision System SOA Benchmark Suite ===" << std::endl;
+        std::cout << "Testing SOA collision detection performance" << std::endl;
         std::cout << std::endl;
 
         std::vector<size_t> bodyCounts = {100, 500, 1000, 2000, 5000, 10000};
@@ -71,11 +69,6 @@ private:
         // Generate test bodies
         std::vector<TestBody> testBodies = generateTestBodies(bodyCount);
 
-        // Benchmark legacy system
-        std::cout << "  Testing legacy collision system..." << std::flush;
-        result.legacyTimeMs = benchmarkLegacySystem(testBodies);
-        std::cout << " " << std::fixed << std::setprecision(2) << result.legacyTimeMs << "ms" << std::endl;
-
         // Benchmark SOA system
         std::cout << "  Testing SOA collision system..." << std::flush;
         auto [soaTime, collisions, pairs] = benchmarkSOASystem(testBodies);
@@ -83,9 +76,6 @@ private:
         result.collisionCount = collisions;
         result.pairCount = pairs;
         std::cout << " " << std::fixed << std::setprecision(2) << result.soaTimeMs << "ms" << std::endl;
-
-        // Calculate speedup
-        result.speedupRatio = result.legacyTimeMs / result.soaTimeMs;
 
         return result;
     }
@@ -127,49 +117,6 @@ private:
         return bodies;
     }
 
-    double benchmarkLegacySystem(const std::vector<TestBody>& testBodies) {
-        auto& manager = CollisionManager::Instance();
-
-        // Clear any existing bodies
-        manager.clean();
-        manager.init();
-
-        // Add test bodies to legacy system
-        std::vector<EntityID> entityIds;
-        for (size_t i = 0; i < testBodies.size(); ++i) {
-            EntityID id = static_cast<EntityID>(i + 1);
-            const auto& body = testBodies[i];
-
-            AABB aabb(body.position.getX(), body.position.getY(),
-                     body.halfSize.getX(), body.halfSize.getY());
-
-            manager.addBody(id, aabb, body.type, body.layer, body.collidesWith);
-            entityIds.push_back(id);
-        }
-
-        // Warm up
-        for (int i = 0; i < 3; ++i) {
-            manager.update(0.016f); // 60 FPS
-        }
-
-        // Benchmark
-        constexpr int iterations = 100;
-        auto start = std::chrono::high_resolution_clock::now();
-
-        for (int i = 0; i < iterations; ++i) {
-            manager.update(0.016f);
-        }
-
-        auto end = std::chrono::high_resolution_clock::now();
-
-        // Clean up
-        for (EntityID id : entityIds) {
-            manager.removeBody(id);
-        }
-
-        double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
-        return totalMs / iterations;
-    }
 
     std::tuple<double, size_t, size_t> benchmarkSOASystem(const std::vector<TestBody>& testBodies) {
         auto& manager = CollisionManager::Instance();
@@ -181,11 +128,11 @@ private:
         // Add test bodies to SOA system
         std::vector<EntityID> entityIds;
         for (size_t i = 0; i < testBodies.size(); ++i) {
-            EntityID id = static_cast<EntityID>(i + 1000000); // Different ID range
+            EntityID id = static_cast<EntityID>(i + 1);
             const auto& body = testBodies[i];
 
-            size_t index = manager.addCollisionBodySOA(id, body.position, body.halfSize,
-                                                      body.type, body.layer, body.collidesWith);
+            manager.addCollisionBodySOA(id, body.position, body.halfSize,
+                                        body.type, body.layer, body.collidesWith);
             entityIds.push_back(id);
         }
 
@@ -221,50 +168,56 @@ private:
     void printResult(const BenchmarkResult& result) {
         std::cout << std::fixed << std::setprecision(2);
         std::cout << "  Results for " << result.bodyCount << " bodies:" << std::endl;
-        std::cout << "    Legacy:     " << std::setw(8) << result.legacyTimeMs << " ms" << std::endl;
-        std::cout << "    SOA:        " << std::setw(8) << result.soaTimeMs << " ms" << std::endl;
-        std::cout << "    Speedup:    " << std::setw(8) << result.speedupRatio << "x" << std::endl;
+        std::cout << "    SOA Time:   " << std::setw(8) << result.soaTimeMs << " ms" << std::endl;
         std::cout << "    Pairs:      " << std::setw(8) << result.pairCount << std::endl;
         std::cout << "    Collisions: " << std::setw(8) << result.collisionCount << std::endl;
+        std::cout << "    Efficiency: " << std::setw(8) << std::fixed << std::setprecision(1)
+                  << (result.pairCount > 0 ? (100.0 * result.collisionCount / result.pairCount) : 0.0) << "%" << std::endl;
     }
 
     void printSummary(const std::vector<BenchmarkResult>& results) {
-        std::cout << "=== Performance Summary ===" << std::endl;
+        std::cout << "=== SOA Performance Summary ===" << std::endl;
         std::cout << std::left << std::setw(10) << "Bodies"
-                  << std::setw(12) << "Legacy (ms)"
                   << std::setw(12) << "SOA (ms)"
-                  << std::setw(10) << "Speedup"
                   << std::setw(10) << "Pairs"
-                  << std::setw(12) << "Collisions" << std::endl;
-        std::cout << std::string(66, '-') << std::endl;
+                  << std::setw(12) << "Collisions"
+                  << std::setw(12) << "Efficiency" << std::endl;
+        std::cout << std::string(56, '-') << std::endl;
 
         for (const auto& result : results) {
             std::cout << std::fixed << std::setprecision(2);
+            double efficiency = result.pairCount > 0 ? (100.0 * result.collisionCount / result.pairCount) : 0.0;
             std::cout << std::left << std::setw(10) << result.bodyCount
-                      << std::setw(12) << result.legacyTimeMs
                       << std::setw(12) << result.soaTimeMs
-                      << std::setw(10) << result.speedupRatio << "x"
                       << std::setw(10) << result.pairCount
-                      << std::setw(12) << result.collisionCount << std::endl;
+                      << std::setw(12) << result.collisionCount
+                      << std::setw(12) << std::fixed << std::setprecision(1) << efficiency << "%" << std::endl;
         }
 
-        // Calculate average speedup
-        double totalSpeedup = 0.0;
+        // Calculate performance metrics
+        double totalTime = 0.0;
+        size_t totalPairs = 0;
+        size_t totalCollisions = 0;
         for (const auto& result : results) {
-            totalSpeedup += result.speedupRatio;
+            totalTime += result.soaTimeMs;
+            totalPairs += result.pairCount;
+            totalCollisions += result.collisionCount;
         }
-        double avgSpeedup = totalSpeedup / results.size();
+        double avgTime = totalTime / results.size();
+        double avgEfficiency = totalPairs > 0 ? (100.0 * totalCollisions / totalPairs) : 0.0;
 
         std::cout << std::endl;
-        std::cout << "Average speedup: " << std::fixed << std::setprecision(2)
-                  << avgSpeedup << "x" << std::endl;
+        std::cout << "Average timing: " << std::fixed << std::setprecision(2)
+                  << avgTime << "ms per frame" << std::endl;
+        std::cout << "Overall efficiency: " << std::fixed << std::setprecision(1)
+                  << avgEfficiency << "%" << std::endl;
 
-        if (avgSpeedup > 1.5) {
-            std::cout << "✓ SOA system shows significant performance improvement!" << std::endl;
-        } else if (avgSpeedup > 1.0) {
-            std::cout << "~ SOA system shows moderate performance improvement." << std::endl;
+        if (avgTime < 1.0) {
+            std::cout << "✓ SOA system shows excellent performance (< 1ms per frame)!" << std::endl;
+        } else if (avgTime < 5.0) {
+            std::cout << "~ SOA system shows good performance (< 5ms per frame)." << std::endl;
         } else {
-            std::cout << "⚠ SOA system performance needs investigation." << std::endl;
+            std::cout << "⚠ SOA system performance may need optimization (> 5ms per frame)." << std::endl;
         }
     }
 };
