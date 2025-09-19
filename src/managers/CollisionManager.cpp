@@ -54,12 +54,18 @@ void CollisionManager::clean() {
   if (!m_initialized || m_isShutdown)
     return;
   m_isShutdown = true;
+
+  // Clean legacy storage
   m_bodies.clear();
+
+  // Clean new SOA storage
+  m_storage.clear();
+
   m_staticHash.clear();
   m_dynamicHash.clear();
   m_callbacks.clear();
   m_initialized = false;
-  COLLISION_INFO("Cleaned and shut down");
+  COLLISION_INFO("Cleaned and shut down (both legacy and SOA storage)");
 }
 
 void CollisionManager::prepareForStateTransition() {
@@ -72,8 +78,10 @@ void CollisionManager::prepareForStateTransition() {
   }
 
   // Clear all collision bodies (both dynamic and static)
-  size_t bodyCount = m_bodies.size();
+  size_t legacyBodyCount = m_bodies.size();
+  size_t soaBodyCount = m_storage.size();
   m_bodies.clear();
+  m_storage.clear();
 
   // Clear spatial hash completely
   m_staticHash.clear();
@@ -112,7 +120,8 @@ void CollisionManager::prepareForStateTransition() {
   m_verboseLogs = false;
 
   COLLISION_INFO("CollisionManager state transition complete - removed " +
-                 std::to_string(bodyCount) + " bodies, cleared all state");
+                 std::to_string(legacyBodyCount) + " legacy bodies and " +
+                 std::to_string(soaBodyCount) + " SOA bodies, cleared all state");
 }
 
 void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
@@ -1118,8 +1127,16 @@ void CollisionManager::update(float dt) {
   if (!m_initialized || m_isShutdown)
     return;
 
-  // Initialize collision detection for this frame
+  // NEW SOA UPDATE PATH: Use SOA storage if available, fallback to legacy
+  bool useSOAPath = !m_storage.empty();
+  size_t totalBodies = useSOAPath ? m_storage.size() : m_bodies.size();
 
+  if (useSOAPath) {
+    updateSOA(dt);
+    return;
+  }
+
+  // LEGACY UPDATE PATH: Will be removed after migration
   // Initialize object pools and broadphase cache for this frame
   m_collisionPool.ensureCapacity(m_bodies.size());
   m_collisionPool.resetFrame();
@@ -1636,4 +1653,1026 @@ void CollisionManager::setThreadingThreshold(size_t threshold) {
 
 size_t CollisionManager::getThreadingThreshold() const {
   return m_threadingThreshold.load(std::memory_order_acquire);
+}
+
+// ========== NEW SOA STORAGE MANAGEMENT METHODS ==========
+
+size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& position,
+                                              const Vector2D& halfSize, BodyType type,
+                                              uint32_t layer, uint32_t collidesWith) {
+  // Check if entity already exists
+  auto it = m_storage.entityToIndex.find(id);
+  if (it != m_storage.entityToIndex.end()) {
+    // Update existing entity
+    size_t index = it->second;
+    if (index < m_storage.hotData.size()) {
+      auto& hot = m_storage.hotData[index];
+      hot.position = position;
+      hot.halfSize = halfSize;
+      hot.layers = layer;
+      hot.collidesWith = collidesWith;
+      hot.bodyType = static_cast<uint8_t>(type);
+      hot.active = true;
+
+      // Update cold data
+      if (index < m_storage.coldData.size()) {
+        m_storage.coldData[index].fullAABB = AABB(position.getX(), position.getY(),
+                                                  halfSize.getX(), halfSize.getY());
+      }
+
+      COLLISION_DEBUG("Updated existing SOA body for entity " + std::to_string(id) +
+                      " at index " + std::to_string(index));
+      return index;
+    }
+  }
+
+  // Add new entity
+  size_t newIndex = m_storage.size();
+
+  // Initialize hot data
+  CollisionStorage::HotData hotData{};
+  hotData.position = position;
+  hotData.velocity = Vector2D(0, 0);
+  hotData.halfSize = halfSize;
+  hotData.layers = layer;
+  hotData.collidesWith = collidesWith;
+  hotData.bodyType = static_cast<uint8_t>(type);
+  hotData.triggerTag = static_cast<uint8_t>(HammerEngine::TriggerTag::None);
+  hotData.active = true;
+  hotData.isTrigger = false;
+  hotData.mass = 1.0f;
+  hotData.friction = 0.8f;
+  hotData.restitution = 0.0f;
+
+  // Initialize cold data
+  CollisionStorage::ColdData coldData{};
+  coldData.acceleration = Vector2D(0, 0);
+  coldData.lastPosition = position;
+  coldData.fullAABB = AABB(position.getX(), position.getY(), halfSize.getX(), halfSize.getY());
+
+  // Add to storage
+  m_storage.hotData.push_back(hotData);
+  m_storage.coldData.push_back(coldData);
+  m_storage.entityIds.push_back(id);
+  m_storage.entityToIndex[id] = newIndex;
+
+  COLLISION_DEBUG("Added new SOA body for entity " + std::to_string(id) +
+                  " at index " + std::to_string(newIndex) +
+                  ", type: " + std::to_string(static_cast<int>(type)));
+
+  return newIndex;
+}
+
+void CollisionManager::removeCollisionBodySOA(EntityID id) {
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end()) {
+    return; // Entity not found
+  }
+
+  size_t indexToRemove = it->second;
+  size_t lastIndex = m_storage.size() - 1;
+
+  if (indexToRemove < m_storage.size()) {
+    // Swap with last element and pop (to maintain contiguous arrays)
+    if (indexToRemove != lastIndex) {
+      // Swap hot data
+      m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
+      // Swap cold data
+      m_storage.coldData[indexToRemove] = m_storage.coldData[lastIndex];
+      // Swap entity IDs
+      m_storage.entityIds[indexToRemove] = m_storage.entityIds[lastIndex];
+
+      // Update index mapping for the moved entity
+      EntityID movedEntityId = m_storage.entityIds[indexToRemove];
+      m_storage.entityToIndex[movedEntityId] = indexToRemove;
+    }
+
+    // Remove last elements
+    m_storage.hotData.pop_back();
+    m_storage.coldData.pop_back();
+    m_storage.entityIds.pop_back();
+  }
+
+  // Remove from index mapping
+  m_storage.entityToIndex.erase(it);
+
+  COLLISION_DEBUG("Removed SOA body for entity " + std::to_string(id) +
+                  " from index " + std::to_string(indexToRemove));
+}
+
+bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
+  auto it = m_storage.entityToIndex.find(id);
+  if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
+    outIndex = it->second;
+    return true;
+  }
+  return false;
+}
+
+void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    auto& hot = m_storage.hotData[index];
+    hot.position = newPosition;
+
+    // Update full AABB in cold data
+    if (index < m_storage.coldData.size()) {
+      m_storage.coldData[index].fullAABB = AABB(newPosition.getX(), newPosition.getY(),
+                                                hot.halfSize.getX(), hot.halfSize.getY());
+    }
+  }
+}
+
+void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    m_storage.hotData[index].velocity = newVelocity;
+  }
+}
+
+// ========== DOUBLE BUFFERING SYSTEM METHODS ==========
+
+// Buffer management methods moved to private section for implementation
+
+// ========== OBJECT POOL MANAGEMENT METHODS ==========
+
+void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
+  // Ensure main collision pool has adequate capacity
+  m_collisionPool.ensureCapacity(bodyCount);
+
+  // Reset all pools for this frame
+  m_collisionPool.resetFrame();
+
+  COLLISION_DEBUG("Prepared collision buffers for " + std::to_string(bodyCount) + " bodies");
+}
+
+void CollisionManager::buildActiveIndicesSOA() {
+  // Build indices of active bodies for efficient processing
+  auto& pools = m_collisionPool;
+  pools.activeIndices.clear();
+  pools.dynamicIndices.clear();
+  pools.staticIndices.clear();
+
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (hot.active) {
+      pools.activeIndices.push_back(i);
+
+      // Categorize by body type for optimized processing
+      BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+      if (bodyType == BodyType::STATIC) {
+        pools.staticIndices.push_back(i);
+      } else {
+        pools.dynamicIndices.push_back(i);
+      }
+    }
+  }
+
+  COLLISION_DEBUG("Built active indices: " + std::to_string(pools.activeIndices.size()) +
+                  " total (" + std::to_string(pools.dynamicIndices.size()) + " dynamic, " +
+                  std::to_string(pools.staticIndices.size()) + " static)");
+}
+
+// Internal helper methods moved to private section
+
+// ========== NEW SOA-BASED BROADPHASE IMPLEMENTATION ==========
+
+void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) const {
+  indexPairs.clear();
+
+  // Build active indices for this frame
+  const_cast<CollisionManager*>(this)->buildActiveIndicesSOA();
+
+  const auto& pools = m_collisionPool;
+  const auto& dynamicIndices = pools.dynamicIndices;
+  const auto& staticIndices = pools.staticIndices;
+
+  // Reserve space for expected pairs
+  size_t expectedPairs = dynamicIndices.size() * 8; // Conservative estimate
+  indexPairs.reserve(expectedPairs);
+
+  std::unordered_set<uint64_t> seenPairs;
+  seenPairs.reserve(expectedPairs);
+
+  // OPTIMIZATION: Process only dynamic bodies (static never initiate collisions)
+  for (size_t dynamicIdx : dynamicIndices) {
+    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
+    if (!dynamicHot.active) continue;
+
+    AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+
+    // Query hierarchical spatial hash for candidates
+    std::vector<size_t> candidates;
+
+    // 1. Query dynamic spatial hash for dynamic-vs-dynamic collisions
+    m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
+    for (size_t candidateIdx : candidates) {
+      if (candidateIdx == dynamicIdx || candidateIdx >= m_storage.hotData.size()) continue;
+
+      const auto& candidateHot = m_storage.hotData[candidateIdx];
+      if (!candidateHot.active) continue;
+
+      // Check collision masks
+      if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+
+      // Create canonical pair key (smaller index first for deduplication)
+      size_t a = std::min(dynamicIdx, candidateIdx);
+      size_t b = std::max(dynamicIdx, candidateIdx);
+      uint64_t pairKey = (static_cast<uint64_t>(a) << 32) | b;
+
+      if (seenPairs.emplace(pairKey).second) {
+        indexPairs.emplace_back(a, b);
+      }
+    }
+
+    // 2. Query static spatial hash for dynamic-vs-static collisions
+    candidates.clear();
+    m_staticSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
+    for (size_t staticIdx : candidates) {
+      if (staticIdx >= m_storage.hotData.size()) continue;
+
+      const auto& staticHot = m_storage.hotData[staticIdx];
+      if (!staticHot.active) continue;
+
+      // Check collision masks
+      if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+
+      // No deduplication needed for dynamic-vs-static (static never initiates)
+      indexPairs.emplace_back(dynamicIdx, staticIdx);
+    }
+  }
+
+  COLLISION_DEBUG("SOA Broadphase generated " + std::to_string(indexPairs.size()) +
+                  " pairs from " + std::to_string(dynamicIndices.size()) + " dynamic and " +
+                  std::to_string(staticIndices.size()) + " static bodies");
+}
+
+bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
+                                             ThreadingStats& stats) {
+  indexPairs.clear();
+
+  if (!HammerEngine::ThreadSystem::Exists()) {
+    broadphaseSOA(indexPairs);
+    return false;
+  }
+
+  // Build active indices
+  const_cast<CollisionManager*>(this)->buildActiveIndicesSOA();
+
+  const auto& pools = m_collisionPool;
+  const auto& dynamicIndices = pools.dynamicIndices;
+
+  if (dynamicIndices.empty()) {
+    return false;
+  }
+
+  auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+  size_t queueSize = threadSystem.getQueueSize();
+  size_t queueCapacity = threadSystem.getQueueCapacity();
+  if (queueCapacity == 0) queueCapacity = 1;
+
+  // Calculate worker budget using proper WorkerBudget system
+  HammerEngine::WorkerBudget budget =
+      HammerEngine::calculateWorkerBudget(availableWorkers);
+  size_t collisionBudget = budget.collisionAllocated;
+  if (collisionBudget == 0) {
+    broadphaseSOA(indexPairs);
+    return false;
+  }
+
+  size_t threadingThresholdValue =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+  size_t optimalWorkers = budget.getOptimalWorkerCount(
+      collisionBudget, dynamicIndices.size(), threadingThresholdValue);
+  optimalWorkers = std::max<size_t>(1, optimalWorkers);
+
+  // Dynamic batch sizing based on queue pressure
+  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+  size_t baseBatchSize = std::max(threadingThresholdValue / 2, static_cast<size_t>(64));
+  size_t minBodiesPerBatch = baseBatchSize;
+  size_t maxBatches = std::max<size_t>(2, optimalWorkers);
+
+  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
+    minBodiesPerBatch = std::min(baseBatchSize * 2, threadingThresholdValue * 2);
+    maxBatches = std::max<size_t>(2, optimalWorkers / 2);
+  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
+    minBodiesPerBatch = std::max({baseBatchSize / 2, threadingThresholdValue / 4, static_cast<size_t>(32)});
+    maxBatches = std::max<size_t>(4, optimalWorkers);
+  }
+
+  size_t desiredBatchCount = (dynamicIndices.size() + minBodiesPerBatch - 1) / minBodiesPerBatch;
+  size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
+  batchCount = std::min(batchCount, maxBatches);
+  batchCount = std::max<size_t>(1, batchCount);
+
+  if (batchCount <= 1) {
+    broadphaseSOA(indexPairs);
+    return false;
+  }
+
+  // Prepare thread pools
+  const_cast<CollisionManager*>(this)->prepareCollisionBuffers(m_storage.size());
+
+  // Distribute work across threads
+  size_t bodiesPerBatch = dynamicIndices.size() / batchCount;
+  size_t remainingBodies = dynamicIndices.size() % batchCount;
+
+  std::vector<std::future<std::vector<std::pair<size_t, size_t>>>> futures;
+  futures.reserve(batchCount);
+
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t start = i * bodiesPerBatch;
+    size_t end = start + bodiesPerBatch;
+    if (i == batchCount - 1) {
+      end += remainingBodies;
+    }
+
+    futures.push_back(threadSystem.enqueueTaskWithResult(
+        [this, start, end, &dynamicIndices]() -> std::vector<std::pair<size_t, size_t>> {
+          std::vector<std::pair<size_t, size_t>> localPairs;
+          localPairs.reserve((end - start) * 8);
+          std::unordered_set<uint64_t> localSeenPairs;
+          localSeenPairs.reserve((end - start) * 8);
+
+          for (size_t i = start; i < end; ++i) {
+            size_t dynamicIdx = dynamicIndices[i];
+            const auto& dynamicHot = m_storage.hotData[dynamicIdx];
+            if (!dynamicHot.active) continue;
+
+            AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+
+            // Query candidates from both spatial hashes
+            std::vector<size_t> candidates;
+
+            // Dynamic-vs-dynamic
+            m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
+            for (size_t candidateIdx : candidates) {
+              if (candidateIdx == dynamicIdx || candidateIdx >= m_storage.hotData.size()) continue;
+
+              const auto& candidateHot = m_storage.hotData[candidateIdx];
+              if (!candidateHot.active) continue;
+              if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+
+              size_t a = std::min(dynamicIdx, candidateIdx);
+              size_t b = std::max(dynamicIdx, candidateIdx);
+              uint64_t pairKey = (static_cast<uint64_t>(a) << 32) | b;
+
+              if (localSeenPairs.emplace(pairKey).second) {
+                localPairs.emplace_back(a, b);
+              }
+            }
+
+            // Dynamic-vs-static
+            candidates.clear();
+            m_staticSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
+            for (size_t staticIdx : candidates) {
+              if (staticIdx >= m_storage.hotData.size()) continue;
+
+              const auto& staticHot = m_storage.hotData[staticIdx];
+              if (!staticHot.active) continue;
+              if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+
+              localPairs.emplace_back(dynamicIdx, staticIdx);
+            }
+          }
+
+          return localPairs;
+        },
+        HammerEngine::TaskPriority::High, "CollisionSOA_BroadphaseBatch"));
+  }
+
+  // Merge results from all threads
+  std::unordered_set<uint64_t> globalSeenPairs;
+  globalSeenPairs.reserve(dynamicIndices.size() * 8);
+
+  for (auto& future : futures) {
+    auto localPairs = future.get();
+    for (const auto& pair : localPairs) {
+      // For dynamic-vs-static, no deduplication needed
+      // For dynamic-vs-dynamic, deduplicate using global set
+      if (pair.first < pair.second) { // Dynamic-vs-dynamic (already deduplicated locally)
+        uint64_t pairKey = (static_cast<uint64_t>(pair.first) << 32) | pair.second;
+        if (globalSeenPairs.emplace(pairKey).second) {
+          indexPairs.push_back(pair);
+        }
+      } else {
+        indexPairs.push_back(pair); // Dynamic-vs-static, no global deduplication needed
+      }
+    }
+  }
+
+  stats.optimalWorkers = optimalWorkers;
+  stats.availableWorkers = availableWorkers;
+  stats.budget = collisionBudget;
+  stats.batchCount = batchCount;
+
+  return true;
+}
+
+void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
+                                      std::vector<CollisionInfo>& collisions) const {
+  collisions.clear();
+  collisions.reserve(indexPairs.size() / 4); // Conservative estimate
+
+  for (const auto& [aIdx, bIdx] : indexPairs) {
+    if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
+
+    const auto& hotA = m_storage.hotData[aIdx];
+    const auto& hotB = m_storage.hotData[bIdx];
+
+    if (!hotA.active || !hotB.active) continue;
+
+    // Compute AABBs from hot data
+    AABB aabbA = m_storage.computeAABB(aIdx);
+    AABB aabbB = m_storage.computeAABB(bIdx);
+
+    // AABB intersection test
+    if (!aabbA.intersects(aabbB)) continue;
+
+    // Compute collision details
+    float dxLeft = aabbB.right() - aabbA.left();
+    float dxRight = aabbA.right() - aabbB.left();
+    float dyTop = aabbB.bottom() - aabbA.top();
+    float dyBottom = aabbA.bottom() - aabbB.top();
+
+    float minPen = dxLeft;
+    Vector2D normal(-1, 0);
+    if (dxRight < minPen) {
+      minPen = dxRight;
+      normal = Vector2D(1, 0);
+    }
+    if (dyTop < minPen) {
+      minPen = dyTop;
+      normal = Vector2D(0, -1);
+    }
+    if (dyBottom < minPen) {
+      minPen = dyBottom;
+      normal = Vector2D(0, 1);
+    }
+
+    // Create collision info using EntityIDs
+    EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
+    EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
+
+    bool isTrigger = hotA.isTrigger || hotB.isTrigger;
+
+    collisions.push_back(CollisionInfo{
+        entityA, entityB, normal, minPen, isTrigger
+    });
+  }
+
+  COLLISION_DEBUG("SOA Narrowphase processed " + std::to_string(indexPairs.size()) +
+                  " pairs, found " + std::to_string(collisions.size()) + " collisions");
+}
+
+bool CollisionManager::narrowphaseSOAThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
+                                              std::vector<CollisionInfo>& collisions,
+                                              ThreadingStats& stats) {
+  collisions.clear();
+
+  if (!HammerEngine::ThreadSystem::Exists() || indexPairs.empty()) {
+    narrowphaseSOA(indexPairs, collisions);
+    return false;
+  }
+
+  auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+
+  // Use same threading strategy as broadphase
+  HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+  size_t collisionBudget = budget.collisionAllocated;
+  size_t threadingThresholdValue = std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+
+  if (indexPairs.size() < threadingThresholdValue || collisionBudget == 0) {
+    narrowphaseSOA(indexPairs, collisions);
+    return false;
+  }
+
+  size_t optimalWorkers = budget.getOptimalWorkerCount(collisionBudget, indexPairs.size(), threadingThresholdValue);
+  size_t batchCount = std::min(optimalWorkers, indexPairs.size() / 64);
+  batchCount = std::max<size_t>(1, batchCount);
+
+  if (batchCount <= 1) {
+    narrowphaseSOA(indexPairs, collisions);
+    return false;
+  }
+
+  size_t pairsPerBatch = indexPairs.size() / batchCount;
+  size_t remainingPairs = indexPairs.size() % batchCount;
+
+  std::vector<std::future<std::vector<CollisionInfo>>> futures;
+  futures.reserve(batchCount);
+
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t start = i * pairsPerBatch;
+    size_t end = start + pairsPerBatch;
+    if (i == batchCount - 1) {
+      end += remainingPairs;
+    }
+
+    futures.push_back(threadSystem.enqueueTaskWithResult(
+        [this, start, end, &indexPairs]() -> std::vector<CollisionInfo> {
+          std::vector<CollisionInfo> localCollisions;
+          localCollisions.reserve((end - start) / 4);
+
+          for (size_t i = start; i < end; ++i) {
+            const auto& [aIdx, bIdx] = indexPairs[i];
+            if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
+
+            const auto& hotA = m_storage.hotData[aIdx];
+            const auto& hotB = m_storage.hotData[bIdx];
+
+            if (!hotA.active || !hotB.active) continue;
+
+            AABB aabbA = m_storage.computeAABB(aIdx);
+            AABB aabbB = m_storage.computeAABB(bIdx);
+
+            if (!aabbA.intersects(aabbB)) continue;
+
+            // Compute penetration and normal
+            float dxLeft = aabbB.right() - aabbA.left();
+            float dxRight = aabbA.right() - aabbB.left();
+            float dyTop = aabbB.bottom() - aabbA.top();
+            float dyBottom = aabbA.bottom() - aabbB.top();
+
+            float minPen = dxLeft;
+            Vector2D normal(-1, 0);
+            if (dxRight < minPen) {
+              minPen = dxRight;
+              normal = Vector2D(1, 0);
+            }
+            if (dyTop < minPen) {
+              minPen = dyTop;
+              normal = Vector2D(0, -1);
+            }
+            if (dyBottom < minPen) {
+              minPen = dyBottom;
+              normal = Vector2D(0, 1);
+            }
+
+            EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
+            EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
+
+            bool isTrigger = hotA.isTrigger || hotB.isTrigger;
+
+            localCollisions.push_back(CollisionInfo{
+                entityA, entityB, normal, minPen, isTrigger
+            });
+          }
+
+          return localCollisions;
+        },
+        HammerEngine::TaskPriority::High, "CollisionSOA_NarrowphaseBatch"));
+  }
+
+  // Merge results
+  for (auto& future : futures) {
+    auto localCollisions = future.get();
+    collisions.insert(collisions.end(), localCollisions.begin(), localCollisions.end());
+  }
+
+  stats.optimalWorkers = optimalWorkers;
+  stats.availableWorkers = availableWorkers;
+  stats.budget = collisionBudget;
+  stats.batchCount = batchCount;
+
+  return true;
+}
+
+// ========== NEW SOA UPDATE METHOD ==========
+
+void CollisionManager::updateSOA(float dt) {
+  (void)dt;
+
+  using clock = std::chrono::steady_clock;
+  auto t0 = clock::now();
+
+  // Prepare collision processing for this frame
+  size_t bodyCount = m_storage.size();
+  prepareCollisionBuffers(bodyCount); // Prepare collision buffers
+
+  // Sync spatial hashes with SOA storage
+  syncSpatialHashesWithSOA();
+
+  // Determine threading strategy using WorkerBudget system
+  size_t threadingThresholdValue =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+  bool threadingEnabled = m_useThreading.load(std::memory_order_acquire) &&
+                          HammerEngine::ThreadSystem::Exists();
+
+  ThreadingStats summaryStats{};
+  bool summaryThreaded = false;
+
+  // Count active dynamic bodies for threading decisions
+  buildActiveIndicesSOA();
+  size_t activeDynamicBodies = m_collisionPool.dynamicIndices.size();
+
+  // Object pool for SOA collision processing
+  std::vector<std::pair<size_t, size_t>> indexPairs;
+
+  // BROADPHASE: Generate collision pairs using hierarchical spatial hash
+  auto t1 = clock::now();
+  bool broadphaseUsedThreading = false;
+  if (threadingEnabled && activeDynamicBodies >= threadingThresholdValue) {
+    ThreadingStats stats;
+    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats);
+    if (broadphaseUsedThreading) {
+      summaryThreaded = true;
+      summaryStats = stats;
+    }
+  }
+
+  if (!broadphaseUsedThreading) {
+    broadphaseSOA(indexPairs);
+  }
+  auto t2 = clock::now();
+
+  // NARROWPHASE: Detailed collision detection and response calculation
+  const size_t pairCount = indexPairs.size();
+  if (threadingEnabled && pairCount >= threadingThresholdValue) {
+    ThreadingStats narrowStats;
+    bool narrowphaseUsedThreading = narrowphaseSOAThreaded(indexPairs, m_collisionPool.collisionBuffer, narrowStats);
+    if (narrowphaseUsedThreading) {
+      summaryThreaded = true;
+      summaryStats = narrowStats; // Use narrowphase stats if it was threaded
+    }
+  }
+
+  if (!summaryThreaded || m_collisionPool.collisionBuffer.empty()) {
+    narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
+  }
+  auto t3 = clock::now();
+
+  // RESOLUTION: Apply collision responses and update positions
+  for (const auto& collision : m_collisionPool.collisionBuffer) {
+    resolveSOA(collision);
+    for (const auto& cb : m_callbacks) {
+      cb(collision);
+    }
+  }
+  auto t4 = clock::now();
+
+  if (m_verboseLogs && !m_collisionPool.collisionBuffer.empty()) {
+    COLLISION_DEBUG("Resolved SOA collisions: count=" +
+                    std::to_string(m_collisionPool.collisionBuffer.size()));
+  }
+
+  // SYNCHRONIZATION: Update entity positions and velocities from SOA storage
+  syncEntitiesToSOA();
+  auto t5 = clock::now();
+
+  // TRIGGER PROCESSING: Handle trigger enter/exit events
+  processTriggerEventsSOA();
+  auto t6 = clock::now();
+
+  // PERFORMANCE METRICS: Track timing and threading stats
+  updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6, summaryThreaded,
+                               summaryStats.optimalWorkers, summaryStats.availableWorkers,
+                               summaryStats.budget, summaryStats.batchCount,
+                               bodyCount, activeDynamicBodies, pairCount, m_collisionPool.collisionBuffer.size());
+
+  COLLISION_DEBUG("SOA Update complete: " + std::to_string(bodyCount) + " bodies, " +
+                  std::to_string(pairCount) + " pairs, " +
+                  std::to_string(m_collisionPool.collisionBuffer.size()) + " collisions" +
+                  (summaryThreaded ? " [Threaded]" : " [Single-threaded]"));
+}
+
+// ========== SOA UPDATE HELPER METHODS ==========
+
+void CollisionManager::syncSpatialHashesWithSOA() {
+  // Clear and rebuild spatial hashes from SOA storage
+  m_staticSpatialHash.clear();
+  m_dynamicSpatialHash.clear();
+
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
+
+    AABB aabb = m_storage.computeAABB(i);
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+
+    if (bodyType == BodyType::STATIC) {
+      m_staticSpatialHash.insert(i, aabb);
+    } else {
+      m_dynamicSpatialHash.insert(i, aabb);
+    }
+  }
+
+  COLLISION_DEBUG("Synced spatial hashes with SOA storage: " +
+                  std::to_string(m_storage.hotData.size()) + " bodies");
+}
+
+void CollisionManager::resolveSOA(const CollisionInfo& collision) {
+  if (collision.trigger) return; // Triggers don't need position resolution
+
+  // Find the indices for the colliding entities
+  size_t indexA = SIZE_MAX, indexB = SIZE_MAX;
+  for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+    if (m_storage.entityIds[i] == collision.a) indexA = i;
+    if (m_storage.entityIds[i] == collision.b) indexB = i;
+    if (indexA != SIZE_MAX && indexB != SIZE_MAX) break;
+  }
+
+  if (indexA >= m_storage.hotData.size() || indexB >= m_storage.hotData.size()) return;
+
+  auto& hotA = m_storage.hotData[indexA];
+  auto& hotB = m_storage.hotData[indexB];
+
+  BodyType typeA = static_cast<BodyType>(hotA.bodyType);
+  BodyType typeB = static_cast<BodyType>(hotB.bodyType);
+
+  const float push = collision.penetration * 0.5f;
+
+  // Apply position corrections
+  if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
+    // Both dynamic/kinematic - split the correction
+    Vector2D correction = collision.normal * push;
+    hotA.position -= correction;
+    hotB.position += correction;
+  } else if (typeA != BodyType::STATIC) {
+    // Only A moves
+    hotA.position -= collision.normal * collision.penetration;
+  } else if (typeB != BodyType::STATIC) {
+    // Only B moves
+    hotB.position += collision.normal * collision.penetration;
+  }
+
+  // Apply velocity damping for dynamic bodies
+  auto dampenVelocity = [&collision](Vector2D& velocity, float restitution) {
+    float vdotn = velocity.getX() * collision.normal.getX() +
+                  velocity.getY() * collision.normal.getY();
+    if (vdotn > 0) return; // Moving away from collision
+
+    Vector2D normalVelocity = collision.normal * vdotn;
+    velocity -= normalVelocity * (1.0f + restitution);
+  };
+
+  if (typeA == BodyType::DYNAMIC) {
+    dampenVelocity(hotA.velocity, hotA.restitution);
+  }
+  if (typeB == BodyType::DYNAMIC) {
+    dampenVelocity(hotB.velocity, hotB.restitution);
+  }
+
+  // Add tangential slide for NPC-vs-NPC collisions (but not player)
+  if (typeA == BodyType::DYNAMIC && typeB == BodyType::DYNAMIC) {
+    bool isPlayerA = (hotA.layers & CollisionLayer::Layer_Player) != 0;
+    bool isPlayerB = (hotB.layers & CollisionLayer::Layer_Player) != 0;
+
+    if (!isPlayerA && !isPlayerB) {
+      Vector2D tangent(-collision.normal.getY(), collision.normal.getX());
+      float slideBoost = std::min(5.0f, std::max(0.5f, collision.penetration * 5.0f));
+
+      EntityID entityA = (indexA < m_storage.entityIds.size()) ? m_storage.entityIds[indexA] : 0;
+      EntityID entityB = (indexB < m_storage.entityIds.size()) ? m_storage.entityIds[indexB] : 0;
+
+      if (entityA < entityB) {
+        hotA.velocity += tangent * slideBoost;
+        hotB.velocity -= tangent * slideBoost;
+      } else {
+        hotA.velocity -= tangent * slideBoost;
+        hotB.velocity += tangent * slideBoost;
+      }
+    }
+  }
+
+  // Clamp velocities to reasonable limits
+  auto clampVelocity = [](Vector2D& velocity) {
+    const float maxSpeed = 300.0f;
+    float speed = velocity.length();
+    if (speed > maxSpeed && speed > 0.0f) {
+      velocity = velocity * (maxSpeed / speed);
+    }
+  };
+
+  clampVelocity(hotA.velocity);
+  clampVelocity(hotB.velocity);
+}
+
+void CollisionManager::syncEntitiesToSOA() {
+  // Sync SOA positions and velocities back to entities
+  m_isSyncing = true;
+
+  for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+    if (i >= m_storage.hotData.size() || i >= m_storage.coldData.size()) continue;
+
+    const auto& hot = m_storage.hotData[i];
+    auto& cold = m_storage.coldData[i];
+
+    // Skip kinematic bodies (they manage their own positions through AI/input)
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+    if (bodyType == BodyType::KINEMATIC) continue;
+
+    if (auto entity = cold.entityWeak.lock()) {
+      entity->setPosition(hot.position);
+      entity->setVelocity(hot.velocity);
+    }
+  }
+
+  m_isSyncing = false;
+}
+
+void CollisionManager::processTriggerEventsSOA() {
+  // Process trigger enter/exit events using SOA data
+  // This is similar to the legacy trigger processing but uses SOA storage
+
+  auto makeKey = [](EntityID a, EntityID b) -> uint64_t {
+    uint64_t x = static_cast<uint64_t>(a);
+    uint64_t y = static_cast<uint64_t>(b);
+    if (x > y) std::swap(x, y);
+    return (x * 1469598103934665603ull) ^ (y + 1099511628211ull);
+  };
+
+  auto now = std::chrono::steady_clock::now();
+  std::unordered_set<uint64_t> currentPairs;
+  currentPairs.reserve(m_collisionPool.collisionBuffer.size());
+
+  for (const auto& collision : m_collisionPool.collisionBuffer) {
+    // Find body indices
+    size_t indexA = SIZE_MAX, indexB = SIZE_MAX;
+    for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+      if (m_storage.entityIds[i] == collision.a) indexA = i;
+      if (m_storage.entityIds[i] == collision.b) indexB = i;
+      if (indexA != SIZE_MAX && indexB != SIZE_MAX) break;
+    }
+
+    if (indexA >= m_storage.hotData.size() || indexB >= m_storage.hotData.size()) continue;
+
+    const auto& hotA = m_storage.hotData[indexA];
+    const auto& hotB = m_storage.hotData[indexB];
+
+    // Check for player-trigger interactions
+    bool isPlayerA = (hotA.layers & CollisionLayer::Layer_Player) != 0;
+    bool isPlayerB = (hotB.layers & CollisionLayer::Layer_Player) != 0;
+    bool isTriggerA = hotA.isTrigger;
+    bool isTriggerB = hotB.isTrigger;
+
+    const CollisionStorage::HotData* playerHot = nullptr;
+    const CollisionStorage::HotData* triggerHot = nullptr;
+    EntityID playerId = 0, triggerId = 0;
+
+    if (isPlayerA && isTriggerB) {
+      playerHot = &hotA;
+      triggerHot = &hotB;
+      playerId = collision.a;
+      triggerId = collision.b;
+    } else if (isPlayerB && isTriggerA) {
+      playerHot = &hotB;
+      triggerHot = &hotA;
+      playerId = collision.b;
+      triggerId = collision.a;
+    } else {
+      continue; // Not a player-trigger interaction
+    }
+
+    uint64_t key = makeKey(playerId, triggerId);
+    currentPairs.insert(key);
+
+    if (!m_activeTriggerPairs.count(key)) {
+      // Check cooldown
+      auto cdIt = m_triggerCooldownUntil.find(triggerId);
+      bool cooled = (cdIt == m_triggerCooldownUntil.end()) || (now >= cdIt->second);
+
+      if (cooled) {
+        HammerEngine::TriggerTag triggerTag = static_cast<HammerEngine::TriggerTag>(triggerHot->triggerTag);
+        WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerHot->position, TriggerPhase::Enter);
+        EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
+
+        COLLISION_INFO("SOA Trigger Enter: player=" + std::to_string(playerId) +
+                       ", trigger=" + std::to_string(triggerId) + ", tag=" +
+                       std::to_string(static_cast<int>(triggerTag)));
+
+        if (m_defaultTriggerCooldownSec > 0.0f) {
+          m_triggerCooldownUntil[triggerId] = now +
+              std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                  std::chrono::duration<double>(m_defaultTriggerCooldownSec));
+        }
+      }
+
+      m_activeTriggerPairs.emplace(key, std::make_pair(playerId, triggerId));
+    }
+  }
+
+  // Remove stale pairs (trigger exits)
+  for (auto it = m_activeTriggerPairs.begin(); it != m_activeTriggerPairs.end();) {
+    if (!currentPairs.count(it->first)) {
+      EntityID playerId = it->second.first;
+      EntityID triggerId = it->second.second;
+
+      // Find trigger hot data for position
+      Vector2D triggerPos(0, 0);
+      HammerEngine::TriggerTag triggerTag = HammerEngine::TriggerTag::None;
+      for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+        if (m_storage.entityIds[i] == triggerId && i < m_storage.hotData.size()) {
+          const auto& hot = m_storage.hotData[i];
+          triggerPos = hot.position;
+          triggerTag = static_cast<HammerEngine::TriggerTag>(hot.triggerTag);
+          break;
+        }
+      }
+
+      WorldTriggerEvent evt(playerId, triggerId, triggerTag, triggerPos, TriggerPhase::Exit);
+      EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
+
+      COLLISION_INFO("SOA Trigger Exit: player=" + std::to_string(playerId) +
+                     ", trigger=" + std::to_string(triggerId) + ", tag=" +
+                     std::to_string(static_cast<int>(triggerTag)));
+
+      it = m_activeTriggerPairs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
+void CollisionManager::updatePerformanceMetricsSOA(
+    std::chrono::steady_clock::time_point t0,
+    std::chrono::steady_clock::time_point t1,
+    std::chrono::steady_clock::time_point t2,
+    std::chrono::steady_clock::time_point t3,
+    std::chrono::steady_clock::time_point t4,
+    std::chrono::steady_clock::time_point t5,
+    std::chrono::steady_clock::time_point t6,
+    bool wasThreaded,
+    size_t optimalWorkers,
+    size_t availableWorkers,
+    size_t budget,
+    size_t batchCount,
+    size_t bodyCount,
+    size_t activeDynamicBodies,
+    size_t pairCount,
+    size_t collisionCount) {
+
+  // Calculate timing metrics
+  auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Sync spatial hash
+  auto d12 = std::chrono::duration<double, std::milli>(t2 - t1).count(); // Broadphase
+  auto d23 = std::chrono::duration<double, std::milli>(t3 - t2).count(); // Narrowphase
+  auto d34 = std::chrono::duration<double, std::milli>(t4 - t3).count(); // Resolution
+  auto d45 = std::chrono::duration<double, std::milli>(t5 - t4).count(); // Sync entities
+  auto d56 = std::chrono::duration<double, std::milli>(t6 - t5).count(); // Trigger processing
+  auto d06 = std::chrono::duration<double, std::milli>(t6 - t0).count(); // Total
+
+  m_perf.lastBroadphaseMs = d12;
+  m_perf.lastNarrowphaseMs = d23;
+  m_perf.lastResolveMs = d34;
+  m_perf.lastSyncMs = d45 + d56; // Combine sync phases
+  m_perf.lastTotalMs = d06;
+  m_perf.lastPairs = pairCount;
+  m_perf.lastCollisions = collisionCount;
+  m_perf.bodyCount = bodyCount;
+
+  m_perf.updateAverage(m_perf.lastTotalMs);
+  m_perf.frames += 1;
+
+  // Update threading stats
+  if (wasThreaded) {
+    m_lastWasThreaded.store(true, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
+    m_lastOptimalWorkerCount.store(optimalWorkers, std::memory_order_relaxed);
+    m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+    m_lastCollisionBudget.store(budget, std::memory_order_relaxed);
+  } else {
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+    m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
+    m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
+    m_lastCollisionBudget.store(0, std::memory_order_relaxed);
+  }
+
+  // Performance warnings
+  if (m_perf.lastTotalMs > 5.0) {
+    COLLISION_WARN("SOA Slow frame: totalMs=" + std::to_string(m_perf.lastTotalMs) +
+                   ", syncMs=" + std::to_string(d01) +
+                   ", broadphaseMs=" + std::to_string(d12) +
+                   ", narrowphaseMs=" + std::to_string(d23) +
+                   ", pairs=" + std::to_string(pairCount) +
+                   ", collisions=" + std::to_string(collisionCount));
+  }
+
+  // Periodic statistics (every 300 frames like AIManager)
+  if (m_perf.frames % 300 == 0 && bodyCount > 0) {
+    if (wasThreaded) {
+      COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
+                      " (" + std::to_string(activeDynamicBodies) + " dynamic)" +
+                      ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
+                      ", Broadphase: " + std::to_string(d12) + "ms" +
+                      ", Narrowphase: " + std::to_string(d23) + "ms" +
+                      ", Last Pairs: " + std::to_string(pairCount) +
+                      ", Last Collisions: " + std::to_string(collisionCount) +
+                      " [Threaded: " + std::to_string(optimalWorkers) + "/" +
+                      std::to_string(availableWorkers) + " workers, Budget: " +
+                      std::to_string(budget) + ", Batches: " +
+                      std::to_string(batchCount) + "]");
+    } else {
+      COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
+                      " (" + std::to_string(activeDynamicBodies) + " dynamic)" +
+                      ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
+                      ", Broadphase: " + std::to_string(d12) + "ms" +
+                      ", Narrowphase: " + std::to_string(d23) + "ms" +
+                      ", Last Pairs: " + std::to_string(pairCount) +
+                      ", Last Collisions: " + std::to_string(collisionCount) +
+                      " [Single-threaded]");
+    }
+  }
 }
