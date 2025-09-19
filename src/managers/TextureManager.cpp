@@ -367,4 +367,8 @@ void TextureManager::clean() {
   if (m_isShutdown) {
     return;
   }
+
+  // Clear all textures before SDL shutdown
+  m_textureMap.clear();
+  m_isShutdown = true;
 }
