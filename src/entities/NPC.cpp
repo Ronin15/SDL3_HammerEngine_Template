@@ -116,8 +116,8 @@ void NPC::loadDimensionsFromTexture() {
         m_frameHeight = frameHeight;
 
         // Sync new dimensions to collision body if already registered
-        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f,
-                                                m_height * 0.5f);
+        Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
+        CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
       } else {
         NPC_ERROR("Failed to query NPC texture dimensions: " +
                   std::string(SDL_GetError()));
@@ -264,7 +264,7 @@ void NPC::clean() {
   }
 
   // Remove from collision system
-  CollisionManager::Instance().removeBody(getID());
+  CollisionManager::Instance().removeCollisionBodySOA(getID());
 }
 
 void NPC::setVelocity(const Vector2D &velocity) {
@@ -519,7 +519,8 @@ void NPC::ensurePhysicsBodyRegistered() {
   uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
   uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
 
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC, layer, mask);
+  // Use new SOA-based collision system
+  cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
   cm.attachEntity(getID(), shared_this());
 
   NPC_DEBUG("Collision body registered successfully - KINEMATIC type with Layer_Enemy");

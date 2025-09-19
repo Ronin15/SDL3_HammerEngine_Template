@@ -87,7 +87,8 @@ void Player::loadDimensionsFromTexture() {
         m_height = frameHeight;
 
         // Sync new dimensions to collision body if already registered
-        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f, m_height * 0.5f);
+        Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
+        CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
 
         PLAYER_DEBUG("Loaded texture dimensions: " + std::to_string(m_width) +
                      "x" + std::to_string(height));
@@ -208,7 +209,7 @@ void Player::clean() {
   m_equippedItems.clear();
 
   // Remove collision body
-  CollisionManager::Instance().removeBody(getID());
+  CollisionManager::Instance().removeCollisionBodySOA(getID());
 }
 
 void Player::ensurePhysicsBodyRegistered() {
@@ -218,9 +219,9 @@ void Player::ensurePhysicsBodyRegistered() {
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
 
-  // Set Layer_Player atomically during body creation to eliminate timing window
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC,
-             HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+  // Use new SOA-based collision system
+  cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
+                        HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
   cm.attachEntity(getID(), shared_this());
 }
 
