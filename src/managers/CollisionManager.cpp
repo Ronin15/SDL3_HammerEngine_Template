@@ -31,8 +31,6 @@ bool CollisionManager::init() {
   if (m_initialized)
     return true;
   m_storage.clear();
-  m_staticHash.clear();
-  m_dynamicHash.clear();
   subscribeWorldEvents();
   COLLISION_INFO("STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
   // Forward collision notifications to EventManager
@@ -60,11 +58,8 @@ void CollisionManager::clean() {
 
   // Legacy storage removed - using SOA only
 
-  // Clean new SOA storage
+  // Clean SOA storage
   m_storage.clear();
-
-  m_staticHash.clear();
-  m_dynamicHash.clear();
   m_callbacks.clear();
   m_initialized = false;
   COLLISION_INFO("Cleaned and shut down (both legacy and SOA storage)");
@@ -85,9 +80,9 @@ void CollisionManager::prepareForStateTransition() {
                  std::to_string(soaBodyCount) + " SOA bodies");
   m_storage.clear();
 
-  // Clear spatial hash completely
-  m_staticHash.clear();
-  m_dynamicHash.clear();
+  // Clear spatial hashes completely
+  m_staticSpatialHash.clear();
+  m_dynamicSpatialHash.clear();
 
   // Clear caches to prevent dangling references to deleted bodies
   m_broadphaseCache.invalidateStaticCache(); // Clear static cache
@@ -137,223 +132,16 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
                   std::to_string(maxY) + "]");
 }
 
-void CollisionManager::addBody(EntityID id, const AABB &aabb, BodyType type,
-                                uint32_t layer, uint32_t collidesWith) {
-  auto body = std::make_shared<CollisionBody>();
-  body->id = id;
-  body->aabb = aabb;
-  body->type = type;
-  body->layer = layer;
-  body->collidesWith = collidesWith;
-  m_bodies[id] = body;
 
-  // Insert into appropriate spatial hash based on body type
-  if (type == BodyType::STATIC) {
-    m_staticHash.insert(id, aabb);
-  } else {
-    m_dynamicHash.insert(id, aabb);
-  }
 
-  // Invalidate static cache if adding a static body
-  if (type == BodyType::STATIC) {
-    invalidateStaticCache();
 
-    // Notify PathfinderManager of static obstacle changes
-    // Use immediate mode for reliable event delivery
-    EventManager::Instance().triggerCollisionObstacleChanged(
-        aabb.center,
-        std::max(aabb.halfSize.getX(), aabb.halfSize.getY()) + 32.0f,
-        "Static obstacle added (ID: " + std::to_string(id) + ")",
-        EventManager::DispatchMode::Immediate);
-  }
 
-  if (type == BodyType::KINEMATIC) {
-    COLLISION_DEBUG("Added KINEMATIC body - ID: " + std::to_string(id) +
-                    ", Total bodies: " + std::to_string(m_bodies.size()) +
-                    ", Kinematic count should now be: " +
-                    std::to_string(getKinematicBodyCount()));
-  }
-}
 
-void CollisionManager::addBody(EntityPtr entity, const AABB &aabb,
-                               BodyType type) {
-  if (!entity)
-    return;
-  EntityID id = entity->getID();
-  auto body = std::make_shared<CollisionBody>();
-  body->id = id;
-  body->aabb = aabb;
-  body->type = type;
-  body->entityWeak = entity;
-  m_bodies[id] = body;
 
-  // Insert into appropriate spatial hash based on body type
-  if (type == BodyType::STATIC) {
-    m_staticHash.insert(id, aabb);
-  } else {
-    m_dynamicHash.insert(id, aabb);
-  }
 
-  // Invalidate static cache if adding a static body
-  if (type == BodyType::STATIC) {
-    invalidateStaticCache();
-  }
-}
 
-void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
-  auto it = m_storage.entityToIndex.find(id);
-  if (it != m_storage.entityToIndex.end()) {
-    size_t index = it->second;
-    if (index < m_storage.coldData.size()) {
-      m_storage.coldData[index].entityWeak = entity;
-    }
-  }
-}
 
-void CollisionManager::removeBody(EntityID id) {
-  // Check if this was a static body before removing it
-  bool wasStatic = false;
-  Vector2D bodyCenter;
-  float bodyRadius = 32.0f;
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end()) {
-    if (it->second->type == BodyType::STATIC) {
-      wasStatic = true;
-      bodyCenter = it->second->aabb.center;
-      bodyRadius = std::max(it->second->aabb.halfSize.getX(),
-                            it->second->aabb.halfSize.getY()) +
-                   32.0f;
-      m_staticHash.remove(id);
-    } else {
-      m_dynamicHash.remove(id);
-    }
-  }
 
-  m_bodies.erase(id);
-
-  // Invalidate static cache if removing a static body
-  if (wasStatic) {
-    invalidateStaticCache();
-
-    // Notify PathfinderManager of static obstacle removal
-    // Use immediate mode for reliable event delivery
-    EventManager::Instance().triggerCollisionObstacleChanged(
-        bodyCenter, bodyRadius,
-        "Static obstacle removed (ID: " + std::to_string(id) + ")",
-        EventManager::DispatchMode::Immediate);
-  }
-
-  if (m_verboseLogs) {
-    COLLISION_DEBUG("removeBody id=" + std::to_string(id));
-  }
-}
-
-void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end())
-    it->second->enabled = enabled;
-  if (m_verboseLogs) {
-    COLLISION_DEBUG("setBodyEnabled id=" + std::to_string(id) + " -> " +
-                    (enabled ? std::string("true") : std::string("false")));
-  }
-}
-
-void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask,
-                                    uint32_t collideMask) {
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end()) {
-    it->second->layer = layerMask;
-    it->second->collidesWith = collideMask;
-  }
-  if (m_verboseLogs) {
-    COLLISION_DEBUG("setBodyLayer id=" + std::to_string(id) +
-                    ", layer=" + std::to_string(layerMask) +
-                    ", mask=" + std::to_string(collideMask));
-  }
-}
-
-void CollisionManager::setKinematicPose(EntityID id, const Vector2D &center) {
-  updateCollisionBodyPositionSOA(id, center);
-  if (m_verboseLogs) {
-    COLLISION_DEBUG("setKinematicPose id=" + std::to_string(id) + ", center=(" +
-                    std::to_string(center.getX()) + "," +
-                    std::to_string(center.getY()) + ")");
-  }
-}
-
-void CollisionManager::setVelocity(EntityID id, const Vector2D &v) {
-  updateCollisionBodyVelocitySOA(id, v);
-  if (m_verboseLogs) {
-    COLLISION_DEBUG("setVelocity id=" + std::to_string(id) + ", v=(" +
-                    std::to_string(v.getX()) + "," + std::to_string(v.getY()) +
-                    ")");
-  }
-}
-
-void CollisionManager::updateKinematicBatch(
-    const std::vector<KinematicUpdate> &updates) {
-  if (updates.empty())
-    return;
-
-  // PERFORMANCE OPTIMIZATION: Batch process all kinematic updates
-  // This reduces hash table lookups and spatial hash updates from O(n) to O(1)
-  // operations
-  //
-  // CRITICAL FIX: Update both AABB and spatial hash atomically to prevent
-  // race conditions between broadphase (spatial hash) and narrowphase (AABB)
-
-  size_t validUpdates = 0;
-  for (const auto &kinematicUpdate : updates) {
-    auto it = m_bodies.find(kinematicUpdate.id);
-    if (it != m_bodies.end() && it->second->type == BodyType::KINEMATIC) {
-      // ATOMIC UPDATE: Update position, velocity, and spatial hash together
-      // This prevents race condition where broadphase sees old position
-      // but narrowphase sees new position (or vice versa)
-
-      // Update position and velocity in collision body
-      it->second->aabb.center = kinematicUpdate.position;
-      it->second->velocity = kinematicUpdate.velocity;
-
-      // Ensure body stays enabled - prevent corruption
-      if (!it->second->enabled) {
-        it->second->enabled = true;
-      }
-
-      // Immediately update spatial hash with new AABB - CRITICAL for consistency
-      // Note: updateKinematicBatch only updates KINEMATIC bodies, which are always in dynamic hash
-      m_dynamicHash.update(kinematicUpdate.id, it->second->aabb);
-
-      validUpdates++;
-    }
-  }
-
-  // Debug logging (only when verbose and with summary to reduce spam)
-  if (m_verboseLogs && !updates.empty()) {
-    COLLISION_DEBUG("updateKinematicBatch: processed " +
-                    std::to_string(validUpdates) + "/" +
-                    std::to_string(updates.size()) + " kinematic updates");
-  }
-}
-
-void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end())
-    it->second->isTrigger = isTrigger;
-  // Reduced debug spam - only log for non-world triggers
-  if (id <
-      (1ull << 61)) { // Only log for non-world objects (player, NPCs, etc.)
-    COLLISION_DEBUG("setBodyTrigger id=" + std::to_string(id) + " -> " +
-                    (isTrigger ? std::string("true") : std::string("false")));
-  }
-}
-
-void CollisionManager::setBodyTriggerTag(EntityID id,
-                                         HammerEngine::TriggerTag tag) {
-  auto it = m_bodies.find(id);
-  if (it != m_bodies.end())
-    it->second->triggerTag = tag;
-  // Removed debug spam - too many trigger tags created during world build
-}
 
 EntityID CollisionManager::createTriggerArea(const AABB &aabb,
                                              HammerEngine::TriggerTag tag,
@@ -496,24 +284,6 @@ size_t CollisionManager::createStaticObstacleBodies() {
   return created;
 }
 
-void CollisionManager::resizeBody(EntityID id, float halfWidth,
-                                  float halfHeight) {
-  auto it = m_bodies.find(id);
-  if (it == m_bodies.end())
-    return;
-  auto &body = *it->second;
-  body.aabb.halfSize = Vector2D(halfWidth, halfHeight);
-
-  // Update the appropriate spatial hash based on body type
-  if (body.type == BodyType::STATIC) {
-    m_staticHash.update(id, body.aabb);
-  } else {
-    m_dynamicHash.update(id, body.aabb);
-  }
-  COLLISION_DEBUG("resizeBody id=" + std::to_string(id) +
-                  ", halfW=" + std::to_string(halfWidth) +
-                  ", halfH=" + std::to_string(halfHeight));
-}
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
   size_t indexA, indexB;
@@ -527,18 +297,18 @@ bool CollisionManager::overlaps(EntityID a, EntityID b) const {
 
 void CollisionManager::queryArea(const AABB &area,
                                  std::vector<EntityID> &out) const {
-  // Query both static and dynamic hashes, combining results
-  std::vector<EntityID> staticResults;
-  std::vector<EntityID> dynamicResults;
-
-  m_staticHash.query(area, staticResults);
-  m_dynamicHash.query(area, dynamicResults);
-
-  // Combine results efficiently
+  // Query SOA storage for bodies that intersect with the area
   out.clear();
-  out.reserve(staticResults.size() + dynamicResults.size());
-  out.insert(out.end(), staticResults.begin(), staticResults.end());
-  out.insert(out.end(), dynamicResults.begin(), dynamicResults.end());
+
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
+
+    AABB bodyAABB = m_storage.computeAABB(i);
+    if (bodyAABB.intersects(area)) {
+      out.push_back(m_storage.entityIds[i]);
+    }
+  }
 }
 
 bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
@@ -602,11 +372,13 @@ void CollisionManager::logCollisionStatistics() const {
   COLLISION_INFO("  Dynamic Bodies: " + std::to_string(dynamicBodies) +
                  " (player, projectiles)");
 
-  // Count bodies by layer
+  // Count bodies by layer using SOA storage
   std::map<uint32_t, size_t> layerCounts;
-  for (const auto &kv : m_bodies) {
-    const auto &body = *kv.second;
-    layerCounts[body.layer]++;
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto &hot = m_storage.hotData[i];
+    if (hot.active) {
+      layerCounts[hot.layers]++;
+    }
   }
 
   COLLISION_INFO("  Layer Distribution:");
@@ -724,7 +496,7 @@ void CollisionManager::onTileChanged(int x, int y) {
         (static_cast<EntityID>(2ull) << 61) |
         (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
         static_cast<EntityID>(static_cast<uint32_t>(x));
-    removeBody(oldObstacleId);
+    removeCollisionBodySOA(oldObstacleId);
 
     if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
       // Only create collision body from the top-left tile of each building
@@ -915,6 +687,16 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
                  ", type: " + std::to_string(static_cast<int>(type)) +
                  ", total storage size now: " + std::to_string(m_storage.size()));
 
+  // Fire collision obstacle changed event for static bodies
+  if (type == BodyType::STATIC) {
+    float radius = std::max(halfSize.getX(), halfSize.getY()) + 16.0f; // Add safety margin
+    std::string description = "Static obstacle added at (" +
+                              std::to_string(position.getX()) + ", " +
+                              std::to_string(position.getY()) + ")";
+    EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
+                                                            EventManager::DispatchMode::Deferred);
+  }
+
   return newIndex;
 }
 
@@ -926,6 +708,19 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
 
   size_t indexToRemove = it->second;
   size_t lastIndex = m_storage.size() - 1;
+
+  // Fire collision obstacle changed event for static bodies before removal
+  if (indexToRemove < m_storage.size()) {
+    const auto& hot = m_storage.hotData[indexToRemove];
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      float radius = std::max(hot.halfSize.getX(), hot.halfSize.getY()) + 16.0f;
+      std::string description = "Static obstacle removed from (" +
+                                std::to_string(hot.position.getX()) + ", " +
+                                std::to_string(hot.position.getY()) + ")";
+      EventManager::Instance().triggerCollisionObstacleChanged(hot.position, radius, description,
+                                                              EventManager::DispatchMode::Deferred);
+    }
+  }
 
   if (indexToRemove < m_storage.size()) {
     // Swap with last element and pop (to maintain contiguous arrays)
@@ -992,6 +787,16 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
     COLLISION_DEBUG("Updated SOA body size for entity " + std::to_string(id) +
                     " to (" + std::to_string(newHalfSize.getX()) + ", " +
                     std::to_string(newHalfSize.getY()) + ")");
+  }
+}
+
+void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
+  auto it = m_storage.entityToIndex.find(id);
+  if (it != m_storage.entityToIndex.end()) {
+    size_t index = it->second;
+    if (index < m_storage.coldData.size()) {
+      m_storage.coldData[index].entityWeak = entity;
+    }
   }
 }
 
@@ -1891,5 +1696,72 @@ void CollisionManager::updatePerformanceMetricsSOA(
                       ", Last Collisions: " + std::to_string(collisionCount) +
                       " [Single-threaded]");
     }
+  }
+}
+
+void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates) {
+  if (updates.empty()) return;
+
+  // Batch update all kinematic bodies in SOA storage
+  size_t validUpdates = 0;
+  for (const auto& update : updates) {
+    size_t index;
+    if (getCollisionBodySOA(update.id, index)) {
+      auto& hot = m_storage.hotData[index];
+      if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC) {
+        hot.position = update.position;
+        hot.velocity = update.velocity;
+        hot.active = true; // Ensure body stays enabled
+        validUpdates++;
+      }
+    }
+  }
+
+  if (m_verboseLogs && !updates.empty()) {
+    COLLISION_DEBUG("updateKinematicBatchSOA: processed " +
+                    std::to_string(validUpdates) + "/" +
+                    std::to_string(updates.size()) + " kinematic updates");
+  }
+}
+
+// ========== SOA BODY MANAGEMENT METHODS ==========
+
+void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    m_storage.hotData[index].active = enabled ? 1 : 0;
+    COLLISION_DEBUG("Set body " + std::to_string(id) + " enabled: " +
+                    (enabled ? "true" : "false"));
+  }
+}
+
+void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    auto& hot = m_storage.hotData[index];
+    hot.layers = layerMask;
+    hot.collidesWith = collideMask;
+    COLLISION_DEBUG("Set body " + std::to_string(id) + " layer: " +
+                    std::to_string(layerMask) + ", collides with: " +
+                    std::to_string(collideMask));
+  }
+}
+
+void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    m_storage.hotData[index].velocity = velocity;
+    COLLISION_DEBUG("Set body " + std::to_string(id) + " velocity: (" +
+                    std::to_string(velocity.getX()) + ", " +
+                    std::to_string(velocity.getY()) + ")");
+  }
+}
+
+void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    m_storage.hotData[index].isTrigger = isTrigger ? 1 : 0;
+    COLLISION_DEBUG("Set body " + std::to_string(id) + " trigger: " +
+                    (isTrigger ? "true" : "false"));
   }
 }

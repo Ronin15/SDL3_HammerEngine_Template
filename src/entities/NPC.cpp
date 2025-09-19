@@ -271,7 +271,7 @@ void NPC::setVelocity(const Vector2D &velocity) {
   m_velocity = velocity;
   auto &cm = CollisionManager::Instance();
   if (!cm.isSyncing()) {
-    cm.setVelocity(getID(), velocity);
+    cm.updateCollisionBodyVelocitySOA(getID(), velocity);
   }
 }
 
@@ -280,7 +280,7 @@ void NPC::setPosition(const Vector2D &position) {
 
   // Update collision body position
   if (!cm.isSyncing()) {
-    cm.setKinematicPose(getID(), position);
+    cm.updateCollisionBodyPositionSOA(getID(), position);
   }
 
   // Update entity position
@@ -521,6 +521,7 @@ void NPC::ensurePhysicsBodyRegistered() {
 
   // Use new SOA-based collision system
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
+  // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 
   NPC_DEBUG("Collision body registered successfully - KINEMATIC type with Layer_Enemy");

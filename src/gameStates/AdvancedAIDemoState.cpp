@@ -150,7 +150,7 @@ bool AdvancedAIDemoState::enter() {
 
         // Create player first (required for flee/follow/attack behaviors)
         m_player = std::make_shared<Player>();
-        m_player->registerCollisionBody();
+        m_player->ensurePhysicsBodyRegistered();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Setup combat attributes for player

@@ -72,7 +72,6 @@ set(MOCK_TESTS
     particle_manager_threading_tests
     weather_event_tests
     behavior_functionality_tests
-    collision_pathfinding_benchmark
     collision_pathfinding_integration_tests
     collision_benchmark
 )
@@ -158,8 +157,6 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "events/WeatherEventTest.cpp")
     elseif(${test_name} STREQUAL "behavior_functionality_tests")
         set(test_source "BehaviorFunctionalityTest.cpp")
-    elseif(${test_name} STREQUAL "collision_pathfinding_benchmark")
-        set(test_source "CollisionPathfindingBenchmark.cpp")
     elseif(${test_name} STREQUAL "collision_pathfinding_integration_tests")
         set(test_source "CollisionPathfindingIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "collision_benchmark")

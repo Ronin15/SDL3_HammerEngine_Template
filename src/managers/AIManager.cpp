@@ -1424,7 +1424,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                    });
     
     // Single batch update to collision system - MASSIVE performance improvement
-    cm.updateKinematicBatch(collisionUpdates);
+    cm.updateKinematicBatchSOA(collisionUpdates);
   }
 
   if (batchExecutions > 0) {

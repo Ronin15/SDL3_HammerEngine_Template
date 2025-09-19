@@ -20,7 +20,6 @@
 #include "core/WorkerBudget.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/CollisionInfo.hpp"
-#include "collisions/SpatialHash.hpp"
 #include "collisions/HierarchicalSpatialHash.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
@@ -29,7 +28,6 @@ using HammerEngine::AABB;
 using HammerEngine::BodyType;
 using HammerEngine::CollisionInfo;
 using HammerEngine::CollisionBody;
-using HammerEngine::SpatialHash;
 using HammerEngine::CollisionLayer;
 
 class CollisionManager {
@@ -55,31 +53,16 @@ public:
     // NEW SOA UPDATE PATH: High-performance collision detection using SOA storage
     void updateSOA(float dt);
 
-    // Bodies
-    void addBody(EntityID id, const AABB& aabb, BodyType type,
-                 uint32_t layer = CollisionLayer::Layer_Default,
-                 uint32_t collidesWith = 0xFFFFFFFFu);
-    void addBody(EntityPtr entity, const AABB& aabb, BodyType type);
-    void attachEntity(EntityID id, EntityPtr entity);
-    void removeBody(EntityID id);
-    void setBodyEnabled(EntityID id, bool enabled);
-    void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
-    void setKinematicPose(EntityID id, const Vector2D& center);
-    void setVelocity(EntityID id, const Vector2D& v);
-    
     // Batch updates for performance optimization (AI entities)
     struct KinematicUpdate {
         EntityID id;
         Vector2D position;
         Vector2D velocity;
-        
+
         KinematicUpdate(EntityID entityId, const Vector2D& pos, const Vector2D& vel = Vector2D(0, 0))
             : id(entityId), position(pos), velocity(vel) {}
     };
-    void updateKinematicBatch(const std::vector<KinematicUpdate>& updates);
-    
-    void setBodyTrigger(EntityID id, bool isTrigger);
-    void setBodyTriggerTag(EntityID id, HammerEngine::TriggerTag tag);
+    void updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates);
     // Convenience methods for triggers
     EntityID createTriggerArea(const AABB& aabb,
                                HammerEngine::TriggerTag tag,
@@ -135,6 +118,13 @@ public:
     void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
     void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
     void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
+    void attachEntity(EntityID id, EntityPtr entity);
+
+    // SOA Body Management Methods
+    void setBodyEnabled(EntityID id, bool enabled);
+    void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
+    void setVelocity(EntityID id, const Vector2D& velocity);
+    void setBodyTrigger(EntityID id, bool isTrigger);
 
     // Internal buffer management (simplified public interface)
     void prepareCollisionBuffers(size_t bodyCount);
@@ -197,18 +187,7 @@ private:
     void prepareCollisionPools(size_t bodyCount, size_t threadCount);
     void mergeThreadResults();
 
-    // LEGACY BROADPHASE: Will be removed after migration
-    void broadphase(std::vector<std::pair<EntityID,EntityID>>& pairs) const;
-    bool broadphaseThreaded(std::vector<std::pair<EntityID, EntityID>>& pairs,
-                            ThreadingStats& stats);
-    void narrowphase(const std::vector<std::pair<EntityID,EntityID>>& pairs,
-                     std::vector<CollisionInfo>& collisions) const;
-    bool narrowphaseThreaded(
-        const std::vector<std::pair<EntityID, EntityID>>& pairs,
-        std::vector<CollisionInfo>& collisions,
-        ThreadingStats& stats);
-    void resolve(const CollisionInfo& info);
-    void subscribeWorldEvents(); // hook to world events (future)
+    void subscribeWorldEvents(); // hook to world events
 
     bool m_initialized{false};
     bool m_isShutdown{false};
@@ -300,16 +279,11 @@ private:
 
     CollisionStorage m_storage;
 
-    // LEGACY STORAGE: Will be removed after migration
-    std::unordered_map<EntityID, std::shared_ptr<CollisionBody>> m_bodies;
     
     // NEW HIERARCHICAL SPATIAL PARTITIONING: Separate systems for static vs dynamic bodies
     HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static bodies (world tiles, buildings)
     HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash; // Dynamic/kinematic bodies (NPCs, player)
 
-    // LEGACY SPATIAL HASHES: Will be removed after migration
-    SpatialHash m_staticHash{64.0f, 2.0f};   // Static bodies (world tiles, buildings)
-    SpatialHash m_dynamicHash{64.0f, 2.0f};  // Dynamic/kinematic bodies (NPCs, player)
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering

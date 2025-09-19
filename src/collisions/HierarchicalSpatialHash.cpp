@@ -108,38 +108,48 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
     if (oldRegions == newRegions && oldRegions.size() == 1) {
         CoarseCoord regionCoord = oldRegions[0];
         auto regionIt = m_regions.find(regionCoord);
-        if (regionIt != m_regions.end() && regionIt->second.hasFineSplit) {
-            FineCoord oldFine = getFineCoord(oldAABB, regionCoord);
-            FineCoord newFine = getFineCoord(newAABB, regionCoord);
+        if (regionIt != m_regions.end()) {
+            if (regionIt->second.hasFineSplit) {
+                // Handle fine-subdivided region
+                FineCoord oldFine = getFineCoord(oldAABB, regionCoord);
+                FineCoord newFine = getFineCoord(newAABB, regionCoord);
 
-            if (oldFine.x != newFine.x || oldFine.y != newFine.y) {
-                // Move between fine cells within same region
-                MortonCode oldMorton = computeMortonCode(oldFine);
-                MortonCode newMorton = computeMortonCode(newFine);
+                if (oldFine.x != newFine.x || oldFine.y != newFine.y) {
+                    // Move between fine cells within same region
+                    MortonCode oldMorton = computeMortonCode(oldFine);
+                    MortonCode newMorton = computeMortonCode(newFine);
 
-                Region& region = regionIt->second;
+                    Region& region = regionIt->second;
 
-                // Remove from old fine cell
-                auto oldCellIt = region.fineCells.find(oldMorton);
-                if (oldCellIt != region.fineCells.end()) {
-                    auto& bodyVec = oldCellIt->second;
-                    bodyVec.erase(std::remove(bodyVec.begin(), bodyVec.end(), bodyIndex), bodyVec.end());
-                    if (bodyVec.empty()) {
-                        region.fineCells.erase(oldCellIt);
+                    // Remove from old fine cell
+                    auto oldCellIt = region.fineCells.find(oldMorton);
+                    if (oldCellIt != region.fineCells.end()) {
+                        auto& bodyVec = oldCellIt->second;
+                        bodyVec.erase(std::remove(bodyVec.begin(), bodyVec.end(), bodyIndex), bodyVec.end());
+                        if (bodyVec.empty()) {
+                            region.fineCells.erase(oldCellIt);
+                        }
+                    }
+
+                    // Add to new fine cell
+                    region.fineCells[newMorton].push_back(bodyIndex);
+
+                    // Update location tracking
+                    auto locationIt = m_bodyLocations.find(bodyIndex);
+                    if (locationIt != m_bodyLocations.end()) {
+                        locationIt->second.fineCell = newMorton;
+                        locationIt->second.lastAABB = newAABB;
+                    }
+                } else {
+                    // Same fine cell, just update AABB
+                    auto locationIt = m_bodyLocations.find(bodyIndex);
+                    if (locationIt != m_bodyLocations.end()) {
+                        locationIt->second.lastAABB = newAABB;
                     }
                 }
-
-                // Add to new fine cell
-                region.fineCells[newMorton].push_back(bodyIndex);
-
-                // Update location tracking
-                auto locationIt = m_bodyLocations.find(bodyIndex);
-                if (locationIt != m_bodyLocations.end()) {
-                    locationIt->second.fineCell = newMorton;
-                    locationIt->second.lastAABB = newAABB;
-                }
             } else {
-                // Same fine cell, just update AABB
+                // Handle non-subdivided region - just update AABB in location tracking
+                // The body remains in the same coarse cell (region.bodyIndices)
                 auto locationIt = m_bodyLocations.find(bodyIndex);
                 if (locationIt != m_bodyLocations.end()) {
                     locationIt->second.lastAABB = newAABB;
@@ -177,12 +187,17 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
         const Region& region = regionIt->second;
 
         if (region.hasFineSplit) {
-            // Query fine cells within this region
-            // TODO: This could be optimized to only check fine cells that overlap the query area
-            for (const auto& fineCellPair : region.fineCells) {
-                for (size_t bodyIndex : fineCellPair.second) {
-                    if (seenBodies.emplace(bodyIndex).second) {
-                        outBodyIndices.push_back(bodyIndex);
+            // Query only fine cells that overlap the query area
+            std::vector<FineCoord> queryFineCells = getFineCoordList(area, regionCoord);
+
+            for (const auto& fineCoord : queryFineCells) {
+                MortonCode morton = computeMortonCode(fineCoord);
+                auto fineCellIt = region.fineCells.find(morton);
+                if (fineCellIt != region.fineCells.end()) {
+                    for (size_t bodyIndex : fineCellIt->second) {
+                        if (seenBodies.emplace(bodyIndex).second) {
+                            outBodyIndices.push_back(bodyIndex);
+                        }
                     }
                 }
             }
@@ -318,6 +333,40 @@ HierarchicalSpatialHash::FineCoord HierarchicalSpatialHash::getFineCoord(const A
         static_cast<int32_t>(std::floor(relativeX / FINE_CELL_SIZE)),
         static_cast<int32_t>(std::floor(relativeY / FINE_CELL_SIZE))
     };
+}
+
+std::vector<HierarchicalSpatialHash::FineCoord>
+HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoord& region) const {
+    // Compute region's origin in world coordinates
+    float regionOriginX = region.x * COARSE_CELL_SIZE;
+    float regionOriginY = region.y * COARSE_CELL_SIZE;
+
+    // Convert AABB bounds to region-relative coordinates
+    float relativeLeft = aabb.left() - regionOriginX;
+    float relativeRight = aabb.right() - regionOriginX;
+    float relativeTop = aabb.top() - regionOriginY;
+    float relativeBottom = aabb.bottom() - regionOriginY;
+
+    // Find fine cell bounds
+    int32_t minX = static_cast<int32_t>(std::floor(relativeLeft / FINE_CELL_SIZE));
+    int32_t maxX = static_cast<int32_t>(std::floor(relativeRight / FINE_CELL_SIZE));
+    int32_t minY = static_cast<int32_t>(std::floor(relativeTop / FINE_CELL_SIZE));
+    int32_t maxY = static_cast<int32_t>(std::floor(relativeBottom / FINE_CELL_SIZE));
+
+    // Clamp to region bounds (fine cells per coarse cell = COARSE_CELL_SIZE / FINE_CELL_SIZE = 4)
+    int32_t maxCellIndex = static_cast<int32_t>(COARSE_CELL_SIZE / FINE_CELL_SIZE) - 1;
+    minX = std::max(0, std::min(minX, maxCellIndex));
+    maxX = std::max(0, std::min(maxX, maxCellIndex));
+    minY = std::max(0, std::min(minY, maxCellIndex));
+    maxY = std::max(0, std::min(maxY, maxCellIndex));
+
+    std::vector<FineCoord> coords;
+    for (int32_t y = minY; y <= maxY; ++y) {
+        for (int32_t x = minX; x <= maxX; ++x) {
+            coords.push_back({x, y});
+        }
+    }
+    return coords;
 }
 
 HierarchicalSpatialHash::MortonCode HierarchicalSpatialHash::computeMortonCode(const FineCoord& coord) const {
