@@ -13,12 +13,15 @@
 #include <functional>
 #include <cstddef>
 #include <chrono>
+#include <atomic>
+#include <array>
 
 #include "entities/Entity.hpp" // EntityID
 #include "core/WorkerBudget.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/CollisionInfo.hpp"
 #include "collisions/SpatialHash.hpp"
+#include "collisions/HierarchicalSpatialHash.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
 
@@ -30,6 +33,11 @@ using HammerEngine::SpatialHash;
 using HammerEngine::CollisionLayer;
 
 class CollisionManager {
+private:
+    // Forward declarations for structures used in public interface
+    struct CollisionStorage;
+    struct CollisionPool;
+
 public:
     static CollisionManager& Instance() {
         static CollisionManager s_instance; return s_instance;
@@ -43,6 +51,9 @@ public:
 
     // Tick: run collision detection/resolution only (no movement integration)
     void update(float dt);
+
+    // NEW SOA UPDATE PATH: High-performance collision detection using SOA storage
+    void updateSOA(float dt);
 
     // Bodies
     void addBody(EntityID id, const AABB& aabb, BodyType type,
@@ -115,6 +126,41 @@ public:
     void setThreadingThreshold(size_t threshold);
     size_t getThreadingThreshold() const;
 
+    // NEW SOA STORAGE MANAGEMENT METHODS
+    size_t addCollisionBodySOA(EntityID id, const Vector2D& position, const Vector2D& halfSize,
+                               BodyType type, uint32_t layer = CollisionLayer::Layer_Default,
+                               uint32_t collidesWith = 0xFFFFFFFFu);
+    void removeCollisionBodySOA(EntityID id);
+    bool getCollisionBodySOA(EntityID id, size_t& outIndex) const;
+    void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
+    void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
+
+    // Internal buffer management (simplified public interface)
+    void prepareCollisionBuffers(size_t bodyCount);
+
+    // SOA UPDATE HELPER METHODS
+    void syncSpatialHashesWithSOA();
+    void resolveSOA(const CollisionInfo& collision);
+    void syncEntitiesToSOA();
+    void processTriggerEventsSOA();
+    void updatePerformanceMetricsSOA(
+        std::chrono::steady_clock::time_point t0,
+        std::chrono::steady_clock::time_point t1,
+        std::chrono::steady_clock::time_point t2,
+        std::chrono::steady_clock::time_point t3,
+        std::chrono::steady_clock::time_point t4,
+        std::chrono::steady_clock::time_point t5,
+        std::chrono::steady_clock::time_point t6,
+        bool wasThreaded,
+        size_t optimalWorkers,
+        size_t availableWorkers,
+        size_t budget,
+        size_t batchCount,
+        size_t bodyCount,
+        size_t activeDynamicBodies,
+        size_t pairCount,
+        size_t collisionCount);
+
     // Debug utilities
     void logCollisionStatistics() const;
     size_t getStaticBodyCount() const;
@@ -133,6 +179,24 @@ private:
         size_t batchCount{1};
     };
 
+    // NEW SOA-BASED BROADPHASE: High-performance hierarchical collision detection
+    void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) const;
+    bool broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
+                               ThreadingStats& stats);
+    void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
+                        std::vector<CollisionInfo>& collisions) const;
+    bool narrowphaseSOAThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
+                                std::vector<CollisionInfo>& collisions,
+                                ThreadingStats& stats);
+
+    // Internal helper methods for SOA buffer management
+    void swapCollisionBuffers();
+    void copyHotDataToWorkingBuffer();
+    void buildActiveIndicesSOA();
+    void prepareCollisionPools(size_t bodyCount, size_t threadCount);
+    void mergeThreadResults();
+
+    // LEGACY BROADPHASE: Will be removed after migration
     void broadphase(std::vector<std::pair<EntityID,EntityID>>& pairs) const;
     bool broadphaseThreaded(std::vector<std::pair<EntityID, EntityID>>& pairs,
                             ThreadingStats& stats);
@@ -149,11 +213,100 @@ private:
     bool m_isShutdown{false};
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
-    // storage
+    // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
+    struct CollisionStorage {
+        // Hot data: Accessed every frame during collision detection
+        struct HotData {
+            Vector2D position;           // 8 bytes: Current position (center of AABB)
+            Vector2D velocity;           // 8 bytes: Current velocity
+            Vector2D halfSize;           // 8 bytes: Half-width and half-height
+            uint32_t layers;             // 4 bytes: Layer mask (what layer this body is on)
+            uint32_t collidesWith;       // 4 bytes: Collision mask (what layers this body collides with)
+            float mass;                  // 4 bytes: Mass for physics resolution
+            float friction;              // 4 bytes: Friction coefficient
+            float restitution;           // 4 bytes: Bounce/restitution coefficient
+            uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
+            uint8_t triggerTag;          // 1 byte: TriggerTag enum for triggers
+            uint8_t active;              // 1 byte: Whether this body participates in collision detection
+            uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
+
+            // Padding to exactly 64 bytes for cache alignment (64 - 48 = 16 bytes padding)
+            uint8_t _padding[16];
+        };
+        static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
+
+        // Cold data: Rarely accessed, separated to avoid cache pollution
+        struct ColdData {
+            EntityWeakPtr entityWeak;    // Back-reference to entity
+            Vector2D acceleration;       // Acceleration (rarely used)
+            Vector2D lastPosition;       // Previous position for optimization
+            AABB fullAABB;              // Full AABB (computed from position + halfSize)
+        };
+
+        // Primary storage arrays (SOA layout)
+        std::vector<HotData> hotData;
+        std::vector<ColdData> coldData;
+        std::vector<EntityID> entityIds;
+
+        // Double buffering for thread safety (following AIManager pattern)
+        std::array<std::vector<HotData>, 2> doubleBuffer;
+        std::atomic<int> currentBuffer{0};
+
+        // Index mapping for fast entity lookup
+        std::unordered_map<EntityID, size_t> entityToIndex;
+
+        // Convenience methods
+        size_t size() const { return hotData.size(); }
+        bool empty() const { return hotData.empty(); }
+
+        void clear() {
+            hotData.clear();
+            coldData.clear();
+            entityIds.clear();
+            doubleBuffer[0].clear();
+            doubleBuffer[1].clear();
+            entityToIndex.clear();
+            currentBuffer.store(0, std::memory_order_relaxed);
+        }
+
+        void ensureCapacity(size_t capacity) {
+            if (hotData.capacity() < capacity) {
+                hotData.reserve(capacity);
+                coldData.reserve(capacity);
+                entityIds.reserve(capacity);
+                doubleBuffer[0].reserve(capacity);
+                doubleBuffer[1].reserve(capacity);
+                entityToIndex.reserve(capacity);
+            }
+        }
+
+        // Get current hot data for a given index
+        const HotData& getHotData(size_t index) const {
+            return hotData[index];
+        }
+
+        HotData& getHotData(size_t index) {
+            return hotData[index];
+        }
+
+        // Compute AABB from hot data
+        AABB computeAABB(size_t index) const {
+            const auto& hot = hotData[index];
+            return AABB(hot.position.getX(), hot.position.getY(),
+                       hot.halfSize.getX(), hot.halfSize.getY());
+        }
+    };
+
+    CollisionStorage m_storage;
+
+    // LEGACY STORAGE: Will be removed after migration
     std::unordered_map<EntityID, std::shared_ptr<CollisionBody>> m_bodies;
     
-    // PERFORMANCE OPTIMIZATION: Separate spatial hashes for static vs dynamic bodies
-    // This prevents dynamic bodies from checking against every static tile
+    // NEW HIERARCHICAL SPATIAL PARTITIONING: Separate systems for static vs dynamic bodies
+    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static bodies (world tiles, buildings)
+    HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash; // Dynamic/kinematic bodies (NPCs, player)
+
+    // LEGACY SPATIAL HASHES: Will be removed after migration
     SpatialHash m_staticHash{64.0f, 2.0f};   // Static bodies (world tiles, buildings)
     SpatialHash m_dynamicHash{64.0f, 2.0f};  // Dynamic/kinematic bodies (NPCs, player)
     std::vector<CollisionCB> m_callbacks;
@@ -162,14 +315,51 @@ private:
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;
     float m_defaultTriggerCooldownSec{0.0f};
     
-    // Object pools for collision processing
+    // ENHANCED OBJECT POOLS: Zero-allocation collision processing
     struct CollisionPool {
+        // Primary collision processing buffers
         std::vector<std::pair<EntityID, EntityID>> pairBuffer;
         std::vector<EntityID> candidateBuffer;
         std::vector<CollisionInfo> collisionBuffer;
         std::vector<EntityID> dynamicCandidates;  // For broadphase dynamic queries
         std::vector<EntityID> staticCandidates;   // For broadphase static queries
-        
+
+        // NEW SOA-specific pools
+        std::vector<size_t> activeIndices;        // Indices of active bodies for processing
+        std::vector<size_t> dynamicIndices;      // Indices of dynamic bodies only
+        std::vector<size_t> staticIndices;       // Indices of static bodies only
+        std::vector<Vector2D> tempPositions;     // Temporary position calculations
+        std::vector<AABB> tempAABBs;             // Temporary AABB calculations
+        std::vector<float> tempDistances;        // Distance calculations for sorting
+
+        // Thread-local pools for parallel processing
+        struct ThreadLocalPool {
+            std::vector<std::pair<EntityID, EntityID>> localPairs;
+            std::vector<CollisionInfo> localCollisions;
+            std::vector<EntityID> localCandidates;
+            std::vector<size_t> localIndices;
+            std::unordered_set<uint64_t> localSeenPairs;
+
+            void clear() {
+                localPairs.clear();
+                localCollisions.clear();
+                localCandidates.clear();
+                localIndices.clear();
+                localSeenPairs.clear();
+            }
+
+            void ensureCapacity(size_t capacity) {
+                if (localPairs.capacity() < capacity) {
+                    localPairs.reserve(capacity);
+                    localCollisions.reserve(capacity / 4);
+                    localCandidates.reserve(capacity / 2);
+                    localIndices.reserve(capacity);
+                    localSeenPairs.reserve(capacity);
+                }
+            }
+        };
+        std::vector<ThreadLocalPool> threadPools;
+
         void ensureCapacity(size_t bodyCount) {
             size_t expectedPairs = bodyCount * 4; // Conservative estimate
             if (pairBuffer.capacity() < expectedPairs) {
@@ -178,15 +368,45 @@ private:
                 collisionBuffer.reserve(expectedPairs / 4);
                 dynamicCandidates.reserve(32);    // Fewer dynamic bodies expected
                 staticCandidates.reserve(128);     // More static bodies expected
+
+                // SOA-specific capacity
+                activeIndices.reserve(bodyCount);
+                dynamicIndices.reserve(bodyCount / 4);  // Estimate 25% dynamic
+                staticIndices.reserve(bodyCount);
+                tempPositions.reserve(bodyCount);
+                tempAABBs.reserve(bodyCount);
+                tempDistances.reserve(bodyCount);
             }
         }
-        
+
+        void ensureThreadPools(size_t threadCount) {
+            if (threadPools.size() < threadCount) {
+                threadPools.resize(threadCount);
+                for (auto& pool : threadPools) {
+                    pool.ensureCapacity(pairBuffer.capacity() / threadCount);
+                }
+            }
+        }
+
         void resetFrame() {
             pairBuffer.clear();
             candidateBuffer.clear();
             collisionBuffer.clear();
             dynamicCandidates.clear();
             staticCandidates.clear();
+
+            // SOA-specific resets
+            activeIndices.clear();
+            dynamicIndices.clear();
+            staticIndices.clear();
+            tempPositions.clear();
+            tempAABBs.clear();
+            tempDistances.clear();
+
+            // Clear thread pools
+            for (auto& pool : threadPools) {
+                pool.clear();
+            }
             // Vectors retain capacity
         }
     };
