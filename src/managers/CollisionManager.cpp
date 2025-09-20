@@ -10,6 +10,7 @@
 #include "events/WorldTriggerEvent.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "utils/Camera.hpp"
 #include "utils/UniqueID.hpp"
 #include "world/WorldData.hpp"
 #include <algorithm>
@@ -354,6 +355,15 @@ void CollisionManager::update(float dt) {
 
 }
 
+void CollisionManager::update(float dt, const HammerEngine::Camera* camera) {
+  (void)dt;
+  if (!m_initialized || m_isShutdown)
+    return;
+  // Camera-aware SOA collision system with viewport culling
+  updateSOA(dt, camera);
+  return;
+}
+
 void CollisionManager::addCollisionCallback(CollisionCB cb) {
   m_callbacks.push_back(std::move(cb));
 }
@@ -683,8 +693,12 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
 
   // Removed per-entity logging to reduce spam - entity count is included in periodic summary
 
-  // Fire collision obstacle changed event for static bodies
+  // PERFORMANCE OPTIMIZATION: Add static bodies to static spatial hash immediately
+  // This avoids rebuilding static spatial hash every frame
   if (type == BodyType::STATIC) {
+    AABB aabb = AABB(position.getX(), position.getY(), halfSize.getX(), halfSize.getY());
+    m_staticSpatialHash.insert(newIndex, aabb);
+
     float radius = std::max(halfSize.getX(), halfSize.getY()) + 16.0f; // Add safety margin
     std::string description = "Static obstacle added at (" +
                               std::to_string(position.getX()) + ", " +
@@ -705,10 +719,13 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
   size_t indexToRemove = it->second;
   size_t lastIndex = m_storage.size() - 1;
 
-  // Fire collision obstacle changed event for static bodies before removal
+  // PERFORMANCE OPTIMIZATION: Remove static bodies from static spatial hash
   if (indexToRemove < m_storage.size()) {
     const auto& hot = m_storage.hotData[indexToRemove];
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      // Remove from static spatial hash
+      m_staticSpatialHash.remove(indexToRemove);
+
       float radius = std::max(hot.halfSize.getX(), hot.halfSize.getY()) + 16.0f;
       std::string description = "Static obstacle removed from (" +
                                 std::to_string(hot.position.getX()) + ", " +
@@ -742,8 +759,7 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
   // Remove from index mapping
   m_storage.entityToIndex.erase(it);
 
-  COLLISION_DEBUG("Removed SOA body for entity " + std::to_string(id) +
-                  " from index " + std::to_string(indexToRemove));
+  // Removed per-entity logging to reduce spam
 }
 
 bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
@@ -835,6 +851,42 @@ void CollisionManager::buildActiveIndicesSOA() {
   }
 
   // Removed per-frame logging - body counts are included in periodic summary every 300 frames
+}
+
+// Camera-culled version of buildActiveIndicesSOA
+void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
+  // Build indices of active bodies within camera culling area
+  auto& pools = m_collisionPool;
+  pools.activeIndices.clear();
+  pools.dynamicIndices.clear();
+  pools.staticIndices.clear();
+
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
+
+    // Camera culling: only include entities within viewport + buffer
+    bool withinCullingArea = cullingArea.contains(hot.position.getX(), hot.position.getY());
+
+    // Always include certain entities regardless of culling:
+    // - Player (they're usually at camera center anyway)
+    // - Moving projectiles (they might move into view quickly)
+    // - Triggered/scripted entities
+    EntityID entityId = (i < m_storage.entityIds.size()) ? m_storage.entityIds[i] : 0;
+    bool isImportantEntity = false; // Could add special handling here
+
+    if (withinCullingArea || isImportantEntity) {
+      pools.activeIndices.push_back(i);
+
+      // Categorize by body type for optimized processing
+      BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+      if (bodyType == BodyType::STATIC) {
+        pools.staticIndices.push_back(i);
+      } else {
+        pools.dynamicIndices.push_back(i);
+      }
+    }
+  }
 }
 
 // Internal helper methods moved to private section
@@ -1344,28 +1396,162 @@ void CollisionManager::updateSOA(float dt) {
   // SOA Update complete (reduced logging)
 }
 
+// Camera-aware updateSOA with viewport culling and static cache optimization
+void CollisionManager::updateSOA(float dt, const HammerEngine::Camera* camera) {
+  (void)dt;
+
+  if (!m_initialized || m_isShutdown)
+    return;
+
+  if (!camera) {
+    // Fall back to non-culled version if no camera provided
+    updateSOA(dt);
+    return;
+  }
+
+  using clock = std::chrono::steady_clock;
+  auto t0 = clock::now();
+
+  size_t bodyCount = m_storage.size();
+
+  // Prepare collision processing for this frame
+  prepareCollisionBuffers(bodyCount);
+
+  // Build culling area from camera viewport with buffer
+  auto viewRect = camera->getViewRect();
+  CullingArea cullingArea;
+  cullingArea.minX = viewRect.x - cullingArea.bufferSize;
+  cullingArea.minY = viewRect.y - cullingArea.bufferSize;
+  cullingArea.maxX = viewRect.x + viewRect.width + cullingArea.bufferSize;
+  cullingArea.maxY = viewRect.y + viewRect.height + cullingArea.bufferSize;
+
+  // OPTIMIZATION: Static collision cache - rebuild only on tile changes
+  rebuildStaticCacheIfNeeded();
+
+  // Sync only dynamic spatial hash (static cache handles static bodies)
+  syncSpatialHashesWithSOA();
+
+  // Use camera culling for active body selection
+  buildActiveIndicesSOA(cullingArea);
+
+  size_t activeDynamicBodies = m_collisionPool.dynamicIndices.size();
+
+  // Rest of collision processing identical to standard updateSOA
+  size_t threadingThresholdValue =
+      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+  bool threadingEnabled = m_useThreading.load(std::memory_order_acquire) &&
+                          HammerEngine::ThreadSystem::Exists();
+
+  ThreadingStats summaryStats{};
+  bool summaryThreaded = false;
+  std::vector<std::pair<size_t, size_t>> indexPairs;
+
+  auto t1 = clock::now();
+
+  // BROADPHASE: Find collision candidates (with camera culling)
+  if (threadingEnabled && activeDynamicBodies >= threadingThresholdValue) {
+    ThreadingStats stats;
+    bool broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats);
+    if (broadphaseUsedThreading) {
+      summaryThreaded = true;
+      summaryStats = stats;
+    }
+  }
+  if (!summaryThreaded || indexPairs.empty()) {
+    broadphaseSOA(indexPairs);
+  }
+
+  auto t2 = clock::now();
+
+  // NARROWPHASE: Detailed collision detection
+  const size_t pairCount = indexPairs.size();
+  if (threadingEnabled && pairCount >= threadingThresholdValue) {
+    ThreadingStats narrowStats;
+    bool narrowphaseUsedThreading = narrowphaseSOAThreaded(indexPairs, m_collisionPool.collisionBuffer, narrowStats);
+    if (narrowphaseUsedThreading) {
+      summaryThreaded = true;
+      summaryStats = narrowStats;
+    }
+  }
+  if (!summaryThreaded || m_collisionPool.collisionBuffer.empty()) {
+    narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
+  }
+
+  auto t3 = clock::now();
+
+  // RESOLUTION: Apply collision responses and callbacks
+  for (const auto& collision : m_collisionPool.collisionBuffer) {
+    resolveSOA(collision);
+    for (const auto& cb : m_callbacks) {
+      cb(collision);
+    }
+  }
+
+  auto t4 = clock::now();
+
+  // Update performance metrics
+  size_t collisionCount = m_collisionPool.collisionBuffer.size();
+
+  auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count();
+  auto d12 = std::chrono::duration<double, std::milli>(t2 - t1).count();
+  auto d23 = std::chrono::duration<double, std::milli>(t3 - t2).count();
+  auto d34 = std::chrono::duration<double, std::milli>(t4 - t3).count();
+  auto d04 = std::chrono::duration<double, std::milli>(t4 - t0).count();
+
+  m_perf.lastBroadphaseMs = d12;
+  m_perf.lastNarrowphaseMs = d23;
+  m_perf.lastResolveMs = d34;
+  m_perf.lastSyncMs = d01;
+  m_perf.lastTotalMs = d04;
+  m_perf.lastPairs = pairCount;
+  m_perf.lastCollisions = collisionCount;
+  m_perf.bodyCount = bodyCount;
+  m_perf.frames += 1;
+}
+
 // ========== SOA UPDATE HELPER METHODS ==========
 
 void CollisionManager::syncSpatialHashesWithSOA() {
-  // Clear and rebuild spatial hashes from SOA storage
-  m_staticSpatialHash.clear();
-  m_dynamicSpatialHash.clear();
+  // PERFORMANCE OPTIMIZATION: Only update entities that have moved significantly
+  // Static bodies don't move, so no need to rebuild their spatial hash every frame
+
+  // Use incremental updates instead of full rebuild for dynamic spatial hash
+  constexpr float MOVEMENT_THRESHOLD_SQUARED = 16.0f; // 4.0f squared for distance check
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
     if (!hot.active) continue;
 
-    AABB aabb = m_storage.computeAABB(i);
     BodyType bodyType = static_cast<BodyType>(hot.bodyType);
 
-    if (bodyType == BodyType::STATIC) {
-      m_staticSpatialHash.insert(i, aabb);
-    } else {
-      m_dynamicSpatialHash.insert(i, aabb);
-    }
-  }
+    // Only update dynamic and kinematic bodies - static bodies remain in static hash
+    if (bodyType == BodyType::DYNAMIC || bodyType == BodyType::KINEMATIC) {
+      // Check if body has moved significantly since last update
+      if (i < m_storage.coldData.size()) {
+        auto& cold = m_storage.coldData[i];
+        Vector2D positionDelta = hot.position - cold.lastPosition;
+        float distanceSquared = positionDelta.lengthSquared();
 
-  // Removed per-frame logging - body count is included in periodic summary
+        // Only update spatial hash if entity moved significantly
+        if (distanceSquared > MOVEMENT_THRESHOLD_SQUARED) {
+          AABB oldAABB = AABB(cold.lastPosition.getX(), cold.lastPosition.getY(),
+                             hot.halfSize.getX(), hot.halfSize.getY());
+          AABB newAABB = m_storage.computeAABB(i);
+
+          // Update spatial hash with movement
+          m_dynamicSpatialHash.update(i, oldAABB, newAABB);
+
+          // Update last position
+          cold.lastPosition = hot.position;
+        }
+      } else {
+        // First time or missing cold data - insert into spatial hash
+        AABB aabb = m_storage.computeAABB(i);
+        m_dynamicSpatialHash.insert(i, aabb);
+      }
+    }
+    // Note: Static bodies remain in m_staticSpatialHash and are not updated every frame
+  }
 }
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
@@ -1741,4 +1927,59 @@ void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
     m_storage.hotData[index].isTrigger = isTrigger ? 1 : 0;
     // Removed per-entity logging to reduce spam
   }
+}
+
+// ========== STATIC COLLISION CACHE IMPLEMENTATION ==========
+
+void CollisionManager::rebuildStaticCacheIfNeeded() {
+  if (isStaticCacheValid()) {
+    return; // Cache is still valid
+  }
+
+  using clock = std::chrono::steady_clock;
+  auto start = clock::now();
+
+  // Clear static spatial hash
+  m_staticSpatialHash.clear();
+
+  // Rebuild static spatial hash with only static bodies
+  size_t staticBodyCount = 0;
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
+
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+    if (bodyType == BodyType::STATIC) {
+      AABB aabb = m_storage.computeAABB(i);
+      m_staticSpatialHash.insert(i, aabb);
+      staticBodyCount++;
+    }
+  }
+
+  // Update cache metadata
+  m_staticCache.isValid = true;
+  m_staticCache.worldVersion++; // Increment version
+  m_staticCache.lastRebuild = start;
+  m_staticCache.staticBodyCount = staticBodyCount;
+
+  auto end = clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+  COLLISION_INFO("Static collision cache rebuilt: " + std::to_string(staticBodyCount) +
+                 " static bodies, " + std::to_string(duration.count()) + "μs");
+}
+
+bool CollisionManager::isStaticCacheValid() const {
+  // Cache is valid if:
+  // 1. It's marked as valid
+  // 2. No world tile changes have occurred (would need world version tracking)
+  // 3. Not too old (optional: could add time-based expiry)
+
+  if (!m_staticCache.isValid) {
+    return false;
+  }
+
+  // For now, consider cache valid until explicitly invalidated
+  // In the future, we could add world change detection here
+  return true;
 }

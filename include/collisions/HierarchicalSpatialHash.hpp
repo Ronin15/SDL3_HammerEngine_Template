@@ -34,11 +34,11 @@ namespace HammerEngine {
  */
 class HierarchicalSpatialHash {
 public:
-    // Configuration constants
-    static constexpr float COARSE_CELL_SIZE = 256.0f;    // Coarse grid cell size
-    static constexpr float FINE_CELL_SIZE = 64.0f;       // Fine grid cell size
-    static constexpr float MOVEMENT_THRESHOLD = 4.0f;    // Movement required to trigger rehash
-    static constexpr size_t REGION_ACTIVE_THRESHOLD = 2;  // Min bodies to activate fine grid
+    // Configuration constants - OPTIMIZED FOR 10K+ ENTITY PERFORMANCE
+    static constexpr float COARSE_CELL_SIZE = 128.0f;    // Smaller for better distribution with 10K entities
+    static constexpr float FINE_CELL_SIZE = 32.0f;       // Better granularity for collision detection
+    static constexpr float MOVEMENT_THRESHOLD = 8.0f;    // Reduce hash update frequency
+    static constexpr size_t REGION_ACTIVE_THRESHOLD = 8;  // Higher threshold reduces subdivision overhead
 
     // Morton code type for spatial ordering
     using MortonCode = uint64_t;

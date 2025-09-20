@@ -12,6 +12,7 @@
 #include "managers/CollisionManager.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "utils/Vector2D.hpp"
+#include "utils/Camera.hpp"
 
 class CollisionBenchmark {
 public:
@@ -32,8 +33,8 @@ public:
     }
 
     void runBenchmarkSuite() {
-        std::cout << "=== Collision System SOA Benchmark Suite ===" << std::endl;
-        std::cout << "Testing SOA collision detection performance" << std::endl;
+        std::cout << "=== Collision System SOA Benchmark Suite (WITH CAMERA CULLING) ===" << std::endl;
+        std::cout << "Testing camera-culled SOA collision detection performance" << std::endl;
         std::cout << std::endl;
 
         std::vector<size_t> bodyCounts = {100, 500, 1000, 2000, 5000, 10000};
@@ -125,6 +126,9 @@ private:
         manager.clean();
         manager.init();
 
+        // Create camera positioned at center of entity distribution (0,0)
+        HammerEngine::Camera camera(0.0f, 0.0f, 1920.0f, 1080.0f); // Standard 1080p viewport
+
         // Add test bodies to SOA system
         std::vector<EntityID> entityIds;
         for (size_t i = 0; i < testBodies.size(); ++i) {
@@ -136,17 +140,17 @@ private:
             entityIds.push_back(id);
         }
 
-        // Warm up
+        // Warm up with camera culling
         for (int i = 0; i < 3; ++i) {
-            manager.updateSOA(0.016f); // 60 FPS
+            manager.updateSOA(0.016f, &camera); // 60 FPS with camera culling
         }
 
-        // Benchmark
+        // Benchmark with camera culling
         constexpr int iterations = 100;
         auto start = std::chrono::high_resolution_clock::now();
 
         for (int i = 0; i < iterations; ++i) {
-            manager.updateSOA(0.016f);
+            manager.updateSOA(0.016f, &camera); // Camera-culled collision detection
         }
 
         auto end = std::chrono::high_resolution_clock::now();

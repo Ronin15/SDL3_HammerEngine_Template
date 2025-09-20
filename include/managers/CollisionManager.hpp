@@ -24,6 +24,11 @@
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
 
+// Forward declarations
+namespace HammerEngine {
+    class Camera;
+}
+
 using HammerEngine::AABB;
 using HammerEngine::BodyType;
 using HammerEngine::CollisionInfo;
@@ -50,8 +55,14 @@ public:
     // Tick: run collision detection/resolution only (no movement integration)
     void update(float dt);
 
+    // Camera-aware collision update for viewport culling
+    void update(float dt, const HammerEngine::Camera* camera);
+
     // NEW SOA UPDATE PATH: High-performance collision detection using SOA storage
     void updateSOA(float dt);
+
+    // Camera-aware SOA update with viewport culling
+    void updateSOA(float dt, const HammerEngine::Camera* camera);
 
     // Batch updates for performance optimization (AI entities)
     struct KinematicUpdate {
@@ -189,6 +200,22 @@ private:
 
     void subscribeWorldEvents(); // hook to world events
 
+    // Camera culling support
+    struct CullingArea {
+        float minX, minY, maxX, maxY;
+        float bufferSize{200.0f}; // Buffer around camera view
+
+        bool contains(float x, float y) const {
+            return x >= minX && x <= maxX && y >= minY && y <= maxY;
+        }
+    };
+
+    void buildActiveIndicesSOA(const CullingArea& cullingArea);
+
+    // Static collision cache management
+    void rebuildStaticCacheIfNeeded();
+    bool isStaticCacheValid() const;
+
     bool m_initialized{false};
     bool m_isShutdown{false};
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
@@ -283,6 +310,14 @@ private:
     // NEW HIERARCHICAL SPATIAL PARTITIONING: Separate systems for static vs dynamic bodies
     HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static bodies (world tiles, buildings)
     HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash; // Dynamic/kinematic bodies (NPCs, player)
+
+    // Static collision cache - rebuilt only on tile changes
+    struct StaticCollisionCache {
+        bool isValid{false};
+        uint64_t worldVersion{0};
+        std::chrono::steady_clock::time_point lastRebuild;
+        size_t staticBodyCount{0};
+    } m_staticCache;
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
@@ -467,9 +502,9 @@ private:
     // Guard to avoid feedback when syncing entity transforms
     bool m_isSyncing{false};
 
-    // Threading configuration
+    // Threading configuration - OPTIMIZED THRESHOLDS
     std::atomic<bool> m_useThreading{true};
-    std::atomic<size_t> m_threadingThreshold{400};
+    std::atomic<size_t> m_threadingThreshold{2000}; // Higher threshold to reduce overhead for smaller workloads
     unsigned int m_maxThreads{0};
     std::atomic<size_t> m_lastOptimalWorkerCount{0};
     std::atomic<size_t> m_lastAvailableWorkers{0};

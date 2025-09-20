@@ -23,8 +23,10 @@
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/WorldResourceManager.hpp"
+#include "managers/ResourceTemplateManager.hpp"
 #include "core/ThreadSystem.hpp"
-#include "core/GameEngine.hpp"
+#include "world/WorldGenerator.hpp"
 #include "utils/Vector2D.hpp"
 
 #include <chrono>
@@ -40,10 +42,16 @@ using namespace std::chrono;
 class PathfinderBenchmarkFixture {
 public:
     PathfinderBenchmarkFixture() {
-        // Initialize core systems required for pathfinding
+        // Initialize core systems required for pathfinding (order matters!)
         HammerEngine::ThreadSystem::Instance().init(8); // 8 worker threads
-        CollisionManager::Instance().init();
+
+        // Initialize resource managers first
+        ResourceTemplateManager::Instance().init();
+        WorldResourceManager::Instance().init();
+
+        // Initialize world and collision managers
         WorldManager::Instance().init();
+        CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
 
         // Set up a basic world for pathfinding tests
@@ -54,27 +62,42 @@ public:
     }
 
     ~PathfinderBenchmarkFixture() {
+        // Clean up in reverse order
         PathfinderManager::Instance().shutdown();
-        WorldManager::Instance().clean();
         CollisionManager::Instance().clean();
+        WorldManager::Instance().clean();
+        WorldResourceManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
         HammerEngine::ThreadSystem::Instance().clean();
     }
 
 private:
     void setupTestWorld() {
-        // Create a 200x200 world for testing
-        const int worldWidth = 200;
-        const int worldHeight = 200;
+        // Create a 200x200 world for testing using WorldManager
+        HammerEngine::WorldGenerationConfig config;
+        config.width = 200;
+        config.height = 200;
+        config.seed = 42; // Fixed seed for reproducible results
+        config.elevationFrequency = 0.1f;
+        config.humidityFrequency = 0.1f;
+        config.waterLevel = 0.3f;
+        config.mountainLevel = 0.7f;
 
-        // Set world bounds for collision manager
-        CollisionManager::Instance().setWorldBounds(0, 0, worldWidth * 32, worldHeight * 32);
+        // Load the world through WorldManager - this provides the pathfinding grid context
+        bool worldLoaded = WorldManager::Instance().loadNewWorld(config);
+        if (!worldLoaded) {
+            throw std::runtime_error("Failed to load test world for pathfinding benchmark");
+        }
 
-        // Generate some random obstacles for more realistic pathfinding
+        // Set world bounds for collision manager (required for collision system)
+        CollisionManager::Instance().setWorldBounds(0, 0, config.width * 32, config.height * 32);
+
+        // Add some collision obstacles for more realistic pathfinding testing
         std::mt19937 rng(42); // Fixed seed for reproducible results
-        std::uniform_int_distribution<int> posDist(10, worldWidth - 10);
+        std::uniform_int_distribution<int> posDist(10, config.width - 10);
 
-        // Add 20% obstacle coverage scattered throughout the world
-        int numObstacles = static_cast<int>((worldWidth * worldHeight) * 0.2f);
+        // Add 5% collision obstacles (separate from world terrain obstacles)
+        int numObstacles = static_cast<int>((config.width * config.height) * 0.05f);
         for (int i = 0; i < numObstacles; ++i) {
             int x = posDist(rng);
             int y = posDist(rng);
@@ -87,12 +110,13 @@ private:
                 Vector2D(16.0f, 16.0f),
                 BodyType::STATIC,
                 CollisionLayer::Layer_Environment,
-CollisionLayer::Layer_Environment
+                CollisionLayer::Layer_Environment
             );
         }
 
-        // Rebuild pathfinding grid to include obstacles
-        PathfinderManager::Instance().rebuildGrid();
+        // The pathfinding grid should now be automatically available through WorldManager
+        std::cout << "Test world loaded: " << config.width << "x" << config.height
+                  << " with " << numObstacles << " collision obstacles\n";
     }
 };
 
