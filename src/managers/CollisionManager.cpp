@@ -646,8 +646,7 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
                                                   halfSize.getX(), halfSize.getY());
       }
 
-      COLLISION_DEBUG("Updated existing SOA body for entity " + std::to_string(id) +
-                      " at index " + std::to_string(index));
+      // Removed per-entity logging to reduce spam
       return index;
     }
   }
@@ -682,10 +681,7 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
   m_storage.entityIds.push_back(id);
   m_storage.entityToIndex[id] = newIndex;
 
-  COLLISION_INFO("STORAGE LIFECYCLE: Added new SOA body for entity " + std::to_string(id) +
-                 " at index " + std::to_string(newIndex) +
-                 ", type: " + std::to_string(static_cast<int>(type)) +
-                 ", total storage size now: " + std::to_string(m_storage.size()));
+  // Removed per-entity logging to reduce spam - entity count is included in periodic summary
 
   // Fire collision obstacle changed event for static bodies
   if (type == BodyType::STATIC) {
@@ -838,10 +834,7 @@ void CollisionManager::buildActiveIndicesSOA() {
     }
   }
 
-  COLLISION_INFO("Built active indices: " + std::to_string(pools.activeIndices.size()) +
-                 " total (" + std::to_string(pools.dynamicIndices.size()) + " dynamic, " +
-                 std::to_string(pools.staticIndices.size()) + " static) from " +
-                 std::to_string(m_storage.hotData.size()) + " stored bodies");
+  // Removed per-frame logging - body counts are included in periodic summary every 300 frames
 }
 
 // Internal helper methods moved to private section
@@ -856,7 +849,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
   const auto& pools = m_collisionPool;
   const auto& dynamicIndices = pools.dynamicIndices;
-  const auto& staticIndices = pools.staticIndices;
 
   // Reserve space for expected pairs
   size_t expectedPairs = dynamicIndices.size() * 8; // Conservative estimate
@@ -877,8 +869,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     // 1. Query dynamic spatial hash for dynamic-vs-dynamic collisions
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
-    COLLISION_DEBUG("Dynamic query for index " + std::to_string(dynamicIdx) +
-                    " found " + std::to_string(candidates.size()) + " candidates");
+    // Removed per-query logging to reduce spam
     for (size_t candidateIdx : candidates) {
       if (candidateIdx == dynamicIdx || candidateIdx >= m_storage.hotData.size()) continue;
 
@@ -887,10 +878,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
       // Check collision masks
       if ((dynamicHot.collidesWith & candidateHot.layers) == 0) {
-        COLLISION_DEBUG("Mask filter rejected pair (" + std::to_string(dynamicIdx) + "," +
-                        std::to_string(candidateIdx) + ") - collidesWith: " +
-                        std::to_string(dynamicHot.collidesWith) + ", layers: " +
-                        std::to_string(candidateHot.layers));
+        // Mask filtering working correctly - removed spam logging
         continue;
       }
 
@@ -921,9 +909,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     }
   }
 
-  COLLISION_DEBUG("SOA Broadphase generated " + std::to_string(indexPairs.size()) +
-                  " pairs from " + std::to_string(dynamicIndices.size()) + " dynamic and " +
-                  std::to_string(staticIndices.size()) + " static bodies");
+  // Removed per-frame logging - pair count is included in periodic summary
 }
 
 bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -1141,8 +1127,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     });
   }
 
-  COLLISION_DEBUG("SOA Narrowphase processed " + std::to_string(indexPairs.size()) +
-                  " pairs, found " + std::to_string(collisions.size()) + " collisions");
+  // Removed per-frame logging - collision count is included in periodic summary
 }
 
 bool CollisionManager::narrowphaseSOAThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -1271,8 +1256,7 @@ void CollisionManager::updateSOA(float dt) {
 
   // Check storage state at start of update
   size_t bodyCount = m_storage.size();
-  COLLISION_INFO("STORAGE LIFECYCLE: updateSOA() called with " +
-                 std::to_string(bodyCount) + " bodies in storage");
+  // Removed per-frame logging - details are included in periodic summary at end of update
 
   // Prepare collision processing for this frame
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
@@ -1381,8 +1365,7 @@ void CollisionManager::syncSpatialHashesWithSOA() {
     }
   }
 
-  COLLISION_DEBUG("Synced spatial hashes with SOA storage: " +
-                  std::to_string(m_storage.hotData.size()) + " bodies");
+  // Removed per-frame logging - body count is included in periodic summary
 }
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
@@ -1730,8 +1713,7 @@ void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].active = enabled ? 1 : 0;
-    COLLISION_DEBUG("Set body " + std::to_string(id) + " enabled: " +
-                    (enabled ? "true" : "false"));
+    // Removed per-entity logging to reduce spam
   }
 }
 
@@ -1741,9 +1723,7 @@ void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t co
     auto& hot = m_storage.hotData[index];
     hot.layers = layerMask;
     hot.collidesWith = collideMask;
-    COLLISION_DEBUG("Set body " + std::to_string(id) + " layer: " +
-                    std::to_string(layerMask) + ", collides with: " +
-                    std::to_string(collideMask));
+    // Removed per-entity logging to reduce spam
   }
 }
 
@@ -1751,9 +1731,7 @@ void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].velocity = velocity;
-    COLLISION_DEBUG("Set body " + std::to_string(id) + " velocity: (" +
-                    std::to_string(velocity.getX()) + ", " +
-                    std::to_string(velocity.getY()) + ")");
+    // Removed per-entity logging to reduce spam
   }
 }
 
@@ -1761,7 +1739,6 @@ void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].isTrigger = isTrigger ? 1 : 0;
-    COLLISION_DEBUG("Set body " + std::to_string(id) + " trigger: " +
-                    (isTrigger ? "true" : "false"));
+    // Removed per-entity logging to reduce spam
   }
 }
