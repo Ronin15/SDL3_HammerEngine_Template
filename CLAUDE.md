@@ -83,18 +83,28 @@ ninja -C build
 
 ## Code Architecture
 
-### Core Components
+### Core Components 
 - **GameEngine**: Central coordinator managing all subsystems with double-buffered rendering
 - **GameLoop**: Fixed-timestep game loop with separate update/render threads
 - **Managers**: Singleton pattern with `m_isShutdown` guard for clean shutdown
 - **ThreadSystem**: Production-grade thread pool with WorkerBudget priority system
+- **Logger**: Thread-safe logging with macros for consistent usage
 
 ### Key Systems
-- **AI System**: High-performance batch-processed AI supporting 10K+ entities at 60+ FPS
-- **Event System**: Thread-safe event-driven architecture with batch processing
+- **AI Manager**: High-performance batch-processed AI supporting 10K+ entities at 60+ FPS
+- **Event Manager**: Thread-safe event-driven architecture with batch processing
 - **Resource Management**: JSON-based loading with handle-based runtime access
-- **UI System**: Professional theming with auto-sizing and DPI awareness
-- **Collision System**: Spatial hash-based collision detection with pathfinding integration
+- **UI Manager**: Professional theming with auto-sizing and DPI awareness
+- **Collision Manager**: Spatial hash-based collision detection with pathfinding integration
+- **Particle Manager**: Camera-aware, batched particle rendering with lifetime Management
+- **World Manager**: Tile-based world with procedural generation and efficient Rendering
+- **Input Manager**: Comprehensive input handling for keyboard, mouse, and gamepads
+
+### Utilities
+- **Camera**: World-to-screen coordinate conversion with zoom and pattern
+- **Vector2D**: 2D vector math with common operations
+- **JSON Parsing**: JsonReader, Lightweight JSON handling for configuration and resources
+- **BinarySerializer**: Cross-platform file save/reading/writing with error handling
 
 ### Module Organization
 ```
@@ -121,6 +131,10 @@ res/                # Game assets (fonts, images, audio, data files)
 - **Style**: 4-space indentation, Allman-style braces
 - **Memory**: RAII with smart pointers, no raw new/delete
 - **Threading**: Use ThreadSystem, avoid raw std::thread
+- **Error Handling**: Prefer exceptions for critical errors, return error codes for expected failures
+- **Comments**: Doxygen-style for public APIs, inline comments for complex logic
+- **logging**: Use provided logger.hpp macros for consistent logging
+- **Cross-Platform**: Use platform guards for OS-specific code, avoid hardcoding paths, and make sure code is portable.
 - **Copyright**: All files must include the standard copyright header:
   ```cpp
   /* Copyright (c) 2025 Hammer Forged Games
@@ -167,12 +181,7 @@ public:
 ### Performance Guidelines
 - **STL Algorithms**: Prefer STL algorithms (`std::sort`, `std::find_if`, `std::transform`) over manual loops for better optimization
 - **Platform Guards**: Use platform-specific logic guards (`#ifdef __APPLE__`, `#ifdef WIN32`) for OS-specific code
-
-### Logging
-Use provided macros for consistent logging:
-- `GAMEENGINE_ERROR(message)`
-- `GAMEENGINE_WARN(message)`  
-- `GAMEENGINE_INFO(message)`
+- **Avoid Premature Optimization**: Focus on clean, maintainable code first; optimize hotspots based on profiling data
 
 ## Dependencies
 
@@ -191,7 +200,7 @@ Use provided macros for consistent logging:
 ### Cross-Platform Features
 - **macOS**: Optimized build flags, dSYM generation, letterbox mode
 - **Linux**: Wayland detection, adaptive VSync
-- **Windows**: Console output control, DLL management (planned)
+- **Windows**: Console output control
 
 ### Debug vs Release
 - **Debug**: Console output enabled, full debug symbols, no optimization
@@ -242,6 +251,7 @@ Use provided macros for consistent logging:
 - Keep camera-aware rendering centralized; avoid ad-hoc camera math inside managers that don't own presentation
 
 ### Resource Loading
+- JsonReader for parsing configuration files
 - JSON-based configuration for items, materials, currency
 - ResourceTemplateManager handles template loading and instantiation
 - Handle-based access pattern for performance and safety
