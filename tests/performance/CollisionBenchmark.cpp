@@ -33,8 +33,9 @@ public:
     }
 
     void runBenchmarkSuite() {
-        std::cout << "=== Collision System SOA Benchmark Suite (WITH CAMERA CULLING) ===" << std::endl;
-        std::cout << "Testing camera-culled SOA collision detection performance" << std::endl;
+        std::cout << "=== Collision System SOA Benchmark Suite (WITH PLAYER-CENTERED CULLING) ===" << std::endl;
+        std::cout << "Testing player-centered bounding box culled SOA collision detection performance" << std::endl;
+        std::cout << "Culling method: 400x400 unit bounding box around player position (200 unit buffer)" << std::endl;
         std::cout << std::endl;
 
         std::vector<size_t> bodyCounts = {100, 500, 1000, 2000, 5000, 10000};
@@ -126,10 +127,13 @@ private:
         manager.clean();
         manager.init();
 
-        // Create camera positioned at center of entity distribution (0,0)
+        // Create camera object (note: not used for culling - culling uses player position)
+        // Culling is based on player position with 200-unit buffer, creating 400x400 bounding box
         HammerEngine::Camera camera(0.0f, 0.0f, 1920.0f, 1080.0f); // Standard 1080p viewport
 
         // Add test bodies to SOA system
+        // Note: EntityID 1 will be treated as the "player" for culling purposes
+        // Culling creates a 400x400 unit bounding box around EntityID 1's position
         std::vector<EntityID> entityIds;
         for (size_t i = 0; i < testBodies.size(); ++i) {
             EntityID id = static_cast<EntityID>(i + 1);
@@ -140,17 +144,17 @@ private:
             entityIds.push_back(id);
         }
 
-        // Warm up with camera culling
+        // Warm up with player-centered bounding box culling
         for (int i = 0; i < 3; ++i) {
-            manager.updateSOA(0.016f); // 60 FPS with configurable culling
+            manager.updateSOA(0.016f); // 60 FPS with player-centered culling (400x400 box)
         }
 
-        // Benchmark with camera culling
+        // Benchmark with player-centered bounding box culling
         constexpr int iterations = 100;
         auto start = std::chrono::high_resolution_clock::now();
 
         for (int i = 0; i < iterations; ++i) {
-            manager.updateSOA(0.016f); // Configurable culling collision detection
+            manager.updateSOA(0.016f); // Player-centered bounding box culling collision detection
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -180,7 +184,7 @@ private:
     }
 
     void printSummary(const std::vector<BenchmarkResult>& results) {
-        std::cout << "=== SOA Performance Summary ===" << std::endl;
+        std::cout << "=== SOA Player-Centered Culling Performance Summary ===" << std::endl;
         std::cout << std::left << std::setw(10) << "Bodies"
                   << std::setw(12) << "SOA (ms)"
                   << std::setw(10) << "Pairs"
