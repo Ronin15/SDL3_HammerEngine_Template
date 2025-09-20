@@ -48,8 +48,8 @@ The Hammer Game Engine has the following test suites:
 
 **Test Execution Categories:**
 - **Core Tests** (11 suites): Fast functional validation (~4-8 minutes total)
-- **Benchmarks** (4 suites): Performance and scalability testing (~6-18 minutes total)
-- **Total Coverage**: 24+ test executables with comprehensive automation scripts
+- **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
+- **Total Coverage**: 25+ test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -76,7 +76,8 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
 ./tests/test_scripts/run_ai_benchmark.sh                # AI scaling benchmark with realistic automatic threading
 ./tests/test_scripts/run_ui_stress_tests.sh             # UI stress and performance tests
-./tests/test_scripts/run_collision_pathfinding_benchmark.sh # Collision and pathfinding performance benchmarks
+./tests/test_scripts/run_collision_benchmark.sh         # Collision system performance benchmarks
+./tests/test_scripts/run_pathfinder_benchmark.sh        # Pathfinder system performance benchmarks
 
 # Run all tests
 ./tests/test_scripts/run_all_tests.sh                   # Run all test scripts sequentially
@@ -129,7 +130,8 @@ tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation
 tests/test_scripts/run_event_scaling_benchmark.bat      # Event manager scaling benchmark
 tests/test_scripts/run_ai_benchmark.bat                 # AI scaling benchmark
 tests/test_scripts/run_ui_stress_tests.bat              # UI stress and performance tests
-tests/test_scripts/run_collision_pathfinding_benchmark.bat # Collision and pathfinding performance benchmarks
+tests/test_scripts/run_collision_benchmark.bat          # Collision system performance benchmarks
+tests/test_scripts/run_pathfinder_benchmark.bat         # Pathfinder system performance benchmarks
 
 # Run all tests
 tests/test_scripts/run_all_tests.bat                    # Run all test scripts sequentially
@@ -157,9 +159,9 @@ The `tests/test_scripts/run_all_tests.sh` script provides flexible execution con
 | Option | Description | Duration |
 |--------|-------------|----------|
 | `--core-only` | Run only core functionality tests | ~2-5 minutes |
-| `--benchmarks-only` | Run only performance benchmarks (AI, Event, UI) | ~5-15 minutes |
+| `--benchmarks-only` | Run only performance benchmarks (AI, Event, UI, Collision, Pathfinder) | ~8-20 minutes |
 | `--no-benchmarks` | Run core tests but skip benchmarks | ~2-5 minutes |
-| *(default)* | Run all tests sequentially | ~7-20 minutes |
+| *(default)* | Run all tests sequentially | ~10-25 minutes |
 
 #### Examples
 ```bash
@@ -699,43 +701,70 @@ tests/test_scripts/run_pathfinding_tests.bat [--verbose]
 - Large grids (≤200x200): < 50ms per pathfinding request
 - Iteration limits prevent indefinite stalls
 
-### Collision & Pathfinding Performance Benchmark
+### Collision System Performance Benchmark
 
-Located in `tests/CollisionPathfindingBenchmark.cpp`, this comprehensive benchmark suite measures performance across multiple scenarios:
+Located in `tests/performance/CollisionBenchmark.cpp`, this dedicated benchmark suite measures collision system performance:
 
-#### Benchmark Coverage
+#### Collision Benchmark Coverage
 
-1. **SpatialHash Benchmarks**:
-   - Insertion scaling (100 to 10,000 entities)
-   - Query performance with varying entity densities
-   - Update performance during entity movement
+1. **CollisionManager SOA Storage**: Structure-of-Arrays performance testing
+2. **SpatialHash Performance**: Insertion, query, and update scaling (100 to 10,000 entities)
+3. **Broadphase/Narrowphase Detection**: Collision detection pipeline performance
+4. **Threading Comparison**: Single-threaded vs multi-threaded performance analysis
 
-2. **Pathfinding Benchmarks**:
-   - Grid size scaling (50x50 to 200x200)
-   - Weighted pathfinding with avoidance areas
-   - Iteration limit impact analysis
-
-3. **Data Collection**:
-   - CSV export for detailed analysis
-   - Operations per second metrics
-   - Average time per operation
-   - Success rate tracking
-
-#### Running Performance Benchmarks
+#### Running Collision Benchmarks
 
 ```bash
 # Linux/macOS
-./tests/test_scripts/run_collision_pathfinding_benchmark.sh [--verbose]
+./tests/test_scripts/run_collision_benchmark.sh [--verbose]
 
 # Windows
-tests/test_scripts/run_collision_pathfinding_benchmark.bat [--verbose]
+tests/test_scripts/run_collision_benchmark.bat [--verbose]
 ```
 
-**Estimated Runtime:** 2-5 minutes for complete benchmark suite
+**Estimated Runtime:** 2-3 minutes
+
+**Performance Targets:**
+- SpatialHash insertion: < 50μs per entity
+- SpatialHash query: < 100μs per query
+- SpatialHash update: < 75μs per update
+- Collision detection: < 5ms for 1000 entities
+
+### Pathfinder System Performance Benchmark
+
+Located in `tests/performance/PathfinderBenchmark.cpp`, this dedicated benchmark suite measures pathfinding system performance:
+
+#### Pathfinder Benchmark Coverage
+
+1. **Immediate Pathfinding**: Performance across grid sizes (50x50 to 200x200)
+2. **Async Pathfinding**: Request throughput and latency analysis
+3. **Cache Performance**: Hit rate analysis and speedup measurements
+4. **Path Length Scaling**: Computation time vs path complexity
+5. **Threading Analysis**: Overhead vs benefits comparison
+
+#### Running Pathfinder Benchmarks
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_pathfinder_benchmark.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_pathfinder_benchmark.bat [--verbose]
+```
+
+**Estimated Runtime:** 3-5 minutes
+
+**Performance Targets:**
+- Immediate pathfinding: < 20ms per request
+- Async throughput: > 100 paths/second
+- Cache speedup: > 2x for repeated paths
+- Success rate: > 90% for reasonable requests
 
 **Output Files:**
-- `test_results/collision_pathfinding_benchmark.csv` - Detailed metrics for analysis
-- `test_results/collision_pathfinding_benchmark_results.txt` - Human-readable results
+- `test_results/collision_benchmark.csv` - Collision system detailed metrics
+- `test_results/pathfinder_benchmark.csv` - Pathfinder system detailed metrics
+- `test_results/collision_benchmark_results.txt` - Human-readable collision results
+- `test_results/pathfinder_benchmark_results.txt` - Human-readable pathfinder results
 
 #### Test Status Summary
 
