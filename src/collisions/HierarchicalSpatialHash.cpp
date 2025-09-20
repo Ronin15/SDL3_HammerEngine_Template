@@ -175,10 +175,15 @@ void HierarchicalSpatialHash::clear() {
 
 void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>& outBodyIndices) const {
     outBodyIndices.clear();
-    std::unordered_set<size_t> seenBodies; // Avoid duplicates
+    outBodyIndices.reserve(64); // Reserve for typical query result size
+
+    // PERFORMANCE: Use vector for deduplication - much faster for small sets
+    std::vector<size_t> seenBodies; // Changed from unordered_set
+    seenBodies.reserve(64);
 
     // Get all coarse regions this query overlaps
     std::vector<CoarseCoord> queryRegions = getCoarseCoordsForAABB(area);
+    queryRegions.reserve(9); // Most queries overlap at most 3x3 cells
 
     for (const auto& regionCoord : queryRegions) {
         auto regionIt = m_regions.find(regionCoord);
@@ -195,7 +200,9 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
                 auto fineCellIt = region.fineCells.find(morton);
                 if (fineCellIt != region.fineCells.end()) {
                     for (size_t bodyIndex : fineCellIt->second) {
-                        if (seenBodies.emplace(bodyIndex).second) {
+                        // PERFORMANCE: Linear search in small vector is faster than hash lookup
+                        if (std::find(seenBodies.begin(), seenBodies.end(), bodyIndex) == seenBodies.end()) {
+                            seenBodies.push_back(bodyIndex);
                             outBodyIndices.push_back(bodyIndex);
                         }
                     }
@@ -204,7 +211,9 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
         } else {
             // Query coarse cell directly
             for (size_t bodyIndex : region.bodyIndices) {
-                if (seenBodies.emplace(bodyIndex).second) {
+                // PERFORMANCE: Linear search in small vector is faster than hash lookup
+                if (std::find(seenBodies.begin(), seenBodies.end(), bodyIndex) == seenBodies.end()) {
+                    seenBodies.push_back(bodyIndex);
                     outBodyIndices.push_back(bodyIndex);
                 }
             }
