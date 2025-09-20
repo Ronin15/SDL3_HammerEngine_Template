@@ -142,7 +142,7 @@ private:
 
         // Warm up with camera culling
         for (int i = 0; i < 3; ++i) {
-            manager.updateSOA(0.016f, &camera); // 60 FPS with camera culling
+            manager.updateSOA(0.016f); // 60 FPS with configurable culling
         }
 
         // Benchmark with camera culling
@@ -150,7 +150,7 @@ private:
         auto start = std::chrono::high_resolution_clock::now();
 
         for (int i = 0; i < iterations; ++i) {
-            manager.updateSOA(0.016f, &camera); // Camera-culled collision detection
+            manager.updateSOA(0.016f); // Configurable culling collision detection
         }
 
         auto end = std::chrono::high_resolution_clock::now();
