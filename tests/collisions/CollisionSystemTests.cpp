@@ -150,9 +150,7 @@ BOOST_AUTO_TEST_CASE(TestSpatialHashUpdate)
 
 BOOST_AUTO_TEST_CASE(TestSpatialHashSmallAndLargeMovement)
 {
-    // Configure a higher movement threshold to make small moves a clear no-op
-    const float CELL_SIZE = 32.0f;
-    const float MOVE_THRESHOLD = 6.0f;
+    // Testing small moves within same coarse region vs large moves to different regions
     HierarchicalSpatialHash spatialHash;
 
     size_t id = 42;
@@ -230,7 +228,6 @@ BOOST_AUTO_TEST_CASE(TestSpatialHashPerformance)
     const int NUM_ENTITIES = 1000;
     const int NUM_QUERIES = 100;
     const float WORLD_SIZE = 1000.0f;
-    const float CELL_SIZE = 50.0f;
     
     HierarchicalSpatialHash spatialHash;
     
@@ -298,7 +295,6 @@ BOOST_AUTO_TEST_CASE(TestSpatialHashUpdatePerformance)
     const int NUM_ENTITIES = 500;
     const int NUM_UPDATES = 1000;
     const float WORLD_SIZE = 500.0f;
-    const float CELL_SIZE = 25.0f;
     
     HierarchicalSpatialHash spatialHash;
     
@@ -698,7 +694,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
     BOOST_CHECK_NE(triggerId, triggerId2); // Should be different IDs
 
     // Test that trigger bodies can be queried
-    std::vector<size_t> results;
+    std::vector<EntityID> results;
     CollisionManager::Instance().queryArea(triggerAABB, results);
     BOOST_CHECK(std::find(results.begin(), results.end(), triggerId) != results.end());
 
@@ -795,7 +791,7 @@ BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
     CollisionManager::Instance().addCollisionBodySOA(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
 
     // Body should exist and be queryable
-    std::vector<size_t> results;
+    std::vector<EntityID> results;
     CollisionManager::Instance().queryArea(aabb, results);
     BOOST_CHECK(std::find(results.begin(), results.end(), bodyId) != results.end());
 
@@ -1176,7 +1172,7 @@ BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
     BOOST_CHECK(CollisionManager::Instance().isKinematic(player2Id));
 
     // Test overlap query - both should be found in same area
-    std::vector<size_t> results;
+    std::vector<EntityID> results;
     CollisionManager::Instance().queryArea(overlappingAABB, results);
     BOOST_CHECK_GE(results.size(), 2);
 
@@ -1221,7 +1217,7 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     BOOST_CHECK(!CollisionManager::Instance().isDynamic(triggerId));
 
     // All should be queryable in the same area
-    std::vector<size_t> results;
+    std::vector<EntityID> results;
     CollisionManager::Instance().queryArea(aabb, results);
     BOOST_CHECK_GE(results.size(), 3);
 
