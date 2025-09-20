@@ -186,6 +186,8 @@ private:
     void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) const;
     bool broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
                                ThreadingStats& stats);
+    bool broadphaseSOAAsync(std::vector<std::pair<size_t, size_t>>& indexPairs,
+                           ThreadingStats& stats) const;
     void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
                         std::vector<CollisionInfo>& collisions) const;
     bool narrowphaseSOAThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -232,18 +234,21 @@ private:
             Vector2D position;           // 8 bytes: Current position (center of AABB)
             Vector2D velocity;           // 8 bytes: Current velocity
             Vector2D halfSize;           // 8 bytes: Half-width and half-height
-            uint32_t layers;             // 4 bytes: Layer mask (what layer this body is on)
-            uint32_t collidesWith;       // 4 bytes: Collision mask (what layers this body collides with)
-            float mass;                  // 4 bytes: Mass for physics resolution
-            float friction;              // 4 bytes: Friction coefficient
-            float restitution;           // 4 bytes: Bounce/restitution coefficient
+            uint32_t layers;             // 4 bytes: Layer mask (what layer this body is on) - REVERTED from uint16_t
+            uint32_t collidesWith;       // 4 bytes: Collision mask (what layers this body collides with) - REVERTED from uint16_t
+            float restitution;           // 4 bytes: Bounce/restitution coefficient (moved mass/friction to cold data)
             uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
             uint8_t triggerTag;          // 1 byte: TriggerTag enum for triggers
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
+            mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
 
-            // Padding to exactly 64 bytes for cache alignment (64 - 48 = 16 bytes padding)
-            uint8_t _padding[16];
+            // Cached AABB for performance - exactly 16 bytes (4 floats)
+            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
+
+            // Padding to exactly 64 bytes: we're at 60, need 4 more bytes
+            uint8_t _padding[4];
+
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
 
@@ -301,11 +306,20 @@ private:
             return hotData[index];
         }
 
-        // Compute AABB from hot data
+        // Compute AABB from hot data (with caching)
         AABB computeAABB(size_t index) const {
-            const auto& hot = hotData[index];
-            return AABB(hot.position.getX(), hot.position.getY(),
-                       hot.halfSize.getX(), hot.halfSize.getY());
+            auto& hot = hotData[index];
+            if (hot.aabbDirty) {
+                // Update cached AABB
+                hot.aabbMinX = hot.position.getX() - hot.halfSize.getX();
+                hot.aabbMinY = hot.position.getY() - hot.halfSize.getY();
+                hot.aabbMaxX = hot.position.getX() + hot.halfSize.getX();
+                hot.aabbMaxY = hot.position.getY() + hot.halfSize.getY();
+                hot.aabbDirty = 0;
+            }
+            // CRITICAL FIX: AABB constructor expects (centerX, centerY, halfWidth, halfHeight)
+            // NOT (minX, minY, maxX, maxY)
+            return AABB(hot.position.getX(), hot.position.getY(), hot.halfSize.getX(), hot.halfSize.getY());
         }
     };
 
