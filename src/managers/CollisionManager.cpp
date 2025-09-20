@@ -1540,9 +1540,7 @@ void CollisionManager::syncEntitiesToSOA() {
     const auto& hot = m_storage.hotData[i];
     auto& cold = m_storage.coldData[i];
 
-    // Skip kinematic bodies (they manage their own positions through AI/input)
-    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-    if (bodyType == BodyType::KINEMATIC) continue;
+    // Allow all body types to sync collision-resolved positions
 
     if (auto entity = cold.entityWeak.lock()) {
       entity->setPosition(hot.position);
