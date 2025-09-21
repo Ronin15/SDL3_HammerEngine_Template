@@ -601,7 +601,7 @@ private:
 
     // Threading configuration - OPTIMIZED THRESHOLDS
     std::atomic<bool> m_useThreading{true};
-    std::atomic<size_t> m_threadingThreshold{400}; // PERFORMANCE OPTIMIZATION: Threading at 400 bodies provides meaningful benefit
+    std::atomic<size_t> m_threadingThreshold{300}; // PERFORMANCE OPTIMIZATION: Threading at 400 bodies provides meaningful benefit
     unsigned int m_maxThreads{0};
     std::atomic<size_t> m_lastOptimalWorkerCount{0};
     std::atomic<size_t> m_lastAvailableWorkers{0};

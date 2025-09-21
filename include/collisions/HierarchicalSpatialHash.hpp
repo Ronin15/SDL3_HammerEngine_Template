@@ -11,6 +11,8 @@
 #include <unordered_set>
 #include <cstdint>
 #include <atomic>
+#include <memory>
+#include <array>
 #include <functional>
 #include "collisions/AABB.hpp"
 #include "entities/Entity.hpp"
@@ -123,9 +125,50 @@ private:
     };
     std::unordered_map<size_t, BodyLocation> m_bodyLocations;
 
-    // Performance optimization caches
-    mutable std::unordered_map<size_t, std::vector<size_t>> m_queryCache;
-    mutable std::atomic<uint64_t> m_cacheVersion{0};
+    // Performance optimization caches - lock-free concurrent cache
+    static constexpr size_t CACHE_SIZE = 4096;  // Power of 2 for fast modulo
+
+    struct CacheEntry {
+        std::atomic<size_t> bodyIndex{SIZE_MAX};
+        static constexpr size_t MAX_CANDIDATES = 2048;  // Support very dense areas
+        std::array<size_t, MAX_CANDIDATES> candidates;  // ~16KB per cache entry
+        std::atomic<size_t> candidateCount{0};  // Actual number of valid entries
+        std::atomic<uint64_t> version{0};
+
+        // Custom constructors for array compatibility
+        CacheEntry() = default;
+        CacheEntry(const CacheEntry& other)
+            : bodyIndex(other.bodyIndex.load()),
+              candidates(other.candidates),
+              candidateCount(other.candidateCount.load()),
+              version(other.version.load()) {}
+        CacheEntry(CacheEntry&& other) noexcept
+            : bodyIndex(other.bodyIndex.load()),
+              candidates(std::move(other.candidates)),
+              candidateCount(other.candidateCount.load()),
+              version(other.version.load()) {}
+        CacheEntry& operator=(const CacheEntry& other) {
+            if (this != &other) {
+                bodyIndex.store(other.bodyIndex.load());
+                candidates = other.candidates;
+                candidateCount.store(other.candidateCount.load());
+                version.store(other.version.load());
+            }
+            return *this;
+        }
+        CacheEntry& operator=(CacheEntry&& other) noexcept {
+            if (this != &other) {
+                bodyIndex.store(other.bodyIndex.load());
+                candidates = std::move(other.candidates);
+                candidateCount.store(other.candidateCount.load());
+                version.store(other.version.load());
+            }
+            return *this;
+        }
+    };
+
+    mutable std::vector<CacheEntry> m_queryCache;
+    mutable std::atomic<uint64_t> m_globalVersion{0};
 
     // Thread safety
     mutable std::atomic<bool> m_inThreadedMode{false};

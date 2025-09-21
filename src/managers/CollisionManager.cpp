@@ -1045,6 +1045,65 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   // Prepare thread pools
   const_cast<CollisionManager*>(this)->prepareCollisionBuffers(m_storage.size());
 
+  // Prepare spatial hashes for thread-safe queries
+  m_dynamicSpatialHash.prepareForThreadedQueries();
+  m_staticSpatialHash.prepareForThreadedQueries();
+
+  // PRE-COMPUTE STATIC QUERIES: Query static bodies once for all movable bodies
+  // This leverages caching optimally and avoids synchronization in threads
+  std::vector<std::vector<size_t>> precomputedStatics(movableIndices.size());
+  for (size_t i = 0; i < movableIndices.size(); ++i) {
+    size_t dynamicIdx = movableIndices[i];
+    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
+    if (!dynamicHot.active) {
+      // Store empty vector for inactive bodies to maintain index alignment
+      precomputedStatics[i] = std::vector<size_t>{};
+      continue;
+    }
+
+    AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+    std::vector<size_t> staticCandidates;
+
+    // Use same caching and culling logic as non-threaded broadphase
+    auto& cache = const_cast<CollisionManager*>(this)->m_staticCollisionCache[dynamicIdx];
+    constexpr float POSITION_TOLERANCE = 5.0f;
+    bool positionChanged = !cache.valid ||
+        std::abs(cache.lastPosition.getX() - dynamicHot.position.getX()) > POSITION_TOLERANCE ||
+        std::abs(cache.lastPosition.getY() - dynamicHot.position.getY()) > POSITION_TOLERANCE;
+
+    if (positionChanged) {
+        // Create culling-aware query AABB by intersecting dynamic AABB with culling area
+        AABB cullingAABB(
+            (m_currentCullingArea.minX + m_currentCullingArea.maxX) * 0.5f,
+            (m_currentCullingArea.minY + m_currentCullingArea.maxY) * 0.5f,
+            (m_currentCullingArea.maxX - m_currentCullingArea.minX) * 0.5f,
+            (m_currentCullingArea.maxY - m_currentCullingArea.minY) * 0.5f
+        );
+
+        // Calculate intersection bounds manually
+        float minX = std::max(dynamicAABB.left(), cullingAABB.left());
+        float minY = std::max(dynamicAABB.top(), cullingAABB.top());
+        float maxX = std::min(dynamicAABB.right(), cullingAABB.right());
+        float maxY = std::min(dynamicAABB.bottom(), cullingAABB.bottom());
+
+        // Only query if there's a valid intersection
+        if (minX <= maxX && minY <= maxY) {
+            AABB queryAABB((minX + maxX) * 0.5f, (minY + maxY) * 0.5f,
+                          (maxX - minX) * 0.5f, (maxY - minY) * 0.5f);
+            m_staticSpatialHash.queryRegion(queryAABB, staticCandidates);
+        }
+
+        cache.cachedStaticIndices = staticCandidates;
+        cache.lastPosition = dynamicHot.position;
+        cache.valid = true;
+    } else {
+        // Use cached results
+        staticCandidates = cache.cachedStaticIndices;
+    }
+
+    precomputedStatics[i] = std::move(staticCandidates);
+  }
+
   // Distribute work across threads
   size_t bodiesPerBatch = movableIndices.size() / batchCount;
   size_t remainingBodies = movableIndices.size() % batchCount;
@@ -1060,7 +1119,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, &movableIndices]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, &movableIndices, &precomputedStatics]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
           std::unordered_set<uint64_t> localSeenPairs;
@@ -1094,10 +1153,10 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
               }
             }
 
-            // Movable-vs-static
-            candidates.clear();
-            m_staticSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
-            for (size_t staticIdx : candidates) {
+            // Movable-vs-static using precomputed results (with caching + culling)
+            // Map thread batch index to precomputed array index
+            const auto& staticCandidates = precomputedStatics[i];
+            for (size_t staticIdx : staticCandidates) {
               if (staticIdx >= m_storage.hotData.size()) continue;
 
               const auto& staticHot = m_storage.hotData[staticIdx];
@@ -1147,6 +1206,10 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   stats.availableWorkers = availableWorkers;
   stats.budget = collisionBudget;
   stats.batchCount = batchCount;
+
+  // Finish threaded queries mode
+  m_dynamicSpatialHash.finishThreadedQueries();
+  m_staticSpatialHash.finishThreadedQueries();
 
   return true;
 }
