@@ -36,9 +36,21 @@ public:
     void runBenchmarkSuite() {
         std::cout << "=== Collision System SOA Benchmark Suite (OPTIMIZED) ===" << std::endl;
         std::cout << "Testing optimized SOA collision detection with spatial hash performance" << std::endl;
-        std::cout << "Optimization: O(N) body processing + hierarchical spatial hash" << std::endl;
+        std::cout << "Optimization: O(N) body processing + hierarchical spatial hash + static caching + culling-aware queries" << std::endl;
         std::cout << std::endl;
 
+        // Standard scaling benchmark
+        runScalingBenchmark();
+
+        // New: Static collision caching benchmark
+        runStaticCachingBenchmark();
+
+        // New: Realistic world scenario benchmark
+        runWorldScenarioBenchmark();
+    }
+
+    void runScalingBenchmark() {
+        std::cout << "=== Body Count Scaling Performance ===" << std::endl;
         std::vector<size_t> bodyCounts = {100, 500, 1000, 2000, 5000, 10000};
         std::vector<BenchmarkResult> results;
 
@@ -52,7 +64,70 @@ public:
             std::cout << std::endl;
         }
 
-        printSummary(results);
+        printSummary(results, "Scaling");
+    }
+
+    void runStaticCachingBenchmark() {
+        std::cout << "=== Static Collision Caching Effectiveness ===" << std::endl;
+        std::cout << "Testing cache performance with moving vs stationary bodies" << std::endl;
+        std::cout << std::endl;
+
+        // Test scenario: Many static bodies, few moving bodies (realistic game scenario)
+        constexpr size_t totalBodies = 2000;
+        constexpr size_t movingBodies = 50;   // Only 50 moving bodies
+        constexpr size_t staticBodies = totalBodies - movingBodies;
+
+        std::cout << "Scenario: " << staticBodies << " static + " << movingBodies << " moving bodies" << std::endl;
+
+        // Generate world-like distribution: many statics, few movables
+        auto testBodies = generateWorldScenario(staticBodies, movingBodies);
+
+        // Test cache effectiveness by running multiple frames
+        auto result = benchmarkCacheEffectiveness(testBodies);
+
+        std::cout << "Cache benchmark completed - see collision manager debug output for StaticCulled%" << std::endl;
+        printResult(result);
+        std::cout << std::endl;
+    }
+
+    void runWorldScenarioBenchmark() {
+        std::cout << "=== Realistic World Scenario Performance ===" << std::endl;
+        std::cout << "Testing performance with world-like static body distribution" << std::endl;
+        std::cout << std::endl;
+
+        struct WorldTest {
+            size_t staticBodies;
+            size_t movableBodies;
+            std::string description;
+        };
+
+        std::vector<WorldTest> worldTests = {
+            {500, 50, "Small area (500 static + 50 NPCs)"},
+            {2000, 100, "Medium area (2000 static + 100 NPCs)"},
+            {5000, 200, "Large area (5000 static + 200 NPCs)"},
+            {10000, 300, "Massive area (10000 static + 300 NPCs)"}
+        };
+
+        std::vector<BenchmarkResult> results;
+
+        for (const auto& test : worldTests) {
+            std::cout << "Testing " << test.description << "..." << std::endl;
+
+            auto testBodies = generateWorldScenario(test.staticBodies, test.movableBodies);
+            auto result = benchmarkSOASystem(testBodies);
+
+            BenchmarkResult benchResult{};
+            benchResult.bodyCount = test.staticBodies + test.movableBodies;
+            benchResult.soaTimeMs = std::get<0>(result);
+            benchResult.collisionCount = std::get<1>(result);
+            benchResult.pairCount = std::get<2>(result);
+
+            results.push_back(benchResult);
+            printResult(benchResult);
+            std::cout << std::endl;
+        }
+
+        printSummary(results, "World Scenario");
     }
 
 private:
@@ -120,6 +195,115 @@ private:
         return bodies;
     }
 
+    // Generate realistic world scenario with mostly static bodies (like world tiles)
+    std::vector<TestBody> generateWorldScenario(size_t staticCount, size_t movableCount) {
+        std::vector<TestBody> bodies;
+        bodies.reserve(staticCount + movableCount);
+
+        // Create grid-like static bodies (world tiles, buildings, etc.)
+        float tileSize = 32.0f;
+        size_t tilesPerRow = static_cast<size_t>(std::sqrt(staticCount)) + 1;
+
+        for (size_t i = 0; i < staticCount; ++i) {
+            TestBody body{};
+            // Grid layout with some randomness for realistic world
+            float gridX = (i % tilesPerRow) * tileSize;
+            float gridY = (i / tilesPerRow) * tileSize;
+            body.position = Vector2D(gridX + posDist(rng) * 0.1f, gridY + posDist(rng) * 0.1f);
+            body.velocity = Vector2D(0.0f, 0.0f); // Static bodies don't move
+            body.halfSize = Vector2D(tileSize * 0.5f, tileSize * 0.5f);
+            body.type = BodyType::STATIC;
+            body.layer = CollisionLayer::Layer_Environment;
+            body.collidesWith = 0xFFFFFFFFu;
+            bodies.push_back(body);
+        }
+
+        // Create movable bodies (NPCs, player, etc.) scattered in the world
+        for (size_t i = 0; i < movableCount; ++i) {
+            TestBody body{};
+            // Position movables within the static world area
+            float worldSize = tilesPerRow * tileSize;
+            std::uniform_real_distribution<float> worldPosDist{0.0f, worldSize};
+            body.position = Vector2D(worldPosDist(rng), worldPosDist(rng));
+            body.velocity = Vector2D(velDist(rng), velDist(rng));
+            body.halfSize = Vector2D(sizeDist(rng), sizeDist(rng));
+
+            // Mix of dynamic and kinematic movables
+            body.type = (i < movableCount * 0.8f) ? BodyType::KINEMATIC : BodyType::DYNAMIC;
+            body.layer = CollisionLayer::Layer_Default;
+            body.collidesWith = 0xFFFFFFFFu;
+            bodies.push_back(body);
+        }
+
+        return bodies;
+    }
+
+    // Test cache effectiveness by simulating multiple frames with minimal movement
+    BenchmarkResult benchmarkCacheEffectiveness(const std::vector<TestBody>& testBodies) {
+        auto& manager = CollisionManager::Instance();
+
+        // Initialize ThreadSystem
+        static bool threadSystemInitialized = false;
+        if (!threadSystemInitialized) {
+            HammerEngine::ThreadSystem::Instance().init(8);
+            threadSystemInitialized = true;
+        }
+
+        // Clear and setup
+        if (manager.getBodyCount() > 0) {
+            manager.prepareForStateTransition();
+        }
+        manager.prepareCollisionBuffers(testBodies.size());
+
+        // Add test bodies
+        std::vector<EntityID> entityIds;
+        entityIds.reserve(testBodies.size());
+
+        for (size_t i = 0; i < testBodies.size(); ++i) {
+            EntityID id = static_cast<EntityID>(i + 1);
+            const auto& body = testBodies[i];
+            manager.addCollisionBodySOA(id, body.position, body.halfSize,
+                                       body.type, body.layer, body.collidesWith);
+            entityIds.push_back(id);
+        }
+
+        // Simulate cache effectiveness: most bodies don't move much
+        constexpr int cacheTestFrames = 100;
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (int frame = 0; frame < cacheTestFrames; ++frame) {
+            // Simulate minimal movement for some bodies (to test cache invalidation)
+            if (frame % 10 == 0) { // Every 10 frames, move a few bodies slightly
+                for (size_t i = 0; i < std::min<size_t>(10, entityIds.size()); ++i) {
+                    Vector2D smallMove(2.0f, 2.0f); // Small movement within cache tolerance
+                    Vector2D currentPos = testBodies[i].position;
+                    manager.updateCollisionBodyPositionSOA(entityIds[i], currentPos + smallMove);
+                }
+            }
+
+            manager.updateSOA(0.016f); // Pure collision detection - uses production code paths
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+
+        // Get final performance stats
+        const auto& perfStats = manager.getPerfStats();
+
+        // Clean up
+        for (EntityID id : entityIds) {
+            manager.removeCollisionBodySOA(id);
+        }
+
+        double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
+
+        BenchmarkResult result{};
+        result.bodyCount = testBodies.size();
+        result.soaTimeMs = totalMs / cacheTestFrames;
+        result.collisionCount = perfStats.lastCollisions;
+        result.pairCount = perfStats.lastPairs;
+
+        return result;
+    }
 
     std::tuple<double, size_t, size_t> benchmarkSOASystem(const std::vector<TestBody>& testBodies) {
         auto& manager = CollisionManager::Instance();
@@ -191,8 +375,8 @@ private:
                   << (result.pairCount > 0 ? (100.0 * result.collisionCount / result.pairCount) : 0.0) << "%" << std::endl;
     }
 
-    void printSummary(const std::vector<BenchmarkResult>& results) {
-        std::cout << "=== SOA Player-Centered Culling Performance Summary ===" << std::endl;
+    void printSummary(const std::vector<BenchmarkResult>& results, const std::string& benchmarkType = "SOA") {
+        std::cout << "=== " << benchmarkType << " Performance Summary ===" << std::endl;
         std::cout << std::left << std::setw(10) << "Bodies"
                   << std::setw(12) << "SOA (ms)"
                   << std::setw(10) << "Pairs"
