@@ -17,12 +17,12 @@ HierarchicalSpatialHash::HierarchicalSpatialHash() {
     // Reserve reasonable initial capacity
     m_regions.reserve(64);
     m_bodyLocations.reserve(1024);
-    m_queryCache.reserve(256);
+
+    // Initialize cache with fixed size
+    m_queryCache.resize(CACHE_SIZE);
 }
 
 void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
-    assert(!m_inThreadedMode.load(std::memory_order_acquire) &&
-           "Cannot insert during threaded queries");
 
     // Get the coarse regions this body overlaps
     std::vector<CoarseCoord> regions = getCoarseCoordsForAABB(aabb);
@@ -55,8 +55,6 @@ void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
 }
 
 void HierarchicalSpatialHash::remove(size_t bodyIndex) {
-    assert(!m_inThreadedMode.load(std::memory_order_acquire) &&
-           "Cannot remove during threaded queries");
 
     auto locationIt = m_bodyLocations.find(bodyIndex);
     if (locationIt == m_bodyLocations.end()) {
@@ -87,8 +85,6 @@ void HierarchicalSpatialHash::remove(size_t bodyIndex) {
 }
 
 void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, const AABB& newAABB) {
-    assert(!m_inThreadedMode.load(std::memory_order_acquire) &&
-           "Cannot update during threaded queries");
 
     // Check movement threshold to avoid unnecessary work
     if (!hasMovedSignificantly(oldAABB, newAABB)) {
@@ -165,8 +161,6 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
 }
 
 void HierarchicalSpatialHash::clear() {
-    assert(!m_inThreadedMode.load(std::memory_order_acquire) &&
-           "Cannot clear during threaded queries");
 
     m_regions.clear();
     m_bodyLocations.clear();
@@ -242,8 +236,6 @@ void HierarchicalSpatialHash::queryBroadphase(size_t queryBodyIndex, const AABB&
 // ========== Batch Operations ==========
 
 void HierarchicalSpatialHash::insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies) {
-    assert(!m_inThreadedMode.load(std::memory_order_acquire) &&
-           "Cannot insert batch during threaded queries");
 
     // Pre-reserve capacity
     m_bodyLocations.reserve(m_bodyLocations.size() + bodies.size());
@@ -254,8 +246,6 @@ void HierarchicalSpatialHash::insertBatch(const std::vector<std::pair<size_t, AA
 }
 
 void HierarchicalSpatialHash::updateBatch(const std::vector<std::tuple<size_t, AABB, AABB>>& updates) {
-    assert(!m_inThreadedMode.load(std::memory_order_acquire) &&
-           "Cannot update batch during threaded queries");
 
     for (const auto& updateInfo : updates) {
         update(std::get<0>(updateInfo), std::get<1>(updateInfo), std::get<2>(updateInfo));
@@ -471,24 +461,46 @@ void HierarchicalSpatialHash::unsubdivideRegion(Region& region) {
 }
 
 void HierarchicalSpatialHash::invalidateQueryCache() const {
-    m_queryCache.clear();
-    m_cacheVersion.fetch_add(1, std::memory_order_relaxed);
+    // Increment global version to invalidate all cached entries
+    m_globalVersion.fetch_add(1, std::memory_order_release);
 }
 
 bool HierarchicalSpatialHash::getCachedQuery(size_t bodyIndex, std::vector<size_t>& outCandidates) const {
-    auto cacheIt = m_queryCache.find(bodyIndex);
-    if (cacheIt != m_queryCache.end()) {
-        outCandidates = cacheIt->second;
-        return true;
+    // Hash the body index to a cache slot
+    size_t slot = bodyIndex & (CACHE_SIZE - 1);
+
+    // Load the entry atomically
+    size_t cachedIndex = m_queryCache[slot].bodyIndex.load(std::memory_order_acquire);
+    if (cachedIndex == bodyIndex) {
+        // Check version to ensure data is still valid
+        uint64_t entryVersion = m_queryCache[slot].version.load(std::memory_order_acquire);
+        if (entryVersion == m_globalVersion.load(std::memory_order_acquire)) {
+            size_t count = m_queryCache[slot].candidateCount.load(std::memory_order_acquire);
+            outCandidates.clear();
+            outCandidates.reserve(count);
+            for (size_t i = 0; i < count; ++i) {
+                outCandidates.push_back(m_queryCache[slot].candidates[i]);
+            }
+            return true;
+        }
     }
     return false;
 }
 
 void HierarchicalSpatialHash::cacheQuery(size_t bodyIndex, const std::vector<size_t>& candidates) const {
-    // Only cache if not in threaded mode (to avoid race conditions)
-    if (!m_inThreadedMode.load(std::memory_order_acquire)) {
-        m_queryCache[bodyIndex] = candidates;
+    // Hash to slot
+    size_t slot = bodyIndex & (CACHE_SIZE - 1);
+
+    // Copy to fixed array (up to MAX_CANDIDATES)
+    size_t count = std::min(candidates.size(), CacheEntry::MAX_CANDIDATES);
+    for (size_t i = 0; i < count; ++i) {
+        m_queryCache[slot].candidates[i] = candidates[i];
     }
+
+    // Update metadata atomically
+    m_queryCache[slot].candidateCount.store(count, std::memory_order_release);
+    m_queryCache[slot].version.store(m_globalVersion.load(std::memory_order_relaxed), std::memory_order_release);
+    m_queryCache[slot].bodyIndex.store(bodyIndex, std::memory_order_release);
 }
 
 // ========== Morton Code Utilities ==========
