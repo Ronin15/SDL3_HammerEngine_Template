@@ -137,8 +137,7 @@ public:
     void prepareCollisionBuffers(size_t bodyCount);
 
     // SOA UPDATE HELPER METHODS
-    void syncSpatialHashesWithActiveIndices(); // Performance-optimized version
-    void syncSpatialHashesWithSOA(); // Legacy version
+    void syncSpatialHashesWithActiveIndices();
     void resolveSOA(const CollisionInfo& collision);
     void syncEntitiesToSOA();
     void processTriggerEventsSOA();
@@ -219,7 +218,7 @@ private:
     void subscribeWorldEvents(); // hook to world events
 
     // Collision culling configuration - adjustable constants
-    static constexpr float COLLISION_CULLING_BUFFER = 600.0f;      // Buffer around culling area (1200x1200 total area)
+    static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
 
     // Camera culling support
     struct CullingArea {
@@ -592,7 +591,7 @@ private:
 
     // Threading configuration - OPTIMIZED THRESHOLDS
     std::atomic<bool> m_useThreading{true};
-    std::atomic<size_t> m_threadingThreshold{500}; // PERFORMANCE OPTIMIZATION: Threading at 500+ bodies provides meaningful benefit
+    std::atomic<size_t> m_threadingThreshold{400}; // PERFORMANCE OPTIMIZATION: Threading at 400 bodies provides meaningful benefit
     unsigned int m_maxThreads{0};
     std::atomic<size_t> m_lastOptimalWorkerCount{0};
     std::atomic<size_t> m_lastAvailableWorkers{0};
