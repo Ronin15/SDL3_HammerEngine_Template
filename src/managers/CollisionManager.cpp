@@ -848,71 +848,37 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 }
 
 
-// Camera-culled version of buildActiveIndicesSOA
+// Optimized version of buildActiveIndicesSOA - O(N) instead of O(N²)
 void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
-  // Build indices of active bodies within camera culling area
+  // Build indices of active bodies within culling area
   auto& pools = m_collisionPool;
   pools.activeIndices.clear();
   pools.dynamicIndices.clear();
   pools.staticIndices.clear();
 
-  // SMART CULLING: Only process entities that actually need collision checks
-  // Skip isolated entities that have nothing to collide with
-
-  static constexpr float COLLISION_RANGE = 150.0f; // Maximum collision interaction distance
-  const float collisionRangeSq = COLLISION_RANGE * COLLISION_RANGE;
+  // OPTIMIZATION: Simple linear pass - let spatial hash handle proximity efficiently
+  // The previous O(N²) "smart culling" was slower than just processing all active bodies
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
     if (!hot.active) continue;
 
-    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-    bool shouldInclude = false;
-
-    // Check if this entity has any nearby entities to potentially collide with
-    for (size_t j = 0; j < m_storage.hotData.size(); ++j) {
-      if (i == j) continue; // Skip self
-
-      const auto& otherHot = m_storage.hotData[j];
-      if (!otherHot.active) continue;
-
-      BodyType otherType = static_cast<BodyType>(otherHot.bodyType);
-
-      // Calculate distance between entities
-      float dx = hot.position.getX() - otherHot.position.getX();
-      float dy = hot.position.getY() - otherHot.position.getY();
-      float distSq = dx * dx + dy * dy;
-
-      if (distSq <= collisionRangeSq) {
-        // Found a nearby entity - check if they should interact
-        bool shouldInteract = false;
-
-        // NPCs should interact with statics (walls) and other NPCs/players
-        if ((bodyType == BodyType::DYNAMIC || bodyType == BodyType::KINEMATIC)) {
-          shouldInteract = true; // Moving entities interact with everything nearby
-        }
-        // Statics should interact with NPCs/players
-        else if (bodyType == BodyType::STATIC &&
-                 (otherType == BodyType::DYNAMIC || otherType == BodyType::KINEMATIC)) {
-          shouldInteract = true; // Statics interact with moving entities
-        }
-
-        if (shouldInteract) {
-          shouldInclude = true;
-          break; // Found at least one interaction
-        }
+    // Optional: Apply culling area bounds if specified
+    if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
+      if (!cullingArea.contains(hot.position.getX(), hot.position.getY())) {
+        continue; // Skip bodies outside culling area
       }
     }
 
-    if (shouldInclude) {
-      pools.activeIndices.push_back(i);
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
 
-      // Categorize by body type for optimized processing
-      if (bodyType == BodyType::STATIC) {
-        pools.staticIndices.push_back(i);
-      } else {
-        pools.dynamicIndices.push_back(i);
-      }
+    pools.activeIndices.push_back(i);
+
+    // Categorize by body type for optimized processing
+    if (bodyType == BodyType::STATIC) {
+      pools.staticIndices.push_back(i);
+    } else {
+      pools.dynamicIndices.push_back(i);
     }
   }
 }
@@ -946,11 +912,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     if (!dynamicHot.active) continue;
 
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
-    const Vector2D& dynPos = dynamicHot.position;
-
-    // OPTIMIZATION: Early distance culling - only check entities within reasonable range
-    constexpr float MAX_COLLISION_DISTANCE = 200.0f;
-    const float maxDistSq = MAX_COLLISION_DISTANCE * MAX_COLLISION_DISTANCE;
 
     // 1. Dynamic-vs-dynamic collisions using spatial hash (eliminates N² complexity)
     std::vector<size_t> dynamicCandidates;
@@ -1170,18 +1131,20 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
 
     if (!hotA.active || !hotB.active) continue;
 
-    // Compute AABBs from hot data
-    AABB aabbA = m_storage.computeAABB(aIdx);
-    AABB aabbB = m_storage.computeAABB(bIdx);
+    // Get cached AABB bounds directly (more efficient than creating AABB objects)
+    float minXA, minYA, maxXA, maxYA;
+    float minXB, minYB, maxXB, maxYB;
+    m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
+    m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
 
-    // AABB intersection test
-    if (!aabbA.intersects(aabbB)) continue;
+    // AABB intersection test using cached bounds (avoids object creation)
+    if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
 
-    // Compute collision details
-    float dxLeft = aabbB.right() - aabbA.left();
-    float dxRight = aabbA.right() - aabbB.left();
-    float dyTop = aabbB.bottom() - aabbA.top();
-    float dyBottom = aabbA.bottom() - aabbB.top();
+    // Compute collision details using cached bounds
+    float dxLeft = maxXB - minXA;   // B.right - A.left
+    float dxRight = maxXA - minXB;  // A.right - B.left
+    float dyTop = maxYB - minYA;    // B.bottom - A.top
+    float dyBottom = maxYA - minYB; // A.bottom - B.top
 
     float minPen = dxLeft;
     Vector2D normal(-1, 0);
@@ -1271,16 +1234,20 @@ bool CollisionManager::narrowphaseSOAThreaded(const std::vector<std::pair<size_t
 
             if (!hotA.active || !hotB.active) continue;
 
-            AABB aabbA = m_storage.computeAABB(aIdx);
-            AABB aabbB = m_storage.computeAABB(bIdx);
+            // Get cached AABB bounds directly (more efficient than creating AABB objects)
+            float minXA, minYA, maxXA, maxYA;
+            float minXB, minYB, maxXB, maxYB;
+            m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
+            m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
 
-            if (!aabbA.intersects(aabbB)) continue;
+            // AABB intersection test using cached bounds
+            if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
 
-            // Compute penetration and normal
-            float dxLeft = aabbB.right() - aabbA.left();
-            float dxRight = aabbA.right() - aabbB.left();
-            float dyTop = aabbB.bottom() - aabbA.top();
-            float dyBottom = aabbA.bottom() - aabbB.top();
+            // Compute penetration and normal using cached bounds
+            float dxLeft = maxXB - minXA;   // B.right - A.left
+            float dxRight = maxXA - minXB;  // A.right - B.left
+            float dyTop = maxYB - minYA;    // B.bottom - A.top
+            float dyBottom = maxYA - minYB; // A.bottom - B.top
 
             float minPen = dxLeft;
             Vector2D normal(-1, 0);
@@ -1457,15 +1424,16 @@ void CollisionManager::updateSOA(float dt) {
 // ========== SOA UPDATE HELPER METHODS ==========
 
 void CollisionManager::syncSpatialHashesWithSOA() {
-  // MAJOR PERFORMANCE OPTIMIZATION: Skip expensive spatial hash rebuild
-  // In benchmark scenarios (static bodies), spatial hash is stable
-  // Only rebuild when bodies are actually added/removed, not every frame
+  // OPTIMIZED SPATIAL HASH UPDATE: Update positions incrementally instead of full rebuild
 
   static size_t lastBodyCount = 0;
   size_t currentBodyCount = m_storage.hotData.size();
 
-  // Only rebuild when body count changes (add/remove operations)
-  if (currentBodyCount != lastBodyCount) {
+  // Check if we need a full rebuild (body count changed)
+  bool needsFullRebuild = (currentBodyCount != lastBodyCount);
+
+  if (needsFullRebuild) {
+    // Full rebuild when bodies are added/removed
     m_dynamicSpatialHash.clear();
 
     for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
@@ -1480,10 +1448,21 @@ void CollisionManager::syncSpatialHashesWithSOA() {
     }
 
     lastBodyCount = currentBodyCount;
-  }
+  } else {
+    // Incremental update: Only update bodies with dirty AABBs (moved positions)
+    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+      const auto& hot = m_storage.hotData[i];
+      if (!hot.active || !hot.aabbDirty) continue;
 
-  // For moving bodies in actual gameplay, we'd update positions in spatial hash
-  // but for benchmark with mostly static bodies, this optimization is huge
+      BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+      if (bodyType == BodyType::DYNAMIC || bodyType == BodyType::KINEMATIC) {
+        // Remove old position and insert new position
+        m_dynamicSpatialHash.remove(i);
+        AABB aabb = m_storage.computeAABB(i);
+        m_dynamicSpatialHash.insert(i, aabb);
+      }
+    }
+  }
 
   // Static hash is managed separately via rebuildStaticSpatialHash()
 }

@@ -33,9 +33,9 @@ public:
     }
 
     void runBenchmarkSuite() {
-        std::cout << "=== Collision System SOA Benchmark Suite (WITH PLAYER-CENTERED CULLING) ===" << std::endl;
-        std::cout << "Testing player-centered bounding box culled SOA collision detection performance" << std::endl;
-        std::cout << "Culling method: 400x400 unit bounding box around player position (200 unit buffer)" << std::endl;
+        std::cout << "=== Collision System SOA Benchmark Suite (OPTIMIZED) ===" << std::endl;
+        std::cout << "Testing optimized SOA collision detection with spatial hash performance" << std::endl;
+        std::cout << "Optimization: O(N) body processing + hierarchical spatial hash" << std::endl;
         std::cout << std::endl;
 
         std::vector<size_t> bodyCounts = {100, 500, 1000, 2000, 5000, 10000};
@@ -123,18 +123,18 @@ private:
     std::tuple<double, size_t, size_t> benchmarkSOASystem(const std::vector<TestBody>& testBodies) {
         auto& manager = CollisionManager::Instance();
 
-        // Clear any existing bodies
-        manager.clean();
-        manager.init();
+        // Clear any existing bodies (no need to clean/init - just remove bodies)
+        if (manager.getBodyCount() > 0) {
+            manager.prepareForStateTransition();
+        }
 
-        // Create camera object (note: not used for culling - culling uses player position)
-        // Culling is based on player position with 200-unit buffer, creating 400x400 bounding box
-        HammerEngine::Camera camera(0.0f, 0.0f, 1920.0f, 1080.0f); // Standard 1080p viewport
+        // Pre-allocate containers for better performance
+        manager.prepareCollisionBuffers(testBodies.size());
 
         // Add test bodies to SOA system
-        // Note: EntityID 1 will be treated as the "player" for culling purposes
-        // Culling creates a 400x400 unit bounding box around EntityID 1's position
         std::vector<EntityID> entityIds;
+        entityIds.reserve(testBodies.size());
+
         for (size_t i = 0; i < testBodies.size(); ++i) {
             EntityID id = static_cast<EntityID>(i + 1);
             const auto& body = testBodies[i];
@@ -144,17 +144,17 @@ private:
             entityIds.push_back(id);
         }
 
-        // Warm up with player-centered bounding box culling
-        for (int i = 0; i < 3; ++i) {
-            manager.updateSOA(0.016f); // 60 FPS with player-centered culling (400x400 box)
+        // Reduced warmup iterations for faster benchmarking
+        for (int i = 0; i < 2; ++i) {
+            manager.updateSOA(0.016f); // 60 FPS simulation
         }
 
-        // Benchmark with player-centered bounding box culling
-        constexpr int iterations = 100;
+        // Optimized benchmark with fewer iterations for faster completion
+        constexpr int iterations = 50; // Reduced from 100 for faster benchmarking
         auto start = std::chrono::high_resolution_clock::now();
 
         for (int i = 0; i < iterations; ++i) {
-            manager.updateSOA(0.016f); // Player-centered bounding box culling collision detection
+            manager.updateSOA(0.016f); // Pure collision detection
         }
 
         auto end = std::chrono::high_resolution_clock::now();

@@ -306,20 +306,38 @@ private:
             return hotData[index];
         }
 
-        // Compute AABB from hot data (with caching)
-        AABB computeAABB(size_t index) const {
+        // Update cached AABB bounds if dirty
+        void updateCachedAABB(size_t index) const {
             auto& hot = hotData[index];
             if (hot.aabbDirty) {
-                // Update cached AABB
                 hot.aabbMinX = hot.position.getX() - hot.halfSize.getX();
                 hot.aabbMinY = hot.position.getY() - hot.halfSize.getY();
                 hot.aabbMaxX = hot.position.getX() + hot.halfSize.getX();
                 hot.aabbMaxY = hot.position.getY() + hot.halfSize.getY();
                 hot.aabbDirty = 0;
             }
-            // CRITICAL FIX: AABB constructor expects (centerX, centerY, halfWidth, halfHeight)
-            // NOT (minX, minY, maxX, maxY)
-            return AABB(hot.position.getX(), hot.position.getY(), hot.halfSize.getX(), hot.halfSize.getY());
+        }
+
+        // Get cached AABB bounds directly (more efficient for simple tests)
+        void getCachedAABBBounds(size_t index, float& minX, float& minY, float& maxX, float& maxY) const {
+            updateCachedAABB(index);
+            const auto& hot = hotData[index];
+            minX = hot.aabbMinX;
+            minY = hot.aabbMinY;
+            maxX = hot.aabbMaxX;
+            maxY = hot.aabbMaxY;
+        }
+
+        // Compute AABB from hot data (with caching)
+        AABB computeAABB(size_t index) const {
+            updateCachedAABB(index);
+            const auto& hot = hotData[index];
+            // Use cached values to construct AABB - center and half-size from cached bounds
+            float centerX = (hot.aabbMinX + hot.aabbMaxX) * 0.5f;
+            float centerY = (hot.aabbMinY + hot.aabbMaxY) * 0.5f;
+            float halfWidth = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
+            float halfHeight = (hot.aabbMaxY - hot.aabbMinY) * 0.5f;
+            return AABB(centerX, centerY, halfWidth, halfHeight);
         }
     };
 
@@ -383,13 +401,29 @@ private:
         std::vector<ThreadLocalPool> threadPools;
 
         void ensureCapacity(size_t bodyCount) {
-            size_t expectedPairs = bodyCount * 4; // Conservative estimate
+            // OPTIMIZED ESTIMATES: Based on actual benchmark results
+            // 10k bodies → ~1.4k pairs → ~760 collisions
+            // More realistic estimates reduce memory waste and improve cache performance
+
+            size_t expectedPairs;
+            if (bodyCount < 1000) {
+                expectedPairs = bodyCount; // Small body counts have fewer pairs
+            } else if (bodyCount < 5000) {
+                expectedPairs = bodyCount / 2; // Medium body counts scale sub-linearly
+            } else {
+                expectedPairs = bodyCount / 8; // Large body counts benefit from spatial culling
+            }
+
+            size_t expectedCollisions = expectedPairs / 2; // About 50% pair→collision ratio observed
+
             if (pairBuffer.capacity() < expectedPairs) {
                 pairBuffer.reserve(expectedPairs);
-                candidateBuffer.reserve(bodyCount * 2);
-                collisionBuffer.reserve(expectedPairs / 4);
-                dynamicCandidates.reserve(32);    // Fewer dynamic bodies expected
-                staticCandidates.reserve(128);     // More static bodies expected
+                candidateBuffer.reserve(bodyCount / 2);
+                collisionBuffer.reserve(expectedCollisions);
+
+                // Spatial hash query results scale with local density, not total body count
+                dynamicCandidates.reserve(std::min(static_cast<size_t>(64), bodyCount / 10));
+                staticCandidates.reserve(std::min(static_cast<size_t>(256), bodyCount / 5));
 
                 // SOA-specific capacity
                 activeIndices.reserve(bodyCount);
