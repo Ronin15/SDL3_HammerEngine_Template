@@ -367,6 +367,9 @@ private:
     };
     std::unordered_map<size_t, StaticCollisionCache> m_staticCollisionCache;
 
+    // Current culling area for spatial queries
+    mutable CullingArea m_currentCullingArea;
+
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering

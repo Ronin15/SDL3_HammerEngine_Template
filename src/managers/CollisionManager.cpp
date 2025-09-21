@@ -850,6 +850,9 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
   // Build indices of active bodies within culling area
   auto& pools = m_collisionPool;
+
+  // Store current culling area for use in broadphase queries
+  m_currentCullingArea = cullingArea;
   pools.activeIndices.clear();
   pools.movableIndices.clear();
   pools.staticIndices.clear();
@@ -935,7 +938,28 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     if (positionChanged) {
         // Position changed significantly or cache invalid - query and update cache
-        m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
+        // Create culling-aware query AABB by intersecting dynamic AABB with culling area
+        AABB cullingAABB(
+            (m_currentCullingArea.minX + m_currentCullingArea.maxX) * 0.5f,
+            (m_currentCullingArea.minY + m_currentCullingArea.maxY) * 0.5f,
+            (m_currentCullingArea.maxX - m_currentCullingArea.minX) * 0.5f,
+            (m_currentCullingArea.maxY - m_currentCullingArea.minY) * 0.5f
+        );
+
+        // Query only within the intersection of dynamic AABB and culling area
+        // Calculate intersection bounds manually
+        float minX = std::max(dynamicAABB.left(), cullingAABB.left());
+        float minY = std::max(dynamicAABB.top(), cullingAABB.top());
+        float maxX = std::min(dynamicAABB.right(), cullingAABB.right());
+        float maxY = std::min(dynamicAABB.bottom(), cullingAABB.bottom());
+
+        // Only query if there's a valid intersection
+        if (minX <= maxX && minY <= maxY) {
+            AABB queryAABB((minX + maxX) * 0.5f, (minY + maxY) * 0.5f,
+                          (maxX - minX) * 0.5f, (maxY - minY) * 0.5f);
+            m_staticSpatialHash.queryRegion(queryAABB, staticCandidates);
+        }
+
         cache.cachedStaticIndices = staticCandidates;
         cache.lastPosition = dynamicHot.position;
         cache.valid = true;
