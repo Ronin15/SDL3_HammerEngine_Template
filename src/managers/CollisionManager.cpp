@@ -886,7 +886,7 @@ void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
 
 // ========== NEW SOA-BASED BROADPHASE IMPLEMENTATION ==========
 
-void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) const {
+void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) {
   indexPairs.clear();
 
   const auto& pools = m_collisionPool;
@@ -923,9 +923,26 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       indexPairs.emplace_back(a, b);
     }
 
-    // 2. Query static spatial hash for dynamic-vs-static collisions
+    // 2. Query static spatial hash for dynamic-vs-static collisions (with caching)
     std::vector<size_t> staticCandidates;
-    m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
+
+    // Check if we can use cached static collision results
+    auto& cache = m_staticCollisionCache[dynamicIdx];
+    constexpr float POSITION_TOLERANCE = 5.0f;
+    bool positionChanged = !cache.valid ||
+        std::abs(cache.lastPosition.getX() - dynamicHot.position.getX()) > POSITION_TOLERANCE ||
+        std::abs(cache.lastPosition.getY() - dynamicHot.position.getY()) > POSITION_TOLERANCE;
+
+    if (positionChanged) {
+        // Position changed significantly or cache invalid - query and update cache
+        m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
+        cache.cachedStaticIndices = staticCandidates;
+        cache.lastPosition = dynamicHot.position;
+        cache.valid = true;
+    } else {
+        // Use cached results - no need to query static spatial hash
+        staticCandidates = cache.cachedStaticIndices;
+    }
 
     for (size_t staticIdx : staticCandidates) {
       if (staticIdx >= m_storage.hotData.size()) continue;
@@ -1439,6 +1456,9 @@ void CollisionManager::syncSpatialHashesWithActiveIndices() {
 void CollisionManager::rebuildStaticSpatialHash() {
   // Only called when static objects are added/removed
   m_staticSpatialHash.clear();
+
+  // Clear static collision cache since static bodies have changed
+  m_staticCollisionCache.clear();
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
