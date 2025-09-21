@@ -13,6 +13,7 @@
 #include "collisions/CollisionBody.hpp"
 #include "utils/Vector2D.hpp"
 #include "utils/Camera.hpp"
+#include "core/ThreadSystem.hpp"
 
 class CollisionBenchmark {
 public:
@@ -122,6 +123,13 @@ private:
 
     std::tuple<double, size_t, size_t> benchmarkSOASystem(const std::vector<TestBody>& testBodies) {
         auto& manager = CollisionManager::Instance();
+
+        // Initialize ThreadSystem for threading tests (like other benchmarks)
+        static bool threadSystemInitialized = false;
+        if (!threadSystemInitialized) {
+            HammerEngine::ThreadSystem::Instance().init(8); // 8 worker threads like PathfinderBenchmark
+            threadSystemInitialized = true;
+        }
 
         // Clear any existing bodies (no need to clean/init - just remove bodies)
         if (manager.getBodyCount() > 0) {
