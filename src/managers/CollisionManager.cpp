@@ -889,10 +889,6 @@ void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
 void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) const {
   indexPairs.clear();
 
-  // Build active indices for this frame (with configurable culling)
-  CullingArea cullingArea = createDefaultCullingArea();
-  const_cast<CollisionManager*>(this)->buildActiveIndicesSOA(cullingArea);
-
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
 
@@ -921,8 +917,10 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       const auto& candidateHot = m_storage.hotData[candidateIdx];
       if (!candidateHot.active || (dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
 
-      // Add pair directly (spatial hash already filters by proximity)
-      indexPairs.emplace_back(dynamicIdx, candidateIdx);
+      // Ensure consistent ordering for dynamic-vs-dynamic pairs
+      size_t a = std::min(dynamicIdx, candidateIdx);
+      size_t b = std::max(dynamicIdx, candidateIdx);
+      indexPairs.emplace_back(a, b);
     }
 
     // 2. Query static spatial hash for dynamic-vs-static collisions
@@ -949,10 +947,6 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     broadphaseSOA(indexPairs);
     return false;
   }
-
-  // Build active indices (with configurable culling)
-  CullingArea cullingArea = createDefaultCullingArea();
-  const_cast<CollisionManager*>(this)->buildActiveIndicesSOA(cullingArea);
 
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
@@ -1085,15 +1079,25 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   for (auto& future : futures) {
     auto localPairs = future.get();
     for (const auto& pair : localPairs) {
-      // For dynamic-vs-static, no deduplication needed
-      // For dynamic-vs-dynamic, deduplicate using global set
-      if (pair.first < pair.second) { // Dynamic-vs-dynamic (already deduplicated locally)
+      // Check body types to determine collision type
+      bool firstIsStatic = false, secondIsStatic = false;
+      if (pair.first < m_storage.hotData.size()) {
+        firstIsStatic = (static_cast<BodyType>(m_storage.hotData[pair.first].bodyType) == BodyType::STATIC);
+      }
+      if (pair.second < m_storage.hotData.size()) {
+        secondIsStatic = (static_cast<BodyType>(m_storage.hotData[pair.second].bodyType) == BodyType::STATIC);
+      }
+
+      // Dynamic-vs-dynamic needs global deduplication, static pairs don't
+      if (!firstIsStatic && !secondIsStatic) {
+        // Dynamic-vs-dynamic: deduplicate globally
         uint64_t pairKey = (static_cast<uint64_t>(pair.first) << 32) | pair.second;
         if (globalSeenPairs.emplace(pairKey).second) {
           indexPairs.push_back(pair);
         }
       } else {
-        indexPairs.push_back(pair); // Movable-vs-static, no global deduplication needed
+        // Movable-vs-static: no global deduplication needed
+        indexPairs.push_back(pair);
       }
     }
   }
