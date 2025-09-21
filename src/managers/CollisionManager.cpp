@@ -10,7 +10,6 @@
 #include "events/WorldTriggerEvent.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "utils/Camera.hpp"
 #include "utils/UniqueID.hpp"
 #include "world/WorldData.hpp"
 #include <algorithm>
@@ -57,13 +56,12 @@ void CollisionManager::clean() {
   COLLISION_INFO("STORAGE LIFECYCLE: clean() clearing " +
                  std::to_string(m_storage.size()) + " SOA bodies");
 
-  // Legacy storage removed - using SOA only
 
   // Clean SOA storage
   m_storage.clear();
   m_callbacks.clear();
   m_initialized = false;
-  COLLISION_INFO("Cleaned and shut down (both legacy and SOA storage)");
+  COLLISION_INFO("Cleaned and shut down SOA storage");
 }
 
 void CollisionManager::prepareForStateTransition() {
@@ -439,21 +437,18 @@ void CollisionManager::logCollisionStatistics() const {
 }
 
 size_t CollisionManager::getStaticBodyCount() const {
-  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
-    return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC;
-  });
+  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(),
+    [](const auto &hot) { return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC; });
 }
 
 size_t CollisionManager::getKinematicBodyCount() const {
-  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
-    return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC;
-  });
+  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(),
+    [](const auto &hot) { return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC; });
 }
 
 size_t CollisionManager::getDynamicBodyCount() const {
-  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
-    return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::DYNAMIC;
-  });
+  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(),
+    [](const auto &hot) { return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::DYNAMIC; });
 }
 
 void CollisionManager::rebuildStaticFromWorld() {
@@ -571,7 +566,6 @@ void CollisionManager::onTileChanged(int x, int y) {
   }
 }
 
-// Removed invalidateStaticCache() - replaced with rebuildStaticSpatialHash()
 
 void CollisionManager::subscribeWorldEvents() {
   auto &em = EventManager::Instance();
@@ -677,8 +671,7 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
                                                   halfSize.getX(), halfSize.getY());
       }
 
-      // Removed per-entity logging to reduce spam
-      return index;
+          return index;
     }
   }
 
@@ -782,7 +775,6 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
     rebuildStaticSpatialHash();
   }
 
-  // Removed per-entity logging to reduce spam
 }
 
 bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
@@ -862,8 +854,7 @@ void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
   pools.movableIndices.clear();
   pools.staticIndices.clear();
 
-  // OPTIMIZATION: Simple linear pass - let spatial hash handle proximity efficiently
-  // The previous O(N²) "smart culling" was slower than just processing all active bodies
+  // Linear pass - spatial hash handles proximity efficiently
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
@@ -905,15 +896,14 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
 
-  // MASSIVE OPTIMIZATION: Use sorted vector instead of unordered_set for pair deduplication
-  // This is much faster for 10K+ entities
+  // Use sorted vector for pair deduplication (faster than unordered_set)
   std::vector<uint64_t> dynamicPairs;
   dynamicPairs.reserve(movableIndices.size() * 4); // More conservative estimate
 
   // Reserve space for final pairs
   indexPairs.reserve(movableIndices.size() * 6);
 
-  // OPTIMIZATION: Process only dynamic bodies (static never initiate collisions)
+  // Process only movable bodies (static never initiate collisions)
   for (size_t i = 0; i < movableIndices.size(); ++i) {
     size_t dynamicIdx = movableIndices[i];
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
@@ -921,20 +911,15 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
-    // 1. Dynamic-vs-dynamic collisions using spatial hash (eliminates N² complexity)
+    // 1. Movable-vs-movable collisions using spatial hash
     std::vector<size_t> dynamicCandidates;
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, dynamicCandidates);
 
     for (size_t candidateIdx : dynamicCandidates) {
-      if (candidateIdx >= m_storage.hotData.size()) continue;
-      if (candidateIdx == dynamicIdx) continue; // Skip self
-      if (candidateIdx <= dynamicIdx) continue; // Avoid duplicate pairs (only check higher indices)
+      if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx || candidateIdx <= dynamicIdx) continue;
 
       const auto& candidateHot = m_storage.hotData[candidateIdx];
-      if (!candidateHot.active) continue;
-
-      // Check collision masks
-      if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+      if (!candidateHot.active || (dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
 
       // Add pair directly (spatial hash already filters by proximity)
       indexPairs.emplace_back(dynamicIdx, candidateIdx);
@@ -948,18 +933,12 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       if (staticIdx >= m_storage.hotData.size()) continue;
 
       const auto& staticHot = m_storage.hotData[staticIdx];
-      if (!staticHot.active) continue;
-
-      // Static objects already filtered by culling system - no additional distance check needed
-
-      // Check collision masks
-      if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+      if (!staticHot.active || (dynamicHot.collidesWith & staticHot.layers) == 0) continue;
 
       indexPairs.emplace_back(dynamicIdx, staticIdx);
     }
   }
 
-  // Removed per-frame logging - pair count is included in periodic summary
 }
 
 bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -1080,7 +1059,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
               }
             }
 
-            // Dynamic-vs-static
+            // Movable-vs-static
             candidates.clear();
             m_staticSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
             for (size_t staticIdx : candidates) {
@@ -1114,7 +1093,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
           indexPairs.push_back(pair);
         }
       } else {
-        indexPairs.push_back(pair); // Dynamic-vs-static, no global deduplication needed
+        indexPairs.push_back(pair); // Movable-vs-static, no global deduplication needed
       }
     }
   }
@@ -1314,7 +1293,6 @@ void CollisionManager::updateSOA(float dt) {
 
   // Check storage state at start of update
   size_t bodyCount = m_storage.size();
-  // Removed per-frame logging - details are included in periodic summary at end of update
 
   // Prepare collision processing for this frame
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
@@ -1331,13 +1309,13 @@ void CollisionManager::updateSOA(float dt) {
   // Count active dynamic bodies for threading decisions (with configurable culling)
   CullingArea cullingArea = createDefaultCullingArea();
 
-  // PERFORMANCE OPTIMIZATION: Track culling metrics
+  // Track culling metrics
   auto cullingStart = clock::now();
   size_t totalBodiesBefore = bodyCount;
   buildActiveIndicesSOA(cullingArea);
   auto cullingEnd = clock::now();
 
-  // CRITICAL FIX: Sync spatial hashes AFTER culling, only for active bodies
+  // Sync spatial hashes after culling, only for active bodies
   syncSpatialHashesWithActiveIndices();
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
@@ -1364,7 +1342,7 @@ void CollisionManager::updateSOA(float dt) {
   // Object pool for SOA collision processing
   std::vector<std::pair<size_t, size_t>> indexPairs;
 
-  // BROADPHASE: Generate collision pairs using hierarchical spatial hash
+  // BROADPHASE: Generate collision pairs using spatial hash
   auto t1 = clock::now();
   bool broadphaseUsedThreading = false;
   // Use active movable bodies for threading decision - they drive the workload
@@ -1420,7 +1398,7 @@ void CollisionManager::updateSOA(float dt) {
   processTriggerEventsSOA();
   auto t6 = clock::now();
 
-  // PERFORMANCE METRICS: Track timing and threading stats with optimization metrics
+  // Track performance metrics
   size_t threadCount = summaryThreaded ? summaryStats.optimalWorkers : 0;
   updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6, summaryThreaded,
                                summaryStats.optimalWorkers, summaryStats.availableWorkers,
@@ -1428,17 +1406,16 @@ void CollisionManager::updateSOA(float dt) {
                                bodyCount, activeMovableBodies, pairCount, m_collisionPool.collisionBuffer.size(),
                                activeBodies, dynamicBodiesCulled, staticBodiesCulled, threadCount, cullingMs);
 
-  // SOA Update complete (reduced logging)
 }
 
 
 // ========== SOA UPDATE HELPER METHODS ==========
 
-// PERFORMANCE CRITICAL: Only sync spatial hash for active bodies after culling
+// Sync spatial hash for active bodies after culling
 void CollisionManager::syncSpatialHashesWithActiveIndices() {
   const auto& pools = m_collisionPool;
 
-  // Clear and rebuild dynamic spatial hash with only active dynamic bodies
+  // Clear and rebuild dynamic spatial hash with only active movable bodies
   m_dynamicSpatialHash.clear();
 
   for (size_t idx : pools.movableIndices) {
@@ -1454,53 +1431,9 @@ void CollisionManager::syncSpatialHashesWithActiveIndices() {
   // Static hash is managed separately via rebuildStaticSpatialHash()
 }
 
-// Legacy function - kept for compatibility but should not be used in hot path
-void CollisionManager::syncSpatialHashesWithSOA() {
-  // OPTIMIZED SPATIAL HASH UPDATE: Update positions incrementally instead of full rebuild
-
-  static size_t lastBodyCount = 0;
-  size_t currentBodyCount = m_storage.hotData.size();
-
-  // Check if we need a full rebuild (body count changed)
-  bool needsFullRebuild = (currentBodyCount != lastBodyCount);
-
-  if (needsFullRebuild) {
-    // Full rebuild when bodies are added/removed
-    m_dynamicSpatialHash.clear();
-
-    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-      const auto& hot = m_storage.hotData[i];
-      if (!hot.active) continue;
-
-      BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-      if (bodyType == BodyType::DYNAMIC || bodyType == BodyType::KINEMATIC) {
-        AABB aabb = m_storage.computeAABB(i);
-        m_dynamicSpatialHash.insert(i, aabb);
-      }
-    }
-
-    lastBodyCount = currentBodyCount;
-  } else {
-    // Incremental update: Only update bodies with dirty AABBs (moved positions)
-    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-      const auto& hot = m_storage.hotData[i];
-      if (!hot.active || !hot.aabbDirty) continue;
-
-      BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-      if (bodyType == BodyType::DYNAMIC || bodyType == BodyType::KINEMATIC) {
-        // Remove old position and insert new position
-        m_dynamicSpatialHash.remove(i);
-        AABB aabb = m_storage.computeAABB(i);
-        m_dynamicSpatialHash.insert(i, aabb);
-      }
-    }
-  }
-
-  // Static hash is managed separately via rebuildStaticSpatialHash()
-}
 
 void CollisionManager::rebuildStaticSpatialHash() {
-  // OPTIMIZATION: Only called when static objects are added/removed
+  // Only called when static objects are added/removed
   m_staticSpatialHash.clear();
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
@@ -1888,8 +1821,7 @@ void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].active = enabled ? 1 : 0;
-    // Removed per-entity logging to reduce spam
-  }
+    }
 }
 
 void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask) {
@@ -1898,39 +1830,27 @@ void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t co
     auto& hot = m_storage.hotData[index];
     hot.layers = layerMask;
     hot.collidesWith = collideMask;
-    // Removed per-entity logging to reduce spam
-  }
+    }
 }
 
 void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].velocity = velocity;
-    // Removed per-entity logging to reduce spam
-  }
+    }
 }
 
 void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].isTrigger = isTrigger ? 1 : 0;
-    // Removed per-entity logging to reduce spam
-  }
+    }
 }
 
 CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const {
-  // BENCHMARK DETECTION: If we have a lot of bodies (>1000), this is likely a benchmark
-  // For benchmarks, disable culling entirely to test full system performance
-  if (m_storage.size() > 1000) {
-    CullingArea area;
-    area.minX = 0.0f;
-    area.minY = 0.0f;
-    area.maxX = 0.0f;
-    area.maxY = 0.0f;  // Signals buildActiveIndicesSOA to skip culling
-    return area;
-  }
+  // Culling always enabled for consistent performance
 
-  // Normal gameplay: Find the player position (EntityID 1 by convention)
+  // Find the player position (EntityID 1 by convention)
   Vector2D playerPos(0.0f, 0.0f);
   bool playerFound = false;
 
@@ -1960,7 +1880,7 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
     }
   }
 
-  // Create player-centered culling area for normal gameplay
+  // Create player-centered culling area
   CullingArea area;
   if (playerFound) {
     area.minX = playerPos.getX() - COLLISION_CULLING_BUFFER;
