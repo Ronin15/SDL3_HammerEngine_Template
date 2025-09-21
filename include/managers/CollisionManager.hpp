@@ -194,7 +194,7 @@ private:
     };
 
     // NEW SOA-BASED BROADPHASE: High-performance hierarchical collision detection
-    void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) const;
+    void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs);
     bool broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
                                ThreadingStats& stats);
     bool broadphaseSOAAsync(std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -359,6 +359,13 @@ private:
     HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static bodies (world tiles, buildings)
     HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash; // Dynamic/kinematic bodies (NPCs, player)
 
+    // STATIC COLLISION CACHE: Avoid redundant static spatial hash queries
+    struct StaticCollisionCache {
+        Vector2D lastPosition;
+        std::vector<size_t> cachedStaticIndices;
+        bool valid{false};
+    };
+    std::unordered_map<size_t, StaticCollisionCache> m_staticCollisionCache;
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
