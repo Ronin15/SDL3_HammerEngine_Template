@@ -137,7 +137,8 @@ public:
     void prepareCollisionBuffers(size_t bodyCount);
 
     // SOA UPDATE HELPER METHODS
-    void syncSpatialHashesWithSOA();
+    void syncSpatialHashesWithActiveIndices(); // Performance-optimized version
+    void syncSpatialHashesWithSOA(); // Legacy version
     void resolveSOA(const CollisionInfo& collision);
     void syncEntitiesToSOA();
     void processTriggerEventsSOA();

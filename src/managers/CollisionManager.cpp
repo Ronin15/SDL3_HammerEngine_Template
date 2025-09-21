@@ -1311,9 +1311,6 @@ void CollisionManager::updateSOA(float dt) {
   // Prepare collision processing for this frame
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
 
-  // Sync spatial hashes with SOA storage
-  syncSpatialHashesWithSOA();
-
   // Determine threading strategy using WorkerBudget system
   size_t threadingThresholdValue =
       std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
@@ -1331,6 +1328,10 @@ void CollisionManager::updateSOA(float dt) {
   size_t totalBodiesBefore = bodyCount;
   buildActiveIndicesSOA(cullingArea);
   auto cullingEnd = clock::now();
+
+  // CRITICAL FIX: Sync spatial hashes AFTER culling, only for active bodies
+  syncSpatialHashesWithActiveIndices();
+
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
   size_t activeDynamicBodies = m_collisionPool.dynamicIndices.size();
@@ -1425,6 +1426,27 @@ void CollisionManager::updateSOA(float dt) {
 
 // ========== SOA UPDATE HELPER METHODS ==========
 
+// PERFORMANCE CRITICAL: Only sync spatial hash for active bodies after culling
+void CollisionManager::syncSpatialHashesWithActiveIndices() {
+  const auto& pools = m_collisionPool;
+
+  // Clear and rebuild dynamic spatial hash with only active dynamic bodies
+  m_dynamicSpatialHash.clear();
+
+  for (size_t idx : pools.dynamicIndices) {
+    if (idx >= m_storage.hotData.size()) continue;
+
+    const auto& hot = m_storage.hotData[idx];
+    if (!hot.active) continue;
+
+    AABB aabb = m_storage.computeAABB(idx);
+    m_dynamicSpatialHash.insert(idx, aabb);
+  }
+
+  // Static hash is managed separately via rebuildStaticSpatialHash()
+}
+
+// Legacy function - kept for compatibility but should not be used in hot path
 void CollisionManager::syncSpatialHashesWithSOA() {
   // OPTIMIZED SPATIAL HASH UPDATE: Update positions incrementally instead of full rebuild
 
