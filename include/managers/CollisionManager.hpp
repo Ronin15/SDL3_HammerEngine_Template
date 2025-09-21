@@ -142,6 +142,16 @@ public:
     void resolveSOA(const CollisionInfo& collision);
     void syncEntitiesToSOA();
     void processTriggerEventsSOA();
+
+    /* Body Type Distinctions:
+     * - STATIC: World obstacles, buildings, triggers (never move, handled separately)
+     * - KINEMATIC: NPCs, script-controlled entities (move via script, not physics)
+     * - DYNAMIC: Player, projectiles (physics-simulated, respond to forces)
+     *
+     * Note: The collision system groups KINEMATIC + DYNAMIC as "movable" bodies
+     * for broadphase optimization, since both require collision detection against
+     * static geometry and each other.
+     */
     void updatePerformanceMetricsSOA(
         std::chrono::steady_clock::time_point t0,
         std::chrono::steady_clock::time_point t1,
@@ -156,7 +166,7 @@ public:
         size_t budget,
         size_t batchCount,
         size_t bodyCount,
-        size_t activeDynamicBodies,
+        size_t activeMovableBodies,
         size_t pairCount,
         size_t collisionCount,
         size_t activeBodies = 0,
@@ -169,6 +179,7 @@ public:
     void logCollisionStatistics() const;
     size_t getStaticBodyCount() const;
     size_t getKinematicBodyCount() const;
+    size_t getDynamicBodyCount() const;
 
 private:
     CollisionManager() = default;
@@ -367,7 +378,7 @@ private:
 
         // NEW SOA-specific pools
         std::vector<size_t> activeIndices;        // Indices of active bodies for processing
-        std::vector<size_t> dynamicIndices;      // Indices of dynamic bodies only
+        std::vector<size_t> movableIndices;      // Indices of non-static bodies (dynamic + kinematic)
         std::vector<size_t> staticIndices;       // Indices of static bodies only
         std::vector<Vector2D> tempPositions;     // Temporary position calculations
         std::vector<AABB> tempAABBs;             // Temporary AABB calculations
@@ -428,7 +439,7 @@ private:
 
                 // SOA-specific capacity
                 activeIndices.reserve(bodyCount);
-                dynamicIndices.reserve(bodyCount / 4);  // Estimate 25% dynamic
+                movableIndices.reserve(bodyCount / 4);  // Estimate 25% movable (dynamic + kinematic)
                 staticIndices.reserve(bodyCount);
                 tempPositions.reserve(bodyCount);
                 tempAABBs.reserve(bodyCount);
@@ -454,7 +465,7 @@ private:
 
             // SOA-specific resets
             activeIndices.clear();
-            dynamicIndices.clear();
+            movableIndices.clear();
             staticIndices.clear();
             tempPositions.clear();
             tempAABBs.clear();

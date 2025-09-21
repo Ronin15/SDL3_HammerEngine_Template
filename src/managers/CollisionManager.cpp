@@ -387,7 +387,7 @@ void CollisionManager::addCollisionCallback(CollisionCB cb) {
 void CollisionManager::logCollisionStatistics() const {
   size_t staticBodies = getStaticBodyCount();
   size_t kinematicBodies = getKinematicBodyCount();
-  size_t dynamicBodies = getBodyCount() - staticBodies - kinematicBodies;
+  size_t dynamicBodies = getDynamicBodyCount();
 
   COLLISION_INFO("Collision Statistics:");
   COLLISION_INFO("  Total Bodies: " + std::to_string(getBodyCount()));
@@ -447,6 +447,12 @@ size_t CollisionManager::getStaticBodyCount() const {
 size_t CollisionManager::getKinematicBodyCount() const {
   return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
     return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC;
+  });
+}
+
+size_t CollisionManager::getDynamicBodyCount() const {
+  return std::count_if(m_storage.hotData.begin(), m_storage.hotData.end(), [](const auto &hot) {
+    return hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::DYNAMIC;
   });
 }
 
@@ -853,7 +859,7 @@ void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
   // Build indices of active bodies within culling area
   auto& pools = m_collisionPool;
   pools.activeIndices.clear();
-  pools.dynamicIndices.clear();
+  pools.movableIndices.clear();
   pools.staticIndices.clear();
 
   // OPTIMIZATION: Simple linear pass - let spatial hash handle proximity efficiently
@@ -878,7 +884,9 @@ void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
     if (bodyType == BodyType::STATIC) {
       pools.staticIndices.push_back(i);
     } else {
-      pools.dynamicIndices.push_back(i);
+      // movableIndices contains both DYNAMIC and KINEMATIC bodies
+      // They are grouped together for broadphase collision detection
+      pools.movableIndices.push_back(i);
     }
   }
 }
@@ -895,19 +903,19 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   const_cast<CollisionManager*>(this)->buildActiveIndicesSOA(cullingArea);
 
   const auto& pools = m_collisionPool;
-  const auto& dynamicIndices = pools.dynamicIndices;
+  const auto& movableIndices = pools.movableIndices;
 
   // MASSIVE OPTIMIZATION: Use sorted vector instead of unordered_set for pair deduplication
   // This is much faster for 10K+ entities
   std::vector<uint64_t> dynamicPairs;
-  dynamicPairs.reserve(dynamicIndices.size() * 4); // More conservative estimate
+  dynamicPairs.reserve(movableIndices.size() * 4); // More conservative estimate
 
   // Reserve space for final pairs
-  indexPairs.reserve(dynamicIndices.size() * 6);
+  indexPairs.reserve(movableIndices.size() * 6);
 
   // OPTIMIZATION: Process only dynamic bodies (static never initiate collisions)
-  for (size_t i = 0; i < dynamicIndices.size(); ++i) {
-    size_t dynamicIdx = dynamicIndices[i];
+  for (size_t i = 0; i < movableIndices.size(); ++i) {
+    size_t dynamicIdx = movableIndices[i];
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
     if (!dynamicHot.active) continue;
 
@@ -968,9 +976,9 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   const_cast<CollisionManager*>(this)->buildActiveIndicesSOA(cullingArea);
 
   const auto& pools = m_collisionPool;
-  const auto& dynamicIndices = pools.dynamicIndices;
+  const auto& movableIndices = pools.movableIndices;
 
-  if (dynamicIndices.empty()) {
+  if (movableIndices.empty()) {
     return false;
   }
 
@@ -993,7 +1001,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   size_t threadingThresholdValue =
       std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
   size_t optimalWorkers = budget.getOptimalWorkerCount(
-      collisionBudget, dynamicIndices.size(), threadingThresholdValue);
+      collisionBudget, movableIndices.size(), threadingThresholdValue);
   optimalWorkers = std::max<size_t>(1, optimalWorkers);
 
   // Dynamic batch sizing based on queue pressure
@@ -1010,7 +1018,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     maxBatches = std::max<size_t>(4, optimalWorkers);
   }
 
-  size_t desiredBatchCount = (dynamicIndices.size() + minBodiesPerBatch - 1) / minBodiesPerBatch;
+  size_t desiredBatchCount = (movableIndices.size() + minBodiesPerBatch - 1) / minBodiesPerBatch;
   size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
   batchCount = std::min(batchCount, maxBatches);
   batchCount = std::max<size_t>(1, batchCount);
@@ -1024,8 +1032,8 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   const_cast<CollisionManager*>(this)->prepareCollisionBuffers(m_storage.size());
 
   // Distribute work across threads
-  size_t bodiesPerBatch = dynamicIndices.size() / batchCount;
-  size_t remainingBodies = dynamicIndices.size() % batchCount;
+  size_t bodiesPerBatch = movableIndices.size() / batchCount;
+  size_t remainingBodies = movableIndices.size() % batchCount;
 
   std::vector<std::future<std::vector<std::pair<size_t, size_t>>>> futures;
   futures.reserve(batchCount);
@@ -1038,14 +1046,14 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, &dynamicIndices]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, &movableIndices]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
           std::unordered_set<uint64_t> localSeenPairs;
           localSeenPairs.reserve((end - start) * 8);
 
           for (size_t i = start; i < end; ++i) {
-            size_t dynamicIdx = dynamicIndices[i];
+            size_t dynamicIdx = movableIndices[i];
             const auto& dynamicHot = m_storage.hotData[dynamicIdx];
             if (!dynamicHot.active) continue;
 
@@ -1093,7 +1101,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
 
   // Merge results from all threads
   std::unordered_set<uint64_t> globalSeenPairs;
-  globalSeenPairs.reserve(dynamicIndices.size() * 8);
+  globalSeenPairs.reserve(movableIndices.size() * 8);
 
   for (auto& future : futures) {
     auto localPairs = future.get();
@@ -1334,7 +1342,7 @@ void CollisionManager::updateSOA(float dt) {
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
-  size_t activeDynamicBodies = m_collisionPool.dynamicIndices.size();
+  size_t activeMovableBodies = m_collisionPool.movableIndices.size();
   size_t activeBodies = m_collisionPool.activeIndices.size();
   size_t dynamicBodiesCulled = 0;
   size_t staticBodiesCulled = 0;
@@ -1343,12 +1351,12 @@ void CollisionManager::updateSOA(float dt) {
   if (totalBodiesBefore > activeBodies) {
     // Estimate dynamic vs static culling based on body type distribution
     size_t totalCulled = totalBodiesBefore - activeBodies;
-    size_t totalDynamic = activeDynamicBodies;
+    size_t totalMovable = activeMovableBodies;
 
     // Rough estimate: assume proportional culling
     if (totalBodiesBefore > 0 && activeBodies > 0) {
-      double dynamicRatio = static_cast<double>(totalDynamic) / activeBodies;
-      dynamicBodiesCulled = static_cast<size_t>(totalCulled * dynamicRatio);
+      double movableRatio = static_cast<double>(totalMovable) / activeBodies;
+      dynamicBodiesCulled = static_cast<size_t>(totalCulled * movableRatio);
       staticBodiesCulled = totalCulled - dynamicBodiesCulled;
     }
   }
@@ -1359,8 +1367,8 @@ void CollisionManager::updateSOA(float dt) {
   // BROADPHASE: Generate collision pairs using hierarchical spatial hash
   auto t1 = clock::now();
   bool broadphaseUsedThreading = false;
-  // Use active dynamic bodies for threading decision - they drive the workload
-  if (threadingEnabled && activeDynamicBodies >= threadingThresholdValue) {
+  // Use active movable bodies for threading decision - they drive the workload
+  if (threadingEnabled && activeMovableBodies >= threadingThresholdValue) {
     ThreadingStats stats;
     broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats);
     if (broadphaseUsedThreading) {
@@ -1417,7 +1425,7 @@ void CollisionManager::updateSOA(float dt) {
   updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6, summaryThreaded,
                                summaryStats.optimalWorkers, summaryStats.availableWorkers,
                                summaryStats.budget, summaryStats.batchCount,
-                               bodyCount, activeDynamicBodies, pairCount, m_collisionPool.collisionBuffer.size(),
+                               bodyCount, activeMovableBodies, pairCount, m_collisionPool.collisionBuffer.size(),
                                activeBodies, dynamicBodiesCulled, staticBodiesCulled, threadCount, cullingMs);
 
   // SOA Update complete (reduced logging)
@@ -1433,7 +1441,7 @@ void CollisionManager::syncSpatialHashesWithActiveIndices() {
   // Clear and rebuild dynamic spatial hash with only active dynamic bodies
   m_dynamicSpatialHash.clear();
 
-  for (size_t idx : pools.dynamicIndices) {
+  for (size_t idx : pools.movableIndices) {
     if (idx >= m_storage.hotData.size()) continue;
 
     const auto& hot = m_storage.hotData[idx];
@@ -1742,7 +1750,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
     size_t budget,
     size_t batchCount,
     size_t bodyCount,
-    size_t activeDynamicBodies,
+    size_t activeMovableBodies,
     size_t pairCount,
     size_t collisionCount,
     size_t activeBodies,
@@ -1823,7 +1831,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
 
     if (wasThreaded) {
       COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
-                      " (" + std::to_string(activeDynamicBodies) + " dynamic)" +
+                      " (" + std::to_string(activeMovableBodies) + " movable)" +
                       ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
                       ", Avg Broadphase: " + std::to_string(m_perf.avgBroadphaseMs) + "ms" +
                       ", Current Broadphase: " + std::to_string(d12) + "ms" +
@@ -1836,7 +1844,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
                       std::to_string(batchCount) + "]" + optimizationStats);
     } else {
       COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
-                      " (" + std::to_string(activeDynamicBodies) + " dynamic)" +
+                      " (" + std::to_string(activeMovableBodies) + " movable)" +
                       ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
                       ", Avg Broadphase: " + std::to_string(m_perf.avgBroadphaseMs) + "ms" +
                       ", Current Broadphase: " + std::to_string(d12) + "ms" +
