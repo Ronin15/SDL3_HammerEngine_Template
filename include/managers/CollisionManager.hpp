@@ -208,7 +208,7 @@ private:
     void subscribeWorldEvents(); // hook to world events
 
     // Collision culling configuration - adjustable constants
-    static constexpr float COLLISION_CULLING_BUFFER = 200.0f;      // Buffer around culling area
+    static constexpr float COLLISION_CULLING_BUFFER = 600.0f;      // Buffer around culling area (1200x1200 total area)
 
     // Camera culling support
     struct CullingArea {
