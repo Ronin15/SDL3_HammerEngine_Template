@@ -469,6 +469,9 @@ bool HierarchicalSpatialHash::getCachedQuery(size_t bodyIndex, std::vector<size_
     // Hash the body index to a cache slot
     size_t slot = bodyIndex & (CACHE_SIZE - 1);
 
+    // Use shared lock for reading cache (multiple threads can read simultaneously)
+    std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
+
     // Load the entry atomically
     size_t cachedIndex = m_queryCache[slot].bodyIndex.load(std::memory_order_acquire);
     if (cachedIndex == bodyIndex) {
@@ -490,6 +493,9 @@ bool HierarchicalSpatialHash::getCachedQuery(size_t bodyIndex, std::vector<size_
 void HierarchicalSpatialHash::cacheQuery(size_t bodyIndex, const std::vector<size_t>& candidates) const {
     // Hash to slot
     size_t slot = bodyIndex & (CACHE_SIZE - 1);
+
+    // Use exclusive lock for writing cache (only one thread can write at a time)
+    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
 
     // Copy to fixed array (up to MAX_CANDIDATES)
     size_t count = std::min(candidates.size(), CacheEntry::MAX_CANDIDATES);

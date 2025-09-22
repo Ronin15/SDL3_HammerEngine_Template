@@ -14,6 +14,7 @@
 #include <memory>
 #include <array>
 #include <functional>
+#include <shared_mutex>
 #include "collisions/AABB.hpp"
 #include "entities/Entity.hpp"
 
@@ -168,6 +169,7 @@ private:
     };
 
     mutable std::vector<CacheEntry> m_queryCache;
+    mutable std::shared_mutex m_cacheMutex;  // Thread-safe cache access
     mutable std::atomic<uint64_t> m_globalVersion{0};
 
     // Thread safety
