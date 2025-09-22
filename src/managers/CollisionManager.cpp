@@ -1155,28 +1155,9 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
             // Query candidates from both spatial hashes
             std::vector<size_t> candidates;
 
-            // CRITICAL FIX: Thread-safe dynamic-vs-dynamic queries with culling
+            // CRITICAL FIX: Use queryBroadphase for cache benefits and efficiency
             try {
-              // Apply culling to dynamic queries for consistency
-              AABB cullingAABB(
-                  (currentCullingArea.minX + currentCullingArea.maxX) * 0.5f,
-                  (currentCullingArea.minY + currentCullingArea.maxY) * 0.5f,
-                  (currentCullingArea.maxX - currentCullingArea.minX) * 0.5f,
-                  (currentCullingArea.maxY - currentCullingArea.minY) * 0.5f
-              );
-
-              // Calculate intersection bounds for culling
-              float minX = std::max(dynamicAABB.left(), cullingAABB.left());
-              float minY = std::max(dynamicAABB.top(), cullingAABB.top());
-              float maxX = std::min(dynamicAABB.right(), cullingAABB.right());
-              float maxY = std::min(dynamicAABB.bottom(), cullingAABB.bottom());
-
-              // Only query if there's a valid intersection
-              if (minX <= maxX && minY <= maxY) {
-                AABB queryAABB((minX + maxX) * 0.5f, (minY + maxY) * 0.5f,
-                              (maxX - minX) * 0.5f, (maxY - minY) * 0.5f);
-                m_dynamicSpatialHash.queryRegion(queryAABB, candidates);
-              }
+              m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
               for (size_t candidateIdx : candidates) {
                 if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
 
