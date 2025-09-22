@@ -183,6 +183,11 @@ public:
 - **Platform Guards**: Use platform-specific logic guards (`#ifdef __APPLE__`, `#ifdef WIN32`) for OS-specific code
 - **Avoid Premature Optimization**: Focus on clean, maintainable code first; optimize hotspots based on profiling data
 
+## References
+
+### Game Development Patterns
+- **Game Programming Patterns**: https://gameprogrammingpatterns.com/ - Comprehensive reference for game development design patterns and architectural solutions
+
 ## Dependencies
 
 ### Required
