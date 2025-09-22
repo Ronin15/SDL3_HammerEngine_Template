@@ -15,6 +15,7 @@
 #include <chrono>
 #include <atomic>
 #include <array>
+#include <mutex>
 
 #include "entities/Entity.hpp" // EntityID
 #include "core/WorkerBudget.hpp"
@@ -608,6 +609,10 @@ private:
     std::atomic<size_t> m_lastCollisionBudget{0};
     std::atomic<size_t> m_lastThreadBatchCount{0};
     std::atomic<bool> m_lastWasThreaded{false};
+
+    // CRITICAL FIX: Thread safety mutexes for collision detection
+    mutable std::mutex m_spatialHashMutex;  // Protects spatial hash state during threading
+    mutable std::mutex m_staticCacheMutex;  // Protects static collision cache access
 };
 
 #endif // COLLISION_MANAGER_HPP

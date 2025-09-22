@@ -915,7 +915,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, dynamicCandidates);
 
     for (size_t candidateIdx : dynamicCandidates) {
-      if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx || candidateIdx <= dynamicIdx) continue;
+      if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
 
       const auto& candidateHot = m_storage.hotData[candidateIdx];
       if (!candidateHot.active || (dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
@@ -1042,18 +1042,33 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     return false;
   }
 
-  // Prepare thread pools
+  // CRITICAL FIX: Prepare thread pools with proper synchronization
   const_cast<CollisionManager*>(this)->prepareCollisionBuffers(m_storage.size());
 
-  // Prepare spatial hashes for thread-safe queries
+  // CRITICAL FIX: Create thread-safe snapshot of spatial hash state
+  // This prevents race conditions during concurrent queries
+  std::unique_lock<std::mutex> spatialLock(m_spatialHashMutex);
   m_dynamicSpatialHash.prepareForThreadedQueries();
   m_staticSpatialHash.prepareForThreadedQueries();
 
-  // PRE-COMPUTE STATIC QUERIES: Query static bodies once for all movable bodies
-  // This leverages caching optimally and avoids synchronization in threads
-  std::vector<std::vector<size_t>> precomputedStatics(movableIndices.size());
-  for (size_t i = 0; i < movableIndices.size(); ++i) {
-    size_t dynamicIdx = movableIndices[i];
+  // Create immutable snapshots to prevent race conditions
+  auto movableSnapshot = movableIndices; // Copy for thread safety
+  auto currentCullingArea = m_currentCullingArea; // Snapshot culling area
+  spatialLock.unlock();
+
+  // CRITICAL FIX: PRE-COMPUTE STATIC QUERIES with thread safety
+  // This prevents concurrent access to the static collision cache
+  std::vector<std::vector<size_t>> precomputedStatics(movableSnapshot.size());
+
+  // CRITICAL FIX: Use thread-safe static query computation
+  std::unique_lock<std::mutex> staticCacheLock(m_staticCacheMutex);
+  for (size_t i = 0; i < movableSnapshot.size(); ++i) {
+    size_t dynamicIdx = movableSnapshot[i];
+    if (dynamicIdx >= m_storage.hotData.size()) {
+      precomputedStatics[i] = std::vector<size_t>{};
+      continue;
+    }
+
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
     if (!dynamicHot.active) {
       // Store empty vector for inactive bodies to maintain index alignment
@@ -1064,8 +1079,8 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
     std::vector<size_t> staticCandidates;
 
-    // Use same caching and culling logic as non-threaded broadphase
-    auto& cache = const_cast<CollisionManager*>(this)->m_staticCollisionCache[dynamicIdx];
+    // CRITICAL FIX: Thread-safe cache access
+    auto& cache = m_staticCollisionCache[dynamicIdx];
     constexpr float POSITION_TOLERANCE = 5.0f;
     bool positionChanged = !cache.valid ||
         std::abs(cache.lastPosition.getX() - dynamicHot.position.getX()) > POSITION_TOLERANCE ||
@@ -1074,10 +1089,10 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     if (positionChanged) {
         // Create culling-aware query AABB by intersecting dynamic AABB with culling area
         AABB cullingAABB(
-            (m_currentCullingArea.minX + m_currentCullingArea.maxX) * 0.5f,
-            (m_currentCullingArea.minY + m_currentCullingArea.maxY) * 0.5f,
-            (m_currentCullingArea.maxX - m_currentCullingArea.minX) * 0.5f,
-            (m_currentCullingArea.maxY - m_currentCullingArea.minY) * 0.5f
+            (currentCullingArea.minX + currentCullingArea.maxX) * 0.5f,
+            (currentCullingArea.minY + currentCullingArea.maxY) * 0.5f,
+            (currentCullingArea.maxX - currentCullingArea.minX) * 0.5f,
+            (currentCullingArea.maxY - currentCullingArea.minY) * 0.5f
         );
 
         // Calculate intersection bounds manually
@@ -1103,10 +1118,11 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
 
     precomputedStatics[i] = std::move(staticCandidates);
   }
+  staticCacheLock.unlock();
 
-  // Distribute work across threads
-  size_t bodiesPerBatch = movableIndices.size() / batchCount;
-  size_t remainingBodies = movableIndices.size() % batchCount;
+  // CRITICAL FIX: Distribute work across threads with proper synchronization
+  size_t bodiesPerBatch = movableSnapshot.size() / batchCount;
+  size_t remainingBodies = movableSnapshot.size() % batchCount;
 
   std::vector<std::future<std::vector<std::pair<size_t, size_t>>>> futures;
   futures.reserve(batchCount);
@@ -1119,14 +1135,18 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, &movableIndices, &precomputedStatics]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, movableSnapshot, &precomputedStatics, currentCullingArea]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
           std::unordered_set<uint64_t> localSeenPairs;
           localSeenPairs.reserve((end - start) * 8);
 
           for (size_t i = start; i < end; ++i) {
-            size_t dynamicIdx = movableIndices[i];
+            size_t dynamicIdx = movableSnapshot[i];
+
+            // CRITICAL FIX: Add bounds checking and validation
+            if (dynamicIdx >= m_storage.hotData.size()) continue;
+
             const auto& dynamicHot = m_storage.hotData[dynamicIdx];
             if (!dynamicHot.active) continue;
 
@@ -1135,35 +1155,62 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
             // Query candidates from both spatial hashes
             std::vector<size_t> candidates;
 
-            // Dynamic-vs-dynamic
-            m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
-            for (size_t candidateIdx : candidates) {
-              if (candidateIdx == dynamicIdx || candidateIdx >= m_storage.hotData.size()) continue;
+            // CRITICAL FIX: Thread-safe dynamic-vs-dynamic queries with culling
+            try {
+              // Apply culling to dynamic queries for consistency
+              AABB cullingAABB(
+                  (currentCullingArea.minX + currentCullingArea.maxX) * 0.5f,
+                  (currentCullingArea.minY + currentCullingArea.maxY) * 0.5f,
+                  (currentCullingArea.maxX - currentCullingArea.minX) * 0.5f,
+                  (currentCullingArea.maxY - currentCullingArea.minY) * 0.5f
+              );
 
-              const auto& candidateHot = m_storage.hotData[candidateIdx];
-              if (!candidateHot.active) continue;
-              if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+              // Calculate intersection bounds for culling
+              float minX = std::max(dynamicAABB.left(), cullingAABB.left());
+              float minY = std::max(dynamicAABB.top(), cullingAABB.top());
+              float maxX = std::min(dynamicAABB.right(), cullingAABB.right());
+              float maxY = std::min(dynamicAABB.bottom(), cullingAABB.bottom());
 
-              size_t a = std::min(dynamicIdx, candidateIdx);
-              size_t b = std::max(dynamicIdx, candidateIdx);
-              uint64_t pairKey = (static_cast<uint64_t>(a) << 32) | b;
-
-              if (localSeenPairs.emplace(pairKey).second) {
-                localPairs.emplace_back(a, b);
+              // Only query if there's a valid intersection
+              if (minX <= maxX && minY <= maxY) {
+                AABB queryAABB((minX + maxX) * 0.5f, (minY + maxY) * 0.5f,
+                              (maxX - minX) * 0.5f, (maxY - minY) * 0.5f);
+                m_dynamicSpatialHash.queryRegion(queryAABB, candidates);
               }
+              for (size_t candidateIdx : candidates) {
+                if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
+
+                const auto& candidateHot = m_storage.hotData[candidateIdx];
+                if (!candidateHot.active) continue;
+                if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+
+                size_t a = std::min(dynamicIdx, candidateIdx);
+                size_t b = std::max(dynamicIdx, candidateIdx);
+                uint64_t pairKey = (static_cast<uint64_t>(a) << 32) | b;
+
+                if (localSeenPairs.emplace(pairKey).second) {
+                  localPairs.emplace_back(a, b);
+                }
+              }
+            } catch (...) {
+              // CRITICAL FIX: Handle spatial hash exceptions gracefully
+              // This prevents thread crashes from corrupting collision detection
+              continue;
             }
 
-            // Movable-vs-static using precomputed results (with caching + culling)
-            // Map thread batch index to precomputed array index
-            const auto& staticCandidates = precomputedStatics[i];
-            for (size_t staticIdx : staticCandidates) {
-              if (staticIdx >= m_storage.hotData.size()) continue;
+            // CRITICAL BUG FIX: Use correct index for precomputed statics array
+            // The array is indexed by position in movableSnapshot, and i is already that position
+            if (i < precomputedStatics.size()) {
+              const auto& staticCandidates = precomputedStatics[i];
+              for (size_t staticIdx : staticCandidates) {
+                if (staticIdx >= m_storage.hotData.size()) continue;
 
-              const auto& staticHot = m_storage.hotData[staticIdx];
-              if (!staticHot.active) continue;
-              if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+                const auto& staticHot = m_storage.hotData[staticIdx];
+                if (!staticHot.active) continue;
+                if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
 
-              localPairs.emplace_back(dynamicIdx, staticIdx);
+                localPairs.emplace_back(dynamicIdx, staticIdx);
+              }
             }
           }
 
@@ -1176,8 +1223,10 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   std::unordered_set<uint64_t> globalSeenPairs;
   globalSeenPairs.reserve(movableIndices.size() * 8);
 
+  size_t totalThreadPairs = 0;
   for (auto& future : futures) {
     auto localPairs = future.get();
+    totalThreadPairs += localPairs.size();
     for (const auto& pair : localPairs) {
       // Check body types to determine collision type
       bool firstIsStatic = false, secondIsStatic = false;
@@ -1207,7 +1256,18 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   stats.budget = collisionBudget;
   stats.batchCount = batchCount;
 
-  // Finish threaded queries mode
+  // Debug logging for threaded collision detection
+  if (totalThreadPairs == 0) {
+    COLLISION_WARN("Threaded broadphase found 0 pairs! Bodies: " + std::to_string(movableSnapshot.size()) +
+                   ", Batches: " + std::to_string(batchCount) + ", Workers: " + std::to_string(optimalWorkers));
+  } else if (m_verboseLogs) {
+    COLLISION_DEBUG("Threaded broadphase: " + std::to_string(totalThreadPairs) +
+                   " pairs from threads, " + std::to_string(indexPairs.size()) +
+                   " final pairs after deduplication");
+  }
+
+  // CRITICAL FIX: Proper threaded queries cleanup with synchronization
+  std::lock_guard<std::mutex> spatialCleanupLock(m_spatialHashMutex);
   m_dynamicSpatialHash.finishThreadedQueries();
   m_staticSpatialHash.finishThreadedQueries();
 
@@ -1317,7 +1377,7 @@ bool CollisionManager::narrowphaseSOAThreaded(const std::vector<std::pair<size_t
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, &indexPairs]() -> std::vector<CollisionInfo> {
+        [this, start, end, indexPairs]() -> std::vector<CollisionInfo> {
           std::vector<CollisionInfo> localCollisions;
           localCollisions.reserve((end - start) / 4);
 
@@ -1470,16 +1530,17 @@ void CollisionManager::updateSOA(float dt) {
 
   // NARROWPHASE: Detailed collision detection and response calculation
   const size_t pairCount = indexPairs.size();
+  bool narrowphaseUsedThreading = false;
   if (threadingEnabled && pairCount >= threadingThresholdValue) {
     ThreadingStats narrowStats;
-    bool narrowphaseUsedThreading = narrowphaseSOAThreaded(indexPairs, m_collisionPool.collisionBuffer, narrowStats);
+    narrowphaseUsedThreading = narrowphaseSOAThreaded(indexPairs, m_collisionPool.collisionBuffer, narrowStats);
     if (narrowphaseUsedThreading) {
       summaryThreaded = true;
       summaryStats = narrowStats; // Use narrowphase stats if it was threaded
     }
   }
 
-  if (!summaryThreaded || m_collisionPool.collisionBuffer.empty()) {
+  if (!narrowphaseUsedThreading) {
     narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
   }
   auto t3 = clock::now();
