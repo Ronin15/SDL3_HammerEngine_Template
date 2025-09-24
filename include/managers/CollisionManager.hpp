@@ -15,7 +15,6 @@
 #include <chrono>
 #include <atomic>
 #include <array>
-#include <mutex>
 
 #include "entities/Entity.hpp" // EntityID
 #include "core/WorkerBudget.hpp"
@@ -277,9 +276,7 @@ private:
         std::vector<ColdData> coldData;
         std::vector<EntityID> entityIds;
 
-        // Double buffering for thread safety (following AIManager pattern)
-        std::array<std::vector<HotData>, 2> doubleBuffer;
-        std::atomic<int> currentBuffer{0};
+        // Removed double buffering - not actually used in implementation
 
         // Index mapping for fast entity lookup
         std::unordered_map<EntityID, size_t> entityToIndex;
@@ -292,10 +289,7 @@ private:
             hotData.clear();
             coldData.clear();
             entityIds.clear();
-            doubleBuffer[0].clear();
-            doubleBuffer[1].clear();
             entityToIndex.clear();
-            currentBuffer.store(0, std::memory_order_relaxed);
         }
 
         void ensureCapacity(size_t capacity) {
@@ -303,8 +297,6 @@ private:
                 hotData.reserve(capacity);
                 coldData.reserve(capacity);
                 entityIds.reserve(capacity);
-                doubleBuffer[0].reserve(capacity);
-                doubleBuffer[1].reserve(capacity);
                 entityToIndex.reserve(capacity);
             }
         }
@@ -600,6 +592,9 @@ private:
     // Guard to avoid feedback when syncing entity transforms
     bool m_isSyncing{false};
 
+    // Optimization: Track when static spatial hash needs rebuilding
+    bool m_staticHashDirty{false};
+
     // Threading configuration - OPTIMIZED THRESHOLDS
     std::atomic<bool> m_useThreading{true};
     std::atomic<size_t> m_threadingThreshold{300}; // PERFORMANCE OPTIMIZATION: Threading at 400 bodies provides meaningful benefit
@@ -609,10 +604,6 @@ private:
     std::atomic<size_t> m_lastCollisionBudget{0};
     std::atomic<size_t> m_lastThreadBatchCount{0};
     std::atomic<bool> m_lastWasThreaded{false};
-
-    // CRITICAL FIX: Thread safety mutexes for collision detection
-    mutable std::mutex m_spatialHashMutex;  // Protects spatial hash state during threading
-    mutable std::mutex m_staticCacheMutex;  // Protects static collision cache access
 };
 
 #endif // COLLISION_MANAGER_HPP

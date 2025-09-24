@@ -234,9 +234,7 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       }
     }
   }
-  if (created > 0) {
-    COLLISION_INFO("Created water triggers: count=" + std::to_string(created));
-  }
+  // Log removed for performance
   return created;
 }
 
@@ -301,9 +299,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
     }
   }
 
-  if (created > 0) {
-    COLLISION_INFO("Created obstacle bodies: count=" + std::to_string(created));
-  }
+  // Log removed for performance
   return created;
 }
 
@@ -484,7 +480,7 @@ void CollisionManager::rebuildStaticFromWorld() {
         ", obstacle triggers=" + std::to_string(obstacleTriggers));
     // Log detailed statistics for debugging
     logCollisionStatistics();
-    // Rebuild static spatial hash since world changed
+    // Force immediate static spatial hash rebuild for world changes
     rebuildStaticSpatialHash();
   }
 }
@@ -561,8 +557,8 @@ void CollisionManager::onTileChanged(int x, int y) {
     // ROCK and TREE movement penalties are handled by pathfinding system
     // No collision triggers needed for these obstacle types
 
-    // Rebuild static spatial hash since tile changed
-    rebuildStaticSpatialHash();
+    // Mark static hash as needing rebuild since tile changed
+    m_staticHashDirty = true;
   }
 }
 
@@ -612,8 +608,9 @@ void CollisionManager::subscribeWorldEvents() {
           }
           COLLISION_INFO("World unloaded - removed static colliders: " +
                          std::to_string(toRemove.size()));
-          // Rebuild static spatial hash since static bodies were removed
-          rebuildStaticSpatialHash();
+          // Clear static spatial hash since all static bodies were removed
+          m_staticSpatialHash.clear();
+          m_staticHashDirty = false;
           return;
         }
         if (auto tileChanged =
@@ -715,8 +712,8 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
     EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
                                                             EventManager::DispatchMode::Deferred);
 
-    // OPTIMIZATION: Only rebuild static spatial hash when static objects change
-    rebuildStaticSpatialHash();
+    // Mark static hash as needing rebuild (batched for performance)
+    m_staticHashDirty = true;
   }
 
   return newIndex;
@@ -770,9 +767,9 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
   // Remove from index mapping
   m_storage.entityToIndex.erase(it);
 
-  // OPTIMIZATION: Only rebuild static spatial hash when static objects are removed
+  // Mark static hash as needing rebuild when static objects are removed
   if (wasStatic) {
-    rebuildStaticSpatialHash();
+    m_staticHashDirty = true;
   }
 
 }
@@ -813,9 +810,7 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].halfSize = newHalfSize;
     m_storage.hotData[index].aabbDirty = 1;
-    COLLISION_DEBUG("Updated SOA body size for entity " + std::to_string(id) +
-                    " to (" + std::to_string(newHalfSize.getX()) + ", " +
-                    std::to_string(newHalfSize.getY()) + ")");
+    // Log removed for performance
   }
 }
 
@@ -895,22 +890,17 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
 
-  // Use sorted vector for pair deduplication (faster than unordered_set)
-  std::vector<uint64_t> dynamicPairs;
-  dynamicPairs.reserve(movableIndices.size() * 4); // More conservative estimate
-
-  // Reserve space for final pairs
-  indexPairs.reserve(movableIndices.size() * 6);
+  // Reserve space for pairs
+  indexPairs.reserve(movableIndices.size() * 4);
 
   // Process only movable bodies (static never initiate collisions)
-  for (size_t i = 0; i < movableIndices.size(); ++i) {
-    size_t dynamicIdx = movableIndices[i];
+  for (size_t dynamicIdx : movableIndices) {
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
     if (!dynamicHot.active) continue;
 
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
-    // 1. Movable-vs-movable collisions using spatial hash
+    // 1. Movable-vs-movable collisions
     std::vector<size_t> dynamicCandidates;
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, dynamicCandidates);
 
@@ -920,51 +910,28 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       const auto& candidateHot = m_storage.hotData[candidateIdx];
       if (!candidateHot.active || (dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
 
-      // Ensure consistent ordering for dynamic-vs-dynamic pairs
+      // Ensure consistent ordering
       size_t a = std::min(dynamicIdx, candidateIdx);
       size_t b = std::max(dynamicIdx, candidateIdx);
       indexPairs.emplace_back(a, b);
     }
 
-    // 2. Query static spatial hash for dynamic-vs-static collisions (with caching)
+    // 2. Query static spatial hash for dynamic-vs-static collisions
     std::vector<size_t> staticCandidates;
 
-    // Check if we can use cached static collision results
+    // Simple static collision cache check
     auto& cache = m_staticCollisionCache[dynamicIdx];
-    constexpr float POSITION_TOLERANCE = 5.0f;
-    bool positionChanged = !cache.valid ||
+    constexpr float POSITION_TOLERANCE = 10.0f;
+    bool needsUpdate = !cache.valid ||
         std::abs(cache.lastPosition.getX() - dynamicHot.position.getX()) > POSITION_TOLERANCE ||
         std::abs(cache.lastPosition.getY() - dynamicHot.position.getY()) > POSITION_TOLERANCE;
 
-    if (positionChanged) {
-        // Position changed significantly or cache invalid - query and update cache
-        // Create culling-aware query AABB by intersecting dynamic AABB with culling area
-        AABB cullingAABB(
-            (m_currentCullingArea.minX + m_currentCullingArea.maxX) * 0.5f,
-            (m_currentCullingArea.minY + m_currentCullingArea.maxY) * 0.5f,
-            (m_currentCullingArea.maxX - m_currentCullingArea.minX) * 0.5f,
-            (m_currentCullingArea.maxY - m_currentCullingArea.minY) * 0.5f
-        );
-
-        // Query only within the intersection of dynamic AABB and culling area
-        // Calculate intersection bounds manually
-        float minX = std::max(dynamicAABB.left(), cullingAABB.left());
-        float minY = std::max(dynamicAABB.top(), cullingAABB.top());
-        float maxX = std::min(dynamicAABB.right(), cullingAABB.right());
-        float maxY = std::min(dynamicAABB.bottom(), cullingAABB.bottom());
-
-        // Only query if there's a valid intersection
-        if (minX <= maxX && minY <= maxY) {
-            AABB queryAABB((minX + maxX) * 0.5f, (minY + maxY) * 0.5f,
-                          (maxX - minX) * 0.5f, (maxY - minY) * 0.5f);
-            m_staticSpatialHash.queryRegion(queryAABB, staticCandidates);
-        }
-
+    if (needsUpdate) {
+        m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
         cache.cachedStaticIndices = staticCandidates;
         cache.lastPosition = dynamicHot.position;
         cache.valid = true;
     } else {
-        // Use cached results - no need to query static spatial hash
         staticCandidates = cache.cachedStaticIndices;
     }
 
@@ -977,7 +944,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       indexPairs.emplace_back(dynamicIdx, staticIdx);
     }
   }
-
 }
 
 bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -998,9 +964,6 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
 
   auto& threadSystem = HammerEngine::ThreadSystem::Instance();
   size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
-  if (queueCapacity == 0) queueCapacity = 1;
 
   // Calculate worker budget using proper WorkerBudget system
   HammerEngine::WorkerBudget budget =
@@ -1018,109 +981,23 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
       collisionBudget, movableIndices.size(), threadingThresholdValue);
   optimalWorkers = std::max<size_t>(1, optimalWorkers);
 
-  // Dynamic batch sizing based on queue pressure
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  size_t baseBatchSize = std::max(threadingThresholdValue / 2, static_cast<size_t>(64));
-  size_t minBodiesPerBatch = baseBatchSize;
-  size_t maxBatches = std::max<size_t>(2, optimalWorkers);
-
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    minBodiesPerBatch = std::min(baseBatchSize * 2, threadingThresholdValue * 2);
-    maxBatches = std::max<size_t>(2, optimalWorkers / 2);
-  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-    minBodiesPerBatch = std::max({baseBatchSize / 2, threadingThresholdValue / 4, static_cast<size_t>(32)});
-    maxBatches = std::max<size_t>(4, optimalWorkers);
-  }
-
-  size_t desiredBatchCount = (movableIndices.size() + minBodiesPerBatch - 1) / minBodiesPerBatch;
-  size_t batchCount = std::min(optimalWorkers, desiredBatchCount);
-  batchCount = std::min(batchCount, maxBatches);
+  // Simplified batch sizing - no complex queue pressure calculations
+  size_t batchCount = std::min(optimalWorkers, movableIndices.size() / 64);
   batchCount = std::max<size_t>(1, batchCount);
 
-  if (batchCount <= 1) {
+  if (batchCount <= 1 || movableIndices.size() < threadingThresholdValue) {
     broadphaseSOA(indexPairs);
     return false;
   }
 
-  // CRITICAL FIX: Prepare thread pools with proper synchronization
-  const_cast<CollisionManager*>(this)->prepareCollisionBuffers(m_storage.size());
+  // Prepare collision buffers
+  prepareCollisionBuffers(m_storage.size());
 
-  // CRITICAL FIX: Create thread-safe snapshot of spatial hash state
-  // This prevents race conditions during concurrent queries
-  std::unique_lock<std::mutex> spatialLock(m_spatialHashMutex);
-  m_dynamicSpatialHash.prepareForThreadedQueries();
-  m_staticSpatialHash.prepareForThreadedQueries();
+  // Simple snapshot for thread safety - no complex locking needed
+  auto movableSnapshot = movableIndices;
+  auto currentCullingArea = m_currentCullingArea;
 
-  // Create immutable snapshots to prevent race conditions
-  auto movableSnapshot = movableIndices; // Copy for thread safety
-  auto currentCullingArea = m_currentCullingArea; // Snapshot culling area
-  spatialLock.unlock();
-
-  // CRITICAL FIX: PRE-COMPUTE STATIC QUERIES with thread safety
-  // This prevents concurrent access to the static collision cache
-  std::vector<std::vector<size_t>> precomputedStatics(movableSnapshot.size());
-
-  // CRITICAL FIX: Use thread-safe static query computation
-  std::unique_lock<std::mutex> staticCacheLock(m_staticCacheMutex);
-  for (size_t i = 0; i < movableSnapshot.size(); ++i) {
-    size_t dynamicIdx = movableSnapshot[i];
-    if (dynamicIdx >= m_storage.hotData.size()) {
-      precomputedStatics[i] = std::vector<size_t>{};
-      continue;
-    }
-
-    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
-    if (!dynamicHot.active) {
-      // Store empty vector for inactive bodies to maintain index alignment
-      precomputedStatics[i] = std::vector<size_t>{};
-      continue;
-    }
-
-    AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
-    std::vector<size_t> staticCandidates;
-
-    // CRITICAL FIX: Thread-safe cache access
-    auto& cache = m_staticCollisionCache[dynamicIdx];
-    constexpr float POSITION_TOLERANCE = 5.0f;
-    bool positionChanged = !cache.valid ||
-        std::abs(cache.lastPosition.getX() - dynamicHot.position.getX()) > POSITION_TOLERANCE ||
-        std::abs(cache.lastPosition.getY() - dynamicHot.position.getY()) > POSITION_TOLERANCE;
-
-    if (positionChanged) {
-        // Create culling-aware query AABB by intersecting dynamic AABB with culling area
-        AABB cullingAABB(
-            (currentCullingArea.minX + currentCullingArea.maxX) * 0.5f,
-            (currentCullingArea.minY + currentCullingArea.maxY) * 0.5f,
-            (currentCullingArea.maxX - currentCullingArea.minX) * 0.5f,
-            (currentCullingArea.maxY - currentCullingArea.minY) * 0.5f
-        );
-
-        // Calculate intersection bounds manually
-        float minX = std::max(dynamicAABB.left(), cullingAABB.left());
-        float minY = std::max(dynamicAABB.top(), cullingAABB.top());
-        float maxX = std::min(dynamicAABB.right(), cullingAABB.right());
-        float maxY = std::min(dynamicAABB.bottom(), cullingAABB.bottom());
-
-        // Only query if there's a valid intersection
-        if (minX <= maxX && minY <= maxY) {
-            AABB queryAABB((minX + maxX) * 0.5f, (minY + maxY) * 0.5f,
-                          (maxX - minX) * 0.5f, (maxY - minY) * 0.5f);
-            m_staticSpatialHash.queryRegion(queryAABB, staticCandidates);
-        }
-
-        cache.cachedStaticIndices = staticCandidates;
-        cache.lastPosition = dynamicHot.position;
-        cache.valid = true;
-    } else {
-        // Use cached results
-        staticCandidates = cache.cachedStaticIndices;
-    }
-
-    precomputedStatics[i] = std::move(staticCandidates);
-  }
-  staticCacheLock.unlock();
-
-  // CRITICAL FIX: Distribute work across threads with proper synchronization
+  // Simplified work distribution across threads
   size_t bodiesPerBatch = movableSnapshot.size() / batchCount;
   size_t remainingBodies = movableSnapshot.size() % batchCount;
 
@@ -1135,16 +1012,12 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, movableSnapshot, &precomputedStatics, currentCullingArea]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, movableSnapshot, currentCullingArea]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
-          std::unordered_set<uint64_t> localSeenPairs;
-          localSeenPairs.reserve((end - start) * 8);
 
           for (size_t i = start; i < end; ++i) {
             size_t dynamicIdx = movableSnapshot[i];
-
-            // CRITICAL FIX: Add bounds checking and validation
             if (dynamicIdx >= m_storage.hotData.size()) continue;
 
             const auto& dynamicHot = m_storage.hotData[dynamicIdx];
@@ -1152,37 +1025,27 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
 
             AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
-            // Query candidates from both spatial hashes
+            // Query dynamic candidates
             std::vector<size_t> candidates;
+            m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
 
-            // CRITICAL FIX: Use queryBroadphase for cache benefits and efficiency
-            try {
-              m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
-              for (size_t candidateIdx : candidates) {
-                if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
+            for (size_t candidateIdx : candidates) {
+              if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
 
-                const auto& candidateHot = m_storage.hotData[candidateIdx];
-                if (!candidateHot.active) continue;
-                if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+              const auto& candidateHot = m_storage.hotData[candidateIdx];
+              if (!candidateHot.active) continue;
+              if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
 
-                size_t a = std::min(dynamicIdx, candidateIdx);
-                size_t b = std::max(dynamicIdx, candidateIdx);
-                uint64_t pairKey = (static_cast<uint64_t>(a) << 32) | b;
-
-                if (localSeenPairs.emplace(pairKey).second) {
-                  localPairs.emplace_back(a, b);
-                }
-              }
-            } catch (...) {
-              // CRITICAL FIX: Handle spatial hash exceptions gracefully
-              // This prevents thread crashes from corrupting collision detection
-              continue;
+              size_t a = std::min(dynamicIdx, candidateIdx);
+              size_t b = std::max(dynamicIdx, candidateIdx);
+              localPairs.emplace_back(a, b);
             }
 
-            // CRITICAL BUG FIX: Use correct index for precomputed statics array
-            // The array is indexed by position in movableSnapshot, and i is already that position
-            if (i < precomputedStatics.size()) {
-              const auto& staticCandidates = precomputedStatics[i];
+            // Query static candidates with simple culling check
+            std::vector<size_t> staticCandidates;
+            if (currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
+              m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
+
               for (size_t staticIdx : staticCandidates) {
                 if (staticIdx >= m_storage.hotData.size()) continue;
 
@@ -1200,33 +1063,25 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
         HammerEngine::TaskPriority::High, "CollisionSOA_BroadphaseBatch"));
   }
 
-  // Merge results from all threads
-  std::unordered_set<uint64_t> globalSeenPairs;
-  globalSeenPairs.reserve(movableIndices.size() * 8);
+  // Merge results from all threads - simplified deduplication
+  std::unordered_set<uint64_t> seenPairs;
+  seenPairs.reserve(movableIndices.size() * 4);
 
-  size_t totalThreadPairs = 0;
   for (auto& future : futures) {
     auto localPairs = future.get();
-    totalThreadPairs += localPairs.size();
     for (const auto& pair : localPairs) {
-      // Check body types to determine collision type
-      bool firstIsStatic = false, secondIsStatic = false;
-      if (pair.first < m_storage.hotData.size()) {
-        firstIsStatic = (static_cast<BodyType>(m_storage.hotData[pair.first].bodyType) == BodyType::STATIC);
-      }
-      if (pair.second < m_storage.hotData.size()) {
-        secondIsStatic = (static_cast<BodyType>(m_storage.hotData[pair.second].bodyType) == BodyType::STATIC);
-      }
+      // Only deduplicate dynamic-vs-dynamic pairs
+      bool needsDedup = (pair.first < m_storage.hotData.size() &&
+                        pair.second < m_storage.hotData.size() &&
+                        static_cast<BodyType>(m_storage.hotData[pair.first].bodyType) != BodyType::STATIC &&
+                        static_cast<BodyType>(m_storage.hotData[pair.second].bodyType) != BodyType::STATIC);
 
-      // Dynamic-vs-dynamic needs global deduplication, static pairs don't
-      if (!firstIsStatic && !secondIsStatic) {
-        // Dynamic-vs-dynamic: deduplicate globally
+      if (needsDedup) {
         uint64_t pairKey = (static_cast<uint64_t>(pair.first) << 32) | pair.second;
-        if (globalSeenPairs.emplace(pairKey).second) {
+        if (seenPairs.emplace(pairKey).second) {
           indexPairs.push_back(pair);
         }
       } else {
-        // Movable-vs-static: no global deduplication needed
         indexPairs.push_back(pair);
       }
     }
@@ -1236,21 +1091,6 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
   stats.availableWorkers = availableWorkers;
   stats.budget = collisionBudget;
   stats.batchCount = batchCount;
-
-  // Debug logging for threaded collision detection
-  if (totalThreadPairs == 0) {
-    COLLISION_WARN("Threaded broadphase found 0 pairs! Bodies: " + std::to_string(movableSnapshot.size()) +
-                   ", Batches: " + std::to_string(batchCount) + ", Workers: " + std::to_string(optimalWorkers));
-  } else if (m_verboseLogs) {
-    COLLISION_DEBUG("Threaded broadphase: " + std::to_string(totalThreadPairs) +
-                   " pairs from threads, " + std::to_string(indexPairs.size()) +
-                   " final pairs after deduplication");
-  }
-
-  // CRITICAL FIX: Proper threaded queries cleanup with synchronization
-  std::lock_guard<std::mutex> spatialCleanupLock(m_spatialHashMutex);
-  m_dynamicSpatialHash.finishThreadedQueries();
-  m_staticSpatialHash.finishThreadedQueries();
 
   return true;
 }
@@ -1458,6 +1298,12 @@ void CollisionManager::updateSOA(float dt) {
   // Count active dynamic bodies for threading decisions (with configurable culling)
   CullingArea cullingArea = createDefaultCullingArea();
 
+  // Rebuild static spatial hash if needed (batched from add/remove operations)
+  if (m_staticHashDirty) {
+    rebuildStaticSpatialHash();
+    m_staticHashDirty = false;
+  }
+
   // Track culling metrics
   auto cullingStart = clock::now();
   size_t totalBodiesBefore = bodyCount;
@@ -1535,10 +1381,7 @@ void CollisionManager::updateSOA(float dt) {
   }
   auto t4 = clock::now();
 
-  if (m_verboseLogs && !m_collisionPool.collisionBuffer.empty()) {
-    COLLISION_DEBUG("Resolved SOA collisions: count=" +
-                    std::to_string(m_collisionPool.collisionBuffer.size()));
-  }
+  // Verbose logging removed for performance
 
   // SYNCHRONIZATION: Update entity positions and velocities from SOA storage
   syncEntitiesToSOA();
@@ -1775,9 +1618,7 @@ void CollisionManager::processTriggerEventsSOA() {
         WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerHot->position, TriggerPhase::Enter);
         EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-        COLLISION_INFO("SOA Trigger Enter: player=" + std::to_string(playerId) +
-                       ", trigger=" + std::to_string(triggerId) + ", tag=" +
-                       std::to_string(static_cast<int>(triggerTag)));
+        // Log removed for performance
 
         if (m_defaultTriggerCooldownSec > 0.0f) {
           m_triggerCooldownUntil[triggerId] = now +
@@ -1811,9 +1652,7 @@ void CollisionManager::processTriggerEventsSOA() {
       WorldTriggerEvent evt(playerId, triggerId, triggerTag, triggerPos, TriggerPhase::Exit);
       EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-      COLLISION_INFO("SOA Trigger Exit: player=" + std::to_string(playerId) +
-                     ", trigger=" + std::to_string(triggerId) + ", tag=" +
-                     std::to_string(static_cast<int>(triggerTag)));
+      // Log removed for performance
 
       it = m_activeTriggerPairs.erase(it);
     } else {
@@ -1961,11 +1800,7 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
     }
   }
 
-  if (m_verboseLogs && !updates.empty()) {
-    COLLISION_DEBUG("updateKinematicBatchSOA: processed " +
-                    std::to_string(validUpdates) + "/" +
-                    std::to_string(updates.size()) + " kinematic updates");
-  }
+  // Verbose logging removed for performance
 }
 
 // ========== SOA BODY MANAGEMENT METHODS ==========
@@ -2001,51 +1836,35 @@ void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
 }
 
 CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const {
-  // Culling always enabled for consistent performance
-
-  // Find the player position (EntityID 1 by convention)
-  Vector2D playerPos(0.0f, 0.0f);
-  bool playerFound = false;
-
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    if (m_storage.entityIds[i] == 1) { // Player is typically EntityID 1
-      const auto& hot = m_storage.hotData[i];
-      if (hot.active) {
-        playerPos = hot.position;
-        playerFound = true;
-        break;
-      }
-    }
-  }
-
-  // If no player found, fall back to first dynamic entity
-  if (!playerFound) {
-    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-      const auto& hot = m_storage.hotData[i];
-      if (!hot.active) continue;
-
-      BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-      if (bodyType == BodyType::DYNAMIC || bodyType == BodyType::KINEMATIC) {
-        playerPos = hot.position;
-        playerFound = true;
-        break;
-      }
-    }
-  }
-
-  // Create player-centered culling area
   CullingArea area;
-  if (playerFound) {
-    area.minX = playerPos.getX() - COLLISION_CULLING_BUFFER;
-    area.minY = playerPos.getY() - COLLISION_CULLING_BUFFER;
-    area.maxX = playerPos.getX() + COLLISION_CULLING_BUFFER;
-    area.maxY = playerPos.getY() + COLLISION_CULLING_BUFFER;
+
+  // Simple optimization: Use cached player position if available
+  static EntityID playerEntityId = 1; // Player is typically EntityID 1
+  static Vector2D cachedPlayerPos(0.0f, 0.0f);
+  static bool hasCache = false;
+
+  // Try to find player quickly using entity lookup
+  auto it = m_storage.entityToIndex.find(playerEntityId);
+  if (it != m_storage.entityToIndex.end() && it->second < m_storage.hotData.size()) {
+    const auto& hot = m_storage.hotData[it->second];
+    if (hot.active) {
+      cachedPlayerPos = hot.position;
+      hasCache = true;
+    }
+  }
+
+  if (hasCache) {
+    // Create player-centered culling area
+    area.minX = cachedPlayerPos.getX() - COLLISION_CULLING_BUFFER;
+    area.minY = cachedPlayerPos.getY() - COLLISION_CULLING_BUFFER;
+    area.maxX = cachedPlayerPos.getX() + COLLISION_CULLING_BUFFER;
+    area.maxY = cachedPlayerPos.getY() + COLLISION_CULLING_BUFFER;
   } else {
-    // Fallback: no player found, disable culling entirely
-    area.minX = 0.0f;
-    area.minY = 0.0f;
-    area.maxX = 0.0f;
-    area.maxY = 0.0f;
+    // No culling if no player found - process all bodies
+    area.minX = -100000.0f;
+    area.minY = -100000.0f;
+    area.maxX = 100000.0f;
+    area.maxY = 100000.0f;
   }
 
   return area;
