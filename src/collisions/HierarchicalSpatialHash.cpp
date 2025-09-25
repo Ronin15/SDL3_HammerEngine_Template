@@ -510,6 +510,4 @@ void HierarchicalSpatialHash::cacheQuery(size_t bodyIndex, const std::vector<siz
     m_queryCache[slot].bodyIndex.store(bodyIndex, std::memory_order_release);
 }
 
-// Note: Removed MortonUtils - replaced with simple 2D grid hash for better performance
-
 } // namespace HammerEngine

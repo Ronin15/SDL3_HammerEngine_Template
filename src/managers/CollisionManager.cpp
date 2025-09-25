@@ -109,7 +109,6 @@ void CollisionManager::prepareForStateTransition() {
   }
 
   // Clear caches to prevent dangling references to deleted bodies
-  m_broadphaseCache.resetFrame();            // Clear frame cache
   m_collisionPool.resetFrame();              // Clear collision buffers
 
   // Clear trigger tracking state completely

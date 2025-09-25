@@ -194,8 +194,6 @@ private:
     void cacheQuery(size_t bodyIndex, const std::vector<size_t>& candidates) const;
 };
 
-// Note: Removed MortonUtils - replaced with simple 2D grid hash for better performance
-
 // Required for std::find and other STL algorithms
 inline bool operator==(const HierarchicalSpatialHash::CoarseCoord& a,
                       const HierarchicalSpatialHash::CoarseCoord& b) noexcept {
