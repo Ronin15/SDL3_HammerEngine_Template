@@ -937,7 +937,8 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 }
 
 bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                             ThreadingStats& stats) {
+                                             ThreadingStats& stats,
+                                             const std::unordered_map<size_t, std::vector<size_t>>& staticCacheSnapshot) {
   indexPairs.clear();
 
   if (!HammerEngine::ThreadSystem::Exists()) {
@@ -1002,7 +1003,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, movableSnapshot, currentCullingArea]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, movableSnapshot, currentCullingArea, &staticCacheSnapshot]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
 
@@ -1034,11 +1035,11 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
               localPairs.emplace_back(a, b);
             }
 
-            // Use original cache (thread-safe read-only access after cache update completes)
+            // THREAD SAFETY FIX: Use immutable snapshot instead of shared mutable cache
             if (currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
-              auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
-              if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
-                const auto& staticCandidates = cacheIt->second.cachedStaticIndices;
+              auto cacheIt = staticCacheSnapshot.find(dynamicIdx);
+              if (cacheIt != staticCacheSnapshot.end()) {
+                const auto& staticCandidates = cacheIt->second;
 
                 for (size_t staticIdx : staticCandidates) {
                   if (staticIdx >= m_storage.hotData.size()) continue;
@@ -1317,6 +1318,24 @@ void CollisionManager::updateSOA(float dt) {
   // Update static collision cache for all movable bodies (single-threaded, before threading)
   updateStaticCollisionCacheForMovableBodies();
 
+  // THREAD SAFETY FIX: Create immutable snapshot of static collision cache
+  // This eliminates race conditions from concurrent std::unordered_map::find() calls
+  std::unordered_map<size_t, std::vector<size_t>> staticCacheSnapshot;
+  staticCacheSnapshot.reserve(m_staticCollisionCache.size());
+  for (const auto& [idx, cache] : m_staticCollisionCache) {
+    if (cache.valid) {
+      staticCacheSnapshot[idx] = cache.cachedStaticIndices;
+    }
+  }
+
+  // THREAD SAFETY FIX: Prepare spatial hashes for thread-safe read-only access
+  m_staticSpatialHash.prepareForThreadedQueries();
+  m_dynamicSpatialHash.prepareForThreadedQueries();
+
+  // THREAD SAFETY FIX: Sequential consistency fence ensures all cache updates
+  // and snapshot creation are fully visible to worker threads
+  std::atomic_thread_fence(std::memory_order_seq_cst);
+
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
   size_t activeMovableBodies = m_collisionPool.movableIndices.size();
@@ -1347,7 +1366,7 @@ void CollisionManager::updateSOA(float dt) {
   // Use active movable bodies for threading decision - they drive the workload
   if (threadingEnabled && activeMovableBodies >= threadingThresholdValue) {
     ThreadingStats stats;
-    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats);
+    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats, staticCacheSnapshot);
     if (broadphaseUsedThreading) {
       summaryThreaded = true;
       summaryStats = stats;
@@ -1375,6 +1394,10 @@ void CollisionManager::updateSOA(float dt) {
     narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
   }
   auto t3 = clock::now();
+
+  // THREAD SAFETY FIX: Restore normal spatial hash operation after all threading is complete
+  m_staticSpatialHash.finishThreadedQueries();
+  m_dynamicSpatialHash.finishThreadedQueries();
 
   // RESOLUTION: Apply collision responses and update positions
   for (const auto& collision : m_collisionPool.collisionBuffer) {
