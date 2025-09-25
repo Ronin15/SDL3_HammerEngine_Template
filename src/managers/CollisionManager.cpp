@@ -937,7 +937,8 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 }
 
 bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                             ThreadingStats& stats) {
+                                             ThreadingStats& stats,
+                                             const std::unordered_map<size_t, std::vector<size_t>>& staticCacheSnapshot) {
   indexPairs.clear();
 
   if (!HammerEngine::ThreadSystem::Exists()) {
@@ -1002,7 +1003,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, movableSnapshot, currentCullingArea]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, movableSnapshot, currentCullingArea, &staticCacheSnapshot]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
 
@@ -1034,11 +1035,11 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
               localPairs.emplace_back(a, b);
             }
 
-            // Use pre-populated static collision cache (read-only, thread-safe)
+            // Use immutable cache snapshot (thread-safe, no shared mutable state)
             if (currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
-              auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
-              if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
-                const auto& staticCandidates = cacheIt->second.cachedStaticIndices;
+              auto cacheIt = staticCacheSnapshot.find(dynamicIdx);
+              if (cacheIt != staticCacheSnapshot.end()) {
+                const auto& staticCandidates = cacheIt->second;
 
                 for (size_t staticIdx : staticCandidates) {
                   if (staticIdx >= m_storage.hotData.size()) continue;
@@ -1290,8 +1291,8 @@ void CollisionManager::updateSOA(float dt) {
   bool threadingEnabled = m_useThreading.load(std::memory_order_acquire) &&
                           HammerEngine::ThreadSystem::Exists();
 
-  // Memory fence to ensure threading configuration is visible before snapshot
-  std::atomic_thread_fence(std::memory_order_acquire);
+  // Strong memory fence to ensure all cache updates are visible and stable before threading
+  std::atomic_thread_fence(std::memory_order_seq_cst);
 
   ThreadingStats summaryStats{};
   bool summaryThreaded = false;
@@ -1316,6 +1317,15 @@ void CollisionManager::updateSOA(float dt) {
 
   // Update static collision cache for all movable bodies (single-threaded, before threading)
   updateStaticCollisionCacheForMovableBodies();
+
+  // Create immutable snapshot of static collision cache for thread-safe access
+  std::unordered_map<size_t, std::vector<size_t>> staticCacheSnapshot;
+  staticCacheSnapshot.reserve(m_staticCollisionCache.size());
+  for (const auto& [idx, cache] : m_staticCollisionCache) {
+    if (cache.valid) {
+      staticCacheSnapshot[idx] = cache.cachedStaticIndices;
+    }
+  }
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
@@ -1347,7 +1357,7 @@ void CollisionManager::updateSOA(float dt) {
   // Use active movable bodies for threading decision - they drive the workload
   if (threadingEnabled && activeMovableBodies >= threadingThresholdValue) {
     ThreadingStats stats;
-    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats);
+    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats, staticCacheSnapshot);
     if (broadphaseUsedThreading) {
       summaryThreaded = true;
       summaryStats = stats;
@@ -1453,13 +1463,19 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
 
   const auto& movableIndices = m_collisionPool.movableIndices;
 
+  m_staticCollisionCache.reserve(movableIndices.size() * 2);
+
   for (size_t dynamicIdx : movableIndices) {
     if (dynamicIdx >= m_storage.hotData.size()) continue;
 
     const auto& hot = m_storage.hotData[dynamicIdx];
     if (!hot.active) continue;
 
-    auto& cache = m_staticCollisionCache[dynamicIdx];
+    auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
+    if (cacheIt == m_staticCollisionCache.end()) {
+      cacheIt = m_staticCollisionCache.emplace(dynamicIdx, StaticCollisionCache{}).first;
+    }
+    auto& cache = cacheIt->second;
 
     bool needsUpdate = !cache.valid ||
         std::abs(cache.lastPosition.getX() - hot.position.getX()) > POSITION_TOLERANCE ||
