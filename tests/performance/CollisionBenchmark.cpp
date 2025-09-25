@@ -171,11 +171,19 @@ private:
         std::vector<TestBody> bodies;
         bodies.reserve(count);
 
+        // Create overlapping grid pattern like unit tests to guarantee collisions
+        size_t bodiesPerRow = static_cast<size_t>(std::sqrt(count)) + 1;
+        float spacing = 60.0f;  // Bodies will be 80x80 (40.0f half-size), so 60.0f spacing = 20 pixels overlap
+
         for (size_t i = 0; i < count; ++i) {
             TestBody body{};
-            body.position = Vector2D(posDist(rng), posDist(rng));
-            body.velocity = Vector2D(velDist(rng), velDist(rng));
-            body.halfSize = Vector2D(sizeDist(rng), sizeDist(rng));
+
+            // Grid layout with guaranteed overlaps
+            float gridX = (i % bodiesPerRow) * spacing + 100.0f;
+            float gridY = (i / bodiesPerRow) * spacing + 100.0f;
+            body.position = Vector2D(gridX, gridY);
+            body.velocity = Vector2D(velDist(rng) * 0.1f, velDist(rng) * 0.1f); // Reduced velocity
+            body.halfSize = Vector2D(40.0f, 40.0f);  // Fixed size for predictable overlaps
 
             // Mix of body types for realistic scenario
             if (i < count * 0.7f) {
@@ -186,7 +194,8 @@ private:
                 body.type = BodyType::STATIC;
             }
 
-            body.layer = CollisionLayer::Layer_Default;
+            // Use same layers as working unit test to guarantee collisions
+            body.layer = CollisionLayer::Layer_Enemy;
             body.collidesWith = 0xFFFFFFFFu;
 
             bodies.push_back(body);
