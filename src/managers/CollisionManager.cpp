@@ -900,6 +900,9 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
+    dynamicAABB.halfSize.setX(dynamicAABB.halfSize.getX() + SPATIAL_QUERY_EPSILON);
+    dynamicAABB.halfSize.setY(dynamicAABB.halfSize.getY() + SPATIAL_QUERY_EPSILON);
+
     // 1. Movable-vs-movable collisions
     std::vector<size_t> dynamicCandidates;
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, dynamicCandidates);
@@ -916,32 +919,19 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       indexPairs.emplace_back(a, b);
     }
 
-    // 2. Query static spatial hash for dynamic-vs-static collisions
-    std::vector<size_t> staticCandidates;
+    // 2. Use pre-populated static collision cache for dynamic-vs-static collisions
+    auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
+    if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
+      const auto& staticCandidates = cacheIt->second.cachedStaticIndices;
 
-    // Simple static collision cache check
-    auto& cache = m_staticCollisionCache[dynamicIdx];
-    constexpr float POSITION_TOLERANCE = 10.0f;
-    bool needsUpdate = !cache.valid ||
-        std::abs(cache.lastPosition.getX() - dynamicHot.position.getX()) > POSITION_TOLERANCE ||
-        std::abs(cache.lastPosition.getY() - dynamicHot.position.getY()) > POSITION_TOLERANCE;
+      for (size_t staticIdx : staticCandidates) {
+        if (staticIdx >= m_storage.hotData.size()) continue;
 
-    if (needsUpdate) {
-        m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
-        cache.cachedStaticIndices = staticCandidates;
-        cache.lastPosition = dynamicHot.position;
-        cache.valid = true;
-    } else {
-        staticCandidates = cache.cachedStaticIndices;
-    }
+        const auto& staticHot = m_storage.hotData[staticIdx];
+        if (!staticHot.active || (dynamicHot.collidesWith & staticHot.layers) == 0) continue;
 
-    for (size_t staticIdx : staticCandidates) {
-      if (staticIdx >= m_storage.hotData.size()) continue;
-
-      const auto& staticHot = m_storage.hotData[staticIdx];
-      if (!staticHot.active || (dynamicHot.collidesWith & staticHot.layers) == 0) continue;
-
-      indexPairs.emplace_back(dynamicIdx, staticIdx);
+        indexPairs.emplace_back(dynamicIdx, staticIdx);
+      }
     }
   }
 }
@@ -1025,6 +1015,9 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
 
             AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
+            dynamicAABB.halfSize.setX(dynamicAABB.halfSize.getX() + SPATIAL_QUERY_EPSILON);
+            dynamicAABB.halfSize.setY(dynamicAABB.halfSize.getY() + SPATIAL_QUERY_EPSILON);
+
             // Query dynamic candidates
             std::vector<size_t> candidates;
             m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
@@ -1041,19 +1034,21 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
               localPairs.emplace_back(a, b);
             }
 
-            // Query static candidates with simple culling check
-            std::vector<size_t> staticCandidates;
+            // Use pre-populated static collision cache (read-only, thread-safe)
             if (currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
-              m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
+              auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
+              if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
+                const auto& staticCandidates = cacheIt->second.cachedStaticIndices;
 
-              for (size_t staticIdx : staticCandidates) {
-                if (staticIdx >= m_storage.hotData.size()) continue;
+                for (size_t staticIdx : staticCandidates) {
+                  if (staticIdx >= m_storage.hotData.size()) continue;
 
-                const auto& staticHot = m_storage.hotData[staticIdx];
-                if (!staticHot.active) continue;
-                if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+                  const auto& staticHot = m_storage.hotData[staticIdx];
+                  if (!staticHot.active) continue;
+                  if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
 
-                localPairs.emplace_back(dynamicIdx, staticIdx);
+                  localPairs.emplace_back(dynamicIdx, staticIdx);
+                }
               }
             }
           }
@@ -1063,18 +1058,21 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
         HammerEngine::TaskPriority::High, "CollisionSOA_BroadphaseBatch"));
   }
 
-  // Merge results from all threads - simplified deduplication
+  // Merge results from all threads - deduplicate dynamic-vs-dynamic pairs only
   std::unordered_set<uint64_t> seenPairs;
   seenPairs.reserve(movableIndices.size() * 4);
 
   for (auto& future : futures) {
     auto localPairs = future.get();
     for (const auto& pair : localPairs) {
-      // Only deduplicate dynamic-vs-dynamic pairs
-      bool needsDedup = (pair.first < m_storage.hotData.size() &&
-                        pair.second < m_storage.hotData.size() &&
-                        static_cast<BodyType>(m_storage.hotData[pair.first].bodyType) != BodyType::STATIC &&
-                        static_cast<BodyType>(m_storage.hotData[pair.second].bodyType) != BodyType::STATIC);
+      if (pair.first >= m_storage.hotData.size() || pair.second >= m_storage.hotData.size()) continue;
+
+      bool isFirstStatic = static_cast<BodyType>(m_storage.hotData[pair.first].bodyType) == BodyType::STATIC;
+      bool isSecondStatic = static_cast<BodyType>(m_storage.hotData[pair.second].bodyType) == BodyType::STATIC;
+
+      // Dynamic-vs-static pairs are unique by construction (no dedup needed)
+      // Dynamic-vs-dynamic pairs need deduplication due to symmetric queries
+      bool needsDedup = !isFirstStatic && !isSecondStatic;
 
       if (needsDedup) {
         uint64_t pairKey = (static_cast<uint64_t>(pair.first) << 32) | pair.second;
@@ -1292,6 +1290,9 @@ void CollisionManager::updateSOA(float dt) {
   bool threadingEnabled = m_useThreading.load(std::memory_order_acquire) &&
                           HammerEngine::ThreadSystem::Exists();
 
+  // Memory fence to ensure threading configuration is visible before snapshot
+  std::atomic_thread_fence(std::memory_order_acquire);
+
   ThreadingStats summaryStats{};
   bool summaryThreaded = false;
 
@@ -1312,6 +1313,9 @@ void CollisionManager::updateSOA(float dt) {
 
   // Sync spatial hashes after culling, only for active bodies
   syncSpatialHashesWithActiveIndices();
+
+  // Update static collision cache for all movable bodies (single-threaded, before threading)
+  updateStaticCollisionCacheForMovableBodies();
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
@@ -1440,6 +1444,39 @@ void CollisionManager::rebuildStaticSpatialHash() {
     if (bodyType == BodyType::STATIC) {
       AABB aabb = m_storage.computeAABB(i);
       m_staticSpatialHash.insert(i, aabb);
+    }
+  }
+}
+
+void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
+  constexpr float POSITION_TOLERANCE = 10.0f;
+
+  const auto& movableIndices = m_collisionPool.movableIndices;
+
+  for (size_t dynamicIdx : movableIndices) {
+    if (dynamicIdx >= m_storage.hotData.size()) continue;
+
+    const auto& hot = m_storage.hotData[dynamicIdx];
+    if (!hot.active) continue;
+
+    auto& cache = m_staticCollisionCache[dynamicIdx];
+
+    bool needsUpdate = !cache.valid ||
+        std::abs(cache.lastPosition.getX() - hot.position.getX()) > POSITION_TOLERANCE ||
+        std::abs(cache.lastPosition.getY() - hot.position.getY()) > POSITION_TOLERANCE;
+
+    if (needsUpdate) {
+      AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+
+      dynamicAABB.halfSize.setX(dynamicAABB.halfSize.getX() + SPATIAL_QUERY_EPSILON);
+      dynamicAABB.halfSize.setY(dynamicAABB.halfSize.getY() + SPATIAL_QUERY_EPSILON);
+
+      std::vector<size_t> staticCandidates;
+      m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
+
+      cache.cachedStaticIndices = staticCandidates;
+      cache.lastPosition = hot.position;
+      cache.valid = true;
     }
   }
 }

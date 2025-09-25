@@ -214,11 +214,13 @@ private:
 
     // Spatial hash optimization methods
     void rebuildStaticSpatialHash();
+    void updateStaticCollisionCacheForMovableBodies();
 
     void subscribeWorldEvents(); // hook to world events
 
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
+    static constexpr float SPATIAL_QUERY_EPSILON = 2.0f;            // AABB expansion for cell boundary overlap protection
 
     // Camera culling support
     struct CullingArea {
