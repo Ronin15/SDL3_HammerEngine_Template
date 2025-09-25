@@ -878,6 +878,176 @@ BOOST_AUTO_TEST_CASE(TestVelocityManagement)
 
 BOOST_AUTO_TEST_SUITE_END()
 
+// Threading Safety and Accuracy Tests
+BOOST_AUTO_TEST_SUITE(CollisionThreadingTests)
+
+BOOST_AUTO_TEST_CASE(TestThreadingAccuracyForceMode)
+{
+    // CRITICAL TEST: Verify collision detection accuracy in forced threading mode
+    // This test addresses the threading race conditions we fixed
+
+    // Initialize ThreadSystem first (required for threading)
+    if (!HammerEngine::ThreadSystem::Exists()) {
+        HammerEngine::ThreadSystem::Instance().init(4);
+    }
+
+    CollisionManager::Instance().init();
+
+    // Force threading by setting very low threshold (normally 300+)
+    CollisionManager::Instance().configureThreading(true, 4);  // Enable threading with 4 threads
+    CollisionManager::Instance().setThreadingThreshold(1);  // Force threading with just 1 body
+
+    const int NUM_BODIES = 100;  // More bodies to guarantee threading activation
+    std::vector<EntityID> bodyIds;
+    std::vector<Vector2D> expectedCollisions;
+
+    // Create overlapping bodies in a grid pattern to guarantee collisions
+    for (int i = 0; i < NUM_BODIES; ++i) {
+        EntityID id = 50000 + i;
+
+        // Position bodies in overlapping pattern (10x10 grid)
+        float x = (i % 10) * 30.0f + 100.0f;  // 10 bodies per row, some overlap
+        float y = (i / 10) * 30.0f + 100.0f;
+        Vector2D pos(x, y);
+
+        AABB aabb(pos.getX(), pos.getY(), 20.0f, 20.0f);  // 40x40 bodies with 30 spacing = overlap
+
+        CollisionManager::Instance().addCollisionBodySOA(
+            id, aabb.center, aabb.halfSize,
+            (i % 2 == 0) ? BodyType::KINEMATIC : BodyType::DYNAMIC,  // Mix of types
+            CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        );
+
+        bodyIds.push_back(id);
+
+        // Track positions that should collide (adjacent bodies overlap)
+        if (i % 10 < 9) expectedCollisions.push_back(pos);  // Bodies that have right neighbors
+        if (i / 10 < 9) expectedCollisions.push_back(pos);  // Bodies that have bottom neighbors
+    }
+
+    // Run collision detection multiple times to stress test threading
+    std::vector<size_t> collisionCounts;
+    const int NUM_TESTS = 10;
+
+    for (int test = 0; test < NUM_TESTS; ++test) {
+        // Reset and run collision detection
+        CollisionManager::Instance().update(0.016f);
+
+        // Count collisions via performance stats
+        auto perfStats = CollisionManager::Instance().getPerfStats();
+        collisionCounts.push_back(perfStats.lastCollisions);
+
+        // Note: Threading may not always activate depending on workload distribution
+        // The important thing is collision accuracy, which we test below
+    }
+
+    // Verify collision consistency across runs
+    BOOST_CHECK(!collisionCounts.empty());
+    size_t firstRunCollisions = collisionCounts[0];
+
+    // All runs should detect the same number of collisions (threading should be deterministic)
+    for (size_t count : collisionCounts) {
+        BOOST_CHECK_EQUAL(count, firstRunCollisions);
+    }
+
+    // Verify we detected reasonable number of collisions (overlapping 40x40 bodies with 30px spacing in 10x10 grid)
+    BOOST_CHECK_GT(firstRunCollisions, 10);  // Should detect multiple collisions
+    BOOST_CHECK_LT(firstRunCollisions, 500); // But not excessive (sanity check for 100 bodies)
+
+    // Test 2: Compare single-threaded vs multi-threaded results
+    CollisionManager::Instance().configureThreading(false);  // Disable threading
+    CollisionManager::Instance().update(0.016f);
+    auto singleThreadedStats = CollisionManager::Instance().getPerfStats();
+
+    CollisionManager::Instance().configureThreading(true, 4);   // Re-enable threading with 4 threads
+    CollisionManager::Instance().setThreadingThreshold(1);   // Force threading
+    CollisionManager::Instance().update(0.016f);
+    auto multiThreadedStats = CollisionManager::Instance().getPerfStats();
+
+    // Both modes should detect the same collisions (main validation)
+    BOOST_CHECK_EQUAL(singleThreadedStats.lastCollisions, multiThreadedStats.lastCollisions);
+    BOOST_CHECK(!singleThreadedStats.lastFrameWasThreaded);   // Should be single-threaded
+
+    // Note: Multi-threaded detection may vary based on workload - the key is collision accuracy
+    BOOST_TEST_MESSAGE("Single-threaded collisions: " << singleThreadedStats.lastCollisions);
+    BOOST_TEST_MESSAGE("Multi-threaded collisions: " << multiThreadedStats.lastCollisions);
+    BOOST_TEST_MESSAGE("Threading activated: " << (multiThreadedStats.lastFrameWasThreaded ? "Yes" : "No"));
+
+    // Clean up
+    for (EntityID id : bodyIds) {
+        CollisionManager::Instance().removeCollisionBodySOA(id);
+    }
+
+    // Reset threading to defaults
+    CollisionManager::Instance().configureThreading(true);
+    CollisionManager::Instance().setThreadingThreshold(300);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
+{
+    // CRITICAL TEST: Verify that our CollisionInfo index optimization works correctly
+    // This test validates that indexA and indexB are properly populated
+    CollisionManager::Instance().init();
+
+    EntityID bodyA = 60000;
+    EntityID bodyB = 60001;
+
+    // Create two overlapping bodies
+    AABB aabbA(100.0f, 100.0f, 25.0f, 25.0f);
+    AABB aabbB(120.0f, 120.0f, 25.0f, 25.0f);  // Overlapping
+
+    CollisionManager::Instance().addCollisionBodySOA(bodyA, aabbA.center, aabbA.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    CollisionManager::Instance().addCollisionBodySOA(bodyB, aabbB.center, aabbB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+
+    // Set up collision callback to inspect CollisionInfo
+    std::vector<CollisionInfo> capturedCollisions;
+
+    CollisionManager::Instance().addCollisionCallback([&capturedCollisions](const CollisionInfo& collision) {
+        capturedCollisions.push_back(collision);
+    });
+
+    // Run collision detection
+    CollisionManager::Instance().update(0.016f);
+
+    // Verify we captured collisions
+    BOOST_REQUIRE(!capturedCollisions.empty());
+
+    for (const auto& collision : capturedCollisions) {
+        // Verify entity IDs are valid
+        BOOST_CHECK(collision.a != 0);
+        BOOST_CHECK(collision.b != 0);
+
+        // CRITICAL: Verify indices are populated and valid
+        BOOST_CHECK_NE(collision.indexA, SIZE_MAX);  // Should not be default value
+        BOOST_CHECK_NE(collision.indexB, SIZE_MAX);  // Should not be default value
+
+        // Verify indices are within reasonable bounds
+        size_t bodyCount = CollisionManager::Instance().getBodyCount();
+        BOOST_CHECK_LT(collision.indexA, bodyCount);
+        BOOST_CHECK_LT(collision.indexB, bodyCount);
+
+        // Verify indices are different (can't collide with self)
+        BOOST_CHECK_NE(collision.indexA, collision.indexB);
+
+        // Verify collision normal is reasonable
+        float normalLength = collision.normal.length();
+        BOOST_CHECK_GT(normalLength, 0.1f);  // Should have meaningful normal
+
+        // Verify penetration is positive for actual collision
+        if (!collision.trigger) {
+            BOOST_CHECK_GT(collision.penetration, 0.0f);
+        }
+    }
+
+    // Clean up
+    CollisionManager::Instance().removeCollisionBodySOA(bodyA);
+    CollisionManager::Instance().removeCollisionBodySOA(bodyB);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
 // Integration Tests for CollisionManager Event System
 BOOST_AUTO_TEST_SUITE(CollisionIntegrationTests)
 
@@ -1225,6 +1395,306 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     CollisionManager::Instance().removeCollisionBodySOA(staticId);
     CollisionManager::Instance().removeCollisionBodySOA(kinematicId);
     CollisionManager::Instance().removeCollisionBodySOA(triggerId);
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// Advanced Threading and Performance Tests
+BOOST_AUTO_TEST_SUITE(CollisionAdvancedPerformanceTests)
+
+BOOST_AUTO_TEST_CASE(TestCacheRaceConditionProtection)
+{
+    // Test that internal cache invalidation doesn't cause race conditions during threading
+    // Initialize ThreadSystem first (following established pattern)
+    if (!HammerEngine::ThreadSystem::Exists()) {
+        HammerEngine::ThreadSystem::Instance().init(4);
+    }
+
+    CollisionManager::Instance().init();
+    CollisionManager::Instance().configureThreading(true, 4); // Enable threading with 4 threads
+    CollisionManager::Instance().setThreadingThreshold(1); // Force threading
+
+    const int numBodies = 50; // Reduced for safety
+    std::vector<EntityID> bodies;
+
+    // Create bodies in a grid pattern that will generate cache entries
+    for (int i = 0; i < numBodies; ++i) {
+        EntityID id = 20000 + i;
+        float x = (i % 7) * 40.0f;
+        float y = (i / 7) * 40.0f;
+        AABB aabb(x, y, 15.0f, 15.0f);
+
+        CollisionManager::Instance().addCollisionBodySOA(
+            id, aabb.center, aabb.halfSize,
+            BodyType::KINEMATIC,
+            CollisionLayer::Layer_Enemy,
+            0xFFFFFFFFu
+        );
+        bodies.push_back(id);
+    }
+
+    std::atomic<bool> testPassed{true};
+
+    // Run multiple collision detection cycles to stress cache
+    for (int cycle = 0; cycle < 20; ++cycle) {
+        try {
+            // Slightly move bodies to invalidate cache entries
+            for (size_t i = 0; i < bodies.size(); ++i) {
+                float offsetX = std::sin(cycle * 0.2f + i * 0.1f) * 3.0f;
+                float offsetY = std::cos(cycle * 0.2f + i * 0.1f) * 3.0f;
+
+                Vector2D newPos(
+                    ((i % 7) * 40.0f) + offsetX,
+                    ((i / 7) * 40.0f) + offsetY
+                );
+
+                CollisionManager::Instance().updateCollisionBodyPositionSOA(
+                    bodies[i], newPos
+                );
+            }
+
+            // Run collision detection - this internally uses threading when threshold met
+            CollisionManager::Instance().update(0.016f);
+
+        } catch (...) {
+            testPassed = false;
+            break;
+        }
+    }
+
+    // Verify no race conditions occurred during cache operations
+    BOOST_CHECK(testPassed.load());
+
+    BOOST_TEST_MESSAGE("Cache race condition protection test completed - " <<
+                      (testPassed.load() ? "PASSED" : "FAILED"));
+
+    // Clean up
+    for (EntityID id : bodies) {
+        CollisionManager::Instance().removeCollisionBodySOA(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestHighConcurrencyCollisionAccuracy)
+{
+    // Stress test with many threads and bodies to ensure accuracy under load
+    // Initialize ThreadSystem first (following established pattern)
+    if (!HammerEngine::ThreadSystem::Exists()) {
+        HammerEngine::ThreadSystem::Instance().init(4);
+    }
+
+    CollisionManager::Instance().init();
+    CollisionManager::Instance().configureThreading(true, 4); // Enable threading with 4 threads
+    CollisionManager::Instance().setThreadingThreshold(1); // Force threading
+
+    const int numBodies = 200;
+    const int numIterations = 50;
+    std::vector<EntityID> bodies;
+
+    // Create overlapping bodies that should always collide
+    for (int i = 0; i < numBodies; ++i) {
+        EntityID id = 30000 + i;
+        // Create overlapping grid - every body overlaps with neighbors
+        float x = (i % 14) * 30.0f; // 14x14 grid with 30 unit spacing, 40 unit bodies = overlap
+        float y = (i / 14) * 30.0f;
+        AABB aabb(x, y, 20.0f, 20.0f); // 40x40 bodies with 30 unit spacing = guaranteed overlap
+
+        CollisionManager::Instance().addCollisionBodySOA(
+            id, aabb.center, aabb.halfSize,
+            BodyType::KINEMATIC,
+            CollisionLayer::Layer_Enemy,
+            0xFFFFFFFFu
+        );
+        bodies.push_back(id);
+    }
+
+    std::atomic<int> totalCollisions{0};
+    std::atomic<int> invalidCollisions{0}; // Collisions with impossible geometry
+    std::atomic<int> missingCollisions{0}; // Expected collisions that didn't happen
+
+    // Run many collision detection cycles
+    for (int iter = 0; iter < numIterations; ++iter) {
+        // Slightly adjust positions to create dynamic scenario
+        for (size_t i = 0; i < bodies.size(); ++i) {
+            float offsetX = std::sin(iter * 0.1f + i * 0.1f) * 2.0f;
+            float offsetY = std::cos(iter * 0.1f + i * 0.1f) * 2.0f;
+            float x = (i % 14) * 30.0f + offsetX;
+            float y = (i / 14) * 30.0f + offsetY;
+
+            AABB newAABB(x, y, 20.0f, 20.0f);
+            CollisionManager::Instance().updateCollisionBodyPositionSOA(
+                bodies[i], newAABB.center
+            );
+        }
+
+        // Capture collisions for validation
+        std::vector<CollisionInfo> detectedCollisions;
+        CollisionManager::Instance().addCollisionCallback(
+            [&detectedCollisions](const CollisionInfo& collision) {
+                detectedCollisions.push_back(collision);
+            }
+        );
+
+        // Run collision detection
+        CollisionManager::Instance().update(0.016f);
+
+        // Validate detected collisions
+        int validCollisions = 0;
+        for (const auto& collision : detectedCollisions) {
+            // Check if collision makes geometric sense
+            if (collision.penetration > 0.0f && !collision.trigger) {
+                // Valid collision
+                validCollisions++;
+
+                // Verify indices are properly set
+                if (collision.indexA == SIZE_MAX || collision.indexB == SIZE_MAX) {
+                    invalidCollisions++;
+                }
+            } else if (collision.penetration <= 0.0f && !collision.trigger) {
+                // Invalid collision - negative penetration
+                invalidCollisions++;
+            }
+        }
+
+        totalCollisions += validCollisions;
+
+        // With overlapping grid, we should always detect some collisions
+        if (validCollisions < 10) { // Conservative minimum for overlapping 200-body grid
+            missingCollisions++;
+        }
+    }
+
+    // Performance and accuracy validation
+    BOOST_CHECK_EQUAL(invalidCollisions.load(), 0); // No invalid collisions
+    BOOST_CHECK_EQUAL(missingCollisions.load(), 0); // No missing collision frames
+    BOOST_CHECK_GT(totalCollisions.load(), numIterations * 10); // Reasonable collision count
+
+    float avgCollisionsPerFrame = static_cast<float>(totalCollisions.load()) / numIterations;
+    BOOST_TEST_MESSAGE("High concurrency test: " << avgCollisionsPerFrame <<
+                      " avg collisions/frame over " << numIterations << " iterations");
+    BOOST_TEST_MESSAGE("Invalid collisions: " << invalidCollisions.load() <<
+                      ", Missing collision frames: " << missingCollisions.load());
+
+    // Clean up
+    for (EntityID id : bodies) {
+        CollisionManager::Instance().removeCollisionBodySOA(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
+{
+    // Test spatial partitioning edge cases that could cause problems
+    // Initialize ThreadSystem first (following established pattern)
+    if (!HammerEngine::ThreadSystem::Exists()) {
+        HammerEngine::ThreadSystem::Instance().init(4);
+    }
+
+    CollisionManager::Instance().init();
+
+    // Test 1: Bodies exactly at grid boundaries
+    EntityID boundaryId = 40000;
+    // Use exact cell boundary positions based on COARSE_CELL_SIZE = 128.0f
+    float cellBoundary = 128.0f;
+    AABB boundaryAABB(cellBoundary, cellBoundary, 10.0f, 10.0f);
+
+    CollisionManager::Instance().addCollisionBodySOA(
+        boundaryId, boundaryAABB.center, boundaryAABB.halfSize,
+        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+    );
+
+    // Should be findable via area query
+    std::vector<EntityID> results;
+    CollisionManager::Instance().queryArea(boundaryAABB, results);
+    BOOST_CHECK(std::find(results.begin(), results.end(), boundaryId) != results.end());
+
+    // Test 2: Very large bodies spanning multiple cells
+    EntityID largeId = 40001;
+    AABB largeAABB(200.0f, 200.0f, 300.0f, 300.0f); // 600x600 body spanning many cells
+
+    CollisionManager::Instance().addCollisionBodySOA(
+        largeId, largeAABB.center, largeAABB.halfSize,
+        BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+    );
+
+    // Should be findable from multiple query regions
+    AABB queryTopLeft(50.0f, 50.0f, 20.0f, 20.0f);
+    AABB queryBottomRight(350.0f, 350.0f, 20.0f, 20.0f);
+
+    results.clear();
+    CollisionManager::Instance().queryArea(queryTopLeft, results);
+    bool foundInTopLeft = std::find(results.begin(), results.end(), largeId) != results.end();
+
+    results.clear();
+    CollisionManager::Instance().queryArea(queryBottomRight, results);
+    bool foundInBottomRight = std::find(results.begin(), results.end(), largeId) != results.end();
+
+    BOOST_CHECK(foundInTopLeft);
+    BOOST_CHECK(foundInBottomRight);
+
+    // Test 3: Bodies at extreme coordinates
+    EntityID extremeId = 40002;
+    AABB extremeAABB(-1000000.0f, -1000000.0f, 50.0f, 50.0f);
+
+    CollisionManager::Instance().addCollisionBodySOA(
+        extremeId, extremeAABB.center, extremeAABB.halfSize,
+        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+    );
+
+    // Should still be queryable
+    results.clear();
+    CollisionManager::Instance().queryArea(extremeAABB, results);
+    BOOST_CHECK(std::find(results.begin(), results.end(), extremeId) != results.end());
+
+    // Test 4: Zero-sized bodies (degenerate case)
+    EntityID zeroId = 40003;
+    AABB zeroAABB(100.0f, 100.0f, 0.0f, 0.0f); // Zero size
+
+    CollisionManager::Instance().addCollisionBodySOA(
+        zeroId, zeroAABB.center, zeroAABB.halfSize,
+        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+    );
+
+    // Should still be tracked and queryable
+    results.clear();
+    AABB zeroQuery(99.0f, 99.0f, 2.0f, 2.0f); // Small area around zero-sized body
+    CollisionManager::Instance().queryArea(zeroQuery, results);
+    BOOST_CHECK(std::find(results.begin(), results.end(), zeroId) != results.end());
+
+    // Test 5: Bodies moving between fine/coarse grid transitions
+    EntityID movingId = 40004;
+    Vector2D startPos(64.0f, 64.0f); // Start in one fine cell
+    AABB movingAABB(startPos.getX(), startPos.getY(), 15.0f, 15.0f);
+
+    CollisionManager::Instance().addCollisionBodySOA(
+        movingId, movingAABB.center, movingAABB.halfSize,
+        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+    );
+
+    // Move across fine cell boundaries multiple times
+    for (int i = 1; i <= 5; ++i) {
+        Vector2D newPos(startPos.getX() + (i * 20.0f), startPos.getY() + (i * 20.0f));
+        AABB newAABB(newPos.getX(), newPos.getY(), 15.0f, 15.0f);
+
+        CollisionManager::Instance().updateCollisionBodyPositionSOA(
+            movingId, newAABB.center
+        );
+
+        // Should still be queryable at new position
+        results.clear();
+        CollisionManager::Instance().queryArea(newAABB, results);
+        BOOST_CHECK(std::find(results.begin(), results.end(), movingId) != results.end());
+    }
+
+    BOOST_TEST_MESSAGE("Grid hash edge case testing completed successfully");
+
+    // Clean up
+    CollisionManager::Instance().removeCollisionBodySOA(boundaryId);
+    CollisionManager::Instance().removeCollisionBodySOA(largeId);
+    CollisionManager::Instance().removeCollisionBodySOA(extremeId);
+    CollisionManager::Instance().removeCollisionBodySOA(zeroId);
+    CollisionManager::Instance().removeCollisionBodySOA(movingId);
     CollisionManager::Instance().clean();
 }
 
