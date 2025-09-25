@@ -900,8 +900,8 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
-    dynamicAABB.halfSize.setX(dynamicAABB.halfSize.getX() + SPATIAL_QUERY_EPSILON);
-    dynamicAABB.halfSize.setY(dynamicAABB.halfSize.getY() + SPATIAL_QUERY_EPSILON);
+    // In-place epsilon expansion - most efficient approach
+    dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
     // 1. Movable-vs-movable collisions
     std::vector<size_t> dynamicCandidates;
@@ -937,8 +937,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 }
 
 bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                             ThreadingStats& stats,
-                                             const std::unordered_map<size_t, std::vector<size_t>>& staticCacheSnapshot) {
+                                             ThreadingStats& stats) {
   indexPairs.clear();
 
   if (!HammerEngine::ThreadSystem::Exists()) {
@@ -1003,7 +1002,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
     }
 
     futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, movableSnapshot, currentCullingArea, &staticCacheSnapshot]() -> std::vector<std::pair<size_t, size_t>> {
+        [this, start, end, movableSnapshot, currentCullingArea]() -> std::vector<std::pair<size_t, size_t>> {
           std::vector<std::pair<size_t, size_t>> localPairs;
           localPairs.reserve((end - start) * 8);
 
@@ -1016,8 +1015,8 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
 
             AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
-            dynamicAABB.halfSize.setX(dynamicAABB.halfSize.getX() + SPATIAL_QUERY_EPSILON);
-            dynamicAABB.halfSize.setY(dynamicAABB.halfSize.getY() + SPATIAL_QUERY_EPSILON);
+            // In-place epsilon expansion - most efficient approach
+            dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
             // Query dynamic candidates
             std::vector<size_t> candidates;
@@ -1035,11 +1034,11 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
               localPairs.emplace_back(a, b);
             }
 
-            // Use immutable cache snapshot (thread-safe, no shared mutable state)
+            // Use original cache (thread-safe read-only access after cache update completes)
             if (currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
-              auto cacheIt = staticCacheSnapshot.find(dynamicIdx);
-              if (cacheIt != staticCacheSnapshot.end()) {
-                const auto& staticCandidates = cacheIt->second;
+              auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
+              if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
+                const auto& staticCandidates = cacheIt->second.cachedStaticIndices;
 
                 for (size_t staticIdx : staticCandidates) {
                   if (staticIdx >= m_storage.hotData.size()) continue;
@@ -1144,7 +1143,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     bool isTrigger = hotA.isTrigger || hotB.isTrigger;
 
     collisions.push_back(CollisionInfo{
-        entityA, entityB, normal, minPen, isTrigger
+        entityA, entityB, normal, minPen, isTrigger, aIdx, bIdx
     });
   }
 
@@ -1246,7 +1245,7 @@ bool CollisionManager::narrowphaseSOAThreaded(const std::vector<std::pair<size_t
             bool isTrigger = hotA.isTrigger || hotB.isTrigger;
 
             localCollisions.push_back(CollisionInfo{
-                entityA, entityB, normal, minPen, isTrigger
+                entityA, entityB, normal, minPen, isTrigger, aIdx, bIdx
             });
           }
 
@@ -1318,15 +1317,6 @@ void CollisionManager::updateSOA(float dt) {
   // Update static collision cache for all movable bodies (single-threaded, before threading)
   updateStaticCollisionCacheForMovableBodies();
 
-  // Create immutable snapshot of static collision cache for thread-safe access
-  std::unordered_map<size_t, std::vector<size_t>> staticCacheSnapshot;
-  staticCacheSnapshot.reserve(m_staticCollisionCache.size());
-  for (const auto& [idx, cache] : m_staticCollisionCache) {
-    if (cache.valid) {
-      staticCacheSnapshot[idx] = cache.cachedStaticIndices;
-    }
-  }
-
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
   size_t activeMovableBodies = m_collisionPool.movableIndices.size();
@@ -1357,7 +1347,7 @@ void CollisionManager::updateSOA(float dt) {
   // Use active movable bodies for threading decision - they drive the workload
   if (threadingEnabled && activeMovableBodies >= threadingThresholdValue) {
     ThreadingStats stats;
-    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats, staticCacheSnapshot);
+    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats);
     if (broadphaseUsedThreading) {
       summaryThreaded = true;
       summaryStats = stats;
@@ -1484,8 +1474,8 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
     if (needsUpdate) {
       AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
-      dynamicAABB.halfSize.setX(dynamicAABB.halfSize.getX() + SPATIAL_QUERY_EPSILON);
-      dynamicAABB.halfSize.setY(dynamicAABB.halfSize.getY() + SPATIAL_QUERY_EPSILON);
+      // In-place epsilon expansion - most efficient approach
+      dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
       std::vector<size_t> staticCandidates;
       m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
@@ -1500,13 +1490,9 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   if (collision.trigger) return; // Triggers don't need position resolution
 
-  // Find the indices for the colliding entities
-  size_t indexA = SIZE_MAX, indexB = SIZE_MAX;
-  for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
-    if (m_storage.entityIds[i] == collision.a) indexA = i;
-    if (m_storage.entityIds[i] == collision.b) indexB = i;
-    if (indexA != SIZE_MAX && indexB != SIZE_MAX) break;
-  }
+  // Use stored indices - NO MORE LINEAR LOOKUP!
+  size_t indexA = collision.indexA;
+  size_t indexB = collision.indexB;
 
   if (indexA >= m_storage.hotData.size() || indexB >= m_storage.hotData.size()) return;
 
@@ -1558,8 +1544,8 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
       Vector2D tangent(-collision.normal.getY(), collision.normal.getX());
       float slideBoost = std::min(5.0f, std::max(0.5f, collision.penetration * 5.0f));
 
-      EntityID entityA = (indexA < m_storage.entityIds.size()) ? m_storage.entityIds[indexA] : 0;
-      EntityID entityB = (indexB < m_storage.entityIds.size()) ? m_storage.entityIds[indexB] : 0;
+      EntityID entityA = collision.a;  // Use already-known entity IDs
+      EntityID entityB = collision.b;
 
       if (entityA < entityB) {
         hotA.velocity += tangent * slideBoost;
@@ -1621,13 +1607,9 @@ void CollisionManager::processTriggerEventsSOA() {
   currentPairs.reserve(m_collisionPool.collisionBuffer.size());
 
   for (const auto& collision : m_collisionPool.collisionBuffer) {
-    // Find body indices
-    size_t indexA = SIZE_MAX, indexB = SIZE_MAX;
-    for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
-      if (m_storage.entityIds[i] == collision.a) indexA = i;
-      if (m_storage.entityIds[i] == collision.b) indexB = i;
-      if (indexA != SIZE_MAX && indexB != SIZE_MAX) break;
-    }
+    // Use stored indices - NO MORE LINEAR LOOKUP!
+    size_t indexA = collision.indexA;
+    size_t indexB = collision.indexB;
 
     if (indexA >= m_storage.hotData.size() || indexB >= m_storage.hotData.size()) continue;
 
@@ -1690,15 +1672,16 @@ void CollisionManager::processTriggerEventsSOA() {
       EntityID playerId = it->second.first;
       EntityID triggerId = it->second.second;
 
-      // Find trigger hot data for position
+      // Find trigger hot data for position - use hash lookup instead of linear search
       Vector2D triggerPos(0, 0);
       HammerEngine::TriggerTag triggerTag = HammerEngine::TriggerTag::None;
-      for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
-        if (m_storage.entityIds[i] == triggerId && i < m_storage.hotData.size()) {
-          const auto& hot = m_storage.hotData[i];
+      auto triggerIt = m_storage.entityToIndex.find(triggerId);
+      if (triggerIt != m_storage.entityToIndex.end()) {
+        size_t triggerIndex = triggerIt->second;
+        if (triggerIndex < m_storage.hotData.size()) {
+          const auto& hot = m_storage.hotData[triggerIndex];
           triggerPos = hot.position;
           triggerTag = static_cast<HammerEngine::TriggerTag>(hot.triggerTag);
-          break;
         }
       }
 

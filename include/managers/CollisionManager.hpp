@@ -196,8 +196,7 @@ private:
     // NEW SOA-BASED BROADPHASE: High-performance hierarchical collision detection
     void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs);
     bool broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                               ThreadingStats& stats,
-                               const std::unordered_map<size_t, std::vector<size_t>>& staticCacheSnapshot);
+                               ThreadingStats& stats);
     bool broadphaseSOAAsync(std::vector<std::pair<size_t, size_t>>& indexPairs,
                            ThreadingStats& stats) const;
     void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
