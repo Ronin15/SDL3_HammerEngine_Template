@@ -9,6 +9,7 @@
 #include <cstddef>
 #include <algorithm>
 #include <cmath>
+#include <array>
 
 namespace HammerEngine {
 
@@ -65,7 +66,13 @@ struct WorkerBudget {
 };
 
 /**
- * @brief Worker allocation percentages and limits
+ * @brief Worker allocation weights
+ *
+ * These weights determine:
+ * 1. Base allocation distribution for guaranteed workers
+ * 2. Priority access to buffer threads during burst workloads
+ *
+ * Higher weight = more base workers + higher priority for buffer access
  */
 static constexpr size_t AI_WORKER_WEIGHT = 6;
 static constexpr size_t PARTICLE_WORKER_WEIGHT = 3;
@@ -93,10 +100,13 @@ static constexpr float QUEUE_PRESSURE_PATHFINDING = 0.75f;  // PathfinderManager
  * Tiered Strategy (prevents over-allocation):
  * - Tier 1 (≤1 workers): GameLoop=1, AI=0 (single-threaded), Events=0 (single-threaded)
  * - Tier 2 (2-4 workers): GameLoop=1, AI=1 if possible, Events=0 (shares with AI)
- * - Tier 3 (5+ workers): GameLoop=2, AI=60% of remaining, Events=30% of remaining
+ * - Tier 3 (5+ workers): GameLoop=2, weighted base allocation, 30% buffer reserve
  *
- * Target minimum (7 workers): GameLoop=2, AI=3, Events=1, Buffer=1
- * Buffer threads can be used by AI/Events during high workload periods.
+ * Buffer Strategy:
+ * - 30% of available workers reserved as buffer for burst capacity
+ * - Base allocations use weighted distribution of remaining 70%
+ * - Subsystems can dynamically use buffer threads based on workload
+ * - Weights determine both base allocation AND priority access to buffer
  */
 inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
     WorkerBudget budget;
@@ -135,7 +145,12 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.eventAllocated = 0; // Remains single-threaded on low-end
         budget.collisionAllocated = (remainingWorkers >= 2) ? 1 : 0;
     } else {
-        // Tier 3: High-end systems (5+ workers) - Weighted distribution
+        // Tier 3: High-end systems (5+ workers) - Base allocation + buffer
+        // Reserve 30% of remaining workers as buffer for burst capacity
+        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(remainingWorkers * 0.3));
+        size_t workersToAllocate = remainingWorkers - bufferReserve;
+
+        // Weighted distribution for base allocations only
         const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT +
                                    EVENT_WORKER_WEIGHT + COLLISION_WORKER_WEIGHT;
 
@@ -145,28 +160,30 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         std::array<size_t, 4> shares{};
 
         for (size_t i = 0; i < weights.size(); ++i) {
-            if (weights[i] == 0 || totalWeight == 0 || remainingWorkers == 0) {
+            if (weights[i] == 0 || totalWeight == 0 || workersToAllocate == 0) {
                 rawShares[i] = 0.0;
                 shares[i] = 0;
             } else {
                 rawShares[i] = (static_cast<double>(weights[i]) /
                                 static_cast<double>(totalWeight)) *
-                               static_cast<double>(remainingWorkers);
+                               static_cast<double>(workersToAllocate);
                 shares[i] = static_cast<size_t>(std::floor(rawShares[i]));
             }
         }
 
         size_t used = shares[0] + shares[1] + shares[2] + shares[3];
 
+        // Ensure minimum allocation for high-priority subsystems
         std::array<size_t, 4> priorityOrder = {0, 3, 1, 2}; // AI, Collision, Particle, Event
         for (size_t index : priorityOrder) {
-            if (weights[index] > 0 && shares[index] == 0 && used < remainingWorkers) {
+            if (weights[index] > 0 && shares[index] == 0 && used < workersToAllocate) {
                 shares[index] = 1;
                 ++used;
             }
         }
 
-        size_t leftover = (used < remainingWorkers) ? (remainingWorkers - used) : 0;
+        // Distribute any rounding remainder
+        size_t leftover = (used < workersToAllocate) ? (workersToAllocate - used) : 0;
         while (leftover > 0) {
             bool assigned = false;
             for (size_t index : priorityOrder) {
@@ -192,12 +209,17 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.particleAllocated = shares[1];
         budget.eventAllocated = shares[2];
         budget.collisionAllocated = shares[3];
+
+        // Buffer was already reserved upfront
+        budget.remaining = bufferReserve;
     }
 
-    // Calculate truly remaining workers (buffer for other tasks)
-    size_t allocated = budget.aiAllocated + budget.particleAllocated +
-                       budget.eventAllocated + budget.collisionAllocated;
-    budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
+    // For low-end systems, calculate remaining after allocation
+    if (availableWorkers <= 4) {
+        size_t allocated = budget.aiAllocated + budget.particleAllocated +
+                          budget.eventAllocated + budget.collisionAllocated;
+        budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
+    }
 
     // Validation: Ensure we never over-allocate
     size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
