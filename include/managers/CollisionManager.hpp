@@ -483,44 +483,8 @@ private:
             // Vectors retain capacity
         }
     };
-    
+
     mutable CollisionPool m_collisionPool;
-    
-    // Broadphase optimization: persistent containers to avoid allocations
-    struct BroadphaseCache {
-        std::unordered_set<uint64_t> seenPairs;
-        std::unordered_map<EntityID, const CollisionBody*> fastBodyLookup;
-        
-        // Static body query cache - cache spatial queries for static bodies
-        struct StaticQueryCache {
-            std::vector<EntityID> staticBodies;
-            Vector2D lastQueryCenter;
-            float maxQueryDistance;
-        };
-        std::unordered_map<EntityID, StaticQueryCache> staticCache;
-        uint64_t staticCacheVersion{0}; // Incremented when static bodies change
-        
-        void ensureCapacity(size_t bodyCount) {
-            if (fastBodyLookup.size() == 0) {
-                fastBodyLookup.reserve(bodyCount);
-                seenPairs.reserve(bodyCount * 2);
-                staticCache.reserve(bodyCount / 4); // Estimate dynamic bodies that need static caching
-            }
-        }
-        
-        void resetFrame() {
-            fastBodyLookup.clear();
-            seenPairs.clear();
-            // staticCache persists across frames
-        }
-        
-        void invalidateStaticCache() {
-            staticCache.clear();
-            staticCacheVersion++;
-        }
-    };
-    
-    mutable BroadphaseCache m_broadphaseCache;
 
     // Performance metrics
     struct PerfStats {
