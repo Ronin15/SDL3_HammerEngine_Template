@@ -1035,20 +1035,18 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
             }
 
             // THREAD SAFETY FIX: Use immutable snapshot instead of shared mutable cache
-            if (currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
-              auto cacheIt = staticCacheSnapshot.find(dynamicIdx);
-              if (cacheIt != staticCacheSnapshot.end()) {
-                const auto& staticCandidates = cacheIt->second;
+            auto cacheIt = staticCacheSnapshot.find(dynamicIdx);
+            if (cacheIt != staticCacheSnapshot.end()) {
+              const auto& staticCandidates = cacheIt->second;
 
-                for (size_t staticIdx : staticCandidates) {
-                  if (staticIdx >= m_storage.hotData.size()) continue;
+              for (size_t staticIdx : staticCandidates) {
+                if (staticIdx >= m_storage.hotData.size()) continue;
 
-                  const auto& staticHot = m_storage.hotData[staticIdx];
-                  if (!staticHot.active) continue;
-                  if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+                const auto& staticHot = m_storage.hotData[staticIdx];
+                if (!staticHot.active) continue;
+                if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
 
-                  localPairs.emplace_back(dynamicIdx, staticIdx);
-                }
+                localPairs.emplace_back(dynamicIdx, staticIdx);
               }
             }
           }
@@ -1327,9 +1325,8 @@ void CollisionManager::updateSOA(float dt) {
     }
   }
 
-  // THREAD SAFETY FIX: Prepare spatial hashes for thread-safe read-only access
-  m_staticSpatialHash.prepareForThreadedQueries();
-  m_dynamicSpatialHash.prepareForThreadedQueries();
+  // THREAD SAFETY FIX: Pre-compute all AABB caches to eliminate race conditions
+  precomputeActiveAABBs();
 
   // THREAD SAFETY FIX: Sequential consistency fence ensures all cache updates
   // and snapshot creation are fully visible to worker threads
@@ -1394,9 +1391,6 @@ void CollisionManager::updateSOA(float dt) {
   }
   auto t3 = clock::now();
 
-  // THREAD SAFETY FIX: Restore normal spatial hash operation after all threading is complete
-  m_staticSpatialHash.finishThreadedQueries();
-  m_dynamicSpatialHash.finishThreadedQueries();
 
   // RESOLUTION: Apply collision responses and update positions
   for (const auto& collision : m_collisionPool.collisionBuffer) {
@@ -1926,5 +1920,16 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
   }
 
   return area;
+}
+
+void CollisionManager::precomputeActiveAABBs() {
+  // Pre-compute all AABB caches to eliminate race conditions during threading
+  // This ensures no thread will need to modify the mutable AABB cache fields
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (hot.active) {
+      m_storage.updateCachedAABB(i);
+    }
+  }
 }
 

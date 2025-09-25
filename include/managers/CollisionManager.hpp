@@ -235,6 +235,7 @@ private:
 
     void buildActiveIndicesSOA(const CullingArea& cullingArea);
     CullingArea createDefaultCullingArea() const;
+    void precomputeActiveAABBs();
 
 
     bool m_initialized{false};
