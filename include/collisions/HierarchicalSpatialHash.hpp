@@ -43,8 +43,8 @@ public:
     static constexpr float MOVEMENT_THRESHOLD = 16.0f;   // PERFORMANCE OPTIMIZATION: Increased from 8.0f (20-30% improvement)
     static constexpr size_t REGION_ACTIVE_THRESHOLD = 16; // PERFORMANCE OPTIMIZATION: Increased from 8 (20-30% improvement)
 
-    // Morton code type for spatial ordering
-    using MortonCode = uint64_t;
+    // Simple 2D grid key type (more efficient than Morton codes for 2D AABB queries)
+    using GridKey = uint64_t; // Packed: (x << 32) | y
 
     // Coordinate types
     struct CoarseCoord { int32_t x, y; };
@@ -57,7 +57,7 @@ public:
         bool hasFineSplit{false};
 
         // Fine subdivision (only created when bodyCount > REGION_ACTIVE_THRESHOLD)
-        std::unordered_map<uint64_t, std::vector<size_t>> fineCells; // MortonCode -> body indices
+        std::unordered_map<GridKey, std::vector<size_t>> fineCells; // GridKey -> body indices
 
         // Coarse body list (used when no fine subdivision)
         std::vector<size_t> bodyIndices;
@@ -121,7 +121,7 @@ private:
     // Body tracking for updates/removals
     struct BodyLocation {
         CoarseCoord region;
-        MortonCode fineCell; // 0 if not in fine cell
+        GridKey fineCell; // 0 if not in fine cell
         AABB lastAABB;
     };
     std::unordered_map<size_t, BodyLocation> m_bodyLocations;
@@ -180,7 +180,7 @@ private:
     std::vector<CoarseCoord> getCoarseCoordsForAABB(const AABB& aabb) const;
     FineCoord getFineCoord(const AABB& aabb, const CoarseCoord& region) const;
     std::vector<FineCoord> getFineCoordList(const AABB& aabb, const CoarseCoord& region) const;
-    MortonCode computeMortonCode(const FineCoord& coord) const;
+    GridKey computeGridKey(const FineCoord& coord) const;
     bool hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const;
 
     void insertIntoRegion(Region& region, size_t bodyIndex, const AABB& aabb);
@@ -194,26 +194,7 @@ private:
     void cacheQuery(size_t bodyIndex, const std::vector<size_t>& candidates) const;
 };
 
-/**
- * @brief Morton code utilities for spatial ordering
- *
- * Morton codes (Z-order) provide cache-friendly spatial locality by interleaving
- * x,y coordinates. Bodies with similar Morton codes are spatially close.
- */
-namespace MortonUtils {
-    // Convert 2D coordinates to Morton code for spatial ordering
-    uint64_t encode(uint32_t x, uint32_t y);
-
-    // Extract coordinates from Morton code
-    void decode(uint64_t morton, uint32_t& x, uint32_t& y);
-
-    // Compute Morton code distance for spatial queries
-    uint64_t distance(uint64_t a, uint64_t b);
-
-    // Sort body indices by their Morton codes for cache efficiency
-    void sortByMortonCode(std::vector<size_t>& bodyIndices,
-                         const std::function<AABB(size_t)>& getAABB);
-}
+// Note: Removed MortonUtils - replaced with simple 2D grid hash for better performance
 
 // Required for std::find and other STL algorithms
 inline bool operator==(const HierarchicalSpatialHash::CoarseCoord& a,

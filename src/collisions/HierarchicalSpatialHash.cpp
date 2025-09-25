@@ -45,7 +45,7 @@ void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
         auto regionIt = m_regions.find(regions[0]);
         if (regionIt != m_regions.end() && regionIt->second.hasFineSplit) {
             FineCoord fineCoord = getFineCoord(aabb, regions[0]);
-            location.fineCell = computeMortonCode(fineCoord);
+            location.fineCell = computeGridKey(fineCoord);
         }
 
         m_bodyLocations[bodyIndex] = location;
@@ -112,13 +112,13 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
 
                 if (oldFine.x != newFine.x || oldFine.y != newFine.y) {
                     // Move between fine cells within same region
-                    MortonCode oldMorton = computeMortonCode(oldFine);
-                    MortonCode newMorton = computeMortonCode(newFine);
+                    GridKey oldKey = computeGridKey(oldFine);
+                    GridKey newKey = computeGridKey(newFine);
 
                     Region& region = regionIt->second;
 
                     // Remove from old fine cell
-                    auto oldCellIt = region.fineCells.find(oldMorton);
+                    auto oldCellIt = region.fineCells.find(oldKey);
                     if (oldCellIt != region.fineCells.end()) {
                         auto& bodyVec = oldCellIt->second;
                         bodyVec.erase(std::remove(bodyVec.begin(), bodyVec.end(), bodyIndex), bodyVec.end());
@@ -128,12 +128,12 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
                     }
 
                     // Add to new fine cell
-                    region.fineCells[newMorton].push_back(bodyIndex);
+                    region.fineCells[newKey].push_back(bodyIndex);
 
                     // Update location tracking
                     auto locationIt = m_bodyLocations.find(bodyIndex);
                     if (locationIt != m_bodyLocations.end()) {
-                        locationIt->second.fineCell = newMorton;
+                        locationIt->second.fineCell = newKey;
                         locationIt->second.lastAABB = newAABB;
                     }
                 } else {
@@ -190,8 +190,8 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
             std::vector<FineCoord> queryFineCells = getFineCoordList(area, regionCoord);
 
             for (const auto& fineCoord : queryFineCells) {
-                MortonCode morton = computeMortonCode(fineCoord);
-                auto fineCellIt = region.fineCells.find(morton);
+                GridKey key = computeGridKey(fineCoord);
+                auto fineCellIt = region.fineCells.find(key);
                 if (fineCellIt != region.fineCells.end()) {
                     for (size_t bodyIndex : fineCellIt->second) {
                         // PERFORMANCE: Linear search in small vector is faster than hash lookup
@@ -368,11 +368,12 @@ HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoord& r
     return coords;
 }
 
-HierarchicalSpatialHash::MortonCode HierarchicalSpatialHash::computeMortonCode(const FineCoord& coord) const {
-    // Ensure coordinates are non-negative for Morton encoding
-    uint32_t x = static_cast<uint32_t>(coord.x + 32768); // Offset to handle negative coords
+HierarchicalSpatialHash::GridKey HierarchicalSpatialHash::computeGridKey(const FineCoord& coord) const {
+    // Simple 2D grid hash - much faster than Morton encoding
+    // Pack coordinates into 64-bit key: (x << 32) | y
+    uint32_t x = static_cast<uint32_t>(coord.x + 32768); // Offset for negative coords
     uint32_t y = static_cast<uint32_t>(coord.y + 32768);
-    return MortonUtils::encode(x, y);
+    return (static_cast<uint64_t>(x) << 32) | y;
 }
 
 bool HierarchicalSpatialHash::hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const {
@@ -387,8 +388,8 @@ void HierarchicalSpatialHash::insertIntoRegion(Region& region, size_t bodyIndex,
     if (region.hasFineSplit) {
         // Insert into fine cell
         FineCoord fineCoord = getFineCoord(aabb, region.coord);
-        MortonCode morton = computeMortonCode(fineCoord);
-        region.fineCells[morton].push_back(bodyIndex);
+        GridKey key = computeGridKey(fineCoord);
+        region.fineCells[key].push_back(bodyIndex);
     } else {
         // Insert into coarse cell
         region.bodyIndices.push_back(bodyIndex);
@@ -406,9 +407,9 @@ void HierarchicalSpatialHash::removeFromRegion(Region& region, size_t bodyIndex,
     if (region.hasFineSplit) {
         // Remove from fine cell
         FineCoord fineCoord = getFineCoord(aabb, region.coord);
-        MortonCode morton = computeMortonCode(fineCoord);
+        GridKey key = computeGridKey(fineCoord);
 
-        auto fineCellIt = region.fineCells.find(morton);
+        auto fineCellIt = region.fineCells.find(key);
         if (fineCellIt != region.fineCells.end()) {
             auto& bodyVec = fineCellIt->second;
             bodyVec.erase(std::remove(bodyVec.begin(), bodyVec.end(), bodyIndex), bodyVec.end());
@@ -437,8 +438,8 @@ void HierarchicalSpatialHash::subdivideRegion(Region& region) {
         if (locationIt != m_bodyLocations.end()) {
             const AABB& aabb = locationIt->second.lastAABB;
             FineCoord fineCoord = getFineCoord(aabb, region.coord);
-            MortonCode morton = computeMortonCode(fineCoord);
-            region.fineCells[morton].push_back(bodyIndex);
+            GridKey key = computeGridKey(fineCoord);
+            region.fineCells[key].push_back(bodyIndex);
         }
     }
 
@@ -509,61 +510,6 @@ void HierarchicalSpatialHash::cacheQuery(size_t bodyIndex, const std::vector<siz
     m_queryCache[slot].bodyIndex.store(bodyIndex, std::memory_order_release);
 }
 
-// ========== Morton Code Utilities ==========
-
-namespace MortonUtils {
-
-uint64_t encode(uint32_t x, uint32_t y) {
-    // Interleave bits of x and y to create Morton code
-    auto expandBits = [](uint32_t v) -> uint64_t {
-        uint64_t x = v;
-        x = (x | (x << 16)) & 0x0000FFFF0000FFFF;
-        x = (x | (x << 8))  & 0x00FF00FF00FF00FF;
-        x = (x | (x << 4))  & 0x0F0F0F0F0F0F0F0F;
-        x = (x | (x << 2))  & 0x3333333333333333;
-        x = (x | (x << 1))  & 0x5555555555555555;
-        return x;
-    };
-
-    return expandBits(x) | (expandBits(y) << 1);
-}
-
-void decode(uint64_t morton, uint32_t& x, uint32_t& y) {
-    auto compactBits = [](uint64_t x) -> uint32_t {
-        x = x & 0x5555555555555555;
-        x = (x | (x >> 1))  & 0x3333333333333333;
-        x = (x | (x >> 2))  & 0x0F0F0F0F0F0F0F0F;
-        x = (x | (x >> 4))  & 0x00FF00FF00FF00FF;
-        x = (x | (x >> 8))  & 0x0000FFFF0000FFFF;
-        x = (x | (x >> 16)) & 0x00000000FFFFFFFF;
-        return static_cast<uint32_t>(x);
-    };
-
-    x = compactBits(morton);
-    y = compactBits(morton >> 1);
-}
-
-uint64_t distance(uint64_t a, uint64_t b) {
-    // XOR gives bit difference, popcount gives distance measure
-    return __builtin_popcountll(a ^ b);
-}
-
-void sortByMortonCode(std::vector<size_t>& bodyIndices,
-                     const std::function<AABB(size_t)>& getAABB) {
-    std::sort(bodyIndices.begin(), bodyIndices.end(),
-              [&getAABB](size_t a, size_t b) {
-                  AABB aabbA = getAABB(a);
-                  AABB aabbB = getAABB(b);
-
-                  uint32_t xA = static_cast<uint32_t>(aabbA.center.getX() + 32768);
-                  uint32_t yA = static_cast<uint32_t>(aabbA.center.getY() + 32768);
-                  uint32_t xB = static_cast<uint32_t>(aabbB.center.getX() + 32768);
-                  uint32_t yB = static_cast<uint32_t>(aabbB.center.getY() + 32768);
-
-                  return encode(xA, yA) < encode(xB, yB);
-              });
-}
-
-} // namespace MortonUtils
+// Note: Removed MortonUtils - replaced with simple 2D grid hash for better performance
 
 } // namespace HammerEngine
