@@ -29,8 +29,11 @@ void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
 
     // Insert into all overlapping regions
     for (const auto& regionCoord : regions) {
+        // THREAD SAFETY: Unique lock for exclusive write access to regions
+        std::unique_lock<std::shared_mutex> lock(m_regionsMutex);
         Region& region = m_regions[regionCoord];
         region.coord = regionCoord;
+        lock.unlock(); // Release lock before calling insertIntoRegion
         insertIntoRegion(region, bodyIndex, aabb);
     }
 
@@ -69,12 +72,18 @@ void HierarchicalSpatialHash::remove(size_t bodyIndex) {
 
     // Remove from all regions
     for (const auto& regionCoord : regions) {
+        // THREAD SAFETY: Unique lock for exclusive write access to regions
+        std::unique_lock<std::shared_mutex> lock(m_regionsMutex);
         auto regionIt = m_regions.find(regionCoord);
         if (regionIt != m_regions.end()) {
+            lock.unlock(); // Release lock before calling removeFromRegion
             removeFromRegion(regionIt->second, bodyIndex, aabb);
 
-            // Clean up empty regions
-            if (regionIt->second.bodyCount == 0) {
+            // Re-acquire lock for potential erase
+            lock.lock();
+            // Clean up empty regions - need to re-find in case it changed
+            regionIt = m_regions.find(regionCoord);
+            if (regionIt != m_regions.end() && regionIt->second.bodyCount == 0) {
                 m_regions.erase(regionIt);
             }
         }
@@ -161,9 +170,11 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
 }
 
 void HierarchicalSpatialHash::clear() {
-
+    // THREAD SAFETY: Unique lock for exclusive write access to regions
+    std::unique_lock<std::shared_mutex> lock(m_regionsMutex);
     m_regions.clear();
     m_bodyLocations.clear();
+    lock.unlock();
     invalidateQueryCache();
 }
 
@@ -180,10 +191,16 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
     queryRegions.reserve(9); // Most queries overlap at most 3x3 cells
 
     for (const auto& regionCoord : queryRegions) {
+        // THREAD SAFETY: Shared lock for concurrent read access to regions
+        std::shared_lock<std::shared_mutex> lock(m_regionsMutex);
         auto regionIt = m_regions.find(regionCoord);
-        if (regionIt == m_regions.end()) continue;
+        if (regionIt == m_regions.end()) {
+            lock.unlock();
+            continue;
+        }
 
         const Region& region = regionIt->second;
+        lock.unlock(); // Release lock early - we have the region reference
 
         if (region.hasFineSplit) {
             // Query only fine cells that overlap the query area
@@ -250,16 +267,6 @@ void HierarchicalSpatialHash::updateBatch(const std::vector<std::tuple<size_t, A
     for (const auto& updateInfo : updates) {
         update(std::get<0>(updateInfo), std::get<1>(updateInfo), std::get<2>(updateInfo));
     }
-}
-
-// ========== Thread Safety ==========
-
-void HierarchicalSpatialHash::prepareForThreadedQueries() {
-    m_inThreadedMode.store(true, std::memory_order_release);
-}
-
-void HierarchicalSpatialHash::finishThreadedQueries() {
-    m_inThreadedMode.store(false, std::memory_order_release);
 }
 
 // ========== Statistics and Debugging ==========
