@@ -142,6 +142,10 @@ public:
     void syncEntitiesToSOA();
     void processTriggerEventsSOA();
 
+    // PERFORMANCE: Vector pooling for temporary allocations
+    std::vector<size_t>& getPooledVector();
+    void returnPooledVector(std::vector<size_t>& vec);
+
     /* Body Type Distinctions:
      * - STATIC: World obstacles, buildings, triggers (never move, handled separately)
      * - KINEMATIC: NPCs, script-controlled entities (move via script, not physics)
@@ -486,6 +490,10 @@ private:
     };
 
     mutable CollisionPool m_collisionPool;
+
+    // PERFORMANCE: Vector pool for temporary allocations in hot paths
+    mutable std::vector<std::vector<size_t>> m_vectorPool;
+    mutable size_t m_nextPoolIndex{0};
 
     // Performance metrics
     struct PerfStats {

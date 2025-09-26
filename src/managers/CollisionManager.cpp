@@ -903,7 +903,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
     // 1. Movable-vs-movable collisions
-    std::vector<size_t> dynamicCandidates;
+    auto& dynamicCandidates = getPooledVector();
     m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, dynamicCandidates);
 
     for (size_t candidateIdx : dynamicCandidates) {
@@ -932,6 +932,9 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
         indexPairs.emplace_back(dynamicIdx, staticIdx);
       }
     }
+
+    // Return pooled vector
+    returnPooledVector(dynamicCandidates);
   }
 }
 
@@ -1025,7 +1028,7 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
             // In-place epsilon expansion - most efficient approach
             dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
-            // Query dynamic candidates
+            // Query dynamic candidates - use thread-local temporary (no pooling in threaded context)
             std::vector<size_t> candidates;
             m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
 
@@ -1500,10 +1503,11 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
       // In-place epsilon expansion - most efficient approach
       dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
-      std::vector<size_t> staticCandidates;
+      auto& staticCandidates = getPooledVector();
       m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
 
       cache.cachedStaticIndices = staticCandidates;
+      returnPooledVector(staticCandidates);
       cache.lastPosition = hot.position;
       cache.valid = true;
     }
@@ -1896,34 +1900,38 @@ void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
 
 CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const {
   CullingArea area;
+  Vector2D playerPos(0.0f, 0.0f);
+  bool playerFound = false;
 
-  // Simple optimization: Use cached player position if available
-  static EntityID playerEntityId = 1; // Player is typically EntityID 1
-  static Vector2D cachedPlayerPos(0.0f, 0.0f);
-  static bool hasCache = false;
+  // Search for player entity by collision layer instead of hardcoded EntityID
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
 
-  // Try to find player quickly using entity lookup
-  auto it = m_storage.entityToIndex.find(playerEntityId);
-  if (it != m_storage.entityToIndex.end() && it->second < m_storage.hotData.size()) {
-    const auto& hot = m_storage.hotData[it->second];
-    if (hot.active) {
-      cachedPlayerPos = hot.position;
-      hasCache = true;
+    // Check if this entity has Player layer
+    if (hot.layers & CollisionLayer::Layer_Player) {
+      playerPos = hot.position;
+      playerFound = true;
+      break; // Found player, use this position
     }
   }
 
-  if (hasCache) {
+  if (playerFound) {
     // Create player-centered culling area
-    area.minX = cachedPlayerPos.getX() - COLLISION_CULLING_BUFFER;
-    area.minY = cachedPlayerPos.getY() - COLLISION_CULLING_BUFFER;
-    area.maxX = cachedPlayerPos.getX() + COLLISION_CULLING_BUFFER;
-    area.maxY = cachedPlayerPos.getY() + COLLISION_CULLING_BUFFER;
+    area.minX = playerPos.getX() - COLLISION_CULLING_BUFFER;
+    area.minY = playerPos.getY() - COLLISION_CULLING_BUFFER;
+    area.maxX = playerPos.getX() + COLLISION_CULLING_BUFFER;
+    area.maxY = playerPos.getY() + COLLISION_CULLING_BUFFER;
   } else {
-    // No culling if no player found - process all bodies
-    area.minX = -100000.0f;
-    area.minY = -100000.0f;
-    area.maxX = 100000.0f;
-    area.maxY = 100000.0f;
+    // Player not found - use world center with standard culling area
+    // This maintains consistent culling behavior instead of processing entire world
+    area.minX = 0.0f - COLLISION_CULLING_BUFFER;
+    area.minY = 0.0f - COLLISION_CULLING_BUFFER;
+    area.maxX = 0.0f + COLLISION_CULLING_BUFFER;
+    area.maxY = 0.0f + COLLISION_CULLING_BUFFER;
+
+    // Log warning for debugging
+    COLLISION_WARN("Player entity not found for culling area - using world center");
   }
 
   return area;
@@ -1938,5 +1946,33 @@ void CollisionManager::precomputeActiveAABBs() {
       m_storage.updateCachedAABB(i);
     }
   }
+}
+
+// ========== PERFORMANCE: VECTOR POOLING METHODS ==========
+
+std::vector<size_t>& CollisionManager::getPooledVector() {
+  // Initialize pool if empty
+  if (m_vectorPool.empty()) {
+    m_vectorPool.reserve(32); // Reasonable pool size
+    for (size_t i = 0; i < 16; ++i) {
+      m_vectorPool.emplace_back();
+      m_vectorPool.back().reserve(64); // Pre-allocate reasonable capacity
+    }
+  }
+
+  // Use round-robin allocation
+  if (m_nextPoolIndex >= m_vectorPool.size()) {
+    m_nextPoolIndex = 0;
+  }
+
+  auto& vec = m_vectorPool[m_nextPoolIndex++];
+  vec.clear(); // Clear but retain capacity
+  return vec;
+}
+
+void CollisionManager::returnPooledVector(std::vector<size_t>& vec) {
+  // Vector is automatically returned to pool via reference
+  // Just clear it to avoid holding onto data
+  vec.clear();
 }
 
