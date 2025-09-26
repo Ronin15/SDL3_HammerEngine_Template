@@ -1016,19 +1016,22 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
             const auto& dynamicHot = m_storage.hotData[dynamicIdx];
             if (!dynamicHot.active) continue;
 
-            // THREAD SAFETY FIX: Apply culling area check in threaded mode (was missing!)
-            if (currentCullingArea.minX != currentCullingArea.maxX || currentCullingArea.minY != currentCullingArea.maxY) {
-              if (!currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
-                continue; // Skip bodies outside culling area
-              }
-            }
+            // Note: No culling area check needed here - movableSnapshot already contains
+            // only entities within culling area from buildActiveIndicesSOA()
 
-            AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+            // Use pre-computed cached AABB to avoid race condition in threading
+            const auto& hot = m_storage.hotData[dynamicIdx];
+            AABB dynamicAABB(
+              (hot.aabbMinX + hot.aabbMaxX) * 0.5f,  // centerX
+              (hot.aabbMinY + hot.aabbMaxY) * 0.5f,  // centerY
+              (hot.aabbMaxX - hot.aabbMinX) * 0.5f,  // halfWidth
+              (hot.aabbMaxY - hot.aabbMinY) * 0.5f   // halfHeight
+            );
 
             // In-place epsilon expansion - most efficient approach
             dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
-            // Query dynamic candidates - use thread-local temporary (no pooling in threaded context)
+            // Query dynamic candidates directly from stable spatial hash (read-only, thread-safe)
             std::vector<size_t> candidates;
             m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
 
@@ -1348,8 +1351,6 @@ void CollisionManager::updateSOA(float dt) {
   size_t activeBodies = m_collisionPool.activeIndices.size();
   size_t dynamicBodiesCulled = 0;
   size_t staticBodiesCulled = 0;
-
-  // Calculate culling effectiveness
   if (totalBodiesBefore > activeBodies) {
     // Estimate dynamic vs static culling based on body type distribution
     size_t totalCulled = totalBodiesBefore - activeBodies;
@@ -1930,8 +1931,11 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
     area.maxX = 0.0f + COLLISION_CULLING_BUFFER;
     area.maxY = 0.0f + COLLISION_CULLING_BUFFER;
 
-    // Log warning for debugging
-    COLLISION_WARN("Player entity not found for culling area - using world center");
+    // Log warning only once every 300 frames to avoid spam
+    static uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 300 == 1) {
+      COLLISION_WARN("Player entity not found for culling area - using world center (logged every 300 frames)");
+    }
   }
 
   return area;
@@ -1939,11 +1943,17 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
 
 void CollisionManager::precomputeActiveAABBs() {
   // Pre-compute all AABB caches to eliminate race conditions during threading
-  // This ensures no thread will need to modify the mutable AABB cache fields
+  // CRITICAL FIX: Force AABB updates regardless of dirty flag status to prevent
+  // state corruption during threading transitions (single->multi->single->multi)
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto& hot = m_storage.hotData[i];
+    auto& hot = m_storage.hotData[i];
     if (hot.active) {
-      m_storage.updateCachedAABB(i);
+      // Force AABB update regardless of dirty flag (fixes threading state corruption)
+      hot.aabbMinX = hot.position.getX() - hot.halfSize.getX();
+      hot.aabbMinY = hot.position.getY() - hot.halfSize.getY();
+      hot.aabbMaxX = hot.position.getX() + hot.halfSize.getX();
+      hot.aabbMaxY = hot.position.getY() + hot.halfSize.getY();
+      hot.aabbDirty = 0;
     }
   }
 }
