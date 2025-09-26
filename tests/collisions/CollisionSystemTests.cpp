@@ -1473,6 +1473,9 @@ BOOST_AUTO_TEST_CASE(TestCacheRaceConditionProtection)
     for (EntityID id : bodies) {
         CollisionManager::Instance().removeCollisionBodySOA(id);
     }
+
+    // Reset threading to defaults to prevent singleton pollution
+    CollisionManager::Instance().setThreadingThreshold(300);
     CollisionManager::Instance().clean();
 }
 
@@ -1580,6 +1583,9 @@ BOOST_AUTO_TEST_CASE(TestHighConcurrencyCollisionAccuracy)
     for (EntityID id : bodies) {
         CollisionManager::Instance().removeCollisionBodySOA(id);
     }
+
+    // Reset threading to defaults to prevent singleton pollution
+    CollisionManager::Instance().setThreadingThreshold(300);
     CollisionManager::Instance().clean();
 }
 
