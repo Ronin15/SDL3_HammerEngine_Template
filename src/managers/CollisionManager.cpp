@@ -1013,6 +1013,13 @@ bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_
             const auto& dynamicHot = m_storage.hotData[dynamicIdx];
             if (!dynamicHot.active) continue;
 
+            // THREAD SAFETY FIX: Apply culling area check in threaded mode (was missing!)
+            if (currentCullingArea.minX != currentCullingArea.maxX || currentCullingArea.minY != currentCullingArea.maxY) {
+              if (!currentCullingArea.contains(dynamicHot.position.getX(), dynamicHot.position.getY())) {
+                continue; // Skip bodies outside culling area
+              }
+            }
+
             AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
 
             // In-place epsilon expansion - most efficient approach
