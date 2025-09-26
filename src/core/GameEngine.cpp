@@ -857,13 +857,6 @@ void GameEngine::update(float deltaTime) {
     GAMEENGINE_ERROR("PathfinderManager cache is null!");
   }
 
-  // Physics system - update after AI to apply collision constraints
-  if (mp_collisionManager) {
-    mp_collisionManager->update(deltaTime);  // Let collision manager choose SOA vs legacy
-  } else {
-    GAMEENGINE_ERROR("CollisionManager cache is null!");
-  }
-
   // Event system - global game events and world simulation (cached reference
   // access)
   if (mp_eventManager) {
@@ -884,8 +877,15 @@ void GameEngine::update(float deltaTime) {
   // - UIManager: Optional, state-specific, only updated when UI is actually
   // used See UIExampleState::update() for proper state-managed pattern
 
-  // Update game states - states handle their specific system needs
+  // Update game states - states handle their specific system needs (BEFORE collision)
   mp_gameStateManager->update(deltaTime);
+
+  // Physics system - update AFTER player movement to apply collision constraints
+  if (mp_collisionManager) {
+    mp_collisionManager->update(deltaTime);  // Let collision manager choose SOA vs legacy
+  } else {
+    GAMEENGINE_ERROR("CollisionManager cache is null!");
+  }
 
   // Increment the frame counter atomically for thread-safe render
   // synchronization
