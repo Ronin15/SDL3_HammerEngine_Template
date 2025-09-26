@@ -104,9 +104,6 @@ public:
     void insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies);
     void updateBatch(const std::vector<std::tuple<size_t, AABB, AABB>>& updates);
 
-    // Thread-safe operations
-    void prepareForThreadedQueries();
-    void finishThreadedQueries();
 
     // Statistics and debugging
     size_t getRegionCount() const { return m_regions.size(); }
@@ -172,8 +169,8 @@ private:
     mutable std::shared_mutex m_cacheMutex;  // Thread-safe cache access
     mutable std::atomic<uint64_t> m_globalVersion{0};
 
-    // Thread safety
-    mutable std::atomic<bool> m_inThreadedMode{false};
+    // Thread safety - concurrent reads, exclusive writes
+    mutable std::shared_mutex m_regionsMutex;
 
     // Helper methods
     CoarseCoord getCoarseCoord(const AABB& aabb) const;
