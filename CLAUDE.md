@@ -28,13 +28,12 @@ ninja -C build
 ```
 
 ### Build System Notes
-- **Compile Commands**: `compile_commands.json` is automatically generated and copied to the project root for tooling support (e.g., `clangd`)
 - **Output Directories**: Debug builds output to `bin/debug/`, Release builds to `bin/release/`
 
 ### Running the Application
 - Debug: `./bin/debug/SDL3_Template`
 - Release: `./bin/release/SDL3_Template`
-- Testing: `timeout 25s ./bin/debug/SDL3_Template` (25 second timeout for behavior testing)
+- Testing: `timeout 60s ./bin/debug/SDL3_Template` (25 second timeout for behavior testing)
 
 ## Testing
 
@@ -155,23 +154,6 @@ res/                # Game assets (fonts, images, audio, data files)
 - **Inline**: Only trivial 1-2 line accessors and getters
 - **Dependencies**: Avoid leaking implementation details through headers
 
-### Manager Pattern
-All managers follow this singleton pattern:
-```cpp
-class ExampleManager {
-private:
-    std::atomic<bool> m_isShutdown{false};
-    
-public:
-    static ExampleManager& Instance() {
-        static ExampleManager instance;
-        return instance;
-    }
-    
-    void shutdown();
-};
-```
-
 ### Threading Architecture
 - **Update Loop**: Thread-safe via mutex, fixed timestep
 - **Render Loop**: Main thread only, double-buffered
@@ -183,40 +165,12 @@ public:
 - **Platform Guards**: Use platform-specific logic guards (`#ifdef __APPLE__`, `#ifdef WIN32`) for OS-specific code
 - **Avoid Premature Optimization**: Focus on clean, maintainable code first; optimize hotspots based on profiling data
 
-## References
-
-### Game Development Patterns
-- **Game Programming Patterns**: https://gameprogrammingpatterns.com/ - Comprehensive reference for game development design patterns and architectural solutions
-
-## Dependencies
-
-### Required
-- CMake 3.28+, Ninja, C++20 compiler
-- SDL3 (fetched automatically via FetchContent)
-- SDL3_image, SDL3_ttf, SDL3_mixer (fetched automatically)
-
 ### Optional
 - Boost (for testing framework)
 - cppcheck (static analysis)
 - Valgrind (performance/memory analysis)
 
-## Platform Support
-
-### Cross-Platform Features
-- **macOS**: Optimized build flags, dSYM generation, letterbox mode
-- **Linux**: Wayland detection, adaptive VSync
-- **Windows**: Console output control
-
-### Debug vs Release
-- **Debug**: Console output enabled, full debug symbols, no optimization
-- **Release**: Optimized builds, LTO enabled, platform-specific flags
-
 ## Key Performance Notes
-
-### AI System
-- Designed for 10K+ entities at 60+ FPS with 4-6% CPU usage
-- Uses cache-friendly batch processing and distance-based culling
-- Lock-free design with spatial partitioning
 
 ### Memory Management  
 - All dynamic allocation uses smart pointers
@@ -246,41 +200,4 @@ public:
 - When adding a new state, snapshot camera/view once per render pass and reuse it for all world-space systems.
 - **NEVER use static variables in threaded code** - they create race conditions and data corruption. Use instance variables, thread_local storage, or atomic operations instead.
 
-### Entity Rendering
-- Use `Entity::render(const Camera*)` for world-to-screen conversion
-- Do not compute per-entity camera offsets outside this pattern
-- Camera view is computed once per render pass and reused
-
-### World Tiles Rendering
-- `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)` renders visible tiles using the same camera view for consistent alignment with entities
-- Keep camera-aware rendering centralized; avoid ad-hoc camera math inside managers that don't own presentation
-
-### Resource Loading
-- JsonReader for parsing configuration files
-- JSON-based configuration for items, materials, currency
-- ResourceTemplateManager handles template loading and instantiation
-- Handle-based access pattern for performance and safety
-
 This architecture supports rapid prototyping while maintaining production-ready performance and code quality.
-
-## Critical System Patterns
-
-### InputManager SDL Cleanup Pattern
-
-**CRITICAL:** The InputManager has a very specific SDL gamepad subsystem cleanup pattern that must be maintained exactly as implemented. Do NOT modify this pattern without extreme caution.
-
-**The Issue:** When no gamepads are detected during initialization, the SDL gamepad subsystem is still initialized via `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` but if not properly cleaned up, it causes a "trace trap" crash during `SDL_Quit()` on macOS.
-
-**The Correct Pattern:**
-1. In `initializeGamePad()`: Use `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` to initialize the subsystem
-2. If no gamepads are found: Immediately call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` before returning
-3. If gamepads are found: Set `m_gamePadInitialized = true` and let normal cleanup handle it
-4. In `clean()`: Only call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` if `m_gamePadInitialized` is true
-
-**What NOT to do:**
-- Do NOT call `SDL_QuitSubSystem()` in both initialization and cleanup paths
-- Do NOT use platform-specific `#ifdef` blocks to skip SDL cleanup
-- Do NOT rely solely on `SDL_Quit()` to clean up subsystems if they were individually initialized
-- Do NOT remove or modify the `m_gamePadInitialized` flag logic
-
-This pattern has been broken multiple times by well-meaning "fixes" that cause crashes. The current implementation is correct and tested.
