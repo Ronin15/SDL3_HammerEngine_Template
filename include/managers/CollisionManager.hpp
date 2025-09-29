@@ -13,11 +13,9 @@
 #include <functional>
 #include <cstddef>
 #include <chrono>
-#include <atomic>
 #include <array>
 
 #include "entities/Entity.hpp" // EntityID
-#include "core/WorkerBudget.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "collisions/CollisionInfo.hpp"
 #include "collisions/HierarchicalSpatialHash.hpp"
@@ -112,9 +110,6 @@ public:
     // Metrics
     size_t getBodyCount() const { return m_storage.size(); }
     bool isSyncing() const { return m_isSyncing; }
-    void configureThreading(bool useThreading, unsigned int maxThreads = 0);
-    void setThreadingThreshold(size_t threshold);
-    size_t getThreadingThreshold() const;
 
     // NEW SOA STORAGE MANAGEMENT METHODS
     size_t addCollisionBodySOA(EntityID id, const Vector2D& position, const Vector2D& halfSize,
@@ -163,20 +158,14 @@ public:
         std::chrono::steady_clock::time_point t4,
         std::chrono::steady_clock::time_point t5,
         std::chrono::steady_clock::time_point t6,
-        bool wasThreaded,
-        size_t optimalWorkers,
-        size_t availableWorkers,
-        size_t budget,
-        size_t batchCount,
         size_t bodyCount,
         size_t activeMovableBodies,
         size_t pairCount,
         size_t collisionCount,
-        size_t activeBodies = 0,
-        size_t dynamicBodiesCulled = 0,
-        size_t staticBodiesCulled = 0,
-        size_t threadCount = 0,
-        double cullingMs = 0.0);
+        size_t activeBodies,
+        size_t dynamicBodiesCulled,
+        size_t staticBodiesCulled,
+        double cullingMs);
 
     // Debug utilities
     void logCollisionStatistics() const;
@@ -190,25 +179,10 @@ private:
     CollisionManager(const CollisionManager&) = delete;
     CollisionManager& operator=(const CollisionManager&) = delete;
 
-    struct ThreadingStats {
-        size_t optimalWorkers{0};
-        size_t availableWorkers{0};
-        size_t budget{0};
-        size_t batchCount{1};
-    };
-
     // NEW SOA-BASED BROADPHASE: High-performance hierarchical collision detection
     void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs);
-    bool broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                               ThreadingStats& stats,
-                               const std::unordered_map<size_t, std::vector<size_t>>& staticCacheSnapshot);
-    bool broadphaseSOAAsync(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                           ThreadingStats& stats) const;
     void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
                         std::vector<CollisionInfo>& collisions) const;
-    bool narrowphaseSOAThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                std::vector<CollisionInfo>& collisions,
-                                ThreadingStats& stats);
 
     // Internal helper methods for SOA buffer management
     void swapCollisionBuffers();
@@ -225,7 +199,7 @@ private:
 
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
-    static constexpr float SPATIAL_QUERY_EPSILON = 2.0f;            // AABB expansion for cell boundary overlap protection
+    static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
 
     // Camera culling support
     struct CullingArea {
@@ -239,7 +213,6 @@ private:
 
     void buildActiveIndicesSOA(const CullingArea& cullingArea);
     CullingArea createDefaultCullingArea() const;
-    void precomputeActiveAABBs();
 
 
     bool m_initialized{false};
@@ -394,34 +367,6 @@ private:
         std::vector<AABB> tempAABBs;             // Temporary AABB calculations
         std::vector<float> tempDistances;        // Distance calculations for sorting
 
-        // Thread-local pools for parallel processing
-        struct ThreadLocalPool {
-            std::vector<std::pair<EntityID, EntityID>> localPairs;
-            std::vector<CollisionInfo> localCollisions;
-            std::vector<EntityID> localCandidates;
-            std::vector<size_t> localIndices;
-            std::unordered_set<uint64_t> localSeenPairs;
-
-            void clear() {
-                localPairs.clear();
-                localCollisions.clear();
-                localCandidates.clear();
-                localIndices.clear();
-                localSeenPairs.clear();
-            }
-
-            void ensureCapacity(size_t capacity) {
-                if (localPairs.capacity() < capacity) {
-                    localPairs.reserve(capacity);
-                    localCollisions.reserve(capacity / 4);
-                    localCandidates.reserve(capacity / 2);
-                    localIndices.reserve(capacity);
-                    localSeenPairs.reserve(capacity);
-                }
-            }
-        };
-        std::vector<ThreadLocalPool> threadPools;
-
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
             // 10k bodies → ~1.4k pairs → ~760 collisions
@@ -457,15 +402,6 @@ private:
             }
         }
 
-        void ensureThreadPools(size_t threadCount) {
-            if (threadPools.size() < threadCount) {
-                threadPools.resize(threadCount);
-                for (auto& pool : threadPools) {
-                    pool.ensureCapacity(pairBuffer.capacity() / threadCount);
-                }
-            }
-        }
-
         void resetFrame() {
             pairBuffer.clear();
             candidateBuffer.clear();
@@ -480,11 +416,6 @@ private:
             tempPositions.clear();
             tempAABBs.clear();
             tempDistances.clear();
-
-            // Clear thread pools
-            for (auto& pool : threadPools) {
-                pool.clear();
-            }
             // Vectors retain capacity
         }
     };
@@ -512,8 +443,6 @@ private:
         size_t lastActiveBodies{0};           // Bodies after culling optimizations
         size_t lastDynamicBodiesCulled{0};    // Dynamic bodies culled by distance
         size_t lastStaticBodiesCulled{0};     // Static bodies culled by area
-        bool lastFrameWasThreaded{false};     // Whether threading was used
-        size_t lastThreadCount{0};            // Number of threads used
         double lastCullingMs{0.0};            // Time spent on culling operations
         double avgBroadphaseMs{0.0};          // Average broadphase time
 
@@ -570,16 +499,6 @@ private:
 
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
-
-    // Threading configuration - OPTIMIZED THRESHOLDS
-    std::atomic<bool> m_useThreading{true};
-    std::atomic<size_t> m_threadingThreshold{300}; // PERFORMANCE OPTIMIZATION: Threading at 400 bodies provides meaningful benefit
-    unsigned int m_maxThreads{0};
-    std::atomic<size_t> m_lastOptimalWorkerCount{0};
-    std::atomic<size_t> m_lastAvailableWorkers{0};
-    std::atomic<size_t> m_lastCollisionBudget{0};
-    std::atomic<size_t> m_lastThreadBatchCount{0};
-    std::atomic<bool> m_lastWasThreaded{false};
 };
 
 #endif // COLLISION_MANAGER_HPP

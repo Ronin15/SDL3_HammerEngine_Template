@@ -17,15 +17,13 @@ HierarchicalSpatialHash::HierarchicalSpatialHash() {
     // Reserve reasonable initial capacity
     m_regions.reserve(64);
     m_bodyLocations.reserve(1024);
-
-    // Initialize cache with fixed size
-    m_queryCache.resize(CACHE_SIZE);
 }
 
 void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
 
     // Get the coarse regions this body overlaps
-    std::vector<CoarseCoord> regions = getCoarseCoordsForAABB(aabb);
+    std::vector<CoarseCoord> regions;
+    getCoarseCoordsForAABB(aabb, regions);
 
     // Insert into all overlapping regions
     for (const auto& regionCoord : regions) {
@@ -53,8 +51,6 @@ void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
 
         m_bodyLocations[bodyIndex] = location;
     }
-
-    invalidateQueryCache();
 }
 
 void HierarchicalSpatialHash::remove(size_t bodyIndex) {
@@ -68,7 +64,8 @@ void HierarchicalSpatialHash::remove(size_t bodyIndex) {
     const AABB& aabb = location.lastAABB;
 
     // Get all regions this body was in
-    std::vector<CoarseCoord> regions = getCoarseCoordsForAABB(aabb);
+    std::vector<CoarseCoord> regions;
+    getCoarseCoordsForAABB(aabb, regions);
 
     // Remove from all regions
     for (const auto& regionCoord : regions) {
@@ -90,7 +87,6 @@ void HierarchicalSpatialHash::remove(size_t bodyIndex) {
     }
 
     m_bodyLocations.erase(locationIt);
-    invalidateQueryCache();
 }
 
 void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, const AABB& newAABB) {
@@ -106,8 +102,10 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
     }
 
     // Check if regions changed
-    std::vector<CoarseCoord> oldRegions = getCoarseCoordsForAABB(oldAABB);
-    std::vector<CoarseCoord> newRegions = getCoarseCoordsForAABB(newAABB);
+    std::vector<CoarseCoord> oldRegions;
+    std::vector<CoarseCoord> newRegions;
+    getCoarseCoordsForAABB(oldAABB, oldRegions);
+    getCoarseCoordsForAABB(newAABB, newRegions);
 
     // If regions are the same, just update fine cells if needed
     if (oldRegions == newRegions && oldRegions.size() == 1) {
@@ -175,45 +173,39 @@ void HierarchicalSpatialHash::clear() {
     m_regions.clear();
     m_bodyLocations.clear();
     lock.unlock();
-    invalidateQueryCache();
 }
 
 void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>& outBodyIndices) const {
     outBodyIndices.clear();
     outBodyIndices.reserve(64); // Reserve for typical query result size
 
-    // PERFORMANCE: Use vector for deduplication - much faster for small sets
-    std::vector<size_t> seenBodies; // Changed from unordered_set
-    seenBodies.reserve(64);
+    // PERFORMANCE: Use persistent buffers to eliminate per-query allocations (single-threaded safe)
+    m_tempSeenBodies.clear();
+    m_tempSeenBodies.reserve(64);
 
-    // Get all coarse regions this query overlaps
-    std::vector<CoarseCoord> queryRegions = getCoarseCoordsForAABB(area);
-    queryRegions.reserve(9); // Most queries overlap at most 3x3 cells
+    // Get all coarse regions this query overlaps (reuse persistent buffer - NO allocation!)
+    getCoarseCoordsForAABB(area, m_tempQueryRegions);
 
-    for (const auto& regionCoord : queryRegions) {
-        // THREAD SAFETY: Shared lock for concurrent read access to regions
-        std::shared_lock<std::shared_mutex> lock(m_regionsMutex);
+    // PERFORMANCE: No mutex needed - single-threaded collision system
+    for (const auto& regionCoord : m_tempQueryRegions) {
         auto regionIt = m_regions.find(regionCoord);
         if (regionIt == m_regions.end()) {
-            lock.unlock();
             continue;
         }
 
         const Region& region = regionIt->second;
-        lock.unlock(); // Release lock early - we have the region reference
 
         if (region.hasFineSplit) {
-            // Query only fine cells that overlap the query area
-            std::vector<FineCoord> queryFineCells = getFineCoordList(area, regionCoord);
+            // Query only fine cells that overlap the query area (reuse persistent buffer - NO allocation!)
+            getFineCoordList(area, regionCoord, m_tempQueryFineCells);
 
-            for (const auto& fineCoord : queryFineCells) {
+            for (const auto& fineCoord : m_tempQueryFineCells) {
                 GridKey key = computeGridKey(fineCoord);
                 auto fineCellIt = region.fineCells.find(key);
                 if (fineCellIt != region.fineCells.end()) {
                     for (size_t bodyIndex : fineCellIt->second) {
-                        // PERFORMANCE: Linear search in small vector is faster than hash lookup
-                        if (std::find(seenBodies.begin(), seenBodies.end(), bodyIndex) == seenBodies.end()) {
-                            seenBodies.push_back(bodyIndex);
+                        // PERFORMANCE: O(1) hash set insertion for deduplication
+                        if (m_tempSeenBodies.insert(bodyIndex).second) {
                             outBodyIndices.push_back(bodyIndex);
                         }
                     }
@@ -222,32 +214,13 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
         } else {
             // Query coarse cell directly
             for (size_t bodyIndex : region.bodyIndices) {
-                // PERFORMANCE: Linear search in small vector is faster than hash lookup
-                if (std::find(seenBodies.begin(), seenBodies.end(), bodyIndex) == seenBodies.end()) {
-                    seenBodies.push_back(bodyIndex);
+                // PERFORMANCE: O(1) hash set insertion for deduplication
+                if (m_tempSeenBodies.insert(bodyIndex).second) {
                     outBodyIndices.push_back(bodyIndex);
                 }
             }
         }
     }
-}
-
-void HierarchicalSpatialHash::queryBroadphase(size_t queryBodyIndex, const AABB& queryAABB,
-                                            std::vector<size_t>& outCandidates) const {
-    // Check cache first
-    if (getCachedQuery(queryBodyIndex, outCandidates)) {
-        return;
-    }
-
-    // Perform spatial query
-    queryRegion(queryAABB, outCandidates);
-
-    // Remove self from candidates
-    outCandidates.erase(std::remove(outCandidates.begin(), outCandidates.end(), queryBodyIndex),
-                       outCandidates.end());
-
-    // Cache the result
-    cacheQuery(queryBodyIndex, outCandidates);
 }
 
 // ========== Batch Operations ==========
@@ -299,7 +272,6 @@ void HierarchicalSpatialHash::logStatistics() const {
     COLLISION_INFO("  Total Regions: " + std::to_string(m_regions.size()));
     COLLISION_INFO("  Active Regions: " + std::to_string(activeRegions));
     COLLISION_INFO("  Total Fine Cells: " + std::to_string(totalFineCells));
-    COLLISION_INFO("  Cached Queries: " + std::to_string(m_queryCache.size()));
 }
 
 // ========== Private Helper Methods ==========
@@ -311,20 +283,18 @@ HierarchicalSpatialHash::CoarseCoord HierarchicalSpatialHash::getCoarseCoord(con
     };
 }
 
-std::vector<HierarchicalSpatialHash::CoarseCoord>
-HierarchicalSpatialHash::getCoarseCoordsForAABB(const AABB& aabb) const {
+void HierarchicalSpatialHash::getCoarseCoordsForAABB(const AABB& aabb, std::vector<CoarseCoord>& out) const {
     int32_t minX = static_cast<int32_t>(std::floor(aabb.left() / COARSE_CELL_SIZE));
     int32_t maxX = static_cast<int32_t>(std::floor(aabb.right() / COARSE_CELL_SIZE));
     int32_t minY = static_cast<int32_t>(std::floor(aabb.top() / COARSE_CELL_SIZE));
     int32_t maxY = static_cast<int32_t>(std::floor(aabb.bottom() / COARSE_CELL_SIZE));
 
-    std::vector<CoarseCoord> coords;
+    out.clear();
     for (int32_t y = minY; y <= maxY; ++y) {
         for (int32_t x = minX; x <= maxX; ++x) {
-            coords.push_back({x, y});
+            out.push_back({x, y});
         }
     }
-    return coords;
 }
 
 HierarchicalSpatialHash::FineCoord HierarchicalSpatialHash::getFineCoord(const AABB& aabb,
@@ -341,8 +311,7 @@ HierarchicalSpatialHash::FineCoord HierarchicalSpatialHash::getFineCoord(const A
     };
 }
 
-std::vector<HierarchicalSpatialHash::FineCoord>
-HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoord& region) const {
+void HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoord& region, std::vector<FineCoord>& out) const {
     // Compute region's origin in world coordinates
     float regionOriginX = region.x * COARSE_CELL_SIZE;
     float regionOriginY = region.y * COARSE_CELL_SIZE;
@@ -366,13 +335,12 @@ HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoord& r
     minY = std::max(0, std::min(minY, maxCellIndex));
     maxY = std::max(0, std::min(maxY, maxCellIndex));
 
-    std::vector<FineCoord> coords;
+    out.clear();
     for (int32_t y = minY; y <= maxY; ++y) {
         for (int32_t x = minX; x <= maxX; ++x) {
-            coords.push_back({x, y});
+            out.push_back({x, y});
         }
     }
-    return coords;
 }
 
 HierarchicalSpatialHash::GridKey HierarchicalSpatialHash::computeGridKey(const FineCoord& coord) const {
@@ -466,55 +434,6 @@ void HierarchicalSpatialHash::unsubdivideRegion(Region& region) {
 
     region.fineCells.clear();
     region.hasFineSplit = false;
-}
-
-void HierarchicalSpatialHash::invalidateQueryCache() const {
-    // Increment global version to invalidate all cached entries
-    m_globalVersion.fetch_add(1, std::memory_order_release);
-}
-
-bool HierarchicalSpatialHash::getCachedQuery(size_t bodyIndex, std::vector<size_t>& outCandidates) const {
-    // Hash the body index to a cache slot
-    size_t slot = bodyIndex & (CACHE_SIZE - 1);
-
-    // Use shared lock for reading cache (multiple threads can read simultaneously)
-    std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
-
-    // Load the entry atomically
-    size_t cachedIndex = m_queryCache[slot].bodyIndex.load(std::memory_order_acquire);
-    if (cachedIndex == bodyIndex) {
-        // Check version to ensure data is still valid
-        uint64_t entryVersion = m_queryCache[slot].version.load(std::memory_order_acquire);
-        if (entryVersion == m_globalVersion.load(std::memory_order_acquire)) {
-            size_t count = m_queryCache[slot].candidateCount.load(std::memory_order_acquire);
-            outCandidates.clear();
-            outCandidates.reserve(count);
-            for (size_t i = 0; i < count; ++i) {
-                outCandidates.push_back(m_queryCache[slot].candidates[i]);
-            }
-            return true;
-        }
-    }
-    return false;
-}
-
-void HierarchicalSpatialHash::cacheQuery(size_t bodyIndex, const std::vector<size_t>& candidates) const {
-    // Hash to slot
-    size_t slot = bodyIndex & (CACHE_SIZE - 1);
-
-    // Use exclusive lock for writing cache (only one thread can write at a time)
-    std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
-
-    // Copy to fixed array (up to MAX_CANDIDATES)
-    size_t count = std::min(candidates.size(), CacheEntry::MAX_CANDIDATES);
-    for (size_t i = 0; i < count; ++i) {
-        m_queryCache[slot].candidates[i] = candidates[i];
-    }
-
-    // Update metadata atomically
-    m_queryCache[slot].candidateCount.store(count, std::memory_order_release);
-    m_queryCache[slot].version.store(m_globalVersion.load(std::memory_order_relaxed), std::memory_order_release);
-    m_queryCache[slot].bodyIndex.store(bodyIndex, std::memory_order_release);
 }
 
 } // namespace HammerEngine
