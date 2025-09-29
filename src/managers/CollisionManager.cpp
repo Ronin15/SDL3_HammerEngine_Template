@@ -546,6 +546,19 @@ void CollisionManager::onTileChanged(int x, int y) {
     // ROCK and TREE movement penalties are handled by pathfinding system
     // No collision triggers needed for these obstacle types
 
+    // PERFORMANCE: Selectively invalidate only the coarse cell containing this tile
+    // This prevents invalidating the entire cache when only one tile changes
+    float worldX = x * tileSize + tileSize * 0.5f;
+    float worldY = y * tileSize + tileSize * 0.5f;
+    AABB tileAABB(worldX, worldY, tileSize * 0.5f, tileSize * 0.5f);
+    auto changedCoarseCell = m_staticSpatialHash.getCoarseCoord(tileAABB);
+
+    // Invalidate only this specific coarse region cache
+    auto cacheIt = m_coarseRegionStaticCache.find(changedCoarseCell);
+    if (cacheIt != m_coarseRegionStaticCache.end()) {
+      cacheIt->second.valid = false;
+    }
+
     // Mark static hash as needing rebuild since tile changed
     m_staticHashDirty = true;
   }
@@ -1097,8 +1110,10 @@ void CollisionManager::rebuildStaticSpatialHash() {
   // Only called when static objects are added/removed
   m_staticSpatialHash.clear();
 
-  // Clear static collision cache since static bodies have changed
+  // Clear static collision caches since static bodies have changed
   m_staticCollisionCache.clear();
+  m_coarseRegionStaticCache.clear();  // Invalidate all coarse region caches
+  m_bodyCoarseCell.clear();           // Reset body cell tracking
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
@@ -1113,11 +1128,10 @@ void CollisionManager::rebuildStaticSpatialHash() {
 }
 
 void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
-  constexpr float POSITION_TOLERANCE = 10.0f;
+  // PERFORMANCE: Coarse-grid region-based caching instead of per-body caching
+  // Bodies in the same 128×128 coarse cell share the same cached static query results
 
   const auto& movableIndices = m_collisionPool.movableIndices;
-
-  m_staticCollisionCache.reserve(movableIndices.size() * 2);
 
   for (size_t dynamicIdx : movableIndices) {
     if (dynamicIdx >= m_storage.hotData.size()) continue;
@@ -1125,30 +1139,53 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
     const auto& hot = m_storage.hotData[dynamicIdx];
     if (!hot.active) continue;
 
-    auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
-    if (cacheIt == m_staticCollisionCache.end()) {
-      cacheIt = m_staticCollisionCache.emplace(dynamicIdx, StaticCollisionCache{}).first;
+    // Compute AABB and current coarse cell for this body
+    AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+    auto currentCoarseCell = m_staticSpatialHash.getCoarseCoord(dynamicAABB);
+
+    // Check if body has moved to a different coarse cell
+    auto bodyCoarseCellIt = m_bodyCoarseCell.find(dynamicIdx);
+    bool crossedBoundary = (bodyCoarseCellIt == m_bodyCoarseCell.end() ||
+                            bodyCoarseCellIt->second.x != currentCoarseCell.x ||
+                            bodyCoarseCellIt->second.y != currentCoarseCell.y);
+
+    // Get or create cache entry for this region
+    auto& regionCache = m_coarseRegionStaticCache[currentCoarseCell];
+
+    // If body crossed coarse cell boundary OR region cache is invalid, query static hash
+    if (crossedBoundary || !regionCache.valid) {
+      if (!regionCache.valid) {
+        m_cacheMisses++;
+
+        // Expand AABB to cover entire coarse cell + margin for border cases
+        AABB regionAABB = dynamicAABB;
+        regionAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON + 64.0f, SPATIAL_QUERY_EPSILON + 64.0f);
+
+        // Query static spatial hash for this entire coarse region
+        auto& staticCandidates = getPooledVector();
+        m_staticSpatialHash.queryRegion(regionAABB, staticCandidates);
+
+        // Cache result for entire region (all bodies in this cell will share it)
+        regionCache.staticIndices = staticCandidates;
+        regionCache.valid = true;
+        returnPooledVector(staticCandidates);
+      } else {
+        m_cacheHits++;
+      }
+
+      // Update body's tracked coarse cell
+      m_bodyCoarseCell[dynamicIdx] = currentCoarseCell;
+    } else {
+      // Body still in same coarse cell, cache is valid
+      m_cacheHits++;
     }
-    auto& cache = cacheIt->second;
 
-    bool needsUpdate = !cache.valid ||
-        std::abs(cache.lastPosition.getX() - hot.position.getX()) > POSITION_TOLERANCE ||
-        std::abs(cache.lastPosition.getY() - hot.position.getY()) > POSITION_TOLERANCE;
-
-    if (needsUpdate) {
-      AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
-
-      // In-place epsilon expansion - most efficient approach
-      dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
-
-      auto& staticCandidates = getPooledVector();
-      m_staticSpatialHash.queryRegion(dynamicAABB, staticCandidates);
-
-      cache.cachedStaticIndices = staticCandidates;
-      returnPooledVector(staticCandidates);
-      cache.lastPosition = hot.position;
-      cache.valid = true;
-    }
+    // Update old per-body cache for backward compatibility with broadphaseSOA()
+    // This will be removed in phase 4 when we integrate directly
+    auto& oldCache = m_staticCollisionCache[dynamicIdx];
+    oldCache.cachedStaticIndices = regionCache.staticIndices;
+    oldCache.valid = true;
+    oldCache.lastPosition = hot.position;
   }
 }
 
@@ -1432,6 +1469,15 @@ void CollisionManager::updatePerformanceMetricsSOA(
     }
     optimizationStats += "]";
 
+    // Coarse region cache statistics
+    size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
+    float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
+    size_t activeRegions = m_coarseRegionStaticCache.size();
+    std::string cacheStatsStr = " [RegionCache: Active=" + std::to_string(activeRegions) +
+                                ", Hits=" + std::to_string(m_cacheHits) +
+                                ", Misses=" + std::to_string(m_cacheMisses) +
+                                ", HitRate=" + std::to_string(static_cast<int>(cacheHitRate)) + "%]";
+
     COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
                     " (" + std::to_string(activeMovableBodies) + " movable)" +
                     ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
@@ -1440,7 +1486,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
                     ", Narrowphase: " + std::to_string(d23) + "ms" +
                     ", Last Pairs: " + std::to_string(pairCount) +
                     ", Last Collisions: " + std::to_string(collisionCount) +
-                    optimizationStats);
+                    optimizationStats + cacheStatsStr);
   }
 }
 
