@@ -44,8 +44,6 @@ declare -A CACHE_TESTS=(
     ["particle_core"]="particle_manager_core_tests"
     ["particle_threading"]="particle_manager_threading_tests"
     ["particle_weather"]="particle_manager_weather_tests"
-    ["ai_scaling"]="ai_scaling_benchmark"
-    ["event_scaling"]="event_manager_scaling_benchmark"
     ["behavior_functionality"]="behavior_functionality_tests"
     ["resource_architecture"]="resource_architecture_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
@@ -64,7 +62,6 @@ declare -A CACHE_TESTS=(
     ["collision_system"]="collision_system_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
     ["pathfinder_manager"]="pathfinder_manager_tests"
-    ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
