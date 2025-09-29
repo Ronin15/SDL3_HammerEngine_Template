@@ -36,7 +36,6 @@ declare -A QUICK_TESTS=(
     ["particle_perf"]="particle_manager_performance_tests"
     ["particle_threading"]="particle_manager_threading_tests"
     ["particle_weather"]="particle_manager_weather_tests"
-    ["resource_mgr"]="resource_manager_tests"
     ["resource_arch"]="resource_architecture_tests"
     ["resource_integration"]="resource_integration_tests"
     ["resource_change_evt"]="resource_change_event_tests"
