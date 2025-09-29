@@ -1487,6 +1487,10 @@ void CollisionManager::updatePerformanceMetricsSOA(
                     ", Last Pairs: " + std::to_string(pairCount) +
                     ", Last Collisions: " + std::to_string(collisionCount) +
                     optimizationStats + cacheStatsStr);
+
+    // Reset cache counters for next reporting window (every 300 frames)
+    m_cacheHits = 0;
+    m_cacheMisses = 0;
   }
 }
 
