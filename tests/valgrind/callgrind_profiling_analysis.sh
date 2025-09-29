@@ -30,10 +30,9 @@ mkdir -p "${RESULTS_DIR}/summaries"
 # AI behavior, performance critical, and resource management test executables
 declare -A PROFILE_TESTS=(
     ["ai_optimization"]="ai_optimization_tests"
-    ["ai_scaling"]="ai_scaling_benchmark" 
     ["behavior_functionality"]="behavior_functionality_tests"
     ["event_manager"]="event_manager_tests"
-    ["event_scaling"]="event_manager_scaling_benchmark"
+    ["event_manager_behavior"]="event_manager_behavior_tests"
     ["event_types"]="event_types_tests"
     ["weather_events"]="weather_event_tests"
     ["particle_core"]="particle_manager_core_tests"
@@ -44,8 +43,10 @@ declare -A PROFILE_TESTS=(
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integration"]="thread_safe_ai_integration_tests"
     ["save_manager"]="save_manager_tests"
+    ["game_state_manager"]="game_state_manager_tests"
     ["ui_stress"]="ui_stress_test"
     ["resource_manager"]="resource_manager_tests"
+    ["resource_architecture"]="resource_architecture_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["world_generator"]="world_generator_tests"
     ["world_manager"]="world_manager_tests"
@@ -60,7 +61,7 @@ declare -A PROFILE_TESTS=(
     ["resource_edge_case"]="resource_edge_case_tests"
     ["collision_system"]="collision_system_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
-    ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
+    ["pathfinder_manager"]="pathfinder_manager_tests"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
