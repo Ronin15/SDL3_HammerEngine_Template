@@ -50,6 +50,20 @@ public:
     struct CoarseCoord { int32_t x, y; };
     struct FineCoord { int32_t x, y; };
 
+    // Hash functors for coordinates (public for use in CollisionManager)
+    struct CoarseCoordHash {
+        size_t operator()(const CoarseCoord& c) const noexcept {
+            return (static_cast<uint64_t>(static_cast<uint32_t>(c.x)) << 32) ^
+                   static_cast<uint32_t>(c.y);
+        }
+    };
+
+    struct CoarseCoordEq {
+        bool operator()(const CoarseCoord& a, const CoarseCoord& b) const noexcept {
+            return a.x == b.x && a.y == b.y;
+        }
+    };
+
     // Region: A coarse cell with optional fine subdivision
     struct Region {
         CoarseCoord coord;
@@ -71,19 +85,6 @@ public:
     };
 
 private:
-    // Hash functors for coordinates
-    struct CoarseCoordHash {
-        size_t operator()(const CoarseCoord& c) const noexcept {
-            return (static_cast<uint64_t>(static_cast<uint32_t>(c.x)) << 32) ^
-                   static_cast<uint32_t>(c.y);
-        }
-    };
-
-    struct CoarseCoordEq {
-        bool operator()(const CoarseCoord& a, const CoarseCoord& b) const noexcept {
-            return a.x == b.x && a.y == b.y;
-        }
-    };
 
 public:
     explicit HierarchicalSpatialHash();
@@ -97,8 +98,6 @@ public:
 
     // Query operations
     void queryRegion(const AABB& area, std::vector<size_t>& outBodyIndices) const;
-    void queryBroadphase(size_t queryBodyIndex, const AABB& queryAABB,
-                        std::vector<size_t>& outCandidates) const;
 
     // Batch operations for high performance
     void insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies);
@@ -110,6 +109,9 @@ public:
     size_t getActiveRegionCount() const;
     size_t getTotalFineCells() const;
     void logStatistics() const;
+
+    // Coarse grid coordinate computation (public for CollisionManager's coarse-grid cache)
+    CoarseCoord getCoarseCoord(const AABB& aabb) const;
 
 private:
     // Core spatial data structures
@@ -123,60 +125,18 @@ private:
     };
     std::unordered_map<size_t, BodyLocation> m_bodyLocations;
 
-    // Performance optimization caches - lock-free concurrent cache
-    static constexpr size_t CACHE_SIZE = 4096;  // Power of 2 for fast modulo
-
-    struct CacheEntry {
-        std::atomic<size_t> bodyIndex{SIZE_MAX};
-        static constexpr size_t MAX_CANDIDATES = 2048;  // Support very dense areas
-        std::array<size_t, MAX_CANDIDATES> candidates;  // ~16KB per cache entry
-        std::atomic<size_t> candidateCount{0};  // Actual number of valid entries
-        std::atomic<uint64_t> version{0};
-
-        // Custom constructors for array compatibility
-        CacheEntry() = default;
-        CacheEntry(const CacheEntry& other)
-            : bodyIndex(other.bodyIndex.load()),
-              candidates(other.candidates),
-              candidateCount(other.candidateCount.load()),
-              version(other.version.load()) {}
-        CacheEntry(CacheEntry&& other) noexcept
-            : bodyIndex(other.bodyIndex.load()),
-              candidates(std::move(other.candidates)),
-              candidateCount(other.candidateCount.load()),
-              version(other.version.load()) {}
-        CacheEntry& operator=(const CacheEntry& other) {
-            if (this != &other) {
-                bodyIndex.store(other.bodyIndex.load());
-                candidates = other.candidates;
-                candidateCount.store(other.candidateCount.load());
-                version.store(other.version.load());
-            }
-            return *this;
-        }
-        CacheEntry& operator=(CacheEntry&& other) noexcept {
-            if (this != &other) {
-                bodyIndex.store(other.bodyIndex.load());
-                candidates = std::move(other.candidates);
-                candidateCount.store(other.candidateCount.load());
-                version.store(other.version.load());
-            }
-            return *this;
-        }
-    };
-
-    mutable std::vector<CacheEntry> m_queryCache;
-    mutable std::shared_mutex m_cacheMutex;  // Thread-safe cache access
-    mutable std::atomic<uint64_t> m_globalVersion{0};
-
-    // Thread safety - concurrent reads, exclusive writes
+    // Thread safety - concurrent reads, exclusive writes (kept for future thread safety if needed)
     mutable std::shared_mutex m_regionsMutex;
 
+    // PERFORMANCE: Persistent buffers to eliminate per-query allocations (single-threaded safe)
+    mutable std::unordered_set<size_t> m_tempSeenBodies;
+    mutable std::vector<CoarseCoord> m_tempQueryRegions;
+    mutable std::vector<FineCoord> m_tempQueryFineCells;
+
     // Helper methods
-    CoarseCoord getCoarseCoord(const AABB& aabb) const;
-    std::vector<CoarseCoord> getCoarseCoordsForAABB(const AABB& aabb) const;
+    void getCoarseCoordsForAABB(const AABB& aabb, std::vector<CoarseCoord>& out) const;
     FineCoord getFineCoord(const AABB& aabb, const CoarseCoord& region) const;
-    std::vector<FineCoord> getFineCoordList(const AABB& aabb, const CoarseCoord& region) const;
+    void getFineCoordList(const AABB& aabb, const CoarseCoord& region, std::vector<FineCoord>& out) const;
     GridKey computeGridKey(const FineCoord& coord) const;
     bool hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const;
 
@@ -184,11 +144,6 @@ private:
     void removeFromRegion(Region& region, size_t bodyIndex, const AABB& aabb);
     void subdivideRegion(Region& region);
     void unsubdivideRegion(Region& region);
-
-    // Cache management
-    void invalidateQueryCache() const;
-    bool getCachedQuery(size_t bodyIndex, std::vector<size_t>& outCandidates) const;
-    void cacheQuery(size_t bodyIndex, const std::vector<size_t>& candidates) const;
 };
 
 // Required for std::find and other STL algorithms

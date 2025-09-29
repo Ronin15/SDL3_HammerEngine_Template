@@ -40,11 +40,6 @@ bool CollisionManager::init() {
   });
   m_initialized = true;
   m_isShutdown = false;
-  m_lastWasThreaded.store(false, std::memory_order_relaxed);
-  m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
-  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
-  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
-  m_lastCollisionBudget.store(0, std::memory_order_relaxed);
   return true;
 }
 
@@ -123,11 +118,6 @@ void CollisionManager::prepareForStateTransition() {
 
   // Reset performance stats for clean slate
   m_perf = PerfStats{};
-  m_lastWasThreaded.store(false, std::memory_order_relaxed);
-  m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
-  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
-  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
-  m_lastCollisionBudget.store(0, std::memory_order_relaxed);
 
   // Reset world bounds to default
   m_worldBounds = AABB(0, 0, 100000.0f, 100000.0f);
@@ -621,26 +611,6 @@ void CollisionManager::subscribeWorldEvents() {
   m_handlerTokens.push_back(token);
 }
 
-void CollisionManager::configureThreading(bool useThreading,
-                                          unsigned int maxThreads) {
-  m_useThreading.store(useThreading, std::memory_order_release);
-  m_maxThreads = maxThreads;
-  COLLISION_INFO("Collision threading " +
-                 std::string(useThreading ? "enabled" : "disabled") +
-                 " with max threads: " + std::to_string(m_maxThreads));
-}
-
-void CollisionManager::setThreadingThreshold(size_t threshold) {
-  threshold = std::max(static_cast<size_t>(1), threshold);
-  m_threadingThreshold.store(threshold, std::memory_order_release);
-  COLLISION_INFO("Collision threading threshold set to " + std::to_string(threshold) +
-          " bodies");
-}
-
-size_t CollisionManager::getThreadingThreshold() const {
-  return m_threadingThreshold.load(std::memory_order_acquire);
-}
-
 // ========== NEW SOA STORAGE MANAGEMENT METHODS ==========
 
 size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& position,
@@ -897,14 +867,22 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
     if (!dynamicHot.active) continue;
 
-    AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
+    // PERFORMANCE: Use cached AABB bounds directly instead of recomputing
+    // Cached bounds are already updated in updateCachedAABB()
+    m_storage.updateCachedAABB(dynamicIdx); // Ensure cache is fresh
+    AABB dynamicAABB(
+      (dynamicHot.aabbMinX + dynamicHot.aabbMaxX) * 0.5f,  // centerX
+      (dynamicHot.aabbMinY + dynamicHot.aabbMaxY) * 0.5f,  // centerY
+      (dynamicHot.aabbMaxX - dynamicHot.aabbMinX) * 0.5f,  // halfWidth
+      (dynamicHot.aabbMaxY - dynamicHot.aabbMinY) * 0.5f   // halfHeight
+    );
 
     // In-place epsilon expansion - most efficient approach
     dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
 
     // 1. Movable-vs-movable collisions
     auto& dynamicCandidates = getPooledVector();
-    m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, dynamicCandidates);
+    m_dynamicSpatialHash.queryRegion(dynamicAABB, dynamicCandidates);
 
     for (size_t candidateIdx : dynamicCandidates) {
       if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
@@ -936,172 +914,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     // Return pooled vector
     returnPooledVector(dynamicCandidates);
   }
-}
-
-bool CollisionManager::broadphaseSOAThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                             ThreadingStats& stats,
-                                             const std::unordered_map<size_t, std::vector<size_t>>& staticCacheSnapshot) {
-  indexPairs.clear();
-
-  if (!HammerEngine::ThreadSystem::Exists()) {
-    broadphaseSOA(indexPairs);
-    return false;
-  }
-
-  const auto& pools = m_collisionPool;
-  const auto& movableIndices = pools.movableIndices;
-
-  if (movableIndices.empty()) {
-    return false;
-  }
-
-  auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-
-  // Calculate worker budget using proper WorkerBudget system
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t collisionBudget = budget.collisionAllocated;
-
-  if (collisionBudget == 0) {
-    broadphaseSOA(indexPairs);
-    return false;
-  }
-
-  size_t threadingThresholdValue =
-      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-  size_t optimalWorkers = budget.getOptimalWorkerCount(
-      collisionBudget, movableIndices.size(), threadingThresholdValue);
-  optimalWorkers = std::max<size_t>(1, optimalWorkers);
-
-  // Simplified batch sizing - no complex queue pressure calculations
-  size_t batchCount = std::min(optimalWorkers, movableIndices.size() / 64);
-  batchCount = std::max<size_t>(1, batchCount);
-
-  if (batchCount <= 1 || movableIndices.size() < threadingThresholdValue) {
-    broadphaseSOA(indexPairs);
-    return false;
-  }
-
-  // Prepare collision buffers
-  prepareCollisionBuffers(m_storage.size());
-
-  // Simple snapshot for thread safety - no complex locking needed
-  auto movableSnapshot = movableIndices;
-  auto currentCullingArea = m_currentCullingArea;
-
-  // Simplified work distribution across threads
-  size_t bodiesPerBatch = movableSnapshot.size() / batchCount;
-  size_t remainingBodies = movableSnapshot.size() % batchCount;
-
-  std::vector<std::future<std::vector<std::pair<size_t, size_t>>>> futures;
-  futures.reserve(batchCount);
-
-  for (size_t i = 0; i < batchCount; ++i) {
-    size_t start = i * bodiesPerBatch;
-    size_t end = start + bodiesPerBatch;
-    if (i == batchCount - 1) {
-      end += remainingBodies;
-    }
-
-    futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, movableSnapshot, currentCullingArea, &staticCacheSnapshot]() -> std::vector<std::pair<size_t, size_t>> {
-          std::vector<std::pair<size_t, size_t>> localPairs;
-          localPairs.reserve((end - start) * 8);
-
-          for (size_t i = start; i < end; ++i) {
-            size_t dynamicIdx = movableSnapshot[i];
-            if (dynamicIdx >= m_storage.hotData.size()) continue;
-
-            const auto& dynamicHot = m_storage.hotData[dynamicIdx];
-            if (!dynamicHot.active) continue;
-
-            // Note: No culling area check needed here - movableSnapshot already contains
-            // only entities within culling area from buildActiveIndicesSOA()
-
-            // Use pre-computed cached AABB to avoid race condition in threading
-            const auto& hot = m_storage.hotData[dynamicIdx];
-            AABB dynamicAABB(
-              (hot.aabbMinX + hot.aabbMaxX) * 0.5f,  // centerX
-              (hot.aabbMinY + hot.aabbMaxY) * 0.5f,  // centerY
-              (hot.aabbMaxX - hot.aabbMinX) * 0.5f,  // halfWidth
-              (hot.aabbMaxY - hot.aabbMinY) * 0.5f   // halfHeight
-            );
-
-            // In-place epsilon expansion - most efficient approach
-            dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
-
-            // Query dynamic candidates directly from stable spatial hash (read-only, thread-safe)
-            std::vector<size_t> candidates;
-            m_dynamicSpatialHash.queryBroadphase(dynamicIdx, dynamicAABB, candidates);
-
-            for (size_t candidateIdx : candidates) {
-              if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
-
-              const auto& candidateHot = m_storage.hotData[candidateIdx];
-              if (!candidateHot.active) continue;
-              if ((dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
-
-              size_t a = std::min(dynamicIdx, candidateIdx);
-              size_t b = std::max(dynamicIdx, candidateIdx);
-              localPairs.emplace_back(a, b);
-            }
-
-            // THREAD SAFETY FIX: Use immutable snapshot instead of shared mutable cache
-            auto cacheIt = staticCacheSnapshot.find(dynamicIdx);
-            if (cacheIt != staticCacheSnapshot.end()) {
-              const auto& staticCandidates = cacheIt->second;
-
-              for (size_t staticIdx : staticCandidates) {
-                if (staticIdx >= m_storage.hotData.size()) continue;
-
-                const auto& staticHot = m_storage.hotData[staticIdx];
-                if (!staticHot.active) continue;
-                if ((dynamicHot.collidesWith & staticHot.layers) == 0) continue;
-
-                localPairs.emplace_back(dynamicIdx, staticIdx);
-              }
-            }
-          }
-
-          return localPairs;
-        },
-        HammerEngine::TaskPriority::High, "CollisionSOA_BroadphaseBatch"));
-  }
-
-  // Merge results from all threads - deduplicate dynamic-vs-dynamic pairs only
-  std::unordered_set<uint64_t> seenPairs;
-  seenPairs.reserve(movableIndices.size() * 4);
-
-  for (auto& future : futures) {
-    auto localPairs = future.get();
-    for (const auto& pair : localPairs) {
-      if (pair.first >= m_storage.hotData.size() || pair.second >= m_storage.hotData.size()) continue;
-
-      bool isFirstStatic = static_cast<BodyType>(m_storage.hotData[pair.first].bodyType) == BodyType::STATIC;
-      bool isSecondStatic = static_cast<BodyType>(m_storage.hotData[pair.second].bodyType) == BodyType::STATIC;
-
-      // Dynamic-vs-static pairs are unique by construction (no dedup needed)
-      // Dynamic-vs-dynamic pairs need deduplication due to symmetric queries
-      bool needsDedup = !isFirstStatic && !isSecondStatic;
-
-      if (needsDedup) {
-        uint64_t pairKey = (static_cast<uint64_t>(pair.first) << 32) | pair.second;
-        if (seenPairs.emplace(pairKey).second) {
-          indexPairs.push_back(pair);
-        }
-      } else {
-        indexPairs.push_back(pair);
-      }
-    }
-  }
-
-  stats.optimalWorkers = optimalWorkers;
-  stats.availableWorkers = availableWorkers;
-  stats.budget = collisionBudget;
-  stats.batchCount = batchCount;
-
-  return true;
 }
 
 void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
@@ -1161,124 +973,6 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
   // Removed per-frame logging - collision count is included in periodic summary
 }
 
-bool CollisionManager::narrowphaseSOAThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                              std::vector<CollisionInfo>& collisions,
-                                              ThreadingStats& stats) {
-  collisions.clear();
-
-  if (!HammerEngine::ThreadSystem::Exists() || indexPairs.empty()) {
-    narrowphaseSOA(indexPairs, collisions);
-    return false;
-  }
-
-  auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-
-  // Use same threading strategy as broadphase
-  HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t collisionBudget = budget.collisionAllocated;
-  size_t threadingThresholdValue = std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-
-  if (indexPairs.size() < threadingThresholdValue || collisionBudget == 0) {
-    narrowphaseSOA(indexPairs, collisions);
-    return false;
-  }
-
-  size_t optimalWorkers = budget.getOptimalWorkerCount(collisionBudget, indexPairs.size(), threadingThresholdValue);
-  size_t batchCount = std::min(optimalWorkers, indexPairs.size() / 64);
-  batchCount = std::max<size_t>(1, batchCount);
-
-  if (batchCount <= 1) {
-    narrowphaseSOA(indexPairs, collisions);
-    return false;
-  }
-
-  size_t pairsPerBatch = indexPairs.size() / batchCount;
-  size_t remainingPairs = indexPairs.size() % batchCount;
-
-  std::vector<std::future<std::vector<CollisionInfo>>> futures;
-  futures.reserve(batchCount);
-
-  for (size_t i = 0; i < batchCount; ++i) {
-    size_t start = i * pairsPerBatch;
-    size_t end = start + pairsPerBatch;
-    if (i == batchCount - 1) {
-      end += remainingPairs;
-    }
-
-    futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, start, end, indexPairs]() -> std::vector<CollisionInfo> {
-          std::vector<CollisionInfo> localCollisions;
-          localCollisions.reserve((end - start) / 4);
-
-          for (size_t i = start; i < end; ++i) {
-            const auto& [aIdx, bIdx] = indexPairs[i];
-            if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
-
-            const auto& hotA = m_storage.hotData[aIdx];
-            const auto& hotB = m_storage.hotData[bIdx];
-
-            if (!hotA.active || !hotB.active) continue;
-
-            // Get cached AABB bounds directly (more efficient than creating AABB objects)
-            float minXA, minYA, maxXA, maxYA;
-            float minXB, minYB, maxXB, maxYB;
-            m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
-            m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
-
-            // AABB intersection test using cached bounds
-            if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
-
-            // Compute penetration and normal using cached bounds
-            float dxLeft = maxXB - minXA;   // B.right - A.left
-            float dxRight = maxXA - minXB;  // A.right - B.left
-            float dyTop = maxYB - minYA;    // B.bottom - A.top
-            float dyBottom = maxYA - minYB; // A.bottom - B.top
-
-            float minPen = dxLeft;
-            Vector2D normal(-1, 0);
-            if (dxRight < minPen) {
-              minPen = dxRight;
-              normal = Vector2D(1, 0);
-            }
-            if (dyTop < minPen) {
-              minPen = dyTop;
-              normal = Vector2D(0, -1);
-            }
-            if (dyBottom < minPen) {
-              minPen = dyBottom;
-              normal = Vector2D(0, 1);
-            }
-
-            EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-            EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-
-            bool isTrigger = hotA.isTrigger || hotB.isTrigger;
-
-            localCollisions.push_back(CollisionInfo{
-                entityA, entityB, normal, minPen, isTrigger, aIdx, bIdx
-            });
-          }
-
-          return localCollisions;
-        },
-        HammerEngine::TaskPriority::High, "CollisionSOA_NarrowphaseBatch"));
-  }
-
-  // Merge results
-  for (auto& future : futures) {
-    auto localCollisions = future.get();
-    collisions.insert(collisions.end(), localCollisions.begin(), localCollisions.end());
-  }
-
-  stats.optimalWorkers = optimalWorkers;
-  stats.availableWorkers = availableWorkers;
-  stats.budget = collisionBudget;
-  stats.batchCount = batchCount;
-
-  return true;
-}
-
 // ========== NEW SOA UPDATE METHOD ==========
 
 void CollisionManager::updateSOA(float dt) {
@@ -1295,19 +989,7 @@ void CollisionManager::updateSOA(float dt) {
   // Prepare collision processing for this frame
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
 
-  // Determine threading strategy using WorkerBudget system
-  size_t threadingThresholdValue =
-      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-  bool threadingEnabled = m_useThreading.load(std::memory_order_acquire) &&
-                          HammerEngine::ThreadSystem::Exists();
-
-  // Strong memory fence to ensure all cache updates are visible and stable before threading
-  std::atomic_thread_fence(std::memory_order_seq_cst);
-
-  ThreadingStats summaryStats{};
-  bool summaryThreaded = false;
-
-  // Count active dynamic bodies for threading decisions (with configurable culling)
+  // Count active dynamic bodies (with configurable culling)
   CullingArea cullingArea = createDefaultCullingArea();
 
   // Rebuild static spatial hash if needed (batched from add/remove operations)
@@ -1325,25 +1007,8 @@ void CollisionManager::updateSOA(float dt) {
   // Sync spatial hashes after culling, only for active bodies
   syncSpatialHashesWithActiveIndices();
 
-  // Update static collision cache for all movable bodies (single-threaded, before threading)
+  // Update static collision cache for all movable bodies
   updateStaticCollisionCacheForMovableBodies();
-
-  // THREAD SAFETY FIX: Create immutable snapshot of static collision cache
-  // This eliminates race conditions from concurrent std::unordered_map::find() calls
-  std::unordered_map<size_t, std::vector<size_t>> staticCacheSnapshot;
-  staticCacheSnapshot.reserve(m_staticCollisionCache.size());
-  for (const auto& [idx, cache] : m_staticCollisionCache) {
-    if (cache.valid) {
-      staticCacheSnapshot[idx] = cache.cachedStaticIndices;
-    }
-  }
-
-  // THREAD SAFETY FIX: Pre-compute all AABB caches to eliminate race conditions
-  precomputeActiveAABBs();
-
-  // THREAD SAFETY FIX: Sequential consistency fence ensures all cache updates
-  // and snapshot creation are fully visible to worker threads
-  std::atomic_thread_fence(std::memory_order_seq_cst);
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
@@ -1369,37 +1034,12 @@ void CollisionManager::updateSOA(float dt) {
 
   // BROADPHASE: Generate collision pairs using spatial hash
   auto t1 = clock::now();
-  bool broadphaseUsedThreading = false;
-  // Use active movable bodies for threading decision - they drive the workload
-  if (threadingEnabled && activeMovableBodies >= threadingThresholdValue) {
-    ThreadingStats stats;
-    broadphaseUsedThreading = broadphaseSOAThreaded(indexPairs, stats, staticCacheSnapshot);
-    if (broadphaseUsedThreading) {
-      summaryThreaded = true;
-      summaryStats = stats;
-    }
-  }
-
-  if (!broadphaseUsedThreading) {
-    broadphaseSOA(indexPairs);
-  }
+  broadphaseSOA(indexPairs);
   auto t2 = clock::now();
 
   // NARROWPHASE: Detailed collision detection and response calculation
   const size_t pairCount = indexPairs.size();
-  bool narrowphaseUsedThreading = false;
-  if (threadingEnabled && pairCount >= threadingThresholdValue) {
-    ThreadingStats narrowStats;
-    narrowphaseUsedThreading = narrowphaseSOAThreaded(indexPairs, m_collisionPool.collisionBuffer, narrowStats);
-    if (narrowphaseUsedThreading) {
-      summaryThreaded = true;
-      summaryStats = narrowStats; // Use narrowphase stats if it was threaded
-    }
-  }
-
-  if (!narrowphaseUsedThreading) {
-    narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
-  }
+  narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
   auto t3 = clock::now();
 
 
@@ -1423,12 +1063,9 @@ void CollisionManager::updateSOA(float dt) {
   auto t6 = clock::now();
 
   // Track performance metrics
-  size_t threadCount = summaryThreaded ? summaryStats.optimalWorkers : 0;
-  updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6, summaryThreaded,
-                               summaryStats.optimalWorkers, summaryStats.availableWorkers,
-                               summaryStats.budget, summaryStats.batchCount,
+  updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6,
                                bodyCount, activeMovableBodies, pairCount, m_collisionPool.collisionBuffer.size(),
-                               activeBodies, dynamicBodiesCulled, staticBodiesCulled, threadCount, cullingMs);
+                               activeBodies, dynamicBodiesCulled, staticBodiesCulled, cullingMs);
 
 }
 
@@ -1733,11 +1370,6 @@ void CollisionManager::updatePerformanceMetricsSOA(
     std::chrono::steady_clock::time_point t4,
     std::chrono::steady_clock::time_point t5,
     std::chrono::steady_clock::time_point t6,
-    bool wasThreaded,
-    size_t optimalWorkers,
-    size_t availableWorkers,
-    size_t budget,
-    size_t batchCount,
     size_t bodyCount,
     size_t activeMovableBodies,
     size_t pairCount,
@@ -1745,7 +1377,6 @@ void CollisionManager::updatePerformanceMetricsSOA(
     size_t activeBodies,
     size_t dynamicBodiesCulled,
     size_t staticBodiesCulled,
-    size_t threadCount,
     double cullingMs) {
 
   // Calculate timing metrics
@@ -1770,28 +1401,11 @@ void CollisionManager::updatePerformanceMetricsSOA(
   m_perf.lastActiveBodies = activeBodies > 0 ? activeBodies : bodyCount;
   m_perf.lastDynamicBodiesCulled = dynamicBodiesCulled;
   m_perf.lastStaticBodiesCulled = staticBodiesCulled;
-  m_perf.lastFrameWasThreaded = wasThreaded;
-  m_perf.lastThreadCount = threadCount > 0 ? threadCount : (wasThreaded ? optimalWorkers : 0);
   m_perf.lastCullingMs = cullingMs;
 
   m_perf.updateAverage(m_perf.lastTotalMs);
   m_perf.updateBroadphaseAverage(d12);
   m_perf.frames += 1;
-
-  // Update threading stats
-  if (wasThreaded) {
-    m_lastWasThreaded.store(true, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
-    m_lastOptimalWorkerCount.store(optimalWorkers, std::memory_order_relaxed);
-    m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-    m_lastCollisionBudget.store(budget, std::memory_order_relaxed);
-  } else {
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
-    m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
-    m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
-    m_lastCollisionBudget.store(0, std::memory_order_relaxed);
-  }
 
   // Performance warnings (throttled to reduce spam during benchmarks)
   if (m_perf.lastTotalMs > 5.0 && m_perf.frames % 60 == 0) { // Only log every 60 frames for slow performance
@@ -1818,30 +1432,15 @@ void CollisionManager::updatePerformanceMetricsSOA(
     }
     optimizationStats += "]";
 
-    if (wasThreaded) {
-      COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
-                      " (" + std::to_string(activeMovableBodies) + " movable)" +
-                      ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
-                      ", Avg Broadphase: " + std::to_string(m_perf.avgBroadphaseMs) + "ms" +
-                      ", Current Broadphase: " + std::to_string(d12) + "ms" +
-                      ", Narrowphase: " + std::to_string(d23) + "ms" +
-                      ", Last Pairs: " + std::to_string(pairCount) +
-                      ", Last Collisions: " + std::to_string(collisionCount) +
-                      " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                      std::to_string(availableWorkers) + " workers, Budget: " +
-                      std::to_string(budget) + ", Batches: " +
-                      std::to_string(batchCount) + "]" + optimizationStats);
-    } else {
-      COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
-                      " (" + std::to_string(activeMovableBodies) + " movable)" +
-                      ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
-                      ", Avg Broadphase: " + std::to_string(m_perf.avgBroadphaseMs) + "ms" +
-                      ", Current Broadphase: " + std::to_string(d12) + "ms" +
-                      ", Narrowphase: " + std::to_string(d23) + "ms" +
-                      ", Last Pairs: " + std::to_string(pairCount) +
-                      ", Last Collisions: " + std::to_string(collisionCount) +
-                      " [Single-threaded]" + optimizationStats);
-    }
+    COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
+                    " (" + std::to_string(activeMovableBodies) + " movable)" +
+                    ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
+                    ", Avg Broadphase: " + std::to_string(m_perf.avgBroadphaseMs) + "ms" +
+                    ", Current Broadphase: " + std::to_string(d12) + "ms" +
+                    ", Narrowphase: " + std::to_string(d23) + "ms" +
+                    ", Last Pairs: " + std::to_string(pairCount) +
+                    ", Last Collisions: " + std::to_string(collisionCount) +
+                    optimizationStats);
   }
 }
 
@@ -1939,23 +1538,6 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
   }
 
   return area;
-}
-
-void CollisionManager::precomputeActiveAABBs() {
-  // Pre-compute all AABB caches to eliminate race conditions during threading
-  // CRITICAL FIX: Force AABB updates regardless of dirty flag status to prevent
-  // state corruption during threading transitions (single->multi->single->multi)
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    auto& hot = m_storage.hotData[i];
-    if (hot.active) {
-      // Force AABB update regardless of dirty flag (fixes threading state corruption)
-      hot.aabbMinX = hot.position.getX() - hot.halfSize.getX();
-      hot.aabbMinY = hot.position.getY() - hot.halfSize.getY();
-      hot.aabbMaxX = hot.position.getX() + hot.halfSize.getX();
-      hot.aabbMaxY = hot.position.getY() + hot.halfSize.getY();
-      hot.aabbDirty = 0;
-    }
-  }
 }
 
 // ========== PERFORMANCE: VECTOR POOLING METHODS ==========
