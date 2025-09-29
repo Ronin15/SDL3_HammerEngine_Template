@@ -334,12 +334,31 @@ private:
     HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash; // Dynamic/kinematic bodies (NPCs, player)
 
     // STATIC COLLISION CACHE: Avoid redundant static spatial hash queries
+    // DEPRECATED: Old per-body cache - replaced by coarse-grid cache
     struct StaticCollisionCache {
         Vector2D lastPosition;
         std::vector<size_t> cachedStaticIndices;
         bool valid{false};
     };
     std::unordered_map<size_t, StaticCollisionCache> m_staticCollisionCache;
+
+    // PERFORMANCE: Coarse-grid region cache for static bodies (shared by NPCs in same region)
+    // This is the NEW high-performance cache that replaces per-body caching
+    struct CoarseRegionStaticCache {
+        std::vector<size_t> staticIndices;
+        bool valid{false};
+    };
+    std::unordered_map<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
+                       CoarseRegionStaticCache,
+                       HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
+                       HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
+
+    // Track which coarse cell each dynamic body currently occupies
+    std::unordered_map<size_t, HammerEngine::HierarchicalSpatialHash::CoarseCoord> m_bodyCoarseCell;
+
+    // Cache statistics
+    mutable size_t m_cacheHits{0};
+    mutable size_t m_cacheMisses{0};
 
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea;
