@@ -45,7 +45,6 @@ declare -A PROFILE_TESTS=(
     ["save_manager"]="save_manager_tests"
     ["game_state_manager"]="game_state_manager_tests"
     ["ui_stress"]="ui_stress_test"
-    ["resource_manager"]="resource_manager_tests"
     ["resource_architecture"]="resource_architecture_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["world_generator"]="world_generator_tests"
