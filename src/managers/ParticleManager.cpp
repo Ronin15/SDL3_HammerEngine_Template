@@ -1294,12 +1294,13 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
   instance.active = true;
   instance.isWeatherEffect = true; // Mark as weather effect immediately
 
-  // Register effect
+  // Register effect (save ID before move)
+  const uint32_t effectId = instance.id;
   m_effectInstances.emplace_back(std::move(instance));
-  m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
+  m_effectIdToIndex[effectId] = m_effectInstances.size() - 1;
 
   PARTICLE_INFO("Weather effect created: " + effectTypeToString(effectType) +
-                " (ID: " + std::to_string(instance.id) + ") at position (" +
+                " (ID: " + std::to_string(effectId) + ") at position (" +
                 std::to_string(weatherPosition.getX()) + ", " +
                 std::to_string(weatherPosition.getY()) + ")");
 }

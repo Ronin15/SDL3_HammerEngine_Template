@@ -152,7 +152,7 @@ std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
   return std::make_shared<IdleBehavior>(m_idleMode, m_idleRadius);
 }
 
-void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) {
+void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) const {
   state.originalPosition = entity->getPosition();
   state.currentOffset = Vector2D(0, 0);
   state.lastMovementTime = SDL_GetTicks();
@@ -169,7 +169,7 @@ void IdleBehavior::updateStationary(EntityPtr entity,
   entity->setVelocity(Vector2D(0, 0));
 }
 
-void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
+void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) const {
   Uint64 currentTime = SDL_GetTicks();
 
   if (m_movementFrequency > 0.0f && currentTime >= state.nextMovementTime) {
@@ -187,7 +187,7 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) {
                            state.lastSepVelocity);
 }
 
-void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) {
+void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) const {
   Uint64 currentTime = SDL_GetTicks();
 
   if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {
@@ -204,7 +204,7 @@ void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) {
   entity->setVelocity(Vector2D(0, 0));
 }
 
-void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) {
+void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) const {
   Uint64 currentTime = SDL_GetTicks();
 
   // Handle movement fidgeting

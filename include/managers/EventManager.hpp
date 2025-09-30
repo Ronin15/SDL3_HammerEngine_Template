@@ -517,7 +517,7 @@ public:
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;
-  void resetPerformanceStats();
+  void resetPerformanceStats() const;
   size_t getEventCount() const;
   size_t getEventCount(EventTypeId typeId) const;
 
@@ -597,7 +597,7 @@ private:
   // Helper methods
   EventTypeId getEventTypeId(const EventPtr &event) const;
   std::string getEventTypeName(EventTypeId typeId) const;
-  void updateEventTypeBatch(EventTypeId typeId);
+  void updateEventTypeBatch(EventTypeId typeId) const;
   void updateEventTypeBatchThreaded(EventTypeId typeId);
   void processEventDirect(EventData &eventData);
   void recordPerformance(EventTypeId typeId, double timeMs) const;

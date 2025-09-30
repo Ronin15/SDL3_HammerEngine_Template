@@ -824,7 +824,7 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 
 
 // Optimized version of buildActiveIndicesSOA - O(N) instead of O(N²)
-void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) {
+void CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) const {
   // Build indices of active bodies within culling area
   auto& pools = m_collisionPool;
 

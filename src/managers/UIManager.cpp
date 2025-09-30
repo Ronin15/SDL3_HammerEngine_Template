@@ -425,7 +425,7 @@ void UIManager::createModal(const std::string &dialogId, const UIRect &bounds,
   createDialog(dialogId, bounds);
 }
 
-void UIManager::refreshAllComponentThemes() {
+void UIManager::refreshAllComponentThemes() const {
   // Apply current theme to all existing components, preserving custom alignment
   for (const auto &[id, component] : m_components) {
     if (component) {

@@ -255,7 +255,7 @@ bool FleeBehavior::isThreatInRange(EntityPtr entity, EntityPtr threat) const {
     return distanceSquared <= detectionRangeSquared;
 }
 
-Vector2D FleeBehavior::calculateFleeDirection(EntityPtr entity, EntityPtr threat, const EntityState& state) {
+Vector2D FleeBehavior::calculateFleeDirection(EntityPtr entity, EntityPtr threat, const EntityState& state) const {
     if (!entity || !threat) return Vector2D(0, 0);
     
     Vector2D entityPos = entity->getPosition();

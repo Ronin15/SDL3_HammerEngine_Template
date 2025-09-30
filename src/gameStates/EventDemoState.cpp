@@ -1794,7 +1794,7 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
   if (!resourceTemplate)
     return;
 
-  std::string resourceName = resourceTemplate->getName();
+  const std::string& resourceName = resourceTemplate->getName();
 
   // Warning for low quantities of important resources
   if (resourceTemplate->getType() == ResourceType::Consumable && newQty <= 2 &&
@@ -1830,7 +1830,7 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   if (!resourceTemplate)
     return;
 
-  std::string resourceName = resourceTemplate->getName();
+  const std::string& resourceName = resourceTemplate->getName();
   int change = newQty - oldQty;
 
   // Create detailed analytics entry

@@ -868,7 +868,6 @@ size_t AIManager::processPendingBehaviorAssignments() {
     }
     // Move all pending assignments to local vector
     toProcess = std::move(m_pendingAssignments);
-    m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
   }
 

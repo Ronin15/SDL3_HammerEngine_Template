@@ -211,7 +211,7 @@ private:
         }
     };
 
-    void buildActiveIndicesSOA(const CullingArea& cullingArea);
+    void buildActiveIndicesSOA(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
 
 
@@ -361,7 +361,7 @@ private:
     mutable size_t m_cacheMisses{0};
 
     // Current culling area for spatial queries
-    mutable CullingArea m_currentCullingArea;
+    mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
