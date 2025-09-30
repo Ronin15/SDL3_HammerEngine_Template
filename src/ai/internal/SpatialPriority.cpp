@@ -1,12 +1,10 @@
-#include "SpatialPriority.hpp"
-// PERFORMANCE FIX: PathfindingScheduler removed
-
 #include <algorithm>
 #include <sstream>
 #include <cmath>
 #include <vector>
 #include <iomanip>
-#include "../../core/Logger.hpp"
+#include "core/Logger.hpp"
+#include "ai/internal/SpatialPriority.hpp"
 
 namespace AIInternal {
 
