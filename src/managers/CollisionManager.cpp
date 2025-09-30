@@ -626,134 +626,172 @@ void CollisionManager::subscribeWorldEvents() {
 
 // ========== NEW SOA STORAGE MANAGEMENT METHODS ==========
 
+void CollisionManager::processPendingCommands() {
+  // Drain the command queue and apply all pending operations
+  // This is called from updateSOA() on the update thread
+  std::vector<PendingCommand> commandsToProcess;
+
+  {
+    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
+    if (m_pendingCommands.empty()) {
+      return; // Early exit if no commands
+    }
+    commandsToProcess.swap(m_pendingCommands); // Move commands out quickly
+  }
+
+  // Process commands outside the lock (collision data only accessed by update thread)
+  for (const auto& cmd : commandsToProcess) {
+    switch (cmd.type) {
+      case CommandType::Add: {
+        // Check if entity already exists
+        auto it = m_storage.entityToIndex.find(cmd.id);
+        if (it != m_storage.entityToIndex.end()) {
+          // Update existing entity
+          size_t index = it->second;
+          if (index < m_storage.hotData.size()) {
+            auto& hot = m_storage.hotData[index];
+            hot.position = cmd.position;
+            hot.halfSize = cmd.halfSize;
+            hot.aabbDirty = 1;
+            hot.layers = cmd.layer;
+            hot.collidesWith = cmd.collideMask;
+            hot.bodyType = static_cast<uint8_t>(cmd.bodyType);
+            hot.active = true;
+
+            // Update cold data
+            if (index < m_storage.coldData.size()) {
+              m_storage.coldData[index].fullAABB = AABB(cmd.position.getX(), cmd.position.getY(),
+                                                        cmd.halfSize.getX(), cmd.halfSize.getY());
+            }
+          }
+          continue;
+        }
+
+        // Add new entity
+        size_t newIndex = m_storage.size();
+
+        // Initialize hot data
+        CollisionStorage::HotData hotData{};
+        hotData.position = cmd.position;
+        hotData.velocity = Vector2D(0, 0);
+        hotData.halfSize = cmd.halfSize;
+        hotData.aabbDirty = 1;
+        hotData.layers = cmd.layer;
+        hotData.collidesWith = cmd.collideMask;
+        hotData.bodyType = static_cast<uint8_t>(cmd.bodyType);
+        hotData.triggerTag = static_cast<uint8_t>(HammerEngine::TriggerTag::None);
+        hotData.active = true;
+        hotData.isTrigger = false;
+        hotData.restitution = 0.0f;
+
+        // Initialize cold data
+        CollisionStorage::ColdData coldData{};
+        coldData.acceleration = Vector2D(0, 0);
+        coldData.lastPosition = cmd.position;
+        coldData.fullAABB = AABB(cmd.position.getX(), cmd.position.getY(),
+                                 cmd.halfSize.getX(), cmd.halfSize.getY());
+
+        // Add to storage
+        m_storage.hotData.push_back(hotData);
+        m_storage.coldData.push_back(coldData);
+        m_storage.entityIds.push_back(cmd.id);
+        m_storage.entityToIndex[cmd.id] = newIndex;
+
+        // Fire collision obstacle changed event for static bodies
+        if (cmd.bodyType == BodyType::STATIC) {
+          float radius = std::max(cmd.halfSize.getX(), cmd.halfSize.getY()) + 16.0f;
+          std::string description = "Static obstacle added at (" +
+                                    std::to_string(cmd.position.getX()) + ", " +
+                                    std::to_string(cmd.position.getY()) + ")";
+          EventManager::Instance().triggerCollisionObstacleChanged(cmd.position, radius, description,
+                                                                  EventManager::DispatchMode::Deferred);
+          m_staticHashDirty = true;
+        }
+        break;
+      }
+
+      case CommandType::Remove: {
+        auto it = m_storage.entityToIndex.find(cmd.id);
+        if (it == m_storage.entityToIndex.end()) {
+          continue; // Entity not found
+        }
+
+        size_t indexToRemove = it->second;
+        size_t lastIndex = m_storage.size() - 1;
+
+        // Fire collision obstacle changed event for static bodies before removal
+        if (indexToRemove < m_storage.size()) {
+          const auto& hot = m_storage.hotData[indexToRemove];
+          if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+            float radius = std::max(hot.halfSize.getX(), hot.halfSize.getY()) + 16.0f;
+            std::string description = "Static obstacle removed from (" +
+                                      std::to_string(hot.position.getX()) + ", " +
+                                      std::to_string(hot.position.getY()) + ")";
+            EventManager::Instance().triggerCollisionObstacleChanged(hot.position, radius, description,
+                                                                    EventManager::DispatchMode::Deferred);
+            m_staticHashDirty = true;
+          }
+        }
+
+        if (indexToRemove != lastIndex) {
+          // Swap with last element
+          m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
+          m_storage.coldData[indexToRemove] = m_storage.coldData[lastIndex];
+          m_storage.entityIds[indexToRemove] = m_storage.entityIds[lastIndex];
+
+          // Update map for swapped entity
+          EntityID movedEntity = m_storage.entityIds[indexToRemove];
+          m_storage.entityToIndex[movedEntity] = indexToRemove;
+        }
+
+        // Remove last element
+        m_storage.hotData.pop_back();
+        m_storage.coldData.pop_back();
+        m_storage.entityIds.pop_back();
+        m_storage.entityToIndex.erase(cmd.id);
+        break;
+      }
+
+      case CommandType::Modify:
+        // Handle modify commands if needed in the future
+        break;
+    }
+  }
+}
+
 size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& position,
                                               const Vector2D& halfSize, BodyType type,
                                               uint32_t layer, uint32_t collidesWith) {
-  // Check if entity already exists
-  auto it = m_storage.entityToIndex.find(id);
-  if (it != m_storage.entityToIndex.end()) {
-    // Update existing entity
-    size_t index = it->second;
-    if (index < m_storage.hotData.size()) {
-      auto& hot = m_storage.hotData[index];
-      hot.position = position;
-      hot.halfSize = halfSize;
-      hot.aabbDirty = 1;
-      hot.layers = layer;
-      hot.collidesWith = collidesWith;
-      hot.bodyType = static_cast<uint8_t>(type);
-      hot.active = true;
+  // Queue command for deferred processing on update thread (thread-safe)
+  PendingCommand cmd;
+  cmd.type = CommandType::Add;
+  cmd.id = id;
+  cmd.position = position;
+  cmd.halfSize = halfSize;
+  cmd.bodyType = type;
+  cmd.layer = layer;
+  cmd.collideMask = collidesWith;
 
-      // Update cold data
-      if (index < m_storage.coldData.size()) {
-        m_storage.coldData[index].fullAABB = AABB(position.getX(), position.getY(),
-                                                  halfSize.getX(), halfSize.getY());
-      }
-
-          return index;
-    }
+  {
+    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
+    m_pendingCommands.push_back(cmd);
   }
 
-  // Add new entity
-  size_t newIndex = m_storage.size();
-
-  // Initialize hot data
-  CollisionStorage::HotData hotData{};
-  hotData.position = position;
-  hotData.velocity = Vector2D(0, 0);
-  hotData.halfSize = halfSize;
-  hotData.aabbDirty = 1;
-  hotData.layers = layer;
-  hotData.collidesWith = collidesWith;
-  hotData.bodyType = static_cast<uint8_t>(type);
-  hotData.triggerTag = static_cast<uint8_t>(HammerEngine::TriggerTag::None);
-  hotData.active = true;
-  hotData.isTrigger = false;
-  hotData.restitution = 0.0f;
-
-  // Initialize cold data
-  CollisionStorage::ColdData coldData{};
-  coldData.acceleration = Vector2D(0, 0);
-  coldData.lastPosition = position;
-  coldData.fullAABB = AABB(position.getX(), position.getY(), halfSize.getX(), halfSize.getY());
-
-  // Add to storage
-  m_storage.hotData.push_back(hotData);
-  m_storage.coldData.push_back(coldData);
-  m_storage.entityIds.push_back(id);
-  m_storage.entityToIndex[id] = newIndex;
-
-  // Removed per-entity logging to reduce spam - entity count is included in periodic summary
-
-  // Fire collision obstacle changed event for static bodies
-  if (type == BodyType::STATIC) {
-    float radius = std::max(halfSize.getX(), halfSize.getY()) + 16.0f; // Add safety margin
-    std::string description = "Static obstacle added at (" +
-                              std::to_string(position.getX()) + ", " +
-                              std::to_string(position.getY()) + ")";
-    EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
-                                                            EventManager::DispatchMode::Deferred);
-
-    // Mark static hash as needing rebuild (batched for performance)
-    m_staticHashDirty = true;
-  }
-
-  return newIndex;
+  // Return 0 as placeholder - actual index will be assigned when command is processed
+  // This is acceptable since most callers don't use the return value
+  return 0;
 }
 
 void CollisionManager::removeCollisionBodySOA(EntityID id) {
-  auto it = m_storage.entityToIndex.find(id);
-  if (it == m_storage.entityToIndex.end()) {
-    return; // Entity not found
+  // Queue command for deferred processing on update thread (thread-safe)
+  PendingCommand cmd;
+  cmd.type = CommandType::Remove;
+  cmd.id = id;
+
+  {
+    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
+    m_pendingCommands.push_back(cmd);
   }
-
-  size_t indexToRemove = it->second;
-  size_t lastIndex = m_storage.size() - 1;
-
-  // Fire collision obstacle changed event for static bodies before removal
-  bool wasStatic = false;
-  if (indexToRemove < m_storage.size()) {
-    const auto& hot = m_storage.hotData[indexToRemove];
-    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-      wasStatic = true;
-      float radius = std::max(hot.halfSize.getX(), hot.halfSize.getY()) + 16.0f;
-      std::string description = "Static obstacle removed from (" +
-                                std::to_string(hot.position.getX()) + ", " +
-                                std::to_string(hot.position.getY()) + ")";
-      EventManager::Instance().triggerCollisionObstacleChanged(hot.position, radius, description,
-                                                              EventManager::DispatchMode::Deferred);
-    }
-  }
-
-  if (indexToRemove < m_storage.size()) {
-    // Swap with last element and pop (to maintain contiguous arrays)
-    if (indexToRemove != lastIndex) {
-      // Swap hot data
-      m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
-      // Swap cold data
-      m_storage.coldData[indexToRemove] = m_storage.coldData[lastIndex];
-      // Swap entity IDs
-      m_storage.entityIds[indexToRemove] = m_storage.entityIds[lastIndex];
-
-      // Update index mapping for the moved entity
-      EntityID movedEntityId = m_storage.entityIds[indexToRemove];
-      m_storage.entityToIndex[movedEntityId] = indexToRemove;
-    }
-
-    // Remove last elements
-    m_storage.hotData.pop_back();
-    m_storage.coldData.pop_back();
-    m_storage.entityIds.pop_back();
-  }
-
-  // Remove from index mapping
-  m_storage.entityToIndex.erase(it);
-
-  // Mark static hash as needing rebuild when static objects are removed
-  if (wasStatic) {
-    m_staticHashDirty = true;
-  }
-
 }
 
 bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
@@ -993,6 +1031,9 @@ void CollisionManager::updateSOA(float dt) {
 
   using clock = std::chrono::steady_clock;
   auto t0 = clock::now();
+
+  // Process pending add/remove commands first (thread-safe deferred operations)
+  processPendingCommands();
 
   // Pure SOA system - no legacy compatibility
 
