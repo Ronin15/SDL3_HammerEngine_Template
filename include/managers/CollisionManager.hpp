@@ -7,6 +7,7 @@
 #define COLLISION_MANAGER_HPP
 
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -196,6 +197,25 @@ private:
     void updateStaticCollisionCacheForMovableBodies();
 
     void subscribeWorldEvents(); // hook to world events
+
+    // Thread-safe command queue system for collision body management
+    enum class CommandType {
+        Add,
+        Remove,
+        Modify
+    };
+
+    struct PendingCommand {
+        CommandType type;
+        EntityID id;
+        Vector2D position;
+        Vector2D halfSize;
+        BodyType bodyType;
+        uint32_t layer;
+        uint32_t collideMask;
+    };
+
+    void processPendingCommands();
 
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
@@ -518,6 +538,10 @@ private:
 
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
+
+    // Thread-safe command queue for deferred collision body operations
+    std::vector<PendingCommand> m_pendingCommands;
+    mutable std::mutex m_commandQueueMutex;
 };
 
 #endif // COLLISION_MANAGER_HPP
