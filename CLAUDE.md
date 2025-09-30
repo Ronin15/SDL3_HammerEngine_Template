@@ -17,7 +17,7 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 ### Release Build
 ```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release  
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release
 ninja -C build
 ```
 
@@ -63,26 +63,9 @@ ninja -C build
 ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
 ```
 
-### Static Analysis
-```bash
-./tests/test_scripts/run_cppcheck_focused.sh
-```
-
-### Performance Analysis (Valgrind)
-```bash
-# Quick memory check
-./tests/valgrind/quick_memory_check.sh
-
-# Cache performance analysis  
-./tests/valgrind/cache_performance_analysis.sh
-
-# Complete Valgrind suite
-./tests/valgrind/run_complete_valgrind_suite.sh
-```
-
 ## Code Architecture
 
-### Core Components 
+### Core Components
 - **GameEngine**: Central coordinator managing all subsystems with double-buffered rendering
 - **GameLoop**: Fixed-timestep game loop with separate update/render threads
 - **Managers**: Singleton pattern with `m_isShutdown` guard for clean shutdown
@@ -144,7 +127,7 @@ res/                # Game assets (fonts, images, audio, data files)
 
 ### Naming Conventions
 - **Classes/Enums**: UpperCamelCase (`GameEngine`, `EventType`)
-- **Functions/Variables**: lowerCamelCase (`updateGame`, `playerHealth`) 
+- **Functions/Variables**: lowerCamelCase (`updateGame`, `playerHealth`)
 - **Member Variables**: `m_` prefix (`m_isRunning`, `m_playerPosition`), `mp_` prefix for pointers (`mp_window`, `mp_renderer`)
 - **Constants**: ALL_CAPS (`MAX_PLAYERS`, `DEFAULT_SPEED`)
 
@@ -169,18 +152,6 @@ res/                # Game assets (fonts, images, audio, data files)
 - Boost (for testing framework)
 - cppcheck (static analysis)
 - Valgrind (performance/memory analysis)
-
-## Key Performance Notes
-
-### Memory Management  
-- All dynamic allocation uses smart pointers
-- RAII patterns throughout for resource management
-- Binary serialization system for save/load operations
-
-### Rendering Pipeline
-- Double-buffered rendering with buffer swapping
-- Camera-aware rendering with consistent world-to-screen conversion
-- Batched particle and UI rendering
 
 ## Important Implementation Details
 
