@@ -49,12 +49,6 @@ PathPriority SpatialPriority::getEntityPriority(EntityID entityId, const Vector2
 
 bool SpatialPriority::shouldProcessThisFrame(EntityID entityId, PathPriority priority, uint64_t currentFrame)
 {
-    // Low priority entities in far zones get heavy frame skipping
-    if (priority == PathPriority::Low) {
-        // Check if this is a "culled" entity (beyond far distance)
-        // We'll handle culling logic in the frame skip check
-    }
-    
     // Critical/High priority entities are always processed
     if (priority == PathPriority::Critical || priority == PathPriority::High) {
         updateEntityFrameState(entityId, priority, currentFrame, true);
@@ -235,13 +229,6 @@ bool SpatialPriority::shouldSkipBasedOnFrames(const EntityFrameState& state, Pat
     // Always process if enough frames have passed based on skip interval
     if (framesSinceLastProcess >= skipInterval) {
         return false; // Don't skip
-    }
-    
-    // For Normal priority, add some randomization to prevent synchronization
-    if (priority == PathPriority::Normal && skipInterval > 1) {
-        // Use entity ID as a simple hash for deterministic but varied timing
-        const uint32_t offset = static_cast<uint32_t>(state.lastProcessedFrame) % skipInterval;
-        return (currentFrame + offset) % skipInterval != 0;
     }
     
     return true; // Skip this frame
