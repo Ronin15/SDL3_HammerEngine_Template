@@ -10,6 +10,7 @@
 #include <SDL3/SDL.h>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -478,6 +479,9 @@ private:
   // Event log state tracking
   std::unordered_map<std::string, EventLogState> m_eventLogStates{};
   bool m_isShutdown{false};
+
+  // Thread safety
+  mutable std::recursive_mutex m_componentsMutex;
 
   // Input state
   Vector2D m_lastMousePosition{};

@@ -33,7 +33,8 @@ ninja -C build
 ### Running the Application
 - Debug: `./bin/debug/SDL3_Template`
 - Release: `./bin/release/SDL3_Template`
-- Testing: `timeout 60s ./bin/debug/SDL3_Template` (25 second timeout for behavior testing)
+- Testing: `timeout 60s ./bin/debug/SDL3_Template` (60 second timeout for behavior testing)
+- **Troubleshooting**: `timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1` - Redirect output to log file for analysis (game dumps large amounts of console data)
 
 ## Testing
 
