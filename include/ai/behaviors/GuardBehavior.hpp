@@ -208,7 +208,7 @@ private:
   float calculateThreatDistance(EntityPtr entity, EntityPtr threat) const;
 
   void updateAlertLevel(EntityPtr entity, EntityState &state,
-                        bool threatPresent);
+                        bool threatPresent) const;
   void handleThreatDetection(EntityPtr entity, EntityState &state,
                              EntityPtr threat);
   void handleInvestigation(EntityPtr entity, EntityState &state);

@@ -145,7 +145,7 @@ private:
   // Helper methods
   EntityPtr getTarget() const; // Gets player reference from AIManager
   Vector2D calculateDesiredPosition(EntityPtr entity, EntityPtr target,
-                                    const EntityState &state);
+                                    const EntityState &state) const;
   Vector2D calculateFormationOffset(const EntityState &state) const;
   Vector2D predictTargetPosition(EntityPtr target,
                                  const EntityState &state) const;

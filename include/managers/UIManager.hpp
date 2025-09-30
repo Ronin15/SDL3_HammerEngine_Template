@@ -269,7 +269,7 @@ public:
                    const std::string &theme, int windowWidth, int windowHeight);
 
   // Theme management
-  void refreshAllComponentThemes();
+  void refreshAllComponentThemes() const;
 
   // Component manipulation
   void removeComponent(const std::string &id);

@@ -812,7 +812,7 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
     return false;
 }
 
-void PathfinderManager::reportStatistics() {
+void PathfinderManager::reportStatistics() const {
     auto stats = getStats();
     
     if (stats.totalRequests > 0) {

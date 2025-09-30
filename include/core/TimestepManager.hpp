@@ -145,7 +145,7 @@ public:
      * Explicitly set software frame limiting mode (called from GameEngine)
      * @param useSoftwareLimiting true to force fixed timestep mode
      */
-    void setSoftwareFrameLimiting(bool useSoftwareLimiting);
+    void setSoftwareFrameLimiting(bool useSoftwareLimiting) const;
 };
 
 #endif // TIMESTEP_MANAGER_HPP

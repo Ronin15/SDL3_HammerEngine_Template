@@ -143,7 +143,7 @@ private:
   EntityPtr getThreat() const; // Gets player reference from AIManager
   bool isThreatInRange(EntityPtr entity, EntityPtr threat) const;
   Vector2D calculateFleeDirection(EntityPtr entity, EntityPtr threat,
-                                  const EntityState &state);
+                                  const EntityState &state) const;
   Vector2D findNearestSafeZone(const Vector2D &position) const;
   bool isPositionSafe(const Vector2D &position) const;
   bool isNearBoundary(const Vector2D &position) const;

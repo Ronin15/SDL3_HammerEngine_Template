@@ -667,7 +667,7 @@ EventManager::registerHandlerForName(const std::string &name, FastEventHandler h
   return HandlerToken{EventTypeId::Custom, id, true, name};
 }
 
-void EventManager::updateEventTypeBatch(EventTypeId typeId) {
+void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
   auto startTime = getCurrentTimeNanos();
 
   // Copy events to local vector to minimize lock time (pointers only)
@@ -1657,7 +1657,7 @@ PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
   return m_performanceStats[static_cast<size_t>(typeId)];
 }
 
-void EventManager::resetPerformanceStats() {
+void EventManager::resetPerformanceStats() const {
   std::lock_guard<std::mutex> lock(m_perfMutex);
   for (auto &stats : m_performanceStats) {
     stats.reset();

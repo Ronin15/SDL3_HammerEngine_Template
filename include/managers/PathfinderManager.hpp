@@ -364,7 +364,7 @@ private:
     std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 
     // Internal methods - simplified
-    void reportStatistics();
+    void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
     void checkForGridUpdates(float deltaTime);
     uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;

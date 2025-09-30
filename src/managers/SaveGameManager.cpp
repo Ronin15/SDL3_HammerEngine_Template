@@ -217,7 +217,7 @@ bool SaveGameManager::load(const std::string &saveFileName,
   }
 }
 
-bool SaveGameManager::loadFromSlot(int slotNumber, Player &player) {
+bool SaveGameManager::loadFromSlot(int slotNumber, Player &player) const {
   if (slotNumber < 1) {
     SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
     return false;
@@ -244,7 +244,7 @@ bool SaveGameManager::deleteSave(const std::string &saveFileName) const {
   }
 }
 
-bool SaveGameManager::deleteSlot(int slotNumber) {
+bool SaveGameManager::deleteSlot(int slotNumber) const {
   if (slotNumber < 1) {
     SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
     return false;
