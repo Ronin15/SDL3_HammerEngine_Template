@@ -162,8 +162,19 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
   EntityID id = HammerEngine::UniqueID::generate();
   Vector2D center(aabb.center.getX(), aabb.center.getY());
   Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-  size_t index = addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
-                                   layerMask, collideMask);
+  addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                      layerMask, collideMask);
+  // Process pending commands to ensure body is added before setting trigger properties
+  processPendingCommands();
+
+  // Look up the actual index after the body has been added
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end()) {
+    // Body wasn't added - this shouldn't happen
+    return id;
+  }
+  size_t index = it->second;
+
   // Set trigger properties directly in SOA storage
   m_storage.hotData[index].isTrigger = true;
   m_storage.hotData[index].triggerTag = static_cast<uint8_t>(tag);
@@ -214,11 +225,9 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
         Vector2D center(aabb.center.getX(), aabb.center.getY());
         Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-        size_t index = addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
-                                         CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-        // Set trigger properties directly in SOA storage
-        m_storage.hotData[index].isTrigger = true;
-        m_storage.hotData[index].triggerTag = static_cast<uint8_t>(tag);
+        addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                           CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                           true, static_cast<uint8_t>(tag));
         ++created;
       }
     }
@@ -679,9 +688,9 @@ void CollisionManager::processPendingCommands() {
         hotData.layers = cmd.layer;
         hotData.collidesWith = cmd.collideMask;
         hotData.bodyType = static_cast<uint8_t>(cmd.bodyType);
-        hotData.triggerTag = static_cast<uint8_t>(HammerEngine::TriggerTag::None);
+        hotData.triggerTag = cmd.triggerTag;
         hotData.active = true;
-        hotData.isTrigger = false;
+        hotData.isTrigger = cmd.isTrigger;
         hotData.restitution = 0.0f;
 
         // Initialize cold data
@@ -761,7 +770,8 @@ void CollisionManager::processPendingCommands() {
 
 size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& position,
                                               const Vector2D& halfSize, BodyType type,
-                                              uint32_t layer, uint32_t collidesWith) {
+                                              uint32_t layer, uint32_t collidesWith,
+                                              bool isTrigger, uint8_t triggerTag) {
   // Queue command for deferred processing on update thread (thread-safe)
   PendingCommand cmd;
   cmd.type = CommandType::Add;
@@ -771,6 +781,8 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
   cmd.bodyType = type;
   cmd.layer = layer;
   cmd.collideMask = collidesWith;
+  cmd.isTrigger = isTrigger;
+  cmd.triggerTag = triggerTag;
 
   {
     std::lock_guard<std::mutex> lock(m_commandQueueMutex);

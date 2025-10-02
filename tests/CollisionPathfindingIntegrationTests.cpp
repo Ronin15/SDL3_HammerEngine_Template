@@ -69,6 +69,7 @@ struct CollisionPathfindingFixture {
             AABB wallAABB(i * 64.0f, 320.0f, 32.0f, 32.0f);
             CollisionManager::Instance().addCollisionBodySOA(wallId, wallAABB.center, wallAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         }
+        CollisionManager::Instance().processPendingCommands();
 
         // L-shaped obstacle
         for (int i = 0; i < 3; ++i) {
@@ -81,6 +82,7 @@ struct CollisionPathfindingFixture {
             AABB obstacleAABB(800.0f, 200.0f + i * 64.0f, 32.0f, 32.0f);
             CollisionManager::Instance().addCollisionBodySOA(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         }
+        CollisionManager::Instance().processPendingCommands();
 
         // Allow time for collision events to propagate to pathfinder
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -152,6 +154,7 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
     EntityID dynamicObstacle = 5000;
     AABB obstacleAABB(300.0f, 300.0f, 48.0f, 48.0f);
     CollisionManager::Instance().addCollisionBodySOA(dynamicObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Update pathfinding grid with new obstacle
     PathfinderManager::Instance().updateDynamicObstacles();
@@ -194,6 +197,7 @@ BOOST_FIXTURE_TEST_CASE(TestEventDrivenPathInvalidation, CollisionPathfindingFix
     EntityID newObstacle = 6000;
     AABB newObstacleAABB(300.0f, 300.0f, 64.0f, 64.0f);
     CollisionManager::Instance().addCollisionBodySOA(newObstacle, newObstacleAABB.center, newObstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Allow collision event to propagate
     std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -240,6 +244,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentCollisionPathfindingOperations, CollisionP
         CollisionManager::Instance().addCollisionBodySOA(bodyId, bodyAABB.center, bodyAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
         tempBodies.push_back(bodyId);
     }
+    CollisionManager::Instance().processPendingCommands();
 
     // Update collision system to process any changes
     for (int frame = 0; frame < 10; ++frame) {
@@ -278,6 +283,7 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceUnderLoad, CollisionPathfindingFixture)
         CollisionManager::Instance().addCollisionBodySOA(bodyId, bodyAABB.center, bodyAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
         bodies.push_back(bodyId);
     }
+    CollisionManager::Instance().processPendingCommands();
 
     // Measure combined system performance
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -330,6 +336,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionLayerPathfindingInteraction, CollisionPathf
     CollisionManager::Instance().addCollisionBodySOA(playerObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(enemyObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(environmentObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Set different collision layers
     CollisionManager::Instance().setBodyLayer(
