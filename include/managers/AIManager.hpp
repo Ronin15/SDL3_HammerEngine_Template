@@ -478,6 +478,7 @@ private:
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
+  mutable std::mutex m_futuresMutex; // Protects m_updateFutures and m_assignmentFutures
   std::vector<std::future<void>> m_updateFutures;
   std::vector<std::future<void>>
       m_pendingFutures; // Futures from previous frames
