@@ -107,7 +107,8 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
           MIX_Audio *audio =
               MIX_LoadAudio(m_mixer, entry.path().string().c_str(), false);
           if (!audio) {
-            SOUND_WARN("Failed to load audio from " + entry.path().string());
+            SOUND_WARN("Failed to load audio from " + entry.path().string() +
+                      " - SDL Error: " + std::string(SDL_GetError()));
             continue;
           }
 
@@ -135,7 +136,8 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
       // Load single file
       MIX_Audio *audio = MIX_LoadAudio(m_mixer, filePath.c_str(), false);
       if (!audio) {
-        SOUND_ERROR("Failed to load audio: " + filePath);
+        SOUND_ERROR("Failed to load audio: " + filePath +
+                   " - SDL Error: " + std::string(SDL_GetError()));
         return false;
       }
 
