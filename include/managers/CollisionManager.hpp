@@ -544,6 +544,10 @@ private:
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;
     mutable std::mutex m_commandQueueMutex;
+
+    // Thread-safe access to collision storage (entityToIndex map and storage arrays)
+    // shared_lock for reads (AI threads), unique_lock for writes (update thread)
+    mutable std::shared_mutex m_storageMutex;
 };
 
 #endif // COLLISION_MANAGER_HPP
