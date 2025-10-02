@@ -223,6 +223,62 @@ void HierarchicalSpatialHash::queryRegion(const AABB& area, std::vector<size_t>&
     }
 }
 
+void HierarchicalSpatialHash::queryRegionBounds(float minX, float minY, float maxX, float maxY, std::vector<size_t>& outBodyIndices) const {
+    outBodyIndices.clear();
+    outBodyIndices.reserve(64); // Reserve for typical query result size
+
+    // PERFORMANCE: Use persistent buffers to eliminate per-query allocations (single-threaded safe)
+    m_tempSeenBodies.clear();
+    m_tempSeenBodies.reserve(64);
+
+    // Get all coarse regions this query overlaps using bounds directly (NO AABB construction!)
+    getCoarseCoordsForBounds(minX, minY, maxX, maxY, m_tempQueryRegions);
+
+    // Construct AABB only if needed for fine cell queries (rare case)
+    AABB queryArea(
+        (minX + maxX) * 0.5f, // centerX
+        (minY + maxY) * 0.5f, // centerY
+        (maxX - minX) * 0.5f, // halfWidth
+        (maxY - minY) * 0.5f  // halfHeight
+    );
+
+    // PERFORMANCE: No mutex needed - single-threaded collision system
+    for (const auto& regionCoord : m_tempQueryRegions) {
+        auto regionIt = m_regions.find(regionCoord);
+        if (regionIt == m_regions.end()) {
+            continue;
+        }
+
+        const Region& region = regionIt->second;
+
+        if (region.hasFineSplit) {
+            // Query only fine cells that overlap the query area (reuse persistent buffer - NO allocation!)
+            getFineCoordList(queryArea, regionCoord, m_tempQueryFineCells);
+
+            for (const auto& fineCoord : m_tempQueryFineCells) {
+                GridKey key = computeGridKey(fineCoord);
+                auto fineCellIt = region.fineCells.find(key);
+                if (fineCellIt != region.fineCells.end()) {
+                    for (size_t bodyIndex : fineCellIt->second) {
+                        // PERFORMANCE: O(1) hash set insertion for deduplication
+                        if (m_tempSeenBodies.insert(bodyIndex).second) {
+                            outBodyIndices.push_back(bodyIndex);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Query coarse cell directly
+            for (size_t bodyIndex : region.bodyIndices) {
+                // PERFORMANCE: O(1) hash set insertion for deduplication
+                if (m_tempSeenBodies.insert(bodyIndex).second) {
+                    outBodyIndices.push_back(bodyIndex);
+                }
+            }
+        }
+    }
+}
+
 // ========== Batch Operations ==========
 
 void HierarchicalSpatialHash::insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies) {
@@ -284,14 +340,18 @@ HierarchicalSpatialHash::CoarseCoord HierarchicalSpatialHash::getCoarseCoord(con
 }
 
 void HierarchicalSpatialHash::getCoarseCoordsForAABB(const AABB& aabb, std::vector<CoarseCoord>& out) const {
-    int32_t minX = static_cast<int32_t>(std::floor(aabb.left() / COARSE_CELL_SIZE));
-    int32_t maxX = static_cast<int32_t>(std::floor(aabb.right() / COARSE_CELL_SIZE));
-    int32_t minY = static_cast<int32_t>(std::floor(aabb.top() / COARSE_CELL_SIZE));
-    int32_t maxY = static_cast<int32_t>(std::floor(aabb.bottom() / COARSE_CELL_SIZE));
+    getCoarseCoordsForBounds(aabb.left(), aabb.top(), aabb.right(), aabb.bottom(), out);
+}
+
+void HierarchicalSpatialHash::getCoarseCoordsForBounds(float minX, float minY, float maxX, float maxY, std::vector<CoarseCoord>& out) const {
+    int32_t gridMinX = static_cast<int32_t>(std::floor(minX / COARSE_CELL_SIZE));
+    int32_t gridMaxX = static_cast<int32_t>(std::floor(maxX / COARSE_CELL_SIZE));
+    int32_t gridMinY = static_cast<int32_t>(std::floor(minY / COARSE_CELL_SIZE));
+    int32_t gridMaxY = static_cast<int32_t>(std::floor(maxY / COARSE_CELL_SIZE));
 
     out.clear();
-    for (int32_t y = minY; y <= maxY; ++y) {
-        for (int32_t x = minX; x <= maxX; ++x) {
+    for (int32_t y = gridMinY; y <= gridMaxY; ++y) {
+        for (int32_t x = gridMinX; x <= gridMaxX; ++x) {
             out.push_back({x, y});
         }
     }

@@ -408,6 +408,9 @@ private:
         std::vector<AABB> tempAABBs;             // Temporary AABB calculations
         std::vector<float> tempDistances;        // Distance calculations for sorting
 
+        // Direct cache lookup optimization - avoids hash map lookups in hot path
+        std::vector<const std::vector<size_t>*> directStaticCache;  // Direct array indexing instead of hash map
+
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
             // 10k bodies → ~1.4k pairs → ~760 collisions
@@ -440,6 +443,7 @@ private:
                 tempPositions.reserve(bodyCount);
                 tempAABBs.reserve(bodyCount);
                 tempDistances.reserve(bodyCount);
+                directStaticCache.reserve(bodyCount);  // Direct cache array sized to body count
             }
         }
 
@@ -457,6 +461,7 @@ private:
             tempPositions.clear();
             tempAABBs.clear();
             tempDistances.clear();
+            directStaticCache.clear();
             // Vectors retain capacity
         }
     };

@@ -98,6 +98,8 @@ public:
 
     // Query operations
     void queryRegion(const AABB& area, std::vector<size_t>& outBodyIndices) const;
+    // Optimized bounds-based query to avoid AABB object construction
+    void queryRegionBounds(float minX, float minY, float maxX, float maxY, std::vector<size_t>& outBodyIndices) const;
 
     // Batch operations for high performance
     void insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies);
@@ -135,6 +137,7 @@ private:
 
     // Helper methods
     void getCoarseCoordsForAABB(const AABB& aabb, std::vector<CoarseCoord>& out) const;
+    void getCoarseCoordsForBounds(float minX, float minY, float maxX, float maxY, std::vector<CoarseCoord>& out) const;
     FineCoord getFineCoord(const AABB& aabb, const CoarseCoord& region) const;
     void getFineCoordList(const AABB& aabb, const CoarseCoord& region, std::vector<FineCoord>& out) const;
     GridKey computeGridKey(const FineCoord& coord) const;
