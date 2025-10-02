@@ -684,6 +684,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
     );
+    CollisionManager::Instance().processPendingCommands();
 
     BOOST_CHECK_NE(triggerId, 0); // Should return valid ID
     BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
@@ -695,6 +696,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player
     );
+    CollisionManager::Instance().processPendingCommands();
 
     BOOST_CHECK_NE(triggerId2, 0);
     BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId2));
@@ -724,6 +726,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerCooldowns)
         50.0f, 50.0f, 20.0f, 20.0f,
         HammerEngine::TriggerTag::Portal
     );
+    CollisionManager::Instance().processPendingCommands();
 
     // Set specific cooldown for this trigger
     CollisionManager::Instance().setTriggerCooldown(triggerId, 2.0f);
@@ -1186,6 +1189,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerEventNotifications)
         300.0f, 300.0f, 30.0f, 30.0f,
         HammerEngine::TriggerTag::Water
     );
+    CollisionManager::Instance().processPendingCommands();
 
     BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
 
@@ -1289,6 +1293,7 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
         position.getX(), position.getY(), 25.0f, 25.0f,
         HammerEngine::TriggerTag::Checkpoint
     );
+    CollisionManager::Instance().processPendingCommands();
 
     // Verify body types
     BOOST_CHECK(!CollisionManager::Instance().isKinematic(staticId));
