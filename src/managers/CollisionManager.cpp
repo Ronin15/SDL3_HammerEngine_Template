@@ -950,8 +950,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   // PERFORMANCE OPTIMIZATION: Pre-populate direct cache array to avoid hash lookups in hot path
   // This converts O(1) hash lookups (with cache misses) to O(1) array indexing (cache-friendly)
   auto& directStaticCache = m_collisionPool.directStaticCache;
-  directStaticCache.clear();
-  directStaticCache.resize(m_storage.hotData.size(), nullptr);
+  directStaticCache.assign(m_storage.hotData.size(), nullptr);  // More efficient than clear+resize
 
   for (size_t idx : movableIndices) {
     auto cacheIt = m_staticCollisionCache.find(idx);
