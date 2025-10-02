@@ -86,7 +86,10 @@ void CollisionManager::prepareForStateTransition() {
       removeCollisionBodySOA(id);
     }
 
-    COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
+    // Process pending removal commands immediately
+    processPendingCommands();
+
+    COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() cleared " +
                    std::to_string(dynamicBodies.size()) + " dynamic bodies (keeping static for world unloading)");
 
     // Only clear dynamic spatial hash
@@ -103,8 +106,26 @@ void CollisionManager::prepareForStateTransition() {
     m_dynamicSpatialHash.clear();
   }
 
-  // Clear caches to prevent dangling references to deleted bodies
+  // Process any pending commands before clearing caches to ensure clean state
+  processPendingCommands();
+
+  // Clear pending command queue to prevent stale commands in new state
+  {
+    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
+    m_pendingCommands.clear();
+  }
+
+  // Clear all caches to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();              // Clear collision buffers
+  m_staticCollisionCache.clear();            // Clear per-body static cache
+  m_coarseRegionStaticCache.clear();         // Clear region-based static cache
+  m_bodyCoarseCell.clear();                  // Clear body cell tracking
+  m_cacheHits = 0;                           // Reset cache statistics
+  m_cacheMisses = 0;
+
+  // Clear vector pool to release temporary allocations
+  m_vectorPool.clear();
+  m_nextPoolIndex = 0;
 
   // Clear trigger tracking state completely
   m_activeTriggerPairs.clear();
@@ -112,6 +133,13 @@ void CollisionManager::prepareForStateTransition() {
 
   // Reset trigger cooldown settings
   m_defaultTriggerCooldownSec = 0.0f;
+
+  // Unregister all event handlers before clearing tokens
+  auto& em = EventManager::Instance();
+  for (const auto& token : m_handlerTokens) {
+    em.removeHandler(token);
+  }
+  m_handlerTokens.clear();
 
   // Clear all collision callbacks (these should be re-registered by new states)
   m_callbacks.clear();
