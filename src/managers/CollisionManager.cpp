@@ -942,12 +942,18 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
   // Process only movable bodies (static never initiate collisions)
   for (size_t dynamicIdx : movableIndices) {
-    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
-    if (!dynamicHot.active) continue;
+    // Check active status first (direct indexing to avoid long-lived reference)
+    if (!m_storage.hotData[dynamicIdx].active) continue;
+
+    // Copy collision mask to avoid dangling reference if vector reallocates
+    const uint32_t dynamicCollidesWith = m_storage.hotData[dynamicIdx].collidesWith;
 
     // PERFORMANCE: Use cached AABB bounds directly instead of recomputing
     // Cached bounds are already updated in updateCachedAABB()
     m_storage.updateCachedAABB(dynamicIdx); // Ensure cache is fresh
+
+    // Re-fetch reference after updateCachedAABB (safe since updateCachedAABB doesn't reallocate)
+    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
     AABB dynamicAABB(
       (dynamicHot.aabbMinX + dynamicHot.aabbMaxX) * 0.5f,  // centerX
       (dynamicHot.aabbMinY + dynamicHot.aabbMaxY) * 0.5f,  // centerY
@@ -966,7 +972,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
 
       const auto& candidateHot = m_storage.hotData[candidateIdx];
-      if (!candidateHot.active || (dynamicHot.collidesWith & candidateHot.layers) == 0) continue;
+      if (!candidateHot.active || (dynamicCollidesWith & candidateHot.layers) == 0) continue;
 
       // Ensure consistent ordering
       size_t a = std::min(dynamicIdx, candidateIdx);
@@ -983,7 +989,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
         if (staticIdx >= m_storage.hotData.size()) continue;
 
         const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (dynamicHot.collidesWith & staticHot.layers) == 0) continue;
+        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
 
         indexPairs.emplace_back(dynamicIdx, staticIdx);
       }
