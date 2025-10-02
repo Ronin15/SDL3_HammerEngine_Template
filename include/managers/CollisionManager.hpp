@@ -115,13 +115,15 @@ public:
     // NEW SOA STORAGE MANAGEMENT METHODS
     size_t addCollisionBodySOA(EntityID id, const Vector2D& position, const Vector2D& halfSize,
                                BodyType type, uint32_t layer = CollisionLayer::Layer_Default,
-                               uint32_t collidesWith = 0xFFFFFFFFu);
+                               uint32_t collidesWith = 0xFFFFFFFFu,
+                               bool isTrigger = false, uint8_t triggerTag = 0);
     void removeCollisionBodySOA(EntityID id);
     bool getCollisionBodySOA(EntityID id, size_t& outIndex) const;
     void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
     void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
     void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
     void attachEntity(EntityID id, EntityPtr entity);
+    void processPendingCommands(); // Process queued collision body commands (for tests/immediate processing)
 
     // SOA Body Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
@@ -213,9 +215,9 @@ private:
         BodyType bodyType;
         uint32_t layer;
         uint32_t collideMask;
+        bool isTrigger = false;
+        uint8_t triggerTag = 0;
     };
-
-    void processPendingCommands();
 
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)

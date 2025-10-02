@@ -458,7 +458,8 @@ BOOST_AUTO_TEST_CASE(TestStaticDynamicHashSeparation)
     // Add bodies of different types
     CollisionManager::Instance().addCollisionBodySOA(staticId, testAABB.center, testAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(kinematicId, testAABB.center, testAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    
+    CollisionManager::Instance().processPendingCommands();
+
     // Verify body count includes all types
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getBodyCount(), 2);
     
@@ -474,7 +475,8 @@ BOOST_AUTO_TEST_CASE(TestStaticDynamicHashSeparation)
     // Test with a dynamic body as well
     EntityID dynamicId = 10001;
     CollisionManager::Instance().addCollisionBodySOA(dynamicId, testAABB.center, testAABB.halfSize, BodyType::DYNAMIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
-    
+    CollisionManager::Instance().processPendingCommands();
+
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getBodyCount(), 3);
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getKinematicBodyCount(), 1); // Still only 1 kinematic
@@ -511,7 +513,7 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
         CollisionManager::Instance().addCollisionBodySOA(id, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         staticBodies.push_back(id);
     }
-    
+
     // Add dynamic bodies (NPCs)
     for (int i = 0; i < NUM_DYNAMIC_BODIES; ++i) {
         EntityID id = 25000 + i;
@@ -522,7 +524,8 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
         CollisionManager::Instance().addCollisionBodySOA(id, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
         dynamicBodies.push_back(id);
     }
-    
+    CollisionManager::Instance().processPendingCommands();
+
     // Reset performance stats before measurement
     CollisionManager::Instance().resetPerfStats();
     
@@ -578,7 +581,8 @@ BOOST_AUTO_TEST_CASE(TestKinematicBatchUpdateWithDualHashes)
         CollisionManager::Instance().addCollisionBodySOA(id, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
         kinematicBodies.push_back(id);
     }
-    
+    CollisionManager::Instance().processPendingCommands();
+
     // Prepare batch update data
     std::vector<CollisionManager::KinematicUpdate> updates;
     for (int i = 0; i < NUM_KINEMATIC_BODIES; ++i) {
@@ -634,12 +638,13 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     EntityID staticId = 40000;
     AABB staticAABB(200.0f, 200.0f, 32.0f, 32.0f);
     CollisionManager::Instance().addCollisionBodySOA(staticId, staticAABB.center, staticAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    
+
     // Add a kinematic body near the static body
     EntityID kinematicId = 40001;
     AABB kinematicAABB(220.0f, 220.0f, 16.0f, 16.0f);
     CollisionManager::Instance().addCollisionBodySOA(kinematicId, kinematicAABB.center, kinematicAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    
+    CollisionManager::Instance().processPendingCommands();
+
     // Run collision detection to populate any caches
     CollisionManager::Instance().update(0.016f);
     
@@ -647,7 +652,8 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     EntityID staticId2 = 40002;
     AABB staticAABB2(240.0f, 240.0f, 32.0f, 32.0f);
     CollisionManager::Instance().addCollisionBodySOA(staticId2, staticAABB2.center, staticAABB2.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    
+    CollisionManager::Instance().processPendingCommands();
+
     // Verify cache invalidation by checking that static body count is correct
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 2);
     
@@ -656,6 +662,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     
     // Remove static body and verify cache invalidation
     CollisionManager::Instance().removeCollisionBodySOA(staticId);
+    CollisionManager::Instance().processPendingCommands();
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
     
     // Clean up
@@ -745,6 +752,7 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
     CollisionManager::Instance().addCollisionBodySOA(playerId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(npcId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(environmentId, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Set layers - Player collides with NPCs and environment
     CollisionManager::Instance().setBodyLayer(
@@ -789,6 +797,7 @@ BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
     AABB aabb(150.0f, 150.0f, 20.0f, 20.0f);
 
     CollisionManager::Instance().addCollisionBodySOA(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Body should exist and be queryable
     std::vector<EntityID> results;
@@ -820,6 +829,7 @@ BOOST_AUTO_TEST_CASE(TestBodyResize)
     AABB originalAABB(200.0f, 200.0f, 10.0f, 10.0f);
 
     CollisionManager::Instance().addCollisionBodySOA(bodyId, originalAABB.center, originalAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Verify original position
     Vector2D center;
@@ -852,6 +862,7 @@ BOOST_AUTO_TEST_CASE(TestVelocityManagement)
     Vector2D velocity(15.0f, 10.0f);
 
     CollisionManager::Instance().addCollisionBodySOA(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Set velocity individually
     CollisionManager::Instance().setVelocity(bodyId, velocity);
@@ -896,6 +907,7 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
 
     CollisionManager::Instance().addCollisionBodySOA(bodyA, aabbA.center, aabbA.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(bodyB, aabbB.center, aabbB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Set up collision callback to inspect CollisionInfo
     std::vector<CollisionInfo> capturedCollisions;
@@ -1005,6 +1017,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     AABB staticAABB(staticPos.getX(), staticPos.getY(), 32.0f, 32.0f);
 
     CollisionManager::Instance().addCollisionBodySOA(staticId, staticAABB.center, staticAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Process deferred events - CollisionManager fires events in Deferred mode
     // so we need to call EventManager::update() to process the queue
@@ -1023,15 +1036,17 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     int previousEventCount = eventCount.load();
 
     CollisionManager::Instance().addCollisionBodySOA(kinematicId, kinematicAABB.center, kinematicAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
     EventManager::Instance().update();  // Process any events (should be none for kinematic)
-    
+
     // Event count should not have changed
     BOOST_CHECK_EQUAL(eventCount.load(), previousEventCount);
     
     // Test 3: Removing a static body should trigger an event
     CollisionManager::Instance().removeCollisionBodySOA(staticId);
+    CollisionManager::Instance().processPendingCommands();
     EventManager::Instance().update();
-    
+
     // Should have received another event for removal
     BOOST_CHECK_EQUAL(eventCount.load(), 2);
     BOOST_CHECK(lastEventDescription.find("Static obstacle removed") != std::string::npos);
@@ -1062,8 +1077,9 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     // Small obstacle: 10x10
     AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
     CollisionManager::Instance().addCollisionBodySOA(smallId, smallAABB.center, smallAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
     EventManager::Instance().update();
-    
+
     float smallRadius = lastEventRadius;
     BOOST_CHECK_GT(smallRadius, 5.0f); // Should be larger than half-size
     BOOST_CHECK_LT(smallRadius, 50.0f); // But reasonable
@@ -1071,8 +1087,9 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     // Large obstacle: 100x100
     AABB largeAABB(200.0f, 200.0f, 50.0f, 50.0f);
     CollisionManager::Instance().addCollisionBodySOA(largeId, largeAABB.center, largeAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
     EventManager::Instance().update();
-    
+
     float largeRadius = lastEventRadius;
     BOOST_CHECK_GT(largeRadius, smallRadius); // Large should have larger radius
     BOOST_CHECK_GT(largeRadius, 50.0f); // Should be larger than half-size + margin
@@ -1109,7 +1126,8 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
         CollisionManager::Instance().addCollisionBodySOA(id, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         bodies.push_back(id);
     }
-    
+    CollisionManager::Instance().processPendingCommands();
+
     // Process deferred events
     EventManager::Instance().update();
     
@@ -1195,6 +1213,7 @@ BOOST_AUTO_TEST_CASE(TestWorldBounds)
     AABB aabb(validPosition.getX(), validPosition.getY(), 20.0f, 20.0f);
 
     CollisionManager::Instance().addCollisionBodySOA(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Verify body was created successfully
     Vector2D center;
@@ -1220,6 +1239,7 @@ BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
 
     CollisionManager::Instance().addCollisionBodySOA(player1Id, overlappingAABB.center, overlappingAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(player2Id, overlappingAABB.center, overlappingAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
 
     // Set both as players - players don't collide with other players
     CollisionManager::Instance().setBodyLayer(
@@ -1320,6 +1340,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
         boundaryId, boundaryAABB.center, boundaryAABB.halfSize,
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
     );
+    CollisionManager::Instance().processPendingCommands(); // Process queued add command
 
     // Should be findable via area query
     std::vector<EntityID> results;
@@ -1334,6 +1355,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
         largeId, largeAABB.center, largeAABB.halfSize,
         BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu
     );
+    CollisionManager::Instance().processPendingCommands(); // Process queued add command
 
     // Should be findable from multiple query regions
     AABB queryTopLeft(50.0f, 50.0f, 20.0f, 20.0f);
@@ -1358,6 +1380,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
         extremeId, extremeAABB.center, extremeAABB.halfSize,
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
     );
+    CollisionManager::Instance().processPendingCommands(); // Process queued add command
 
     // Should still be queryable
     results.clear();
@@ -1372,6 +1395,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
         zeroId, zeroAABB.center, zeroAABB.halfSize,
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
     );
+    CollisionManager::Instance().processPendingCommands(); // Process queued add command
 
     // Should still be tracked and queryable
     results.clear();
@@ -1388,6 +1412,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
         movingId, movingAABB.center, movingAABB.halfSize,
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
     );
+    CollisionManager::Instance().processPendingCommands(); // Process queued add command
 
     // Move across fine cell boundaries multiple times
     for (int i = 1; i <= 5; ++i) {

@@ -222,6 +222,8 @@ void Player::ensurePhysicsBodyRegistered() {
   // Use new SOA-based collision system
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
                         HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+  // Process queued command to ensure body exists before attaching
+  cm.processPendingCommands();
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 }
