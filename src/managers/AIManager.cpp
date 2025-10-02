@@ -488,9 +488,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       // Dynamic batch sizing based on queue pressure and pathfinding load for optimal performance
       const size_t threshold = threadingThreshold;
       const size_t baseBatchSize =
-          std::max(threshold / 2, static_cast<size_t>(64));
+          std::max(threshold / 8, static_cast<size_t>(64)); // Reduced from threshold/2 for better parallelism
       size_t minEntitiesPerBatch = baseBatchSize;
-      size_t maxBatches = std::max(static_cast<size_t>(2), optimalWorkerCount);
+      size_t maxBatches = std::max(static_cast<size_t>(8), optimalWorkerCount); // Increased from 2 to utilize more workers
       
       // Skip pathfinding coordination for small entity counts to avoid overhead
       if (activeCount > threshold / 2) {
@@ -511,10 +511,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
         // Low pressure: can use more batches for better parallelization
         size_t minLowPressure =
-            std::max(threshold / 4, static_cast<size_t>(32));
+            std::max(threshold / 8, static_cast<size_t>(32)); // Reduced from threshold/4
         minEntitiesPerBatch =
             std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
-        maxBatches = std::max(static_cast<size_t>(4), optimalWorkerCount);
+        maxBatches = std::max(static_cast<size_t>(10), optimalWorkerCount); // Increased from 4 to use all workers
       }
 
       optimalWorkerCount = std::max(static_cast<size_t>(1), optimalWorkerCount);
@@ -1289,7 +1289,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   
   // Clear the batch buffer for this processing batch - PERFORMANCE OPTIMIZATION
   // Accumulate all position/velocity changes here instead of individual collision updates
-  std::vector<KinematicUpdateBatch> localBatchUpdates;
+  // PERFORMANCE: Use CollisionManager's format directly to avoid conversion overhead
+  std::vector<CollisionManager::KinematicUpdate> localBatchUpdates;
   localBatchUpdates.reserve(end - start); // Pre-allocate for performance
 
   // Pre-calculate common values once per batch to reduce per-entity overhead
@@ -1425,21 +1426,11 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // PERFORMANCE OPTIMIZATION: Submit all position/velocity changes to collision system in single batch
   // This replaces hundreds/thousands of individual setKinematicPose calls with one efficient batch operation
+  // Using CollisionManager's format directly eliminates allocation + copy overhead
   if (!localBatchUpdates.empty()) {
     auto &cm = CollisionManager::Instance();
-    
-    // Convert our local batch format to CollisionManager's format
-    std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
-    collisionUpdates.reserve(localBatchUpdates.size());
-    
-    std::transform(localBatchUpdates.begin(), localBatchUpdates.end(),
-                   std::back_inserter(collisionUpdates),
-                   [](const auto& batchUpdate) {
-                     return CollisionManager::KinematicUpdate{batchUpdate.id, batchUpdate.position, batchUpdate.velocity};
-                   });
-    
-    // Single batch update to collision system - MASSIVE performance improvement
-    cm.updateKinematicBatchSOA(collisionUpdates);
+    // Single batch update to collision system - NO format conversion needed!
+    cm.updateKinematicBatchSOA(localBatchUpdates);
   }
 
   if (batchExecutions > 0) {

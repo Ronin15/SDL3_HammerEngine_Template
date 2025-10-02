@@ -947,6 +947,19 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   // Reserve space for pairs
   indexPairs.reserve(movableIndices.size() * 4);
 
+  // PERFORMANCE OPTIMIZATION: Pre-populate direct cache array to avoid hash lookups in hot path
+  // This converts O(1) hash lookups (with cache misses) to O(1) array indexing (cache-friendly)
+  auto& directStaticCache = m_collisionPool.directStaticCache;
+  directStaticCache.clear();
+  directStaticCache.resize(m_storage.hotData.size(), nullptr);
+
+  for (size_t idx : movableIndices) {
+    auto cacheIt = m_staticCollisionCache.find(idx);
+    if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
+      directStaticCache[idx] = &cacheIt->second.cachedStaticIndices;
+    }
+  }
+
   // Process only movable bodies (static never initiate collisions)
   for (size_t dynamicIdx : movableIndices) {
     // Check active status first (direct indexing to avoid long-lived reference)
@@ -955,25 +968,22 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     // Copy collision mask to avoid dangling reference if vector reallocates
     const uint32_t dynamicCollidesWith = m_storage.hotData[dynamicIdx].collidesWith;
 
-    // PERFORMANCE: Use cached AABB bounds directly instead of recomputing
+    // PERFORMANCE: Use cached AABB bounds directly without constructing AABB object
     // Cached bounds are already updated in updateCachedAABB()
     m_storage.updateCachedAABB(dynamicIdx); // Ensure cache is fresh
 
     // Re-fetch reference after updateCachedAABB (safe since updateCachedAABB doesn't reallocate)
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
-    AABB dynamicAABB(
-      (dynamicHot.aabbMinX + dynamicHot.aabbMaxX) * 0.5f,  // centerX
-      (dynamicHot.aabbMinY + dynamicHot.aabbMaxY) * 0.5f,  // centerY
-      (dynamicHot.aabbMaxX - dynamicHot.aabbMinX) * 0.5f,  // halfWidth
-      (dynamicHot.aabbMaxY - dynamicHot.aabbMinY) * 0.5f   // halfHeight
-    );
 
-    // In-place epsilon expansion - most efficient approach
-    dynamicAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
+    // Calculate epsilon-expanded bounds directly from cached min/max (NO AABB construction!)
+    float queryMinX = dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON;
+    float queryMinY = dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON;
+    float queryMaxX = dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON;
+    float queryMaxY = dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON;
 
-    // 1. Movable-vs-movable collisions
+    // 1. Movable-vs-movable collisions (use optimized bounds-based query)
     auto& dynamicCandidates = getPooledVector();
-    m_dynamicSpatialHash.queryRegion(dynamicAABB, dynamicCandidates);
+    m_dynamicSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, dynamicCandidates);
 
     for (size_t candidateIdx : dynamicCandidates) {
       if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
@@ -987,12 +997,9 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       indexPairs.emplace_back(a, b);
     }
 
-    // 2. Use pre-populated static collision cache for dynamic-vs-static collisions
-    auto cacheIt = m_staticCollisionCache.find(dynamicIdx);
-    if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
-      const auto& staticCandidates = cacheIt->second.cachedStaticIndices;
-
-      for (size_t staticIdx : staticCandidates) {
+    // 2. Use direct array indexing for static collision cache (NO hash lookup!)
+    if (const auto* staticCandidates = directStaticCache[dynamicIdx]) {
+      for (size_t staticIdx : *staticCandidates) {
         if (staticIdx >= m_storage.hotData.size()) continue;
 
         const auto& staticHot = m_storage.hotData[staticIdx];
