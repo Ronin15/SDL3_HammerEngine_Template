@@ -162,22 +162,9 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
   EntityID id = HammerEngine::UniqueID::generate();
   Vector2D center(aabb.center.getX(), aabb.center.getY());
   Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
+  // Pass trigger properties through deferred command queue (thread-safe)
   addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
-                      layerMask, collideMask);
-  // Process pending commands to ensure body is added before setting trigger properties
-  processPendingCommands();
-
-  // Look up the actual index after the body has been added
-  auto it = m_storage.entityToIndex.find(id);
-  if (it == m_storage.entityToIndex.end()) {
-    // Body wasn't added - this shouldn't happen
-    return id;
-  }
-  size_t index = it->second;
-
-  // Set trigger properties directly in SOA storage
-  m_storage.hotData[index].isTrigger = true;
-  m_storage.hotData[index].triggerTag = static_cast<uint8_t>(tag);
+                      layerMask, collideMask, true, static_cast<uint8_t>(tag));
   return id;
 }
 
@@ -1408,7 +1395,10 @@ void CollisionManager::processTriggerEventsSOA() {
         WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerHot->position, TriggerPhase::Enter);
         EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-        // Log removed for performance
+        COLLISION_DEBUG("Player " + std::to_string(playerId) + " ENTERED trigger " +
+                       std::to_string(triggerId) + " (tag: " + std::to_string(static_cast<int>(triggerTag)) +
+                       ") at position (" + std::to_string(playerHot->position.getX()) + ", " +
+                       std::to_string(playerHot->position.getY()) + ")");
 
         if (m_defaultTriggerCooldownSec > 0.0f) {
           m_triggerCooldownUntil[triggerId] = now +
@@ -1443,7 +1433,10 @@ void CollisionManager::processTriggerEventsSOA() {
       WorldTriggerEvent evt(playerId, triggerId, triggerTag, triggerPos, TriggerPhase::Exit);
       EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-      // Log removed for performance
+      COLLISION_DEBUG("Player " + std::to_string(playerId) + " EXITED trigger " +
+                     std::to_string(triggerId) + " (tag: " + std::to_string(static_cast<int>(triggerTag)) +
+                     ") at position (" + std::to_string(triggerPos.getX()) + ", " +
+                     std::to_string(triggerPos.getY()) + ")");
 
       it = m_activeTriggerPairs.erase(it);
     } else {
