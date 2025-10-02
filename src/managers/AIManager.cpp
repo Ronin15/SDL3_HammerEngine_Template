@@ -201,44 +201,52 @@ void AIManager::prepareForStateTransition() {
   m_globallyPaused.store(true, std::memory_order_release);
 
   // Wait for any in-flight operations to complete
-  if (!m_updateFutures.empty()) {
-    AI_DEBUG("Waiting for " + std::to_string(m_updateFutures.size()) +
-             " AI update futures to complete...");
-    for (auto &future : m_updateFutures) {
-      if (future.valid()) {
-        try {
-          future.get();
-        } catch (const std::exception &e) {
-          AI_ERROR("Exception in AI update future during state transition: " +
-                   std::string(e.what()));
+  // Thread-safe access to m_updateFutures - prevents concurrent modification by update thread
+  {
+    std::lock_guard<std::mutex> lock(m_futuresMutex);
+    if (!m_updateFutures.empty()) {
+      AI_DEBUG("Waiting for " + std::to_string(m_updateFutures.size()) +
+               " AI update futures to complete...");
+      for (auto &future : m_updateFutures) {
+        if (future.valid()) {
+          try {
+            future.get();
+          } catch (const std::exception &e) {
+            AI_ERROR("Exception in AI update future during state transition: " +
+                     std::string(e.what()));
+          }
         }
       }
+      m_updateFutures.clear();
     }
-    m_updateFutures.clear();
   }
 
   // Wait for async assignments to complete
-  if (!m_assignmentFutures.empty()) {
-    AI_DEBUG("Waiting for " + std::to_string(m_assignmentFutures.size()) +
-             " async assignments to complete...");
-    for (auto &future : m_assignmentFutures) {
-      if (future.valid()) {
-        try {
-          auto status = future.wait_for(std::chrono::milliseconds(100));
-          if (status == std::future_status::ready) {
-            future.get();
-          } else {
-            AI_WARN("Async assignment did not complete within timeout during "
-                    "state transition");
+  // Thread-safe access to m_assignmentFutures - prevents concurrent modification by assignment threads
+  {
+    std::lock_guard<std::mutex> lock(m_futuresMutex);
+    if (!m_assignmentFutures.empty()) {
+      AI_DEBUG("Waiting for " + std::to_string(m_assignmentFutures.size()) +
+               " async assignments to complete...");
+      for (auto &future : m_assignmentFutures) {
+        if (future.valid()) {
+          try {
+            auto status = future.wait_for(std::chrono::milliseconds(100));
+            if (status == std::future_status::ready) {
+              future.get();
+            } else {
+              AI_WARN("Async assignment did not complete within timeout during "
+                      "state transition");
+            }
+          } catch (const std::exception &e) {
+            AI_ERROR("Exception in async assignment during state transition: " +
+                     std::string(e.what()));
           }
-        } catch (const std::exception &e) {
-          AI_ERROR("Exception in async assignment during state transition: " +
-                   std::string(e.what()));
         }
       }
+      m_assignmentFutures.clear();
+      m_assignmentInProgress.store(false, std::memory_order_release);
     }
-    m_assignmentFutures.clear();
-    m_assignmentInProgress.store(false, std::memory_order_release);
   }
 
   // Process and clear any pending messages
@@ -528,37 +536,41 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         size_t remainingEntities = entityCount % batchCount;
 
         // Batch processing with futures; synchronize before returning from update()
-        m_updateFutures.clear();
-        m_updateFutures.reserve(batchCount);
-        for (size_t i = 0; i < batchCount; ++i) {
-          size_t start = i * entitiesPerBatch;
-          size_t end = start + entitiesPerBatch;
+        // Thread-safe modification of m_updateFutures - prevents concurrent read during state transitions
+        {
+          std::lock_guard<std::mutex> lock(m_futuresMutex);
+          m_updateFutures.clear();
+          m_updateFutures.reserve(batchCount);
+          for (size_t i = 0; i < batchCount; ++i) {
+            size_t start = i * entitiesPerBatch;
+            size_t end = start + entitiesPerBatch;
 
-          // Add remaining entities to last batch
-          if (i == batchCount - 1) {
-            end += remainingEntities;
+            // Add remaining entities to last batch
+            if (i == batchCount - 1) {
+              end += remainingEntities;
+            }
+
+            // Enqueue with result and retain the future for synchronization
+            m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
+                [this, start, end, deltaTime, nextBuffer]() {
+                  processBatch(start, end, deltaTime, nextBuffer);
+                },
+                HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
           }
-
-          // Enqueue with result and retain the future for synchronization
-          m_updateFutures.push_back(threadSystem.enqueueTaskWithResult(
-              [this, start, end, deltaTime, nextBuffer]() {
-                processBatch(start, end, deltaTime, nextBuffer);
-              },
-              HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
-        }
-        // Wait for all batches to complete to maintain update->render safety
-        for (auto &f : m_updateFutures) {
-          if (f.valid()) {
-            try {
-              f.get();
-            } catch (const std::exception &e) {
-              AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
-            } catch (...) {
-              AI_ERROR("Unknown exception in AI batch future");
+          // Wait for all batches to complete to maintain update->render safety
+          for (auto &f : m_updateFutures) {
+            if (f.valid()) {
+              try {
+                f.get();
+              } catch (const std::exception &e) {
+                AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
+              } catch (...) {
+                AI_ERROR("Unknown exception in AI batch future");
+              }
             }
           }
+          m_updateFutures.clear();
         }
-        m_updateFutures.clear();
       }
 
       m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
@@ -953,28 +965,31 @@ size_t AIManager::processPendingBehaviorAssignments() {
   m_assignmentInProgress.store(true, std::memory_order_release);
 
   // Clear any old futures (should be empty at this point)
-  m_assignmentFutures.clear();
+  // Thread-safe modification of m_assignmentFutures - prevents concurrent read during state transitions
+  {
+    std::lock_guard<std::mutex> lock(m_futuresMutex);
+    m_assignmentFutures.clear();
 
-  // Submit async batches - NO BLOCKING WAITS
-  size_t start = 0;
-  for (size_t i = 0; i < batchCount; ++i) {
-    size_t end =
-        start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
+    // Submit async batches - NO BLOCKING WAITS
+    size_t start = 0;
+    for (size_t i = 0; i < batchCount; ++i) {
+      size_t end =
+          start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
 
-    // Copy the batch data (we need to own this data for async processing)
-    std::vector<PendingAssignment> batchData(toProcess.begin() + start,
-                                             toProcess.begin() + end);
+      // Copy the batch data (we need to own this data for async processing)
+      std::vector<PendingAssignment> batchData(toProcess.begin() + start,
+                                               toProcess.begin() + end);
 
-    m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, batchData = std::move(batchData)]() {
-          // Check if AIManager is shutting down
-          if (m_isShutdown) {
-            return; // Don't process assignments during shutdown
-          }
+      m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
+          [this, batchData = std::move(batchData)]() {
+            // Check if AIManager is shutting down
+            if (m_isShutdown) {
+              return; // Don't process assignments during shutdown
+            }
 
-          for (const auto &assignment : batchData) {
-            if (assignment.entity) {
-              try {
+            for (const auto &assignment : batchData) {
+              if (assignment.entity) {
+                try {
                 assignBehaviorToEntity(assignment.entity,
                                        assignment.behaviorName);
               } catch (const std::exception &e) {
@@ -987,8 +1002,9 @@ size_t AIManager::processPendingBehaviorAssignments() {
           }
         },
         HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
-    start = end;
-  }
+      start = end;
+    }
+  } // Release m_futuresMutex lock
 
   // Async assignment processing statistics are now tracked in periodic summary
   return assignmentCount; // Return immediately, don't wait
