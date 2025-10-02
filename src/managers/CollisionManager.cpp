@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -663,7 +664,10 @@ void CollisionManager::processPendingCommands() {
     commandsToProcess.swap(m_pendingCommands); // Move commands out quickly
   }
 
-  // Process commands outside the lock (collision data only accessed by update thread)
+  // Acquire exclusive write lock - prevents AI threads from reading during modifications
+  // This protects entityToIndex map and storage arrays from concurrent access
+  std::unique_lock<std::shared_mutex> storageLock(m_storageMutex);
+
   for (const auto& cmd : commandsToProcess) {
     switch (cmd.type) {
       case CommandType::Add: {
@@ -822,6 +826,9 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
 }
 
 bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
+  // Thread-safe read access - allows concurrent reads from multiple AI threads
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
     outIndex = it->second;
