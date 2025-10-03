@@ -69,43 +69,30 @@ void CollisionManager::prepareForStateTransition() {
     return;
   }
 
-  // Check if world is active - if so, let world unloading handle static collision cleanup
-  const auto& worldManager = WorldManager::Instance();
-  bool hasActiveWorld = worldManager.isInitialized() && worldManager.hasActiveWorld();
+  /* IMPORTANT: Clear ALL collision bodies during state transitions
+   *
+   * Previous logic tried to be "smart" by keeping static bodies when a world
+   * was active, expecting WorldUnloadedEvent to clean them up. This was BROKEN
+   * because prepareForStateTransition() unregisters event handlers (line 138),
+   * so the WorldUnloadedEvent handler never fires!
+   *
+   * Result: Static bodies from old world persisted into new world, causing:
+   * - Duplicate/stale collision bodies
+   * - Spatial hash corruption
+   * - Collision detection failures
+   *
+   * Solution: Always clear ALL bodies. The world will be unloaded immediately
+   * after state transition anyway, and new state will rebuild static bodies
+   * when it loads its world.
+   */
+  size_t soaBodyCount = m_storage.size();
+  COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
+                 std::to_string(soaBodyCount) + " SOA bodies (dynamic + static)");
 
-  if (hasActiveWorld) {
-    // Only clear dynamic collision bodies - static bodies will be cleared by world unloading
-    std::vector<EntityID> dynamicBodies;
-    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-      const auto& hot = m_storage.hotData[i];
-      if (hot.active && static_cast<BodyType>(hot.bodyType) != BodyType::STATIC) {
-        dynamicBodies.push_back(m_storage.entityIds[i]);
-      }
-    }
-
-    for (EntityID id : dynamicBodies) {
-      removeCollisionBodySOA(id);
-    }
-
-    // Process pending removal commands immediately
-    processPendingCommands();
-
-    COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() cleared " +
-                   std::to_string(dynamicBodies.size()) + " dynamic bodies (keeping static for world unloading)");
-
-    // Only clear dynamic spatial hash
-    m_dynamicSpatialHash.clear();
-  } else {
-    // No active world - clear all collision bodies
-    size_t soaBodyCount = m_storage.size();
-    COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
-                   std::to_string(soaBodyCount) + " SOA bodies");
-    m_storage.clear();
-
-    // Clear spatial hashes completely
-    m_staticSpatialHash.clear();
-    m_dynamicSpatialHash.clear();
-  }
+  // Clear all collision bodies and spatial hashes
+  m_storage.clear();
+  m_staticSpatialHash.clear();
+  m_dynamicSpatialHash.clear();
 
   // Process any pending commands before clearing caches to ensure clean state
   processPendingCommands();
@@ -140,6 +127,10 @@ void CollisionManager::prepareForStateTransition() {
     em.removeHandler(token);
   }
   m_handlerTokens.clear();
+
+  // Re-subscribe to world events (WorldLoaded, WorldUnloaded, TileChanged)
+  // These are manager-level handlers that must persist across state transitions
+  subscribeWorldEvents();
 
   // Clear all collision callbacks (these should be re-registered by new states)
   m_callbacks.clear();
@@ -491,6 +482,12 @@ void CollisionManager::rebuildStaticFromWorld() {
         "World colliders built: solid=" + std::to_string(solidBodies) +
         ", water triggers=" + std::to_string(waterTriggers) +
         ", obstacle triggers=" + std::to_string(obstacleTriggers));
+
+    // CRITICAL: Process pending commands BEFORE rebuilding spatial hash
+    // The createStatic*() functions above add bodies via command queue,
+    // so we must process them first or spatial hash will be empty!
+    processPendingCommands();
+
     // Log detailed statistics for debugging
     logCollisionStatistics();
     // Force immediate static spatial hash rebuild for world changes
