@@ -7,9 +7,13 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/ParticleManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -124,6 +128,31 @@ bool GamePlayState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+
+  // Use manager prepareForStateTransition methods for deterministic cleanup
+  AIManager& aiMgr = AIManager::Instance();
+  aiMgr.prepareForStateTransition();
+
+  // Clean collision state before other systems
+  CollisionManager& collisionMgr = CollisionManager::Instance();
+  if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+    collisionMgr.prepareForStateTransition();
+  }
+
+  // Clean pathfinding state for fresh start
+  PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
+  // Simple particle cleanup
+  ParticleManager& particleMgr = ParticleManager::Instance();
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.prepareForStateTransition();
+  }
+
+  // Clean up camera first to stop world rendering
+  m_camera.reset();
 
   // Unload the world when fully exiting gameplay
   auto& worldManager = WorldManager::Instance();
