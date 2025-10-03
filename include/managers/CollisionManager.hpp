@@ -31,7 +31,6 @@ namespace HammerEngine {
 using HammerEngine::AABB;
 using HammerEngine::BodyType;
 using HammerEngine::CollisionInfo;
-using HammerEngine::CollisionBody;
 using HammerEngine::CollisionLayer;
 
 class CollisionManager {
@@ -85,7 +84,6 @@ public:
     size_t createTriggersForWaterTiles(HammerEngine::TriggerTag tag = HammerEngine::TriggerTag::Water);
     size_t createTriggersForObstacles(); // Create triggers for ROCK, TREE with movement penalties
     size_t createStaticObstacleBodies();
-    void resizeBody(EntityID id, float halfWidth, float halfHeight);
 
     // Queries
     bool overlaps(EntityID a, EntityID b) const;
@@ -101,7 +99,6 @@ public:
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
-    void invalidateStaticCache();                 // call when world geometry changes
 
     // Callbacks
     using CollisionCB = std::function<void(const CollisionInfo&)>;
@@ -279,8 +276,6 @@ private:
         std::vector<ColdData> coldData;
         std::vector<EntityID> entityIds;
 
-        // Removed double buffering - not actually used in implementation
-
         // Index mapping for fast entity lookup
         std::unordered_map<EntityID, size_t> entityToIndex;
 
@@ -350,22 +345,43 @@ private:
 
     CollisionStorage m_storage;
 
-    
-    // NEW HIERARCHICAL SPATIAL PARTITIONING: Separate systems for static vs dynamic bodies
-    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static bodies (world tiles, buildings)
-    HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash; // Dynamic/kinematic bodies (NPCs, player)
+    /* ========== DUAL SPATIAL HASH ARCHITECTURE ==========
+     *
+     * The collision system uses TWO separate spatial hashes for optimal performance:
+     *
+     * 1. STATIC SPATIAL HASH (m_staticSpatialHash):
+     *    - Contains: World geometry (buildings, obstacles, water triggers)
+     *    - Rebuilt: Only when world changes (tile edits, building placement)
+     *    - Queried: By dynamic/kinematic bodies during broadphase
+     *    - Optimization: Coarse-grid region cache (128×128 cells) reduces redundant queries
+     *    - Benefit: Static world geometry doesn't need to be re-hashed every frame
+     *
+     * 2. DYNAMIC SPATIAL HASH (m_dynamicSpatialHash):
+     *    - Contains: Moving entities (player, NPCs, projectiles)
+     *    - Rebuilt: Every frame from active culled bodies
+     *    - Queried: For dynamic-vs-dynamic collision detection
+     *    - Optimization: Only includes bodies within culling area (player-centered)
+     *    - Benefit: Fast dynamic collision detection without static world overhead
+     *
+     * WHY SEPARATION:
+     * - Avoids rebuilding thousands of static tiles every frame
+     * - Static bodies never initiate collision checks (optimization)
+     * - Cache remains valid across frames for static geometry
+     * - Culling only applies to dynamic hash, not static (prevents missing collisions)
+     *
+     * BROADPHASE FLOW:
+     * 1. Rebuild dynamic hash with active movable bodies (line ~1180)
+     * 2. For each movable body:
+     *    a. Query dynamic hash → movable-vs-movable pairs
+     *    b. Query static cache → movable-vs-static pairs
+     * 3. Narrowphase filters pairs and computes collision details
+     * ===================================================== */
+    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static world geometry
+    HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash;  // Moving entities
 
-    // STATIC COLLISION CACHE: Avoid redundant static spatial hash queries
-    // DEPRECATED: Old per-body cache - replaced by coarse-grid cache
-    struct StaticCollisionCache {
-        Vector2D lastPosition;
-        std::vector<size_t> cachedStaticIndices;
-        bool valid{false};
-    };
-    std::unordered_map<size_t, StaticCollisionCache> m_staticCollisionCache;
-
-    // PERFORMANCE: Coarse-grid region cache for static bodies (shared by NPCs in same region)
-    // This is the NEW high-performance cache that replaces per-body caching
+    // STATIC COLLISION CACHE: Coarse-grid region cache for static bodies
+    // Bodies in the same 128×128 coarse cell share the same cached static query results
+    // This replaces the old per-body cache for better memory efficiency
     struct CoarseRegionStaticCache {
         std::vector<size_t> staticIndices;
         bool valid{false};
@@ -404,12 +420,6 @@ private:
         std::vector<size_t> activeIndices;        // Indices of active bodies for processing
         std::vector<size_t> movableIndices;      // Indices of non-static bodies (dynamic + kinematic)
         std::vector<size_t> staticIndices;       // Indices of static bodies only
-        std::vector<Vector2D> tempPositions;     // Temporary position calculations
-        std::vector<AABB> tempAABBs;             // Temporary AABB calculations
-        std::vector<float> tempDistances;        // Distance calculations for sorting
-
-        // Direct cache lookup optimization - avoids hash map lookups in hot path
-        std::vector<const std::vector<size_t>*> directStaticCache;  // Direct array indexing instead of hash map
 
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
@@ -440,10 +450,6 @@ private:
                 activeIndices.reserve(bodyCount);
                 movableIndices.reserve(bodyCount / 4);  // Estimate 25% movable (dynamic + kinematic)
                 staticIndices.reserve(bodyCount);
-                tempPositions.reserve(bodyCount);
-                tempAABBs.reserve(bodyCount);
-                tempDistances.reserve(bodyCount);
-                directStaticCache.reserve(bodyCount);  // Direct cache array sized to body count
             }
         }
 
@@ -458,10 +464,6 @@ private:
             activeIndices.clear();
             movableIndices.clear();
             staticIndices.clear();
-            tempPositions.clear();
-            tempAABBs.clear();
-            tempDistances.clear();
-            directStaticCache.clear();
             // Vectors retain capacity
         }
     };
@@ -534,11 +536,6 @@ public:
 private:
     PerfStats m_perf{};
     bool m_verboseLogs{false};
-
-    // Helpers
-    static inline bool isStatic(const CollisionBody& b) {
-        return b.type == BodyType::STATIC;
-    }
 
     // Guard to avoid feedback when syncing entity transforms
     bool m_isSyncing{false};
