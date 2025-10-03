@@ -463,6 +463,7 @@ void GamePlayState::initializeCamera() {
 }
 
 void GamePlayState::updateCamera(float deltaTime) {
+  // Defensive null check (camera always initialized in enter(), but kept for safety)
   if (m_camera) {
     m_camera->update(deltaTime);
   }

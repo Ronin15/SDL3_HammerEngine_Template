@@ -205,13 +205,13 @@ private:
     };
 
     struct PendingCommand {
-        CommandType type;
-        EntityID id;
-        Vector2D position;
-        Vector2D halfSize;
-        BodyType bodyType;
-        uint32_t layer;
-        uint32_t collideMask;
+        CommandType type = CommandType::Add;
+        EntityID id = 0;
+        Vector2D position{};
+        Vector2D halfSize{};
+        BodyType bodyType = BodyType::DYNAMIC;
+        uint32_t layer = 0;
+        uint32_t collideMask = 0;
         bool isTrigger = false;
         uint8_t triggerTag = 0;
     };

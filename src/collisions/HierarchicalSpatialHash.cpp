@@ -6,6 +6,7 @@
 #include "collisions/HierarchicalSpatialHash.hpp"
 #include "core/Logger.hpp"
 #include <algorithm>
+#include <numeric>
 #include <cmath>
 #include <cassert>
 
@@ -301,27 +302,21 @@ void HierarchicalSpatialHash::updateBatch(const std::vector<std::tuple<size_t, A
 // ========== Statistics and Debugging ==========
 
 size_t HierarchicalSpatialHash::getActiveRegionCount() const {
-    size_t activeCount = 0;
-    for (const auto& regionPair : m_regions) {
-        if (regionPair.second.bodyCount > 0) {
-            activeCount++;
-        }
-    }
-    return activeCount;
+    return std::count_if(m_regions.begin(), m_regions.end(),
+        [](const auto& regionPair) { return regionPair.second.bodyCount > 0; });
 }
 
 size_t HierarchicalSpatialHash::getTotalFineCells() const {
-    size_t totalCells = 0;
-    for (const auto& regionPair : m_regions) {
-        totalCells += regionPair.second.fineCells.size();
-    }
-    return totalCells;
+    return std::accumulate(m_regions.begin(), m_regions.end(), size_t{0},
+        [](size_t sum, const auto& regionPair) {
+            return sum + regionPair.second.fineCells.size();
+        });
 }
 
 void HierarchicalSpatialHash::logStatistics() const {
-    size_t totalBodies = m_bodyLocations.size();
-    size_t activeRegions = getActiveRegionCount();
-    size_t totalFineCells = getTotalFineCells();
+    [[maybe_unused]] size_t totalBodies = m_bodyLocations.size();
+    [[maybe_unused]] size_t activeRegions = getActiveRegionCount();
+    [[maybe_unused]] size_t totalFineCells = getTotalFineCells();
 
     COLLISION_INFO("HierarchicalSpatialHash Statistics:");
     COLLISION_INFO("  Total Bodies: " + std::to_string(totalBodies));
