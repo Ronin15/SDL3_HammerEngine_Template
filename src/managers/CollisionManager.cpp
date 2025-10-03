@@ -118,7 +118,6 @@ void CollisionManager::prepareForStateTransition() {
 
   // Clear all caches to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();              // Clear collision buffers
-  m_staticCollisionCache.clear();            // Clear per-body static cache
   m_coarseRegionStaticCache.clear();         // Clear region-based static cache
   m_bodyCoarseCell.clear();                  // Clear body cell tracking
   m_cacheHits = 0;                           // Reset cache statistics
@@ -520,11 +519,10 @@ void CollisionManager::onTileChanged(int x, int y) {
       float cy = y * tileSize + tileSize * 0.5f;
       Vector2D center(cx, cy);
       Vector2D halfSize(tileSize * 0.5f, tileSize * 0.5f);
-      size_t index = addCollisionBodySOA(trigId, center, halfSize, BodyType::STATIC,
-                                       CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-      // Set trigger properties directly in SOA storage
-      m_storage.hotData[index].isTrigger = true;
-      m_storage.hotData[index].triggerTag = static_cast<uint8_t>(HammerEngine::TriggerTag::Water);
+      // Pass trigger properties through command queue (isTrigger=true, triggerTag=Water)
+      addCollisionBodySOA(trigId, center, halfSize, BodyType::STATIC,
+                         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                         true, static_cast<uint8_t>(HammerEngine::TriggerTag::Water));
     }
 
     // Update solid obstacle collision body for this tile (BUILDING only)
@@ -823,6 +821,16 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
     std::lock_guard<std::mutex> lock(m_commandQueueMutex);
     m_pendingCommands.push_back(cmd);
   }
+
+  // Clean up trigger-related state for this entity
+  for (auto it = m_activeTriggerPairs.begin(); it != m_activeTriggerPairs.end(); ) {
+    if (it->second.first == id || it->second.second == id) {
+      it = m_activeTriggerPairs.erase(it);
+    } else {
+      ++it;
+    }
+  }
+  m_triggerCooldownUntil.erase(id);
 }
 
 bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
@@ -947,18 +955,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   // Reserve space for pairs
   indexPairs.reserve(movableIndices.size() * 4);
 
-  // PERFORMANCE OPTIMIZATION: Pre-populate direct cache array to avoid hash lookups in hot path
-  // This converts O(1) hash lookups (with cache misses) to O(1) array indexing (cache-friendly)
-  auto& directStaticCache = m_collisionPool.directStaticCache;
-  directStaticCache.assign(m_storage.hotData.size(), nullptr);  // More efficient than clear+resize
-
-  for (size_t idx : movableIndices) {
-    auto cacheIt = m_staticCollisionCache.find(idx);
-    if (cacheIt != m_staticCollisionCache.end() && cacheIt->second.valid) {
-      directStaticCache[idx] = &cacheIt->second.cachedStaticIndices;
-    }
-  }
-
   // Process only movable bodies (static never initiate collisions)
   for (size_t dynamicIdx : movableIndices) {
     // Check active status first (direct indexing to avoid long-lived reference)
@@ -996,15 +992,20 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       indexPairs.emplace_back(a, b);
     }
 
-    // 2. Use direct array indexing for static collision cache (NO hash lookup!)
-    if (const auto* staticCandidates = directStaticCache[dynamicIdx]) {
-      for (size_t staticIdx : *staticCandidates) {
-        if (staticIdx >= m_storage.hotData.size()) continue;
+    // 2. Use coarse-grid region cache for static collision queries
+    auto coarseCellIt = m_bodyCoarseCell.find(dynamicIdx);
+    if (coarseCellIt != m_bodyCoarseCell.end()) {
+      auto regionCacheIt = m_coarseRegionStaticCache.find(coarseCellIt->second);
+      if (regionCacheIt != m_coarseRegionStaticCache.end() && regionCacheIt->second.valid) {
+        const auto& staticCandidates = regionCacheIt->second.staticIndices;
+        for (size_t staticIdx : staticCandidates) {
+          if (staticIdx >= m_storage.hotData.size()) continue;
 
-        const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+          const auto& staticHot = m_storage.hotData[staticIdx];
+          if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
 
-        indexPairs.emplace_back(dynamicIdx, staticIdx);
+          indexPairs.emplace_back(dynamicIdx, staticIdx);
+        }
       }
     }
 
@@ -1198,7 +1199,6 @@ void CollisionManager::rebuildStaticSpatialHash() {
   m_staticSpatialHash.clear();
 
   // Clear static collision caches since static bodies have changed
-  m_staticCollisionCache.clear();
   m_coarseRegionStaticCache.clear();  // Invalidate all coarse region caches
   m_bodyCoarseCell.clear();           // Reset body cell tracking
 
@@ -1266,13 +1266,6 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
       // Body still in same coarse cell, cache is valid
       m_cacheHits++;
     }
-
-    // Update old per-body cache for backward compatibility with broadphaseSOA()
-    // This will be removed in phase 4 when we integrate directly
-    auto& oldCache = m_staticCollisionCache[dynamicIdx];
-    oldCache.cachedStaticIndices = regionCache.staticIndices;
-    oldCache.valid = true;
-    oldCache.lastPosition = hot.position;
   }
 }
 
@@ -1686,6 +1679,22 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
 // ========== PERFORMANCE: VECTOR POOLING METHODS ==========
 
 std::vector<size_t>& CollisionManager::getPooledVector() {
+  /* THREAD SAFETY WARNING:
+   * This vector pool is SINGLE-THREADED ONLY. m_nextPoolIndex is not atomic.
+   *
+   * SAFE because:
+   * - CollisionManager::update() runs on main thread only
+   * - Vector pool only used during broadphase (within update())
+   * - No concurrent access to collision update logic
+   *
+   * IF MULTI-THREADING IS ADDED:
+   * - Option 1: Make m_nextPoolIndex std::atomic<size_t>
+   * - Option 2: Use thread_local vector pool per thread
+   * - Option 3: Add mutex (impacts performance)
+   *
+   * Current design prioritizes performance for single-threaded collision updates.
+   */
+
   // Initialize pool if empty
   if (m_vectorPool.empty()) {
     m_vectorPool.reserve(32); // Reasonable pool size
