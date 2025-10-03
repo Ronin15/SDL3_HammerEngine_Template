@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/IdleBehavior.hpp"
@@ -200,20 +201,20 @@ bool AdvancedAIDemoState::exit() {
 
     // Use prepareForStateTransition methods for deterministic cleanup
     aiMgr.prepareForStateTransition();
-    
+
     // Clean collision state
     CollisionManager &collisionMgr = CollisionManager::Instance();
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
 
-    // Clean up NPCs
-    for (auto& npc : m_npcs) {
-        if (npc) {
-            npc->clean();
-            npc->setVelocity(Vector2D(0, 0));
-        }
+    // Clean pathfinding state for fresh start
+    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
     }
+
+    // Clear NPCs (AIManager::prepareForStateTransition already handled cleanup)
     m_npcs.clear();
 
     // Clear combat attributes
