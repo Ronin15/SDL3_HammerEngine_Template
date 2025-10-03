@@ -85,7 +85,7 @@ void CollisionManager::prepareForStateTransition() {
    * after state transition anyway, and new state will rebuild static bodies
    * when it loads its world.
    */
-  size_t soaBodyCount = m_storage.size();
+  [[maybe_unused]] size_t soaBodyCount = m_storage.size();
   COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
                  std::to_string(soaBodyCount) + " SOA bodies (dynamic + static)");
 
@@ -147,7 +147,7 @@ void CollisionManager::prepareForStateTransition() {
   // Reset verbose logging to default
   m_verboseLogs = false;
 
-  size_t finalBodyCount = m_storage.size();
+  [[maybe_unused]] size_t finalBodyCount = m_storage.size();
   COLLISION_INFO("CollisionManager state transition complete - " + std::to_string(finalBodyCount) + " bodies remaining");
 }
 
@@ -269,6 +269,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
       // penalties
       if (tile.obstacleType == ObstacleType::BUILDING) {
         // Only create collision body from the top-left tile of each building
+        // Check if this is the top-left tile (no neighbors above or left with same building ID)
         bool isTopLeft = true;
         if (x > 0 && world->grid[y][x - 1].buildingId == tile.buildingId)
           isTopLeft = false;
@@ -383,9 +384,9 @@ void CollisionManager::addCollisionCallback(CollisionCB cb) {
 }
 
 void CollisionManager::logCollisionStatistics() const {
-  size_t staticBodies = getStaticBodyCount();
-  size_t kinematicBodies = getKinematicBodyCount();
-  size_t dynamicBodies = getDynamicBodyCount();
+  [[maybe_unused]] size_t staticBodies = getStaticBodyCount();
+  [[maybe_unused]] size_t kinematicBodies = getKinematicBodyCount();
+  [[maybe_unused]] size_t dynamicBodies = getDynamicBodyCount();
 
   COLLISION_INFO("Collision Statistics:");
   COLLISION_INFO("  Total Bodies: " + std::to_string(getBodyCount()));
@@ -407,7 +408,7 @@ void CollisionManager::logCollisionStatistics() const {
 
   COLLISION_INFO("  Layer Distribution:");
   for (const auto &layerCount : layerCounts) {
-    std::string layerName;
+    [[maybe_unused]] std::string layerName;
     switch (layerCount.first) {
     case CollisionLayer::Layer_Default:
       layerName = "Default";
@@ -471,9 +472,9 @@ void CollisionManager::rebuildStaticFromWorld() {
   // Create solid collision bodies for obstacles and triggers for movement
   // penalties
   size_t solidBodies = createStaticObstacleBodies();
-  size_t waterTriggers =
+  [[maybe_unused]] size_t waterTriggers =
       createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
-  size_t obstacleTriggers =
+  [[maybe_unused]] size_t obstacleTriggers =
       createTriggersForObstacles(); // Always returns 0 - obstacle penalties
                                     // handled by pathfinding
 
@@ -532,6 +533,7 @@ void CollisionManager::onTileChanged(int x, int y) {
 
     if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
       // Only create collision body from the top-left tile of each building
+      // Check if this is the top-left tile (no neighbors above or left with same building ID)
       bool isTopLeft = true;
       if (x > 0 && world->grid[y][x - 1].buildingId == tile.buildingId)
         isTopLeft = false;
@@ -1064,10 +1066,10 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
     EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
 
-    bool isTrigger = hotA.isTrigger || hotB.isTrigger;
+    bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
 
     collisions.push_back(CollisionInfo{
-        entityA, entityB, normal, minPen, isTrigger, aIdx, bIdx
+        entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx
     });
   }
 
@@ -1123,10 +1125,10 @@ void CollisionManager::updateSOA(float dt) {
   if (totalBodiesBefore > activeBodies) {
     // Estimate dynamic vs static culling based on body type distribution
     size_t totalCulled = totalBodiesBefore - activeBodies;
-    size_t totalMovable = activeMovableBodies;
 
     // Rough estimate: assume proportional culling
     if (totalBodiesBefore > 0 && activeBodies > 0) {
+      [[maybe_unused]] size_t totalMovable = activeMovableBodies;
       double movableRatio = static_cast<double>(totalMovable) / activeBodies;
       dynamicBodiesCulled = static_cast<size_t>(totalCulled * movableRatio);
       staticBodiesCulled = totalCulled - dynamicBodiesCulled;
@@ -1546,7 +1548,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
   // Periodic statistics (every 300 frames like AIManager)
   if (m_perf.frames % 300 == 0 && bodyCount > 0) {
     // PERFORMANCE OPTIMIZATION REPORTING: Show optimization effectiveness
-    std::string optimizationStats = " [Optimizations: Active=" + std::to_string(m_perf.getActiveBodiesRate()) + "%";
+    [[maybe_unused]] std::string optimizationStats = " [Optimizations: Active=" + std::to_string(m_perf.getActiveBodiesRate()) + "%";
     if (dynamicBodiesCulled > 0) {
       optimizationStats += ", DynCulled=" + std::to_string(m_perf.getDynamicCullingRate()) + "%";
     }
@@ -1559,10 +1561,10 @@ void CollisionManager::updatePerformanceMetricsSOA(
     optimizationStats += "]";
 
     // Coarse region cache statistics
-    size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
-    float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
-    size_t activeRegions = m_coarseRegionStaticCache.size();
-    std::string cacheStatsStr = " [RegionCache: Active=" + std::to_string(activeRegions) +
+    [[maybe_unused]] size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
+    [[maybe_unused]] float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
+    [[maybe_unused]] size_t activeRegions = m_coarseRegionStaticCache.size();
+    [[maybe_unused]] std::string cacheStatsStr = " [RegionCache: Active=" + std::to_string(activeRegions) +
                                 ", Hits=" + std::to_string(m_cacheHits) +
                                 ", Misses=" + std::to_string(m_cacheMisses) +
                                 ", HitRate=" + std::to_string(static_cast<int>(cacheHitRate)) + "%]";
@@ -1588,13 +1590,13 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
 
   // Batch update all kinematic bodies in SOA storage
   size_t validUpdates = 0;
-  for (const auto& update : updates) {
+  for (const auto& bodyUpdate : updates) {
     size_t index;
-    if (getCollisionBodySOA(update.id, index)) {
+    if (getCollisionBodySOA(bodyUpdate.id, index)) {
       auto& hot = m_storage.hotData[index];
       if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC) {
-        hot.position = update.position;
-        hot.velocity = update.velocity;
+        hot.position = bodyUpdate.position;
+        hot.velocity = bodyUpdate.velocity;
         hot.aabbDirty = 1;
         hot.active = true; // Ensure body stays enabled
         validUpdates++;

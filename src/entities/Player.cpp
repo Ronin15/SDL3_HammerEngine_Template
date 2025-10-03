@@ -288,7 +288,7 @@ void Player::initializeInventory() {
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                                int oldQuantity, int newQuantity) {
-  const std::string resourceId = resourceHandle.toString();
+  [[maybe_unused]] const std::string resourceId = resourceHandle.toString();
   // Use EventManager hub to trigger a ResourceChange (no registration needed)
   EventManager::Instance().triggerResourceChange(
       shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",

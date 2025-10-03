@@ -799,12 +799,12 @@ void ParticleManager::update(float deltaTime) {
       if (currentActiveCount > 0) {
         bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
         if (wasThreaded) {
-          size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-          size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
-          size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
-          size_t batchCount = std::max<size_t>(
+          [[maybe_unused]] size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+          [[maybe_unused]] size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+          [[maybe_unused]] size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
+          [[maybe_unused]] size_t batchCount = std::max<size_t>(
               1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
-          
+
           PARTICLE_DEBUG(
               "Particle Summary - Count: " + std::to_string(activeCount) +
               ", Update: " + std::to_string(timeMs) + "ms" +
