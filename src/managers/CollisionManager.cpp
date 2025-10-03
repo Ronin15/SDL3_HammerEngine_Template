@@ -1034,24 +1034,30 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
 
     // Compute collision details using cached bounds
-    float dxLeft = maxXB - minXA;   // B.right - A.left
-    float dxRight = maxXA - minXB;  // A.right - B.left
-    float dyTop = maxYB - minYA;    // B.bottom - A.top
-    float dyBottom = maxYA - minYB; // A.bottom - B.top
+    // Calculate overlap on each axis (always positive when intersecting)
+    float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
+    float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
 
-    float minPen = dxLeft;
-    Vector2D normal(-1, 0);
-    if (dxRight < minPen) {
-      minPen = dxRight;
-      normal = Vector2D(1, 0);
-    }
-    if (dyTop < minPen) {
-      minPen = dyTop;
-      normal = Vector2D(0, -1);
-    }
-    if (dyBottom < minPen) {
-      minPen = dyBottom;
-      normal = Vector2D(0, 1);
+    // Determine which axis has minimum penetration
+    float minPen;
+    Vector2D normal;
+
+    if (overlapX < overlapY) {
+      // Separate on X-axis - determine direction based on relative positions
+      minPen = overlapX;
+      float centerXA = (minXA + maxXA) * 0.5f;
+      float centerXB = (minXB + maxXB) * 0.5f;
+      // Normal points from A to B: if A is left of B, normal points right (+1,0)
+      // Resolution does: A.pos -= normal (A moves left), B.pos += normal (B moves right)
+      normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
+    } else {
+      // Separate on Y-axis - determine direction based on relative positions
+      minPen = overlapY;
+      float centerYA = (minYA + maxYA) * 0.5f;
+      float centerYB = (minYB + maxYB) * 0.5f;
+      // Normal points from A to B: if A is above B, normal points down (0,+1)
+      // Resolution does: A.pos -= normal (A moves up), B.pos += normal (B moves down)
+      normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
     }
 
     // Create collision info using EntityIDs
