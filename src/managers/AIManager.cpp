@@ -490,45 +490,22 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       m_lastAIBudget.store(budget.aiAllocated, std::memory_order_relaxed);
       m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-      // Dynamic batch sizing based on queue pressure and pathfinding load for optimal performance
-      const size_t threshold = threadingThreshold;
-      const size_t baseBatchSize =
-          std::max(threshold / 8, static_cast<size_t>(64)); // Reduced from threshold/2 for better parallelism
-      size_t minEntitiesPerBatch = baseBatchSize;
-      size_t maxBatches = std::max(static_cast<size_t>(8), optimalWorkerCount); // Increased from 2 to utilize more workers
-      
-      // Skip pathfinding coordination for small entity counts to avoid overhead
-      if (activeCount > threshold / 2) {
-        // Removed pathfinding load coordination
-      }
-
-      // Adjust batch strategy based on queue pressure using unified thresholds
+      // Use unified batch calculation for consistency across all managers
       double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+      auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+          HammerEngine::AI_BATCH_CONFIG,
+          entityCount,
+          threadingThreshold,
+          optimalWorkerCount,
+          queuePressure
+      );
+
+      // Debug logging for high queue pressure
       if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-        // High pressure: use fewer, larger batches to reduce queue overhead
-        minEntitiesPerBatch =
-            std::min(baseBatchSize * 2, threshold * 2);
-        size_t highPressureMax = std::max(static_cast<size_t>(2), optimalWorkerCount / 2);
-        maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
         AI_DEBUG("High queue pressure (" +
                  std::to_string(static_cast<int>(queuePressure * 100)) +
                  "%), using larger batches");
-      } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-        // Low pressure: can use more batches for better parallelization
-        size_t minLowPressure =
-            std::max(threshold / 8, static_cast<size_t>(32)); // Reduced from threshold/4
-        minEntitiesPerBatch =
-            std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
-        maxBatches = std::max(static_cast<size_t>(10), optimalWorkerCount); // Increased from 4 to use all workers
       }
-
-      optimalWorkerCount = std::max(static_cast<size_t>(1), optimalWorkerCount);
-
-      size_t desiredBatchCount =
-          (entityCount + minEntitiesPerBatch - 1) / minEntitiesPerBatch;
-      size_t batchCount = std::min(optimalWorkerCount, desiredBatchCount);
-      batchCount = std::min(batchCount, maxBatches);
-      batchCount = std::max(static_cast<size_t>(1), batchCount);
 
       // Debug thread allocation info periodically
       if (batchCount <= 1) {
