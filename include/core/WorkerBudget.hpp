@@ -40,8 +40,10 @@ struct WorkerBudget {
      */
     size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t workloadThreshold) const {
         if (workloadSize > workloadThreshold && remaining > 0) {
-            // Use burst capacity for high workloads - take half the buffer to be conservative
-            size_t burstWorkers = std::min(remaining, baseAllocation);
+            // Use up to 75% of buffer capacity for burst workloads (increased from 50%)
+            // Cap at 2x base allocation to prevent excessive thread spawning
+            size_t bufferToUse = (remaining * 3) / 4;
+            size_t burstWorkers = std::min(bufferToUse, baseAllocation * 2);
             return baseAllocation + burstWorkers;
         }
         return baseAllocation;
@@ -63,6 +65,62 @@ struct WorkerBudget {
     size_t getMaxWorkerCount(size_t baseAllocation) const {
         return baseAllocation + remaining;
     }
+};
+
+/**
+ * @brief Batch processing configuration for consistent batching across managers
+ *
+ * Provides unified batch sizing strategy to eliminate inconsistent batch
+ * calculations and enable easy performance tuning via configuration constants.
+ *
+ * Different manager types have different work granularity:
+ * - AI: Complex behavior updates (small batches preferred)
+ * - Particles: Simple physics updates (large batches preferred)
+ * - Events: Mixed complexity (medium batches)
+ */
+struct BatchConfig {
+    size_t baseDivisor;      // threshold / baseDivisor = base batch size
+    size_t minBatchSize;     // Minimum items per batch (work granularity)
+    size_t minBatchCount;    // Minimum number of batches to create
+    size_t maxBatchCount;    // Maximum number of batches to create
+
+    /**
+     * @brief Calculate base batch size from threading threshold
+     * @param threshold Threading threshold for this manager
+     * @return Base batch size for normal queue pressure conditions
+     */
+    size_t getBaseBatchSize(size_t threshold) const {
+        return std::max(threshold / baseDivisor, minBatchSize);
+    }
+};
+
+/**
+ * @brief Standard batch configurations per manager type
+ *
+ * These configurations are tuned based on work granularity:
+ * - AI entities require complex behavior updates → smaller batches (64+)
+ * - Particles require simple physics updates → larger batches (128+)
+ * - Events have mixed complexity → medium batches (4+)
+ */
+static constexpr BatchConfig AI_BATCH_CONFIG = {
+    8,      // baseDivisor: threshold/8 for fine-grained parallelism
+    64,     // minBatchSize: minimum 64 entities per batch
+    2,      // minBatchCount: at least 2 batches for parallel execution
+    10      // maxBatchCount: up to 10 batches for maximum parallelism
+};
+
+static constexpr BatchConfig PARTICLE_BATCH_CONFIG = {
+    4,      // baseDivisor: threshold/4 (increased from 1 for better parallelism)
+    128,    // minBatchSize: minimum 128 particles (reduced from 256)
+    2,      // minBatchCount: at least 2 batches
+    8       // maxBatchCount: up to 8 batches (increased from 4)
+};
+
+static constexpr BatchConfig EVENT_BATCH_CONFIG = {
+    2,      // baseDivisor: threshold/2 for moderate parallelism
+    4,      // minBatchSize: minimum 4 events per batch
+    2,      // minBatchCount: at least 2 batches
+    4       // maxBatchCount: up to 4 batches
 };
 
 /**
@@ -90,6 +148,67 @@ static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for Ga
 static constexpr float QUEUE_PRESSURE_WARNING = 0.70f;       // Early adaptation threshold (70%)
 static constexpr float QUEUE_PRESSURE_CRITICAL = 0.90f;     // Fallback trigger for AI/Event managers (90%)
 static constexpr float QUEUE_PRESSURE_PATHFINDING = 0.75f;  // PathfinderManager threshold (75%)
+
+/**
+ * @brief Calculate optimal batch count and size for threaded processing
+ *
+ * Unified batch calculation strategy that adapts to queue pressure and workload.
+ * Replaces duplicated batch calculation logic across AIManager, ParticleManager,
+ * and EventManager with a single, consistent implementation.
+ *
+ * @param config Batch configuration for this manager type (AI/Particle/Event)
+ * @param workloadSize Total items to process (entities, particles, events)
+ * @param threshold Threading threshold for this manager
+ * @param optimalWorkers Optimal worker count from getOptimalWorkerCount()
+ * @param queuePressure Current ThreadSystem queue pressure (0.0 to 1.0)
+ * @return Pair of {batchCount, batchSize} for optimal parallel processing
+ *
+ * Queue Pressure Adaptation:
+ * - High pressure (>70%): Fewer, larger batches to reduce queue overhead
+ * - Low pressure (<30%): More, smaller batches for better parallelism
+ * - Normal pressure: Use base configuration values
+ */
+inline std::pair<size_t, size_t> calculateBatchStrategy(
+    const BatchConfig& config,
+    size_t workloadSize,
+    size_t threshold,
+    size_t optimalWorkers,
+    double queuePressure)
+{
+    // Handle empty workload
+    if (workloadSize == 0) {
+        return {1, 0};
+    }
+
+    // Calculate base batch parameters
+    size_t baseBatchSize = config.getBaseBatchSize(threshold);
+    size_t minItemsPerBatch = baseBatchSize;
+    size_t maxBatches = std::max(config.maxBatchCount, optimalWorkers);
+
+    // Adapt batch strategy based on ThreadSystem queue pressure
+    if (queuePressure > QUEUE_PRESSURE_WARNING) {
+        // High pressure: Use fewer, larger batches to reduce queue overhead
+        // This prevents overwhelming the ThreadSystem when other subsystems are busy
+        minItemsPerBatch = std::min(baseBatchSize * 2, threshold * 2);
+        size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
+        maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
+    } else if (queuePressure < (1.0 - QUEUE_PRESSURE_WARNING)) {
+        // Low pressure: Use more, smaller batches for better parallelism
+        // ThreadSystem has capacity, so maximize parallel execution
+        size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
+        minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
+        maxBatches = std::max(config.maxBatchCount, optimalWorkers);
+    }
+
+    // Calculate actual batch count based on workload and constraints
+    size_t batchCount = (workloadSize + minItemsPerBatch - 1) / minItemsPerBatch;
+    batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+
+    // Calculate final batch size (distribute workload evenly across batches)
+    size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
+
+    return {batchCount, batchSize};
+}
 
 /**
  * @brief Calculate optimal worker budget allocation with hardware-adaptive scaling

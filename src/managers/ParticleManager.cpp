@@ -1977,40 +1977,18 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
   m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-  // Dynamic batch sizing based on queue pressure for optimal performance
-  // This prevents overwhelming the ThreadSystem when other subsystems are busy
+  // Use unified batch calculation for consistency across all managers
   const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
                                     static_cast<size_t>(1));
-  const size_t baseBatchSize =
-      std::max(threshold / 2, static_cast<size_t>(64));
-  size_t minParticlesPerBatch = baseBatchSize;
-  size_t maxBatches = std::max(static_cast<size_t>(2), optimalWorkerCount);
-
-  // Adjust batch strategy based on queue pressure using unified thresholds
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    // High pressure: use fewer, larger batches to reduce queue overhead
-    minParticlesPerBatch =
-        std::min(baseBatchSize * 2, std::max(threshold, static_cast<size_t>(1)) * 2);
-    size_t highPressureMax =
-        std::max(static_cast<size_t>(2), optimalWorkerCount / 2);
-    maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
-  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-    // Low pressure: can use more batches for better parallelization
-    size_t minLowPressure =
-        std::max(threshold / 4, static_cast<size_t>(32));
-    minParticlesPerBatch =
-        std::max({baseBatchSize / 2, minLowPressure, static_cast<size_t>(32)});
-    maxBatches = std::max(static_cast<size_t>(4), optimalWorkerCount);
-  }
 
-  optimalWorkerCount = std::max(static_cast<size_t>(1), optimalWorkerCount);
-
-  size_t desiredBatchCount =
-      (activeParticleCount + minParticlesPerBatch - 1) / minParticlesPerBatch;
-  size_t batchCount = std::min(optimalWorkerCount, desiredBatchCount);
-  batchCount = std::min(batchCount, maxBatches);
-  batchCount = std::max(static_cast<size_t>(1), batchCount);
+  auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+      HammerEngine::PARTICLE_BATCH_CONFIG,
+      activeParticleCount,
+      threshold,
+      optimalWorkerCount,
+      queuePressure
+  );
 
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
