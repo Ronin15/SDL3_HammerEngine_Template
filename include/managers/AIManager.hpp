@@ -437,6 +437,9 @@ private:
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
 
+  // Active entity counter - avoids iteration every frame
+  std::atomic<size_t> m_activeEntityCount{0};
+
   // Thread-safe assignment tracking
   std::atomic<size_t> m_totalAssignmentCount{0};
 
@@ -478,7 +481,8 @@ private:
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
-  void processBatch(size_t start, size_t end, float deltaTime, int bufferIndex);
+  void processBatch(size_t start, size_t end, float deltaTime, int bufferIndex,
+                    const Vector2D &playerPos, bool updateDistances);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();
