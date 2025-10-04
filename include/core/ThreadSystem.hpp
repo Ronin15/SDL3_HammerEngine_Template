@@ -23,6 +23,18 @@
 #include <string>
 #include <thread>
 
+// Platform-specific includes for thread affinity
+#ifdef __linux__
+#include <pthread.h>
+#include <sched.h>
+#elif defined(__APPLE__)
+#include <mach/mach.h>
+#include <mach/thread_policy.h>
+#include <pthread.h>
+#elif defined(_WIN32)
+#include <windows.h>
+#endif
+
 namespace HammerEngine {
 
 // Task priority levels
@@ -93,7 +105,7 @@ public:
 
     // Initialize atomic counters and realistic capacity distribution
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      m_priorityCounts[i].store(0, std::memory_order_relaxed);
+      m_priorityCounts[i].count.store(0, std::memory_order_relaxed);
       m_taskStats[i] = {0, 0, 0};
     }
   }
@@ -111,7 +123,10 @@ public:
                                                    description);
 
       // Update atomic counter
-      m_priorityCounts[priorityIndex].fetch_add(1, std::memory_order_relaxed);
+      m_priorityCounts[priorityIndex].count.fetch_add(1, std::memory_order_relaxed);
+
+      // Set bitmask bit to indicate this queue has tasks
+      m_queueBitmask.fetch_or(1 << priorityIndex, std::memory_order_relaxed);
 
       // Update statistics
       m_taskStats[priorityIndex].enqueued++;
@@ -131,6 +146,61 @@ public:
       condition.notify_all(); // Wake all for critical tasks to ensure immediate pickup.
     } else {
       condition.notify_one(); // Wake one for all other tasks to prevent a thundering herd.
+    }
+  }
+
+  /**
+   * @brief Batch enqueue multiple tasks with a single lock acquisition
+   *
+   * This method is highly optimized for scenarios where many tasks need to be
+   * submitted at once (e.g., AI entity updates, particle batches). It reduces
+   * lock contention from O(N) to O(1) by acquiring the mutex only once.
+   *
+   * @param tasks Vector of tasks to enqueue (will be moved from)
+   * @param priority Priority level for all tasks in the batch
+   * @param description Optional description prefix for debugging
+   */
+  void batchPush(std::vector<std::function<void()>>& tasks,
+                 TaskPriority priority = TaskPriority::Normal,
+                 const std::string& description = "") {
+    if (tasks.empty()) {
+      return;
+    }
+
+    int priorityIndex = static_cast<int>(priority);
+    size_t batchSize = tasks.size();
+
+    {
+      std::unique_lock<std::mutex> lock(m_priorityMutexes[priorityIndex]);
+
+      // Reserve space to avoid reallocations (deque doesn't have reserve, but this is good practice)
+      for (auto& task : tasks) {
+        m_priorityQueues[priorityIndex].emplace_back(std::move(task), priority, description);
+      }
+
+      // Update atomic counter once for entire batch
+      m_priorityCounts[priorityIndex].count.fetch_add(batchSize, std::memory_order_relaxed);
+
+      // Set bitmask bit to indicate this queue has tasks
+      m_queueBitmask.fetch_or(1 << priorityIndex, std::memory_order_relaxed);
+
+      // Update statistics
+      m_taskStats[priorityIndex].enqueued += batchSize;
+      m_totalTasksEnqueued.fetch_add(batchSize, std::memory_order_relaxed);
+
+      // Log batch submission if profiling is enabled
+      if (m_enableProfiling && !description.empty()) {
+        THREADSYSTEM_INFO("Batch enqueued " + std::to_string(batchSize) + " tasks: " +
+                          description + " (Priority: " + std::to_string(priorityIndex) + ")");
+      }
+    }
+
+    // Wake multiple workers for batch processing
+    std::lock_guard<std::mutex> lock(queueMutex);
+    if (priority == TaskPriority::Critical || batchSize > 4) {
+      condition.notify_all(); // Wake all workers for large batches
+    } else {
+      condition.notify_one();
     }
   }
 
@@ -156,14 +226,16 @@ public:
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
       std::lock_guard<std::mutex> priorityLock(m_priorityMutexes[i]);
       m_priorityQueues[i].clear();
-      m_priorityCounts[i].store(0, std::memory_order_relaxed);
+      m_priorityCounts[i].count.store(0, std::memory_order_relaxed);
     }
+    // Clear all bitmask bits
+    m_queueBitmask.store(0, std::memory_order_relaxed);
   }
 
   bool isEmpty() const {
     // Use atomic counters for lock-free checking
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      if (m_priorityCounts[i].load(std::memory_order_relaxed) > 0) {
+      if (m_priorityCounts[i].count.load(std::memory_order_relaxed) > 0) {
         return false;
       }
     }
@@ -200,7 +272,7 @@ public:
   size_t size() const {
     size_t totalSize = 0;
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      totalSize += m_priorityCounts[i].load(std::memory_order_relaxed);
+      totalSize += m_priorityCounts[i].count.load(std::memory_order_relaxed);
     }
     return totalSize;
   }
@@ -253,8 +325,14 @@ private:
   // Cache-line aligned mutexes to prevent false sharing
   alignas(64) mutable std::array<std::mutex, 5> m_priorityMutexes{};
 
-  // Atomic counters per priority for lock-free size checking
-  mutable std::array<std::atomic<size_t>, 5> m_priorityCounts{};
+  // Cache-line aligned atomic counters to prevent false sharing
+  struct alignas(64) AlignedAtomic {
+    std::atomic<size_t> count{0};
+  };
+  mutable std::array<AlignedAtomic, 5> m_priorityCounts{};
+
+  // Bitmask tracking non-empty queues for fast skip in tryPopTask
+  std::atomic<uint8_t> m_queueBitmask{0};
 
   mutable std::mutex queueMutex{}; // Main mutex for condition variable
   std::condition_variable condition{};
@@ -271,7 +349,7 @@ private:
   // Lock-free check for any tasks using atomic counters
   bool hasAnyTasksLockFree() const {
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      if (m_priorityCounts[i].load(std::memory_order_relaxed) > 0) {
+      if (m_priorityCounts[i].count.load(std::memory_order_relaxed) > 0) {
         return true;
       }
     }
@@ -280,10 +358,19 @@ private:
 
   // Try to pop a task without blocking
   bool tryPopTask(std::function<void()> &task) {
+    // Fast-path: Check bitmask to skip empty queues
+    uint8_t bitmask = m_queueBitmask.load(std::memory_order_relaxed);
+
     // Try to get task from highest priority queues first
     for (int priorityIndex = 0;
          priorityIndex <= static_cast<int>(TaskPriority::Idle);
          ++priorityIndex) {
+
+      // Skip this priority level if bitmask indicates it's empty
+      if (!(bitmask & (1 << priorityIndex))) {
+        continue;
+      }
+
       std::unique_lock<std::mutex> priorityLock(
           m_priorityMutexes[priorityIndex], std::try_to_lock);
       if (!priorityLock.owns_lock()) {
@@ -297,7 +384,12 @@ private:
         queue.pop_front(); // O(1) operation with deque
 
         // Update atomic counter
-        m_priorityCounts[priorityIndex].fetch_sub(1, std::memory_order_relaxed);
+        size_t newCount = m_priorityCounts[priorityIndex].count.fetch_sub(1, std::memory_order_relaxed) - 1;
+
+        // Clear bitmask bit if queue is now empty
+        if (newCount == 0) {
+          m_queueBitmask.fetch_and(~(1 << priorityIndex), std::memory_order_relaxed);
+        }
 
         // Calculate wait time for metrics
         auto now = std::chrono::steady_clock::now();
@@ -364,8 +456,47 @@ public:
     m_workers.reserve(numThreads);
     for (size_t i = 0; i < numThreads; ++i) {
       m_workers.emplace_back([this, i] {
-// Set thread name if platform supports it
-#ifdef _GNU_SOURCE
+// Set thread name and affinity if platform supports it
+#ifdef __linux__
+        // Linux: Set thread name
+        std::string threadName = "Worker-" + std::to_string(i);
+        pthread_setname_np(pthread_self(), threadName.c_str());
+
+        // Linux: Set CPU affinity to pin thread to specific core
+        cpu_set_t cpuset;
+        CPU_ZERO(&cpuset);
+        CPU_SET(i % std::thread::hardware_concurrency(), &cpuset);
+        int result = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
+        if (result != 0) {
+          THREADSYSTEM_WARN("Failed to set CPU affinity for worker " +
+                            std::to_string(i) + ": " + std::to_string(result));
+        }
+#elif defined(__APPLE__)
+        // macOS: Set thread name
+        std::string threadName = "Worker-" + std::to_string(i);
+        pthread_setname_np(threadName.c_str());
+
+        // macOS: Use thread affinity policy (soft hint, not hard pinning)
+        thread_affinity_policy_data_t policy;
+        policy.affinity_tag = static_cast<integer_t>(i);
+        kern_return_t result = thread_policy_set(
+            pthread_mach_thread_np(pthread_self()),
+            THREAD_AFFINITY_POLICY,
+            (thread_policy_t)&policy,
+            THREAD_AFFINITY_POLICY_COUNT);
+        if (result != KERN_SUCCESS) {
+          THREADSYSTEM_WARN("Failed to set thread affinity for worker " +
+                            std::to_string(i) + ": " + std::to_string(result));
+        }
+#elif defined(_WIN32)
+        // Windows: Set thread affinity mask
+        DWORD_PTR affinityMask = 1ULL << (i % std::thread::hardware_concurrency());
+        DWORD_PTR result = SetThreadAffinityMask(GetCurrentThread(), affinityMask);
+        if (result == 0) {
+          THREADSYSTEM_WARN("Failed to set thread affinity for worker " + std::to_string(i));
+        }
+#elif defined(_GNU_SOURCE)
+        // Fallback for other systems with GNU extensions
         std::string threadName = "Worker-" + std::to_string(i);
         pthread_setname_np(pthread_self(), threadName.c_str());
 #endif
@@ -410,6 +541,30 @@ public:
     taskQueue.push(std::move(task), priority, description);
     // Update comprehensive statistics for all tasks
     m_totalTasksEnqueued.fetch_add(1, std::memory_order_relaxed);
+  }
+
+  /**
+   * @brief Batch enqueue multiple tasks with optimized single lock acquisition
+   *
+   * Significantly reduces lock contention when submitting multiple tasks at once.
+   * Ideal for AI updates, particle systems, and event processing batches.
+   *
+   * @param tasks Vector of tasks to enqueue (will be moved from)
+   * @param priority Priority level for all tasks in the batch (default: Normal)
+   * @param description Optional description prefix for debugging
+   */
+  void batchEnqueue(std::vector<std::function<void()>>& tasks,
+                    TaskPriority priority = TaskPriority::Normal,
+                    const std::string& description = "") {
+    if (tasks.empty()) {
+      return;
+    }
+
+    size_t batchSize = tasks.size();
+    taskQueue.batchPush(tasks, priority, description);
+
+    // Update comprehensive statistics for batch
+    m_totalTasksEnqueued.fetch_add(batchSize, std::memory_order_relaxed);
   }
 
   bool busy() const {
@@ -481,6 +636,10 @@ private:
     size_t tasksProcessed = 0;
     size_t highPriorityTasks = 0;
 
+    // For adaptive idle sleep optimization
+    auto lastTaskTime = std::chrono::steady_clock::now();
+    bool isIdle = false;
+
     // Set thread as interruptible (platform-specific if needed)
     try {
 
@@ -500,6 +659,9 @@ private:
           if (taskQueue.pop(task)) {
             gotTask = true;
             highPriorityTasks++;
+            // Reset idle tracking when we get a task
+            lastTaskTime = std::chrono::steady_clock::now();
+            isIdle = false;
           }
           // All tasks go through single global queue - simple and reliable
         } catch (...) {
@@ -564,7 +726,24 @@ private:
           // Unused variable warning suppression
           (void)activeCount;
         } else {
-          // No task available, wait on condition variable
+          // No task available - check idle time for adaptive sleep
+          auto now = std::chrono::steady_clock::now();
+          auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+              now - lastTaskTime).count();
+
+          // Adaptive idle sleep: After 1 second of idleness, reduce wake frequency
+          // This saves CPU cycles and power on idle systems
+          if (idleTime > 1000) {
+            if (!isIdle) {
+              isIdle = true;
+              // Log transition to idle mode if profiling is enabled
+              // (Disabled by default to avoid log spam)
+            }
+            // Sleep for 10ms to reduce CPU wake frequency
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+          }
+
+          // Wait on condition variable for new tasks
           std::unique_lock<std::mutex> lock(taskQueue.getMutex());
           taskQueue.getCondition().wait(lock, [this] {
               return !isRunning.load(std::memory_order_acquire) || taskQueue.hasTasks();
@@ -747,6 +926,50 @@ public:
     }
 
     m_threadPool->enqueue(std::move(task), priority, description);
+  }
+
+  /**
+   * @brief Batch enqueue multiple tasks with optimized performance
+   *
+   * This method is highly optimized for submitting multiple tasks at once,
+   * reducing lock contention from O(N) to O(1). Use this when submitting
+   * batches of tasks from AI updates, particle systems, or event processing.
+   *
+   * Example usage:
+   *   std::vector<std::function<void()>> tasks;
+   *   for (auto& entity : entities) {
+   *     tasks.push_back([&entity](){ processEntity(entity); });
+   *   }
+   *   ThreadSystem::Instance().batchEnqueueTasks(tasks, TaskPriority::Normal, "AI Batch");
+   *
+   * @param tasks Vector of tasks to enqueue (will be moved from)
+   * @param priority Priority level for all tasks in the batch (default: Normal)
+   * @param description Optional description prefix for debugging and monitoring
+   */
+  void batchEnqueueTasks(std::vector<std::function<void()>>& tasks,
+                         TaskPriority priority = TaskPriority::Normal,
+                         const std::string& description = "") {
+    // If shutdown or no thread pool, silently reject the tasks
+    if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
+      if (m_enableDebugLogging) {
+        THREADSYSTEM_DEBUG(
+            "Ignoring batch of " + std::to_string(tasks.size()) + " tasks after shutdown" +
+            (description.empty() ? "" : " (" + description + ")"));
+      }
+      return;
+    }
+
+    if (tasks.empty()) {
+      return;
+    }
+
+    // If debug logging is enabled, log the batch submission
+    if (m_enableDebugLogging && !description.empty()) {
+      THREADSYSTEM_DEBUG("Batch enqueuing " + std::to_string(tasks.size()) +
+                         " tasks: " + description);
+    }
+
+    m_threadPool->batchEnqueue(tasks, priority, description);
   }
 
   /**
