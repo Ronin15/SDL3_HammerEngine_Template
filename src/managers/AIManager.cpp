@@ -499,12 +499,19 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         size_t entitiesPerBatch = entityCount / batchCount;
         size_t remainingEntities = entityCount % batchCount;
 
-        // Batch processing with futures; synchronize before returning from update()
-        // Thread-safe modification of m_updateFutures - prevents concurrent read during state transitions
-        std::vector<std::future<void>> localFutures;
-        localFutures.reserve(batchCount);
+        // PERFORMANCE OPTIMIZATION: Use batchEnqueueTasks() for O(1) lock acquisition
+        // instead of O(N) individual enqueue calls. This reduces ThreadSystem mutex
+        // contention significantly when submitting multiple batches.
 
-        // Create futures and enqueue tasks
+        // Atomic counter for batch completion synchronization
+        std::atomic<size_t> remainingBatches{batchCount};
+        std::mutex completionMutex;
+        std::condition_variable completionCV;
+
+        // Build task vector for batch submission
+        std::vector<std::function<void()>> tasks;
+        tasks.reserve(batchCount);
+
         for (size_t i = 0; i < batchCount; ++i) {
           size_t start = i * entitiesPerBatch;
           size_t end = start + entitiesPerBatch;
@@ -514,28 +521,33 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             end += remainingEntities;
           }
 
-          // Enqueue with result and retain the future for synchronization
-          localFutures.push_back(threadSystem.enqueueTaskWithResult(
-              [this, start, end, deltaTime, nextBuffer, playerPos, shouldUpdateDistances]() {
-                processBatch(start, end, deltaTime, nextBuffer, playerPos, shouldUpdateDistances);
-              },
-              HammerEngine::TaskPriority::High, "AI_OptimalBatch"));
+          // Capture by value to avoid lifetime issues
+          tasks.push_back([this, start, end, deltaTime, nextBuffer, playerPos,
+                          shouldUpdateDistances, &remainingBatches, &completionMutex, &completionCV]() {
+            try {
+              processBatch(start, end, deltaTime, nextBuffer, playerPos, shouldUpdateDistances);
+            } catch (const std::exception &e) {
+              AI_ERROR(std::string("Exception in AI batch: ") + e.what());
+            } catch (...) {
+              AI_ERROR("Unknown exception in AI batch");
+            }
+
+            // Signal completion
+            if (remainingBatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+              std::lock_guard<std::mutex> lock(completionMutex);
+              completionCV.notify_one();
+            }
+          });
         }
 
+        // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
+        threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::High, "AI_Batch");
+
         // Wait for all batches to complete to maintain update->render safety
-        // NO LOCK HELD - futures are thread-safe, only the vector needs protection
-        for (auto &f : localFutures) {
-          if (f.valid()) {
-            try {
-              f.get();
-            } catch (const std::exception &e) {
-              AI_ERROR(std::string("Exception in AI batch future: ") + e.what());
-            } catch (...) {
-              AI_ERROR("Unknown exception in AI batch future");
-            }
-          }
-        }
-        // localFutures destroyed automatically - no need to store in member variable
+        std::unique_lock<std::mutex> lock(completionMutex);
+        completionCV.wait(lock, [&remainingBatches]() {
+          return remainingBatches.load(std::memory_order_acquire) == 0;
+        });
       }
 
       m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
