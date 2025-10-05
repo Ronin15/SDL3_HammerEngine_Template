@@ -269,7 +269,7 @@ void TextureManager::drawParallax(const std::string& textureID,
 
   // Get the texture dimensions
   float width, height;
-  if (SDL_GetTextureSize(it->second.get(), &width, &height) != 0) {
+  if (!SDL_GetTextureSize(it->second.get(), &width, &height)) {
     TEXTURE_ERROR("Failed to get texture size: " + std::string(SDL_GetError()));
     return;
   }
