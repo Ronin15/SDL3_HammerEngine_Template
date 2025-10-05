@@ -174,14 +174,6 @@ public:
   void update(float deltaTime);
 
   /**
-   * @brief Waits for all asynchronous AI update tasks from the last tick to
-   * complete.
-   * @details This is the synchronization point that ensures AI processing is
-   * finished before the next game logic step.
-   */
-  void waitForUpdatesToComplete();
-
-  /**
    * @brief Checks if AIManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
@@ -446,8 +438,7 @@ private:
   // Frame counter for periodic logging (thread-safe)
   std::atomic<uint64_t> m_frameCounter{0};
 
-  // Asynchronous assignment processing (non-blocking)
-  std::vector<std::future<void>> m_assignmentFutures;
+  // Asynchronous assignment processing (fire-and-forget, no futures)
   std::atomic<bool> m_assignmentInProgress{false};
 
   // Frame throttling for task submission (thread-safe)
@@ -468,10 +459,6 @@ private:
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
-  mutable std::mutex m_futuresMutex; // Protects m_updateFutures and m_assignmentFutures
-  std::vector<std::future<void>> m_updateFutures;
-  std::vector<std::future<void>>
-      m_pendingFutures; // Futures from previous frames
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
