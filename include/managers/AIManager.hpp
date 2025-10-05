@@ -23,6 +23,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "entities/Entity.hpp"
+#include "managers/CollisionManager.hpp"
 #include <array>
 #include <atomic>
 #include <future>
@@ -35,7 +36,6 @@
 
 // PathfinderManager available for centralized pathfinding services
 class PathfinderManager;
-class CollisionManager;
 
 // Performance configuration constants
 namespace AIConfig {
@@ -482,7 +482,8 @@ private:
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
   void processBatch(size_t start, size_t end, float deltaTime, int bufferIndex,
-                    const Vector2D &playerPos, bool updateDistances);
+                    const Vector2D &playerPos, bool updateDistances,
+                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();
