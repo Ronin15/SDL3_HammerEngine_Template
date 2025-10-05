@@ -1451,14 +1451,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         batchExecutions++;
       } else {
-        // PERFORMANCE FIX: Skip entity updates for culled entities entirely  
-        // Still accumulate position for collision system consistency
-        Vector2D currentPos = entity->getPosition();
-        Vector2D zeroVel(0, 0);
-        entity->Entity::setVelocity(zeroVel); // Use base method to avoid individual collision sync
-        
-        // Add to batch with zero velocity to keep collision system in sync
-        collisionUpdates.emplace_back(entity->getID(), currentPos, zeroVel);
+        // PERFORMANCE OPTIMIZATION: Skip entity updates for culled entities entirely
+        // Use cached position from hotData to avoid virtual function calls
+        // No need to call setVelocity() - culled entities don't move anyway
+        collisionUpdates.emplace_back(entity->getID(), hotData.position, Vector2D(0, 0));
       }
     } catch (const std::exception &e) {
       AI_ERROR("Error in batch processing: " + std::string(e.what()));
