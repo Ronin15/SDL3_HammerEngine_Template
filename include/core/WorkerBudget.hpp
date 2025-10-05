@@ -98,9 +98,12 @@ struct BatchConfig {
  * @brief Standard batch configurations per manager type
  *
  * These configurations are tuned based on work granularity:
- * - AI entities require complex behavior updates → smaller batches (64+)
+ * - AI entities require complex behavior updates → balanced batches (64 entities, up to 10 batches)
  * - Particles require simple physics updates → larger batches (128+)
  * - Events have mixed complexity → medium batches (4+)
+ *
+ * PERFORMANCE TUNING: Original config proved optimal after deferred collision optimization.
+ * Buffer copy interval increased separately (60→120 frames) for additional gains.
  */
 static constexpr BatchConfig AI_BATCH_CONFIG = {
     8,      // baseDivisor: threshold/8 for fine-grained parallelism
