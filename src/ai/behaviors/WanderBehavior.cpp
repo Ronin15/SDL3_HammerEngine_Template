@@ -83,10 +83,18 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     if (currentTime - state.lastDirectionChangeTime >= state.startDelay) {
       state.movementStarted = true;
       Vector2D intended = state.currentDirection * m_speed;
-      // Separation decimation: compute at most every 2 ticks
-      applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity);
+
+      // PERFORMANCE OPTIMIZATION: Use cached collision data if available
+      if (!state.cachedNearbyPositions.empty()) {
+        applySeparationWithCache(entity, entity->getPosition(), intended,
+                                 m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                                 state.lastSepVelocity, state.cachedNearbyPositions);
+      } else {
+        // Fallback to direct calculation on first frame
+        applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                                 m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                                 state.lastSepVelocity);
+      }
     }
     return;
   }
@@ -232,17 +240,20 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
           entity, entity->getPosition(), state.pathPoints, state.currentPathIndex,
           m_speed, state.navRadius);
       if (following) {
-        // Apply decimated separation while following
-        applyDecimatedSeparation(entity, entity->getPosition(),
+        // PERFORMANCE OPTIMIZATION: Use cached collision data from crowd analysis
+        // This eliminates redundant collision queries (was querying every 2 seconds)
+        applySeparationWithCache(entity, entity->getPosition(),
                                  entity->getVelocity(), m_speed, 28.0f, 0.30f,
-                                 6, state.lastSepTick, state.lastSepVelocity);
+                                 6, state.lastSepTick, state.lastSepVelocity,
+                                 state.cachedNearbyPositions);
       }
     } else {
       // Always apply base velocity (in case something external changed it)
       Vector2D intended = state.currentDirection * m_speed;
-      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+      // PERFORMANCE OPTIMIZATION: Use cached collision data
+      applySeparationWithCache(entity, entity->getPosition(), intended,
                                m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity);
+                               state.lastSepVelocity, state.cachedNearbyPositions);
     }
   }
 }
@@ -282,10 +293,10 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
     stableVelocity.normalize();
     stableVelocity = stableVelocity * m_speed;
 
-    // Apply the stable velocity with separation
-    applyDecimatedSeparation(entity, entity->getPosition(), stableVelocity,
+    // PERFORMANCE OPTIMIZATION: Use cached collision data
+    applySeparationWithCache(entity, entity->getPosition(), stableVelocity,
                              m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                             state.lastSepVelocity);
+                             state.lastSepVelocity, state.cachedNearbyPositions);
   } else if (wouldFlip) {
     // Record the time of this flip
     state.lastDirectionFlip = currentTime;
@@ -329,9 +340,10 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
       rotated.normalize();
       state.currentDirection = rotated;
       Vector2D intended = state.currentDirection * m_speed;
-      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+      // PERFORMANCE OPTIMIZATION: Use cached collision data
+      applySeparationWithCache(entity, entity->getPosition(), intended,
                                m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity);
+                               state.lastSepVelocity, state.cachedNearbyPositions);
     }
   }
 
@@ -429,9 +441,17 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity) {
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
     Vector2D intended = state.currentDirection * m_speed;
-    applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                             m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                             state.lastSepVelocity);
+    // PERFORMANCE OPTIMIZATION: Use cached collision data if available
+    if (!state.cachedNearbyPositions.empty()) {
+      applySeparationWithCache(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity, state.cachedNearbyPositions);
+    } else {
+      // Fallback for initialization
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
+                               state.lastSepVelocity);
+    }
   }
 
   // NPC class now handles sprite flipping based on velocity
