@@ -89,10 +89,16 @@ void CollisionManager::prepareForStateTransition() {
   COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
                  std::to_string(soaBodyCount) + " SOA bodies (dynamic + static)");
 
-  // Clear all collision bodies and spatial hashes
-  m_storage.clear();
-  m_staticSpatialHash.clear();
-  m_dynamicSpatialHash.clear();
+  // Acquire exclusive write lock before clearing storage
+  // Prevents AI threads from reading during modifications
+  {
+    std::unique_lock<std::shared_mutex> storageLock(m_storageMutex);
+
+    // Clear all collision bodies and spatial hashes
+    m_storage.clear();
+    m_staticSpatialHash.clear();
+    m_dynamicSpatialHash.clear();
+  }
 
   // Process any pending commands before clearing caches to ensure clean state
   processPendingCommands();
