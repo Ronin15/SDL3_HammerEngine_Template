@@ -1993,36 +1993,63 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // Submit optimized batches to ThreadSystem with efficient batch processing
-  // Unlike AIManager, ParticleManager needs synchronization before buffer operations
-  std::vector<std::future<void>> futures;
-  futures.reserve(batchCount);
+  // PERFORMANCE OPTIMIZATION: Use batchEnqueueTasks() for O(1) lock acquisition
+  // instead of O(N) individual enqueue calls. This reduces ThreadSystem mutex
+  // contention significantly when submitting multiple batches.
+
+  // Atomic counter for batch completion synchronization
+  std::atomic<size_t> remainingBatches{batchCount};
+  std::mutex completionMutex;
+  std::condition_variable completionCV;
+
+  // Build task vector for batch submission
+  std::vector<std::function<void()>> tasks;
+  tasks.reserve(batchCount);
 
   for (size_t i = 0; i < batchCount; ++i) {
     size_t startIdx = i * particlesPerBatch;
     size_t endIdx = startIdx + particlesPerBatch +
                     (i == batchCount - 1 ? remainingParticles : 0);
-    
+
     // CRITICAL FIX: Ensure endIdx doesn't exceed buffer size
     endIdx = std::min(endIdx, bufferSize);
-    
+
     // Skip empty batches or invalid ranges
     if (startIdx >= bufferSize || startIdx >= endIdx) {
+      // Decrement counter for skipped batch
+      remainingBatches.fetch_sub(1, std::memory_order_relaxed);
       continue;
     }
-    
-    // Use async with futures but optimize the waiting pattern
-    futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, &currentBuffer, startIdx, endIdx, deltaTime, windPhase = m_windPhase]() {
-          updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
-        },
-        HammerEngine::TaskPriority::Normal, "Particle_UpdateBatch"));
+
+    // Build task with captured values (currentBuffer captured by reference is safe
+    // since we wait for completion before returning)
+    tasks.push_back([this, &currentBuffer, startIdx, endIdx, deltaTime,
+                    windPhase = m_windPhase, &remainingBatches, &completionMutex, &completionCV]() {
+      try {
+        updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
+      } catch (const std::exception &e) {
+        PARTICLE_ERROR(std::string("Exception in particle batch: ") + e.what());
+      } catch (...) {
+        PARTICLE_ERROR("Unknown exception in particle batch");
+      }
+
+      // Signal completion
+      if (remainingBatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        std::lock_guard<std::mutex> lock(completionMutex);
+        completionCV.notify_one();
+      }
+    });
   }
 
-  // Optimized waiting: batch wait instead of individual waits
-  // This reduces synchronization overhead compared to individual future.wait() calls
-  for (auto &future : futures) {
-    future.get(); // Must wait - particle system needs sync before buffer swap
+  // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
+  if (!tasks.empty()) {
+    threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::Normal, "Particle_Batch");
+
+    // Wait for all batches to complete to maintain update->render safety
+    std::unique_lock<std::mutex> lock(completionMutex);
+    completionCV.wait(lock, [&remainingBatches]() {
+      return remainingBatches.load(std::memory_order_acquire) == 0;
+    });
   }
 
   m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);

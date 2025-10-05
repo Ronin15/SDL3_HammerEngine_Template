@@ -810,10 +810,19 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     size_t batchSize = localEvents.size() / batchCount;
     size_t remainingEvents = localEvents.size() % batchCount;
 
-    std::vector<std::future<void>> futures;
-    futures.reserve(batchCount);
+    // PERFORMANCE OPTIMIZATION: Use batchEnqueueTasks() for O(1) lock acquisition
+    // instead of O(N) individual enqueue calls. This reduces ThreadSystem mutex
+    // contention significantly when submitting multiple batches.
 
-    // Submit optimized batches using futures for simpler synchronization
+    // Atomic counter for batch completion synchronization
+    std::atomic<size_t> remainingBatches{batchCount};
+    std::mutex completionMutex;
+    std::condition_variable completionCV;
+
+    // Build task vector for batch submission
+    std::vector<std::function<void()>> tasks;
+    tasks.reserve(batchCount);
+
     for (size_t i = 0; i < batchCount; ++i) {
       size_t start = i * batchSize;
       size_t end = start + batchSize;
@@ -823,19 +832,35 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         end += remainingEvents;
       }
 
-      futures.push_back(threadSystem.enqueueTaskWithResult(
-          [&localEvents, start, end]() {
-            for (size_t j = start; j < end; ++j) {
-              localEvents[j]->update();
-            }
-          },
-          HammerEngine::TaskPriority::Normal, "Event_OptimalBatch"));
+      // Build task with captured values (localEvents captured by reference is safe
+      // since we wait for completion before returning)
+      tasks.push_back([&localEvents, start, end, &remainingBatches, &completionMutex, &completionCV]() {
+        try {
+          for (size_t j = start; j < end; ++j) {
+            localEvents[j]->update();
+          }
+        } catch (const std::exception &e) {
+          EVENT_ERROR(std::string("Exception in event batch: ") + e.what());
+        } catch (...) {
+          EVENT_ERROR("Unknown exception in event batch");
+        }
+
+        // Signal completion
+        if (remainingBatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+          std::lock_guard<std::mutex> lock(completionMutex);
+          completionCV.notify_one();
+        }
+      });
     }
 
+    // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
+    threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::Normal, "Event_Batch");
+
     // Wait for all batches to complete
-    for (auto &future : futures) {
-      future.wait();
-    }
+    std::unique_lock<std::mutex> lock(completionMutex);
+    completionCV.wait(lock, [&remainingBatches]() {
+      return remainingBatches.load(std::memory_order_acquire) == 0;
+    });
   } else {
     // Process single-threaded for small event counts
     for (auto &evt : localEvents) { evt->update(); }
