@@ -23,16 +23,9 @@
 #include <string>
 #include <thread>
 
-// Platform-specific includes for thread affinity
-#ifdef __linux__
+// Platform-specific includes for thread naming
+#if defined(__linux__) || defined(__APPLE__) || defined(_GNU_SOURCE)
 #include <pthread.h>
-#include <sched.h>
-#elif defined(__APPLE__)
-#include <mach/mach.h>
-#include <mach/thread_policy.h>
-#include <pthread.h>
-#elif defined(_WIN32)
-#include <windows.h>
 #endif
 
 namespace HammerEngine {
@@ -195,11 +188,17 @@ public:
       }
     }
 
-    // Wake multiple workers for batch processing
+    // Efficient wake strategy: minimize thundering herd while ensuring work gets picked up
     std::lock_guard<std::mutex> lock(queueMutex);
-    if (priority == TaskPriority::Critical || batchSize > 4) {
-      condition.notify_all(); // Wake all workers for large batches
+    if (priority == TaskPriority::Critical) {
+      // Critical tasks need immediate attention from all workers
+      condition.notify_all();
+    } else if (batchSize >= 16) {
+      // Large batches: wake all workers to distribute load
+      condition.notify_all();
     } else {
+      // Small batches: single notification reduces CPU wake overhead
+      // Workers will naturally pick up remaining tasks as they complete current work
       condition.notify_one();
     }
   }
@@ -456,50 +455,17 @@ public:
     m_workers.reserve(numThreads);
     for (size_t i = 0; i < numThreads; ++i) {
       m_workers.emplace_back([this, i] {
-// Set thread name and affinity if platform supports it
-#ifdef __linux__
+// Set thread name for debugging (no CPU affinity - let OS scheduler optimize)
+#if defined(__linux__) || defined(_GNU_SOURCE)
         // Linux: Set thread name
         std::string threadName = "Worker-" + std::to_string(i);
         pthread_setname_np(pthread_self(), threadName.c_str());
-
-        // Linux: Set CPU affinity to pin thread to specific core
-        cpu_set_t cpuset;
-        CPU_ZERO(&cpuset);
-        CPU_SET(i % std::thread::hardware_concurrency(), &cpuset);
-        int result = pthread_setaffinity_np(pthread_self(), sizeof(cpu_set_t), &cpuset);
-        if (result != 0) {
-          THREADSYSTEM_WARN("Failed to set CPU affinity for worker " +
-                            std::to_string(i) + ": " + std::to_string(result));
-        }
 #elif defined(__APPLE__)
         // macOS: Set thread name
         std::string threadName = "Worker-" + std::to_string(i);
         pthread_setname_np(threadName.c_str());
-
-        // macOS: Use thread affinity policy (soft hint, not hard pinning)
-        thread_affinity_policy_data_t policy;
-        policy.affinity_tag = static_cast<integer_t>(i);
-        kern_return_t result = thread_policy_set(
-            pthread_mach_thread_np(pthread_self()),
-            THREAD_AFFINITY_POLICY,
-            (thread_policy_t)&policy,
-            THREAD_AFFINITY_POLICY_COUNT);
-        if (result != KERN_SUCCESS) {
-          THREADSYSTEM_WARN("Failed to set thread affinity for worker " +
-                            std::to_string(i) + ": " + std::to_string(result));
-        }
-#elif defined(_WIN32)
-        // Windows: Set thread affinity mask
-        DWORD_PTR affinityMask = 1ULL << (i % std::thread::hardware_concurrency());
-        DWORD_PTR result = SetThreadAffinityMask(GetCurrentThread(), affinityMask);
-        if (result == 0) {
-          THREADSYSTEM_WARN("Failed to set thread affinity for worker " + std::to_string(i));
-        }
-#elif defined(_GNU_SOURCE)
-        // Fallback for other systems with GNU extensions
-        std::string threadName = "Worker-" + std::to_string(i);
-        pthread_setname_np(pthread_self(), threadName.c_str());
 #endif
+        // Note: CPU affinity removed for better OS-level load balancing and efficiency
 
         // Run the worker
         workerThread(i);
