@@ -219,6 +219,14 @@ public:
     // Clamp using entity half-extents (pixels)
     Vector2D clampInsideExtents(const Vector2D& position, float halfW, float halfH, float extraMargin = 0.0f) const;
 
+    /**
+     * @brief Get cached world bounds for inline clamping (avoids atomic loads)
+     * @param outWidth Output world width in pixels
+     * @param outHeight Output world height in pixels
+     * @return true if grid exists and bounds are valid
+     */
+    bool getCachedWorldBounds(float& outWidth, float& outHeight) const;
+
     // Adjust spawn to valid navigable position inside world
     Vector2D adjustSpawnToNavigable(const Vector2D& desired, float halfW = 16.0f, float halfH = 16.0f, float interiorMargin = 150.0f) const;
     // Area-constrained spawn adjustment
