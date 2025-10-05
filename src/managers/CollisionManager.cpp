@@ -1588,11 +1588,17 @@ void CollisionManager::updatePerformanceMetricsSOA(
 void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates) {
   if (updates.empty()) return;
 
+  // PERFORMANCE FIX: Acquire lock ONCE for entire batch instead of per-entity
+  // Reduces lock acquisitions from O(n) to O(1) - critical for 1000+ entity updates
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
   // Batch update all kinematic bodies in SOA storage
   size_t validUpdates = 0;
   for (const auto& bodyUpdate : updates) {
-    size_t index;
-    if (getCollisionBodySOA(bodyUpdate.id, index)) {
+    // Direct map access without additional locking (we hold the lock)
+    auto it = m_storage.entityToIndex.find(bodyUpdate.id);
+    if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
+      size_t index = it->second;
       auto& hot = m_storage.hotData[index];
       if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC) {
         hot.position = bodyUpdate.position;
