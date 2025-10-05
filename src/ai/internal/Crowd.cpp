@@ -146,7 +146,127 @@ Vector2D ApplySeparation(EntityPtr entity,
       // No far-range spreading to reduce overhead
     }
   }
-  
+
+  return out;
+}
+
+// PERFORMANCE OPTIMIZATION: ApplySeparation with pre-fetched neighbor data
+// This overload skips the expensive collision query when neighbor positions
+// are already available from a previous query (e.g., crowd analysis)
+Vector2D ApplySeparation(EntityPtr entity,
+                         const Vector2D &currentPos,
+                         const Vector2D &intendedVel,
+                         float speed,
+                         float radius,
+                         float strength,
+                         size_t maxNeighbors,
+                         const std::vector<Vector2D> &preFetchedNeighbors) {
+  if (!entity || speed <= 0.0f) return intendedVel;
+
+  // Skip collision query - use pre-fetched data directly
+  float baseRadius = std::max(radius, 24.0f);
+  float speedMultiplier = std::clamp(speed / 120.0f, 1.0f, 1.5f);
+  float queryRadius = std::min(baseRadius * speedMultiplier, 96.0f);
+
+  Vector2D sep(0, 0);
+  Vector2D avoidance(0, 0);
+  float closest = queryRadius;
+  size_t counted = 0;
+  size_t criticalNeighbors = 0;
+
+  // Process pre-fetched neighbor positions
+  for (const Vector2D &other : preFetchedNeighbors) {
+    Vector2D d = currentPos - other;
+    float dist = d.length();
+
+    if (dist < 0.5f) {
+      // Handle extreme overlap with emergency push
+      d = Vector2D((rand() % 200 - 100) / 100.0f, (rand() % 200 - 100) / 100.0f);
+      dist = 16.0f;
+      criticalNeighbors++;
+    }
+    if (dist > queryRadius) continue;
+
+    closest = std::min(closest, dist);
+
+    // Multi-layer separation with world-scale awareness
+    Vector2D dir = d * (1.0f / dist);
+
+    if (dist < baseRadius * 0.5f) {
+      // Critical range - strong repulsion
+      float criticalWeight = (baseRadius * 0.5f - dist) / (baseRadius * 0.5f);
+      avoidance = avoidance + dir * (criticalWeight * criticalWeight * 3.0f);
+      criticalNeighbors++;
+    } else if (dist < baseRadius) {
+      // Normal separation range
+      float normalWeight = (baseRadius - dist) / baseRadius;
+      sep = sep + dir * normalWeight;
+    }
+
+    // Limit neighbor processing for performance
+    if (++counted >= std::min(maxNeighbors, static_cast<size_t>(6))) break;
+  }
+
+  Vector2D out = intendedVel;
+  float il = out.length();
+
+  if ((sep.length() > 0.001f || avoidance.length() > 0.001f) && il > 0.001f) {
+    Vector2D intendedDir = out * (1.0f / il);
+
+    // Emergency avoidance with pathfinding preservation
+    if (criticalNeighbors > 0 && avoidance.length() > 0.001f) {
+      Vector2D avoidDir = avoidance.normalized();
+      Vector2D perpendicular(-intendedDir.getY(), intendedDir.getX());
+
+      if (avoidDir.dot(perpendicular) < 0) {
+        perpendicular = Vector2D(intendedDir.getY(), -intendedDir.getX());
+      }
+
+      Vector2D emergencyVel = intendedDir * 0.6f + perpendicular * 0.8f;
+      float emLen = emergencyVel.length();
+      if (emLen > 0.01f) {
+        out = emergencyVel * (speed / emLen);
+      }
+    } else {
+      // Pathfinding-aware separation
+      float adaptiveStrength = strength;
+
+      if (counted >= maxNeighbors) {
+        adaptiveStrength = std::min(adaptiveStrength * 1.5f, 0.6f);
+      }
+      if (closest < baseRadius * 0.7f) {
+        adaptiveStrength = std::min(adaptiveStrength * 1.3f, 0.5f);
+      }
+
+      if (sep.length() > 0.001f) {
+        Vector2D sepDir = sep.normalized();
+        float directionConflict = -sepDir.dot(intendedDir);
+
+        if (directionConflict > 0.7f) {
+          Vector2D lateral(-intendedDir.getY(), intendedDir.getX());
+          if (sepDir.dot(lateral) < 0) {
+            lateral = Vector2D(intendedDir.getY(), -intendedDir.getX());
+          }
+
+          Vector2D redirected = intendedDir * 0.85f + lateral * adaptiveStrength * 1.2f;
+          float redirLen = redirected.length();
+          if (redirLen > 0.01f) {
+            out = redirected * (speed / redirLen);
+          }
+        } else {
+          Vector2D forwardBias = out * (1.0f - adaptiveStrength * 0.35f);
+          Vector2D separationForce = sep * adaptiveStrength * speed * 0.5f;
+          Vector2D blended = forwardBias + separationForce;
+
+          float bl = blended.length();
+          if (bl > 0.01f) {
+            out = blended * (speed / bl);
+          }
+        }
+      }
+    }
+  }
+
   return out;
 }
 
