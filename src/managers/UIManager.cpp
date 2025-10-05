@@ -717,7 +717,7 @@ void UIManager::updateLayout(const std::string &layoutID) {
   }
 
   switch (layout->m_type) {
-  case UILayoutType::ABSOLUTE:
+  case UILayoutType::ABSOLUTE_POS:
     applyAbsoluteLayout(layout);
     break;
   case UILayoutType::FLOW:

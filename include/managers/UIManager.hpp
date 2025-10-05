@@ -43,7 +43,7 @@ enum class UIComponentType {
 };
 
 // Layout Types
-enum class UILayoutType { ABSOLUTE, FLOW, GRID, STACK, ANCHOR };
+enum class UILayoutType { ABSOLUTE_POS, FLOW, GRID, STACK, ANCHOR };
 
 // UI States
 enum class UIState { NORMAL, HOVERED, PRESSED, DISABLED, FOCUSED };
@@ -164,7 +164,7 @@ struct UIComponent {
 // Layout Container
 struct UILayout {
   std::string m_id{};
-  UILayoutType m_type{UILayoutType::ABSOLUTE};
+  UILayoutType m_type{UILayoutType::ABSOLUTE_POS};
   UIRect m_bounds{};
   std::vector<std::string> m_childComponents{};
 
