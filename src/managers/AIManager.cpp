@@ -305,8 +305,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
     // Get player position for distance calculations
     // Distance calculation moved to processBatch to avoid redundant iteration
+    // OPTIMIZATION: Reduced update frequency from every 8 to every 16 frames
+    // Distance-based culling doesn't need frame-perfect accuracy
     EntityPtr player = m_playerEntity.lock();
-    bool shouldUpdateDistances = player && (currentFrame % 8 == 0);
+    bool shouldUpdateDistances = player && (currentFrame % 16 == 0);
     Vector2D playerPos = player ? player->getPosition() : Vector2D(0, 0);
 
     // THREAD-SAFE DOUBLE BUFFERING: Copy data BEFORE starting async tasks
@@ -1240,6 +1242,12 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   float maxDistSquared = maxDist * maxDist;
   bool hasPlayer = (playerPos.getX() != 0 || playerPos.getY() != 0);
 
+  // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
+  // Eliminates 418+ atomic loads per frame → single atomic load per batch
+  const auto &pf = PathfinderManager::Instance();
+  float worldWidth, worldHeight;
+  pf.getCachedWorldBounds(worldWidth, worldHeight);
+
   // Single lock acquisition for the entire batch - grab all data we need
   {
     std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -1316,29 +1324,37 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       if (shouldUpdate) {
         behavior->executeLogic(entity);
 
-        // Entity updates integrate their own movement
+        // Entity updates integrate their own movement AND handle animations
         entity->update(deltaTime);
 
-        // Centralized clamp pass using PathfinderManager cached bounds
+        // Centralized clamp pass using cached world bounds (NO atomic loads)
         float halfW = (idx < batchHalfW.size() ? batchHalfW[idx] : 16.0f);
         float halfH = (idx < batchHalfH.size() ? batchHalfH[idx] : 16.0f);
 
-        const auto &pf = PathfinderManager::Instance();
         Vector2D pos = entity->getPosition();
-        Vector2D clamped = pf.clampInsideExtents(pos, halfW, halfH, 0.0f);
         Vector2D vel = entity->getVelocity();
-        
+
+        // Inline clamping - no function call, no atomic load
+        float minX = halfW;
+        float maxX = worldWidth - halfW;
+        float minY = halfH;
+        float maxY = worldHeight - halfH;
+        Vector2D clamped(
+            std::clamp(pos.getX(), minX, maxX),
+            std::clamp(pos.getY(), minY, maxY)
+        );
+
         if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
           // Update entity position directly (bypassing individual collision updates)
           entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
-          
-          // Project velocity inward for boundary collisions  
+
+          // Project velocity inward for boundary collisions
           if (clamped.getX() < pos.getX() && vel.getX() < 0) vel.setX(0.0f);
           if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
           if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
           if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
           entity->Entity::setVelocity(vel); // Use base Entity::setVelocity
-          
+
           pos = clamped; // Update pos for batch accumulation
         }
 

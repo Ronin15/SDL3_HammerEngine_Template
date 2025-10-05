@@ -633,6 +633,20 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
     );
 }
 
+bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) const {
+    auto grid = std::atomic_load(&m_grid);
+    if (grid) {
+        const float gridCellSize = 64.0f;
+        outWidth = grid->getWidth() * gridCellSize;
+        outHeight = grid->getHeight() * gridCellSize;
+        return true;
+    }
+    // Fallback to default world size
+    outWidth = 3200.0f;
+    outHeight = 3200.0f;
+    return false;
+}
+
 Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float halfW, float halfH, float extraMargin) const {
     auto grid = std::atomic_load(&m_grid);
     if (grid) {
