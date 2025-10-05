@@ -119,6 +119,29 @@ struct AIPerformanceStats {
 };
 
 /**
+ * @brief Pre-fetched batch data for lock-free parallel processing
+ *
+ * This struct holds copies of all entity data needed for AI processing.
+ * By copying all data once (single lock), batches can process in parallel
+ * without any lock contention, eliminating serialized lock acquisition bottleneck.
+ */
+struct PreFetchedBatchData {
+    std::vector<EntityPtr> entities;
+    std::vector<std::shared_ptr<AIBehavior>> behaviors;
+    std::vector<float> halfWidths;
+    std::vector<float> halfHeights;
+    std::vector<AIEntityData::HotData> hotDataCopy;
+
+    void reserve(size_t capacity) {
+        entities.reserve(capacity);
+        behaviors.reserve(capacity);
+        halfWidths.reserve(capacity);
+        halfHeights.reserve(capacity);
+        hotDataCopy.reserve(capacity);
+    }
+};
+
+/**
  * @brief High-performance AI Manager
  */
 class AIManager {
@@ -470,6 +493,7 @@ private:
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
   void processBatch(size_t start, size_t end, float deltaTime, int bufferIndex,
                     const Vector2D &playerPos, bool updateDistances,
+                    const PreFetchedBatchData& preFetchedData,
                     std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
   void cleanupInactiveEntities();
