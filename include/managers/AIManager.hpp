@@ -483,6 +483,11 @@ private:
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
 
+  // Async batch tracking for safe shutdown
+  std::atomic<size_t> m_pendingBatchGroups{0};  // Number of active batch groups
+  std::mutex m_batchCompletionMutex;
+  std::condition_variable m_batchCompletionCV;
+
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =

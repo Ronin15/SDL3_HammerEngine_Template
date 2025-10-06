@@ -265,14 +265,15 @@ struct AIIntegrationTestFixture {
                     i, Vector2D(i * 10.0f, i * 10.0f));
                 entities.push_back(entity);
 
-                // Assign a random behavior to each entity
+                // Register entity for managed updates with behavior (uses queued assignment like production)
                 int behaviorIdx = i % NUM_BEHAVIORS;
-                AIManager::Instance().assignBehaviorToEntity(
-                    entity, "Behavior" + std::to_string(behaviorIdx));
-                // Register entity for managed updates
-                AIManager::Instance().registerEntityForUpdates(entity);
+                AIManager::Instance().registerEntityForUpdates(
+                    entity, 5, "Behavior" + std::to_string(behaviorIdx));
             }
         }
+
+        // Process the queued assignments (like production does on next frame)
+        AIManager::Instance().update(0.016f);
     }
 
     void safelyUnassignBehaviors() {
@@ -309,6 +310,9 @@ struct AIIntegrationTestFixture {
 
             // Wait for any pending unassign operations to complete
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+            // Properly reset AIManager state for next test (like production does between states)
+            AIManager::Instance().prepareForStateTransition();
 
             std::cout << "Behavior unassignment completed successfully" << std::endl;
         } catch (const std::exception& e) {
@@ -404,10 +408,10 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAssignmentAndUpdate) {
         }
     }
 
-    // If we have an entity, assign a behavior to it
+    // If we have an entity, queue a behavior assignment (async-safe API)
     if (entity) {
-        AIManager::Instance().assignBehaviorToEntity(entity, "Behavior0");
-        AIManager::Instance().update(0.016f); // ~60 FPS
+        AIManager::Instance().queueBehaviorAssignment(entity, "Behavior0");
+        AIManager::Instance().update(0.016f); // ~60 FPS - processes queued assignments
     }
 
     // Success criteria is simply not crashing

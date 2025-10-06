@@ -88,6 +88,18 @@ void AIManager::clean() {
   // Stop accepting new tasks
   m_globallyPaused.store(true, std::memory_order_release);
 
+  // CRITICAL: Wait for any pending async batches to complete before cleanup
+  {
+    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
+    if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
+      AI_DEBUG("Waiting for " + std::to_string(m_pendingBatchGroups.load()) + " pending batch groups to complete...");
+      m_batchCompletionCV.wait(lock, [this]() {
+        return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
+      });
+      AI_DEBUG("All pending batches completed");
+    }
+  }
+
   // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
   // Brief sleep allows ThreadSystem to process remaining tasks
   if (m_assignmentInProgress.load(std::memory_order_acquire)) {
@@ -149,6 +161,18 @@ void AIManager::prepareForStateTransition() {
 
   // Pause AI processing to prevent new tasks
   m_globallyPaused.store(true, std::memory_order_release);
+
+  // CRITICAL: Wait for any pending async batches to complete before state transition
+  {
+    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
+    if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
+      AI_DEBUG("Waiting for " + std::to_string(m_pendingBatchGroups.load()) + " pending batch groups to complete...");
+      m_batchCompletionCV.wait(lock, [this]() {
+        return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
+      });
+      AI_DEBUG("All pending batches completed");
+    }
+  }
 
   // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
   // Brief sleep allows ThreadSystem to process remaining tasks
@@ -509,8 +533,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
         // PRE-FETCH OPTIMIZATION: Copy ALL entity data ONCE with a single lock
         // This eliminates serialized lock acquisitions per batch (CRITICAL for parallel performance)
-        PreFetchedBatchData preFetchedData;
-        preFetchedData.reserve(entityCount);
+        // Use shared_ptr so async lambdas can safely access this data after update() returns
+        auto preFetchedData = std::make_shared<PreFetchedBatchData>();
+        preFetchedData->reserve(entityCount);
 
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -518,31 +543,31 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
           for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
             if (i < workBuffer.size() && workBuffer[i].active) {
-              preFetchedData.entities.push_back(m_storage.entities[i]);
-              preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+              preFetchedData->entities.push_back(m_storage.entities[i]);
+              preFetchedData->behaviors.push_back(m_storage.behaviors[i]);
+              preFetchedData->hotDataCopy.push_back(workBuffer[i]);
 
               // Get extents while we have the lock
               if (i < m_storage.halfWidths.size()) {
-                preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
-                preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
+                preFetchedData->halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
+                preFetchedData->halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
               } else if (m_storage.entities[i]) {
-                preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.entities[i]->getWidth() * 0.5f));
-                preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.entities[i]->getHeight() * 0.5f));
+                preFetchedData->halfWidths.push_back(std::max(1.0f, m_storage.entities[i]->getWidth() * 0.5f));
+                preFetchedData->halfHeights.push_back(std::max(1.0f, m_storage.entities[i]->getHeight() * 0.5f));
               } else {
-                preFetchedData.halfWidths.push_back(16.0f);
-                preFetchedData.halfHeights.push_back(16.0f);
+                preFetchedData->halfWidths.push_back(16.0f);
+                preFetchedData->halfHeights.push_back(16.0f);
               }
             } else {
               // Add nulls to maintain index alignment
-              preFetchedData.entities.push_back(nullptr);
-              preFetchedData.behaviors.push_back(nullptr);
-              preFetchedData.halfWidths.push_back(16.0f);
-              preFetchedData.halfHeights.push_back(16.0f);
+              preFetchedData->entities.push_back(nullptr);
+              preFetchedData->behaviors.push_back(nullptr);
+              preFetchedData->halfWidths.push_back(16.0f);
+              preFetchedData->halfHeights.push_back(16.0f);
               if (i < workBuffer.size()) {
-                preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+                preFetchedData->hotDataCopy.push_back(workBuffer[i]);
               } else {
-                preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
+                preFetchedData->hotDataCopy.push_back(AIEntityData::HotData{});
               }
             }
           }
@@ -551,16 +576,16 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // DEFERRED COLLISION UPDATE OPTIMIZATION:
         // Create per-batch collision update vectors to eliminate CollisionManager lock contention.
         // Each batch accumulates its updates independently, then we merge and submit once.
-        std::vector<std::vector<CollisionManager::KinematicUpdate>> batchCollisionUpdates(batchCount);
+        // Use shared_ptr so the lambda can safely capture this data for async completion
+        auto batchCollisionUpdates = std::make_shared<std::vector<std::vector<CollisionManager::KinematicUpdate>>>(batchCount);
         for (size_t i = 0; i < batchCount; ++i) {
           size_t estimatedSize = entitiesPerBatch + (i == batchCount - 1 ? remainingEntities : 0);
-          batchCollisionUpdates[i].reserve(estimatedSize);
+          (*batchCollisionUpdates)[i].reserve(estimatedSize);
         }
 
         // Atomic counter for batch completion synchronization
-        std::atomic<size_t> remainingBatches{batchCount};
-        std::mutex completionMutex;
-        std::condition_variable completionCV;
+        // Use shared_ptr so async lambdas can safely access this after update() returns
+        auto remainingBatches = std::make_shared<std::atomic<size_t>>(batchCount);
 
         // Build task vector for batch submission
         std::vector<std::function<void()>> tasks;
@@ -575,56 +600,60 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             end += remainingEntities;
           }
 
-          // Capture pre-fetched data by reference (safe - we wait for completion)
+          // Capture ALL data by shared_ptr value - safe for async execution after update() returns
           tasks.push_back([this, start, end, deltaTime, nextBuffer, playerPos,
-                          shouldUpdateDistances, &preFetchedData, &batchCollisionUpdates, i,
-                          &remainingBatches, &completionMutex, &completionCV]() {
+                          shouldUpdateDistances, preFetchedData, batchCollisionUpdates, i,
+                          remainingBatches]() {
             try {
               processBatch(start, end, deltaTime, playerPos,
-                          shouldUpdateDistances, preFetchedData, batchCollisionUpdates[i]);
+                          shouldUpdateDistances, *preFetchedData, (*batchCollisionUpdates)[i]);
             } catch (const std::exception &e) {
               AI_ERROR(std::string("Exception in AI batch: ") + e.what());
             } catch (...) {
               AI_ERROR("Unknown exception in AI batch");
             }
 
-            // Signal completion
-            if (remainingBatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-              std::lock_guard<std::mutex> lock(completionMutex);
-              completionCV.notify_one();
+            // When last batch completes, merge and submit collision updates asynchronously
+            if (remainingBatches->fetch_sub(1, std::memory_order_acq_rel) == 1) {
+              // ASYNC COLLISION MERGE: This is the last batch completing
+              // Merge all batch updates and submit once to CollisionManager
+              std::vector<CollisionManager::KinematicUpdate> mergedCollisionUpdates;
+              size_t totalUpdates = 0;
+              for (const auto& batchUpdates : *batchCollisionUpdates) {
+                totalUpdates += batchUpdates.size();
+              }
+              mergedCollisionUpdates.reserve(totalUpdates);
+
+              for (auto& batchUpdates : *batchCollisionUpdates) {
+                mergedCollisionUpdates.insert(mergedCollisionUpdates.end(),
+                                              std::make_move_iterator(batchUpdates.begin()),
+                                              std::make_move_iterator(batchUpdates.end()));
+              }
+
+              // Single collision system update - eliminates lock contention
+              if (!mergedCollisionUpdates.empty()) {
+                auto &cm = CollisionManager::Instance();
+                cm.updateKinematicBatchSOA(mergedCollisionUpdates);
+              }
+
+              // Signal batch group completion for safe shutdown
+              if (this->m_pendingBatchGroups.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+                std::lock_guard<std::mutex> lock(this->m_batchCompletionMutex);
+                this->m_batchCompletionCV.notify_all();
+              }
             }
           });
         }
 
+        // Track this batch group for safe shutdown
+        m_pendingBatchGroups.fetch_add(1, std::memory_order_release);
+
         // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
         threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::High, "AI_Batch");
 
-        // Wait for all batches to complete to maintain update->render safety
-        std::unique_lock<std::mutex> lock(completionMutex);
-        completionCV.wait(lock, [&remainingBatches]() {
-          return remainingBatches.load(std::memory_order_acquire) == 0;
-        });
-
-        // DEFERRED COLLISION UPDATE: Merge all batch updates and submit once
-        // This reduces CollisionManager lock acquisitions from O(batches) to O(1)
-        std::vector<CollisionManager::KinematicUpdate> mergedCollisionUpdates;
-        size_t totalUpdates = 0;
-        for (const auto& batchUpdates : batchCollisionUpdates) {
-          totalUpdates += batchUpdates.size();
-        }
-        mergedCollisionUpdates.reserve(totalUpdates);
-
-        for (auto& batchUpdates : batchCollisionUpdates) {
-          mergedCollisionUpdates.insert(mergedCollisionUpdates.end(),
-                                        std::make_move_iterator(batchUpdates.begin()),
-                                        std::make_move_iterator(batchUpdates.end()));
-        }
-
-        // Single collision system update - eliminates lock contention
-        if (!mergedCollisionUpdates.empty()) {
-          auto &cm = CollisionManager::Instance();
-          cm.updateKinematicBatchSOA(mergedCollisionUpdates);
-        }
+        // NO BLOCKING WAIT: Batches complete asynchronously
+        // GameEngine::update() mutex ensures batches finish before next frame
+        // Collision merge happens in last batch's completion callback
       }
 
       m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);

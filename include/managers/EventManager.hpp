@@ -23,6 +23,7 @@
 #include "utils/Vector2D.hpp"
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <functional>
 #include <memory>
@@ -591,6 +592,11 @@ private:
     EventData data;
   };
   mutable std::mutex m_dispatchMutex;
+
+  // Async batch tracking for safe shutdown
+  std::atomic<size_t> m_pendingBatchGroups{0};  // Number of active batch groups
+  std::mutex m_batchCompletionMutex;
+  std::condition_variable m_batchCompletionCV;
   mutable std::deque<PendingDispatch> m_pendingDispatch;
   size_t m_maxDispatchQueue{8192};
 

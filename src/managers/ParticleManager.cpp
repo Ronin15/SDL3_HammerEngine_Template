@@ -570,6 +570,18 @@ void ParticleManager::clean() {
   m_isShutdown = true;
   m_initialized.store(false, std::memory_order_release);
 
+  // CRITICAL: Wait for any pending async batches to complete before cleanup
+  {
+    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
+    if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
+      PARTICLE_DEBUG("Waiting for " + std::to_string(m_pendingBatchGroups.load()) + " pending batch groups to complete...");
+      m_batchCompletionCV.wait(lock, [this]() {
+        return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
+      });
+      PARTICLE_DEBUG("All pending batches completed");
+    }
+  }
+
   // Clear all storage - no locks needed for lock-free storage
   m_storage.particles[0].clear();
   m_storage.particles[1].clear();
@@ -1998,9 +2010,8 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // contention significantly when submitting multiple batches.
 
   // Atomic counter for batch completion synchronization
-  std::atomic<size_t> remainingBatches{batchCount};
-  std::mutex completionMutex;
-  std::condition_variable completionCV;
+  // Use shared_ptr so async lambdas can safely access this after update() returns
+  auto remainingBatches = std::make_shared<std::atomic<size_t>>(batchCount);
 
   // Build task vector for batch submission
   std::vector<std::function<void()>> tasks;
@@ -2017,14 +2028,15 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
     // Skip empty batches or invalid ranges
     if (startIdx >= bufferSize || startIdx >= endIdx) {
       // Decrement counter for skipped batch
-      remainingBatches.fetch_sub(1, std::memory_order_relaxed);
+      remainingBatches->fetch_sub(1, std::memory_order_relaxed);
       continue;
     }
 
-    // Build task with captured values (currentBuffer captured by reference is safe
-    // since we wait for completion before returning)
+    // Build task with captured values
+    // currentBuffer captured by reference is safe - it points to member storage
+    // remainingBatches captured by shared_ptr value - safe for async execution
     tasks.push_back([this, &currentBuffer, startIdx, endIdx, deltaTime,
-                    windPhase = m_windPhase, &remainingBatches, &completionMutex, &completionCV]() {
+                    windPhase = m_windPhase, remainingBatches]() {
       try {
         updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
       } catch (const std::exception &e) {
@@ -2033,23 +2045,25 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
         PARTICLE_ERROR("Unknown exception in particle batch");
       }
 
-      // Signal completion
-      if (remainingBatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        std::lock_guard<std::mutex> lock(completionMutex);
-        completionCV.notify_one();
+      // When last batch completes, signal batch group completion for safe shutdown
+      if (remainingBatches->fetch_sub(1, std::memory_order_acq_rel) == 1) {
+        if (this->m_pendingBatchGroups.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+          std::lock_guard<std::mutex> lock(this->m_batchCompletionMutex);
+          this->m_batchCompletionCV.notify_all();
+        }
       }
     });
   }
 
-  // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
+  // Track this batch group for safe shutdown
   if (!tasks.empty()) {
+    m_pendingBatchGroups.fetch_add(1, std::memory_order_release);
+
+    // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
     threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::Normal, "Particle_Batch");
 
-    // Wait for all batches to complete to maintain update->render safety
-    std::unique_lock<std::mutex> lock(completionMutex);
-    completionCV.wait(lock, [&remainingBatches]() {
-      return remainingBatches.load(std::memory_order_acquire) == 0;
-    });
+    // NO BLOCKING WAIT: Batches complete asynchronously
+    // GameEngine::update() mutex ensures batches finish before next frame
   }
 
   m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
