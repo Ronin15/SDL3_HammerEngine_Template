@@ -79,7 +79,25 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+option(USE_MOLD_LINKER "Use mold linker if available" ON)
 
+if(USE_MOLD_LINKER)
+    find_program(MOLD_LINKER mold)
+    
+    if(MOLD_LINKER)
+        message(STATUS "Using mold linker")
+        
+        if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.29")
+            set(CMAKE_LINKER_TYPE MOLD)
+        else()
+            if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+                add_link_options("-fuse-ld=mold")
+            endif()
+        endif()
+    else()
+        message(WARNING "mold linker requested but not found")
+    endif()
+endif()
 
 # Export compile commands for use with tools like clangd
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
