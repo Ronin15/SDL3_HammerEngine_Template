@@ -131,6 +131,7 @@ public:
     bool getCollisionBodySOA(EntityID id, size_t& outIndex) const;
     void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
     void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
+    Vector2D getCollisionBodyVelocitySOA(EntityID id) const;
     void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
     void attachEntity(EntityID id, EntityPtr entity);
     void processPendingCommands(); // Process queued collision body commands (for tests/immediate processing)
@@ -232,6 +233,10 @@ private:
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
     static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
+
+    // Collision prediction configuration - prevents diagonal tunneling through corners
+    static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
+    static constexpr float FAST_VELOCITY_THRESHOLD = 250.0f;        // Velocity threshold for AABB expansion (pixels/frame)
 
     // Camera culling support
     struct CullingArea {

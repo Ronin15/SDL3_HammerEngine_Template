@@ -138,26 +138,13 @@ void Player::update(float deltaTime) {
   // State machine handles input and sets velocity
   m_stateManager.update(deltaTime);
 
-  // Player integrates its own movement
-  Vector2D newPosition = m_position + m_velocity * deltaTime;
-
-  // Constrain to world bounds (in pixels)
-  const WorldManager& worldManager = WorldManager::Instance();
-  float minX, minY, maxX, maxY;
-  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // WorldManager returns bounds in PIXELS; clamp using half sprite extents
-    float worldMinX = minX;
-    float worldMinY = minY;
-    float worldMaxX = maxX;
-    float worldMaxY = maxY;
-    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
-    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
-    newPosition.setX(std::clamp(newPosition.getX(), worldMinX + HALF_SPRITE_WIDTH, worldMaxX - HALF_SPRITE_WIDTH));
-    newPosition.setY(std::clamp(newPosition.getY(), worldMinY + HALF_SPRITE_HEIGHT, worldMaxY - HALF_SPRITE_HEIGHT));
+  // Sync velocity to collision body - let collision system handle movement integration
+  // This prevents micro-bouncing from double integration (entity + physics)
+  // IMPORTANT: Don't overwrite velocity during collision sync (would undo velocity damping)
+  auto &cm = CollisionManager::Instance();
+  if (!cm.isSyncing()) {
+    cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
   }
-
-  // Update position and sync to collision body
-  setPosition(newPosition);
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
