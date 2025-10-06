@@ -567,9 +567,12 @@ void CollisionManager::onTileChanged(int x, int y) {
       // Only create collision body from the top-left tile of each building
       // Check if this is the top-left tile (no neighbors above or left with same building ID)
       bool isTopLeft = true;
-      if (x > 0 && world->grid[y][x - 1].buildingId == tile.buildingId)
+      uint32_t leftBuildingId = (x > 0) ? world->grid[y][x - 1].buildingId : 0;
+      uint32_t topBuildingId = (y > 0) ? world->grid[y - 1][x].buildingId : 0;
+
+      if (x > 0 && leftBuildingId == tile.buildingId)
         isTopLeft = false;
-      if (y > 0 && world->grid[y - 1][x].buildingId == tile.buildingId)
+      if (y > 0 && topBuildingId == tile.buildingId)
         isTopLeft = false;
 
       if (isTopLeft) {
@@ -584,6 +587,7 @@ void CollisionManager::onTileChanged(int x, int y) {
         float cy = y * tileSize + tileSize;    // Center at 1 tile offset
         Vector2D center(cx, cy);
         Vector2D halfSize(tileSize, tileSize);
+
         addCollisionBodySOA(buildingId, center, halfSize, BodyType::STATIC,
                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
       }
@@ -896,6 +900,14 @@ void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2
   if (getCollisionBodySOA(id, index)) {
     m_storage.hotData[index].velocity = newVelocity;
   }
+}
+
+Vector2D CollisionManager::getCollisionBodyVelocitySOA(EntityID id) const {
+  size_t index;
+  if (getCollisionBodySOA(id, index)) {
+    return m_storage.hotData[index].velocity;
+  }
+  return Vector2D(0, 0);
 }
 
 void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize) {
@@ -1356,6 +1368,12 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
     float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
 
+    // Reject edge-touch collisions (floating-point precision can create overlapX/Y near 0.0)
+    constexpr float MIN_OVERLAP = 0.01f;
+    if (overlapX < MIN_OVERLAP || overlapY < MIN_OVERLAP) {
+      continue;
+    }
+
     // Determine which axis has minimum penetration
     float minPen;
     Vector2D normal;
@@ -1418,6 +1436,32 @@ void CollisionManager::updateSOA(float dt) {
   if (m_staticHashDirty) {
     rebuildStaticSpatialHash();
     m_staticHashDirty = false;
+  }
+
+  // MOVEMENT INTEGRATION: Apply velocity to positions for dynamic/kinematic bodies
+  // This must happen BEFORE collision detection so we detect collisions with the new positions
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
+
+    BodyType type = static_cast<BodyType>(hot.bodyType);
+    if (type != BodyType::STATIC) {
+      // Integrate movement: newPos = pos + vel * dt
+      Vector2D movement = hot.velocity * dt;
+
+      // PENETRATION PREVENTION: Clamp movement to prevent excessive penetration in a single frame
+      // Maximum movement should not exceed the smallest dimension of the collision body
+      float maxMovement = std::min(hot.halfSize.getX(), hot.halfSize.getY()) * 0.75f;
+      float movementMag = movement.length();
+
+      if (movementMag > maxMovement) {
+        // Scale down movement to prevent deep penetration
+        movement = movement * (maxMovement / movementMag);
+      }
+
+      hot.position += movement;
+      hot.aabbDirty = 1; // Mark AABB as dirty after position change
+    }
   }
 
   // Track culling metrics
@@ -1703,7 +1747,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   // Apply velocity damping for dynamic bodies
 #ifdef COLLISION_SIMD_SSE2
-  auto dampenVelocitySIMD = [&collision](Vector2D& velocity, float restitution) {
+  auto dampenVelocitySIMD = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
     // SIMD dot product
     __m128 vel = _mm_set_ps(0, 0, velocity.getY(), velocity.getX());
     __m128 norm = _mm_set_ps(0, 0, collision.normal.getY(), collision.normal.getX());
@@ -1717,7 +1761,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     // SIMD velocity damping
     __m128 vdotnVec = _mm_set1_ps(vdotn);
     __m128 normalVel = _mm_mul_ps(norm, vdotnVec);
-    __m128 dampFactor = _mm_set1_ps(1.0f + restitution);
+
+    // For static collisions, zero velocity; for dynamic, use restitution
+    __m128 dampFactor = isStatic ? _mm_set1_ps(1.0f) : _mm_set1_ps(1.0f + restitution);
     __m128 dampedVel = _mm_mul_ps(normalVel, dampFactor);
     vel = _mm_sub_ps(vel, dampedVel);
 
@@ -1728,27 +1774,39 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   };
 
   if (typeA == BodyType::DYNAMIC) {
-    dampenVelocitySIMD(hotA.velocity, hotA.restitution);
+    bool staticCollision = (typeB == BodyType::STATIC);
+    dampenVelocitySIMD(hotA.velocity, hotA.restitution, staticCollision);
   }
   if (typeB == BodyType::DYNAMIC) {
-    dampenVelocitySIMD(hotB.velocity, hotB.restitution);
+    bool staticCollision = (typeA == BodyType::STATIC);
+    dampenVelocitySIMD(hotB.velocity, hotB.restitution, staticCollision);
   }
 #else
   // Scalar fallback
-  auto dampenVelocity = [&collision](Vector2D& velocity, float restitution) {
+  auto dampenVelocity = [&collision, typeA, typeB](Vector2D& velocity, float restitution, bool isStatic) {
     float vdotn = velocity.getX() * collision.normal.getX() +
                   velocity.getY() * collision.normal.getY();
     if (vdotn > 0) return; // Moving away from collision
 
-    Vector2D normalVelocity = collision.normal * vdotn;
-    velocity -= normalVelocity * (1.0f + restitution);
+    // For collisions with static objects, completely zero velocity in collision direction
+    // to prevent continuous penetration when input keeps setting velocity
+    if (isStatic) {
+      Vector2D normalVelocity = collision.normal * vdotn;
+      velocity -= normalVelocity; // Remove all velocity along normal
+    } else {
+      // For dynamic-dynamic collisions, use restitution-based damping
+      Vector2D normalVelocity = collision.normal * vdotn;
+      velocity -= normalVelocity * (1.0f + restitution);
+    }
   };
 
   if (typeA == BodyType::DYNAMIC) {
-    dampenVelocity(hotA.velocity, hotA.restitution);
+    bool staticCollision = (typeB == BodyType::STATIC);
+    dampenVelocity(hotA.velocity, hotA.restitution, staticCollision);
   }
   if (typeB == BodyType::DYNAMIC) {
-    dampenVelocity(hotB.velocity, hotB.restitution);
+    bool staticCollision = (typeA == BodyType::STATIC);
+    dampenVelocity(hotB.velocity, hotB.restitution, staticCollision);
   }
 #endif
 
