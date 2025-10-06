@@ -171,9 +171,7 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
        // Medium density: moderate expansion
        moveDistance = baseDistance * 1.3f;
      }
-    
-    Vector2D dest = position + state.currentDirection * moveDistance;
-    
+
     // PERFORMANCE FIX: Use cached world bounds instead of expensive WorldManager call
     // Cache world bounds in entity state to avoid repeated WorldManager calls
     if (state.cachedBounds.maxX == 0.0f) { // Initialize cached bounds once
@@ -191,8 +189,39 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
         state.cachedBounds.maxY = 3200.0f;
       }
     }
-    
-    // Use cached bounds for validation
+
+    // BOUNDARY AVOIDANCE: Bias direction away from world edges to prevent stuck NPCs
+    const float EDGE_THRESHOLD = 50.0f; // Start avoiding when within 400px of edge
+    Vector2D boundaryForce(0, 0);
+
+    if (position.getX() < state.cachedBounds.minX + EDGE_THRESHOLD) {
+      // Near left edge - push right
+      float strength = 1.0f - ((position.getX() - state.cachedBounds.minX) / EDGE_THRESHOLD);
+      boundaryForce = boundaryForce + Vector2D(strength, 0);
+    } else if (position.getX() > state.cachedBounds.maxX - EDGE_THRESHOLD) {
+      // Near right edge - push left
+      float strength = 1.0f - ((state.cachedBounds.maxX - position.getX()) / EDGE_THRESHOLD);
+      boundaryForce = boundaryForce + Vector2D(-strength, 0);
+    }
+
+    if (position.getY() < state.cachedBounds.minY + EDGE_THRESHOLD) {
+      // Near top edge - push down
+      float strength = 1.0f - ((position.getY() - state.cachedBounds.minY) / EDGE_THRESHOLD);
+      boundaryForce = boundaryForce + Vector2D(0, strength);
+    } else if (position.getY() > state.cachedBounds.maxY - EDGE_THRESHOLD) {
+      // Near bottom edge - push up
+      float strength = 1.0f - ((state.cachedBounds.maxY - position.getY()) / EDGE_THRESHOLD);
+      boundaryForce = boundaryForce + Vector2D(0, -strength);
+    }
+
+    // Apply boundary avoidance to direction (blend with current direction)
+    if (boundaryForce.lengthSquared() > 0.01f) {
+      state.currentDirection = (state.currentDirection * 0.4f + boundaryForce.normalized() * 0.6f).normalized();
+    }
+
+    Vector2D dest = position + state.currentDirection * moveDistance;
+
+    // Clamp destination as final safety net
     const float MARGIN = 256.0f;
     dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
     dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
