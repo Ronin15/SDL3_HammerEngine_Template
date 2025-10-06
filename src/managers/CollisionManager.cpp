@@ -15,6 +15,8 @@
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <queue>
+#include <set>
 #include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -265,52 +267,89 @@ size_t CollisionManager::createStaticObstacleBodies() {
   const float tileSize = 32.0f;
   const int h = static_cast<int>(world->grid.size());
 
+  // Track which tiles we've already processed
+  std::set<std::pair<int, int>> processedTiles;
+
   for (int y = 0; y < h; ++y) {
     const int w = static_cast<int>(world->grid[y].size());
     for (int x = 0; x < w; ++x) {
       const auto &tile = world->grid[y][x];
 
-      // Create solid collision bodies for BUILDING obstacles only (64x64 per
-      // building) ROCK, TREE, WATER are handled as triggers with movement
-      // penalties
-      if (tile.obstacleType == ObstacleType::BUILDING) {
-        // Only create collision body from the top-left tile of each building
-        // Check if this is the top-left tile (no neighbors above or left with same building ID)
-        bool isTopLeft = true;
-        if (x > 0 && world->grid[y][x - 1].buildingId == tile.buildingId)
-          isTopLeft = false;
-        if (y > 0 && world->grid[y - 1][x].buildingId == tile.buildingId)
-          isTopLeft = false;
+      if (tile.obstacleType != ObstacleType::BUILDING || tile.buildingId == 0)
+        continue;
 
-        if (isTopLeft) {
-          // Create 64x64 collision body for the entire building (2x2 tiles)
-          float cx =
-              x * tileSize + tileSize; // Center at 1 tile offset (64px / 2)
-          float cy =
-              y * tileSize + tileSize; // Center at 1 tile offset (64px / 2)
-          AABB aabb(
-              cx, cy, tileSize,
-              tileSize); // 64x64 collision box (tileSize * 2 / 2 = tileSize)
+      // Skip if we've already processed this tile as part of another building
+      if (processedTiles.find({x, y}) != processedTiles.end())
+        continue;
 
-          // Use building ID for collision body to ensure uniqueness per
-          // building
-          EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                        static_cast<EntityID>(tile.buildingId);
+      // Flood fill to find all connected building tiles with same buildingId
+      std::set<std::pair<int, int>> visited;
+      std::queue<std::pair<int, int>> toVisit;
+      std::vector<std::pair<int, int>> buildingTiles;
 
-          // Check if this static body already exists in SOA storage
-          if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-            Vector2D center(aabb.center.getX(), aabb.center.getY());
-            Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-            addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
-                               CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-            ++created;
+      toVisit.push({x, y});
+      visited.insert({x, y});
+
+      while (!toVisit.empty()) {
+        auto [cx, cy] = toVisit.front();
+        toVisit.pop();
+        buildingTiles.push_back({cx, cy});
+        processedTiles.insert({cx, cy});
+
+        const int dx[] = {-1, 1, 0, 0};
+        const int dy[] = {0, 0, -1, 1};
+
+        for (int i = 0; i < 4; ++i) {
+          int nx = cx + dx[i];
+          int ny = cy + dy[i];
+
+          if (nx < 0 || ny < 0 || ny >= h || nx >= w)
+            continue;
+          if (visited.find({nx, ny}) != visited.end())
+            continue;
+
+          const auto& neighbor = world->grid[ny][nx];
+          if (neighbor.obstacleType == ObstacleType::BUILDING &&
+              neighbor.buildingId == tile.buildingId) {
+            visited.insert({nx, ny});
+            toVisit.push({nx, ny});
           }
         }
+      }
+
+      // Calculate unified AABB for all connected building tiles
+      int minX = x, maxX = x, minY = y, maxY = y;
+      for (const auto& [tx, ty] : buildingTiles) {
+        minX = std::min(minX, tx);
+        maxX = std::max(maxX, tx);
+        minY = std::min(minY, ty);
+        maxY = std::max(maxY, ty);
+      }
+
+      float worldMinX = minX * tileSize;
+      float worldMinY = minY * tileSize;
+      float worldMaxX = (maxX + 1) * tileSize;
+      float worldMaxY = (maxY + 1) * tileSize;
+
+      float cx = (worldMinX + worldMaxX) * 0.5f;
+      float cy = (worldMinY + worldMaxY) * 0.5f;
+      float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+      float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+
+      Vector2D center(cx, cy);
+      Vector2D halfSize(halfWidth, halfHeight);
+
+      EntityID id = (static_cast<EntityID>(3ull) << 61) |
+                    static_cast<EntityID>(tile.buildingId);
+
+      if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
+        addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                           CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        ++created;
       }
     }
   }
 
-  // Log removed for performance
   return created;
 }
 
@@ -564,29 +603,85 @@ void CollisionManager::onTileChanged(int x, int y) {
     removeCollisionBodySOA(oldObstacleId);
 
     if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
-      // Only create collision body from the top-left tile of each building
-      // Check if this is the top-left tile (no neighbors above or left with same building ID)
-      bool isTopLeft = true;
-      uint32_t leftBuildingId = (x > 0) ? world->grid[y][x - 1].buildingId : 0;
-      uint32_t topBuildingId = (y > 0) ? world->grid[y - 1][x].buildingId : 0;
+      // Find all connected building tiles to create unified collision body
+      // This prevents collision seams when buildings are adjacent
+      std::set<std::pair<int, int>> visited;
+      std::queue<std::pair<int, int>> toVisit;
+      std::vector<std::pair<int, int>> buildingTiles;
 
-      if (x > 0 && leftBuildingId == tile.buildingId)
-        isTopLeft = false;
-      if (y > 0 && topBuildingId == tile.buildingId)
-        isTopLeft = false;
+      toVisit.push({x, y});
+      visited.insert({x, y});
+
+      // Flood fill to find all connected building tiles (same buildingId or adjacent buildings)
+      while (!toVisit.empty()) {
+        auto [cx, cy] = toVisit.front();
+        toVisit.pop();
+        buildingTiles.push_back({cx, cy});
+
+        // Check all 4 adjacent tiles for building connectivity
+        const int dx[] = {-1, 1, 0, 0};
+        const int dy[] = {0, 0, -1, 1};
+
+        for (int i = 0; i < 4; ++i) {
+          int nx = cx + dx[i];
+          int ny = cy + dy[i];
+
+          if (nx < 0 || ny < 0 || ny >= static_cast<int>(world->grid.size()) ||
+              nx >= static_cast<int>(world->grid[ny].size()))
+            continue;
+
+          if (visited.find({nx, ny}) != visited.end())
+            continue;
+
+          const auto& neighbor = world->grid[ny][nx];
+
+          // Only connect tiles with the SAME buildingId (forms one building unit)
+          if (neighbor.obstacleType == ObstacleType::BUILDING &&
+              neighbor.buildingId == tile.buildingId) {
+            visited.insert({nx, ny});
+            toVisit.push({nx, ny});
+          }
+        }
+      }
+
+      // Only create collision body if this is the top-left tile of the cluster
+      bool isTopLeft = true;
+      for (const auto& [tx, ty] : buildingTiles) {
+        if (ty < y || (ty == y && tx < x)) {
+          isTopLeft = false;
+          break;
+        }
+      }
 
       if (isTopLeft) {
-        // Create 64x64 collision body for the entire building using building ID
+        // Calculate unified AABB for all connected building tiles
+        int minX = x, maxX = x, minY = y, maxY = y;
+        for (const auto& [tx, ty] : buildingTiles) {
+          minX = std::min(minX, tx);
+          maxX = std::max(maxX, tx);
+          minY = std::min(minY, ty);
+          maxY = std::max(maxY, ty);
+        }
+
+        // Calculate center and half-size for the unified collision body
+        float worldMinX = minX * tileSize;
+        float worldMinY = minY * tileSize;
+        float worldMaxX = (maxX + 1) * tileSize;
+        float worldMaxY = (maxY + 1) * tileSize;
+
+        float cx = (worldMinX + worldMaxX) * 0.5f;
+        float cy = (worldMinY + worldMaxY) * 0.5f;
+        float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+        float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+
+        Vector2D center(cx, cy);
+        Vector2D halfSize(halfWidth, halfHeight);
+
+        // Use the current tile's buildingId for the unified body
         EntityID buildingId =
             (static_cast<EntityID>(3ull) << 61) |
             static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-        removeCollisionBodySOA(
-            buildingId); // Remove existing building collision body if any
-
-        float cx = x * tileSize + tileSize;    // Center at 1 tile offset
-        float cy = y * tileSize + tileSize;    // Center at 1 tile offset
-        Vector2D center(cx, cy);
-        Vector2D halfSize(tileSize, tileSize);
+        removeCollisionBodySOA(buildingId);
 
         addCollisionBodySOA(buildingId, center, halfSize, BodyType::STATIC,
                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
