@@ -139,6 +139,7 @@ void AIManager::clean() {
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
+  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   AI_INFO("AIManager shutdown complete");
 }
@@ -226,6 +227,7 @@ void AIManager::prepareForStateTransition() {
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
   m_lastCleanupFrame.store(0, std::memory_order_relaxed);
+  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   // Reset performance tracking
   {
