@@ -400,7 +400,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Use deferred collision update for consistency
         std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
         collisionUpdates.reserve(entityCount);
-        processBatch(0, entityCount, deltaTime, nextBuffer, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
+        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
         // Submit collision updates
         if (!collisionUpdates.empty()) {
@@ -490,7 +490,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Single batch - still use deferred collision update for consistency
         std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
         collisionUpdates.reserve(entityCount);
-        processBatch(0, entityCount, deltaTime, nextBuffer, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
+        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
         // Submit collision updates
         if (!collisionUpdates.empty()) {
@@ -578,7 +578,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                           shouldUpdateDistances, &preFetchedData, &batchCollisionUpdates, i,
                           &remainingBatches, &completionMutex, &completionCV]() {
             try {
-              processBatch(start, end, deltaTime, nextBuffer, playerPos,
+              processBatch(start, end, deltaTime, playerPos,
                           shouldUpdateDistances, preFetchedData, batchCollisionUpdates[i]);
             } catch (const std::exception &e) {
               AI_ERROR(std::string("Exception in AI batch: ") + e.what());
@@ -669,7 +669,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       // Use deferred collision update for consistency
       std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
       collisionUpdates.reserve(entityCount);
-      processBatch(0, entityCount, deltaTime, nextBuffer, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
+      processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
       // Submit collision updates
       if (!collisionUpdates.empty()) {
@@ -1356,7 +1356,7 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
-                             int bufferIndex, const Vector2D &playerPos, bool updateDistances,
+                             const Vector2D &playerPos, bool updateDistances,
                              const PreFetchedBatchData& preFetchedData,
                              std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
   size_t batchExecutions = 0;
