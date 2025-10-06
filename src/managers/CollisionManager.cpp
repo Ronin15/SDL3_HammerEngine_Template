@@ -316,9 +316,16 @@ size_t CollisionManager::createStaticObstacleBodies() {
 
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
-  size_t indexA, indexB;
-  if (!getCollisionBodySOA(a, indexA) || !getCollisionBodySOA(b, indexB))
+  // Thread-safe read access - single lock for entire operation
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  auto itA = m_storage.entityToIndex.find(a);
+  auto itB = m_storage.entityToIndex.find(b);
+  if (itA == m_storage.entityToIndex.end() || itB == m_storage.entityToIndex.end())
     return false;
+
+  size_t indexA = itA->second;
+  size_t indexB = itB->second;
 
   AABB aabbA = m_storage.computeAABB(indexA);
   AABB aabbB = m_storage.computeAABB(indexB);
@@ -327,6 +334,9 @@ bool CollisionManager::overlaps(EntityID a, EntityID b) const {
 
 void CollisionManager::queryArea(const AABB &area,
                                  std::vector<EntityID> &out) const {
+  // Thread-safe read access - allows concurrent reads from multiple AI threads
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
   // Query SOA storage for bodies that intersect with the area
   out.clear();
 
@@ -342,32 +352,48 @@ void CollisionManager::queryArea(const AABB &area,
 }
 
 bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
-  size_t index;
-  if (!getCollisionBodySOA(id, index))
+  // Thread-safe read access - single lock for entire operation
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end())
     return false;
-  outCenter = m_storage.hotData[index].position;
+
+  outCenter = m_storage.hotData[it->second].position;
   return true;
 }
 
 bool CollisionManager::isDynamic(EntityID id) const {
-  size_t index;
-  if (!getCollisionBodySOA(id, index))
+  // Thread-safe read access - single lock for entire operation
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end())
     return false;
-  return static_cast<BodyType>(m_storage.hotData[index].bodyType) == BodyType::DYNAMIC;
+
+  return static_cast<BodyType>(m_storage.hotData[it->second].bodyType) == BodyType::DYNAMIC;
 }
 
 bool CollisionManager::isKinematic(EntityID id) const {
-  size_t index;
-  if (!getCollisionBodySOA(id, index))
+  // Thread-safe read access - single lock for entire operation
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end())
     return false;
-  return static_cast<BodyType>(m_storage.hotData[index].bodyType) == BodyType::KINEMATIC;
+
+  return static_cast<BodyType>(m_storage.hotData[it->second].bodyType) == BodyType::KINEMATIC;
 }
 
 bool CollisionManager::isTrigger(EntityID id) const {
-  size_t index;
-  if (!getCollisionBodySOA(id, index))
+  // Thread-safe read access - single lock for entire operation
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end())
     return false;
-  return m_storage.hotData[index].isTrigger;
+
+  return m_storage.hotData[it->second].isTrigger;
 }
 
 

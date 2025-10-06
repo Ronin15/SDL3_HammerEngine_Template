@@ -23,12 +23,15 @@ ninja -C build
 
 ### Debug with AddressSanitizer
 ```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF
 ninja -C build
 ```
+**Note**: Disable mold linker with ASan (`-DUSE_MOLD_LINKER=OFF`).
 
 ### Build System Notes
 - **Output Directories**: Debug builds output to `bin/debug/`, Release builds to `bin/release/`
+- **Reconfiguring**: To change build settings, just re-run cmake with new flags (no need to delete `build/`). To force clean reconfigure: `rm build/CMakeCache.txt` then reconfigure.
+- **Clean Build**: `ninja -C build clean` or for full rebuild: `rm -rf build/`
 
 ### Running the Application
 - Debug: `./bin/debug/SDL3_Template`
