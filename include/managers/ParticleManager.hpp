@@ -27,6 +27,7 @@
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
 #include <mutex>
 #include <new>
 #include <shared_mutex>
@@ -912,6 +913,11 @@ private:
       m_effectsMutex;              // Only for effect definitions (rare writes)
   mutable std::mutex m_statsMutex; // Only for performance stats
   mutable std::mutex m_weatherMutex; // For weather effect changes
+
+  // Async batch tracking for safe shutdown
+  std::atomic<size_t> m_pendingBatchGroups{0};  // Number of active batch groups
+  std::mutex m_batchCompletionMutex;
+  std::condition_variable m_batchCompletionCV;
 
   // NOTE: No update mutex - GameEngine handles update/render synchronization
 

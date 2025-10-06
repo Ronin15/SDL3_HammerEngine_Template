@@ -155,6 +155,14 @@ void EventManager::clean() {
     return;
   }
 
+  // Wait for any pending async batches to complete before cleanup
+  if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
+    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
+    m_batchCompletionCV.wait(lock, [this]() {
+      return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
+    });
+  }
+
   // Only log if not in shutdown to avoid static destruction order issues
   if (!m_isShutdown) {
     EVENT_INFO("Cleaning up EventManager");
@@ -713,10 +721,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   auto startTime = getCurrentTimeNanos();
 
   // Copy events to local vector to minimize lock time
-  // Note: use an automatic storage vector here since work is dispatched to
-  // worker threads and capturing a thread_local by reference is unsafe and
-  // triggers compiler warnings.
-  std::vector<EventPtr> localEvents;
+  // Use shared_ptr so async lambdas can safely access this after processEventsByType() returns
+  auto localEvents = std::make_shared<std::vector<EventPtr>>();
   {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
     const auto &container = m_eventsByType[static_cast<size_t>(typeId)];
@@ -725,14 +731,14 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       return;
     }
 
-    localEvents.clear();
-    localEvents.reserve(container.size());
+    localEvents->clear();
+    localEvents->reserve(container.size());
     for (const auto &ed : container) {
-      if (ed.isActive() && ed.event) localEvents.push_back(ed.event);
+      if (ed.isActive() && ed.event) localEvents->push_back(ed.event);
     }
   }
 
-  if (localEvents.empty()) {
+  if (localEvents->empty()) {
     return;
   }
 
@@ -757,12 +763,12 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 std::to_string(queueCapacity) +
                 "), using single-threaded processing");
     m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    for (auto &evt : localEvents) { evt->update(); }
+    for (auto &evt : *localEvents) { evt->update(); }
 
     // Record performance and return early
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
-    if (timeMs > 1.0 || localEvents.size() > 50) {
+    if (timeMs > 1.0 || localEvents->size() > 50) {
       recordPerformance(typeId, timeMs);
     }
     return;
@@ -770,7 +776,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   // Use buffer capacity for high workloads
   size_t optimalWorkerCount =
-      budget.getOptimalWorkerCount(eventWorkerBudget, localEvents.size(), 100);
+      budget.getOptimalWorkerCount(eventWorkerBudget, localEvents->size(), 100);
 
   // Store optimal worker count and mark as threaded
   m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
@@ -782,7 +788,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   auto [batchCount, calculatedBatchSize] = HammerEngine::calculateBatchStrategy(
       HammerEngine::EVENT_BATCH_CONFIG,
-      localEvents.size(),
+      localEvents->size(),
       threshold,
       optimalWorkerCount,
       queuePressure
@@ -799,7 +805,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   if (batchCount > 1) {
     // Debug thread allocation info periodically
     static uint64_t debugFrameCounter = 0;
-    if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
+    if (++debugFrameCounter % 300 == 0 && !localEvents->empty()) {
       EVENT_DEBUG("Event Thread Allocation - Workers: " +
                   std::to_string(optimalWorkerCount) + "/" +
                   std::to_string(availableWorkers) +
@@ -807,17 +813,16 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                   ", Batches: " + std::to_string(batchCount));
     }
 
-    size_t batchSize = localEvents.size() / batchCount;
-    size_t remainingEvents = localEvents.size() % batchCount;
+    size_t batchSize = localEvents->size() / batchCount;
+    size_t remainingEvents = localEvents->size() % batchCount;
 
     // PERFORMANCE OPTIMIZATION: Use batchEnqueueTasks() for O(1) lock acquisition
     // instead of O(N) individual enqueue calls. This reduces ThreadSystem mutex
     // contention significantly when submitting multiple batches.
 
     // Atomic counter for batch completion synchronization
-    std::atomic<size_t> remainingBatches{batchCount};
-    std::mutex completionMutex;
-    std::condition_variable completionCV;
+    // Use shared_ptr so async lambdas can safely access this after update() returns
+    auto remainingBatches = std::make_shared<std::atomic<size_t>>(batchCount);
 
     // Build task vector for batch submission
     std::vector<std::function<void()>> tasks;
@@ -832,12 +837,13 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         end += remainingEvents;
       }
 
-      // Build task with captured values (localEvents captured by reference is safe
-      // since we wait for completion before returning)
-      tasks.push_back([&localEvents, start, end, &remainingBatches, &completionMutex, &completionCV]() {
+      // Build task with captured values
+      // localEvents captured by shared_ptr value - safe for async execution after function returns
+      // remainingBatches captured by shared_ptr value - safe for async execution
+      tasks.push_back([this, localEvents, start, end, remainingBatches]() {
         try {
           for (size_t j = start; j < end; ++j) {
-            localEvents[j]->update();
+            (*localEvents)[j]->update();
           }
         } catch (const std::exception &e) {
           EVENT_ERROR(std::string("Exception in event batch: ") + e.what());
@@ -845,32 +851,34 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
           EVENT_ERROR("Unknown exception in event batch");
         }
 
-        // Signal completion
-        if (remainingBatches.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-          std::lock_guard<std::mutex> lock(completionMutex);
-          completionCV.notify_one();
+        // When last batch completes, signal batch group completion for safe shutdown
+        if (remainingBatches->fetch_sub(1, std::memory_order_acq_rel) == 1) {
+          if (this->m_pendingBatchGroups.fetch_sub(1, std::memory_order_acq_rel) == 1) {
+            std::lock_guard<std::mutex> lock(this->m_batchCompletionMutex);
+            this->m_batchCompletionCV.notify_all();
+          }
         }
       });
     }
 
+    // Track this batch group for safe shutdown
+    m_pendingBatchGroups.fetch_add(1, std::memory_order_release);
+
     // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
     threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::Normal, "Event_Batch");
 
-    // Wait for all batches to complete
-    std::unique_lock<std::mutex> lock(completionMutex);
-    completionCV.wait(lock, [&remainingBatches]() {
-      return remainingBatches.load(std::memory_order_acquire) == 0;
-    });
+    // NO BLOCKING WAIT: Batches complete asynchronously
+    // GameEngine::update() mutex ensures batches finish before next frame
   } else {
     // Process single-threaded for small event counts
-    for (auto &evt : localEvents) { evt->update(); }
+    for (auto &evt : *localEvents) { evt->update(); }
   }
 
   // Simplified performance recording
   auto endTime = getCurrentTimeNanos();
   double timeMs = (endTime - startTime) / 1000000.0;
 
-  if (timeMs > 1.0 || localEvents.size() > 50) {
+  if (timeMs > 1.0 || localEvents->size() > 50) {
     recordPerformance(typeId, timeMs);
   }
 }
