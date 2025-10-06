@@ -23,6 +23,19 @@
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
 
+// SIMD support detection (following ParticleManager pattern)
+#if defined(__SSE2__) || \
+    (defined(_MSC_VER) && \
+     (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
+#define COLLISION_SIMD_SSE2 1
+#include <emmintrin.h>
+#endif
+
+#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
+#define COLLISION_SIMD_SSE4 1
+#include <smmintrin.h>
+#endif
+
 // Forward declarations
 namespace HammerEngine {
     class Camera;
