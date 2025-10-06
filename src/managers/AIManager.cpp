@@ -1359,9 +1359,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                              int bufferIndex, const Vector2D &playerPos, bool updateDistances,
                              const PreFetchedBatchData& preFetchedData,
                              std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
-  // Work on the double buffer for lock-free operation
-  auto &workBuffer = m_storage.doubleBuffer[bufferIndex];
-
   size_t batchExecutions = 0;
 
   // Reserve space in collision updates accumulator (approximate size)
