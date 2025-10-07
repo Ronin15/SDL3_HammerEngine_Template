@@ -292,6 +292,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     return;
   }
 
+  // NOTE: We do NOT wait for previous frame's batches here - they can overlap with current frame
+  // The critical sync happens in GameEngine before CollisionManager to ensure collision data is ready
+  // This allows better frame pipelining on low-core systems
+
   auto startTime = std::chrono::high_resolution_clock::now();
 
   try {
@@ -775,6 +779,21 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 
   } catch (const std::exception &e) {
     AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
+  }
+}
+
+void AIManager::waitForAsyncBatchCompletion() {
+  // COLLISION ORDERING: Wait for current frame's async batches to complete
+  // This ensures collision data updates (from async callbacks) are finished
+  // before CollisionManager processes them.
+  //
+  // Fast path: ~1ns atomic check if no pending work (high-core systems)
+  // Slow path: blocks only when necessary on low-core systems
+  if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
+    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
+    m_batchCompletionCV.wait(lock, [this]() {
+      return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
+    });
   }
 }
 

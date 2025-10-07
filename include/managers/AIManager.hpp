@@ -197,6 +197,17 @@ public:
   void update(float deltaTime);
 
   /**
+   * @brief Waits for all async batch operations to complete
+   *
+   * This should be called before systems that depend on AI collision updates
+   * (e.g., CollisionManager) to ensure all async collision data is ready.
+   *
+   * Fast path: ~1ns atomic check if no pending batches
+   * Slow path: blocks until all batches complete on low-core systems
+   */
+  void waitForAsyncBatchCompletion();
+
+  /**
    * @brief Checks if AIManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
