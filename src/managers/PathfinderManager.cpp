@@ -828,7 +828,7 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
 
 void PathfinderManager::reportStatistics() const {
     auto stats = getStats();
-    
+
     if (stats.totalRequests > 0) {
         PATHFIND_INFO("PathfinderManager Status - Total Requests: " + std::to_string(stats.totalRequests) +
                      ", Completed: " + std::to_string(stats.completedRequests) +
@@ -842,6 +842,14 @@ void PathfinderManager::reportStatistics() const {
                      ", Memory: " + std::to_string(stats.memoryUsageKB) + " KB" +
                      ", ThreadSystem: " + (stats.processorActive ? "Active" : "Inactive"));
     }
+
+    // Reset per-cycle counters for next reporting window (every 600 frames / 10 seconds)
+    m_enqueuedRequests.store(0, std::memory_order_relaxed);
+    m_completedRequests.store(0, std::memory_order_relaxed);
+    m_failedRequests.store(0, std::memory_order_relaxed);
+    m_cacheHits.store(0, std::memory_order_relaxed);
+    m_cacheMisses.store(0, std::memory_order_relaxed);
+    m_totalProcessingTimeMs.store(0.0, std::memory_order_relaxed);
 }
 
 bool PathfinderManager::ensureGridInitialized() {
