@@ -880,6 +880,15 @@ void GameEngine::update(float deltaTime) {
   // Update game states - states handle their specific system needs (BEFORE collision)
   mp_gameStateManager->update(deltaTime);
 
+  // CRITICAL SYNC POINT: Wait for AIManager's async batches to complete
+  // AIManager updates collision data in async callbacks. We must wait for those
+  // to finish before CollisionManager processes the updated collision data.
+  // Fast path: ~1ns atomic check if no pending work (high-core systems)
+  // Slow path: blocks only when necessary on low-core systems
+  if (mp_aiManager) {
+    mp_aiManager->waitForAsyncBatchCompletion();
+  }
+
   // Physics system - update AFTER player movement to apply collision constraints
   if (mp_collisionManager) {
     mp_collisionManager->update(deltaTime);  // Let collision manager choose SOA vs legacy

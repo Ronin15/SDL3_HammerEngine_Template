@@ -228,6 +228,10 @@ void EventManager::update() {
     return;
   }
 
+  // NOTE: We do NOT wait for previous frame's batches here - they can overlap with current frame
+  // EventManager batches don't update collision data, so frame overlap is safe
+  // This allows better frame pipelining on low-core systems
+
   auto startTime = getCurrentTimeNanos();
 
   // Update all event types in optimized batches

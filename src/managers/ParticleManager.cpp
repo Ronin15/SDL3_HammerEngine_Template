@@ -710,8 +710,9 @@ void ParticleManager::update(float deltaTime) {
     return;
   }
 
-  // TRUST GAME ENGINE: GameEngine and GameLoop handle update/render synchronization
-  // No blocking mutexes needed - the engine ensures thread safety at a higher level
+  // NOTE: We do NOT wait for previous frame's batches here - they can overlap with current frame
+  // ParticleManager batches don't update collision data, so frame overlap is safe
+  // This allows better frame pipelining on low-core systems
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
