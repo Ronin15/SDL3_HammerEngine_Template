@@ -9,6 +9,7 @@
 #include "gameStates/GameState.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
+#include "utils/Camera.hpp"
 
 #include <memory>
 #include <vector>
@@ -41,7 +42,11 @@ private:
     // Methods
     void setupAIBehaviors();
     void createNPCs();
-
+    void createNPCBatch(int count);  // Create a batch of NPCs gradually
+    void initializeWorld();
+    void initializeCamera();
+    void updateCamera(float deltaTime);
+    void applyCameraTransformation();
 
     // Members
     std::vector<NPCPtr> m_npcs{};
@@ -54,11 +59,22 @@ private:
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
 
+    // Camera for world navigation
+    std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
+    // Camera transformation state (calculated in update, used in render)
+    float m_cameraOffsetX{0.0f};
+    float m_cameraOffsetY{0.0f};
 
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
+
+    // Batch NPC spawning to reduce per-frame overhead
+    int m_npcsSpawned{0};
+    int m_npcsPerBatch{30};        // Spawn 30 NPCs per batch
+    int m_spawnInterval{10};       // Spawn every 10 frames
+    int m_framesSinceLastSpawn{0}; // Frame counter for spawn timing
 };
 
 #endif // AI_DEMO_STATE_HPP

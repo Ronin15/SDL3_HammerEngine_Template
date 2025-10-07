@@ -505,9 +505,10 @@ void NPC::ensurePhysicsBodyRegistered() {
   uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
   uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
 
-  // Use new SOA-based collision system
+  // Use new SOA-based collision system (deferred command queue)
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
-  // Process queued command to ensure body exists before attaching
+  // CRITICAL: Process command immediately so body exists before attaching entity
+  // This is safe because we batch spawn NPCs (30 every 10 frames) instead of per-frame
   cm.processPendingCommands();
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
