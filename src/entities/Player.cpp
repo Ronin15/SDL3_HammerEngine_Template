@@ -140,11 +140,8 @@ void Player::update(float deltaTime) {
 
   // Sync velocity to collision body - let collision system handle movement integration
   // This prevents micro-bouncing from double integration (entity + physics)
-  // IMPORTANT: Don't overwrite velocity during collision sync (would undo velocity damping)
   auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
-  }
+  cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
@@ -218,17 +215,13 @@ void Player::ensurePhysicsBodyRegistered() {
 void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
   auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.updateCollisionBodyVelocitySOA(getID(), velocity);
-  }
+  cm.updateCollisionBodyVelocitySOA(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
   auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.updateCollisionBodyPositionSOA(getID(), position);
-  }
+  cm.updateCollisionBodyPositionSOA(getID(), position);
 }
 
 void Player::initializeInventory() {
