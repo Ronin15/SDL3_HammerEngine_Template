@@ -432,10 +432,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         collisionUpdates.reserve(entityCount);
         processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
-        // Submit collision updates
+        // Submit collision updates to pending buffer (double-buffered, no blocking)
         if (!collisionUpdates.empty()) {
           auto &cm = CollisionManager::Instance();
-          cm.updateKinematicBatchSOA(collisionUpdates);
+          cm.submitPendingKinematicUpdates(collisionUpdates);
         }
 
         // Swap buffers atomically
@@ -522,10 +522,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         collisionUpdates.reserve(entityCount);
         processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
-        // Submit collision updates
+        // Submit collision updates to pending buffer (double-buffered, no blocking)
         if (!collisionUpdates.empty()) {
           auto &cm = CollisionManager::Instance();
-          cm.updateKinematicBatchSOA(collisionUpdates);
+          cm.submitPendingKinematicUpdates(collisionUpdates);
         }
       } else {
         size_t entitiesPerBatch = entityCount / batchCount;
@@ -634,10 +634,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                                               std::make_move_iterator(batchUpdates.end()));
               }
 
-              // Single collision system update - eliminates lock contention
+              // Single collision system update - submit to pending buffer (double-buffered, no blocking)
               if (!mergedCollisionUpdates.empty()) {
                 auto &cm = CollisionManager::Instance();
-                cm.updateKinematicBatchSOA(mergedCollisionUpdates);
+                cm.submitPendingKinematicUpdates(mergedCollisionUpdates);
               }
 
               // Signal batch group completion for safe shutdown
@@ -655,9 +655,10 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
         threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::High, "AI_Batch");
 
-        // NO BLOCKING WAIT: Batches complete asynchronously
-        // GameEngine::update() mutex ensures batches finish before next frame
-        // Collision merge happens in last batch's completion callback
+        // NO WAIT HERE: Async batches complete in background
+        // GameEngine waits for completion at NEXT frame's start (consistent timing, no jitter)
+        // Double buffer ensures thread-safe writes while collision processes previous frame
+        // This provides deterministic updates with minimal performance impact
       }
 
       m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
