@@ -824,80 +824,68 @@ void GameEngine::update(float deltaTime) {
   const size_t updateBufferIndex =
       m_currentBufferIndex.load(std::memory_order_acquire);
 
-  // HYBRID MANAGER UPDATE ARCHITECTURE
-  // =====================================
-  // HYBRID MANAGER UPDATE ARCHITECTURE - Step 1: Global Updates (No Caching)
-  // =====================================
-  // Core engine systems are updated globally for optimal performance and
-  // consistency State-specific systems are updated by individual states for
-  // flexibility and efficiency
-
+  // OPTIMAL MANAGER UPDATE ARCHITECTURE - CLEAN DESIGN
+  // ===================================================
+  // Update order optimized for both player responsiveness AND smooth NPC movement.
+  // Key design: AIManager handles batch synchronization internally (implementation detail).
+  //
+  // UPDATE STRATEGY:
+  // - Events FIRST (can trigger state changes)
+  // - Player movement SECOND (before heavy AI processing)
+  // - AI processes batches (parallel internally, waits for completion before returning)
+  // - Collision gets guaranteed-complete updates (no timing issues)
+  //
   // GLOBAL SYSTEMS (Updated by GameEngine):
-  // - AIManager: World simulation with 10K+ entities, benefits from
-  // consistent global updates
-  // - EventManager: Global game events (weather, scene changes), batch
-  // processing optimization
-  // - ParticleManager: Global particle system with weather integration,
-  // cache-optimized SoA updates
-  // - InputManager: Handled in handleEvents() for proper SDL event polling
-  // architecture
+  // - EventManager: Global game events (weather, scene changes), batch processing
+  // - GameStateManager: Player movement and state-specific logic
+  // - AIManager: Parallel batch processing with internal sync (self-contained)
+  // - ParticleManager: Global particle system with weather integration
+  // - PathfinderManager: Periodic pathfinding grid updates (every 300/600 frames)
+  // - CollisionManager: Collision detection and resolution for all entities
+  // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
+  //
+  // STATE-MANAGED SYSTEMS (Updated by individual states):
+  // - UIManager: Optional, state-specific, only updated when UI is actually used
+  //   See UIExampleState::update() for proper state-managed pattern
 
-  // AI system - manages world entities across all states (cached reference
-  // access)
-  if (mp_aiManager) {
-    mp_aiManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("AIManager cache is null!");
-  }
-
-  // CRITICAL SYNC: Wait for async AI batches to complete before CollisionManager processes collision data
-  // This ensures collision updates from async batches are submitted to the staging buffer
-  // before CollisionManager::applyPendingKinematicUpdates() runs
-  // Fast path: ~1ns atomic check (high-core systems)
-  // Slow path: blocks only when batches are still running (low-core systems)
-  if (mp_aiManager) {
-    mp_aiManager->waitForAsyncBatchCompletion();
-  }
-
-  // Pathfinding system - centralized pathfinding service for AI entities
-  if (mp_pathfinderManager) {
-    mp_pathfinderManager->update();
-  } else {
-    GAMEENGINE_ERROR("PathfinderManager cache is null!");
-  }
-
-  // Event system - global game events and world simulation (cached reference
-  // access)
+  // 1. Event system - FIRST: process global events, state changes, weather triggers
   if (mp_eventManager) {
     mp_eventManager->update();
   } else {
     GAMEENGINE_ERROR("EventManager cache is null!");
   }
 
-  // Particle system - global weather and effect particles (cached reference
-  // access)
+  // 2. Game states - player movement and state logic
+  mp_gameStateManager->update(deltaTime);
+
+  // 3. AI system - processes NPC behaviors with internal parallelization
+  //    Batches run in parallel, waits for completion internally before returning.
+  //    From GameEngine perspective: just a regular update call (sync is internal).
+  if (mp_aiManager) {
+    mp_aiManager->update(deltaTime);
+  } else {
+    GAMEENGINE_ERROR("AIManager cache is null!");
+  }
+
+  // 4. Particle system - global weather and effect particles
   if (mp_particleManager) {
     mp_particleManager->update(deltaTime);
   } else {
     GAMEENGINE_ERROR("ParticleManager cache is null!");
   }
 
-  // STATE-MANAGED SYSTEMS (Updated by individual states):
-  // - UIManager: Optional, state-specific, only updated when UI is actually
-  // used See UIExampleState::update() for proper state-managed pattern
+  // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
+  if (mp_pathfinderManager) {
+    mp_pathfinderManager->update();
+  } else {
+    GAMEENGINE_ERROR("PathfinderManager cache is null!");
+  }
 
-  // Update game states - states handle their specific system needs (BEFORE collision)
-  mp_gameStateManager->update(deltaTime);
-
-  // ASYNC AI BATCH SYNCHRONIZATION:
-  // 1. AIManager::update() launches async batches (returns immediately)
-  // 2. waitForAsyncBatchCompletion() blocks until batches finish and submit collision updates
-  // 3. CollisionManager::applyPendingKinematicUpdates() applies the staged updates
-  // This ensures NPCs move smoothly without 1-frame delay when threading is active (500+ NPCs)
-
-  // Physics system - update AFTER player movement to apply collision constraints
+  // 6. Collision system - LAST: processes complete NPC updates from AIManager
+  //    AIManager guarantees all batches complete before returning, so collision
+  //    always receives complete, consistent updates (no partial/stale data).
   if (mp_collisionManager) {
-    mp_collisionManager->update(deltaTime);  // Let collision manager choose SOA vs legacy
+    mp_collisionManager->update(deltaTime);
   } else {
     GAMEENGINE_ERROR("CollisionManager cache is null!");
   }
