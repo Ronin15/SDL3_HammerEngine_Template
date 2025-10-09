@@ -850,6 +850,15 @@ void GameEngine::update(float deltaTime) {
     GAMEENGINE_ERROR("AIManager cache is null!");
   }
 
+  // CRITICAL SYNC: Wait for async AI batches to complete before CollisionManager processes collision data
+  // This ensures collision updates from async batches are submitted to the staging buffer
+  // before CollisionManager::applyPendingKinematicUpdates() runs
+  // Fast path: ~1ns atomic check (high-core systems)
+  // Slow path: blocks only when batches are still running (low-core systems)
+  if (mp_aiManager) {
+    mp_aiManager->waitForAsyncBatchCompletion();
+  }
+
   // Pathfinding system - centralized pathfinding service for AI entities
   if (mp_pathfinderManager) {
     mp_pathfinderManager->update();
@@ -880,9 +889,11 @@ void GameEngine::update(float deltaTime) {
   // Update game states - states handle their specific system needs (BEFORE collision)
   mp_gameStateManager->update(deltaTime);
 
-  // NO WAIT: Async AI batches complete in background and submit to staging buffer
-  // CollisionManager atomically swaps buffer - lock-free, no blocking
-  // This provides smooth frame timing with proper thread safety
+  // ASYNC AI BATCH SYNCHRONIZATION:
+  // 1. AIManager::update() launches async batches (returns immediately)
+  // 2. waitForAsyncBatchCompletion() blocks until batches finish and submit collision updates
+  // 3. CollisionManager::applyPendingKinematicUpdates() applies the staged updates
+  // This ensures NPCs move smoothly without 1-frame delay when threading is active (500+ NPCs)
 
   // Physics system - update AFTER player movement to apply collision constraints
   if (mp_collisionManager) {
