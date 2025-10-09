@@ -291,9 +291,6 @@ void EventDemoState::unregisterEventHandlers() {
 }
 
 void EventDemoState::update(float deltaTime) {
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-
   // Update timing
   updateDemoTimer(deltaTime);
 
@@ -310,24 +307,8 @@ void EventDemoState::update(float deltaTime) {
   // twice as fast Entity updates are handled by AIManager::update() in
   // GameEngine No need to manually update AIManager here
 
-  // Clean up invalid NPCs
-  auto it = m_spawnedNPCs.begin();
-  while (it != m_spawnedNPCs.end()) {
-    if (*it) {
-      ++it;
-    } else {
-      // Remove dead/invalid NPCs
-      try {
-        if (aiMgr.entityHasBehavior(*it)) {
-          aiMgr.unassignBehaviorFromEntity(*it);
-        }
-        aiMgr.unregisterEntityFromUpdates(*it);
-      } catch (...) {
-        // Ignore errors during cleanup
-      }
-      it = m_spawnedNPCs.erase(it);
-    }
-  }
+  // Note: NPC cleanup is handled by AIManager::prepareForStateTransition() in exit()
+  // Attempting cleanup here causes undefined behavior by calling AIManager methods on null pointers
 
   if (m_autoMode) {
     // Auto mode processing
