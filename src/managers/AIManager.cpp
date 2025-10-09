@@ -342,32 +342,39 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     Vector2D playerPos = player ? player->getPosition() : Vector2D(0, 0);
 
     // THREAD-SAFE DOUBLE BUFFERING: Copy data BEFORE starting async tasks
-    // PERFORMANCE OPTIMIZATION: Reduced copy frequency from 60 to 120 frames
-    // Only copy when entity count changes or on periodic refresh
+    // CRITICAL: Must copy EVERY frame when threading to avoid stale data
+    // Single-threaded can optimize with periodic copies (every 120 frames)
     bool entityCountChanged =
         (m_storage.doubleBuffer[nextBuffer].size() != m_storage.hotData.size());
 
-    if (entityCountChanged || currentFrame % 120 == 0) {
+    // Determine threading strategy EARLY to decide if buffer copy needed
+    const size_t threadingThreshold = std::max<size_t>(
+        1, m_threadingThreshold.load(std::memory_order_acquire));
+    bool willUseThreading = (activeCount >= threadingThreshold &&
+                             m_useThreading.load(std::memory_order_acquire) &&
+                             HammerEngine::ThreadSystem::Exists());
+
+    // Force copy every frame when threading (async batches need fresh data)
+    // Single-threaded can skip copies for performance (processes current data directly)
+    bool needsCopy = entityCountChanged || currentFrame % 120 == 0 || willUseThreading;
+
+    if (needsCopy) {
       std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
       m_storage.doubleBuffer[nextBuffer] = m_storage.hotData;
 
       // Debug logging for buffer copy events (only log occasionally to avoid spam)
       if (currentFrame % 600 == 0) {
         AI_DEBUG("Double buffer copy: " + std::to_string(m_storage.hotData.size()) +
-                " entities (" + (entityCountChanged ? "count changed" : "periodic refresh") + ")");
+                " entities (" + (entityCountChanged ? "count changed" :
+                 willUseThreading ? "threading active" : "periodic refresh") + ")");
       }
     } else {
-      // Use current buffer data - no copy needed
+      // Use current buffer data - no copy needed (single-threaded optimization)
       nextBuffer = currentBuffer;
     }
 
-    // Determine threading strategy based on ACTIVE entity count instead of
-    // total storage size to avoid unnecessary threading after resets
-    const size_t threadingThreshold = std::max<size_t>(
-        1, m_threadingThreshold.load(std::memory_order_acquire));
-    bool useThreading = (activeCount >= threadingThreshold &&
-                         m_useThreading.load(std::memory_order_acquire) &&
-                         HammerEngine::ThreadSystem::Exists());
+    // Threading strategy already determined above for buffer copy decision
+    bool useThreading = willUseThreading;
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -617,30 +624,17 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
               AI_ERROR("Unknown exception in AI batch");
             }
 
-            // When last batch completes, merge and submit collision updates asynchronously
+            // INCREMENTAL UPDATE STRATEGY: Submit THIS batch's updates immediately
+            // This provides faster, more consistent NPC updates instead of all-or-nothing timing.
+            // Each batch submits as it completes → smooth incremental updates at 1-frame latency.
+            if (!(*batchCollisionUpdates)[i].empty()) {
+              auto &cm = CollisionManager::Instance();
+              cm.submitPendingKinematicUpdates((*batchCollisionUpdates)[i]);
+            }
+
+            // Track batch completion for shutdown synchronization
             if (remainingBatches->fetch_sub(1, std::memory_order_acq_rel) == 1) {
-              // ASYNC COLLISION MERGE: This is the last batch completing
-              // Merge all batch updates and submit once to CollisionManager
-              std::vector<CollisionManager::KinematicUpdate> mergedCollisionUpdates;
-              size_t totalUpdates = 0;
-              for (const auto& batchUpdates : *batchCollisionUpdates) {
-                totalUpdates += batchUpdates.size();
-              }
-              mergedCollisionUpdates.reserve(totalUpdates);
-
-              for (auto& batchUpdates : *batchCollisionUpdates) {
-                mergedCollisionUpdates.insert(mergedCollisionUpdates.end(),
-                                              std::make_move_iterator(batchUpdates.begin()),
-                                              std::make_move_iterator(batchUpdates.end()));
-              }
-
-              // Single collision system update - submit to pending buffer (double-buffered, no blocking)
-              if (!mergedCollisionUpdates.empty()) {
-                auto &cm = CollisionManager::Instance();
-                cm.submitPendingKinematicUpdates(mergedCollisionUpdates);
-              }
-
-              // Signal batch group completion for safe shutdown
+              // Last batch completed - signal for safe shutdown
               if (this->m_pendingBatchGroups.fetch_sub(1, std::memory_order_acq_rel) == 1) {
                 std::lock_guard<std::mutex> lock(this->m_batchCompletionMutex);
                 this->m_batchCompletionCV.notify_all();
@@ -777,6 +771,15 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         // No legacy pathfinding statistics in AIManager
       }
     }
+
+    // CRITICAL: Wait for all async batches to complete before returning
+    // This ensures CollisionManager receives complete updates when it runs.
+    // By waiting HERE (inside AIManager), we:
+    // 1. Keep batch completion as internal implementation detail
+    // 2. Guarantee consistent AIManager::update() timing (no external waits)
+    // 3. Ensure complete NPC updates are ready when we return
+    // 4. Eliminate timing-dependent race conditions with CollisionManager
+    waitForAsyncBatchCompletion();
 
   } catch (const std::exception &e) {
     AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
