@@ -1,178 +1,85 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Claude Code guidance for SDL3 HammerEngine development.
 
 ## Build Commands
 
-### Debug Build
 ```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug
-ninja -C build
-```
+# Debug
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 
-### Debug Build with Warning/Error Filtering
-```bash
+# Release
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# Debug with AddressSanitizer (requires -DUSE_MOLD_LINKER=OFF)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
+
+# Filter warnings/errors
 ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
+
+# Clean: ninja -C build clean | Full rebuild: rm -rf build/
+# Reconfigure: rm build/CMakeCache.txt (optional, re-running cmake updates settings)
 ```
 
-### Release Build
-```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release
-ninja -C build
-```
-
-### Debug with AddressSanitizer
-```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF
-ninja -C build
-```
-**Note**: Disable mold linker with ASan (`-DUSE_MOLD_LINKER=OFF`).
-
-### Build System Notes
-- **Output Directories**: Debug builds output to `bin/debug/`, Release builds to `bin/release/`
-- **Reconfiguring**: To change build settings, just re-run cmake with new flags (no need to delete `build/`). To force clean reconfigure: `rm build/CMakeCache.txt` then reconfigure.
-- **Clean Build**: `ninja -C build clean` or for full rebuild: `rm -rf build/`
-
-### Running the Application
-- Debug: `./bin/debug/SDL3_Template`
-- Release: `./bin/release/SDL3_Template`
-- Testing: `timeout 60s ./bin/debug/SDL3_Template` (60 second timeout for behavior testing)
-- **Troubleshooting**: `timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1` - Redirect output to log file for analysis (game dumps large amounts of console data)
+**Outputs**: `bin/debug/` or `bin/release/`
+**Run**: `./bin/debug/SDL3_Template` | `timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1`
 
 ## Testing
 
-**Framework**: Uses Boost.Test framework. Test binaries are placed in `bin/debug/` and write focused, thorough tests covering both success and error paths. Clean up test artifacts after execution.
+**Framework**: Boost.Test (68+ test executables in `bin/debug/`). Use targeted tests for specific systems; avoid full suite during development.
 
-**Extensive Test Suite**: The project includes 68+ specialized test executables covering all systems (AI, collision, pathfinding, threading, events, particles, resources, etc.). When working on a specific system, use targeted tests rather than the full suite for faster iteration.
-
-### Run All Tests
 ```bash
+# All tests
 ./run_all_tests.sh --core-only --errors-only
-```
 
-**Note**: Use targeted tests when developing specific systems to avoid running the entire suite unnecessarily. Only run the full test suite when needed for comprehensive validation.
-
-### Run Specific Tests
-```bash
-# Save/Load tests
+# Targeted tests
 ./tests/test_scripts/run_save_tests.sh --verbose
-
-# AI system tests
 ./tests/test_scripts/run_ai_optimization_tests.sh
-
-# Thread safety tests
 ./tests/test_scripts/run_thread_tests.sh
-
-# Individual test binaries
 ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
 ```
 
-## Code Architecture
+## Architecture
 
-### Core Components
-- **GameEngine**: Central coordinator managing all subsystems with double-buffered rendering
-- **GameLoop**: Fixed-timestep game loop with separate update/render threads
-- **Managers**: Singleton pattern with `m_isShutdown` guard for clean shutdown
-- **ThreadSystem**: Production-grade thread pool with WorkerBudget priority system
-- **Logger**: Thread-safe logging with macros for consistent usage
+**Core**: GameEngine (double-buffered, central coordinator) | GameLoop (fixed timestep, separate update/render threads) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
 
-### Key Systems
-- **AI Manager**: High-performance batch-processed AI supporting 10K+ entities at 60+ FPS
-- **Event Manager**: Thread-safe event-driven architecture with batch processing
-- **Resource Management**: JSON-based loading with handle-based runtime access
-- **UI Manager**: Professional theming with auto-sizing and DPI awareness
-- **Collision Manager**: Spatial hash-based collision detection with pathfinding integration
-- **Particle Manager**: Camera-aware, batched particle rendering with lifetime Management
-- **World Manager**: Tile-based world with procedural generation and efficient Rendering
-- **Input Manager**: Comprehensive input handling for keyboard, mouse, and gamepads
+**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed) | EventManager (thread-safe, batch processing) | CollisionManager (spatial hash, pathfinding integration) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
 
-### Utilities
-- **Camera**: World-to-screen coordinate conversion with zoom and pattern
-- **Vector2D**: 2D vector math with common operations
-- **JSON Parsing**: JsonReader, Lightweight JSON handling for configuration and resources
-- **BinarySerializer**: Cross-platform file save/reading/writing with error handling
+**Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 
-### Module Organization
 ```
-src/
-├── core/           # GameEngine, GameLoop, ThreadSystem, Logger
-├── managers/       # All manager classes (AI, Event, Collision, etc.)
-├── gameStates/     # Game state implementations
-├── entities/       # Player, NPC, Entity base classes
-├── events/         # Event system and event types
-├── ai/             # AI behaviors and pathfinding
-├── collisions/     # Collision detection and spatial partitioning
-├── utils/          # Utilities, Camera, Vector2D
-└── world/          # World generation and management
-
-include/            # Public headers mirroring src/ structure
-tests/              # Boost.Test framework with test scripts
-res/                # Game assets (fonts, images, audio, data files)
+src/{core, managers, gameStates, entities, events, ai, collisions, utils, world}
+include/  # Headers mirror src/
+tests/    # Boost.Test scripts
+res/      # Assets
 ```
 
-## Coding Standards
+## Standards
 
-### C++ Standards
-- **Language**: C++20
-- **Style**: 4-space indentation, Allman-style braces
-- **Memory**: RAII with smart pointers, no raw new/delete
-- **Threading**: Use ThreadSystem, avoid raw std::thread
-- **Error Handling**: Prefer exceptions for critical errors, return error codes for expected failures
-- **Comments**: Doxygen-style for public APIs, inline comments for complex logic
-- **logging**: Use provided logger.hpp macros for consistent logging
-- **Cross-Platform**: Use platform guards for OS-specific code, avoid hardcoding paths, and make sure code is portable.
-- **Copyright**: All files must include the standard copyright header:
-  ```cpp
-  /* Copyright (c) 2025 Hammer Forged Games
-   * All rights reserved.
-   * Licensed under the MIT License - see LICENSE file for details
-  */
-  ```
+**C++20** | 4-space indent, Allman braces | RAII + smart pointers | ThreadSystem (not raw std::thread) | Exceptions for critical errors, codes for expected failures | Logger macros | Cross-platform guards | STL algorithms > manual loops
 
-### Naming Conventions
-- **Classes/Enums**: UpperCamelCase (`GameEngine`, `EventType`)
-- **Functions/Variables**: lowerCamelCase (`updateGame`, `playerHealth`)
-- **Member Variables**: `m_` prefix (`m_isRunning`, `m_playerPosition`), `mp_` prefix for pointers (`mp_window`, `mp_renderer`)
-- **Constants**: ALL_CAPS (`MAX_PLAYERS`, `DEFAULT_SPEED`)
+**Naming**: UpperCamelCase (classes/enums) | lowerCamelCase (functions/vars) | `m_` prefix (members), `mp_` (pointers) | ALL_CAPS (constants)
 
-### Header/Implementation Guidelines
-- **Headers**: Minimal, stable interface with forward declarations
-- **Implementation**: All non-trivial logic goes in .cpp files
-- **Inline**: Only trivial 1-2 line accessors and getters
-- **Dependencies**: Avoid leaking implementation details through headers
+**Headers**: Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
 
-### Threading Architecture
-- **Update Loop**: Thread-safe via mutex, fixed timestep
-- **Render Loop**: Main thread only, double-buffered
-- **Background Work**: Use ThreadSystem with WorkerBudget priorities
-- **No Cross-Thread Rendering**: All drawing happens on main thread
+**Threading**: Update (mutex-locked, fixed timestep) | Render (main thread only, double-buffered) | Background (ThreadSystem + WorkerBudget) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
 
-### Performance Guidelines
-- **STL Algorithms**: Prefer STL algorithms (`std::sort`, `std::find_if`, `std::transform`) over manual loops for better optimization
-- **Platform Guards**: Use platform-specific logic guards (`#ifdef __APPLE__`, `#ifdef WIN32`) for OS-specific code
-- **Avoid Premature Optimization**: Focus on clean, maintainable code first; optimize hotspots based on profiling data
+**Copyright** (all files):
+```cpp
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+```
 
-### Optional
-- Boost (for testing framework)
-- cppcheck (static analysis)
-- Valgrind (performance/memory analysis)
+## GameEngine Update/Render Flow
 
-## Important Implementation Details
+**GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.
 
-### GameEngine Update/Render Flow
+**Update** (thread-safe, mutex-locked): `GameEngine::update(deltaTime)` updates global systems (AIManager, EventManager, ParticleManager) → delegates to `GameStateManager::update`. Completes before render starts.
 
-**GameLoop Architecture**: Drives three callbacks — events (main thread), fixed-timestep updates, and rendering. Target FPS and fixed timestep are configured in `HammerMain.cpp` via `GameLoop`.
+**Double Buffer**: `m_currentBufferIndex` (update) + `m_renderBufferIndex` (render) + `m_bufferReady[]`. Main loop calls `hasNewFrameToRender()` + `swapBuffers()` before update; render consumes stable previous buffer.
 
-**Update Phase (thread-safe)**: `GameEngine::update(deltaTime)` runs under a mutex to guarantee completion before any render. It updates global systems (AIManager, EventManager, ParticleManager), then delegates to the current `GameStateManager::update`.
+**Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera).
 
-**Double Buffering**: `GameEngine` maintains `m_currentBufferIndex` (update) and `m_renderBufferIndex` (render) with `m_bufferReady[]`. The main loop calls `hasNewFrameToRender()` and `swapBuffers()` before each update, allowing render to consume a stable buffer from the previous tick.
-
-**Render Phase (main thread)**: `GameEngine::render()` clears the renderer and calls `GameStateManager::render()`. States render world, entities, particles, and UI in a deterministic order using the current camera view.
-
-**Threading Guidelines**:
-- No rendering from background threads. AI/particles may schedule work but all drawing occurs during `GameEngine::render()` on the main thread.
-- Do not introduce additional synchronization between managers for rendering; rely on `GameEngine`'s mutexed update and double-buffer swap.
-- When adding a new state, snapshot camera/view once per render pass and reuse it for all world-space systems.
-- **NEVER use static variables in threaded code** - they create race conditions and data corruption. Use instance variables, thread_local storage, or atomic operations instead.
-
-This architecture supports rapid prototyping while maintaining production-ready performance and code quality.
+**Rules**: No background thread rendering (all drawing in `GameEngine::render()`) | No extra manager sync (rely on mutexed update + buffer swap) | Snapshot camera once per render | NEVER static vars in threaded code
