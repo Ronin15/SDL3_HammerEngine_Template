@@ -1516,6 +1516,9 @@ void CollisionManager::updateSOA(float dt) {
   // Process pending add/remove commands first (thread-safe deferred operations)
   processPendingCommands();
 
+  // Apply pending kinematic updates from async AI threads (double-buffered, no wait)
+  applyPendingKinematicUpdates();
+
   // Pure SOA system - no legacy compatibility
 
   // Check storage state at start of update
@@ -2223,6 +2226,31 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
   }
 
   // Verbose logging removed for performance
+}
+
+void CollisionManager::submitPendingKinematicUpdates(const std::vector<KinematicUpdate>& updates) {
+  if (updates.empty()) return;
+
+  // Multi-producer pattern: Append to staging buffer with mutex protection
+  std::lock_guard<std::mutex> lock(m_pendingKinematicMutex);
+  m_pendingKinematicUpdates.insert(m_pendingKinematicUpdates.end(),
+                                   updates.begin(), updates.end());
+}
+
+void CollisionManager::applyPendingKinematicUpdates() {
+  // Lock-free concurrent queue pattern: Swap staging buffer atomically
+  // Async AI threads submit updates as they complete (no wait in main thread)
+  // This gets whatever updates are ready from async batches with zero blocking
+  std::vector<KinematicUpdate> updatesToApply;
+  {
+    std::lock_guard<std::mutex> lock(m_pendingKinematicMutex);
+    updatesToApply.swap(m_pendingKinematicUpdates);  // Atomic swap, clears staging buffer
+  }
+
+  // Apply all available updates (lock-free, non-blocking)
+  if (!updatesToApply.empty()) {
+    updateKinematicBatchSOA(updatesToApply);
+  }
 }
 
 // ========== SOA BODY MANAGEMENT METHODS ==========

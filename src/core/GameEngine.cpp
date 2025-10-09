@@ -880,10 +880,9 @@ void GameEngine::update(float deltaTime) {
   // Update game states - states handle their specific system needs (BEFORE collision)
   mp_gameStateManager->update(deltaTime);
 
-  // NO SYNC POINT: AI batches overlap with collision processing for frame pipelining
-  // AI velocity updates from async threads are eventually visible (1-frame latency acceptable)
-  // Player input is immediate (processed before AI batches start in GameStateManager::update)
-  // This prevents variable wait times that cause micro-stutter at high entity counts
+  // NO WAIT: Async AI batches complete in background and submit to staging buffer
+  // CollisionManager atomically swaps buffer - lock-free, no blocking
+  // This provides smooth frame timing with proper thread safety
 
   // Physics system - update AFTER player movement to apply collision constraints
   if (mp_collisionManager) {

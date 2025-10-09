@@ -139,12 +139,9 @@ void NPC::update(float deltaTime) {
     deltaTime = 1.0f / 60.0f; // Fallback to 60 FPS
   }
 
-  // Sync velocity to collision body - collision system integrates movement
-  // IMPORTANT: Don't overwrite velocity during collision sync (would undo velocity damping)
-  auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
-  }
+  // AIManager batch processing handles collision updates for AI-managed NPCs
+  // Direct collision update removed to prevent race conditions with async AI threads
+  // Collision updates are batched and submitted via submitPendingKinematicUpdates()
   m_acceleration = Vector2D(0, 0);
 
   // Position sync is handled by setPosition() calls - no need for periodic
@@ -255,19 +252,13 @@ void NPC::clean() {
 
 void NPC::setVelocity(const Vector2D &velocity) {
   m_velocity = velocity;
-  auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.updateCollisionBodyVelocitySOA(getID(), velocity);
-  }
+  // AIManager batch processing handles collision velocity updates
+  // Direct update removed to prevent race conditions with async AI threads
 }
 
 void NPC::setPosition(const Vector2D &position) {
-  auto &cm = CollisionManager::Instance();
-
-  // Update collision body position
-  if (!cm.isSyncing()) {
-    cm.updateCollisionBodyPositionSOA(getID(), position);
-  }
+  // AIManager batch processing handles collision position updates
+  // Direct update removed to prevent race conditions with async AI threads
 
   // Update entity position
   m_position = position;

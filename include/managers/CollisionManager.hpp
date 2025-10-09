@@ -81,6 +81,11 @@ public:
             : id(entityId), position(pos), velocity(vel) {}
     };
     void updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates);
+
+    // Concurrent queue pattern for multi-producer async AI threads
+    // Multiple threads append, CollisionManager atomically swaps and drains
+    void submitPendingKinematicUpdates(const std::vector<KinematicUpdate>& updates);
+
     // Convenience methods for triggers
     EntityID createTriggerArea(const AABB& aabb,
                                HammerEngine::TriggerTag tag,
@@ -204,6 +209,9 @@ private:
     void buildActiveIndicesSOA();
     void prepareCollisionPools(size_t bodyCount, size_t threadCount);
     void mergeThreadResults();
+
+    // Apply pending kinematic updates from async AI threads (called at start of update)
+    void applyPendingKinematicUpdates();
 
     // Spatial hash optimization methods
     void rebuildStaticSpatialHash();
@@ -564,6 +572,11 @@ private:
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;
     mutable std::mutex m_commandQueueMutex;
+
+    // Staging buffer for multi-producer async kinematic updates (concurrent queue pattern)
+    // Async AI threads append with mutex, CollisionManager atomically swaps entire buffer
+    std::vector<KinematicUpdate> m_pendingKinematicUpdates;
+    mutable std::mutex m_pendingKinematicMutex;
 
     // Thread-safe access to collision storage (entityToIndex map and storage arrays)
     // shared_lock for reads (AI threads), unique_lock for writes (update thread)
