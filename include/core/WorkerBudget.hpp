@@ -10,6 +10,7 @@
 #include <algorithm>
 #include <cmath>
 #include <array>
+#include <atomic>
 
 namespace HammerEngine {
 
