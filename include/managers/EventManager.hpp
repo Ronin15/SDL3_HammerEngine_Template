@@ -18,6 +18,7 @@
  * - Direct function calls to minimize overhead
  */
 
+#include "core/WorkerBudget.hpp"
 #include "events/EventTypeId.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -26,6 +27,7 @@
 #include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -586,6 +588,9 @@ private:
   std::atomic<size_t> m_lastEventBudget{0};
   std::atomic<bool> m_lastWasThreaded{false};
 
+  // Adaptive batch state for performance-based tuning
+  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
+
   // Deferred dispatch queue (processed in update())
   struct PendingDispatch {
     EventTypeId typeId;
@@ -593,10 +598,9 @@ private:
   };
   mutable std::mutex m_dispatchMutex;
 
-  // Async batch tracking for safe shutdown
-  std::atomic<size_t> m_pendingBatchGroups{0};  // Number of active batch groups
-  std::mutex m_batchCompletionMutex;
-  std::condition_variable m_batchCompletionCV;
+  // Async batch tracking for safe shutdown using futures
+  std::vector<std::future<void>> m_batchFutures;
+  std::mutex m_batchFuturesMutex;  // Protect futures vector
   mutable std::deque<PendingDispatch> m_pendingDispatch;
   size_t m_maxDispatchQueue{8192};
 

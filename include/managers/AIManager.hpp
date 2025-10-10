@@ -22,6 +22,7 @@
  */
 
 #include "ai/AIBehavior.hpp"
+#include "core/WorkerBudget.hpp"
 #include "entities/Entity.hpp"
 #include "managers/CollisionManager.hpp"
 #include <array>
@@ -325,6 +326,8 @@ public:
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
   void configurePriorityMultiplier(float multiplier = 1.0f);
+  void setMaxBatchesPerUpdate(size_t maxBatches);
+  size_t getMaxBatchesPerUpdate() const;
 
   // Performance monitoring
   AIPerformanceStats getPerformanceStats() const;
@@ -412,6 +415,9 @@ private:
   std::atomic<size_t> m_lastThreadBatchCount{0};
   std::atomic<bool> m_lastWasThreaded{false};
 
+  // Adaptive batch state for performance-based tuning
+  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
+
   // Player reference
   EntityWeakPtr m_playerEntity;
 
@@ -494,10 +500,9 @@ private:
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
 
-  // Async batch tracking for safe shutdown
-  std::atomic<size_t> m_pendingBatchGroups{0};  // Number of active batch groups
-  std::mutex m_batchCompletionMutex;
-  std::condition_variable m_batchCompletionCV;
+  // Async batch tracking for safe shutdown using futures
+  std::vector<std::future<void>> m_batchFutures;
+  std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size

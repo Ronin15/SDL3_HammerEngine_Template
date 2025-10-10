@@ -572,13 +572,17 @@ void ParticleManager::clean() {
 
   // CRITICAL: Wait for any pending async batches to complete before cleanup
   {
-    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
-    if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
-      PARTICLE_DEBUG("Waiting for " + std::to_string(m_pendingBatchGroups.load()) + " pending batch groups to complete...");
-      m_batchCompletionCV.wait(lock, [this]() {
-        return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
-      });
-      PARTICLE_DEBUG("All pending batches completed");
+    std::vector<std::future<void>> localFutures;
+    {
+      std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+      localFutures = std::move(m_batchFutures);
+    }
+
+    // Wait for all batch futures to complete
+    for (auto& future : localFutures) {
+      if (future.valid()) {
+        future.wait();
+      }
     }
   }
 
@@ -835,6 +839,11 @@ void ParticleManager::update(float deltaTime) {
         }
       }
     }
+
+    // Measure total update time for adaptive batch tuning
+    auto updateEndTime = std::chrono::high_resolution_clock::now();
+    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
+    m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR("Exception in ParticleManager::update: " +
@@ -1990,33 +1999,30 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
   m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-  // Use unified batch calculation for consistency across all managers
+  // Use unified adaptive batch calculation for consistency across all managers
   const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
                                     static_cast<size_t>(1));
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+  // Get previous frame's completion time for adaptive feedback
+  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
 
   auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
       HammerEngine::PARTICLE_BATCH_CONFIG,
       activeParticleCount,
       threshold,
       optimalWorkerCount,
-      queuePressure
+      queuePressure,
+      m_adaptiveBatchState,  // Adaptive state for performance tuning
+      lastFrameTime          // Previous frame's completion time
   );
 
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // PERFORMANCE OPTIMIZATION: Use batchEnqueueTasks() for O(1) lock acquisition
-  // instead of O(N) individual enqueue calls. This reduces ThreadSystem mutex
-  // contention significantly when submitting multiple batches.
-
-  // Atomic counter for batch completion synchronization
-  // Use shared_ptr so async lambdas can safely access this after update() returns
-  auto remainingBatches = std::make_shared<std::atomic<size_t>>(batchCount);
-
-  // Build task vector for batch submission
-  std::vector<std::function<void()>> tasks;
-  tasks.reserve(batchCount);
+  // Submit batches using futures for native async result tracking
+  std::vector<std::future<void>> batchFutures;
+  batchFutures.reserve(batchCount);
 
   for (size_t i = 0; i < batchCount; ++i) {
     size_t startIdx = i * particlesPerBatch;
@@ -2028,43 +2034,32 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
     // Skip empty batches or invalid ranges
     if (startIdx >= bufferSize || startIdx >= endIdx) {
-      // Decrement counter for skipped batch
-      remainingBatches->fetch_sub(1, std::memory_order_relaxed);
       continue;
     }
 
-    // Build task with captured values
+    // Submit each batch with future for completion tracking
     // currentBuffer captured by reference is safe - it points to member storage
-    // remainingBatches captured by shared_ptr value - safe for async execution
-    tasks.push_back([this, &currentBuffer, startIdx, endIdx, deltaTime,
-                    windPhase = m_windPhase, remainingBatches]() {
-      try {
-        updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
-      } catch (const std::exception &e) {
-        PARTICLE_ERROR(std::string("Exception in particle batch: ") + e.what());
-      } catch (...) {
-        PARTICLE_ERROR("Unknown exception in particle batch");
-      }
-
-      // When last batch completes, signal batch group completion for safe shutdown
-      if (remainingBatches->fetch_sub(1, std::memory_order_acq_rel) == 1) {
-        if (this->m_pendingBatchGroups.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-          std::lock_guard<std::mutex> lock(this->m_batchCompletionMutex);
-          this->m_batchCompletionCV.notify_all();
+    batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+      [this, &currentBuffer, startIdx, endIdx, deltaTime,
+       windPhase = m_windPhase]() -> void {
+        try {
+          updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
+        } catch (const std::exception &e) {
+          PARTICLE_ERROR(std::string("Exception in particle batch: ") + e.what());
+        } catch (...) {
+          PARTICLE_ERROR("Unknown exception in particle batch");
         }
-      }
-    });
+      },
+      HammerEngine::TaskPriority::Normal,
+      "Particle_Batch"
+    ));
   }
 
-  // Track this batch group for safe shutdown
-  if (!tasks.empty()) {
-    m_pendingBatchGroups.fetch_add(1, std::memory_order_release);
-
-    // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
-    threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::Normal, "Particle_Batch");
-
-    // NO BLOCKING WAIT: Batches complete asynchronously
-    // GameEngine::update() mutex ensures batches finish before next frame
+  // Store futures for shutdown synchronization (futures-based completion tracking)
+  // NO BLOCKING WAIT: Particles are visual-only and don't need sync in update()
+  if (!batchFutures.empty()) {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    m_batchFutures = std::move(batchFutures);
   }
 
   m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
