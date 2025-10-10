@@ -68,6 +68,22 @@ struct WorkerBudget {
 };
 
 /**
+ * @brief Adaptive batch state for performance-based tuning
+ *
+ * Tracks per-manager performance metrics and dynamically adjusts batch count
+ * to hit target completion times. Each manager maintains its own adaptive state
+ * to converge to optimal batching for current hardware and workload.
+ */
+struct AdaptiveBatchState {
+    std::atomic<float> batchMultiplier{1.0f};     // Dynamic adjustment (0.5x to 1.5x)
+    std::atomic<double> lastUpdateTimeMs{0.0};    // Previous frame's actual completion time
+
+    static constexpr float MIN_MULTIPLIER = 0.5f;  // Never below 50% of calculated batches
+    static constexpr float MAX_MULTIPLIER = 1.5f;  // Never above 150% of calculated batches
+    static constexpr float ADAPT_RATE = 0.1f;      // 10% adjustment per frame (smooth convergence)
+};
+
+/**
  * @brief Batch processing configuration for consistent batching across managers
  *
  * Provides unified batch sizing strategy to eliminate inconsistent batch
@@ -83,6 +99,7 @@ struct BatchConfig {
     size_t minBatchSize;     // Minimum items per batch (work granularity)
     size_t minBatchCount;    // Minimum number of batches to create
     size_t maxBatchCount;    // Maximum number of batches to create
+    double targetUpdateTimeMs; // Target completion time for adaptive tuning
 
     /**
      * @brief Calculate base batch size from threading threshold
@@ -109,21 +126,24 @@ static constexpr BatchConfig AI_BATCH_CONFIG = {
     4,      // baseDivisor: threshold/4 for coarse-grained parallelism (reduced from 8)
     250,    // minBatchSize: minimum 250 entities per batch (increased from 64)
     2,      // minBatchCount: at least 2 batches for parallel execution
-    4       // maxBatchCount: max 4 batches to minimize sync overhead (reduced from 10)
+    4,      // maxBatchCount: max 4 batches to minimize sync overhead (reduced from 10)
+    0.5     // targetUpdateTimeMs: 500µs target for AI updates (adaptive tuning)
 };
 
 static constexpr BatchConfig PARTICLE_BATCH_CONFIG = {
     4,      // baseDivisor: threshold/4 (increased from 1 for better parallelism)
     128,    // minBatchSize: minimum 128 particles (reduced from 256)
     2,      // minBatchCount: at least 2 batches
-    8       // maxBatchCount: up to 8 batches (increased from 4)
+    8,      // maxBatchCount: up to 8 batches (increased from 4)
+    0.3     // targetUpdateTimeMs: 300µs target for particle updates (adaptive tuning)
 };
 
 static constexpr BatchConfig EVENT_BATCH_CONFIG = {
     2,      // baseDivisor: threshold/2 for moderate parallelism
     4,      // minBatchSize: minimum 4 events per batch
     2,      // minBatchCount: at least 2 batches
-    4       // maxBatchCount: up to 4 batches
+    4,      // maxBatchCount: up to 4 batches
+    0.2     // targetUpdateTimeMs: 200µs target for event updates (adaptive tuning)
 };
 
 /**
@@ -186,7 +206,12 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     // Calculate base batch parameters
     size_t baseBatchSize = config.getBaseBatchSize(threshold);
     size_t minItemsPerBatch = baseBatchSize;
-    size_t maxBatches = std::max(config.maxBatchCount, optimalWorkers);
+
+    // Dynamic batch constraints: Scale with available workers while respecting config baseline
+    // config.maxBatchCount is the minimum; scale up based on optimalWorkers for better parallelism
+    // Cap at optimalWorkers to avoid excessive overhead (each batch has sync cost)
+    size_t maxBatches = std::max(config.maxBatchCount,
+                                 std::min(optimalWorkers, config.maxBatchCount * 2));
 
     // Adapt batch strategy based on ThreadSystem queue pressure
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
@@ -200,7 +225,9 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
         // ThreadSystem has capacity, so maximize parallel execution
         size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
         minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
-        maxBatches = std::max(config.maxBatchCount, optimalWorkers);
+        // Scale with workers in low pressure (more cores = more parallelism opportunity)
+        maxBatches = std::max(config.maxBatchCount,
+                             std::min(optimalWorkers, config.maxBatchCount * 2));
     }
 
     // Calculate actual batch count based on workload and constraints
@@ -208,6 +235,102 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
 
     // Calculate final batch size (distribute workload evenly across batches)
+    size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
+
+    return {batchCount, batchSize};
+}
+
+/**
+ * @brief Calculate optimal batch count with adaptive performance-based tuning
+ *
+ * This overload extends the base batch calculation with adaptive feedback based on
+ * measured completion times. It dynamically adjusts batch count to hit target times,
+ * adapting to different hardware (2-16+ cores) and workloads (100-10K+ items).
+ *
+ * @param config Batch configuration for this manager type (AI/Particle/Event)
+ * @param workloadSize Total items to process (entities, particles, events)
+ * @param threshold Threading threshold for this manager
+ * @param optimalWorkers Optimal worker count from getOptimalWorkerCount()
+ * @param queuePressure Current ThreadSystem queue pressure (0.0 to 1.0)
+ * @param adaptiveState Adaptive state tracking performance and multiplier
+ * @param lastUpdateTimeMs Previous frame's actual completion time in milliseconds
+ * @return Pair of {batchCount, batchSize} for optimal parallel processing
+ *
+ * Adaptive Behavior:
+ * - If completion time > target * 1.15: Reduce batches (less sync overhead)
+ * - If completion time < target * 0.85: Increase batches (more parallelism)
+ * - Otherwise: Maintain current multiplier (within tolerance)
+ * - Smooth 10% adjustments prevent oscillation
+ * - Always respects configured min/max batch constraints
+ */
+inline std::pair<size_t, size_t> calculateBatchStrategy(
+    const BatchConfig& config,
+    size_t workloadSize,
+    size_t threshold,
+    size_t optimalWorkers,
+    double queuePressure,
+    AdaptiveBatchState& adaptiveState,
+    double lastUpdateTimeMs)
+{
+    // Update adaptive multiplier based on previous frame's performance
+    if (lastUpdateTimeMs > 0.0 && config.targetUpdateTimeMs > 0.0) {
+        float currentMultiplier = adaptiveState.batchMultiplier.load(std::memory_order_acquire);
+
+        if (lastUpdateTimeMs > config.targetUpdateTimeMs * 1.15) {
+            // Too slow (>15% over target): reduce batches to minimize sync overhead
+            currentMultiplier = std::max(AdaptiveBatchState::MIN_MULTIPLIER,
+                                        currentMultiplier - AdaptiveBatchState::ADAPT_RATE);
+        } else if (lastUpdateTimeMs < config.targetUpdateTimeMs * 0.85) {
+            // Under budget (<15% below target): can increase parallelism
+            currentMultiplier = std::min(AdaptiveBatchState::MAX_MULTIPLIER,
+                                        currentMultiplier + AdaptiveBatchState::ADAPT_RATE);
+        }
+        // else: within 85-115% of target - no adjustment needed
+
+        adaptiveState.batchMultiplier.store(currentMultiplier, std::memory_order_release);
+        adaptiveState.lastUpdateTimeMs.store(lastUpdateTimeMs, std::memory_order_release);
+    }
+
+    // Handle empty workload
+    if (workloadSize == 0) {
+        return {1, 0};
+    }
+
+    // Calculate base batch parameters
+    size_t baseBatchSize = config.getBaseBatchSize(threshold);
+    size_t minItemsPerBatch = baseBatchSize;
+
+    // Dynamic batch constraints: Scale with available workers while respecting config baseline
+    // config.maxBatchCount is the minimum; scale up based on optimalWorkers for better parallelism
+    // Cap at optimalWorkers to avoid excessive overhead (each batch has sync cost)
+    size_t maxBatches = std::max(config.maxBatchCount,
+                                 std::min(optimalWorkers, config.maxBatchCount * 2));
+
+    // Adapt batch strategy based on ThreadSystem queue pressure
+    if (queuePressure > QUEUE_PRESSURE_WARNING) {
+        // High pressure: Use fewer, larger batches to reduce queue overhead
+        minItemsPerBatch = std::min(baseBatchSize * 2, threshold * 2);
+        size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
+        maxBatches = highPressureMax;
+    } else if (queuePressure < (1.0 - QUEUE_PRESSURE_WARNING)) {
+        // Low pressure: Use more, smaller batches for better parallelism
+        size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
+        minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
+        // Scale with workers in low pressure (more cores = more parallelism opportunity)
+        maxBatches = std::max(config.maxBatchCount,
+                             std::min(optimalWorkers, config.maxBatchCount * 2));
+    }
+
+    // Calculate batch count
+    size_t batchCount = (workloadSize + minItemsPerBatch - 1) / minItemsPerBatch;
+    batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+
+    // Apply adaptive multiplier for performance-based tuning
+    float multiplier = adaptiveState.batchMultiplier.load(std::memory_order_acquire);
+    batchCount = static_cast<size_t>(batchCount * multiplier);
+    batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+
+    // Calculate final batch size (distribute workload evenly)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
 
     return {batchCount, batchSize};

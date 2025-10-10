@@ -89,16 +89,7 @@ void AIManager::clean() {
   m_globallyPaused.store(true, std::memory_order_release);
 
   // CRITICAL: Wait for any pending async batches to complete before cleanup
-  {
-    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
-    if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
-      AI_DEBUG("Waiting for " + std::to_string(m_pendingBatchGroups.load()) + " pending batch groups to complete...");
-      m_batchCompletionCV.wait(lock, [this]() {
-        return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
-      });
-      AI_DEBUG("All pending batches completed");
-    }
-  }
+  waitForAsyncBatchCompletion();
 
   // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
   // Brief sleep allows ThreadSystem to process remaining tasks
@@ -163,16 +154,7 @@ void AIManager::prepareForStateTransition() {
   m_globallyPaused.store(true, std::memory_order_release);
 
   // CRITICAL: Wait for any pending async batches to complete before state transition
-  {
-    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
-    if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
-      AI_DEBUG("Waiting for " + std::to_string(m_pendingBatchGroups.load()) + " pending batch groups to complete...");
-      m_batchCompletionCV.wait(lock, [this]() {
-        return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
-      });
-      AI_DEBUG("All pending batches completed");
-    }
-  }
+  waitForAsyncBatchCompletion();
 
   // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
   // Brief sleep allows ThreadSystem to process remaining tasks
@@ -466,14 +448,20 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       m_lastAIBudget.store(budget.aiAllocated, std::memory_order_relaxed);
       m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-      // Use unified batch calculation for consistency across all managers
+      // Use unified adaptive batch calculation for consistency across all managers
       double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+      // Get previous frame's completion time for adaptive feedback
+      double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
+
       auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
           HammerEngine::AI_BATCH_CONFIG,
           entityCount,
           threadingThreshold,
           optimalWorkerCount,
-          queuePressure
+          queuePressure,
+          m_adaptiveBatchState,  // Adaptive state for performance tuning
+          lastFrameTime          // Previous frame's completion time
       );
 
       // Debug logging for high queue pressure
@@ -594,13 +582,9 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           (*batchCollisionUpdates)[i].reserve(estimatedSize);
         }
 
-        // Atomic counter for batch completion synchronization
-        // Use shared_ptr so async lambdas can safely access this after update() returns
-        auto remainingBatches = std::make_shared<std::atomic<size_t>>(batchCount);
-
-        // Build task vector for batch submission
-        std::vector<std::function<void()>> tasks;
-        tasks.reserve(batchCount);
+        // Submit batches using futures for native async result tracking
+        std::vector<std::future<void>> batchFutures;
+        batchFutures.reserve(batchCount);
 
         for (size_t i = 0; i < batchCount; ++i) {
           size_t start = i * entitiesPerBatch;
@@ -611,43 +595,38 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
             end += remainingEntities;
           }
 
+          // Submit each batch with future for completion tracking
           // Capture ALL data by shared_ptr value - safe for async execution after update() returns
-          tasks.push_back([this, start, end, deltaTime, nextBuffer, playerPos,
-                          shouldUpdateDistances, preFetchedData, batchCollisionUpdates, i,
-                          remainingBatches]() {
-            try {
-              processBatch(start, end, deltaTime, playerPos,
-                          shouldUpdateDistances, *preFetchedData, (*batchCollisionUpdates)[i]);
-            } catch (const std::exception &e) {
-              AI_ERROR(std::string("Exception in AI batch: ") + e.what());
-            } catch (...) {
-              AI_ERROR("Unknown exception in AI batch");
-            }
-
-            // INCREMENTAL UPDATE STRATEGY: Submit THIS batch's updates immediately
-            // This provides faster, more consistent NPC updates instead of all-or-nothing timing.
-            // Each batch submits as it completes → smooth incremental updates at 1-frame latency.
-            if (!(*batchCollisionUpdates)[i].empty()) {
-              auto &cm = CollisionManager::Instance();
-              cm.submitPendingKinematicUpdates((*batchCollisionUpdates)[i]);
-            }
-
-            // Track batch completion for shutdown synchronization
-            if (remainingBatches->fetch_sub(1, std::memory_order_acq_rel) == 1) {
-              // Last batch completed - signal for safe shutdown
-              if (this->m_pendingBatchGroups.fetch_sub(1, std::memory_order_acq_rel) == 1) {
-                std::lock_guard<std::mutex> lock(this->m_batchCompletionMutex);
-                this->m_batchCompletionCV.notify_all();
+          batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+            [this, start, end, deltaTime, nextBuffer, playerPos,
+             shouldUpdateDistances, preFetchedData, batchCollisionUpdates, i]() -> void {
+              try {
+                processBatch(start, end, deltaTime, playerPos,
+                            shouldUpdateDistances, *preFetchedData, (*batchCollisionUpdates)[i]);
+              } catch (const std::exception &e) {
+                AI_ERROR(std::string("Exception in AI batch: ") + e.what());
+              } catch (...) {
+                AI_ERROR("Unknown exception in AI batch");
               }
-            }
-          });
+
+              // INCREMENTAL UPDATE STRATEGY: Submit THIS batch's updates immediately
+              // This provides faster, more consistent NPC updates instead of all-or-nothing timing.
+              // Each batch submits as it completes → smooth incremental updates at 1-frame latency.
+              if (!(*batchCollisionUpdates)[i].empty()) {
+                auto &cm = CollisionManager::Instance();
+                cm.submitPendingKinematicUpdates((*batchCollisionUpdates)[i]);
+              }
+            },
+            HammerEngine::TaskPriority::High,
+            "AI_Batch"
+          ));
         }
 
-        // Track this batch group for safe shutdown
-        m_pendingBatchGroups.fetch_add(1, std::memory_order_release);
-
-        // Single mutex acquisition for entire batch submission (O(1) instead of O(N))
-        threadSystem.batchEnqueueTasks(tasks, HammerEngine::TaskPriority::High, "AI_Batch");
+        // Store futures for later synchronization (futures-based completion tracking)
+        {
+          std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+          m_batchFutures = std::move(batchFutures);
+        }
 
         // NO WAIT HERE: Async batches complete in background
         // GameEngine waits for completion at NEXT frame's start (consistent timing, no jitter)
@@ -781,6 +760,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
     // 4. Eliminate timing-dependent race conditions with CollisionManager
     waitForAsyncBatchCompletion();
 
+    // Measure total update time (including async wait) for adaptive batch tuning
+    auto updateEndTime = std::chrono::high_resolution_clock::now();
+    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
+    m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
+
   } catch (const std::exception &e) {
     AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
   }
@@ -791,13 +775,18 @@ void AIManager::waitForAsyncBatchCompletion() {
   // This ensures collision data updates (from async callbacks) are finished
   // before CollisionManager processes them.
   //
-  // Fast path: ~1ns atomic check if no pending work (high-core systems)
-  // Slow path: blocks only when necessary on low-core systems
-  if (m_pendingBatchGroups.load(std::memory_order_acquire) > 0) {
-    std::unique_lock<std::mutex> lock(m_batchCompletionMutex);
-    m_batchCompletionCV.wait(lock, [this]() {
-      return m_pendingBatchGroups.load(std::memory_order_acquire) == 0;
-    });
+  // Using native futures for efficient synchronization instead of custom condition variables
+  std::vector<std::future<void>> localFutures;
+  {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    localFutures = std::move(m_batchFutures);
+  }
+
+  // Wait for all batch futures to complete
+  for (auto& future : localFutures) {
+    if (future.valid()) {
+      future.wait();  // Block until batch completes
+    }
   }
 }
 

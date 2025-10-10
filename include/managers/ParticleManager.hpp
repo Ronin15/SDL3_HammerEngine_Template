@@ -22,12 +22,14 @@
  * - Thread-safe design with minimal lock contention
  */
 
+#include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <condition_variable>
+#include <future>
 #include <mutex>
 #include <new>
 #include <shared_mutex>
@@ -902,6 +904,9 @@ private:
   std::atomic<bool> m_lastWasThreaded{false};
   std::atomic<size_t> m_activeCount{0};
 
+  // Adaptive batch state for performance-based tuning
+  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
+
   // Camera and culling
   struct CameraViewport {
     float x{0}, y{0}, width{1920}, height{1080};
@@ -914,10 +919,9 @@ private:
   mutable std::mutex m_statsMutex; // Only for performance stats
   mutable std::mutex m_weatherMutex; // For weather effect changes
 
-  // Async batch tracking for safe shutdown
-  std::atomic<size_t> m_pendingBatchGroups{0};  // Number of active batch groups
-  std::mutex m_batchCompletionMutex;
-  std::condition_variable m_batchCompletionCV;
+  // Async batch tracking for safe shutdown using futures
+  std::vector<std::future<void>> m_batchFutures;
+  std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // NOTE: No update mutex - GameEngine handles update/render synchronization
 
