@@ -325,6 +325,8 @@ public:
   void configureThreading(bool useThreading, unsigned int maxThreads = 0);
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
+  void setWaitForBatchCompletion(bool wait);
+  bool getWaitForBatchCompletion() const;
   void configurePriorityMultiplier(float multiplier = 1.0f);
   void setMaxBatchesPerUpdate(size_t maxBatches);
   size_t getMaxBatchesPerUpdate() const;
@@ -459,6 +461,7 @@ private:
   // Threading and state
   std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_useThreading{true};
+  std::atomic<bool> m_waitForBatchCompletion{false}; // Default: non-blocking for smooth frames
   std::atomic<bool> m_globallyPaused{false};
   std::atomic<bool> m_processingMessages{false};
   unsigned int m_maxThreads{0};
@@ -503,6 +506,9 @@ private:
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
   std::mutex m_batchFuturesMutex;  // Protect futures vector
+
+  // Per-batch collision update buffers (zero contention approach)
+  std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size

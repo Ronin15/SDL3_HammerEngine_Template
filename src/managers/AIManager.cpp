@@ -421,10 +421,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         collisionUpdates.reserve(entityCount);
         processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
-        // Submit collision updates to pending buffer (double-buffered, no blocking)
+        // Submit collision updates directly (single-threaded, no batching needed)
         if (!collisionUpdates.empty()) {
           auto &cm = CollisionManager::Instance();
-          cm.submitPendingKinematicUpdates(collisionUpdates);
+          std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {collisionUpdates};
+          cm.applyBatchedKinematicUpdates(singleBatch);
         }
 
         // Swap buffers atomically
@@ -517,10 +518,11 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
         collisionUpdates.reserve(entityCount);
         processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
-        // Submit collision updates to pending buffer (double-buffered, no blocking)
+        // Submit collision updates directly (single batch, no contention)
         if (!collisionUpdates.empty()) {
           auto &cm = CollisionManager::Instance();
-          cm.submitPendingKinematicUpdates(collisionUpdates);
+          std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {collisionUpdates};
+          cm.applyBatchedKinematicUpdates(singleBatch);
         }
       } else {
         size_t entitiesPerBatch = entityCount / batchCount;
@@ -609,23 +611,19 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
                 AI_ERROR("Unknown exception in AI batch");
               }
 
-              // INCREMENTAL UPDATE STRATEGY: Submit THIS batch's updates immediately
-              // This provides faster, more consistent NPC updates instead of all-or-nothing timing.
-              // Each batch submits as it completes → smooth incremental updates at 1-frame latency.
-              if (!(*batchCollisionUpdates)[i].empty()) {
-                auto &cm = CollisionManager::Instance();
-                cm.submitPendingKinematicUpdates((*batchCollisionUpdates)[i]);
-              }
+              // PER-BATCH BUFFER: Each batch writes to its own buffer (zero contention!)
+              // Collision updates will be submitted after all batches complete
             },
             HammerEngine::TaskPriority::High,
             "AI_Batch"
           ));
         }
 
-        // Store futures for later synchronization (futures-based completion tracking)
+        // Store futures and collision buffers for later synchronization
         {
           std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
           m_batchFutures = std::move(batchFutures);
+          m_batchCollisionUpdates = batchCollisionUpdates;  // Store for submission after wait
         }
 
         // NO WAIT HERE: Async batches complete in background
@@ -680,7 +678,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
       collisionUpdates.reserve(entityCount);
       processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
-      // Submit collision updates
+      // Submit collision updates (single-threaded uses direct update for immediate application)
       if (!collisionUpdates.empty()) {
         auto &cm = CollisionManager::Instance();
         cm.updateKinematicBatchSOA(collisionUpdates);
@@ -771,15 +769,22 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
 }
 
 void AIManager::waitForAsyncBatchCompletion() {
-  // COLLISION ORDERING: Wait for current frame's async batches to complete
-  // This ensures collision data updates (from async callbacks) are finished
-  // before CollisionManager processes them.
+  // BATCH SYNCHRONIZATION: Wait for all async batches to complete
+  // This ensures collision updates are ready before CollisionManager processes them.
   //
-  // Using native futures for efficient synchronization instead of custom condition variables
+  // JITTER ELIMINATION: Per-batch buffers eliminate mutex contention
+  //   - Old approach: Each batch serializes on submitPendingKinematicUpdates mutex
+  //   - New approach: Each batch writes to its own buffer (zero contention!)
+  //   - Result: Consistent batch completion times → smooth frames
+
   std::vector<std::future<void>> localFutures;
+  std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> collisionBuffers;
+
   {
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
     localFutures = std::move(m_batchFutures);
+    collisionBuffers = m_batchCollisionUpdates;
+    m_batchCollisionUpdates.reset();  // Clear for next frame
   }
 
   // Wait for all batch futures to complete
@@ -787,6 +792,12 @@ void AIManager::waitForAsyncBatchCompletion() {
     if (future.valid()) {
       future.wait();  // Block until batch completes
     }
+  }
+
+  // Submit ALL collision updates at once (zero mutex contention during batch execution!)
+  if (collisionBuffers && !collisionBuffers->empty()) {
+    auto &cm = CollisionManager::Instance();
+    cm.applyBatchedKinematicUpdates(*collisionBuffers);
   }
 }
 
@@ -1266,6 +1277,16 @@ void AIManager::setThreadingThreshold(size_t threshold) {
 
 size_t AIManager::getThreadingThreshold() const {
   return m_threadingThreshold.load(std::memory_order_acquire);
+}
+
+void AIManager::setWaitForBatchCompletion(bool wait) {
+  m_waitForBatchCompletion.store(wait, std::memory_order_release);
+  AI_INFO("AI batch completion wait " + std::string(wait ? "enabled" : "disabled") +
+          " (smooth frames: " + std::string(wait ? "no" : "yes") + ")");
+}
+
+bool AIManager::getWaitForBatchCompletion() const {
+  return m_waitForBatchCompletion.load(std::memory_order_acquire);
 }
 
 void AIManager::configurePriorityMultiplier(float multiplier) {

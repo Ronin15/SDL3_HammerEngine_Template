@@ -1613,8 +1613,8 @@ void CollisionManager::updateSOA(float dt) {
   // Process pending add/remove commands first (thread-safe deferred operations)
   processPendingCommands();
 
-  // Apply pending kinematic updates from async AI threads (double-buffered, no wait)
-  applyPendingKinematicUpdates();
+  // Note: Kinematic updates now applied via applyBatchedKinematicUpdates()
+  // called by AIManager after batch completion (zero contention)
 
   // Pure SOA system - no legacy compatibility
 
@@ -2369,29 +2369,44 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
   // Verbose logging removed for performance
 }
 
-void CollisionManager::submitPendingKinematicUpdates(const std::vector<KinematicUpdate>& updates) {
-  if (updates.empty()) return;
+void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates) {
+  // PER-BATCH COLLISION UPDATES: Zero contention approach
+  // Each AI batch has its own buffer, we merge them here with no mutex needed.
+  // This eliminates the serialization bottleneck that caused frame jitter.
 
-  // Multi-producer pattern: Append to staging buffer with mutex protection
-  std::lock_guard<std::mutex> lock(m_pendingKinematicMutex);
-  m_pendingKinematicUpdates.insert(m_pendingKinematicUpdates.end(),
-                                   updates.begin(), updates.end());
-}
+  if (batchUpdates.empty()) return;
 
-void CollisionManager::applyPendingKinematicUpdates() {
-  // Lock-free concurrent queue pattern: Swap staging buffer atomically
-  // Async AI threads submit updates as they complete (no wait in main thread)
-  // This gets whatever updates are ready from async batches with zero blocking
-  std::vector<KinematicUpdate> updatesToApply;
-  {
-    std::lock_guard<std::mutex> lock(m_pendingKinematicMutex);
-    updatesToApply.swap(m_pendingKinematicUpdates);  // Atomic swap, clears staging buffer
+  // Count total updates for efficiency
+  size_t totalUpdates = 0;
+  for (const auto& batch : batchUpdates) {
+    totalUpdates += batch.size();
   }
 
-  // Apply all available updates (lock-free, non-blocking)
-  if (!updatesToApply.empty()) {
-    updateKinematicBatchSOA(updatesToApply);
+  if (totalUpdates == 0) return;
+
+  // PERFORMANCE: Acquire shared lock ONCE for all batches
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  // Merge all batch updates into collision storage
+  size_t validUpdates = 0;
+  for (const auto& batchBuffer : batchUpdates) {
+    for (const auto& bodyUpdate : batchBuffer) {
+      auto it = m_storage.entityToIndex.find(bodyUpdate.id);
+      if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
+        size_t index = it->second;
+        auto& hot = m_storage.hotData[index];
+        if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC) {
+          hot.position = bodyUpdate.position;
+          hot.velocity = bodyUpdate.velocity;
+          hot.aabbDirty = 1;
+          hot.active = true;
+          validUpdates++;
+        }
+      }
+    }
   }
+
+  // Batch processing complete - zero mutex contention between AI batches
 }
 
 // ========== SOA BODY MANAGEMENT METHODS ==========
