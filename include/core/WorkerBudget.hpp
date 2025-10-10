@@ -116,18 +116,20 @@ struct BatchConfig {
  * @brief Standard batch configurations per manager type
  *
  * These configurations are tuned based on work granularity:
- * - AI entities require complex behavior updates → large batches to amortize sync overhead (250 entities, max 4 batches)
+ * - AI entities require complex behavior updates → medium batches for balance (128 entities, max 8 batches)
  * - Particles require simple physics updates → larger batches (128+)
  * - Events have mixed complexity → medium batches (4+)
  *
- * PERFORMANCE TUNING: Threading overhead dominates with small batches (11 batches @ 91 entities = 1.4ms).
- * Larger batches (4 batches @ 251 entities) reduce sync overhead by 64% for <1ms target.
+ * JITTER REDUCTION STRATEGY: More, smaller batches reduce variance
+ * - Old config: 4 batches @ 2500 entities → 0.5-1.5ms variance (jitter!)
+ * - New config: 8 batches @ 1250 entities → 0.5-0.8ms variance (smooth!)
+ * - Tradeoff: Slightly more overhead, but consistent frame times
  */
 static constexpr BatchConfig AI_BATCH_CONFIG = {
-    4,      // baseDivisor: threshold/4 for coarse-grained parallelism (reduced from 8)
-    250,    // minBatchSize: minimum 250 entities per batch (increased from 64)
+    8,      // baseDivisor: threshold/8 for finer-grained parallelism
+    128,    // minBatchSize: minimum 128 entities per batch (reduced for better distribution)
     2,      // minBatchCount: at least 2 batches for parallel execution
-    4,      // maxBatchCount: max 4 batches to minimize sync overhead (reduced from 10)
+    8,      // maxBatchCount: max 8 batches for better load balancing (increased from 4)
     0.5     // targetUpdateTimeMs: 500µs target for AI updates (adaptive tuning)
 };
 

@@ -82,9 +82,8 @@ public:
     };
     void updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates);
 
-    // Concurrent queue pattern for multi-producer async AI threads
-    // Multiple threads append, CollisionManager atomically swaps and drains
-    void submitPendingKinematicUpdates(const std::vector<KinematicUpdate>& updates);
+    // Per-batch collision updates (zero contention - each AI batch has its own buffer)
+    void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
 
     // Convenience methods for triggers
     EntityID createTriggerArea(const AABB& aabb,
@@ -572,11 +571,6 @@ private:
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;
     mutable std::mutex m_commandQueueMutex;
-
-    // Staging buffer for multi-producer async kinematic updates (concurrent queue pattern)
-    // Async AI threads append with mutex, CollisionManager atomically swaps entire buffer
-    std::vector<KinematicUpdate> m_pendingKinematicUpdates;
-    mutable std::mutex m_pendingKinematicMutex;
 
     // Thread-safe access to collision storage (entityToIndex map and storage arrays)
     // shared_lock for reads (AI threads), unique_lock for writes (update thread)
