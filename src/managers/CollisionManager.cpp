@@ -344,11 +344,14 @@ size_t CollisionManager::createStaticObstacleBodies() {
             spanEnd = columns[i];
           }
 
-          // Create collision body for this span
+          // Create collision body for this span with vertical overlap to eliminate seams
+          // Small overlap prevents gaps between row bodies due to floating point precision
+          constexpr float SEAM_OVERLAP = 0.1f;
+
           float worldMinX = spanStart * tileSize;
-          float worldMinY = row * tileSize;
+          float worldMinY = row * tileSize - SEAM_OVERLAP;
           float worldMaxX = (spanEnd + 1) * tileSize;
-          float worldMaxY = (row + 1) * tileSize;
+          float worldMaxY = (row + 1) * tileSize + SEAM_OVERLAP;
 
           float cx = (worldMinX + worldMaxX) * 0.5f;
           float cy = (worldMinY + worldMaxY) * 0.5f;
@@ -681,21 +684,28 @@ void CollisionManager::onTileChanged(int x, int y) {
       }
 
       if (isTopLeft) {
-        // REMOVE OLD COLLISION BODIES: Remove all existing collision bodies for this building
-        // Buildings may have multiple sub-bodies from row-based decomposition
-        // Start from subBodyIndex 0 and keep removing until we find one that doesn't exist
+        // REMOVE OLD COLLISION BODIES: Handle BOTH old and new EntityID formats
+        // OLD format (single body): (3ull << 61) | buildingId
+        // NEW format (multi-body): (3ull << 61) | (buildingId << 16) | subBodyIndex
+
+        // First, remove OLD format single bounding box (if it exists)
+        EntityID oldSingleBodyId = (static_cast<EntityID>(3ull) << 61) |
+                                   static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
+        removeCollisionBodySOA(oldSingleBodyId);
+
+        // Then, remove all NEW format multi-body collision bodies
         uint16_t subBodyIndex = 0;
         while (subBodyIndex < 1000) { // Safety limit to prevent infinite loop
-          EntityID oldBodyId = (static_cast<EntityID>(3ull) << 61) |
-                               (static_cast<EntityID>(tile.buildingId) << 16) |
-                               static_cast<EntityID>(subBodyIndex);
+          EntityID newMultiBodyId = (static_cast<EntityID>(3ull) << 61) |
+                                    (static_cast<EntityID>(tile.buildingId) << 16) |
+                                    static_cast<EntityID>(subBodyIndex);
 
-          auto it = m_storage.entityToIndex.find(oldBodyId);
+          auto it = m_storage.entityToIndex.find(newMultiBodyId);
           if (it == m_storage.entityToIndex.end()) {
             break; // No more sub-bodies for this building
           }
 
-          removeCollisionBodySOA(oldBodyId);
+          removeCollisionBodySOA(newMultiBodyId);
           ++subBodyIndex;
         }
 
@@ -725,11 +735,14 @@ void CollisionManager::onTileChanged(int x, int y) {
               spanEnd = columns[i];
             }
 
-            // Create collision body for this span
+            // Create collision body for this span with vertical overlap to eliminate seams
+            // Small overlap prevents gaps between row bodies due to floating point precision
+            constexpr float SEAM_OVERLAP = 0.1f;
+
             float worldMinX = spanStart * tileSize;
-            float worldMinY = row * tileSize;
+            float worldMinY = row * tileSize - SEAM_OVERLAP;
             float worldMaxX = (spanEnd + 1) * tileSize;
-            float worldMaxY = (row + 1) * tileSize;
+            float worldMaxY = (row + 1) * tileSize + SEAM_OVERLAP;
 
             float cx = (worldMinX + worldMaxX) * 0.5f;
             float cy = (worldMinY + worldMaxY) * 0.5f;
@@ -755,20 +768,27 @@ void CollisionManager::onTileChanged(int x, int y) {
       }
     } else if (tile.obstacleType != ObstacleType::BUILDING &&
                tile.buildingId > 0) {
-      // Tile was a building but no longer is - remove all building collision bodies
-      // Buildings may have multiple sub-bodies from row-based decomposition
+      // Tile was a building but no longer is - remove ALL building collision bodies
+      // Handle BOTH old and new EntityID formats
+
+      // Remove OLD format single bounding box (if it exists)
+      EntityID oldSingleBodyId = (static_cast<EntityID>(3ull) << 61) |
+                                 static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
+      removeCollisionBodySOA(oldSingleBodyId);
+
+      // Remove all NEW format multi-body collision bodies
       uint16_t subBodyIndex = 0;
       while (subBodyIndex < 1000) { // Safety limit to prevent infinite loop
-        EntityID buildingBodyId = (static_cast<EntityID>(3ull) << 61) |
+        EntityID newMultiBodyId = (static_cast<EntityID>(3ull) << 61) |
                                   (static_cast<EntityID>(tile.buildingId) << 16) |
                                   static_cast<EntityID>(subBodyIndex);
 
-        auto it = m_storage.entityToIndex.find(buildingBodyId);
+        auto it = m_storage.entityToIndex.find(newMultiBodyId);
         if (it == m_storage.entityToIndex.end()) {
           break; // No more sub-bodies for this building
         }
 
-        removeCollisionBodySOA(buildingBodyId);
+        removeCollisionBodySOA(newMultiBodyId);
         ++subBodyIndex;
       }
     }
