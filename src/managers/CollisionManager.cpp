@@ -317,35 +317,62 @@ size_t CollisionManager::createStaticObstacleBodies() {
         }
       }
 
-      // Calculate unified AABB for all connected building tiles
-      int minX = x, maxX = x, minY = y, maxY = y;
+      // ROW-BASED RECTANGULAR DECOMPOSITION for accurate collision on non-rectangular buildings
+      // Group tiles by row and create one collision body per contiguous horizontal span
+      std::map<int, std::vector<int>> rowToColumns;
       for (const auto& [tx, ty] : buildingTiles) {
-        minX = std::min(minX, tx);
-        maxX = std::max(maxX, tx);
-        minY = std::min(minY, ty);
-        maxY = std::max(maxY, ty);
+        rowToColumns[ty].push_back(tx);
       }
 
-      float worldMinX = minX * tileSize;
-      float worldMinY = minY * tileSize;
-      float worldMaxX = (maxX + 1) * tileSize;
-      float worldMaxY = (maxY + 1) * tileSize;
+      // Sort columns in each row for contiguous span detection
+      for (auto& [row, columns] : rowToColumns) {
+        std::sort(columns.begin(), columns.end());
+      }
 
-      float cx = (worldMinX + worldMaxX) * 0.5f;
-      float cy = (worldMinY + worldMaxY) * 0.5f;
-      float halfWidth = (worldMaxX - worldMinX) * 0.5f;
-      float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+      // Create collision bodies for each row's contiguous spans
+      uint16_t subBodyIndex = 0;
+      for (const auto& [row, columns] : rowToColumns) {
+        // Find contiguous horizontal spans in this row
+        size_t i = 0;
+        while (i < columns.size()) {
+          int spanStart = columns[i];
+          int spanEnd = spanStart;
 
-      Vector2D center(cx, cy);
-      Vector2D halfSize(halfWidth, halfHeight);
+          // Extend span while tiles are contiguous
+          while (i + 1 < columns.size() && columns[i + 1] == columns[i] + 1) {
+            ++i;
+            spanEnd = columns[i];
+          }
 
-      EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                    static_cast<EntityID>(tile.buildingId);
+          // Create collision body for this span
+          float worldMinX = spanStart * tileSize;
+          float worldMinY = row * tileSize;
+          float worldMaxX = (spanEnd + 1) * tileSize;
+          float worldMaxY = (row + 1) * tileSize;
 
-      if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-        addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
-                           CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-        ++created;
+          float cx = (worldMinX + worldMaxX) * 0.5f;
+          float cy = (worldMinY + worldMaxY) * 0.5f;
+          float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+          float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+
+          Vector2D center(cx, cy);
+          Vector2D halfSize(halfWidth, halfHeight);
+
+          // Encode building ID and sub-body index in EntityID
+          // Format: (3ull << 61) | (buildingId << 16) | subBodyIndex
+          EntityID id = (static_cast<EntityID>(3ull) << 61) |
+                        (static_cast<EntityID>(tile.buildingId) << 16) |
+                        static_cast<EntityID>(subBodyIndex);
+
+          if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
+            addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                               CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            ++created;
+            ++subBodyIndex;
+          }
+
+          ++i; // Move to next potential span
+        }
       }
     }
   }
@@ -654,46 +681,96 @@ void CollisionManager::onTileChanged(int x, int y) {
       }
 
       if (isTopLeft) {
-        // Calculate unified AABB for all connected building tiles
-        int minX = x, maxX = x, minY = y, maxY = y;
-        for (const auto& [tx, ty] : buildingTiles) {
-          minX = std::min(minX, tx);
-          maxX = std::max(maxX, tx);
-          minY = std::min(minY, ty);
-          maxY = std::max(maxY, ty);
+        // REMOVE OLD COLLISION BODIES: Remove all existing collision bodies for this building
+        // Buildings may have multiple sub-bodies from row-based decomposition
+        // Start from subBodyIndex 0 and keep removing until we find one that doesn't exist
+        uint16_t subBodyIndex = 0;
+        while (subBodyIndex < 1000) { // Safety limit to prevent infinite loop
+          EntityID oldBodyId = (static_cast<EntityID>(3ull) << 61) |
+                               (static_cast<EntityID>(tile.buildingId) << 16) |
+                               static_cast<EntityID>(subBodyIndex);
+
+          auto it = m_storage.entityToIndex.find(oldBodyId);
+          if (it == m_storage.entityToIndex.end()) {
+            break; // No more sub-bodies for this building
+          }
+
+          removeCollisionBodySOA(oldBodyId);
+          ++subBodyIndex;
         }
 
-        // Calculate center and half-size for the unified collision body
-        float worldMinX = minX * tileSize;
-        float worldMinY = minY * tileSize;
-        float worldMaxX = (maxX + 1) * tileSize;
-        float worldMaxY = (maxY + 1) * tileSize;
+        // ROW-BASED RECTANGULAR DECOMPOSITION for accurate collision on non-rectangular buildings
+        // Group tiles by row and create one collision body per contiguous horizontal span
+        std::map<int, std::vector<int>> rowToColumns;
+        for (const auto& [tx, ty] : buildingTiles) {
+          rowToColumns[ty].push_back(tx);
+        }
 
-        float cx = (worldMinX + worldMaxX) * 0.5f;
-        float cy = (worldMinY + worldMaxY) * 0.5f;
-        float halfWidth = (worldMaxX - worldMinX) * 0.5f;
-        float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+        // Sort columns in each row for contiguous span detection
+        for (auto& [row, columns] : rowToColumns) {
+          std::sort(columns.begin(), columns.end());
+        }
 
-        Vector2D center(cx, cy);
-        Vector2D halfSize(halfWidth, halfHeight);
+        // Create collision bodies for each row's contiguous spans
+        subBodyIndex = 0;
+        for (const auto& [row, columns] : rowToColumns) {
+          size_t i = 0;
+          while (i < columns.size()) {
+            int spanStart = columns[i];
+            int spanEnd = spanStart;
 
-        // Use the current tile's buildingId for the unified body
-        EntityID buildingId =
-            (static_cast<EntityID>(3ull) << 61) |
-            static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-        removeCollisionBodySOA(buildingId);
+            // Extend span while tiles are contiguous
+            while (i + 1 < columns.size() && columns[i + 1] == columns[i] + 1) {
+              ++i;
+              spanEnd = columns[i];
+            }
 
-        addCollisionBodySOA(buildingId, center, halfSize, BodyType::STATIC,
-                           CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            // Create collision body for this span
+            float worldMinX = spanStart * tileSize;
+            float worldMinY = row * tileSize;
+            float worldMaxX = (spanEnd + 1) * tileSize;
+            float worldMaxY = (row + 1) * tileSize;
+
+            float cx = (worldMinX + worldMaxX) * 0.5f;
+            float cy = (worldMinY + worldMaxY) * 0.5f;
+            float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+            float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+
+            Vector2D center(cx, cy);
+            Vector2D halfSize(halfWidth, halfHeight);
+
+            // Encode building ID and sub-body index in EntityID
+            // Format: (3ull << 61) | (buildingId << 16) | subBodyIndex
+            EntityID id = (static_cast<EntityID>(3ull) << 61) |
+                          (static_cast<EntityID>(tile.buildingId) << 16) |
+                          static_cast<EntityID>(subBodyIndex);
+
+            addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                               CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            ++subBodyIndex;
+
+            ++i; // Move to next potential span
+          }
+        }
       }
     } else if (tile.obstacleType != ObstacleType::BUILDING &&
                tile.buildingId > 0) {
-      // Tile was a building but no longer is - remove the building collision
-      // body
-      EntityID buildingId =
-          (static_cast<EntityID>(3ull) << 61) |
-          static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-      removeCollisionBodySOA(buildingId);
+      // Tile was a building but no longer is - remove all building collision bodies
+      // Buildings may have multiple sub-bodies from row-based decomposition
+      uint16_t subBodyIndex = 0;
+      while (subBodyIndex < 1000) { // Safety limit to prevent infinite loop
+        EntityID buildingBodyId = (static_cast<EntityID>(3ull) << 61) |
+                                  (static_cast<EntityID>(tile.buildingId) << 16) |
+                                  static_cast<EntityID>(subBodyIndex);
+
+        auto it = m_storage.entityToIndex.find(buildingBodyId);
+        if (it == m_storage.entityToIndex.end()) {
+          break; // No more sub-bodies for this building
+        }
+
+        removeCollisionBodySOA(buildingBodyId);
+        ++subBodyIndex;
+      }
     }
 
     // ROCK and TREE movement penalties are handled by pathfinding system
@@ -1571,7 +1648,11 @@ void CollisionManager::updateSOA(float dt) {
   // Sync spatial hashes after culling, only for active bodies
   syncSpatialHashesWithActiveIndices();
 
+  // Reset static culling counter for this frame
+  m_perf.lastStaticBodiesCulled = 0;
+
   // Update static collision cache for all movable bodies
+  // (this will accumulate actual static bodies culled in m_perf.lastStaticBodiesCulled)
   updateStaticCollisionCacheForMovableBodies();
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
@@ -1579,19 +1660,21 @@ void CollisionManager::updateSOA(float dt) {
   size_t activeMovableBodies = m_collisionPool.movableIndices.size();
   size_t activeBodies = m_collisionPool.activeIndices.size();
   size_t dynamicBodiesCulled = 0;
-  size_t staticBodiesCulled = 0;
-  if (totalBodiesBefore > activeBodies) {
-    // Estimate dynamic vs static culling based on body type distribution
-    size_t totalCulled = totalBodiesBefore - activeBodies;
 
-    // Rough estimate: assume proportional culling
+  // Calculate dynamic bodies culled (those filtered during buildActiveIndicesSOA)
+  if (totalBodiesBefore > activeBodies) {
+    size_t totalCulled = totalBodiesBefore - activeBodies;
+    // Estimate dynamic culling (static culling is tracked separately via cache filtering)
     if (totalBodiesBefore > 0 && activeBodies > 0) {
-      [[maybe_unused]] size_t totalMovable = activeMovableBodies;
+      size_t totalMovable = activeMovableBodies;
       double movableRatio = static_cast<double>(totalMovable) / activeBodies;
       dynamicBodiesCulled = static_cast<size_t>(totalCulled * movableRatio);
-      staticBodiesCulled = totalCulled - dynamicBodiesCulled;
     }
   }
+
+  // Static bodies culled is now tracked accurately during cache updates
+  // (accumulated in m_perf.lastStaticBodiesCulled by updateStaticCollisionCacheForMovableBodies)
+  size_t staticBodiesCulled = m_perf.lastStaticBodiesCulled;
 
   // Object pool for SOA collision processing
   std::vector<std::pair<size_t, size_t>> indexPairs;
@@ -1741,6 +1824,44 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
         // Query static spatial hash for this entire coarse region
         auto& staticCandidates = getPooledVector();
         m_staticSpatialHash.queryRegion(regionAABB, staticCandidates);
+
+        // CULLING OPTIMIZATION: Filter static candidates based on culling area
+        // This prevents collision checks with static bodies far from the camera
+        // Use same culling buffer as dynamic bodies (respects COLLISION_CULLING_BUFFER constant)
+        // The culling area bounds already include the buffer, so use them directly
+        const float staticMinX = m_currentCullingArea.minX;
+        const float staticMinY = m_currentCullingArea.minY;
+        const float staticMaxX = m_currentCullingArea.maxX;
+        const float staticMaxY = m_currentCullingArea.maxY;
+
+        // Filter candidates if culling area is defined (not default zero bounds)
+        if (m_currentCullingArea.minX != m_currentCullingArea.maxX ||
+            m_currentCullingArea.minY != m_currentCullingArea.maxY) {
+
+          size_t beforeCulling = staticCandidates.size();
+
+          // In-place filter: keep only static bodies within expanded culling area
+          auto filteredEnd = std::remove_if(staticCandidates.begin(), staticCandidates.end(),
+            [this, staticMinX, staticMinY, staticMaxX, staticMaxY](size_t idx) {
+              if (idx >= m_storage.hotData.size()) return true; // Remove invalid indices
+
+              const auto& hot = m_storage.hotData[idx];
+              const float posX = hot.position.getX();
+              const float posY = hot.position.getY();
+
+              // Remove if outside expanded culling area
+              return (posX < staticMinX || posX > staticMaxX ||
+                      posY < staticMinY || posY > staticMaxY);
+            });
+
+          staticCandidates.erase(filteredEnd, staticCandidates.end());
+
+          size_t afterCulling = staticCandidates.size();
+          size_t culled = beforeCulling - afterCulling;
+
+          // Track culling effectiveness (accumulate for this frame)
+          m_perf.lastStaticBodiesCulled += culled;
+        }
 
         // Cache result for entire region (all bodies in this cell will share it)
         regionCache.staticIndices = staticCandidates;
