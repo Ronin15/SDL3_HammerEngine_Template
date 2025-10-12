@@ -600,7 +600,7 @@ void AIManager::update([[maybe_unused]] float deltaTime) {
           // Submit each batch with future for completion tracking
           // Capture ALL data by shared_ptr value - safe for async execution after update() returns
           batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-            [this, start, end, deltaTime, nextBuffer, playerPos,
+            [this, start, end, deltaTime, playerPos,
              shouldUpdateDistances, preFetchedData, batchCollisionUpdates, i]() -> void {
               try {
                 processBatch(start, end, deltaTime, playerPos,
