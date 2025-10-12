@@ -852,7 +852,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       // Submit each batch with future for completion tracking
       // localEvents captured by shared_ptr value - safe for async execution after function returns
       batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, localEvents, start, end]() -> void {
+        [localEvents, start, end]() -> void {
           try {
             for (size_t j = start; j < end; ++j) {
               (*localEvents)[j]->update();

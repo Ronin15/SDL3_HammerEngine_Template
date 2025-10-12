@@ -2022,7 +2022,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   }
 #else
   // Scalar fallback
-  auto dampenVelocity = [&collision, typeA, typeB](Vector2D& velocity, float restitution, bool isStatic) {
+  auto dampenVelocity = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
     float vdotn = velocity.getX() * collision.normal.getX() +
                   velocity.getY() * collision.normal.getY();
     if (vdotn > 0) return; // Moving away from collision
@@ -2349,7 +2349,6 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
   std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
   // Batch update all kinematic bodies in SOA storage
-  size_t validUpdates = 0;
   for (const auto& bodyUpdate : updates) {
     // Direct map access without additional locking (we hold the lock)
     auto it = m_storage.entityToIndex.find(bodyUpdate.id);
@@ -2361,7 +2360,6 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
         hot.velocity = bodyUpdate.velocity;
         hot.aabbDirty = 1;
         hot.active = true; // Ensure body stays enabled
-        validUpdates++;
       }
     }
   }
@@ -2388,7 +2386,6 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
   std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
   // Merge all batch updates into collision storage
-  size_t validUpdates = 0;
   for (const auto& batchBuffer : batchUpdates) {
     for (const auto& bodyUpdate : batchBuffer) {
       auto it = m_storage.entityToIndex.find(bodyUpdate.id);
@@ -2400,7 +2397,6 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
           hot.velocity = bodyUpdate.velocity;
           hot.aabbDirty = 1;
           hot.active = true;
-          validUpdates++;
         }
       }
     }
