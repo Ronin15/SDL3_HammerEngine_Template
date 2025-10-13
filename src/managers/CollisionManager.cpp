@@ -372,10 +372,25 @@ size_t CollisionManager::createStaticObstacleBodies() {
                                CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
             ++created;
             ++subBodyIndex;
+
+            // Diagnostic logging for building collision bodies
+            COLLISION_DEBUG("Building " + std::to_string(tile.buildingId) +
+                           " sub-body " + std::to_string(subBodyIndex - 1) +
+                           ": row " + std::to_string(row) +
+                           ", cols " + std::to_string(spanStart) + "-" + std::to_string(spanEnd) +
+                           ", center (" + std::to_string(cx) + ", " + std::to_string(cy) + ")" +
+                           ", size (" + std::to_string(halfWidth * 2) + "x" + std::to_string(halfHeight * 2) + ")");
           }
 
           ++i; // Move to next potential span
         }
+      }
+
+      // Log summary for this building
+      if (subBodyIndex > 0) {
+        COLLISION_INFO("Building " + std::to_string(tile.buildingId) +
+                      ": created " + std::to_string(subBodyIndex) +
+                      " collision bodies from " + std::to_string(buildingTiles.size()) + " tiles");
       }
     }
   }
@@ -383,6 +398,79 @@ size_t CollisionManager::createStaticObstacleBodies() {
   return created;
 }
 
+void CollisionManager::validateBuildingCollisionCoverage() {
+  const WorldManager &wm = WorldManager::Instance();
+  const auto *world = wm.getWorldData();
+  if (!world)
+    return;
+
+  COLLISION_DEBUG("Validating building collision coverage...");
+  std::set<uint32_t> uniqueBuildings;
+  std::map<uint32_t, int> buildingTileCounts;
+  std::map<uint32_t, std::vector<std::pair<int, int>>> buildingTilePositions;
+
+  const int h = static_cast<int>(world->grid.size());
+
+  // Count tiles per building
+  for (int y = 0; y < h; ++y) {
+    const int w = static_cast<int>(world->grid[y].size());
+    for (int x = 0; x < w; ++x) {
+      const auto &tile = world->grid[y][x];
+      if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
+        uniqueBuildings.insert(tile.buildingId);
+        buildingTileCounts[tile.buildingId]++;
+        buildingTilePositions[tile.buildingId].push_back({x, y});
+      }
+    }
+  }
+
+  if (uniqueBuildings.empty()) {
+    COLLISION_DEBUG("No buildings found in world - skipping validation");
+    return;
+  }
+
+  // Validate each building
+  int buildingsWithCollision = 0;
+  int buildingsMissingCollision = 0;
+
+  for (uint32_t buildingId : uniqueBuildings) {
+    int tileCount = buildingTileCounts[buildingId];
+    const auto& positions = buildingTilePositions[buildingId];
+
+    // Check if any collision bodies exist for this building
+    bool hasCollisionBodies = false;
+    int collisionBodyCount = 0;
+    for (uint16_t subIdx = 0; subIdx < 100; ++subIdx) { // Check up to 100 sub-bodies
+      EntityID id = (static_cast<EntityID>(3ull) << 61) |
+                    (static_cast<EntityID>(buildingId) << 16) |
+                    static_cast<EntityID>(subIdx);
+      if (m_storage.entityToIndex.find(id) != m_storage.entityToIndex.end()) {
+        hasCollisionBodies = true;
+        collisionBodyCount++;
+      }
+    }
+
+    if (!hasCollisionBodies) {
+      COLLISION_ERROR("Building " + std::to_string(buildingId) +
+                     " has " + std::to_string(tileCount) +
+                     " tiles but NO collision bodies! Positions: " +
+                     "(" + std::to_string(positions[0].first) + ", " +
+                     std::to_string(positions[0].second) + ") to (" +
+                     std::to_string(positions.back().first) + ", " +
+                     std::to_string(positions.back().second) + ")");
+      buildingsMissingCollision++;
+    } else {
+      COLLISION_DEBUG("Building " + std::to_string(buildingId) +
+                     " validated: " + std::to_string(tileCount) + " tiles, " +
+                     std::to_string(collisionBodyCount) + " collision bodies");
+      buildingsWithCollision++;
+    }
+  }
+
+  COLLISION_INFO("Building validation complete: " +
+                std::to_string(buildingsWithCollision) + " buildings OK, " +
+                std::to_string(buildingsMissingCollision) + " buildings MISSING collision bodies");
+}
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
   // Thread-safe read access - single lock for entire operation
@@ -589,6 +677,9 @@ void CollisionManager::rebuildStaticFromWorld() {
     // The createStatic*() functions above add bodies via command queue,
     // so we must process them first or spatial hash will be empty!
     processPendingCommands();
+
+    // VALIDATION: Check that all buildings have collision coverage (after processing commands)
+    validateBuildingCollisionCoverage();
 
     // Log detailed statistics for debugging
     logCollisionStatistics();

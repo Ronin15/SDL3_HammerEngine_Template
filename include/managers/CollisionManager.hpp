@@ -216,6 +216,9 @@ private:
     void rebuildStaticSpatialHash();
     void updateStaticCollisionCacheForMovableBodies();
 
+    // Building collision validation
+    void validateBuildingCollisionCoverage();
+
     void subscribeWorldEvents(); // hook to world events
 
     // Thread-safe command queue system for collision body management
