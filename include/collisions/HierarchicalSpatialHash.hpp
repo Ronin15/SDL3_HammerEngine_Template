@@ -40,7 +40,7 @@ public:
     // Configuration constants - OPTIMIZED FOR 10K+ ENTITY PERFORMANCE
     static constexpr float COARSE_CELL_SIZE = 128.0f;    // Smaller for better distribution with 10K entities
     static constexpr float FINE_CELL_SIZE = 32.0f;       // Better granularity for collision detection
-    static constexpr float MOVEMENT_THRESHOLD = 16.0f;   // PERFORMANCE OPTIMIZATION: Increased from 8.0f (20-30% improvement)
+    static constexpr float MOVEMENT_THRESHOLD = 2.0f;    // Must be smaller than typical per-frame movement for accurate collision detection
     static constexpr size_t REGION_ACTIVE_THRESHOLD = 16; // PERFORMANCE OPTIMIZATION: Increased from 8 (20-30% improvement)
 
     // Simple 2D grid key type (more efficient than Morton codes for 2D AABB queries)

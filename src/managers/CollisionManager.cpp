@@ -337,6 +337,14 @@ size_t CollisionManager::createStaticObstacleBodies() {
       int expectedTiles = (maxX - minX + 1) * (maxY - minY + 1);
       bool isRectangle = (static_cast<int>(buildingTiles.size()) == expectedTiles);
 
+      // DEBUG: Log rectangle detection for troubleshooting
+      COLLISION_DEBUG("Building " + std::to_string(tile.buildingId) +
+                     ": bounds (" + std::to_string(minX) + "," + std::to_string(minY) +
+                     ") to (" + std::to_string(maxX) + "," + std::to_string(maxY) +
+                     "), tiles=" + std::to_string(buildingTiles.size()) +
+                     ", expected=" + std::to_string(expectedTiles) +
+                     ", isRectangle=" + (isRectangle ? "YES" : "NO"));
+
       if (isRectangle) {
         // SIMPLE CASE: Single collision body for entire rectangular building
         float worldMinX = minX * tileSize;
@@ -364,7 +372,10 @@ size_t CollisionManager::createStaticObstacleBodies() {
           COLLISION_INFO("Building " + std::to_string(tile.buildingId) +
                         ": created 1 collision body (rectangle " +
                         std::to_string(maxX - minX + 1) + "x" + std::to_string(maxY - minY + 1) +
-                        " tiles)");
+                        " tiles) at center(" + std::to_string(cx) + "," + std::to_string(cy) +
+                        ") halfSize(" + std::to_string(halfWidth) + "," + std::to_string(halfHeight) +
+                        ") AABB[" + std::to_string(worldMinX) + "," + std::to_string(worldMinY) +
+                        " to " + std::to_string(worldMaxX) + "," + std::to_string(worldMaxY) + "]");
         }
       } else {
         // COMPLEX CASE: Non-rectangular building - use row decomposition
@@ -706,6 +717,20 @@ void CollisionManager::rebuildStaticFromWorld() {
     // The createStatic*() functions above add bodies via command queue,
     // so we must process them first or spatial hash will be empty!
     processPendingCommands();
+
+    // DEBUG: Count actual building collision bodies to verify cleanup
+    int buildingBodyCount = 0;
+    for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
+      EntityID id = m_storage.entityIds[i];
+      if ((id >> 61) == 3) { // Building type
+        buildingBodyCount++;
+        uint32_t buildingId = (id >> 16) & 0xFFFF;
+        uint16_t subBodyIndex = id & 0xFFFF;
+        COLLISION_DEBUG("Building collision body found: buildingId=" + std::to_string(buildingId) +
+                       ", subBodyIndex=" + std::to_string(subBodyIndex));
+      }
+    }
+    COLLISION_INFO("Total building collision bodies in storage: " + std::to_string(buildingBodyCount));
 
     // VALIDATION: Check that all buildings have collision coverage (after processing commands)
     validateBuildingCollisionCoverage();
@@ -1436,8 +1461,10 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     // 2. Use coarse-grid region cache for static collision queries
     auto coarseCellIt = m_bodyCoarseCell.find(dynamicIdx);
+
     if (coarseCellIt != m_bodyCoarseCell.end()) {
       auto regionCacheIt = m_coarseRegionStaticCache.find(coarseCellIt->second);
+
       if (regionCacheIt != m_coarseRegionStaticCache.end() && regionCacheIt->second.valid) {
         const auto& staticCandidates = regionCacheIt->second.staticIndices;
 
@@ -1510,7 +1537,33 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
           indexPairs.emplace_back(dynamicIdx, staticIdx);
         }
+      } else {
+        // FALLBACK: Cache doesn't exist or is invalid - query static hash directly
+        // This ensures static collisions are ALWAYS detected, even if cache is stale
+        auto& staticCandidates = getPooledVector();
+        m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
+
+        // Process static candidates (simplified - no SIMD since this is fallback)
+        for (size_t staticIdx : staticCandidates) {
+          if (staticIdx >= m_storage.hotData.size()) continue;
+          const auto& staticHot = m_storage.hotData[staticIdx];
+          if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+          indexPairs.emplace_back(dynamicIdx, staticIdx);
+        }
+        returnPooledVector(staticCandidates);
       }
+    } else {
+      // FALLBACK: Body not tracked in coarse cell map - query static hash directly
+      auto& staticCandidates = getPooledVector();
+      m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
+
+      for (size_t staticIdx : staticCandidates) {
+        if (staticIdx >= m_storage.hotData.size()) continue;
+        const auto& staticHot = m_storage.hotData[staticIdx];
+        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+        indexPairs.emplace_back(dynamicIdx, staticIdx);
+      }
+      returnPooledVector(staticCandidates);
     }
 
     // Return pooled vector
@@ -1556,9 +1609,11 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
 
         float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
         float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
+
         float minPen;
         Vector2D normal;
-        if (overlapX < overlapY) {
+        constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
+        if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
           minPen = overlapX;
           float centerXA = (minXA + maxXA) * 0.5f;
           float centerXB = (minXB + maxXB) * 0.5f;
@@ -1680,32 +1735,46 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
     float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
 
-    // Reject edge-touch collisions (floating-point precision can create overlapX/Y near 0.0)
-    constexpr float MIN_OVERLAP = 0.01f;
-    if (overlapX < MIN_OVERLAP || overlapY < MIN_OVERLAP) {
-      continue;
-    }
+    // NOTE: No MIN_OVERLAP threshold - AABB test above already filters non-overlapping pairs
+    // Any overlap detected here is a real collision and must be resolved
 
-    // Determine which axis has minimum penetration
+    // Standard AABB resolution: separate on axis of minimum penetration
+    // Add epsilon to prefer Y-axis when penetrations are nearly equal (prevents corner ambiguity)
+    constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
     float minPen;
     Vector2D normal;
 
-    if (overlapX < overlapY) {
-      // Separate on X-axis - determine direction based on relative positions
+    if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
+      // Separate on X-axis
       minPen = overlapX;
-      float centerXA = (minXA + maxXA) * 0.5f;
-      float centerXB = (minXB + maxXB) * 0.5f;
-      // Normal points from A to B: if A is left of B, normal points right (+1,0)
-      // Resolution does: A.pos -= normal (A moves left), B.pos += normal (B moves right)
-      normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
+
+      // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
+      // When penetration > 16 pixels, centers are too close for reliable direction
+      constexpr float DEEP_PENETRATION_THRESHOLD = 16.0f;
+      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > 1.0f) {
+        // Push opposite to velocity direction (player was moving INTO the collision)
+        normal = (hotA.velocity.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
+      } else {
+        // Standard center comparison for shallow penetrations
+        float centerXA = (minXA + maxXA) * 0.5f;
+        float centerXB = (minXB + maxXB) * 0.5f;
+        normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
+      }
     } else {
-      // Separate on Y-axis - determine direction based on relative positions
+      // Separate on Y-axis
       minPen = overlapY;
-      float centerYA = (minYA + maxYA) * 0.5f;
-      float centerYB = (minYB + maxYB) * 0.5f;
-      // Normal points from A to B: if A is above B, normal points down (0,+1)
-      // Resolution does: A.pos -= normal (A moves up), B.pos += normal (B moves down)
-      normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
+
+      // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
+      constexpr float DEEP_PENETRATION_THRESHOLD = 16.0f;
+      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > 1.0f) {
+        // Push opposite to velocity direction (player was moving INTO the collision)
+        normal = (hotA.velocity.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
+      } else {
+        // Standard center comparison for shallow penetrations
+        float centerYA = (minYA + maxYA) * 0.5f;
+        float centerYB = (minYB + maxYB) * 0.5f;
+        normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
+      }
     }
 
     // Create collision info using EntityIDs
@@ -1956,51 +2025,29 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
       if (!regionCache.valid) {
         m_cacheMisses++;
 
-        // Expand AABB to cover entire coarse cell + margin for border cases
-        AABB regionAABB = dynamicAABB;
-        regionAABB.halfSize += Vector2D(SPATIAL_QUERY_EPSILON + 64.0f, SPATIAL_QUERY_EPSILON + 64.0f);
+        // FIXED: Query entire coarse cell region (128x128), not just player AABB + margin
+        // Coarse cell size is 128 pixels, so half-size is 64
+        constexpr float COARSE_CELL_SIZE = 128.0f;
+        const float coarseCellHalfSize = COARSE_CELL_SIZE * 0.5f;
+
+        // Calculate center of current coarse cell
+        float cellCenterX = (currentCoarseCell.x + 0.5f) * COARSE_CELL_SIZE;
+        float cellCenterY = (currentCoarseCell.y + 0.5f) * COARSE_CELL_SIZE;
+
+        // Create AABB covering entire coarse cell + margin for border cases
+        AABB regionAABB(cellCenterX, cellCenterY,
+                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 32.0f,
+                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 32.0f);
 
         // Query static spatial hash for this entire coarse region
         auto& staticCandidates = getPooledVector();
         m_staticSpatialHash.queryRegion(regionAABB, staticCandidates);
 
-        // CULLING OPTIMIZATION: Filter static candidates based on culling area
-        // This prevents collision checks with static bodies far from the camera
-        // Use same culling buffer as dynamic bodies (respects COLLISION_CULLING_BUFFER constant)
-        // The culling area bounds already include the buffer, so use them directly
-        const float staticMinX = m_currentCullingArea.minX;
-        const float staticMinY = m_currentCullingArea.minY;
-        const float staticMaxX = m_currentCullingArea.maxX;
-        const float staticMaxY = m_currentCullingArea.maxY;
-
-        // Filter candidates if culling area is defined (not default zero bounds)
-        if (m_currentCullingArea.minX != m_currentCullingArea.maxX ||
-            m_currentCullingArea.minY != m_currentCullingArea.maxY) {
-
-          size_t beforeCulling = staticCandidates.size();
-
-          // In-place filter: keep only static bodies within expanded culling area
-          auto filteredEnd = std::remove_if(staticCandidates.begin(), staticCandidates.end(),
-            [this, staticMinX, staticMinY, staticMaxX, staticMaxY](size_t idx) {
-              if (idx >= m_storage.hotData.size()) return true; // Remove invalid indices
-
-              const auto& hot = m_storage.hotData[idx];
-              const float posX = hot.position.getX();
-              const float posY = hot.position.getY();
-
-              // Remove if outside expanded culling area
-              return (posX < staticMinX || posX > staticMaxX ||
-                      posY < staticMinY || posY > staticMaxY);
-            });
-
-          staticCandidates.erase(filteredEnd, staticCandidates.end());
-
-          size_t afterCulling = staticCandidates.size();
-          size_t culled = beforeCulling - afterCulling;
-
-          // Track culling effectiveness (accumulate for this frame)
-          m_perf.lastStaticBodiesCulled += culled;
-        }
+        // FIXED: NO CULLING on cache population!
+        // The coarse region cache must contain ALL static bodies in the cell,
+        // regardless of camera position. Otherwise, buildings approaching from
+        // off-screen won't be detected until deep penetration occurs.
+        // Culling happens at the dynamic body level (buildActiveIndicesSOA).
 
         // Cache result for entire region (all bodies in this cell will share it)
         regionCache.staticIndices = staticCandidates;
@@ -2114,7 +2161,11 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     __m128 dot_sum = _mm_add_ps(dot, dot_shuf);
     float vdotn = _mm_cvtss_f32(dot_sum);
 
-    if (vdotn > 0) return; // Moving away from collision
+    // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
+    // vdotn < 0 means moving AWAY from collision
+    if (vdotn < 0) {
+      return; // Moving away - no damping needed
+    }
 
     // SIMD velocity damping
     __m128 vdotnVec = _mm_set1_ps(vdotn);
@@ -2127,6 +2178,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
     alignas(16) float result[4];
     _mm_store_ps(result, vel);
+
     velocity.setX(result[0]);
     velocity.setY(result[1]);
   };
@@ -2137,20 +2189,66 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   }
   if (typeB == BodyType::DYNAMIC) {
     bool staticCollision = (typeA == BodyType::STATIC);
-    dampenVelocitySIMD(hotB.velocity, hotB.restitution, staticCollision);
+    // For entity B, we need to flip the normal (normal points A->B, but we need B->A)
+    CollisionInfo flippedCollision = collision;
+    flippedCollision.normal = collision.normal * -1.0f;
+    auto dampenVelocitySIMD_B = [&flippedCollision](Vector2D& velocity, float restitution, bool isStatic) {
+      __m128 vel = _mm_set_ps(0, 0, velocity.getY(), velocity.getX());
+      __m128 norm = _mm_set_ps(0, 0, flippedCollision.normal.getY(), flippedCollision.normal.getX());
+      __m128 dot = _mm_mul_ps(vel, norm);
+      __m128 dot_shuf = _mm_shuffle_ps(dot, dot, _MM_SHUFFLE(2, 3, 0, 1));
+      __m128 dot_sum = _mm_add_ps(dot, dot_shuf);
+      float vdotn = _mm_cvtss_f32(dot_sum);
+      if (vdotn < 0) return; // Moving away
+      __m128 vdotnVec = _mm_set1_ps(vdotn);
+      __m128 normalVel = _mm_mul_ps(norm, vdotnVec);
+      __m128 dampFactor = isStatic ? _mm_set1_ps(1.0f) : _mm_set1_ps(1.0f + restitution);
+      __m128 dampedVel = _mm_mul_ps(normalVel, dampFactor);
+      vel = _mm_sub_ps(vel, dampedVel);
+      alignas(16) float result[4];
+      _mm_store_ps(result, vel);
+      velocity.setX(result[0]);
+      velocity.setY(result[1]);
+    };
+    dampenVelocitySIMD_B(hotB.velocity, hotB.restitution, staticCollision);
   }
 #else
   // Scalar fallback
   auto dampenVelocity = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
     float vdotn = velocity.getX() * collision.normal.getX() +
                   velocity.getY() * collision.normal.getY();
-    if (vdotn > 0) return; // Moving away from collision
+
+    // DEBUG: Log all dampening attempts
+    if (velocity.length() > 50.0f) {
+      COLLISION_DEBUG("DAMPEN CHECK: vel=(" + std::to_string(velocity.getX()) + "," +
+                     std::to_string(velocity.getY()) + ") normal=(" +
+                     std::to_string(collision.normal.getX()) + "," +
+                     std::to_string(collision.normal.getY()) + ") vdotn=" +
+                     std::to_string(vdotn) + " isStatic=" + (isStatic ? "YES" : "NO"));
+    }
+
+    // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
+    // vdotn < 0 means moving AWAY from collision
+    if (vdotn < 0) {
+      if (velocity.length() > 50.0f) {
+        COLLISION_DEBUG("  -> SKIP: moving away (vdotn < 0)");
+      }
+      return; // Moving away - no damping needed
+    }
 
     // For collisions with static objects, completely zero velocity in collision direction
     // to prevent continuous penetration when input keeps setting velocity
     if (isStatic) {
       Vector2D normalVelocity = collision.normal * vdotn;
+      Vector2D oldVel = velocity;
       velocity -= normalVelocity; // Remove all velocity along normal
+
+      // DEBUG: Log when dampening wall collisions
+      if (oldVel.length() > 50.0f) {
+        COLLISION_DEBUG("  -> DAMPEN: " + std::to_string(oldVel.getX()) + "," +
+                       std::to_string(oldVel.getY()) + " -> " +
+                       std::to_string(velocity.getX()) + "," + std::to_string(velocity.getY()));
+      }
     } else {
       // For dynamic-dynamic collisions, use restitution-based damping
       Vector2D normalVelocity = collision.normal * vdotn;
@@ -2164,7 +2262,22 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   }
   if (typeB == BodyType::DYNAMIC) {
     bool staticCollision = (typeA == BodyType::STATIC);
-    dampenVelocity(hotB.velocity, hotB.restitution, staticCollision);
+    // For entity B, we need to flip the normal (normal points A->B, but we need B->A)
+    CollisionInfo flippedCollision = collision;
+    flippedCollision.normal = collision.normal * -1.0f;
+    auto dampenVelocityB = [&flippedCollision](Vector2D& velocity, float restitution, bool isStatic) {
+      float vdotn = velocity.getX() * flippedCollision.normal.getX() +
+                    velocity.getY() * flippedCollision.normal.getY();
+      if (vdotn < 0) return; // Moving away
+      if (isStatic) {
+        Vector2D normalVelocity = flippedCollision.normal * vdotn;
+        velocity -= normalVelocity;
+      } else {
+        Vector2D normalVelocity = flippedCollision.normal * vdotn;
+        velocity -= normalVelocity * (1.0f + restitution);
+      }
+    };
+    dampenVelocityB(hotB.velocity, hotB.restitution, staticCollision);
   }
 #endif
 
