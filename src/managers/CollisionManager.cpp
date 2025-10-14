@@ -317,80 +317,109 @@ size_t CollisionManager::createStaticObstacleBodies() {
         }
       }
 
-      // ROW-BASED RECTANGULAR DECOMPOSITION for accurate collision on non-rectangular buildings
-      // Group tiles by row and create one collision body per contiguous horizontal span
-      std::map<int, std::vector<int>> rowToColumns;
+      // SIMPLE RECTANGLE DETECTION: Most buildings are solid rectangles
+      // Only use row decomposition for complex non-rectangular shapes
+
+      // Find bounding box
+      int minX = buildingTiles[0].first;
+      int maxX = buildingTiles[0].first;
+      int minY = buildingTiles[0].second;
+      int maxY = buildingTiles[0].second;
+
       for (const auto& [tx, ty] : buildingTiles) {
-        rowToColumns[ty].push_back(tx);
+        minX = std::min(minX, tx);
+        maxX = std::max(maxX, tx);
+        minY = std::min(minY, ty);
+        maxY = std::max(maxY, ty);
       }
 
-      // Sort columns in each row for contiguous span detection
-      for (auto& [row, columns] : rowToColumns) {
-        std::sort(columns.begin(), columns.end());
-      }
+      // Check if building is a solid rectangle (all tiles present)
+      int expectedTiles = (maxX - minX + 1) * (maxY - minY + 1);
+      bool isRectangle = (static_cast<int>(buildingTiles.size()) == expectedTiles);
 
-      // Create collision bodies for each row's contiguous spans
-      uint16_t subBodyIndex = 0;
-      for (const auto& [row, columns] : rowToColumns) {
-        // Find contiguous horizontal spans in this row
-        size_t i = 0;
-        while (i < columns.size()) {
-          int spanStart = columns[i];
-          int spanEnd = spanStart;
+      if (isRectangle) {
+        // SIMPLE CASE: Single collision body for entire rectangular building
+        float worldMinX = minX * tileSize;
+        float worldMinY = minY * tileSize;
+        float worldMaxX = (maxX + 1) * tileSize;
+        float worldMaxY = (maxY + 1) * tileSize;
 
-          // Extend span while tiles are contiguous
-          while (i + 1 < columns.size() && columns[i + 1] == columns[i] + 1) {
-            ++i;
-            spanEnd = columns[i];
-          }
+        float cx = (worldMinX + worldMaxX) * 0.5f;
+        float cy = (worldMinY + worldMaxY) * 0.5f;
+        float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+        float halfHeight = (worldMaxY - worldMinY) * 0.5f;
 
-          // Create collision body for this span with vertical overlap to eliminate seams
-          // Small overlap prevents gaps between row bodies due to floating point precision
-          constexpr float SEAM_OVERLAP = 0.1f;
+        Vector2D center(cx, cy);
+        Vector2D halfSize(halfWidth, halfHeight);
 
-          float worldMinX = spanStart * tileSize;
-          float worldMinY = row * tileSize - SEAM_OVERLAP;
-          float worldMaxX = (spanEnd + 1) * tileSize;
-          float worldMaxY = (row + 1) * tileSize + SEAM_OVERLAP;
+        // Single body: subBodyIndex = 0
+        EntityID id = (static_cast<EntityID>(3ull) << 61) |
+                      (static_cast<EntityID>(tile.buildingId) << 16);
 
-          float cx = (worldMinX + worldMaxX) * 0.5f;
-          float cy = (worldMinY + worldMaxY) * 0.5f;
-          float halfWidth = (worldMaxX - worldMinX) * 0.5f;
-          float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+        if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
+          addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                             CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+          ++created;
 
-          Vector2D center(cx, cy);
-          Vector2D halfSize(halfWidth, halfHeight);
-
-          // Encode building ID and sub-body index in EntityID
-          // Format: (3ull << 61) | (buildingId << 16) | subBodyIndex
-          EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                        (static_cast<EntityID>(tile.buildingId) << 16) |
-                        static_cast<EntityID>(subBodyIndex);
-
-          if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-            addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
-                               CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-            ++created;
-            ++subBodyIndex;
-
-            // Diagnostic logging for building collision bodies
-            COLLISION_DEBUG("Building " + std::to_string(tile.buildingId) +
-                           " sub-body " + std::to_string(subBodyIndex - 1) +
-                           ": row " + std::to_string(row) +
-                           ", cols " + std::to_string(spanStart) + "-" + std::to_string(spanEnd) +
-                           ", center (" + std::to_string(cx) + ", " + std::to_string(cy) + ")" +
-                           ", size (" + std::to_string(halfWidth * 2) + "x" + std::to_string(halfHeight * 2) + ")");
-          }
-
-          ++i; // Move to next potential span
+          COLLISION_INFO("Building " + std::to_string(tile.buildingId) +
+                        ": created 1 collision body (rectangle " +
+                        std::to_string(maxX - minX + 1) + "x" + std::to_string(maxY - minY + 1) +
+                        " tiles)");
         }
-      }
+      } else {
+        // COMPLEX CASE: Non-rectangular building - use row decomposition
+        std::map<int, std::vector<int>> rowToColumns;
+        for (const auto& [tx, ty] : buildingTiles) {
+          rowToColumns[ty].push_back(tx);
+        }
 
-      // Log summary for this building
-      if (subBodyIndex > 0) {
+        for (auto& [row, columns] : rowToColumns) {
+          std::sort(columns.begin(), columns.end());
+        }
+
+        uint16_t subBodyIndex = 0;
+        for (const auto& [row, columns] : rowToColumns) {
+          size_t i = 0;
+          while (i < columns.size()) {
+            int spanStart = columns[i];
+            int spanEnd = spanStart;
+
+            while (i + 1 < columns.size() && columns[i + 1] == columns[i] + 1) {
+              ++i;
+              spanEnd = columns[i];
+            }
+
+            float worldMinX = spanStart * tileSize;
+            float worldMinY = row * tileSize;
+            float worldMaxX = (spanEnd + 1) * tileSize;
+            float worldMaxY = (row + 1) * tileSize;
+
+            float cx = (worldMinX + worldMaxX) * 0.5f;
+            float cy = (worldMinY + worldMaxY) * 0.5f;
+            float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+            float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+
+            Vector2D center(cx, cy);
+            Vector2D halfSize(halfWidth, halfHeight);
+
+            EntityID id = (static_cast<EntityID>(3ull) << 61) |
+                          (static_cast<EntityID>(tile.buildingId) << 16) |
+                          static_cast<EntityID>(subBodyIndex);
+
+            if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
+              addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+                                 CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+              ++created;
+              ++subBodyIndex;
+            }
+
+            ++i;
+          }
+        }
+
         COLLISION_INFO("Building " + std::to_string(tile.buildingId) +
                       ": created " + std::to_string(subBodyIndex) +
-                      " collision bodies from " + std::to_string(buildingTiles.size()) + " tiles");
+                      " collision bodies (non-rectangular)");
       }
     }
   }
@@ -1799,7 +1828,6 @@ void CollisionManager::updateSOA(float dt) {
   const size_t pairCount = indexPairs.size();
   narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
   auto t3 = clock::now();
-
 
   // RESOLUTION: Apply collision responses and update positions
 #ifdef COLLISION_SIMD_SSE2
