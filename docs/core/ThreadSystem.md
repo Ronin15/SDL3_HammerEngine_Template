@@ -108,7 +108,7 @@ bool isStopping() const {
 │  └─────────────────┘                                        │
 │  ┌─────────────────────────────────────────────────────────┐│
 │  │            WorkerBudget Allocation                      ││
-│  │ Engine: 1–2 │ AI: ~45% │ Particles: ~25% │ Events: ~20% │ Buffer ││
+│  │ Engine: 1–2 │ AI: 6 wt │ Collision: 3 wt │ Particles: 3 wt │ Events: 2 wt │ Buffer: 30% ││
 │  └─────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────
 ```
@@ -121,7 +121,7 @@ bool isStopping() const {
 - **📊 Performance Monitoring**: Built-in profiling, statistics tracking, and performance analytics
 - **🛡️ Thread Safety**: Lock-free operations where possible with comprehensive synchronization
 - **🎯 Engine Integration**: Seamless integration with AIManager, EventManager, and core systems
-- **⚙️ WorkerBudget System**: Intelligent resource allocation across engine subsystems (AI ~45%, Particles ~25%, Events ~20%, 1–2 engine workers reserved)
+- **⚙️ WorkerBudget System**: Weight-based resource allocation across engine subsystems (AI: 6, Collision: 3, Particles: 3, Events: 2 weights; 1–2 engine workers reserved; 30% buffer reserve for burst capacity)
 - **🔧 Clean Shutdown**: Graceful termination with proper resource cleanup
 
 ## Quick Start
@@ -250,34 +250,49 @@ The WorkerBudget system provides intelligent resource allocation across engine s
 
 ### Allocation Strategy
 
-The system uses a tiered allocation strategy that adapts to hardware capabilities:
+The system uses a **weight-based allocation strategy** that adapts to hardware capabilities:
+
+**Worker Weights** (determines priority and base allocation):
+- AI_WORKER_WEIGHT = 6 (highest priority, most complex workload)
+- COLLISION_WORKER_WEIGHT = 3 (spatial queries and detection)
+- PARTICLE_WORKER_WEIGHT = 3 (physics updates)
+- EVENT_WORKER_WEIGHT = 2 (event processing)
 
 **Tier 1 (≤1 workers)**: Ultra low-end systems
 - GameEngine: 1 worker (all available)
 - AI: 0 workers (single-threaded fallback)
+- Collision: 0 workers (single-threaded fallback)
+- Particles: 0 workers (single-threaded fallback)
 - Events: 0 workers (single-threaded fallback)
 
 **Tier 2 (2-4 workers)**: Low-end systems
 - GameEngine: 1 worker (minimum required)
 - AI: 1 worker if available
-- Events: 0 workers (shares with AI or single-threaded)
+- Collision: 1 worker if ≥2 remaining workers
+- Particles: 1 worker if ≥3 remaining workers
+- Events: 0 workers (remains single-threaded)
 
 **Tier 3 (5+ workers)**: High-end systems
 - GameEngine: 2 workers (optimal for coordination)
-- AI: ~45% of remaining workers after engine reservation
-- Particles: ~25% of remaining workers after engine reservation
-- Events: ~20% of remaining workers after engine reservation
-- Buffer: Remaining workers for burst capacity
+- **30% Buffer Reserve**: 30% of remaining workers reserved for burst capacity
+- **Weight-Based Distribution**: Remaining 70% distributed by worker weights:
+  - AI: (6/14) × 70% ≈ 30% of total remaining workers
+  - Collision: (3/14) × 70% ≈ 15% of total remaining workers
+  - Particles: (3/14) × 70% ≈ 15% of total remaining workers
+  - Events: (2/14) × 70% ≈ 10% of total remaining workers
+- Buffer: 30% reserved for dynamic burst allocation
 
 ```cpp
 struct WorkerBudget {
-    size_t totalWorkers;      // Total available worker threads
-    size_t engineReserved;    // Reserved for critical engine operations
-    size_t aiAllocated;       // ~45% of remaining (AI)
-    size_t particleAllocated; // ~25% of remaining (Particles)
-    size_t eventAllocated;    // ~20% of remaining (Events)
-    size_t remaining;         // Buffer workers for burst capacity
+    size_t totalWorkers;       // Total available worker threads
+    size_t engineReserved;     // Reserved for critical engine operations (1-2)
+    size_t aiAllocated;        // AI worker allocation (weight: 6)
+    size_t collisionAllocated; // Collision worker allocation (weight: 3)
+    size_t particleAllocated;  // Particle worker allocation (weight: 3)
+    size_t eventAllocated;     // Event worker allocation (weight: 2)
+    size_t remaining;          // Buffer workers for burst capacity (30% reserve)
 
+    // Helper methods
     size_t getOptimalWorkerCount(size_t baseAllocation, size_t workloadSize, size_t workloadThreshold) const;
     bool hasBufferCapacity() const { return remaining > 0; }
     size_t getMaxWorkerCount(size_t baseAllocation) const { return baseAllocation + remaining; }
@@ -286,13 +301,13 @@ struct WorkerBudget {
 
 ### Hardware Tier Classification
 
-| Hardware Tier | CPU Cores/Threads | Workers | AI Workers | Particle Workers | Event Workers | Engine Reserved | Buffer |
-|---------------|-------------------|---------|------------|------------------|---------------|-----------------|--------|
-| **Ultra Low-End** | 1-2 cores/2-4 threads | 1-3 | 0-1 | 0 | 0-1 | 1 | 0 |
-| **Low-End** | 2-4 cores/4-8 threads | 3-7 | 1-3 | 0-1 | 0-1 | 1-2 | 0-1 |
-| **Mid-Range** | 4-6 cores/8-12 threads | 7-11 | 3-5 | 1-3 | 1-2 | 2 | 1-2 |
-| **High-End** | 6-8 cores/12-16 threads | 11-15 | 4-6 | 2-4 | 1-3 | 2 | 2-3 |
-| **Enthusiast** | 8+ cores/16+ threads | 15+ | 5-8 | 3-5 | 2-4 | 2 | 3+ |
+| Hardware Tier | CPU Cores/Threads | Workers | AI | Collision | Particles | Events | Engine | Buffer |
+|---------------|-------------------|---------|-----|-----------|-----------|--------|--------|--------|
+| **Ultra Low-End** | 1-2 cores/2-4 threads | 1-3 | 0-1 | 0 | 0 | 0-1 | 1 | 0 |
+| **Low-End** | 2-4 cores/4-8 threads | 3-7 | 1-3 | 0-1 | 0-1 | 0-1 | 1-2 | 0-1 |
+| **Mid-Range** | 4-6 cores/8-12 threads | 7-11 | 3-4 | 1-2 | 1-2 | 1 | 2 | 1-2 |
+| **High-End** | 6-8 cores/12-16 threads | 11-15 | 4-6 | 2-3 | 2-3 | 1-2 | 2 | 2-3 |
+| **Enthusiast** | 8+ cores/16+ threads | 15+ | 6-8 | 3-4 | 3-4 | 2-3 | 2 | 3+ |
 
 ### Real-World Allocation Examples
 
@@ -300,41 +315,48 @@ struct WorkerBudget {
 // 4-core/8-thread system (7 workers available)
 WorkerBudget budget = {
     .totalWorkers = 7,
-    .engineReserved = 2,     // 29% - Enhanced engine capacity for mid-tier systems
-    .aiAllocated = 2,        // 40% - ~45% of remaining 5 workers
-    .particleAllocated = 1,  // 20% - ~25% of remaining 5 workers
-    .eventAllocated = 1,     // 20% - ~20% of remaining 5 workers
-    .remaining = 1           // 20% - Buffer for burst workloads
+    .engineReserved = 1,         // Low-end: 1 worker for engine
+    .aiAllocated = 1,            // Conservative allocation
+    .collisionAllocated = 1,     // Basic collision processing
+    .particleAllocated = 1,      // Basic particle processing
+    .eventAllocated = 0,         // Single-threaded fallback
+    .remaining = 3               // ~43% buffer for burst capacity
 };
 
-// 8-core/16-thread system (15 workers available)
+// 8-core/16-thread system (15 workers available) - High-end
+// Remaining: 13 workers, Buffer: 30% × 13 = 4, Allocate: 9 workers
+// Total weight: 6+3+3+2 = 14
 WorkerBudget budget = {
     .totalWorkers = 15,
-    .engineReserved = 2,     // 13% - Enhanced engine capacity
-    .aiAllocated = 5,        // 38% - ~45% of remaining 13 workers
-    .particleAllocated = 3,  // 23% - ~25% of remaining 13 workers
-    .eventAllocated = 2,     // 15% - ~20% of remaining 13 workers
-    .remaining = 3           // 23% - Buffer for burst workloads
+    .engineReserved = 2,         // 13% - Enhanced engine capacity
+    .aiAllocated = 4,            // (6/14) × 9 ≈ 4 workers (weight: 6)
+    .collisionAllocated = 2,     // (3/14) × 9 ≈ 2 workers (weight: 3)
+    .particleAllocated = 2,      // (3/14) × 9 ≈ 2 workers (weight: 3)
+    .eventAllocated = 1,         // (2/14) × 9 ≈ 1 worker  (weight: 2)
+    .remaining = 4               // 30% - Buffer for burst workloads
 };
 
 // 2-core/4-thread system (3 workers available) - Low-end
 WorkerBudget budget = {
     .totalWorkers = 3,
-    .engineReserved = 1,     // 33% - Critical engine operations
-    .aiAllocated = 1,        // 33% - Minimal AI processing
-    .particleAllocated = 0,  // 0%  - Single-threaded fallback
-    .eventAllocated = 1,     // 33% - Minimal event handling
-    .remaining = 0           // No buffer available
+    .engineReserved = 1,         // 33% - Critical engine operations
+    .aiAllocated = 1,            // 33% - Minimal AI processing
+    .collisionAllocated = 1,     // 33% - Minimal collision processing
+    .particleAllocated = 0,      // 0%  - Single-threaded fallback
+    .eventAllocated = 0,         // 0%  - Single-threaded fallback
+    .remaining = 0               // No buffer available
 };
 
-// 6-core/12-thread system (11 workers available) - High-end
+// 12-core/24-thread system (23 workers available) - Enthusiast
+// Remaining: 21 workers, Buffer: 30% × 21 = 6, Allocate: 15 workers
 WorkerBudget budget = {
-    .totalWorkers = 11,
-    .engineReserved = 2,     // 18% - Enhanced engine capacity
-    .aiAllocated = 4,        // 36% - ~45% of remaining 9 workers
-    .particleAllocated = 2,  // 18% - ~25% of remaining 9 workers
-    .eventAllocated = 1,     // 9%  - ~20% of remaining 9 workers
-    .remaining = 2           // 22% - Buffer for burst workloads
+    .totalWorkers = 23,
+    .engineReserved = 2,         // 9% - Enhanced engine capacity
+    .aiAllocated = 6,            // (6/14) × 15 ≈ 6 workers (weight: 6)
+    .collisionAllocated = 3,     // (3/14) × 15 ≈ 3 workers (weight: 3)
+    .particleAllocated = 3,      // (3/14) × 15 ≈ 3 workers (weight: 3)
+    .eventAllocated = 3,         // (2/14) × 15 ≈ 2-3 workers (weight: 2, rounded up)
+    .remaining = 6               // 30% - Buffer for burst workloads
 };
 ```
 
@@ -386,6 +408,108 @@ void AIManager::update() {
 - **Lock-free processing**: Pre-cached entity data eliminates lock contention
 - **Distance calculation optimization**: Only every 4th frame, active entities only
 - **Pure distance culling**: Removed unnecessary frame counting for better performance
+
+### BatchConfig and Adaptive Tuning
+
+The WorkerBudget system includes **BatchConfig** structures and **adaptive tuning** for optimal batch sizing across different manager types:
+
+#### Batch Configuration Per Manager Type
+
+```cpp
+// AI Manager Configuration (Complex behavior updates)
+static constexpr BatchConfig AI_BATCH_CONFIG = {
+    8,      // baseDivisor: threshold/8 for finer-grained parallelism
+    128,    // minBatchSize: minimum 128 entities per batch
+    2,      // minBatchCount: at least 2 batches for parallel execution
+    8,      // maxBatchCount: max 8 batches for better load balancing
+    0.5     // targetUpdateTimeMs: 500µs target for AI updates
+};
+
+// Particle Manager Configuration (Simple physics updates)
+static constexpr BatchConfig PARTICLE_BATCH_CONFIG = {
+    4,      // baseDivisor: threshold/4 for better parallelism
+    128,    // minBatchSize: minimum 128 particles
+    2,      // minBatchCount: at least 2 batches
+    8,      // maxBatchCount: up to 8 batches
+    0.3     // targetUpdateTimeMs: 300µs target for particle updates
+};
+
+// Event Manager Configuration (Mixed complexity)
+static constexpr BatchConfig EVENT_BATCH_CONFIG = {
+    2,      // baseDivisor: threshold/2 for moderate parallelism
+    4,      // minBatchSize: minimum 4 events per batch
+    2,      // minBatchCount: at least 2 batches
+    4,      // maxBatchCount: up to 4 batches
+    0.2     // targetUpdateTimeMs: 200µs target for event updates
+};
+```
+
+#### Adaptive Performance-Based Tuning
+
+The system includes an **AdaptiveBatchState** that dynamically adjusts batch counts based on measured completion times:
+
+```cpp
+struct AdaptiveBatchState {
+    std::atomic<float> batchMultiplier{1.0f};     // Dynamic adjustment (0.5x to 1.5x)
+    std::atomic<double> lastUpdateTimeMs{0.0};    // Previous frame's completion time
+
+    static constexpr float MIN_MULTIPLIER = 0.5f;  // Never below 50%
+    static constexpr float MAX_MULTIPLIER = 1.5f;  // Never above 150%
+    static constexpr float ADAPT_RATE = 0.1f;      // 10% adjustment per frame
+};
+```
+
+**Adaptive Behavior:**
+- If completion time > target × 1.15: Reduce batches (less sync overhead)
+- If completion time < target × 0.85: Increase batches (more parallelism)
+- Otherwise: Maintain current multiplier (within tolerance)
+- Smooth 10% adjustments prevent oscillation
+
+#### Queue Pressure Management
+
+The system adapts batch strategy based on ThreadSystem queue pressure:
+
+```cpp
+static constexpr float QUEUE_PRESSURE_WARNING = 0.70f;       // Early adaptation (70%)
+static constexpr float QUEUE_PRESSURE_CRITICAL = 0.90f;     // Fallback trigger (90%)
+static constexpr float QUEUE_PRESSURE_PATHFINDING = 0.75f;  // PathfinderManager (75%)
+```
+
+**Queue Pressure Adaptation:**
+- **High pressure (>70%)**: Fewer, larger batches to reduce queue overhead
+- **Low pressure (<30%)**: More, smaller batches for better parallelism
+- **Normal pressure**: Use base configuration values
+
+#### Unified Batch Calculation
+
+The `calculateBatchStrategy()` function provides consistent batch calculation across all managers:
+
+```cpp
+// Standard batch calculation
+auto [batchCount, batchSize] = calculateBatchStrategy(
+    AI_BATCH_CONFIG,          // Manager-specific config
+    entityCount,              // Total items to process
+    threadingThreshold,       // Threading threshold for this manager
+    optimalWorkers,           // From getOptimalWorkerCount()
+    queuePressure            // Current ThreadSystem queue pressure
+);
+
+// With adaptive tuning
+auto [batchCount, batchSize] = calculateBatchStrategy(
+    AI_BATCH_CONFIG,
+    entityCount,
+    threadingThreshold,
+    optimalWorkers,
+    queuePressure,
+    adaptiveState,           // Tracks performance and multiplier
+    lastUpdateTimeMs         // Previous frame's completion time
+);
+```
+
+**Jitter Reduction Strategy:**
+- More, smaller batches reduce variance (old: 4 batches → 0.5-1.5ms jitter)
+- New config: 8 batches → 0.5-0.8ms variance (smooth frame times)
+- Tradeoff: Slightly more overhead, but consistent performance
 
 ## API Reference
 
@@ -898,22 +1022,18 @@ private:
     WorkerBudget calculateOptimalBudget() {
         size_t totalWorkers = ThreadSystem::Instance().getThreadCount();
 
-        WorkerBudget budget{};
-        budget.totalWorkers = totalWorkers;
-        // Engine reservation mirrors production logic: 1 for ≤4 workers, else 2
-        budget.engineReserved = (totalWorkers <= 4) ? 1 : 2;
+        // Use the engine's weight-based allocation function
+        return HammerEngine::calculateWorkerBudget(totalWorkers);
 
-        size_t remaining = (totalWorkers > budget.engineReserved)
-                                ? (totalWorkers - budget.engineReserved)
-                                : 0;
-        budget.aiAllocated = (remaining * 45) / 100;       // ~45%
-        budget.particleAllocated = (remaining * 25) / 100; // ~25%
-        budget.eventAllocated = (remaining * 20) / 100;    // ~20%
-
-        size_t allocated =
-            budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
-        budget.remaining = (remaining > allocated) ? (remaining - allocated) : 0;
-        return budget;
+        /* Weight-based allocation logic (from WorkerBudget.hpp):
+         * - Engine: 1-2 workers (adaptive based on system tier)
+         * - Buffer: 30% of remaining workers reserved
+         * - Base allocation: 70% distributed by weights
+         *   - AI: weight 6 → (6/14) of base = ~43%
+         *   - Collision: weight 3 → (3/14) of base = ~21%
+         *   - Particles: weight 3 → (3/14) of base = ~21%
+         *   - Events: weight 2 → (2/14) of base = ~14%
+         */
     }
 
 public:
