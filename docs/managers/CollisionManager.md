@@ -8,7 +8,7 @@ The CollisionManager is a high-performance collision detection and response syst
 
 ### Design Patterns
 - **Singleton Pattern**: Ensures single instance with global access
-- **Spatial Hash**: Dual spatial hash system for static and dynamic bodies
+- **Hierarchical Spatial Hash**: Two-tier adaptive spatial hash system optimized for 10K+ bodies
 - **Event-Driven**: Integrates with EventManager for collision notifications
 - **Batch Processing**: Optimized batch updates for AI entity kinematics
 
@@ -256,10 +256,11 @@ void GameState::loadLevel() {
 
 ## Performance Considerations
 
-### Spatial Hash Optimization
-- **Dual Hash System**: Separate hashes for static and dynamic bodies
-- **Cache-Friendly**: Static bodies cached separately for better performance
-- **Automatic Sizing**: Hash automatically sizes based on world bounds
+### Hierarchical Spatial Hash Optimization
+- **Two-Tier Grid System**: Coarse grid (128 units) for region culling, fine grid (32 units) for precise detection
+- **Adaptive Subdivision**: Fine grid only created when region exceeds 16 bodies (20-30% performance boost)
+- **Cache-Friendly**: SOA layout and zero-allocation frame processing for optimal performance
+- **Automatic Sizing**: Hash automatically sizes based on world bounds and entity density
 
 ### Batch Processing Benefits
 - **Reduced Lock Contention**: Single lock acquisition for batch updates
@@ -322,7 +323,8 @@ GAMEENGINE_INFO("Collision checks: " + std::to_string(stats.collisionChecks));
 ```bash
 # Run collision system benchmarks
 ./tests/test_scripts/run_collision_tests.sh
-./tests/test_scripts/run_collision_pathfinding_benchmark.sh
+./tests/test_scripts/run_collision_benchmark.sh      # Collision performance benchmarks
+./tests/test_scripts/run_pathfinder_benchmark.sh     # Pathfinding performance benchmarks
 ```
 
 For more details on testing, see [TESTING.md](../../tests/TESTING.md).
