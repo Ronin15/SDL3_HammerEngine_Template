@@ -1749,8 +1749,8 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
       minPen = overlapX;
 
       // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
-      // When penetration > 16 pixels, centers are too close for reliable direction
-      constexpr float DEEP_PENETRATION_THRESHOLD = 16.0f;
+      // Only needed for rare edge cases (reduced from 16px with cache fixes)
+      constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
       if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > 1.0f) {
         // Push opposite to velocity direction (player was moving INTO the collision)
         normal = (hotA.velocity.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
@@ -1765,7 +1765,8 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
       minPen = overlapY;
 
       // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
-      constexpr float DEEP_PENETRATION_THRESHOLD = 16.0f;
+      // Only needed for rare edge cases (reduced from 16px with cache fixes)
+      constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
       if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > 1.0f) {
         // Push opposite to velocity direction (player was moving INTO the collision)
         normal = (hotA.velocity.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
@@ -1833,13 +1834,14 @@ void CollisionManager::updateSOA(float dt) {
       // Integrate movement: newPos = pos + vel * dt
       Vector2D movement = hot.velocity * dt;
 
-      // PENETRATION PREVENTION: Clamp movement to prevent excessive penetration in a single frame
-      // Maximum movement should not exceed the smallest dimension of the collision body
-      float maxMovement = std::min(hot.halfSize.getX(), hot.halfSize.getY()) * 0.75f;
+      // PENETRATION PREVENTION: Clamp excessive movement in a single frame
+      // With early collision detection working, we can be more permissive
+      // Allow up to 1.5x body size movement (was 0.75x when collisions detected late)
+      float maxMovement = std::min(hot.halfSize.getX(), hot.halfSize.getY()) * 1.5f;
       float movementMag = movement.length();
 
       if (movementMag > maxMovement) {
-        // Scale down movement to prevent deep penetration
+        // Scale down movement only for extreme velocities
         movement = movement * (maxMovement / movementMag);
       }
 
@@ -2034,10 +2036,11 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
         float cellCenterX = (currentCoarseCell.x + 0.5f) * COARSE_CELL_SIZE;
         float cellCenterY = (currentCoarseCell.y + 0.5f) * COARSE_CELL_SIZE;
 
-        // Create AABB covering entire coarse cell + margin for border cases
+        // Create AABB covering entire coarse cell + small margin for border cases
+        // Reduced from 32px to 16px now that fallback queries work correctly
         AABB regionAABB(cellCenterX, cellCenterY,
-                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 32.0f,
-                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 32.0f);
+                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 16.0f,
+                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 16.0f);
 
         // Query static spatial hash for this entire coarse region
         auto& staticCandidates = getPooledVector();
