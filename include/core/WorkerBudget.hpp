@@ -408,7 +408,7 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         std::array<size_t, 4> shares{};
 
         for (size_t i = 0; i < weights.size(); ++i) {
-            if (weights[i] == 0 || totalWeight == 0 || workersToAllocate == 0) {
+            if (weights[i] == 0 || workersToAllocate == 0) {
                 rawShares[i] = 0.0;
                 shares[i] = 0;
             } else {
