@@ -69,10 +69,10 @@ echo Collision Pathfinding Integration Tests - %date% %time% > "%RESULTS_FILE%"
 
 if "%VERBOSE%"=="true" (
     echo Verbose mode enabled
-    "%TEST_EXECUTABLE%" --log_level=all 2>&1 | tee -a "%RESULTS_FILE%"
+    "%TEST_EXECUTABLE%" --log_level=all 2>&1 | powershell -Command "$input | Tee-Object -FilePath '%RESULTS_FILE%' -Append"
     set "RESULT=!ERRORLEVEL!"
 ) else (
-    "%TEST_EXECUTABLE%" --log_level=test_suite 2>&1 | tee -a "%RESULTS_FILE%"
+    "%TEST_EXECUTABLE%" --log_level=test_suite 2>&1 | powershell -Command "$input | Tee-Object -FilePath '%RESULTS_FILE%' -Append"
     set "RESULT=!ERRORLEVEL!"
 )
 
