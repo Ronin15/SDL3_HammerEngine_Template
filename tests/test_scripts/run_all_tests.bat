@@ -69,12 +69,12 @@ if /i "%~1"=="--help" (
     echo.
     echo Test Categories:
     echo   Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding, ParticleManager, Resource Manager, World functionality tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, and Collision/Pathfinding performance benchmarks
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, Collision, and Pathfinder performance benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~4-8 minutes total
-    echo   Benchmarks:       ~6-18 minutes total
-    echo   All tests:        ~10-26 minutes total
+    echo   Benchmarks:       ~8-20 minutes total
+    echo   All tests:        ~12-28 minutes total
     echo.
     echo Examples:
     echo   run_all_tests.bat                 # Run all tests
@@ -93,7 +93,7 @@ goto :parse_args
 :: Core functionality tests (fast execution)
 set CORE_TEST_COUNT=22
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=4
+set BENCHMARK_TEST_COUNT=5
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0
@@ -175,7 +175,8 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_event_scaling_benchmark.bat" true
     call :run_single_test "run_ai_benchmark.bat" true
     call :run_single_test "run_ui_stress_tests.bat" true
-    call :run_single_test "run_collision_pathfinding_benchmark.bat" true
+    call :run_single_test "run_collision_benchmark.bat" true
+    call :run_single_test "run_pathfinder_benchmark.bat" true
 )
 
 :: Print summary
