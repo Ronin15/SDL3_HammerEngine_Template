@@ -442,8 +442,7 @@ void GamePlayState::initializeCamera() {
   );
 
   // Configure camera to follow player
-  if (mp_Player && m_camera) {
-
+  if (mp_Player) {
     // Set target and enable follow mode
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(mp_Player);
     m_camera->setTarget(playerAsEntity);

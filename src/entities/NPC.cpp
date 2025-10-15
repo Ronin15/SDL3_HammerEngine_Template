@@ -130,14 +130,9 @@ void NPC::loadDimensionsFromTexture() {
 
 // State management removed - handled by AI Manager
 
-void NPC::update(float deltaTime) {
+void NPC::update(float) {
   // The AI drives velocity directly; sync to collision body
   // Let collision system handle movement integration to prevent micro-bouncing
-
-  // Safety check: ensure deltaTime is reasonable
-  if (deltaTime <= 0.0f || deltaTime > 0.1f) {
-    deltaTime = 1.0f / 60.0f; // Fallback to 60 FPS
-  }
 
   // AIManager batch processing handles collision updates for AI-managed NPCs
   // Direct collision update removed to prevent race conditions with async AI threads
@@ -248,20 +243,6 @@ void NPC::clean() {
 
   // Remove from collision system
   CollisionManager::Instance().removeCollisionBodySOA(getID());
-}
-
-void NPC::setVelocity(const Vector2D &velocity) {
-  m_velocity = velocity;
-  // AIManager batch processing handles collision velocity updates
-  // Direct update removed to prevent race conditions with async AI threads
-}
-
-void NPC::setPosition(const Vector2D &position) {
-  // AIManager batch processing handles collision position updates
-  // Direct update removed to prevent race conditions with async AI threads
-
-  // Update entity position
-  m_position = position;
 }
 
 void NPC::initializeInventory() {

@@ -1521,7 +1521,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       AI_ERROR("Error in batch processing: " + std::string(e.what()));
       // Decrement active counter if entity was active
       if (hotData.active) {
-        hotData.active = false;
         m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
       }
     }

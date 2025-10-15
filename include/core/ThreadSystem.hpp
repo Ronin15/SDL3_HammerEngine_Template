@@ -426,9 +426,6 @@ public:
     condition.notify_all();
   }
 
-private:
-  // Internal notify without mutex - for use when mutex is already held
-  void notifyAllThreadsUnsafe() { condition.notify_all(); }
 };
 
 // Thread pool for managing worker threads
@@ -604,11 +601,9 @@ private:
 
     // For adaptive idle sleep optimization
     auto lastTaskTime = std::chrono::steady_clock::now();
-    bool isIdle = false;
 
     // Set thread as interruptible (platform-specific if needed)
     try {
-
       // Main worker loop
       while (isRunning.load(std::memory_order_acquire)) {
         // Check for shutdown immediately at loop start
@@ -627,7 +622,6 @@ private:
             highPriorityTasks++;
             // Reset idle tracking when we get a task
             lastTaskTime = std::chrono::steady_clock::now();
-            isIdle = false;
           }
           // All tasks go through single global queue - simple and reliable
         } catch (...) {
@@ -697,16 +691,18 @@ private:
           auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
               now - lastTaskTime).count();
 
-          // Adaptive idle sleep: After 1 second of idleness, reduce wake frequency
+          // Adaptive idle sleep: Progressive sleep times for better power/battery savings
           // This saves CPU cycles and power on idle systems
           if (idleTime > 1000) {
-            if (!isIdle) {
-              isIdle = true;
-              // Log transition to idle mode if profiling is enabled
-              // (Disabled by default to avoid log spam)
+            // Progressive sleep: longer sleep times as idle period increases
+            // 1-5s idle: 10ms sleep, 5-30s idle: 50ms sleep, >30s idle: 100ms sleep
+            if (idleTime > 30000) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            } else if (idleTime > 5000) {
+              std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            } else {
+              std::this_thread::sleep_for(std::chrono::milliseconds(10));
             }
-            // Sleep for 10ms to reduce CPU wake frequency
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
           }
 
           // Wait on condition variable for new tasks
