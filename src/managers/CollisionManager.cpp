@@ -2221,21 +2221,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     float vdotn = velocity.getX() * collision.normal.getX() +
                   velocity.getY() * collision.normal.getY();
 
-    // DEBUG: Log all dampening attempts
-    if (velocity.length() > 50.0f) {
-      COLLISION_DEBUG("DAMPEN CHECK: vel=(" + std::to_string(velocity.getX()) + "," +
-                     std::to_string(velocity.getY()) + ") normal=(" +
-                     std::to_string(collision.normal.getX()) + "," +
-                     std::to_string(collision.normal.getY()) + ") vdotn=" +
-                     std::to_string(vdotn) + " isStatic=" + (isStatic ? "YES" : "NO"));
-    }
-
     // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
     // vdotn < 0 means moving AWAY from collision
     if (vdotn < 0) {
-      if (velocity.length() > 50.0f) {
-        COLLISION_DEBUG("  -> SKIP: moving away (vdotn < 0)");
-      }
       return; // Moving away - no damping needed
     }
 
@@ -2243,15 +2231,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     // to prevent continuous penetration when input keeps setting velocity
     if (isStatic) {
       Vector2D normalVelocity = collision.normal * vdotn;
-      Vector2D oldVel = velocity;
       velocity -= normalVelocity; // Remove all velocity along normal
-
-      // DEBUG: Log when dampening wall collisions
-      if (oldVel.length() > 50.0f) {
-        COLLISION_DEBUG("  -> DAMPEN: " + std::to_string(oldVel.getX()) + "," +
-                       std::to_string(oldVel.getY()) + " -> " +
-                       std::to_string(velocity.getX()) + "," + std::to_string(velocity.getY()));
-      }
     } else {
       // For dynamic-dynamic collisions, use restitution-based damping
       Vector2D normalVelocity = collision.normal * vdotn;
