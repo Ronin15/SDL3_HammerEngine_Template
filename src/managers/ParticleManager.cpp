@@ -1965,7 +1965,6 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   if (bufferSize == 0 ||
       currentBuffer.posX.size() != bufferSize ||
       currentBuffer.velX.size() != bufferSize ||
-      currentBuffer.flags.size() != bufferSize ||
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
     m_lastWasThreaded.store(false, std::memory_order_relaxed);

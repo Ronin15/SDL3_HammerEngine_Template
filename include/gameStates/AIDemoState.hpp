@@ -41,12 +41,10 @@ public:
 private:
     // Methods
     void setupAIBehaviors();
-    void createNPCs();
     void createNPCBatch(int count);  // Create a batch of NPCs gradually
     void initializeWorld();
     void initializeCamera();
     void updateCamera(float deltaTime);
-    void applyCameraTransformation();
 
     // Members
     std::vector<NPCPtr> m_npcs{};

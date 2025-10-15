@@ -1463,10 +1463,6 @@ bool EventManager::createResourceChangeEvent(
     int newQuantity, const std::string &changeReason) {
   auto event = std::make_shared<ResourceChangeEvent>(
       owner, resourceHandle, oldQuantity, newQuantity, changeReason);
-  if (!event) {
-    return false;
-  }
-
   return registerResourceChangeEvent(name, event);
 }
 

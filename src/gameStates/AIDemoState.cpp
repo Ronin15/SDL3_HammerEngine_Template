@@ -550,11 +550,6 @@ void AIDemoState::createNPCBatch(int count) {
   }
 }
 
-void AIDemoState::createNPCs() {
-  // Legacy method - now just creates all NPCs at once
-  createNPCBatch(m_npcCount);
-}
-
 void AIDemoState::initializeWorld() {
   // Create world manager and generate a large world for 10K NPCs
   WorldManager& worldManager = WorldManager::Instance();
@@ -604,7 +599,7 @@ void AIDemoState::initializeCamera() {
   );
 
   // Configure camera to follow player
-  if (m_player && m_camera) {
+  if (m_player) {
     // Disable camera event firing for consistency with other demo states
     m_camera->setEventFiringEnabled(false);
 
@@ -630,15 +625,4 @@ void AIDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
     m_camera->update(deltaTime);
   }
-}
-
-void AIDemoState::applyCameraTransformation() {
-  if (!m_camera) {
-    return;
-  }
-
-  // Calculate camera offset for later use in rendering
-  auto viewRect = m_camera->getViewRect();
-  m_cameraOffsetX = viewRect.x;
-  m_cameraOffsetY = viewRect.y;
 }
