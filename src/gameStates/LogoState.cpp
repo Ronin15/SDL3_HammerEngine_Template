@@ -20,7 +20,7 @@ bool LogoState::enter() {
 
   // Cache SoundManager reference for better performance
   SoundManager& soundMgr = SoundManager::Instance();
-  soundMgr.playSFX("sfx_logo", 0, 0);//changes right value from 0 -> 1. For dev.
+  soundMgr.playSFX("sfx_logo", 0, 0);//change right value from 0 -> 1. For dev.
   return true;
 }
 
@@ -93,7 +93,7 @@ void LogoState::render() {
   // Draw version text
   fontMgr.drawText(
 
-      "v0.3.5",
+      "v0.4.5",
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + 260,
