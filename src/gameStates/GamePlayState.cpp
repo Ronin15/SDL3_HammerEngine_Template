@@ -7,9 +7,13 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/ParticleManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -37,7 +41,7 @@ bool GamePlayState::enter() {
 
   // Create player and position at screen center
   mp_Player = std::make_shared<Player>();
-  mp_Player->registerCollisionBody();
+  mp_Player->ensurePhysicsBodyRegistered();
   mp_Player->initializeInventory();
 
   // Position player at screen center
@@ -124,6 +128,31 @@ bool GamePlayState::exit() {
   }
 
   // Full exit (going to main menu, other states, or shutting down)
+
+  // Use manager prepareForStateTransition methods for deterministic cleanup
+  AIManager& aiMgr = AIManager::Instance();
+  aiMgr.prepareForStateTransition();
+
+  // Clean collision state before other systems
+  CollisionManager& collisionMgr = CollisionManager::Instance();
+  if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+    collisionMgr.prepareForStateTransition();
+  }
+
+  // Clean pathfinding state for fresh start
+  PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
+  // Simple particle cleanup
+  ParticleManager& particleMgr = ParticleManager::Instance();
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.prepareForStateTransition();
+  }
+
+  // Clean up camera first to stop world rendering
+  m_camera.reset();
 
   // Unload the world when fully exiting gameplay
   auto& worldManager = WorldManager::Instance();
@@ -413,8 +442,7 @@ void GamePlayState::initializeCamera() {
   );
 
   // Configure camera to follow player
-  if (mp_Player && m_camera) {
-
+  if (mp_Player) {
     // Set target and enable follow mode
     std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(mp_Player);
     m_camera->setTarget(playerAsEntity);
@@ -434,6 +462,7 @@ void GamePlayState::initializeCamera() {
 }
 
 void GamePlayState::updateCamera(float deltaTime) {
+  // Defensive null check (camera always initialized in enter(), but kept for safety)
   if (m_camera) {
     m_camera->update(deltaTime);
   }

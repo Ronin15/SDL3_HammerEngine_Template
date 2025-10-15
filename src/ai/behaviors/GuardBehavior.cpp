@@ -470,7 +470,7 @@ float GuardBehavior::calculateThreatDistance(EntityPtr entity,
 }
 
 void GuardBehavior::updateAlertLevel(EntityPtr /*entity*/, EntityState &state,
-                                     bool threatPresent) {
+                                     bool threatPresent) const {
   Uint64 currentTime = SDL_GetTicks();
 
   if (threatPresent) {

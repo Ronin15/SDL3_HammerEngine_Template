@@ -22,7 +22,9 @@
  */
 
 #include "ai/AIBehavior.hpp"
+#include "core/WorkerBudget.hpp"
 #include "entities/Entity.hpp"
+#include "managers/CollisionManager.hpp"
 #include <array>
 #include <atomic>
 #include <future>
@@ -35,7 +37,6 @@
 
 // PathfinderManager available for centralized pathfinding services
 class PathfinderManager;
-class CollisionManager;
 
 // Performance configuration constants
 namespace AIConfig {
@@ -119,6 +120,29 @@ struct AIPerformanceStats {
 };
 
 /**
+ * @brief Pre-fetched batch data for lock-free parallel processing
+ *
+ * This struct holds copies of all entity data needed for AI processing.
+ * By copying all data once (single lock), batches can process in parallel
+ * without any lock contention, eliminating serialized lock acquisition bottleneck.
+ */
+struct PreFetchedBatchData {
+    std::vector<EntityPtr> entities;
+    std::vector<std::shared_ptr<AIBehavior>> behaviors;
+    std::vector<float> halfWidths;
+    std::vector<float> halfHeights;
+    std::vector<AIEntityData::HotData> hotDataCopy;
+
+    void reserve(size_t capacity) {
+        entities.reserve(capacity);
+        behaviors.reserve(capacity);
+        halfWidths.reserve(capacity);
+        halfHeights.reserve(capacity);
+        hotDataCopy.reserve(capacity);
+    }
+};
+
+/**
  * @brief High-performance AI Manager
  */
 class AIManager {
@@ -174,12 +198,15 @@ public:
   void update(float deltaTime);
 
   /**
-   * @brief Waits for all asynchronous AI update tasks from the last tick to
-   * complete.
-   * @details This is the synchronization point that ensures AI processing is
-   * finished before the next game logic step.
+   * @brief Waits for all async batch operations to complete
+   *
+   * This should be called before systems that depend on AI collision updates
+   * (e.g., CollisionManager) to ensure all async collision data is ready.
+   *
+   * Fast path: ~1ns atomic check if no pending batches
+   * Slow path: blocks until all batches complete on low-core systems
    */
-  void waitForUpdatesToComplete();
+  void waitForAsyncBatchCompletion();
 
   /**
    * @brief Checks if AIManager has been shut down
@@ -296,7 +323,13 @@ public:
 
   // Threading configuration
   void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+  void setThreadingThreshold(size_t threshold);
+  size_t getThreadingThreshold() const;
+  void setWaitForBatchCompletion(bool wait);
+  bool getWaitForBatchCompletion() const;
   void configurePriorityMultiplier(float multiplier = 1.0f);
+  void setMaxBatchesPerUpdate(size_t maxBatches);
+  size_t getMaxBatchesPerUpdate() const;
 
   // Performance monitoring
   AIPerformanceStats getPerformanceStats() const;
@@ -331,17 +364,8 @@ private:
   AIManager(const AIManager &) = delete;
   AIManager &operator=(const AIManager &) = delete;
 
-  // Batch collision update structure for performance optimization
-  struct KinematicUpdateBatch {
-    EntityID id;
-    Vector2D position;
-    Vector2D velocity;
-    
-    KinematicUpdateBatch(EntityID entityId, const Vector2D& pos, const Vector2D& vel)
-        : id(entityId), position(pos), velocity(vel) {}
-  };
-
   // Cache-efficient storage using Structure of Arrays (SoA)
+  // NOTE: Batch collision updates now use CollisionManager::KinematicUpdate directly (no conversion overhead)
   struct EntityStorage {
     // Hot data arrays - tightly packed for cache efficiency
     std::vector<AIEntityData::HotData> hotData;
@@ -356,9 +380,6 @@ private:
     // Double buffering for lock-free updates
     std::atomic<int> currentBuffer{0};
     std::array<std::vector<AIEntityData::HotData>, 2> doubleBuffer;
-    
-    // Batch update buffer for collision system optimization
-    std::vector<KinematicUpdateBatch> kinematicUpdates;
 
     size_t size() const { return entities.size(); }
     void reserve(size_t capacity) {
@@ -370,7 +391,6 @@ private:
       halfHeights.reserve(capacity);
       doubleBuffer[0].reserve(capacity);
       doubleBuffer[1].reserve(capacity);
-      kinematicUpdates.reserve(capacity); // Reserve for batch collision updates
     }
   };
 
@@ -394,7 +414,11 @@ private:
   std::atomic<size_t> m_lastOptimalWorkerCount{0};
   std::atomic<size_t> m_lastAvailableWorkers{0};
   std::atomic<size_t> m_lastAIBudget{0};
+  std::atomic<size_t> m_lastThreadBatchCount{0};
   std::atomic<bool> m_lastWasThreaded{false};
+
+  // Adaptive batch state for performance-based tuning
+  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
 
   // Player reference
   EntityWeakPtr m_playerEntity;
@@ -437,6 +461,7 @@ private:
   // Threading and state
   std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_useThreading{true};
+  std::atomic<bool> m_waitForBatchCompletion{false}; // Default: non-blocking for smooth frames
   std::atomic<bool> m_globallyPaused{false};
   std::atomic<bool> m_processingMessages{false};
   unsigned int m_maxThreads{0};
@@ -447,14 +472,16 @@ private:
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
 
+  // Active entity counter - avoids iteration every frame
+  std::atomic<size_t> m_activeEntityCount{0};
+
   // Thread-safe assignment tracking
   std::atomic<size_t> m_totalAssignmentCount{0};
 
   // Frame counter for periodic logging (thread-safe)
   std::atomic<uint64_t> m_frameCounter{0};
 
-  // Asynchronous assignment processing (non-blocking)
-  std::vector<std::future<void>> m_assignmentFutures;
+  // Asynchronous assignment processing (fire-and-forget, no futures)
   std::atomic<bool> m_assignmentInProgress{false};
 
   // Frame throttling for task submission (thread-safe)
@@ -475,20 +502,26 @@ private:
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
-  std::vector<std::future<void>> m_updateFutures;
-  std::vector<std::future<void>>
-      m_pendingFutures; // Futures from previous frames
+
+  // Async batch tracking for safe shutdown using futures
+  std::vector<std::future<void>> m_batchFutures;
+  std::mutex m_batchFuturesMutex;  // Protect futures vector
+
+  // Per-batch collision update buffers (zero contention approach)
+  std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
-  static constexpr size_t THREADING_THRESHOLD =
-      500; // Higher threshold - threading overhead not worth it for smaller counts
+  std::atomic<size_t> m_threadingThreshold{500};
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
-  void processBatch(size_t start, size_t end, float deltaTime, int bufferIndex);
+  void processBatch(size_t start, size_t end, float deltaTime,
+                    const Vector2D &playerPos, bool updateDistances,
+                    const PreFetchedBatchData& preFetchedData,
+                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();

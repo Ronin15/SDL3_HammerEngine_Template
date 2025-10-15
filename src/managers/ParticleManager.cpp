@@ -570,6 +570,22 @@ void ParticleManager::clean() {
   m_isShutdown = true;
   m_initialized.store(false, std::memory_order_release);
 
+  // CRITICAL: Wait for any pending async batches to complete before cleanup
+  {
+    std::vector<std::future<void>> localFutures;
+    {
+      std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+      localFutures = std::move(m_batchFutures);
+    }
+
+    // Wait for all batch futures to complete
+    for (auto& future : localFutures) {
+      if (future.valid()) {
+        future.wait();
+      }
+    }
+  }
+
   // Clear all storage - no locks needed for lock-free storage
   m_storage.particles[0].clear();
   m_storage.particles[1].clear();
@@ -698,8 +714,9 @@ void ParticleManager::update(float deltaTime) {
     return;
   }
 
-  // TRUST GAME ENGINE: GameEngine and GameLoop handle update/render synchronization
-  // No blocking mutexes needed - the engine ensures thread safety at a higher level
+  // NOTE: We do NOT wait for previous frame's batches here - they can overlap with current frame
+  // ParticleManager batches don't update collision data, so frame overlap is safe
+  // This allows better frame pipelining on low-core systems
 
   auto startTime = std::chrono::high_resolution_clock::now();
 
@@ -748,6 +765,7 @@ void ParticleManager::update(float deltaTime) {
       }
     } else {
       m_lastWasThreaded.store(false, std::memory_order_relaxed);
+      m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
       const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
       updateParticlesSingleThreaded(deltaTime, rangeEnd);
     }
@@ -798,17 +816,20 @@ void ParticleManager::update(float deltaTime) {
       if (currentActiveCount > 0) {
         bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
         if (wasThreaded) {
-          size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-          size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
-          size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
-          
+          [[maybe_unused]] size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+          [[maybe_unused]] size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+          [[maybe_unused]] size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
+          [[maybe_unused]] size_t batchCount = std::max<size_t>(
+              1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
+
           PARTICLE_DEBUG(
               "Particle Summary - Count: " + std::to_string(activeCount) +
               ", Update: " + std::to_string(timeMs) + "ms" +
               ", Effects: " + std::to_string(m_effectInstances.size()) +
               " [Threaded: " + std::to_string(optimalWorkers) + "/" +
               std::to_string(availableWorkers) + " workers, Budget: " +
-              std::to_string(particleBudget) + "]");
+              std::to_string(particleBudget) + ", Batches: " +
+              std::to_string(batchCount) + "]");
         } else {
           PARTICLE_DEBUG(
               "Particle Summary - Count: " + std::to_string(activeCount) +
@@ -818,6 +839,11 @@ void ParticleManager::update(float deltaTime) {
         }
       }
     }
+
+    // Measure total update time for adaptive batch tuning
+    auto updateEndTime = std::chrono::high_resolution_clock::now();
+    double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
+    m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR("Exception in ParticleManager::update: " +
@@ -1290,12 +1316,13 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
   instance.active = true;
   instance.isWeatherEffect = true; // Mark as weather effect immediately
 
-  // Register effect
+  // Register effect (save ID before move)
+  const uint32_t effectId = instance.id;
   m_effectInstances.emplace_back(std::move(instance));
-  m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
+  m_effectIdToIndex[effectId] = m_effectInstances.size() - 1;
 
   PARTICLE_INFO("Weather effect created: " + effectTypeToString(effectType) +
-                " (ID: " + std::to_string(instance.id) + ") at position (" +
+                " (ID: " + std::to_string(effectId) + ") at position (" +
                 std::to_string(weatherPosition.getX()) + ", " +
                 std::to_string(weatherPosition.getY()) + ")");
 }
@@ -1938,9 +1965,10 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   if (bufferSize == 0 ||
       currentBuffer.posX.size() != bufferSize ||
       currentBuffer.velX.size() != bufferSize ||
-      currentBuffer.flags.size() != bufferSize ||
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
     updateParticlesSingleThreaded(deltaTime, activeParticleCount);
     return;
   }
@@ -1970,71 +1998,70 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
   m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-  // Dynamic batch sizing based on queue pressure for optimal performance
-  // This prevents overwhelming the ThreadSystem when other subsystems are busy
-  size_t minParticlesPerBatch = 500;
-  size_t maxBatches = 8;
-
-  // Adjust batch strategy based on queue pressure using unified thresholds
+  // Use unified adaptive batch calculation for consistency across all managers
+  const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
+                                    static_cast<size_t>(1));
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    // High pressure: use fewer, larger batches to reduce queue overhead
-    minParticlesPerBatch = 1000;
-    maxBatches = 4;
-  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-    // Low pressure: can use more batches for better parallelization
-    minParticlesPerBatch = 300;
-    maxBatches = 8;
-  }
 
-  size_t batchCount =
-      std::min(optimalWorkerCount, activeParticleCount / minParticlesPerBatch);
-  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+  // Get previous frame's completion time for adaptive feedback
+  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
 
-  // Debug thread allocation info periodically
-  uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
-  if (currentFrame % 300 == 0 && activeParticleCount > 0) {
-    PARTICLE_DEBUG("Particle Thread Allocation - Workers: " + 
-                   std::to_string(optimalWorkerCount) + "/" +
-                   std::to_string(availableWorkers) + 
-                   ", Particle Budget: " + std::to_string(budget.particleAllocated) +
-                   ", Batches: " + std::to_string(batchCount));
-  }
+  auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+      HammerEngine::PARTICLE_BATCH_CONFIG,
+      activeParticleCount,
+      threshold,
+      optimalWorkerCount,
+      queuePressure,
+      m_adaptiveBatchState,  // Adaptive state for performance tuning
+      lastFrameTime          // Previous frame's completion time
+  );
 
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // Submit optimized batches to ThreadSystem with efficient batch processing
-  // Unlike AIManager, ParticleManager needs synchronization before buffer operations
-  std::vector<std::future<void>> futures;
-  futures.reserve(batchCount);
+  // Submit batches using futures for native async result tracking
+  std::vector<std::future<void>> batchFutures;
+  batchFutures.reserve(batchCount);
 
   for (size_t i = 0; i < batchCount; ++i) {
     size_t startIdx = i * particlesPerBatch;
     size_t endIdx = startIdx + particlesPerBatch +
                     (i == batchCount - 1 ? remainingParticles : 0);
-    
+
     // CRITICAL FIX: Ensure endIdx doesn't exceed buffer size
     endIdx = std::min(endIdx, bufferSize);
-    
+
     // Skip empty batches or invalid ranges
     if (startIdx >= bufferSize || startIdx >= endIdx) {
       continue;
     }
-    
-    // Use async with futures but optimize the waiting pattern
-    futures.push_back(threadSystem.enqueueTaskWithResult(
-        [this, &currentBuffer, startIdx, endIdx, deltaTime, windPhase = m_windPhase]() {
+
+    // Submit each batch with future for completion tracking
+    // currentBuffer captured by reference is safe - it points to member storage
+    batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+      [this, &currentBuffer, startIdx, endIdx, deltaTime,
+       windPhase = m_windPhase]() -> void {
+        try {
           updateParticleRange(currentBuffer, startIdx, endIdx, deltaTime, windPhase);
-        },
-        HammerEngine::TaskPriority::Normal, "Particle_UpdateBatch"));
+        } catch (const std::exception &e) {
+          PARTICLE_ERROR(std::string("Exception in particle batch: ") + e.what());
+        } catch (...) {
+          PARTICLE_ERROR("Unknown exception in particle batch");
+        }
+      },
+      HammerEngine::TaskPriority::Normal,
+      "Particle_Batch"
+    ));
   }
 
-  // Optimized waiting: batch wait instead of individual waits
-  // This reduces synchronization overhead compared to individual future.wait() calls
-  for (auto &future : futures) {
-    future.get(); // Must wait - particle system needs sync before buffer swap
+  // Store futures for shutdown synchronization (futures-based completion tracking)
+  // NO BLOCKING WAIT: Particles are visual-only and don't need sync in update()
+  if (!batchFutures.empty()) {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    m_batchFutures = std::move(batchFutures);
   }
+
+  m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
@@ -2420,6 +2447,8 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
       particleCount < m_threadingThreshold ||
       !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to regular single-threaded update
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
     updateParticlesSingleThreaded(deltaTime, particleCount);
     return;
   }
@@ -2443,6 +2472,10 @@ void ParticleManager::setThreadingThreshold(size_t threshold) {
   m_threadingThreshold = threshold;
   PARTICLE_INFO("Threading threshold set to " + std::to_string(threshold) +
                 " particles");
+}
+
+size_t ParticleManager::getThreadingThreshold() const {
+  return m_threadingThreshold;
 }
 
 // Helper methods for enum-based classification system

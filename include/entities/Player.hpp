@@ -66,8 +66,8 @@ public:
   // Initialization - call after construction to setup inventory
   void initializeInventory();
 
-  // Post-construction registration with CollisionManager
-  void registerCollisionBody() { ensurePhysicsBodyRegistered(); }
+  // Physics body registration - call after construction
+  void ensurePhysicsBodyRegistered();
 
 private:
   void handleMovementInput(float deltaTime);
@@ -75,7 +75,6 @@ private:
   void loadDimensionsFromTexture();
   void setupStates();
   void setupInventory();
-  void ensurePhysicsBodyRegistered();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
@@ -84,7 +83,7 @@ private:
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
-  float m_movementSpeed{150.0f};      // Movement speed in pixels per second
+  float m_movementSpeed{112.5f};      // Movement speed in pixels per second
 
   // Equipment slots - store handles instead of item IDs
   std::unordered_map<std::string, HammerEngine::ResourceHandle>

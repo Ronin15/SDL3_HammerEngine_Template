@@ -93,11 +93,11 @@ private:
                                                                      1.5f};
 
   // Helper methods
-  void initializeEntityState(EntityPtr entity, EntityState &state);
+  void initializeEntityState(EntityPtr entity, EntityState &state) const;
   void updateStationary(EntityPtr entity, EntityState &state);
-  void updateSubtleSway(EntityPtr entity, EntityState &state);
-  void updateOccasionalTurn(EntityPtr entity, EntityState &state);
-  void updateLightFidget(EntityPtr entity, EntityState &state);
+  void updateSubtleSway(EntityPtr entity, EntityState &state) const;
+  void updateOccasionalTurn(EntityPtr entity, EntityState &state) const;
+  void updateLightFidget(EntityPtr entity, EntityState &state) const;
 
   Vector2D generateRandomOffset() const;
   Uint64 getRandomMovementInterval() const;

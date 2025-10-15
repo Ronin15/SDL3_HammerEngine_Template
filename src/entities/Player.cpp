@@ -87,7 +87,8 @@ void Player::loadDimensionsFromTexture() {
         m_height = frameHeight;
 
         // Sync new dimensions to collision body if already registered
-        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f, m_height * 0.5f);
+        Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
+        CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
 
         PLAYER_DEBUG("Loaded texture dimensions: " + std::to_string(m_width) +
                      "x" + std::to_string(height));
@@ -137,26 +138,10 @@ void Player::update(float deltaTime) {
   // State machine handles input and sets velocity
   m_stateManager.update(deltaTime);
 
-  // Player integrates its own movement
-  Vector2D newPosition = m_position + m_velocity * deltaTime;
-
-  // Constrain to world bounds (in pixels)
-  const WorldManager& worldManager = WorldManager::Instance();
-  float minX, minY, maxX, maxY;
-  if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-    // WorldManager returns bounds in PIXELS; clamp using half sprite extents
-    float worldMinX = minX;
-    float worldMinY = minY;
-    float worldMaxX = maxX;
-    float worldMaxY = maxY;
-    const float HALF_SPRITE_WIDTH = m_frameWidth / 2.0f;
-    const float HALF_SPRITE_HEIGHT = m_height / 2.0f;
-    newPosition.setX(std::clamp(newPosition.getX(), worldMinX + HALF_SPRITE_WIDTH, worldMaxX - HALF_SPRITE_WIDTH));
-    newPosition.setY(std::clamp(newPosition.getY(), worldMinY + HALF_SPRITE_HEIGHT, worldMaxY - HALF_SPRITE_HEIGHT));
-  }
-
-  // Update position and sync to collision body
-  setPosition(newPosition);
+  // Sync velocity to collision body - let collision system handle movement integration
+  // This prevents micro-bouncing from double integration (entity + physics)
+  auto &cm = CollisionManager::Instance();
+  cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
@@ -208,7 +193,7 @@ void Player::clean() {
   m_equippedItems.clear();
 
   // Remove collision body
-  CollisionManager::Instance().removeBody(getID());
+  CollisionManager::Instance().removeCollisionBodySOA(getID());
 }
 
 void Player::ensurePhysicsBodyRegistered() {
@@ -217,25 +202,26 @@ void Player::ensurePhysicsBodyRegistered() {
   const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::DYNAMIC);
+
+  // Use new SOA-based collision system
+  cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
+                        HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+  // Process queued command to ensure body exists before attaching
+  cm.processPendingCommands();
+  // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
-  cm.setBodyLayer(getID(), HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
 }
 
 void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
   auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.setVelocity(getID(), velocity);
-  }
+  cm.updateCollisionBodyVelocitySOA(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
   auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.setKinematicPose(getID(), position);
-  }
+  cm.updateCollisionBodyPositionSOA(getID(), position);
 }
 
 void Player::initializeInventory() {
@@ -282,7 +268,7 @@ void Player::initializeInventory() {
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                                int oldQuantity, int newQuantity) {
-  const std::string resourceId = resourceHandle.toString();
+  [[maybe_unused]] const std::string resourceId = resourceHandle.toString();
   // Use EventManager hub to trigger a ResourceChange (no registration needed)
   EventManager::Instance().triggerResourceChange(
       shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",

@@ -522,7 +522,7 @@ void InventoryComponent::validateSlotIndex(size_t slotIndex) const {
 }
 
 void InventoryComponent::updateWorldResourceManager(
-    HammerEngine::ResourceHandle handle, int quantityChange) {
+    HammerEngine::ResourceHandle handle, int quantityChange) const {
   if (!m_trackWorldResources || quantityChange == 0) {
     return;
   }

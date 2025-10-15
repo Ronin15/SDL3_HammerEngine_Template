@@ -72,8 +72,9 @@ set(MOCK_TESTS
     particle_manager_threading_tests
     weather_event_tests
     behavior_functionality_tests
-    collision_pathfinding_benchmark
     collision_pathfinding_integration_tests
+    collision_benchmark
+    pathfinder_benchmark
 )
 
 # Tests that need special mock combinations
@@ -157,10 +158,12 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "events/WeatherEventTest.cpp")
     elseif(${test_name} STREQUAL "behavior_functionality_tests")
         set(test_source "BehaviorFunctionalityTest.cpp")
-    elseif(${test_name} STREQUAL "collision_pathfinding_benchmark")
-        set(test_source "CollisionPathfindingBenchmark.cpp")
     elseif(${test_name} STREQUAL "collision_pathfinding_integration_tests")
         set(test_source "CollisionPathfindingIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "collision_benchmark")
+        set(test_source "performance/CollisionBenchmark.cpp")
+    elseif(${test_name} STREQUAL "pathfinder_benchmark")
+        set(test_source "performance/PathfinderBenchmark.cpp")
     elseif(${test_name} MATCHES "^particle_manager_")
         string(REPLACE "particle_manager_" "" suffix ${test_name})
         string(REPLACE "_tests" "" suffix ${suffix})

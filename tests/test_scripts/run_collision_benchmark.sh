@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Script to run collision and pathfinding performance benchmarks
-# This script runs comprehensive performance tests for both systems
+# Script to run collision system performance benchmarks
+# This script runs comprehensive collision performance tests
 
 # Set up colored output
 RED='\033[0;31m'
@@ -26,19 +26,19 @@ for arg in "$@"; do
       shift
       ;;
     --help)
-      echo -e "${BLUE}Collision & Pathfinding Benchmark Runner${NC}"
-      echo -e "Usage: ./run_collision_pathfinding_benchmark.sh [options]"
+      echo -e "${BLUE}Collision System Benchmark Runner${NC}"
+      echo -e "Usage: ./run_collision_benchmark.sh [options]"
       echo -e "\nOptions:"
       echo -e "  --verbose    Run benchmarks with verbose output"
       echo -e "  --help       Show this help message"
       echo -e "\nBenchmark Coverage:"
+      echo -e "  - CollisionManager SOA storage performance"
       echo -e "  - SpatialHash insertion performance (100-10K entities)"
       echo -e "  - SpatialHash query performance with various entity densities"
       echo -e "  - SpatialHash update performance during movement"
-      echo -e "  - Pathfinding grid performance (50x50 to 200x200)"
-      echo -e "  - Weighted pathfinding with avoidance areas"
-      echo -e "  - Iteration limit impact on pathfinding performance"
-      echo -e "\nEstimated Runtime: 2-5 minutes"
+      echo -e "  - Broadphase and narrowphase collision detection scaling"
+      echo -e "  - Threading vs single-threaded performance comparison"
+      echo -e "\nEstimated Runtime: 2-3 minutes"
       exit 0
       ;;
   esac
@@ -46,16 +46,16 @@ done
 
 # Create results directory
 mkdir -p "$PROJECT_DIR/test_results"
-RESULTS_FILE="$PROJECT_DIR/test_results/collision_pathfinding_benchmark_results.txt"
-CSV_FILE="$PROJECT_DIR/test_results/collision_pathfinding_benchmark.csv"
+RESULTS_FILE="$PROJECT_DIR/test_results/collision_benchmark_results.txt"
+CSV_FILE="$PROJECT_DIR/test_results/collision_benchmark.csv"
 
 echo -e "${MAGENTA}======================================================${NC}"
-echo -e "${MAGENTA}      Collision & Pathfinding Benchmarks           ${NC}"
+echo -e "${MAGENTA}           Collision System Benchmarks              ${NC}"
 echo -e "${MAGENTA}======================================================${NC}"
 echo -e "${YELLOW}Note: This benchmark may take several minutes to complete${NC}"
 
 # Check if the test executable exists
-TEST_EXECUTABLE="$PROJECT_DIR/bin/debug/collision_pathfinding_benchmark"
+TEST_EXECUTABLE="$PROJECT_DIR/bin/debug/collision_benchmark"
 
 if [ ! -f "$TEST_EXECUTABLE" ]; then
     echo -e "${RED}Benchmark executable not found: $TEST_EXECUTABLE${NC}"
@@ -68,8 +68,8 @@ fi
 chmod +x "$TEST_EXECUTABLE"
 
 # Run the benchmarks
-echo -e "${CYAN}Starting collision and pathfinding benchmarks...${NC}"
-echo "Collision & Pathfinding Benchmarks - $(date)" > "$RESULTS_FILE"
+echo -e "${CYAN}Starting collision system benchmarks...${NC}"
+echo "Collision System Benchmarks - $(date)" > "$RESULTS_FILE"
 
 if [ "$VERBOSE" = true ]; then
     echo -e "${YELLOW}Verbose mode enabled${NC}"
@@ -87,15 +87,15 @@ echo "Exit code: $RESULT" >> "$RESULTS_FILE"
 # Report results
 echo -e "\n${MAGENTA}======================================================${NC}"
 if [ $RESULT -eq 0 ]; then
-    echo -e "${GREEN}✓ All collision and pathfinding benchmarks completed successfully!${NC}"
+    echo -e "${GREEN}✓ All collision system benchmarks completed successfully!${NC}"
     echo -e "\nBenchmark Coverage:"
+    echo -e "  ${GREEN}✓${NC} CollisionManager SOA storage performance"
     echo -e "  ${GREEN}✓${NC} SpatialHash insertion performance scaling"
     echo -e "  ${GREEN}✓${NC} SpatialHash query performance with entity density"
     echo -e "  ${GREEN}✓${NC} SpatialHash update performance during movement"
-    echo -e "  ${GREEN}✓${NC} Pathfinding grid performance across sizes"
-    echo -e "  ${GREEN}✓${NC} Weighted pathfinding with cost areas"
-    echo -e "  ${GREEN}✓${NC} Iteration limit impact analysis"
-    
+    echo -e "  ${GREEN}✓${NC} Collision detection broadphase/narrowphase scaling"
+    echo -e "  ${GREEN}✓${NC} Threading performance comparison"
+
     if [ -f "$CSV_FILE" ]; then
         echo -e "\n${CYAN}Detailed CSV results generated: $CSV_FILE${NC}"
         echo -e "${CYAN}Import this file into spreadsheet software for analysis${NC}"
@@ -114,14 +114,14 @@ if [ $RESULT -eq 0 ]; then
     echo -e "${CYAN}Use the CSV file to identify:${NC}"
     echo -e "  • Optimal SpatialHash cell sizes for your entity density"
     echo -e "  • Entity count limits for maintaining target frame rates"
-    echo -e "  • Pathfinding grid sizes suitable for real-time performance"
-    echo -e "  • Impact of iteration limits on pathfinding success rates"
+    echo -e "  • Threading benefits vs overhead for your use case"
+    echo -e "  • Collision detection performance scaling characteristics"
     echo -e "\n${YELLOW}Recommended Performance Targets:${NC}"
     echo -e "  • SpatialHash insertion: < 50μs per entity"
     echo -e "  • SpatialHash query: < 100μs per query"
     echo -e "  • SpatialHash update: < 75μs per update"
-    echo -e "  • Pathfinding (100x100): < 10ms per request"
-    echo -e "  • Pathfinding (150x150): < 20ms per request"
+    echo -e "  • Collision detection: < 5ms for 1000 entities"
+    echo -e "  • Frame budget: < 16.67ms total (60 FPS)"
 fi
 
 exit $RESULT

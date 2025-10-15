@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/IdleBehavior.hpp"
@@ -150,7 +151,7 @@ bool AdvancedAIDemoState::enter() {
 
         // Create player first (required for flee/follow/attack behaviors)
         m_player = std::make_shared<Player>();
-        m_player->registerCollisionBody();
+        m_player->ensurePhysicsBodyRegistered();
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
         // Setup combat attributes for player
@@ -200,20 +201,20 @@ bool AdvancedAIDemoState::exit() {
 
     // Use prepareForStateTransition methods for deterministic cleanup
     aiMgr.prepareForStateTransition();
-    
+
     // Clean collision state
     CollisionManager &collisionMgr = CollisionManager::Instance();
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
 
-    // Clean up NPCs
-    for (auto& npc : m_npcs) {
-        if (npc) {
-            npc->clean();
-            npc->setVelocity(Vector2D(0, 0));
-        }
+    // Clean pathfinding state for fresh start
+    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
     }
+
+    // Clear NPCs (AIManager::prepareForStateTransition already handled cleanup)
     m_npcs.clear();
 
     // Clear combat attributes
@@ -321,14 +322,14 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 
     // Register Flee behavior
     if (!aiMgr.hasBehavior("Flee")) {
-        auto fleeBehavior = std::make_unique<FleeBehavior>(80.0f, 150.0f, 200.0f); // speed, detection range, safe distance
+    auto fleeBehavior = std::make_unique<FleeBehavior>(60.0f, 150.0f, 200.0f); // speed, detection range, safe distance
         aiMgr.registerBehavior("Flee", std::move(fleeBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Flee behavior");
     }
 
     // Register Follow behavior
     if (!aiMgr.hasBehavior("Follow")) {
-        auto followBehavior = std::make_unique<FollowBehavior>(75.0f, 50.0f, 90.0f); // follow speed, follow distance, max distance
+    auto followBehavior = std::make_unique<FollowBehavior>(56.25f, 50.0f, 90.0f); // follow speed, follow distance, max distance
         aiMgr.registerBehavior("Follow", std::move(followBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Follow behavior");
     }
@@ -342,7 +343,7 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 
     // Register Attack behavior
     if (!aiMgr.hasBehavior("Attack")) {
-        auto attackBehavior = std::make_unique<AttackBehavior>(80.0f, 1.0f, 85.0f); // range, cooldown, speed
+    auto attackBehavior = std::make_unique<AttackBehavior>(80.0f, 1.0f, 63.75f); // range, cooldown, speed
         aiMgr.registerBehavior("Attack", std::move(attackBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Attack behavior");
     }

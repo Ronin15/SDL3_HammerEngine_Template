@@ -30,10 +30,9 @@ mkdir -p "${RESULTS_DIR}/summaries"
 # AI behavior, performance critical, and resource management test executables
 declare -A PROFILE_TESTS=(
     ["ai_optimization"]="ai_optimization_tests"
-    ["ai_scaling"]="ai_scaling_benchmark" 
     ["behavior_functionality"]="behavior_functionality_tests"
     ["event_manager"]="event_manager_tests"
-    ["event_scaling"]="event_manager_scaling_benchmark"
+    ["event_manager_behavior"]="event_manager_behavior_tests"
     ["event_types"]="event_types_tests"
     ["weather_events"]="weather_event_tests"
     ["particle_core"]="particle_manager_core_tests"
@@ -44,8 +43,9 @@ declare -A PROFILE_TESTS=(
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integration"]="thread_safe_ai_integration_tests"
     ["save_manager"]="save_manager_tests"
+    ["game_state_manager"]="game_state_manager_tests"
     ["ui_stress"]="ui_stress_test"
-    ["resource_manager"]="resource_manager_tests"
+    ["resource_architecture"]="resource_architecture_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["world_generator"]="world_generator_tests"
     ["world_manager"]="world_manager_tests"
@@ -60,7 +60,7 @@ declare -A PROFILE_TESTS=(
     ["resource_edge_case"]="resource_edge_case_tests"
     ["collision_system"]="collision_system_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
-    ["collision_pathfinding_bench"]="collision_pathfinding_benchmark"
+    ["pathfinder_manager"]="pathfinder_manager_tests"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
 )
 
@@ -230,52 +230,29 @@ analyze_callgrind_results() {
         
         # Try to extract metrics from callgrind_annotate output
         if grep -q "Ir" "${summary_file}"; then
-            # Extract top function and total from callgrind_annotate format
-            top_function=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { print $2; exit }' "${summary_file}" 2>/dev/null || echo "N/A")
+            # Extract top APPLICATION function (skip boost/system overhead)
+            top_function=$(grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -E "(src/|tests/|include/)" | head -1 | sed 's/.*  //' 2>/dev/null || echo "N/A")
             total_instructions=$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{print $2}' 2>/dev/null || echo "N/A")
+
+            # Count APPLICATION functions only (skip boost/system overhead)
+            function_count=$(grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | wc -l 2>/dev/null || echo "0")
             
-            # Count functions with meaningful instruction counts (skip headers and totals)
-            function_count=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ && $1 > 0 { count++ } END { print count+0 }' "${summary_file}" 2>/dev/null || echo "0")
-            
-            # Extract percentage values properly from callgrind_annotate output format
-            # Format: "  percentage  instruction_count  function_name:file_location"
-            critical_functions=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
-                # Extract percentage from parentheses or calculate from instruction ratio
-                if (match($0, /\(([0-9.]+)%\)/, arr)) {
-                    percent = arr[1]
-                } else if ($1 > 0 && total > 0) {
-                    # Calculate percentage if not in parentheses format
-                    gsub(/,/, "", $1)
-                    percent = ($1 / total) * 100
-                } else {
-                    percent = 0
-                }
-                if (percent >= 10.0) count++
-            } END { print count+0 }' total="$(echo "$total_instructions" | sed 's/,//g')" "${summary_file}" 2>/dev/null || echo "0")
-            
-            moderate_functions=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
-                if (match($0, /\(([0-9.]+)%\)/, arr)) {
-                    percent = arr[1]
-                } else if ($1 > 0 && total > 0) {
-                    gsub(/,/, "", $1)
-                    percent = ($1 / total) * 100
-                } else {
-                    percent = 0
-                }
-                if (percent >= 2.0 && percent < 10.0) count++
-            } END { print count+0 }' total="$(echo "$total_instructions" | sed 's/,//g')" "${summary_file}" 2>/dev/null || echo "0")
-            
-            minor_functions=$(awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
-                if (match($0, /\(([0-9.]+)%\)/, arr)) {
-                    percent = arr[1]
-                } else if ($1 > 0 && total > 0) {
-                    gsub(/,/, "", $1)
-                    percent = ($1 / total) * 100
-                } else {
-                    percent = 0
-                }
-                if (percent >= 1.0 && percent < 2.0) count++
-            } END { print count+0 }' total="$(echo "$total_instructions" | sed 's/,//g')" "${summary_file}" 2>/dev/null || echo "0")
+            # Extract percentage values from APPLICATION functions only
+            # Filter out boost, std, libc, and unknown functions
+            critical_functions=$(grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | \
+                grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | \
+                sed 's/.*(\([0-9.]*\)%).*/\1/' | \
+                awk '{if ($1 >= 10.0) count++} END {print count+0}' 2>/dev/null || echo "0")
+
+            moderate_functions=$(grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | \
+                grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | \
+                sed 's/.*(\([0-9.]*\)%).*/\1/' | \
+                awk '{if ($1 >= 2.0 && $1 < 10.0) count++} END {print count+0}' 2>/dev/null || echo "0")
+
+            minor_functions=$(grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | \
+                grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | \
+                sed 's/.*(\([0-9.]*\)%).*/\1/' | \
+                awk '{if ($1 >= 1.0 && $1 < 2.0) count++} END {print count+0}' 2>/dev/null || echo "0")
         fi
         
         CRITICAL_HOTSPOTS=$((CRITICAL_HOTSPOTS + critical_functions))
@@ -335,45 +312,24 @@ generate_function_analysis() {
         echo "" >> "${analysis_file}"
         
         echo "## Critical Hotspots (≥10% of instructions)" >> "${analysis_file}"
-        awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
-            if (match($0, /\(([0-9.]+)%\)/, arr)) {
-                percent = arr[1]
-            } else if ($1 > 0 && total > 0) {
-                gsub(/,/, "", $1)
-                percent = ($1 / total) * 100
-            } else {
-                percent = 0
-            }
-            if (percent >= 10.0) print "- " $0
-        }' total="$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{gsub(/,/, "", $2); print $2}')" "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | \
+            grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | \
+            awk '{match($0, /\(([0-9.]+)%\)/, arr); if (arr[1] >= 10.0) print "- " $0}' >> "${analysis_file}" 2>/dev/null
+        if ! grep -q "^- " "${analysis_file}"; then echo "None found" >> "${analysis_file}"; fi
         echo "" >> "${analysis_file}"
-        
+
         echo "## Moderate Optimization Targets (2-10% of instructions)" >> "${analysis_file}"
-        awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
-            if (match($0, /\(([0-9.]+)%\)/, arr)) {
-                percent = arr[1]
-            } else if ($1 > 0 && total > 0) {
-                gsub(/,/, "", $1)
-                percent = ($1 / total) * 100
-            } else {
-                percent = 0
-            }
-            if (percent >= 2.0 && percent < 10.0) print "- " $0
-        }' total="$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{gsub(/,/, "", $2); print $2}')" "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | \
+            grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | \
+            awk '{match($0, /\(([0-9.]+)%\)/, arr); if (arr[1] >= 2.0 && arr[1] < 10.0) print "- " $0}' >> "${analysis_file}" 2>/dev/null
+        if [ $(tail -5 "${analysis_file}" | grep -c "^- ") -eq 0 ]; then echo "None found" >> "${analysis_file}"; fi
         echo "" >> "${analysis_file}"
-        
+
         echo "## Minor Opportunities (1-2% of instructions)" >> "${analysis_file}"
-        awk '/^[[:space:]]*[0-9]/ && !/^PROGRAM TOTALS/ && !/^[[:space:]]*Ir/ { 
-            if (match($0, /\(([0-9.]+)%\)/, arr)) {
-                percent = arr[1]
-            } else if ($1 > 0 && total > 0) {
-                gsub(/,/, "", $1)
-                percent = ($1 / total) * 100
-            } else {
-                percent = 0
-            }
-            if (percent >= 1.0 && percent < 2.0) print "- " $0
-        }' total="$(grep "^PROGRAM TOTALS" "${summary_file}" | awk '{gsub(/,/, "", $2); print $2}')" "${summary_file}" >> "${analysis_file}" 2>/dev/null || echo "None found" >> "${analysis_file}"
+        grep -E "^[0-9].*\([0-9.]+%\)" "${summary_file}" | \
+            grep -v "boost::" | grep -v "std::" | grep -v "libc" | grep -v "ld-linux" | grep -v "???" | \
+            awk '{match($0, /\(([0-9.]+)%\)/, arr); if (arr[1] >= 1.0 && arr[1] < 2.0) print "- " $0}' >> "${analysis_file}" 2>/dev/null
+        if [ $(tail -5 "${analysis_file}" | grep -c "^- ") -eq 0 ]; then echo "None found" >> "${analysis_file}"; fi
         
         echo "Function analysis saved to: ${analysis_file}"
     fi

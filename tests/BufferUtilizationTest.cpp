@@ -102,10 +102,11 @@ BOOST_AUTO_TEST_CASE(TestVeryHighEndSystem) {
     BOOST_CHECK_GT(budget.remaining, 1);
     BOOST_CHECK(budget.hasBufferCapacity());
 
-    // Test conservative buffer usage (max half of base allocation)
+    // Test aggressive buffer usage (75% of buffer, capped at 2x base allocation)
     size_t highWorkload = 50000;
     size_t optimalWorkers = budget.getOptimalWorkerCount(budget.aiAllocated, highWorkload, 1000);
-    size_t expectedBurst = std::min(budget.remaining, budget.aiAllocated);
+    size_t bufferToUse = (budget.remaining * 3) / 4;
+    size_t expectedBurst = std::min(bufferToUse, budget.aiAllocated * 2);
 
     std::cout << "Very high workload burst: " << optimalWorkers << " workers\n";
     std::cout << "Expected burst workers: " << expectedBurst << "\n";

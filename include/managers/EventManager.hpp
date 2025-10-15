@@ -18,13 +18,16 @@
  * - Direct function calls to minimize overhead
  */
 
+#include "core/WorkerBudget.hpp"
 #include "events/EventTypeId.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <array>
 #include <atomic>
+#include <condition_variable>
 #include <deque>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <queue>
@@ -385,6 +388,7 @@ public:
   void enableThreading(bool enable);
   bool isThreadingEnabled() const;
   void setThreadingThreshold(size_t threshold);
+  size_t getThreadingThreshold() const;
 
   // High-level convenience methods
   bool changeWeather(const std::string &weatherType,
@@ -516,7 +520,7 @@ public:
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;
-  void resetPerformanceStats();
+  void resetPerformanceStats() const;
   size_t getEventCount() const;
   size_t getEventCount(EventTypeId typeId) const;
 
@@ -584,19 +588,26 @@ private:
   std::atomic<size_t> m_lastEventBudget{0};
   std::atomic<bool> m_lastWasThreaded{false};
 
+  // Adaptive batch state for performance-based tuning
+  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
+
   // Deferred dispatch queue (processed in update())
   struct PendingDispatch {
     EventTypeId typeId;
     EventData data;
   };
   mutable std::mutex m_dispatchMutex;
+
+  // Async batch tracking for safe shutdown using futures
+  std::vector<std::future<void>> m_batchFutures;
+  std::mutex m_batchFuturesMutex;  // Protect futures vector
   mutable std::deque<PendingDispatch> m_pendingDispatch;
   size_t m_maxDispatchQueue{8192};
 
   // Helper methods
   EventTypeId getEventTypeId(const EventPtr &event) const;
   std::string getEventTypeName(EventTypeId typeId) const;
-  void updateEventTypeBatch(EventTypeId typeId);
+  void updateEventTypeBatch(EventTypeId typeId) const;
   void updateEventTypeBatchThreaded(EventTypeId typeId);
   void processEventDirect(EventData &eventData);
   void recordPerformance(EventTypeId typeId, double timeMs) const;

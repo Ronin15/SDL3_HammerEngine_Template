@@ -111,7 +111,7 @@ private:
     
     // Path smoothing functions
     void smoothPath(std::vector<Vector2D>& path);
-    bool hasLineOfSight(const Vector2D& start, const Vector2D& end);
+    bool hasLineOfSight(const Vector2D& start, const Vector2D& end) const;
     
     // Hierarchical pathfinding helpers
     void initializeCoarseGrid();

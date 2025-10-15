@@ -6,6 +6,7 @@
 #define BOOST_TEST_MODULE ParticleManagerPerformanceTest
 #include <boost/test/unit_test.hpp>
 
+#include "core/ThreadSystem.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "managers/ParticleManager.hpp"
 #include "utils/Vector2D.hpp"
@@ -17,6 +18,11 @@
 // Test fixture for ParticleManager performance tests
 struct ParticleManagerPerformanceFixture {
   ParticleManagerPerformanceFixture() {
+    // Initialize ThreadSystem first (required for batch submissions)
+    if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
+      HammerEngine::ThreadSystem::Instance().init();
+    }
+
     manager = &ParticleManager::Instance();
 
     // Ensure clean state for each test
@@ -32,6 +38,11 @@ struct ParticleManagerPerformanceFixture {
   ~ParticleManagerPerformanceFixture() {
     if (manager->isInitialized()) {
       manager->clean();
+    }
+
+    // Clean up ThreadSystem
+    if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
+      HammerEngine::ThreadSystem::Instance().clean();
     }
   }
 

@@ -197,7 +197,7 @@ protected:
 
   // WorldResourceManager integration helpers
   void updateWorldResourceManager(HammerEngine::ResourceHandle handle,
-                                  int quantityChange);
+                                  int quantityChange) const;
 };
 
 #endif // INVENTORY_COMPONENT_HPP
