@@ -365,6 +365,10 @@ unreadVariable:*/managers/CollisionManager.cpp:1067
 # Variables scope reduction suggestions (minor style improvements, code is readable as-is)
 variableScope:*/managers/CollisionManager.cpp:925
 
+# Bounding box initialization from single point (intentional same-expression assignments)
+duplicateAssignExpression:*/managers/CollisionManager.cpp:326
+duplicateAssignExpression:*/managers/CollisionManager.cpp:328
+
 # Defensive programming - always true/false conditions by design
 knownConditionTrueFalse:*/gameStates/EventDemoState.cpp:1902
 knownConditionTrueFalse:*/gameStates/GamePlayState.cpp:416
@@ -406,6 +410,7 @@ unreadVariable:*/ai/internal/SpatialPriority.cpp:346
 unreadVariable:*/collisions/HierarchicalSpatialHash.cpp:266
 unreadVariable:*/collisions/HierarchicalSpatialHash.cpp:267
 unreadVariable:*/collisions/HierarchicalSpatialHash.cpp:268
+unreadVariable:*/entities/NPC.cpp:265
 unreadVariable:*/entities/NPC.cpp:307
 unreadVariable:*/entities/Player.cpp:289
 unreadVariable:*/managers/CollisionManager.cpp:96
@@ -417,6 +422,8 @@ unreadVariable:*/managers/CollisionManager.cpp:407
 unreadVariable:*/managers/CollisionManager.cpp:410
 unreadVariable:*/managers/CollisionManager.cpp:413
 unreadVariable:*/managers/CollisionManager.cpp:416
+unreadVariable:*/managers/CollisionManager.cpp:729
+unreadVariable:*/managers/CollisionManager.cpp:730
 unreadVariable:*/managers/CollisionManager.cpp:371
 unreadVariable:*/managers/CollisionManager.cpp:372
 unreadVariable:*/managers/CollisionManager.cpp:373
@@ -430,4 +437,7 @@ unreadVariable:*/managers/CollisionManager.cpp:1476
 unreadVariable:*/managers/EventManager.cpp:265
 unreadVariable:*/managers/EventManager.cpp:266
 unreadVariable:*/managers/EventManager.cpp:267
+unreadVariable:*/managers/EventManager.cpp:288
+unreadVariable:*/managers/EventManager.cpp:289
+unreadVariable:*/managers/EventManager.cpp:290
 unreadVariable:*/managers/ParticleManager.cpp:804

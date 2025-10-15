@@ -35,7 +35,7 @@ public:
     return npc;
   }
 
-  void update(float deltaTime) override;
+  void update(float) override;
   void render(const HammerEngine::Camera *camera) override;
   void clean() override;
   // No state management - handled by AI Manager
@@ -45,10 +45,6 @@ public:
 
   // NPC-specific setter methods
   void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
-  
-  // Sync with CollisionManager (AI drives velocity/position)
-  void setVelocity(const Vector2D& velocity) override;
-  void setPosition(const Vector2D& position) override;
 
   // AI-specific methods
   void setWanderArea(float minX, float minY, float maxX, float maxY);

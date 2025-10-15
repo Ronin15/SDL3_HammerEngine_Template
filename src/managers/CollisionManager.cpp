@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <chrono>
 #include <map>
+#include <numeric>
 #include <queue>
 #include <set>
 #include <shared_mutex>
@@ -321,10 +322,11 @@ size_t CollisionManager::createStaticObstacleBodies() {
       // Only use row decomposition for complex non-rectangular shapes
 
       // Find bounding box
-      int minX = buildingTiles[0].first;
-      int maxX = buildingTiles[0].first;
-      int minY = buildingTiles[0].second;
-      int maxY = buildingTiles[0].second;
+      const auto& firstTile = buildingTiles[0];
+      int minX = firstTile.first;
+      int maxX = firstTile.first;
+      int minY = firstTile.second;
+      int maxY = firstTile.second;
 
       for (const auto& [tx, ty] : buildingTiles) {
         minX = std::min(minX, tx);
@@ -1471,17 +1473,17 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 #ifdef COLLISION_SIMD_SSE2
         // SIMD: Process static candidates in batches of 4 for layer mask filtering
         const __m128i staticMaskVec = _mm_set1_epi32(dynamicCollidesWith);
-        size_t i = 0;
+        size_t si = 0;
         const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
 
-        for (; i < staticSimdEnd; i += 4) {
+        for (; si < staticSimdEnd; si += 4) {
           // Bounds check for batch
-          if (staticCandidates[i] >= m_storage.hotData.size() ||
-              staticCandidates[i+1] >= m_storage.hotData.size() ||
-              staticCandidates[i+2] >= m_storage.hotData.size() ||
-              staticCandidates[i+3] >= m_storage.hotData.size()) {
+          if (staticCandidates[si] >= m_storage.hotData.size() ||
+              staticCandidates[si+1] >= m_storage.hotData.size() ||
+              staticCandidates[si+2] >= m_storage.hotData.size() ||
+              staticCandidates[si+3] >= m_storage.hotData.size()) {
             // Fall back to scalar for this batch
-            for (size_t j = i; j < i + 4 && j < staticCandidates.size(); ++j) {
+            for (size_t j = si; j < si + 4 && j < staticCandidates.size(); ++j) {
               size_t staticIdx = staticCandidates[j];
               if (staticIdx >= m_storage.hotData.size()) continue;
               const auto& staticHot = m_storage.hotData[staticIdx];
@@ -1493,10 +1495,10 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
           // Load 4 static candidate layers
           __m128i staticLayers = _mm_set_epi32(
-            m_storage.hotData[staticCandidates[i+3]].layers,
-            m_storage.hotData[staticCandidates[i+2]].layers,
-            m_storage.hotData[staticCandidates[i+1]].layers,
-            m_storage.hotData[staticCandidates[i]].layers
+            m_storage.hotData[staticCandidates[si+3]].layers,
+            m_storage.hotData[staticCandidates[si+2]].layers,
+            m_storage.hotData[staticCandidates[si+1]].layers,
+            m_storage.hotData[staticCandidates[si]].layers
           );
 
           // Batch layer mask check
@@ -1510,7 +1512,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
           // Process individual static candidates that passed
           for (size_t j = 0; j < 4; ++j) {
-            size_t staticIdx = staticCandidates[i + j];
+            size_t staticIdx = staticCandidates[si + j];
 
             // Check if this candidate passed
             int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
@@ -1524,8 +1526,8 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
         }
 
         // Scalar tail
-        for (; i < staticCandidates.size(); ++i) {
-          size_t staticIdx = staticCandidates[i];
+        for (; si < staticCandidates.size(); ++si) {
+          size_t staticIdx = staticCandidates[si];
 #else
         // Scalar fallback
         for (size_t staticIdx : staticCandidates) {
@@ -2590,10 +2592,8 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
   if (batchUpdates.empty()) return;
 
   // Count total updates for efficiency
-  size_t totalUpdates = 0;
-  for (const auto& batch : batchUpdates) {
-    totalUpdates += batch.size();
-  }
+  size_t totalUpdates = std::accumulate(batchUpdates.begin(), batchUpdates.end(), size_t{0},
+    [](size_t sum, const auto& batch) { return sum + batch.size(); });
 
   if (totalUpdates == 0) return;
 

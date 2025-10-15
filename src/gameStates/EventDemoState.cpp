@@ -1880,7 +1880,7 @@ void EventDemoState::initializeCamera() {
   );
 
   // Configure camera to follow player
-  if (m_player && m_camera) {
+  if (m_player) {
     // Match GamePlayState: disable camera event firing for consistency
     m_camera->setEventFiringEnabled(false);
 
