@@ -232,26 +232,150 @@ BOOST_AUTO_TEST_CASE(TestLargeWorld) {
     config.humidityFrequency = 0.03f;
     config.waterLevel = 0.25f;
     config.mountainLevel = 0.75f;
-    
+
     auto world = WorldGenerator::generateWorld(config);
-    
+
     BOOST_REQUIRE(world != nullptr);
     BOOST_CHECK_EQUAL(world->grid.size(), 200);
     BOOST_CHECK_EQUAL(world->grid[0].size(), 200);
-    
+
     // Large worlds should still have proper biome distribution
     int biomeCount[static_cast<int>(Biome::OCEAN) + 1] = {0};
-    
+
     for (int y = 0; y < 200; ++y) {
         for (int x = 0; x < 200; ++x) {
             biomeCount[static_cast<int>(world->grid[y][x].biome)]++;
         }
     }
-    
+
     // Large worlds should have all major biomes represented
     BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::FOREST)], 0);
     BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::DESERT)], 0);
     BOOST_CHECK_GT(biomeCount[static_cast<int>(Biome::MOUNTAIN)], 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestBuildingGeneration) {
+    WorldGenerationConfig config;
+    config.width = 100;
+    config.height = 100;
+    config.seed = 55555;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.2f; // Low water for more land
+    config.mountainLevel = 0.9f; // High mountain threshold to have more forest
+
+    auto world = WorldGenerator::generateWorld(config);
+    BOOST_REQUIRE(world != nullptr);
+
+    // Find all buildings and validate their structure
+    std::map<uint32_t, std::vector<std::pair<int, int>>> buildingTiles;
+    int buildingTileCount = 0;
+
+    for (int y = 0; y < config.height; ++y) {
+        for (int x = 0; x < config.width; ++x) {
+            const Tile& tile = world->grid[y][x];
+
+            if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
+                buildingTiles[tile.buildingId].push_back({x, y});
+                buildingTileCount++;
+            }
+        }
+    }
+
+    // Validate each building
+    for (const auto& [buildingId, tiles] : buildingTiles) {
+        // Buildings should be 2x2 (4 tiles) or multiples thereof for connected buildings
+        BOOST_CHECK_GE(tiles.size(), 4);
+        BOOST_CHECK_EQUAL(tiles.size() % 4, 0); // Should be multiple of 4
+
+        // Verify all tiles have same buildingId
+        for (const auto& [x, y] : tiles) {
+            BOOST_CHECK_EQUAL(world->grid[y][x].buildingId, buildingId);
+            BOOST_CHECK_EQUAL(world->grid[y][x].obstacleType, ObstacleType::BUILDING);
+        }
+
+        // Verify tiles form contiguous blocks (2x2)
+        // Find bounding box
+        int minX = tiles[0].first, maxX = tiles[0].first;
+        int minY = tiles[0].second, maxY = tiles[0].second;
+
+        for (const auto& [x, y] : tiles) {
+            minX = std::min(minX, x);
+            maxX = std::max(maxX, x);
+            minY = std::min(minY, y);
+            maxY = std::max(maxY, y);
+        }
+
+        // Building dimensions should be at least 2x2
+        BOOST_CHECK_GE(maxX - minX + 1, 2);
+        BOOST_CHECK_GE(maxY - minY + 1, 2);
+
+        // Verify no partial buildings (incomplete 2x2 blocks)
+        // Each building should have a complete top-left tile that starts a 2x2 block
+        bool hasValidTopLeft = false;
+        for (const auto& [x, y] : tiles) {
+            // Check if this is a top-left of a 2x2 block
+            if (x + 1 <= maxX && y + 1 <= maxY) {
+                // Check if the 2x2 block exists
+                bool is2x2 = true;
+                for (int dy = 0; dy < 2 && is2x2; ++dy) {
+                    for (int dx = 0; dx < 2 && is2x2; ++dx) {
+                        if (x + dx >= config.width || y + dy >= config.height) {
+                            is2x2 = false;
+                            break;
+                        }
+                        const Tile& checkTile = world->grid[y + dy][x + dx];
+                        if (checkTile.buildingId != buildingId ||
+                            checkTile.obstacleType != ObstacleType::BUILDING) {
+                            is2x2 = false;
+                        }
+                    }
+                }
+                if (is2x2) {
+                    hasValidTopLeft = true;
+                    break;
+                }
+            }
+        }
+
+        BOOST_CHECK_MESSAGE(hasValidTopLeft,
+            "Building " + std::to_string(buildingId) + " does not have a valid 2x2 structure");
+    }
+
+    // Should have at least some buildings in a 100x100 world
+    BOOST_CHECK_GT(buildingTiles.size(), 0);
+    BOOST_CHECK_GT(buildingTileCount, 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestBuildingNoOverlap) {
+    WorldGenerationConfig config;
+    config.width = 50;
+    config.height = 50;
+    config.seed = 88888;
+    config.elevationFrequency = 0.1f;
+    config.humidityFrequency = 0.1f;
+    config.waterLevel = 0.1f;
+    config.mountainLevel = 0.9f;
+
+    auto world = WorldGenerator::generateWorld(config);
+    BOOST_REQUIRE(world != nullptr);
+
+    // Verify that no buildings overlap with water or other obstacles
+    for (int y = 0; y < config.height; ++y) {
+        for (int x = 0; x < config.width; ++x) {
+            const Tile& tile = world->grid[y][x];
+
+            if (tile.obstacleType == ObstacleType::BUILDING) {
+                // Buildings should not be on water
+                BOOST_CHECK_MESSAGE(!tile.isWater,
+                    "Building at (" + std::to_string(x) + ", " + std::to_string(y) + ") is on water");
+
+                // Buildings should not be on mountain or ocean biomes
+                BOOST_CHECK_NE(tile.biome, Biome::MOUNTAIN);
+                BOOST_CHECK_NE(tile.biome, Biome::OCEAN);
+            }
+        }
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

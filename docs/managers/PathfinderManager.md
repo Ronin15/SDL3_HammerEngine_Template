@@ -363,10 +363,12 @@ void handlePathfindingError(EntityID entityId, PathfindingResult result) {
 ### Performance Tests
 ```bash
 # Pathfinding performance benchmarks
-./tests/test_scripts/run_collision_pathfinding_benchmark.sh
+./tests/test_scripts/run_pathfinder_benchmark.sh
+./bin/debug/pathfinder_benchmark
 
-# Specific pathfinding benchmarks
-./bin/debug/pathfinding_performance_tests
+# Collision system benchmarks (separate)
+./tests/test_scripts/run_collision_benchmark.sh
+./bin/debug/collision_benchmark
 ```
 
 ### Integration Tests

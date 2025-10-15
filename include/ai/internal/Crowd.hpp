@@ -44,6 +44,19 @@ Vector2D ApplySeparation(EntityPtr entity,
                          float strength,
                          size_t maxNeighbors = 6);
 
+// PERFORMANCE OPTIMIZATION: ApplySeparation with pre-fetched neighbor data
+// Use this overload to avoid redundant collision queries when you already have
+// nearby entity positions from a previous query (e.g., crowd analysis)
+// - preFetchedNeighbors: vector of nearby entity positions (from previous query)
+Vector2D ApplySeparation(EntityPtr entity,
+                         const Vector2D &currentPos,
+                         const Vector2D &intendedVel,
+                         float speed,
+                         float radius,
+                         float strength,
+                         size_t maxNeighbors,
+                         const std::vector<Vector2D> &preFetchedNeighbors);
+
 // Smooths velocity changes to reduce visual glitching
 // - currentVel: entity's current velocity
 // - targetVel: desired velocity from AI logic

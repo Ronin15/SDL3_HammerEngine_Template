@@ -56,7 +56,7 @@ for arg in "$@"; do
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
       echo -e "  Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding functionality tests"
-      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, and Collision/Pathfinding performance benchmarks"
+      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, Collision system, and Pathfinder performance benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
       echo -e "  Benchmarks:       ~5-15 minutes total"
@@ -104,7 +104,8 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_ai_benchmark.sh"
   "$SCRIPT_DIR/run_ui_stress_tests.sh"
-  "$SCRIPT_DIR/run_collision_pathfinding_benchmark.sh"
+  "$SCRIPT_DIR/run_collision_benchmark.sh"
+  "$SCRIPT_DIR/run_pathfinder_benchmark.sh"
 )
 
 # Build the test scripts array based on user selection

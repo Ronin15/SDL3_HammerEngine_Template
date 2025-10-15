@@ -71,6 +71,11 @@ void EventManager::setThreadingThreshold(size_t threshold)
   m_threadingThreshold = threshold;
 }
 
+size_t EventManager::getThreadingThreshold() const
+{
+  return m_threadingThreshold;
+}
+
 // --------------------------------------------
 // Convenience alias trigger method definitions
 // --------------------------------------------
@@ -150,6 +155,22 @@ void EventManager::clean() {
     return;
   }
 
+  // Wait for any pending async batches to complete before cleanup
+  {
+    std::vector<std::future<void>> localFutures;
+    {
+      std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+      localFutures = std::move(m_batchFutures);
+    }
+
+    // Wait for all batch futures to complete
+    for (auto& future : localFutures) {
+      if (future.valid()) {
+        future.wait();
+      }
+    }
+  }
+
   // Only log if not in shutdown to avoid static destruction order issues
   if (!m_isShutdown) {
     EVENT_INFO("Cleaning up EventManager");
@@ -215,6 +236,10 @@ void EventManager::update() {
     return;
   }
 
+  // NOTE: We do NOT wait for previous frame's batches here - they can overlap with current frame
+  // EventManager batches don't update collision data, so frame overlap is safe
+  // This allows better frame pipelining on low-core systems
+
   auto startTime = getCurrentTimeNanos();
 
   // Update all event types in optimized batches
@@ -252,6 +277,9 @@ void EventManager::update() {
 
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
+
+  // Store total update time for adaptive batch tuning
+  m_adaptiveBatchState.lastUpdateTimeMs.store(totalTimeMs, std::memory_order_release);
 
   // Only log severe performance issues (>10ms) to reduce noise
   if (totalTimeMs > 10.0) {
@@ -662,7 +690,7 @@ EventManager::registerHandlerForName(const std::string &name, FastEventHandler h
   return HandlerToken{EventTypeId::Custom, id, true, name};
 }
 
-void EventManager::updateEventTypeBatch(EventTypeId typeId) {
+void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
   auto startTime = getCurrentTimeNanos();
 
   // Copy events to local vector to minimize lock time (pointers only)
@@ -708,10 +736,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   auto startTime = getCurrentTimeNanos();
 
   // Copy events to local vector to minimize lock time
-  // Note: use an automatic storage vector here since work is dispatched to
-  // worker threads and capturing a thread_local by reference is unsafe and
-  // triggers compiler warnings.
-  std::vector<EventPtr> localEvents;
+  // Use shared_ptr so async lambdas can safely access this after processEventsByType() returns
+  auto localEvents = std::make_shared<std::vector<EventPtr>>();
   {
     std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
     const auto &container = m_eventsByType[static_cast<size_t>(typeId)];
@@ -720,14 +746,14 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       return;
     }
 
-    localEvents.clear();
-    localEvents.reserve(container.size());
+    localEvents->clear();
+    localEvents->reserve(container.size());
     for (const auto &ed : container) {
-      if (ed.isActive() && ed.event) localEvents.push_back(ed.event);
+      if (ed.isActive() && ed.event) localEvents->push_back(ed.event);
     }
   }
 
-  if (localEvents.empty()) {
+  if (localEvents->empty()) {
     return;
   }
 
@@ -752,12 +778,12 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
                 std::to_string(queueCapacity) +
                 "), using single-threaded processing");
     m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    for (auto &evt : localEvents) { evt->update(); }
+    for (auto &evt : *localEvents) { evt->update(); }
 
     // Record performance and return early
     auto endTime = getCurrentTimeNanos();
     double timeMs = (endTime - startTime) / 1000000.0;
-    if (timeMs > 1.0 || localEvents.size() > 50) {
+    if (timeMs > 1.0 || localEvents->size() > 50) {
       recordPerformance(typeId, timeMs);
     }
     return;
@@ -765,54 +791,55 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   // Use buffer capacity for high workloads
   size_t optimalWorkerCount =
-      budget.getOptimalWorkerCount(eventWorkerBudget, localEvents.size(), 100);
+      budget.getOptimalWorkerCount(eventWorkerBudget, localEvents->size(), 100);
 
   // Store optimal worker count and mark as threaded
   m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
   m_lastWasThreaded.store(true, std::memory_order_relaxed);
 
-  // Dynamic batch sizing based on queue pressure for optimal performance
-  size_t minEventsPerBatch = 10;
-  size_t maxBatches = 4;
-
-  // Adjust batch strategy based on queue pressure using unified thresholds
+  // Use unified adaptive batch calculation for consistency across all managers
+  const size_t threshold = std::max(m_threadingThreshold, static_cast<size_t>(1));
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+  // Get previous frame's completion time for adaptive feedback
+  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
+
+  auto [batchCount, calculatedBatchSize] = HammerEngine::calculateBatchStrategy(
+      HammerEngine::EVENT_BATCH_CONFIG,
+      localEvents->size(),
+      threshold,
+      optimalWorkerCount,
+      queuePressure,
+      m_adaptiveBatchState,  // Adaptive state for performance tuning
+      lastFrameTime          // Previous frame's completion time
+  );
+
+  // Debug logging for high queue pressure
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    // High pressure: use fewer, larger batches to reduce queue overhead
-    minEventsPerBatch = 15;
-    maxBatches = 2;
     EVENT_DEBUG("High queue pressure (" +
                 std::to_string(static_cast<int>(queuePressure * 100)) +
                 "%), using larger batches");
-  } else if (queuePressure < (1.0 - HammerEngine::QUEUE_PRESSURE_WARNING)) {
-    // Low pressure: can use more batches for better parallelization
-    minEventsPerBatch = 8;
-    maxBatches = 4;
   }
 
   // Simple batch processing without complex spin-wait
-  if (optimalWorkerCount > 1 && localEvents.size() > 20) {
-  size_t batchCount =
-      std::min(optimalWorkerCount, localEvents.size() / minEventsPerBatch);
-  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
+  if (batchCount > 1) {
+    // Debug thread allocation info periodically
+    static uint64_t debugFrameCounter = 0;
+    if (++debugFrameCounter % 300 == 0 && !localEvents->empty()) {
+      EVENT_DEBUG("Event Thread Allocation - Workers: " +
+                  std::to_string(optimalWorkerCount) + "/" +
+                  std::to_string(availableWorkers) +
+                  ", Event Budget: " + std::to_string(eventWorkerBudget) +
+                  ", Batches: " + std::to_string(batchCount));
+    }
 
-  // Debug thread allocation info periodically
-  static uint64_t debugFrameCounter = 0;
-  if (++debugFrameCounter % 300 == 0 && !localEvents.empty()) {
-    EVENT_DEBUG("Event Thread Allocation - Workers: " +
-                std::to_string(optimalWorkerCount) + "/" +
-                std::to_string(availableWorkers) +
-                ", Event Budget: " + std::to_string(eventWorkerBudget) +
-                ", Batches: " + std::to_string(batchCount));
-  }
+    size_t batchSize = localEvents->size() / batchCount;
+    size_t remainingEvents = localEvents->size() % batchCount;
 
-    size_t batchSize = localEvents.size() / batchCount;
-    size_t remainingEvents = localEvents.size() % batchCount;
+    // Submit batches using futures for native async result tracking
+    std::vector<std::future<void>> batchFutures;
+    batchFutures.reserve(batchCount);
 
-    std::vector<std::future<void>> futures;
-    futures.reserve(batchCount);
-
-    // Submit optimized batches using futures for simpler synchronization
     for (size_t i = 0; i < batchCount; ++i) {
       size_t start = i * batchSize;
       size_t end = start + batchSize;
@@ -822,29 +849,41 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
         end += remainingEvents;
       }
 
-      futures.push_back(threadSystem.enqueueTaskWithResult(
-          [&localEvents, start, end]() {
+      // Submit each batch with future for completion tracking
+      // localEvents captured by shared_ptr value - safe for async execution after function returns
+      batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+        [localEvents, start, end]() -> void {
+          try {
             for (size_t j = start; j < end; ++j) {
-              localEvents[j]->update();
+              (*localEvents)[j]->update();
             }
-          },
-          HammerEngine::TaskPriority::Normal, "Event_OptimalBatch"));
+          } catch (const std::exception &e) {
+            EVENT_ERROR(std::string("Exception in event batch: ") + e.what());
+          } catch (...) {
+            EVENT_ERROR("Unknown exception in event batch");
+          }
+        },
+        HammerEngine::TaskPriority::Normal,
+        "Event_Batch"
+      ));
     }
 
-    // Wait for all batches to complete
-    for (auto &future : futures) {
-      future.wait();
+    // Store futures for shutdown synchronization (futures-based completion tracking)
+    // NO BLOCKING WAIT: Events don't need sync in update(), only during shutdown
+    if (!batchFutures.empty()) {
+      std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+      m_batchFutures = std::move(batchFutures);
     }
   } else {
     // Process single-threaded for small event counts
-    for (auto &evt : localEvents) { evt->update(); }
+    for (auto &evt : *localEvents) { evt->update(); }
   }
 
   // Simplified performance recording
   auto endTime = getCurrentTimeNanos();
   double timeMs = (endTime - startTime) / 1000000.0;
 
-  if (timeMs > 1.0 || localEvents.size() > 50) {
+  if (timeMs > 1.0 || localEvents->size() > 50) {
     recordPerformance(typeId, timeMs);
   }
 }
@@ -1424,10 +1463,6 @@ bool EventManager::createResourceChangeEvent(
     int newQuantity, const std::string &changeReason) {
   auto event = std::make_shared<ResourceChangeEvent>(
       owner, resourceHandle, oldQuantity, newQuantity, changeReason);
-  if (!event) {
-    return false;
-  }
-
   return registerResourceChangeEvent(name, event);
 }
 
@@ -1639,7 +1674,7 @@ PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
   return m_performanceStats[static_cast<size_t>(typeId)];
 }
 
-void EventManager::resetPerformanceStats() {
+void EventManager::resetPerformanceStats() const {
   std::lock_guard<std::mutex> lock(m_perfMutex);
   for (auto &stats : m_performanceStats) {
     stats.reset();

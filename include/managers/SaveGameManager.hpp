@@ -63,7 +63,7 @@ public:
 
     // Load game data from a slot
     // Returns true if load was successful
-    bool loadFromSlot(int slotNumber, Player& player);
+    bool loadFromSlot(int slotNumber, Player& player) const;
 
     // Delete a save file
     // Returns true if deletion was successful
@@ -71,7 +71,7 @@ public:
 
     // Delete a save slot
     // Returns true if deletion was successful
-    bool deleteSlot(int slotNumber);
+    bool deleteSlot(int slotNumber) const;
 
     // Get a list of all save files in the save directory
     std::vector<std::string> getSaveFiles() const;

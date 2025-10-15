@@ -116,8 +116,8 @@ void NPC::loadDimensionsFromTexture() {
         m_frameHeight = frameHeight;
 
         // Sync new dimensions to collision body if already registered
-        CollisionManager::Instance().resizeBody(getID(), m_frameWidth * 0.5f,
-                                                m_height * 0.5f);
+        Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
+        CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
       } else {
         NPC_ERROR("Failed to query NPC texture dimensions: " +
                   std::string(SDL_GetError()));
@@ -130,22 +130,13 @@ void NPC::loadDimensionsFromTexture() {
 
 // State management removed - handled by AI Manager
 
-void NPC::update(float deltaTime) {
-  // The AI drives velocity directly; apply it without additional damping.
-  // Integrate intended motion
-  Vector2D prevPosition = m_position;
+void NPC::update(float) {
+  // The AI drives velocity directly; sync to collision body
+  // Let collision system handle movement integration to prevent micro-bouncing
 
-  // Safety check: ensure deltaTime is reasonable
-  if (deltaTime <= 0.0f || deltaTime > 0.1f) {
-    deltaTime = 1.0f / 60.0f; // Fallback to 60 FPS
-  }
-
-  Vector2D newPosition = m_position + m_velocity * deltaTime;
-
-  // Bounds handled centrally by AIManager
-  setPosition(newPosition);
-  // Sync velocity change if adjusted by bounce
-  setVelocity(m_velocity);
+  // AIManager batch processing handles collision updates for AI-managed NPCs
+  // Direct collision update removed to prevent race conditions with async AI threads
+  // Collision updates are batched and submitted via submitPendingKinematicUpdates()
   m_acceleration = Vector2D(0, 0);
 
   // Position sync is handled by setPosition() calls - no need for periodic
@@ -157,28 +148,15 @@ void NPC::update(float deltaTime) {
 
   // --- Animation ---
   Uint64 currentTime = SDL_GetTicks();
-  // Use actual final displacement to decide if we are moving (after all bounds
-  // checks)
-  Vector2D finalPosition = m_position;
-  float moveDist2 = (finalPosition - prevPosition).lengthSquared();
 
-  // Diagnostic: Check for stuck entities with velocity but no movement
+  // Use velocity magnitude for animation instead of position delta
+  // This works because collision system integrates movement and syncs back to entity
   float velocityMagnitude = m_velocity.length();
-  if (velocityMagnitude > 1.0f && moveDist2 <= 0.01f) {
-    // NPC has velocity but isn't moving - this indicates a stuck condition
-    // Use instance-specific throttling instead of global static
-    if (currentTime - m_lastStuckLogTime >
-        5000) { // Log every 5 seconds per NPC
-      AI_DEBUG("NPC " + std::to_string(getID()) +
-               " stuck: velocity=" + std::to_string(velocityMagnitude) +
-               ", movement=" + std::to_string(std::sqrt(moveDist2)) +
-               ", pos=(" + std::to_string(m_position.getX()) + "," +
-               std::to_string(m_position.getY()) + ")");
-      m_lastStuckLogTime = currentTime;
-    }
-  }
 
-  if (moveDist2 > 0.04f) { // ~> 0.2px per frame at 60Hz
+  // Animation threshold: ~12 pixels/second at 60 FPS
+  const float ANIMATION_THRESHOLD = 12.0f;
+
+  if (velocityMagnitude > ANIMATION_THRESHOLD) {
     if (currentTime > m_lastFrameTime + m_animSpeed) {
       m_currentFrame = (m_currentFrame + 1) % m_numFrames;
       m_lastFrameTime = currentTime;
@@ -264,27 +242,7 @@ void NPC::clean() {
   }
 
   // Remove from collision system
-  CollisionManager::Instance().removeBody(getID());
-}
-
-void NPC::setVelocity(const Vector2D &velocity) {
-  m_velocity = velocity;
-  auto &cm = CollisionManager::Instance();
-  if (!cm.isSyncing()) {
-    cm.setVelocity(getID(), velocity);
-  }
-}
-
-void NPC::setPosition(const Vector2D &position) {
-  auto &cm = CollisionManager::Instance();
-
-  // Update collision body position
-  if (!cm.isSyncing()) {
-    cm.setKinematicPose(getID(), position);
-  }
-
-  // Update entity position
-  m_position = position;
+  CollisionManager::Instance().removeCollisionBodySOA(getID());
 }
 
 void NPC::initializeInventory() {
@@ -515,20 +473,22 @@ void NPC::ensurePhysicsBodyRegistered() {
             std::to_string(m_position.getY()) + ")" + ", Size: " +
             std::to_string(halfW * 2) + "x" + std::to_string(halfH * 2));
 
-  cm.addBody(getID(), aabb, HammerEngine::BodyType::KINEMATIC);
+  // All NPCs use Layer_Enemy and collide with everything except other NPCs
+  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
+  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
+
+  // Use new SOA-based collision system (deferred command queue)
+  cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
+  // CRITICAL: Process command immediately so body exists before attaching entity
+  // This is safe because we batch spawn NPCs (30 every 10 frames) instead of per-frame
+  cm.processPendingCommands();
+  // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 
-  NPC_DEBUG("Collision body registered successfully - KINEMATIC type");
+  NPC_DEBUG("Collision body registered successfully - KINEMATIC type with Layer_Enemy");
 }
 
 void NPC::setFaction(Faction f) {
   m_faction = f;
-  auto &cm = CollisionManager::Instance();
-
-  // All NPCs are on Layer_Enemy to ensure they don't collide with each other
-  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
-  // NPCs collide with everything EXCEPT other NPCs (Layer_Enemy)
-  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
-
-  cm.setBodyLayer(getID(), layer, mask);
+  // Collision layers are now set atomically in ensurePhysicsBodyRegistered()
 }

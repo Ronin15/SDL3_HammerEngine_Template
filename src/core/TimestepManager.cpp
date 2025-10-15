@@ -179,7 +179,7 @@ void TimestepManager::limitFrameRate() const {
     }
 }
 
-void TimestepManager::setSoftwareFrameLimiting(bool useSoftwareLimiting) {
+void TimestepManager::setSoftwareFrameLimiting(bool useSoftwareLimiting) const {
     m_usingSoftwareFrameLimiting = useSoftwareLimiting;
     m_explicitlySet = true;
 }

@@ -62,15 +62,15 @@ float WorldGenerator::PerlinNoise::noise(float x, float y) const {
 
 std::unique_ptr<WorldData>
 WorldGenerator::generateWorld(const WorldGenerationConfig &config) {
-  GAMEENGINE_INFO("Generating world: " + std::to_string(config.width) + "x" +
-                  std::to_string(config.height) + " with seed " +
-                  std::to_string(config.seed));
+  WORLD_MANAGER_INFO("Generating world: " + std::to_string(config.width) + "x" +
+                     std::to_string(config.height) + " with seed " +
+                     std::to_string(config.seed));
 
   std::vector<std::vector<float>> elevationMap, humidityMap;
   auto world = generateNoiseMaps(config, elevationMap, humidityMap);
 
   if (!world) {
-    GAMEENGINE_ERROR("Failed to generate noise maps for world");
+    WORLD_MANAGER_ERROR("Failed to generate noise maps for world");
     return nullptr;
   }
 
@@ -79,7 +79,7 @@ WorldGenerator::generateWorld(const WorldGenerationConfig &config) {
   distributeObstacles(*world, config);
   calculateInitialResources(*world);
 
-  GAMEENGINE_INFO("World generation completed successfully");
+  WORLD_MANAGER_INFO("World generation completed successfully");
   return world;
 }
 
@@ -301,7 +301,7 @@ void WorldGenerator::distributeObstacles(WorldData &world,
 }
 
 void WorldGenerator::calculateInitialResources(const WorldData &world) {
-  GAMEENGINE_INFO("Calculating initial resources for world: " + world.worldId);
+  WORLD_MANAGER_INFO("Calculating initial resources for world: " + world.worldId);
 
   int treeCount = 0;
   int rockCount = 0;
@@ -325,9 +325,9 @@ void WorldGenerator::calculateInitialResources(const WorldData &world) {
     }
   }
 
-  GAMEENGINE_INFO("Initial resources - Trees: " + std::to_string(treeCount) +
-                  ", Rocks: " + std::to_string(rockCount) +
-                  ", Water: " + std::to_string(waterCount));
+  WORLD_MANAGER_INFO("Initial resources - Trees: " + std::to_string(treeCount) +
+                     ", Rocks: " + std::to_string(rockCount) +
+                     ", Water: " + std::to_string(waterCount));
 }
 
 void WorldGenerator::generateBuildings(WorldData& world, std::default_random_engine& rng) {
@@ -384,9 +384,12 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
       if (buildingChance > 0.0f && dist(rng) < buildingChance) {
         // Create a new building at this location
         uint32_t newBuildingId = createBuilding(world, x, y, nextBuildingId);
-        
-        // Try to connect to adjacent buildings
-        tryConnectBuildings(world, x, y, newBuildingId);
+
+        // Only try to connect if building was successfully created
+        if (newBuildingId > 0) {
+          // Try to connect to adjacent buildings
+          tryConnectBuildings(world, x, y, newBuildingId);
+        }
       }
     }
   }
@@ -421,16 +424,58 @@ bool WorldGenerator::canPlaceBuilding(const WorldData& world, int x, int y) {
 }
 
 uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t& nextBuildingId) {
+  int height = static_cast<int>(world.grid.size());
+  int width = height > 0 ? static_cast<int>(world.grid[0].size()) : 0;
+
+  // Validate bounds before creating building
+  if (x < 0 || y < 0 || x >= width - 1 || y >= height - 1) {
+    WORLD_MANAGER_ERROR("createBuilding: Invalid position (" + std::to_string(x) +
+                        ", " + std::to_string(y) + ") - out of bounds");
+    return 0;
+  }
+
   uint32_t buildingId = nextBuildingId++;
 
   // Mark all 4 tiles as part of this building (2x2)
+  int tilesMarked = 0;
   for (int dy = 0; dy < 2; ++dy) {
     for (int dx = 0; dx < 2; ++dx) {
-      Tile& tile = world.grid[y + dy][x + dx];
+      int tileX = x + dx;
+      int tileY = y + dy;
+
+      // Double-check bounds for safety
+      if (tileX < 0 || tileY < 0 || tileX >= width || tileY >= height) {
+        WORLD_MANAGER_ERROR("createBuilding: Tile (" + std::to_string(tileX) +
+                            ", " + std::to_string(tileY) + ") out of bounds during building creation");
+        continue;
+      }
+
+      Tile& tile = world.grid[tileY][tileX];
+
+      // Verify tile is available before marking
+      if (tile.obstacleType != ObstacleType::NONE || tile.buildingId > 0) {
+        WORLD_MANAGER_WARN("createBuilding: Tile (" + std::to_string(tileX) +
+                           ", " + std::to_string(tileY) + ") already occupied");
+        continue;
+      }
+
       tile.obstacleType = ObstacleType::BUILDING;
       tile.buildingId = buildingId;
       tile.buildingSize = 1; // Start as size 1 (hut)
+      tilesMarked++;
     }
+  }
+
+  // Validate that all 4 tiles were successfully marked
+  if (tilesMarked != 4) {
+    WORLD_MANAGER_ERROR("createBuilding: Building " + std::to_string(buildingId) +
+                        " at (" + std::to_string(x) + ", " + std::to_string(y) +
+                        ") only marked " + std::to_string(tilesMarked) + "/4 tiles");
+  } else {
+    WORLD_MANAGER_DEBUG("createBuilding: Building " + std::to_string(buildingId) +
+                        " created at (" + std::to_string(x) + ", " + std::to_string(y) +
+                        ") covering tiles (" + std::to_string(x) + "-" + std::to_string(x+1) +
+                        ", " + std::to_string(y) + "-" + std::to_string(y+1) + ")");
   }
 
   return buildingId;

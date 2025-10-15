@@ -10,6 +10,7 @@
 #include <SDL3/SDL.h>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -42,7 +43,7 @@ enum class UIComponentType {
 };
 
 // Layout Types
-enum class UILayoutType { ABSOLUTE, FLOW, GRID, STACK, ANCHOR };
+enum class UILayoutType { ABSOLUTE_POS, FLOW, GRID, STACK, ANCHOR };
 
 // UI States
 enum class UIState { NORMAL, HOVERED, PRESSED, DISABLED, FOCUSED };
@@ -163,7 +164,7 @@ struct UIComponent {
 // Layout Container
 struct UILayout {
   std::string m_id{};
-  UILayoutType m_type{UILayoutType::ABSOLUTE};
+  UILayoutType m_type{UILayoutType::ABSOLUTE_POS};
   UIRect m_bounds{};
   std::vector<std::string> m_childComponents{};
 
@@ -269,7 +270,7 @@ public:
                    const std::string &theme, int windowWidth, int windowHeight);
 
   // Theme management
-  void refreshAllComponentThemes();
+  void refreshAllComponentThemes() const;
 
   // Component manipulation
   void removeComponent(const std::string &id);
@@ -478,6 +479,9 @@ private:
   // Event log state tracking
   std::unordered_map<std::string, EventLogState> m_eventLogStates{};
   bool m_isShutdown{false};
+
+  // Thread safety
+  mutable std::recursive_mutex m_componentsMutex;
 
   // Input state
   Vector2D m_lastMousePosition{};

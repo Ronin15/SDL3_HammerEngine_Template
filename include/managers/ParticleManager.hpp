@@ -22,11 +22,14 @@
  * - Thread-safe design with minimal lock contention
  */
 
+#include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
 #include <cmath>
+#include <condition_variable>
+#include <future>
 #include <mutex>
 #include <new>
 #include <shared_mutex>
@@ -612,6 +615,7 @@ public:
    * @param threshold Particle count threshold
    */
   void setThreadingThreshold(size_t threshold);
+  size_t getThreadingThreshold() const;
 
   /**
    * @brief Enables WorkerBudget-aware threading with intelligent resource
@@ -896,8 +900,12 @@ private:
   std::atomic<size_t> m_lastOptimalWorkerCount{0};
   std::atomic<size_t> m_lastAvailableWorkers{0};
   std::atomic<size_t> m_lastParticleBudget{0};
+  std::atomic<size_t> m_lastThreadBatchCount{0};
   std::atomic<bool> m_lastWasThreaded{false};
   std::atomic<size_t> m_activeCount{0};
+
+  // Adaptive batch state for performance-based tuning
+  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
 
   // Camera and culling
   struct CameraViewport {
@@ -910,6 +918,10 @@ private:
       m_effectsMutex;              // Only for effect definitions (rare writes)
   mutable std::mutex m_statsMutex; // Only for performance stats
   mutable std::mutex m_weatherMutex; // For weather effect changes
+
+  // Async batch tracking for safe shutdown using futures
+  std::vector<std::future<void>> m_batchFutures;
+  std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // NOTE: No update mutex - GameEngine handles update/render synchronization
 

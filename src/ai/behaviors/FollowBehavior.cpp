@@ -412,7 +412,7 @@ EntityPtr FollowBehavior::getTarget() const {
 
 Vector2D FollowBehavior::calculateDesiredPosition(EntityPtr entity,
                                                   EntityPtr target,
-                                                  const EntityState &state) {
+                                                  const EntityState &state) const {
   if (!entity || !target)
     return Vector2D(0, 0);
 

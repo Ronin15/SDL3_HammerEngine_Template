@@ -237,7 +237,7 @@ void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
     path = std::move(smoothed);
 }
 
-bool PathfindingGrid::hasLineOfSight(const Vector2D& start, const Vector2D& end) {
+bool PathfindingGrid::hasLineOfSight(const Vector2D& start, const Vector2D& end) const {
     auto [sx, sy] = worldToGrid(start);
     auto [ex, ey] = worldToGrid(end);
     

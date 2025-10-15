@@ -16,6 +16,10 @@ struct CollisionInfo {
     Vector2D normal{0,0};
     float penetration{0.0f};
     bool trigger{false};
+
+    // Performance optimization: Store SOA indices to eliminate linear lookups
+    size_t indexA{SIZE_MAX};
+    size_t indexB{SIZE_MAX};
 };
 
 } // namespace HammerEngine

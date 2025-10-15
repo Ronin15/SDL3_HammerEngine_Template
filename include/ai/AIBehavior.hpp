@@ -10,6 +10,7 @@
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <cstddef>
+#include <vector>
 
 // Forward declarations
 class PathfinderManager;
@@ -20,6 +21,13 @@ Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
                          const Vector2D &intendedVelocity, float speed,
                          float queryRadius, float strength,
                          size_t maxNeighbors);
+
+// Overload with pre-fetched neighbor data
+Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
+                         const Vector2D &intendedVelocity, float speed,
+                         float queryRadius, float strength,
+                         size_t maxNeighbors,
+                         const std::vector<Vector2D> &preFetchedNeighbors);
 }
 #include <string>
 
@@ -76,17 +84,44 @@ protected:
                                        Uint64 &lastSepTick,
                                        Vector2D &lastSepVelocity) const {
     Uint64 now = SDL_GetTicks();
-    
-    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities 
+
+    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
     // from doing expensive separation calculations on the same frame
     Uint32 entityStaggerOffset = (entity->getID() % 200) * 10; // Stagger by up to 2 seconds
     Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
-    
+
     if (now - lastSepTick >= effectiveInterval) {
       // Only do the expensive separation calculation when absolutely necessary
       lastSepVelocity = AIInternal::ApplySeparation(
           entity, position, intendedVelocity, speed, queryRadius, strength,
           static_cast<size_t>(maxNeighbors));
+      lastSepTick = now;
+    }
+    entity->setVelocity(lastSepVelocity);
+  }
+
+  // PERFORMANCE OPTIMIZATION: Apply decimated separation using pre-fetched neighbor data
+  // This version maintains the same decimation logic but uses cached collision data
+  inline void applySeparationWithCache(EntityPtr entity,
+                                       const Vector2D &position,
+                                       const Vector2D &intendedVelocity,
+                                       float speed, float queryRadius,
+                                       float strength, int maxNeighbors,
+                                       Uint64 &lastSepTick,
+                                       Vector2D &lastSepVelocity,
+                                       const std::vector<Vector2D> &preFetchedNeighbors) const {
+    Uint64 now = SDL_GetTicks();
+
+    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
+    // from doing expensive separation calculations on the same frame
+    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10; // Stagger by up to 2 seconds
+    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+
+    if (now - lastSepTick >= effectiveInterval) {
+      // Calculate separation using pre-fetched data (no collision query!)
+      lastSepVelocity = AIInternal::ApplySeparation(
+          entity, position, intendedVelocity, speed, queryRadius, strength,
+          static_cast<size_t>(maxNeighbors), preFetchedNeighbors);
       lastSepTick = now;
     }
     entity->setVelocity(lastSepVelocity);

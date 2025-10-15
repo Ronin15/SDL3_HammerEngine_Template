@@ -68,7 +68,7 @@ bool EventDemoState::enter() {
 
     // Create player
     m_player = std::make_shared<Player>();
-    m_player->registerCollisionBody();
+    m_player->ensurePhysicsBodyRegistered();
     m_player->initializeInventory(); // Initialize inventory after construction
     m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
@@ -291,9 +291,6 @@ void EventDemoState::unregisterEventHandlers() {
 }
 
 void EventDemoState::update(float deltaTime) {
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-
   // Update timing
   updateDemoTimer(deltaTime);
 
@@ -310,24 +307,8 @@ void EventDemoState::update(float deltaTime) {
   // twice as fast Entity updates are handled by AIManager::update() in
   // GameEngine No need to manually update AIManager here
 
-  // Clean up invalid NPCs
-  auto it = m_spawnedNPCs.begin();
-  while (it != m_spawnedNPCs.end()) {
-    if (*it) {
-      ++it;
-    } else {
-      // Remove dead/invalid NPCs
-      try {
-        if (aiMgr.entityHasBehavior(*it)) {
-          aiMgr.unassignBehaviorFromEntity(*it);
-        }
-        aiMgr.unregisterEntityFromUpdates(*it);
-      } catch (...) {
-        // Ignore errors during cleanup
-      }
-      it = m_spawnedNPCs.erase(it);
-    }
-  }
+  // Note: NPC cleanup is handled by AIManager::prepareForStateTransition() in exit()
+  // Attempting cleanup here causes undefined behavior by calling AIManager methods on null pointers
 
   if (m_autoMode) {
     // Auto mode processing
@@ -1419,62 +1400,62 @@ void EventDemoState::setupAIBehaviors() {
 
   if (!aiMgr.hasBehavior("Wander")) {
     auto wanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::MEDIUM_AREA, 80.0f);
+        WanderBehavior::WanderMode::MEDIUM_AREA, 60.0f);
     aiMgr.registerBehavior("Wander", std::move(wanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered Wander behavior");
   }
 
   if (!aiMgr.hasBehavior("SmallWander")) {
     auto smallWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::SMALL_AREA, 60.0f);
+        WanderBehavior::WanderMode::SMALL_AREA, 45.0f);
     aiMgr.registerBehavior("SmallWander", std::move(smallWanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered SmallWander behavior");
   }
 
   if (!aiMgr.hasBehavior("LargeWander")) {
     auto largeWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::LARGE_AREA, 100.0f);
+        WanderBehavior::WanderMode::LARGE_AREA, 75.0f);
     aiMgr.registerBehavior("LargeWander", std::move(largeWanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered LargeWander behavior");
   }
 
   if (!aiMgr.hasBehavior("EventWander")) {
     auto eventWanderBehavior = std::make_unique<WanderBehavior>(
-        WanderBehavior::WanderMode::EVENT_TARGET, 70.0f);
+        WanderBehavior::WanderMode::EVENT_TARGET, 52.5f);
     aiMgr.registerBehavior("EventWander", std::move(eventWanderBehavior));
     GAMESTATE_INFO("EventDemoState: Registered EventWander behavior");
   }
 
   if (!aiMgr.hasBehavior("Patrol")) {
     auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
+        PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 56.25f, true);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
     GAMESTATE_INFO("EventDemoState: Registered Patrol behavior");
   }
 
   if (!aiMgr.hasBehavior("RandomPatrol")) {
     auto randomPatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::RANDOM_AREA, 85.0f, false);
+        PatrolBehavior::PatrolMode::RANDOM_AREA, 63.75f, false);
     aiMgr.registerBehavior("RandomPatrol", std::move(randomPatrolBehavior));
     GAMESTATE_INFO("EventDemoState: Registered RandomPatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("CirclePatrol")) {
     auto circlePatrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::CIRCULAR_AREA, 90.0f, false);
+        PatrolBehavior::PatrolMode::CIRCULAR_AREA, 67.5f, false);
     aiMgr.registerBehavior("CirclePatrol", std::move(circlePatrolBehavior));
     GAMESTATE_INFO("EventDemoState: Registered CirclePatrol behavior");
   }
 
   if (!aiMgr.hasBehavior("EventTarget")) {
     auto eventTargetBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::EVENT_TARGET, 95.0f, false);
+        PatrolBehavior::PatrolMode::EVENT_TARGET, 71.25f, false);
     aiMgr.registerBehavior("EventTarget", std::move(eventTargetBehavior));
     GAMESTATE_INFO("EventDemoState: Registered EventTarget behavior");
   }
 
   if (!aiMgr.hasBehavior("Chase")) {
-    auto chaseBehavior = std::make_unique<ChaseBehavior>(120.0f, 500.0f, 50.0f);
+    auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
     GAMESTATE_INFO("EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())");
   }
@@ -1794,7 +1775,7 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
   if (!resourceTemplate)
     return;
 
-  std::string resourceName = resourceTemplate->getName();
+  const std::string& resourceName = resourceTemplate->getName();
 
   // Warning for low quantities of important resources
   if (resourceTemplate->getType() == ResourceType::Consumable && newQty <= 2 &&
@@ -1830,7 +1811,7 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   if (!resourceTemplate)
     return;
 
-  std::string resourceName = resourceTemplate->getName();
+  const std::string& resourceName = resourceTemplate->getName();
   int change = newQty - oldQty;
 
   // Create detailed analytics entry
@@ -1899,7 +1880,7 @@ void EventDemoState::initializeCamera() {
   );
 
   // Configure camera to follow player
-  if (m_player && m_camera) {
+  if (m_player) {
     // Match GamePlayState: disable camera event firing for consistency
     m_camera->setEventFiringEnabled(false);
 
