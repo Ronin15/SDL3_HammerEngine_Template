@@ -6,6 +6,7 @@
 #include "utils/Camera.hpp"
 #include "entities/Entity.hpp"
 #include "core/Logger.hpp"
+#include "core/GameEngine.hpp"
 #include "events/CameraEvent.hpp"
 #include "managers/EventManager.hpp"
 #include <algorithm>
@@ -153,6 +154,27 @@ void Camera::setPosition(float x, float y) {
 
 void Camera::setPosition(const Vector2D& position) {
     setPosition(position.getX(), position.getY());
+}
+
+void Camera::setViewport(float width, float height) {
+    if (width > 0.0f && height > 0.0f) {
+        m_viewport.width = width;
+        m_viewport.height = height;
+        CAMERA_DEBUG("Viewport updated to: " + std::to_string(static_cast<int>(width)) + "x" +
+                        std::to_string(static_cast<int>(height)));
+    } else {
+        CAMERA_WARN("Invalid viewport dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+    }
+}
+
+void Camera::setViewport(const Viewport& viewport) {
+    if (viewport.isValid()) {
+        m_viewport = viewport;
+        CAMERA_DEBUG("Viewport updated to: " + std::to_string(static_cast<int>(viewport.width)) + "x" +
+                        std::to_string(static_cast<int>(viewport.height)));
+    } else {
+        CAMERA_WARN("Invalid viewport provided");
+    }
 }
 
 void Camera::setWorldBounds(float minX, float minY, float maxX, float maxY) {
@@ -594,6 +616,24 @@ bool Camera::setZoomLevel(int levelIndex) {
     }
 
     return true;
+}
+
+void Camera::syncViewportWithEngine() {
+    // Get current logical dimensions from GameEngine (authoritative source)
+    const GameEngine& gameEngine = GameEngine::Instance();
+    float logicalWidth = static_cast<float>(gameEngine.getLogicalWidth());
+    float logicalHeight = static_cast<float>(gameEngine.getLogicalHeight());
+
+    // Only update if dimensions actually changed (avoid unnecessary updates)
+    if (m_viewport.width != logicalWidth || m_viewport.height != logicalHeight) {
+        CAMERA_INFO("Syncing camera viewport: " +
+                       std::to_string(static_cast<int>(m_viewport.width)) + "x" +
+                       std::to_string(static_cast<int>(m_viewport.height)) + " -> " +
+                       std::to_string(static_cast<int>(logicalWidth)) + "x" +
+                       std::to_string(static_cast<int>(logicalHeight)));
+
+        setViewport(logicalWidth, logicalHeight);
+    }
 }
 
 } // namespace HammerEngine
