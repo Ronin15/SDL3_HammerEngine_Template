@@ -2111,12 +2111,38 @@ bool EventManager::triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
     std::vector<FastEventHandler> localHandlers; {
       std::lock_guard<std::mutex> lock(m_handlersMutex);
       const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
-      localHandlers.reserve(handlers.size()); 
+      localHandlers.reserve(handlers.size());
       std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
     }
     for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerCameraTargetChanged"); } }
     std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
-      auto it = m_nameHandlers.find(data.name); 
+      auto it = m_nameHandlers.find(data.name);
+      if (it != m_nameHandlers.end()) {
+        std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
+      }
+    }
+    for (const auto &h: nh) { try { h(data);} catch(...){} }
+    return !localHandlers.empty();
+  }
+  enqueueDispatch(EventTypeId::Camera, data); return true;
+}
+
+bool EventManager::triggerCameraZoomChanged(float newZoom, float oldZoom, DispatchMode mode) const {
+  auto ev = std::make_shared<CameraZoomChangedEvent>(newZoom, oldZoom);
+  EventData data; data.typeId = EventTypeId::Camera; data.setActive(true); data.event = ev; data.name = "trigger_camera_zoom_changed";
+  size_t handlerCount = 0; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+    handlerCount = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)].size(); }
+  if (handlerCount == 0) { try { ev->execute(); } catch (...) {} return true; }
+  if (mode == DispatchMode::Immediate) {
+    std::vector<FastEventHandler> localHandlers; {
+      std::lock_guard<std::mutex> lock(m_handlersMutex);
+      const auto &handlers = m_handlersByType[static_cast<size_t>(EventTypeId::Camera)];
+      localHandlers.reserve(handlers.size());
+      std::copy_if(handlers.begin(), handlers.end(), std::back_inserter(localHandlers), [](const auto& h) { return static_cast<bool>(h); });
+    }
+    for (const auto &h : localHandlers) { try { h(data);} catch (...) { EVENT_ERROR("Handler exception in triggerCameraZoomChanged"); } }
+    std::vector<FastEventHandler> nh; { std::lock_guard<std::mutex> lock(m_handlersMutex);
+      auto it = m_nameHandlers.find(data.name);
       if (it != m_nameHandlers.end()) {
         std::copy_if(it->second.begin(), it->second.end(), std::back_inserter(nh), [](const auto& h) { return static_cast<bool>(h); });
       }

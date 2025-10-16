@@ -488,6 +488,8 @@ public:
   triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
                              std::weak_ptr<Entity> oldTarget,
                              DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerCameraZoomChanged(float newZoom, float oldZoom,
+                                DispatchMode mode = DispatchMode::Deferred) const;
 
   // Alternative trigger methods (aliases for compatibility)
   bool triggerWeatherChange(const std::string &weatherType,

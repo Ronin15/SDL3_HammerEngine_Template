@@ -91,6 +91,10 @@ void GamePlayState::render() {
   // Get camera view area for culling and rendering
   HammerEngine::Camera::ViewRect viewRect = m_camera->getViewRect();
 
+  // Set render scale for zoom (scales all world/entity rendering automatically)
+  float zoom = m_camera->getZoom();
+  SDL_SetRenderScale(renderer, zoom, zoom);
+
   // Render world using camera coordinate transformations
   auto &worldMgr = WorldManager::Instance();
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
@@ -104,10 +108,13 @@ void GamePlayState::render() {
     mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
   }
 
+  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
+  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+
   // Render UI components (no camera transformation)
   SDL_Color fontColor = {200, 200, 200, 255};
   fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
-                   "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
+                   "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items <-> [ ] Zoom",
                    "fonts_Arial",
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
                    20, fontColor, renderer);
@@ -208,6 +215,14 @@ void GamePlayState::handleInput() {
   // Inventory toggle
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
     toggleInventoryDisplay();
+  }
+
+  // Camera zoom controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
   }
 
   // Resource addition demo keys
