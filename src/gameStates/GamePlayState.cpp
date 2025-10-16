@@ -479,6 +479,10 @@ void GamePlayState::initializeCamera() {
 void GamePlayState::updateCamera(float deltaTime) {
   // Defensive null check (camera always initialized in enter(), but kept for safety)
   if (m_camera) {
+    // Sync viewport with current window size (handles resize events)
+    m_camera->syncViewportWithEngine();
+
+    // Update camera position and following logic
     m_camera->update(deltaTime);
   }
 }

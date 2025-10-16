@@ -113,7 +113,7 @@ bool EventDemoState::enter() {
     ui.createLabel(
         "event_controls", {10, 95, ui.getLogicalWidth() - 20, 25},  // Moved up from y=115 to y=95
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
-        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory");
+        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
@@ -452,6 +452,10 @@ void EventDemoState::render() {
     cameraView = m_camera->getViewRect();
   }
 
+  // Set render scale for zoom (scales all world/entity rendering automatically)
+  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
+  SDL_SetRenderScale(renderer, zoom, zoom);
+
   // Render world first (background layer) using unified camera position
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
@@ -493,6 +497,9 @@ void EventDemoState::render() {
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.renderForeground(renderer, cameraView.x, cameraView.y);
   }
+
+  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
+  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
   // Update and render UI components through UIManager using cached renderer for
   // cleaner API
@@ -769,6 +776,14 @@ void EventDemoState::handleInput() {
   // Inventory toggle (I key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
     toggleInventoryDisplay();
+  }
+
+  // Camera zoom controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -1904,6 +1919,10 @@ void EventDemoState::initializeCamera() {
 
 void EventDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
+    // Sync viewport with current window size (handles resize events)
+    m_camera->syncViewportWithEngine();
+
+    // Update camera position and following logic
     m_camera->update(deltaTime);
   }
 }

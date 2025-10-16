@@ -623,6 +623,10 @@ void AIDemoState::initializeCamera() {
 
 void AIDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
+    // Sync viewport with current window size (handles resize events)
+    m_camera->syncViewportWithEngine();
+
+    // Update camera position and following logic
     m_camera->update(deltaTime);
   }
 }

@@ -396,6 +396,17 @@ public:
      */
     int getNumZoomLevels() const { return static_cast<int>(m_config.zoomLevels.size()); }
 
+    /**
+     * @brief Synchronize viewport dimensions with GameEngine logical size
+     *
+     * Automatically updates the camera viewport to match the current logical
+     * resolution from GameEngine. Call this in game state update() methods to
+     * keep the camera viewport in sync with window resize events.
+     *
+     * This method is safe to call every frame as it only updates if dimensions changed.
+     */
+    void syncViewportWithEngine();
+
 private:
     // Core camera state
     Vector2D m_position{960.0f, 540.0f};    // Current camera position (center of 1920x1080)
