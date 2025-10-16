@@ -615,22 +615,20 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     int endTileY = std::min(static_cast<int>(world.grid.size()),
                            static_cast<int>((cameraY + viewportHeight) / TILE_SIZE) + 2);
 
-    // PERFORMANCE OPTIMIZATION: Inline tile rendering to reduce function call overhead
+    // MULTI-PASS RENDERING: Ensures proper layering of biomes, obstacles, and buildings
+    // Pass 1: Render all biome tiles as the base layer
     for (int y = startTileY; y < endTileY; ++y) {
         for (int x = startTileX; x < endTileX; ++x) {
-            // Calculate screen position
             float screenX = (x * TILE_SIZE) - cameraX;
             float screenY = (y * TILE_SIZE) - cameraY;
 
-            // OPTIMIZATION: Inline texture selection logic to avoid string allocations
             const HammerEngine::Tile& tile = world.grid[y][x];
 
-            // LAYER 1: Always render biome texture as the base layer
+            // LAYER 1: Render biome texture
             const char* biomeTextureID;
             if (tile.isWater) {
                 biomeTextureID = "obstacle_water";
             } else {
-                // OPTIMIZATION: Direct biome lookup without string allocation
                 switch (tile.biome) {
                     case HammerEngine::Biome::DESERT:     biomeTextureID = "biome_desert"; break;
                     case HammerEngine::Biome::FOREST:     biomeTextureID = "biome_forest"; break;
@@ -643,49 +641,69 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 }
             }
 
-            // Render base biome layer
             TextureManager::Instance().drawTileF(biomeTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+        }
+    }
 
-            // LAYER 2: Render obstacles/buildings on top of biome (if present)
-            if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
-                const char* obstacleTextureID;
+    // Pass 2: Render non-building obstacles (trees, rocks, water) on top of biomes
+    for (int y = startTileY; y < endTileY; ++y) {
+        for (int x = startTileX; x < endTileX; ++x) {
+            const HammerEngine::Tile& tile = world.grid[y][x];
 
-                // OPTIMIZATION: Direct lookup without string allocation
-                switch (tile.obstacleType) {
-                    case HammerEngine::ObstacleType::TREE:    obstacleTextureID = "obstacle_tree"; break;
-                    case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = "obstacle_rock"; break;
-                    case HammerEngine::ObstacleType::WATER:   obstacleTextureID = "obstacle_water"; break;
-                    case HammerEngine::ObstacleType::BUILDING: {
-                        // Choose texture based on building size
-                        switch (tile.buildingSize) {
-                            case 1: obstacleTextureID = "building_hut"; break;
-                            case 2: obstacleTextureID = "building_house"; break;
-                            case 3: obstacleTextureID = "building_large"; break;
-                            case 4: obstacleTextureID = "building_cityhall"; break;
-                            default: obstacleTextureID = "building_hut"; break;
-                        }
-                        break;
-                    }
-                    default:                    obstacleTextureID = "biome_default"; break;
-                }
-
-                // Handle building rendering specially - they are 64x64 (2x2 tiles)
-                if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
-                    // Only render from the top-left tile of each building to avoid overdraw
-                    bool isTopLeft = true;
-                    if (x > 0 && world.grid[y][x - 1].buildingId == tile.buildingId) isTopLeft = false;
-                    if (y > 0 && world.grid[y - 1][x].buildingId == tile.buildingId) isTopLeft = false;
-
-                    if (isTopLeft) {
-                        // Render building as 64x64 block (2x2 tiles) on top of biome
-                        TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
-                    }
-                    // Skip rendering for non-top-left building tiles
-                } else {
-                    // Normal obstacle rendering on top of biome (trees, rocks, etc.)
-                    TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
-                }
+            // Skip buildings - they'll be rendered in pass 3
+            if (tile.obstacleType == HammerEngine::ObstacleType::NONE ||
+                tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
+                continue;
             }
+
+            float screenX = (x * TILE_SIZE) - cameraX;
+            float screenY = (y * TILE_SIZE) - cameraY;
+
+            // LAYER 2: Render non-building obstacles
+            const char* obstacleTextureID;
+            switch (tile.obstacleType) {
+                case HammerEngine::ObstacleType::TREE:    obstacleTextureID = "obstacle_tree"; break;
+                case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = "obstacle_rock"; break;
+                case HammerEngine::ObstacleType::WATER:   obstacleTextureID = "obstacle_water"; break;
+                default:                    obstacleTextureID = "biome_default"; break;
+            }
+
+            TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+        }
+    }
+
+    // Pass 3: Render buildings last (on top of everything) - they are 64x64 (2x2 tiles)
+    for (int y = startTileY; y < endTileY; ++y) {
+        for (int x = startTileX; x < endTileX; ++x) {
+            const HammerEngine::Tile& tile = world.grid[y][x];
+
+            if (tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+                continue;
+            }
+
+            // Only render from the top-left tile of each building to avoid overdraw
+            bool isTopLeft = true;
+            if (x > 0 && world.grid[y][x - 1].buildingId == tile.buildingId) isTopLeft = false;
+            if (y > 0 && world.grid[y - 1][x].buildingId == tile.buildingId) isTopLeft = false;
+
+            if (!isTopLeft) {
+                continue;
+            }
+
+            float screenX = (x * TILE_SIZE) - cameraX;
+            float screenY = (y * TILE_SIZE) - cameraY;
+
+            // LAYER 3: Render building as 64x64 block (2x2 tiles) on top of everything
+            const char* buildingTextureID;
+            switch (tile.buildingSize) {
+                case 1: buildingTextureID = "building_hut"; break;
+                case 2: buildingTextureID = "building_house"; break;
+                case 3: buildingTextureID = "building_large"; break;
+                case 4: buildingTextureID = "building_cityhall"; break;
+                default: buildingTextureID = "building_hut"; break;
+            }
+
+            TextureManager::Instance().drawTileF(buildingTextureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
         }
     }
 }
