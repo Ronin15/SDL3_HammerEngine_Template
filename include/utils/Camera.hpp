@@ -340,8 +340,46 @@ public:
      * @return True if events are fired on state changes
      */
     bool isEventFiringEnabled() const { return m_eventFiringEnabled; }
-    
 
+    /**
+     * @brief Zoom levels for discrete camera zoom
+     * Level 0: 1.0x (native resolution, max zoom out)
+     * Level 1: 1.5x (medium zoom)
+     * Level 2: 2.0x (max zoom in, 2x larger)
+     */
+    static constexpr float ZOOM_LEVELS[] = {1.0f, 1.5f, 2.0f};
+    static constexpr int NUM_ZOOM_LEVELS = 3;
+
+    /**
+     * @brief Zoom in to the next zoom level (make objects larger)
+     * Cycles through: 1.0x → 1.5x → 2.0x (stops at max)
+     */
+    void zoomIn();
+
+    /**
+     * @brief Zoom out to the previous zoom level (make objects smaller)
+     * Cycles through: 2.0x → 1.5x → 1.0x (stops at min)
+     */
+    void zoomOut();
+
+    /**
+     * @brief Set zoom to a specific level index
+     * @param levelIndex Index into ZOOM_LEVELS array (0-2)
+     * @return True if level was valid and set
+     */
+    bool setZoomLevel(int levelIndex);
+
+    /**
+     * @brief Get current zoom scale factor
+     * @return Current zoom level (1.0, 1.5, or 2.0)
+     */
+    float getZoom() const { return m_zoom; }
+
+    /**
+     * @brief Get current zoom level index
+     * @return Index into ZOOM_LEVELS array (0-2)
+     */
+    int getZoomLevel() const { return m_currentZoomIndex; }
 
 private:
     // Core camera state
@@ -369,6 +407,10 @@ private:
     bool m_autoSyncWorldBounds{true};
     uint64_t m_lastWorldVersion{0};
 
+    // Zoom state
+    float m_zoom{1.0f};              // Current zoom level (1.0 = native)
+    int m_currentZoomIndex{0};       // Index into ZOOM_LEVELS array
+
     // Internal helper methods
     void updateFollowMode(float deltaTime);
     void updateCameraShake(float deltaTime);
@@ -384,6 +426,7 @@ private:
     void fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_ptr<Entity> newTarget);
     void fireShakeStartedEvent(float duration, float intensity);
     void fireShakeEndedEvent();
+    void fireZoomChangedEvent(float oldZoom, float newZoom);
 };
 
 } // namespace HammerEngine
