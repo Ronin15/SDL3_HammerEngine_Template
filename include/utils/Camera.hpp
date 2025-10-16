@@ -47,13 +47,31 @@ public:
         float maxFollowDistance{200.0f}; // Maximum distance camera can be from target
         float smoothingFactor{0.85f};   // Smoothing factor for interpolation (0-1)
         bool clampToWorldBounds{true};  // Whether to clamp camera to world bounds
-        
+
+        // Zoom configuration
+        std::vector<float> zoomLevels{1.0f, 1.5f, 2.0f};  // Discrete zoom levels
+        int defaultZoomLevel{0};                           // Starting zoom level index
+
         // Validation
         bool isValid() const {
-            return followSpeed > 0.0f && 
-                   deadZoneRadius >= 0.0f && 
-                   maxFollowDistance > 0.0f &&
-                   smoothingFactor >= 0.0f && smoothingFactor <= 1.0f;
+            if (followSpeed <= 0.0f || deadZoneRadius < 0.0f || maxFollowDistance <= 0.0f) {
+                return false;
+            }
+            if (smoothingFactor < 0.0f || smoothingFactor > 1.0f) {
+                return false;
+            }
+            if (zoomLevels.empty()) {
+                return false;
+            }
+            for (float zoom : zoomLevels) {
+                if (zoom <= 0.0f) {
+                    return false;
+                }
+            }
+            if (defaultZoomLevel < 0 || defaultZoomLevel >= static_cast<int>(zoomLevels.size())) {
+                return false;
+            }
+            return true;
         }
     };
 
@@ -342,51 +360,48 @@ public:
     bool isEventFiringEnabled() const { return m_eventFiringEnabled; }
 
     /**
-     * @brief Zoom levels for discrete camera zoom
-     * Level 0: 1.0x (native resolution, max zoom out)
-     * Level 1: 1.5x (medium zoom)
-     * Level 2: 2.0x (max zoom in, 2x larger)
-     */
-    static constexpr float ZOOM_LEVELS[] = {1.0f, 1.5f, 2.0f};
-    static constexpr int NUM_ZOOM_LEVELS = 3;
-
-    /**
      * @brief Zoom in to the next zoom level (make objects larger)
-     * Cycles through: 1.0x → 1.5x → 2.0x (stops at max)
+     * Cycles through configured zoom levels (stops at max)
      */
     void zoomIn();
 
     /**
      * @brief Zoom out to the previous zoom level (make objects smaller)
-     * Cycles through: 2.0x → 1.5x → 1.0x (stops at min)
+     * Cycles through configured zoom levels (stops at min)
      */
     void zoomOut();
 
     /**
      * @brief Set zoom to a specific level index
-     * @param levelIndex Index into ZOOM_LEVELS array (0-2)
+     * @param levelIndex Index into configured zoomLevels array
      * @return True if level was valid and set
      */
     bool setZoomLevel(int levelIndex);
 
     /**
      * @brief Get current zoom scale factor
-     * @return Current zoom level (1.0, 1.5, or 2.0)
+     * @return Current zoom level (from configured zoomLevels)
      */
     float getZoom() const { return m_zoom; }
 
     /**
      * @brief Get current zoom level index
-     * @return Index into ZOOM_LEVELS array (0-2)
+     * @return Index into configured zoomLevels array
      */
     int getZoomLevel() const { return m_currentZoomIndex; }
 
+    /**
+     * @brief Get number of configured zoom levels
+     * @return Number of zoom levels
+     */
+    int getNumZoomLevels() const { return static_cast<int>(m_config.zoomLevels.size()); }
+
 private:
     // Core camera state
-    Vector2D m_position{400.0f, 300.0f};    // Current camera position
-    Vector2D m_targetPosition{400.0f, 300.0f}; // Target position for interpolation
-    Viewport m_viewport{800.0f, 600.0f};    // Camera viewport size
-    Bounds m_worldBounds{0.0f, 0.0f, 1000.0f, 1000.0f}; // World boundaries
+    Vector2D m_position{960.0f, 540.0f};    // Current camera position (center of 1920x1080)
+    Vector2D m_targetPosition{960.0f, 540.0f}; // Target position for interpolation
+    Viewport m_viewport{1920.0f, 1080.0f};    // Camera viewport size
+    Bounds m_worldBounds{0.0f, 0.0f, 1920.0f, 1080.0f}; // World boundaries
     Config m_config{};                       // Camera configuration
     Mode m_mode{Mode::Free};                // Current camera mode
     
@@ -401,7 +416,7 @@ private:
     
     // Event firing
     bool m_eventFiringEnabled{false};      // Whether to fire events on state changes
-    Vector2D m_lastPosition{400.0f, 300.0f}; // Last position for movement events
+    Vector2D m_lastPosition{960.0f, 540.0f}; // Last position for movement events
     
     // World sync (auto-correct camera bounds when world changes)
     bool m_autoSyncWorldBounds{true};
