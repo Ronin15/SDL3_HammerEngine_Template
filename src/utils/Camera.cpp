@@ -16,6 +16,11 @@
 namespace HammerEngine {
 
 Camera::Camera() {
+    // Initialize zoom from default config
+    if (m_config.isValid() && !m_config.zoomLevels.empty()) {
+        m_currentZoomIndex = m_config.defaultZoomLevel;
+        m_zoom = m_config.zoomLevels[m_currentZoomIndex];
+    }
     CAMERA_INFO("Camera created with default configuration");
 }
 
@@ -23,6 +28,12 @@ Camera::Camera(const Config& config) : m_config(config) {
     if (!m_config.isValid()) {
         CAMERA_WARN("Invalid camera configuration provided, using defaults");
         m_config = Config{};
+    }
+
+    // Initialize zoom from config
+    if (m_config.isValid() && !m_config.zoomLevels.empty()) {
+        m_currentZoomIndex = m_config.defaultZoomLevel;
+        m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
     CAMERA_INFO("Camera created with custom configuration");
 }
@@ -37,6 +48,12 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
     if (!m_viewport.isValid()) {
         CAMERA_WARN("Invalid viewport dimensions provided, using defaults");
         m_viewport = Viewport{};
+    }
+
+    // Initialize zoom from default config
+    if (m_config.isValid() && !m_config.zoomLevels.empty()) {
+        m_currentZoomIndex = m_config.defaultZoomLevel;
+        m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
     CAMERA_INFO("Camera created at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
 }
@@ -518,10 +535,11 @@ void Camera::fireZoomChangedEvent(float oldZoom, float newZoom) {
 
 // Zoom control methods
 void Camera::zoomIn() {
-    if (m_currentZoomIndex < NUM_ZOOM_LEVELS - 1) {
+    const int maxZoomIndex = static_cast<int>(m_config.zoomLevels.size()) - 1;
+    if (m_currentZoomIndex < maxZoomIndex) {
         float oldZoom = m_zoom;
         m_currentZoomIndex++;
-        m_zoom = ZOOM_LEVELS[m_currentZoomIndex];
+        m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
@@ -539,7 +557,7 @@ void Camera::zoomOut() {
     if (m_currentZoomIndex > 0) {
         float oldZoom = m_zoom;
         m_currentZoomIndex--;
-        m_zoom = ZOOM_LEVELS[m_currentZoomIndex];
+        m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
@@ -554,15 +572,17 @@ void Camera::zoomOut() {
 }
 
 bool Camera::setZoomLevel(int levelIndex) {
-    if (levelIndex < 0 || levelIndex >= NUM_ZOOM_LEVELS) {
-        CAMERA_WARN("Invalid zoom level index: " + std::to_string(levelIndex));
+    const int maxZoomIndex = static_cast<int>(m_config.zoomLevels.size()) - 1;
+    if (levelIndex < 0 || levelIndex > maxZoomIndex) {
+        CAMERA_WARN("Invalid zoom level index: " + std::to_string(levelIndex) +
+                       " (valid range: 0-" + std::to_string(maxZoomIndex) + ")");
         return false;
     }
 
     if (m_currentZoomIndex != levelIndex) {
         float oldZoom = m_zoom;
         m_currentZoomIndex = levelIndex;
-        m_zoom = ZOOM_LEVELS[m_currentZoomIndex];
+        m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
