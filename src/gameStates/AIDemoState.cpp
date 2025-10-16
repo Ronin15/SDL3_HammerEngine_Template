@@ -170,6 +170,14 @@ void AIDemoState::handleInput() {
       aiMgr.queueBehaviorAssignment(npc, "EventTarget");
     }
   }
+
+  // Camera zoom controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
+  }
 }
 
 bool AIDemoState::enter() {
@@ -216,7 +224,7 @@ bool AIDemoState::enter() {
     ui.createLabel("ai_instructions_line1",
                    {10, 40, gameEngine.getLogicalWidth() - 20, 20},
                    "Controls: [B] Exit | [SPACE] Pause/Resume | [1] Wander | "
-                   "[2] Patrol | [3] Chase");
+                   "[2] Patrol | [3] Chase | [ ] Zoom");
     ui.createLabel("ai_instructions_line2",
                    {10, 75, gameEngine.getLogicalWidth() - 20, 20},
                    "Advanced: [4] Small | [5] Large | [6] Event | [7] Random | "
@@ -364,6 +372,10 @@ void AIDemoState::render() {
     cameraView = m_camera->getViewRect();
   }
 
+  // Set render scale for zoom (scales all world/entity rendering automatically)
+  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
+  SDL_SetRenderScale(renderer, zoom, zoom);
+
   // Render world first (background layer) using unified camera position
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
@@ -386,6 +398,9 @@ void AIDemoState::render() {
   if (m_player) {
     m_player->render(m_camera.get());
   }
+
+  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
+  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
   // Update and render UI components through UIManager using cached renderer for
   // cleaner API
