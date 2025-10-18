@@ -14,6 +14,7 @@
 #include "utils/Vector2D.hpp"
 #include "utils/Camera.hpp"
 #include "core/ThreadSystem.hpp"
+#include "world/WorldData.hpp"
 
 class CollisionBenchmark {
 public:
@@ -210,7 +211,7 @@ private:
         bodies.reserve(staticCount + movableCount);
 
         // Create grid-like static bodies (world tiles, buildings, etc.)
-        float tileSize = 32.0f;
+        constexpr float tileSize = HammerEngine::TILE_SIZE;
         size_t tilesPerRow = static_cast<size_t>(std::sqrt(staticCount)) + 1;
 
         for (size_t i = 0; i < staticCount; ++i) {

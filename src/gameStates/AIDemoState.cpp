@@ -503,7 +503,7 @@ void AIDemoState::createNPCBatch(int count) {
     // Random number generation for positioning across the entire world
     static std::random_device rd;
     static std::mt19937 gen(rd());
-    const float tileSize = 32.0f;
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
 
     // Calculate tile range
     int maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin

@@ -147,8 +147,13 @@ void CollisionManager::prepareForStateTransition() {
   // Reset performance stats for clean slate
   m_perf = PerfStats{};
 
-  // Reset world bounds to default
-  m_worldBounds = AABB(0, 0, 100000.0f, 100000.0f);
+  // Reset world bounds to default (will be updated by game states when world loads)
+  m_worldBounds = AABB(
+    HammerEngine::DEFAULT_WORLD_WIDTH * 0.5f,
+    HammerEngine::DEFAULT_WORLD_HEIGHT * 0.5f,
+    HammerEngine::DEFAULT_WORLD_WIDTH * 0.5f,
+    HammerEngine::DEFAULT_WORLD_HEIGHT * 0.5f
+  );
 
   // Reset syncing state
   m_isSyncing = false;
@@ -220,7 +225,7 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
   if (!world)
     return 0;
   size_t created = 0;
-  const float tileSize = 32.0f;
+  constexpr float tileSize = HammerEngine::TILE_SIZE;
   const int h = static_cast<int>(world->grid.size());
   for (int y = 0; y < h; ++y) {
     const int w = static_cast<int>(world->grid[y].size());
@@ -265,7 +270,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
     return 0;
 
   size_t created = 0;
-  const float tileSize = 32.0f;
+  constexpr float tileSize = HammerEngine::TILE_SIZE;
   const int h = static_cast<int>(world->grid.size());
 
   // Track which tiles we've already processed
@@ -749,7 +754,7 @@ void CollisionManager::onTileChanged(int x, int y) {
   const auto *world = wm.getWorldData();
   if (!world)
     return;
-  const float tileSize = 32.0f;
+  constexpr float tileSize = HammerEngine::TILE_SIZE;
 
   if (y >= 0 && y < static_cast<int>(world->grid.size()) && x >= 0 &&
       x < static_cast<int>(world->grid[y].size())) {

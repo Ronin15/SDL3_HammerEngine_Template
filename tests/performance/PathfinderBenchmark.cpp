@@ -106,7 +106,7 @@ private:
             EntityID obstacleId = static_cast<EntityID>(1000 + i);
             CollisionManager::Instance().addCollisionBodySOA(
                 obstacleId,
-                Vector2D(x * 32.0f, y * 32.0f),
+                Vector2D(x * HammerEngine::TILE_SIZE, y * HammerEngine::TILE_SIZE),
                 Vector2D(16.0f, 16.0f),
                 BodyType::STATIC,
                 CollisionLayer::Layer_Environment,
@@ -146,8 +146,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
         auto startBatch = high_resolution_clock::now();
 
         for (int i = 0; i < pathsPerSize; ++i) {
-            Vector2D start(coordDist(rng) * 32.0f, coordDist(rng) * 32.0f);
-            Vector2D goal(coordDist(rng) * 32.0f, coordDist(rng) * 32.0f);
+            Vector2D start(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
+            Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
 
             std::vector<Vector2D> path;
 
@@ -207,8 +207,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
 
         // Submit batch of async requests
         for (int i = 0; i < batchSize; ++i) {
-            Vector2D start(coordDist(rng) * 32.0f, coordDist(rng) * 32.0f);
-            Vector2D goal(coordDist(rng) * 32.0f, coordDist(rng) * 32.0f);
+            Vector2D start(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
+            Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
 
             uint64_t requestId = PathfinderManager::Instance().requestPath(
                 static_cast<EntityID>(2000 + i),
@@ -249,11 +249,11 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
     std::cout << "=== Path Length vs Performance ===\n";
 
     const std::vector<std::pair<Vector2D, Vector2D>> pathTests = {
-        {{32.0f, 32.0f}, {64.0f, 64.0f}}, // Very short path
-        {{32.0f, 32.0f}, {320.0f, 320.0f}}, // Short path
-        {{32.0f, 32.0f}, {1600.0f, 1600.0f}}, // Medium path
-        {{32.0f, 32.0f}, {3200.0f, 3200.0f}}, // Long path
-        {{32.0f, 32.0f}, {6000.0f, 6000.0f}} // Very long path
+        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {64.0f, 64.0f}}, // Very short path
+        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {320.0f, 320.0f}}, // Short path
+        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {1600.0f, 1600.0f}}, // Medium path
+        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {3200.0f, 3200.0f}}, // Long path
+        {{HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE}, {6000.0f, 6000.0f}} // Very long path
     };
 
     const int testsPerPath = 20;
@@ -316,8 +316,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
     // Generate unique path requests
     std::vector<std::pair<Vector2D, Vector2D>> uniquePaths;
     for (int i = 0; i < numUniquePaths; ++i) {
-        Vector2D start(coordDist(rng) * 32.0f, coordDist(rng) * 32.0f);
-        Vector2D goal(coordDist(rng) * 32.0f, coordDist(rng) * 32.0f);
+        Vector2D start(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
+        Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
         uniquePaths.emplace_back(start, goal);
     }
 

@@ -116,7 +116,7 @@ void PathfindingGrid::rebuildFromWorld() {
     const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
     if (tilesW <= 0 || tilesH <= 0) { PATHFIND_WARN("rebuildFromWorld(): world has no tiles"); return; }
 
-    const float TILE_SIZE = 32.0f;
+    constexpr float TILE_SIZE = HammerEngine::TILE_SIZE;
     int blockedCount = 0;
 
     for (int cy = 0; cy < cellsH; ++cy) {

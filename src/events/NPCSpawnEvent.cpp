@@ -307,7 +307,7 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
 
         // Create the NPC
         Vector2D position(x, y);
-        position = PathfinderManager::Instance().adjustSpawnToNavigable(position, 32.0f, 32.0f, 150.0f);
+        position = PathfinderManager::Instance().adjustSpawnToNavigable(position, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
         auto npc = NPC::create(textureID, position);
 
         // Bounds are enforced centrally by AIManager/PathfinderManager
@@ -338,14 +338,14 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             Vector2D spawnPos(x + offsetX, y + offsetY);
             if (params.useAreaRect) {
                 spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInRect(
-                    spawnPos, 32.0f, 32.0f, 150.0f,
+                    spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
                     params.areaMinX, params.areaMinY, params.areaMaxX, params.areaMaxY);
             } else if (params.useAreaCircle) {
                 spawnPos = PathfinderManager::Instance().adjustSpawnToNavigableInCircle(
-                    spawnPos, 32.0f, 32.0f, 150.0f,
+                    spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f,
                     Vector2D(params.areaCenterX, params.areaCenterY), params.areaRadius);
             } else {
-                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(spawnPos, 32.0f, 32.0f, 150.0f);
+                spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
             }
             auto npc = NPC::create(textureID, spawnPos);
 

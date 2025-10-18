@@ -558,9 +558,9 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   float minX, minY, maxX, maxY;
   bool hasWorldBounds =
       WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY);
-  const float TILE = 32.0f;
-  float worldWidth = hasWorldBounds ? (maxX - minX) * TILE : 3200.0f;
-  float worldHeight = hasWorldBounds ? (maxY - minY) * TILE : 3200.0f;
+  constexpr float TILE = HammerEngine::TILE_SIZE;
+  float worldWidth = hasWorldBounds ? (maxX - minX) * TILE : HammerEngine::DEFAULT_WORLD_WIDTH;
+  float worldHeight = hasWorldBounds ? (maxY - minY) * TILE : HammerEngine::DEFAULT_WORLD_HEIGHT;
   float worldMinX = hasWorldBounds ? minX * TILE : 0.0f;
   float worldMinY = hasWorldBounds ? minY * TILE : 0.0f;
 
