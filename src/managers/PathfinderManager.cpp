@@ -426,9 +426,8 @@ void PathfinderManager::rebuildGrid() {
         return;
     }
 
-    const float TILE_SIZE = 32.0f;
-    float worldPixelWidth = worldWidth * TILE_SIZE;
-    float worldPixelHeight = worldHeight * TILE_SIZE;
+    float worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
+    float worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
     int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
     if (gridWidth <= 0 || gridHeight <= 0) {
@@ -628,8 +627,8 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
     // Fast fallback bounds - avoid calling WorldManager during AI updates
     const float fallbackMargin = std::max(margin, 256.0f);
     return Vector2D(
-        std::clamp(position.getX(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin),
-        std::clamp(position.getY(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin)
+        std::clamp(position.getX(), 0.0f + fallbackMargin, HammerEngine::DEFAULT_WORLD_WIDTH - fallbackMargin),
+        std::clamp(position.getY(), 0.0f + fallbackMargin, HammerEngine::DEFAULT_WORLD_HEIGHT - fallbackMargin)
     );
 }
 
@@ -642,8 +641,8 @@ bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) 
         return true;
     }
     // Fallback to default world size
-    outWidth = 3200.0f;
-    outHeight = 3200.0f;
+    outWidth = HammerEngine::DEFAULT_WORLD_WIDTH;
+    outHeight = HammerEngine::DEFAULT_WORLD_HEIGHT;
     return false;
 }
 
@@ -663,8 +662,8 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
         );
     }
     // Fallback
-    float fallbackW = 3200.0f;
-    float fallbackH = 3200.0f;
+    constexpr float fallbackW = HammerEngine::DEFAULT_WORLD_WIDTH;
+    constexpr float fallbackH = HammerEngine::DEFAULT_WORLD_HEIGHT;
     return Vector2D(
         std::clamp(position.getX(), halfW, fallbackW - halfW),
         std::clamp(position.getY(), halfH, fallbackH - halfH)
@@ -880,9 +879,8 @@ bool PathfinderManager::ensureGridInitialized() {
     }
 
     // Calculate grid dimensions in cells
-    const float TILE_SIZE = 32.0f; // Match WorldManager::TILE_SIZE
-    float worldPixelWidth = worldWidth * TILE_SIZE;
-    float worldPixelHeight = worldHeight * TILE_SIZE;
+    float worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
+    float worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
     int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
 

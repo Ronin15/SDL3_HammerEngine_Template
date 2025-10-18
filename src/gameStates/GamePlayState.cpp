@@ -249,8 +249,8 @@ void GamePlayState::handleInput() {
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
-            int tileX = static_cast<int>(worldPos.getX() / 32);
-            int tileY = static_cast<int>(worldPos.getY() / 32);
+            int tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
+            int tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
             auto& worldMgr = WorldManager::Instance();
             if (worldMgr.isValidPosition(tileX, tileY)) {

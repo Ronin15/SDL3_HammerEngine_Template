@@ -313,7 +313,7 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     // Use world bounds for boundary detection
     float minX, minY, maxX, maxY;
     if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f;
+        constexpr float TILE = HammerEngine::TILE_SIZE;
         float worldMinX = minX * TILE + m_boundaryPadding;
         float worldMinY = minY * TILE + m_boundaryPadding;
         float worldMaxX = maxX * TILE - m_boundaryPadding;
@@ -325,7 +325,7 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
                 position.getY() > worldMaxY);
     } else {
         // Fallback: assume a large world if bounds unavailable
-        const float defaultWorldSize = 3200.0f;
+        constexpr float defaultWorldSize = HammerEngine::DEFAULT_WORLD_WIDTH;
         return (position.getX() < m_boundaryPadding || 
                 position.getX() > defaultWorldSize - m_boundaryPadding ||
                 position.getY() < m_boundaryPadding || 
@@ -339,7 +339,7 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D&
     // Use world bounds for boundary avoidance with world-scale padding
     float minX, minY, maxX, maxY;
     if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f;
+        constexpr float TILE = HammerEngine::TILE_SIZE;
         const float worldPadding = 80.0f; // Increased padding for world-scale movement
         float worldMinX = minX * TILE + worldPadding;
         float worldMinY = minY * TILE + worldPadding;
@@ -360,7 +360,7 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D&
         }
     } else {
         // Fallback: assume a large world if bounds unavailable
-        const float defaultWorldSize = 3200.0f;
+        constexpr float defaultWorldSize = HammerEngine::DEFAULT_WORLD_WIDTH;
         if (position.getX() < m_boundaryPadding && direction.getX() < 0) {
             adjustedDir.setX(std::abs(direction.getX())); // Force rightward
         } else if (position.getX() > defaultWorldSize - m_boundaryPadding && direction.getX() > 0) {
