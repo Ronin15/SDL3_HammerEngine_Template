@@ -1483,6 +1483,11 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         Vector2D pos = entity->getPosition();
         Vector2D vel = entity->getVelocity();
 
+        // MOVEMENT INTEGRATION: Apply velocity to position (core physics step)
+        // This was previously done in CollisionManager but belongs in AIManager
+        // since AIManager controls entity movement and sends final positions to collision system
+        pos = pos + (vel * deltaTime);
+
         // Inline clamping - no function call, no atomic load
         float minX = halfW;
         float maxX = worldWidth - halfW;
