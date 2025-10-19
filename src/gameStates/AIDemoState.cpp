@@ -569,6 +569,29 @@ void AIDemoState::initializeWorld() {
   // Create world manager and generate a large world for 10K NPCs
   WorldManager& worldManager = WorldManager::Instance();
 
+  // Get UI and engine references for loading overlay
+  auto& ui = UIManager::Instance();
+  auto& gameEngine = GameEngine::Instance();
+  SDL_Renderer* renderer = gameEngine.getRenderer();
+  int windowWidth = gameEngine.getLogicalWidth();
+  int windowHeight = gameEngine.getLogicalHeight();
+
+  // Create loading overlay using existing UIManager components
+  ui.createOverlay();
+  ui.createTitle("loading_title", {0, windowHeight / 2 - 80, windowWidth, 40}, "Loading AI Demo World...");
+  ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
+
+  // Create progress bar in center of screen
+  int progressBarWidth = 400;
+  int progressBarHeight = 30;
+  int progressBarX = (windowWidth - progressBarWidth) / 2;
+  int progressBarY = windowHeight / 2;
+  ui.createProgressBar("loading_progress", {progressBarX, progressBarY, progressBarWidth, progressBarHeight}, 0.0f, 100.0f);
+
+  // Create status text as a TITLE (which supports alignment better) below progress bar
+  ui.createTitle("loading_status", {0, progressBarY + 50, windowWidth, 30}, "Initializing...");
+  ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
+
   // Create a very large world configuration to spread 10,000 NPCs comfortably
   // 400x400 tiles = 160,000 tiles, giving approximately 16 tiles per NPC
   // At 32 pixels per tile, this is 12800x12800 pixels (4x bigger than before)
@@ -581,10 +604,21 @@ void AIDemoState::initializeWorld() {
   config.waterLevel = 0.25f;
   config.mountainLevel = 0.75f;
 
-  if (!worldManager.loadNewWorld(config)) {
+  // Create progress callback to update UI during world generation
+  auto progressCallback = [&](float percent, const std::string& status) {
+    ui.updateProgressBar("loading_progress", percent);
+    ui.setText("loading_status", status);
+
+    // Render the current frame to show progress updates
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    ui.render(renderer);
+    SDL_RenderPresent(renderer);
+  };
+
+  if (!worldManager.loadNewWorld(config, progressCallback)) {
     GAMESTATE_ERROR("Failed to load new world in AIDemoState");
     // Fallback to screen dimensions if world fails to load
-    const GameEngine &gameEngine = GameEngine::Instance();
     m_worldWidth = gameEngine.getLogicalWidth();
     m_worldHeight = gameEngine.getLogicalHeight();
   } else {
@@ -598,6 +632,12 @@ void AIDemoState::initializeWorld() {
       GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
     }
   }
+
+  // Cleanup loading UI
+  ui.removeOverlay();
+  ui.removeComponent("loading_title");
+  ui.removeComponent("loading_progress");
+  ui.removeComponent("loading_status");
 }
 
 void AIDemoState::initializeCamera() {

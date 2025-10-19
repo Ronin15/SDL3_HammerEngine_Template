@@ -421,6 +421,29 @@ void GamePlayState::initializeWorld() {
     }
   }
 
+  // Get UI and engine references
+  auto& ui = UIManager::Instance();
+  auto& gameEngine = GameEngine::Instance();
+  SDL_Renderer* renderer = gameEngine.getRenderer();
+  int windowWidth = gameEngine.getLogicalWidth();
+  int windowHeight = gameEngine.getLogicalHeight();
+
+  // Create loading overlay using existing UIManager components
+  ui.createOverlay();
+  ui.createTitle("loading_title", {0, windowHeight / 2 - 80, windowWidth, 40}, "Loading World...");
+  ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
+
+  // Create progress bar in center of screen
+  int progressBarWidth = 400;
+  int progressBarHeight = 30;
+  int progressBarX = (windowWidth - progressBarWidth) / 2;
+  int progressBarY = windowHeight / 2;
+  ui.createProgressBar("loading_progress", {progressBarX, progressBarY, progressBarWidth, progressBarHeight}, 0.0f, 100.0f);
+
+  // Create status text as a TITLE (which supports alignment better) below progress bar
+  ui.createTitle("loading_status", {0, progressBarY + 50, windowWidth, 30}, "Initializing...");
+  ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
+
   // Create a default world configuration
   // TODO: Make this configurable or load from settings
   HammerEngine::WorldGenerationConfig config;
@@ -437,10 +460,29 @@ void GamePlayState::initializeWorld() {
   config.waterLevel = 0.3f;
   config.mountainLevel = 0.7f;
 
-  if (!worldManager.loadNewWorld(config)) {
+  // Create progress callback to update UI during world generation
+  auto progressCallback = [&](float percent, const std::string& status) {
+    ui.updateProgressBar("loading_progress", percent);
+    ui.setText("loading_status", status);
+
+    // Render the current frame to show progress updates
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    ui.render(renderer);
+    SDL_RenderPresent(renderer);
+  };
+
+  // Load world with progress callback
+  if (!worldManager.loadNewWorld(config, progressCallback)) {
     std::cerr << "Failed to load new world in GamePlayState" << std::endl;
     // Continue anyway like EventDemoState - game can function without world
   }
+
+  // Cleanup loading UI
+  ui.removeOverlay();
+  ui.removeComponent("loading_title");
+  ui.removeComponent("loading_progress");
+  ui.removeComponent("loading_status");
 }
 
 void GamePlayState::initializeCamera() {

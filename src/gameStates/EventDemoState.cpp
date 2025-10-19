@@ -1855,6 +1855,29 @@ void EventDemoState::initializeWorld() {
   // Create world manager and generate a world for event demo
   WorldManager& worldManager = WorldManager::Instance();
 
+  // Get UI and engine references for loading overlay
+  auto& ui = UIManager::Instance();
+  auto& gameEngine = GameEngine::Instance();
+  SDL_Renderer* renderer = gameEngine.getRenderer();
+  int windowWidth = gameEngine.getLogicalWidth();
+  int windowHeight = gameEngine.getLogicalHeight();
+
+  // Create loading overlay using existing UIManager components
+  ui.createOverlay();
+  ui.createTitle("loading_title", {0, windowHeight / 2 - 80, windowWidth, 40}, "Loading Event Demo World...");
+  ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
+
+  // Create progress bar in center of screen
+  int progressBarWidth = 400;
+  int progressBarHeight = 30;
+  int progressBarX = (windowWidth - progressBarWidth) / 2;
+  int progressBarY = windowHeight / 2;
+  ui.createProgressBar("loading_progress", {progressBarX, progressBarY, progressBarWidth, progressBarHeight}, 0.0f, 100.0f);
+
+  // Create status text as a TITLE (which supports alignment better) below progress bar
+  ui.createTitle("loading_status", {0, progressBarY + 50, windowWidth, 30}, "Initializing...");
+  ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
+
   // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
   HammerEngine::WorldGenerationConfig config;
   config.width = 1000;  // Increased from 50 to 100 for more exploration
@@ -1865,7 +1888,19 @@ void EventDemoState::initializeWorld() {
   config.waterLevel = 0.25f;
   config.mountainLevel = 0.75f;
 
-  if (!worldManager.loadNewWorld(config)) {
+  // Create progress callback to update UI during world generation
+  auto progressCallback = [&](float percent, const std::string& status) {
+    ui.updateProgressBar("loading_progress", percent);
+    ui.setText("loading_status", status);
+
+    // Render the current frame to show progress updates
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+    ui.render(renderer);
+    SDL_RenderPresent(renderer);
+  };
+
+  if (!worldManager.loadNewWorld(config, progressCallback)) {
     GAMESTATE_ERROR("Failed to load new world in EventDemoState");
     // Continue anyway - event demo can function without world
   } else {
@@ -1879,6 +1914,12 @@ void EventDemoState::initializeWorld() {
       m_worldHeight = std::max(0.0f, maxY - minY);
     }
   }
+
+  // Cleanup loading UI
+  ui.removeOverlay();
+  ui.removeComponent("loading_title");
+  ui.removeComponent("loading_progress");
+  ui.removeComponent("loading_status");
 }
 
 void EventDemoState::initializeCamera() {

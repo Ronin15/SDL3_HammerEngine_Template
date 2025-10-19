@@ -4,9 +4,13 @@
 #include <memory>
 #include <vector>
 #include <random>
+#include <functional>
 #include "world/WorldData.hpp"
 
 namespace HammerEngine {
+
+// Progress callback type: void callback(float percentComplete, const std::string& statusMessage)
+using WorldGenerationProgressCallback = std::function<void(float, const std::string&)>;
 
 class WorldGenerator {
 private:
@@ -72,7 +76,10 @@ private:
     );
 
 public:
-    static std::unique_ptr<WorldData> generateWorld(const WorldGenerationConfig& config);
+    static std::unique_ptr<WorldData> generateWorld(
+        const WorldGenerationConfig& config,
+        const WorldGenerationProgressCallback& progressCallback = nullptr
+    );
 };
 
 }
