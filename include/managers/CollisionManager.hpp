@@ -183,7 +183,9 @@ public:
         size_t activeBodies,
         size_t dynamicBodiesCulled,
         size_t staticBodiesCulled,
-        double cullingMs);
+        double cullingMs,
+        size_t totalStaticBodies,
+        size_t totalMovableBodies);
 
     // Debug utilities
     void logCollisionStatistics() const;
@@ -243,6 +245,8 @@ private:
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
     static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
+    static constexpr float CACHE_EVICTION_MULTIPLIER = 3.0f;        // Cache entries beyond 3x culling buffer are evicted
+    static constexpr size_t CACHE_EVICTION_INTERVAL = 60;           // Evict stale cache entries every 60 frames
 
     // Collision prediction configuration - prevents diagonal tunneling through corners
     static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
@@ -258,8 +262,10 @@ private:
         }
     };
 
-    void buildActiveIndicesSOA(const CullingArea& cullingArea) const;
+    // Returns body type counts: {totalStatic, totalDynamic, totalKinematic}
+    std::tuple<size_t, size_t, size_t> buildActiveIndicesSOA(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
+    void evictStaleCacheEntries(const CullingArea& cullingArea);
 
 
     bool m_initialized{false};
@@ -519,8 +525,15 @@ private:
         size_t lastActiveBodies{0};           // Bodies after culling optimizations
         size_t lastDynamicBodiesCulled{0};    // Dynamic bodies culled by distance
         size_t lastStaticBodiesCulled{0};     // Static bodies culled by area
+        size_t totalStaticBodies{0};          // Total static bodies before culling
+        size_t totalMovableBodies{0};         // Total dynamic+kinematic bodies before culling
         double lastCullingMs{0.0};            // Time spent on culling operations
         double avgBroadphaseMs{0.0};          // Average broadphase time
+
+        // CACHE PERFORMANCE METRICS: Track coarse-grid static cache effectiveness
+        size_t cacheEntriesActive{0};         // Number of active cache entries
+        size_t cacheEntriesEvicted{0};        // Cache entries evicted this frame
+        size_t totalCacheEvictions{0};        // Total evictions since start
 
         // High-performance exponential moving average (no loops, O(1))
         static constexpr double ALPHA = 0.01; // ~100 frame average, much faster than windowing
@@ -544,11 +557,11 @@ private:
 
         // Calculate culling effectiveness percentages
         double getDynamicCullingRate() const {
-            return bodyCount > 0 ? (100.0 * lastDynamicBodiesCulled) / bodyCount : 0.0;
+            return totalMovableBodies > 0 ? (100.0 * lastDynamicBodiesCulled) / totalMovableBodies : 0.0;
         }
 
         double getStaticCullingRate() const {
-            return bodyCount > 0 ? (100.0 * lastStaticBodiesCulled) / bodyCount : 0.0;
+            return totalStaticBodies > 0 ? (100.0 * lastStaticBodiesCulled) / totalStaticBodies : 0.0;
         }
 
         double getActiveBodiesRate() const {
@@ -570,6 +583,9 @@ private:
 
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
+
+    // Cache eviction: Track frame count for periodic eviction
+    size_t m_framesSinceLastEviction{0};
 
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;
