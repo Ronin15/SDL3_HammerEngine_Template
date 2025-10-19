@@ -61,10 +61,16 @@ float WorldGenerator::PerlinNoise::noise(float x, float y) const {
 }
 
 std::unique_ptr<WorldData>
-WorldGenerator::generateWorld(const WorldGenerationConfig &config) {
+WorldGenerator::generateWorld(const WorldGenerationConfig &config,
+                              const WorldGenerationProgressCallback& progressCallback) {
   WORLD_MANAGER_INFO("Generating world: " + std::to_string(config.width) + "x" +
                      std::to_string(config.height) + " with seed " +
                      std::to_string(config.seed));
+
+  // Report initial progress
+  if (progressCallback) {
+    progressCallback(0.0f, "Initializing world generation...");
+  }
 
   std::vector<std::vector<float>> elevationMap, humidityMap;
   auto world = generateNoiseMaps(config, elevationMap, humidityMap);
@@ -74,10 +80,38 @@ WorldGenerator::generateWorld(const WorldGenerationConfig &config) {
     return nullptr;
   }
 
+  // Progress: Noise maps complete (30%)
+  if (progressCallback) {
+    progressCallback(30.0f, "Generating terrain...");
+  }
+
   assignBiomes(*world, elevationMap, humidityMap, config);
+
+  // Progress: Biomes assigned (50%)
+  if (progressCallback) {
+    progressCallback(50.0f, "Creating biomes...");
+  }
+
   createWaterBodies(*world, elevationMap, config);
+
+  // Progress: Water bodies created (70%)
+  if (progressCallback) {
+    progressCallback(70.0f, "Placing water...");
+  }
+
   distributeObstacles(*world, config);
+
+  // Progress: Obstacles distributed (90%)
+  if (progressCallback) {
+    progressCallback(90.0f, "Distributing obstacles...");
+  }
+
   calculateInitialResources(*world);
+
+  // Progress: Complete (100%)
+  if (progressCallback) {
+    progressCallback(100.0f, "Finalizing world...");
+  }
 
   WORLD_MANAGER_INFO("World generation completed successfully");
   return world;

@@ -71,8 +71,9 @@ public:
     
     // Post-initialization setup that requires other managers to be ready
     void setupEventHandlers();
-    
-    bool loadNewWorld(const HammerEngine::WorldGenerationConfig& config);
+
+    bool loadNewWorld(const HammerEngine::WorldGenerationConfig& config,
+                     const HammerEngine::WorldGenerationProgressCallback& progressCallback = nullptr);
     bool loadWorld(const std::string& worldId);
     void unloadWorld();
     

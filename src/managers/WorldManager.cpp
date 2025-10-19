@@ -74,7 +74,8 @@ void WorldManager::clean() {
     WORLD_MANAGER_INFO("WorldManager cleaned up");
 }
 
-bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& config) {
+bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& config,
+                               const HammerEngine::WorldGenerationProgressCallback& progressCallback) {
     if (!m_initialized.load(std::memory_order_acquire)) {
         WORLD_MANAGER_ERROR("WorldManager not initialized");
         return false;
@@ -83,7 +84,7 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
     std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
     try {
-        auto newWorld = HammerEngine::WorldGenerator::generateWorld(config);
+        auto newWorld = HammerEngine::WorldGenerator::generateWorld(config, progressCallback);
         if (!newWorld) {
             WORLD_MANAGER_ERROR("Failed to generate new world");
             return false;
