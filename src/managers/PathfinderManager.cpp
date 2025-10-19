@@ -413,7 +413,10 @@ bool PathfinderManager::hasPendingWork() const {
 }
 
 void PathfinderManager::rebuildGrid() {
-    // Build a new grid from current world data and swap atomically
+    // ASYNC OPTIMIZATION: Submit grid rebuild to background thread to eliminate main thread spikes
+    // The expensive rebuildFromWorld() operation (2-3ms for 500x500 grid) runs on ThreadSystem
+    // Grid is swapped atomically when complete, so pathfinding continues with old grid briefly
+
     const auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
         PATHFIND_DEBUG("Cannot rebuild grid - no active world");
@@ -435,27 +438,42 @@ void PathfinderManager::rebuildGrid() {
         return;
     }
 
-    try {
-        auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
-            gridWidth, gridHeight, m_cellSize, Vector2D(0, 0)
-        );
-        newGrid->setAllowDiagonal(m_allowDiagonal);
-        newGrid->setMaxIterations(m_maxIterations);
-        newGrid->rebuildFromWorld();
+    // Capture rebuild parameters for async execution
+    float cellSize = m_cellSize;
+    bool allowDiagonal = m_allowDiagonal;
+    int maxIterations = m_maxIterations;
 
-        // Publish the new grid atomically
-        std::atomic_store(&m_grid, newGrid);
+    // Submit rebuild task to ThreadSystem (background thread)
+    HammerEngine::ThreadSystem::Instance().enqueueTask(
+        [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, this]() {
+            try {
+                // Create and build new grid on background thread
+                auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
+                    gridWidth, gridHeight, cellSize, Vector2D(0, 0)
+                );
+                newGrid->setAllowDiagonal(allowDiagonal);
+                newGrid->setMaxIterations(maxIterations);
+                newGrid->rebuildFromWorld(); // EXPENSIVE: 2-3ms, now off main thread!
 
-        // Clear cache since grid changed
-        {
-            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-            m_pathCache.clear();
-        }
+                // Atomically swap the grid (thread-safe)
+                std::atomic_store(&m_grid, newGrid);
 
-        PATHFIND_INFO("Grid rebuilt successfully");
-    } catch (const std::exception& e) {
-        PATHFIND_ERROR("Grid rebuild failed: " + std::string(e.what()));
-    }
+                // Clear cache since grid changed (mutex-protected)
+                {
+                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                    m_pathCache.clear();
+                }
+
+                PATHFIND_INFO("Grid rebuilt successfully (async)");
+            } catch (const std::exception& e) {
+                PATHFIND_ERROR("Async grid rebuild failed: " + std::string(e.what()));
+            }
+        },
+        HammerEngine::TaskPriority::Low, // Low priority - doesn't block gameplay
+        "PathfindingGridRebuild"
+    );
+
+    PATHFIND_DEBUG("Grid rebuild submitted to background thread");
 }
 
 void PathfinderManager::updateDynamicObstacles() {
