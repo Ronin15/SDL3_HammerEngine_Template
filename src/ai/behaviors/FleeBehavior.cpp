@@ -312,68 +312,52 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
 [[maybe_unused]] bool FleeBehavior::isNearBoundary(const Vector2D& position) const {
     // Use world bounds for boundary detection
     float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        constexpr float TILE = HammerEngine::TILE_SIZE;
-        float worldMinX = minX * TILE + m_boundaryPadding;
-        float worldMinY = minY * TILE + m_boundaryPadding;
-        float worldMaxX = maxX * TILE - m_boundaryPadding;
-        float worldMaxY = maxY * TILE - m_boundaryPadding;
-        
-        return (position.getX() < worldMinX || 
-                position.getX() > worldMaxX ||
-                position.getY() < worldMinY || 
-                position.getY() > worldMaxY);
-    } else {
-        // Fallback: assume a large world if bounds unavailable
-        constexpr float defaultWorldSize = HammerEngine::DEFAULT_WORLD_WIDTH;
-        return (position.getX() < m_boundaryPadding || 
-                position.getX() > defaultWorldSize - m_boundaryPadding ||
-                position.getY() < m_boundaryPadding || 
-                position.getY() > defaultWorldSize - m_boundaryPadding);
+    if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        // No world loaded - can't determine boundaries
+        return false;
     }
+
+    constexpr float TILE = HammerEngine::TILE_SIZE;
+    float worldMinX = minX * TILE + m_boundaryPadding;
+    float worldMinY = minY * TILE + m_boundaryPadding;
+    float worldMaxX = maxX * TILE - m_boundaryPadding;
+    float worldMaxY = maxY * TILE - m_boundaryPadding;
+
+    return (position.getX() < worldMinX ||
+            position.getX() > worldMaxX ||
+            position.getY() < worldMinY ||
+            position.getY() > worldMaxY);
 }
 
 Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D& direction) const {
-    Vector2D adjustedDir = direction;
-    
     // Use world bounds for boundary avoidance with world-scale padding
     float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        constexpr float TILE = HammerEngine::TILE_SIZE;
-        const float worldPadding = 80.0f; // Increased padding for world-scale movement
-        float worldMinX = minX * TILE + worldPadding;
-        float worldMinY = minY * TILE + worldPadding;
-        float worldMaxX = maxX * TILE - worldPadding;
-        float worldMaxY = maxY * TILE - worldPadding;
-        
-        // Check world boundaries and adjust direction
-        if (position.getX() < worldMinX && direction.getX() < 0) {
-            adjustedDir.setX(std::abs(direction.getX())); // Force rightward
-        } else if (position.getX() > worldMaxX && direction.getX() > 0) {
-            adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
-        }
-        
-        if (position.getY() < worldMinY && direction.getY() < 0) {
-            adjustedDir.setY(std::abs(direction.getY())); // Force downward
-        } else if (position.getY() > worldMaxY && direction.getY() > 0) {
-            adjustedDir.setY(-std::abs(direction.getY())); // Force upward
-        }
-    } else {
-        // Fallback: assume a large world if bounds unavailable
-        constexpr float defaultWorldSize = HammerEngine::DEFAULT_WORLD_WIDTH;
-        if (position.getX() < m_boundaryPadding && direction.getX() < 0) {
-            adjustedDir.setX(std::abs(direction.getX())); // Force rightward
-        } else if (position.getX() > defaultWorldSize - m_boundaryPadding && direction.getX() > 0) {
-            adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
-        }
-        
-        if (position.getY() < m_boundaryPadding && direction.getY() < 0) {
-            adjustedDir.setY(std::abs(direction.getY())); // Force downward
-        } else if (position.getY() > defaultWorldSize - m_boundaryPadding && direction.getY() > 0) {
-            adjustedDir.setY(-std::abs(direction.getY())); // Force upward
-        }
+    if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        // No world loaded - return direction unchanged
+        return direction;
     }
-    
+
+    Vector2D adjustedDir = direction;
+    constexpr float TILE = HammerEngine::TILE_SIZE;
+    const float worldPadding = 80.0f; // Increased padding for world-scale movement
+    float worldMinX = minX * TILE + worldPadding;
+    float worldMinY = minY * TILE + worldPadding;
+    float worldMaxX = maxX * TILE - worldPadding;
+    float worldMaxY = maxY * TILE - worldPadding;
+
+    // Check world boundaries and adjust direction
+    if (position.getX() < worldMinX && direction.getX() < 0) {
+        adjustedDir.setX(std::abs(direction.getX())); // Force rightward
+    } else if (position.getX() > worldMaxX && direction.getX() > 0) {
+        adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
+    }
+
+    if (position.getY() < worldMinY && direction.getY() < 0) {
+        adjustedDir.setY(std::abs(direction.getY())); // Force downward
+    } else if (position.getY() > worldMaxY && direction.getY() > 0) {
+        adjustedDir.setY(-std::abs(direction.getY())); // Force upward
+    }
+
     return adjustedDir;
 }
 

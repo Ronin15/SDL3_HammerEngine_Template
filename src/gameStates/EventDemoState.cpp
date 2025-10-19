@@ -1857,8 +1857,8 @@ void EventDemoState::initializeWorld() {
 
   // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
   HammerEngine::WorldGenerationConfig config;
-  config.width = 100;  // Increased from 50 to 100 for more exploration
-  config.height = 100; // Increased from 50 to 100 for more exploration
+  config.width = 1000;  // Increased from 50 to 100 for more exploration
+  config.height = 1000; // Increased from 50 to 100 for more exploration
   config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
   config.elevationFrequency = 0.1f;
   config.humidityFrequency = 0.1f;

@@ -147,13 +147,8 @@ void CollisionManager::prepareForStateTransition() {
   // Reset performance stats for clean slate
   m_perf = PerfStats{};
 
-  // Reset world bounds to default (will be updated by game states when world loads)
-  m_worldBounds = AABB(
-    HammerEngine::DEFAULT_WORLD_WIDTH * 0.5f,
-    HammerEngine::DEFAULT_WORLD_HEIGHT * 0.5f,
-    HammerEngine::DEFAULT_WORLD_WIDTH * 0.5f,
-    HammerEngine::DEFAULT_WORLD_HEIGHT * 0.5f
-  );
+  // Reset world bounds to minimal (will be set by WorldLoadedEvent/WorldGeneratedEvent)
+  m_worldBounds = AABB(0.0f, 0.0f, 0.0f, 0.0f);
 
   // Reset syncing state
   m_isSyncing = false;

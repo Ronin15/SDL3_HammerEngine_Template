@@ -624,12 +624,8 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
         );
     }
     
-    // Fast fallback bounds - avoid calling WorldManager during AI updates
-    const float fallbackMargin = std::max(margin, 256.0f);
-    return Vector2D(
-        std::clamp(position.getX(), 0.0f + fallbackMargin, HammerEngine::DEFAULT_WORLD_WIDTH - fallbackMargin),
-        std::clamp(position.getY(), 0.0f + fallbackMargin, HammerEngine::DEFAULT_WORLD_HEIGHT - fallbackMargin)
-    );
+    // No grid available - world not loaded yet, return position as-is
+    return position;
 }
 
 bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) const {
@@ -640,9 +636,7 @@ bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) 
         outHeight = grid->getHeight() * gridCellSize;
         return true;
     }
-    // Fallback to default world size
-    outWidth = HammerEngine::DEFAULT_WORLD_WIDTH;
-    outHeight = HammerEngine::DEFAULT_WORLD_HEIGHT;
+    // No grid available - world not loaded yet
     return false;
 }
 
@@ -661,13 +655,8 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
             std::clamp(position.getY(), minY, maxY)
         );
     }
-    // Fallback
-    constexpr float fallbackW = HammerEngine::DEFAULT_WORLD_WIDTH;
-    constexpr float fallbackH = HammerEngine::DEFAULT_WORLD_HEIGHT;
-    return Vector2D(
-        std::clamp(position.getX(), halfW, fallbackW - halfW),
-        std::clamp(position.getY(), halfH, fallbackH - halfH)
-    );
+    // No grid available - world not loaded yet, return position as-is
+    return position;
 }
 
 Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, float halfW, float halfH, float interiorMargin) const {

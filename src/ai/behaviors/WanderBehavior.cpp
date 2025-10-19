@@ -175,11 +175,8 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
         state.cachedBounds.maxX = maxX;
         state.cachedBounds.maxY = maxY;
       } else {
-        // Fallback bounds for performance
-        state.cachedBounds.minX = 0.0f;
-        state.cachedBounds.minY = 0.0f;
-        state.cachedBounds.maxX = HammerEngine::DEFAULT_WORLD_WIDTH;
-        state.cachedBounds.maxY = HammerEngine::DEFAULT_WORLD_HEIGHT;
+        // No world loaded - skip boundary avoidance
+        return;
       }
     }
 
