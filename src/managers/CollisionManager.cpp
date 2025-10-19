@@ -1843,32 +1843,13 @@ void CollisionManager::updateSOA(float dt) {
     m_staticHashDirty = false;
   }
 
-  // MOVEMENT INTEGRATION: Apply velocity to positions for dynamic/kinematic bodies
-  // This must happen BEFORE collision detection so we detect collisions with the new positions
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    auto& hot = m_storage.hotData[i];
-    if (!hot.active) continue;
-
-    BodyType type = static_cast<BodyType>(hot.bodyType);
-    if (type != BodyType::STATIC) {
-      // Integrate movement: newPos = pos + vel * dt
-      Vector2D movement = hot.velocity * dt;
-
-      // PENETRATION PREVENTION: Clamp excessive movement in a single frame
-      // With early collision detection working, we can be more permissive
-      // Allow up to 1.5x body size movement (was 0.75x when collisions detected late)
-      float maxMovement = std::min(hot.halfSize.getX(), hot.halfSize.getY()) * 1.5f;
-      float movementMag = movement.length();
-
-      if (movementMag > maxMovement) {
-        // Scale down movement only for extreme velocities
-        movement = movement * (maxMovement / movementMag);
-      }
-
-      hot.position += movement;
-      hot.aabbDirty = 1; // Mark AABB as dirty after position change
-    }
-  }
+  // MOVEMENT INTEGRATION: Removed redundant loop (was lines 1846-1871)
+  // AIManager now handles all position updates via updateKinematicBatchSOA() and applyBatchedKinematicUpdates()
+  // which directly set hot.position to the final integrated position.
+  // CollisionManager's job is ONLY to:
+  //   1. Detect collisions using positions updated by AIManager
+  //   2. Resolve collisions (push bodies apart via resolveSOA())
+  // This eliminates 28k+ unnecessary iterations per frame and fixes double-integration bug.
 
   // Track culling metrics
   auto cullingStart = clock::now();
