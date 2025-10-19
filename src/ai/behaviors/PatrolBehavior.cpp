@@ -553,16 +553,18 @@ void PatrolBehavior::ensureRandomSeed() const {}
 void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   m_patrolMode = mode;
 
-  // Use world bounds instead of screen dimensions for true world-scale
-  // patrolling
+  // Use world bounds instead of screen dimensions for true world-scale patrolling
   float minX, minY, maxX, maxY;
-  bool hasWorldBounds =
-      WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY);
+  if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    // No world loaded - can't initialize patrol
+    return;
+  }
+
   constexpr float TILE = HammerEngine::TILE_SIZE;
-  float worldWidth = hasWorldBounds ? (maxX - minX) * TILE : HammerEngine::DEFAULT_WORLD_WIDTH;
-  float worldHeight = hasWorldBounds ? (maxY - minY) * TILE : HammerEngine::DEFAULT_WORLD_HEIGHT;
-  float worldMinX = hasWorldBounds ? minX * TILE : 0.0f;
-  float worldMinY = hasWorldBounds ? minY * TILE : 0.0f;
+  float worldWidth = (maxX - minX) * TILE;
+  float worldHeight = (maxY - minY) * TILE;
+  float worldMinX = minX * TILE;
+  float worldMinY = minY * TILE;
 
   switch (mode) {
   case PatrolMode::FIXED_WAYPOINTS:

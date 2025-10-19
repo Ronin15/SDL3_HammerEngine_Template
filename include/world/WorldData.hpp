@@ -21,11 +21,6 @@ struct WorldGenerationConfig {
 // World rendering and spatial constants
 constexpr float TILE_SIZE = 32.0f;  // Tile size in pixels
 
-// Default fallback world dimensions (100x100 tiles = 3200x3200 pixels)
-// Used by systems when WorldManager has no active world loaded
-constexpr float DEFAULT_WORLD_WIDTH = 32000.0f;   // 1000 tiles * 32px
-constexpr float DEFAULT_WORLD_HEIGHT = 32000.0f;  // 1000 tiles * 32px
-
 enum class Biome {
     DESERT,
     FOREST,
