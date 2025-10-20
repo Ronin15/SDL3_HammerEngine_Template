@@ -25,6 +25,7 @@ enum CollisionLayer : uint32_t {
     Layer_Environment = 1u << 3,
     Layer_Projectile  = 1u << 4,
     Layer_Trigger     = 1u << 5,
+    Layer_Pet         = 1u << 6,
 };
 
 } // namespace HammerEngine

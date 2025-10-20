@@ -78,16 +78,18 @@ public:
   // Helper method to set up loot drops during initialization
   void setLootDropRate(HammerEngine::ResourceHandle itemHandle, float dropRate);
 
+protected:
+  int m_frameWidth{0};                // Width of a single animation frame
+
 private:
   void loadDimensionsFromTexture();
-  void ensurePhysicsBodyRegistered();
+  virtual void ensurePhysicsBodyRegistered();
   void setupInventory();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
 
   std::unique_ptr<InventoryComponent>
       m_inventory;                    // NPC inventory for trading/loot
-  int m_frameWidth{0};                // Width of a single animation frame
   int m_frameHeight{0};               // Height of a single animation frame
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change

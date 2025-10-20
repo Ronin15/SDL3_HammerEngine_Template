@@ -473,9 +473,10 @@ void NPC::ensurePhysicsBodyRegistered() {
             std::to_string(m_position.getY()) + ")" + ", Size: " +
             std::to_string(halfW * 2) + "x" + std::to_string(halfH * 2));
 
-  // All NPCs use Layer_Enemy and collide with everything except other NPCs
+  // All NPCs use Layer_Enemy and collide with everything except other NPCs and Pets
   uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
-  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
+  uint32_t mask = 0xFFFFFFFFu & ~(HammerEngine::CollisionLayer::Layer_Enemy |
+                                   HammerEngine::CollisionLayer::Layer_Pet);
 
   // Use new SOA-based collision system (deferred command queue)
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
