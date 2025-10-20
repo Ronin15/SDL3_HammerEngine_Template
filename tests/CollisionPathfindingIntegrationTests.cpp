@@ -156,8 +156,7 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
     CollisionManager::Instance().addCollisionBodySOA(dynamicObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
     CollisionManager::Instance().processPendingCommands();
 
-    // Update pathfinding grid with new obstacle
-    PathfinderManager::Instance().updateDynamicObstacles();
+    // Event-driven: PathfinderManager automatically updates via CollisionObstacleChanged events
 
     // Get new path
     std::vector<Vector2D> newPath;
@@ -357,8 +356,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionLayerPathfindingInteraction, CollisionPathf
         CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
     );
 
-    // Update pathfinding to incorporate layer information
-    PathfinderManager::Instance().updateDynamicObstacles();
+    // Event-driven: PathfinderManager automatically updates via CollisionObstacleChanged events
 
     // Test pathfinding around the layered obstacles
     Vector2D start(200.0f, 200.0f);

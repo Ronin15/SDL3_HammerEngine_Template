@@ -51,18 +51,19 @@ The system uses a dual-resolution approach for optimal performance:
 **Fine Grid (Primary)**
 - **Cell Size**: Configurable (typically 64 units)
 - **Usage**: Detailed local navigation, precise movement
-- **Performance**: Best for distances < 512 units
+- **Performance**: Best for distances < 256 units
 
 **Coarse Grid (Secondary)**
 - **Cell Size**: 4x larger than fine grid (typically 256 units)
 - **Usage**: Long-distance navigation, macro pathfinding
 - **Performance**: 10x speedup for long paths
+- **Optimization**: Used for early unreachability detection in large worlds
 
 #### Automatic Selection
 ```cpp
 bool shouldUseHierarchicalPathfinding(const Vector2D& start, const Vector2D& goal) const {
     float distance = (goal - start).magnitude();
-    return distance > HIERARCHICAL_DISTANCE_THRESHOLD; // 512.0f units
+    return distance > HIERARCHICAL_DISTANCE_THRESHOLD; // 256.0f units (optimized for large worlds)
 }
 ```
 

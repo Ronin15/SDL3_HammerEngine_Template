@@ -8,6 +8,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp" // Must include for HandlerToken definition
 #include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/WorldEvent.hpp"
 #include <string_view>
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -98,14 +99,9 @@ void PathfinderManager::update() {
         return;
     }
 
-    // Check for grid updates and report statistics - reduced frequency to eliminate per-frame overhead
-    
-    // Grid updates every 5 seconds (300 frames at 60 FPS)
-    if (++m_gridUpdateCounter >= 300) {
-        m_gridUpdateCounter = 0;
-        checkForGridUpdates(GRID_UPDATE_INTERVAL); // Pass fixed interval since we control timing
-    }
-    
+    // Event-driven architecture: Grid updates happen via World events (no polling needed)
+    // Only report statistics periodically for monitoring
+
     // Statistics every 10 seconds (600 frames at 60 FPS)
     if (++m_statsFrameCounter >= 600) {
         m_statsFrameCounter = 0;
@@ -141,7 +137,7 @@ void PathfinderManager::clean() {
 
 void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("Preparing PathfinderManager for state transition...");
-    
+
     if (!m_initialized.load() || m_isShutdown) {
         PATHFIND_WARN("PathfinderManager not initialized or already shutdown during state transition");
         return;
@@ -177,14 +173,11 @@ void PathfinderManager::prepareForStateTransition() {
     m_processedCount.store(0);
     m_lastRequestsPerSecond = 0.0;
     m_lastTotalRequests = 0;
-    
-    // Reset frame counters
-    m_gridUpdateCounter = 0;
+
+    // Reset statistics frame counter
     m_statsFrameCounter = 0;
-    
-    // Reset grid update tracking
-    m_timeSinceLastRebuild = 0.0f;
-    m_lastWorldVersion = 0;
+
+    // Reset collision version tracking
     m_lastCollisionVersion.store(0);
     
     // Keep grid instance but invalidate any cached data within it
@@ -458,13 +451,16 @@ void PathfinderManager::rebuildGrid() {
                 // Atomically swap the grid (thread-safe)
                 std::atomic_store(&m_grid, newGrid);
 
-                // Clear cache since grid changed (mutex-protected)
-                {
+                // Smart cache invalidation: Clear only 50% oldest entries (mutex-protected)
+                // SAFETY: Check if manager still initialized before touching cache
+                // This prevents race with state transition or shutdown
+                if (m_initialized.load(std::memory_order_acquire)) {
                     std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-                    m_pathCache.clear();
+                    clearOldestCacheEntries(0.5f); // Remove 50% oldest paths
+                    PATHFIND_INFO("Grid rebuilt successfully (async, partial cache clear)");
+                } else {
+                    PATHFIND_DEBUG("Grid rebuilt but manager shutting down, skipped cache clear");
                 }
-
-                PATHFIND_INFO("Grid rebuilt successfully (async)");
             } catch (const std::exception& e) {
                 PATHFIND_ERROR("Async grid rebuild failed: " + std::string(e.what()));
             }
@@ -474,12 +470,6 @@ void PathfinderManager::rebuildGrid() {
     );
 
     PATHFIND_DEBUG("Grid rebuild submitted to background thread");
-}
-
-void PathfinderManager::updateDynamicObstacles() {
-    // This method is called by GameEngine for periodic grid updates
-    // We just check if a rebuild is needed and schedule it
-    checkForGridUpdates(GRID_UPDATE_INTERVAL);
 }
 
 void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float radius, float weight) {
@@ -554,13 +544,20 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     if (timeDiff.count() > 1000) { // Update RPS every second
         double secondsSinceLastUpdate = timeDiff.count() / 1000.0;
         uint64_t currentTotalRequests = m_enqueuedRequests.load(std::memory_order_relaxed);
-        
+
         if (m_lastStatsUpdate != std::chrono::steady_clock::time_point{}) {
             // Calculate RPS based on request DELTA since last update (not total)
-            uint64_t deltaRequests = currentTotalRequests - m_lastTotalRequests;
-            m_lastRequestsPerSecond = deltaRequests / secondsSinceLastUpdate;
+            // Handle counter resets: if currentTotal < lastTotal, counters were reset
+            int64_t deltaRequests = 0;
+            if (currentTotalRequests >= m_lastTotalRequests) {
+                deltaRequests = static_cast<int64_t>(currentTotalRequests - m_lastTotalRequests);
+            } else {
+                // Counter was reset, use current value as delta
+                deltaRequests = static_cast<int64_t>(currentTotalRequests);
+            }
+            m_lastRequestsPerSecond = (deltaRequests > 0) ? (deltaRequests / secondsSinceLastUpdate) : 0.0;
         }
-        
+
         m_lastTotalRequests = currentTotalRequests;
         m_lastStatsUpdate = now;
     }
@@ -787,11 +784,11 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
         goal = grid->snapToNearestOpenWorld(goal, r);
     }
 
-    // Quantize to improve cache hits - use 256-pixel quantization
-    start = Vector2D(std::round(start.getX() / 256.0f) * 256.0f,
-                     std::round(start.getY() / 256.0f) * 256.0f);
-    goal = Vector2D(std::round(goal.getX() / 256.0f) * 256.0f,
-                    std::round(goal.getY() / 256.0f) * 256.0f);
+    // Quantize to improve cache hits - use 128-pixel quantization (finer granularity for large worlds)
+    start = Vector2D(std::round(start.getX() / 128.0f) * 128.0f,
+                     std::round(start.getY() / 128.0f) * 128.0f);
+    goal = Vector2D(std::round(goal.getX() / 128.0f) * 128.0f,
+                    std::round(goal.getY() / 128.0f) * 128.0f);
 }
 
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
@@ -932,29 +929,6 @@ bool PathfinderManager::ensureGridInitialized() {
     }
 }
 
-void PathfinderManager::checkForGridUpdates(float deltaTime) {
-    m_timeSinceLastRebuild += deltaTime;
-    
-    // Only check for updates every GRID_UPDATE_INTERVAL seconds  
-    if (m_timeSinceLastRebuild < GRID_UPDATE_INTERVAL) {
-        return;
-    }
-    
-    // Check if world has changed by getting version from WorldManager
-    const auto& worldManager = WorldManager::Instance();
-    uint64_t currentWorldVersion = worldManager.getWorldVersion();
-    
-    // Rebuild when version changed or every 30 seconds as a fallback
-    bool worldChanged = (currentWorldVersion != m_lastWorldVersion);
-    bool shouldRebuild = worldChanged || (m_timeSinceLastRebuild >= 30.0f);
-    
-    if (shouldRebuild) {
-        rebuildGrid();
-        m_lastWorldVersion = currentWorldVersion;
-        m_timeSinceLastRebuild = 0.0f;
-    }
-}
-
 uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
     // Coarser quantization: 256-pixel grid for better cache hit rates
     // Trade some spatial precision for much higher cache reuse
@@ -973,12 +947,51 @@ uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2
 
 void PathfinderManager::evictOldestCacheEntry() {
     if (m_pathCache.empty()) return;
-    
+
     auto oldest = std::min_element(m_pathCache.begin(), m_pathCache.end(),
                                    [](const auto& a, const auto& b) {
                                        return a.second.lastUsed < b.second.lastUsed;
                                    });
     m_pathCache.erase(oldest);
+}
+
+void PathfinderManager::clearOldestCacheEntries(float percentage) {
+    if (m_pathCache.empty() || percentage <= 0.0f) return;
+
+    // Clamp percentage to [0, 1]
+    percentage = std::min(1.0f, std::max(0.0f, percentage));
+
+    size_t numToRemove = static_cast<size_t>(m_pathCache.size() * percentage);
+    if (numToRemove == 0) return;
+
+    // Build vector of entries sorted by lastUsed (oldest first)
+    std::vector<std::pair<uint64_t, std::chrono::steady_clock::time_point>> entries;
+    entries.reserve(m_pathCache.size());
+
+    for (const auto& [key, entry] : m_pathCache) {
+        entries.emplace_back(key, entry.lastUsed);
+    }
+
+    // Partial sort to find the oldest N entries (faster than full sort)
+    std::partial_sort(entries.begin(), entries.begin() + numToRemove, entries.end(),
+                     [](const auto& a, const auto& b) {
+                         return a.second < b.second; // Oldest first
+                     });
+
+    // Remove the oldest entries
+    for (size_t i = 0; i < numToRemove; ++i) {
+        m_pathCache.erase(entries[i].first);
+    }
+
+    PATHFIND_DEBUG("Cleared " + std::to_string(numToRemove) + " oldest cache entries (" +
+                   std::to_string(static_cast<int>(percentage * 100)) + "%)");
+}
+
+void PathfinderManager::clearAllCache() {
+    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    size_t clearedCount = m_pathCache.size();
+    m_pathCache.clear();
+    PATHFIND_INFO("Cleared all cache entries: " + std::to_string(clearedCount) + " paths removed");
 }
 
 void PathfinderManager::subscribeToEvents() {
@@ -1005,7 +1018,36 @@ void PathfinderManager::subscribeToEvents() {
         
         m_eventHandlerTokens.push_back(token);
         PATHFIND_DEBUG("PathfinderManager subscribed to CollisionObstacleChanged events");
-        
+
+        // Subscribe to world events (WorldLoaded, WorldUnloaded, TileChanged)
+        auto worldToken = eventMgr.registerHandlerWithToken(EventTypeId::World,
+            [this](const EventData& data) {
+                auto baseEvent = data.event;
+                if (!baseEvent) return;
+
+                // Handle WorldLoadedEvent
+                if (auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(baseEvent)) {
+                    onWorldLoaded(loadedEvent->getWidth(), loadedEvent->getHeight());
+                    return;
+                }
+
+                // Handle WorldUnloadedEvent
+                if (auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(baseEvent)) {
+                    (void)unloadedEvent; // Acknowledge event
+                    onWorldUnloaded();
+                    return;
+                }
+
+                // Handle TileChangedEvent
+                if (auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(baseEvent)) {
+                    onTileChanged(tileEvent->getX(), tileEvent->getY());
+                    return;
+                }
+            });
+
+        m_eventHandlerTokens.push_back(worldToken);
+        PATHFIND_DEBUG("PathfinderManager subscribed to World events (WorldLoaded, WorldUnloaded, TileChanged)");
+
     } catch (const std::exception& e) {
         PATHFIND_ERROR("Failed to subscribe to events: " + std::string(e.what()));
     }
@@ -1065,4 +1107,70 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
     }
 }
 
-// End of file - optimized single-tier cache implementation with collision integration
+void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
+    PATHFIND_INFO("World loaded (" + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) +
+                  ") - rebuilding pathfinding grid and clearing cache");
+
+    // Clear all cached paths - old world paths are completely invalid
+    clearAllCache();
+
+    // Rebuild pathfinding grid from new world data
+    rebuildGrid();
+
+    PATHFIND_INFO("Pathfinding grid rebuilt for new world");
+}
+
+void PathfinderManager::onWorldUnloaded() {
+    PATHFIND_INFO("World unloaded - clearing all pathfinding cache and pending requests");
+
+    // Clear all cached paths
+    clearAllCache();
+
+    // Clear pending callbacks since entities may no longer exist
+    {
+        std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+        m_pending.clear();
+    }
+
+    PATHFIND_INFO("Pathfinding cache and pending requests cleared");
+}
+
+void PathfinderManager::onTileChanged(int x, int y) {
+    // Convert tile coordinates to world position (assuming 64px tiles)
+    constexpr float TILE_SIZE = 64.0f;
+    Vector2D tileWorldPos(x * TILE_SIZE + TILE_SIZE * 0.5f, y * TILE_SIZE + TILE_SIZE * 0.5f);
+
+    // Invalidate paths that pass through or near the changed tile
+    // Use slightly larger radius than tile size to catch paths that pass nearby
+    constexpr float INVALIDATION_RADIUS = TILE_SIZE * 1.5f;
+
+    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    size_t removedCount = 0;
+
+    for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ) {
+        bool pathIntersectsTile = false;
+
+        // Check if any point in the cached path is within the tile's influence radius
+        for (const auto& pathPoint : it->second.path) {
+            float distance2 = (pathPoint - tileWorldPos).dot(pathPoint - tileWorldPos);
+            if (distance2 <= (INVALIDATION_RADIUS * INVALIDATION_RADIUS)) {
+                pathIntersectsTile = true;
+                break;
+            }
+        }
+
+        if (pathIntersectsTile) {
+            it = m_pathCache.erase(it);
+            removedCount++;
+        } else {
+            ++it;
+        }
+    }
+
+    if (removedCount > 0) {
+        PATHFIND_DEBUG("Tile changed at (" + std::to_string(x) + ", " + std::to_string(y) +
+                      "), invalidated " + std::to_string(removedCount) + " cached paths");
+    }
+}
+
+// End of file - event-driven pathfinding with collision and world integration

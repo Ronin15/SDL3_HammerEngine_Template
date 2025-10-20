@@ -163,11 +163,6 @@ public:
     void rebuildGrid();
 
     /**
-     * @brief Update dynamic obstacles from CollisionManager
-     */
-    void updateDynamicObstacles();
-
-    /**
      * @brief Add a temporary weight field (for avoidance)
      * @param center Center of the weight field in world coordinates
      * @param radius Radius of the weight field
@@ -353,19 +348,15 @@ private:
     
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
     mutable std::mutex m_cacheMutex;
-    
-    static constexpr size_t MAX_CACHE_ENTRIES = 1024; // Increased capacity for better hit rates
+
+    static constexpr size_t MAX_CACHE_ENTRIES = 8192; // Large-world optimized (32K world, 2000+ entities, ~30MB memory)
 
     
 
-    // Grid update tracking
-    uint64_t m_lastWorldVersion{0};
+    // Collision version tracking for cache invalidation
     std::atomic<uint64_t> m_lastCollisionVersion{0};
-    float m_timeSinceLastRebuild{0.0f};
-    static constexpr float GRID_UPDATE_INTERVAL = 5.0f;  // seconds
-    
-    // Frame counters for reduced frequency operations (no static vars)
-    int m_gridUpdateCounter{0};
+
+    // Statistics reporting frame counter
     int m_statsFrameCounter{0};
     
     // Event subscription tracking
@@ -374,12 +365,18 @@ private:
     // Internal methods - simplified
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
-    void checkForGridUpdates(float deltaTime);
     uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
     void evictOldestCacheEntry();
+    void clearOldestCacheEntries(float percentage); // Smart cache clearing (partial LRU eviction)
+    void clearAllCache(); // Complete cache clear for world load/unload
     void subscribeToEvents(); // Subscribe to collision and world events
     void unsubscribeFromEvents(); // Unsubscribe from events
+
+    // Event handlers
     void onCollisionObstacleChanged(const Vector2D& position, float radius, const std::string& description);
+    void onWorldLoaded(int worldWidth, int worldHeight);
+    void onWorldUnloaded();
+    void onTileChanged(int x, int y);
 };
 
 #endif // PATHFINDER_MANAGER_HPP

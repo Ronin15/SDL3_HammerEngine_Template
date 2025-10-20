@@ -263,8 +263,11 @@ void handlePlayerMovement(const Vector2D& clickPosition) {
 ### Performance Metrics
 - **Target Performance**: 10,000+ entities at 60+ FPS
 - **Request Throughput**: 1,000+ pathfinding requests per second
-- **Cache Hit Rate**: 70-90% typical hit rate in production scenarios
-- **Memory Usage**: ~50KB per 100x100 grid, ~500KB for path cache
+- **Cache Hit Rate**: 60-90% (8192 entry cache with smart invalidation)
+  - Large worlds (32K pixels, 2000+ entities): 60-75%
+  - Medium worlds (12K pixels, 500-2000 entities): 75-85%
+  - Small worlds (3K pixels, <500 entities): 85-90%
+- **Memory Usage**: ~50KB per 100x100 grid, ~30MB for path cache (8192 entries, optimized for 32K worlds)
 
 ### Optimization Guidelines
 

@@ -157,10 +157,13 @@ void AIManager::prepareForStateTransition() {
   waitForAsyncBatchCompletion();
 
   // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
-  // Brief sleep allows ThreadSystem to process remaining tasks
+  // CRITICAL: Sleep long enough for ALL ThreadSystem tasks to complete
+  // With 2000 entities and async behaviors, 10ms was insufficient → use-after-free!
+  // 100ms ensures all behavior execution completes before cleaning up states
+  AI_DEBUG("Waiting for all AI thread tasks to complete...");
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
   if (m_assignmentInProgress.load(std::memory_order_acquire)) {
-    AI_DEBUG("Waiting for async assignments to drain...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
     m_assignmentInProgress.store(false, std::memory_order_release);
   }
 
