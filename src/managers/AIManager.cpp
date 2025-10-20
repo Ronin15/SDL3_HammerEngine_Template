@@ -271,7 +271,7 @@ void AIManager::prepareForStateTransition() {
   AI_INFO("AIManager state transition complete - all state cleared and reset");
 }
 
-void AIManager::update([[maybe_unused]] float deltaTime) {
+void AIManager::update(float deltaTime) {
   if (!m_initialized.load(std::memory_order_acquire) ||
       m_globallyPaused.load(std::memory_order_acquire)) {
     return;
@@ -1480,7 +1480,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        behavior->executeLogic(entity);
+        behavior->executeLogic(entity, deltaTime);
 
         // Entity updates integrate their own movement AND handle animations
         entity->update(deltaTime);

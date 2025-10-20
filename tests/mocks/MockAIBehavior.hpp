@@ -13,7 +13,7 @@ public:
     MockAIBehavior() = default;
     ~MockAIBehavior() override = default;
 
-    void executeLogic(EntityPtr entity) override;
+    void executeLogic(EntityPtr entity, float deltaTime) override;
     void init(EntityPtr entity) override;
     void clean(EntityPtr entity) override;
     std::string getName() const override;

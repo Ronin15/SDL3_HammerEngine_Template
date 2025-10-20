@@ -36,7 +36,7 @@ public:
   virtual ~AIBehavior();
 
   // Core behavior methods - pure logic only
-  virtual void executeLogic(EntityPtr entity) = 0;
+  virtual void executeLogic(EntityPtr entity, float deltaTime) = 0;
   virtual void init(EntityPtr entity) = 0;
   virtual void clean(EntityPtr entity) = 0;
 
@@ -87,20 +87,24 @@ protected:
                                        const Vector2D &currentVelocity,
                                        float speed, float queryRadius,
                                        float strength, int maxNeighbors,
-                                       Uint64 &lastSepTick,
-                                       Vector2D &lastSepForce) const {
-    Uint64 now = SDL_GetTicks();
-    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10;
-    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+                                       float &separationTimer,
+                                       Vector2D &lastSepForce,
+                                       float deltaTime) const {
+    // Increment timer
+    separationTimer += deltaTime;
+
+    // Stagger separation intervals per-entity (2.0s base + 0-2.0s stagger)
+    float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
+    float effectiveInterval = 2.0f + entityStaggerOffset;
 
     // Only recalculate separation periodically
-    if (now - lastSepTick >= effectiveInterval) {
+    if (separationTimer >= effectiveInterval) {
       Vector2D sepVelocity = AIInternal::ApplySeparation(
           entity, position, currentVelocity, speed, queryRadius, strength,
           static_cast<size_t>(maxNeighbors));
       // Store the separation FORCE (difference from intended velocity)
       lastSepForce = sepVelocity - currentVelocity;
-      lastSepTick = now;
+      separationTimer = 0.0f;
     }
 
     // Only apply separation when actually moving (prevents oscillation when settling)

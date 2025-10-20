@@ -30,7 +30,7 @@ public:
                           bool includeOffscreenPoints = false);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;

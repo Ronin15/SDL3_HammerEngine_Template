@@ -54,7 +54,7 @@ void FleeBehavior::init(EntityPtr entity) {
     state.lastThreatPosition = entity->getPosition();
 }
 
-void FleeBehavior::executeLogic(EntityPtr entity) {
+void FleeBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
     if (!entity || !isActive()) return;
 
     auto it = m_entityStates.find(entity);

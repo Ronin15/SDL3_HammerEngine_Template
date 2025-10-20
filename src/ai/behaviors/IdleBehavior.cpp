@@ -47,7 +47,7 @@ void IdleBehavior::init(EntityPtr entity) {
   initializeEntityState(entity, state);
 }
 
-void IdleBehavior::executeLogic(EntityPtr entity) {
+void IdleBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
   if (!entity || !isActive())
     return;
 

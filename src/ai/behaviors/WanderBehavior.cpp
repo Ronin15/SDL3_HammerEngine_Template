@@ -70,7 +70,7 @@ void WanderBehavior::init(EntityPtr entity) {
   chooseNewDirection(entity);
 }
 
-void WanderBehavior::executeLogic(EntityPtr entity) {
+void WanderBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
   if (!entity || !m_active)
     return;
 

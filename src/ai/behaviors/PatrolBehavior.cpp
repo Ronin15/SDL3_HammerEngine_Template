@@ -66,7 +66,7 @@ void PatrolBehavior::init(EntityPtr entity) {
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
-void PatrolBehavior::executeLogic(EntityPtr entity) {
+void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
   if (!entity || !m_active || m_waypoints.empty()) {
     return;
   }

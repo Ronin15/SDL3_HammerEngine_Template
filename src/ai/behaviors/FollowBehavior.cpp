@@ -80,7 +80,7 @@ void FollowBehavior::init(EntityPtr entity) {
   }
 }
 
-void FollowBehavior::executeLogic(EntityPtr entity) {
+void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !isActive())
     return;
 
@@ -125,7 +125,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       // Close enough - stop to prevent path spam
       entity->setVelocity(Vector2D(0, 0));
       entity->setAcceleration(Vector2D(0, 0));
-      state.lastProgressTime = SDL_GetTicks();
+      state.progressTimer = 0.0f; // Reset progress timer
       return;
     }
     // Else: too far, keep following to catch up even though player stopped
@@ -135,23 +135,30 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   state.isFollowing = true;
 
   if (state.isFollowing) {
+    // Increment timers (deltaTime in seconds, timers in seconds)
+    state.pathUpdateTimer += deltaTime;
+    state.progressTimer += deltaTime;
+    if (state.backoffTimer > 0.0f) {
+      state.backoffTimer -= deltaTime; // Countdown timer
+    }
+
     // Path-following to desired position if available
     auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
       const float nodeRadius = 20.0f; // Increased for faster path following
-      const uint64_t pathTTL = 10000; // 10 seconds - reduce path churn when stationary
-      
+      const float pathTTL = 10.0f; // 10 seconds - reduce path churn when stationary
+
       // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
-      if (SDL_GetTicks() < state.backoffUntil) {
+      if (state.backoffTimer > 0.0f) {
         bool following = pathfinder().followPathStep(entity, currentPos,
                             state.pathPoints, state.currentPathIndex,
                             speed, nodeRadius);
-        if (following) { state.lastProgressTime = SDL_GetTicks(); }
+        if (following) { state.progressTimer = 0.0f; }
         return following;
       }
 
       // PERFORMANCE: Reduce path request frequency with higher thresholds
       const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate
-      bool stale = (SDL_GetTicks() - state.lastPathUpdate) > pathTTL;
+      bool stale = state.pathUpdateTimer > pathTTL;
       bool goalChanged = true;
       if (!state.pathPoints.empty()) {
         Vector2D lastGoal = state.pathPoints.back();
@@ -159,8 +166,8 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
         goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
       }
 
-      // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
-      bool stuckOnObstacle = isStuckOnObstacle(state.lastProgressTime, SDL_GetTicks());
+      // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
+      bool stuckOnObstacle = (state.progressTimer > 0.8f);
 
       if (stale || goalChanged || stuckOnObstacle) {
         auto& pf = this->pathfinder();
@@ -171,15 +178,15 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
             if (it != m_entityStates.end()) {
               it->second.pathPoints = path;
               it->second.currentPathIndex = 0;
-              it->second.lastPathUpdate = SDL_GetTicks();
+              it->second.pathUpdateTimer = 0.0f;
             }
           });
       }
-      
+
       bool pathStep = pathfinder().followPathStep(entity, currentPos,
                           state.pathPoints, state.currentPathIndex,
                           speed, nodeRadius);
-      if (pathStep) { state.lastProgressTime = SDL_GetTicks(); }
+      if (pathStep) { state.progressTimer = 0.0f; }
 
       // REMOVED: Separation was overwriting path-following velocity with stale cached data
       // Follow behavior uses followDistance (50px) to maintain spacing, so aggressive
@@ -190,31 +197,28 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
 
     // Stall detection: only check when not actively following a fresh path AND not intentionally stopped
     // Prevents false positives when NPCs naturally slow down near waypoints or are stopped at personal space
-    bool hasActivePath = !state.pathPoints.empty() &&
-                         (SDL_GetTicks() - state.lastPathUpdate) < 2000;
+    bool hasActivePath = !state.pathPoints.empty() && state.pathUpdateTimer < 2.0f;
 
     if (!hasActivePath && !state.isStopped) {
       float speedNow = entity->getVelocity().length();
       const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
-      const Uint64 stallMs = 600;
+      const float stallTime = 0.6f; // 600ms
       if (speedNow < stallSpeed) {
-        if (state.lastProgressTime == 0) state.lastProgressTime = SDL_GetTicks();
-        else if (SDL_GetTicks() - state.lastProgressTime > stallMs) {
+        if (state.progressTimer > stallTime) {
           // Enter a brief backoff to reduce clumping; stagger per-entity
-          Uint64 now = SDL_GetTicks();
-          state.backoffUntil = now + 250 + (entity->getID() % 400); // 250-650ms
+          state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f; // 250-650ms
           // Clear path and small micro-jitter to yield
-          state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0;
+          state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
           float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
           Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
           float c = std::cos(jitter), s = std::sin(jitter);
           Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
           // Use reduced speed for stall recovery to prevent shooting off at high speed
           rotated.normalize(); entity->setVelocity(rotated * (m_followSpeed * 0.5f));
-          state.lastProgressTime = now;
+          state.progressTimer = 0.0f;
         }
       } else {
-        state.lastProgressTime = SDL_GetTicks();
+        state.progressTimer = 0.0f;
       }
     }
 
@@ -231,7 +235,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
     if (distanceToDesired < ARRIVAL_RADIUS && !state.isStopped) {
       entity->setVelocity(Vector2D(0, 0));
       entity->setAcceleration(Vector2D(0, 0));
-      state.lastProgressTime = SDL_GetTicks();
+      state.progressTimer = 0.0f;
       state.isStopped = true;
       state.pathPoints.clear();
       state.currentPathIndex = 0;
@@ -245,7 +249,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       if (distanceToPlayer < m_resumeDistance) {
         entity->setVelocity(Vector2D(0, 0));
         entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
-        state.lastProgressTime = SDL_GetTicks();
+        state.progressTimer = 0.0f;
         return;
       }
       // Resuming - clear the stopped flag and any old path data
@@ -257,7 +261,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
       if (distanceToPlayer < m_stopDistance) {
         entity->setVelocity(Vector2D(0, 0));
         entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
-        state.lastProgressTime = SDL_GetTicks();
+        state.progressTimer = 0.0f;
         state.isStopped = true;
         // Clear path to prevent any residual path-following
         state.pathPoints.clear();
@@ -305,7 +309,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
     if (!usingPathfinding) {
       applyAdditiveDecimatedSeparation(entity, currentPos, entity->getVelocity(),
                                        dynamicSpeed, 25.0f, 0.08f, 8,
-                                       state.lastSepTick, state.lastSepForce);
+                                       state.separationTimer, state.lastSepForce, deltaTime);
     }
   }
 }
