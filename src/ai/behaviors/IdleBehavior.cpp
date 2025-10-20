@@ -47,7 +47,7 @@ void IdleBehavior::init(EntityPtr entity) {
   initializeEntityState(entity, state);
 }
 
-void IdleBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
+void IdleBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !isActive())
     return;
 
@@ -71,13 +71,13 @@ void IdleBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTi
     updateStationary(entity, state);
     break;
   case IdleMode::SUBTLE_SWAY:
-    updateSubtleSway(entity, state);
+    updateSubtleSway(entity, state, deltaTime);
     break;
   case IdleMode::OCCASIONAL_TURN:
-    updateOccasionalTurn(entity, state);
+    updateOccasionalTurn(entity, state, deltaTime);
     break;
   case IdleMode::LIGHT_FIDGET:
-    updateLightFidget(entity, state);
+    updateLightFidget(entity, state, deltaTime);
     break;
   }
 }
@@ -177,7 +177,7 @@ void IdleBehavior::updateStationary(EntityPtr entity,
   entity->setVelocity(Vector2D(0, 0));
 }
 
-void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) const {
+void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const {
   Uint64 currentTime = SDL_GetTicks();
 
   if (m_movementFrequency > 0.0f && currentTime >= state.nextMovementTime) {
@@ -191,11 +191,11 @@ void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) const 
   // Keep velocity applied for smooth animation - don't reset to zero
   // Apply very light separation (decimated) so idlers don't stack perfectly
   applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
-                           35.0f, 30.0f, 0.15f, 4, state.lastSepTick,
-                           state.lastSepVelocity);
+                           35.0f, 30.0f, 0.15f, 4, state.separationTimer,
+                           state.lastSepVelocity, deltaTime);
 }
 
-void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) const {
+void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const {
   Uint64 currentTime = SDL_GetTicks();
 
   if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {
@@ -212,7 +212,7 @@ void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) co
   entity->setVelocity(Vector2D(0, 0));
 }
 
-void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) const {
+void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const {
   Uint64 currentTime = SDL_GetTicks();
 
   // Handle movement fidgeting
@@ -226,8 +226,8 @@ void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) const
   }
   // Keep velocity applied for smooth animation and apply very light separation (decimated)
   applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
-                           40.0f, 30.0f, 0.15f, 4, state.lastSepTick,
-                           state.lastSepVelocity);
+                           40.0f, 30.0f, 0.15f, 4, state.separationTimer,
+                           state.lastSepVelocity, deltaTime);
 
   // Handle turning
   if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {

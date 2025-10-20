@@ -128,27 +128,29 @@ protected:
     }
   }
 
-  // Apply separation at most every kSeparationIntervalMs, with entity-based staggering
+  // Apply separation at most every 2-4 seconds, with entity-based staggering
   inline void applyDecimatedSeparation(EntityPtr entity,
                                        const Vector2D &position,
                                        const Vector2D &intendedVelocity,
                                        float speed, float queryRadius,
                                        float strength, int maxNeighbors,
-                                       Uint64 &lastSepTick,
-                                       Vector2D &lastSepVelocity) const {
-    Uint64 now = SDL_GetTicks();
+                                       float &separationTimer,
+                                       Vector2D &lastSepVelocity,
+                                       float deltaTime) const {
+    // Increment timer
+    separationTimer += deltaTime;
 
     // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
     // from doing expensive separation calculations on the same frame
-    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10; // Stagger by up to 2 seconds
-    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+    float entityStaggerOffset = (entity->getID() % 200) * 0.01f; // Stagger by up to 2 seconds
+    float effectiveInterval = 2.0f + entityStaggerOffset;
 
-    if (now - lastSepTick >= effectiveInterval) {
+    if (separationTimer >= effectiveInterval) {
       // Only do the expensive separation calculation when absolutely necessary
       lastSepVelocity = AIInternal::ApplySeparation(
           entity, position, intendedVelocity, speed, queryRadius, strength,
           static_cast<size_t>(maxNeighbors));
-      lastSepTick = now;
+      separationTimer = 0.0f;
     }
     entity->setVelocity(lastSepVelocity);
   }
@@ -160,22 +162,23 @@ protected:
                                        const Vector2D &intendedVelocity,
                                        float speed, float queryRadius,
                                        float strength, int maxNeighbors,
-                                       Uint64 &lastSepTick,
+                                       float &separationTimer,
                                        Vector2D &lastSepVelocity,
+                                       float deltaTime,
                                        const std::vector<Vector2D> &preFetchedNeighbors) const {
-    Uint64 now = SDL_GetTicks();
+    separationTimer += deltaTime;
 
     // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
     // from doing expensive separation calculations on the same frame
-    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10; // Stagger by up to 2 seconds
-    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+    float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
+    float effectiveInterval = 2.0f + entityStaggerOffset;
 
-    if (now - lastSepTick >= effectiveInterval) {
+    if (separationTimer >= effectiveInterval) {
       // Calculate separation using pre-fetched data (no collision query!)
       lastSepVelocity = AIInternal::ApplySeparation(
           entity, position, intendedVelocity, speed, queryRadius, strength,
           static_cast<size_t>(maxNeighbors), preFetchedNeighbors);
-      lastSepTick = now;
+      separationTimer = 0.0f;
     }
     entity->setVelocity(lastSepVelocity);
   }

@@ -66,7 +66,7 @@ void PatrolBehavior::init(EntityPtr entity) {
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
-void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
+void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !m_active || m_waypoints.empty()) {
     return;
   }
@@ -77,7 +77,16 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
   }
 
   Vector2D position = entity->getPosition();
-  Uint64 now = SDL_GetTicks();
+
+  // Increment timers (deltaTime in seconds)
+  m_pathUpdateTimer += deltaTime;
+  m_progressTimer += deltaTime;
+  if (m_backoffTimer > 0.0f) {
+    m_backoffTimer -= deltaTime; // Countdown
+  }
+  if (m_waypointCooldown > 0.0f) {
+    m_waypointCooldown -= deltaTime; // Countdown
+  }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
@@ -85,9 +94,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
-    // Enforce minimum time between waypoint transitions to prevent oscillation
-    if (now - m_lastWaypointTime >= 750) { // Increased from 500ms to 750ms
-      m_lastWaypointTime = now;
+    // Enforce minimum time between waypoint transitions to prevent oscillation (750ms)
+    if (m_waypointCooldown <= 0.0f) {
+      m_waypointCooldown = 0.75f; // 750ms cooldown
 
       // Advance to next waypoint
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
@@ -104,15 +113,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
       // Clear path state when changing waypoints to force new pathfinding
       m_navPath.clear();
       m_navIndex = 0;
-      m_lastPathUpdate = 0;
-      m_stallStart = 0; // Reset stall detection
+      m_pathUpdateTimer = 0.0f;
+      m_stallTimer = 0.0f; // Reset stall detection
     }
     // If still in cooldown, continue toward current waypoint without advancing
   }
 
   // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
   bool needsNewPath = false;
-  
+
   // Only request new path if:
   // 1. No current path exists, OR
   // 2. Path is completed, OR
@@ -120,24 +129,24 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
   // 4. We changed waypoints
   if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
     needsNewPath = true;
-  } else if (now - m_lastPathUpdate > 5000) { // Path older than 5 seconds
-    needsNewPath = true;  
+  } else if (m_pathUpdateTimer > 5.0f) { // Path older than 5 seconds
+    needsNewPath = true;
   } else {
     // Check if we're targeting a different waypoint than when path was computed
     Vector2D pathGoal = m_navPath.back();
     float waypointChange = (targetWaypoint - pathGoal).length();
     needsNewPath = (waypointChange > 50.0f); // Waypoint changed significantly
   }
-  
-  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
-  bool stuckOnObstacle = isStuckOnObstacle(m_lastProgressTime, now);
+
+  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
+  bool stuckOnObstacle = (m_progressTimer > 0.8f);
   if (stuckOnObstacle) {
     m_navPath.clear(); // Clear path to force refresh
     m_navIndex = 0;
   }
 
-  // Per-instance cooldown via m_backoffUntil; no global static throttle
-  if ((needsNewPath || stuckOnObstacle) && now >= m_backoffUntil) {
+  // Per-instance cooldown via m_backoffTimer; no global static throttle
+  if ((needsNewPath || stuckOnObstacle) && m_backoffTimer <= 0.0f) {
     // GOAL VALIDATION: Don't request path if already at waypoint
     float distanceToWaypoint = (targetWaypoint - position).length();
     if (distanceToWaypoint < m_waypointRadius) { // Already at waypoint
@@ -155,11 +164,11 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
           if (!path.empty()) {
             m_navPath = path;
             m_navIndex = 0;
-            m_lastPathUpdate = SDL_GetTicks();
+            m_pathUpdateTimer = 0.0f;
           }
         });
-    // Staggered per-instance backoff to prevent bursty re-requests (more conservative)
-    m_backoffUntil = now + 1200 + (entity->getID() % 600);
+    // Staggered per-instance backoff to prevent bursty re-requests (1.2-1.8 seconds)
+    m_backoffTimer = 1.2f + (entity->getID() % 600) * 0.001f;
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
@@ -170,11 +179,11 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
         pathfinder().followPathStep(entity, position, m_navPath, m_navIndex,
                                  m_moveSpeed, m_navRadius);
     if (following) {
-      m_lastProgressTime = now;
-      // Separation decimation: compute at most every 2 ticks
+      m_progressTimer = 0.0f;
+      // Separation decimation: compute at most every 2-4 seconds
       applyDecimatedSeparation(entity, position, entity->getVelocity(),
-                               m_moveSpeed, 24.0f, 0.20f, 4, m_lastSepTick,
-                               m_lastSepVelocity);
+                               m_moveSpeed, 24.0f, 0.20f, 4, m_separationTimer,
+                               m_lastSepVelocity, deltaTime);
     }
   } else {
     // Direct movement to waypoint
@@ -186,7 +195,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
       direction.normalize();
     }
     entity->setVelocity(direction * m_moveSpeed);
-    m_lastProgressTime = now;
+    m_progressTimer = 0.0f;
   }
 
   // State: STALL_DETECTION - Handle entities that get stuck
@@ -194,9 +203,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
   const float stallThreshold = std::max(1.0f, m_moveSpeed * 0.3f);
 
   if (currentSpeed < stallThreshold) {
-    if (m_stallStart == 0) {
-      m_stallStart = now;
-    } else if (now - m_stallStart > 2000) { // 2 second stall detection
+    m_stallTimer += deltaTime; // Accumulate stall time
+    if (m_stallTimer > 2.0f) { // 2 second stall detection
       // Apply stall recovery: try sidestep maneuver or advance waypoint
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
         Vector2D toNode = m_navPath[m_navIndex] - position;
@@ -214,33 +222,33 @@ void PatrolBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
                 if (!path.empty()) {
                   m_navPath = path;
                   m_navIndex = 0;
-                  m_lastPathUpdate = SDL_GetTicks();
+                  m_pathUpdateTimer = 0.0f;
                 }
               });
 
           if (m_navPath.empty()) {
             // Fallback: advance waypoint and apply backoff
-            m_backoffUntil = now + 800 + (entity->getID() % 400);
+            m_backoffTimer = 0.8f + (entity->getID() % 400) * 0.001f;
             m_navPath.clear();
             m_navIndex = 0;
-            if (now - m_lastWaypointTime > 1500) {
+            if (m_waypointCooldown <= 0.0f) { // Cooldown already expired (>1.5s since last advance)
               m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-              m_lastWaypointTime = now;
+              m_waypointCooldown = 1.5f;
             }
           }
         }
       } else {
         // No path available, advance waypoint
-        m_backoffUntil = now + 800 + (entity->getID() % 400);
-        if (now - m_lastWaypointTime > 1500) {
+        m_backoffTimer = 0.8f + (entity->getID() % 400) * 0.001f;
+        if (m_waypointCooldown <= 0.0f) { // Cooldown already expired
           m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-          m_lastWaypointTime = now;
+          m_waypointCooldown = 1.5f;
         }
       }
-      m_stallStart = 0; // Reset stall timer after recovery attempt
+      m_stallTimer = 0.0f; // Reset stall timer after recovery attempt
     }
   } else {
-    m_stallStart = 0; // Reset stall timer when moving normally
+    m_stallTimer = 0.0f; // Reset stall timer when moving normally
   }
 }
 

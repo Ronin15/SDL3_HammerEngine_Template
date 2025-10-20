@@ -55,7 +55,7 @@ void ChaseBehavior::invalidatePlayerCache() const {
   m_playerCacheValid = false;
   m_cachedPlayerTarget = nullptr;
 }
-void ChaseBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
+void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !m_active) {
     return;
   }
@@ -192,7 +192,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaT
           applyDecimatedSeparation(entity, entityPos, entity->getVelocity(),
                                    m_chaseSpeed, dynamicRadius, dynamicStrength,
                                    COMBAT_MAX_NEIGHBORS + chaserCount,
-                                   m_lastSepTick, m_lastSepVelocity);
+                                   m_separationTimer, m_lastSepVelocity, deltaTime);
         } else {
           // Fallback to direct movement with crowd awareness
           Vector2D direction = (targetPos - entityPos);
@@ -200,8 +200,8 @@ void ChaseBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaT
           // Apply decimated separation on direct movement too
           Vector2D intended = direction * m_chaseSpeed;
           applyDecimatedSeparation(entity, entityPos, intended, m_chaseSpeed,
-                                   26.0f, 0.22f, 4, m_lastSepTick,
-                                   m_lastSepVelocity);
+                                   26.0f, 0.22f, 4, m_separationTimer,
+                                   m_lastSepVelocity, deltaTime);
           m_lastProgressTime = now;
         }
       } else {
@@ -223,8 +223,8 @@ void ChaseBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaT
         // Decimated separation on direct pursuit
         Vector2D intended = direction * m_chaseSpeed;
         applyDecimatedSeparation(entity, entityPos, intended, m_chaseSpeed,
-                                 26.0f, 0.22f, 4, m_lastSepTick,
-                                 m_lastSepVelocity);
+                                 26.0f, 0.22f, 4, m_separationTimer,
+                                 m_lastSepVelocity, deltaTime);
         m_lastProgressTime = now;
       }
 

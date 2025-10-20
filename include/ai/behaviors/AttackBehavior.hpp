@@ -144,7 +144,7 @@ private:
     float navRadius{18.0f};                // node snap radius
     Uint64 backoffUntil{0};
     // Separation decimation
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
 
     EntityState()
@@ -254,32 +254,32 @@ private:
                                float damage);
 
   // Mode-specific updates
-  void updateMeleeAttack(EntityPtr entity, EntityState &state);
-  void updateRangedAttack(EntityPtr entity, EntityState &state);
-  void updateChargeAttack(EntityPtr entity, EntityState &state);
-  void updateAmbushAttack(EntityPtr entity, EntityState &state);
-  void updateCoordinatedAttack(EntityPtr entity, EntityState &state);
-  void updateHitAndRun(EntityPtr entity, EntityState &state);
-  void updateBerserkerAttack(EntityPtr entity, EntityState &state);
+  void updateMeleeAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateRangedAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateChargeAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAmbushAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateCoordinatedAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateHitAndRun(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateBerserkerAttack(EntityPtr entity, EntityState &state, float deltaTime);
 
   // State-specific updates
   void updateSeeking(EntityPtr entity, EntityState &state);
-  void updateApproaching(EntityPtr entity, EntityState &state);
-  void updatePositioning(EntityPtr entity, EntityState &state);
+  void updateApproaching(EntityPtr entity, EntityState &state, float deltaTime);
+  void updatePositioning(EntityPtr entity, EntityState &state, float deltaTime);
   void updateAttacking(EntityPtr entity, EntityState &state);
   void updateRecovering(EntityPtr entity, EntityState &state);
   void updateRetreating(EntityPtr entity, EntityState &state);
   void updateCooldown(EntityPtr entity, EntityState &state);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed);
+  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
   [[maybe_unused]] void maintainDistance(EntityPtr entity, EntityPtr target,
-                                         float desiredDistance);
+                                         float desiredDistance, float deltaTime);
   [[maybe_unused]] void circleStrafe(EntityPtr entity, EntityPtr target,
-                                     EntityState &state);
+                                     EntityState &state, float deltaTime);
   [[maybe_unused]] void performFlankingManeuver(EntityPtr entity,
                                                 EntityPtr target,
-                                                EntityState &state);
+                                                EntityState &state, float deltaTime);
 
   // Utility methods
   Vector2D normalizeDirection(const Vector2D &direction) const;

@@ -67,7 +67,7 @@ public:
 
 private:
   // Called only on staggered frames for expensive logic
-  void updateWanderState(EntityPtr entity);
+  void updateWanderState(EntityPtr entity, float deltaTime);
 
   // Entity-specific state data
   struct EntityState {
@@ -90,7 +90,7 @@ private:
     float stallPositionVariance{0.0f};
     Uint64 lastUnstickTime{0};
     // Separation decimation
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
     // Unified cooldown management
     struct {
@@ -154,7 +154,7 @@ private:
   static thread_local std::uniform_int_distribution<Uint64> s_delayDistribution;
 
   // Choose a new random direction for the entity
-  void chooseNewDirection(EntityPtr entity);
+  void chooseNewDirection(EntityPtr entity, float deltaTime);
 
   // Mode setup helper
   void setupModeDefaults(WanderMode mode);
