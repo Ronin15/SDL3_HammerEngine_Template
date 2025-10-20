@@ -721,8 +721,15 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     needsNewPath = false;
   }
 
+  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
+  bool stuckOnObstacle = isStuckOnObstacle(state.lastProgressTime, now);
+  if (stuckOnObstacle) {
+    state.pathPoints.clear(); // Clear path to force refresh
+    state.currentPathIndex = 0;
+  }
+
   // Respect backoff to avoid spamming requests
-  if (needsNewPath && now >= state.backoffUntil) {
+  if ((needsNewPath || stuckOnObstacle) && now >= state.backoffUntil) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
     auto priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ?
         PathfinderManager::Priority::High : PathfinderManager::Priority::Normal;

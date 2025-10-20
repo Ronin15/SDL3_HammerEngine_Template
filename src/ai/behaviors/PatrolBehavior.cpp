@@ -129,8 +129,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
     needsNewPath = (waypointChange > 50.0f); // Waypoint changed significantly
   }
   
+  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
+  bool stuckOnObstacle = isStuckOnObstacle(m_lastProgressTime, now);
+  if (stuckOnObstacle) {
+    m_navPath.clear(); // Clear path to force refresh
+    m_navIndex = 0;
+  }
+
   // Per-instance cooldown via m_backoffUntil; no global static throttle
-  if (needsNewPath && now >= m_backoffUntil) {
+  if ((needsNewPath || stuckOnObstacle) && now >= m_backoffUntil) {
     // GOAL VALIDATION: Don't request path if already at waypoint
     float distanceToWaypoint = (targetWaypoint - position).length();
     if (distanceToWaypoint < m_waypointRadius) { // Already at waypoint

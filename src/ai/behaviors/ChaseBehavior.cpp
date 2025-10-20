@@ -110,7 +110,14 @@ void ChaseBehavior::executeLogic(EntityPtr entity) {
         needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
       }
       
-      if (needsNewPath && m_cooldowns.canRequestPath(now)) {
+      // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
+      bool stuckOnObstacle = isStuckOnObstacle(m_lastProgressTime, now);
+      if (stuckOnObstacle) {
+        m_navPath.clear(); // Clear path to force refresh
+        m_navIndex = 0;
+      }
+
+      if ((needsNewPath || stuckOnObstacle) && m_cooldowns.canRequestPath(now)) {
         // PERFORMANCE: Use squared distance to avoid expensive sqrt
         float minRangeCheckSquared = (m_minRange * 1.5f) * (m_minRange * 1.5f);
         if (distanceSquared < minRangeCheckSquared) { // Already close enough

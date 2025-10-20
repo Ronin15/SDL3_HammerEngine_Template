@@ -223,11 +223,18 @@ void WanderBehavior::executeLogic(EntityPtr entity) {
     }
 
     // CACHE-AWARE PATHFINDING: Check for existing path first
-    bool needsNewPath = state.pathPoints.empty() || 
+    bool needsNewPath = state.pathPoints.empty() ||
                        state.currentPathIndex >= state.pathPoints.size() ||
                        (now - state.lastPathUpdate) > 15000; // Only refresh after 15 seconds
-    
-    if (needsNewPath && state.cooldowns.canRequestPath(now)) {
+
+    // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
+    bool stuckOnObstacle = isStuckOnObstacle(state.lastProgressTime, now);
+    if (stuckOnObstacle) {
+      state.pathPoints.clear(); // Clear path to force refresh
+      state.currentPathIndex = 0;
+    }
+
+    if ((needsNewPath || stuckOnObstacle) && state.cooldowns.canRequestPath(now)) {
       // SMART REQUEST: Only request if goal significantly different from last request
       static constexpr float MIN_GOAL_CHANGE = 200.0f; // Minimum distance change to justify new request
       bool goalChanged = true;
