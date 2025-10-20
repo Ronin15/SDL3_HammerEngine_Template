@@ -103,16 +103,25 @@ protected:
       lastSepTick = now;
     }
 
-    // Apply the separation force additively (blend with current velocity)
-    Vector2D blendedVelocity = currentVelocity + (lastSepForce * 0.3f); // 30% separation influence
+    // Only apply separation when actually moving (prevents oscillation when settling)
+    float velocityMagnitude = currentVelocity.length();
+    const float MIN_VELOCITY_FOR_SEPARATION = 20.0f; // Only separate when moving
 
-    // Clamp to max speed
-    if (blendedVelocity.length() > speed) {
-      blendedVelocity.normalize();
-      blendedVelocity = blendedVelocity * speed;
+    if (velocityMagnitude > MIN_VELOCITY_FOR_SEPARATION) {
+      // Apply the separation force additively (blend with current velocity)
+      Vector2D blendedVelocity = currentVelocity + (lastSepForce * 0.1f); // 10% separation influence
+
+      // Clamp to max speed
+      if (blendedVelocity.length() > speed) {
+        blendedVelocity.normalize();
+        blendedVelocity = blendedVelocity * speed;
+      }
+
+      entity->setVelocity(blendedVelocity);
+    } else {
+      // Not moving much - don't apply separation to avoid oscillation
+      entity->setVelocity(currentVelocity);
     }
-
-    entity->setVelocity(blendedVelocity);
   }
 
   // Apply separation at most every kSeparationIntervalMs, with entity-based staggering

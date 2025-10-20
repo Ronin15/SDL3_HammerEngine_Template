@@ -270,33 +270,43 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
     float dynamicSpeed = calculateFollowSpeed(entity, state, distanceToPlayer);
 
     // Execute appropriate follow behavior based on mode (use pre-calculated desiredPos)
+    // Track whether we're using pathfinding or direct movement
+    bool usingPathfinding = false;
     switch (m_followMode) {
     case FollowMode::CLOSE_FOLLOW:
-      if (!tryFollowPath(desiredPos, dynamicSpeed))
+      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      if (!usingPathfinding)
         updateCloseFollow(entity, state);
       break;
     case FollowMode::LOOSE_FOLLOW:
-      if (!tryFollowPath(desiredPos, dynamicSpeed))
+      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      if (!usingPathfinding)
         updateLooseFollow(entity, state);
       break;
     case FollowMode::FLANKING_FOLLOW:
-      if (!tryFollowPath(desiredPos, dynamicSpeed))
+      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      if (!usingPathfinding)
         updateFlankingFollow(entity, state);
       break;
     case FollowMode::REAR_GUARD:
-      if (!tryFollowPath(desiredPos, dynamicSpeed))
+      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      if (!usingPathfinding)
         updateRearGuard(entity, state);
       break;
     case FollowMode::ESCORT_FORMATION:
-      if (!tryFollowPath(desiredPos, dynamicSpeed))
+      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      if (!usingPathfinding)
         updateEscortFormation(entity, state);
       break;
     }
 
-    // Apply separation to prevent clumping (very gentle to avoid blocking forward progress)
-    applyAdditiveDecimatedSeparation(entity, currentPos, entity->getVelocity(),
-                                     dynamicSpeed, 30.0f, 0.08f, 8,
-                                     state.lastSepTick, state.lastSepForce);
+    // Only apply separation during DIRECT MOVEMENT (not pathfinding)
+    // Pathfinder already handles obstacle avoidance; separation during pathfinding causes oscillation
+    if (!usingPathfinding) {
+      applyAdditiveDecimatedSeparation(entity, currentPos, entity->getVelocity(),
+                                       dynamicSpeed, 25.0f, 0.08f, 8,
+                                       state.lastSepTick, state.lastSepForce);
+    }
   }
 }
 
