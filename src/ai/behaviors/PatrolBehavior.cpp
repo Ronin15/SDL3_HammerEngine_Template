@@ -54,7 +54,7 @@ PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
 }
 
 void PatrolBehavior::init(EntityPtr entity) {
-  if (!entity)
+  if (!entity || m_waypoints.empty())
     return;
 
   m_currentWaypoint = 0;
@@ -268,11 +268,14 @@ std::string PatrolBehavior::getName() const { return "Patrol"; }
 
 std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
   std::shared_ptr<PatrolBehavior> cloned;
-  if (m_patrolMode == PatrolMode::FIXED_WAYPOINTS && !m_waypoints.empty()) {
-    cloned = std::make_shared<PatrolBehavior>(m_patrolMode, m_moveSpeed,
+  // Always copy waypoints if we have them, regardless of mode
+  // This ensures test environments and custom waypoints work correctly
+  if (!m_waypoints.empty()) {
+    cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed,
                                               m_includeOffscreenPoints);
   } else {
-    cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed,
+    // Only use mode constructor if we have no waypoints (will call setupModeDefaults)
+    cloned = std::make_shared<PatrolBehavior>(m_patrolMode, m_moveSpeed,
                                               m_includeOffscreenPoints);
   }
 
