@@ -106,7 +106,7 @@ void FollowBehavior::executeLogic(EntityPtr entity) {
   Vector2D targetPos = target->getPosition();  // Use live position instead of cached
 
   // Update target movement tracking (velocity-based, no delay)
-  bool targetMoved = isTargetMoving(target, state);
+  bool targetMoved = isTargetMoving(target);
 
   if (targetMoved) {
     state.targetMoving = true;
@@ -564,8 +564,7 @@ Vector2D FollowBehavior::predictTargetPosition(EntityPtr target,
   return currentPos + velocity * m_predictionTime;
 }
 
-bool FollowBehavior::isTargetMoving(EntityPtr target,
-                                    const EntityState &state) const {
+bool FollowBehavior::isTargetMoving(EntityPtr target) const {
   if (!target)
     return false;
 
