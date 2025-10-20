@@ -458,6 +458,11 @@ void PathfinderManager::rebuildGrid() {
                     std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
                     clearOldestCacheEntries(0.5f); // Remove 50% oldest paths
                     PATHFIND_INFO("Grid rebuilt successfully (async, partial cache clear)");
+
+                    // Now that grid is ready, calculate optimal cache settings and pre-warm
+                    // These must happen AFTER grid rebuild completes
+                    calculateOptimalCacheSettings();
+                    prewarmPathCache();
                 } else {
                     PATHFIND_DEBUG("Grid rebuilt but manager shutting down, skipped cache clear");
                 }
@@ -784,11 +789,11 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
         goal = grid->snapToNearestOpenWorld(goal, r);
     }
 
-    // Quantize to improve cache hits - use 128-pixel quantization (finer granularity for large worlds)
-    start = Vector2D(std::round(start.getX() / 128.0f) * 128.0f,
-                     std::round(start.getY() / 128.0f) * 128.0f);
-    goal = Vector2D(std::round(goal.getX() / 128.0f) * 128.0f,
-                    std::round(goal.getY() / 128.0f) * 128.0f);
+    // Quantize to improve cache hits - use dynamic quantization scaled to world size
+    start = Vector2D(std::round(start.getX() / m_endpointQuantization) * m_endpointQuantization,
+                     std::round(start.getY() / m_endpointQuantization) * m_endpointQuantization);
+    goal = Vector2D(std::round(goal.getX() / m_endpointQuantization) * m_endpointQuantization,
+                    std::round(goal.getY() / m_endpointQuantization) * m_endpointQuantization);
 }
 
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
@@ -915,11 +920,14 @@ bool PathfinderManager::ensureGridInitialized() {
 
         std::atomic_store(&m_grid, newGrid);
 
-        PATHFIND_INFO("Pathfinding grid initialized: " + 
-                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
-                        " cells (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
+        PATHFIND_INFO("Pathfinding grid initialized: " +
+                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) +
+                        " cells (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) +
                         ", cellSize: " + std::to_string(m_cellSize) + ")");
-        
+
+        // Auto-calculate optimal cache settings for this world size
+        calculateOptimalCacheSettings();
+
         return true;
     }
     catch (const std::exception& e) {
@@ -930,13 +938,13 @@ bool PathfinderManager::ensureGridInitialized() {
 }
 
 uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
-    // Coarser quantization: 256-pixel grid for better cache hit rates
-    // Trade some spatial precision for much higher cache reuse
-    int sx = static_cast<int>(start.getX() / 256.0f);
-    int sy = static_cast<int>(start.getY() / 256.0f);
-    int gx = static_cast<int>(goal.getX() / 256.0f);
-    int gy = static_cast<int>(goal.getY() / 256.0f);
-    
+    // Dynamic quantization scaled to world size for optimal cache coverage
+    // Automatically calculated to ensure cache buckets ≈ sqrt(MAX_CACHE_ENTRIES)
+    int sx = static_cast<int>(start.getX() / m_cacheKeyQuantization);
+    int sy = static_cast<int>(start.getY() / m_cacheKeyQuantization);
+    int gx = static_cast<int>(goal.getX() / m_cacheKeyQuantization);
+    int gy = static_cast<int>(goal.getY() / m_cacheKeyQuantization);
+
     // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
     return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
            (static_cast<uint64_t>(sy & 0xFFFF) << 32) |
@@ -992,6 +1000,144 @@ void PathfinderManager::clearAllCache() {
     size_t clearedCount = m_pathCache.size();
     m_pathCache.clear();
     PATHFIND_INFO("Cleared all cache entries: " + std::to_string(clearedCount) + " paths removed");
+}
+
+void PathfinderManager::calculateOptimalCacheSettings() {
+    if (!m_grid) {
+        PATHFIND_WARN("Cannot calculate cache settings - no grid available");
+        return;
+    }
+
+    float worldW = m_grid->getWidth() * m_cellSize;
+    float worldH = m_grid->getHeight() * m_cellSize;
+    float diagonal = std::sqrt(worldW * worldW + worldH * worldH);
+
+    // ADAPTIVE QUANTIZATION: Two separate strategies for different goals
+
+    // Endpoint quantization: Conservative scaling for ACCURACY (minimize path failures)
+    // 0.5% of world size with strict 256px cap to keep quantization fine-grained
+    // This prevents entities from snapping to blocked cells
+    m_endpointQuantization = std::clamp(worldW / 200.0f, 128.0f, 256.0f);
+
+    // Cache key quantization: Aggressive scaling for CACHE EFFICIENCY (optimal coverage)
+    // worldW / 25.0f creates 25×25 grid = 625 spatial buckets for any world size
+    // With 32K cache capacity, this provides ~50× coverage per bucket for high hit rates
+    // Larger quantization (512px+) groups nearby paths together for better reuse
+    m_cacheKeyQuantization = std::clamp(worldW / 25.0f, 512.0f, 2048.0f);
+
+    // ADAPTIVE THRESHOLDS
+    m_hierarchicalThreshold = diagonal * 0.05f;      // 5% of world diagonal
+    m_connectivityThreshold = worldW * 0.25f;        // 25% of world width
+
+    // ADAPTIVE PRE-WARMING (8-connected sector graph)
+    // Small worlds (< 16K): 4×4 sectors = 56 paths
+    // Medium worlds (32K): 8×8 sectors = 210 paths
+    // Large worlds (64K+): 16×16 sectors = 930 paths
+    if (worldW < 16000.0f) {
+        m_prewarmSectorCount = 4;
+    } else if (worldW < 48000.0f) {
+        m_prewarmSectorCount = 8;
+    } else {
+        m_prewarmSectorCount = 16;
+    }
+    // Calculate actual path count for 8-connected grid: 2×N×(N-1) + 2×(N-1)²
+    // For N=8: 2×8×7 + 2×7² = 112 + 98 = 210 paths
+    int N = m_prewarmSectorCount;
+    m_prewarmPathCount = 2 * N * (N - 1) + 2 * (N - 1) * (N - 1);
+
+    // Calculate expected cache bucket count for logging
+    int bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
+    int bucketsY = static_cast<int>(worldH / m_cacheKeyQuantization);
+    int totalBuckets = bucketsX * bucketsY;
+    float cacheEfficiency = (static_cast<float>(MAX_CACHE_ENTRIES) / static_cast<float>(totalBuckets)) * 100.0f;
+
+    PATHFIND_INFO("Auto-tuned cache settings for " +
+                  std::to_string(static_cast<int>(worldW)) + "×" +
+                  std::to_string(static_cast<int>(worldH)) + "px world:");
+    PATHFIND_INFO("  Endpoint quantization: " +
+                  std::to_string(static_cast<int>(m_endpointQuantization)) + "px (" +
+                  std::to_string(static_cast<int>((m_endpointQuantization / worldW) * 100.0f * 10.0f) / 10.0f) + "% world)");
+    PATHFIND_INFO("  Cache key quantization: " +
+                  std::to_string(static_cast<int>(m_cacheKeyQuantization)) + "px");
+    PATHFIND_INFO("  Expected cache buckets: " +
+                  std::to_string(bucketsX) + "×" + std::to_string(bucketsY) +
+                  " = " + std::to_string(totalBuckets) + " total");
+    PATHFIND_INFO("  Cache efficiency: " +
+                  std::to_string(static_cast<int>(cacheEfficiency)) + "% coverage");
+    PATHFIND_INFO("  Hierarchical threshold: " +
+                  std::to_string(static_cast<int>(m_hierarchicalThreshold)) + "px");
+    PATHFIND_INFO("  Pre-warm sectors: " +
+                  std::to_string(m_prewarmSectorCount) + "×" +
+                  std::to_string(m_prewarmSectorCount) +
+                  " = " + std::to_string(m_prewarmPathCount) + " paths");
+}
+
+void PathfinderManager::prewarmPathCache() {
+    if (m_prewarming.load() || !m_grid) {
+        return;
+    }
+    m_prewarming.store(true);
+
+    float worldW = m_grid->getWidth() * m_cellSize;
+    float worldH = m_grid->getHeight() * m_cellSize;
+    int sectors = m_prewarmSectorCount;
+    float sectorW = worldW / static_cast<float>(sectors);
+    float sectorH = worldH / static_cast<float>(sectors);
+
+    PATHFIND_INFO("Pre-warming cache with " +
+                  std::to_string(m_prewarmPathCount) + " sector-based paths (world: " +
+                  std::to_string(static_cast<int>(worldW)) + "×" +
+                  std::to_string(static_cast<int>(worldH)) + "px, sectors: " +
+                  std::to_string(sectors) + "×" + std::to_string(sectors) + ")...");
+
+    // Generate paths between sector centers
+    std::vector<std::pair<Vector2D, Vector2D>> seedPaths;
+    seedPaths.reserve(m_prewarmPathCount);
+
+    for (int sy = 0; sy < sectors; sy++) {
+        for (int sx = 0; sx < sectors; sx++) {
+            Vector2D sectorCenter(
+                (static_cast<float>(sx) + 0.5f) * sectorW,
+                (static_cast<float>(sy) + 0.5f) * sectorH
+            );
+
+            // Connect to adjacent and diagonal sectors (8-connectivity)
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dy == 0) continue; // Skip self
+
+                    int nx = sx + dx;
+                    int ny = sy + dy;
+
+                    // Only connect to valid neighbors within bounds
+                    if (nx >= 0 && nx < sectors && ny >= 0 && ny < sectors) {
+                        // Only add each connection once (avoid duplicates by only connecting forward)
+                        if (ny > sy || (ny == sy && nx > sx)) {
+                            Vector2D neighborCenter(
+                                (static_cast<float>(nx) + 0.5f) * sectorW,
+                                (static_cast<float>(ny) + 0.5f) * sectorH
+                            );
+                            seedPaths.emplace_back(sectorCenter, neighborCenter);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Submit pre-warming paths with Low priority (background processing)
+    // These will be distributed automatically by ThreadSystem
+    int pathCount = 0;
+    for (const auto& [start, goal] : seedPaths) {
+        // Use Low priority and no callback for pre-warming
+        requestPath(0, start, goal, Priority::Low, nullptr);
+        pathCount++;
+    }
+
+    PATHFIND_INFO("Submitted " + std::to_string(pathCount) +
+                  " pre-warming paths to background ThreadSystem");
+
+    m_prewarming.store(false);
 }
 
 void PathfinderManager::subscribeToEvents() {
@@ -1115,9 +1261,11 @@ void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
     clearAllCache();
 
     // Rebuild pathfinding grid from new world data
+    // Note: calculateOptimalCacheSettings() and prewarmPathCache() are called
+    // automatically when the async rebuild completes (see rebuildGrid() implementation)
     rebuildGrid();
 
-    PATHFIND_INFO("Pathfinding grid rebuilt for new world");
+    PATHFIND_INFO("Pathfinding grid rebuild initiated (async)");
 }
 
 void PathfinderManager::onWorldUnloaded() {

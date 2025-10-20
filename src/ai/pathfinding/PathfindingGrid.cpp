@@ -5,6 +5,7 @@
 
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "world/WorldData.hpp"
 #include <queue>
 #include <limits>
@@ -317,7 +318,16 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int directDistance = std::max(dxGoal, dyGoal);
     
     // For very long distances, do a lightweight connectivity check (less restrictive)
-    if (directDistance > 800) {
+    // Use dynamic threshold scaled to world size (defaults to 800 if manager unavailable)
+    float connectivityThresholdCells = 800.0f;
+    try {
+        // Get dynamic threshold in pixels, convert to grid cells
+        connectivityThresholdCells = PathfinderManager::Instance().getConnectivityThreshold() / m_cell;
+    } catch (...) {
+        // Fallback to static threshold if PathfinderManager not available
+    }
+
+    if (directDistance > static_cast<int>(connectivityThresholdCells)) {
         // Sample a few points along the direct line to check for major barriers
         int samples = std::min(8, directDistance / 8);
         int blockedSamples = 0;
@@ -690,8 +700,18 @@ bool PathfindingGrid::shouldUseHierarchicalPathfinding(const Vector2D& start, co
         return false; // No coarse grid available
     }
 
+    // Use dynamic threshold from PathfinderManager (scaled to world size)
+    // Falls back to static threshold if manager not available
+    float threshold = HIERARCHICAL_DISTANCE_THRESHOLD;
+    try {
+        // Get dynamic threshold calculated for current world size
+        threshold = PathfinderManager::Instance().getHierarchicalThreshold();
+    } catch (...) {
+        // Fallback to static threshold if PathfinderManager not available
+    }
+
     float distance = (goal - start).length();
-    if (distance <= HIERARCHICAL_DISTANCE_THRESHOLD) {
+    if (distance <= threshold) {
         return false;
     }
 
