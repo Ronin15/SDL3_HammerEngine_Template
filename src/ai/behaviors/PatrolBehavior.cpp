@@ -32,7 +32,7 @@ std::mt19937 &getSharedRNG() {
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
     : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
-      m_waypointRadius(250.0f), // 10X larger
+      m_waypointRadius(80.0f), // 2.5 tiles - natural waypoint arrival distance
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
       m_seedSet(true) {
@@ -47,7 +47,7 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
 PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
                                bool includeOffscreenPoints)
     : m_waypoints(), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
-      m_waypointRadius(250.0f), // 10X larger
+      m_waypointRadius(80.0f), // 2.5 tiles - natural waypoint arrival distance
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(mode), m_rng(getSharedRNG()), m_seedSet(true) {
   setupModeDefaults(mode);

@@ -14,23 +14,27 @@ IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
   // m_movementFrequency, m_turnFrequency, m_rng, m_angleDistribution,
   // m_radiusDistribution, m_frequencyVariation use default initializers
 
-  // Initialize random distributions based on mode
+  // Initialize parameters based on mode with mode-specific radii
   switch (mode) {
   case IdleMode::STATIONARY:
     m_movementFrequency = 0.0f; // No movement
     m_turnFrequency = 0.0f;     // No turning
+    m_idleRadius = 0.0f;        // No movement radius (completely still)
     break;
   case IdleMode::SUBTLE_SWAY:
     m_movementFrequency = 2.0f; // Gentle swaying every 2 seconds
     m_turnFrequency = 8.0f;     // Occasional turns
+    m_idleRadius = 30.0f;       // ~1 tile subtle sway radius
     break;
   case IdleMode::OCCASIONAL_TURN:
     m_movementFrequency = 0.0f; // No position movement
     m_turnFrequency = 4.0f;     // Turn every 4 seconds
+    m_idleRadius = 0.0f;        // No movement radius (rotation only)
     break;
   case IdleMode::LIGHT_FIDGET:
     m_movementFrequency = 1.5f; // Light fidgeting
     m_turnFrequency = 3.0f;     // More frequent turns
+    m_idleRadius = 50.0f;       // ~1.5 tiles moderate fidget radius
     break;
   }
 }
@@ -111,23 +115,27 @@ std::string IdleBehavior::getName() const { return "Idle"; }
 void IdleBehavior::setIdleMode(IdleMode mode) {
   m_idleMode = mode;
 
-  // Update timing parameters based on new mode
+  // Update timing parameters and radius based on new mode
   switch (mode) {
   case IdleMode::STATIONARY:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 0.0f;
+    m_idleRadius = 0.0f;        // No movement radius
     break;
   case IdleMode::SUBTLE_SWAY:
     m_movementFrequency = 2.0f;
     m_turnFrequency = 8.0f;
+    m_idleRadius = 30.0f;       // ~1 tile subtle sway
     break;
   case IdleMode::OCCASIONAL_TURN:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 4.0f;
+    m_idleRadius = 0.0f;        // No movement radius
     break;
   case IdleMode::LIGHT_FIDGET:
     m_movementFrequency = 1.5f;
     m_turnFrequency = 3.0f;
+    m_idleRadius = 50.0f;       // ~1.5 tiles moderate fidget
     break;
   }
 }
