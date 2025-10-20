@@ -2400,15 +2400,24 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 }
 
 void CollisionManager::syncEntitiesToSOA() {
-  // OPTIMIZATION: Only sync active bodies that were processed this frame
-  // Before: 27,099 iterations (all bodies)
-  // After: ~80 iterations (only active bodies within culling range)
-  // Performance gain: ~97% reduction in syncing overhead
+  // CRITICAL: Only sync entities that were involved in collision resolution
+  // AIManager is responsible for regular movement - CollisionManager ONLY modifies
+  // positions when pushing bodies apart during collision resolution.
+  //
+  // This prevents CollisionManager from overwriting AIManager's movement integration.
 
   m_isSyncing = true;
 
-  // Only sync movable bodies that were active this frame
-  // Static bodies never move, so no need to sync them back to entities
+  // Build set of entity IDs that were involved in collisions this frame
+  std::unordered_set<EntityID> collidedEntities;
+  for (const auto& collision : m_collisionPool.collisionBuffer) {
+    if (!collision.trigger) {  // Triggers don't resolve positions
+      collidedEntities.insert(collision.a);
+      collidedEntities.insert(collision.b);
+    }
+  }
+
+  // Only sync entities that had collision resolution (positions were modified by resolveSOA)
   for (size_t idx : m_collisionPool.movableIndices) {
     if (idx >= m_storage.hotData.size() || idx >= m_storage.coldData.size()) continue;
 
@@ -2416,6 +2425,11 @@ void CollisionManager::syncEntitiesToSOA() {
     auto& cold = m_storage.coldData[idx];
 
     if (!hot.active) continue;
+
+    // ONLY update entities that were involved in collisions
+    if (collidedEntities.find(m_storage.entityIds[idx]) == collidedEntities.end()) {
+      continue;  // Skip entities that didn't collide - AIManager already updated their positions
+    }
 
     // Sync collision-resolved position and velocity back to entity
     if (auto entity = cold.entityWeak.lock()) {

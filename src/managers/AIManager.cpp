@@ -1438,7 +1438,12 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   // Eliminates 418+ atomic loads per frame → single atomic load per batch
   const auto &pf = PathfinderManager::Instance();
   float worldWidth, worldHeight;
-  pf.getCachedWorldBounds(worldWidth, worldHeight);
+  if (!pf.getCachedWorldBounds(worldWidth, worldHeight) || worldWidth <= 0 || worldHeight <= 0) {
+    // Fallback: Use large default if PathfinderManager grid isn't ready yet
+    // This ensures entities can move even during world loading/grid rebuild
+    worldWidth = 32000.0f;  // Default world size
+    worldHeight = 32000.0f;
+  }
 
   // NO LOCK NEEDED - use pre-fetched data!
   // Process entities using pre-copied data (parallel safe)
@@ -1484,8 +1489,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         Vector2D vel = entity->getVelocity();
 
         // MOVEMENT INTEGRATION: Apply velocity to position (core physics step)
-        // This was previously done in CollisionManager but belongs in AIManager
-        // since AIManager controls entity movement and sends final positions to collision system
+        // AIManager is responsible for entity movement - CollisionManager only modifies
+        // positions when collision RESOLUTION occurs (pushing bodies apart)
         pos = pos + (vel * deltaTime);
 
         // Inline clamping - no function call, no atomic load
@@ -1498,19 +1503,20 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
             std::clamp(pos.getY(), minY, maxY)
         );
 
-        if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
-          // Update entity position directly (bypassing individual collision updates)
-          entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
+        // Update entity position directly - AIManager owns entity movement
+        entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
 
+        // Handle boundary collisions: stop velocity at world edges
+        if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
           // Project velocity inward for boundary collisions
           if (clamped.getX() < pos.getX() && vel.getX() < 0) vel.setX(0.0f);
           if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
           if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
           if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
           entity->Entity::setVelocity(vel); // Use base Entity::setVelocity
-
-          pos = clamped; // Update pos for batch accumulation
         }
+
+        pos = clamped; // Update pos for batch accumulation
 
         // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
         collisionUpdates.emplace_back(entity->getID(), pos, vel);
