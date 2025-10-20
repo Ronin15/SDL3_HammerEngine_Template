@@ -495,20 +495,23 @@ void WanderBehavior::setupModeDefaults(WanderMode mode) {
 
   switch (mode) {
   case WanderMode::SMALL_AREA:
-    // Small personal space around current position - 10X larger
-    m_areaRadius = 1200.0f;
+    // Personal space: around a well, fountain, or small plaza (~12 tiles at 32px/tile)
+    // Encourages tight clustering and high path reuse for cache efficiency
+    m_areaRadius = 400.0f;
     m_changeDirectionInterval = 1500.0f;
     break;
 
   case WanderMode::MEDIUM_AREA:
-    // Room/building sized area - 10X larger for world scale
-    m_areaRadius = 4000.0f;
+    // Village/building area: wander around a village or district (~37 tiles)
+    // Balanced path diversity with good cache hit rates for grouped entities
+    m_areaRadius = 1200.0f;
     m_changeDirectionInterval = 2500.0f;
     break;
 
   case WanderMode::LARGE_AREA:
-    // Village/district sized - 10X larger for true world-scale wandering
-    m_areaRadius = 8000.0f;
+    // Village + outskirts: explore village and surrounding areas (~75 tiles)
+    // Wider exploration while maintaining reasonable path reuse
+    m_areaRadius = 2400.0f;
     m_changeDirectionInterval = 3500.0f;
     break;
 
