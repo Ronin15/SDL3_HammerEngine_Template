@@ -81,6 +81,40 @@ protected:
     return (lastProgressTime > 0 && (now - lastProgressTime) > STUCK_THRESHOLD_MS);
   }
 
+  // Apply separation as an additive force that blends with existing velocity
+  inline void applyAdditiveDecimatedSeparation(EntityPtr entity,
+                                       const Vector2D &position,
+                                       const Vector2D &currentVelocity,
+                                       float speed, float queryRadius,
+                                       float strength, int maxNeighbors,
+                                       Uint64 &lastSepTick,
+                                       Vector2D &lastSepForce) const {
+    Uint64 now = SDL_GetTicks();
+    Uint32 entityStaggerOffset = (entity->getID() % 200) * 10;
+    Uint32 effectiveInterval = kSeparationIntervalMs + entityStaggerOffset;
+
+    // Only recalculate separation periodically
+    if (now - lastSepTick >= effectiveInterval) {
+      Vector2D sepVelocity = AIInternal::ApplySeparation(
+          entity, position, currentVelocity, speed, queryRadius, strength,
+          static_cast<size_t>(maxNeighbors));
+      // Store the separation FORCE (difference from intended velocity)
+      lastSepForce = sepVelocity - currentVelocity;
+      lastSepTick = now;
+    }
+
+    // Apply the separation force additively (blend with current velocity)
+    Vector2D blendedVelocity = currentVelocity + (lastSepForce * 0.3f); // 30% separation influence
+
+    // Clamp to max speed
+    if (blendedVelocity.length() > speed) {
+      blendedVelocity.normalize();
+      blendedVelocity = blendedVelocity * speed;
+    }
+
+    entity->setVelocity(blendedVelocity);
+  }
+
   // Apply separation at most every kSeparationIntervalMs, with entity-based staggering
   inline void applyDecimatedSeparation(EntityPtr entity,
                                        const Vector2D &position,

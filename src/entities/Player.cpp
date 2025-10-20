@@ -208,8 +208,10 @@ void Player::ensurePhysicsBodyRegistered() {
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
 
   // Use new SOA-based collision system
+  // Player collides with everything except pets (pets pass through player)
+  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Pet;
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
-                        HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+                        HammerEngine::CollisionLayer::Layer_Player, mask);
   // Process queued command to ensure body exists before attaching
   cm.processPendingCommands();
   // Attach entity reference to SOA storage

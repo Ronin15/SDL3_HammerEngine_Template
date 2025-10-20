@@ -15,6 +15,7 @@
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "ai/behaviors/GuardBehavior.hpp"
 #include "ai/behaviors/AttackBehavior.hpp"
+#include "entities/Pet.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
@@ -457,7 +458,13 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                     playerPos.getY() + distance * std::sin(angle)
                 );
 
-                auto npc = NPC::create("npc", position);
+                // First 3 NPCs are pets (pass through player), rest are regular NPCs
+                std::shared_ptr<NPC> npc;
+                if (i < 3) {
+                    npc = Pet::create("npc", position);
+                } else {
+                    npc = NPC::create("npc", position);
+                }
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);

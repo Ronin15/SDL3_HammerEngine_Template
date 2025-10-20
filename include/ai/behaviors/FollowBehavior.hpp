@@ -79,6 +79,8 @@ private:
     bool isFollowing{false};
     bool targetMoving{false};
     bool inFormation{true};
+    bool isStopped{false}; // Track if stopped at personal space boundary
+    Uint64 resumeTime{0}; // When NPC resumed from stopped (for separation grace period)
     int formationSlot{0}; // For escort formation
 
     // Pathfinding state
@@ -88,9 +90,9 @@ private:
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     Uint64 lastProgressTime{0};
     Uint64 backoffUntil{0};
-    // Separation decimation
+    // Separation decimation (stores separation FORCE, not velocity)
     Uint64 lastSepTick{0};
-    Vector2D lastSepVelocity{0, 0};
+    Vector2D lastSepForce{0, 0};
 
     EntityState()
         : lastTargetPosition(0, 0), currentVelocity(0, 0),
@@ -107,6 +109,8 @@ private:
   // Behavior parameters
   FollowMode m_followMode{FollowMode::LOOSE_FOLLOW};
   float m_followSpeed{2.5f};
+  float m_stopDistance{40.0f};          // Minimum distance - stop moving when this close
+  float m_resumeDistance{55.0f};        // Distance before resuming movement (prevents jitter)
   float m_followDistance{100.0f};       // Preferred distance from target
   float m_maxDistance{300.0f};          // Maximum distance before catch-up
   float m_catchUpSpeedMultiplier{1.5f}; // Speed boost when catching up
