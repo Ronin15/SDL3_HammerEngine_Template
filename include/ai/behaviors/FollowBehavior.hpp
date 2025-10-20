@@ -154,7 +154,7 @@ private:
   Vector2D predictTargetPosition(EntityPtr target,
                                  const EntityState &state) const;
 
-  bool isTargetMoving(EntityPtr target, const EntityState &state) const;
+  bool isTargetMoving(EntityPtr target) const;
   bool shouldCatchUp(float distanceToTarget) const;
   float calculateFollowSpeed(EntityPtr entity, const EntityState &state,
                              float distanceToTarget) const;
