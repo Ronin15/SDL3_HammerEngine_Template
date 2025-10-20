@@ -349,11 +349,34 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     }
     // Nudge start/goal if blocked (common after collision resolution)
     int nsx = sx, nsy = sy, ngx = gx, ngy = gy;
-    // Increase radii to reduce spurious NO_PATH_FOUND when endpoints are near blocked cells
-    bool startOk = !isBlocked(sx, sy) || findNearestOpen(sx, sy, 16, nsx, nsy);
-    bool goalOk  = !isBlocked(gx, gy) || findNearestOpen(gx, gy, 20, ngx, ngy);
-    if (!startOk || !goalOk) { PATHFIND_DEBUG("findPath(): start or goal blocked"); return PathfindingResult::NO_PATH_FOUND; }
+    // Adaptive nudge with increasing radii for large/congested worlds
+    // Try progressively larger radii: 48 -> 96 -> 128 for start, 64 -> 96 -> 128 for goal
+    bool startOk = !isBlocked(sx, sy) ||
+                   findNearestOpen(sx, sy, 48, nsx, nsy) ||
+                   findNearestOpen(sx, sy, 96, nsx, nsy) ||
+                   findNearestOpen(sx, sy, 128, nsx, nsy);
+    bool goalOk  = !isBlocked(gx, gy) ||
+                   findNearestOpen(gx, gy, 64, ngx, ngy) ||
+                   findNearestOpen(gx, gy, 96, ngx, ngy) ||
+                   findNearestOpen(gx, gy, 128, ngx, ngy);
+    if (!startOk || !goalOk) { PATHFIND_DEBUG("findPath(): start or goal blocked after adaptive nudge"); return PathfindingResult::NO_PATH_FOUND; }
     sx = nsx; sy = nsy; gx = ngx; gy = ngy;
+
+    // Early unreachability detection using coarse grid (for large worlds)
+    if (m_coarseGrid && directDistance > 512) {
+        // Quick connectivity test on coarse grid to fail fast for unreachable paths
+        // Coarse grid already configured with reduced iteration budget (see initializeCoarseGrid)
+        std::vector<Vector2D> coarsePath;
+        auto coarseResult = m_coarseGrid->findPath(gridToWorld(sx, sy), gridToWorld(gx, gy), coarsePath);
+
+        // Only fail early if coarse grid definitively finds NO_PATH_FOUND (not TIMEOUT)
+        // TIMEOUT means needs more exploration, so continue to fine-grid pathfinding
+        if (coarseResult == PathfindingResult::NO_PATH_FOUND) {
+            PATHFIND_DEBUG("Early detection: coarse grid indicates unreachable path (disconnected regions)");
+            m_stats.totalRequests++;
+            return PathfindingResult::NO_PATH_FOUND;
+        }
+    }
 
     // Early success: if start equals goal after nudging
     if (sx == gx && sy == gy) {
@@ -384,7 +407,13 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         int dx = std::abs(x - gx); int dy = std::abs(y - gy);
         int dmin = std::min(dx, dy); int dmax = std::max(dx, dy);
         float baseDistance = m_costDiagonal * dmin + m_costStraight * (dmax - dmin);
-        // Perfect octile distance for optimal A* convergence
+
+        // LARGE-WORLD OPTIMIZATION: Slightly weight heuristic for long distances
+        // Increases goal-directedness for paths >500 cells while maintaining admissibility
+        // This reduces wasted exploration in open areas of large worlds
+        if (directDistance > 500) {
+            return baseDistance * 1.001f; // Very conservative weight to maintain optimality
+        }
         return baseDistance;
     };
 

@@ -92,7 +92,7 @@ private:
     // Hierarchical pathfinding support (4x coarser grid for long distances)
     std::unique_ptr<PathfindingGrid> m_coarseGrid;
     static constexpr float COARSE_GRID_MULTIPLIER = 4.0f;
-    static constexpr float HIERARCHICAL_DISTANCE_THRESHOLD = 512.0f;
+    static constexpr float HIERARCHICAL_DISTANCE_THRESHOLD = 256.0f; // Lowered for large worlds (4 tiles @ 64px)
 
     bool m_allowDiagonal{true};
     int m_maxIterations{12000}; // Performance-tuned: increased from 8K to 12K for better success rate
