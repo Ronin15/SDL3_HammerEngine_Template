@@ -108,6 +108,9 @@ public:
             const std::string &description = "") {
     int priorityIndex = static_cast<int>(priority);
 
+    // Update last enqueue time for low-activity detection
+    m_lastEnqueueTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+
     {
       std::unique_lock<std::mutex> lock(m_priorityMutexes[priorityIndex]);
 
@@ -160,6 +163,9 @@ public:
       return;
     }
 
+    // Update last enqueue time for low-activity detection
+    m_lastEnqueueTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
+
     int priorityIndex = static_cast<int>(priority);
     size_t batchSize = tasks.size();
 
@@ -205,6 +211,8 @@ public:
 
   bool pop(std::function<void()> &task) {
     std::unique_lock<std::mutex> lock(queueMutex);
+
+    // Wait indefinitely for tasks - notify_one/notify_all will wake us instantly when tasks arrive
     condition.wait(lock, [this] {
       return stopping.load(std::memory_order_acquire) || hasAnyTasksLockFree();
     });
@@ -316,6 +324,14 @@ public:
   bool hasTasks() const {
     return hasAnyTasksLockFree();
   }
+
+  // Get milliseconds since last task was enqueued (for low-activity detection)
+  int64_t getTimeSinceLastEnqueue() const {
+    auto now = std::chrono::steady_clock::now();
+    auto lastEnqueue = m_lastEnqueueTime.load(std::memory_order_relaxed);
+    return std::chrono::duration_cast<std::chrono::milliseconds>(now - lastEnqueue).count();
+  }
+
 private:
   // Separate deques for each priority level (O(1) pop_front, reduces lock
   // contention)
@@ -344,6 +360,9 @@ private:
 
   size_t m_desiredCapacity{256}; // Track desired capacity ourselves
   bool m_enableProfiling{false}; // Enable detailed performance metrics
+
+  // Track last time a task was enqueued for low-activity detection
+  std::atomic<std::chrono::steady_clock::time_point> m_lastEnqueueTime{std::chrono::steady_clock::now()};
 
   // Lock-free check for any tasks using atomic counters
   bool hasAnyTasksLockFree() const {
@@ -599,8 +618,9 @@ private:
     size_t tasksProcessed = 0;
     size_t highPriorityTasks = 0;
 
-    // For adaptive idle sleep optimization
+    // For idle tracking and logging
     auto lastTaskTime = std::chrono::steady_clock::now();
+    bool isIdle = false;
 
     // Set thread as interruptible (platform-specific if needed)
     try {
@@ -611,6 +631,7 @@ private:
           break;
         }
 
+        // Reset gotTask at the start of each iteration
         bool gotTask = false;
 
         try {
@@ -638,6 +659,16 @@ private:
         }
 
         if (gotTask) {
+          // Exiting idle mode - log if we were previously idle
+          if (isIdle) {
+            auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - lastTaskTime).count();
+            THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
+                              " exiting idle mode (was idle for " +
+                              std::to_string(idleTime) + "ms)");
+            isIdle = false;
+          }
+
           // Optimized: Only increment counter when we actually have work
           const size_t activeCount =
               m_activeTasks.fetch_add(1, std::memory_order_relaxed) + 1;
@@ -686,30 +717,13 @@ private:
           // Unused variable warning suppression
           (void)activeCount;
         } else {
-          // No task available - check idle time for adaptive sleep
-          auto now = std::chrono::steady_clock::now();
-          auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-              now - lastTaskTime).count();
-
-          // Adaptive idle sleep: Progressive sleep times for better power/battery savings
-          // This saves CPU cycles and power on idle systems
-          if (idleTime > 1000) {
-            // Progressive sleep: longer sleep times as idle period increases
-            // 1-5s idle: 10ms sleep, 5-30s idle: 50ms sleep, >30s idle: 100ms sleep
-            if (idleTime > 30000) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            } else if (idleTime > 5000) {
-              std::this_thread::sleep_for(std::chrono::milliseconds(50));
-            } else {
-              std::this_thread::sleep_for(std::chrono::milliseconds(10));
-            }
+          // No task available - mark as idle if not already
+          if (!isIdle) {
+            THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
+                              " entering idle mode (no tasks available)");
+            isIdle = true;
           }
-
-          // Wait on condition variable for new tasks
-          std::unique_lock<std::mutex> lock(taskQueue.getMutex());
-          taskQueue.getCondition().wait(lock, [this] {
-              return !isRunning.load(std::memory_order_acquire) || taskQueue.hasTasks();
-          });
+          // Worker will loop back and block in pop() until a task arrives
         }
       }
     } catch (const std::exception &e) {

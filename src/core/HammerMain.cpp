@@ -87,7 +87,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   });
 
   // Register update handler (fixed timestep for consistent game logic)
-  gameLoop->setUpdateHandler([&gameEngine, &threadSystem](float deltaTime) {
+  gameLoop->setUpdateHandler([&gameEngine](float deltaTime) {
     // Swap buffers if we have a new frame ready for rendering
     if (gameEngine.hasNewFrameToRender()) {
       gameEngine.swapBuffers();
@@ -96,18 +96,9 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     // Update game logic with fixed timestep
     gameEngine.update(deltaTime);
 
-    // Process background tasks using thread system
-    try {
-      threadSystem.enqueueTask([&gameEngine]() {
-        try {
-          gameEngine.processBackgroundTasks();
-        } catch (const std::exception& e) {
-          GAMEENGINE_ERROR("Exception in background task: " + std::string(e.what()));
-        }
-      });
-    } catch (const std::exception& e) {
-      GAMEENGINE_ERROR("Exception enqueuing background task: " + std::string(e.what()));
-    }
+    // Note: Background tasks removed - processBackgroundTasks() is currently empty
+    // and was enqueuing 60 empty tasks/sec, preventing worker threads from going idle.
+    // Re-enable if/when actual background work is needed.
   });
 
   // Register render handler
