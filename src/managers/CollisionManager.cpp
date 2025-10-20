@@ -1831,6 +1831,11 @@ void CollisionManager::updateSOA(float dt) {
   // Check storage state at start of update
   size_t bodyCount = m_storage.size();
 
+  // Early exit if no bodies to process (optimization for idle states)
+  if (bodyCount == 0) {
+    return;
+  }
+
   // Prepare collision processing for this frame
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
 

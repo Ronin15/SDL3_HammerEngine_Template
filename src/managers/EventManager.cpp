@@ -236,6 +236,10 @@ void EventManager::update() {
     return;
   }
 
+  // NOTE: Early exit optimization removed - some tests dispatch events during update
+  // that need to be processed in the same frame. Keep for now.
+  // TODO: Re-evaluate this optimization with deferred event dispatch
+
   // NOTE: We do NOT wait for previous frame's batches here - they can overlap with current frame
   // EventManager batches don't update collision data, so frame overlap is safe
   // This allows better frame pipelining on low-core systems
