@@ -621,6 +621,8 @@ private:
     // For idle tracking and logging
     auto lastTaskTime = std::chrono::steady_clock::now();
     bool isIdle = false;
+    // Minimum idle time before logging (20 seconds) - only log truly idle states
+    constexpr int64_t MIN_IDLE_TIME_MS = 20000;
 
     // Set thread as interruptible (platform-specific if needed)
     try {
@@ -717,11 +719,18 @@ private:
           // Unused variable warning suppression
           (void)activeCount;
         } else {
-          // No task available - mark as idle if not already
+          // No task available - only mark as idle and log if we've been without tasks long enough
           if (!isIdle) {
-            THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
-                              " entering idle mode (no tasks available)");
-            isIdle = true;
+            auto timeSinceLastTask = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now() - lastTaskTime).count();
+
+            // Only consider it "idle" if we've been without tasks for at least MIN_IDLE_TIME_MS
+            if (timeSinceLastTask >= MIN_IDLE_TIME_MS) {
+              THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
+                                " entering idle mode (no tasks for " +
+                                std::to_string(timeSinceLastTask) + "ms)");
+              isIdle = true;
+            }
           }
           // Worker will loop back and block in pop() until a task arrives
         }
