@@ -93,7 +93,7 @@ void AttackBehavior::init(EntityPtr entity) {
   state.canAttack = true;
 }
 
-void AttackBehavior::executeLogic(EntityPtr entity) {
+void AttackBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
   if (!entity || !isActive())
     return;
 

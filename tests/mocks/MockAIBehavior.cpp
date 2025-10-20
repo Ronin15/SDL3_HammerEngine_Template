@@ -5,7 +5,7 @@
 
 #include "MockAIBehavior.hpp"
 
-void MockAIBehavior::executeLogic(EntityPtr /*entity*/) {
+void MockAIBehavior::executeLogic(EntityPtr /*entity*/, float /*deltaTime*/) {
     executeLogicCallCount++;
 }
 

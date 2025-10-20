@@ -55,7 +55,7 @@ void ChaseBehavior::invalidatePlayerCache() const {
   m_playerCacheValid = false;
   m_cachedPlayerTarget = nullptr;
 }
-void ChaseBehavior::executeLogic(EntityPtr entity) {
+void ChaseBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
   if (!entity || !m_active) {
     return;
   }

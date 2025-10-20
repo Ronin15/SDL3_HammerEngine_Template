@@ -65,7 +65,7 @@ class IntegrationTestBehavior : public AIBehavior {
 public:
     IntegrationTestBehavior(const std::string& name) : m_name(name) {}
 
-    void executeLogic(EntityPtr entity) override {
+    void executeLogic(EntityPtr entity, float deltaTime) override {
             if (!entity) return;
 
             try {

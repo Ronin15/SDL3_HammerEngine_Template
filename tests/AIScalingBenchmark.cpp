@@ -81,7 +81,7 @@ public:
         : m_id(id), m_complexity(complexity), m_initialized(false) {
     }
 
-    void executeLogic(EntityPtr entity) override {
+    void executeLogic(EntityPtr entity, float deltaTime) override {
         if (!entity) return;
 
         auto benchmarkEntity = std::dynamic_pointer_cast<BenchmarkEntity>(entity);

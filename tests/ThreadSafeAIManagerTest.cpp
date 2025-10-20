@@ -76,7 +76,7 @@ private:
 public:
   ThreadTestBehavior(int id) : m_id(id) {}
 
-  void executeLogic(EntityPtr entity) override {
+  void executeLogic(EntityPtr entity, float deltaTime) override {
     if (!entity)
       return;
 

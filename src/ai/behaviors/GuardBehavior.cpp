@@ -79,7 +79,7 @@ void GuardBehavior::init(EntityPtr entity) {
   }
 }
 
-void GuardBehavior::executeLogic(EntityPtr entity) {
+void GuardBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
   if (!entity || !isActive())
     return;
 

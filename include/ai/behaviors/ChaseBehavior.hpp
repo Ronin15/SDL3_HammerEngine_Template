@@ -17,7 +17,7 @@ public:
 
   void init(EntityPtr entity) override;
 
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
 
   void clean(EntityPtr entity) override;
 
