@@ -1012,18 +1012,23 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     float worldH = m_grid->getHeight() * m_cellSize;
     float diagonal = std::sqrt(worldW * worldW + worldH * worldH);
 
-    // ADAPTIVE QUANTIZATION: Two separate strategies for different goals
+    // ADAPTIVE QUANTIZATION: Single unified quantization for correctness
 
     // Endpoint quantization: Conservative scaling for ACCURACY (minimize path failures)
     // 0.5% of world size with strict 256px cap to keep quantization fine-grained
     // This prevents entities from snapping to blocked cells
     m_endpointQuantization = std::clamp(worldW / 200.0f, 128.0f, 256.0f);
 
-    // Cache key quantization: Aggressive scaling for CACHE EFFICIENCY (optimal coverage)
-    // worldW / 25.0f creates 25×25 grid = 625 spatial buckets for any world size
-    // With 32K cache capacity, this provides ~50× coverage per bucket for high hit rates
-    // Larger quantization (512px+) groups nearby paths together for better reuse
-    m_cacheKeyQuantization = std::clamp(worldW / 25.0f, 512.0f, 2048.0f);
+    // BUGFIX: Cache key quantization MUST match endpoint quantization to prevent
+    // coalescing requests with different normalized goals. Previously, cache key was
+    // 4-8x coarser than endpoint quantization, causing coalesced entities to receive
+    // paths to wrong destinations (off by 160-512px from their actual normalized goal).
+    // Example bug scenario with old values (endpoint=160px, cache=1280px):
+    //   Entity A requests path to (5920, 6720) [after endpoint quantization]
+    //   Entity B requests path to (6080, 6720) [after endpoint quantization]
+    //   Both get same cache key due to coarse cache quantization
+    //   Entity B receives path to (5920, 6720) instead of (6080, 6720) - 160px error!
+    m_cacheKeyQuantization = m_endpointQuantization;
 
     // ADAPTIVE THRESHOLDS
     m_hierarchicalThreshold = diagonal * 0.05f;      // 5% of world diagonal

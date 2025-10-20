@@ -73,7 +73,13 @@ protected:
   
   // Cached PathfinderManager reference for all behaviors to eliminate Instance() calls
   PathfinderManager& pathfinder() const;
-  
+
+  // OBSTACLE DETECTION: Check if entity is stuck and needs path refresh
+  // Returns true if entity hasn't made progress for 800ms
+  inline bool isStuckOnObstacle(Uint64 lastProgressTime, Uint64 now) const {
+    static constexpr Uint64 STUCK_THRESHOLD_MS = 800;
+    return (lastProgressTime > 0 && (now - lastProgressTime) > STUCK_THRESHOLD_MS);
+  }
 
   // Apply separation at most every kSeparationIntervalMs, with entity-based staggering
   inline void applyDecimatedSeparation(EntityPtr entity,
