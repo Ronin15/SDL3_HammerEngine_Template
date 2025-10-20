@@ -54,7 +54,7 @@ void FleeBehavior::init(EntityPtr entity) {
     state.lastThreatPosition = entity->getPosition();
 }
 
-void FleeBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
+void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     if (!entity || !isActive()) return;
 
     auto it = m_entityStates.find(entity);
@@ -121,16 +121,16 @@ void FleeBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTi
     if (state.isFleeing) {
         switch (m_fleeMode) {
             case FleeMode::PANIC_FLEE:
-                updatePanicFlee(entity, state);
+                updatePanicFlee(entity, state, deltaTime);
                 break;
             case FleeMode::STRATEGIC_RETREAT:
-                updateStrategicRetreat(entity, state);
+                updateStrategicRetreat(entity, state, deltaTime);
                 break;
             case FleeMode::EVASIVE_MANEUVER:
-                updateEvasiveManeuver(entity, state);
+                updateEvasiveManeuver(entity, state, deltaTime);
                 break;
             case FleeMode::SEEK_COVER:
-                updateSeekCover(entity, state);
+                updateSeekCover(entity, state, deltaTime);
                 break;
         }
         
@@ -361,7 +361,7 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D&
     return adjustedDir;
 }
 
-void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
@@ -397,10 +397,10 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     // Separation decimation: compute at most every 2 ticks per entity
     applyDecimatedSeparation(entity, entity->getPosition(), intended,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.lastSepTick, state.lastSepVelocity);
+                             state.separationTimer, state.lastSepVelocity, deltaTime);
 }
 
-void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
@@ -508,11 +508,11 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
         Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
         applyDecimatedSeparation(entity, entity->getPosition(), intended2,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.lastSepTick, state.lastSepVelocity);
+                                 state.separationTimer, state.lastSepVelocity, deltaTime);
     }
 }
 
-void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
@@ -543,10 +543,10 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     Vector2D intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
     applyDecimatedSeparation(entity, entity->getPosition(), intended3,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.lastSepTick, state.lastSepVelocity);
+                             state.separationTimer, state.lastSepVelocity, deltaTime);
 }
 
-void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float deltaTime) {
     // Move toward nearest safe zone using pathfinding when possible
     Vector2D currentPos = entity->getPosition();
     Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
@@ -650,7 +650,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
         Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
         applyDecimatedSeparation(entity, entity->getPosition(), intended4,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.lastSepTick, state.lastSepVelocity);
+                                 state.separationTimer, state.lastSepVelocity, deltaTime);
     }
 }
 

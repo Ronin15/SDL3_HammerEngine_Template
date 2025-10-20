@@ -130,7 +130,7 @@ private:
     float navRadius{18.0f};
     Uint64 backoffUntil{0};
     // Separation decimation
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
 
     EntityState()
@@ -210,19 +210,19 @@ private:
   void updateAlertLevel(EntityPtr entity, EntityState &state,
                         bool threatPresent) const;
   void handleThreatDetection(EntityPtr entity, EntityState &state,
-                             EntityPtr threat);
-  void handleInvestigation(EntityPtr entity, EntityState &state);
-  void handleReturnToPost(EntityPtr entity, EntityState &state);
+                             EntityPtr threat, float deltaTime);
+  void handleInvestigation(EntityPtr entity, EntityState &state, float deltaTime);
+  void handleReturnToPost(EntityPtr entity, EntityState &state, float deltaTime);
 
   // Mode-specific updates
-  void updateStaticGuard(EntityPtr entity, EntityState &state);
-  void updatePatrolGuard(EntityPtr entity, EntityState &state);
-  void updateAreaGuard(EntityPtr entity, EntityState &state);
-  void updateRoamingGuard(EntityPtr entity, EntityState &state);
-  void updateAlertGuard(EntityPtr entity, EntityState &state);
+  void updateStaticGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updatePatrolGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAreaGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateRoamingGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAlertGuard(EntityPtr entity, EntityState &state, float deltaTime);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed);
+  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
   Vector2D getNextPatrolWaypoint(const EntityState &state) const;
   Vector2D generateRoamTarget(EntityPtr entity, const EntityState &state) const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,

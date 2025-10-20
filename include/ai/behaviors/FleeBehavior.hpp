@@ -84,7 +84,7 @@ private:
     Uint64 nextPathAllowed{0};
     Uint64 backoffUntil{0};
     // Separation decimation
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
 
     EntityState()
@@ -150,10 +150,10 @@ private:
   Vector2D avoidBoundaries(const Vector2D &position,
                            const Vector2D &direction) const;
 
-  void updatePanicFlee(EntityPtr entity, EntityState &state);
-  void updateStrategicRetreat(EntityPtr entity, EntityState &state);
-  void updateEvasiveManeuver(EntityPtr entity, EntityState &state);
-  void updateSeekCover(EntityPtr entity, EntityState &state);
+  void updatePanicFlee(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateStrategicRetreat(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateEvasiveManeuver(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateSeekCover(EntityPtr entity, EntityState &state, float deltaTime);
 
   void updateStamina(EntityState &state, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;

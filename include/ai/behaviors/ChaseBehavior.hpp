@@ -98,7 +98,7 @@ private:
   float m_stallPositionVariance{0.0f};
   Uint64 m_lastUnstickTime{0};
   // Separation decimation
-  Uint64 m_lastSepTick{0};
+  float m_separationTimer{0.0f};
   Vector2D m_lastSepVelocity{0, 0};
   // Unified cooldown management
   struct {

@@ -66,11 +66,11 @@ void WanderBehavior::init(EntityPtr entity) {
   state.startDelay = s_delayDistribution(getSharedRNG());
   state.movementStarted = false;
 
-  // Choose initial direction
-  chooseNewDirection(entity);
+  // Choose initial direction (pass 0.0f since this is initialization)
+  chooseNewDirection(entity, 0.0f);
 }
 
-void WanderBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) {
+void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !m_active)
     return;
 
@@ -87,13 +87,13 @@ void WanderBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
       // PERFORMANCE OPTIMIZATION: Use cached collision data if available
       if (!state.cachedNearbyPositions.empty()) {
         applySeparationWithCache(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                                 state.lastSepVelocity, state.cachedNearbyPositions);
+                                 m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                                 state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
       } else {
         // Fallback to direct calculation on first frame
         applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                                 state.lastSepVelocity);
+                                 m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                                 state.lastSepVelocity, deltaTime);
       }
     }
     return;
@@ -104,7 +104,7 @@ void WanderBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
   // should do the heavy work) This is handled by executeLogicWithStaggering in
   // the base class. Here, we assume executeLogic is called only on the correct
   // frames.
-  updateWanderState(entity);
+  updateWanderState(entity, deltaTime);
 
   // Try to follow a short path towards the current direction destination
   if (state.movementStarted) {
@@ -272,7 +272,7 @@ void WanderBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
         // This eliminates redundant collision queries (was querying every 2 seconds)
         applySeparationWithCache(entity, entity->getPosition(),
                                  entity->getVelocity(), m_speed, 28.0f, 0.30f,
-                                 6, state.lastSepTick, state.lastSepVelocity,
+                                 6, state.separationTimer, state.lastSepVelocity, deltaTime,
                                  state.cachedNearbyPositions);
       }
     } else {
@@ -280,13 +280,13 @@ void WanderBehavior::executeLogic(EntityPtr entity, [[maybe_unused]] float delta
       Vector2D intended = state.currentDirection * m_speed;
       // PERFORMANCE OPTIMIZATION: Use cached collision data
       applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity, state.cachedNearbyPositions);
+                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
     }
   }
 }
 
-void WanderBehavior::updateWanderState(EntityPtr entity) {
+void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
   if (!entity)
     return;
 
@@ -323,8 +323,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
 
     // PERFORMANCE OPTIMIZATION: Use cached collision data
     applySeparationWithCache(entity, entity->getPosition(), stableVelocity,
-                             m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                             state.lastSepVelocity, state.cachedNearbyPositions);
+                             m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                             state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
   } else if (wouldFlip) {
     // Record the time of this flip
     state.lastDirectionFlip = currentTime;
@@ -341,7 +341,7 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
         state.pathPoints.clear();
         state.currentPathIndex = 0;
         state.lastPathUpdate = currentTime;
-        chooseNewDirection(entity);
+        chooseNewDirection(entity, deltaTime);
         state.cooldowns.applyPathCooldown(currentTime, 600); // prevent immediate re-request
         state.stallStart = 0;
         return;
@@ -353,7 +353,7 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
   // Check if it's time to change direction
   if (currentTime - state.lastDirectionChangeTime >=
       m_changeDirectionInterval) {
-    chooseNewDirection(entity);
+    chooseNewDirection(entity, deltaTime);
     state.lastDirectionChangeTime = currentTime;
   }
 
@@ -370,8 +370,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity) {
       Vector2D intended = state.currentDirection * m_speed;
       // PERFORMANCE OPTIMIZATION: Use cached collision data
       applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity, state.cachedNearbyPositions);
+                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
     }
   }
 
@@ -404,9 +404,9 @@ void WanderBehavior::onMessage(EntityPtr entity, const std::string &message) {
     entity->setVelocity(Vector2D(0, 0));
   } else if (message == "resume") {
     setActive(true);
-    chooseNewDirection(entity);
+    chooseNewDirection(entity, 0.0f); // Pass 0.0f since this is a message handler
   } else if (message == "new_direction") {
-    chooseNewDirection(entity);
+    chooseNewDirection(entity, 0.0f); // Pass 0.0f since this is a message handler
   } else if (message == "increase_speed") {
     m_speed *= 1.5f;
     if (m_active && m_entityStates.find(entity) != m_entityStates.end()) {
@@ -447,7 +447,7 @@ void WanderBehavior::setChangeDirectionInterval(float interval) {
   m_changeDirectionInterval = interval;
 }
 
-void WanderBehavior::chooseNewDirection(EntityPtr entity) {
+void WanderBehavior::chooseNewDirection(EntityPtr entity, float deltaTime) {
   if (!entity)
     return;
 
@@ -472,13 +472,13 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity) {
     // PERFORMANCE OPTIMIZATION: Use cached collision data if available
     if (!state.cachedNearbyPositions.empty()) {
       applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity, state.cachedNearbyPositions);
+                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
     } else {
       // Fallback for initialization
       applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.lastSepTick,
-                               state.lastSepVelocity);
+                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                               state.lastSepVelocity, deltaTime);
     }
   }
 

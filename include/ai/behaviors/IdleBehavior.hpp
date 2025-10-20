@@ -65,7 +65,7 @@ private:
     float currentAngle{0.0f};
     bool initialized{false};
     // Separation decimation (for idle crowding)
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
 
     EntityState()
@@ -95,9 +95,9 @@ private:
   // Helper methods
   void initializeEntityState(EntityPtr entity, EntityState &state) const;
   void updateStationary(EntityPtr entity, EntityState &state);
-  void updateSubtleSway(EntityPtr entity, EntityState &state) const;
-  void updateOccasionalTurn(EntityPtr entity, EntityState &state) const;
-  void updateLightFidget(EntityPtr entity, EntityState &state) const;
+  void updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const;
+  void updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const;
+  void updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const;
 
   Vector2D generateRandomOffset() const;
   Uint64 getRandomMovementInterval() const;
