@@ -75,6 +75,18 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     state.progressTimer += deltaTime;
     if (state.pathCooldown > 0.0f) state.pathCooldown -= deltaTime;
     if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
+    state.lastCrowdAnalysis += deltaTime;
+
+    // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
+    // Reduces CollisionManager queries significantly for fleeing entities
+    float crowdCacheInterval = 3.0f + (entity->getID() % 200) * 0.01f; // 3-5 seconds
+    if (state.lastCrowdAnalysis >= crowdCacheInterval) {
+      Vector2D position = entity->getPosition();
+      float queryRadius = 100.0f; // Smaller radius for flee (lighter separation)
+      state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
+          entity, position, queryRadius, state.cachedNearbyPositions);
+      state.lastCrowdAnalysis = 0.0f; // Reset timer
+    }
 
     EntityPtr threat = getThreat();
 
@@ -406,10 +418,11 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float d
     
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-    // Separation decimation: compute at most every 2 ticks per entity
-    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+    // PERFORMANCE OPTIMIZATION: Use cached collision data to avoid redundant queries
+    applySeparationWithCache(entity, entity->getPosition(), intended,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.separationTimer, state.lastSepVelocity, deltaTime);
+                             state.separationTimer, state.lastSepVelocity, deltaTime,
+                             state.cachedNearbyPositions);
 }
 
 void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, float deltaTime) {
@@ -522,9 +535,11 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
         Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        applyDecimatedSeparation(entity, entity->getPosition(), intended2,
+        // PERFORMANCE OPTIMIZATION: Use cached collision data
+        applySeparationWithCache(entity, entity->getPosition(), intended2,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.separationTimer, state.lastSepVelocity, deltaTime);
+                                 state.separationTimer, state.lastSepVelocity, deltaTime,
+                                 state.cachedNearbyPositions);
     }
 }
 
@@ -555,12 +570,14 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, f
     );
     
     state.fleeDirection = normalizeVector(zigzagDir);
-    
+
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
-    applyDecimatedSeparation(entity, entity->getPosition(), intended3,
+    // PERFORMANCE OPTIMIZATION: Use cached collision data
+    applySeparationWithCache(entity, entity->getPosition(), intended3,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.separationTimer, state.lastSepVelocity, deltaTime);
+                             state.separationTimer, state.lastSepVelocity, deltaTime,
+                             state.cachedNearbyPositions);
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float deltaTime) {
@@ -668,9 +685,11 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
     if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
         Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        applyDecimatedSeparation(entity, entity->getPosition(), intended4,
+        // PERFORMANCE OPTIMIZATION: Use cached collision data
+        applySeparationWithCache(entity, entity->getPosition(), intended4,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.separationTimer, state.lastSepVelocity, deltaTime);
+                                 state.separationTimer, state.lastSepVelocity, deltaTime,
+                                 state.cachedNearbyPositions);
     }
 }
 

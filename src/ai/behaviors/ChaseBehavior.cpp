@@ -60,6 +60,18 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     return;
   }
 
+  // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
+  // Reduces CollisionManager queries significantly for chasing entities
+  m_lastCrowdAnalysis += deltaTime;
+  float crowdCacheInterval = 3.0f + (static_cast<float>(entity->getID() % 200) * 0.01f); // 3-5 seconds
+  if (m_lastCrowdAnalysis >= crowdCacheInterval) {
+    Vector2D position = entity->getPosition();
+    float queryRadius = 110.0f; // Slightly larger for combat behaviors
+    m_cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
+        entity, position, queryRadius, m_cachedNearbyPositions);
+    m_lastCrowdAnalysis = 0.0f;
+  }
+
   // Get player target from optimized cache
   auto target = getCachedPlayerTarget();
   if (!target) {
@@ -192,20 +204,22 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
             entity->setVelocity(newDir * m_chaseSpeed);
           }
           
-          // Separation decimation: compute at most every 2 ticks
-          applyDecimatedSeparation(entity, entityPos, entity->getVelocity(),
+          // PERFORMANCE OPTIMIZATION: Use cached collision data
+          applySeparationWithCache(entity, entityPos, entity->getVelocity(),
                                    m_chaseSpeed, dynamicRadius, dynamicStrength,
                                    COMBAT_MAX_NEIGHBORS + chaserCount,
-                                   m_separationTimer, m_lastSepVelocity, deltaTime);
+                                   m_separationTimer, m_lastSepVelocity, deltaTime,
+                                   m_cachedNearbyPositions);
         } else {
           // Fallback to direct movement with crowd awareness
           Vector2D direction = (targetPos - entityPos);
           direction.normalize();
-          // Apply decimated separation on direct movement too
+          // PERFORMANCE OPTIMIZATION: Use cached collision data
           Vector2D intended = direction * m_chaseSpeed;
-          applyDecimatedSeparation(entity, entityPos, intended, m_chaseSpeed,
+          applySeparationWithCache(entity, entityPos, intended, m_chaseSpeed,
                                    26.0f, 0.22f, 4, m_separationTimer,
-                                   m_lastSepVelocity, deltaTime);
+                                   m_lastSepVelocity, deltaTime,
+                                   m_cachedNearbyPositions);
           m_progressTimer = 0.0f;
         }
       } else {
@@ -224,11 +238,12 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
           direction.normalize();
         }
         
-        // Decimated separation on direct pursuit
+        // PERFORMANCE OPTIMIZATION: Use cached collision data
         Vector2D intended = direction * m_chaseSpeed;
-        applyDecimatedSeparation(entity, entityPos, intended, m_chaseSpeed,
+        applySeparationWithCache(entity, entityPos, intended, m_chaseSpeed,
                                  26.0f, 0.22f, 4, m_separationTimer,
-                                 m_lastSepVelocity, deltaTime);
+                                 m_lastSepVelocity, deltaTime,
+                                 m_cachedNearbyPositions);
         m_progressTimer = 0.0f;
       }
 
