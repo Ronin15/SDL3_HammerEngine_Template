@@ -115,11 +115,6 @@ private:
     struct {
       float minX{0.0f}, minY{0.0f}, maxX{0.0f}, maxY{0.0f};
     } cachedBounds;
-    
-    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
-    int cachedNearbyCount{0};
-    std::vector<Vector2D> cachedNearbyPositions;
-    Uint64 lastCrowdAnalysis{0};
 
     // Constructor to ensure proper initialization
     EntityState()
