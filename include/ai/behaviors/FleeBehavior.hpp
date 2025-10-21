@@ -90,7 +90,7 @@ private:
     // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
     int cachedNearbyCount{0};
     std::vector<Vector2D> cachedNearbyPositions;
-    Uint64 lastCrowdAnalysis{0};
+    float lastCrowdAnalysis{0.0f};
 
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),
