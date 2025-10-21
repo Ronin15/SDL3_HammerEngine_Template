@@ -84,17 +84,10 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       state.movementStarted = true;
       Vector2D intended = state.currentDirection * m_speed;
 
-      // PERFORMANCE OPTIMIZATION: Use cached collision data if available
-      if (!state.cachedNearbyPositions.empty()) {
-        applySeparationWithCache(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                                 state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
-      } else {
-        // Fallback to direct calculation on first frame
-        applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                                 state.lastSepVelocity, deltaTime);
-      }
+      // Apply decimated separation - CollisionManager handles queries
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                               state.lastSepVelocity, deltaTime);
     }
     return;
   }
@@ -109,61 +102,11 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // Try to follow a short path towards the current direction destination
   if (state.movementStarted) {
     Uint64 now = SDL_GetTicks();
-    
-    // Dynamic movement distance based on local density and world scale
-    float baseDistance = std::min(600.0f, m_areaRadius * 1.5f); // Increased base distance
-    
-    // PERFORMANCE FIX: Check local entity density less frequently to avoid expensive CollisionManager calls
+
+    // Simple movement distance based on wander area
+    float moveDistance = std::min(600.0f, m_areaRadius * 1.5f);
+
     Vector2D position = entity->getPosition();
-    
-    // Cache crowd analysis results to avoid expensive collision queries every frame
-    int nearbyCount = state.cachedNearbyCount;
-    std::vector<Vector2D> nearbyPositions = state.cachedNearbyPositions;
-    
-    // PERFORMANCE FIX: Update crowd analysis every 3-5 seconds (was 333-500ms)
-    // At 2000 entities: 5000 queries/sec → 500 queries/sec (90% reduction!)
-    Uint32 frameInterval = 3000 + (entity->getID() % 200) * 10; // 3000-5000ms range
-    if (now - state.lastCrowdAnalysis > frameInterval) {
-      float queryRadius = 120.0f;
-      nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
-      state.cachedNearbyCount = nearbyCount;
-      state.cachedNearbyPositions = nearbyPositions;
-      state.lastCrowdAnalysis = now;
-    }
-    
-     // Dynamic distance adjustment based on crowding
-     // PERFORMANCE FIX: Simplified cluster calculations with higher thresholds
-     float moveDistance = baseDistance;
-
-     if (nearbyCount > 8) {
-       // Very high density: pick completely different target away from cluster
-       moveDistance = baseDistance * 3.0f; // Very long distance to escape cluster
-
-       // SIMPLIFIED: Direct escape direction without complex rotation
-       if (!nearbyPositions.empty()) {
-         Vector2D crowdCenter = std::accumulate(nearbyPositions.begin(), nearbyPositions.end(), Vector2D(0, 0));
-         crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
-         Vector2D escapeDirection = (position - crowdCenter).normalized();
-
-         // Simple randomization using entity ID
-         float randomOffset = (entity->getID() % 60 - 30) * 0.01f; // ±0.3 variation
-         escapeDirection.setX(escapeDirection.getX() + randomOffset);
-         escapeDirection.setY(escapeDirection.getY() + randomOffset);
-         escapeDirection.normalize();
-
-         // Override current direction with escape direction
-         state.currentDirection = escapeDirection;
-       }
-     } else if (nearbyCount > 5) {
-       // High density: encourage longer wandering to spread out
-       moveDistance = baseDistance * 2.0f; // Up to 1200px movement for spreading
-
-       // SIMPLIFIED: Lighter blending, no cluster center calculation
-       state.currentDirection = state.currentDirection.normalized();
-     } else if (nearbyCount > 2) {
-       // Medium density: moderate expansion
-       moveDistance = baseDistance * 1.3f;
-     }
 
     // PERFORMANCE FIX: Use cached world bounds instead of expensive WorldManager call
     // Cache world bounds in entity state to avoid repeated WorldManager calls
@@ -268,20 +211,18 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
           entity, entity->getPosition(), state.pathPoints, state.currentPathIndex,
           m_speed, state.navRadius);
       if (following) {
-        // PERFORMANCE OPTIMIZATION: Use cached collision data from crowd analysis
-        // This eliminates redundant collision queries (was querying every 2 seconds)
-        applySeparationWithCache(entity, entity->getPosition(),
+        // Apply decimated separation - CollisionManager handles queries
+        applyDecimatedSeparation(entity, entity->getPosition(),
                                  entity->getVelocity(), m_speed, 28.0f, 0.30f,
-                                 6, state.separationTimer, state.lastSepVelocity, deltaTime,
-                                 state.cachedNearbyPositions);
+                                 6, state.separationTimer, state.lastSepVelocity, deltaTime);
       }
     } else {
       // Always apply base velocity (in case something external changed it)
       Vector2D intended = state.currentDirection * m_speed;
-      // PERFORMANCE OPTIMIZATION: Use cached collision data
-      applySeparationWithCache(entity, entity->getPosition(), intended,
+      // Apply decimated separation - CollisionManager handles queries
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
                                m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                               state.lastSepVelocity, deltaTime);
     }
   }
 }
@@ -321,10 +262,10 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
     stableVelocity.normalize();
     stableVelocity = stableVelocity * m_speed;
 
-    // PERFORMANCE OPTIMIZATION: Use cached collision data
-    applySeparationWithCache(entity, entity->getPosition(), stableVelocity,
+    // Apply separation using CollisionManager
+    applyDecimatedSeparation(entity, entity->getPosition(), stableVelocity,
                              m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                             state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                             state.lastSepVelocity, deltaTime);
   } else if (wouldFlip) {
     // Record the time of this flip
     state.lastDirectionFlip = currentTime;
@@ -368,10 +309,10 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
       rotated.normalize();
       state.currentDirection = rotated;
       Vector2D intended = state.currentDirection * m_speed;
-      // PERFORMANCE OPTIMIZATION: Use cached collision data
-      applySeparationWithCache(entity, entity->getPosition(), intended,
+      // Apply separation using CollisionManager
+      applyDecimatedSeparation(entity, entity->getPosition(), intended,
                                m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                               state.lastSepVelocity, deltaTime);
     }
   }
 
@@ -469,17 +410,10 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, float deltaTime) {
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
     Vector2D intended = state.currentDirection * m_speed;
-    // PERFORMANCE OPTIMIZATION: Use cached collision data if available
-    if (!state.cachedNearbyPositions.empty()) {
-      applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
-    } else {
-      // Fallback for initialization
-      applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime);
-    }
+    // Apply separation using CollisionManager
+    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                             m_speed, 28.0f, 0.30f, 6, state.separationTimer,
+                             state.lastSepVelocity, deltaTime);
   }
 
   // NPC class now handles sprite flipping based on velocity
