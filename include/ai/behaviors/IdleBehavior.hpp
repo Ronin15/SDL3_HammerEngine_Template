@@ -49,10 +49,10 @@ private:
   struct EntityState {
     Vector2D originalPosition{0, 0};
     Vector2D currentOffset{0, 0};
-    Uint64 lastMovementTime{0};
-    Uint64 lastTurnTime{0};
-    Uint64 nextMovementTime{0};
-    Uint64 nextTurnTime{0};
+    float movementTimer{0.0f};
+    float turnTimer{0.0f};
+    float movementInterval{0.0f};
+    float turnInterval{0.0f};
     float currentAngle{0.0f};
     bool initialized{false};
     // Separation decimation (for idle crowding)
@@ -60,8 +60,8 @@ private:
     Vector2D lastSepVelocity{0, 0};
 
     EntityState()
-        : originalPosition(0, 0), currentOffset(0, 0), lastMovementTime(0),
-          lastTurnTime(0), nextMovementTime(0), nextTurnTime(0),
+        : originalPosition(0, 0), currentOffset(0, 0), movementTimer(0.0f),
+          turnTimer(0.0f), movementInterval(0.0f), turnInterval(0.0f),
           currentAngle(0.0f), initialized(false) {}
   };
 
@@ -91,8 +91,8 @@ private:
   void updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const;
 
   Vector2D generateRandomOffset() const;
-  Uint64 getRandomMovementInterval() const;
-  Uint64 getRandomTurnInterval() const;
+  float getRandomMovementInterval() const;
+  float getRandomTurnInterval() const;
 };
 
 #endif // IDLE_BEHAVIOR_HPP

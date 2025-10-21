@@ -91,31 +91,37 @@ private:
   int m_recalcInterval{15}; // frames between path recalcs
   // Improved stall detection
   float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
-  Uint64 m_lastProgressTime{0};
-  Uint64 m_lastPathUpdate{0};
-  Uint64 m_stallStart{0};
+  float m_progressTimer{0.0f};
+  float m_pathUpdateTimer{0.0f};
+  float m_stallTimer{0.0f};
   Vector2D m_lastStallPosition{0, 0};
   float m_stallPositionVariance{0.0f};
-  Uint64 m_lastUnstickTime{0};
+  float m_unstickTimer{0.0f};
   // Separation decimation
   float m_separationTimer{0.0f};
   Vector2D m_lastSepVelocity{0, 0};
   // Unified cooldown management
   struct {
-      Uint64 nextPathRequest{0};
-      Uint64 stallRecoveryUntil{0};
-      Uint64 behaviorChangeUntil{0};
-      
-      bool canRequestPath(Uint64 now) const {
-          return now >= nextPathRequest && now >= stallRecoveryUntil;
+      float pathRequestCooldown{0.0f};
+      float stallRecoveryCooldown{0.0f};
+      float behaviorChangeCooldown{0.0f};
+
+      bool canRequestPath() const {
+          return pathRequestCooldown <= 0.0f && stallRecoveryCooldown <= 0.0f;
       }
-      
-      void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 600) {
-          nextPathRequest = now + cooldownMs;
+
+      void applyPathCooldown(float cooldownSeconds = 0.6f) {
+          pathRequestCooldown = cooldownSeconds;
       }
-      
-      void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
-          stallRecoveryUntil = now + 200 + (stallId % 300);
+
+      void applyStallCooldown(float baseSeconds = 0.2f, uint32_t stallId = 0) {
+          stallRecoveryCooldown = baseSeconds + (stallId % 300) * 0.001f;
+      }
+
+      void update(float deltaTime) {
+          if (pathRequestCooldown > 0.0f) pathRequestCooldown -= deltaTime;
+          if (stallRecoveryCooldown > 0.0f) stallRecoveryCooldown -= deltaTime;
+          if (behaviorChangeCooldown > 0.0f) behaviorChangeCooldown -= deltaTime;
       }
   } m_cooldowns;
 
@@ -123,7 +129,7 @@ private:
   // bool m_useAsyncPathfinding removed
 
   // PERFORMANCE OPTIMIZATIONS: Crowd detection throttling
-  mutable Uint64 m_lastCrowdCheckTime{0};
+  mutable float m_crowdCheckTimer{0.0f};
   mutable int m_cachedChaserCount{0};
 
 public:

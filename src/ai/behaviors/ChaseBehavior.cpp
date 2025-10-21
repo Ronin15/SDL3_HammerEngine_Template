@@ -78,7 +78,10 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   float distanceSquared = (targetPos - entityPos).lengthSquared();
   float maxRangeSquared = m_maxRange * m_maxRange;
   float minRangeSquared = m_minRange * m_minRange;
-  Uint64 now = SDL_GetTicks();
+
+  // Update cooldown timers
+  m_cooldowns.update(deltaTime);
+  m_pathUpdateTimer += deltaTime;
 
   // State: TARGET_IN_RANGE - Check if target is within chase range
   if (distanceSquared <= maxRangeSquared) {
@@ -90,18 +93,18 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     if (distanceSquared > minRangeSquared) {
       // CACHE-AWARE CHASE: Smart pathfinding with target tracking
       bool needsNewPath = false;
-      
+
       // OPTIMIZED: Further reduced pathfinding frequency for better performance
       // Only request new path if:
       // 1. No current path exists, OR
-      // 2. Target moved very significantly (>300px), OR  
+      // 2. Target moved very significantly (>300px), OR
       // 3. Path is getting quite stale (>8 seconds old)
       constexpr float PATH_INVALIDATION_DISTANCE = 300.0f; // Further increased threshold
-      constexpr Uint64 PATH_REFRESH_INTERVAL = 8000; // Further increased interval
-      
+      constexpr float PATH_REFRESH_INTERVAL = 8.0f; // 8 seconds
+
       if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
         needsNewPath = true;
-      } else if (now - m_lastPathUpdate > PATH_REFRESH_INTERVAL) {
+      } else if (m_pathUpdateTimer > PATH_REFRESH_INTERVAL) {
         needsNewPath = true;
       } else {
         // Check if target moved significantly from when path was computed
@@ -109,15 +112,15 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
         float targetMovementSquared = (targetPos - pathGoal).lengthSquared();
         needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
       }
-      
+
       // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
-      bool stuckOnObstacle = isStuckOnObstacle(m_lastProgressTime, now);
+      bool stuckOnObstacle = (m_progressTimer > 3.0f); // Stuck if no progress for 3 seconds
       if (stuckOnObstacle) {
         m_navPath.clear(); // Clear path to force refresh
         m_navIndex = 0;
       }
 
-      if ((needsNewPath || stuckOnObstacle) && m_cooldowns.canRequestPath(now)) {
+      if ((needsNewPath || stuckOnObstacle) && m_cooldowns.canRequestPath()) {
         // PERFORMANCE: Use squared distance to avoid expensive sqrt
         float minRangeCheckSquared = (m_minRange * 1.5f) * (m_minRange * 1.5f);
         if (distanceSquared < minRangeCheckSquared) { // Already close enough
@@ -135,15 +138,15 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
         // ASYNC PATHFINDING: Use high-performance background processing for chasing
         auto& pf = this->pathfinder();
-        pf.requestPath(entity->getID(), entityPos, goalPosition, 
+        pf.requestPath(entity->getID(), entityPos, goalPosition,
                               PathfinderManager::Priority::High,
                               [this](EntityID, const std::vector<Vector2D>& path) {
                                 // Update path when received (may be from background thread)
                                 m_navPath = path;
                                 m_navIndex = 0;
-                                m_lastPathUpdate = SDL_GetTicks();
+                                m_pathUpdateTimer = 0.0f;
                               });
-        m_cooldowns.applyPathCooldown(now, 3000); // Further increased cooldown to 3s for better performance
+        m_cooldowns.applyPathCooldown(3.0f); // 3 second cooldown for better performance
       }
 
       // State: PATH_FOLLOWING using optimized PathfinderManager method
@@ -153,20 +156,21 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
             entity, entityPos, m_navPath, m_navIndex, m_chaseSpeed, m_navRadius);
         
         if (following) {
-          m_lastProgressTime = now;
+          m_progressTimer = 0.0f; // Reset progress timer
           // Apply enhanced separation for combat scenarios with dynamic adjustment
           using namespace AIInternal::SeparationParams;
           float dynamicRadius = COMBAT_RADIUS;
           float dynamicStrength = COMBAT_STRENGTH;
-          
+
           // OPTIMIZED: Use AIManager's spatial partitioning instead of expensive collision queries
           int chaserCount = 0;
-          constexpr Uint64 CROWD_CHECK_INTERVAL = 2000; // Reduced frequency: check every 2 seconds
-          
-          if (now - m_lastCrowdCheckTime > CROWD_CHECK_INTERVAL) {
+          constexpr float CROWD_CHECK_INTERVAL = 2.0f; // Check every 2 seconds
+
+          m_crowdCheckTimer += deltaTime;
+          if (m_crowdCheckTimer >= CROWD_CHECK_INTERVAL) {
             // Use AIManager's optimized spatial counting instead of collision queries
             chaserCount = AIInternal::CountNearbyEntities(entity, entityPos, COMBAT_RADIUS * 2.0f);
-            m_lastCrowdCheckTime = now;
+            m_crowdCheckTimer = 0.0f;
             m_cachedChaserCount = chaserCount;
           } else {
             // Use cached value between checks
@@ -202,7 +206,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
           applyDecimatedSeparation(entity, entityPos, intended, m_chaseSpeed,
                                    26.0f, 0.22f, 4, m_separationTimer,
                                    m_lastSepVelocity, deltaTime);
-          m_lastProgressTime = now;
+          m_progressTimer = 0.0f;
         }
       } else {
         // Direct movement toward target with crowd awareness
@@ -225,7 +229,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
         applyDecimatedSeparation(entity, entityPos, intended, m_chaseSpeed,
                                  26.0f, 0.22f, 4, m_separationTimer,
                                  m_lastSepVelocity, deltaTime);
-        m_lastProgressTime = now;
+        m_progressTimer = 0.0f;
       }
 
       // Update chase state
@@ -234,17 +238,16 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       // SIMPLIFIED: Basic stall detection without complex variance tracking
       float currentSpeed = entity->getVelocity().length();
       const float stallThreshold = std::max(1.0f, m_chaseSpeed * 0.5f);
-      const Uint64 stallTimeLimit = 2000; // Fixed 2-second timeout
-      
+      const float stallTimeLimit = 2.0f; // Fixed 2-second timeout
+
       if (currentSpeed < stallThreshold) {
-        if (m_stallStart == 0) {
-          m_stallStart = now;
-        } else if (now - m_stallStart >= stallTimeLimit) {
+        m_stallTimer += deltaTime;
+        if (m_stallTimer >= stallTimeLimit) {
           // Simple stall recovery: clear path and request new one
           m_navPath.clear();
           m_navIndex = 0;
-          m_lastPathUpdate = 0;
-          m_stallStart = 0;
+          m_pathUpdateTimer = 0.0f;
+          m_stallTimer = 0.0f;
           
           // Light jitter to avoid deadlock
           float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.2f;
@@ -255,7 +258,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
           entity->setVelocity(rotated * m_chaseSpeed);
         }
       } else {
-        m_stallStart = 0; // Reset when moving normally
+        m_stallTimer = 0.0f; // Reset when moving normally
       }
 
     } else {
@@ -276,7 +279,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       // Clear pathfinding state
       m_navPath.clear();
       m_navIndex = 0;
-      m_lastPathUpdate = 0;
+      m_pathUpdateTimer = 0.0f;
       
       onTargetLost(entity);
     }
@@ -303,16 +306,16 @@ void ChaseBehavior::clean(EntityPtr entity) {
   // Clear path-following state
   m_navPath.clear();
   m_navIndex = 0;
-  m_lastPathUpdate = 0;
-  m_lastProgressTime = 0;
-  m_stallStart = 0;
+  m_pathUpdateTimer = 0.0f;
+  m_progressTimer = 0.0f;
+  m_stallTimer = 0.0f;
   m_stallPositionVariance = 0.0f;
-  m_lastUnstickTime = 0;
-  
+  m_unstickTimer = 0.0f;
+
   // Reset cooldowns
-  m_cooldowns.nextPathRequest = 0;
-  m_cooldowns.stallRecoveryUntil = 0;
-  m_cooldowns.behaviorChangeUntil = 0;
+  m_cooldowns.pathRequestCooldown = 0.0f;
+  m_cooldowns.stallRecoveryCooldown = 0.0f;
+  m_cooldowns.behaviorChangeCooldown = 0.0f;
 }
 
 void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {
