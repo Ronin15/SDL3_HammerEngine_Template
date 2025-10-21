@@ -87,7 +87,7 @@ void AttackBehavior::init(EntityPtr entity) {
   auto &state = m_entityStates[entity];
   state = EntityState(); // Reset to default state
   state.currentState = AttackState::SEEKING;
-  state.stateChangeTime = SDL_GetTicks();
+  state.stateChangeTimer = 0.0f;
   state.currentHealth = state.maxHealth;
   state.currentStamina = 100.0f;
   state.canAttack = true;
@@ -106,6 +106,17 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   }
 
   EntityState &state = it->second;
+
+  // Update all timers
+  state.attackTimer += deltaTime;
+  state.stateChangeTimer += deltaTime;
+  state.damageTimer += deltaTime;
+  if (state.comboTimer > 0.0f) state.comboTimer -= deltaTime;
+  state.strafeTimer += deltaTime;
+  state.pathUpdateTimer += deltaTime;
+  state.progressTimer += deltaTime;
+  if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
+
   EntityPtr target = getTarget();
 
   // Update target tracking
@@ -340,10 +351,10 @@ float AttackBehavior::getLastAttackTime() const {
     return 0.0f;
   auto it = std::max_element(m_entityStates.begin(), m_entityStates.end(),
                              [](const auto &a, const auto &b) {
-                               return a.second.lastAttackTime <
-                                      b.second.lastAttackTime;
+                               return a.second.attackTimer <
+                                      b.second.attackTimer;
                              });
-  return static_cast<float>(it->second.lastAttackTime) / 1000.0f;
+  return it->second.attackTimer;
 }
 
 int AttackBehavior::getCurrentCombo() const {
@@ -506,15 +517,15 @@ AttackBehavior::calculateStrafePosition(EntityPtr entity, EntityPtr target,
 void AttackBehavior::changeState(EntityState &state, AttackState newState) {
   if (state.currentState != newState) {
     state.currentState = newState;
-    state.stateChangeTime = SDL_GetTicks();
+    state.stateChangeTimer = 0.0f;
 
     // Reset state-specific flags
     switch (newState) {
     case AttackState::ATTACKING:
-      state.recoveryStartTime = 0.0f;
+      state.recoveryTimer = 0.0f;
       break;
     case AttackState::RECOVERING:
-      state.recoveryStartTime = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+      state.recoveryTimer = 0.0f;
       break;
     case AttackState::RETREATING:
       state.isRetreating = true;
@@ -527,25 +538,25 @@ void AttackBehavior::changeState(EntityState &state, AttackState newState) {
 }
 
 void AttackBehavior::updateStateTimer(EntityState &state) {
-  Uint64 currentTime = SDL_GetTicks();
-  Uint64 timeInState = currentTime - state.stateChangeTime;
+
+  float timeInState = state.stateChangeTimer;
 
   // Handle state transitions based on timing
   switch (state.currentState) {
   case AttackState::ATTACKING:
-    if (timeInState > static_cast<Uint64>(1000.0f / m_attackSpeed)) {
+    if (timeInState > (1.0f / m_attackSpeed)) {
       changeState(state, AttackState::RECOVERING);
     }
     break;
 
   case AttackState::RECOVERING:
-    if (timeInState > static_cast<Uint64>(m_recoveryTime * 1000)) {
+    if (timeInState > m_recoveryTime) {
       changeState(state, AttackState::COOLDOWN);
     }
     break;
 
   case AttackState::COOLDOWN:
-    if (timeInState > static_cast<Uint64>(m_attackCooldown * 1000)) {
+    if (timeInState > m_attackCooldown) {
       changeState(state, state.hasTarget ? AttackState::APPROACHING
                                          : AttackState::SEEKING);
     }
@@ -587,17 +598,17 @@ void AttackBehavior::executeAttack(EntityPtr entity, EntityPtr target,
   applyDamage(target, damage, knockback);
 
   // Update attack state
-  state.lastAttackTime = SDL_GetTicks();
+  state.attackTimer = 0.0f;
   state.lastAttackHit = true; // Simplified - assume all attacks hit
 
   // Handle combo system
   if (m_comboAttacks) {
-    Uint64 currentTime = SDL_GetTicks();
-    if (currentTime - state.comboStartTime < COMBO_TIMEOUT) {
+
+    if (state.comboTimer > 0.0f) {
       state.currentCombo = std::min(state.currentCombo + 1, m_maxCombo);
     } else {
       state.currentCombo = 1;
-      state.comboStartTime = currentTime;
+      state.comboTimer = COMBO_TIMEOUT;
     }
   }
 
@@ -616,7 +627,7 @@ void AttackBehavior::executeSpecialAttack(EntityPtr entity, EntityPtr target,
 
   applyDamage(target, specialDamage, knockback);
 
-  state.lastAttackTime = SDL_GetTicks();
+  state.attackTimer = 0.0f;
   state.specialAttackReady = false;
 }
 
@@ -637,7 +648,7 @@ void AttackBehavior::executeComboAttack(EntityPtr entity, EntityPtr target,
 
     // Reset combo
     state.currentCombo = 0;
-    state.comboStartTime = 0;
+    state.comboTimer = 0.0f;
   } else {
     executeAttack(entity, target, state);
   }
@@ -706,7 +717,7 @@ void AttackBehavior::updateChargeAttack(EntityPtr entity, EntityState &state, fl
 
   if (shouldCharge(entity, target, state) && !state.isCharging) {
     state.isCharging = true;
-    state.attackChargeTime = static_cast<float>(SDL_GetTicks()) / 1000.0f;
+    state.attackChargeTime = 0.0f;
   }
 
   if (state.isCharging) {
@@ -766,9 +777,8 @@ void AttackBehavior::updateBerserkerAttack(EntityPtr entity,
                                            EntityState &state, float deltaTime) {
   // Aggressive continuous attacks with reduced cooldown
   if (state.currentState == AttackState::COOLDOWN) {
-    Uint64 timeInState = SDL_GetTicks() - state.stateChangeTime;
-    if (timeInState >
-        static_cast<Uint64>(m_attackCooldown * 500)) { // Half cooldown
+    float timeInState = state.stateChangeTimer;
+    if (timeInState > (m_attackCooldown * 0.5f)) { // Half cooldown
       changeState(state, AttackState::APPROACHING);
     }
   }
@@ -874,12 +884,11 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   Vector2D clampedTarget = pathfinder().clampToWorldBounds(targetPos, 100.0f);
 
   Vector2D currentPos = pathfinder().clampToWorldBounds(entity->getPosition(), 100.0f);
-  
-  Uint64 now = SDL_GetTicks();
+
 
   // PERFORMANCE: Increase path TTL and reduce refresh frequency
-  const Uint64 pathTTL = 3000;         // Increased from 1500ms to 3s
-  const Uint64 noProgressWindow = 500; // Increased from 300ms to 500ms
+  constexpr float pathTTL = 3.0f;         // Increased from 1.5s to 3s
+  constexpr float noProgressWindow = 0.5f; // 500ms
   bool needRefresh = state.pathPoints.empty() ||
                      state.currentPathIndex >= state.pathPoints.size();
 
@@ -887,14 +896,12 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
     if (d + 1.0f < state.lastNodeDistance) {
       state.lastNodeDistance = d;
-      state.lastProgressTime = now;
-    } else if (state.lastProgressTime == 0) {
-      state.lastProgressTime = now;
-    } else if (now - state.lastProgressTime > noProgressWindow) {
+      state.progressTimer = 0.0f;
+    } else if (state.progressTimer > noProgressWindow) {
       needRefresh = true;
     }
   }
-  if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
+  if (state.pathUpdateTimer > pathTTL) needRefresh = true;
 
   // PERFORMANCE: Use squared distance and increase threshold
   if (!needRefresh && !state.pathPoints.empty()) {
@@ -904,7 +911,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     if (goalDeltaSquared > GOAL_CHANGE_THRESH_SQUARED) needRefresh = true;
   }
 
-  if (needRefresh && SDL_GetTicks() >= state.backoffUntil) {
+  if (needRefresh && state.backoffTimer <= 0.0f) {
     // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
     pathfinder().requestPath(
         entity->getID(), currentPos, clampedTarget, PathfinderManager::Priority::Critical,
@@ -915,16 +922,16 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
             if (it != m_entityStates.end()) {
               it->second.pathPoints = path;
               it->second.currentPathIndex = 0;
-              it->second.lastPathUpdate = SDL_GetTicks();
+              it->second.pathUpdateTimer = 0.0f;
               it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-              it->second.lastProgressTime = SDL_GetTicks();
+              it->second.progressTimer = 0.0f;
             }
           }
         });
     // Remove the synchronous path check since we're using callback-based async path
     {
       // Async path not ready, apply minimal backoff to prevent spam and continue with existing path
-      state.backoffUntil = now + 200 + (entity->getID() % 300);
+      state.backoffTimer = 0.2f + (entity->getID() % 300) * 0.001f;
     }
   }
 
@@ -940,30 +947,29 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
       applyDecimatedSeparation(entity, currentPos, intended, speed, 28.0f,
                                0.30f, 4, state.separationTimer,
                                state.lastSepVelocity, deltaTime);
-      state.lastProgressTime = now;
+      state.progressTimer = 0.0f;
     }
     if ((node - currentPos).length() <= state.navRadius) {
       ++state.currentPathIndex;
       state.lastNodeDistance = std::numeric_limits<float>::infinity();
-      state.lastProgressTime = now;
+      state.progressTimer = 0.0f;
     }
   } else {
     Vector2D direction = normalizeDirection(clampedTarget - currentPos);
-    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.lastProgressTime = now; }
+    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.progressTimer = 0.0f; }
   }
 
   // Stall detection scaled by configured speed
   float spd = entity->getVelocity().length();
   const float stallSpeed = std::max(0.5f, speed * 0.5f);
-  const Uint64 stallMs = 600;
+  constexpr float stallSeconds = 0.6f;
   if (spd < stallSpeed) {
-    if (state.lastProgressTime == 0) state.lastProgressTime = now;
-    else if (now - state.lastProgressTime > stallMs) {
+    if (state.progressTimer > stallSeconds) {
       // Force a refresh and small micro-jitter to break clumps; add short backoff
-      state.pathPoints.clear(); state.backoffUntil = now + 200 + (entity->getID() % 400);
+      state.pathPoints.clear(); state.backoffTimer = 0.2f + (entity->getID() % 400) * 0.001f;
       state.currentPathIndex = 0;
-      state.lastPathUpdate = 0;
-      state.lastProgressTime = now;
+      state.pathUpdateTimer = 0.0f;
+      state.progressTimer = 0.0f;
       float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f;
       Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
       float c = std::cos(jitter), s = std::sin(jitter);
@@ -971,7 +977,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
       rotated.normalize(); entity->setVelocity(rotated * speed);
     }
   } else {
-    state.lastProgressTime = now;
+    state.progressTimer = 0.0f;
   }
 }
 
@@ -1001,10 +1007,11 @@ void AttackBehavior::circleStrafe(EntityPtr entity, EntityPtr target,
   if (!entity || !target || !m_circleStrafe)
     return;
 
-  Uint64 currentTime = SDL_GetTicks();
-  if (currentTime >= state.nextStrafeTime) {
+
+
+  if (state.strafeTimer >= STRAFE_INTERVAL) {
     state.strafeDirectionInt *= -1; // Change direction
-    state.nextStrafeTime = currentTime + STRAFE_INTERVAL;
+    state.strafeTimer = 0.0f;
   }
 
   Vector2D strafePos = calculateStrafePosition(entity, target, state);

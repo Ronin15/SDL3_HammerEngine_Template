@@ -65,8 +65,19 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     }
 
     EntityState& state = it->second;
+
+    // Update all timers
+    state.fleeTimer += deltaTime;
+    state.directionChangeTimer += deltaTime;
+    if (state.panicTimer > 0.0f) state.panicTimer -= deltaTime;
+    state.zigzagTimer += deltaTime;
+    state.pathUpdateTimer += deltaTime;
+    state.progressTimer += deltaTime;
+    if (state.pathCooldown > 0.0f) state.pathCooldown -= deltaTime;
+    if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
+
     EntityPtr threat = getThreat();
-    
+
     if (!threat) {
         // No threat detected, stop fleeing and recover stamina
         if (state.isFleeing) {
@@ -83,19 +94,19 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
     // Check if threat is in detection range
     bool threatInRange = isThreatInRange(entity, threat);
-    Uint64 currentTime = SDL_GetTicks();
+    
     
     if (threatInRange) {
         // Start fleeing if not already
         if (!state.isFleeing) {
             state.isFleeing = true;
-            state.fleeStartTime = currentTime;
+            state.fleeTimer = 0.0f;
             state.lastThreatPosition = threat->getPosition();
             
             // Determine if this should trigger panic
             if (m_fleeMode == FleeMode::PANIC_FLEE) {
                 state.isInPanic = true;
-                state.panicEndTime = currentTime + static_cast<Uint64>(m_panicDuration * m_panicVariation(m_rng));
+                state.panicTimer = m_panicDuration * m_panicVariation(m_rng);
             }
         }
         
@@ -113,7 +124,7 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     }
 
     // Update panic state
-    if (state.isInPanic && currentTime >= state.panicEndTime) {
+    if (state.isInPanic && state.panicTimer <= 0.0f) {
         state.isInPanic = false;
     }
 
@@ -156,7 +167,7 @@ void FleeBehavior::onMessage(EntityPtr entity, const std::string& message) {
 
     if (message == "panic") {
         state.isInPanic = true;
-        state.panicEndTime = SDL_GetTicks() + static_cast<Uint64>(m_panicDuration);
+        state.panicTimer = m_panicDuration;
     } else if (message == "calm_down") {
         state.isInPanic = false;
     } else if (message == "stop_fleeing") {
@@ -365,24 +376,25 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float d
     EntityPtr threat = getThreat();
     if (!threat) return;
     
-    Uint64 currentTime = SDL_GetTicks();
     
+
+
     // In panic mode, change direction more frequently and use longer distances
-    if (currentTime - state.lastDirectionChange > 200 || state.fleeDirection.length() < 0.001f) {
+    if (state.directionChangeTimer > 0.2f || state.fleeDirection.length() < 0.001f) {
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
-        
+
         // Add more randomness to panic movement for world-scale escape
         float randomAngle = m_angleVariation(m_rng) * 0.8f; // Increased randomness
         float cos_a = std::cos(randomAngle);
         float sin_a = std::sin(randomAngle);
-        
+
         Vector2D rotated(
             state.fleeDirection.getX() * cos_a - state.fleeDirection.getY() * sin_a,
             state.fleeDirection.getX() * sin_a + state.fleeDirection.getY() * cos_a
         );
-        
+
         state.fleeDirection = rotated;
-        state.lastDirectionChange = currentTime;
+        state.directionChangeTimer = 0.0f;
         
         // In panic, try to flee much further to break out of small areas
         Vector2D currentPos = entity->getPosition();
@@ -405,10 +417,11 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
     if (!threat) return;
     
     Vector2D currentPos = entity->getPosition();
-    Uint64 currentTime = SDL_GetTicks();
+
+
 
     // Strategic retreat: aim for a point away from threat (or toward nearest safe zone)
-    if (currentTime - state.lastDirectionChange > 1000 || state.fleeDirection.length() < 0.001f) {
+    if (state.directionChangeTimer > 1.0f || state.fleeDirection.length() < 0.001f) {
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
 
         // Blend with nearest safe zone direction if exists
@@ -417,7 +430,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
             Vector2D blended = (state.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
             state.fleeDirection = normalizeVector(blended);
         }
-        state.lastDirectionChange = currentTime;
+        state.directionChangeTimer = 0.0f;
     }
 
     // Dynamic retreat distance based on local entity density
@@ -446,18 +459,21 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
 
     // Try to path toward the retreat destination with TTL and no-progress checks
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
-        Uint64 now = SDL_GetTicks();
+
         // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-        const Uint64 pathTTL = 2500; const Uint64 noProgressWindow = 400;
+        constexpr float pathTTL = 2.5f; constexpr float noProgressWindow = 0.4f;
         bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
         if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
             float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-            if (d + 1.0f < state.lastNodeDistance) { state.lastNodeDistance = d; state.lastProgressTime = now; }
-            else if (state.lastProgressTime == 0) { state.lastProgressTime = now; }
-            else if (now - state.lastProgressTime > noProgressWindow) { needRefresh = true; }
+            if (d + 1.0f < state.lastNodeDistance) {
+                state.lastNodeDistance = d;
+                state.progressTimer = 0.0f;
+            } else if (state.progressTimer > noProgressWindow) {
+                needRefresh = true;
+            }
         }
-        if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
-        if (needRefresh && now >= state.nextPathAllowed) {
+        if (state.pathUpdateTimer > pathTTL) needRefresh = true;
+        if (needRefresh && state.pathCooldown <= 0.0f) {
             // Gate refresh on significant goal change to avoid thrash
             // PERFORMANCE: Use squared distance and higher threshold
             bool goalChanged = true;
@@ -480,13 +496,13 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
             // Note: Path will be set via callback when ready
             if (!state.pathPoints.empty()) {
                 state.currentPathIndex = 0;
-                state.lastPathUpdate = now;
+                state.pathUpdateTimer = 0.0f;
                 state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                state.lastProgressTime = now;
-                state.nextPathAllowed = now + 800; // cooldown
+                state.progressTimer = 0.0f;
+                state.pathCooldown = 0.8f;
             } else {
                 // Async path not ready, apply cooldown to prevent spam
-                state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
+                state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
             }
         }
         follow_existing:
@@ -495,7 +511,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
             Vector2D dir = node - currentPos; float len = dir.length();
             if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
             if ((node - currentPos).length() <= state.navRadius) {
-                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.lastProgressTime = now;
+                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.progressTimer = 0.0f;
             }
             return true;
         }
@@ -515,13 +531,14 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
 void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
-    
-    Uint64 currentTime = SDL_GetTicks();
-    
+
+
+
+
     // Zigzag pattern
-    if (currentTime - state.lastZigzagTime > m_zigzagInterval) {
+    if (state.zigzagTimer > m_zigzagInterval) {
         state.zigzagDirection *= -1; // Flip direction
-        state.lastZigzagTime = currentTime;
+        state.zigzagTimer = 0.0f;
     }
     
     // Base flee direction
@@ -584,18 +601,21 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
     dest = pathfinder().clampToWorldBounds(dest, 100.0f);
 
     auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
-        Uint64 now = SDL_GetTicks();
+
         // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-        const Uint64 pathTTL = 2500; const Uint64 noProgressWindow = 400;
+        constexpr float pathTTL = 2.5f; constexpr float noProgressWindow = 0.4f;
         bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
         if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
             float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-            if (d + 1.0f < state.lastNodeDistance) { state.lastNodeDistance = d; state.lastProgressTime = now; }
-            else if (state.lastProgressTime == 0) { state.lastProgressTime = now; }
-            else if (now - state.lastProgressTime > noProgressWindow) { needRefresh = true; }
+            if (d + 1.0f < state.lastNodeDistance) {
+                state.lastNodeDistance = d;
+                state.progressTimer = 0.0f;
+            } else if (state.progressTimer > noProgressWindow) {
+                needRefresh = true;
+            }
         }
-        if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
-        if (needRefresh && now >= state.nextPathAllowed) {
+        if (state.pathUpdateTimer > pathTTL) needRefresh = true;
+        if (needRefresh && state.pathCooldown <= 0.0f) {
             // Gate refresh on significant goal change to avoid thrash
             // PERFORMANCE: Use squared distance and higher threshold
             bool goalChanged = true;
@@ -618,17 +638,17 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
                     if (it != m_entityStates.end()) {
                       it->second.pathPoints = path;
                       it->second.currentPathIndex = 0;
-                      it->second.lastPathUpdate = SDL_GetTicks();
+                      it->second.pathUpdateTimer = 0.0f;
                       it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-                      it->second.lastProgressTime = SDL_GetTicks();
-                      it->second.nextPathAllowed = SDL_GetTicks() + 800; // cooldown
+                      it->second.progressTimer = 0.0f;
+                      it->second.pathCooldown = 0.8f;
                     }
                   }
                 });
             // Remove the synchronous path check since we're using callback-based async path
             {
                 // Async path not ready, apply cooldown to prevent spam
-                state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
+                state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
             }
         }
         follow_existing2:
@@ -637,7 +657,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
             Vector2D dir = node - currentPos; float len = dir.length();
             if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
             if ((node - currentPos).length() <= state.navRadius) {
-                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.lastProgressTime = now;
+                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.progressTimer = 0.0f;
             }
             return true;
         }

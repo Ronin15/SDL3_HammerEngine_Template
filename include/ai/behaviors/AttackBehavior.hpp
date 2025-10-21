@@ -106,18 +106,18 @@ private:
     Vector2D strafeVector{0, 0};
 
     AttackState currentState{AttackState::SEEKING};
-    Uint64 lastAttackTime{0};
-    Uint64 stateChangeTime{0};
-    Uint64 lastDamageTime{0};
-    Uint64 comboStartTime{0};
-    Uint64 nextStrafeTime{0};
+    float attackTimer{0.0f};
+    float stateChangeTimer{0.0f};
+    float damageTimer{0.0f};
+    float comboTimer{0.0f};
+    float strafeTimer{0.0f};
 
     float currentHealth{100.0f};
     float maxHealth{100.0f};
     float currentStamina{100.0f};
     float targetDistance{0.0f};
     float attackChargeTime{0.0f};
-    float recoveryStartTime{0.0f};
+    float recoveryTimer{0.0f};
 
     int currentCombo{0};
     int attacksInCombo{0};
@@ -138,11 +138,11 @@ private:
     // Lightweight per-entity path-following state
     std::vector<Vector2D> pathPoints;      // queued path nodes
     size_t currentPathIndex{0};            // current node index
-    Uint64 lastPathUpdate{0};              // last time we refreshed the path
-    Uint64 lastProgressTime{0};            // last time we made progress
+    float pathUpdateTimer{0.0f};           // time since last path refresh
+    float progressTimer{0.0f};             // time since last progress
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     float navRadius{18.0f};                // node snap radius
-    Uint64 backoffUntil{0};
+    float backoffTimer{0.0f};
     // Separation decimation
     float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
@@ -150,18 +150,19 @@ private:
     EntityState()
         : lastTargetPosition(0, 0), attackPosition(0, 0), retreatPosition(0, 0),
           strafeVector(0, 0), currentState(AttackState::SEEKING),
-          lastAttackTime(0), stateChangeTime(0), lastDamageTime(0),
-          comboStartTime(0), nextStrafeTime(0), currentHealth(100.0f),
+          attackTimer(0.0f), stateChangeTimer(0.0f), damageTimer(0.0f),
+          comboTimer(0.0f), strafeTimer(0.0f), currentHealth(100.0f),
           maxHealth(100.0f), currentStamina(100.0f), targetDistance(0.0f),
-          attackChargeTime(0.0f), recoveryStartTime(0.0f), currentCombo(0),
+          attackChargeTime(0.0f), recoveryTimer(0.0f), currentCombo(0),
           attacksInCombo(0), inCombat(false), hasTarget(false),
           isCharging(false), isRetreating(false), canAttack(true),
           lastAttackHit(false), specialAttackReady(false),
           circleStrafing(false), flanking(false), preferredAttackAngle(0.0f),
           strafeDirectionInt(1), pathPoints(), currentPathIndex(0),
-          lastPathUpdate(0), lastProgressTime(0),
+          pathUpdateTimer(0.0f), progressTimer(0.0f),
           lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), backoffUntil(0) {}
+          navRadius(18.0f), backoffTimer(0.0f), separationTimer(0.0f),
+          lastSepVelocity(0, 0) {}
   };
 
   // Map to store per-entity state
@@ -208,10 +209,9 @@ private:
   float m_chargeDamageMultiplier{1.5f};
 
   // Timing constants
-  static constexpr Uint64 COMBO_TIMEOUT = 3000; // 3 seconds
-  static constexpr Uint64 CHARGE_TIME = 1000;   // 1 second charge
-  static constexpr Uint64 STRAFE_INTERVAL =
-      2000; // 2 seconds between direction changes
+  static constexpr float COMBO_TIMEOUT = 3.0f; // 3 seconds
+  static constexpr float CHARGE_TIME = 1.0f;   // 1 second charge
+  static constexpr float STRAFE_INTERVAL = 2.0f; // 2 seconds between direction changes
   static constexpr float RETREAT_SPEED_MULTIPLIER = 1.5f;
   static constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
 
