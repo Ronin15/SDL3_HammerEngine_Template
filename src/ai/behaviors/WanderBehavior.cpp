@@ -28,8 +28,6 @@ WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,
                                float areaRadius)
     : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval),
       m_areaRadius(areaRadius) {
-  // Default to every frame, can be set by mode or setter
-  m_updateFrequency = 1;
 }
 
 WanderBehavior::WanderMode
@@ -39,21 +37,6 @@ getDefaultModeForFrequency(WanderBehavior::WanderMode mode) {
 
 WanderBehavior::WanderBehavior(WanderMode mode, float speed) : m_speed(speed) {
   setupModeDefaults(mode);
-  // Set sensible default update frequency per mode
-  switch (mode) {
-  case WanderMode::SMALL_AREA:
-    m_updateFrequency = 1; // every frame
-    break;
-  case WanderMode::MEDIUM_AREA:
-    m_updateFrequency = 2; // every 2 frames
-    break;
-  case WanderMode::LARGE_AREA:
-    m_updateFrequency = 4; // every 4 frames
-    break;
-  case WanderMode::EVENT_TARGET:
-    m_updateFrequency = 1; // treat as small for responsiveness
-    break;
-  }
 }
 
 void WanderBehavior::init(EntityPtr entity) {
@@ -92,11 +75,6 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     return;
   }
 
-  // Only run expensive logic on staggered frames
-  // (AIBehavior base will call this every frame, but only staggered frames
-  // should do the heavy work) This is handled by executeLogicWithStaggering in
-  // the base class. Here, we assume executeLogic is called only on the correct
-  // frames.
   updateWanderState(entity, deltaTime);
 
   // Try to follow a short path towards the current direction destination

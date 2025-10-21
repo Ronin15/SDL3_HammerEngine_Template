@@ -52,21 +52,10 @@ public:
 
 
 
-  // Set the update frequency for staggering (every N frames)
-  void setUpdateFrequency(uint32_t frequency) {
-    m_updateFrequency = frequency > 0 ? frequency : 1;
-  }
-
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-public:
-  // --- Staggering system overrides ---
-  bool useStaggering() const { return true; }
-  uint32_t getUpdateFrequency() const { return m_updateFrequency; }
-
 private:
-  // Called only on staggered frames for expensive logic
   void updateWanderState(EntityPtr entity, float deltaTime);
 
   // Entity-specific state data
@@ -134,9 +123,6 @@ private:
   float m_changeDirectionInterval{2000.0f}; // milliseconds
   float m_areaRadius{300.0f};
   Vector2D m_centerPoint{0, 0};
-
-  // Staggering system
-  uint32_t m_updateFrequency{1}; // Default: every frame, will be set by mode
 
   // Flip stability properties
   Uint64 m_minimumFlipInterval{

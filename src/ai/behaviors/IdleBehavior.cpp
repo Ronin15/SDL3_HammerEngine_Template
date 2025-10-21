@@ -9,8 +9,7 @@
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
-    : m_updateFrequency(4), m_entityStates(), m_idleMode(mode),
-      m_idleRadius(idleRadius) {
+    : m_entityStates(), m_idleMode(mode), m_idleRadius(idleRadius) {
   // m_movementFrequency, m_turnFrequency, m_rng, m_angleDistribution,
   // m_radiusDistribution, m_frequencyVariation use default initializers
 

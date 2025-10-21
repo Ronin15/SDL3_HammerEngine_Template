@@ -750,7 +750,7 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
           }
         });
 
-    // Gentle staggered backoff to prevent per-frame re-requests
+    // Gentle per-entity backoff to prevent per-frame re-requests
     state.backoffUntil = now + 300 + (entity->getID() % 300);
   }
 

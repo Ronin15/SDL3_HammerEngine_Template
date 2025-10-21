@@ -205,7 +205,7 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       const float stallTime = 0.6f; // 600ms
       if (speedNow < stallSpeed) {
         if (state.progressTimer > stallTime) {
-          // Enter a brief backoff to reduce clumping; stagger per-entity
+          // Enter a brief backoff to reduce clumping; vary per-entity
           state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f; // 250-650ms
           // Clear path and small micro-jitter to yield
           state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
