@@ -132,6 +132,11 @@ private:
   mutable float m_crowdCheckTimer{0.0f};
   mutable int m_cachedChaserCount{0};
 
+  // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
+  int m_cachedNearbyCount{0};
+  std::vector<Vector2D> m_cachedNearbyPositions;
+  float m_lastCrowdAnalysis{0.0f};
+
 public:
   
 };

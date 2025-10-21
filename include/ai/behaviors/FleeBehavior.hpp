@@ -87,6 +87,11 @@ private:
     float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
 
+    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
+    int cachedNearbyCount{0};
+    std::vector<Vector2D> cachedNearbyPositions;
+    Uint64 lastCrowdAnalysis{0};
+
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),
           lastKnownSafeDirection(0, 0), fleeTimer(0.0f),

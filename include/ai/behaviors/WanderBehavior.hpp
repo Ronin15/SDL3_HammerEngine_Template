@@ -62,57 +62,68 @@ private:
   struct EntityState {
     Vector2D currentDirection{0, 0};
     Vector2D previousVelocity{0, 0}; // Store previous frame velocity for flip detection
-    Uint64 lastDirectionChangeTime{0};
-    Uint64 lastDirectionFlip{0};
-    Uint64 startDelay{0};        // Random delay before entity starts moving
-    bool movementStarted{false}; // Flag to track if movement has started
+    float directionChangeTimer{0.0f}; // Accumulates deltaTime
+    float lastDirectionFlip{0.0f};    // Time since last flip
+    float startDelay{0.0f};           // Random delay before entity starts moving
+    bool movementStarted{false};      // Flag to track if movement has started
     // Path-following state
     std::vector<Vector2D> pathPoints;
     size_t currentPathIndex{0};
-    Uint64 lastPathUpdate{0};
-    Uint64 lastProgressTime{0};
+    float pathUpdateTimer{0.0f};      // Time since last path update
+    float progressTimer{0.0f};        // Time since last progress
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     float navRadius{18.0f};
     // Improved stall detection
-    Uint64 stallStart{0};
+    float stallTimer{0.0f};
     Vector2D lastStallPosition{0, 0};
     float stallPositionVariance{0.0f};
-    Uint64 lastUnstickTime{0};
+    float unstickTimer{0.0f};
     // Separation decimation
     float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
     // Unified cooldown management
     struct {
-        Uint64 nextPathRequest{0};
-        Uint64 stallRecoveryUntil{0};
-        Uint64 behaviorChangeUntil{0};
-        
-        bool canRequestPath(Uint64 now) const {
-            return now >= nextPathRequest && now >= stallRecoveryUntil;
+        float pathRequestCooldown{0.0f};
+        float stallRecoveryCooldown{0.0f};
+        float behaviorChangeCooldown{0.0f};
+
+        bool canRequestPath() const {
+            return pathRequestCooldown <= 0.0f && stallRecoveryCooldown <= 0.0f;
         }
-        
-        void applyPathCooldown(Uint64 now, Uint64 cooldownMs = 800) {
-            nextPathRequest = now + cooldownMs;
+
+        void applyPathCooldown(float cooldownSeconds = 30.0f) {
+            pathRequestCooldown = cooldownSeconds;
         }
-        
-        void applyStallCooldown(Uint64 now, Uint64 stallId = 0) {
-            stallRecoveryUntil = now + 250 + (stallId % 400);
+
+        void applyStallCooldown(uint32_t stallId = 0) {
+            stallRecoveryCooldown = 0.25f + (stallId % 400) * 0.001f;
+        }
+
+        void update(float deltaTime) {
+            if (pathRequestCooldown > 0.0f) pathRequestCooldown -= deltaTime;
+            if (stallRecoveryCooldown > 0.0f) stallRecoveryCooldown -= deltaTime;
+            if (behaviorChangeCooldown > 0.0f) behaviorChangeCooldown -= deltaTime;
         }
     } cooldowns;
-    
+
     // Performance optimization: cached world bounds to avoid repeated WorldManager calls
     struct {
       float minX{0.0f}, minY{0.0f}, maxX{0.0f}, maxY{0.0f};
     } cachedBounds;
 
+    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
+    int cachedNearbyCount{0};
+    std::vector<Vector2D> cachedNearbyPositions;
+    float lastCrowdAnalysis{0.0f};
+
     // Constructor to ensure proper initialization
     EntityState()
-        : currentDirection(0, 0), previousVelocity(0, 0), lastDirectionChangeTime(0),
-          lastDirectionFlip(0), startDelay(0), movementStarted(false),
-          pathPoints(), currentPathIndex(0), lastPathUpdate(0), 
-          lastProgressTime(0), lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), stallStart(0), lastStallPosition(0, 0), 
-          stallPositionVariance(0.0f), lastUnstickTime(0) {}
+        : currentDirection(0, 0), previousVelocity(0, 0), directionChangeTimer(0.0f),
+          lastDirectionFlip(0.0f), startDelay(0.0f), movementStarted(false),
+          pathPoints(), currentPathIndex(0), pathUpdateTimer(0.0f),
+          progressTimer(0.0f), lastNodeDistance(std::numeric_limits<float>::infinity()),
+          navRadius(18.0f), stallTimer(0.0f), lastStallPosition(0, 0),
+          stallPositionVariance(0.0f), unstickTimer(0.0f) {}
   };
 
   // Map to store per-entity state using shared_ptr as key
