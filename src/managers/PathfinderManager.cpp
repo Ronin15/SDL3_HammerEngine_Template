@@ -1078,10 +1078,11 @@ void PathfinderManager::calculateOptimalCacheSettings() {
 }
 
 void PathfinderManager::prewarmPathCache() {
-    if (m_prewarming.load() || !m_grid) {
+    // Use compare_exchange to ensure only one thread executes pre-warming
+    bool expected = false;
+    if (!m_prewarming.compare_exchange_strong(expected, true) || !m_grid) {
         return;
     }
-    m_prewarming.store(true);
 
     float worldW = m_grid->getWidth() * m_cellSize;
     float worldH = m_grid->getHeight() * m_cellSize;

@@ -11,12 +11,22 @@
 #include "ai/internal/Crowd.hpp"
 #include "core/Logger.hpp"
 
+ChaseBehavior::ChaseBehavior(const HammerEngine::ChaseBehaviorConfig& config)
+    : m_config(config), m_chaseSpeed(config.chaseSpeed), m_maxRange(1000.0f), m_minRange(50.0f),
+      m_isChasing(false), m_hasLineOfSight(false), m_lastKnownTargetPos(0, 0),
+      m_timeWithoutSight(0), m_maxTimeWithoutSight(60),
+      m_currentDirection(0, 0), m_cachedPlayerTarget(nullptr),
+      m_playerCacheValid(false) {}
+
 ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
     : m_chaseSpeed(chaseSpeed), m_maxRange(maxRange), m_minRange(minRange),
       m_isChasing(false), m_hasLineOfSight(false), m_lastKnownTargetPos(0, 0),
       m_timeWithoutSight(0), m_maxTimeWithoutSight(60),
       m_currentDirection(0, 0), m_cachedPlayerTarget(nullptr),
-      m_playerCacheValid(false) {}
+      m_playerCacheValid(false) {
+  // Update config to match legacy parameters
+  m_config.chaseSpeed = chaseSpeed;
+}
 
 void ChaseBehavior::init(EntityPtr entity) {
   if (!entity)
@@ -111,8 +121,8 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       // 1. No current path exists, OR
       // 2. Target moved very significantly (>300px), OR
       // 3. Path is getting quite stale (>8 seconds old)
-      constexpr float PATH_INVALIDATION_DISTANCE = 300.0f; // Further increased threshold
-      constexpr float PATH_REFRESH_INTERVAL = 8.0f; // 8 seconds
+      const float PATH_INVALIDATION_DISTANCE = m_config.pathInvalidationDistance; // Distance target must move to invalidate path
+      const float PATH_REFRESH_INTERVAL = m_config.pathRefreshInterval; // Seconds between path recalculations
 
       if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
         needsNewPath = true;
@@ -158,7 +168,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
                                 m_navIndex = 0;
                                 m_pathUpdateTimer = 0.0f;
                               });
-        m_cooldowns.applyPathCooldown(3.0f); // 3 second cooldown for better performance
+        m_cooldowns.applyPathCooldown(m_config.pathRequestCooldown); // Cooldown for better performance
       }
 
       // State: PATH_FOLLOWING using optimized PathfinderManager method
@@ -176,7 +186,7 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
           // OPTIMIZED: Use AIManager's spatial partitioning instead of expensive collision queries
           int chaserCount = 0;
-          constexpr float CROWD_CHECK_INTERVAL = 2.0f; // Check every 2 seconds
+          const float CROWD_CHECK_INTERVAL = m_config.crowdCheckInterval; // Check crowd density periodically
 
           m_crowdCheckTimer += deltaTime;
           if (m_crowdCheckTimer >= CROWD_CHECK_INTERVAL) {
@@ -252,8 +262,8 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
       // SIMPLIFIED: Basic stall detection without complex variance tracking
       float currentSpeed = entity->getVelocity().length();
-      const float stallThreshold = std::max(1.0f, m_chaseSpeed * 0.5f);
-      const float stallTimeLimit = 2.0f; // Fixed 2-second timeout
+      const float stallThreshold = std::max(1.0f, m_chaseSpeed * m_config.stallSpeedMultiplier);
+      const float stallTimeLimit = m_config.stallTimeout; // Timeout before triggering recovery
 
       if (currentSpeed < stallThreshold) {
         m_stallTimer += deltaTime;

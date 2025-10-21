@@ -7,13 +7,16 @@
 #define CHASE_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <vector>
 
 class ChaseBehavior : public AIBehavior {
 public:
-  explicit ChaseBehavior(float chaseSpeed = 3.0f, float maxRange = 500.0f,
-                         float minRange = 10.0f); // Much closer approach distance
+  explicit ChaseBehavior(const HammerEngine::ChaseBehaviorConfig& config = HammerEngine::ChaseBehaviorConfig{});
+
+  // Legacy constructor for backward compatibility
+  explicit ChaseBehavior(float chaseSpeed, float maxRange, float minRange);
 
   void init(EntityPtr entity) override;
 
@@ -51,6 +54,9 @@ protected:
   virtual void onTargetLost(EntityPtr entity);
 
 private:
+  // Configuration
+  HammerEngine::ChaseBehaviorConfig m_config;
+
   // Note: Target is now obtained via AIManager::getPlayerReference()
   float m_chaseSpeed{10.0f}; // Increased to 10.0 for very visible movement
   float m_maxRange{

@@ -24,10 +24,20 @@ std::mt19937 &WanderBehavior::getSharedRNG() {
   return rng;
 }
 
+WanderBehavior::WanderBehavior(const HammerEngine::WanderBehaviorConfig& config)
+    : m_config(config), m_speed(config.speed),
+      m_changeDirectionInterval(config.changeDirectionIntervalMin),
+      m_areaRadius(300.0f) {
+}
+
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,
                                float areaRadius)
     : m_speed(speed), m_changeDirectionInterval(changeDirectionInterval),
       m_areaRadius(areaRadius) {
+  // Update config to match legacy parameters
+  m_config.speed = speed;
+  m_config.changeDirectionIntervalMin = changeDirectionInterval;
+  m_config.changeDirectionIntervalMax = changeDirectionInterval + 5000.0f;
 }
 
 WanderBehavior::WanderMode
@@ -120,9 +130,9 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
      // PERFORMANCE FIX: Simplified cluster calculations with higher thresholds
      float moveDistance = baseDistance;
 
-     if (nearbyCount > 8) {
+     if (nearbyCount > m_config.crowdEscapeThreshold) {
        // Very high density: pick completely different target away from cluster
-       moveDistance = baseDistance * 3.0f; // Very long distance to escape cluster
+       moveDistance = baseDistance * m_config.crowdEscapeDistanceMultiplier; // Long distance to escape cluster
 
        // SIMPLIFIED: Direct escape direction without complex rotation
        if (!nearbyPositions.empty()) {
@@ -166,7 +176,7 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     }
 
     // BOUNDARY AVOIDANCE: Bias direction away from world edges to prevent stuck NPCs
-    const float EDGE_THRESHOLD = 50.0f; // Start avoiding when within 400px of edge
+    const float EDGE_THRESHOLD = m_config.edgeThreshold; // Start avoiding when close to edge
     Vector2D boundaryForce(0, 0);
 
     if (position.getX() < state.cachedBounds.minX + EDGE_THRESHOLD) {
@@ -197,7 +207,7 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     Vector2D dest = position + state.currentDirection * moveDistance;
 
     // Clamp destination as final safety net
-    const float MARGIN = 256.0f;
+    const float MARGIN = m_config.worldPaddingMargin;
     dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
     dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
     
@@ -221,7 +231,7 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
     if ((needsNewPath || stuckOnObstacle) && state.cooldowns.canRequestPath()) {
       // SMART REQUEST: Only request if goal significantly different from last request
-      static constexpr float MIN_GOAL_CHANGE = 200.0f; // Minimum distance change to justify new request
+      const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance; // Minimum distance change to justify new request
       bool goalChanged = true;
       if (!state.pathPoints.empty()) {
         Vector2D lastGoal = state.pathPoints.back();
@@ -244,7 +254,7 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
             });
         // PERFORMANCE FIX: 30 second cooldown (was 5s)
         // At 2000 entities: 400 requests/sec → 67 requests/sec (83% reduction!)
-        state.cooldowns.applyPathCooldown(30.0f);
+        state.cooldowns.applyPathCooldown(m_config.pathRequestCooldown);
       }
     }
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
@@ -316,8 +326,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
 
   // Stall detection: scale with configured wander speed to prevent constant false stalls
   float speed = entity->getVelocity().length();
-  const float stallSpeed = std::max(0.5f, m_speed * 0.5f); // px/s
-  const float stallSeconds = 0.6f; // 600ms
+  const float stallSpeed = std::max(m_config.stallSpeed, m_speed * 0.5f); // px/s
+  const float stallSeconds = m_config.stallTimeout; // Seconds without progress before triggering unstuck
   if (speed < stallSpeed) {
     if (state.stallTimer >= stallSeconds) {
       // Clear path and pick a fresh direction to break clumps
