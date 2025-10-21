@@ -32,7 +32,7 @@ public:
   void setChaseSpeed(float speed);
   void setMaxRange(float range);
   void setMinRange(float range);
-  void setUpdateFrequency(uint32_t frequency); // Configure staggering frequency
+  void setUpdateFrequency(uint32_t frequency);
 
   // Get state information
   bool isChasing() const;

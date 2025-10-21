@@ -456,9 +456,9 @@ void AIDemoState::setupAIBehaviors() {
 
   if (!aiMgr.hasBehavior("Patrol")) {
     auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
+        PatrolBehavior::PatrolMode::RANDOM_AREA, 75.0f, false);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior");
+    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior (random area)");
   }
 
   if (!aiMgr.hasBehavior("RandomPatrol")) {
