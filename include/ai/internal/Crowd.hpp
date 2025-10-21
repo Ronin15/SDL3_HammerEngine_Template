@@ -1,3 +1,8 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+
 // Internal crowd utilities for lightweight separation steering.
 #ifndef AI_INTERNAL_CROWD_HPP
 #define AI_INTERNAL_CROWD_HPP

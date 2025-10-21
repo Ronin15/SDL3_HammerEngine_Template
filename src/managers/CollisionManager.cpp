@@ -2786,7 +2786,7 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
     area.maxY = 0.0f + COLLISION_CULLING_BUFFER;
 
     // Log warning only once every 300 frames to avoid spam
-    static uint64_t logFrameCounter = 0;
+    static thread_local uint64_t logFrameCounter = 0;
     if (++logFrameCounter % 300 == 1) {
       COLLISION_WARN("Player entity not found for culling area - using world center (logged every 300 frames)");
     }
