@@ -7,6 +7,7 @@
 #define WANDER_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 
 #include <SDL3/SDL.h>
@@ -24,9 +25,10 @@ public:
     EVENT_TARGET // Wander around a specific target location
   };
 
-  explicit WanderBehavior(float speed = 1.5f,
-                          float changeDirectionInterval = 2000.0f,
-                          float areaRadius = 300.0f);
+  explicit WanderBehavior(const HammerEngine::WanderBehaviorConfig& config = HammerEngine::WanderBehaviorConfig{});
+
+  // Legacy constructors for backward compatibility
+  explicit WanderBehavior(float speed, float changeDirectionInterval, float areaRadius);
 
   // Constructor with mode - automatically configures behavior based on mode
   explicit WanderBehavior(WanderMode mode, float speed = 2.0f);
@@ -129,7 +131,10 @@ private:
   // Map to store per-entity state using shared_ptr as key
   std::unordered_map<EntityPtr, EntityState> m_entityStates;
 
-  // Shared behavior parameters
+  // Configuration
+  HammerEngine::WanderBehaviorConfig m_config;
+
+  // Shared behavior parameters (legacy - now derived from config)
   float m_speed{1.5f};
   float m_changeDirectionInterval{2000.0f}; // milliseconds
   float m_areaRadius{300.0f};

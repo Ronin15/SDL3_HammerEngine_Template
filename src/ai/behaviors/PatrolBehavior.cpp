@@ -29,6 +29,15 @@ std::mt19937 &getSharedRNG() {
 }
 } // namespace
 
+PatrolBehavior::PatrolBehavior(const HammerEngine::PatrolBehaviorConfig& config)
+    : m_config(config), m_waypoints(), m_currentWaypoint(0), m_moveSpeed(config.moveSpeed),
+      m_waypointRadius(config.waypointReachedRadius),
+      m_includeOffscreenPoints(false), m_needsReset(false),
+      m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
+      m_seedSet(true) {
+  m_waypoints.reserve(10);
+}
+
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
     : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
@@ -36,6 +45,10 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
       m_seedSet(true) {
+  // Update config to match legacy parameters
+  m_config.moveSpeed = moveSpeed;
+  m_config.waypointReachedRadius = 80.0f;
+
   m_waypoints.reserve(10);
 
   if (m_waypoints.size() < 2) {
@@ -96,7 +109,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (isAtWaypoint(position, targetWaypoint)) {
     // Enforce minimum time between waypoint transitions to prevent oscillation (750ms)
     if (m_waypointCooldown <= 0.0f) {
-      m_waypointCooldown = 0.75f; // 750ms cooldown
+      m_waypointCooldown = m_config.waypointCooldown; // Cooldown before advancing to next waypoint
 
       // Advance to next waypoint
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
@@ -171,7 +184,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
         });
     // PERFORMANCE FIX: Long cooldown to match WanderBehavior (15-18 seconds)
     // Reduces path requests from 1333/sec to ~120/sec with 2000 NPCs
-    m_backoffTimer = 15.0f + (entity->getID() % 3000) * 0.001f;
+    m_backoffTimer = m_config.pathRequestCooldown + (entity->getID() % static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) * 0.001f;
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
@@ -204,7 +217,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // State: STALL_DETECTION - Handle entities that get stuck
   // PERFORMANCE: Use squared length to avoid sqrt()
   float currentSpeedSquared = entity->getVelocity().lengthSquared();
-  const float stallThreshold = std::max(1.0f, m_moveSpeed * 0.3f);
+  const float stallThreshold = std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
   const float stallThresholdSquared = stallThreshold * stallThreshold;
 
   if (currentSpeedSquared < stallThresholdSquared) {
@@ -465,7 +478,7 @@ void PatrolBehavior::generateRandomWaypointsInRectangle() {
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     Vector2D newPoint;
     int attempts = 0;
-    const int maxAttempts = 50;
+    const int maxAttempts = m_config.randomWaypointGenerationAttempts;
 
     do {
       newPoint = generateRandomPointInRectangle();
@@ -493,7 +506,7 @@ void PatrolBehavior::generateRandomWaypointsInCircle() {
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     Vector2D newPoint;
     int attempts = 0;
-    const int maxAttempts = 50;
+    const int maxAttempts = m_config.randomWaypointGenerationAttempts;
 
     do {
       newPoint = generateRandomPointInCircle();

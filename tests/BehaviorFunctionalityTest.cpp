@@ -292,28 +292,62 @@ BOOST_FIXTURE_TEST_SUITE(MovementBehaviorTests, BehaviorTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     // Create fresh entity for this test to avoid interference
-    auto entity = std::static_pointer_cast<Entity>(TestEntity::create(100.0f, 100.0f));
+    auto entity = std::static_pointer_cast<Entity>(TestEntity::create(640.0f, 640.0f)); // Center of 20x20 tile world
+
+    // Register with collision system
+    CollisionManager::Instance().addCollisionBodySOA(
+        entity->getID(), entity->getPosition(), Vector2D(16, 16),
+        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    CollisionManager::Instance().processPendingCommands();
+
     Vector2D initialPos = entity->getPosition();
     getTestEntity(entity)->resetUpdateCount();
-    
+
     AIManager::Instance().assignBehaviorToEntity(entity, "Wander");
     AIManager::Instance().registerEntityForUpdates(entity, 5);
-    
-    // Update for longer time to account for random delays
-    for (int i = 0; i < 100; ++i) {
+
+    // Track movement over time
+    int movementSteps = 0;
+    Vector2D lastPos = initialPos;
+    float totalDistanceMoved = 0.0f;
+    bool hasVelocity = false;
+
+    // Update for longer time to account for random delays (up to 5s) and pathfinding (30s cooldown)
+    // Run for ~6 seconds to ensure movement starts
+    for (int i = 0; i < 360; ++i) {  // 360 * 16ms = ~6 seconds
         AIManager::Instance().update(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        CollisionManager::Instance().update(0.016f);
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+
+        Vector2D pos = entity->getPosition();
+        Vector2D vel = entity->getVelocity();
+        float stepDistance = (pos - lastPos).length();
+
+        totalDistanceMoved += stepDistance; // Track ALL movement
+        if (stepDistance > 0.1f) {
+            movementSteps++;
+        }
+        if (vel.length() > 0.1f) {
+            hasVelocity = true;
+        }
+        lastPos = pos;
+
+        if (i % 90 == 0) {
+            BOOST_TEST_MESSAGE("Wander Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=" << vel.length() << " moved=" << totalDistanceMoved);
+        }
     }
-    
-    // Entity should have moved
-    BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
-    
+
+    // Verify entity actually wandered (moved or has velocity indicating intent to move)
     Vector2D currentPos = entity->getPosition();
     float distanceMoved = (currentPos - initialPos).length();
-    // WanderBehavior has random start delay up to 5000ms, so just check that it's functioning
-    // We've already verified updateCount > 0, which means the behavior is working
-    BOOST_CHECK_GE(distanceMoved, 0.0f); // Accept any movement including 0 due to random timing
-    
+
+    BOOST_TEST_MESSAGE("Wander test: moved " << distanceMoved << "px over " << movementSteps << " steps, total=" << totalDistanceMoved);
+    BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
+
+    // Entity should either have moved OR have velocity set (async pathfinding may delay actual movement)
+    bool isWandering = (totalDistanceMoved > 5.0f) || hasVelocity;
+    BOOST_CHECK(isWandering); // Verify wander behavior is functioning
+
     // Clean up
     AIManager::Instance().unassignBehaviorFromEntity(entity);
     AIManager::Instance().unregisterEntityFromUpdates(entity);
@@ -353,6 +387,11 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     AIManager::Instance().assignBehaviorToEntity(entity, "Chase");
     AIManager::Instance().registerEntityForUpdates(entity, 8);
 
+    // Track movement progress to verify pathfinding works
+    int significantMovementCount = 0;
+    Vector2D lastPos = initialPos;
+    float totalDistanceMoved = 0.0f;
+
     // Update for longer time to allow async pathfinding to complete (3s cooldown + movement time)
     // Need at least 4-5 seconds for: path request (0s) -> cooldown (3s) -> movement (1-2s)
     for (int i = 0; i < 250; ++i) {  // Increased from 30 to 250 (~4 seconds)
@@ -360,15 +399,23 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
         CollisionManager::Instance().update(0.016f); // Apply position updates from AIManager
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
 
+        // Track movement progress
+        Vector2D pos = entity->getPosition();
+        float stepDistance = (pos - lastPos).length();
+        totalDistanceMoved += stepDistance; // Track ALL movement
+        if (stepDistance > 0.1f) { // Count frames with movement
+            significantMovementCount++;
+        }
+        lastPos = pos;
+
         // Sample positions periodically
         if (i % 50 == 0) {
-            Vector2D pos = entity->getPosition();
             Vector2D vel = entity->getVelocity();
-            BOOST_TEST_MESSAGE("Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=(" << vel.getX() << ", " << vel.getY() << ")");
+            BOOST_TEST_MESSAGE("Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=(" << vel.getX() << ", " << vel.getY() << ") moved=" << totalDistanceMoved);
         }
     }
 
-    // Entity should move closer to player (with more lenient check for async pathfinding)
+    // Verify actual movement occurred and entity got closer
     Vector2D currentPos = entity->getPosition();
     Vector2D currentVel = entity->getVelocity();
     float initialDistanceToPlayer = (initialPos - playerPos).length();
@@ -376,13 +423,13 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
 
     BOOST_TEST_MESSAGE("Final entity pos: (" << currentPos.getX() << ", " << currentPos.getY() << ")");
     BOOST_TEST_MESSAGE("Final velocity: (" << currentVel.getX() << ", " << currentVel.getY() << ")");
-    BOOST_TEST_MESSAGE("Final distance: " << currentDistanceToPlayer);
+    BOOST_TEST_MESSAGE("Initial distance: " << initialDistanceToPlayer << " -> Final distance: " << currentDistanceToPlayer);
+    BOOST_TEST_MESSAGE("Total distance moved: " << totalDistanceMoved << " over " << significantMovementCount << " steps");
     BOOST_TEST_MESSAGE("Update count: " << getTestEntity(entity)->getUpdateCount());
 
-    // Allow for some tolerance since pathfinding is async and may take time
-    // Check that entity is attempting to chase (distance reduced OR has velocity set)
-    bool isChasing = (currentDistanceToPlayer < initialDistanceToPlayer) || (currentVel.length() > 0.1f);
-    BOOST_CHECK(isChasing); // Entity should be chasing (moving or has velocity)
+    // Enhanced assertions: verify actual movement and progress
+    BOOST_CHECK_GT(totalDistanceMoved, 5.0f); // Entity must have actually moved (not just set velocity)
+    BOOST_CHECK_LT(currentDistanceToPlayer, initialDistanceToPlayer); // Must get closer to target
     BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
 
     // Clean up
@@ -766,7 +813,8 @@ BOOST_FIXTURE_TEST_SUITE(AdvancedBehaviorFeatureTests, BehaviorTestFixture)
 BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     auto entity = testEntities[0];
 
-    entity->setPosition(Vector2D(150, 150));
+    Vector2D initialPos(150, 150);
+    entity->setPosition(initialPos);
 
     // Register entity with collision system
     CollisionManager::Instance().addCollisionBodySOA(
@@ -780,17 +828,46 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
 
     getTestEntity(entity)->resetUpdateCount();
 
-    // Run updates
-    for (int i = 0; i < 30; ++i) {
+    // Track patrol movement
+    int movementSteps = 0;
+    Vector2D lastPos = initialPos;
+    float totalDistanceMoved = 0.0f;
+    bool hasVelocity = false;
+
+    // Run updates for longer to allow pathfinding (15-18s cooldown)
+    // Run for ~20 seconds to ensure at least one path request completes
+    for (int i = 0; i < 1250; ++i) {  // 1250 * 16ms = 20 seconds
         AIManager::Instance().update(0.016f);
         CollisionManager::Instance().update(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
+
+        Vector2D pos = entity->getPosition();
+        Vector2D vel = entity->getVelocity();
+        float stepDistance = (pos - lastPos).length();
+
+        totalDistanceMoved += stepDistance; // Track ALL movement
+        if (stepDistance > 0.1f) {
+            movementSteps++;
+        }
+        if (vel.length() > 0.1f) {
+            hasVelocity = true;
+        }
+        lastPos = pos;
+
+        if (i % 250 == 0) {
+            BOOST_TEST_MESSAGE("Patrol Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=" << vel.length() << " moved=" << totalDistanceMoved);
+        }
     }
 
-    // Verify behavior was assigned and entity is being updated
-    // Note: Patrol behavior with async pathfinding may not move immediately in test environment
-    // The key test is that the behavior system works correctly
+    Vector2D currentPos = entity->getPosition();
+    BOOST_TEST_MESSAGE("Patrol test: moved " << totalDistanceMoved << "px over " << movementSteps << " steps");
+
+    // Verify patrol behavior is functioning
     BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 10);
+
+    // Entity should either have moved OR have velocity set (async pathfinding may delay actual movement)
+    bool isPatrolling = (totalDistanceMoved > 5.0f) || hasVelocity;
+    BOOST_CHECK(isPatrolling); // Verify patrol behavior is functioning
 
     // Clean up
     AIManager::Instance().unassignBehaviorFromEntity(entity);

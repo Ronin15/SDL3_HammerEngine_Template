@@ -7,6 +7,7 @@
 #define PATROL_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -21,6 +22,9 @@ public:
     EVENT_TARGET     // Generate waypoints around an event target
   };
 
+  explicit PatrolBehavior(const HammerEngine::PatrolBehaviorConfig& config = HammerEngine::PatrolBehaviorConfig{});
+
+  // Legacy constructors for backward compatibility
   explicit PatrolBehavior(const std::vector<Vector2D> &waypoints,
                           float moveSpeed = 2.0f,
                           bool includeOffscreenPoints = false);
@@ -74,8 +78,11 @@ public:
 
 
 private:
+  // Configuration
+  HammerEngine::PatrolBehaviorConfig m_config;
+
   std::vector<Vector2D> m_waypoints;
-  
+
   size_t m_currentWaypoint{0};
   float m_moveSpeed{2.0f};
   float m_waypointRadius{25.0f}; // How close entity needs to be to "reach" a
