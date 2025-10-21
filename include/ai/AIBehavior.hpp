@@ -179,8 +179,11 @@ protected:
           entity, position, intendedVelocity, speed, queryRadius, strength,
           static_cast<size_t>(maxNeighbors), preFetchedNeighbors);
       separationTimer = 0.0f;
+      entity->setVelocity(lastSepVelocity);
+    } else {
+      // Use intended velocity until first separation calculation
+      entity->setVelocity(intendedVelocity);
     }
-    entity->setVelocity(lastSepVelocity);
   }
 };
 
