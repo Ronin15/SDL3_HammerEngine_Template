@@ -416,7 +416,7 @@ void GamePlayState::initializeWorld() {
   auto& worldManager = WorldManager::Instance();
   if (!worldManager.isInitialized()) {
     if (!worldManager.init()) {
-      std::cerr << "Failed to initialize WorldManager" << std::endl;
+      WORLD_MANAGER_ERROR("Failed to initialize WorldManager");
       return;
     }
   }
@@ -474,7 +474,7 @@ void GamePlayState::initializeWorld() {
 
   // Load world with progress callback
   if (!worldManager.loadNewWorld(config, progressCallback)) {
-    std::cerr << "Failed to load new world in GamePlayState" << std::endl;
+    GAMEPLAY_ERROR("Failed to load new world in GamePlayState");
     // Continue anyway like EventDemoState - game can function without world
   }
 

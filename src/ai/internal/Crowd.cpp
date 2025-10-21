@@ -1,3 +1,8 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+
 #include "ai/internal/Crowd.hpp"
 #include "managers/CollisionManager.hpp"
 #include <algorithm>

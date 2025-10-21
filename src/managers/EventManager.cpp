@@ -828,7 +828,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   // Simple batch processing without complex spin-wait
   if (batchCount > 1) {
     // Debug thread allocation info periodically
-    static uint64_t debugFrameCounter = 0;
+    static thread_local uint64_t debugFrameCounter = 0;
     if (++debugFrameCounter % 300 == 0 && !localEvents->empty()) {
       EVENT_DEBUG("Event Thread Allocation - Workers: " +
                   std::to_string(optimalWorkerCount) + "/" +
