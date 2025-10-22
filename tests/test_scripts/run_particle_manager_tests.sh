@@ -82,18 +82,19 @@ for arg in "$@"; do
       echo -e "\nTest Suites:"
       echo -e "  Core Tests:        Basic ParticleManager functionality (14 tests)"
       echo -e "  Weather Tests:     Weather integration and effects (9 tests)"
-      echo -e "  Performance Tests: Performance benchmarks and scaling (8 tests)"
+      echo -e "  Performance Tests: Performance benchmarks and scaling (8 tests) - requires explicit --performance flag"
       echo -e "  Threading Tests:   Multi-threading safety (7 tests)"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:        ~30 seconds"
       echo -e "  Weather tests:     ~45 seconds"
       echo -e "  Performance tests: ~2-3 minutes"
       echo -e "  Threading tests:   ~1-2 minutes"
-      echo -e "  All tests:         ~4-6 minutes total"
+      echo -e "  All tests:         ~2-3 minutes (core+weather+threading, excludes performance)"
       echo -e "\nExamples:"
-      echo -e "  ./run_particle_manager_tests.sh              # Run all tests"
+      echo -e "  ./run_particle_manager_tests.sh              # Run core, weather, and threading tests"
       echo -e "  ./run_particle_manager_tests.sh --core       # Quick core validation"
       echo -e "  ./run_particle_manager_tests.sh --weather    # Weather functionality only"
+      echo -e "  ./run_particle_manager_tests.sh --performance # Performance benchmarks only"
       echo -e "  ./run_particle_manager_tests.sh --verbose    # All tests with detailed output"
       exit 0
       ;;
@@ -105,6 +106,7 @@ echo -e "${BLUE}           Particle Manager Test Runner             ${NC}"
 echo -e "${BLUE}======================================================${NC}"
 
 # Define test executables based on what to run
+# Note: Performance tests are excluded from RUN_ALL by default (use --performance explicitly)
 TEST_EXECUTABLES=()
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_CORE" = true ]; then
@@ -115,7 +117,8 @@ if [ "$RUN_ALL" = true ] || [ "$RUN_WEATHER" = true ]; then
   TEST_EXECUTABLES+=("particle_manager_weather_tests")
 fi
 
-if [ "$RUN_ALL" = true ] || [ "$RUN_PERFORMANCE" = true ]; then
+# Performance tests require explicit flag (not included in --all by default)
+if [ "$RUN_PERFORMANCE" = true ]; then
   TEST_EXECUTABLES+=("particle_manager_performance_tests")
 fi
 
@@ -129,8 +132,9 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Show execution plan
 if [ "$RUN_ALL" = true ]; then
-  echo -e "${YELLOW}Execution Plan: All Particle Manager tests (${#TEST_EXECUTABLES[@]} test suites)${NC}"
-  echo -e "${YELLOW}Note: Performance and threading tests may take several minutes${NC}"
+  echo -e "${YELLOW}Execution Plan: Core Particle Manager tests (${#TEST_EXECUTABLES[@]} test suites)${NC}"
+  echo -e "${YELLOW}Includes: Core, Weather, Threading tests (excludes Performance benchmarks)${NC}"
+  echo -e "${CYAN}For performance benchmarks, use: ./run_particle_manager_benchmark.sh${NC}"
 elif [ "$RUN_CORE" = true ]; then
   echo -e "${YELLOW}Execution Plan: Core functionality tests only${NC}"
   echo -e "${GREEN}Fast execution mode - basic ParticleManager validation${NC}"
@@ -140,6 +144,7 @@ elif [ "$RUN_WEATHER" = true ]; then
 elif [ "$RUN_PERFORMANCE" = true ]; then
   echo -e "${YELLOW}Execution Plan: Performance tests only${NC}"
   echo -e "${YELLOW}Note: This will take 2-3 minutes to complete${NC}"
+  echo -e "${CYAN}Consider using: ./run_particle_manager_benchmark.sh${NC}"
 elif [ "$RUN_THREADING" = true ]; then
   echo -e "${YELLOW}Execution Plan: Threading tests only${NC}"
   echo -e "${YELLOW}Testing multi-threading safety and concurrency${NC}"
@@ -343,20 +348,20 @@ echo "Completed at: $(date)" >> "$COMBINED_RESULTS"
 # Exit with appropriate status code and summary
 if [ "$OVERALL_SUCCESS" = true ]; then
   if [ "$RUN_ALL" = true ]; then
-    echo -e "\n${GREEN}🎉 All Particle Manager tests completed successfully!${NC}"
+    echo -e "\n${GREEN}🎉 Particle Manager core tests completed successfully!${NC}"
     echo -e "${GREEN}✓ Core functionality: Verified${NC}"
     echo -e "${GREEN}✓ Weather integration: Verified${NC}"
-    echo -e "${GREEN}✓ Performance benchmarks: Completed${NC}"
     echo -e "${GREEN}✓ Threading safety: Verified${NC}"
+    echo -e "${CYAN}To run performance benchmarks: ./run_particle_manager_benchmark.sh${NC}"
   elif [ "$RUN_CORE" = true ]; then
     echo -e "\n${GREEN}✅ Core Particle Manager tests completed successfully!${NC}"
     echo -e "${CYAN}To run weather tests: ./run_particle_manager_tests.sh --weather${NC}"
   elif [ "$RUN_WEATHER" = true ]; then
     echo -e "\n${GREEN}✅ Weather integration tests completed successfully!${NC}"
-    echo -e "${CYAN}To run performance tests: ./run_particle_manager_tests.sh --performance${NC}"
+    echo -e "${CYAN}To run performance benchmarks: ./run_particle_manager_benchmark.sh${NC}"
   elif [ "$RUN_PERFORMANCE" = true ]; then
     echo -e "\n${GREEN}✅ Performance benchmarks completed successfully!${NC}"
-    echo -e "${CYAN}To run threading tests: ./run_particle_manager_tests.sh --threading${NC}"
+    echo -e "${CYAN}Consider using ./run_particle_manager_benchmark.sh for dedicated benchmarks${NC}"
   elif [ "$RUN_THREADING" = true ]; then
     echo -e "\n${GREEN}✅ Threading safety tests completed successfully!${NC}"
     echo -e "${CYAN}To run all tests: ./run_particle_manager_tests.sh${NC}"

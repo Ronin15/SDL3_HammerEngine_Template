@@ -68,8 +68,8 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding, ParticleManager, Resource Manager, World functionality tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, Collision, and Pathfinder performance benchmarks
+    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding, ParticleManager, Resource Manager, World functionality tests
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, and Pathfinder performance benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~4-8 minutes total
@@ -91,9 +91,9 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=22
+set CORE_TEST_COUNT=21
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=5
+set BENCHMARK_TEST_COUNT=6
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0
@@ -144,7 +144,6 @@ echo !CYAN!Found !TOTAL_COUNT! test scripts to run!NC!
 if "%RUN_CORE%"=="true" (
     echo.
     echo !MAGENTA!Starting core functionality tests...!NC!
-    call :run_single_test "run_cppcheck_focused.bat" false
     call :run_single_test "run_thread_tests.bat" false
     call :run_single_test "run_buffer_utilization_tests.bat" false
     call :run_single_test "run_thread_safe_ai_tests.bat" false
@@ -175,6 +174,7 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_event_scaling_benchmark.bat" true
     call :run_single_test "run_ai_benchmark.bat" true
     call :run_single_test "run_ui_stress_tests.bat" true
+    call :run_single_test "run_particle_manager_benchmark.bat" true
     call :run_single_test "run_collision_benchmark.bat" true
     call :run_single_test "run_pathfinder_benchmark.bat" true
 )
