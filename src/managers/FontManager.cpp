@@ -178,8 +178,8 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
     return nullptr;
   }
 
-  // Set texture scale mode for crisp font rendering - use NEAREST to avoid blur when scaling
-  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
+  // Set texture scale mode for smooth font rendering - LINEAR provides antialiased scaling
+  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
 
   // Store in cache
   m_textCache[key] = texture;
@@ -296,8 +296,8 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
 
   // Set texture blend mode to preserve alpha
   SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_BLEND);
-  // Set texture scale mode for crisp font rendering - use NEAREST to avoid blur when scaling
-  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
+  // Set texture scale mode for smooth font rendering - LINEAR provides antialiased scaling
+  SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_LINEAR);
 
   return texture;
 }
