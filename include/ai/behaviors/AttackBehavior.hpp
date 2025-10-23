@@ -100,6 +100,10 @@ public:
 private:
   
   struct EntityState {
+    // Base AI behavior state (pathfinding, separation, cooldowns)
+    AIBehaviorState baseState;
+
+    // Attack-specific state
     Vector2D lastTargetPosition{0, 0};
     Vector2D attackPosition{0, 0};
     Vector2D retreatPosition{0, 0};
@@ -135,34 +139,9 @@ private:
     float preferredAttackAngle{0.0f};
     int strafeDirectionInt{1}; // 1 for clockwise, -1 for counter-clockwise
 
-    // Lightweight per-entity path-following state
-    std::vector<Vector2D> pathPoints;      // queued path nodes
-    size_t currentPathIndex{0};            // current node index
-    float pathUpdateTimer{0.0f};           // time since last path refresh
-    float progressTimer{0.0f};             // time since last progress
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{18.0f};                // node snap radius
-    float backoffTimer{0.0f};
-    // Separation decimation
-    float separationTimer{0.0f};
-    Vector2D lastSepVelocity{0, 0};
-
-    EntityState()
-        : lastTargetPosition(0, 0), attackPosition(0, 0), retreatPosition(0, 0),
-          strafeVector(0, 0), currentState(AttackState::SEEKING),
-          attackTimer(0.0f), stateChangeTimer(0.0f), damageTimer(0.0f),
-          comboTimer(0.0f), strafeTimer(0.0f), currentHealth(100.0f),
-          maxHealth(100.0f), currentStamina(100.0f), targetDistance(0.0f),
-          attackChargeTime(0.0f), recoveryTimer(0.0f), currentCombo(0),
-          attacksInCombo(0), inCombat(false), hasTarget(false),
-          isCharging(false), isRetreating(false), canAttack(true),
-          lastAttackHit(false), specialAttackReady(false),
-          circleStrafing(false), flanking(false), preferredAttackAngle(0.0f),
-          strafeDirectionInt(1), pathPoints(), currentPathIndex(0),
-          pathUpdateTimer(0.0f), progressTimer(0.0f),
-          lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), backoffTimer(0.0f), separationTimer(0.0f),
-          lastSepVelocity(0, 0) {}
+    EntityState() {
+      baseState.navRadius = 18.0f; // Attack-specific nav radius
+    }
   };
 
   // Map to store per-entity state
@@ -281,12 +260,7 @@ private:
                                                 EntityPtr target,
                                                 EntityState &state, float deltaTime);
 
-  // Utility methods
-  Vector2D normalizeDirection(const Vector2D &direction) const;
-  [[maybe_unused]] float calculateAngleToTarget(const Vector2D &from,
-                                                const Vector2D &to) const;
-  [[maybe_unused]] float normalizeAngle(float angle) const;
-  Vector2D rotateVector(const Vector2D &vector, float angle) const;
+  // Utility methods (most moved to base class)
   [[maybe_unused]] bool isValidAttackPosition(const Vector2D &position,
                                               EntityPtr target) const;
 

@@ -73,12 +73,12 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // Update all timers
   state.directionChangeTimer += deltaTime;
   state.lastDirectionFlip += deltaTime;
-  state.pathUpdateTimer += deltaTime;
-  state.progressTimer += deltaTime;
+  state.baseState.pathUpdateTimer += deltaTime;
+  state.baseState.progressTimer += deltaTime;
   state.stallTimer += deltaTime;
   state.unstickTimer += deltaTime;
-  state.lastCrowdAnalysis += deltaTime;
-  state.cooldowns.update(deltaTime);
+  state.baseState.lastCrowdAnalysis += deltaTime;
+  if (state.baseState.pathRequestCooldown > 0.0f) state.baseState.pathRequestCooldown -= deltaTime;
 
   // Check if we need to start movement after delay
   if (!state.movementStarted) {
@@ -87,15 +87,15 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       Vector2D intended = state.currentDirection * m_speed;
 
       // PERFORMANCE OPTIMIZATION: Use cached collision data if available
-      if (!state.cachedNearbyPositions.empty()) {
+      if (!state.baseState.cachedNearbyPositions.empty()) {
         applySeparationWithCache(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                                 state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                                 m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                                 state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
       } else {
         // Fallback to direct calculation on first frame
         applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                                 state.lastSepVelocity, deltaTime);
+                                 m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                                 state.baseState.lastSepVelocity, deltaTime);
       }
     }
     return;
@@ -112,18 +112,18 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     Vector2D position = entity->getPosition();
 
     // Cache crowd analysis results to avoid expensive collision queries every frame
-    int nearbyCount = state.cachedNearbyCount;
-    std::vector<Vector2D> nearbyPositions = state.cachedNearbyPositions;
+    int nearbyCount = state.baseState.cachedNearbyCount;
+    std::vector<Vector2D> nearbyPositions = state.baseState.cachedNearbyPositions;
 
     // PERFORMANCE FIX: Update crowd analysis every 3-5 seconds (was 333-500ms)
     // At 2000 entities: 5000 queries/sec → 500 queries/sec (90% reduction!)
     float crowdInterval = 3.0f + (entity->getID() % 200) * 0.01f; // 3-5 seconds range
-    if (state.lastCrowdAnalysis >= crowdInterval) {
+    if (state.baseState.lastCrowdAnalysis >= crowdInterval) {
       float queryRadius = 120.0f;
       nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, nearbyPositions);
-      state.cachedNearbyCount = nearbyCount;
-      state.cachedNearbyPositions = nearbyPositions;
-      state.lastCrowdAnalysis = 0.0f; // Reset timer
+      state.baseState.cachedNearbyCount = nearbyCount;
+      state.baseState.cachedNearbyPositions = nearbyPositions;
+      state.baseState.lastCrowdAnalysis = 0.0f; // Reset timer
     }
 
      // Dynamic distance adjustment based on crowding
@@ -218,23 +218,23 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     }
 
     // CACHE-AWARE PATHFINDING: Check for existing path first
-    bool needsNewPath = state.pathPoints.empty() ||
-                       state.currentPathIndex >= state.pathPoints.size() ||
-                       state.pathUpdateTimer > 15.0f; // Only refresh after 15 seconds
+    bool needsNewPath = state.baseState.pathPoints.empty() ||
+                       state.baseState.currentPathIndex >= state.baseState.pathPoints.size() ||
+                       state.baseState.pathUpdateTimer > 15.0f; // Only refresh after 15 seconds
 
     // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms without progress)
-    bool stuckOnObstacle = state.progressTimer > 0.8f;
+    bool stuckOnObstacle = state.baseState.progressTimer > 0.8f;
     if (stuckOnObstacle) {
-      state.pathPoints.clear(); // Clear path to force refresh
-      state.currentPathIndex = 0;
+      state.baseState.pathPoints.clear(); // Clear path to force refresh
+      state.baseState.currentPathIndex = 0;
     }
 
-    if ((needsNewPath || stuckOnObstacle) && state.cooldowns.canRequestPath()) {
+    if ((needsNewPath || stuckOnObstacle) && state.baseState.pathRequestCooldown <= 0.0f) {
       // SMART REQUEST: Only request if goal significantly different from last request
       const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance; // Minimum distance change to justify new request
       bool goalChanged = true;
-      if (!state.pathPoints.empty()) {
-        Vector2D lastGoal = state.pathPoints.back();
+      if (!state.baseState.pathPoints.empty()) {
+        Vector2D lastGoal = state.baseState.pathPoints.back();
         float goalDistance = (dest - lastGoal).length();
         goalChanged = (goalDistance >= MIN_GOAL_CHANGE);
       }
@@ -247,36 +247,36 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
             [this, entity](EntityID, const std::vector<Vector2D>& path) {
               auto stateIt = m_entityStates.find(entity);
               if (stateIt != m_entityStates.end() && !path.empty()) {
-                stateIt->second.pathPoints = path;
-                stateIt->second.currentPathIndex = 0;
-                stateIt->second.pathUpdateTimer = 0.0f;
+                stateIt->second.baseState.pathPoints = path;
+                stateIt->second.baseState.currentPathIndex = 0;
+                stateIt->second.baseState.pathUpdateTimer = 0.0f;
               }
             });
         // PERFORMANCE FIX: 30 second cooldown (was 5s)
         // At 2000 entities: 400 requests/sec → 67 requests/sec (83% reduction!)
-        state.cooldowns.applyPathCooldown(m_config.pathRequestCooldown);
+        state.baseState.pathRequestCooldown = m_config.pathRequestCooldown;
       }
     }
-    if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+    if (!state.baseState.pathPoints.empty() && state.baseState.currentPathIndex < state.baseState.pathPoints.size()) {
       // Follow current path; velocity will be updated inside followPathStep
       bool following = pathfinder().followPathStep(
-          entity, entity->getPosition(), state.pathPoints, state.currentPathIndex,
-          m_speed, state.navRadius);
+          entity, entity->getPosition(), state.baseState.pathPoints, state.baseState.currentPathIndex,
+          m_speed, state.baseState.navRadius);
       if (following) {
         // PERFORMANCE OPTIMIZATION: Use cached collision data from crowd analysis
         // This eliminates redundant collision queries (was querying every 2 seconds)
         applySeparationWithCache(entity, entity->getPosition(),
                                  entity->getVelocity(), m_speed, 28.0f, 0.30f,
-                                 6, state.separationTimer, state.lastSepVelocity, deltaTime,
-                                 state.cachedNearbyPositions);
+                                 6, state.baseState.separationTimer, state.baseState.lastSepVelocity, deltaTime,
+                                 state.baseState.cachedNearbyPositions);
       }
     } else {
       // Always apply base velocity (in case something external changed it)
       Vector2D intended = state.currentDirection * m_speed;
       // PERFORMANCE OPTIMIZATION: Use cached collision data
       applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                               m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                               state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
     }
   }
 }
@@ -317,8 +317,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
 
     // PERFORMANCE OPTIMIZATION: Use cached collision data
     applySeparationWithCache(entity, entity->getPosition(), stableVelocity,
-                             m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                             state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                             m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                             state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
   } else if (wouldFlip) {
     // Record the flip - reset timer
     state.lastDirectionFlip = 0.0f;
@@ -331,11 +331,11 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
   if (speed < stallSpeed) {
     if (state.stallTimer >= stallSeconds) {
       // Clear path and pick a fresh direction to break clumps
-      state.pathPoints.clear();
-      state.currentPathIndex = 0;
-      state.pathUpdateTimer = 0.0f;
+      state.baseState.pathPoints.clear();
+      state.baseState.currentPathIndex = 0;
+      state.baseState.pathUpdateTimer = 0.0f;
       chooseNewDirection(entity, deltaTime);
-      state.cooldowns.applyPathCooldown(0.6f); // prevent immediate re-request
+      state.baseState.pathRequestCooldown = 0.6f; // prevent immediate re-request
       state.stallTimer = 0.0f;
       return;
     }
@@ -363,8 +363,8 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
       Vector2D intended = state.currentDirection * m_speed;
       // PERFORMANCE OPTIMIZATION: Use cached collision data
       applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                               m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                               state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
     }
   }
 
@@ -463,15 +463,15 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, float deltaTime) {
   if (applyVelocity) {
     Vector2D intended = state.currentDirection * m_speed;
     // PERFORMANCE OPTIMIZATION: Use cached collision data if available
-    if (!state.cachedNearbyPositions.empty()) {
+    if (!state.baseState.cachedNearbyPositions.empty()) {
       applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime, state.cachedNearbyPositions);
+                               m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                               state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
     } else {
       // Fallback for initialization
       applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.separationTimer,
-                               state.lastSepVelocity, deltaTime);
+                               m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                               state.baseState.lastSepVelocity, deltaTime);
     }
   }
 

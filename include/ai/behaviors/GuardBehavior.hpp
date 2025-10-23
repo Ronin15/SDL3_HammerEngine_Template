@@ -93,6 +93,10 @@ public:
 private:
   
   struct EntityState {
+    // Base AI behavior state (pathfinding, separation, cooldowns)
+    AIBehaviorState baseState;
+
+    // Guard-specific state
     Vector2D assignedPosition{0, 0};
     Vector2D lastKnownThreatPosition{0, 0};
     Vector2D investigationTarget{0, 0};
@@ -121,32 +125,9 @@ private:
     Vector2D roamTarget{0, 0};
     float roamTimer{0.0f};
 
-    // Pathfinding state
-    std::vector<Vector2D> pathPoints;
-    size_t currentPathIndex{0};
-    float pathUpdateTimer{0.0f};
-    float progressTimer{0.0f};
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{18.0f};
-    float backoffTimer{0.0f};
-    // Separation decimation
-    float separationTimer{0.0f};
-    Vector2D lastSepVelocity{0, 0};
-
-    EntityState()
-        : assignedPosition(0, 0), lastKnownThreatPosition(0, 0),
-          investigationTarget(0, 0), currentPatrolTarget(0, 0),
-          currentAlertLevel(AlertLevel::CALM),
-          currentMode(GuardMode::STATIC_GUARD), threatSightingTimer(0.0f),
-          alertTimer(0.0f), investigationTimer(0.0f), positionCheckTimer(0.0f),
-          patrolMoveTimer(0.0f), alertDecayTimer(0.0f), currentPatrolIndex(0),
-          currentHeading(0.0f), hasActiveThreat(false), isInvestigating(false),
-          returningToPost(false), onDuty(true), alertRaised(false),
-          helpCalled(false), roamTarget(0, 0), roamTimer(0.0f),
-          pathPoints(), currentPathIndex(0), pathUpdateTimer(0.0f),
-          progressTimer(0.0f), lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), backoffTimer(0.0f), separationTimer(0.0f),
-          lastSepVelocity(0, 0) {}
+    EntityState() {
+      baseState.navRadius = 18.0f; // Guard-specific nav radius
+    }
   };
 
   // Map to store per-entity state
@@ -231,11 +212,6 @@ private:
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,
                     float threshold = 25.0f) const;
   bool isWithinGuardArea(const Vector2D &position) const;
-
-  // Utility methods
-  Vector2D normalizeDirection(const Vector2D &direction) const;
-  float normalizeAngle(float angle) const;
-  float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;
   Vector2D clampToGuardArea(const Vector2D &position) const;
 
   // Communication helpers

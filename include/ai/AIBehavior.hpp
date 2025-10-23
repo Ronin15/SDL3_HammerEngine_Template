@@ -10,6 +10,7 @@
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <cstddef>
+#include <limits>
 #include <vector>
 
 // Forward declarations
@@ -70,6 +71,30 @@ protected:
   bool m_active{true};
   // PERFORMANCE FIX: Dramatically increased separation decimation interval (2 seconds)
   static constexpr Uint32 kSeparationIntervalMs = 2000;
+
+  // Common state structure for pathfinding and movement behaviors
+  struct AIBehaviorState {
+    // Pathfinding state
+    std::vector<Vector2D> pathPoints;
+    size_t currentPathIndex = 0;
+    float navRadius = 64.0f;
+    float pathUpdateTimer = 0.0f;
+    float progressTimer = 0.0f;
+    float lastNodeDistance = std::numeric_limits<float>::infinity();
+
+    // Separation state
+    float separationTimer = 0.0f;
+    Vector2D lastSepVelocity{0, 0};
+
+    // Cooldown timers
+    float pathRequestCooldown = 0.0f;
+    float backoffTimer = 0.0f;
+
+    // Crowd analysis caching (optional per behavior)
+    float lastCrowdAnalysis = 0.0f;
+    int cachedNearbyCount = 0;
+    std::vector<Vector2D> cachedNearbyPositions;
+  };
   
   // Cached PathfinderManager reference for all behaviors to eliminate Instance() calls
   PathfinderManager& pathfinder() const;
@@ -185,6 +210,20 @@ protected:
       entity->setVelocity(intendedVelocity);
     }
   }
+
+  // Common utility functions for behaviors
+
+  // Move entity towards target position using pathfinding
+  // Priority: 0=Low, 1=Normal, 2=High, 3=Critical (maps to PathfinderManager::Priority)
+  void moveToPosition(EntityPtr entity, const Vector2D &targetPos,
+                     float speed, float deltaTime, AIBehaviorState &state,
+                     int priority = 1); // Default to Normal priority
+
+  // Vector and angle utilities
+  Vector2D normalizeDirection(const Vector2D &vector) const;
+  float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;
+  float normalizeAngle(float angle) const;
+  Vector2D rotateVector(const Vector2D &vector, float angle) const;
 };
 
 #endif // AI_BEHAVIOR_HPP
