@@ -113,9 +113,9 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   state.damageTimer += deltaTime;
   if (state.comboTimer > 0.0f) state.comboTimer -= deltaTime;
   state.strafeTimer += deltaTime;
-  state.pathUpdateTimer += deltaTime;
-  state.progressTimer += deltaTime;
-  if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
+  state.baseState.pathUpdateTimer += deltaTime;
+  state.baseState.progressTimer += deltaTime;
+  if (state.baseState.backoffTimer > 0.0f) state.baseState.backoffTimer -= deltaTime;
 
   EntityPtr target = getTarget();
 
@@ -880,105 +880,8 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   if (it == m_entityStates.end()) return;
   EntityState &state = it->second;
 
-  // Clamp target to world bounds to avoid chasing outside the map
-  Vector2D clampedTarget = pathfinder().clampToWorldBounds(targetPos, 100.0f);
-
-  Vector2D currentPos = pathfinder().clampToWorldBounds(entity->getPosition(), 100.0f);
-
-
-  // PERFORMANCE: Increase path TTL and reduce refresh frequency
-  constexpr float pathTTL = 3.0f;         // Increased from 1.5s to 3s
-  constexpr float noProgressWindow = 0.5f; // 500ms
-  bool needRefresh = state.pathPoints.empty() ||
-                     state.currentPathIndex >= state.pathPoints.size();
-
-  if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-    float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-    if (d + 1.0f < state.lastNodeDistance) {
-      state.lastNodeDistance = d;
-      state.progressTimer = 0.0f;
-    } else if (state.progressTimer > noProgressWindow) {
-      needRefresh = true;
-    }
-  }
-  if (state.pathUpdateTimer > pathTTL) needRefresh = true;
-
-  // PERFORMANCE: Use squared distance and increase threshold
-  if (!needRefresh && !state.pathPoints.empty()) {
-    const float GOAL_CHANGE_THRESH_SQUARED = 150.0f * 150.0f; // Increased from 64px to 150px
-    Vector2D lastGoal = state.pathPoints.back();
-    float goalDeltaSquared = (clampedTarget - lastGoal).lengthSquared();
-    if (goalDeltaSquared > GOAL_CHANGE_THRESH_SQUARED) needRefresh = true;
-  }
-
-  if (needRefresh && state.backoffTimer <= 0.0f) {
-    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-    pathfinder().requestPath(
-        entity->getID(), currentPos, clampedTarget, PathfinderManager::Priority::Critical,
-        [this, entity](EntityID, const std::vector<Vector2D>& path) {
-          if (!path.empty()) {
-            // Find the behavior state for this entity
-            auto it = m_entityStates.find(entity);
-            if (it != m_entityStates.end()) {
-              it->second.pathPoints = path;
-              it->second.currentPathIndex = 0;
-              it->second.pathUpdateTimer = 0.0f;
-              it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-              it->second.progressTimer = 0.0f;
-            }
-          }
-        });
-    // Remove the synchronous path check since we're using callback-based async path
-    {
-      // Async path not ready, apply minimal backoff to prevent spam and continue with existing path
-      state.backoffTimer = 0.2f + (entity->getID() % 300) * 0.001f;
-    }
-  }
-
-  // Follow path if available; otherwise fall back to direct steering
-  if (!state.pathPoints.empty() &&
-      state.currentPathIndex < state.pathPoints.size()) {
-    Vector2D node = state.pathPoints[state.currentPathIndex];
-    Vector2D dir = node - currentPos;
-    float len = dir.length();
-    if (len > 0.01f) {
-      dir = dir * (1.0f / len);
-      Vector2D intended = dir * speed;
-      applyDecimatedSeparation(entity, currentPos, intended, speed, 28.0f,
-                               0.30f, 4, state.separationTimer,
-                               state.lastSepVelocity, deltaTime);
-      state.progressTimer = 0.0f;
-    }
-    if ((node - currentPos).length() <= state.navRadius) {
-      ++state.currentPathIndex;
-      state.lastNodeDistance = std::numeric_limits<float>::infinity();
-      state.progressTimer = 0.0f;
-    }
-  } else {
-    Vector2D direction = normalizeDirection(clampedTarget - currentPos);
-    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.progressTimer = 0.0f; }
-  }
-
-  // Stall detection scaled by configured speed
-  float spd = entity->getVelocity().length();
-  const float stallSpeed = std::max(0.5f, speed * 0.5f);
-  constexpr float stallSeconds = 0.6f;
-  if (spd < stallSpeed) {
-    if (state.progressTimer > stallSeconds) {
-      // Force a refresh and small micro-jitter to break clumps; add short backoff
-      state.pathPoints.clear(); state.backoffTimer = 0.2f + (entity->getID() % 400) * 0.001f;
-      state.currentPathIndex = 0;
-      state.pathUpdateTimer = 0.0f;
-      state.progressTimer = 0.0f;
-      float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f;
-      Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
-      float c = std::cos(jitter), s = std::sin(jitter);
-      Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
-      rotated.normalize(); entity->setVelocity(rotated * speed);
-    }
-  } else {
-    state.progressTimer = 0.0f;
-  }
+  // Use base class moveToPosition with Critical priority (3) for attacks
+  AIBehavior::moveToPosition(entity, targetPos, speed, deltaTime, state.baseState, 3);
 }
 
 void AttackBehavior::maintainDistance(EntityPtr entity, EntityPtr target,
@@ -1028,36 +931,7 @@ void AttackBehavior::performFlankingManeuver(EntityPtr entity, EntityPtr target,
   state.flanking = true;
 }
 
-Vector2D AttackBehavior::normalizeDirection(const Vector2D &vector) const {
-  float magnitude = vector.length();
-  if (magnitude < 0.001f) {
-    return Vector2D(0, 0);
-  }
-  return vector / magnitude;
-}
-
-float AttackBehavior::calculateAngleToTarget(const Vector2D &from,
-                                             const Vector2D &to) const {
-  Vector2D direction = to - from;
-  return std::atan2(direction.getY(), direction.getX());
-}
-
-float AttackBehavior::normalizeAngle(float angle) const {
-  while (angle > M_PI)
-    angle -= 2.0f * M_PI;
-  while (angle < -M_PI)
-    angle += 2.0f * M_PI;
-  return angle;
-}
-
-Vector2D AttackBehavior::rotateVector(const Vector2D &vector,
-                                      float angle) const {
-  float cos_a = std::cos(angle);
-  float sin_a = std::sin(angle);
-
-  return Vector2D(vector.getX() * cos_a - vector.getY() * sin_a,
-                  vector.getX() * sin_a + vector.getY() * cos_a);
-}
+// Utility methods removed - now using base class implementations
 
 bool AttackBehavior::isValidAttackPosition(const Vector2D &position,
                                            EntityPtr target) const {

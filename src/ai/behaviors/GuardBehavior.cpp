@@ -104,9 +104,9 @@ void GuardBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   state.patrolMoveTimer += deltaTime;
   state.alertDecayTimer += deltaTime;
   state.roamTimer -= deltaTime;
-  state.pathUpdateTimer += deltaTime;
-  state.progressTimer += deltaTime;
-  if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
+  state.baseState.pathUpdateTimer += deltaTime;
+  state.baseState.progressTimer += deltaTime;
+  if (state.baseState.backoffTimer > 0.0f) state.baseState.backoffTimer -= deltaTime;
 
   // Detect threats
   EntityPtr threat = detectThreat(entity, state);
@@ -697,101 +697,12 @@ void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
   auto it = m_entityStates.find(entity);
   if (it == m_entityStates.end()) return;
   auto &state = it->second;
-  Vector2D currentPos = entity->getPosition();
 
+  // Determine priority based on alert level (0=Low, 1=Normal, 2=High, 3=Critical)
+  int priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 2 : 1; // High or Normal
 
-  // Determine if a fresh path is actually needed
-  constexpr float PATH_TTL_SECONDS = 1.8f;
-  bool needsNewPath = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
-
-  if (!needsNewPath && state.pathUpdateTimer > PATH_TTL_SECONDS) {
-    needsNewPath = true; // Stale path
-  }
-
-  if (!needsNewPath && !state.pathPoints.empty()) {
-    // Only refresh when goal changed significantly
-    const float GOAL_CHANGE_THRESH = 64.0f; // px
-    Vector2D currentGoal = state.pathPoints.back();
-    float goalDelta = (targetPos - currentGoal).length();
-    if (goalDelta > GOAL_CHANGE_THRESH) {
-      needsNewPath = true;
-    }
-  }
-
-  // Skip pathfinding if we're basically at the goal already
-  float distanceToTarget = (targetPos - currentPos).length();
-  if (distanceToTarget <= state.navRadius * 1.1f) {
-    needsNewPath = false;
-  }
-
-  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
-  bool stuckOnObstacle = (state.progressTimer > 3.0f);
-  if (stuckOnObstacle) {
-    state.pathPoints.clear(); // Clear path to force refresh
-    state.currentPathIndex = 0;
-  }
-
-  // Respect backoff to avoid spamming requests
-  if ((needsNewPath || stuckOnObstacle) && state.backoffTimer <= 0.0f) {
-    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-    auto priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ?
-        PathfinderManager::Priority::High : PathfinderManager::Priority::Normal;
-
-    Vector2D clampedStart = pathfinder().clampToWorldBounds(currentPos, 100.0f);
-    Vector2D clampedGoal  = pathfinder().clampToWorldBounds(targetPos, 100.0f);
-
-    pathfinder().requestPath(
-        entity->getID(), clampedStart, clampedGoal, priority,
-        [this, entity](EntityID, const std::vector<Vector2D>& path) {
-          auto it = m_entityStates.find(entity);
-          if (it != m_entityStates.end() && !path.empty()) {
-            it->second.pathPoints = path;
-            it->second.currentPathIndex = 0;
-            it->second.pathUpdateTimer = 0.0f;
-            it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-            it->second.progressTimer = 0.0f;
-          }
-        });
-
-    // Gentle per-entity backoff to prevent per-frame re-requests
-    state.backoffTimer = 300 * 0.001f + (entity->getID() % 300) * 0.001f;
-  }
-
-  // Follow existing path if available; fallback to direct steering
-  bool following = pathfinder().followPathStep(entity, currentPos,
-                        state.pathPoints, state.currentPathIndex,
-                        speed, state.navRadius);
-  if (following) {
-    state.progressTimer = 0.0f;
-  }
-  if (!following) {
-    // Fallback: direct steering
-    Vector2D direction = normalizeDirection(targetPos - currentPos);
-    if (direction.length() > 0.001f) {
-      entity->setVelocity(direction * speed);
-      state.progressTimer = 0.0f;
-    }
-  }
-
-  // Dynamic backoff when stalled for a while
-  float spd = entity->getVelocity().length();
-  const float stallSpeed = std::max(0.5f, speed * 0.5f);
-  if (spd < stallSpeed) {
-    if (state.progressTimer > 0.6f) { // 600ms converted to seconds
-      state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f;
-      state.pathPoints.clear();
-      state.currentPathIndex = 0;
-      state.pathUpdateTimer = 0.0f;
-    }
-  }
-
-  // Apply local separation to reduce on-top stacking when following
-  if (following) {
-    auto &st = state;
-    applyDecimatedSeparation(entity, currentPos, entity->getVelocity(), speed,
-                             24.0f, 0.18f, 4, st.separationTimer,
-                             st.lastSepVelocity, deltaTime);
-  }
+  // Use base class moveToPosition implementation
+  AIBehavior::moveToPosition(entity, targetPos, speed, deltaTime, state.baseState, priority);
 }
 
 Vector2D GuardBehavior::getNextPatrolWaypoint(const EntityState &state) const {
@@ -847,27 +758,7 @@ bool GuardBehavior::isWithinGuardArea(const Vector2D &position) const {
   }
 }
 
-Vector2D GuardBehavior::normalizeDirection(const Vector2D &direction) const {
-  float magnitude = direction.length();
-  if (magnitude < 0.001f) {
-    return Vector2D(0, 0);
-  }
-  return direction / magnitude;
-}
-
-float GuardBehavior::normalizeAngle(float angle) const {
-  while (angle > M_PI)
-    angle -= 2.0f * M_PI;
-  while (angle < -M_PI)
-    angle += 2.0f * M_PI;
-  return angle;
-}
-
-float GuardBehavior::calculateAngleToTarget(const Vector2D &from,
-                                            const Vector2D &to) const {
-  Vector2D direction = to - from;
-  return std::atan2(direction.getY(), direction.getX());
-}
+// Utility methods removed - now using base class implementations
 
 Vector2D GuardBehavior::clampToGuardArea(const Vector2D &position) const {
   if (m_useCircularArea) {

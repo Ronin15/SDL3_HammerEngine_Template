@@ -62,70 +62,32 @@ private:
 
   // Entity-specific state data
   struct EntityState {
+    // Base AI behavior state (pathfinding, separation, cooldowns, crowd cache)
+    AIBehaviorState baseState;
+
+    // Wander-specific state
     Vector2D currentDirection{0, 0};
     Vector2D previousVelocity{0, 0}; // Store previous frame velocity for flip detection
     float directionChangeTimer{0.0f}; // Accumulates deltaTime
     float lastDirectionFlip{0.0f};    // Time since last flip
     float startDelay{0.0f};           // Random delay before entity starts moving
     bool movementStarted{false};      // Flag to track if movement has started
-    // Path-following state
-    std::vector<Vector2D> pathPoints;
-    size_t currentPathIndex{0};
-    float pathUpdateTimer{0.0f};      // Time since last path update
-    float progressTimer{0.0f};        // Time since last progress
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{18.0f};
+
     // Improved stall detection
     float stallTimer{0.0f};
     Vector2D lastStallPosition{0, 0};
     float stallPositionVariance{0.0f};
     float unstickTimer{0.0f};
-    // Separation decimation
-    float separationTimer{0.0f};
-    Vector2D lastSepVelocity{0, 0};
-    // Unified cooldown management
-    struct {
-        float pathRequestCooldown{0.0f};
-        float stallRecoveryCooldown{0.0f};
-        float behaviorChangeCooldown{0.0f};
-
-        bool canRequestPath() const {
-            return pathRequestCooldown <= 0.0f && stallRecoveryCooldown <= 0.0f;
-        }
-
-        void applyPathCooldown(float cooldownSeconds = 30.0f) {
-            pathRequestCooldown = cooldownSeconds;
-        }
-
-        void applyStallCooldown(uint32_t stallId = 0) {
-            stallRecoveryCooldown = 0.25f + (stallId % 400) * 0.001f;
-        }
-
-        void update(float deltaTime) {
-            if (pathRequestCooldown > 0.0f) pathRequestCooldown -= deltaTime;
-            if (stallRecoveryCooldown > 0.0f) stallRecoveryCooldown -= deltaTime;
-            if (behaviorChangeCooldown > 0.0f) behaviorChangeCooldown -= deltaTime;
-        }
-    } cooldowns;
 
     // Performance optimization: cached world bounds to avoid repeated WorldManager calls
     struct {
       float minX{0.0f}, minY{0.0f}, maxX{0.0f}, maxY{0.0f};
     } cachedBounds;
 
-    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
-    int cachedNearbyCount{0};
-    std::vector<Vector2D> cachedNearbyPositions;
-    float lastCrowdAnalysis{0.0f};
-
     // Constructor to ensure proper initialization
-    EntityState()
-        : currentDirection(0, 0), previousVelocity(0, 0), directionChangeTimer(0.0f),
-          lastDirectionFlip(0.0f), startDelay(0.0f), movementStarted(false),
-          pathPoints(), currentPathIndex(0), pathUpdateTimer(0.0f),
-          progressTimer(0.0f), lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), stallTimer(0.0f), lastStallPosition(0, 0),
-          stallPositionVariance(0.0f), unstickTimer(0.0f) {}
+    EntityState() {
+      baseState.navRadius = 18.0f; // Wander-specific nav radius
+    }
   };
 
   // Map to store per-entity state using shared_ptr as key
