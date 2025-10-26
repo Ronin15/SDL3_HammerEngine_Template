@@ -1,0 +1,149 @@
+[
+  {
+    "label": "Debug Main Application (SDL3_Template)",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/SDL3_Template",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false,
+    "setupCommands": [
+      {
+        "description": "Enable pretty-printing for gdb",
+        "text": "-enable-pretty-printing",
+        "ignoreFailures": true
+      },
+      {
+        "description": "Set disassembly flavor to Intel",
+        "text": "-gdb-set disassembly-flavor intel",
+        "ignoreFailures": true
+      }
+    ]
+  },
+  {
+    "label": "Debug AI Optimization Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/ai_optimization_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug AI Threading Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/thread_safe_ai_manager_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug AI Integration Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/thread_safe_ai_integration_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Collision System Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/collision_system_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Collision-Pathfinding Integration",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/collision_pathfinding_integration_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Event Manager Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/event_manager_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Pathfinding System Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/pathfinding_system_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Pathfinder Manager Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/pathfinder_manager_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Particle Manager Core Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/particle_manager_core_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Particle Threading Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/particle_manager_threading_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Save Manager Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/save_manager_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug World Manager Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/world_manager_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Behavior Functionality Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/behavior_functionality_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Thread System Tests",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/thread_system_tests",
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Debug Specific Test Case",
+    "adapter": "gdb",
+    "request": "launch",
+    "program": "${workspaceFolder}/bin/debug/collision_system_tests",
+    "args": ["--run_test=TestCaseName"],
+    "cwd": "${workspaceFolder}",
+    "stopAtEntry": false
+  },
+  {
+    "label": "Attach to Running Process",
+    "adapter": "gdb",
+    "request": "attach",
+    "pid": "${command:pickProcess}"
+  }
+]
