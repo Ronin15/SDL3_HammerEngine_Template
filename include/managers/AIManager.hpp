@@ -377,7 +377,8 @@ private:
     std::vector<float> halfWidths;  // entity half extents for clamp
     std::vector<float> halfHeights; // entity half extents for clamp
 
-    // Double buffering for lock-free updates
+    // Double buffering (deprecated - now using single-copy pre-fetch pattern)
+    // PreFetchedBatchData copies directly from hotData, eliminating redundant copy
     std::atomic<int> currentBuffer{0};
     std::array<std::vector<AIEntityData::HotData>, 2> doubleBuffer;
 
@@ -509,6 +510,10 @@ private:
 
   // Per-batch collision update buffers (zero contention approach)
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
+
+  // Reusable pre-fetch buffer to avoid per-frame allocations (128KB for 2000 entities)
+  // Cleared each frame but capacity is retained to eliminate heap churn
+  PreFetchedBatchData m_reusablePreFetchBuffer;
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size

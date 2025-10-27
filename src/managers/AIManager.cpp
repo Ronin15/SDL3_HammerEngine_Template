@@ -314,10 +314,6 @@ void AIManager::update(float deltaTime) {
       return;
     }
 
-    // Lock-free double buffer swap
-    int currentBuffer = m_storage.currentBuffer.load(std::memory_order_acquire);
-    int nextBuffer = 1 - currentBuffer;
-
     // Get player position for distance calculations
     // Distance calculation moved to processBatch to avoid redundant iteration
     // OPTIMIZATION: Reduced update frequency from every 8 to every 16 frames
@@ -326,40 +322,16 @@ void AIManager::update(float deltaTime) {
     bool shouldUpdateDistances = player && (currentFrame % 16 == 0);
     Vector2D playerPos = player ? player->getPosition() : Vector2D(0, 0);
 
-    // THREAD-SAFE DOUBLE BUFFERING: Copy data BEFORE starting async tasks
-    // CRITICAL: Must copy EVERY frame when threading to avoid stale data
-    // Single-threaded can optimize with periodic copies (every 120 frames)
-    bool entityCountChanged =
-        (m_storage.doubleBuffer[nextBuffer].size() != m_storage.hotData.size());
+    // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
+    // No intermediate buffer copy needed - preFetchedData is our only copy
+    // This eliminates redundant copying and reduces cache thrashing
 
-    // Determine threading strategy EARLY to decide if buffer copy needed
+    // Determine threading strategy
     const size_t threadingThreshold = std::max<size_t>(
         1, m_threadingThreshold.load(std::memory_order_acquire));
-    bool willUseThreading = (activeCount >= threadingThreshold &&
-                             m_useThreading.load(std::memory_order_acquire) &&
-                             HammerEngine::ThreadSystem::Exists());
-
-    // Force copy every frame when threading (async batches need fresh data)
-    // Single-threaded can skip copies for performance (processes current data directly)
-    bool needsCopy = entityCountChanged || currentFrame % 120 == 0 || willUseThreading;
-
-    if (needsCopy) {
-      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-      m_storage.doubleBuffer[nextBuffer] = m_storage.hotData;
-
-      // Debug logging for buffer copy events (only log occasionally to avoid spam)
-      if (currentFrame % 600 == 0) {
-        AI_DEBUG("Double buffer copy: " + std::to_string(m_storage.hotData.size()) +
-                " entities (" + (entityCountChanged ? "count changed" :
-                 willUseThreading ? "threading active" : "periodic refresh") + ")");
-      }
-    } else {
-      // Use current buffer data - no copy needed (single-threaded optimization)
-      nextBuffer = currentBuffer;
-    }
-
-    // Threading strategy already determined above for buffer copy decision
-    bool useThreading = willUseThreading;
+    bool useThreading = (activeCount >= threadingThreshold &&
+                         m_useThreading.load(std::memory_order_acquire) &&
+                         HammerEngine::ThreadSystem::Exists());
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -384,17 +356,22 @@ void AIManager::update(float deltaTime) {
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
         m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
-        // Pre-fetch all data with single lock
-        PreFetchedBatchData preFetchedData;
-        preFetchedData.reserve(entityCount);
+        // Pre-fetch all data with single lock - copy directly from hotData
+        // REUSE buffer to avoid per-frame allocations (eliminates 128KB alloc/free)
+        m_reusablePreFetchBuffer.entities.clear();
+        m_reusablePreFetchBuffer.behaviors.clear();
+        m_reusablePreFetchBuffer.halfWidths.clear();
+        m_reusablePreFetchBuffer.halfHeights.clear();
+        m_reusablePreFetchBuffer.hotDataCopy.clear();
+        m_reusablePreFetchBuffer.reserve(entityCount);
+        PreFetchedBatchData& preFetchedData = m_reusablePreFetchBuffer;
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          auto &workBuffer = m_storage.doubleBuffer[nextBuffer];
           for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-            if (i < workBuffer.size() && workBuffer[i].active) {
+            if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
               preFetchedData.entities.push_back(m_storage.entities[i]);
               preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+              preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
               if (i < m_storage.halfWidths.size()) {
                 preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
                 preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
@@ -410,8 +387,8 @@ void AIManager::update(float deltaTime) {
               preFetchedData.behaviors.push_back(nullptr);
               preFetchedData.halfWidths.push_back(16.0f);
               preFetchedData.halfHeights.push_back(16.0f);
-              if (i < workBuffer.size()) {
-                preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+              if (i < m_storage.hotData.size()) {
+                preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
               } else {
                 preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
               }
@@ -431,10 +408,7 @@ void AIManager::update(float deltaTime) {
           cm.applyBatchedKinematicUpdates(singleBatch);
         }
 
-        // Swap buffers atomically
-        if (nextBuffer != currentBuffer) {
-          m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
-        }
+        // No buffer swap needed - we copy directly from hotData to preFetchedData
         // Single-threaded path completes within this frame; continue to stats
       }
 
@@ -481,17 +455,22 @@ void AIManager::update(float deltaTime) {
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
         m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
-        // Pre-fetch all data with single lock
-        PreFetchedBatchData preFetchedData;
-        preFetchedData.reserve(entityCount);
+        // Pre-fetch all data with single lock - copy directly from hotData
+        // REUSE buffer to avoid per-frame allocations (eliminates 128KB alloc/free)
+        m_reusablePreFetchBuffer.entities.clear();
+        m_reusablePreFetchBuffer.behaviors.clear();
+        m_reusablePreFetchBuffer.halfWidths.clear();
+        m_reusablePreFetchBuffer.halfHeights.clear();
+        m_reusablePreFetchBuffer.hotDataCopy.clear();
+        m_reusablePreFetchBuffer.reserve(entityCount);
+        PreFetchedBatchData& preFetchedData = m_reusablePreFetchBuffer;
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          auto &workBuffer = m_storage.doubleBuffer[nextBuffer];
           for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-            if (i < workBuffer.size() && workBuffer[i].active) {
+            if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
               preFetchedData.entities.push_back(m_storage.entities[i]);
               preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+              preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
               if (i < m_storage.halfWidths.size()) {
                 preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
                 preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
@@ -507,8 +486,8 @@ void AIManager::update(float deltaTime) {
               preFetchedData.behaviors.push_back(nullptr);
               preFetchedData.halfWidths.push_back(16.0f);
               preFetchedData.halfHeights.push_back(16.0f);
-              if (i < workBuffer.size()) {
-                preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+              if (i < m_storage.hotData.size()) {
+                preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
               } else {
                 preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
               }
@@ -543,13 +522,12 @@ void AIManager::update(float deltaTime) {
 
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          auto &workBuffer = m_storage.doubleBuffer[nextBuffer];
 
           for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-            if (i < workBuffer.size() && workBuffer[i].active) {
+            if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
               preFetchedData->entities.push_back(m_storage.entities[i]);
               preFetchedData->behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData->hotDataCopy.push_back(workBuffer[i]);
+              preFetchedData->hotDataCopy.push_back(m_storage.hotData[i]);
 
               // Get extents while we have the lock
               if (i < m_storage.halfWidths.size()) {
@@ -568,8 +546,8 @@ void AIManager::update(float deltaTime) {
               preFetchedData->behaviors.push_back(nullptr);
               preFetchedData->halfWidths.push_back(16.0f);
               preFetchedData->halfHeights.push_back(16.0f);
-              if (i < workBuffer.size()) {
-                preFetchedData->hotDataCopy.push_back(workBuffer[i]);
+              if (i < m_storage.hotData.size()) {
+                preFetchedData->hotDataCopy.push_back(m_storage.hotData[i]);
               } else {
                 preFetchedData->hotDataCopy.push_back(AIEntityData::HotData{});
               }
@@ -641,17 +619,22 @@ void AIManager::update(float deltaTime) {
       // Single-threaded processing
       m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
-      // Pre-fetch all data with single lock
-      PreFetchedBatchData preFetchedData;
-      preFetchedData.reserve(entityCount);
+      // Pre-fetch all data with single lock - copy directly from hotData
+      // REUSE buffer to avoid per-frame allocations (eliminates 128KB alloc/free)
+      m_reusablePreFetchBuffer.entities.clear();
+      m_reusablePreFetchBuffer.behaviors.clear();
+      m_reusablePreFetchBuffer.halfWidths.clear();
+      m_reusablePreFetchBuffer.halfHeights.clear();
+      m_reusablePreFetchBuffer.hotDataCopy.clear();
+      m_reusablePreFetchBuffer.reserve(entityCount);
+      PreFetchedBatchData& preFetchedData = m_reusablePreFetchBuffer;
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        auto &workBuffer = m_storage.doubleBuffer[nextBuffer];
         for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-          if (i < workBuffer.size() && workBuffer[i].active) {
+          if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
             preFetchedData.entities.push_back(m_storage.entities[i]);
             preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-            preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+            preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
             if (i < m_storage.halfWidths.size()) {
               preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
               preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
@@ -667,8 +650,8 @@ void AIManager::update(float deltaTime) {
             preFetchedData.behaviors.push_back(nullptr);
             preFetchedData.halfWidths.push_back(16.0f);
             preFetchedData.halfHeights.push_back(16.0f);
-            if (i < workBuffer.size()) {
-              preFetchedData.hotDataCopy.push_back(workBuffer[i]);
+            if (i < m_storage.hotData.size()) {
+              preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
             } else {
               preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
             }
@@ -689,10 +672,7 @@ void AIManager::update(float deltaTime) {
       }
     }
 
-    // Swap buffers atomically only if we actually changed buffers
-    if (nextBuffer != currentBuffer) {
-      m_storage.currentBuffer.store(nextBuffer, std::memory_order_release);
-    }
+    // No buffer swap needed - we copy directly from hotData to preFetchedData
 
     // Process lock-free message queue
     processMessageQueue();
