@@ -681,10 +681,11 @@ void AIManager::update(float deltaTime) {
       collisionUpdates.reserve(entityCount);
       processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
 
-      // Submit collision updates (single-threaded uses direct update for immediate application)
+      // Submit collision updates using unified batched API (consistency with multi-threaded path)
       if (!collisionUpdates.empty()) {
         auto &cm = CollisionManager::Instance();
-        cm.updateKinematicBatchSOA(collisionUpdates);
+        std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {collisionUpdates};
+        cm.applyBatchedKinematicUpdates(singleBatch);
       }
     }
 
@@ -754,11 +755,10 @@ void AIManager::update(float deltaTime) {
 
     // CRITICAL: Wait for all async batches to complete before returning
     // This ensures CollisionManager receives complete updates when it runs.
-    // By waiting HERE (inside AIManager), we:
-    // 1. Keep batch completion as internal implementation detail
-    // 2. Guarantee consistent AIManager::update() timing (no external waits)
-    // 3. Ensure complete NPC updates are ready when we return
-    // 4. Eliminate timing-dependent race conditions with CollisionManager
+    // The waitForAsyncBatchCompletion() method:
+    // 1. Waits for all batch futures to complete
+    // 2. Submits aggregated collision updates to CollisionManager
+    // 3. Ensures consistent timing and eliminates race conditions
     waitForAsyncBatchCompletion();
 
     // Measure total update time (including async wait) for adaptive batch tuning
@@ -812,11 +812,18 @@ void AIManager::registerBehavior(const std::string &name,
   }
 
   std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
+  
+  // OPTIMIZATION: Only invalidate cache entry for this specific behavior (not entire cache)
+  // If behavior already exists, we're replacing it - clear its cache entry
+  // If it's new, no cache entry exists anyway
+  auto existingIt = m_behaviorTemplates.find(name);
+  if (existingIt != m_behaviorTemplates.end()) {
+    // Replacing existing behavior - invalidate its cache entries
+    m_behaviorCache.erase(name);
+    m_behaviorTypeCache.erase(name);
+  }
+  
   m_behaviorTemplates[name] = behavior;
-
-  // Clear cache when adding new behavior
-  m_behaviorCache.clear();
-  m_behaviorTypeCache.clear();
 
   AI_INFO("Registered behavior: " + name);
 }
@@ -1307,17 +1314,9 @@ size_t AIManager::getBehaviorCount() const {
 }
 
 size_t AIManager::getManagedEntityCount() const {
-  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-  // Count only active entities
-  size_t activeCount = 0;
-  for (size_t i = 0; i < m_storage.size(); ++i) {
-    if (m_storage.hotData[i].active) {
-      activeCount++;
-    }
-  }
-
-  return activeCount;
+  // PERFORMANCE: Use atomic counter instead of O(n) iteration
+  // m_activeEntityCount is maintained in sync with entity activation/deactivation
+  return m_activeEntityCount.load(std::memory_order_relaxed);
 }
 
 size_t AIManager::getBehaviorUpdateCount() const {
@@ -1350,8 +1349,10 @@ void AIManager::sendMessageToEntity(EntityPtr entity,
     auto &msg = m_lockFreeMessages[writeIndex];
 
     msg.target = entity;
-    std::strncpy(msg.message, message.c_str(), sizeof(msg.message) - 1);
-    msg.message[sizeof(msg.message) - 1] = '\0';
+    // SAFETY: Use safer string copy with explicit bounds checking
+    size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
+    message.copy(msg.message, copyLen);
+    msg.message[copyLen] = '\0';
     msg.ready.store(true, std::memory_order_release);
   }
 }
@@ -1376,8 +1377,10 @@ void AIManager::broadcastMessage(const std::string &message, bool immediate) {
     auto &msg = m_lockFreeMessages[writeIndex];
 
     msg.target.reset(); // No specific target for broadcast
-    std::strncpy(msg.message, message.c_str(), sizeof(msg.message) - 1);
-    msg.message[sizeof(msg.message) - 1] = '\0';
+    // SAFETY: Use safer string copy with explicit bounds checking
+    size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
+    message.copy(msg.message, copyLen);
+    msg.message[copyLen] = '\0';
     msg.ready.store(true, std::memory_order_release);
   }
 }
@@ -1532,11 +1535,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         collisionUpdates.emplace_back(entity->getID(), hotData.position, Vector2D(0, 0));
       }
     } catch (const std::exception &e) {
-      AI_ERROR("Error in batch processing: " + std::string(e.what()));
-      // Decrement active counter if entity was active
-      if (hotData.active) {
-        m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
-      }
+      AI_ERROR("Error in batch processing entity: " + std::string(e.what()));
+      // NOTE: Don't decrement active counter here - entity is still active, just had an error
+      // The entity will be properly cleaned up in the next cleanup cycle
+      // Decrementing here could cause count drift and make the counter unreliable
     }
   }
 
