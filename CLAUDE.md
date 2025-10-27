@@ -58,6 +58,8 @@ res/      # Assets
 
 **C++20** | 4-space indent, Allman braces | RAII + smart pointers | ThreadSystem (not raw std::thread) | Exceptions for critical errors, codes for expected failures | Logger macros | Cross-platform guards | STL algorithms > manual loops
 
+**Parameter Passing**: **ALWAYS prefer references over copies**. Use `const T&` for read-only access to non-trivial objects. Use `T&` for mutation. Pass by value only for primitives (int, float, bool) or intentional ownership transfer (move semantics). NEVER copy when a reference suffices.
+
 **Naming**: UpperCamelCase (classes/enums) | lowerCamelCase (functions/vars) | `m_` prefix (members), `mp_` (pointers) | ALL_CAPS (constants)
 
 **Headers**: `.hpp` for C++, `.h` for C | Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
