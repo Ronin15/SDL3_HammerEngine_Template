@@ -65,22 +65,19 @@ using EntityPtr = std::shared_ptr<Entity>;
  * Optimized for natural alignment and minimal padding
  */
 struct EventData {
-  EventPtr event;   // Smart pointer to event (16 bytes)
-  std::string name; // Stable name for mapping/compaction (~24+ bytes)
-  std::function<void()>
-      onConsumed;     // Optional callback after dispatch (~32 bytes)
+  EventPtr event;     // Smart pointer to event (16 bytes)
   uint32_t flags;     // Active, dirty, etc. (4 bytes)
   uint32_t priority;  // For priority-based processing (4 bytes)
-  EventTypeId typeId; // Type for fast dispatch (4 bytes)
-  // Natural padding will align this to 8-byte boundary (~88 bytes total)
+  EventTypeId typeId; // Type for fast dispatch AND name-based lookup (4 bytes)
+  uint32_t padding;   // Explicit padding for alignment (4 bytes)
+  // Total: 32 bytes (was 88 bytes - 64% reduction! Better cache locality)
 
   // Flags bit definitions
   static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
   static constexpr uint32_t FLAG_DIRTY = 1 << 1;
   static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
   EventData()
-      : event(nullptr), name(), flags(0), priority(0),
-        typeId(EventTypeId::Custom) {}
+      : event(nullptr), flags(0), priority(0), typeId(EventTypeId::Custom), padding(0) {}
   bool isActive() const { return flags & FLAG_ACTIVE; }
   void setActive(bool active) {
     if (active) flags |= FLAG_ACTIVE; else flags &= ~FLAG_ACTIVE;
@@ -546,7 +543,7 @@ public:
 
 
 private:
-  EventManager() = default;
+  EventManager(); // Constructor pre-allocates handler vectors (see .cpp)
 
   // Shutdown state
   bool m_isShutdown{false};
@@ -581,7 +578,7 @@ private:
 
   // Threading and synchronization
   mutable std::shared_mutex m_eventsMutex;
-  mutable std::mutex m_handlersMutex;
+  mutable std::shared_mutex m_handlersMutex;
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
   size_t m_threadingThreshold{
