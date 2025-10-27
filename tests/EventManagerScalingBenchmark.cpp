@@ -218,8 +218,7 @@ struct EventManagerScalingFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    void runHandlerBenchmark(int numEventTypes, int numHandlersPerType, int numEvents, bool useBatching) {
-        // Skip if shutdown is in progress
+    void runHandlerBenchmark(int numEventTypes, int numHandlersPerType, int numTriggers, bool /* useBatching */) {
         if (g_shutdownInProgress.load()) {
             return;
         }
@@ -227,187 +226,76 @@ struct EventManagerScalingFixture {
         cleanup();
         handlers.clear();
 
-        // Re-enable threading but with debugging
         EventManager::Instance().enableThreading(true);
-        EventManager::Instance().setThreadingThreshold(1000); // Default threshold
+        EventManager::Instance().setThreadingThreshold(1000);
 
-        // Note: New optimized EventManager processes events directly
-        (void)useBatching; // Suppress unused warning
-        std::string mode = "Optimized";
-
-
-        // Get system threading information
         unsigned int systemThreads = std::thread::hardware_concurrency();
         size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3); // 30% allocation
+        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
 
-        std::cout << "\nBenchmark: " << mode << " mode, "
-                  << numEventTypes << " event types, "
-                  << numHandlersPerType << " handlers per type, "
-                  << numEvents << " events" << std::endl;
-        std::cout << "  System: " << systemThreads << " hardware threads available" << std::endl;
+        std::cout << "\n=== Immediate Event Trigger Benchmark ===" << std::endl;
+        std::cout << "  Config: " << numHandlersPerType << " handlers per type, "
+                  << numTriggers << " triggers" << std::endl;
+        std::cout << "  System: " << systemThreads << " hardware threads ("
+                  << eventWorkers << " allocated to events)" << std::endl;
 
-        // Add debugging for threading behavior
-        bool willUseThreading = (numEvents > 1000);
-        if (willUseThreading) {
-            std::cout << "  WorkerBudget: " << totalWorkers << " total workers, "
-                      << eventWorkers << " allocated to Events (30%)" << std::endl;
-        }
-        (void)willUseThreading; // Suppress unused variable warning
+        // Register simple handlers (just count calls)
+        std::atomic<int> weatherCallCount{0};
+        std::atomic<int> npcCallCount{0};
+        std::atomic<int> sceneCallCount{0};
 
-        // Create handlers and register them
-        for (int eventType = 0; eventType < numEventTypes; ++eventType) {
-            for (int handler = 0; handler < numHandlersPerType; ++handler) {
-                int handlerId = eventType * numHandlersPerType + handler;
-                int complexity = 4 + (handlerId % 6); // Vary complexity from 4-9 (balanced for good simulation)
-
-                auto benchmarkHandler = std::make_shared<BenchmarkEventHandler>(handlerId, complexity);
-                handlers.push_back(benchmarkHandler);
-
-                // Register handlers for all event types we'll be triggering
-                EventManager::Instance().registerHandler(EventTypeId::Weather,
-                    [benchmarkHandler](const EventData&) {
-                        benchmarkHandler->handleEvent("weather_event");
-                    });
-
-                EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
-                    [benchmarkHandler](const EventData&) {
-                        benchmarkHandler->handleEvent("npc_event");
-                    });
-
-                EventManager::Instance().registerHandler(EventTypeId::SceneChange,
-                    [benchmarkHandler](const EventData&) {
-                        benchmarkHandler->handleEvent("scene_event");
-                    });
-            }
+        for (int i = 0; i < numHandlersPerType; ++i) {
+            EventManager::Instance().registerHandler(EventTypeId::Weather,
+                [&weatherCallCount](const EventData&) { weatherCallCount++; });
+            EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+                [&npcCallCount](const EventData&) { npcCallCount++; });
+            EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+                [&sceneCallCount](const EventData&) { sceneCallCount++; });
         }
 
-        // Run multiple measurements for accuracy
+        // Warmup
+        for (int i = 0; i < 10; ++i) {
+            EventManager::Instance().changeWeather("Clear", 1.0f);
+        }
+
+        // Benchmark: Measure trigger performance
         const int numMeasurements = 3;
         std::vector<double> durations;
 
         for (int run = 0; run < numMeasurements; run++) {
-            // Reset handler counters
-            for (auto& handler : handlers) {
-                handler->resetCounters();
-            }
+            weatherCallCount = 0;
+            npcCallCount = 0;
+            sceneCallCount = 0;
 
-            // Pre-run synchronization
-            std::this_thread::sleep_for(std::chrono::milliseconds(10));
-
-            // Measure performance - start timing
             auto startTime = std::chrono::high_resolution_clock::now();
 
-            // Test the optimized EventManager's update performance
-            // Create mock events and register them with varying complexity
-            std::vector<EventPtr> testEvents;
-            for (int event = 0; event < numEvents; ++event) {
-                int complexity = 4 + (event % 6); // Vary complexity from 4-9 like handlers
-                auto mockEvent = std::make_shared<MockEvent>("BenchmarkEvent_" + std::to_string(event), complexity);
-                testEvents.push_back(mockEvent);
-                EventManager::Instance().registerEvent("BenchmarkEvent_" + std::to_string(event), mockEvent);
-            }
-
-            // Benchmark the EventManager's update cycle (updates state only)
-            for (int cycle = 0; cycle < 10; ++cycle) {
-                EventManager::Instance().update();
-            }
-
-            // Benchmark explicit trigger methods (where handlers are actually called)
-            for (int cycle = 0; cycle < 5; ++cycle) {
-                // Use the proper trigger methods that call handlers
-                EventManager::Instance().changeWeather("Rainy", 1.0f);
-                EventManager::Instance().changeWeather("Clear", 1.0f);
-                EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f);
-                EventManager::Instance().changeScene("TestScene", "fade", 1.0f);
-            }
-
-
-
-
-
-            // Add delay for threaded tasks to complete
-            bool willUseThreading = (numEvents > 1000);
-            if (willUseThreading) {
-                std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            // Trigger events (realistic mix)
+            for (int i = 0; i < numTriggers; ++i) {
+                switch (i % 3) {
+                    case 0: EventManager::Instance().changeWeather("Rainy", 1.0f); break;
+                    case 1: EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f); break;
+                    case 2: EventManager::Instance().changeScene("TestScene", "fade", 1.0f); break;
+                }
             }
 
             auto endTime = std::chrono::high_resolution_clock::now();
             auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-            durations.push_back(duration.count() / 1000.0); // Convert to milliseconds
-
-            // Verify work was actually done
-            int totalUpdates = 0;
-            int totalExecutes = 0;
-            (void)totalUpdates; // Suppress unused variable warning
-            (void)totalExecutes; // Suppress unused variable warning
-            for (const auto& event : testEvents) {
-                auto mockEvent = std::dynamic_pointer_cast<MockEvent>(event);
-                if (mockEvent) {
-                    totalUpdates += mockEvent->getUpdateCount();
-                    totalExecutes += mockEvent->getExecuteCount();
-                }
-            }
-
-            // Output verification for first run only to avoid spam
-
-
-            // Clean up test events
-            for (int event = 0; event < numEvents; ++event) {
-                EventManager::Instance().removeEvent("BenchmarkEvent_" + std::to_string(event));
-            }
+            durations.push_back(duration.count() / 1000.0);
         }
 
         // Calculate statistics
         double avgDuration = std::accumulate(durations.begin(), durations.end(), 0.0) / durations.size();
         double minDuration = *std::min_element(durations.begin(), durations.end());
         double maxDuration = *std::max_element(durations.begin(), durations.end());
-        (void)minDuration; // Suppress unused variable warning
-        (void)maxDuration; // Suppress unused variable warning
 
-        // Calculate derived metrics based on explicit trigger calls
-        int totalTriggerCalls = 5 * 4; // 5 cycles * 4 trigger calls per cycle
+        double triggersPerSecond = (numTriggers / avgDuration) * 1000.0;
+        double avgTimePerTrigger = avgDuration / numTriggers;
 
-        // Each of the totalHandlers is registered for ALL 3 event types (Weather, NPC, Scene)
-        // So every trigger calls ALL handlers, not just numHandlersPerType
-        // Weather triggers: 2 per cycle * 5 cycles = 10 total weather triggers
-        // NPC triggers: 1 per cycle * 5 cycles = 5 total npc triggers
-        // Scene triggers: 1 per cycle * 5 cycles = 5 total scene triggers
-        // Each trigger calls ALL handlers (since each handler listens to all types)
-        int totalBenchmarkHandlers = handlers.size(); // All created benchmark handlers
-        int weatherCalls = 10 * totalBenchmarkHandlers;  // 10 weather triggers * all handlers
-        int npcCalls = 5 * totalBenchmarkHandlers;       // 5 npc triggers * all handlers
-        int sceneCalls = 5 * totalBenchmarkHandlers;     // 5 scene triggers * all handlers
-        int totalHandlerCalls = weatherCalls + npcCalls + sceneCalls;
-        double eventsPerSecond = (numEvents / avgDuration) * 1000.0;
-        double handlerCallsPerSecond = (totalHandlerCalls / avgDuration) * 1000.0;
-        double triggersPerSecond = totalTriggerCalls / (avgDuration / 1000.0);
-        double timePerEvent = avgDuration / numEvents;
-        double timePerTrigger = avgDuration / totalTriggerCalls;
-        (void)triggersPerSecond; // Suppress unused variable warning
-        (void)timePerTrigger; // Suppress unused variable warning
-
-        // Report results
-        std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
+        std::cout << "\nPerformance (avg of " << numMeasurements << " runs):" << std::endl;
         std::cout << "  Total time: " << std::fixed << std::setprecision(2) << avgDuration << " ms" << std::endl;
-        std::cout << "  Time per event: " << std::setprecision(4) << timePerEvent << " ms" << std::endl;
-        std::cout << "  Events per second: " << std::setprecision(0) << eventsPerSecond << std::endl;
-        std::cout << "  Handler calls per second: " << handlerCallsPerSecond << std::endl;
-
-        // Verify handlers were called via explicit trigger methods
-        // Each trigger type calls the handlers registered for that specific type
-        int totalExpectedCalls = totalHandlerCalls; // Use the calculated total
-        int totalActualCalls = 0;
-        for (const auto& handler : handlers) {
-            totalActualCalls += handler->getCallCount();
-        }
-
-        std::cout << "  Handler calls: " << totalActualCalls << "/" << totalExpectedCalls;
-        if (totalActualCalls == totalExpectedCalls) {
-            std::cout << " ✓" << std::endl;
-        } else {
-            std::cout << " ✗" << std::endl;
-        }
+        std::cout << "  Min/Max: " << minDuration << " / " << maxDuration << " ms" << std::endl;
+        std::cout << "  Triggers/sec: " << std::setprecision(0) << triggersPerSecond << std::endl;
+        std::cout << "  Time per trigger: " << std::setprecision(4) << avgTimePerTrigger << " ms" << std::endl;
 
         cleanup();
     }
@@ -440,130 +328,97 @@ struct EventManagerScalingFixture {
     }
 
     void runConcurrencyTest(int numThreads, int eventsPerThread) {
-        std::cout << "\n===== CONCURRENCY TEST =====" << std::endl;
-        std::cout << "Threads: " << numThreads << ", Events per thread: " << eventsPerThread << std::endl;
+        std::cout << "\n===== CONCURRENCY BENCHMARK =====" << std::endl;
+
+        const int totalEvents = numThreads * eventsPerThread;
+        std::cout << "  Config: " << numThreads << " threads, "
+                  << eventsPerThread << " events/thread = "
+                  << totalEvents << " total events" << std::endl;
 
         cleanup();
-        handlers.clear();
 
-        // Test the EventManager's internal concurrent batch processing
-        const int numHandlersPerType = 3;
-        const int totalEvents = numThreads * eventsPerThread;
+        // Register simple handler with shared_ptr for safe lifetime management
+        auto handlerCallCount = std::make_shared<std::atomic<int>>(0);
 
-        // Register handlers that will be called during event processing
-        for (int i = 0; i < numHandlersPerType; ++i) {
-            auto benchmarkHandler = std::make_shared<BenchmarkEventHandler>(i, 6); // Higher complexity
-            handlers.push_back(benchmarkHandler);
+        EventManager::Instance().registerHandler(EventTypeId::Weather,
+            [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
+        EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+            [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
+        EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+            [handlerCallCount](const EventData&) { ++(*handlerCallCount); });
 
-            // Register handlers for event types we'll process
-            EventManager::Instance().registerHandler(EventTypeId::Weather,
-                [benchmarkHandler](const EventData&) {
-                    benchmarkHandler->handleEvent("weather_batch");
-                });
-
-            EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
-                [benchmarkHandler](const EventData&) {
-                    benchmarkHandler->handleEvent("npc_batch");
-                });
-
-            EventManager::Instance().registerHandler(EventTypeId::SceneChange,
-                [benchmarkHandler](const EventData&) {
-                    benchmarkHandler->handleEvent("scene_batch");
-                });
-        }
-
-        // Register many events to trigger the concurrent batch processing
-        // This will cause updateEventTypeBatch to use threaded processing
-        std::vector<std::string> eventNames;
-        eventNames.reserve(totalEvents);
-
-        for (int i = 0; i < totalEvents; ++i) {
-            int complexity = 4 + (i % 6);
-            auto mockEvent = std::make_shared<MockEvent>("ConcurrentEvent_" + std::to_string(i), complexity);
-            std::string eventName = "ConcurrentEvent_" + std::to_string(i);
-            eventNames.push_back(eventName);
-            
-            // Register events to build up the event containers for batch processing
-            EventManager::Instance().registerEvent(eventName, mockEvent);
-        }
-
-        // Reset handler counters
-        for (auto& handler : handlers) {
-            handler->resetCounters();
-        }
+        // Benchmark concurrent deferred dispatch + drain
+        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+        std::atomic<int> tasksCompleted{0};
 
         auto startTime = std::chrono::high_resolution_clock::now();
 
-        // Trigger batch processing through update() - this will use ThreadSystem for concurrent processing
-        // The EventManager will detect the high event count and use batched multi-threaded processing
-        for (int cycle = 0; cycle < 5; ++cycle) {
-            EventManager::Instance().update();
+        // Queue events from multiple threads
+        for (int t = 0; t < numThreads; ++t) {
+            threadSystem.enqueueTask([&tasksCompleted, t, eventsPerThread]() {
+                for (int i = 0; i < eventsPerThread; ++i) {
+                    int eventNum = t * eventsPerThread + i;
+                    switch (eventNum % 3) {
+                        case 0:
+                            EventManager::Instance().changeWeather("Storm", 1.0f,
+                                EventManager::DispatchMode::Deferred);
+                            break;
+                        case 1:
+                            EventManager::Instance().spawnNPC("NPC", 0.0f, 0.0f,
+                                EventManager::DispatchMode::Deferred);
+                            break;
+                        case 2:
+                            EventManager::Instance().changeScene("Scene", "fade", 1.0f,
+                                EventManager::DispatchMode::Deferred);
+                            break;
+                    }
+                }
+                tasksCompleted.fetch_add(1);
+            });
         }
 
-        // Trigger some handlers through explicit methods (these should be processed immediately)
-        for (int trigger = 0; trigger < 20; ++trigger) {
-            switch (trigger % 3) {
-                case 0:
-                    EventManager::Instance().changeWeather("ConcurrentStorm", 1.0f, EventManager::DispatchMode::Immediate);
-                    break;
-                case 1:
-                    EventManager::Instance().spawnNPC("ConcurrentNPC", trigger * 5.0f, trigger * 3.0f, EventManager::DispatchMode::Immediate);
-                    break;
-                case 2:
-                    EventManager::Instance().changeScene("ConcurrentScene", "instant", 0.1f, EventManager::DispatchMode::Immediate);
-                    break;
+        // Wait for queuing to complete
+        while (tasksCompleted.load() < numThreads) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+
+        // Drain the deferred queue
+        int frameCount = 0;
+        int prevCount = 0;
+        int stableFrames = 0;
+
+        while (frameCount < 100 && stableFrames < 5) {
+            EventManager::Instance().update();
+            frameCount++;
+
+            int currentCount = handlerCallCount->load();
+            if (currentCount == prevCount) {
+                stableFrames++;
+            } else {
+                stableFrames = 0;
+                prevCount = currentCount;
             }
-        }
 
-        // Final update to process any deferred events
-        for (int cycle = 0; cycle < 3; ++cycle) {
-            EventManager::Instance().update();
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            // Early exit if we processed all events
+            if (currentCount >= totalEvents) {
+                break;
+            }
         }
 
         auto endTime = std::chrono::high_resolution_clock::now();
+        double totalTimeMs = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+        int processedEvents = handlerCallCount->load();
+        double eventsPerSecond = (processedEvents / totalTimeMs) * 1000.0;
 
-        // Calculate performance metrics
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-        double totalTimeMs = duration.count() / 1000.0;
-
-        // Count handler calls from explicit triggers (20 triggers * 3 handlers each)
-        int actualHandlerCalls = 0;
-        for (const auto& handler : handlers) {
-            actualHandlerCalls += handler->getCallCount();
-        }
-
-        int expectedTriggerCalls = 20 * numHandlersPerType; // 20 explicit triggers * 3 handlers each
-        double eventsPerSecond = (totalEvents / totalTimeMs) * 1000.0;
-
-        std::cout << "\nConcurrency Test Results:" << std::endl;
+        std::cout << "\nPerformance:" << std::endl;
         std::cout << "  Total time: " << std::fixed << std::setprecision(2) << totalTimeMs << " ms" << std::endl;
-        std::cout << "  Events registered: " << totalEvents << std::endl;
-        std::cout << "  Events per second: " << std::setprecision(0) << eventsPerSecond << std::endl;
-        std::cout << "  Handler calls: " << actualHandlerCalls << "/" << expectedTriggerCalls;
-        
-        if (actualHandlerCalls > 0) {
-            double callRatio = static_cast<double>(actualHandlerCalls) / expectedTriggerCalls;
-            std::cout << " (" << std::setprecision(1) << (callRatio * 100) << "%)" << std::endl;
-            
-            if (callRatio >= 0.95) {
-                std::cout << " ✓" << std::endl;
-            } else if (callRatio >= 0.8) {
-                std::cout << " ⚠ (good performance)" << std::endl;
-            } else {
-                std::cout << " ⚠ (partial execution)" << std::endl;
-            }
-        } else {
-            std::cout << " ✗" << std::endl;
-        }
-        
-        std::cout << "  Threads: " << numThreads << std::endl;
-        std::cout << "  Concurrent batch processing tested with " << totalEvents << " events" << std::endl;
+        std::cout << "  Processed: " << processedEvents << "/" << totalEvents << " events" << std::endl;
+        std::cout << "  Drain frames: " << frameCount << std::endl;
+        std::cout << "  Events/sec: " << std::setprecision(0) << eventsPerSecond << std::endl;
+        std::cout << "  Avg time/event: " << std::setprecision(4) << (totalTimeMs / processedEvents) << " ms" << std::endl;
 
-        // Clean up registered events
-        for (const auto& eventName : eventNames) {
-            EventManager::Instance().removeEvent(eventName);
-        }
+        // Extra safety: ensure all deferred work completes
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         cleanup();
     }
@@ -624,8 +479,20 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
         return;
     }
 
-    // Test concurrent event generation
-    fixture.runConcurrencyTest(4, 1000);  // 4 threads, 1000 events each
+    // Test concurrent event generation using WorkerBudget (production config)
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    size_t eventWorkers = budget.eventAllocated;
+
+    // Use the same logic as production: optimal workers for 4000 events
+    size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkers, 4000, 100);
+    int numThreads = static_cast<int>(std::max(static_cast<size_t>(1), optimalWorkerCount));
+
+    // FIXED: Keep total at 4000 events, divide by thread count
+    const int totalEvents = 4000;
+    int eventsPerThread = totalEvents / numThreads;
+    fixture.runConcurrencyTest(numThreads, eventsPerThread);  // 4000 total events
 }
 
 // Extreme scale test
