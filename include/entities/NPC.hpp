@@ -18,17 +18,20 @@
 class NPC : public Entity {
 public:
   enum class Faction { Friendly, Enemy, Neutral };
+  enum class NPCType { Standard, Pet };
+
   NPC(const std::string &textureID, const Vector2D &startPosition,
-      int frameWidth, int frameHeight);
+      int frameWidth, int frameHeight, NPCType type = NPCType::Standard);
   ~NPC() override;
 
   // Factory method to ensure proper shared_ptr creation
   // Factory method to ensure NPCs are always created with shared_ptr
   static std::shared_ptr<NPC> create(const std::string &textureID,
                                      const Vector2D &startPosition,
-                                     int frameWidth = 0, int frameHeight = 0) {
+                                     int frameWidth = 0, int frameHeight = 0,
+                                     NPCType type = NPCType::Standard) {
     auto npc = std::make_shared<NPC>(textureID, startPosition, frameWidth,
-                                     frameHeight);
+                                     frameHeight, type);
     npc->ensurePhysicsBodyRegistered();
     // Collision layers are set atomically in ensurePhysicsBodyRegistered()
     // No need to call setFaction as m_faction defaults to Neutral
@@ -108,11 +111,12 @@ private:
       m_dropRates; // itemHandle -> drop probability
 
   Faction m_faction{Faction::Neutral};
+  NPCType m_npcType{NPCType::Standard};
 
   // Texture flip smoothing
   int m_lastFlipSign{1};
   Uint64 m_lastFlipTime{0};
-  
+
   // Diagnostic throttling
   Uint64 m_lastStuckLogTime{0};
 };

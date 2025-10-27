@@ -15,7 +15,6 @@
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "ai/behaviors/GuardBehavior.hpp"
 #include "ai/behaviors/AttackBehavior.hpp"
-#include "entities/Pet.hpp"
 #include "core/GameEngine.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
@@ -461,7 +460,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 // First 3 NPCs are pets (pass through player), rest are regular NPCs
                 std::shared_ptr<NPC> npc;
                 if (i < 3) {
-                    npc = Pet::create("npc", position);
+                    npc = NPC::create("npc", position, 0, 0, NPC::NPCType::Pet);
                 } else {
                     npc = NPC::create("npc", position);
                 }
