@@ -246,34 +246,58 @@ void EventManager::update() {
 
   auto startTime = getCurrentTimeNanos();
 
-  // Update all event types in optimized batches
-  if (m_threadingEnabled.load() && getEventCount() > m_threadingThreshold) {
-    // Use threading for medium+ event counts (consistent with buffer threshold)
-    updateEventTypeBatchThreaded(EventTypeId::Weather);
-    updateEventTypeBatchThreaded(EventTypeId::SceneChange);
-    updateEventTypeBatchThreaded(EventTypeId::NPCSpawn);
-    updateEventTypeBatchThreaded(EventTypeId::ParticleEffect);
-    updateEventTypeBatchThreaded(EventTypeId::ResourceChange);
-    updateEventTypeBatchThreaded(EventTypeId::World);
-    updateEventTypeBatchThreaded(EventTypeId::Camera);
-    updateEventTypeBatchThreaded(EventTypeId::Harvest);
-    updateEventTypeBatchThreaded(EventTypeId::Custom);
-    updateEventTypeBatchThreaded(EventTypeId::Collision);
-    updateEventTypeBatchThreaded(EventTypeId::WorldTrigger);
-  } else {
-    // Use single-threaded for small event counts (better performance)
-    updateEventTypeBatch(EventTypeId::Weather);
-    updateEventTypeBatch(EventTypeId::SceneChange);
-    updateEventTypeBatch(EventTypeId::NPCSpawn);
-    updateEventTypeBatch(EventTypeId::ParticleEffect);
-    updateEventTypeBatch(EventTypeId::ResourceChange);
-    updateEventTypeBatch(EventTypeId::World);
-    updateEventTypeBatch(EventTypeId::Camera);
-    updateEventTypeBatch(EventTypeId::Harvest);
-    updateEventTypeBatch(EventTypeId::Custom);
-    updateEventTypeBatch(EventTypeId::Collision);
-    updateEventTypeBatch(EventTypeId::WorldTrigger);
+  // OPTIMIZATION: Cache all event counts in a single mutex acquisition
+  // This prevents excessive locking when checking per-type thresholds
+  size_t totalEventCount = 0;
+  std::array<size_t, static_cast<size_t>(EventTypeId::COUNT)> eventCountsByType;
+  {
+    std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
+    for (size_t i = 0; i < static_cast<size_t>(EventTypeId::COUNT); ++i) {
+      const auto &container = m_eventsByType[i];
+      size_t count = std::count_if(
+          container.begin(), container.end(), [](const EventData &eventData) {
+            return !(eventData.flags & EventData::FLAG_PENDING_REMOVAL);
+          });
+      eventCountsByType[i] = count;
+      totalEventCount += count;
+    }
   }
+
+  // Update all event types in optimized batches with per-type threading decision
+  // Global check: Only consider threading if total events > threshold
+  bool useThreadingGlobal = m_threadingEnabled.load() && totalEventCount > m_threadingThreshold;
+
+  // Helper lambda to decide threading per type (uses cached counts - no mutex!)
+  auto updateEventType = [this, useThreadingGlobal, &eventCountsByType](EventTypeId typeId) {
+    if (!useThreadingGlobal) {
+      // Global threshold not met - use single-threaded for all types
+      updateEventTypeBatch(typeId);
+      return;
+    }
+
+    // Global threshold met - check per-type threshold using cached count
+    size_t typeEventCount = eventCountsByType[static_cast<size_t>(typeId)];
+    if (typeEventCount >= PER_TYPE_THREAD_THRESHOLD) {
+      // This type has enough events to benefit from threading
+      updateEventTypeBatchThreaded(typeId);
+    } else {
+      // Too few events in this type - threading overhead would hurt performance
+      updateEventTypeBatch(typeId);
+    }
+  };
+
+  // Process each event type with adaptive threading decision
+  updateEventType(EventTypeId::Weather);
+  updateEventType(EventTypeId::SceneChange);
+  updateEventType(EventTypeId::NPCSpawn);
+  updateEventType(EventTypeId::ParticleEffect);
+  updateEventType(EventTypeId::ResourceChange);
+  updateEventType(EventTypeId::World);
+  updateEventType(EventTypeId::Camera);
+  updateEventType(EventTypeId::Harvest);
+  updateEventType(EventTypeId::Custom);
+  updateEventType(EventTypeId::Collision);
+  updateEventType(EventTypeId::WorldTrigger);
 
   // Simplified performance tracking - reduce lock contention
   // Drain deferred dispatch queue with budget after event updates
