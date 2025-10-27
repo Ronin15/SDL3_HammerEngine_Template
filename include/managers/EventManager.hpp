@@ -108,6 +108,20 @@ struct EventPriority {
 using FastEventHandler = std::function<void(const EventData &)>;
 
 /**
+ * @brief Handler entry combining callable with ID for token-based removal
+ */
+struct HandlerEntry {
+  FastEventHandler callable;
+  uint64_t id;
+
+  HandlerEntry() = default;
+  HandlerEntry(FastEventHandler c, uint64_t i)
+    : callable(std::move(c)), id(i) {}
+
+  explicit operator bool() const { return static_cast<bool>(callable); }
+};
+
+/**
  * @brief Event pool for memory-efficient event management
  */
 template <typename EventType> class EventPool {
@@ -556,17 +570,14 @@ private:
   mutable EventPool<WorldEvent> m_worldPool;
   mutable EventPool<CameraEvent> m_cameraPool;
 
-  // Handler storage (type-indexed). Keep parallel id vectors for token removal
-  std::array<std::vector<FastEventHandler>,
-             static_cast<size_t>(EventTypeId::COUNT)>
+  // Handler storage (type-indexed with consolidated HandlerEntry)
+  // OPTIMIZATION: Eliminates parallel ID vectors, improves cache locality
+  std::array<std::vector<HandlerEntry>, static_cast<size_t>(EventTypeId::COUNT)>
       m_handlersByType;
-  std::array<std::vector<uint64_t>, static_cast<size_t>(EventTypeId::COUNT)>
-      m_handlerIdsByType;
   std::atomic<uint64_t> m_nextHandlerId{1};
 
-  // Per-name handlers
-  std::unordered_map<std::string, std::vector<FastEventHandler>> m_nameHandlers;
-  std::unordered_map<std::string, std::vector<uint64_t>> m_nameHandlerIds;
+  // Per-name handlers (consolidated)
+  std::unordered_map<std::string, std::vector<HandlerEntry>> m_nameHandlers;
 
   // Threading and synchronization
   mutable std::shared_mutex m_eventsMutex;
@@ -617,6 +628,11 @@ private:
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
   void drainDispatchQueueWithBudget();
+
+  // OPTIMIZATION: Consolidated dispatch helper (eliminates code duplication across all trigger methods)
+  // Handles both immediate and deferred dispatch with single mutex lock and direct handler iteration
+  bool dispatchEvent(EventTypeId typeId, EventData& eventData, DispatchMode mode,
+                     const char* errorContext = "dispatchEvent") const;
 
   // Internal registration helper
   bool registerEventInternal(const std::string &name, EventPtr event,
