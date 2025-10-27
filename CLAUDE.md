@@ -72,6 +72,41 @@ res/      # Assets
 */
 ```
 
+## Memory Management
+
+**Avoid Per-Frame Allocations**: Heap allocations cause periodic frame dips due to allocator overhead (defragmentation, OS paging). Reuse buffers across frames.
+
+**Buffer Reuse Pattern**:
+```cpp
+// BAD: Allocates/deallocates 128KB every frame
+void update() {
+    std::vector<Data> buffer;  // Fresh allocation
+    buffer.reserve(entityCount);
+    // ... use buffer
+}  // Deallocation
+
+// GOOD: Reuses capacity across frames
+class Manager {
+    std::vector<Data> m_reusableBuffer;  // Member variable
+
+    void update() {
+        m_reusableBuffer.clear();  // Keeps capacity, no dealloc
+        // ... use m_reusableBuffer
+    }
+};
+```
+
+**Pre-allocation**: Always `reserve()` when size is known to avoid incremental reallocations:
+```cpp
+std::vector<Entity> entities;
+entities.reserve(expectedCount);  // Single allocation
+for (size_t i = 0; i < expectedCount; ++i) {
+    entities.push_back(data[i]);  // No reallocs
+}
+```
+
+**Rules**: Member vars for hot-path buffers | `clear()` over reconstruction | `reserve()` before loops | Avoid `push_back()` without reserve | Profile allocations with -fsanitize=address
+
 ## GameEngine Update/Render Flow
 
 **GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.
