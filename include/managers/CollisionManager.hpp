@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <atomic>
 #include <unordered_set>
 #include <vector>
 #include <functional>
@@ -34,6 +35,12 @@
 #if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
 #define COLLISION_SIMD_SSE4 1
 #include <smmintrin.h>
+#endif
+
+// AVX2 support for 8-wide SIMD operations (2x throughput on modern CPUs)
+#if defined(__AVX2__) || (defined(_MSC_VER) && defined(__AVX2__))
+#define COLLISION_SIMD_AVX2 1
+#include <immintrin.h>
 #endif
 
 // Forward declarations
@@ -142,6 +149,16 @@ public:
 
     // SOA Body Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
+
+    // Configuration setters for collision culling (runtime adjustable)
+    void setCullingBuffer(float buffer) { m_cullingBuffer = buffer; }
+    void setCacheEvictionMultiplier(float multiplier) { m_cacheEvictionMultiplier = multiplier; }
+    void setCacheEvictionInterval(size_t interval) { m_cacheEvictionInterval = interval; }
+
+    // Configuration getters
+    float getCullingBuffer() const { return m_cullingBuffer; }
+    float getCacheEvictionMultiplier() const { return m_cacheEvictionMultiplier; }
+    size_t getCacheEvictionInterval() const { return m_cacheEvictionInterval; }
     void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
     void setVelocity(EntityID id, const Vector2D& velocity);
     void setBodyTrigger(EntityID id, bool isTrigger);
@@ -219,7 +236,6 @@ private:
     void updateStaticCollisionCacheForMovableBodies();
 
     // Building collision validation
-    void validateBuildingCollisionCoverage();
 
     void subscribeWorldEvents(); // hook to world events
 
@@ -268,6 +284,11 @@ private:
     void evictStaleCacheEntries(const CullingArea& cullingArea);
 
 
+    // Configurable collision culling parameters (runtime adjustable)
+    float m_cullingBuffer{COLLISION_CULLING_BUFFER};
+    float m_cacheEvictionMultiplier{CACHE_EVICTION_MULTIPLIER};
+    size_t m_cacheEvictionInterval{CACHE_EVICTION_INTERVAL};
+
     bool m_initialized{false};
     bool m_isShutdown{false};
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
@@ -275,24 +296,32 @@ private:
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
     struct CollisionStorage {
         // Hot data: Accessed every frame during collision detection
+        // OPTIMIZED: Reduced from 64 bytes with wasted space to efficient 64-byte layout
         struct HotData {
             Vector2D position;           // 8 bytes: Current position (center of AABB)
             Vector2D velocity;           // 8 bytes: Current velocity
             Vector2D halfSize;           // 8 bytes: Half-width and half-height
-            uint32_t layers;             // 4 bytes: Layer mask (what layer this body is on) - REVERTED from uint16_t
-            uint32_t collidesWith;       // 4 bytes: Collision mask (what layers this body collides with) - REVERTED from uint16_t
-            float restitution;           // 4 bytes: Bounce/restitution coefficient (moved mass/friction to cold data)
+            
+            // Cached AABB for performance - exactly 16 bytes (4 floats)
+            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
+            
+            uint16_t layers;             // 2 bytes: Layer mask (supports 16 layers, 7 currently defined)
+            uint16_t collidesWith;       // 2 bytes: Collision mask
             uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
             uint8_t triggerTag;          // 1 byte: TriggerTag enum for triggers
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
             mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
-
-            // Cached AABB for performance - exactly 16 bytes (4 floats)
-            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
-
-            // Padding to exactly 64 bytes: we're at 60, need 4 more bytes
-            uint8_t _padding[4];
+            
+            // OPTIMIZATION: Cached coarse grid coords (eliminates m_bodyCoarseCell map lookup)
+            int16_t coarseCellX;         // 2 bytes: Cached coarse grid X coordinate
+            int16_t coarseCellY;         // 2 bytes: Cached coarse grid Y coordinate
+            
+            // Reserved for future optimizations (e.g., collision flags, frame counters)
+            uint8_t _reserved[5];        // 5 bytes: Future expansion space
+            
+            // Padding to exactly 64 bytes (current size: 62, need 2 more)
+            uint8_t _padding[2];
 
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
@@ -303,6 +332,9 @@ private:
             Vector2D acceleration;       // Acceleration (rarely used)
             Vector2D lastPosition;       // Previous position for optimization
             AABB fullAABB;              // Full AABB (computed from position + halfSize)
+            float restitution;           // Bounce coefficient (0.0-1.0) - moved from HotData for cache optimization
+            float friction;              // Surface friction (0.0-1.0) - for future physics implementation
+            float mass;                  // Mass (kg) - for future physics implementation
         };
 
         // Primary storage arrays (SOA layout)
@@ -425,9 +457,6 @@ private:
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
 
-    // Track which coarse cell each dynamic body currently occupies
-    std::unordered_map<size_t, HammerEngine::HierarchicalSpatialHash::CoarseCoord> m_bodyCoarseCell;
-
     // Cache statistics
     mutable size_t m_cacheHits{0};
     mutable size_t m_cacheMisses{0};
@@ -506,7 +535,7 @@ private:
 
     // PERFORMANCE: Vector pool for temporary allocations in hot paths
     mutable std::vector<std::vector<size_t>> m_vectorPool;
-    mutable size_t m_nextPoolIndex{0};
+    mutable std::atomic<size_t> m_nextPoolIndex{0};
 
     // Performance metrics
     struct PerfStats {

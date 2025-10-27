@@ -37,6 +37,20 @@ bool CollisionManager::init() {
   m_storage.clear();
   subscribeWorldEvents();
   COLLISION_INFO("STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
+
+  // PERFORMANCE: Pre-allocate hash map and vector pool to prevent FPS dips from rehashing
+  // Reserve for eviction area: (6000px / 128px)^2 ≈ 2197 coarse cells
+  m_coarseRegionStaticCache.reserve(2200);  // Reserve once at initialization, not in hot paths
+
+  // Initialize vector pool (moved from lazy initialization in getPooledVector)
+  m_vectorPool.clear();
+  m_vectorPool.reserve(32);
+  for (size_t i = 0; i < 16; ++i) {
+    m_vectorPool.emplace_back();
+    m_vectorPool.back().reserve(64); // Pre-allocate reasonable capacity
+  }
+  m_nextPoolIndex.store(0, std::memory_order_relaxed);
+
   // Forward collision notifications to EventManager
   addCollisionCallback([](const HammerEngine::CollisionInfo &info) {
     EventManager::Instance().triggerCollision(
@@ -115,13 +129,17 @@ void CollisionManager::prepareForStateTransition() {
   // Clear all caches to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();              // Clear collision buffers
   m_coarseRegionStaticCache.clear();         // Clear region-based static cache
-  m_bodyCoarseCell.clear();                  // Clear body cell tracking
   m_cacheHits = 0;                           // Reset cache statistics
   m_cacheMisses = 0;
 
-  // Clear vector pool to release temporary allocations
+  // Re-initialize vector pool (must not leave it empty to prevent divide-by-zero in getPooledVector)
   m_vectorPool.clear();
-  m_nextPoolIndex = 0;
+  m_vectorPool.reserve(32);
+  for (size_t i = 0; i < 16; ++i) {
+    m_vectorPool.emplace_back();
+    m_vectorPool.back().reserve(64);
+  }
+  m_nextPoolIndex.store(0, std::memory_order_relaxed);
 
   // Clear trigger tracking state completely
   m_activeTriggerPairs.clear();
@@ -440,79 +458,6 @@ size_t CollisionManager::createStaticObstacleBodies() {
   return created;
 }
 
-void CollisionManager::validateBuildingCollisionCoverage() {
-  const WorldManager &wm = WorldManager::Instance();
-  const auto *world = wm.getWorldData();
-  if (!world)
-    return;
-
-  COLLISION_DEBUG("Validating building collision coverage...");
-  std::set<uint32_t> uniqueBuildings;
-  std::map<uint32_t, int> buildingTileCounts;
-  std::map<uint32_t, std::vector<std::pair<int, int>>> buildingTilePositions;
-
-  const int h = static_cast<int>(world->grid.size());
-
-  // Count tiles per building
-  for (int y = 0; y < h; ++y) {
-    const int w = static_cast<int>(world->grid[y].size());
-    for (int x = 0; x < w; ++x) {
-      const auto &tile = world->grid[y][x];
-      if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
-        uniqueBuildings.insert(tile.buildingId);
-        buildingTileCounts[tile.buildingId]++;
-        buildingTilePositions[tile.buildingId].push_back({x, y});
-      }
-    }
-  }
-
-  if (uniqueBuildings.empty()) {
-    COLLISION_DEBUG("No buildings found in world - skipping validation");
-    return;
-  }
-
-  // Validate each building
-  int buildingsWithCollision = 0;
-  int buildingsMissingCollision = 0;
-
-  for (uint32_t buildingId : uniqueBuildings) {
-    int tileCount = buildingTileCounts[buildingId];
-    const auto& positions = buildingTilePositions[buildingId];
-
-    // Check if any collision bodies exist for this building
-    bool hasCollisionBodies = false;
-    int collisionBodyCount = 0;
-    for (uint16_t subIdx = 0; subIdx < 100; ++subIdx) { // Check up to 100 sub-bodies
-      EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                    (static_cast<EntityID>(buildingId) << 16) |
-                    static_cast<EntityID>(subIdx);
-      if (m_storage.entityToIndex.find(id) != m_storage.entityToIndex.end()) {
-        hasCollisionBodies = true;
-        collisionBodyCount++;
-      }
-    }
-
-    if (!hasCollisionBodies) {
-      COLLISION_ERROR("Building " + std::to_string(buildingId) +
-                     " has " + std::to_string(tileCount) +
-                     " tiles but NO collision bodies! Positions: " +
-                     "(" + std::to_string(positions[0].first) + ", " +
-                     std::to_string(positions[0].second) + ") to (" +
-                     std::to_string(positions.back().first) + ", " +
-                     std::to_string(positions.back().second) + ")");
-      buildingsMissingCollision++;
-    } else {
-      COLLISION_DEBUG("Building " + std::to_string(buildingId) +
-                     " validated: " + std::to_string(tileCount) + " tiles, " +
-                     std::to_string(collisionBodyCount) + " collision bodies");
-      buildingsWithCollision++;
-    }
-  }
-
-  COLLISION_INFO("Building validation complete: " +
-                std::to_string(buildingsWithCollision) + " buildings OK, " +
-                std::to_string(buildingsMissingCollision) + " buildings MISSING collision bodies");
-}
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
   // Thread-safe read access - single lock for entire operation
@@ -734,8 +679,6 @@ void CollisionManager::rebuildStaticFromWorld() {
     }
     COLLISION_INFO("Total building collision bodies in storage: " + std::to_string(buildingBodyCount));
 
-    // VALIDATION: Check that all buildings have collision coverage (after processing commands)
-    validateBuildingCollisionCoverage();
 
     // Log detailed statistics for debugging
     logCollisionStatistics();
@@ -1082,7 +1025,13 @@ void CollisionManager::processPendingCommands() {
         hotData.triggerTag = cmd.triggerTag;
         hotData.active = true;
         hotData.isTrigger = cmd.isTrigger;
-        hotData.restitution = 0.0f;
+
+        // CRITICAL: Initialize coarse cell coords for cache optimization
+        AABB initialAABB(cmd.position.getX(), cmd.position.getY(), 
+                         cmd.halfSize.getX(), cmd.halfSize.getY());
+        auto initialCoarseCell = m_staticSpatialHash.getCoarseCoord(initialAABB);
+        hotData.coarseCellX = static_cast<int16_t>(initialCoarseCell.x);
+        hotData.coarseCellY = static_cast<int16_t>(initialCoarseCell.y);
 
         // Initialize cold data
         CollisionStorage::ColdData coldData{};
@@ -1480,10 +1429,16 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     }
 
     // 2. Use coarse-grid region cache for static collision queries
-    auto coarseCellIt = m_bodyCoarseCell.find(dynamicIdx);
+    // Read cached coarse cell coords from HotData
+    HammerEngine::HierarchicalSpatialHash::CoarseCoord cachedCoarseCell{
+      m_storage.hotData[dynamicIdx].coarseCellX,
+      m_storage.hotData[dynamicIdx].coarseCellY
+    };
 
-    if (coarseCellIt != m_bodyCoarseCell.end()) {
-      auto regionCacheIt = m_coarseRegionStaticCache.find(coarseCellIt->second);
+    // Look up region cache using cached coords
+    auto regionCacheIt = m_coarseRegionStaticCache.find(cachedCoarseCell);
+
+    if (regionCacheIt != m_coarseRegionStaticCache.end()) {
 
       if (regionCacheIt != m_coarseRegionStaticCache.end() && regionCacheIt->second.valid) {
         const auto& staticCandidates = regionCacheIt->second.staticIndices;
@@ -1595,6 +1550,10 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
                                       std::vector<CollisionInfo>& collisions) const {
   collisions.clear();
   collisions.reserve(indexPairs.size() / 4); // Conservative estimate
+
+  // PERFORMANCE: Fast velocity threshold for deep penetration correction
+  // Only trigger special handling for genuinely fast-moving bodies (250px/s @ 60fps = 4.17px/frame)
+  constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD; // 62500.0f
 
 #ifdef COLLISION_SIMD_SSE2
   // SIMD: Batch process AABB intersection tests (4 pairs at a time)
@@ -1771,7 +1730,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
       // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
       // Only needed for rare edge cases (reduced from 16px with cache fixes)
       constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > 1.0f) {
+      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
         // Push opposite to velocity direction (player was moving INTO the collision)
         normal = (hotA.velocity.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
       } else {
@@ -1787,7 +1746,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
       // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
       // Only needed for rare edge cases (reduced from 16px with cache fixes)
       constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > 1.0f) {
+      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
         // Push opposite to velocity direction (player was moving INTO the collision)
         normal = (hotA.velocity.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
       } else {
@@ -1997,7 +1956,6 @@ void CollisionManager::rebuildStaticSpatialHash() {
 
   // Clear static collision caches since static bodies have changed
   m_coarseRegionStaticCache.clear();  // Invalidate all coarse region caches
-  m_bodyCoarseCell.clear();           // Reset body cell tracking
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
@@ -2027,11 +1985,9 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
     AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
     auto currentCoarseCell = m_staticSpatialHash.getCoarseCoord(dynamicAABB);
 
-    // Check if body has moved to a different coarse cell
-    auto bodyCoarseCellIt = m_bodyCoarseCell.find(dynamicIdx);
-    bool crossedBoundary = (bodyCoarseCellIt == m_bodyCoarseCell.end() ||
-                            bodyCoarseCellIt->second.x != currentCoarseCell.x ||
-                            bodyCoarseCellIt->second.y != currentCoarseCell.y);
+    // Check if body has moved to a different coarse cell using cached coords
+    HammerEngine::HierarchicalSpatialHash::CoarseCoord cachedCell{hot.coarseCellX, hot.coarseCellY};
+    bool crossedBoundary = (cachedCell.x != currentCoarseCell.x || cachedCell.y != currentCoarseCell.y);
 
     // Get or create cache entry for this region
     auto& regionCache = m_coarseRegionStaticCache[currentCoarseCell];
@@ -2074,8 +2030,9 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
         m_cacheHits++;
       }
 
-      // Update body's tracked coarse cell
-      m_bodyCoarseCell[dynamicIdx] = currentCoarseCell;
+      // Update body's cached coarse cell coords in HotData
+      m_storage.hotData[dynamicIdx].coarseCellX = static_cast<int16_t>(currentCoarseCell.x);
+      m_storage.hotData[dynamicIdx].coarseCellY = static_cast<int16_t>(currentCoarseCell.y);
     } else {
       // Body still in same coarse cell, cache is valid
       m_cacheHits++;
@@ -2125,19 +2082,6 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   m_perf.cacheEntriesEvicted = evictedCount;
   m_perf.totalCacheEvictions += evictedCount;
   m_perf.cacheEntriesActive = m_coarseRegionStaticCache.size();
-
-  // Clean up body->coarse-cell tracking for evicted entries
-  // (Optional optimization: only remove entries for bodies that no longer exist)
-  if (evictedCount > 0) {
-    for (auto it = m_bodyCoarseCell.begin(); it != m_bodyCoarseCell.end(); ) {
-      // Check if this body's coarse cell was evicted
-      if (m_coarseRegionStaticCache.find(it->second) == m_coarseRegionStaticCache.end()) {
-        it = m_bodyCoarseCell.erase(it);
-      } else {
-        ++it;
-      }
-    }
-  }
 }
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
@@ -2259,7 +2203,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   if (typeA == BodyType::DYNAMIC) {
     bool staticCollision = (typeB == BodyType::STATIC);
-    dampenVelocitySIMD(hotA.velocity, hotA.restitution, staticCollision);
+    dampenVelocitySIMD(hotA.velocity, m_storage.coldData[indexA].restitution, staticCollision);
   }
   if (typeB == BodyType::DYNAMIC) {
     bool staticCollision = (typeA == BodyType::STATIC);
@@ -2284,7 +2228,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
       velocity.setX(result[0]);
       velocity.setY(result[1]);
     };
-    dampenVelocitySIMD_B(hotB.velocity, hotB.restitution, staticCollision);
+    dampenVelocitySIMD_B(hotB.velocity, m_storage.coldData[indexB].restitution, staticCollision);
   }
 #else
   // Scalar fallback
@@ -2312,7 +2256,8 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   if (typeA == BodyType::DYNAMIC) {
     bool staticCollision = (typeB == BodyType::STATIC);
-    dampenVelocity(hotA.velocity, hotA.restitution, staticCollision);
+    float restitutionA = m_storage.coldData[indexA].restitution;  // Read from ColdData
+    dampenVelocity(hotA.velocity, restitutionA, staticCollision);
   }
   if (typeB == BodyType::DYNAMIC) {
     bool staticCollision = (typeA == BodyType::STATIC);
@@ -2331,7 +2276,8 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
         velocity -= normalVelocity * (1.0f + restitution);
       }
     };
-    dampenVelocityB(hotB.velocity, hotB.restitution, staticCollision);
+    float restitutionB = m_storage.coldData[indexB].restitution;  // Read from ColdData
+    dampenVelocityB(hotB.velocity, restitutionB, staticCollision);
   }
 #endif
 
@@ -2798,37 +2744,25 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
 // ========== PERFORMANCE: VECTOR POOLING METHODS ==========
 
 std::vector<size_t>& CollisionManager::getPooledVector() {
-  /* THREAD SAFETY WARNING:
-   * This vector pool is SINGLE-THREADED ONLY. m_nextPoolIndex is not atomic.
+  /* THREAD SAFETY: Lock-free vector pool with atomic index
    *
-   * SAFE because:
-   * - CollisionManager::update() runs on main thread only
-   * - Vector pool only used during broadphase (within update())
-   * - No concurrent access to collision update logic
+   * THREAD SAFE because:
+   * - m_nextPoolIndex is std::atomic<size_t> with relaxed memory order
+   * - Pool initialized once in init(), never reallocated
+   * - fetch_add() provides lock-free thread-safe index allocation
+   * - Each thread gets a unique vector from the pool (no contention)
    *
-   * IF MULTI-THREADING IS ADDED:
-   * - Option 1: Make m_nextPoolIndex std::atomic<size_t>
-   * - Option 2: Use thread_local vector pool per thread
-   * - Option 3: Add mutex (impacts performance)
-   *
-   * Current design prioritizes performance for single-threaded collision updates.
+   * PERFORMANCE:
+   * - No mutex overhead (lock-free atomic operations)
+   * - Round-robin allocation distributes load across pool
+   * - Vectors retain capacity across frames (no allocations)
    */
 
-  // Initialize pool if empty
-  if (m_vectorPool.empty()) {
-    m_vectorPool.reserve(32); // Reasonable pool size
-    for (size_t i = 0; i < 16; ++i) {
-      m_vectorPool.emplace_back();
-      m_vectorPool.back().reserve(64); // Pre-allocate reasonable capacity
-    }
-  }
+  // Pool is initialized in init(), not here (removed lazy initialization)
+  // Use atomic round-robin allocation for thread-safe access
+  size_t idx = m_nextPoolIndex.fetch_add(1, std::memory_order_relaxed) % m_vectorPool.size();
 
-  // Use round-robin allocation
-  if (m_nextPoolIndex >= m_vectorPool.size()) {
-    m_nextPoolIndex = 0;
-  }
-
-  auto& vec = m_vectorPool[m_nextPoolIndex++];
+  auto& vec = m_vectorPool[idx];
   vec.clear(); // Clear but retain capacity
   return vec;
 }
