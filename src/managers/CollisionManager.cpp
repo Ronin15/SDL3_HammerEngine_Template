@@ -711,6 +711,79 @@ void CollisionManager::rebuildStaticFromWorld() {
   }
 }
 
+void CollisionManager::populateStaticCache() {
+  // INITIAL CACHE POPULATION: Pre-populate static collision cache after world load
+  // This eliminates the need for per-frame cache population while maintaining fast lookups
+
+  if (m_worldBounds.halfSize.getX() <= 0.0f || m_worldBounds.halfSize.getY() <= 0.0f) {
+    COLLISION_DEBUG("populateStaticCache: Invalid world bounds, skipping");
+    return;
+  }
+
+  // Clear existing cache
+  m_coarseRegionStaticCache.clear();
+
+  // Get coarse cell size from spatial hash (128x128 pixels)
+  constexpr float COARSE_CELL_SIZE = 128.0f;
+
+  // Calculate world bounds in coarse cell coordinates
+  float worldMinX = m_worldBounds.center.getX() - m_worldBounds.halfSize.getX();
+  float worldMinY = m_worldBounds.center.getY() - m_worldBounds.halfSize.getY();
+  float worldMaxX = m_worldBounds.center.getX() + m_worldBounds.halfSize.getX();
+  float worldMaxY = m_worldBounds.center.getY() + m_worldBounds.halfSize.getY();
+
+  int minCoarseX = static_cast<int>(std::floor(worldMinX / COARSE_CELL_SIZE));
+  int minCoarseY = static_cast<int>(std::floor(worldMinY / COARSE_CELL_SIZE));
+  int maxCoarseX = static_cast<int>(std::floor(worldMaxX / COARSE_CELL_SIZE));
+  int maxCoarseY = static_cast<int>(std::floor(worldMaxY / COARSE_CELL_SIZE));
+
+  size_t cachedCells = 0;
+  size_t totalStaticBodies = 0;
+
+  // Iterate through all coarse cells and populate cache
+  for (int cy = minCoarseY; cy <= maxCoarseY; ++cy) {
+    for (int cx = minCoarseX; cx <= maxCoarseX; ++cx) {
+      // Create AABB for this coarse cell
+      float cellCenterX = cx * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
+      float cellCenterY = cy * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
+      AABB cellAABB(cellCenterX, cellCenterY, COARSE_CELL_SIZE * 0.5f, COARSE_CELL_SIZE * 0.5f);
+
+      // Query static spatial hash for this region
+      auto& candidates = getPooledVector();
+      m_staticSpatialHash.queryRegion(cellAABB, candidates);
+
+      // Only cache if there are static bodies in this region
+      if (!candidates.empty()) {
+        HammerEngine::HierarchicalSpatialHash::CoarseCoord coord{cx, cy};
+
+        // Filter to only static bodies and store in cache
+        CoarseRegionStaticCache& cache = m_coarseRegionStaticCache[coord];
+        cache.staticIndices.clear();
+        cache.staticIndices.reserve(candidates.size());
+
+        for (size_t staticIdx : candidates) {
+          if (staticIdx < m_storage.size()) {
+            const auto& hot = m_storage.hotData[staticIdx];
+            if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+              cache.staticIndices.push_back(staticIdx);
+            }
+          }
+        }
+
+        cache.valid = true;
+
+        cachedCells++;
+        totalStaticBodies += cache.staticIndices.size();
+      }
+
+      returnPooledVector(candidates);
+    }
+  }
+
+  COLLISION_INFO("Static cache populated: " + std::to_string(cachedCells) +
+                " cells, " + std::to_string(totalStaticBodies) + " total static body references");
+}
+
 void CollisionManager::onTileChanged(int x, int y) {
   const auto &wm = WorldManager::Instance();
   const auto *world = wm.getWorldData();
@@ -945,6 +1018,7 @@ void CollisionManager::subscribeWorldEvents() {
           }
           COLLISION_INFO("World loaded - rebuilding static colliders");
           this->rebuildStaticFromWorld();
+          this->populateStaticCache();
           return;
         }
         if (auto generated =
@@ -957,6 +1031,7 @@ void CollisionManager::subscribeWorldEvents() {
           }
           COLLISION_INFO("World generated - rebuilding static colliders");
           this->rebuildStaticFromWorld();
+          this->populateStaticCache();
           return;
         }
         if (auto unloaded =
@@ -974,8 +1049,9 @@ void CollisionManager::subscribeWorldEvents() {
           }
           COLLISION_INFO("World unloaded - removed static colliders: " +
                          std::to_string(toRemove.size()));
-          // Clear static spatial hash since all static bodies were removed
+          // Clear static spatial hash and cache since all static bodies were removed
           m_staticSpatialHash.clear();
+          m_coarseRegionStaticCache.clear();
           m_staticHashDirty = false;
           return;
         }
@@ -1453,14 +1529,17 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     }
 
     // 2. Use coarse-grid region cache for static collision queries
-    // Read cached coarse cell coords from HotData
-    HammerEngine::HierarchicalSpatialHash::CoarseCoord cachedCoarseCell{
-      m_storage.hotData[dynamicIdx].coarseCellX,
-      m_storage.hotData[dynamicIdx].coarseCellY
-    };
+    // Compute current coarse cell from body's AABB (not cached - always up-to-date)
+    AABB dynamicAABB(
+      (dynamicHot.aabbMinX + dynamicHot.aabbMaxX) * 0.5f,
+      (dynamicHot.aabbMinY + dynamicHot.aabbMaxY) * 0.5f,
+      (dynamicHot.aabbMaxX - dynamicHot.aabbMinX) * 0.5f,
+      (dynamicHot.aabbMaxY - dynamicHot.aabbMinY) * 0.5f
+    );
+    auto currentCoarseCell = m_staticSpatialHash.getCoarseCoord(dynamicAABB);
 
-    // Look up region cache using cached coords
-    auto regionCacheIt = m_coarseRegionStaticCache.find(cachedCoarseCell);
+    // Look up region cache using current coarse cell
+    auto regionCacheIt = m_coarseRegionStaticCache.find(currentCoarseCell);
 
     if (regionCacheIt != m_coarseRegionStaticCache.end()) {
 
@@ -1855,8 +1934,8 @@ void CollisionManager::updateSOA(float dt) {
   // Reset static culling counter for this frame
   m_perf.lastStaticBodiesCulled = 0;
 
-  // Update static collision cache for all movable bodies
-  // (this will accumulate actual static bodies culled in m_perf.lastStaticBodiesCulled)
+  // Update static collision cache for movable bodies
+  // Initial cache populated on world load, this updates as bodies move between coarse cells
   updateStaticCollisionCacheForMovableBodies();
 
   // Periodic cache eviction: Remove stale cache entries every N frames

@@ -121,6 +121,7 @@ public:
 
     // World coupling
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid
+    void populateStaticCache();                   // populate static collision cache after world load
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
 
