@@ -608,9 +608,8 @@ void EventDemoState::createTestEvents() {
     addLogEntry("Some events failed to create - check logs");
   }
 
-  // Register per-name handlers for a few demo events to showcase the API
-  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_forest", [this](const EventData &data){ if (data.isActive()) onSceneChanged("demo_forest"); }));
-  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_rainy", [this](const EventData &data){ if (data.isActive()) onWeatherChanged("demo_rainy"); }));
+  // Name-based handlers removed - EventManager now uses type-based dispatch only
+  // The type-based handlers registered in setupEventSystem() handle all events
 
   // Show current event counts by type for monitoring
   size_t weatherCount = eventMgr.getEventCount(EventTypeId::Weather);
