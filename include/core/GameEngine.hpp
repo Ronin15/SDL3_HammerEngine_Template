@@ -211,6 +211,16 @@ public:
   }
 
   /**
+   * @brief Sets the logical rendering size
+   * @param width New logical width in pixels
+   * @param height New logical height in pixels
+   */
+  void setLogicalSize(int width, int height) {
+    m_logicalWidth = width;
+    m_logicalHeight = height;
+  }
+
+  /**
    * @brief Sets the logical presentation mode for rendering
    * @param mode SDL logical presentation mode to use
    */
@@ -260,6 +270,17 @@ public:
    */
   bool isWayland() const { return m_isWayland; }
 
+  /**
+   * @brief Toggles fullscreen mode at runtime
+   */
+  void toggleFullscreen();
+
+  /**
+   * @brief Checks if the engine is currently in fullscreen mode
+   * @return true if fullscreen is enabled, false otherwise
+   */
+  bool isFullscreen() const noexcept { return m_isFullscreen; }
+
 private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
@@ -295,6 +316,7 @@ private:
   // Platform-specific flags
   bool m_isWayland{false};
   bool m_usingSoftwareFrameLimiting{false};
+  bool m_isFullscreen{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

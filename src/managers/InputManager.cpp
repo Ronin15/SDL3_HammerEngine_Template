@@ -496,10 +496,13 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   // This prevents buttons from going off-screen while maintaining good scaling
   int targetLogicalWidth = 1920;
   int targetLogicalHeight = 1080;
-  
+
   // Update renderer logical presentation with letterbox mode
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), targetLogicalWidth, targetLogicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
-  
+
+  // Update GameEngine's cached logical dimensions
+  gameEngine.setLogicalSize(targetLogicalWidth, targetLogicalHeight);
+
   INPUT_INFO("macOS: Updated standard logical resolution with letterbox mode: " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight) + " on " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
   #else
   // On non-Apple platforms, use actual screen resolution
@@ -512,7 +515,10 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   
   // Update renderer to native resolution
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
-  
+
+  // Update GameEngine's cached logical dimensions
+  gameEngine.setLogicalSize(actualWidth, actualHeight);
+
    INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
    #endif
    
@@ -523,6 +529,13 @@ void InputManager::onWindowResize(const SDL_Event& event) {
      INPUT_ERROR("Failed to reinitialize font system after window resize");
    } else {
      INPUT_INFO("Font system reinitialized successfully after window resize");
+   }
+
+   // Notify active game state about resize for UI layout recalculation
+   if (gameEngine.getGameStateManager()) {
+     gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),
+                                                     gameEngine.getLogicalHeight());
+     INPUT_INFO("Notified game state about window resize");
    }
 }
 
@@ -577,6 +590,13 @@ void InputManager::onDisplayChange(const SDL_Event& event) {
       INPUT_WARN("Failed to reload fonts for new display size");
     } else {
       INPUT_INFO("Successfully reloaded fonts for new display size");
+    }
+
+    // Notify active game state about display change for UI layout recalculation
+    if (gameEngine.getGameStateManager()) {
+      gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),
+                                                      gameEngine.getLogicalHeight());
+      INPUT_INFO("Notified game state about display change");
     }
   } catch (const std::exception& e) {
     INPUT_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));

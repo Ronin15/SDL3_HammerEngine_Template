@@ -141,6 +141,9 @@ bool GameEngine::init(const std::string_view title, const int width,
 #endif
   }
 
+  // Track initial fullscreen state
+  m_isFullscreen = fullscreen;
+
   mp_window.reset(
       SDL_CreateWindow(title.data(), m_windowWidth, m_windowHeight, flags));
 
@@ -779,6 +782,11 @@ void GameEngine::handleEvents() {
   InputManager &inputMgr = InputManager::Instance();
   inputMgr.update();
 
+  // Global fullscreen toggle (F1 key) - processed before state input
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F1)) {
+    toggleFullscreen();
+  }
+
   // Handle game state input on main thread where SDL events are processed (SDL3
   // requirement) This prevents cross-thread input state access between main
   // thread and update worker thread
@@ -1192,6 +1200,59 @@ void GameEngine::clean() {
 
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
+}
+
+void GameEngine::toggleFullscreen() {
+  if (!mp_window) {
+    GAMEENGINE_ERROR("Cannot toggle fullscreen - window not initialized");
+    return;
+  }
+
+  // Toggle fullscreen state
+  m_isFullscreen = !m_isFullscreen;
+
+  GAMEENGINE_INFO("Toggling fullscreen mode: " +
+                  std::string(m_isFullscreen ? "ON" : "OFF"));
+
+#ifdef __APPLE__
+  // macOS: Use borderless fullscreen desktop mode for better compatibility
+  if (m_isFullscreen) {
+    if (!SDL_SetWindowFullscreen(mp_window.get(), true)) {
+      GAMEENGINE_ERROR("Failed to enable fullscreen: " +
+                       std::string(SDL_GetError()));
+      m_isFullscreen = false; // Revert state on failure
+      return;
+    }
+    // Set to borderless fullscreen desktop mode (nullptr = use desktop mode)
+    if (!SDL_SetWindowFullscreenMode(mp_window.get(), nullptr)) {
+      GAMEENGINE_WARN("Failed to set borderless fullscreen mode: " +
+                      std::string(SDL_GetError()));
+    }
+    GAMEENGINE_INFO("macOS: Enabled borderless fullscreen desktop mode");
+  } else {
+    if (!SDL_SetWindowFullscreen(mp_window.get(), false)) {
+      GAMEENGINE_ERROR("Failed to disable fullscreen: " +
+                       std::string(SDL_GetError()));
+      m_isFullscreen = true; // Revert state on failure
+      return;
+    }
+    GAMEENGINE_INFO("macOS: Disabled fullscreen mode");
+  }
+#else
+  // Other platforms: Use standard fullscreen toggle
+  if (!SDL_SetWindowFullscreen(mp_window.get(), m_isFullscreen)) {
+    GAMEENGINE_ERROR("Failed to toggle fullscreen: " +
+                     std::string(SDL_GetError()));
+    m_isFullscreen = !m_isFullscreen; // Revert state on failure
+    return;
+  }
+  GAMEENGINE_INFO("Fullscreen mode " +
+                  std::string(m_isFullscreen ? "enabled" : "disabled"));
+#endif
+
+  // Note: SDL will automatically trigger SDL_EVENT_WINDOW_RESIZED
+  // which will be handled by InputManager::onWindowResize()
+  // This ensures fonts and UI are properly updated for the new display mode
 }
 
 int GameEngine::getOptimalDisplayIndex() const {

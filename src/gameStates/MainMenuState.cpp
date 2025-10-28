@@ -157,3 +157,58 @@ void MainMenuState::handleInput() {
 std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
+
+void MainMenuState::onWindowResize(int newLogicalWidth,
+                                    int newLogicalHeight) {
+  // Recalculate button positions based on new window dimensions
+  auto& ui = UIManager::Instance();
+
+  // Button dimensions (must match those in enter())
+  const int buttonWidth = 300;
+  const int buttonHeight = 50;
+  const int buttonSpacing = 20;
+  const int startY = newLogicalHeight / 2 - 100;
+
+  // Title repositioning (handled by createTitleAtTop, but we can update if needed)
+  // The title component uses full width, so we just need to update its width
+  ui.setComponentBounds("mainmenu_title", {0, 0, newLogicalWidth, 60});
+
+  // Reposition all buttons to be centered horizontally
+  ui.setComponentBounds("mainmenu_start_game_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2, startY,
+                         buttonWidth, buttonHeight});
+
+  ui.setComponentBounds("mainmenu_ai_demo_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + (buttonHeight + buttonSpacing), buttonWidth,
+                         buttonHeight});
+
+  ui.setComponentBounds("mainmenu_advanced_ai_demo_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + 2 * (buttonHeight + buttonSpacing),
+                         buttonWidth, buttonHeight});
+
+  ui.setComponentBounds("mainmenu_event_demo_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + 3 * (buttonHeight + buttonSpacing),
+                         buttonWidth, buttonHeight});
+
+  ui.setComponentBounds("mainmenu_ui_example_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + 4 * (buttonHeight + buttonSpacing),
+                         buttonWidth, buttonHeight});
+
+  ui.setComponentBounds("mainmenu_overlay_demo_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + 5 * (buttonHeight + buttonSpacing),
+                         buttonWidth, buttonHeight});
+
+  ui.setComponentBounds("mainmenu_exit_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + 6 * (buttonHeight + buttonSpacing),
+                         buttonWidth, buttonHeight});
+
+  GAMESTATE_DEBUG("MainMenuState: Repositioned menu buttons for new window size: " +
+                  std::to_string(newLogicalWidth) + "x" +
+                  std::to_string(newLogicalHeight));
+}

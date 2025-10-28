@@ -282,6 +282,30 @@ bool AdvancedAIDemoState::exit() {
     return true;
 }
 
+void AdvancedAIDemoState::onWindowResize(int newLogicalWidth,
+                                          int newLogicalHeight) {
+    // Recalculate UI positions based on new window dimensions
+    auto& ui = UIManager::Instance();
+
+    // Reposition title (centered across full width)
+    ui.setComponentBounds("advanced_ai_title",
+                          {0, 5, newLogicalWidth, 25});
+
+    // Reposition instruction labels (full width minus margin)
+    ui.setComponentBounds("advanced_ai_instructions_line1",
+                          {10, 40, newLogicalWidth - 20, 20});
+
+    ui.setComponentBounds("advanced_ai_instructions_line2",
+                          {10, 75, newLogicalWidth - 20, 20});
+
+    // Status label keeps fixed position (left side)
+    // No need to reposition as it doesn't depend on window width
+
+    GAMESTATE_DEBUG("AdvancedAIDemoState: Repositioned UI for new window size: " +
+                    std::to_string(newLogicalWidth) + "x" +
+                    std::to_string(newLogicalHeight));
+}
+
 void AdvancedAIDemoState::update(float deltaTime) {
     try {
         // Update game time for combat system
