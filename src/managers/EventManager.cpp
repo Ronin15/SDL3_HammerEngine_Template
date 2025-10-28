@@ -113,10 +113,10 @@ bool EventManager::init() {
     return true;
   }
 
-  // Only log if not in shutdown to avoid static destruction order issues
-  if (!m_isShutdown) {
-    EVENT_INFO("Initializing EventManager with performance optimizations");
-  }
+  // Reset shutdown flag to allow re-initialization after clean()
+  m_isShutdown = false;
+
+  EVENT_INFO("Initializing EventManager with performance optimizations");
 
   // Initialize all event type containers
   for (auto &eventContainer : m_eventsByType) {
@@ -140,6 +140,12 @@ bool EventManager::init() {
   // Clear event pools
   clearEventPools();
 
+  // Clear pending dispatch queue
+  {
+    std::lock_guard<std::mutex> lock(m_dispatchMutex);
+    m_pendingDispatch.clear();
+  }
+
   // Configure event pools for common ephemeral triggers
   m_weatherPool.setCreator([](){ return std::make_shared<WeatherEvent>("trigger_weather", WeatherType::Clear); });
   m_sceneChangePool.setCreator([](){ return std::make_shared<SceneChangeEvent>("trigger_scene_change", ""); });
@@ -151,11 +157,7 @@ bool EventManager::init() {
   m_lastUpdateTime.store(getCurrentTimeNanos());
   m_initialized.store(true);
 
-  // Only log if not in shutdown to avoid static destruction order issues
-  if (!m_isShutdown) {
-    EVENT_INFO(
-        "EventManager initialized successfully with type-indexed storage");
-  }
+  EVENT_INFO("EventManager initialized successfully with type-indexed storage");
   return true;
 }
 
@@ -207,6 +209,12 @@ void EventManager::clean() {
   // Clear event pools with proper cleanup
   clearEventPools();
 
+  // Clear pending dispatch queue
+  {
+    std::lock_guard<std::mutex> lock(m_dispatchMutex);
+    m_pendingDispatch.clear();
+  }
+
   // Reset performance stats
   resetPerformanceStats();
 
@@ -233,6 +241,12 @@ void EventManager::prepareForStateTransition() {
 
   // Clear event pools
   clearEventPools();
+
+  // Clear pending dispatch queue
+  {
+    std::lock_guard<std::mutex> lock(m_dispatchMutex);
+    m_pendingDispatch.clear();
+  }
 
   // Reset performance stats
   resetPerformanceStats();
@@ -336,6 +350,31 @@ void EventManager::update() {
     }
   }
   m_lastUpdateTime.store(endTime);
+}
+
+void EventManager::drainAllDeferredEvents() {
+  if (!m_initialized.load()) {
+    return;
+  }
+
+  // Call update() repeatedly until all deferred events are processed
+  // Limit iterations to prevent infinite loops (max 100 iterations)
+  constexpr int MAX_ITERATIONS = 100;
+  for (int i = 0; i < MAX_ITERATIONS; ++i) {
+    // Check if dispatch queue is empty
+    bool queueEmpty = false;
+    {
+      std::lock_guard<std::mutex> lock(m_dispatchMutex);
+      queueEmpty = m_pendingDispatch.empty();
+    }
+
+    if (queueEmpty) {
+      break; // All events processed
+    }
+
+    // Process another batch
+    update();
+  }
 }
 
 bool EventManager::registerEvent(const std::string &name, EventPtr event) {

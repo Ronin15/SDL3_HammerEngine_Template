@@ -1023,9 +1023,9 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     CollisionManager::Instance().processPendingCommands();
 
     // Process deferred events - CollisionManager fires events in Deferred mode
-    // so we need to call EventManager::update() to process the queue
-    EventManager::Instance().update();
-    
+    // so we need to drain all events to ensure deterministic test behavior
+    EventManager::Instance().drainAllDeferredEvents();
+
     // Should have received 1 event for the static body
     BOOST_CHECK_EQUAL(eventCount.load(), 1);
     BOOST_CHECK_CLOSE(lastEventPosition.getX(), staticPos.getX(), 0.01f);
@@ -1040,7 +1040,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
 
     CollisionManager::Instance().addCollisionBodySOA(kinematicId, kinematicAABB.center, kinematicAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
     CollisionManager::Instance().processPendingCommands();
-    EventManager::Instance().update();  // Process any events (should be none for kinematic)
+    EventManager::Instance().drainAllDeferredEvents();  // Process any events (should be none for kinematic)
 
     // Event count should not have changed
     BOOST_CHECK_EQUAL(eventCount.load(), previousEventCount);
@@ -1048,7 +1048,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     // Test 3: Removing a static body should trigger an event
     CollisionManager::Instance().removeCollisionBodySOA(staticId);
     CollisionManager::Instance().processPendingCommands();
-    EventManager::Instance().update();
+    EventManager::Instance().drainAllDeferredEvents();
 
     // Should have received another event for removal
     BOOST_CHECK_EQUAL(eventCount.load(), 2);
@@ -1081,17 +1081,17 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
     CollisionManager::Instance().addCollisionBodySOA(smallId, smallAABB.center, smallAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
     CollisionManager::Instance().processPendingCommands();
-    EventManager::Instance().update();
+    EventManager::Instance().drainAllDeferredEvents();
 
     float smallRadius = lastEventRadius;
     BOOST_CHECK_GT(smallRadius, 5.0f); // Should be larger than half-size
     BOOST_CHECK_LT(smallRadius, 50.0f); // But reasonable
-    
+
     // Large obstacle: 100x100
     AABB largeAABB(200.0f, 200.0f, 50.0f, 50.0f);
     CollisionManager::Instance().addCollisionBodySOA(largeId, largeAABB.center, largeAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
     CollisionManager::Instance().processPendingCommands();
-    EventManager::Instance().update();
+    EventManager::Instance().drainAllDeferredEvents();
 
     float largeRadius = lastEventRadius;
     BOOST_CHECK_GT(largeRadius, smallRadius); // Large should have larger radius

@@ -242,6 +242,13 @@ public:
   void update();
 
   /**
+   * @brief Drains all deferred events from the dispatch queue
+   * @details Calls update() multiple times until all deferred events are processed.
+   *          Primarily intended for testing to ensure deterministic event processing.
+   */
+  void drainAllDeferredEvents();
+
+  /**
    * @brief Checks if EventManager has been shut down
    * @return true if manager is shut down, false otherwise
    */

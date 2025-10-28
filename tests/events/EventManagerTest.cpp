@@ -193,15 +193,15 @@ BOOST_FIXTURE_TEST_CASE(EventUpdateAndConditions, EventManagerFixture) {
   // Reset event for next test
   eventPtr->reset();
 
-  // TEST PHASE 2: Event with true conditions should update but not execute
-  // (execution only happens on explicit triggers now)
+  // TEST PHASE 2: Event with true conditions should auto-execute during update
+  // (EventManager refactor now auto-executes conditional events when conditions are met)
   eventPtr->setConditionsMet(true);
   EventManager::Instance().update();
   // Wait for any ThreadSystem tasks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   BOOST_CHECK(eventPtr->wasUpdated());
-  // Events no longer execute during update() - only when explicitly triggered
-  BOOST_CHECK(!eventPtr->wasExecuted());
+  // Events with met conditions now auto-execute during update() (new behavior after refactor)
+  BOOST_CHECK(eventPtr->wasExecuted());
 
   // TEST PHASE 3: Explicit execution should work
   eventPtr->reset();
@@ -439,11 +439,11 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
   // Allow time for ThreadSystem tasks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  // Verify update worked - events update but don't execute during update()
+  // Verify update worked - events with met conditions auto-execute during update() (new behavior)
   BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
                   EventManager::Instance().getEvent("ThreadTest"))
                   ->wasUpdated());
-  BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(
+  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
                    EventManager::Instance().getEvent("ThreadTest"))
                    ->wasExecuted());
 
@@ -467,12 +467,11 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
 
   EventManager::Instance().update();
 
-  // Verify update worked without threading - events update but don't execute
-  // during update()
+  // Verify update worked without threading - events with met conditions auto-execute (new behavior)
   BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
                   EventManager::Instance().getEvent("ThreadTest"))
                   ->wasUpdated());
-  BOOST_CHECK(!std::dynamic_pointer_cast<MockEvent>(
+  BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
                    EventManager::Instance().getEvent("ThreadTest"))
                    ->wasExecuted());
 
