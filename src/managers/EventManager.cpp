@@ -775,7 +775,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
     evt->update();
 
     // Conditional events: auto-execute when conditions are met
-    if (evt->checkConditions()) {
+    // OPTIMIZATION: Only check conditions if handlers registered (avoid unnecessary work)
+    if (!m_handlersByType[static_cast<size_t>(typeId)].empty() && evt->checkConditions()) {
       EventData data;
       data.event = evt;
       data.typeId = typeId;
@@ -937,7 +938,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
               (*localEvents)[j]->update();
 
               // Conditional events: auto-execute when conditions are met
-              if ((*localEvents)[j]->checkConditions()) {
+              // OPTIMIZATION: Only check conditions if handlers registered
+              if (!m_handlersByType[static_cast<size_t>(typeId)].empty() && (*localEvents)[j]->checkConditions()) {
                 EventData data;
                 data.event = (*localEvents)[j];
                 data.typeId = typeId;
@@ -970,7 +972,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       evt->update();
 
       // Conditional events: auto-execute when conditions are met
-      if (evt->checkConditions()) {
+      // OPTIMIZATION: Only check conditions if handlers registered
+      if (!m_handlersByType[static_cast<size_t>(typeId)].empty() && evt->checkConditions()) {
         EventData data;
         data.event = evt;
         data.typeId = typeId;
