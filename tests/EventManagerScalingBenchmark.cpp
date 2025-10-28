@@ -218,7 +218,7 @@ struct EventManagerScalingFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
-    void runHandlerBenchmark(int numEventTypes, int numHandlersPerType, int numTriggers, bool /* useBatching */) {
+    void runHandlerBenchmark(int /* numEventTypes */, int numHandlersPerType, int numTriggers, bool /* useBatching */) {
         if (g_shutdownInProgress.load()) {
             return;
         }

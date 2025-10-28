@@ -1385,14 +1385,7 @@ void EventManager::compactEventStorage() {
   // Rebuild name mappings after compaction
   m_nameToIndex.clear();
   m_nameToType.clear();
-
-  for (size_t typeIdx = 0; typeIdx < m_eventsByType.size(); ++typeIdx) {
-    const auto &container = m_eventsByType[typeIdx];
-    for (size_t i = 0; i < container.size(); ++i) {
-      const auto &ed = container[i];
-      // Name mapping removed - using typeId for all lookups
-    }
-  }
+  // Name mapping removed - using typeId for all lookups
 }
 
 void EventManager::clearEventPools() {
