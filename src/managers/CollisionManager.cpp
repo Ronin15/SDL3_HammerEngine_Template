@@ -39,8 +39,8 @@ bool CollisionManager::init() {
   COLLISION_INFO("STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
 
   // PERFORMANCE: Pre-allocate hash map and vector pool to prevent FPS dips from rehashing
-  // Reserve for eviction area: (6000px / 128px)^2 ≈ 2197 coarse cells
-  m_coarseRegionStaticCache.reserve(2200);  // Reserve once at initialization, not in hot paths
+  // Minimal reserve for tests and small worlds - proper sizing happens in setWorldBounds()
+  m_coarseRegionStaticCache.reserve(256);
 
   // Initialize vector pool (moved from lazy initialization in getPooledVector)
   m_vectorPool.clear();
@@ -185,6 +185,30 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
   float hw = (maxX - minX) * 0.5f;
   float hh = (maxY - minY) * 0.5f;
   m_worldBounds = AABB(cx, cy, hw, hh);
+
+  // PERFORMANCE FIX: Dynamic reserve sizing for coarse region static cache
+  // Scale reserve size based on world dimensions to prevent expensive rehashing
+  // in large worlds (e.g., EventDemoMode 32000x32000 needs ~62,500 coarse cells)
+  float worldWidth = maxX - minX;
+  float worldHeight = maxY - minY;
+  constexpr float COARSE_SIZE = HammerEngine::HierarchicalSpatialHash::COARSE_CELL_SIZE;
+
+  // Calculate number of coarse cells with 1.5x multiplier for hash map load factor
+  size_t estimatedCoarseCells = static_cast<size_t>(
+    (worldWidth / COARSE_SIZE) * (worldHeight / COARSE_SIZE) * 1.5f
+  );
+
+  // Only reserve if needed (avoid rehashing small worlds unnecessarily)
+  size_t currentCapacity = m_coarseRegionStaticCache.bucket_count();
+  if (estimatedCoarseCells > currentCapacity) {
+    size_t reserveSize = std::max<size_t>(256, estimatedCoarseCells);
+    m_coarseRegionStaticCache.reserve(reserveSize);
+    COLLISION_INFO("Resized coarse region cache from " + std::to_string(currentCapacity) +
+                   " to " + std::to_string(reserveSize) + " buckets for world size " +
+                   std::to_string(static_cast<int>(worldWidth)) + "x" +
+                   std::to_string(static_cast<int>(worldHeight)));
+  }
+
   COLLISION_DEBUG("World bounds set: [" + std::to_string(minX) + "," +
                   std::to_string(minY) + "] - [" + std::to_string(maxX) + "," +
                   std::to_string(maxY) + "]");
