@@ -16,6 +16,7 @@ class MainMenuState : public GameState {
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
+  void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
  private:
   // Pure UIManager approach - no UIScreen needed

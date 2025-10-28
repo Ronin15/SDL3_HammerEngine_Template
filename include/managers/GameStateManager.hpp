@@ -27,6 +27,7 @@ class GameStateManager {
   void update(float deltaTime);
   void render();
   void handleInput();
+  void notifyResize(int newLogicalWidth, int newLogicalHeight);
 
   bool hasState(const std::string& stateName) const;
   std::shared_ptr<GameState> getState(const std::string& stateName) const;

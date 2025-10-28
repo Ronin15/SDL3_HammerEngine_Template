@@ -278,6 +278,38 @@ bool EventDemoState::exit() {
   }
 }
 
+void EventDemoState::onWindowResize(int newLogicalWidth,
+                                     int newLogicalHeight) {
+  // Recalculate UI positions based on new window dimensions
+  auto &ui = UIManager::Instance();
+
+  // Reposition inventory panel (matches initializeWorld pattern)
+  const int inventoryWidth = 280;
+  const int inventoryHeight = 400;
+  const int inventoryX = newLogicalWidth - inventoryWidth - 20;
+  const int inventoryY = 170;
+
+  ui.setComponentBounds("inventory_panel",
+                        {inventoryX, inventoryY, inventoryWidth,
+                         inventoryHeight});
+
+  ui.setComponentBounds("inventory_title",
+                        {inventoryX + 10, inventoryY + 25,
+                         inventoryWidth - 20, 35});
+
+  ui.setComponentBounds("inventory_status",
+                        {inventoryX + 10, inventoryY + 75,
+                         inventoryWidth - 20, 25});
+
+  ui.setComponentBounds("inventory_list",
+                        {inventoryX + 10, inventoryY + 110,
+                         inventoryWidth - 20, 270});
+
+  GAMESTATE_DEBUG("EventDemoState: Repositioned UI for new window size: " +
+                  std::to_string(newLogicalWidth) + "x" +
+                  std::to_string(newLogicalHeight));
+}
+
 void EventDemoState::unregisterEventHandlers() {
   try {
     EventManager &eventMgr = EventManager::Instance();
