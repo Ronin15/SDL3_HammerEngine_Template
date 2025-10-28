@@ -859,7 +859,6 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
         }
     }
 
-    Vector2D currentPos = entity->getPosition();
     BOOST_TEST_MESSAGE("Patrol test: moved " << totalDistanceMoved << "px over " << movementSteps << " steps");
 
     // Verify patrol behavior is functioning
