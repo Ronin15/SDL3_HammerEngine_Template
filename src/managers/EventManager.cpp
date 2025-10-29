@@ -1567,10 +1567,7 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData& eventData, Dispa
 
     // Early exit if no handlers
     if (typeHandlers.empty()) {
-      // Try to execute event directly if it has no handlers
-      if (eventData.event) {
-        try { eventData.event->execute(); } catch (...) {}
-      }
+      // No handlers registered - nothing to dispatch
       return false;
     }
 
