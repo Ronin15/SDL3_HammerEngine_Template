@@ -14,6 +14,7 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
 #include "gameStates/GamePlayState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
 #include "gameStates/OverlayDemoState.hpp"
@@ -598,6 +599,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
+  mp_gameStateManager->addState(std::make_unique<LoadingState>());  // Shared loading screen state
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());

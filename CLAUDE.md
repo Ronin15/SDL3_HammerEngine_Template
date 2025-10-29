@@ -120,3 +120,47 @@ for (size_t i = 0; i < expectedCount; ++i) {
 **Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera).
 
 **Rules**: No background thread rendering (all drawing in `GameEngine::render()`) | No extra manager sync (rely on mutexed update + buffer swap) | Snapshot camera once per render | NEVER static vars in threaded code
+
+## Rendering Rules
+
+**Critical for SDL3_GPU Compatibility**: SDL3_GPU uses command buffer architecture requiring **exactly one Present() per frame** through unified render path.
+
+**NEVER Manual Rendering in GameStates**:
+- NEVER call `SDL_RenderClear()` or `SDL_RenderPresent()` directly in GameState classes
+- ALL rendering MUST go through: `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`
+- Multiple Present() calls break SDL3_GPU's command buffer system
+
+**Loading Screens**: Use `LoadingState` with async operations (never blocking with manual rendering):
+```cpp
+// Configure LoadingState before transition
+auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+loadingState->configure("TargetStateName", worldConfig);
+gameStateManager->changeState("LoadingState");
+
+// LoadingState handles async world generation on ThreadSystem
+// Progress bar renders through normal GameEngine::render() flow
+// No manual SDL_RenderClear/Present calls needed
+```
+
+**Deferred State Transitions**: State changes from `enter()` cause timing issues. Use deferred pattern:
+```cpp
+bool GameState::enter() {
+    if (!m_worldLoaded) {
+        m_needsLoading = true;    // Set flag
+        m_worldLoaded = true;      // Prevent loop
+        return true;               // Exit early
+    }
+    // Normal initialization when world loaded
+}
+
+void GameState::update(float deltaTime) {
+    if (m_needsLoading) {
+        m_needsLoading = false;
+        // Configure and transition to LoadingState here
+        return;
+    }
+    // Normal update
+}
+```
+
+**Rules**: One Present per frame | Use LoadingState for async loading | Deferred transitions from update() | No manual SDL rendering calls in GameStates

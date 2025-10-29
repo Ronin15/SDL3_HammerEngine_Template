@@ -7,6 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/FontManager.hpp"
@@ -36,33 +37,82 @@ bool GamePlayState::enter() {
     return true;
   }
 
-  // Initialize resource handles first
-  initializeResourceHandles();
+  // Check if world needs to be loaded
+  if (!m_worldLoaded) {
+    GAMEPLAY_INFO("World not loaded yet - will transition to LoadingState on first update");
+    m_needsLoading = true;
+    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+    return true;  // Will transition to loading screen in update()
+  }
 
-  // Create player and position at screen center
-  mp_Player = std::make_shared<Player>();
-  mp_Player->ensurePhysicsBodyRegistered();
-  mp_Player->initializeInventory();
+  // World is loaded - proceed with normal initialization
+  GAMEPLAY_INFO("World already loaded - initializing gameplay");
 
-  // Position player at screen center
-  const auto &gameEngine = GameEngine::Instance();
-  Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
-  mp_Player->setPosition(screenCenter);
+  try {
+    const auto &gameEngine = GameEngine::Instance();
 
-  // Initialize the inventory UI
-  initializeInventoryUI();
+    // Initialize resource handles first
+    initializeResourceHandles();
 
-  // Initialize world and camera
-  initializeWorld();
-  initializeCamera();
+    // Create player and position at screen center
+    mp_Player = std::make_shared<Player>();
+    mp_Player->ensurePhysicsBodyRegistered();
+    mp_Player->initializeInventory();
 
-  // Mark as initialized for future pause/resume cycles
-  m_initialized = true;
+    // Position player at screen center
+    Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
+    mp_Player->setPosition(screenCenter);
+
+    // Initialize the inventory UI
+    initializeInventoryUI();
+
+    // Initialize camera (world already loaded)
+    initializeCamera();
+
+    // Mark as initialized for future pause/resume cycles
+    m_initialized = true;
+
+    GAMEPLAY_INFO("GamePlayState initialization complete");
+  } catch (const std::exception& e) {
+    GAMEPLAY_ERROR("Exception during GamePlayState initialization: " + std::string(e.what()));
+    return false;
+  }
 
   return true;
 }
 
 void GamePlayState::update([[maybe_unused]] float deltaTime) {
+  // Check if we need to transition to loading screen (do this in update, not enter)
+  if (m_needsLoading) {
+    m_needsLoading = false;  // Clear flag
+
+    GAMEPLAY_INFO("Transitioning to LoadingState for world generation");
+
+    // Create world configuration for gameplay
+    HammerEngine::WorldGenerationConfig config;
+    config.width = 100;   // Standard gameplay world
+    config.height = 100;
+    config.seed = static_cast<int>(std::time(nullptr));
+    config.elevationFrequency = 0.05f;
+    config.humidityFrequency = 0.03f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    // Configure LoadingState and transition to it
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    if (gameStateManager) {
+      auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+      if (loadingState) {
+        loadingState->configure("GamePlayState", config);
+        // Use changeState (called from update) to properly exit and re-enter
+        gameStateManager->changeState("LoadingState");
+      }
+    }
+
+    return;  // Don't continue with rest of update
+  }
+
   // Update player if it exists
   if (mp_Player) {
     mp_Player->update(deltaTime);
@@ -444,79 +494,6 @@ void GamePlayState::initializeResourceHandles() {
       woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
 }
 
-void GamePlayState::initializeWorld() {
-  // Initialize and load a new world following EventDemoState pattern
-  auto& worldManager = WorldManager::Instance();
-  if (!worldManager.isInitialized()) {
-    if (!worldManager.init()) {
-      WORLD_MANAGER_ERROR("Failed to initialize WorldManager");
-      return;
-    }
-  }
-
-  // Get UI and engine references
-  auto& ui = UIManager::Instance();
-  auto& gameEngine = GameEngine::Instance();
-  SDL_Renderer* renderer = gameEngine.getRenderer();
-  int windowWidth = gameEngine.getLogicalWidth();
-  int windowHeight = gameEngine.getLogicalHeight();
-
-  // Create loading overlay using existing UIManager components
-  ui.createOverlay();
-  ui.createTitle("loading_title", {0, windowHeight / 2 - 80, windowWidth, 40}, "Loading World...");
-  ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
-
-  // Create progress bar in center of screen
-  int progressBarWidth = 400;
-  int progressBarHeight = 30;
-  int progressBarX = (windowWidth - progressBarWidth) / 2;
-  int progressBarY = windowHeight / 2;
-  ui.createProgressBar("loading_progress", {progressBarX, progressBarY, progressBarWidth, progressBarHeight}, 0.0f, 100.0f);
-
-  // Create status text as a TITLE (which supports alignment better) below progress bar
-  ui.createTitle("loading_status", {0, progressBarY + 50, windowWidth, 30}, "Initializing...");
-  ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
-
-  // Create a default world configuration
-  // TODO: Make this configurable or load from settings
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 100;
-  config.height = 100;
-
-  // Generate a random seed for world variety
-  std::random_device rd;
-  config.seed = rd();
-
-  // Set reasonable defaults for world generation
-  config.elevationFrequency = 0.05f;
-  config.humidityFrequency = 0.03f;
-  config.waterLevel = 0.3f;
-  config.mountainLevel = 0.7f;
-
-  // Create progress callback to update UI during world generation
-  auto progressCallback = [&](float percent, const std::string& status) {
-    ui.updateProgressBar("loading_progress", percent);
-    ui.setText("loading_status", status);
-
-    // Render the current frame to show progress updates
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    ui.render(renderer);
-    SDL_RenderPresent(renderer);
-  };
-
-  // Load world with progress callback
-  if (!worldManager.loadNewWorld(config, progressCallback)) {
-    GAMEPLAY_ERROR("Failed to load new world in GamePlayState");
-    // Continue anyway like EventDemoState - game can function without world
-  }
-
-  // Cleanup loading UI
-  ui.removeOverlay();
-  ui.removeComponent("loading_title");
-  ui.removeComponent("loading_progress");
-  ui.removeComponent("loading_status");
-}
 
 void GamePlayState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();

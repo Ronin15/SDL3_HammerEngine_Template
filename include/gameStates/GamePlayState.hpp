@@ -46,6 +46,12 @@ private:
   HammerEngine::ResourceHandle m_ironOreHandle;
   HammerEngine::ResourceHandle m_woodHandle;
 
+  // Track whether world has been loaded (prevents re-entering LoadingState)
+  bool m_worldLoaded{false};
+
+  // Track if we need to transition to loading screen on first update
+  bool m_needsLoading{false};
+
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();
@@ -55,9 +61,8 @@ private:
                           int quantity);
   void
   initializeResourceHandles(); // Resolve names to handles during initialization
-  
+
   // Camera management methods
-  void initializeWorld();
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
