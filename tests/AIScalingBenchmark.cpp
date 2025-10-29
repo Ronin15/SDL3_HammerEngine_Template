@@ -86,21 +86,48 @@ public:
 
         auto benchmarkEntity = std::dynamic_pointer_cast<BenchmarkEntity>(entity);
 
-        // Simulate work based on complexity
-        float tempResult = 0.0f;
-        for (int i = 0; i < m_complexity * 30; ++i) {
-            float dx = static_cast<float>(m_rng() % 100) / 1000.0f;
-            float dy = static_cast<float>(m_rng() % 100) / 1000.0f;
-            float dz = static_cast<float>(m_rng() % 100) / 1000.0f;
-            tempResult += dx * dy * dz;
-            tempResult = std::sqrt(tempResult + 1.0f);
-        }
-        if (tempResult < 0.0f) { /* This will never happen */ }
+        // === REALISTIC PRODUCTION AI BEHAVIOR PATTERNS ===
+        // Based on WanderBehavior, ChaseBehavior, PatrolBehavior production implementations
 
-        // Update entity position
-        benchmarkEntity->updatePosition(
-            static_cast<float>(m_rng() % 10) / 100.0f,
-            static_cast<float>(m_rng() % 10) / 100.0f);
+        // 1. State machine update (all production behaviors have FSMs)
+        updateStateMachine(deltaTime);
+
+        // 2. Calculate movement direction based on current state
+        Vector2D direction = calculateDirection(benchmarkEntity);
+
+        // 3. Vector normalization (critical path in all production behaviors)
+        float length = std::sqrt(direction.getX() * direction.getX() +
+                                 direction.getY() * direction.getY());
+        if (length > 0.001f) {
+            direction.setX(direction.getX() / length);
+            direction.setY(direction.getY() / length);
+        }
+
+        // 4. World bounds checking and avoidance (from AIManager::processBatch)
+        Vector2D boundaryForce = calculateBoundaryAvoidance(benchmarkEntity);
+        direction.setX(direction.getX() + boundaryForce.getX());
+        direction.setY(direction.getY() + boundaryForce.getY());
+
+        // 5. Separation forces - decimated (every 3 frames like production)
+        if (m_frameCounter % 3 == 0) {
+            Vector2D separation = simulateSeparationForces(benchmarkEntity);
+            direction.setX(direction.getX() + separation.getX() * 0.5f);
+            direction.setY(direction.getY() + separation.getY() * 0.5f);
+        }
+
+        // 6. Path following simulation (periodic like production pathfinding)
+        if (m_hasActivePath) {
+            direction = simulatePathFollowing(benchmarkEntity, deltaTime);
+        }
+
+        // 7. Apply velocity based on complexity (simulates different movement speeds)
+        float moveSpeed = 50.0f * static_cast<float>(m_complexity);
+        Vector2D velocity(direction.getX() * moveSpeed,
+                         direction.getY() * moveSpeed);
+        benchmarkEntity->setVelocity(velocity);
+
+        // Update frame counter for decimation patterns
+        m_frameCounter++;
 
         // Track behavior execution count
         m_updateCount++;
@@ -130,6 +157,149 @@ public:
     void resetUpdateCount() { m_updateCount.store(0, std::memory_order_release); }
 
 private:
+    // === Helper Methods for Realistic AI Patterns ===
+
+    void updateStateMachine(float deltaTime) {
+        // Simple 4-state FSM matching production behaviors
+        m_stateTimer -= deltaTime;
+        if (m_stateTimer <= 0.0f) {
+            // Transition to random state
+            m_currentState = static_cast<State>(m_rng() % 4);
+            m_stateTimer = 1.0f + (m_rng() % 300) / 100.0f; // 1-4 seconds
+        }
+    }
+
+    Vector2D calculateDirection(std::shared_ptr<BenchmarkEntity> entity) {
+        // Calculate direction based on current state
+        Vector2D pos = entity->getPosition();
+
+        switch (m_currentState) {
+            case State::Moving:
+                // Move toward wander target
+                return Vector2D(m_wanderTarget.getX() - pos.getX(),
+                               m_wanderTarget.getY() - pos.getY());
+
+            case State::Seeking:
+                // Seek toward world center
+                return Vector2D(5000.0f - pos.getX(), 5000.0f - pos.getY());
+
+            case State::Avoiding:
+                // Flee from world center
+                return Vector2D(pos.getX() - 5000.0f, pos.getY() - 5000.0f);
+
+            case State::Idle:
+            default:
+                // Default forward direction
+                return Vector2D(1.0f, 0.0f);
+        }
+    }
+
+    Vector2D calculateBoundaryAvoidance(std::shared_ptr<BenchmarkEntity> entity) {
+        // World bounds checking (matches AIManager::processBatch pattern)
+        Vector2D pos = entity->getPosition();
+        Vector2D avoidanceForce(0.0f, 0.0f);
+
+        const float WORLD_MIN = 0.0f;
+        const float WORLD_MAX = 10000.0f;
+        const float BOUNDARY_MARGIN = 500.0f;
+
+        // X-axis boundary forces
+        if (pos.getX() < WORLD_MIN + BOUNDARY_MARGIN) {
+            avoidanceForce.setX((WORLD_MIN + BOUNDARY_MARGIN - pos.getX()) / BOUNDARY_MARGIN);
+        } else if (pos.getX() > WORLD_MAX - BOUNDARY_MARGIN) {
+            avoidanceForce.setX((WORLD_MAX - BOUNDARY_MARGIN - pos.getX()) / BOUNDARY_MARGIN);
+        }
+
+        // Y-axis boundary forces
+        if (pos.getY() < WORLD_MIN + BOUNDARY_MARGIN) {
+            avoidanceForce.setY((WORLD_MIN + BOUNDARY_MARGIN - pos.getY()) / BOUNDARY_MARGIN);
+        } else if (pos.getY() > WORLD_MAX - BOUNDARY_MARGIN) {
+            avoidanceForce.setY((WORLD_MAX - BOUNDARY_MARGIN - pos.getY()) / BOUNDARY_MARGIN);
+        }
+
+        return avoidanceForce;
+    }
+
+    Vector2D simulateSeparationForces(std::shared_ptr<BenchmarkEntity> entity) {
+        // Simulate separation from nearby entities (matches production crowd management)
+        Vector2D pos = entity->getPosition();
+        Vector2D separationForce(0.0f, 0.0f);
+
+        // Simulate checking 3-5 neighbors (production uses CollisionManager queries)
+        int neighborCount = 3 + (m_rng() % 3);
+        for (int i = 0; i < neighborCount; ++i) {
+            // Generate simulated neighbor position within typical separation range
+            Vector2D neighborPos(
+                pos.getX() + (m_rng() % 200 - 100),
+                pos.getY() + (m_rng() % 200 - 100)
+            );
+
+            // Calculate separation force
+            Vector2D diff(pos.getX() - neighborPos.getX(),
+                         pos.getY() - neighborPos.getY());
+            float distance = std::sqrt(diff.getX() * diff.getX() +
+                                      diff.getY() * diff.getY());
+
+            if (distance < 100.0f && distance > 0.001f) {
+                // Normalize and accumulate separation force
+                separationForce.setX(separationForce.getX() + diff.getX() / distance);
+                separationForce.setY(separationForce.getY() + diff.getY() / distance);
+            }
+        }
+
+        return separationForce;
+    }
+
+    Vector2D simulatePathFollowing(std::shared_ptr<BenchmarkEntity> entity, float deltaTime) {
+        // Simulate path following (matches production PathfinderManager usage)
+        Vector2D pos = entity->getPosition();
+
+        // Calculate direction to path target
+        Vector2D toTarget(m_pathTarget.getX() - pos.getX(),
+                         m_pathTarget.getY() - pos.getY());
+        float distanceToTarget = std::sqrt(toTarget.getX() * toTarget.getX() +
+                                          toTarget.getY() * toTarget.getY());
+
+        // Check if we've reached the target
+        if (distanceToTarget < 50.0f) {
+            m_hasActivePath = false;
+            // Generate new path target on next path request
+        }
+
+        // Update path request cooldown
+        m_pathCooldown -= deltaTime;
+        if (m_pathCooldown <= 0.0f && !m_hasActivePath) {
+            // Request new path (production uses async PathfinderManager requests)
+            m_pathTarget = Vector2D(
+                static_cast<float>(m_rng() % 10000),
+                static_cast<float>(m_rng() % 10000)
+            );
+            m_hasActivePath = true;
+            m_pathCooldown = 15.0f + (m_rng() % 1500) / 100.0f; // 15-30 seconds
+        }
+
+        return toTarget;
+    }
+
+    // === State Variables ===
+
+    // AI state machine
+    enum class State { Idle, Moving, Seeking, Avoiding };
+    State m_currentState = State::Moving;
+    float m_stateTimer = 2.0f;
+
+    // Path following state
+    bool m_hasActivePath = false;
+    Vector2D m_pathTarget{5000.0f, 5000.0f};
+    float m_pathCooldown = 5.0f; // Start with short cooldown
+
+    // Wander targets
+    Vector2D m_wanderTarget{5000.0f, 5000.0f};
+
+    // Frame counter for decimation patterns
+    int m_frameCounter = 0;
+
+    // Original members
     int m_id;
     int m_complexity;
     bool m_initialized{false};
