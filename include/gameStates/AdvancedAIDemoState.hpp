@@ -33,7 +33,7 @@ public:
     bool enter() override;
     bool exit() override;
 
-    std::string getName() const override { return "AdvancedAIDemo"; }
+    std::string getName() const override { return "AdvancedAIDemoState"; }
     void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
     // Get the player entity for AI behaviors to access

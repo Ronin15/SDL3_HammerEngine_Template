@@ -62,7 +62,7 @@ bool MainMenuState::enter() {
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AdvancedAIDemo");
+    gameStateManager->changeState("AdvancedAIDemoState");
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", []() {
