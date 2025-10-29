@@ -63,7 +63,7 @@ public:
 
     ~PathfinderBenchmarkFixture() {
         // Clean up in reverse order
-        PathfinderManager::Instance().shutdown();
+        PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         WorldManager::Instance().clean();
         WorldResourceManager::Instance().clean();
