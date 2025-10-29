@@ -4,6 +4,7 @@
  */
 
 #include "gameStates/EventDemoState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
@@ -17,6 +18,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -55,13 +57,33 @@ EventDemoState::~EventDemoState() {
 bool EventDemoState::enter() {
   GAMESTATE_INFO("Entering EventDemoState...");
 
+  // Check if world needs to be loaded
+  if (!m_worldLoaded) {
+    GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
+    m_needsLoading = true;
+    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+    return true;  // Will transition to loading screen in update()
+  }
+
+  // World is loaded - proceed with normal initialization
+  GAMESTATE_INFO("World already loaded - initializing event demo");
+
   try {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
+    auto& worldManager = WorldManager::Instance();
 
-    // Setup world dimensions using logical coordinates for consistency
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
+    // Update world dimensions from loaded world
+    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+      m_worldWidth = std::max(0.0f, maxX - minX);
+      m_worldHeight = std::max(0.0f, maxY - minY);
+      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+    } else {
+      // Fallback to screen dimensions if world bounds unavailable
+      m_worldWidth = gameEngine.getLogicalWidth();
+      m_worldHeight = gameEngine.getLogicalHeight();
+    }
 
     // Initialize event system
     setupEventSystem();
@@ -189,8 +211,7 @@ bool EventDemoState::enter() {
         return items;
     });
 
-    // Initialize camera for world navigation
-    initializeWorld();
+    // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
 
     GAMESTATE_INFO("EventDemoState initialized successfully");
@@ -323,6 +344,39 @@ void EventDemoState::unregisterEventHandlers() {
 }
 
 void EventDemoState::update(float deltaTime) {
+  // Check if we need to transition to loading screen (do this in update, not enter)
+  if (m_needsLoading) {
+    m_needsLoading = false;  // Clear flag
+
+    GAMESTATE_INFO("Transitioning to LoadingState for world generation");
+
+    // Create world configuration for event demo (HUGE world)
+    HammerEngine::WorldGenerationConfig config;
+    config.width = 500;  // Massive 500x500 world
+    config.height = 500;
+    config.seed = static_cast<int>(std::time(nullptr));
+    config.elevationFrequency = 0.05f;
+    config.humidityFrequency = 0.03f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    // Configure LoadingState and transition to it
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    if (gameStateManager) {
+      auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+      if (loadingState) {
+        loadingState->configure("EventDemo", config);
+        // Use changeState (called from update) to properly exit and re-enter
+        gameStateManager->changeState("LoadingState");
+      } else {
+        GAMESTATE_ERROR("LoadingState not found in GameStateManager");
+      }
+    }
+
+    return;  // Don't continue with rest of update
+  }
+
   // Update timing
   updateDemoTimer(deltaTime);
 
@@ -1880,77 +1934,6 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   // - Update economy balancing metrics
   // - Track player behavior patterns
   // - Generate reports for game designers
-}
-
-void EventDemoState::initializeWorld() {
-  // Create world manager and generate a world for event demo
-  WorldManager& worldManager = WorldManager::Instance();
-
-  // Get UI and engine references for loading overlay
-  auto& ui = UIManager::Instance();
-  auto& gameEngine = GameEngine::Instance();
-  SDL_Renderer* renderer = gameEngine.getRenderer();
-  int windowWidth = gameEngine.getLogicalWidth();
-  int windowHeight = gameEngine.getLogicalHeight();
-
-  // Create loading overlay using existing UIManager components
-  ui.createOverlay();
-  ui.createTitle("loading_title", {0, windowHeight / 2 - 80, windowWidth, 40}, "Loading Event Demo World...");
-  ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
-
-  // Create progress bar in center of screen
-  int progressBarWidth = 400;
-  int progressBarHeight = 30;
-  int progressBarX = (windowWidth - progressBarWidth) / 2;
-  int progressBarY = windowHeight / 2;
-  ui.createProgressBar("loading_progress", {progressBarX, progressBarY, progressBarWidth, progressBarHeight}, 0.0f, 100.0f);
-
-  // Create status text as a TITLE (which supports alignment better) below progress bar
-  ui.createTitle("loading_status", {0, progressBarY + 50, windowWidth, 30}, "Initializing...");
-  ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
-
-  // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 1000;  // Increased from 50 to 100 for more exploration
-  config.height = 1000; // Increased from 50 to 100 for more exploration
-  config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
-  config.elevationFrequency = 0.1f;
-  config.humidityFrequency = 0.1f;
-  config.waterLevel = 0.25f;
-  config.mountainLevel = 0.75f;
-
-  // Create progress callback to update UI during world generation
-  auto progressCallback = [&](float percent, const std::string& status) {
-    ui.updateProgressBar("loading_progress", percent);
-    ui.setText("loading_status", status);
-
-    // Render the current frame to show progress updates
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    ui.render(renderer);
-    SDL_RenderPresent(renderer);
-  };
-
-  if (!worldManager.loadNewWorld(config, progressCallback)) {
-    GAMESTATE_ERROR("Failed to load new world in EventDemoState");
-    // Continue anyway - event demo can function without world
-  } else {
-    GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
-
-    // Setup camera to work with the world (will be called in initializeCamera)
-    // Update demo world dimensions to match generated world (pixels)
-    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
-    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-      m_worldWidth = std::max(0.0f, maxX - minX);
-      m_worldHeight = std::max(0.0f, maxY - minY);
-    }
-  }
-
-  // Cleanup loading UI
-  ui.removeOverlay();
-  ui.removeComponent("loading_title");
-  ui.removeComponent("loading_progress");
-  ui.removeComponent("loading_status");
 }
 
 void EventDemoState::initializeCamera() {

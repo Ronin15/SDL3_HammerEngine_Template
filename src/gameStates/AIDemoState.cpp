@@ -4,6 +4,7 @@
  */
 
 #include "gameStates/AIDemoState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
@@ -12,6 +13,7 @@
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
@@ -183,13 +185,33 @@ void AIDemoState::handleInput() {
 bool AIDemoState::enter() {
   GAMESTATE_INFO("Entering AIDemoState...");
 
+  // Check if world needs to be loaded
+  if (!m_worldLoaded) {
+    GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
+    m_needsLoading = true;
+    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+    return true;  // Will transition to loading screen in update()
+  }
+
+  // World is loaded - proceed with normal initialization
+  GAMESTATE_INFO("World already loaded - initializing AI demo");
+
   try {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
+    auto& worldManager = WorldManager::Instance();
 
-    // Setup world size using logical coordinates initially (will be updated after world loads)
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
+    // Update world dimensions from loaded world
+    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+      m_worldWidth = std::max(0.0f, maxX - minX);
+      m_worldHeight = std::max(0.0f, maxY - minY);
+      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+    } else {
+      // Fallback to screen dimensions if world bounds unavailable
+      m_worldWidth = gameEngine.getLogicalWidth();
+      m_worldHeight = gameEngine.getLogicalHeight();
+    }
 
     // Texture has to be loaded by NPC or Player can't be loaded here
     setupAIBehaviors();
@@ -232,13 +254,7 @@ bool AIDemoState::enter() {
     ui.createLabel("ai_status", {10, 110, 400, 20},
                    "FPS: -- | Entities: -- | AI: RUNNING");
 
-    // Initialize world and camera LAST, just like EventDemoState
-    // WorldGeneratedEvent is fired but processed asynchronously
-    initializeWorld();
-
-    // Reposition player to world center now that world is loaded
-    m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
-
+    // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
     // NPCs will be spawned gradually in update() starting on the first frame
@@ -308,6 +324,39 @@ bool AIDemoState::exit() {
 
 void AIDemoState::update(float deltaTime) {
   try {
+    // Check if we need to transition to loading screen (do this in update, not enter)
+    if (m_needsLoading) {
+      m_needsLoading = false;  // Clear flag
+
+      GAMESTATE_INFO("Transitioning to LoadingState for world generation");
+
+      // Create world configuration for AI demo
+      HammerEngine::WorldGenerationConfig config;
+      config.width = 400;  // Very large world for 10K NPCs with plenty of space
+      config.height = 400;
+      config.seed = static_cast<int>(std::time(nullptr));
+      config.elevationFrequency = 0.1f;
+      config.humidityFrequency = 0.1f;
+      config.waterLevel = 0.25f;
+      config.mountainLevel = 0.75f;
+
+      // Configure LoadingState and transition to it
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      if (gameStateManager) {
+        auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+        if (loadingState) {
+          loadingState->configure("AIDemoState", config);
+          // Use changeState (called from update) to properly exit and re-enter
+          gameStateManager->changeState("LoadingState");
+        } else {
+          GAMESTATE_ERROR("LoadingState not found in GameStateManager");
+        }
+      }
+
+      return;  // Don't continue with rest of update
+    }
+
     // Batch spawn NPCs (30 NPCs every 10 frames instead of 3 every frame)
     if (m_npcsSpawned < m_npcCount) {
       // Set CollisionManager bounds once before spawning starts
@@ -563,81 +612,6 @@ void AIDemoState::createNPCBatch(int count) {
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatch()");
   }
-}
-
-void AIDemoState::initializeWorld() {
-  // Create world manager and generate a large world for 10K NPCs
-  WorldManager& worldManager = WorldManager::Instance();
-
-  // Get UI and engine references for loading overlay
-  auto& ui = UIManager::Instance();
-  auto& gameEngine = GameEngine::Instance();
-  SDL_Renderer* renderer = gameEngine.getRenderer();
-  int windowWidth = gameEngine.getLogicalWidth();
-  int windowHeight = gameEngine.getLogicalHeight();
-
-  // Create loading overlay using existing UIManager components
-  ui.createOverlay();
-  ui.createTitle("loading_title", {0, windowHeight / 2 - 80, windowWidth, 40}, "Loading AI Demo World...");
-  ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
-
-  // Create progress bar in center of screen
-  int progressBarWidth = 400;
-  int progressBarHeight = 30;
-  int progressBarX = (windowWidth - progressBarWidth) / 2;
-  int progressBarY = windowHeight / 2;
-  ui.createProgressBar("loading_progress", {progressBarX, progressBarY, progressBarWidth, progressBarHeight}, 0.0f, 100.0f);
-
-  // Create status text as a TITLE (which supports alignment better) below progress bar
-  ui.createTitle("loading_status", {0, progressBarY + 50, windowWidth, 30}, "Initializing...");
-  ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
-
-  // Create a very large world configuration to spread 10,000 NPCs comfortably
-  // 400x400 tiles = 160,000 tiles, giving approximately 16 tiles per NPC
-  // At 32 pixels per tile, this is 12800x12800 pixels (4x bigger than before)
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 400;  // Very large world for 10K NPCs with plenty of space
-  config.height = 400; // Very large world for 10K NPCs with plenty of space
-  config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
-  config.elevationFrequency = 0.1f;
-  config.humidityFrequency = 0.1f;
-  config.waterLevel = 0.25f;
-  config.mountainLevel = 0.75f;
-
-  // Create progress callback to update UI during world generation
-  auto progressCallback = [&](float percent, const std::string& status) {
-    ui.updateProgressBar("loading_progress", percent);
-    ui.setText("loading_status", status);
-
-    // Render the current frame to show progress updates
-    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-    SDL_RenderClear(renderer);
-    ui.render(renderer);
-    SDL_RenderPresent(renderer);
-  };
-
-  if (!worldManager.loadNewWorld(config, progressCallback)) {
-    GAMESTATE_ERROR("Failed to load new world in AIDemoState");
-    // Fallback to screen dimensions if world fails to load
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
-  } else {
-    GAMESTATE_INFO("Successfully loaded AI demo world with seed: " + std::to_string(config.seed));
-
-    // Update world dimensions to match generated world (pixels)
-    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
-    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-      m_worldWidth = std::max(0.0f, maxX - minX);
-      m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
-    }
-  }
-
-  // Cleanup loading UI
-  ui.removeOverlay();
-  ui.removeComponent("loading_title");
-  ui.removeComponent("loading_progress");
-  ui.removeComponent("loading_status");
 }
 
 void AIDemoState::initializeCamera() {

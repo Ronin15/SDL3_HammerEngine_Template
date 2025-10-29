@@ -33,7 +33,7 @@ public:
     bool enter() override;
     bool exit() override;
 
-    std::string getName() const override { return "AIDemo"; }
+    std::string getName() const override { return "AIDemoState"; }
 
     // Get the player entity for AI behaviors to access
     EntityPtr getPlayer() const { return m_player; }
@@ -42,7 +42,6 @@ private:
     // Methods
     void setupAIBehaviors();
     void createNPCBatch(int count);  // Create a batch of NPCs gradually
-    void initializeWorld();
     void initializeCamera();
     void updateCamera(float deltaTime);
 
@@ -56,6 +55,12 @@ private:
     int m_npcCount{2000};  // Number of NPCs to create for the demo (balanced for performance)
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
+
+    // Track whether world has been loaded (prevents re-entering LoadingState)
+    bool m_worldLoaded{false};
+
+    // Track if we need to transition to loading screen on first update
+    bool m_needsLoading{false};
 
     // Camera for world navigation
     std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};

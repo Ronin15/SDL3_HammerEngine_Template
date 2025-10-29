@@ -56,7 +56,7 @@ bool MainMenuState::enter() {
   ui.setOnClick("mainmenu_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AIDemo");
+    gameStateManager->changeState("AIDemoState");
   });
 
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", []() {
@@ -127,7 +127,7 @@ void MainMenuState::handleInput() {
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("AIDemo");
+      gameStateManager->changeState("AIDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {

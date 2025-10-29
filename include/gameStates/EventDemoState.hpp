@@ -47,7 +47,6 @@ private:
   void createTestEvents();
   void unregisterEventHandlers();
   void updateDemoTimer(float deltaTime);
-  void initializeWorld();
 
   void renderUI();
   void renderEventStatus() const;
@@ -111,6 +110,12 @@ private:
   // Demo settings
   float m_worldWidth{800.0f};
   float m_worldHeight{600.0f};
+
+  // Track whether world has been loaded (prevents re-entering LoadingState)
+  bool m_worldLoaded{false};
+
+  // Track if we need to transition to loading screen on first update
+  bool m_needsLoading{false};
 
   // Weather demo variables
   WeatherType m_currentWeather{WeatherType::Clear};
