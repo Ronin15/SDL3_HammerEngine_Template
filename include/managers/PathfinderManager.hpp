@@ -92,11 +92,6 @@ public:
     void prepareForStateTransition();
 
     /**
-     * @brief Shuts down the PathfinderManager
-     */
-    static void shutdown();
-
-    /**
      * @brief Checks if PathfinderManager has been shut down
      * @return true if manager is shut down, false otherwise
      */
@@ -299,13 +294,11 @@ public:
      */
     void resetStats();
 
-    // Destructor needs to be public for unique_ptr
-    ~PathfinderManager();
-
 private:
     using PathCallback = std::function<void(EntityID, const std::vector<Vector2D>&)>;
     // Singleton implementation
     PathfinderManager() = default;
+    ~PathfinderManager();
     PathfinderManager(const PathfinderManager&) = delete;
     PathfinderManager& operator=(const PathfinderManager&) = delete;
 

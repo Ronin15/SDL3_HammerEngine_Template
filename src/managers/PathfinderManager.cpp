@@ -16,16 +16,9 @@
 #include <algorithm>
 #include <cmath>
 
-// Static instance for singleton
-static std::unique_ptr<PathfinderManager> s_instance;
-static std::mutex s_instanceMutex;
-
 PathfinderManager& PathfinderManager::Instance() {
-    std::lock_guard<std::mutex> lock(s_instanceMutex);
-    if (!s_instance) {
-        s_instance.reset(new PathfinderManager());
-    }
-    return *s_instance;
+    static PathfinderManager instance;
+    return instance;
 }
 
 PathfinderManager::~PathfinderManager() {
@@ -194,14 +187,6 @@ void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
 }
 
-void PathfinderManager::shutdown() {
-    std::lock_guard<std::mutex> lock(s_instanceMutex);
-    if (s_instance) {
-        s_instance->clean();
-        s_instance->m_isShutdown = true;
-        s_instance.reset();
-    }
-}
 
 bool PathfinderManager::isShutdown() const {
     return m_isShutdown;

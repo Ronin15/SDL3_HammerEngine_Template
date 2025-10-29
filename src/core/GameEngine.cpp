@@ -1143,9 +1143,9 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
 
-  // Ensure PathfinderManager is shut down after AI to avoid dangling tasks and late logs
-  GAMEENGINE_INFO("Shutting down Pathfinder Manager...");
-  PathfinderManager::shutdown();
+  // Ensure PathfinderManager is cleaned up after AI to avoid dangling tasks and late logs
+  GAMEENGINE_INFO("Cleaning up Pathfinder Manager...");
+  PathfinderManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
