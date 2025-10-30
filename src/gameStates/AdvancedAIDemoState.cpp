@@ -281,6 +281,9 @@ bool AdvancedAIDemoState::exit() {
     WorldManager& worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
         worldMgr.unloadWorld();
+        // CRITICAL: Only reset m_worldLoaded when actually unloading a world
+        // This prevents infinite loop when transitioning to LoadingState (no world yet)
+        m_worldLoaded = false;
     }
 
     // Always restore AI to unpaused state when exiting the demo state

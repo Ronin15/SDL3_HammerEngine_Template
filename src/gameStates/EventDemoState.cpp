@@ -285,6 +285,9 @@ bool EventDemoState::exit() {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
+      // CRITICAL: Only reset m_worldLoaded when actually unloading a world
+      // This prevents infinite loop when transitioning to LoadingState (no world yet)
+      m_worldLoaded = false;
     }
 
     GAMESTATE_INFO("EventDemoState cleanup complete");
