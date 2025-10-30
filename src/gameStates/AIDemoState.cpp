@@ -180,6 +180,51 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
     m_camera->zoomOut();  // ] key = zoom out (objects smaller)
   }
+
+  // NPC spawning controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_N)) {
+    // Spawn all NPCs up to m_npcCount with standard behavior (Wander)
+    if (m_npcsSpawned < m_npcCount) {
+      // Set CollisionManager bounds once before spawning starts
+      if (m_npcsSpawned == 0) {
+        CollisionManager &collisionMgr = CollisionManager::Instance();
+        if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+          collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+          GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
+                         " x " + std::to_string(m_worldHeight));
+        }
+      }
+
+      int npcsToSpawn = m_npcCount - m_npcsSpawned;
+      GAMESTATE_INFO("Spawning " + std::to_string(npcsToSpawn) + " NPCs with Wander behavior...");
+      createNPCBatch(npcsToSpawn);
+      m_npcsSpawned += npcsToSpawn;
+      GAMESTATE_INFO("Spawned " + std::to_string(m_npcsSpawned) + " / " +
+                     std::to_string(m_npcCount) + " NPCs (Standard behavior)");
+    } else {
+      GAMESTATE_INFO("Already spawned " + std::to_string(m_npcCount) + " NPCs (max reached)");
+    }
+  }
+
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
+    // Spawn 2000 NPCs with random behaviors (like EventDemoState)
+    // Set CollisionManager bounds if this is the first spawn
+    if (m_npcs.empty()) {
+      CollisionManager &collisionMgr = CollisionManager::Instance();
+      if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+        collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+        GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
+                       " x " + std::to_string(m_worldHeight));
+      }
+    }
+
+    int previousCount = m_npcs.size();
+    GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
+    createNPCBatchWithRandomBehaviors(2000);
+    int actualSpawned = m_npcs.size() - previousCount;
+    GAMESTATE_INFO("Spawned " + std::to_string(actualSpawned) + " NPCs with random behaviors (Total: " +
+                   std::to_string(m_npcs.size()) + ")");
+  }
 }
 
 bool AIDemoState::enter() {
@@ -245,19 +290,19 @@ bool AIDemoState::enter() {
     ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
     ui.createLabel("ai_instructions_line1",
                    {10, 40, gameEngine.getLogicalWidth() - 20, 20},
-                   "Controls: [B] Exit | [SPACE] Pause/Resume | [1] Wander | "
-                   "[2] Patrol | [3] Chase | [ ] Zoom");
+                   "Controls: [B] Exit | [SPACE] Pause/Resume | [N] Spawn 2K Standard | "
+                   "[M] Spawn 2K Random | [ ] Zoom");
     ui.createLabel("ai_instructions_line2",
                    {10, 75, gameEngine.getLogicalWidth() - 20, 20},
-                   "Advanced: [4] Small | [5] Large | [6] Event | [7] Random | "
-                   "[8] Circle | [9] Target");
+                   "Behaviors: [1] Wander | [2] Patrol | [3] Chase | [4] Small | [5] Large | "
+                   "[6] Event | [7] Random | [8] Circle | [9] Target");
     ui.createLabel("ai_status", {10, 110, 400, 20},
                    "FPS: -- | Entities: -- | AI: RUNNING");
 
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
-    // NPCs will be spawned gradually in update() starting on the first frame
+    // NPCs can be spawned using keyboard triggers (N for standard, M for random behaviors)
     m_npcsSpawned = 0;
 
     return true;
@@ -332,8 +377,8 @@ void AIDemoState::update(float deltaTime) {
 
       // Create world configuration for AI demo
       HammerEngine::WorldGenerationConfig config;
-      config.width = 400;  // Very large world for 10K NPCs with plenty of space
-      config.height = 400;
+      config.width = 500;  // Massive world matching EventDemoState
+      config.height = 500;
       config.seed = static_cast<int>(std::time(nullptr));
       config.elevationFrequency = 0.1f;
       config.humidityFrequency = 0.1f;
@@ -357,39 +402,8 @@ void AIDemoState::update(float deltaTime) {
       return;  // Don't continue with rest of update
     }
 
-    // Batch spawn NPCs (30 NPCs every 10 frames instead of 3 every frame)
-    if (m_npcsSpawned < m_npcCount) {
-      // Set CollisionManager bounds once before spawning starts
-      if (m_npcsSpawned == 0) {
-        CollisionManager &collisionMgr = CollisionManager::Instance();
-        if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
-          collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-          GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
-                         " x " + std::to_string(m_worldHeight));
-        }
-
-        GAMESTATE_INFO("Batch spawning: " + std::to_string(m_npcsPerBatch) + " NPCs every " +
-                       std::to_string(m_spawnInterval) + " frames");
-      }
-
-      // Increment frame counter
-      m_framesSinceLastSpawn++;
-
-      // Only spawn on interval frames
-      if (m_framesSinceLastSpawn >= m_spawnInterval) {
-        m_framesSinceLastSpawn = 0;  // Reset counter
-
-        int npcsToSpawn = std::min(m_npcsPerBatch, m_npcCount - m_npcsSpawned);
-        createNPCBatch(npcsToSpawn);
-        m_npcsSpawned += npcsToSpawn;
-
-        // Log progress every 1000 NPCs
-        if (m_npcsSpawned % 1000 == 0 || m_npcsSpawned == m_npcCount) {
-          GAMESTATE_INFO("Spawned " + std::to_string(m_npcsSpawned) + " / " +
-                         std::to_string(m_npcCount) + " NPCs");
-        }
-      }
-    }
+    // Auto-spawning disabled - use keyboard triggers instead (N key for standard spawn, M key for random behaviors)
+    // Collision bounds are set on first spawn via keyboard trigger
 
     // Update player
     if (m_player) {
@@ -611,6 +625,94 @@ void AIDemoState::createNPCBatch(int count) {
     GAMESTATE_ERROR("Exception in createNPCBatch(): " + std::string(e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatch()");
+  }
+}
+
+void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
+  // Cache AIManager reference for better performance
+  AIManager &aiMgr = AIManager::Instance();
+  WorldManager &worldMgr = WorldManager::Instance();
+  const auto *worldData = worldMgr.getWorldData();
+
+  if (!worldData) {
+    GAMESTATE_ERROR("Cannot create NPCs with random behaviors - world data not available");
+    return;
+  }
+
+  try {
+    // Random number generation for positioning across the entire world
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
+
+    // Calculate tile range
+    int maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
+    int maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
+
+    std::uniform_int_distribution<int> tileDistX(1, maxTileX);  // Start at 1 for margin
+    std::uniform_int_distribution<int> tileDistY(1, maxTileY);
+
+    // Available behaviors for random assignment (matching EventDemoState variety)
+    std::vector<std::string> behaviors = {
+        "Wander", "SmallWander", "LargeWander", "EventWander",
+        "Patrol", "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"
+    };
+    std::uniform_int_distribution<size_t> behaviorDist(0, behaviors.size() - 1);
+
+    // Create batch of NPCs
+    int attempts = 0;
+    int created = 0;
+    const int maxAttempts = count * 10;  // Allow multiple attempts to find valid positions
+
+    while (created < count && attempts < maxAttempts) {
+      attempts++;
+
+      // Pick a random tile
+      int tileX = tileDistX(gen);
+      int tileY = tileDistY(gen);
+
+      // Check if tile is valid (not water, not a building)
+      if (tileY >= 0 && tileY < static_cast<int>(worldData->grid.size()) &&
+          tileX >= 0 && tileX < static_cast<int>(worldData->grid[tileY].size())) {
+
+        const auto &tile = worldData->grid[tileY][tileX];
+
+        // Only spawn on walkable ground (not water, not buildings)
+        if (!tile.isWater && tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+          // Random position within the tile
+          std::uniform_real_distribution<float> offsetDist(0.0f, tileSize);
+          float x = tileX * tileSize + offsetDist(gen);
+          float y = tileY * tileSize + offsetDist(gen);
+          Vector2D position(x, y);
+
+          try {
+            auto npc = NPC::create("npc", position);
+            npc->initializeInventory();
+            npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
+
+            // Assign random behavior from the list
+            std::string randomBehavior = behaviors[behaviorDist(gen)];
+            aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, randomBehavior);
+
+            m_npcs.push_back(npc);
+            created++;
+          } catch (const std::exception &e) {
+            GAMESTATE_ERROR("Exception creating NPC with random behavior: " + std::string(e.what()));
+          }
+        }
+      }
+    }
+
+    if (created < count) {
+      GAMESTATE_WARN("Only created " + std::to_string(created) + " of " +
+                     std::to_string(count) + " requested NPCs with random behaviors after " +
+                     std::to_string(attempts) + " attempts");
+    }
+
+  } catch (const std::exception &e) {
+    GAMESTATE_ERROR("Exception in createNPCBatchWithRandomBehaviors(): " + std::string(e.what()));
+  } catch (...) {
+    GAMESTATE_ERROR("Unknown exception in createNPCBatchWithRandomBehaviors()");
   }
 }
 

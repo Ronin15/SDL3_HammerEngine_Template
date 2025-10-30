@@ -41,7 +41,8 @@ public:
 private:
     // Methods
     void setupAIBehaviors();
-    void createNPCBatch(int count);  // Create a batch of NPCs gradually
+    void createNPCBatch(int count);  // Create a batch of NPCs with standard behavior
+    void createNPCBatchWithRandomBehaviors(int count);  // Create NPCs with random behaviors
     void initializeCamera();
     void updateCamera(float deltaTime);
 
