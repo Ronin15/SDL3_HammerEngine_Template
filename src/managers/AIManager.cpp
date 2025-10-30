@@ -1541,6 +1541,172 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
   // This avoids the expensive position sync loop in update()
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
   size_t updatedCount = 0;
+
+#if defined(AI_SIMD_SSE2)
+  // SSE2: Process 4 entities at once for distance calculations
+  const float playerX = playerPos.getX();
+  const float playerY = playerPos.getY();
+  const __m128 playerPosX = _mm_set1_ps(playerX);
+  const __m128 playerPosY = _mm_set1_ps(playerY);
+
+  size_t i = 0;
+  const size_t simdEnd = (entityCount / 4) * 4;
+
+  for (; i < simdEnd; i += 4) {
+    // Check if all 4 entities in this batch are active
+    bool allActive = m_storage.hotData[i].active && m_storage.entities[i] &&
+                     m_storage.hotData[i+1].active && m_storage.entities[i+1] &&
+                     m_storage.hotData[i+2].active && m_storage.entities[i+2] &&
+                     m_storage.hotData[i+3].active && m_storage.entities[i+3];
+
+    if (!allActive) {
+      // Fall back to scalar for this batch
+      for (size_t j = i; j < i + 4 && j < entityCount; ++j) {
+        auto &hotData = m_storage.hotData[j];
+        if (hotData.active && m_storage.entities[j]) {
+          Vector2D entityPos = m_storage.entities[j]->getPosition();
+          Vector2D diff = entityPos - playerPos;
+          hotData.distanceSquared = diff.lengthSquared();
+          hotData.position = entityPos;
+          updatedCount++;
+        }
+      }
+      continue;
+    }
+
+    // Load 4 entity X positions
+    __m128 entityX = _mm_set_ps(
+      m_storage.entities[i+3]->getPosition().getX(),
+      m_storage.entities[i+2]->getPosition().getX(),
+      m_storage.entities[i+1]->getPosition().getX(),
+      m_storage.entities[i]->getPosition().getX()
+    );
+
+    // Load 4 entity Y positions
+    __m128 entityY = _mm_set_ps(
+      m_storage.entities[i+3]->getPosition().getY(),
+      m_storage.entities[i+2]->getPosition().getY(),
+      m_storage.entities[i+1]->getPosition().getY(),
+      m_storage.entities[i]->getPosition().getY()
+    );
+
+    // Calculate differences
+    __m128 diffX = _mm_sub_ps(entityX, playerPosX);
+    __m128 diffY = _mm_sub_ps(entityY, playerPosY);
+
+    // Calculate squared distances: diffX² + diffY²
+    __m128 distSqX = _mm_mul_ps(diffX, diffX);
+    __m128 distSqY = _mm_mul_ps(diffY, diffY);
+    __m128 distSq = _mm_add_ps(distSqX, distSqY);
+
+    // Store results
+    alignas(16) float distSquaredArray[4];
+    _mm_store_ps(distSquaredArray, distSq);
+
+    // Update hot data with results
+    for (size_t j = 0; j < 4; ++j) {
+      auto &hotData = m_storage.hotData[i + j];
+      hotData.distanceSquared = distSquaredArray[3 - j]; // Reverse order due to _mm_set_ps
+      hotData.position = m_storage.entities[i + j]->getPosition();
+      updatedCount++;
+    }
+  }
+
+  // Scalar tail for remaining entities
+  for (; i < entityCount; ++i) {
+    auto &hotData = m_storage.hotData[i];
+    if (hotData.active && m_storage.entities[i]) {
+      Vector2D entityPos = m_storage.entities[i]->getPosition();
+      Vector2D diff = entityPos - playerPos;
+      hotData.distanceSquared = diff.lengthSquared();
+      hotData.position = entityPos;
+      updatedCount++;
+    }
+  }
+
+#elif defined(AI_SIMD_NEON)
+  // ARM NEON: Process 4 entities at once for distance calculations
+  const float playerX = playerPos.getX();
+  const float playerY = playerPos.getY();
+  const float32x4_t playerPosX = vdupq_n_f32(playerX);
+  const float32x4_t playerPosY = vdupq_n_f32(playerY);
+
+  size_t i = 0;
+  const size_t simdEnd = (entityCount / 4) * 4;
+
+  for (; i < simdEnd; i += 4) {
+    // Check if all 4 entities in this batch are active
+    bool allActive = m_storage.hotData[i].active && m_storage.entities[i] &&
+                     m_storage.hotData[i+1].active && m_storage.entities[i+1] &&
+                     m_storage.hotData[i+2].active && m_storage.entities[i+2] &&
+                     m_storage.hotData[i+3].active && m_storage.entities[i+3];
+
+    if (!allActive) {
+      // Fall back to scalar for this batch
+      for (size_t j = i; j < i + 4 && j < entityCount; ++j) {
+        auto &hotData = m_storage.hotData[j];
+        if (hotData.active && m_storage.entities[j]) {
+          Vector2D entityPos = m_storage.entities[j]->getPosition();
+          Vector2D diff = entityPos - playerPos;
+          hotData.distanceSquared = diff.lengthSquared();
+          hotData.position = entityPos;
+          updatedCount++;
+        }
+      }
+      continue;
+    }
+
+    // Load 4 entity positions
+    const float entityXData[4] = {
+      m_storage.entities[i]->getPosition().getX(),
+      m_storage.entities[i+1]->getPosition().getX(),
+      m_storage.entities[i+2]->getPosition().getX(),
+      m_storage.entities[i+3]->getPosition().getX()
+    };
+    const float entityYData[4] = {
+      m_storage.entities[i]->getPosition().getY(),
+      m_storage.entities[i+1]->getPosition().getY(),
+      m_storage.entities[i+2]->getPosition().getY(),
+      m_storage.entities[i+3]->getPosition().getY()
+    };
+
+    float32x4_t entityX = vld1q_f32(entityXData);
+    float32x4_t entityY = vld1q_f32(entityYData);
+
+    // Calculate differences
+    float32x4_t diffX = vsubq_f32(entityX, playerPosX);
+    float32x4_t diffY = vsubq_f32(entityY, playerPosY);
+
+    // Calculate squared distances: diffX² + diffY²
+    float32x4_t distSq = vmlaq_f32(vmulq_f32(diffX, diffX), diffY, diffY);
+
+    // Store results
+    alignas(16) float distSquaredArray[4];
+    vst1q_f32(distSquaredArray, distSq);
+
+    // Update hot data with results
+    for (size_t j = 0; j < 4; ++j) {
+      auto &hotData = m_storage.hotData[i + j];
+      hotData.distanceSquared = distSquaredArray[j];
+      hotData.position = m_storage.entities[i + j]->getPosition();
+      updatedCount++;
+    }
+  }
+
+  // Scalar tail for remaining entities
+  for (; i < entityCount; ++i) {
+    auto &hotData = m_storage.hotData[i];
+    if (hotData.active && m_storage.entities[i]) {
+      Vector2D entityPos = m_storage.entities[i]->getPosition();
+      Vector2D diff = entityPos - playerPos;
+      hotData.distanceSquared = diff.lengthSquared();
+      hotData.position = entityPos;
+      updatedCount++;
+    }
+  }
+
+#else
+  // Scalar fallback
   for (size_t i = 0; i < entityCount; ++i) {
     auto &hotData = m_storage.hotData[i];
     if (hotData.active && m_storage.entities[i]) {
@@ -1553,6 +1719,7 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
       updatedCount++;
     }
   }
+#endif
 
   // Optional: Early exit if no entities were active
   if (updatedCount == 0) {
