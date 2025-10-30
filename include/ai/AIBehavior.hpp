@@ -94,8 +94,18 @@ protected:
     float lastCrowdAnalysis = 0.0f;
     int cachedNearbyCount = 0;
     std::vector<Vector2D> cachedNearbyPositions;
+
+    // Memory management: trim vector capacity to prevent unbounded growth
+    void trimVectorCapacity() {
+      if (pathPoints.capacity() > 50 && pathPoints.size() < 20) {
+        pathPoints.shrink_to_fit();
+      }
+      if (cachedNearbyPositions.capacity() > 100 && cachedNearbyPositions.size() < 50) {
+        cachedNearbyPositions.shrink_to_fit();
+      }
+    }
   };
-  
+
   // Cached PathfinderManager reference for all behaviors to eliminate Instance() calls
   PathfinderManager& pathfinder() const;
 
