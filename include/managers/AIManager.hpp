@@ -533,6 +533,18 @@ private:
   // Cleared each frame but capacity is retained to eliminate heap churn
   PreFetchedBatchData m_reusablePreFetchBuffer;
 
+  // Reusable buffer for multi-threaded path (shared_ptr for lambda capture safety)
+  // Multi-threaded batches run async, so we need shared_ptr to extend lifetime
+  std::shared_ptr<PreFetchedBatchData> m_reusableMultiThreadedBuffer;
+
+  // Camera bounds cache for entity update culling
+  // Only update animations/sprites for entities within camera view + buffer
+  float m_cameraMinX{0.0f};
+  float m_cameraMaxX{0.0f};
+  float m_cameraMinY{0.0f};
+  float m_cameraMaxY{0.0f};
+  bool m_hasCameraCache{false};
+
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
