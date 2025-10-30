@@ -526,7 +526,6 @@ private:
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos, bool updateDistances,
                     const PreFetchedBatchData& preFetchedData,
-                    const std::vector<size_t>& sortIndices,
                     std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
   void cleanupInactiveEntities();
