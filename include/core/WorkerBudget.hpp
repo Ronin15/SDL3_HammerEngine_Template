@@ -217,20 +217,26 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
                                  std::min(optimalWorkers, config.maxBatchCount * 2));
 
     // Adapt batch strategy based on ThreadSystem queue pressure
+    // IMPORTANT: Only apply queue pressure overrides when NOT using buffer capacity
+    // If optimalWorkers > config.maxBatchCount, buffer workers are allocated and should be used fully
+    bool usingBufferWorkers = (optimalWorkers > config.maxBatchCount);
+
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
-        // High pressure: Use fewer, larger batches to reduce queue overhead
-        // This prevents overwhelming the ThreadSystem when other subsystems are busy
+        // High pressure: Use larger batches to reduce queue overhead
+        // But DON'T reduce maxBatches if buffer workers are allocated - we need them to drain the queue!
         minItemsPerBatch = std::min(baseBatchSize * 2, threshold * 2);
-        size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
-        maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
+
+        if (!usingBufferWorkers) {
+            // Only limit batch count when using base allocation (no buffer)
+            size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
+            maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
+        }
+        // else: Keep maxBatches scaled to optimalWorkers - use all allocated buffer workers
     } else if (queuePressure < (1.0 - QUEUE_PRESSURE_WARNING)) {
         // Low pressure: Use more, smaller batches for better parallelism
-        // ThreadSystem has capacity, so maximize parallel execution
         size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
         minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
-        // Scale with workers in low pressure (more cores = more parallelism opportunity)
-        maxBatches = std::max(config.maxBatchCount,
-                             std::min(optimalWorkers, config.maxBatchCount * 2));
+        // maxBatches already set correctly above based on optimalWorkers
     }
 
     // Calculate actual batch count based on workload and constraints
@@ -310,18 +316,26 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
                                  std::min(optimalWorkers, config.maxBatchCount * 2));
 
     // Adapt batch strategy based on ThreadSystem queue pressure
+    // IMPORTANT: Only apply queue pressure overrides when NOT using buffer capacity
+    // If optimalWorkers > config.maxBatchCount, buffer workers are allocated and should be used fully
+    bool usingBufferWorkers = (optimalWorkers > config.maxBatchCount);
+
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
-        // High pressure: Use fewer, larger batches to reduce queue overhead
+        // High pressure: Use larger batches to reduce queue overhead
+        // But DON'T reduce maxBatches if buffer workers are allocated - we need them to drain the queue!
         minItemsPerBatch = std::min(baseBatchSize * 2, threshold * 2);
-        size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
-        maxBatches = highPressureMax;
+
+        if (!usingBufferWorkers) {
+            // Only limit batch count when using base allocation (no buffer)
+            size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
+            maxBatches = highPressureMax;
+        }
+        // else: Keep maxBatches scaled to optimalWorkers - use all allocated buffer workers
     } else if (queuePressure < (1.0 - QUEUE_PRESSURE_WARNING)) {
         // Low pressure: Use more, smaller batches for better parallelism
         size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
         minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
-        // Scale with workers in low pressure (more cores = more parallelism opportunity)
-        maxBatches = std::max(config.maxBatchCount,
-                             std::min(optimalWorkers, config.maxBatchCount * 2));
+        // maxBatches already set correctly above based on optimalWorkers
     }
 
     // Calculate batch count
@@ -329,9 +343,16 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
 
     // Apply adaptive multiplier for performance-based tuning
-    float multiplier = adaptiveState.batchMultiplier.load(std::memory_order_acquire);
-    batchCount = static_cast<size_t>(batchCount * multiplier);
-    batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+    // IMPORTANT: When buffer workers are allocated, don't let adaptive tuning waste them
+    // The buffer allocation itself is already adaptive (based on workload), so adaptive
+    // batch reduction would just waste the workers we specifically allocated for this workload
+    if (!usingBufferWorkers) {
+        // Only apply adaptive reduction when using base allocation
+        float multiplier = adaptiveState.batchMultiplier.load(std::memory_order_acquire);
+        batchCount = static_cast<size_t>(batchCount * multiplier);
+        batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+    }
+    // else: Using buffer workers - use all of them (batchCount already calculated correctly)
 
     // Calculate final batch size (distribute workload evenly)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
