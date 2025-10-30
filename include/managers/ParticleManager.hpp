@@ -88,6 +88,12 @@ constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
 #include <smmintrin.h>
 #endif
 
+// ARM NEON support (Apple Silicon)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#define PARTICLE_SIMD_NEON 1
+#include <arm_neon.h>
+#endif
+
 // Forward declarations
 class TextureManager;
 class EventManager;

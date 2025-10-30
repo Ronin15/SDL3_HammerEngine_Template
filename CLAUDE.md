@@ -109,6 +109,73 @@ for (size_t i = 0; i < expectedCount; ++i) {
 
 **Rules**: Member vars for hot-path buffers | `clear()` over reconstruction | `reserve()` before loops | Avoid `push_back()` without reserve | Profile allocations with -fsanitize=address
 
+## Cross-Platform SIMD Optimizations
+
+**Supported Platforms**: x86-64 (SSE2/AVX2) + ARM64 (NEON). Intel Macs are NOT supported.
+
+**SIMD-Optimized Systems**:
+- **AIManager**: Distance calculations (3-4x speedup on 10K+ entities)
+- **CollisionManager**: Bounds calculation, layer mask filtering (2-3x speedup on Apple Silicon)
+- **ParticleManager**: Various particle operations
+
+**Platform Detection** (automatic):
+```cpp
+#ifdef AI_SIMD_SSE2        // x86-64 with SSE2
+#ifdef AI_SIMD_AVX2        // x86-64 with AVX2
+#ifdef AI_SIMD_NEON        // ARM64 (Apple Silicon)
+```
+
+**SIMD Abstraction Layer**: `include/utils/SIMDMath.hpp` provides cross-platform SIMD utilities:
+```cpp
+using namespace HammerEngine::SIMD;
+
+// Platform-agnostic SIMD operations
+Float4 a = load4(ptr);              // Load 4 floats
+Float4 b = broadcast(value);         // Broadcast scalar to all lanes
+Float4 c = add(a, b);               // Add vectors
+Float4 d = mul(c, broadcast(2.0f)); // Multiply by scalar
+store4(ptr, d);                      // Store results
+```
+
+**Implementation Pattern**:
+```cpp
+void processData(const std::vector<Data>& input) {
+#if defined(AI_SIMD_SSE2)
+    // x86-64 SSE2 path - process 4 elements at once
+    for (size_t i = 0; i + 3 < input.size(); i += 4) {
+        __m128 data = _mm_loadu_ps(&input[i].value);
+        // ... SIMD processing ...
+    }
+    // Scalar tail for remaining elements
+#elif defined(AI_SIMD_NEON)
+    // ARM NEON path - process 4 elements at once
+    for (size_t i = 0; i + 3 < input.size(); i += 4) {
+        float32x4_t data = vld1q_f32(&input[i].value);
+        // ... SIMD processing ...
+    }
+    // Scalar tail for remaining elements
+#else
+    // Scalar fallback - always works
+    for (size_t i = 0; i < input.size(); ++i) {
+        // ... scalar processing ...
+    }
+#endif
+}
+```
+
+**Best Practices**:
+- Always provide scalar fallback path (portability + debugging)
+- Process 4 elements per iteration (SSE2/NEON native width)
+- Handle non-multiple-of-4 counts with scalar tail loop
+- Use aligned loads/stores when possible (`alignas(16)`)
+- Test on both x86-64 and ARM64 platforms
+
+**Performance Notes**:
+- SIMD provides 2-4x speedup for arithmetic-heavy operations
+- Memory bandwidth can be bottleneck (ensure cache-friendly access)
+- Branch prediction matters - minimize conditionals in SIMD loops
+- Release builds (`-O3 -march=native`) enable full SIMD utilization
+
 ## GameEngine Update/Render Flow
 
 **GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.

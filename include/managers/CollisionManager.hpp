@@ -43,6 +43,12 @@
 #include <immintrin.h>
 #endif
 
+// ARM NEON support (Apple Silicon)
+#if defined(__ARM_NEON) || defined(__ARM_NEON__)
+#define COLLISION_SIMD_NEON 1
+#include <arm_neon.h>
+#endif
+
 // Forward declarations
 namespace HammerEngine {
     class Camera;

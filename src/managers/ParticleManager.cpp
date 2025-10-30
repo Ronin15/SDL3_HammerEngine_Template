@@ -2568,8 +2568,8 @@ void ParticleManager::initTrigLookupTables() {
 void ParticleManager::updateParticlePhysicsSIMD(
     LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
     float deltaTime) {
-    
-#ifdef PARTICLE_SIMD_SSE2
+
+#if defined(PARTICLE_SIMD_SSE2)
   // Prepare aligned SIMD constants
   const __m128 deltaTimeVec = _mm_set1_ps(deltaTime);
   const __m128 atmosphericDragVec = _mm_set1_ps(0.98f);
@@ -2638,8 +2638,80 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // No Vector2D sync required
 
+#elif defined(PARTICLE_SIMD_NEON)
+  // ARM NEON: Prepare SIMD constants
+  const float32x4_t deltaTimeVec = vdupq_n_f32(deltaTime);
+  const float32x4_t atmosphericDragVec = vdupq_n_f32(0.98f);
+
+  // Quick bounds check - only validate once
+  const size_t particleCount = particles.size();
+  if (endIdx > particleCount || startIdx >= endIdx) return;
+  endIdx = std::min(endIdx, particleCount);
+
+  // SIMD arrays are primary storage; operate directly on them
+
+  // Scalar pre-loop to align to 4-float boundary for aligned loads
+  size_t i = startIdx;
+  while (i < endIdx && (i & 0x3) != 0) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+    ++i;
+  }
+
+  // NEON main loop - use aligned loads for maximum performance
+  const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  for (; i < simdEnd; i += 4) {
+    // NEON flag check for 4 particles: skip if none active
+    const uint8x16_t flagsv = vld1q_u8(reinterpret_cast<const uint8_t*>(&particles.flags[i]));
+    const uint8x16_t activeMask = vdupq_n_u8(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+    const uint8x16_t activev = vandq_u8(flagsv, activeMask);
+    const uint8x16_t gt0 = vcgtq_u8(activev, vdupq_n_u8(0));
+    // Check if any of first 4 bytes are active
+    uint8x8_t narrow = vget_low_u8(gt0);
+    uint64_t maskBits = vget_lane_u64(vreinterpret_u64_u8(narrow), 0);
+    if ((maskBits & 0xFFFFFFFF) == 0) continue;
+
+    // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
+    float32x4_t posXv = vld1q_f32(&particles.posX[i]);
+    float32x4_t posYv = vld1q_f32(&particles.posY[i]);
+    float32x4_t velXv = vld1q_f32(&particles.velX[i]);
+    float32x4_t velYv = vld1q_f32(&particles.velY[i]);
+    const float32x4_t accXv = vld1q_f32(&particles.accX[i]);
+    const float32x4_t accYv = vld1q_f32(&particles.accY[i]);
+
+    // NEON physics update: vel = (vel + acc * dt) * drag
+    velXv = vmulq_f32(vmlaq_f32(velXv, accXv, deltaTimeVec), atmosphericDragVec);
+    velYv = vmulq_f32(vmlaq_f32(velYv, accYv, deltaTimeVec), atmosphericDragVec);
+
+    // pos = pos + vel * dt
+    posXv = vmlaq_f32(posXv, velXv, deltaTimeVec);
+    posYv = vmlaq_f32(posYv, velYv, deltaTimeVec);
+
+    // Store results back to SIMD arrays
+    vst1q_f32(&particles.velX[i], velXv);
+    vst1q_f32(&particles.velY[i], velYv);
+    vst1q_f32(&particles.posX[i], posXv);
+    vst1q_f32(&particles.posY[i], posYv);
+  }
+
+  // Scalar tail
+  for (; i < endIdx; ++i) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+  }
+
+  // No Vector2D sync required
+
 #else
-  // Fallback to scalar implementation for platforms without SSE2
+  // Fallback to scalar implementation for platforms without SIMD
   for (size_t i = startIdx; i < endIdx; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
     particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
