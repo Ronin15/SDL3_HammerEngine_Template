@@ -597,6 +597,16 @@ private:
       m_performanceStats;
   mutable std::mutex m_perfMutex;
 
+  // Performance tracking for DEBUG logging (matching AIManager/CollisionManager style)
+  static constexpr size_t PERF_SAMPLE_SIZE = 60;  // Rolling average over 60 frames
+  mutable std::array<double, PERF_SAMPLE_SIZE> m_updateTimeSamples{};
+  mutable size_t m_currentSampleIndex{0};
+  mutable double m_avgUpdateTimeMs{0.0};
+  mutable uint64_t m_frameCounter{0};
+  mutable uint64_t m_lastDebugLogFrame{0};
+  mutable uint64_t m_totalHandlerCalls{0};
+  static constexpr uint64_t DEBUG_LOG_INTERVAL = 300;  // Log every 300 frames (~5 seconds at 60fps)
+
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
 

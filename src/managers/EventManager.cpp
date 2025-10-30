@@ -332,6 +332,61 @@ void EventManager::update() {
   // Store total update time for adaptive batch tuning
   m_adaptiveBatchState.lastUpdateTimeMs.store(totalTimeMs, std::memory_order_release);
 
+  // Update rolling average for DEBUG logging
+  m_updateTimeSamples[m_currentSampleIndex] = totalTimeMs;
+  m_currentSampleIndex = (m_currentSampleIndex + 1) % PERF_SAMPLE_SIZE;
+
+  // Calculate rolling average
+  double sum = 0.0;
+  for (size_t i = 0; i < PERF_SAMPLE_SIZE; ++i) {
+    sum += m_updateTimeSamples[i];
+  }
+  m_avgUpdateTimeMs = sum / PERF_SAMPLE_SIZE;
+
+  m_frameCounter++;
+
+  // Periodic DEBUG logging (every ~5 seconds at 60fps)
+  if (m_frameCounter - m_lastDebugLogFrame >= DEBUG_LOG_INTERVAL) {
+    m_lastDebugLogFrame = m_frameCounter;
+
+    // Count handlers per type (lock-free read for debug - slightly stale data is acceptable)
+    size_t totalHandlers = 0;
+    for (const auto& handlers : m_handlersByType) {
+      totalHandlers += handlers.size();
+    }
+
+    // Build event summary string with counts per type
+    std::string eventSummary = "";
+    for (size_t i = 0; i < eventCountsByType.size(); ++i) {
+      if (eventCountsByType[i] > 0) {
+        if (!eventSummary.empty()) eventSummary += ", ";
+        eventSummary += getEventTypeName(static_cast<EventTypeId>(i)) +
+                       "=" + std::to_string(eventCountsByType[i]);
+      }
+    }
+    if (eventSummary.empty()) eventSummary = "none";
+
+    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
+
+    if (wasThreaded) {
+      size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
+      size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
+      size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
+
+      EVENT_DEBUG("Event Summary - Active: " + std::to_string(totalEventCount) +
+                  ", Handlers: " + std::to_string(totalHandlers) +
+                  ", Avg Update: " + std::to_string(m_avgUpdateTimeMs) + "ms" +
+                  " [Threaded: " + std::to_string(optimalWorkers) + "/" +
+                  std::to_string(availableWorkers) + " workers, Budget: " +
+                  std::to_string(eventBudget) + "] [Types: " + eventSummary + "]");
+    } else {
+      EVENT_DEBUG("Event Summary - Active: " + std::to_string(totalEventCount) +
+                  ", Handlers: " + std::to_string(totalHandlers) +
+                  ", Avg Update: " + std::to_string(m_avgUpdateTimeMs) + "ms" +
+                  " [Single-threaded] [Types: " + eventSummary + "]");
+    }
+  }
+
   // Only log severe performance issues (>10ms) to reduce noise
   if (totalTimeMs > 10.0) {
     bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
