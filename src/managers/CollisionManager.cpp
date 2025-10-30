@@ -771,6 +771,8 @@ void CollisionManager::populateStaticCache() {
         }
 
         cache.valid = true;
+        cache.lastAccessFrame = m_perf.frames;
+        cache.staleCount = 0;
 
         cachedCells++;
         totalStaticBodies += cache.staticIndices.size();
@@ -1155,6 +1157,7 @@ void CollisionManager::processPendingCommands() {
           EventManager::Instance().triggerCollisionObstacleChanged(cmd.position, radius, description,
                                                                   EventManager::DispatchMode::Deferred);
           m_staticHashDirty = true;
+          m_staticGridDirty = true;  // OPTIMIZATION: Rebuild spatial grid
         }
         break;
       }
@@ -1179,6 +1182,7 @@ void CollisionManager::processPendingCommands() {
             EventManager::Instance().triggerCollisionObstacleChanged(hot.position, radius, description,
                                                                     EventManager::DispatchMode::Deferred);
             m_staticHashDirty = true;
+            m_staticGridDirty = true;  // OPTIMIZATION: Rebuild spatial grid
           }
         }
 
@@ -1334,10 +1338,57 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 }
 
 
-// Optimized version of buildActiveIndicesSOA - O(N) instead of O(N²)
+// OPTIMIZATION: Rebuild static spatial grid (called when statics added/removed)
+void CollisionManager::rebuildStaticSpatialGrid() {
+  m_staticSpatialGrid.clear();
+
+  // Iterate through all bodies and add statics to grid
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active) continue;
+
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+    if (bodyType != BodyType::STATIC) continue;
+
+    // Calculate grid cell for this static body
+    int32_t cellX = static_cast<int32_t>(std::floor(hot.position.getX() / STATIC_GRID_CELL_SIZE));
+    int32_t cellY = static_cast<int32_t>(std::floor(hot.position.getY() / STATIC_GRID_CELL_SIZE));
+
+    StaticGridCell cell{cellX, cellY};
+    m_staticSpatialGrid[cell].push_back(i);
+  }
+
+  m_staticGridDirty = false;
+}
+
+// OPTIMIZATION: Query static grid cells that intersect with culling area
+void CollisionManager::queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const {
+  outIndices.clear();
+
+  // Calculate grid cell range for culling area
+  int32_t minCellX = static_cast<int32_t>(std::floor(area.minX / STATIC_GRID_CELL_SIZE));
+  int32_t minCellY = static_cast<int32_t>(std::floor(area.minY / STATIC_GRID_CELL_SIZE));
+  int32_t maxCellX = static_cast<int32_t>(std::floor(area.maxX / STATIC_GRID_CELL_SIZE));
+  int32_t maxCellY = static_cast<int32_t>(std::floor(area.maxY / STATIC_GRID_CELL_SIZE));
+
+  // Iterate over grid cells that intersect culling area
+  for (int32_t cellY = minCellY; cellY <= maxCellY; ++cellY) {
+    for (int32_t cellX = minCellX; cellX <= maxCellX; ++cellX) {
+      StaticGridCell cell{cellX, cellY};
+      auto it = m_staticSpatialGrid.find(cell);
+      if (it != m_staticSpatialGrid.end()) {
+        // Add all static indices from this cell
+        outIndices.insert(outIndices.end(), it->second.begin(), it->second.end());
+      }
+    }
+  }
+}
+
+// Optimized version of buildActiveIndicesSOA with spatial grid + frame decimation
 std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) const {
   // Build indices of active bodies within culling area
-  // OPTIMIZATION: Count body types during iteration to avoid expensive count_if calls
+  // OPTIMIZATION 1: Use spatial grid to only iterate visible static bodies
+  // OPTIMIZATION 2: Cache static culling results for 4 frames (statics don't move!)
   auto& pools = m_collisionPool;
 
   // Store current culling area for use in broadphase queries
@@ -1346,47 +1397,71 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   pools.movableIndices.clear();
   pools.staticIndices.clear();
 
-  // Track total body counts (before culling)
+  // Track total body counts
   size_t totalStatic = 0;
   size_t totalDynamic = 0;
   size_t totalKinematic = 0;
 
-  // Linear pass - spatial hash handles proximity efficiently
+  // OPTIMIZATION: Rebuild static spatial grid only on world events (when statics added/removed)
+  if (m_staticGridDirty) {
+    // Rebuild spatial grid (world changed - statics added/removed)
+    const_cast<CollisionManager*>(this)->rebuildStaticSpatialGrid();
+  }
+
+  // OPTIMIZATION: Query spatial grid for statics in culling area (avoids iterating all 28K statics)
+  std::vector<size_t> visibleStaticIndices;
+  queryStaticGridCells(cullingArea, visibleStaticIndices);
+
+  // Filter by active status and exact culling bounds (grid is coarse 512×512, refine here)
+  auto it = std::remove_if(visibleStaticIndices.begin(), visibleStaticIndices.end(),
+    [this, &cullingArea](size_t i) {
+      if (i >= m_storage.hotData.size()) return true;
+      const auto& hot = m_storage.hotData[i];
+      if (!hot.active) return true;
+
+      // Exact culling check (grid is coarse, this refines it)
+      if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
+        if (!cullingArea.contains(hot.position.getX(), hot.position.getY())) {
+          return true;
+        }
+      }
+      return false;
+    });
+  visibleStaticIndices.erase(it, visibleStaticIndices.end());
+
+  // Use filtered static indices from spatial grid query
+  totalStatic = visibleStaticIndices.size();
+  pools.staticIndices = std::move(visibleStaticIndices);
+
+  // Process movable bodies (DYNAMIC + KINEMATIC) - these change every frame
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
     if (!hot.active) continue;
 
-    // CRITICAL: Apply culling FIRST to skip 99% of bodies early
-    // This prevents unnecessary work on bodies far from camera
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
+    if (bodyType == BodyType::STATIC) continue;  // Skip statics (already cached)
+
+    // Apply culling to movable bodies
     if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
       if (!cullingArea.contains(hot.position.getX(), hot.position.getY())) {
-        continue; // Skip bodies outside culling area
+        continue;
       }
     }
 
-    // Now check body type only for bodies that passed culling (~100 bodies vs 27k)
-    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-
-    // Count active (post-culling) bodies by type
-    if (bodyType == BodyType::STATIC) {
-      totalStatic++;
-    } else if (bodyType == BodyType::DYNAMIC) {
+    // Count movable bodies
+    if (bodyType == BodyType::DYNAMIC) {
       totalDynamic++;
     } else if (bodyType == BodyType::KINEMATIC) {
       totalKinematic++;
     }
 
-    pools.activeIndices.push_back(i);
-
-    // Categorize by body type for optimized processing
-    if (bodyType == BodyType::STATIC) {
-      pools.staticIndices.push_back(i);
-    } else {
-      // movableIndices contains both DYNAMIC and KINEMATIC bodies
-      // They are grouped together for broadphase collision detection
-      pools.movableIndices.push_back(i);
-    }
+    pools.movableIndices.push_back(i);
   }
+
+  // Combine cached statics + current movables into activeIndices
+  pools.activeIndices.reserve(pools.staticIndices.size() + pools.movableIndices.size());
+  pools.activeIndices.insert(pools.activeIndices.end(), pools.staticIndices.begin(), pools.staticIndices.end());
+  pools.activeIndices.insert(pools.activeIndices.end(), pools.movableIndices.begin(), pools.movableIndices.end());
 
   return {totalStatic, totalDynamic, totalKinematic};
 }
@@ -1544,6 +1619,10 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     if (regionCacheIt != m_coarseRegionStaticCache.end()) {
 
       if (regionCacheIt != m_coarseRegionStaticCache.end() && regionCacheIt->second.valid) {
+        // Mark cache entry as accessed (reset stale count)
+        regionCacheIt->second.lastAccessFrame = m_perf.frames;
+        regionCacheIt->second.staleCount = 0;
+
         const auto& staticCandidates = regionCacheIt->second.staticIndices;
 
 #ifdef COLLISION_SIMD_SSE2
@@ -2121,8 +2200,8 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
 
         // FIXED: NO CULLING on cache population!
         // The coarse region cache must contain ALL static bodies in the cell,
-        // regardless of camera position. Otherwise, buildings approaching from
-        // off-screen won't be detected until deep penetration occurs.
+        // regardless of culling area. Otherwise, buildings approaching from
+        // outside the specified area won't be detected until deep penetration occurs.
         // Culling happens at the dynamic body level (buildActiveIndicesSOA).
 
         // Cache result for entire region (all bodies in this cell will share it)
@@ -2140,6 +2219,10 @@ void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
       // Body still in same coarse cell, cache is valid
       m_cacheHits++;
     }
+
+    // Mark cache entry as accessed this frame (reset stale count)
+    regionCache.lastAccessFrame = m_perf.frames;
+    regionCache.staleCount = 0;
   }
 }
 
@@ -2161,24 +2244,40 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   // Coarse cell size (from HierarchicalSpatialHash - 128 pixels)
   constexpr float COARSE_CELL_SIZE = 128.0f;
 
-  // Iterate through cache and remove entries outside eviction bounds
+  // Iterate through cache and mark stale entries for potential removal
   size_t evictedCount = 0;
+  size_t invalidatedCount = 0;
   for (auto it = m_coarseRegionStaticCache.begin(); it != m_coarseRegionStaticCache.end(); ) {
     const auto& coord = it->first;
+    auto& cache = it->second;
 
     // Calculate center of this coarse cell
     float cellCenterX = (coord.x + 0.5f) * COARSE_CELL_SIZE;
     float cellCenterY = (coord.y + 0.5f) * COARSE_CELL_SIZE;
 
     // Check if cell center is outside eviction bounds
-    if (cellCenterX < evictionMinX || cellCenterX > evictionMaxX ||
-        cellCenterY < evictionMinY || cellCenterY > evictionMaxY) {
-      // Evict this cache entry
-      it = m_coarseRegionStaticCache.erase(it);
-      evictedCount++;
-    } else {
-      ++it;
+    bool outsideBounds = (cellCenterX < evictionMinX || cellCenterX > evictionMaxX ||
+                         cellCenterY < evictionMinY || cellCenterY > evictionMaxY);
+
+    if (outsideBounds) {
+      // Cache entry is far from active area - increment stale count
+      cache.staleCount++;
+
+      // Only remove if stale for multiple eviction cycles (prevents thrashing)
+      if (cache.staleCount >= m_cacheStaleThreshold) {
+        it = m_coarseRegionStaticCache.erase(it);
+        evictedCount++;
+        continue;
+      } else {
+        // Mark as invalid but keep in memory (lazy re-population)
+        if (cache.valid) {
+          cache.valid = false;
+          invalidatedCount++;
+        }
+      }
     }
+
+    ++it;
   }
 
   // Update performance metrics

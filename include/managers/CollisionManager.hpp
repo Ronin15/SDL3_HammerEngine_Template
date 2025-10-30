@@ -155,11 +155,13 @@ public:
     void setCullingBuffer(float buffer) { m_cullingBuffer = buffer; }
     void setCacheEvictionMultiplier(float multiplier) { m_cacheEvictionMultiplier = multiplier; }
     void setCacheEvictionInterval(size_t interval) { m_cacheEvictionInterval = interval; }
+    void setCacheStaleThreshold(uint8_t threshold) { m_cacheStaleThreshold = threshold; }
 
     // Configuration getters
     float getCullingBuffer() const { return m_cullingBuffer; }
     float getCacheEvictionMultiplier() const { return m_cacheEvictionMultiplier; }
     size_t getCacheEvictionInterval() const { return m_cacheEvictionInterval; }
+    uint8_t getCacheStaleThreshold() const { return m_cacheStaleThreshold; }
     void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
     void setVelocity(EntityID id, const Vector2D& velocity);
     void setBodyTrigger(EntityID id, bool isTrigger);
@@ -262,17 +264,18 @@ private:
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
     static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
-    static constexpr float CACHE_EVICTION_MULTIPLIER = 3.0f;        // Cache entries beyond 3x culling buffer are evicted
-    static constexpr size_t CACHE_EVICTION_INTERVAL = 60;           // Evict stale cache entries every 60 frames
+    static constexpr float CACHE_EVICTION_MULTIPLIER = 3.0f;        // Cache entries beyond 3x culling buffer are marked stale
+    static constexpr size_t CACHE_EVICTION_INTERVAL = 300;          // Check for stale cache entries every 300 frames (5 seconds at 60 FPS)
+    static constexpr uint8_t CACHE_STALE_THRESHOLD = 3;             // Remove cache entries after 3 consecutive eviction cycles without access
 
     // Collision prediction configuration - prevents diagonal tunneling through corners
     static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
     static constexpr float FAST_VELOCITY_THRESHOLD = 250.0f;        // Velocity threshold for AABB expansion (pixels/frame)
 
-    // Camera culling support
+    // Spatial culling support (area-based, not camera-based)
     struct CullingArea {
         float minX, minY, maxX, maxY;
-        float bufferSize{COLLISION_CULLING_BUFFER}; // Buffer around camera view
+        float bufferSize{COLLISION_CULLING_BUFFER}; // Buffer around specified culling area
 
         bool contains(float x, float y) const {
             return x >= minX && x <= maxX && y >= minY && y <= maxY;
@@ -284,11 +287,16 @@ private:
     CullingArea createDefaultCullingArea() const;
     void evictStaleCacheEntries(const CullingArea& cullingArea);
 
+    // OPTIMIZATION HELPERS: Static spatial grid and frame decimation
+    void rebuildStaticSpatialGrid();
+    void queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const;
+
 
     // Configurable collision culling parameters (runtime adjustable)
     float m_cullingBuffer{COLLISION_CULLING_BUFFER};
     float m_cacheEvictionMultiplier{CACHE_EVICTION_MULTIPLIER};
     size_t m_cacheEvictionInterval{CACHE_EVICTION_INTERVAL};
+    uint8_t m_cacheStaleThreshold{CACHE_STALE_THRESHOLD};
 
     bool m_initialized{false};
     bool m_isShutdown{false};
@@ -452,6 +460,8 @@ private:
     struct CoarseRegionStaticCache {
         std::vector<size_t> staticIndices;
         bool valid{false};
+        uint64_t lastAccessFrame{0};  // Frame number when this cache entry was last accessed
+        uint8_t staleCount{0};         // Number of consecutive eviction cycles without access
     };
     std::unordered_map<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
                        CoarseRegionStaticCache,
@@ -464,6 +474,26 @@ private:
 
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
+
+    // OPTIMIZATION: Static Spatial Grid for efficient culling queries
+    // Coarse grid (512×512 cells) to quickly filter static bodies by culling area
+    // Grid is rebuilt only on world events (statics added/removed), not every frame
+    static constexpr float STATIC_GRID_CELL_SIZE = 512.0f;
+    struct StaticGridCell {
+        int32_t x;
+        int32_t y;
+        bool operator==(const StaticGridCell& other) const {
+            return x == other.x && y == other.y;
+        }
+    };
+    struct StaticGridCellHash {
+        size_t operator()(const StaticGridCell& cell) const {
+            // Simple hash combining x and y
+            return std::hash<int32_t>()(cell.x) ^ (std::hash<int32_t>()(cell.y) << 1);
+        }
+    };
+    std::unordered_map<StaticGridCell, std::vector<size_t>, StaticGridCellHash> m_staticSpatialGrid;
+    bool m_staticGridDirty{true};  // Rebuild grid when statics added/removed
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
