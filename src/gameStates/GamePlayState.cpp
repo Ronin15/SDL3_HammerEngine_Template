@@ -138,23 +138,28 @@ void GamePlayState::render() {
   // Cache manager references for better performance
   FontManager &fontMgr = FontManager::Instance();
 
-  // Get camera view area for culling and rendering
-  HammerEngine::Camera::ViewRect viewRect = m_camera->getViewRect();
+  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+  HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
+  if (m_camera) {
+    viewRect = m_camera->getViewRect();
+  }
 
   // Set render scale for zoom (scales all world/entity rendering automatically)
-  float zoom = m_camera->getZoom();
+  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   SDL_SetRenderScale(renderer, zoom, zoom);
 
   // Render world using camera coordinate transformations
-  auto &worldMgr = WorldManager::Instance();
-  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer,
-                   viewRect.x, viewRect.y,  // Camera view area
-                   viewRect.width, viewRect.height);
+  if (m_camera) {
+    auto &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.render(renderer,
+                     viewRect.x, viewRect.y,  // Camera view area
+                     viewRect.width, viewRect.height);
+    }
   }
 
   // Render player using camera coordinate transformations
-  if (mp_Player) {
+  if (mp_Player && m_camera) {
     mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
   }
 
@@ -215,6 +220,9 @@ bool GamePlayState::exit() {
   auto& worldManager = WorldManager::Instance();
   if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
     worldManager.unloadWorld();
+    // CRITICAL: Only reset m_worldLoaded when actually unloading a world
+    // This prevents infinite loop when transitioning to LoadingState (no world yet)
+    m_worldLoaded = false;
   }
 
   // Full UI cleanup using standard pattern
