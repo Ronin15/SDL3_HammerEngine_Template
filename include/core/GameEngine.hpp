@@ -300,7 +300,7 @@ private:
   AIManager *mp_aiManager{nullptr};
   EventManager *mp_eventManager{nullptr};
   ParticleManager *mp_particleManager{nullptr};
-  PathfinderManager *mp_pathfinderManager{nullptr};
+  PathfinderManager *mp_pathfinderManager{nullptr}; // Initialized by AIManager, cached by GameEngine
   ResourceTemplateManager *mp_resourceTemplateManager{nullptr};
   WorldResourceManager *mp_worldResourceManager{nullptr};
   WorldManager *mp_worldManager{nullptr};

@@ -309,6 +309,12 @@ inline std::mutex Logger::s_logMutex{};
 #define PATHFIND_INFO(msg) HAMMER_INFO("Pathfinding", msg)
 #define PATHFIND_DEBUG(msg) HAMMER_DEBUG("Pathfinding", msg)
 
+#define SETTINGS_CRITICAL(msg) HAMMER_CRITICAL("SettingsManager", msg)
+#define SETTINGS_ERROR(msg) HAMMER_ERROR("SettingsManager", msg)
+#define SETTINGS_WARNING(msg) HAMMER_WARN("SettingsManager", msg)
+#define SETTINGS_INFO(msg) HAMMER_INFO("SettingsManager", msg)
+#define SETTINGS_DEBUG(msg) HAMMER_DEBUG("SettingsManager", msg)
+
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \
   HammerEngine::Logger::SetBenchmarkMode(true)

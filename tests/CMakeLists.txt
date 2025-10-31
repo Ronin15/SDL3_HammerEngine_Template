@@ -37,6 +37,7 @@ target_link_libraries(TestMocks PUBLIC HammerEngineLib)
 # Simple tests (no mocks needed)
 set(SIMPLE_TESTS
     save_manager_tests
+    settings_manager_tests
     thread_system_tests
     game_state_manager_tests
     ai_optimization_tests
@@ -89,6 +90,8 @@ foreach(test_name ${SIMPLE_TESTS})
     # Determine source file based on test name
     if(${test_name} STREQUAL "save_manager_tests")
         set(test_source "SaveManagerTests.cpp")
+    elseif(${test_name} STREQUAL "settings_manager_tests")
+        set(test_source "SettingsManagerTests.cpp")
     elseif(${test_name} STREQUAL "thread_system_tests")
         set(test_source "ThreadSystemTests.cpp")
     elseif(${test_name} STREQUAL "game_state_manager_tests")
