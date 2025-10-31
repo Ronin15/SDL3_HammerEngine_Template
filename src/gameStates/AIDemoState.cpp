@@ -230,6 +230,12 @@ void AIDemoState::handleInput() {
 bool AIDemoState::enter() {
   GAMESTATE_INFO("Entering AIDemoState...");
 
+  // Check if already initialized (resuming after LoadingState)
+  if (m_initialized) {
+    GAMESTATE_INFO("Already initialized - resuming AIDemoState");
+    return true;  // Skip all loading logic
+  }
+
   // Check if world needs to be loaded
   if (!m_worldLoaded) {
     GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
@@ -305,6 +311,9 @@ bool AIDemoState::enter() {
     // NPCs can be spawned using keyboard triggers (N for standard, M for random behaviors)
     m_npcsSpawned = 0;
 
+    // Mark as fully initialized to prevent re-entering loading logic
+    m_initialized = true;
+
     return true;
   } catch (const std::exception &e) {
     GAMESTATE_ERROR("Exception in AIDemoState::enter(): " + std::string(e.what()));
@@ -365,6 +374,9 @@ bool AIDemoState::exit() {
   // This prevents the global pause from affecting other states
   aiMgr.setGlobalPause(false);
   m_aiPaused = false;
+
+  // Reset initialization flag for next fresh start
+  m_initialized = false;
 
   GAMESTATE_INFO("AIDemoState exit complete");
   return true;

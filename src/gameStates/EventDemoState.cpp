@@ -57,6 +57,12 @@ EventDemoState::~EventDemoState() {
 bool EventDemoState::enter() {
   GAMESTATE_INFO("Entering EventDemoState...");
 
+  // Check if already initialized (resuming after LoadingState)
+  if (m_initialized) {
+    GAMESTATE_INFO("Already initialized - resuming EventDemoState");
+    return true;  // Skip all loading logic
+  }
+
   // Check if world needs to be loaded
   if (!m_worldLoaded) {
     GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
@@ -214,6 +220,9 @@ bool EventDemoState::enter() {
     // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
 
+    // Mark as fully initialized to prevent re-entering loading logic
+    m_initialized = true;
+
     GAMESTATE_INFO("EventDemoState initialized successfully");
     return true;
 
@@ -289,6 +298,9 @@ bool EventDemoState::exit() {
       // This prevents infinite loop when transitioning to LoadingState (no world yet)
       m_worldLoaded = false;
     }
+
+    // Reset initialization flag for next fresh start
+    m_initialized = false;
 
     GAMESTATE_INFO("EventDemoState cleanup complete");
     return true;
