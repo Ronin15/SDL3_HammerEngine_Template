@@ -139,6 +139,12 @@ void AdvancedAIDemoState::handleInput() {
 bool AdvancedAIDemoState::enter() {
     GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
+    // Check if already initialized (resuming after LoadingState)
+    if (m_initialized) {
+        GAMESTATE_INFO("Already initialized - resuming AdvancedAIDemoState");
+        return true;  // Skip all loading logic
+    }
+
     // Check if world needs to be loaded
     if (!m_worldLoaded) {
         GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
@@ -227,6 +233,9 @@ bool AdvancedAIDemoState::enter() {
         GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
         GAMESTATE_INFO("Combat system initialized with health/damage attributes");
 
+        // Mark as fully initialized to prevent re-entering loading logic
+        m_initialized = true;
+
         return true;
     } catch (const std::exception& e) {
         GAMESTATE_ERROR("Exception in AdvancedAIDemoState::enter(): " + std::string(e.what()));
@@ -289,6 +298,9 @@ bool AdvancedAIDemoState::exit() {
     // Always restore AI to unpaused state when exiting the demo state
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
+
+    // Reset initialization flag for next fresh start
+    m_initialized = false;
 
     GAMESTATE_INFO("AdvancedAIDemoState exit complete");
     return true;

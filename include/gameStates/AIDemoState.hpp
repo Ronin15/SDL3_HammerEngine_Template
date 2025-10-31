@@ -63,6 +63,9 @@ private:
     // Track if we need to transition to loading screen on first update
     bool m_needsLoading{false};
 
+    // Track if state is fully initialized (after returning from LoadingState)
+    bool m_initialized{false};
+
     // Camera for world navigation
     std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 

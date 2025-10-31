@@ -117,6 +117,9 @@ private:
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
 
+  // Track if state is fully initialized (after returning from LoadingState)
+  bool m_initialized{false};
+
   // Weather demo variables
   WeatherType m_currentWeather{WeatherType::Clear};
   float m_weatherTransitionTime{3.0f};

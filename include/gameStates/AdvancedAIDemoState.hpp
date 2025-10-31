@@ -72,6 +72,9 @@ private:
     // Track if we need to transition to loading screen on first update
     bool m_needsLoading{false};
 
+    // Track if state is fully initialized (after returning from LoadingState)
+    bool m_initialized{false};
+
     // Combat system attributes (architecturally integrated)
     struct CombatAttributes {
         float health{100.0f};
