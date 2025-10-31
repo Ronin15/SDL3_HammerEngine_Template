@@ -281,11 +281,11 @@ if %ERRORLEVEL% neq 0 (
     echo WARNING: Failed to copy test output to timestamped file
 )
 
-REM Extract performance metrics and test summary
-echo Extracting performance metrics...
-findstr /i "time: performance TestCase Running.*test.*cases failures.*detected No.*errors.*detected" "%OUTPUT_FILE%" > "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_summary.txt"
+REM Extract test summary
+echo Extracting test summary...
+findstr /i "TestCase Running.*test.*cases failures.*detected No.*errors.*detected" "%OUTPUT_FILE%" > "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_summary.txt"
 if %ERRORLEVEL% neq 0 (
-    echo WARNING: No performance metrics found in test output
+    echo WARNING: No test summary found in test output
 )
 REM Check test results
 findstr /i "failure test.*cases.*failed errors.*detected.*[1-9]" "%OUTPUT_FILE%" >nul

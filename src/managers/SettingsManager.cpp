@@ -6,6 +6,7 @@
 #include "managers/SettingsManager.hpp"
 #include "core/Logger.hpp"
 #include "utils/JsonReader.hpp"
+#include <algorithm>
 #include <fstream>
 #include <sstream>
 
