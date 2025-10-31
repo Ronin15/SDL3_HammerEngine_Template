@@ -65,6 +65,15 @@ bool AIManager::init() {
       AI_INFO("PathfinderManager initialized successfully");
     }
 
+    // Initialize CollisionManager (AIManager heavily uses collision system)
+    if (!CollisionManager::Instance().isInitialized()) {
+      if (!CollisionManager::Instance().init()) {
+        AI_ERROR("Failed to initialize CollisionManager");
+        return false;
+      }
+      AI_INFO("CollisionManager initialized successfully");
+    }
+
     AI_INFO("AIManager initialized successfully");
     return true;
 
@@ -136,7 +145,17 @@ void AIManager::clean() {
     m_messageQueue.clear();
   }
 
-  // Note: PathfinderManager is a singleton and will be shut down separately
+  // Clean up PathfinderManager (initialized by AIManager)
+  if (PathfinderManager::Instance().isInitialized()) {
+    AI_INFO("Cleaning up PathfinderManager...");
+    PathfinderManager::Instance().clean();
+  }
+
+  // Clean up CollisionManager (initialized by AIManager)
+  if (CollisionManager::Instance().isInitialized()) {
+    AI_INFO("Cleaning up CollisionManager...");
+    CollisionManager::Instance().clean();
+  }
 
   // Reset all counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);

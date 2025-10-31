@@ -68,7 +68,7 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding, ParticleManager, Resource Manager, World functionality tests
+    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, Collision, Pathfinding, ParticleManager, Resource Manager, World functionality tests
     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, and Pathfinder performance benchmarks
     echo.
     echo Execution Time:
@@ -91,7 +91,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=21
+set CORE_TEST_COUNT=22
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=6
 
@@ -151,6 +151,7 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_ai_optimization_tests.bat" false
     call :run_single_test "run_behavior_functionality_tests.bat" false
     call :run_single_test "run_save_tests.bat" false
+    call :run_single_test "run_settings_tests.bat" false
     call :run_single_test "run_game_state_manager_tests.bat" false
     call :run_single_test "run_event_tests.bat" false
     call :run_single_test "run_weather_event_tests.bat" false

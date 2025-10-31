@@ -18,6 +18,7 @@
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
 #include "gameStates/OverlayDemoState.hpp"
+#include "gameStates/SettingsMenuState.hpp"
 #include "gameStates/UIDemoState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
@@ -486,21 +487,9 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize Pathfinder Manager in a separate thread - #7
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Pathfinder Manager");
-            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
-            if (!pathfinderMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
-            return true;
-          }));
+  // PathfinderManager initialized by AIManager
 
-  // Initialize Particle Manager in a separate thread - #8
+  // Initialize Particle Manager in a separate thread - #7
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
@@ -564,19 +553,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize Physics Manager - #11
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Physics Manager");
-            auto &physicsMgr = CollisionManager::Instance();
-            if (!physicsMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Physics Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Physics Manager initialized successfully");
-            return true;
-          }));
+  // CollisionManager initialized by AIManager
 
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD
@@ -601,6 +578,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   mp_gameStateManager->addState(std::make_unique<LogoState>());
   mp_gameStateManager->addState(std::make_unique<LoadingState>());  // Shared loading screen state
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
+  mp_gameStateManager->addState(std::make_unique<SettingsMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
@@ -654,7 +632,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
     mp_particleManager = &particleMgrTest;
 
-    // Validate Pathfinder Manager before caching
+    // Validate Pathfinder Manager before caching (initialized by AIManager)
     PathfinderManager &pathfinderMgrTest = PathfinderManager::Instance();
     if (!pathfinderMgrTest.isInitialized()) {
       GAMEENGINE_CRITICAL(
@@ -662,6 +640,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_pathfinderManager = &pathfinderMgrTest;
+
+    // Validate Collision Manager before caching (initialized by AIManager)
+    CollisionManager &collisionMgrTest = CollisionManager::Instance();
+    if (!collisionMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "CollisionManager not properly initialized before caching!");
+      return false;
+    }
+    mp_collisionManager = &collisionMgrTest;
 
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
@@ -691,15 +678,6 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_worldManager = &worldMgrTest;
-
-    // Validate Physics Manager before caching
-    auto &physicsMgrTest = CollisionManager::Instance();
-    if (!physicsMgrTest.isInitialized()) {
-      GAMEENGINE_CRITICAL(
-          "CollisionManager not properly initialized before caching!");
-      return false;
-    }
-    mp_collisionManager = &physicsMgrTest;
 
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
@@ -885,6 +863,7 @@ void GameEngine::update(float deltaTime) {
   }
 
   // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
+  // PathfinderManager initialized by AIManager, cached by GameEngine for performance
   if (mp_pathfinderManager) {
     mp_pathfinderManager->update();
   } else {
@@ -1144,13 +1123,7 @@ void GameEngine::clean() {
 
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
-
-  // Ensure PathfinderManager is cleaned up after AI to avoid dangling tasks and late logs
-  GAMEENGINE_INFO("Cleaning up Pathfinder Manager...");
-  PathfinderManager::Instance().clean();
-
-  GAMEENGINE_INFO("Cleaning up Collision Manager...");
-  CollisionManager::Instance().clean();
+  // PathfinderManager and CollisionManager cleaned up by AIManager
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();
@@ -1175,8 +1148,8 @@ void GameEngine::clean() {
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
-  mp_pathfinderManager = nullptr;
-  mp_collisionManager = nullptr;
+  mp_pathfinderManager = nullptr; // Cleaned up by AIManager
+  mp_collisionManager = nullptr; // Cleaned up by AIManager
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
   mp_worldManager = nullptr;

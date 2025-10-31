@@ -44,7 +44,8 @@ bool MainMenuState::enter() {
   ui.createButton("mainmenu_event_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
   ui.createButton("mainmenu_ui_example_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Demo");
   ui.createButton("mainmenu_overlay_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
-  ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+  ui.createButton("mainmenu_settings_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Settings");
+  ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 7 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
 
   // Set up button callbacks
   ui.setOnClick("mainmenu_start_game_btn", []() {
@@ -81,6 +82,12 @@ bool MainMenuState::enter() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->changeState("OverlayDemoState");
+  });
+
+  ui.setOnClick("mainmenu_settings_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->changeState("SettingsMenuState");
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
@@ -148,6 +155,12 @@ void MainMenuState::handleInput() {
       gameStateManager->changeState("OverlayDemoState");
   }
 
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->changeState("SettingsMenuState");
+  }
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
       auto& gameEngine = GameEngine::Instance();
       gameEngine.setRunning(false);
@@ -203,9 +216,14 @@ void MainMenuState::onWindowResize(int newLogicalWidth,
                          startY + 5 * (buttonHeight + buttonSpacing),
                          buttonWidth, buttonHeight});
 
-  ui.setComponentBounds("mainmenu_exit_btn",
+  ui.setComponentBounds("mainmenu_settings_btn",
                         {newLogicalWidth / 2 - buttonWidth / 2,
                          startY + 6 * (buttonHeight + buttonSpacing),
+                         buttonWidth, buttonHeight});
+
+  ui.setComponentBounds("mainmenu_exit_btn",
+                        {newLogicalWidth / 2 - buttonWidth / 2,
+                         startY + 7 * (buttonHeight + buttonSpacing),
                          buttonWidth, buttonHeight});
 
   GAMESTATE_DEBUG("MainMenuState: Repositioned menu buttons for new window size: " +
