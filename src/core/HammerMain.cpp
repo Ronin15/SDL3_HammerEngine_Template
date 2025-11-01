@@ -7,6 +7,7 @@
 #include "core/ThreadSystem.hpp"
 #include "core/GameLoop.hpp"
 #include "core/Logger.hpp"
+#include "managers/SettingsManager.hpp"
 #include <string>
 #include <string_view>
 #include <cstdlib>
@@ -45,6 +46,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
                     std::to_string(threadSystem.getQueueCapacity()) +
                     " parallel tasks");
 
+  // Load settings from disk before GameEngine initialization
+  // This ensures VSync and other settings are loaded before they're applied
+  auto& settingsManager = HammerEngine::SettingsManager::Instance();
+  if (!settingsManager.loadFromFile("res/settings.json")) {
+    GAMEENGINE_WARN("Failed to load settings.json - using defaults");
+  } else {
+    GAMEENGINE_INFO("Settings loaded from res/settings.json");
+  }
+
   // Initialize GameEngine
   if (!GameEngine::Instance().init(GAME_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
     GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
@@ -66,17 +76,15 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   // Set GameLoop reference in GameEngine for delegation
   GameEngine::Instance().setGameLoop(gameLoop);
 
-  // Configure TimestepManager for platform-specific frame limiting
-  // Wayland: use software frame limiting; Others: prefer hardware VSync
-  const char* sessionType = std::getenv("XDG_SESSION_TYPE");
-  const char* waylandDisplay = std::getenv("WAYLAND_DISPLAY");
-  const bool isWayland = (sessionType && std::string_view(sessionType) == "wayland") || (waylandDisplay && *waylandDisplay);
-  gameLoop->getTimestepManager().setSoftwareFrameLimiting(isWayland);
-  if (isWayland) {
-    GAMELOOP_INFO("Wayland detected: using software frame limiting (VSync off)");
-  } else {
-    GAMELOOP_INFO("Non-Wayland: relying on hardware VSync; software limiting off");
-  }
+  // Configure TimestepManager based on GameEngine's VSync detection
+  // GameEngine already detected platform and verified VSync during init()
+  gameLoop->getTimestepManager().setSoftwareFrameLimiting(
+      GameEngine::Instance().isUsingSoftwareFrameLimiting());
+
+  GAMELOOP_INFO("Frame timing configured: " +
+                std::string(GameEngine::Instance().isUsingSoftwareFrameLimiting()
+                            ? "software frame limiting"
+                            : "hardware VSync"));
 
   // Cache GameEngine reference for better performance in game loop
   GameEngine& gameEngine = GameEngine::Instance();

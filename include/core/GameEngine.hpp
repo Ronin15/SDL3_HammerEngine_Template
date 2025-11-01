@@ -271,6 +271,12 @@ public:
   bool isWayland() const { return m_isWayland; }
 
   /**
+   * @brief Checks if the engine is using software frame limiting.
+   * @return true if using software frame limiting, false if using hardware VSync.
+   */
+  bool isUsingSoftwareFrameLimiting() const { return m_usingSoftwareFrameLimiting; }
+
+  /**
    * @brief Toggles fullscreen mode at runtime
    */
   void toggleFullscreen();

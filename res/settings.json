@@ -1,32 +1,21 @@
 {
-  "graphics": {
-    "resolution_width": 1920,
-    "resolution_height": 1080,
-    "fullscreen": false,
-    "vsync": true,
-    "fps_limit": 60,
-    "show_fps": false
+  "gameplay": {
+    "autosave_interval": 300,
+    "autosave_enabled": true,
+    "difficulty": "normal"
   },
   "audio": {
-    "master_volume": 1.0,
-    "music_volume": 0.7,
     "sfx_volume": 0.8,
-    "muted": false
+    "muted": false,
+    "music_volume": 0.7,
+    "master_volume": 1
   },
-  "input": {
-    "mouse_sensitivity": 1.0,
-    "controller_deadzone": 0.15
-  },
-  "gameplay": {
-    "difficulty": "normal",
-    "autosave_enabled": true,
-    "autosave_interval": 300
-  },
-  "developer": {
-    "show_collision_debug": false,
-    "show_pathfinding_debug": false,
-    "enable_profiling": false,
-    "worker_threads": 8,
-    "log_level": "info"
+  "graphics": {
+    "vsync": true,
+    "show_fps": false,
+    "fullscreen": false,
+    "resolution_height": 1080,
+    "fps_limit": 60,
+    "resolution_width": 1920
   }
 }
