@@ -379,50 +379,13 @@ void AIManager::update(float deltaTime) {
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
         m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
-        // Pre-fetch all data with single lock - copy directly from hotData
-        // REUSE buffer to avoid per-frame allocations (eliminates 128KB alloc/free)
-        m_reusablePreFetchBuffer.entities.clear();
-        m_reusablePreFetchBuffer.behaviors.clear();
-        m_reusablePreFetchBuffer.halfWidths.clear();
-        m_reusablePreFetchBuffer.halfHeights.clear();
-        m_reusablePreFetchBuffer.hotDataCopy.clear();
-        m_reusablePreFetchBuffer.reserve(entityCount);
-        PreFetchedBatchData& preFetchedData = m_reusablePreFetchBuffer;
+        // OPTIMIZATION: Direct storage iteration - no copying overhead
+        // Hold shared_lock during processing for thread-safe read access
+        m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-            if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
-              preFetchedData.entities.push_back(m_storage.entities[i]);
-              preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
-              if (i < m_storage.halfWidths.size()) {
-                preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
-                preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
-              } else if (m_storage.entities[i]) {
-                preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.entities[i]->getWidth() * 0.5f));
-                preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.entities[i]->getHeight() * 0.5f));
-              } else {
-                preFetchedData.halfWidths.push_back(16.0f);
-                preFetchedData.halfHeights.push_back(16.0f);
-              }
-            } else {
-              preFetchedData.entities.push_back(nullptr);
-              preFetchedData.behaviors.push_back(nullptr);
-              preFetchedData.halfWidths.push_back(16.0f);
-              preFetchedData.halfHeights.push_back(16.0f);
-              if (i < m_storage.hotData.size()) {
-                preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
-              } else {
-                preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
-              }
-            }
-          }
+          processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, m_storage, m_reusableCollisionBuffer);
         }
-
-        // Use deferred collision update for consistency
-        // Reuse pre-allocated buffer to eliminate per-frame heap allocations
-        m_reusableCollisionBuffer.clear();
-        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, m_reusableCollisionBuffer);
 
         // Submit collision updates directly (single-threaded, no batching needed)
         if (!m_reusableCollisionBuffer.empty()) {
@@ -430,9 +393,6 @@ void AIManager::update(float deltaTime) {
           std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {m_reusableCollisionBuffer};
           cm.applyBatchedKinematicUpdates(singleBatch);
         }
-
-        // No buffer swap needed - we copy directly from hotData to preFetchedData
-        // Single-threaded path completes within this frame; continue to stats
       }
 
       HammerEngine::WorkerBudget budget =
@@ -478,50 +438,13 @@ void AIManager::update(float deltaTime) {
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
         m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
-        // Pre-fetch all data with single lock - copy directly from hotData
-        // REUSE buffer to avoid per-frame allocations (eliminates 128KB alloc/free)
-        m_reusablePreFetchBuffer.entities.clear();
-        m_reusablePreFetchBuffer.behaviors.clear();
-        m_reusablePreFetchBuffer.halfWidths.clear();
-        m_reusablePreFetchBuffer.halfHeights.clear();
-        m_reusablePreFetchBuffer.hotDataCopy.clear();
-        m_reusablePreFetchBuffer.reserve(entityCount);
-        PreFetchedBatchData& preFetchedData = m_reusablePreFetchBuffer;
+        // OPTIMIZATION: Direct storage iteration - no copying overhead
+        // Hold shared_lock during processing for thread-safe read access
+        m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-            if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
-              preFetchedData.entities.push_back(m_storage.entities[i]);
-              preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
-              if (i < m_storage.halfWidths.size()) {
-                preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
-                preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
-              } else if (m_storage.entities[i]) {
-                preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.entities[i]->getWidth() * 0.5f));
-                preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.entities[i]->getHeight() * 0.5f));
-              } else {
-                preFetchedData.halfWidths.push_back(16.0f);
-                preFetchedData.halfHeights.push_back(16.0f);
-              }
-            } else {
-              preFetchedData.entities.push_back(nullptr);
-              preFetchedData.behaviors.push_back(nullptr);
-              preFetchedData.halfWidths.push_back(16.0f);
-              preFetchedData.halfHeights.push_back(16.0f);
-              if (i < m_storage.hotData.size()) {
-                preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
-              } else {
-                preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
-              }
-            }
-          }
+          processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, m_storage, m_reusableCollisionBuffer);
         }
-
-        // Single batch - still use deferred collision update for consistency
-        // Reuse pre-allocated buffer to eliminate per-frame heap allocations
-        m_reusableCollisionBuffer.clear();
-        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, m_reusableCollisionBuffer);
 
         // Submit collision updates directly (single batch, no contention)
         if (!m_reusableCollisionBuffer.empty()) {
@@ -533,65 +456,14 @@ void AIManager::update(float deltaTime) {
         size_t entitiesPerBatch = entityCount / batchCount;
         size_t remainingEntities = entityCount % batchCount;
 
-        // PERFORMANCE OPTIMIZATION: Use batchEnqueueTasks() for O(1) lock acquisition
-        // instead of O(N) individual enqueue calls. This reduces ThreadSystem mutex
-        // contention significantly when submitting multiple batches.
-
-        // PRE-FETCH OPTIMIZATION: Copy ALL entity data ONCE with a single lock
-        // This eliminates serialized lock acquisitions per batch (CRITICAL for parallel performance)
-        // REUSE buffer to avoid per-frame allocations (eliminates heap churn)
-        if (!m_reusableMultiThreadedBuffer) {
-          m_reusableMultiThreadedBuffer = std::make_shared<PreFetchedBatchData>();
-        }
-        // Clear vectors but keep capacity to avoid reallocation
-        m_reusableMultiThreadedBuffer->entities.clear();
-        m_reusableMultiThreadedBuffer->behaviors.clear();
-        m_reusableMultiThreadedBuffer->halfWidths.clear();
-        m_reusableMultiThreadedBuffer->halfHeights.clear();
-        m_reusableMultiThreadedBuffer->hotDataCopy.clear();
-        m_reusableMultiThreadedBuffer->reserve(entityCount);
-        auto preFetchedData = m_reusableMultiThreadedBuffer;
-
-        {
-          std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-          for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-            if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
-              preFetchedData->entities.push_back(m_storage.entities[i]);
-              preFetchedData->behaviors.push_back(m_storage.behaviors[i]);
-              preFetchedData->hotDataCopy.push_back(m_storage.hotData[i]);
-
-              // Get extents while we have the lock
-              if (i < m_storage.halfWidths.size()) {
-                preFetchedData->halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
-                preFetchedData->halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
-              } else if (m_storage.entities[i]) {
-                preFetchedData->halfWidths.push_back(std::max(1.0f, m_storage.entities[i]->getWidth() * 0.5f));
-                preFetchedData->halfHeights.push_back(std::max(1.0f, m_storage.entities[i]->getHeight() * 0.5f));
-              } else {
-                preFetchedData->halfWidths.push_back(16.0f);
-                preFetchedData->halfHeights.push_back(16.0f);
-              }
-            } else {
-              // Add nulls to maintain index alignment
-              preFetchedData->entities.push_back(nullptr);
-              preFetchedData->behaviors.push_back(nullptr);
-              preFetchedData->halfWidths.push_back(16.0f);
-              preFetchedData->halfHeights.push_back(16.0f);
-              if (i < m_storage.hotData.size()) {
-                preFetchedData->hotDataCopy.push_back(m_storage.hotData[i]);
-              } else {
-                preFetchedData->hotDataCopy.push_back(AIEntityData::HotData{});
-              }
-            }
-          }
-        }  // Lock released - batches can now run in parallel without locks!
+        // OPTIMIZATION: Direct storage iteration with per-batch locking
+        // Each batch acquires its own shared_lock - multiple batches can read in parallel
+        // Eliminates 10K+ push_back operations for pre-fetch copying
 
         // DEFERRED COLLISION UPDATE OPTIMIZATION:
         // Create per-batch collision update vectors to eliminate CollisionManager lock contention.
         // Each batch accumulates its updates independently, then we merge and submit once.
         // Use shared_ptr so the lambda can safely capture this data for async completion
-        // Reuse existing allocation if available and properly sized
         auto batchCollisionUpdates = std::make_shared<std::vector<std::vector<CollisionManager::KinematicUpdate>>>(batchCount);
         for (size_t i = 0; i < batchCount; ++i) {
           size_t estimatedSize = entitiesPerBatch + (i == batchCount - 1 ? remainingEntities : 0);
@@ -616,13 +488,16 @@ void AIManager::update(float deltaTime) {
           }
 
           // Submit each batch with future for completion tracking
-          // Capture ALL data by shared_ptr value - safe for async execution after update() returns
+          // Each batch will acquire its own shared_lock during execution
           batchFutures.push_back(threadSystem.enqueueTaskWithResult(
             [this, start, end, deltaTime, playerPos,
-             shouldUpdateDistances, preFetchedData, batchCollisionUpdates, i]() -> void {
+             shouldUpdateDistances, batchCollisionUpdates, i]() -> void {
               try {
+                // Acquire shared_lock for this batch's execution
+                // Multiple batches can hold shared_locks simultaneously (parallel reads)
+                std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
                 processBatch(start, end, deltaTime, playerPos,
-                            shouldUpdateDistances, *preFetchedData, (*batchCollisionUpdates)[i]);
+                            shouldUpdateDistances, m_storage, (*batchCollisionUpdates)[i]);
               } catch (const std::exception &e) {
                 AI_ERROR(std::string("Exception in AI batch: ") + e.what());
               } catch (...) {
@@ -646,60 +521,23 @@ void AIManager::update(float deltaTime) {
 
         // NO WAIT HERE: Async batches complete in background
         // GameEngine waits for completion at NEXT frame's start (consistent timing, no jitter)
-        // Double buffer ensures thread-safe writes while collision processes previous frame
+        // Batches hold shared_locks during execution, allowing parallel reads
         // This provides deterministic updates with minimal performance impact
       }
 
       m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
 
     } else {
-      // Single-threaded processing
+      // Single-threaded processing (threading disabled in config)
       m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
-      // Pre-fetch all data with single lock - copy directly from hotData
-      // REUSE buffer to avoid per-frame allocations (eliminates 128KB alloc/free)
-      m_reusablePreFetchBuffer.entities.clear();
-      m_reusablePreFetchBuffer.behaviors.clear();
-      m_reusablePreFetchBuffer.halfWidths.clear();
-      m_reusablePreFetchBuffer.halfHeights.clear();
-      m_reusablePreFetchBuffer.hotDataCopy.clear();
-      m_reusablePreFetchBuffer.reserve(entityCount);
-      PreFetchedBatchData& preFetchedData = m_reusablePreFetchBuffer;
+      // OPTIMIZATION: Direct storage iteration - no copying overhead
+      // Hold shared_lock during processing for thread-safe read access
+      m_reusableCollisionBuffer.clear();
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        for (size_t i = 0; i < entityCount && i < m_storage.size(); ++i) {
-          if (i < m_storage.hotData.size() && m_storage.hotData[i].active) {
-            preFetchedData.entities.push_back(m_storage.entities[i]);
-            preFetchedData.behaviors.push_back(m_storage.behaviors[i]);
-            preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
-            if (i < m_storage.halfWidths.size()) {
-              preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.halfWidths[i]));
-              preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.halfHeights[i]));
-            } else if (m_storage.entities[i]) {
-              preFetchedData.halfWidths.push_back(std::max(1.0f, m_storage.entities[i]->getWidth() * 0.5f));
-              preFetchedData.halfHeights.push_back(std::max(1.0f, m_storage.entities[i]->getHeight() * 0.5f));
-            } else {
-              preFetchedData.halfWidths.push_back(16.0f);
-              preFetchedData.halfHeights.push_back(16.0f);
-            }
-          } else {
-            preFetchedData.entities.push_back(nullptr);
-            preFetchedData.behaviors.push_back(nullptr);
-            preFetchedData.halfWidths.push_back(16.0f);
-            preFetchedData.halfHeights.push_back(16.0f);
-            if (i < m_storage.hotData.size()) {
-              preFetchedData.hotDataCopy.push_back(m_storage.hotData[i]);
-            } else {
-              preFetchedData.hotDataCopy.push_back(AIEntityData::HotData{});
-            }
-          }
-        }
+        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, m_storage, m_reusableCollisionBuffer);
       }
-
-      // Use deferred collision update for consistency
-      // Reuse pre-allocated buffer to eliminate per-frame heap allocations
-      m_reusableCollisionBuffer.clear();
-      processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, m_reusableCollisionBuffer);
 
       // Submit collision updates using unified batched API (consistency with multi-threaded path)
       if (!m_reusableCollisionBuffer.empty()) {
@@ -708,8 +546,6 @@ void AIManager::update(float deltaTime) {
         cm.applyBatchedKinematicUpdates(singleBatch);
       }
     }
-
-    // No buffer swap needed - we copy directly from hotData to preFetchedData
 
     // Process lock-free message queue
     processMessageQueue();
@@ -1444,7 +1280,7 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                              const Vector2D &playerPos, bool updateDistances,
-                             const PreFetchedBatchData& preFetchedData,
+                             const EntityStorage& storage,
                              std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
   size_t batchExecutions = 0;
 
@@ -1468,15 +1304,15 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     worldHeight = 32000.0f;
   }
 
-  // NO LOCK NEEDED - use pre-fetched data!
-  // Process entities using pre-copied data (parallel safe)
-  for (size_t i = start; i < end && i < preFetchedData.entities.size(); ++i) {
-    // Use pre-fetched data instead of locking
-    EntityPtr entity = preFetchedData.entities[i];
-    auto behavior = preFetchedData.behaviors[i];
-    float halfW = preFetchedData.halfWidths[i];
-    float halfH = preFetchedData.halfHeights[i];
-    auto hotData = preFetchedData.hotDataCopy[i];  // Copy, not reference
+  // OPTIMIZATION: Direct storage iteration - no copying overhead
+  // Caller holds shared_lock, safe for parallel read access
+  for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
+    // Access storage directly (read-only, no allocation)
+    EntityPtr entity = storage.entities[i];
+    auto behavior = storage.behaviors[i];
+    float halfW = storage.halfWidths[i];
+    float halfH = storage.halfHeights[i];
+    auto hotData = storage.hotData[i];  // Copy for local modification
 
     try {
       // Calculate distances inline to avoid separate iteration
