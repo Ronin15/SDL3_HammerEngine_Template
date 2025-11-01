@@ -98,6 +98,9 @@ public:
     // Per-batch collision updates (zero contention - each AI batch has its own buffer)
     void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
 
+    // Single-vector overload for non-batched updates (convenience wrapper)
+    void applyKinematicUpdates(std::vector<KinematicUpdate>& updates);
+
     // Convenience methods for triggers
     EntityID createTriggerArea(const AABB& aabb,
                                HammerEngine::TriggerTag tag,

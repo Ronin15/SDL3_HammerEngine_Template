@@ -3308,6 +3308,17 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
   // Batch processing complete - zero mutex contention between AI batches
 }
 
+void CollisionManager::applyKinematicUpdates(std::vector<KinematicUpdate>& updates) {
+  // Convenience wrapper for single-vector updates (avoids allocation in caller)
+  // Just wrap in a single-element batch and call the batched version
+  if (updates.empty()) return;
+
+  std::vector<std::vector<KinematicUpdate>> singleBatch(1);
+  singleBatch[0] = std::move(updates);  // Move to avoid copy
+  applyBatchedKinematicUpdates(singleBatch);
+  updates = std::move(singleBatch[0]);  // Move back to preserve buffer for reuse
+}
+
 // ========== SOA BODY MANAGEMENT METHODS ==========
 
 void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
