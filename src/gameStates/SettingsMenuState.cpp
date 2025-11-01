@@ -136,9 +136,11 @@ void SettingsMenuState::applySettings() {
     settings.set("graphics", "resolution_width", m_tempSettings.resolutionWidth);
     settings.set("graphics", "resolution_height", m_tempSettings.resolutionHeight);
     settings.set("graphics", "fullscreen", m_tempSettings.fullscreen);
-    settings.set("graphics", "vsync", m_tempSettings.vsync);
     settings.set("graphics", "fps_limit", m_tempSettings.fpsLimit);
     settings.set("graphics", "show_fps", m_tempSettings.showFps);
+
+    // Apply VSync setting to GameEngine (also saves to SettingsManager internally)
+    GameEngine::Instance().setVSyncEnabled(m_tempSettings.vsync);
 
     // Audio
     settings.set("audio", "master_volume", m_tempSettings.masterVolume);
