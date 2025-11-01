@@ -470,69 +470,9 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
     // Compute a retreat destination further ahead and clamp to world bounds
     Vector2D dest = pathfinder().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
 
-    // Try to path toward the retreat destination with TTL and no-progress checks
-    auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
-
-        // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-        constexpr float pathTTL = 2.5f; constexpr float noProgressWindow = 0.4f;
-        bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
-        if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-            float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-            if (d + 1.0f < state.lastNodeDistance) {
-                state.lastNodeDistance = d;
-                state.progressTimer = 0.0f;
-            } else if (state.progressTimer > noProgressWindow) {
-                needRefresh = true;
-            }
-        }
-        if (state.pathUpdateTimer > pathTTL) needRefresh = true;
-        if (needRefresh && state.pathCooldown <= 0.0f) {
-            // Gate refresh on significant goal change to avoid thrash
-            // PERFORMANCE: Use squared distance and higher threshold
-            bool goalChanged = true;
-            if (!state.pathPoints.empty()) {
-                Vector2D lastGoal = state.pathPoints.back();
-                const float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
-                goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
-            }
-            if (!goalChanged && !state.pathPoints.empty()) {
-                // Keep following existing path; skip request
-                goto follow_existing;
-            }
-            // Use PathfinderManager for pathfinding requests
-            auto& pathfinder = this->pathfinder();
-            pathfinder.requestPath(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, PathfinderManager::Priority::High,
-                [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
-                    state.pathPoints = path;
-                    state.currentPathIndex = 0;
-                });
-            // Note: Path will be set via callback when ready
-            if (!state.pathPoints.empty()) {
-                state.currentPathIndex = 0;
-                state.pathUpdateTimer = 0.0f;
-                state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                state.progressTimer = 0.0f;
-                state.pathCooldown = 0.8f;
-            } else {
-                // Async path not ready, apply cooldown to prevent spam
-                state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
-            }
-        }
-        follow_existing:
-        if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-            Vector2D node = state.pathPoints[state.currentPathIndex];
-            Vector2D dir = node - currentPos; float len = dir.length();
-            if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
-            if ((node - currentPos).length() <= state.navRadius) {
-                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.progressTimer = 0.0f;
-            }
-            return true;
-        }
-        return false;
-    };
-
+    // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
     float speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
+    if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
         Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
         // PERFORMANCE OPTIMIZATION: Use cached collision data
@@ -617,72 +557,9 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
     // Clamp destination within world bounds
     dest = pathfinder().clampToWorldBounds(dest, 100.0f);
 
-    auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
-
-        // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-        constexpr float pathTTL = 2.5f; constexpr float noProgressWindow = 0.4f;
-        bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
-        if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-            float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-            if (d + 1.0f < state.lastNodeDistance) {
-                state.lastNodeDistance = d;
-                state.progressTimer = 0.0f;
-            } else if (state.progressTimer > noProgressWindow) {
-                needRefresh = true;
-            }
-        }
-        if (state.pathUpdateTimer > pathTTL) needRefresh = true;
-        if (needRefresh && state.pathCooldown <= 0.0f) {
-            // Gate refresh on significant goal change to avoid thrash
-            // PERFORMANCE: Use squared distance and higher threshold
-            bool goalChanged = true;
-            if (!state.pathPoints.empty()) {
-                Vector2D lastGoal = state.pathPoints.back();
-                const float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
-                goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
-            }
-            if (!goalChanged && !state.pathPoints.empty()) {
-                // Keep following existing path; skip request
-                goto follow_existing2;
-            }
-            // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-            pathfinder().requestPath(
-                entity->getID(), pathfinder().clampToWorldBounds(currentPos, 100.0f), goal, PathfinderManager::Priority::High,
-                [this, entity](EntityID, const std::vector<Vector2D>& path) {
-                  if (!path.empty()) {
-                    // Find the behavior state for this entity
-                    auto it = m_entityStates.find(entity);
-                    if (it != m_entityStates.end()) {
-                      it->second.pathPoints = path;
-                      it->second.currentPathIndex = 0;
-                      it->second.pathUpdateTimer = 0.0f;
-                      it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-                      it->second.progressTimer = 0.0f;
-                      it->second.pathCooldown = 0.8f;
-                    }
-                  }
-                });
-            // Remove the synchronous path check since we're using callback-based async path
-            {
-                // Async path not ready, apply cooldown to prevent spam
-                state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
-            }
-        }
-        follow_existing2:
-        if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-            Vector2D node = state.pathPoints[state.currentPathIndex];
-            Vector2D dir = node - currentPos; float len = dir.length();
-            if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
-            if ((node - currentPos).length() <= state.navRadius) {
-                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.progressTimer = 0.0f;
-            }
-            return true;
-        }
-        return false;
-    };
-
+    // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
     float speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
+    if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
         Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
         // PERFORMANCE OPTIMIZATION: Use cached collision data
@@ -713,17 +590,103 @@ Vector2D FleeBehavior::normalizeVector(const Vector2D& direction) const {
 
 float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
     float modifier = 1.0f;
-    
+
     // Panic increases speed
     if (state.isInPanic) {
         modifier *= 1.3f;
     }
-    
+
     // Stamina affects speed
     if (m_useStamina) {
         float staminaRatio = state.currentStamina / m_maxStamina;
         modifier *= (0.3f + 0.7f * staminaRatio); // Speed ranges from 30% to 100%
     }
-    
+
     return modifier;
+}
+
+// OPTIMIZATION: Extracted from lambda for better compiler optimization
+// This method handles path-following logic with TTL and no-progress checks
+bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& goal, float speed) {
+    // PERFORMANCE: Increase TTL to reduce pathfinding frequency
+    constexpr float pathTTL = 2.5f;
+    constexpr float noProgressWindow = 0.4f;
+    constexpr float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
+
+    // Check if path needs refresh
+    bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+
+    // Check for progress towards current waypoint
+    if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+        float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+        if (d + 1.0f < state.lastNodeDistance) {
+            state.lastNodeDistance = d;
+            state.progressTimer = 0.0f;
+        } else if (state.progressTimer > noProgressWindow) {
+            needRefresh = true;
+        }
+    }
+
+    // Check if path is stale
+    if (state.pathUpdateTimer > pathTTL) {
+        needRefresh = true;
+    }
+
+    // Request new path if needed and cooldown allows
+    if (needRefresh && state.pathCooldown <= 0.0f) {
+        // Gate refresh on significant goal change to avoid thrash
+        bool goalChanged = true;
+        if (!state.pathPoints.empty()) {
+            Vector2D lastGoal = state.pathPoints.back();
+            goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
+        }
+
+        // Only request new path if goal changed significantly
+        if (goalChanged) {
+            // Use PathfinderManager for pathfinding requests
+            auto& pf = this->pathfinder();
+            pf.requestPath(
+                entity->getID(),
+                pf.clampToWorldBounds(currentPos, 100.0f),
+                goal,
+                PathfinderManager::Priority::High,
+                [this, entity](EntityID, const std::vector<Vector2D>& path) {
+                    auto it = m_entityStates.find(entity);
+                    if (it != m_entityStates.end() && !path.empty()) {
+                        it->second.pathPoints = path;
+                        it->second.currentPathIndex = 0;
+                        it->second.pathUpdateTimer = 0.0f;
+                        it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+                        it->second.progressTimer = 0.0f;
+                        it->second.pathCooldown = 0.8f;
+                    }
+                });
+
+            // Apply cooldown to prevent spam (async path not ready yet)
+            state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
+        }
+    }
+
+    // Follow existing path if available
+    if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+        Vector2D node = state.pathPoints[state.currentPathIndex];
+        Vector2D dir = node - currentPos;
+        float len = dir.length();
+
+        if (len > 0.01f) {
+            dir = dir * (1.0f / len);
+            entity->setVelocity(dir * speed);
+        }
+
+        // Check if reached current waypoint
+        if ((node - currentPos).length() <= state.navRadius) {
+            ++state.currentPathIndex;
+            state.lastNodeDistance = std::numeric_limits<float>::infinity();
+            state.progressTimer = 0.0f;
+        }
+
+        return true;
+    }
+
+    return false;
 }

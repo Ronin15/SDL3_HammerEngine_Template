@@ -127,6 +127,15 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       // Update cache directly (can't use const reference here)
       nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, state.baseState.cachedNearbyPositions);
       state.baseState.cachedNearbyCount = nearbyCount;
+
+      // OPTIMIZATION: Cache cluster center calculation to avoid std::accumulate in hot path
+      if (!state.baseState.cachedNearbyPositions.empty()) {
+        Vector2D sum = std::accumulate(state.baseState.cachedNearbyPositions.begin(),
+                                       state.baseState.cachedNearbyPositions.end(),
+                                       Vector2D(0, 0));
+        state.baseState.cachedClusterCenter = sum / static_cast<float>(state.baseState.cachedNearbyPositions.size());
+      }
+
       state.baseState.lastCrowdAnalysis = 0.0f; // Reset timer
     }
 
@@ -140,9 +149,8 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
        // SIMPLIFIED: Direct escape direction without complex rotation
        if (!nearbyPositions.empty()) {
-         Vector2D crowdCenter = std::accumulate(nearbyPositions.begin(), nearbyPositions.end(), Vector2D(0, 0));
-         crowdCenter = crowdCenter / static_cast<float>(nearbyPositions.size());
-         Vector2D escapeDirection = (position - crowdCenter).normalized();
+         // OPTIMIZATION: Use cached cluster center instead of recalculating with std::accumulate
+         Vector2D escapeDirection = (position - state.baseState.cachedClusterCenter).normalized();
 
          // Simple randomization using entity ID
          float randomOffset = (entity->getID() % 60 - 30) * 0.01f; // ±0.3 variation
@@ -239,8 +247,9 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       bool goalChanged = true;
       if (!state.baseState.pathPoints.empty()) {
         Vector2D lastGoal = state.baseState.pathPoints.back();
-        float goalDistance = (dest - lastGoal).length();
-        goalChanged = (goalDistance >= MIN_GOAL_CHANGE);
+        // OPTIMIZATION: Use lengthSquared to avoid expensive sqrt operation
+        float goalDistanceSquared = (dest - lastGoal).lengthSquared();
+        goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);
       }
 
       if (goalChanged) {

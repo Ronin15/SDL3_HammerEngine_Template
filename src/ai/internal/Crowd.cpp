@@ -50,6 +50,12 @@ Vector2D ApplySeparation(EntityPtr entity,
     Vector2D other;
     if (!cm.getBodyCenter(id, other)) continue;
     Vector2D d = currentPos - other;
+
+    // OPTIMIZATION: Manhattan distance fast-reject before expensive sqrt calculation
+    // Manhattan distance (L1) >= Euclidean distance (L2), so use 1.5x threshold for safety
+    float manhattanDist = std::abs(d.getX()) + std::abs(d.getY());
+    if (manhattanDist > queryRadius * 1.5f) continue;
+
     float dist = d.length();
     
     if (dist < 0.5f) {
@@ -182,6 +188,12 @@ Vector2D ApplySeparation(EntityPtr entity,
   // Process pre-fetched neighbor positions
   for (const Vector2D &other : preFetchedNeighbors) {
     Vector2D d = currentPos - other;
+
+    // OPTIMIZATION: Manhattan distance fast-reject before expensive sqrt calculation
+    // Manhattan distance (L1) >= Euclidean distance (L2), so use 1.5x threshold for safety
+    float manhattanDist = std::abs(d.getX()) + std::abs(d.getY());
+    if (manhattanDist > queryRadius * 1.5f) continue;
+
     float dist = d.length();
 
     if (dist < 0.5f) {

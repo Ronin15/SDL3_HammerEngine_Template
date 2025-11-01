@@ -165,6 +165,9 @@ private:
   Vector2D normalizeVector(const Vector2D &direction) const;
   float calculateFleeSpeedModifier(const EntityState &state) const;
 
+  // OPTIMIZATION: Extracted lambda for better compiler optimization
+  bool tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& goal, float speed);
+
 public:
 };
 
