@@ -142,58 +142,7 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       state.backoffTimer -= deltaTime; // Countdown timer
     }
 
-    // Path-following to desired position if available
-    auto tryFollowPath = [&](Vector2D desiredPos, float speed)->bool {
-      const float nodeRadius = 20.0f; // Increased for faster path following
-      const float pathTTL = 10.0f; // 10 seconds - reduce path churn when stationary
-
-      // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
-      if (state.backoffTimer > 0.0f) {
-        bool following = pathfinder().followPathStep(entity, currentPos,
-                            state.pathPoints, state.currentPathIndex,
-                            speed, nodeRadius);
-        if (following) { state.progressTimer = 0.0f; }
-        return following;
-      }
-
-      // PERFORMANCE: Reduce path request frequency with higher thresholds
-      const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate
-      bool stale = state.pathUpdateTimer > pathTTL;
-      bool goalChanged = true;
-      if (!state.pathPoints.empty()) {
-        Vector2D lastGoal = state.pathPoints.back();
-        // Use squared distance for performance
-        goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
-      }
-
-      // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
-      bool stuckOnObstacle = (state.progressTimer > 0.8f);
-
-      if (stale || goalChanged || stuckOnObstacle) {
-        auto& pf = this->pathfinder();
-        pf.requestPath(entity->getID(), currentPos, desiredPos, PathfinderManager::Priority::Normal,
-          [this, entity](EntityID, const std::vector<Vector2D>& path) {
-            // Safely look up state when callback executes
-            auto it = m_entityStates.find(entity);
-            if (it != m_entityStates.end()) {
-              it->second.pathPoints = path;
-              it->second.currentPathIndex = 0;
-              it->second.pathUpdateTimer = 0.0f;
-            }
-          });
-      }
-
-      bool pathStep = pathfinder().followPathStep(entity, currentPos,
-                          state.pathPoints, state.currentPathIndex,
-                          speed, nodeRadius);
-      if (pathStep) { state.progressTimer = 0.0f; }
-
-      // REMOVED: Separation was overwriting path-following velocity with stale cached data
-      // Follow behavior uses followDistance (50px) to maintain spacing, so aggressive
-      // separation isn't needed and was causing erratic movement
-
-      return pathStep;
-    };
+    // OPTIMIZATION: Path-following extracted to method for better compiler optimization
 
     // Stall detection: only check when not actively following a fresh path AND not intentionally stopped
     // Prevents false positives when NPCs naturally slow down near waypoints or are stopped at personal space
@@ -278,27 +227,27 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     bool usingPathfinding = false;
     switch (m_followMode) {
     case FollowMode::CLOSE_FOLLOW:
-      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
       if (!usingPathfinding)
         updateCloseFollow(entity, state);
       break;
     case FollowMode::LOOSE_FOLLOW:
-      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
       if (!usingPathfinding)
         updateLooseFollow(entity, state);
       break;
     case FollowMode::FLANKING_FOLLOW:
-      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
       if (!usingPathfinding)
         updateFlankingFollow(entity, state);
       break;
     case FollowMode::REAR_GUARD:
-      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
       if (!usingPathfinding)
         updateRearGuard(entity, state);
       break;
     case FollowMode::ESCORT_FORMATION:
-      usingPathfinding = tryFollowPath(desiredPos, dynamicSpeed);
+      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
       if (!usingPathfinding)
         updateEscortFormation(entity, state);
       break;
@@ -788,4 +737,66 @@ int FollowBehavior::assignFormationSlot() {
 void FollowBehavior::releaseFormationSlot(int /*slot*/) {
   // In a more sophisticated implementation, you might track which slots are in
   // use For now, we just cycle through slots
+}
+
+// OPTIMIZATION: Extracted from lambda for better compiler optimization
+// This method handles path-following logic with TTL, goal change detection, and obstacle handling
+bool FollowBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& desiredPos, float speed) {
+  const float nodeRadius = 20.0f; // Increased for faster path following
+  const float pathTTL = 10.0f; // 10 seconds - reduce path churn when stationary
+  const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate
+
+  // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
+  if (state.backoffTimer > 0.0f) {
+    bool following = pathfinder().followPathStep(entity, currentPos,
+                        state.pathPoints, state.currentPathIndex,
+                        speed, nodeRadius);
+    if (following) {
+      state.progressTimer = 0.0f;
+    }
+    return following;
+  }
+
+  // Check if path is stale
+  bool stale = state.pathUpdateTimer > pathTTL;
+
+  // Check if goal changed significantly
+  bool goalChanged = true;
+  if (!state.pathPoints.empty()) {
+    Vector2D lastGoal = state.pathPoints.back();
+    // Use squared distance for performance
+    goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
+  }
+
+  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
+  bool stuckOnObstacle = (state.progressTimer > 0.8f);
+
+  // Request new path if needed
+  if (stale || goalChanged || stuckOnObstacle) {
+    auto& pf = this->pathfinder();
+    pf.requestPath(entity->getID(), currentPos, desiredPos, PathfinderManager::Priority::Normal,
+      [this, entity](EntityID, const std::vector<Vector2D>& path) {
+        // Safely look up state when callback executes
+        auto it = m_entityStates.find(entity);
+        if (it != m_entityStates.end()) {
+          it->second.pathPoints = path;
+          it->second.currentPathIndex = 0;
+          it->second.pathUpdateTimer = 0.0f;
+        }
+      });
+  }
+
+  // Try to follow the path
+  bool pathStep = pathfinder().followPathStep(entity, currentPos,
+                      state.pathPoints, state.currentPathIndex,
+                      speed, nodeRadius);
+  if (pathStep) {
+    state.progressTimer = 0.0f;
+  }
+
+  // REMOVED: Separation was overwriting path-following velocity with stale cached data
+  // Follow behavior uses followDistance (50px) to maintain spacing, so aggressive
+  // separation isn't needed and was causing erratic movement
+
+  return pathStep;
 }

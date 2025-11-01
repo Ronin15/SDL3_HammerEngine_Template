@@ -94,6 +94,7 @@ protected:
     float lastCrowdAnalysis = 0.0f;
     int cachedNearbyCount = 0;
     std::vector<Vector2D> cachedNearbyPositions;
+    Vector2D cachedClusterCenter{0, 0}; // OPTIMIZATION: Cache cluster center to avoid std::accumulate
 
     // Memory management: trim vector capacity to prevent unbounded growth
     void trimVectorCapacity() {
