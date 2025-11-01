@@ -537,6 +537,10 @@ private:
   // Multi-threaded batches run async, so we need shared_ptr to extend lifetime
   std::shared_ptr<PreFetchedBatchData> m_reusableMultiThreadedBuffer;
 
+  // Reusable collision update buffer for single-threaded paths
+  // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
+  std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
+
   // Camera bounds cache for entity update culling
   // Only update animations/sprites for entities within camera view + buffer
   float m_cameraMinX{0.0f};

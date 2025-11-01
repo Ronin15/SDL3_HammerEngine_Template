@@ -45,6 +45,10 @@ bool AIManager::init() {
     m_storage.doubleBuffer[0].reserve(INITIAL_CAPACITY);
     m_storage.doubleBuffer[1].reserve(INITIAL_CAPACITY);
 
+    // Pre-allocate collision update buffer for single-threaded paths
+    // Reserve with 10% headroom for growth (typical: 4000 NPCs → 4400 capacity)
+    m_reusableCollisionBuffer.reserve(static_cast<size_t>(INITIAL_CAPACITY * 1.1));
+
     // Initialize lock-free message queue
     for (auto &msg : m_lockFreeMessages) {
       msg.ready.store(false, std::memory_order_relaxed);
@@ -416,14 +420,14 @@ void AIManager::update(float deltaTime) {
         }
 
         // Use deferred collision update for consistency
-        std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
-        collisionUpdates.reserve(entityCount);
-        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
+        // Reuse pre-allocated buffer to eliminate per-frame heap allocations
+        m_reusableCollisionBuffer.clear();
+        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, m_reusableCollisionBuffer);
 
         // Submit collision updates directly (single-threaded, no batching needed)
-        if (!collisionUpdates.empty()) {
+        if (!m_reusableCollisionBuffer.empty()) {
           auto &cm = CollisionManager::Instance();
-          std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {collisionUpdates};
+          std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {m_reusableCollisionBuffer};
           cm.applyBatchedKinematicUpdates(singleBatch);
         }
 
@@ -515,14 +519,14 @@ void AIManager::update(float deltaTime) {
         }
 
         // Single batch - still use deferred collision update for consistency
-        std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
-        collisionUpdates.reserve(entityCount);
-        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
+        // Reuse pre-allocated buffer to eliminate per-frame heap allocations
+        m_reusableCollisionBuffer.clear();
+        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, m_reusableCollisionBuffer);
 
         // Submit collision updates directly (single batch, no contention)
-        if (!collisionUpdates.empty()) {
+        if (!m_reusableCollisionBuffer.empty()) {
           auto &cm = CollisionManager::Instance();
-          std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {collisionUpdates};
+          std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {m_reusableCollisionBuffer};
           cm.applyBatchedKinematicUpdates(singleBatch);
         }
       } else {
@@ -587,10 +591,15 @@ void AIManager::update(float deltaTime) {
         // Create per-batch collision update vectors to eliminate CollisionManager lock contention.
         // Each batch accumulates its updates independently, then we merge and submit once.
         // Use shared_ptr so the lambda can safely capture this data for async completion
+        // Reuse existing allocation if available and properly sized
         auto batchCollisionUpdates = std::make_shared<std::vector<std::vector<CollisionManager::KinematicUpdate>>>(batchCount);
         for (size_t i = 0; i < batchCount; ++i) {
           size_t estimatedSize = entitiesPerBatch + (i == batchCount - 1 ? remainingEntities : 0);
-          (*batchCollisionUpdates)[i].reserve(estimatedSize);
+          // Clear existing capacity, only reallocate if needed
+          (*batchCollisionUpdates)[i].clear();
+          if ((*batchCollisionUpdates)[i].capacity() < estimatedSize) {
+            (*batchCollisionUpdates)[i].reserve(estimatedSize);
+          }
         }
 
         // Submit batches using futures for native async result tracking
@@ -688,14 +697,14 @@ void AIManager::update(float deltaTime) {
       }
 
       // Use deferred collision update for consistency
-      std::vector<CollisionManager::KinematicUpdate> collisionUpdates;
-      collisionUpdates.reserve(entityCount);
-      processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, collisionUpdates);
+      // Reuse pre-allocated buffer to eliminate per-frame heap allocations
+      m_reusableCollisionBuffer.clear();
+      processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, preFetchedData, m_reusableCollisionBuffer);
 
       // Submit collision updates using unified batched API (consistency with multi-threaded path)
-      if (!collisionUpdates.empty()) {
+      if (!m_reusableCollisionBuffer.empty()) {
         auto &cm = CollisionManager::Instance();
-        std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {collisionUpdates};
+        std::vector<std::vector<CollisionManager::KinematicUpdate>> singleBatch = {m_reusableCollisionBuffer};
         cm.applyBatchedKinematicUpdates(singleBatch);
       }
     }
