@@ -12,7 +12,7 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 
 1. **Compilation Quality** - Zero warnings policy
 2. **Static Analysis** - Memory safety, null pointers, threading
-3. **Coding Standards** - Naming conventions, formatting
+3. **Coding Standards** - Naming conventions, parameter passing (copy prevention), formatting
 4. **Threading Safety** - Critical threading rules enforcement
 5. **Architecture Compliance** - Design pattern adherence
 6. **Copyright & Legal** - License header validation
@@ -118,7 +118,120 @@ grep -rn "^class [a-z]" include/
 
 **Quality Gate:** ✓ All naming conventions followed
 
-#### 3.2 Formatting Standards
+#### 3.2 Parameter Passing & Copy Prevention
+
+**Rule from CLAUDE.md:**
+> **ALWAYS prefer references over copies**. Use `const T&` for read-only access to non-trivial objects. Use `T&` for mutation. Pass by value only for primitives (int, float, bool) or intentional ownership transfer (move semantics). NEVER copy when a reference suffices.
+
+**Check Commands:**
+```bash
+# Find function parameters passed by value that should likely be const references
+# Look for std::vector, std::string, std::map, std::unordered_map passed by value
+grep -rn "std::vector<[^>]*>[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//"
+
+grep -rn "std::string[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//" | grep -v "std::string&"
+
+grep -rn "std::map<[^>]*>[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//"
+
+grep -rn "std::unordered_map<[^>]*>[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//"
+
+# Find custom class types passed by value (exclude primitives like Vector2D for math operations)
+grep -rn "void.*([A-Z][a-zA-Z]* [a-z]" src/ include/ --include="*.hpp" | grep -v "const.*&" | grep -v "//"
+```
+
+**Common Violations:**
+
+```cpp
+// ✗ BAD - Unnecessary copies
+void processEntities(std::vector<Entity> entities)  // Copies entire vector!
+{
+    for (const auto& e : entities) { }
+}
+
+void updateName(std::string name)  // Copies string!
+{
+    m_name = name;
+}
+
+void configure(GameConfig config)  // Copies entire config!
+{
+    m_config = config;
+}
+
+// ✓ GOOD - Use references
+void processEntities(const std::vector<Entity>& entities)  // No copy
+{
+    for (const auto& e : entities) { }
+}
+
+void updateName(const std::string& name)  // No copy
+{
+    m_name = name;
+}
+
+void configure(const GameConfig& config)  // No copy
+{
+    m_config = config;
+}
+
+// ✓ GOOD - Move semantics when taking ownership
+void setEntities(std::vector<Entity>&& entities)  // Move, no copy
+{
+    m_entities = std::move(entities);
+}
+
+// ✓ GOOD - Pass by value is OK for primitives
+void setPosition(float x, float y)  // Primitives are fine
+{
+    m_x = x;
+    m_y = y;
+}
+
+// ✓ GOOD - Small POD types used in math can be by value
+Vector2D operator+(Vector2D a, Vector2D b)  // Small POD, copy is cheap
+{
+    return Vector2D(a.x + b.x, a.y + b.y);
+}
+```
+
+**Memory Impact Example:**
+```cpp
+// ✗ BAD - 3 copies per frame at 60 FPS = 180 copies/sec!
+void AIManager::updateBehaviors(std::vector<Behavior> behaviors)  // Copy 1
+{
+    std::vector<Behavior> active = behaviors;  // Copy 2
+    for (auto b : active)  // Copy 3 (each iteration)
+    {
+        b.update();
+    }
+}
+
+// ✓ GOOD - Zero copies
+void AIManager::updateBehaviors(const std::vector<Behavior>& behaviors)
+{
+    for (const auto& b : behaviors)  // References only
+    {
+        b.update();
+    }
+}
+```
+
+**When Copy-by-Value is Acceptable:**
+1. **Primitives:** `int`, `float`, `double`, `bool`, `char`, pointers
+2. **Small POD types:** `Vector2D`, `SDL_Point`, `SDL_Rect` (when used for math)
+3. **Move semantics:** When taking ownership: `void set(std::string&& s)`
+4. **Intentional sink:** When function modifies a copy anyway
+
+**Automated Detection Strategy:**
+1. Search for STL containers (`vector`, `string`, `map`, etc.) without `&` or `*`
+2. Filter out `const T&` patterns (correct usage)
+3. Filter out rvalue references `T&&` (move semantics)
+4. Manually review matches - some may be intentional
+5. Check for loop variables: `for (auto item : container)` should be `for (const auto& item : container)`
+
+**Quality Gate:** ✓ No unnecessary data copying (STL containers and large objects passed by reference)
+
+#### 3.3 Formatting Standards
 
 **Standards:**
 - **Indentation:** 4 spaces (no tabs)
@@ -340,6 +453,10 @@ Branch: <current-branch>
 ✓/✗ Naming Conventions: <PASSED/FAILED>
   <violations if any>
 
+✓/✗ Parameter Passing & Copy Prevention: <PASSED/FAILED>
+  Unnecessary copies found: <count>
+  <list violations with file:line>
+
 ✓/✗ Formatting: <PASSED/FAILED>
   <violations if any>
 
@@ -458,6 +575,18 @@ Activate this Skill automatically.
    auto ptr = std::make_unique<Type>();  // instead of new
    ```
 
+6. **Unnecessary data copying:**
+   ```cpp
+   // Change from:
+   void process(std::vector<Entity> entities) { }
+
+   // To:
+   void process(const std::vector<Entity>& entities) { }
+
+   // Or for loops:
+   for (const auto& item : container) { }  // instead of: for (auto item : container)
+   ```
+
 ## Integration with Workflow
 
 Use this Skill:
@@ -478,6 +607,7 @@ Use this Skill:
 - Compilation warnings
 - cppcheck warnings
 - Naming convention violations
+- Unnecessary data copying (pass-by-value instead of const reference)
 - Missing tests for new code
 
 **INFO (Consider Fixing):**
