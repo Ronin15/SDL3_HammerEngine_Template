@@ -16,6 +16,9 @@
 #include <cmath>
 #include <thread>
 
+// Use SIMD abstraction layer
+using namespace HammerEngine::SIMD;
+
 // A simple and fast pseudo-random number generator
 inline int fast_rand() {
     static thread_local unsigned int g_seed = []() {
@@ -2569,10 +2572,10 @@ void ParticleManager::updateParticlePhysicsSIMD(
     LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
     float deltaTime) {
 
-#if defined(PARTICLE_SIMD_SSE2)
-  // Prepare aligned SIMD constants
-  const __m128 deltaTimeVec = _mm_set1_ps(deltaTime);
-  const __m128 atmosphericDragVec = _mm_set1_ps(0.98f);
+#if defined(HAMMER_SIMD_SSE2)
+  // Prepare aligned SIMD constants using SIMDMath abstraction
+  const Float4 deltaTimeVec = broadcast(deltaTime);
+  const Float4 atmosphericDragVec = broadcast(0.98f);
 
   // Quick bounds check - only validate once
   const size_t particleCount = particles.size();
@@ -2605,25 +2608,26 @@ void ParticleManager::updateParticlePhysicsSIMD(
     if ((maskBits & 0xF) == 0) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
-    __m128 posXv = _mm_load_ps(&particles.posX[i]);
-    __m128 posYv = _mm_load_ps(&particles.posY[i]);
-    __m128 velXv = _mm_load_ps(&particles.velX[i]);
-    __m128 velYv = _mm_load_ps(&particles.velY[i]);
-    const __m128 accXv = _mm_load_ps(&particles.accX[i]);
-    const __m128 accYv = _mm_load_ps(&particles.accY[i]);
+    Float4 posXv = load4(&particles.posX[i]);
+    Float4 posYv = load4(&particles.posY[i]);
+    Float4 velXv = load4(&particles.velX[i]);
+    Float4 velYv = load4(&particles.velY[i]);
+    const Float4 accXv = load4(&particles.accX[i]);
+    const Float4 accYv = load4(&particles.accY[i]);
 
-    // SIMD physics update
-    velXv = _mm_mul_ps(_mm_add_ps(velXv, _mm_mul_ps(accXv, deltaTimeVec)), atmosphericDragVec);
-    velYv = _mm_mul_ps(_mm_add_ps(velYv, _mm_mul_ps(accYv, deltaTimeVec)), atmosphericDragVec);
+    // SIMD physics update: vel = (vel + acc * dt) * drag
+    velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
+    velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
 
-    posXv = _mm_add_ps(posXv, _mm_mul_ps(velXv, deltaTimeVec));
-    posYv = _mm_add_ps(posYv, _mm_mul_ps(velYv, deltaTimeVec));
+    // pos = pos + vel * dt
+    posXv = madd(velXv, deltaTimeVec, posXv);
+    posYv = madd(velYv, deltaTimeVec, posYv);
 
     // Store results back to SIMD arrays
-    _mm_store_ps(&particles.velX[i], velXv);
-    _mm_store_ps(&particles.velY[i], velYv);
-    _mm_store_ps(&particles.posX[i], posXv);
-    _mm_store_ps(&particles.posY[i], posYv);
+    store4(&particles.velX[i], velXv);
+    store4(&particles.velY[i], velYv);
+    store4(&particles.posX[i], posXv);
+    store4(&particles.posY[i], posYv);
   }
 
   // Scalar tail
@@ -2638,10 +2642,10 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // No Vector2D sync required
 
-#elif defined(PARTICLE_SIMD_NEON)
-  // ARM NEON: Prepare SIMD constants
-  const float32x4_t deltaTimeVec = vdupq_n_f32(deltaTime);
-  const float32x4_t atmosphericDragVec = vdupq_n_f32(0.98f);
+#elif defined(HAMMER_SIMD_NEON)
+  // ARM NEON: Prepare SIMD constants using SIMDMath abstraction
+  const Float4 deltaTimeVec = broadcast(deltaTime);
+  const Float4 atmosphericDragVec = broadcast(0.98f);
 
   // Quick bounds check - only validate once
   const size_t particleCount = particles.size();
@@ -2676,26 +2680,26 @@ void ParticleManager::updateParticlePhysicsSIMD(
     if ((maskBits & 0xFFFFFFFF) == 0) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
-    float32x4_t posXv = vld1q_f32(&particles.posX[i]);
-    float32x4_t posYv = vld1q_f32(&particles.posY[i]);
-    float32x4_t velXv = vld1q_f32(&particles.velX[i]);
-    float32x4_t velYv = vld1q_f32(&particles.velY[i]);
-    const float32x4_t accXv = vld1q_f32(&particles.accX[i]);
-    const float32x4_t accYv = vld1q_f32(&particles.accY[i]);
+    Float4 posXv = load4(&particles.posX[i]);
+    Float4 posYv = load4(&particles.posY[i]);
+    Float4 velXv = load4(&particles.velX[i]);
+    Float4 velYv = load4(&particles.velY[i]);
+    const Float4 accXv = load4(&particles.accX[i]);
+    const Float4 accYv = load4(&particles.accY[i]);
 
-    // NEON physics update: vel = (vel + acc * dt) * drag
-    velXv = vmulq_f32(vmlaq_f32(velXv, accXv, deltaTimeVec), atmosphericDragVec);
-    velYv = vmulq_f32(vmlaq_f32(velYv, accYv, deltaTimeVec), atmosphericDragVec);
+    // SIMD physics update: vel = (vel + acc * dt) * drag
+    velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
+    velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
 
     // pos = pos + vel * dt
-    posXv = vmlaq_f32(posXv, velXv, deltaTimeVec);
-    posYv = vmlaq_f32(posYv, velYv, deltaTimeVec);
+    posXv = madd(velXv, deltaTimeVec, posXv);
+    posYv = madd(velYv, deltaTimeVec, posYv);
 
     // Store results back to SIMD arrays
-    vst1q_f32(&particles.velX[i], velXv);
-    vst1q_f32(&particles.velY[i], velYv);
-    vst1q_f32(&particles.posX[i], posXv);
-    vst1q_f32(&particles.posY[i], posYv);
+    store4(&particles.velX[i], velXv);
+    store4(&particles.velY[i], velYv);
+    store4(&particles.posX[i], posXv);
+    store4(&particles.posY[i], posYv);
   }
 
   // Scalar tail

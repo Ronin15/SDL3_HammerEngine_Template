@@ -24,6 +24,7 @@
 
 #include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
+#include "utils/SIMDMath.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
@@ -74,25 +75,6 @@ constexpr bool operator!=(const AlignedAllocator<T1, A1> &,
                           const AlignedAllocator<T2, A2> &) noexcept {
   return A1 != A2;
 }
-
-// SIMD support detection
-#if defined(__SSE2__) ||                                                       \
-    (defined(_MSC_VER) &&                                                      \
-     (defined(_M_X64) || defined(_M_IX86_FP) && _M_IX86_FP >= 2))
-#define PARTICLE_SIMD_SSE2 1
-#include <emmintrin.h>
-#endif
-
-#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
-#define PARTICLE_SIMD_SSE4 1
-#include <smmintrin.h>
-#endif
-
-// ARM NEON support (Apple Silicon)
-#if defined(__ARM_NEON) || defined(__ARM_NEON__)
-#define PARTICLE_SIMD_NEON 1
-#include <arm_neon.h>
-#endif
 
 // Forward declarations
 class TextureManager;

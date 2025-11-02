@@ -11,8 +11,12 @@
 #include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "utils/SIMDMath.hpp"
 #include <algorithm>
 #include <cstring>
+
+// Use SIMD abstraction layer
+using namespace HammerEngine::SIMD;
 
 bool AIManager::init() {
   if (m_initialized.load(std::memory_order_acquire)) {
@@ -1424,12 +1428,12 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
   size_t updatedCount = 0;
 
-#if defined(AI_SIMD_SSE2)
-  // SSE2: Process 4 entities at once for distance calculations
+#if defined(HAMMER_SIMD_SSE2)
+  // SSE2: Process 4 entities at once for distance calculations using SIMDMath
   const float playerX = playerPos.getX();
   const float playerY = playerPos.getY();
-  const __m128 playerPosX = _mm_set1_ps(playerX);
-  const __m128 playerPosY = _mm_set1_ps(playerY);
+  const Float4 playerPosX = broadcast(playerX);
+  const Float4 playerPosY = broadcast(playerY);
 
   size_t i = 0;
   const size_t simdEnd = (entityCount / 4) * 4;
@@ -1457,38 +1461,38 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
     }
 
     // Load 4 entity X positions
-    __m128 entityX = _mm_set_ps(
-      m_storage.entities[i+3]->getPosition().getX(),
-      m_storage.entities[i+2]->getPosition().getX(),
+    Float4 entityX = set(
+      m_storage.entities[i]->getPosition().getX(),
       m_storage.entities[i+1]->getPosition().getX(),
-      m_storage.entities[i]->getPosition().getX()
+      m_storage.entities[i+2]->getPosition().getX(),
+      m_storage.entities[i+3]->getPosition().getX()
     );
 
     // Load 4 entity Y positions
-    __m128 entityY = _mm_set_ps(
-      m_storage.entities[i+3]->getPosition().getY(),
-      m_storage.entities[i+2]->getPosition().getY(),
+    Float4 entityY = set(
+      m_storage.entities[i]->getPosition().getY(),
       m_storage.entities[i+1]->getPosition().getY(),
-      m_storage.entities[i]->getPosition().getY()
+      m_storage.entities[i+2]->getPosition().getY(),
+      m_storage.entities[i+3]->getPosition().getY()
     );
 
     // Calculate differences
-    __m128 diffX = _mm_sub_ps(entityX, playerPosX);
-    __m128 diffY = _mm_sub_ps(entityY, playerPosY);
+    Float4 diffX = sub(entityX, playerPosX);
+    Float4 diffY = sub(entityY, playerPosY);
 
     // Calculate squared distances: diffX² + diffY²
-    __m128 distSqX = _mm_mul_ps(diffX, diffX);
-    __m128 distSqY = _mm_mul_ps(diffY, diffY);
-    __m128 distSq = _mm_add_ps(distSqX, distSqY);
+    Float4 distSqX = mul(diffX, diffX);
+    Float4 distSqY = mul(diffY, diffY);
+    Float4 distSq = add(distSqX, distSqY);
 
     // Store results
     alignas(16) float distSquaredArray[4];
-    _mm_store_ps(distSquaredArray, distSq);
+    store4(distSquaredArray, distSq);
 
-    // Update hot data with results
+    // Update hot data with results (no reverse order needed with set())
     for (size_t j = 0; j < 4; ++j) {
       auto &hotData = m_storage.hotData[i + j];
-      hotData.distanceSquared = distSquaredArray[3 - j]; // Reverse order due to _mm_set_ps
+      hotData.distanceSquared = distSquaredArray[j];
       hotData.position = m_storage.entities[i + j]->getPosition();
       updatedCount++;
     }
@@ -1506,12 +1510,12 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
     }
   }
 
-#elif defined(AI_SIMD_NEON)
-  // ARM NEON: Process 4 entities at once for distance calculations
+#elif defined(HAMMER_SIMD_NEON)
+  // ARM NEON: Process 4 entities at once for distance calculations using SIMDMath
   const float playerX = playerPos.getX();
   const float playerY = playerPos.getY();
-  const float32x4_t playerPosX = vdupq_n_f32(playerX);
-  const float32x4_t playerPosY = vdupq_n_f32(playerY);
+  const Float4 playerPosX = broadcast(playerX);
+  const Float4 playerPosY = broadcast(playerY);
 
   size_t i = 0;
   const size_t simdEnd = (entityCount / 4) * 4;
@@ -1539,32 +1543,29 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
     }
 
     // Load 4 entity positions
-    const float entityXData[4] = {
+    Float4 entityX = set(
       m_storage.entities[i]->getPosition().getX(),
       m_storage.entities[i+1]->getPosition().getX(),
       m_storage.entities[i+2]->getPosition().getX(),
       m_storage.entities[i+3]->getPosition().getX()
-    };
-    const float entityYData[4] = {
+    );
+    Float4 entityY = set(
       m_storage.entities[i]->getPosition().getY(),
       m_storage.entities[i+1]->getPosition().getY(),
       m_storage.entities[i+2]->getPosition().getY(),
       m_storage.entities[i+3]->getPosition().getY()
-    };
-
-    float32x4_t entityX = vld1q_f32(entityXData);
-    float32x4_t entityY = vld1q_f32(entityYData);
+    );
 
     // Calculate differences
-    float32x4_t diffX = vsubq_f32(entityX, playerPosX);
-    float32x4_t diffY = vsubq_f32(entityY, playerPosY);
+    Float4 diffX = sub(entityX, playerPosX);
+    Float4 diffY = sub(entityY, playerPosY);
 
-    // Calculate squared distances: diffX² + diffY²
-    float32x4_t distSq = vmlaq_f32(vmulq_f32(diffX, diffX), diffY, diffY);
+    // Calculate squared distances: diffX² + diffY² using fused multiply-add
+    Float4 distSq = madd(diffY, diffY, mul(diffX, diffX));
 
     // Store results
     alignas(16) float distSquaredArray[4];
-    vst1q_f32(distSquaredArray, distSq);
+    store4(distSquaredArray, distSq);
 
     // Update hot data with results
     for (size_t j = 0; j < 4; ++j) {
