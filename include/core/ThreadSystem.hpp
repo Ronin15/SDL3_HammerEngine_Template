@@ -11,6 +11,7 @@
 
 #include "Logger.hpp"
 #include <SDL3/SDL.h>
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -20,6 +21,7 @@
 #include <future>
 #include <memory>
 #include <mutex>
+#include <numeric>
 #include <string>
 #include <thread>
 
@@ -241,12 +243,11 @@ public:
 
   bool isEmpty() const {
     // Use atomic counters for lock-free checking
-    for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      if (m_priorityCounts[i].count.load(std::memory_order_relaxed) > 0) {
-        return false;
-      }
-    }
-    return true;
+    constexpr int maxPriority = static_cast<int>(TaskPriority::Idle);
+    return !std::any_of(m_priorityCounts.begin(), m_priorityCounts.begin() + maxPriority + 1,
+                        [](const auto& counter) {
+                          return counter.count.load(std::memory_order_relaxed) > 0;
+                        });
   }
 
   // Directly check if stopping without acquiring lock
@@ -277,11 +278,12 @@ public:
 
   // Get the current size of all task queues combined
   size_t size() const {
-    size_t totalSize = 0;
-    for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      totalSize += m_priorityCounts[i].count.load(std::memory_order_relaxed);
-    }
-    return totalSize;
+    constexpr int maxPriority = static_cast<int>(TaskPriority::Idle);
+    return std::accumulate(m_priorityCounts.begin(), m_priorityCounts.begin() + maxPriority + 1,
+                           size_t{0},
+                           [](size_t sum, const auto& counter) {
+                             return sum + counter.count.load(std::memory_order_relaxed);
+                           });
   }
 
   // Enable or disable profiling
@@ -366,12 +368,11 @@ private:
 
   // Lock-free check for any tasks using atomic counters
   bool hasAnyTasksLockFree() const {
-    for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
-      if (m_priorityCounts[i].count.load(std::memory_order_relaxed) > 0) {
-        return true;
-      }
-    }
-    return false;
+    constexpr int maxPriority = static_cast<int>(TaskPriority::Idle);
+    return std::any_of(m_priorityCounts.begin(), m_priorityCounts.begin() + maxPriority + 1,
+                       [](const auto& counter) {
+                         return counter.count.load(std::memory_order_relaxed) > 0;
+                       });
   }
 
   // Try to pop a task without blocking

@@ -58,7 +58,7 @@ private:
     std::string m_targetStateName;
 
     // World generation configuration
-    HammerEngine::WorldGenerationConfig m_worldConfig;
+    HammerEngine::WorldGenerationConfig m_worldConfig{};
 
     // Async loading state (thread-safe atomics)
     std::atomic<float> m_progress{0.0f};
