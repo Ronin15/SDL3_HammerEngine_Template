@@ -88,6 +88,21 @@ namespace SIMD {
     };
 #endif
 
+/**
+ * @brief 16-byte vector for byte-level operations
+ * Maps to __m128i on x86 or uint8x16_t on ARM
+ */
+#if defined(HAMMER_SIMD_SSE2)
+    using Byte16 = __m128i;
+#elif defined(HAMMER_SIMD_NEON)
+    using Byte16 = uint8x16_t;
+#else
+    // Scalar fallback
+    struct Byte16 {
+        uint8_t data[16];
+    };
+#endif
+
 // ============================================================================
 // Load/Store Operations
 // ============================================================================
@@ -438,6 +453,276 @@ inline int movemask_int(Int4 v) {
         }
     }
     return result;
+#endif
+}
+
+/**
+ * @brief Create Int4 from 4 individual integers
+ */
+inline Int4 set_int4(int32_t x, int32_t y, int32_t z, int32_t w) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_set_epi32(w, z, y, x); // Note: SSE uses reverse order
+#elif defined(HAMMER_SIMD_NEON)
+    const uint32_t data[4] = {static_cast<uint32_t>(x), static_cast<uint32_t>(y),
+                              static_cast<uint32_t>(z), static_cast<uint32_t>(w)};
+    return vld1q_u32(data);
+#else
+    Int4 result;
+    result.data[0] = x;
+    result.data[1] = y;
+    result.data[2] = z;
+    result.data[3] = w;
+    return result;
+#endif
+}
+
+/**
+ * @brief Load 4 integers from memory
+ */
+inline Int4 load_int4(const uint32_t* ptr) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
+#elif defined(HAMMER_SIMD_NEON)
+    return vld1q_u32(ptr);
+#else
+    Int4 result;
+    result.data[0] = ptr[0];
+    result.data[1] = ptr[1];
+    result.data[2] = ptr[2];
+    result.data[3] = ptr[3];
+    return result;
+#endif
+}
+
+/**
+ * @brief Create zero integer vector
+ */
+inline Int4 setzero_int() {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_setzero_si128();
+#elif defined(HAMMER_SIMD_NEON)
+    return vdupq_n_u32(0);
+#else
+    Int4 result;
+    result.data[0] = result.data[1] = result.data[2] = result.data[3] = 0;
+    return result;
+#endif
+}
+
+/**
+ * @brief Bitwise OR (integer)
+ */
+inline Int4 bitwise_or_int(Int4 a, Int4 b) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_or_si128(a, b);
+#elif defined(HAMMER_SIMD_NEON)
+    return vorrq_u32(a, b);
+#else
+    Int4 result;
+    result.data[0] = a.data[0] | b.data[0];
+    result.data[1] = a.data[1] | b.data[1];
+    result.data[2] = a.data[2] | b.data[2];
+    result.data[3] = a.data[3] | b.data[3];
+    return result;
+#endif
+}
+
+/**
+ * @brief Right shift (logical) integer vector by N bits
+ */
+template<int N>
+inline Int4 shift_right_int(Int4 v) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_srli_epi32(v, N);
+#elif defined(HAMMER_SIMD_NEON)
+    return vshrq_n_u32(v, N);
+#else
+    Int4 result;
+    for (int i = 0; i < 4; ++i) {
+        result.data[i] = static_cast<uint32_t>(v.data[i]) >> N;
+    }
+    return result;
+#endif
+}
+
+// ============================================================================
+// Byte-Level Operations
+// ============================================================================
+
+/**
+ * @brief Load 16 bytes from memory
+ */
+inline Byte16 load_byte16(const uint8_t* ptr) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_loadu_si128(reinterpret_cast<const __m128i*>(ptr));
+#elif defined(HAMMER_SIMD_NEON)
+    return vld1q_u8(ptr);
+#else
+    Byte16 result;
+    for (int i = 0; i < 16; ++i) {
+        result.data[i] = ptr[i];
+    }
+    return result;
+#endif
+}
+
+/**
+ * @brief Broadcast byte to all 16 lanes
+ */
+inline Byte16 broadcast_byte(uint8_t value) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_set1_epi8(static_cast<char>(value));
+#elif defined(HAMMER_SIMD_NEON)
+    return vdupq_n_u8(value);
+#else
+    Byte16 result;
+    for (int i = 0; i < 16; ++i) {
+        result.data[i] = value;
+    }
+    return result;
+#endif
+}
+
+/**
+ * @brief Bitwise AND (byte-level)
+ */
+inline Byte16 bitwise_and_byte(Byte16 a, Byte16 b) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_and_si128(a, b);
+#elif defined(HAMMER_SIMD_NEON)
+    return vandq_u8(a, b);
+#else
+    Byte16 result;
+    for (int i = 0; i < 16; ++i) {
+        result.data[i] = a.data[i] & b.data[i];
+    }
+    return result;
+#endif
+}
+
+/**
+ * @brief Greater-than comparison (byte-level, signed)
+ * Returns 0xFF for true, 0x00 for false per byte
+ */
+inline Byte16 cmpgt_byte(Byte16 a, Byte16 b) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_cmpgt_epi8(a, b);
+#elif defined(HAMMER_SIMD_NEON)
+    return vcgtq_u8(a, b);
+#else
+    Byte16 result;
+    for (int i = 0; i < 16; ++i) {
+        result.data[i] = (a.data[i] > b.data[i]) ? 0xFF : 0x00;
+    }
+    return result;
+#endif
+}
+
+/**
+ * @brief Extract movemask from byte vector (returns 16-bit mask)
+ * Each bit represents the sign bit of corresponding byte
+ */
+inline int movemask_byte(Byte16 v) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_movemask_epi8(v);
+#elif defined(HAMMER_SIMD_NEON)
+    // NEON: Check first 4 bytes for particle flag checking
+    uint8x8_t narrow = vget_low_u8(v);
+    uint64_t maskBits = vget_lane_u64(vreinterpret_u64_u8(narrow), 0);
+    return static_cast<int>(maskBits & 0xFFFFFFFF);
+#else
+    int result = 0;
+    for (int i = 0; i < 16; ++i) {
+        if (v.data[i] & 0x80) {
+            result |= (1 << i);
+        }
+    }
+    return result;
+#endif
+}
+
+/**
+ * @brief Create zero byte vector
+ */
+inline Byte16 setzero_byte() {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_setzero_si128();
+#elif defined(HAMMER_SIMD_NEON)
+    return vdupq_n_u8(0);
+#else
+    Byte16 result;
+    for (int i = 0; i < 16; ++i) {
+        result.data[i] = 0;
+    }
+    return result;
+#endif
+}
+
+// ============================================================================
+// Shuffle and Horizontal Operations
+// ============================================================================
+
+/**
+ * @brief Shuffle float lanes (SSE-style)
+ * For cross-platform code, prefer using higher-level operations
+ */
+template<int i0, int i1, int i2, int i3>
+inline Float4 shuffle(Float4 a, Float4 b) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_shuffle_ps(a, b, _MM_SHUFFLE(i3, i2, i1, i0));
+#elif defined(HAMMER_SIMD_NEON)
+    // NEON doesn't have direct shuffle, implement common cases
+    // This is a simplified version - full implementation would be complex
+    alignas(16) float dataA[4], dataB[4], result[4];
+    vst1q_f32(dataA, a);
+    vst1q_f32(dataB, b);
+    result[0] = dataA[i0];
+    result[1] = dataA[i1];
+    result[2] = dataB[i2];
+    result[3] = dataB[i3];
+    return vld1q_f32(result);
+#else
+    Float4 result;
+    result.data[0] = (i0 < 4) ? a.data[i0] : b.data[i0 - 4];
+    result.data[1] = (i1 < 4) ? a.data[i1] : b.data[i1 - 4];
+    result.data[2] = (i2 < 4) ? a.data[i2] : b.data[i2 - 4];
+    result.data[3] = (i3 < 4) ? a.data[i3] : b.data[i3 - 4];
+    return result;
+#endif
+}
+
+/**
+ * @brief Extract single float from vector
+ */
+template<int lane>
+inline float extract_lane(Float4 v) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_cvtss_f32(_mm_shuffle_ps(v, v, _MM_SHUFFLE(lane, lane, lane, lane)));
+#elif defined(HAMMER_SIMD_NEON)
+    return vgetq_lane_f32(v, lane);
+#else
+    return v.data[lane];
+#endif
+}
+
+/**
+ * @brief Horizontal add - sum all 4 lanes (returns scalar)
+ */
+inline float horizontal_add(Float4 v) {
+#if defined(HAMMER_SIMD_SSE2)
+    Float4 shuf = _mm_shuffle_ps(v, v, _MM_SHUFFLE(2, 3, 0, 1));
+    Float4 sums = _mm_add_ps(v, shuf);
+    shuf = _mm_shuffle_ps(sums, sums, _MM_SHUFFLE(1, 0, 3, 2));
+    Float4 result = _mm_add_ps(sums, shuf);
+    return _mm_cvtss_f32(result);
+#elif defined(HAMMER_SIMD_NEON)
+    float32x2_t low = vget_low_f32(v);
+    float32x2_t high = vget_high_f32(v);
+    float32x2_t sum = vpadd_f32(low, high);
+    float32x2_t final_sum = vpadd_f32(sum, sum);
+    return vget_lane_f32(final_sum, 0);
+#else
+    return v.data[0] + v.data[1] + v.data[2] + v.data[3];
 #endif
 }
 

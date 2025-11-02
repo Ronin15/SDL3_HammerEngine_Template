@@ -2599,12 +2599,12 @@ void ParticleManager::updateParticlePhysicsSIMD(
   // SIMD main loop - use aligned loads for maximum performance
   const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
   for (; i < simdEnd; i += 4) {
-    // SIMD flag check for 4 particles: skip if none active
-    const __m128i flagsv = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&particles.flags[i]));
-    const __m128i activeMask = _mm_set1_epi8(static_cast<char>(UnifiedParticle::FLAG_ACTIVE));
-    const __m128i activev = _mm_and_si128(flagsv, activeMask);
-    const __m128i gt0 = _mm_cmpgt_epi8(activev, _mm_setzero_si128());
-    const int maskBits = _mm_movemask_epi8(gt0);
+    // SIMD flag check for 4 particles: skip if none active using SIMDMath abstraction
+    const Byte16 flagsv = load_byte16(&particles.flags[i]);
+    const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+    const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
+    const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
+    const int maskBits = movemask_byte(gt0);
     if ((maskBits & 0xF) == 0) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
@@ -2669,14 +2669,12 @@ void ParticleManager::updateParticlePhysicsSIMD(
   // NEON main loop - use aligned loads for maximum performance
   const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
   for (; i < simdEnd; i += 4) {
-    // NEON flag check for 4 particles: skip if none active
-    const uint8x16_t flagsv = vld1q_u8(reinterpret_cast<const uint8_t*>(&particles.flags[i]));
-    const uint8x16_t activeMask = vdupq_n_u8(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
-    const uint8x16_t activev = vandq_u8(flagsv, activeMask);
-    const uint8x16_t gt0 = vcgtq_u8(activev, vdupq_n_u8(0));
-    // Check if any of first 4 bytes are active
-    uint8x8_t narrow = vget_low_u8(gt0);
-    uint64_t maskBits = vget_lane_u64(vreinterpret_u64_u8(narrow), 0);
+    // SIMD flag check for 4 particles: skip if none active using SIMDMath abstraction
+    const Byte16 flagsv = load_byte16(&particles.flags[i]);
+    const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+    const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
+    const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
+    const int maskBits = movemask_byte(gt0);
     if ((maskBits & 0xFFFFFFFF) == 0) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
