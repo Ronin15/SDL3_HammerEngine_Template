@@ -1528,9 +1528,9 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     auto& dynamicCandidates = getPooledVector();
     m_dynamicSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, dynamicCandidates);
 
-#if defined(HAMMER_SIMD_SSE2)
-    // SIMD: Process candidates in batches of 4 for layer mask filtering
-    const __m128i maskVec = _mm_set1_epi32(dynamicCollidesWith);
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+    // SIMD: Process candidates in batches of 4 for layer mask filtering using SIMDMath
+    const Int4 maskVec = broadcast_int(dynamicCollidesWith);
     size_t i = 0;
     const size_t simdEnd = (dynamicCandidates.size() / 4) * 4;
 
@@ -1554,18 +1554,18 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
       }
 
       // Load 4 candidate layers
-      __m128i layers = _mm_set_epi32(
-        m_storage.hotData[dynamicCandidates[i+3]].layers,
-        m_storage.hotData[dynamicCandidates[i+2]].layers,
+      Int4 layers = set_int4(
+        m_storage.hotData[dynamicCandidates[i]].layers,
         m_storage.hotData[dynamicCandidates[i+1]].layers,
-        m_storage.hotData[dynamicCandidates[i]].layers
+        m_storage.hotData[dynamicCandidates[i+2]].layers,
+        m_storage.hotData[dynamicCandidates[i+3]].layers
       );
 
       // Batch layer mask check: result = layers & dynamicCollidesWith
-      __m128i result = _mm_and_si128(layers, maskVec);
-      __m128i zeros = _mm_setzero_si128();
-      __m128i cmp = _mm_cmpeq_epi32(result, zeros);
-      int failMask = _mm_movemask_epi8(cmp);
+      Int4 result = bitwise_and(layers, maskVec);
+      Int4 zeros = setzero_int();
+      Int4 cmp = cmpeq_int(result, zeros);
+      int failMask = movemask_int(cmp);
 
       // If all 4 failed (all bits set), skip entire batch
       if (failMask == 0xFFFF) continue;
@@ -1578,76 +1578,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
         // Check if this candidate passed (failMask bit for this lane is 0)
         int laneFailBits = (failMask >> (j * 4)) & 0xF;
         if (laneFailBits == 0xF) continue; // This candidate failed layer mask
-
-        const auto& candidateHot = m_storage.hotData[candidateIdx];
-        if (!candidateHot.active) continue;
-
-        // Add collision pair
-        size_t a = std::min(dynamicIdx, candidateIdx);
-        size_t b = std::max(dynamicIdx, candidateIdx);
-        indexPairs.emplace_back(a, b);
-      }
-    }
-
-    // Scalar tail for remaining candidates
-    for (; i < dynamicCandidates.size(); ++i) {
-      size_t candidateIdx = dynamicCandidates[i];
-#elif defined(HAMMER_SIMD_NEON)
-    // ARM NEON: Process candidates in batches of 4 for layer mask filtering
-    const uint32x4_t maskVec = vdupq_n_u32(static_cast<uint32_t>(dynamicCollidesWith));
-    size_t i = 0;
-    const size_t simdEnd = (dynamicCandidates.size() / 4) * 4;
-
-    for (; i < simdEnd; i += 4) {
-      // Bounds check for batch
-      if (dynamicCandidates[i] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+1] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+2] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+3] >= m_storage.hotData.size()) {
-        // Fall back to scalar for this batch
-        for (size_t j = i; j < i + 4 && j < dynamicCandidates.size(); ++j) {
-          size_t candidateIdx = dynamicCandidates[j];
-          if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
-          const auto& candidateHot = m_storage.hotData[candidateIdx];
-          if (!candidateHot.active || (dynamicCollidesWith & candidateHot.layers) == 0) continue;
-          size_t a = std::min(dynamicIdx, candidateIdx);
-          size_t b = std::max(dynamicIdx, candidateIdx);
-          indexPairs.emplace_back(a, b);
-        }
-        continue;
-      }
-
-      // Load 4 candidate layers
-      const uint32_t layersData[4] = {
-        static_cast<uint32_t>(m_storage.hotData[dynamicCandidates[i]].layers),
-        static_cast<uint32_t>(m_storage.hotData[dynamicCandidates[i+1]].layers),
-        static_cast<uint32_t>(m_storage.hotData[dynamicCandidates[i+2]].layers),
-        static_cast<uint32_t>(m_storage.hotData[dynamicCandidates[i+3]].layers)
-      };
-      uint32x4_t layers = vld1q_u32(layersData);
-
-      // Batch layer mask check: result = layers & dynamicCollidesWith
-      uint32x4_t result = vandq_u32(layers, maskVec);
-      uint32x4_t zeros = vdupq_n_u32(0);
-      uint32x4_t cmp = vceqq_u32(result, zeros);
-
-      // Extract fail mask
-      uint32x4_t shifted = vshrq_n_u32(cmp, 31);
-      uint32_t failBits = vgetq_lane_u32(shifted, 0) |
-                         (vgetq_lane_u32(shifted, 1) << 1) |
-                         (vgetq_lane_u32(shifted, 2) << 2) |
-                         (vgetq_lane_u32(shifted, 3) << 3);
-
-      // If all 4 failed, skip entire batch
-      if (failBits == 0xF) continue;
-
-      // Process individual candidates that passed layer mask check
-      for (size_t j = 0; j < 4; ++j) {
-        size_t candidateIdx = dynamicCandidates[i + j];
-        if (candidateIdx == dynamicIdx) continue;
-
-        // Check if this candidate passed
-        if ((failBits >> j) & 0x1) continue; // This candidate failed layer mask
 
         const auto& candidateHot = m_storage.hotData[candidateIdx];
         if (!candidateHot.active) continue;
@@ -1699,9 +1629,9 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
         const auto& staticCandidates = regionCacheIt->second.staticIndices;
 
-#if defined(HAMMER_SIMD_SSE2)
-        // SIMD: Process static candidates in batches of 4 for layer mask filtering
-        const __m128i staticMaskVec = _mm_set1_epi32(dynamicCollidesWith);
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+        // Unified SIMD: Process static candidates in batches of 4 for layer mask filtering
+        const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
         size_t si = 0;
         const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
 
@@ -1722,30 +1652,30 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
             continue;
           }
 
-          // Load 4 static candidate layers
-          __m128i staticLayers = _mm_set_epi32(
-            m_storage.hotData[staticCandidates[si+3]].layers,
-            m_storage.hotData[staticCandidates[si+2]].layers,
+          // Load 4 static candidate layers (correct order - not reversed)
+          Int4 staticLayers = set_int4(
+            m_storage.hotData[staticCandidates[si]].layers,
             m_storage.hotData[staticCandidates[si+1]].layers,
-            m_storage.hotData[staticCandidates[si]].layers
+            m_storage.hotData[staticCandidates[si+2]].layers,
+            m_storage.hotData[staticCandidates[si+3]].layers
           );
 
-          // Batch layer mask check
-          __m128i staticResult = _mm_and_si128(staticLayers, staticMaskVec);
-          __m128i staticZeros = _mm_setzero_si128();
-          __m128i staticCmp = _mm_cmpeq_epi32(staticResult, staticZeros);
-          int staticFailMask = _mm_movemask_epi8(staticCmp);
+          // Batch layer mask check: result = staticLayers & staticMaskVec
+          Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+          Int4 staticZeros = setzero_int();
+          Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
+          int staticFailMask = movemask_int(staticCmp);
 
-          // If all 4 failed, skip entire batch
+          // If all 4 failed (all bits set), skip entire batch
           if (staticFailMask == 0xFFFF) continue;
 
-          // Process individual static candidates that passed
+          // Process individual static candidates that passed layer mask check
           for (size_t j = 0; j < 4; ++j) {
             size_t staticIdx = staticCandidates[si + j];
 
-            // Check if this candidate passed
+            // Check if this candidate passed (failMask bit for this lane is 0)
             int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
-            if (laneFailBits == 0xF) continue;
+            if (laneFailBits == 0xF) continue; // This candidate failed layer mask
 
             const auto& staticHot = m_storage.hotData[staticIdx];
             if (!staticHot.active) continue;
@@ -1754,71 +1684,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
           }
         }
 
-        // Scalar tail
-        for (; si < staticCandidates.size(); ++si) {
-          size_t staticIdx = staticCandidates[si];
-#elif defined(HAMMER_SIMD_NEON)
-        // ARM NEON: Process static candidates in batches of 4 for layer mask filtering
-        const uint32x4_t staticMaskVec = vdupq_n_u32(static_cast<uint32_t>(dynamicCollidesWith));
-        size_t si = 0;
-        const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
-
-        for (; si < staticSimdEnd; si += 4) {
-          // Bounds check for batch
-          if (staticCandidates[si] >= m_storage.hotData.size() ||
-              staticCandidates[si+1] >= m_storage.hotData.size() ||
-              staticCandidates[si+2] >= m_storage.hotData.size() ||
-              staticCandidates[si+3] >= m_storage.hotData.size()) {
-            // Fall back to scalar for this batch
-            for (size_t j = si; j < si + 4 && j < staticCandidates.size(); ++j) {
-              size_t staticIdx = staticCandidates[j];
-              if (staticIdx >= m_storage.hotData.size()) continue;
-              const auto& staticHot = m_storage.hotData[staticIdx];
-              if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-              indexPairs.emplace_back(dynamicIdx, staticIdx);
-            }
-            continue;
-          }
-
-          // Load 4 static candidate layers
-          const uint32_t staticLayersData[4] = {
-            static_cast<uint32_t>(m_storage.hotData[staticCandidates[si]].layers),
-            static_cast<uint32_t>(m_storage.hotData[staticCandidates[si+1]].layers),
-            static_cast<uint32_t>(m_storage.hotData[staticCandidates[si+2]].layers),
-            static_cast<uint32_t>(m_storage.hotData[staticCandidates[si+3]].layers)
-          };
-          uint32x4_t staticLayers = vld1q_u32(staticLayersData);
-
-          // Batch layer mask check
-          uint32x4_t staticResult = vandq_u32(staticLayers, staticMaskVec);
-          uint32x4_t staticZeros = vdupq_n_u32(0);
-          uint32x4_t staticCmp = vceqq_u32(staticResult, staticZeros);
-
-          // Extract fail mask
-          uint32x4_t shifted = vshrq_n_u32(staticCmp, 31);
-          uint32_t staticFailBits = vgetq_lane_u32(shifted, 0) |
-                                   (vgetq_lane_u32(shifted, 1) << 1) |
-                                   (vgetq_lane_u32(shifted, 2) << 2) |
-                                   (vgetq_lane_u32(shifted, 3) << 3);
-
-          // If all 4 failed, skip entire batch
-          if (staticFailBits == 0xF) continue;
-
-          // Process individual static candidates that passed
-          for (size_t j = 0; j < 4; ++j) {
-            size_t staticIdx = staticCandidates[si + j];
-
-            // Check if this candidate passed
-            if ((staticFailBits >> j) & 0x1) continue;
-
-            const auto& staticHot = m_storage.hotData[staticIdx];
-            if (!staticHot.active) continue;
-
-            indexPairs.emplace_back(dynamicIdx, staticIdx);
-          }
-        }
-
-        // Scalar tail
+        // Scalar tail for remaining candidates
         for (; si < staticCandidates.size(); ++si) {
           size_t staticIdx = staticCandidates[si];
 #else
@@ -1875,142 +1741,8 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
   // Only trigger special handling for genuinely fast-moving bodies (250px/s @ 60fps = 4.17px/frame)
   constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD; // 62500.0f
 
-#if defined(HAMMER_SIMD_SSE2)
-  // SIMD: Batch process AABB intersection tests (4 pairs at a time)
-  size_t i = 0;
-  const size_t simdEnd = (indexPairs.size() / 4) * 4;
-
-  for (; i < simdEnd; i += 4) {
-    // Load indices for 4 pairs
-    const auto& [aIdx0, bIdx0] = indexPairs[i];
-    const auto& [aIdx1, bIdx1] = indexPairs[i+1];
-    const auto& [aIdx2, bIdx2] = indexPairs[i+2];
-    const auto& [aIdx3, bIdx3] = indexPairs[i+3];
-
-    // Bounds check
-    if (aIdx0 >= m_storage.hotData.size() || bIdx0 >= m_storage.hotData.size() ||
-        aIdx1 >= m_storage.hotData.size() || bIdx1 >= m_storage.hotData.size() ||
-        aIdx2 >= m_storage.hotData.size() || bIdx2 >= m_storage.hotData.size() ||
-        aIdx3 >= m_storage.hotData.size() || bIdx3 >= m_storage.hotData.size()) {
-      // Fall back to scalar for this batch
-      for (size_t j = i; j < i + 4; ++j) {
-        const auto& [aIdx, bIdx] = indexPairs[j];
-        if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
-        const auto& hotA = m_storage.hotData[aIdx];
-        const auto& hotB = m_storage.hotData[bIdx];
-        if (!hotA.active || !hotB.active) continue;
-
-        float minXA, minYA, maxXA, maxYA, minXB, minYB, maxXB, maxYB;
-        m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
-        m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
-
-        if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
-
-        float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
-        float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
-
-        float minPen;
-        Vector2D normal;
-        constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
-        if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
-          minPen = overlapX;
-          float centerXA = (minXA + maxXA) * 0.5f;
-          float centerXB = (minXB + maxXB) * 0.5f;
-          normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-        } else {
-          minPen = overlapY;
-          float centerYA = (minYA + maxYA) * 0.5f;
-          float centerYB = (minYB + maxYB) * 0.5f;
-          normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-        }
-        EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-        EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-        bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
-        collisions.push_back(CollisionInfo{entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx});
-      }
-      continue;
-    }
-
-    // Get AABB bounds for all 4 pairs
-    float minXA[4], minYA[4], maxXA[4], maxYA[4];
-    float minXB[4], minYB[4], maxXB[4], maxYB[4];
-
-    m_storage.getCachedAABBBounds(aIdx0, minXA[0], minYA[0], maxXA[0], maxYA[0]);
-    m_storage.getCachedAABBBounds(bIdx0, minXB[0], minYB[0], maxXB[0], maxYB[0]);
-    m_storage.getCachedAABBBounds(aIdx1, minXA[1], minYA[1], maxXA[1], maxYA[1]);
-    m_storage.getCachedAABBBounds(bIdx1, minXB[1], minYB[1], maxXB[1], maxYB[1]);
-    m_storage.getCachedAABBBounds(aIdx2, minXA[2], minYA[2], maxXA[2], maxYA[2]);
-    m_storage.getCachedAABBBounds(bIdx2, minXB[2], minYB[2], maxXB[2], maxYB[2]);
-    m_storage.getCachedAABBBounds(aIdx3, minXA[3], minYA[3], maxXA[3], maxYA[3]);
-    m_storage.getCachedAABBBounds(bIdx3, minXB[3], minYB[3], maxXB[3], maxYB[3]);
-
-    // SIMD intersection test for 4 pairs
-    __m128 maxXA_v = _mm_loadu_ps(maxXA);
-    __m128 minXB_v = _mm_loadu_ps(minXB);
-    __m128 maxXB_v = _mm_loadu_ps(maxXB);
-    __m128 minXA_v = _mm_loadu_ps(minXA);
-    __m128 maxYA_v = _mm_loadu_ps(maxYA);
-    __m128 minYB_v = _mm_loadu_ps(minYB);
-    __m128 maxYB_v = _mm_loadu_ps(maxYB);
-    __m128 minYA_v = _mm_loadu_ps(minYA);
-
-    // Test: maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA
-    __m128 xFail1 = _mm_cmplt_ps(maxXA_v, minXB_v);
-    __m128 xFail2 = _mm_cmplt_ps(maxXB_v, minXA_v);
-    __m128 yFail1 = _mm_cmplt_ps(maxYA_v, minYB_v);
-    __m128 yFail2 = _mm_cmplt_ps(maxYB_v, minYA_v);
-
-    __m128 fail = _mm_or_ps(_mm_or_ps(xFail1, xFail2), _mm_or_ps(yFail1, yFail2));
-    int failMask = _mm_movemask_ps(fail);
-
-    // If all 4 pairs failed intersection, skip
-    if (failMask == 0xF) continue;
-
-    // Process pairs that passed intersection test
-    const size_t indices[4] = {aIdx0, aIdx1, aIdx2, aIdx3};
-    const size_t bindices[4] = {bIdx0, bIdx1, bIdx2, bIdx3};
-
-    for (size_t j = 0; j < 4; ++j) {
-      if (failMask & (1 << j)) continue; // This pair failed intersection
-
-      size_t aIdx = indices[j];
-      size_t bIdx = bindices[j];
-      const auto& hotA = m_storage.hotData[aIdx];
-      const auto& hotB = m_storage.hotData[bIdx];
-
-      if (!hotA.active || !hotB.active) continue;
-
-      // Calculate overlap and collision details (scalar - normals are conditional)
-      float overlapX = std::min(maxXA[j], maxXB[j]) - std::max(minXA[j], minXB[j]);
-      float overlapY = std::min(maxYA[j], maxYB[j]) - std::max(minYA[j], minYB[j]);
-
-      float minPen;
-      Vector2D normal;
-      if (overlapX < overlapY) {
-        minPen = overlapX;
-        float centerXA = (minXA[j] + maxXA[j]) * 0.5f;
-        float centerXB = (minXB[j] + maxXB[j]) * 0.5f;
-        normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-      } else {
-        minPen = overlapY;
-        float centerYA = (minYA[j] + maxYA[j]) * 0.5f;
-        float centerYB = (minYB[j] + maxYB[j]) * 0.5f;
-        normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-      }
-
-      EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-      EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-      bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
-
-      collisions.push_back(CollisionInfo{entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx});
-    }
-  }
-
-  // Scalar tail for remaining pairs
-  for (; i < indexPairs.size(); ++i) {
-    const auto& [aIdx, bIdx] = indexPairs[i];
-#elif defined(HAMMER_SIMD_NEON)
-  // ARM NEON: Batch process AABB intersection tests (4 pairs at a time)
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+  // Unified SIMD: Batch process AABB intersection tests (4 pairs at a time)
   size_t i = 0;
   const size_t simdEnd = (indexPairs.size() / 4) * 4;
 
@@ -2078,30 +1810,24 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     m_storage.getCachedAABBBounds(aIdx3, minXA[3], minYA[3], maxXA[3], maxYA[3]);
     m_storage.getCachedAABBBounds(bIdx3, minXB[3], minYB[3], maxXB[3], maxYB[3]);
 
-    // NEON intersection test for 4 pairs
-    float32x4_t maxXA_v = vld1q_f32(maxXA);
-    float32x4_t minXB_v = vld1q_f32(minXB);
-    float32x4_t maxXB_v = vld1q_f32(maxXB);
-    float32x4_t minXA_v = vld1q_f32(minXA);
-    float32x4_t maxYA_v = vld1q_f32(maxYA);
-    float32x4_t minYB_v = vld1q_f32(minYB);
-    float32x4_t maxYB_v = vld1q_f32(maxYB);
-    float32x4_t minYA_v = vld1q_f32(minYA);
+    // Unified SIMD intersection test for 4 pairs
+    Float4 maxXA_v = load4(maxXA);
+    Float4 minXB_v = load4(minXB);
+    Float4 maxXB_v = load4(maxXB);
+    Float4 minXA_v = load4(minXA);
+    Float4 maxYA_v = load4(maxYA);
+    Float4 minYB_v = load4(minYB);
+    Float4 maxYB_v = load4(maxYB);
+    Float4 minYA_v = load4(minYA);
 
     // Test: maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA
-    uint32x4_t xFail1 = vcltq_f32(maxXA_v, minXB_v);
-    uint32x4_t xFail2 = vcltq_f32(maxXB_v, minXA_v);
-    uint32x4_t yFail1 = vcltq_f32(maxYA_v, minYB_v);
-    uint32x4_t yFail2 = vcltq_f32(maxYB_v, minYA_v);
+    Float4 xFail1 = cmplt(maxXA_v, minXB_v);
+    Float4 xFail2 = cmplt(maxXB_v, minXA_v);
+    Float4 yFail1 = cmplt(maxYA_v, minYB_v);
+    Float4 yFail2 = cmplt(maxYB_v, minYA_v);
 
-    uint32x4_t fail = vorrq_u32(vorrq_u32(xFail1, xFail2), vorrq_u32(yFail1, yFail2));
-
-    // Extract fail mask
-    uint32x4_t shifted = vshrq_n_u32(fail, 31);
-    uint32_t failMask = vgetq_lane_u32(shifted, 0) |
-                       (vgetq_lane_u32(shifted, 1) << 1) |
-                       (vgetq_lane_u32(shifted, 2) << 2) |
-                       (vgetq_lane_u32(shifted, 3) << 3);
+    Float4 fail = bitwise_or(bitwise_or(xFail1, xFail2), bitwise_or(yFail1, yFail2));
+    int failMask = movemask(fail);
 
     // If all 4 pairs failed intersection, skip
     if (failMask == 0xF) continue;
@@ -2582,109 +2308,52 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   const float push = collision.penetration * 0.5f;
 
   // Apply position corrections
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
   if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
-    // SIMD: Both dynamic/kinematic - split the correction
-    __m128 normal = _mm_set_ps(0, 0, collision.normal.getY(), collision.normal.getX());
-    __m128 pushVec = _mm_set1_ps(push);
-    __m128 correction = _mm_mul_ps(normal, pushVec);
+    // Unified SIMD: Both dynamic/kinematic - split the correction
+    Float4 normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
+    Float4 pushVec = broadcast(push);
+    Float4 correction = mul(normal, pushVec);
 
-    __m128 posA = _mm_set_ps(0, 0, hotA.position.getY(), hotA.position.getX());
-    __m128 posB = _mm_set_ps(0, 0, hotB.position.getY(), hotB.position.getX());
+    Float4 posA = set(hotA.position.getX(), hotA.position.getY(), 0, 0);
+    Float4 posB = set(hotB.position.getX(), hotB.position.getY(), 0, 0);
 
-    posA = _mm_sub_ps(posA, correction);
-    posB = _mm_add_ps(posB, correction);
+    posA = sub(posA, correction);
+    posB = add(posB, correction);
 
     alignas(16) float resultA[4], resultB[4];
-    _mm_store_ps(resultA, posA);
-    _mm_store_ps(resultB, posB);
+    store4(resultA, posA);
+    store4(resultB, posB);
 
     hotA.position.setX(resultA[0]);
     hotA.position.setY(resultA[1]);
     hotB.position.setX(resultB[0]);
     hotB.position.setY(resultB[1]);
   } else if (typeA != BodyType::STATIC) {
-    // SIMD: Only A moves
-    __m128 normal = _mm_set_ps(0, 0, collision.normal.getY(), collision.normal.getX());
-    __m128 penVec = _mm_set1_ps(collision.penetration);
-    __m128 correction = _mm_mul_ps(normal, penVec);
+    // Unified SIMD: Only A moves
+    Float4 normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
+    Float4 penVec = broadcast(collision.penetration);
+    Float4 correction = mul(normal, penVec);
 
-    __m128 posA = _mm_set_ps(0, 0, hotA.position.getY(), hotA.position.getX());
-    posA = _mm_sub_ps(posA, correction);
+    Float4 posA = set(hotA.position.getX(), hotA.position.getY(), 0, 0);
+    posA = sub(posA, correction);
 
     alignas(16) float resultA[4];
-    _mm_store_ps(resultA, posA);
+    store4(resultA, posA);
 
     hotA.position.setX(resultA[0]);
     hotA.position.setY(resultA[1]);
   } else if (typeB != BodyType::STATIC) {
-    // SIMD: Only B moves
-    __m128 normal = _mm_set_ps(0, 0, collision.normal.getY(), collision.normal.getX());
-    __m128 penVec = _mm_set1_ps(collision.penetration);
-    __m128 correction = _mm_mul_ps(normal, penVec);
+    // Unified SIMD: Only B moves
+    Float4 normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
+    Float4 penVec = broadcast(collision.penetration);
+    Float4 correction = mul(normal, penVec);
 
-    __m128 posB = _mm_set_ps(0, 0, hotB.position.getY(), hotB.position.getX());
-    posB = _mm_add_ps(posB, correction);
-
-    alignas(16) float resultB[4];
-    _mm_store_ps(resultB, posB);
-
-    hotB.position.setX(resultB[0]);
-    hotB.position.setY(resultB[1]);
-  }
-#elif defined(HAMMER_SIMD_NEON)
-  if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
-    // ARM NEON: Both dynamic/kinematic - split the correction
-    const float normalData[4] = {collision.normal.getX(), collision.normal.getY(), 0, 0};
-    float32x4_t normal = vld1q_f32(normalData);
-    float32x4_t pushVec = vdupq_n_f32(push);
-    float32x4_t correction = vmulq_f32(normal, pushVec);
-
-    const float posAData[4] = {hotA.position.getX(), hotA.position.getY(), 0, 0};
-    const float posBData[4] = {hotB.position.getX(), hotB.position.getY(), 0, 0};
-    float32x4_t posA = vld1q_f32(posAData);
-    float32x4_t posB = vld1q_f32(posBData);
-
-    posA = vsubq_f32(posA, correction);
-    posB = vaddq_f32(posB, correction);
-
-    alignas(16) float resultA[4], resultB[4];
-    vst1q_f32(resultA, posA);
-    vst1q_f32(resultB, posB);
-
-    hotA.position.setX(resultA[0]);
-    hotA.position.setY(resultA[1]);
-    hotB.position.setX(resultB[0]);
-    hotB.position.setY(resultB[1]);
-  } else if (typeA != BodyType::STATIC) {
-    // ARM NEON: Only A moves
-    const float normalData[4] = {collision.normal.getX(), collision.normal.getY(), 0, 0};
-    float32x4_t normal = vld1q_f32(normalData);
-    float32x4_t penVec = vdupq_n_f32(collision.penetration);
-    float32x4_t correction = vmulq_f32(normal, penVec);
-
-    const float posAData[4] = {hotA.position.getX(), hotA.position.getY(), 0, 0};
-    float32x4_t posA = vld1q_f32(posAData);
-    posA = vsubq_f32(posA, correction);
-
-    alignas(16) float resultA[4];
-    vst1q_f32(resultA, posA);
-
-    hotA.position.setX(resultA[0]);
-    hotA.position.setY(resultA[1]);
-  } else if (typeB != BodyType::STATIC) {
-    // ARM NEON: Only B moves
-    const float normalData[4] = {collision.normal.getX(), collision.normal.getY(), 0, 0};
-    float32x4_t normal = vld1q_f32(normalData);
-    float32x4_t penVec = vdupq_n_f32(collision.penetration);
-    float32x4_t correction = vmulq_f32(normal, penVec);
-
-    const float posBData[4] = {hotB.position.getX(), hotB.position.getY(), 0, 0};
-    float32x4_t posB = vld1q_f32(posBData);
-    posB = vaddq_f32(posB, correction);
+    Float4 posB = set(hotB.position.getX(), hotB.position.getY(), 0, 0);
+    posB = add(posB, correction);
 
     alignas(16) float resultB[4];
-    vst1q_f32(resultB, posB);
+    store4(resultB, posB);
 
     hotB.position.setX(resultB[0]);
     hotB.position.setY(resultB[1]);
@@ -2706,15 +2375,13 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 #endif
 
   // Apply velocity damping for dynamic bodies
-#if defined(HAMMER_SIMD_SSE2)
-  auto dampenVelocitySIMD = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
-    // SIMD dot product
-    __m128 vel = _mm_set_ps(0, 0, velocity.getY(), velocity.getX());
-    __m128 norm = _mm_set_ps(0, 0, collision.normal.getY(), collision.normal.getX());
-    __m128 dot = _mm_mul_ps(vel, norm);
-    __m128 dot_shuf = _mm_shuffle_ps(dot, dot, _MM_SHUFFLE(2, 3, 0, 1));
-    __m128 dot_sum = _mm_add_ps(dot, dot_shuf);
-    float vdotn = _mm_cvtss_f32(dot_sum);
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+  auto dampenVelocitySIMD = [](Vector2D& velocity, const Vector2D& collisionNormal, float restitution, bool isStatic) {
+    // Unified SIMD dot product
+    Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
+    Float4 norm = set(collisionNormal.getX(), collisionNormal.getY(), 0, 0);
+    Float4 dot_vec = mul(vel, norm);
+    float vdotn = horizontal_add(dot_vec);
 
     // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
     // vdotn < 0 means moving AWAY from collision
@@ -2722,17 +2389,17 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
       return; // Moving away - no damping needed
     }
 
-    // SIMD velocity damping
-    __m128 vdotnVec = _mm_set1_ps(vdotn);
-    __m128 normalVel = _mm_mul_ps(norm, vdotnVec);
+    // Unified SIMD velocity damping
+    Float4 vdotnVec = broadcast(vdotn);
+    Float4 normalVel = mul(norm, vdotnVec);
 
     // For static collisions, zero velocity; for dynamic, use restitution
-    __m128 dampFactor = isStatic ? _mm_set1_ps(1.0f) : _mm_set1_ps(1.0f + restitution);
-    __m128 dampedVel = _mm_mul_ps(normalVel, dampFactor);
-    vel = _mm_sub_ps(vel, dampedVel);
+    Float4 dampFactor = broadcast(isStatic ? 1.0f : (1.0f + restitution));
+    Float4 dampedVel = mul(normalVel, dampFactor);
+    vel = sub(vel, dampedVel);
 
     alignas(16) float result[4];
-    _mm_store_ps(result, vel);
+    store4(result, vel);
 
     velocity.setX(result[0]);
     velocity.setY(result[1]);
@@ -2740,95 +2407,13 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   if (typeA == BodyType::DYNAMIC) {
     bool staticCollision = (typeB == BodyType::STATIC);
-    dampenVelocitySIMD(hotA.velocity, m_storage.coldData[indexA].restitution, staticCollision);
+    dampenVelocitySIMD(hotA.velocity, collision.normal, m_storage.coldData[indexA].restitution, staticCollision);
   }
   if (typeB == BodyType::DYNAMIC) {
     bool staticCollision = (typeA == BodyType::STATIC);
-    // For entity B, we need to flip the normal (normal points A->B, but we need B->A)
-    CollisionInfo flippedCollision = collision;
-    flippedCollision.normal = collision.normal * -1.0f;
-    auto dampenVelocitySIMD_B = [&flippedCollision](Vector2D& velocity, float restitution, bool isStatic) {
-      __m128 vel = _mm_set_ps(0, 0, velocity.getY(), velocity.getX());
-      __m128 norm = _mm_set_ps(0, 0, flippedCollision.normal.getY(), flippedCollision.normal.getX());
-      __m128 dot = _mm_mul_ps(vel, norm);
-      __m128 dot_shuf = _mm_shuffle_ps(dot, dot, _MM_SHUFFLE(2, 3, 0, 1));
-      __m128 dot_sum = _mm_add_ps(dot, dot_shuf);
-      float vdotn = _mm_cvtss_f32(dot_sum);
-      if (vdotn < 0) return; // Moving away
-      __m128 vdotnVec = _mm_set1_ps(vdotn);
-      __m128 normalVel = _mm_mul_ps(norm, vdotnVec);
-      __m128 dampFactor = isStatic ? _mm_set1_ps(1.0f) : _mm_set1_ps(1.0f + restitution);
-      __m128 dampedVel = _mm_mul_ps(normalVel, dampFactor);
-      vel = _mm_sub_ps(vel, dampedVel);
-      alignas(16) float result[4];
-      _mm_store_ps(result, vel);
-      velocity.setX(result[0]);
-      velocity.setY(result[1]);
-    };
-    dampenVelocitySIMD_B(hotB.velocity, m_storage.coldData[indexB].restitution, staticCollision);
-  }
-#elif defined(HAMMER_SIMD_NEON)
-  auto dampenVelocitySIMD = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
-    // ARM NEON dot product
-    const float velData[4] = {velocity.getX(), velocity.getY(), 0, 0};
-    const float normData[4] = {collision.normal.getX(), collision.normal.getY(), 0, 0};
-    float32x4_t vel = vld1q_f32(velData);
-    float32x4_t norm = vld1q_f32(normData);
-    float32x4_t dot = vmulq_f32(vel, norm);
-    float32x2_t sum = vpadd_f32(vget_low_f32(dot), vget_high_f32(dot));
-    float vdotn = vget_lane_f32(sum, 0);
-
-    // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
-    // vdotn < 0 means moving AWAY from collision
-    if (vdotn < 0) {
-      return; // Moving away - no damping needed
-    }
-
-    // NEON velocity damping
-    float32x4_t vdotnVec = vdupq_n_f32(vdotn);
-    float32x4_t normalVel = vmulq_f32(norm, vdotnVec);
-
-    // For static collisions, zero velocity; for dynamic, use restitution
-    float32x4_t dampFactor = vdupq_n_f32(isStatic ? 1.0f : (1.0f + restitution));
-    float32x4_t dampedVel = vmulq_f32(normalVel, dampFactor);
-    vel = vsubq_f32(vel, dampedVel);
-
-    alignas(16) float result[4];
-    vst1q_f32(result, vel);
-
-    velocity.setX(result[0]);
-    velocity.setY(result[1]);
-  };
-
-  if (typeA == BodyType::DYNAMIC) {
-    bool staticCollision = (typeB == BodyType::STATIC);
-    dampenVelocitySIMD(hotA.velocity, m_storage.coldData[indexA].restitution, staticCollision);
-  }
-  if (typeB == BodyType::DYNAMIC) {
-    bool staticCollision = (typeA == BodyType::STATIC);
-    // For entity B, we need to flip the normal (normal points A->B, but we need B->A)
-    CollisionInfo flippedCollision = collision;
-    flippedCollision.normal = collision.normal * -1.0f;
-    auto dampenVelocitySIMD_B = [&flippedCollision](Vector2D& velocity, float restitution, bool isStatic) {
-      const float velData[4] = {velocity.getX(), velocity.getY(), 0, 0};
-      const float normData[4] = {flippedCollision.normal.getX(), flippedCollision.normal.getY(), 0, 0};
-      float32x4_t vel = vld1q_f32(velData);
-      float32x4_t norm = vld1q_f32(normData);
-      float32x4_t dot = vmulq_f32(vel, norm);
-      float32x2_t sum = vpadd_f32(vget_low_f32(dot), vget_high_f32(dot));
-      float vdotn = vget_lane_f32(sum, 0);
-      if (vdotn < 0) return; // Moving away
-      float32x4_t vdotnVec = vdupq_n_f32(vdotn);
-      float32x4_t normalVel = vmulq_f32(norm, vdotnVec);
-      float32x4_t dampFactor = vdupq_n_f32(isStatic ? 1.0f : (1.0f + restitution));
-      float32x4_t dampedVel = vmulq_f32(normalVel, dampFactor);
-      vel = vsubq_f32(vel, dampedVel);
-      alignas(16) float result[4];
-      vst1q_f32(result, vel);
-      velocity.setX(result[0]);
-      velocity.setY(result[1]);
-    };
-    dampenVelocitySIMD_B(hotB.velocity, m_storage.coldData[indexB].restitution, staticCollision);
+    // For entity B, flip the normal (normal points A->B, but we need B->A)
+    Vector2D flippedNormal = collision.normal * -1.0f;
+    dampenVelocitySIMD(hotB.velocity, flippedNormal, m_storage.coldData[indexB].restitution, staticCollision);
   }
 #else
   // Scalar fallback
@@ -2904,51 +2489,23 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   }
 
   // Clamp velocities to reasonable limits
-#if defined(HAMMER_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
   auto clampVelocitySIMD = [](Vector2D& velocity) {
     const float maxSpeed = 300.0f;
 
-    // SIMD length calculation
-    __m128 vel = _mm_set_ps(0, 0, velocity.getY(), velocity.getX());
-    __m128 sq = _mm_mul_ps(vel, vel);
-    __m128 sq_shuf = _mm_shuffle_ps(sq, sq, _MM_SHUFFLE(2, 3, 0, 1));
-    __m128 sum = _mm_add_ps(sq, sq_shuf);
-    float lenSq = _mm_cvtss_f32(sum);
+    // Unified SIMD length calculation
+    Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
+    Float4 sq = mul(vel, vel);
+    float lenSq = horizontal_add(sq);
     float speed = std::sqrt(lenSq);
 
     if (speed > maxSpeed && speed > 0.0f) {
-      // SIMD velocity scaling
-      __m128 scale = _mm_set1_ps(maxSpeed / speed);
-      vel = _mm_mul_ps(vel, scale);
+      // Unified SIMD velocity scaling
+      Float4 scale = broadcast(maxSpeed / speed);
+      vel = mul(vel, scale);
 
       alignas(16) float result[4];
-      _mm_store_ps(result, vel);
-      velocity.setX(result[0]);
-      velocity.setY(result[1]);
-    }
-  };
-
-  clampVelocitySIMD(hotA.velocity);
-  clampVelocitySIMD(hotB.velocity);
-#elif defined(HAMMER_SIMD_NEON)
-  auto clampVelocitySIMD = [](Vector2D& velocity) {
-    const float maxSpeed = 300.0f;
-
-    // NEON length calculation
-    const float velData[4] = {velocity.getX(), velocity.getY(), 0, 0};
-    float32x4_t vel = vld1q_f32(velData);
-    float32x4_t sq = vmulq_f32(vel, vel);
-    float32x2_t sum = vpadd_f32(vget_low_f32(sq), vget_high_f32(sq));
-    float lenSq = vget_lane_f32(sum, 0);
-    float speed = std::sqrt(lenSq);
-
-    if (speed > maxSpeed && speed > 0.0f) {
-      // NEON velocity scaling
-      float32x4_t scale = vdupq_n_f32(maxSpeed / speed);
-      vel = vmulq_f32(vel, scale);
-
-      alignas(16) float result[4];
-      vst1q_f32(result, vel);
+      store4(result, vel);
       velocity.setX(result[0]);
       velocity.setY(result[1]);
     }
