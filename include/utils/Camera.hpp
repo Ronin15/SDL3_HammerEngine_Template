@@ -7,6 +7,7 @@
 #define CAMERA_HPP
 
 #include "utils/Vector2D.hpp"
+#include <algorithm>
 #include <memory>
 #include <functional>
 #include <cstdint>
@@ -63,10 +64,9 @@ public:
             if (zoomLevels.empty()) {
                 return false;
             }
-            for (float zoom : zoomLevels) {
-                if (zoom <= 0.0f) {
-                    return false;
-                }
+            if (!std::all_of(zoomLevels.begin(), zoomLevels.end(),
+                             [](float zoom) { return zoom > 0.0f; })) {
+                return false;
             }
             if (defaultZoomLevel < 0 || defaultZoomLevel >= static_cast<int>(zoomLevels.size())) {
                 return false;

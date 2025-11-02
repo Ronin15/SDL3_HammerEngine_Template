@@ -23,6 +23,7 @@
 #include <algorithm>
 #include <chrono>
 #include <future>
+#include <numeric>
 #include <unordered_set>
 
 // ----------------------
@@ -337,10 +338,7 @@ void EventManager::update() {
   m_currentSampleIndex = (m_currentSampleIndex + 1) % PERF_SAMPLE_SIZE;
 
   // Calculate rolling average
-  double sum = 0.0;
-  for (size_t i = 0; i < PERF_SAMPLE_SIZE; ++i) {
-    sum += m_updateTimeSamples[i];
-  }
+  double sum = std::accumulate(m_updateTimeSamples.begin(), m_updateTimeSamples.end(), 0.0);
   m_avgUpdateTimeMs = sum / PERF_SAMPLE_SIZE;
 
   m_frameCounter++;
@@ -350,10 +348,11 @@ void EventManager::update() {
     m_lastDebugLogFrame = m_frameCounter;
 
     // Count handlers per type (lock-free read for debug - slightly stale data is acceptable)
-    size_t totalHandlers = 0;
-    for (const auto& handlers : m_handlersByType) {
-      totalHandlers += handlers.size();
-    }
+    size_t totalHandlers = std::accumulate(m_handlersByType.begin(), m_handlersByType.end(),
+                                            size_t{0},
+                                            [](size_t sum, const auto& handlers) {
+                                              return sum + handlers.size();
+                                            });
 
     // Build event summary string with counts per type
     std::string eventSummary = "";
@@ -790,12 +789,14 @@ bool EventManager::removeHandler(const HandlerToken &token) {
     if (idx >= m_handlersByType.size()) return false;
 
     auto &entries = m_handlersByType[idx];
-    for (size_t i = 0; i < entries.size(); ++i) {
-      if (entries[i].id == token.id) {
-        // Mark as invalid (will be filtered during invocation)
-        entries[i] = HandlerEntry();
-        return true;
-      }
+    auto it = std::find_if(entries.begin(), entries.end(),
+                           [&token](const HandlerEntry& entry) {
+                             return entry.id == token.id;
+                           });
+    if (it != entries.end()) {
+      // Mark as invalid (will be filtered during invocation)
+      *it = HandlerEntry();
+      return true;
     }
     return false;
   }

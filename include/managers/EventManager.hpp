@@ -109,7 +109,7 @@ using FastEventHandler = std::function<void(const EventData &)>;
  */
 struct HandlerEntry {
   FastEventHandler callable;
-  uint64_t id;
+  uint64_t id = 0;
 
   HandlerEntry() = default;
   HandlerEntry(FastEventHandler c, uint64_t i)
