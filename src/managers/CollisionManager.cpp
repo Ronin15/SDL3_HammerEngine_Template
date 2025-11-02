@@ -11,6 +11,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/UniqueID.hpp"
+#include "utils/SIMDMath.hpp"
 #include "world/WorldData.hpp"
 #include <algorithm>
 #include <chrono>
@@ -21,6 +22,9 @@
 #include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
+
+// Use SIMD abstraction layer
+using namespace HammerEngine::SIMD;
 
 using ::EventManager;
 using ::EventTypeId;
@@ -1495,38 +1499,19 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
 
     // Calculate epsilon-expanded bounds directly from cached min/max (NO AABB construction!)
-#if defined(COLLISION_SIMD_SSE2)
-    // SIMD: Compute all 4 bounds in parallel
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+    // SIMD: Compute all 4 bounds in parallel using SIMDMath abstraction
     // Load: [aabbMinX, aabbMinY, aabbMaxX, aabbMaxY]
-    __m128 bounds = _mm_set_ps(dynamicHot.aabbMaxY, dynamicHot.aabbMaxX,
-                               dynamicHot.aabbMinY, dynamicHot.aabbMinX);
+    Float4 bounds = set(dynamicHot.aabbMinX, dynamicHot.aabbMinY,
+                       dynamicHot.aabbMaxX, dynamicHot.aabbMaxY);
     // Epsilon: [-eps, -eps, +eps, +eps]
-    __m128 epsilon = _mm_set_ps(SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON,
-                                -SPATIAL_QUERY_EPSILON, -SPATIAL_QUERY_EPSILON);
-    __m128 queryBounds = _mm_add_ps(bounds, epsilon);
+    Float4 epsilon = set(-SPATIAL_QUERY_EPSILON, -SPATIAL_QUERY_EPSILON,
+                        SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
+    Float4 queryBounds = add(bounds, epsilon);
 
     // Extract results
     alignas(16) float queryBoundsArray[4];
-    _mm_store_ps(queryBoundsArray, queryBounds);
-    float queryMinX = queryBoundsArray[0];
-    float queryMinY = queryBoundsArray[1];
-    float queryMaxX = queryBoundsArray[2];
-    float queryMaxY = queryBoundsArray[3];
-#elif defined(COLLISION_SIMD_NEON)
-    // ARM NEON: Compute all 4 bounds in parallel
-    // Load: [aabbMinX, aabbMinY, aabbMaxX, aabbMaxY]
-    const float boundsData[4] = {dynamicHot.aabbMinX, dynamicHot.aabbMinY,
-                                  dynamicHot.aabbMaxX, dynamicHot.aabbMaxY};
-    float32x4_t bounds = vld1q_f32(boundsData);
-    // Epsilon: [-eps, -eps, +eps, +eps]
-    const float epsilonData[4] = {-SPATIAL_QUERY_EPSILON, -SPATIAL_QUERY_EPSILON,
-                                   SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON};
-    float32x4_t epsilon = vld1q_f32(epsilonData);
-    float32x4_t queryBounds = vaddq_f32(bounds, epsilon);
-
-    // Extract results
-    alignas(16) float queryBoundsArray[4];
-    vst1q_f32(queryBoundsArray, queryBounds);
+    store4(queryBoundsArray, queryBounds);
     float queryMinX = queryBoundsArray[0];
     float queryMinY = queryBoundsArray[1];
     float queryMaxX = queryBoundsArray[2];
@@ -1543,7 +1528,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     auto& dynamicCandidates = getPooledVector();
     m_dynamicSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, dynamicCandidates);
 
-#if defined(COLLISION_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2)
     // SIMD: Process candidates in batches of 4 for layer mask filtering
     const __m128i maskVec = _mm_set1_epi32(dynamicCollidesWith);
     size_t i = 0;
@@ -1607,7 +1592,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     // Scalar tail for remaining candidates
     for (; i < dynamicCandidates.size(); ++i) {
       size_t candidateIdx = dynamicCandidates[i];
-#elif defined(COLLISION_SIMD_NEON)
+#elif defined(HAMMER_SIMD_NEON)
     // ARM NEON: Process candidates in batches of 4 for layer mask filtering
     const uint32x4_t maskVec = vdupq_n_u32(static_cast<uint32_t>(dynamicCollidesWith));
     size_t i = 0;
@@ -1714,7 +1699,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
         const auto& staticCandidates = regionCacheIt->second.staticIndices;
 
-#if defined(COLLISION_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2)
         // SIMD: Process static candidates in batches of 4 for layer mask filtering
         const __m128i staticMaskVec = _mm_set1_epi32(dynamicCollidesWith);
         size_t si = 0;
@@ -1772,7 +1757,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
         // Scalar tail
         for (; si < staticCandidates.size(); ++si) {
           size_t staticIdx = staticCandidates[si];
-#elif defined(COLLISION_SIMD_NEON)
+#elif defined(HAMMER_SIMD_NEON)
         // ARM NEON: Process static candidates in batches of 4 for layer mask filtering
         const uint32x4_t staticMaskVec = vdupq_n_u32(static_cast<uint32_t>(dynamicCollidesWith));
         size_t si = 0;
@@ -1890,7 +1875,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
   // Only trigger special handling for genuinely fast-moving bodies (250px/s @ 60fps = 4.17px/frame)
   constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD; // 62500.0f
 
-#if defined(COLLISION_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2)
   // SIMD: Batch process AABB intersection tests (4 pairs at a time)
   size_t i = 0;
   const size_t simdEnd = (indexPairs.size() / 4) * 4;
@@ -2024,7 +2009,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
   // Scalar tail for remaining pairs
   for (; i < indexPairs.size(); ++i) {
     const auto& [aIdx, bIdx] = indexPairs[i];
-#elif defined(COLLISION_SIMD_NEON)
+#elif defined(HAMMER_SIMD_NEON)
   // ARM NEON: Batch process AABB intersection tests (4 pairs at a time)
   size_t i = 0;
   const size_t simdEnd = (indexPairs.size() / 4) * 4;
@@ -2348,7 +2333,7 @@ void CollisionManager::updateSOA(float dt) {
   auto t3 = clock::now();
 
   // RESOLUTION: Apply collision responses and update positions
-#ifdef COLLISION_SIMD_SSE2
+#ifdef HAMMER_SIMD_SSE2
   // SIMD batch resolution: Process 4 collisions at a time where possible
   size_t collIdx = 0;
   const size_t collSimdEnd = (m_collisionPool.collisionBuffer.size() / 4) * 4;
@@ -2597,7 +2582,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   const float push = collision.penetration * 0.5f;
 
   // Apply position corrections
-#if defined(COLLISION_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2)
   if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
     // SIMD: Both dynamic/kinematic - split the correction
     __m128 normal = _mm_set_ps(0, 0, collision.normal.getY(), collision.normal.getX());
@@ -2647,7 +2632,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     hotB.position.setX(resultB[0]);
     hotB.position.setY(resultB[1]);
   }
-#elif defined(COLLISION_SIMD_NEON)
+#elif defined(HAMMER_SIMD_NEON)
   if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
     // ARM NEON: Both dynamic/kinematic - split the correction
     const float normalData[4] = {collision.normal.getX(), collision.normal.getY(), 0, 0};
@@ -2721,7 +2706,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 #endif
 
   // Apply velocity damping for dynamic bodies
-#if defined(COLLISION_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2)
   auto dampenVelocitySIMD = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
     // SIMD dot product
     __m128 vel = _mm_set_ps(0, 0, velocity.getY(), velocity.getX());
@@ -2782,7 +2767,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     };
     dampenVelocitySIMD_B(hotB.velocity, m_storage.coldData[indexB].restitution, staticCollision);
   }
-#elif defined(COLLISION_SIMD_NEON)
+#elif defined(HAMMER_SIMD_NEON)
   auto dampenVelocitySIMD = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
     // ARM NEON dot product
     const float velData[4] = {velocity.getX(), velocity.getY(), 0, 0};
@@ -2919,7 +2904,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   }
 
   // Clamp velocities to reasonable limits
-#if defined(COLLISION_SIMD_SSE2)
+#if defined(HAMMER_SIMD_SSE2)
   auto clampVelocitySIMD = [](Vector2D& velocity) {
     const float maxSpeed = 300.0f;
 
@@ -2945,7 +2930,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   clampVelocitySIMD(hotA.velocity);
   clampVelocitySIMD(hotB.velocity);
-#elif defined(COLLISION_SIMD_NEON)
+#elif defined(HAMMER_SIMD_NEON)
   auto clampVelocitySIMD = [](Vector2D& velocity) {
     const float maxSpeed = 300.0f;
 
