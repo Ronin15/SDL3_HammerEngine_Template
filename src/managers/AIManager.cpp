@@ -11,6 +11,7 @@
 #include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "ai/internal/Crowd.hpp"
 #include "utils/SIMDMath.hpp"
 #include <algorithm>
 #include <cstring>
@@ -323,6 +324,10 @@ void AIManager::update(float deltaTime) {
     size_t activeCount = m_activeEntityCount.load(std::memory_order_relaxed);
     uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
 
+    // PERFORMANCE: Invalidate spatial query cache for new frame
+    // This ensures thread-local caches are fresh and don't use stale collision data
+    AIInternal::InvalidateSpatialCache(currentFrame);
+
     // Early exit if no active entities
     if (activeCount == 0) {
       processMessageQueue();
@@ -343,10 +348,10 @@ void AIManager::update(float deltaTime) {
 
     // Get player position for distance calculations
     // Distance calculation moved to processBatch to avoid redundant iteration
-    // OPTIMIZATION: Reduced update frequency from every 8 to every 16 frames
-    // Distance-based culling doesn't need frame-perfect accuracy
+    // OPTIMIZATION: Stagger distance updates - update 1/16th of entities per frame
+    // instead of all entities every 16 frames for smoother frame-to-frame consistency
     EntityPtr player = m_playerEntity.lock();
-    bool shouldUpdateDistances = player && (currentFrame % 16 == 0);
+    uint64_t distanceUpdateSlice = player ? (currentFrame % 16) : UINT64_MAX;
     Vector2D playerPos = player ? player->getPosition() : Vector2D(0, 0);
 
     // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
@@ -388,7 +393,7 @@ void AIManager::update(float deltaTime) {
         m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, m_storage, m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, distanceUpdateSlice, m_storage, m_reusableCollisionBuffer);
         }
 
         // Submit collision updates directly (single-threaded, no batching needed)
@@ -446,7 +451,7 @@ void AIManager::update(float deltaTime) {
         m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, m_storage, m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, distanceUpdateSlice, m_storage, m_reusableCollisionBuffer);
         }
 
         // Submit collision updates directly (single batch, no contention)
@@ -502,13 +507,13 @@ void AIManager::update(float deltaTime) {
             // Each batch will acquire its own shared_lock during execution
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
               [this, start, end, deltaTime, playerPos,
-               shouldUpdateDistances, batchCollisionUpdates, i]() -> void {
+               distanceUpdateSlice, batchCollisionUpdates, i]() -> void {
                 try {
                   // Acquire shared_lock for this batch's execution
                   // Multiple batches can hold shared_locks simultaneously (parallel reads)
                   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
                   processBatch(start, end, deltaTime, playerPos,
-                              shouldUpdateDistances, m_storage, (*batchCollisionUpdates)[i]);
+                              distanceUpdateSlice, m_storage, (*batchCollisionUpdates)[i]);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::string("Exception in AI batch: ") + e.what());
                 } catch (...) {
@@ -541,7 +546,7 @@ void AIManager::update(float deltaTime) {
       m_reusableCollisionBuffer.clear();
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        processBatch(0, entityCount, deltaTime, playerPos, shouldUpdateDistances, m_storage, m_reusableCollisionBuffer);
+        processBatch(0, entityCount, deltaTime, playerPos, distanceUpdateSlice, m_storage, m_reusableCollisionBuffer);
       }
 
       // Submit collision updates using convenience API (single-vector overload)
@@ -1283,7 +1288,7 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
-                             const Vector2D &playerPos, bool updateDistances,
+                             const Vector2D &playerPos, uint64_t distanceUpdateSlice,
                              const EntityStorage& storage,
                              std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
   size_t batchExecutions = 0;
@@ -1320,7 +1325,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
     try {
       // Calculate distances inline to avoid separate iteration
-      if (updateDistances && hasPlayer) {
+      // Staggered update: only update this entity if its index matches the current slice
+      if (distanceUpdateSlice != UINT64_MAX && hasPlayer && (i % 16 == distanceUpdateSlice)) {
         Vector2D entityPos = entity->getPosition();
         Vector2D diff = entityPos - playerPos;
         hotData.distanceSquared = diff.lengthSquared();

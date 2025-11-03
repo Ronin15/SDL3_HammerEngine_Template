@@ -86,8 +86,13 @@ int CountNearbyEntities(EntityPtr entity, const Vector2D &center, float radius);
 // - radius: query radius
 // - outPositions: vector to fill with nearby entity positions
 // Returns: count of nearby entities (same as outPositions.size())
-int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, float radius, 
+int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, float radius,
                                    std::vector<Vector2D> &outPositions);
+
+// Invalidates spatial query cache for new frame
+// Call this at the start of each AI update cycle to ensure cache freshness
+// - frameNumber: current frame number for cache invalidation
+void InvalidateSpatialCache(uint64_t frameNumber);
 
 } // namespace AIInternal
 

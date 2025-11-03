@@ -558,7 +558,7 @@ private:
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
   void processBatch(size_t start, size_t end, float deltaTime,
-                    const Vector2D &playerPos, bool updateDistances,
+                    const Vector2D &playerPos, uint64_t distanceUpdateSlice,
                     const EntityStorage& storage,
                     std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
