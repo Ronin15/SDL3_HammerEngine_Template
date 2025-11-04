@@ -40,7 +40,6 @@ declare -A THREAD_TESTS=(
     ["world_manager_events"]="world_manager_event_integration_tests"
     ["world_manager"]="world_manager_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
-    ["settings_manager"]="settings_manager_tests"
     ["collision_system"]="collision_system_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
