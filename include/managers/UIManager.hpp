@@ -47,14 +47,15 @@ enum class UILayoutType { ABSOLUTE_POS, FLOW, GRID, STACK, ANCHOR };
 
 // Position Modes for auto-repositioning on window resize
 enum class UIPositionMode {
-  ABSOLUTE,       // Fixed x,y (default, backward compatible)
-  CENTERED_H,     // Horizontal center + offsetX, fixed offsetY
-  CENTERED_V,     // Vertical center + offsetY, fixed offsetX
-  CENTERED_BOTH,  // Center both axes + offsets
-  TOP_ALIGNED,    // Top edge + offsetY, horizontally centered
-  BOTTOM_ALIGNED, // Bottom edge - height - offsetY, fixed offsetX
-  LEFT_ALIGNED,   // Left edge + offsetX, vertically centered
-  RIGHT_ALIGNED   // Right edge - width - offsetX, vertically centered
+  ABSOLUTE,        // Fixed x,y (default, backward compatible)
+  CENTERED_H,      // Horizontal center + offsetX, fixed offsetY
+  CENTERED_V,      // Vertical center + offsetY, fixed offsetX
+  CENTERED_BOTH,   // Center both axes + offsets
+  TOP_ALIGNED,     // Top edge + offsetY, horizontally centered
+  BOTTOM_ALIGNED,  // Bottom edge - height - offsetY, fixed offsetX
+  BOTTOM_CENTERED, // Bottom edge - height - offsetY, horizontally centered
+  LEFT_ALIGNED,    // Left edge + offsetX, vertically centered
+  RIGHT_ALIGNED    // Right edge - width - offsetX, vertically centered
 };
 
 // UI Positioning structure for auto-repositioning

@@ -23,7 +23,6 @@ public:
     void handleInput() override;
     bool exit() override;
     std::string getName() const override;
-    void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
 private:
     /**
