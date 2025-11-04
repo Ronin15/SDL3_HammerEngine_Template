@@ -170,29 +170,8 @@ struct GuardBehaviorConfig
     float stallSpeedMultiplier = 0.5f;            // Fraction of guard speed to trigger stall
 };
 
-/**
- * Configuration for AttackBehavior
- *
- * Controls how entities approach and attack targets.
- */
-struct AttackBehaviorConfig
-{
-    // Movement parameters
-    float attackSpeed = 55.0f;                    // Speed when moving to attack
-
-    // Attack parameters
-    float attackRange = 40.0f;                    // Distance at which to perform attack
-    float attackCooldown = 1.5f;                  // Seconds between attacks
-
-    // Pathfinding parameters
-    float pathTTL = 3.0f;                         // Path validity duration in seconds
-    float noProgressWindow = 0.5f;                // Seconds without progress before repath
-    float goalChangeThreshold = 150.0f;           // Distance target must move to trigger repath
-
-    // Stall recovery
-    float stallSpeedMultiplier = 0.5f;            // Fraction of attack speed to trigger stall
-    float stallTimeout = 0.6f;                    // Seconds stalled before recovery
-};
+// Note: AttackBehaviorConfig has been moved to include/ai/behaviors/AttackBehaviorConfig.hpp
+// for more comprehensive configuration options
 
 } // namespace HammerEngine
 
