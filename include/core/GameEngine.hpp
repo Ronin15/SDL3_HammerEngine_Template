@@ -208,6 +208,13 @@ public:
   void setWindowSize(int width, int height) {
     m_windowWidth = width;
     m_windowHeight = height;
+
+    // Track windowed size for restoration when exiting fullscreen
+    // Only update when NOT in fullscreen mode (windowed resizes only)
+    if (!m_isFullscreen) {
+      m_windowedWidth = width;
+      m_windowedHeight = height;
+    }
   }
 
   /**
