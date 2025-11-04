@@ -1,6 +1,6 @@
 ---
 name: hammer-quality-check
-description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
+description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck), coding standards validation, threading safety verification, architecture compliance (SIMD abstraction), and copyright headers. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
 allowed-tools: [Bash, Read, Grep]
 ---
 
@@ -14,7 +14,7 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 2. **Static Analysis** - Memory safety, null pointers, threading
 3. **Coding Standards** - Naming conventions, parameter passing (copy prevention), formatting
 4. **Threading Safety** - Critical threading rules enforcement
-5. **Architecture Compliance** - Design pattern adherence
+5. **Architecture Compliance** - Design pattern adherence, SIMD abstraction layer
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -395,6 +395,89 @@ LOG_DEBUG("Update time: " << deltaTime);
 
 **Quality Gate:** ✓ No raw console output (use Logger)
 
+#### 5.4 SIMD Abstraction Compliance
+
+**Check Commands:**
+```bash
+# Check for direct SIMD header includes (should only be in SIMDMath.hpp)
+grep -rn "#include.*emmintrin\|#include.*immintrin\|#include.*arm_neon\|#include.*smmintrin" \
+  src/ include/ 2>/dev/null | grep -v "SIMDMath.hpp"
+
+# Check for custom SIMD macros (should use HAMMER_SIMD_* only)
+grep -rn "#define.*SIMD_SSE2\|#define.*SIMD_AVX2\|#define.*SIMD_NEON\|#define.*SIMD_SSE4" \
+  src/ include/ 2>/dev/null | grep -v "HAMMER_SIMD" | grep -v "SIMDMath.hpp"
+
+# Verify usage of SIMD namespace abstraction
+grep -rn "using namespace.*SIMD\|HammerEngine::SIMD::" \
+  src/ include/ --include="*.cpp" 2>/dev/null
+```
+
+**Rule from CLAUDE.md:**
+> All SIMD code must use the centralized `SIMDMath.hpp` abstraction layer. This provides cross-platform SIMD operations for x86-64 (SSE2/AVX2) and ARM64 (NEON).
+
+**Why This is Critical:**
+- **Single Source of Truth:** All SIMD platform detection centralized in `include/utils/SIMDMath.hpp`
+- **Maintainability:** Adding new platforms (RISC-V, WebAssembly) requires changes in one file only
+- **Consistency:** All managers use the same `HammerEngine::SIMD` namespace and API
+- **Portability:** Easier to port to new architectures without touching manager code
+- **Testing:** Single code path to validate across architectures
+
+**Correct Pattern:**
+```cpp
+// ✓ GOOD - In manager .cpp file
+#include "utils/SIMDMath.hpp"
+
+using namespace HammerEngine::SIMD;
+
+void Manager::optimizedFunction() {
+#if defined(HAMMER_SIMD_SSE2)
+    Float4 data = load4(ptr);
+    Float4 result = mul(data, broadcast(2.0f));
+    store4(ptr, result);
+#elif defined(HAMMER_SIMD_NEON)
+    // Same code, different intrinsics handled by abstraction
+    Float4 data = load4(ptr);
+    Float4 result = mul(data, broadcast(2.0f));
+    store4(ptr, result);
+#else
+    // Scalar fallback
+    for (int i = 0; i < 4; ++i) {
+        ptr[i] *= 2.0f;
+    }
+#endif
+}
+```
+
+**Forbidden Patterns:**
+```cpp
+// ✗ BAD - Direct SIMD includes in manager headers
+#if defined(__SSE2__)
+#define AI_SIMD_SSE2 1
+#include <emmintrin.h>
+#endif
+
+// ✗ BAD - Custom SIMD macros per manager
+#define COLLISION_SIMD_AVX2 1
+
+// ✗ BAD - Direct intrinsic usage without abstraction
+__m128 data = _mm_load_ps(ptr);  // Use SIMD::load4() instead
+```
+
+**Current SIMD-Optimized Systems:**
+- `AIManager` - Distance calculations (3-4x speedup with 10K+ entities)
+- `CollisionManager` - Bounds calculation, layer mask filtering (2-3x speedup)
+- `ParticleManager` - Various particle operations
+
+**Quality Gate:** ✓ All SIMD code uses SIMDMath.hpp abstraction
+
+**Auto-Fix for Violations:**
+If legacy SIMD includes are found in manager headers:
+1. Remove the entire SIMD detection block from the header
+2. Verify the .cpp file includes `utils/SIMDMath.hpp`
+3. Verify the .cpp file uses `using namespace HammerEngine::SIMD;`
+4. Replace any custom macros (`AI_SIMD_*`, `COLLISION_SIMD_*`) with `HAMMER_SIMD_*`
+5. Rebuild and run tests to ensure no regressions
+
 ### 6. Copyright & Legal Compliance
 
 **Check Command:**
@@ -474,6 +557,10 @@ Branch: <current-branch>
 ✓/✗ Rendering Rules: <PASSED/FAILED>
 ✓/✗ RAII/Smart Pointers: <PASSED/FAILED>
 ✓/✗ Logger Usage: <PASSED/FAILED>
+✓/✗ SIMD Abstraction: <PASSED/FAILED>
+  Legacy SIMD includes: <count>
+  Custom SIMD macros: <count>
+  <list violations with file:line if any>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
