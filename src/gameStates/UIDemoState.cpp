@@ -32,6 +32,8 @@ bool UIExampleState::enter() {
 
     // Create overlay background using auto-detection
     ui.createOverlay();
+    // Set overlay to resize with window (full width and height)
+    ui.setComponentPositioning("__overlay", {UIPositionMode::TOP_ALIGNED, 0, 0, -1, -1});
 
     // Title using auto-positioning
     ui.createTitleAtTop("uiexample_title_label", "UI Demo State", 40);
