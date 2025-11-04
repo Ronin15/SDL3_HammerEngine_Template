@@ -279,9 +279,9 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     // 3. Stats should show reasonable request count (not thousands from retry loop)
     auto stats = manager.getStats();
     BOOST_CHECK(stats.totalRequests <= 20); // Should be close to our 4 requests, not thousands
-    
-    // Note: No negative-result cache is enforced now; ensure no runaway processing only.
-    
+
+    // Ensure no runaway processing from repeated failed path requests
+
     manager.clean();
 }
 
@@ -326,8 +326,8 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     
     // But total requests processed should be minimal (cache working)
     auto stats = manager.getStats();
-    BOOST_CHECK(stats.totalRequests <= 20); // No negative cache; still ensure no runaway
-    
+    BOOST_CHECK(stats.totalRequests <= 20); // Ensure no runaway processing from repeated requests
+
     manager.clean();
 }
 

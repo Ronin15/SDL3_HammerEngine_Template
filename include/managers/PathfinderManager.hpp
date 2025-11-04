@@ -265,7 +265,6 @@ public:
         uint64_t failedRequests{0};
         uint64_t cacheHits{0};
         uint64_t cacheMisses{0};
-        uint64_t negativeHits{0};
         double averageProcessingTimeMs{0.0};
         double requestsPerSecond{0.0};
         size_t queueSize{0};
@@ -279,7 +278,6 @@ public:
         // Cache memory usage
         size_t cacheSize{0};
         size_t segmentCacheSize{0};
-        size_t negativeCacheSize{0};
         double memoryUsageKB{0.0};
     };
 
