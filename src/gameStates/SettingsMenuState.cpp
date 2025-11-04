@@ -98,12 +98,6 @@ std::string SettingsMenuState::getName() const {
     return "SettingsMenuState";
 }
 
-void SettingsMenuState::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
-    // Could rebuild UI here if needed, or rely on UIManager's auto-layout
-    (void)newLogicalWidth;
-    (void)newLogicalHeight;
-}
-
 void SettingsMenuState::loadCurrentSettings() {
     using namespace HammerEngine;
     auto& settings = SettingsManager::Instance();
@@ -203,8 +197,13 @@ void SettingsMenuState::createTabButtons() {
     int tabY = 80;
 
     ui.createButton("settings_tab_graphics", {startX, tabY, tabWidth, tabHeight}, "Graphics (1)");
+    ui.setComponentPositioning("settings_tab_graphics", {UIPositionMode::CENTERED_H, -(tabWidth + tabSpacing), tabY, tabWidth, tabHeight});
+
     ui.createButton("settings_tab_audio", {startX + tabWidth + tabSpacing, tabY, tabWidth, tabHeight}, "Audio (2)");
+    ui.setComponentPositioning("settings_tab_audio", {UIPositionMode::CENTERED_H, 0, tabY, tabWidth, tabHeight});
+
     ui.createButton("settings_tab_gameplay", {startX + 2 * (tabWidth + tabSpacing), tabY, tabWidth, tabHeight}, "Gameplay (3)");
+    ui.setComponentPositioning("settings_tab_gameplay", {UIPositionMode::CENTERED_H, tabWidth + tabSpacing, tabY, tabWidth, tabHeight});
 
     // Tab callbacks
     ui.setOnClick("settings_tab_graphics", [this]() {
@@ -371,21 +370,26 @@ void SettingsMenuState::createActionButtons() {
     int buttonWidth = 150;
     int buttonHeight = 50;
     int buttonSpacing = 20;
-    int bottomY = ui.getLogicalHeight() - 80;
+    int bottomOffset = 80;  // Distance from bottom edge
     int centerX = ui.getLogicalWidth() / 2;
+    int bottomY = ui.getLogicalHeight() - bottomOffset;
 
-    // Apply button (Success green)
+    // Apply button (Success green) - left of center, bottom centered
+    int applyX = centerX - buttonWidth - buttonSpacing/2;
     ui.createButtonSuccess("settings_apply_btn",
-        {centerX - buttonWidth - buttonSpacing/2, bottomY, buttonWidth, buttonHeight},
+        {applyX, bottomY, buttonWidth, buttonHeight},
         "Apply");
+    ui.setComponentPositioning("settings_apply_btn", {UIPositionMode::BOTTOM_CENTERED, -(buttonWidth/2 + buttonSpacing/2), bottomOffset, buttonWidth, buttonHeight});
     ui.setOnClick("settings_apply_btn", [this]() {
         applySettings();
     });
 
-    // Back button (goes back without saving)
+    // Back button (goes back without saving) - right of center, bottom centered
+    int backX = centerX + buttonSpacing/2;
     ui.createButtonDanger("settings_back_btn",
-        {centerX + buttonSpacing/2, bottomY, buttonWidth, buttonHeight},
+        {backX, bottomY, buttonWidth, buttonHeight},
         "Back");
+    ui.setComponentPositioning("settings_back_btn", {UIPositionMode::BOTTOM_CENTERED, buttonWidth/2 + buttonSpacing/2, bottomOffset, buttonWidth, buttonHeight});
     ui.setOnClick("settings_back_btn", []() {
         auto& gameEngine = GameEngine::Instance();
         auto* gameStateManager = gameEngine.getGameStateManager();
