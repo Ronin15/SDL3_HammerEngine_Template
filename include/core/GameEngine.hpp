@@ -282,6 +282,12 @@ public:
   void toggleFullscreen();
 
   /**
+   * @brief Sets fullscreen mode to a specific state
+   * @param enabled true to enable fullscreen, false to disable
+   */
+  void setFullscreen(bool enabled);
+
+  /**
    * @brief Checks if the engine is currently in fullscreen mode
    * @return true if fullscreen is enabled, false otherwise
    */
@@ -296,6 +302,8 @@ private:
   std::weak_ptr<GameLoop> m_gameLoop{}; // Non-owning weak reference to GameLoop
   int m_windowWidth{0};
   int m_windowHeight{0};
+  int m_windowedWidth{1920};  // Windowed mode width (for restoring from fullscreen)
+  int m_windowedHeight{1080}; // Windowed mode height (for restoring from fullscreen)
   int m_logicalWidth{1920};  // Logical rendering width for UI positioning
   int m_logicalHeight{1080}; // Logical rendering height for UI positioning
 
