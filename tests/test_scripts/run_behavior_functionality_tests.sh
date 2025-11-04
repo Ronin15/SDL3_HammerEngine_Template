@@ -11,12 +11,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Running Behavior Functionality Tests...${NC}"
 
-# Navigate to project root directory (in case script is run from elsewhere)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
-
-# Create directory for test results
-mkdir -p ../../test_results
+# Note: We calculate paths below and don't cd here to avoid path resolution issues
 
 # Set default build type
 BUILD_TYPE="Debug"
@@ -97,12 +92,12 @@ fi
 echo -e "${YELLOW}Running Behavior Functionality tests...${NC}"
 
 # Ensure test_results directory exists
-mkdir -p ../../test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Output files
-OUTPUT_FILE="../../test_results/behavior_functionality_tests_output.txt"
-SUMMARY_FILE="../../test_results/behavior_functionality_tests_summary.txt"
-BEHAVIOR_REPORT="../../test_results/behavior_test_report.txt"
+OUTPUT_FILE="$PROJECT_ROOT/test_results/behavior_functionality_tests_output.txt"
+SUMMARY_FILE="$PROJECT_ROOT/test_results/behavior_functionality_tests_summary.txt"
+BEHAVIOR_REPORT="$PROJECT_ROOT/test_results/behavior_test_report.txt"
 
 # Set test command options
 TEST_OPTS="--log_level=all --catch_system_errors=no"

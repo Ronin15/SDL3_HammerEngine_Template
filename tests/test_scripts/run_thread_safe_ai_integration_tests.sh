@@ -42,9 +42,7 @@ done
 # Run the tests
 echo "Running Thread-Safe AI Integration tests..."
 
-# Get the directory where this script is located and find project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Note: SCRIPT_DIR and PROJECT_ROOT already calculated at top of script
 
 # Determine test executable path based on build type
 if [ "$BUILD_TYPE" = "Debug" ]; then
