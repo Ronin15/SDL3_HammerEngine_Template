@@ -508,7 +508,58 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize AI Manager in a separate thread - #6
+  // Initialize Pathfinder Manager - #6
+  // CRITICAL: Must complete BEFORE AIManager (explicit dependency)
+  GAMEENGINE_INFO("Creating Pathfinder Manager (AIManager dependency)");
+  auto pathfinderFuture =
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Initializing PathfinderManager");
+            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+            if (!pathfinderMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
+            return true;
+          });
+
+  // Initialize Collision Manager - #7
+  // CRITICAL: Must complete BEFORE AIManager (explicit dependency)
+  GAMEENGINE_INFO("Creating Collision Manager (AIManager dependency)");
+  auto collisionFuture =
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Initializing CollisionManager");
+            CollisionManager &collisionMgr = CollisionManager::Instance();
+            if (!collisionMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Collision Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Collision Manager initialized successfully");
+            return true;
+          });
+
+  // Wait for AIManager dependencies to complete before proceeding
+  // This enforces the initialization dependency graph explicitly
+  GAMEENGINE_INFO("Waiting for AIManager dependencies (PathfinderManager, CollisionManager)");
+  try {
+    if (!pathfinderFuture.get()) {
+      GAMEENGINE_CRITICAL("PathfinderManager initialization failed");
+      return false;
+    }
+    if (!collisionFuture.get()) {
+      GAMEENGINE_CRITICAL("CollisionManager initialization failed");
+      return false;
+    }
+  } catch (const std::exception &e) {
+    GAMEENGINE_CRITICAL("AIManager dependency initialization threw exception: " + std::string(e.what()));
+    return false;
+  }
+  GAMEENGINE_INFO("AIManager dependencies initialized successfully");
+
+  // Initialize AI Manager - #8
+  // Dependencies satisfied: PathfinderManager and CollisionManager are now fully initialized
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -519,34 +570,6 @@ bool GameEngine::init(const std::string_view title, const int width,
               return false;
             }
             GAMEENGINE_INFO("AI Manager initialized successfully");
-            return true;
-          }));
-
-  // Initialize Pathfinder Manager in a separate thread - #7
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Pathfinder Manager");
-            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
-            if (!pathfinderMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
-            return true;
-          }));
-
-  // Initialize Collision Manager in a separate thread - #8
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Collision Manager");
-            CollisionManager &collisionMgr = CollisionManager::Instance();
-            if (!collisionMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Collision Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Collision Manager initialized successfully");
             return true;
           }));
 
