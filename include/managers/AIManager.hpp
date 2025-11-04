@@ -209,6 +209,18 @@ public:
   void waitForAsyncBatchCompletion();
 
   /**
+   * @brief Wait for all pending behavior assignment batches to complete
+   *
+   * Provides deterministic synchronization for state transitions.
+   * Blocks until all assignment futures complete, ensuring no dangling references
+   * to entity data that may be cleared during state changes.
+   *
+   * Fast path: ~1ns check if no assignments running
+   * Slow path: blocks until all assignment batches complete
+   */
+  void waitForAssignmentCompletion();
+
+  /**
    * @brief Checks if AIManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
@@ -478,8 +490,8 @@ private:
   // Frame counter for periodic logging (thread-safe)
   std::atomic<uint64_t> m_frameCounter{0};
 
-  // Asynchronous assignment processing (fire-and-forget, no futures)
-  std::atomic<bool> m_assignmentInProgress{false};
+  // Asynchronous assignment processing (replaced with futures for deterministic tracking)
+  // std::atomic<bool> m_assignmentInProgress{false};  // DEPRECATED: Replaced by m_assignmentFutures
 
   // Frame throttling for task submission (thread-safe)
   std::atomic<uint64_t> m_lastFrameWithTasks{0};
@@ -503,6 +515,10 @@ private:
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
   std::mutex m_batchFuturesMutex;  // Protect futures vector
+
+  // Async assignment tracking for deterministic synchronization (replaces m_assignmentInProgress)
+  std::vector<std::future<void>> m_assignmentFutures;
+  std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
 
   // Per-batch collision update buffers (zero contention approach)
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
