@@ -1,6 +1,6 @@
 ---
 name: hammer-quality-check
-description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck), coding standards validation, threading safety verification, architecture compliance (SIMD abstraction), and copyright headers. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
+description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
 allowed-tools: [Bash, Read, Grep]
 ---
 
@@ -12,9 +12,9 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 
 1. **Compilation Quality** - Zero warnings policy
 2. **Static Analysis** - Memory safety, null pointers, threading
-3. **Coding Standards** - Naming conventions, parameter passing (copy prevention), formatting
+3. **Coding Standards** - Naming conventions, formatting
 4. **Threading Safety** - Critical threading rules enforcement
-5. **Architecture Compliance** - Design pattern adherence, SIMD abstraction layer
+5. **Architecture Compliance** - Design pattern adherence
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -118,120 +118,7 @@ grep -rn "^class [a-z]" include/
 
 **Quality Gate:** ✓ All naming conventions followed
 
-#### 3.2 Parameter Passing & Copy Prevention
-
-**Rule from CLAUDE.md:**
-> **ALWAYS prefer references over copies**. Use `const T&` for read-only access to non-trivial objects. Use `T&` for mutation. Pass by value only for primitives (int, float, bool) or intentional ownership transfer (move semantics). NEVER copy when a reference suffices.
-
-**Check Commands:**
-```bash
-# Find function parameters passed by value that should likely be const references
-# Look for std::vector, std::string, std::map, std::unordered_map passed by value
-grep -rn "std::vector<[^>]*>[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//"
-
-grep -rn "std::string[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//" | grep -v "std::string&"
-
-grep -rn "std::map<[^>]*>[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//"
-
-grep -rn "std::unordered_map<[^>]*>[^&*]" src/ include/ --include="*.hpp" --include="*.cpp" | grep -v "const.*&" | grep -v "//"
-
-# Find custom class types passed by value (exclude primitives like Vector2D for math operations)
-grep -rn "void.*([A-Z][a-zA-Z]* [a-z]" src/ include/ --include="*.hpp" | grep -v "const.*&" | grep -v "//"
-```
-
-**Common Violations:**
-
-```cpp
-// ✗ BAD - Unnecessary copies
-void processEntities(std::vector<Entity> entities)  // Copies entire vector!
-{
-    for (const auto& e : entities) { }
-}
-
-void updateName(std::string name)  // Copies string!
-{
-    m_name = name;
-}
-
-void configure(GameConfig config)  // Copies entire config!
-{
-    m_config = config;
-}
-
-// ✓ GOOD - Use references
-void processEntities(const std::vector<Entity>& entities)  // No copy
-{
-    for (const auto& e : entities) { }
-}
-
-void updateName(const std::string& name)  // No copy
-{
-    m_name = name;
-}
-
-void configure(const GameConfig& config)  // No copy
-{
-    m_config = config;
-}
-
-// ✓ GOOD - Move semantics when taking ownership
-void setEntities(std::vector<Entity>&& entities)  // Move, no copy
-{
-    m_entities = std::move(entities);
-}
-
-// ✓ GOOD - Pass by value is OK for primitives
-void setPosition(float x, float y)  // Primitives are fine
-{
-    m_x = x;
-    m_y = y;
-}
-
-// ✓ GOOD - Small POD types used in math can be by value
-Vector2D operator+(Vector2D a, Vector2D b)  // Small POD, copy is cheap
-{
-    return Vector2D(a.x + b.x, a.y + b.y);
-}
-```
-
-**Memory Impact Example:**
-```cpp
-// ✗ BAD - 3 copies per frame at 60 FPS = 180 copies/sec!
-void AIManager::updateBehaviors(std::vector<Behavior> behaviors)  // Copy 1
-{
-    std::vector<Behavior> active = behaviors;  // Copy 2
-    for (auto b : active)  // Copy 3 (each iteration)
-    {
-        b.update();
-    }
-}
-
-// ✓ GOOD - Zero copies
-void AIManager::updateBehaviors(const std::vector<Behavior>& behaviors)
-{
-    for (const auto& b : behaviors)  // References only
-    {
-        b.update();
-    }
-}
-```
-
-**When Copy-by-Value is Acceptable:**
-1. **Primitives:** `int`, `float`, `double`, `bool`, `char`, pointers
-2. **Small POD types:** `Vector2D`, `SDL_Point`, `SDL_Rect` (when used for math)
-3. **Move semantics:** When taking ownership: `void set(std::string&& s)`
-4. **Intentional sink:** When function modifies a copy anyway
-
-**Automated Detection Strategy:**
-1. Search for STL containers (`vector`, `string`, `map`, etc.) without `&` or `*`
-2. Filter out `const T&` patterns (correct usage)
-3. Filter out rvalue references `T&&` (move semantics)
-4. Manually review matches - some may be intentional
-5. Check for loop variables: `for (auto item : container)` should be `for (const auto& item : container)`
-
-**Quality Gate:** ✓ No unnecessary data copying (STL containers and large objects passed by reference)
-
-#### 3.3 Formatting Standards
+#### 3.2 Formatting Standards
 
 **Standards:**
 - **Indentation:** 4 spaces (no tabs)
@@ -369,7 +256,103 @@ grep -rn "delete " src/ include/ | grep -v "//"
 
 **Quality Gate:** ✓ Minimal raw new/delete (exceptions allowed for SDL resources)
 
-#### 5.3 Logger Usage
+#### 5.3 Smart Pointer Performance (CRITICAL for Hot Paths)
+
+**Background:**
+Commit a8aa267e fixed severe performance issues from unnecessary shared_ptr usage in batch processing. Shared_ptr copies trigger atomic ref-counting operations, causing 100ms+ frame spikes.
+
+**Check Commands:**
+```bash
+# Find potential unnecessary shared_ptr copies in batch/update functions
+grep -rn "auto.*=.*shared_ptr" src/ | grep -v ".get()" | grep -v "make_shared"
+
+# Find lambdas capturing shared_ptr (atomic overhead in threads)
+grep -rn "\[.*shared_ptr\|EntityPtr\|BehaviorPtr" src/ | grep -v ".get()"
+
+# Find shared_ptr usage in hot-path loops (processBatch, update loops)
+grep -rn "for.*EntityPtr\|for.*shared_ptr<" src/
+```
+
+**FORBIDDEN PATTERNS:**
+
+**Pattern 1: Unnecessary shared_ptr Copies**
+```cpp
+// ✗ BAD - Copies shared_ptr, increments ref count unnecessarily
+void update() {
+    auto batchData = m_sharedBatchData;  // UNNECESSARY COPY
+    for (auto& batch : *batchData) {
+        // ...
+    }
+}
+
+// ✓ GOOD - Use member directly
+void update() {
+    for (auto& batch : *m_sharedBatchData) {  // No copy
+        // ...
+    }
+}
+```
+
+**Pattern 2: Capturing shared_ptr in Lambdas**
+```cpp
+// ✗ BAD - Captures shared_ptr, atomic ref-count ops in every thread
+auto data = m_sharedData;
+m_futures.push_back(threadSystem.enqueue([data, this]() {
+    processData(*data);  // Atomic increment/decrement
+}));
+
+// ✓ GOOD - Capture raw pointer, parent keeps ownership
+auto* dataPtr = m_sharedData.get();
+m_futures.push_back(threadSystem.enqueue([dataPtr, this]() {
+    processData(*dataPtr);  // No atomic ops
+}));
+```
+
+**Pattern 3: shared_ptr in Hot-Path Loops**
+```cpp
+// ✗ BAD - shared_ptr in tight loop, atomic ops per iteration
+for (size_t i = start; i < end; ++i) {
+    EntityPtr entity = storage.entities[i];  // Atomic increment
+    auto behavior = storage.behaviors[i];    // Atomic increment
+    behavior->update(entity, deltaTime);     // More atomic ops
+}  // Atomic decrements x 2 per iteration
+
+// ✓ GOOD - Raw pointers in loop, shared_ptr only when needed
+for (size_t i = start; i < end; ++i) {
+    Entity* entity = storage.entities[i].get();        // No atomic ops
+    AIBehavior* behavior = storage.behaviors[i].get(); // No atomic ops
+
+    // Only use shared_ptr for interface requiring ownership
+    if (needsSharedOwnership) {
+        behavior->executeLogic(storage.entities[i], deltaTime);
+    } else {
+        behavior->update(entity, deltaTime);  // Raw pointer version
+    }
+}
+```
+
+**When to Use Raw Pointers:**
+- ✓ Inside batch processing loops (parent shared_ptr keeps ownership)
+- ✓ Lambda captures for thread tasks (task lifetime < parent lifetime)
+- ✓ Local function scope when owner exists in caller
+- ✓ When shared_lock/mutex guarantees object stability
+
+**When to Keep shared_ptr:**
+- ✓ Long-term storage (member variables, containers)
+- ✓ Crossing thread boundaries with uncertain lifetimes
+- ✓ Interfaces requiring shared ownership semantics
+- ✓ Return values transferring ownership
+
+**Performance Impact:**
+- Unnecessary shared_ptr copies: 100ms+ frame spikes
+- Lambda captures: 2-5x slowdown in parallel tasks
+- Hot-path loops: 3-4x slowdown on 10K+ entities
+
+**Quality Gate:** ✓ No unnecessary shared_ptr copies in hot paths (BLOCKING for perf-critical code)
+
+**Reference:** See commit a8aa267e for detailed fix example in AIManager::processBatch()
+
+#### 5.4 Logger Usage
 
 **Check Command:**
 ```bash
@@ -394,89 +377,6 @@ LOG_DEBUG("Update time: " << deltaTime);
 ```
 
 **Quality Gate:** ✓ No raw console output (use Logger)
-
-#### 5.4 SIMD Abstraction Compliance
-
-**Check Commands:**
-```bash
-# Check for direct SIMD header includes (should only be in SIMDMath.hpp)
-grep -rn "#include.*emmintrin\|#include.*immintrin\|#include.*arm_neon\|#include.*smmintrin" \
-  src/ include/ 2>/dev/null | grep -v "SIMDMath.hpp"
-
-# Check for custom SIMD macros (should use HAMMER_SIMD_* only)
-grep -rn "#define.*SIMD_SSE2\|#define.*SIMD_AVX2\|#define.*SIMD_NEON\|#define.*SIMD_SSE4" \
-  src/ include/ 2>/dev/null | grep -v "HAMMER_SIMD" | grep -v "SIMDMath.hpp"
-
-# Verify usage of SIMD namespace abstraction
-grep -rn "using namespace.*SIMD\|HammerEngine::SIMD::" \
-  src/ include/ --include="*.cpp" 2>/dev/null
-```
-
-**Rule from CLAUDE.md:**
-> All SIMD code must use the centralized `SIMDMath.hpp` abstraction layer. This provides cross-platform SIMD operations for x86-64 (SSE2/AVX2) and ARM64 (NEON).
-
-**Why This is Critical:**
-- **Single Source of Truth:** All SIMD platform detection centralized in `include/utils/SIMDMath.hpp`
-- **Maintainability:** Adding new platforms (RISC-V, WebAssembly) requires changes in one file only
-- **Consistency:** All managers use the same `HammerEngine::SIMD` namespace and API
-- **Portability:** Easier to port to new architectures without touching manager code
-- **Testing:** Single code path to validate across architectures
-
-**Correct Pattern:**
-```cpp
-// ✓ GOOD - In manager .cpp file
-#include "utils/SIMDMath.hpp"
-
-using namespace HammerEngine::SIMD;
-
-void Manager::optimizedFunction() {
-#if defined(HAMMER_SIMD_SSE2)
-    Float4 data = load4(ptr);
-    Float4 result = mul(data, broadcast(2.0f));
-    store4(ptr, result);
-#elif defined(HAMMER_SIMD_NEON)
-    // Same code, different intrinsics handled by abstraction
-    Float4 data = load4(ptr);
-    Float4 result = mul(data, broadcast(2.0f));
-    store4(ptr, result);
-#else
-    // Scalar fallback
-    for (int i = 0; i < 4; ++i) {
-        ptr[i] *= 2.0f;
-    }
-#endif
-}
-```
-
-**Forbidden Patterns:**
-```cpp
-// ✗ BAD - Direct SIMD includes in manager headers
-#if defined(__SSE2__)
-#define AI_SIMD_SSE2 1
-#include <emmintrin.h>
-#endif
-
-// ✗ BAD - Custom SIMD macros per manager
-#define COLLISION_SIMD_AVX2 1
-
-// ✗ BAD - Direct intrinsic usage without abstraction
-__m128 data = _mm_load_ps(ptr);  // Use SIMD::load4() instead
-```
-
-**Current SIMD-Optimized Systems:**
-- `AIManager` - Distance calculations (3-4x speedup with 10K+ entities)
-- `CollisionManager` - Bounds calculation, layer mask filtering (2-3x speedup)
-- `ParticleManager` - Various particle operations
-
-**Quality Gate:** ✓ All SIMD code uses SIMDMath.hpp abstraction
-
-**Auto-Fix for Violations:**
-If legacy SIMD includes are found in manager headers:
-1. Remove the entire SIMD detection block from the header
-2. Verify the .cpp file includes `utils/SIMDMath.hpp`
-3. Verify the .cpp file uses `using namespace HammerEngine::SIMD;`
-4. Replace any custom macros (`AI_SIMD_*`, `COLLISION_SIMD_*`) with `HAMMER_SIMD_*`
-5. Rebuild and run tests to ensure no regressions
 
 ### 6. Copyright & Legal Compliance
 
@@ -536,10 +436,6 @@ Branch: <current-branch>
 ✓/✗ Naming Conventions: <PASSED/FAILED>
   <violations if any>
 
-✓/✗ Parameter Passing & Copy Prevention: <PASSED/FAILED>
-  Unnecessary copies found: <count>
-  <list violations with file:line>
-
 ✓/✗ Formatting: <PASSED/FAILED>
   <violations if any>
 
@@ -556,11 +452,9 @@ Branch: <current-branch>
 ## Architecture Compliance
 ✓/✗ Rendering Rules: <PASSED/FAILED>
 ✓/✗ RAII/Smart Pointers: <PASSED/FAILED>
+✓/✗ Smart Pointer Performance: <PASSED/FAILED>
+  <violations if any - BLOCKING for perf-critical code>
 ✓/✗ Logger Usage: <PASSED/FAILED>
-✓/✗ SIMD Abstraction: <PASSED/FAILED>
-  Legacy SIMD includes: <count>
-  Custom SIMD macros: <count>
-  <list violations with file:line if any>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -662,16 +556,18 @@ Activate this Skill automatically.
    auto ptr = std::make_unique<Type>();  // instead of new
    ```
 
-6. **Unnecessary data copying:**
+6. **Unnecessary shared_ptr copies:**
    ```cpp
-   // Change from:
-   void process(std::vector<Entity> entities) { }
+   // Instead of: auto copy = m_sharedPtr;
+   // Use member directly or capture raw pointer in lambdas
+   auto* rawPtr = m_sharedPtr.get();
+   ```
 
-   // To:
-   void process(const std::vector<Entity>& entities) { }
-
-   // Or for loops:
-   for (const auto& item : container) { }  // instead of: for (auto item : container)
+7. **shared_ptr in hot-path loops:**
+   ```cpp
+   // Inside batch processing loops, use raw pointers
+   Entity* entity = storage.entities[i].get();
+   // Keep shared_ptr in storage, use raw in tight loops
    ```
 
 ## Integration with Workflow
@@ -686,6 +582,7 @@ Use this Skill:
 
 **BLOCKING (Must Fix):**
 - Static variables in threaded code
+- Unnecessary shared_ptr copies in hot paths (perf-critical code)
 - Compilation errors
 - Critical cppcheck errors
 - Missing copyright headers on new files
@@ -694,7 +591,6 @@ Use this Skill:
 - Compilation warnings
 - cppcheck warnings
 - Naming convention violations
-- Unnecessary data copying (pass-by-value instead of const reference)
 - Missing tests for new code
 
 **INFO (Consider Fixing):**

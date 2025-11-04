@@ -54,6 +54,25 @@ tests/    # Boost.Test scripts
 res/      # Assets
 ```
 
+## Development Workflow
+
+**ALWAYS Check Established Patterns First**: Before implementing new features, search the codebase for existing patterns. Don't reinvent solutions that already exist.
+
+**Pattern Discovery**:
+```bash
+# UI positioning/components
+grep -rn "createEventLog\|BOTTOM_\|createOverlay" src/gameStates/
+grep -n "enum class UIPositionMode" include/managers/UIManager.hpp
+
+# Reference states: EventDemoState (event log, bottom-left), UIDemoState (full UI showcase),
+# SettingsMenuState (centered buttons, tabs), MainMenuState (simple menus)
+
+# Manager patterns
+grep -rn "class.*Manager" include/managers/
+```
+
+**When to Add New Patterns**: Only when (1) existing patterns don't solve the use case, (2) new pattern is a logical extension of existing ones. Mirror established implementations whenever possible.
+
 ## Standards
 
 **C++20** | 4-space indent, Allman braces | RAII + smart pointers | ThreadSystem (not raw std::thread) | Exceptions for critical errors, codes for expected failures | Logger macros | Cross-platform guards | STL algorithms > manual loops
