@@ -24,31 +24,6 @@
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
 
-// SIMD support detection (following ParticleManager pattern)
-#if defined(__SSE2__) || \
-    (defined(_MSC_VER) && \
-     (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
-#define COLLISION_SIMD_SSE2 1
-#include <emmintrin.h>
-#endif
-
-#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
-#define COLLISION_SIMD_SSE4 1
-#include <smmintrin.h>
-#endif
-
-// AVX2 support for 8-wide SIMD operations (2x throughput on modern CPUs)
-#if defined(__AVX2__) || (defined(_MSC_VER) && defined(__AVX2__))
-#define COLLISION_SIMD_AVX2 1
-#include <immintrin.h>
-#endif
-
-// ARM NEON support (Apple Silicon)
-#if defined(__ARM_NEON) || defined(__ARM_NEON__)
-#define COLLISION_SIMD_NEON 1
-#include <arm_neon.h>
-#endif
-
 // Forward declarations
 namespace HammerEngine {
     class Camera;
