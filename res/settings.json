@@ -13,7 +13,7 @@
   "graphics": {
     "vsync": true,
     "show_fps": false,
-    "fullscreen": true,
+    "fullscreen": false,
     "resolution_height": 1080,
     "fps_limit": 60,
     "resolution_width": 1920
