@@ -344,7 +344,7 @@ void AdvancedAIDemoState::update(float deltaTime) {
             config.mountainLevel = 0.7f;
 
             // Configure LoadingState and transition to it
-            auto& gameEngine = GameEngine::Instance();
+            const auto& gameEngine = GameEngine::Instance();
             auto* gameStateManager = gameEngine.getGameStateManager();
             if (gameStateManager) {
                 auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
@@ -445,7 +445,6 @@ void AdvancedAIDemoState::render() {
         ui.update(0.0); // UI updates are not time-dependent in this state
 
         // Update status display with combat information
-        const auto& gameEngine = GameEngine::Instance();
         auto& aiManager = AIManager::Instance();
         std::stringstream status;
         status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()

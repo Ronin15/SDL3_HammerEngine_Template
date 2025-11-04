@@ -412,7 +412,7 @@ void AIDemoState::update(float deltaTime) {
       config.mountainLevel = 0.75f;
 
       // Configure LoadingState and transition to it
-      auto& gameEngine = GameEngine::Instance();
+      const auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
       if (gameStateManager) {
         auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
