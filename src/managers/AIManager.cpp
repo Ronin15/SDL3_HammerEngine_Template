@@ -454,13 +454,13 @@ void AIManager::update(float deltaTime) {
           m_batchCollisionUpdates = std::make_shared<std::vector<std::vector<CollisionManager::KinematicUpdate>>>();
         }
         m_batchCollisionUpdates->resize(batchCount);
-        auto batchCollisionUpdates = m_batchCollisionUpdates;
+        // PERFORMANCE: Avoid unnecessary shared_ptr copy - use member directly
         for (size_t i = 0; i < batchCount; ++i) {
           size_t estimatedSize = entitiesPerBatch + (i == batchCount - 1 ? remainingEntities : 0);
           // Clear existing capacity, only reallocate if needed
-          (*batchCollisionUpdates)[i].clear();
-          if ((*batchCollisionUpdates)[i].capacity() < estimatedSize) {
-            (*batchCollisionUpdates)[i].reserve(estimatedSize);
+          (*m_batchCollisionUpdates)[i].clear();
+          if ((*m_batchCollisionUpdates)[i].capacity() < estimatedSize) {
+            (*m_batchCollisionUpdates)[i].reserve(estimatedSize);
           }
         }
 
@@ -470,7 +470,7 @@ void AIManager::update(float deltaTime) {
           std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
           m_batchFutures.clear();  // Clear old futures, keeps capacity
           m_batchFutures.reserve(batchCount);
-          m_batchCollisionUpdates = batchCollisionUpdates;  // Store for submission after wait
+          // Member variable already holds the buffer, no need for extra copy
 
           for (size_t i = 0; i < batchCount; ++i) {
             size_t start = i * entitiesPerBatch;
@@ -483,15 +483,17 @@ void AIManager::update(float deltaTime) {
 
             // Submit each batch with future for completion tracking
             // Each batch will acquire its own shared_lock during execution
+            // PERFORMANCE: Capture raw pointer to avoid atomic ref-counting in lambda
+            auto* batchCollisionUpdatesPtr = m_batchCollisionUpdates.get();
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
               [this, start, end, deltaTime, playerPos,
-               distanceUpdateSlice, batchCollisionUpdates, i]() -> void {
+               distanceUpdateSlice, batchCollisionUpdatesPtr, i]() -> void {
                 try {
                   // Acquire shared_lock for this batch's execution
                   // Multiple batches can hold shared_locks simultaneously (parallel reads)
                   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
                   processBatch(start, end, deltaTime, playerPos,
-                              distanceUpdateSlice, m_storage, (*batchCollisionUpdates)[i]);
+                              distanceUpdateSlice, m_storage, (*batchCollisionUpdatesPtr)[i]);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::string("Exception in AI batch: ") + e.what());
                 } catch (...) {
@@ -1401,8 +1403,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   // Caller holds shared_lock, safe for parallel read access
   for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
     // Access storage directly (read-only, no allocation)
-    EntityPtr entity = storage.entities[i];
-    auto behavior = storage.behaviors[i];
+    // PERFORMANCE: Use raw pointers to avoid atomic ref-counting overhead
+    // Safe: shared_lock ensures storage stability, parent shared_ptrs keep objects alive
+    Entity* entity = storage.entities[i].get();
+    AIBehavior* behavior = storage.behaviors[i].get();
     float halfW = storage.halfWidths[i];
     float halfH = storage.halfHeights[i];
     auto hotData = storage.hotData[i];  // Copy for local modification
@@ -1431,7 +1435,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
-        behavior->executeLogic(entity, deltaTime);
+        // PERFORMANCE: Use shared_ptr only for executeLogic (required by interface)
+        // This is the only place we need shared ownership semantics
+        behavior->executeLogic(storage.entities[i], deltaTime);
 
         // OPTIMIZATION: Only update animations/sprites for entities near the player
         // Off-screen entities still think (behavior logic runs) but don't animate
