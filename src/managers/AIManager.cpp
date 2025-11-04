@@ -406,6 +406,7 @@ void AIManager::update(float deltaTime) {
           entityCount,
           threadingThreshold,
           optimalWorkerCount,
+          budget.aiAllocated,    // Base allocation for buffer detection
           queuePressure,
           m_adaptiveBatchState,  // Adaptive state for performance tuning
           lastFrameTime          // Previous frame's completion time
@@ -945,6 +946,7 @@ size_t AIManager::processPendingBehaviorAssignments() {
       assignmentCount,
       assignmentThreadingThreshold,
       optimalWorkerCount,
+      budget.aiAllocated,    // Base allocation for buffer detection
       queuePressure,
       m_adaptiveBatchState,
       lastUpdateTimeMs
