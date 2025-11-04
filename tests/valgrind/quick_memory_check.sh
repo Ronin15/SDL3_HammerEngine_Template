@@ -47,6 +47,7 @@ declare -A QUICK_TESTS=(
     ["resource_factory"]="resource_factory_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
     ["save_mgr"]="save_manager_tests"
+    ["settings_mgr"]="settings_manager_tests"
     ["game_state_mgr"]="game_state_manager_tests"
     ["world_gen"]="world_generator_tests"
     ["world_mgr_evt"]="world_manager_event_integration_tests"
