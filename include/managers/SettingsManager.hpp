@@ -141,16 +141,20 @@ public:
 
     /**
      * @brief Gets all category names
-     * @return Vector of category names
+     * @param outCategories Output vector to populate with category names
+     *
+     * Thread-safe for concurrent reads
      */
-    std::vector<std::string> getCategories() const;
+    void getCategories(std::vector<std::string>& outCategories) const;
 
     /**
      * @brief Gets all keys in a category
      * @param category Category name
-     * @return Vector of keys in the category
+     * @param outKeys Output vector to populate with keys in the category
+     *
+     * Thread-safe for concurrent reads
      */
-    std::vector<std::string> getKeys(const std::string& category) const;
+    void getKeys(const std::string& category, std::vector<std::string>& outKeys) const;
 
 private:
     /**

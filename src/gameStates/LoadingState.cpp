@@ -31,6 +31,12 @@ void LoadingState::configure(const std::string& targetStateName,
 }
 
 bool LoadingState::enter() {
+    // Validate that LoadingState was properly configured
+    if (m_targetStateName.empty()) {
+        GAMESTATE_ERROR("LoadingState not configured - call configure() before pushing state");
+        return false;
+    }
+
     GAMESTATE_INFO("Entering LoadingState - Target: " + m_targetStateName);
 
     // Initialize loading screen UI

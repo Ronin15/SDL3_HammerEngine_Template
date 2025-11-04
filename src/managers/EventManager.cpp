@@ -287,6 +287,14 @@ void EventManager::update() {
     }
   }
 
+  // Early exit if no events to process (optimization)
+  if (totalEventCount == 0) {
+    // Still drain dispatch queue for deferred events
+    drainDispatchQueueWithBudget();
+    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    return;
+  }
+
   // Update all event types in optimized batches with per-type threading decision
   // Global check: Only consider threading if total events > threshold
   bool useThreadingGlobal = m_threadingEnabled.load() && totalEventCount > m_threadingThreshold;

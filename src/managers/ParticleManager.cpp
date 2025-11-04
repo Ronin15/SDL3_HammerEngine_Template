@@ -19,6 +19,18 @@
 // Use SIMD abstraction layer
 using namespace HammerEngine::SIMD;
 
+// Helper struct for batch rendering buffers
+struct BatchRenderBuffers {
+    static constexpr size_t MAX_RECTS_PER_BATCH = 2048;
+    std::vector<float> xy;
+    std::vector<SDL_FColor> cols;
+
+    BatchRenderBuffers() {
+        xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);  // 6 verts * 2 floats
+        cols.reserve(MAX_RECTS_PER_BATCH * 6);    // 6 verts
+    }
+};
+
 // A simple and fast pseudo-random number generator
 inline int fast_rand() {
     static thread_local unsigned int g_seed = []() {
@@ -869,20 +881,18 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
   if (n == 0) return;
 
   // Batch geometry rendering (indices-free: draw arrays for simplicity/safety)
-  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);     // 6 verts * 2 floats
-  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6); // 6 verts
+  BatchRenderBuffers buffers;
   size_t quadCount = 0;
 
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          xy.data(), sizeof(float) * 2,
-                          cols.data(), sizeof(SDL_FColor),
+                          buffers.xy.data(), sizeof(float) * 2,
+                          buffers.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
                           static_cast<int>(quadCount * 6),
                           nullptr, 0, 0);
-    xy.clear(); cols.clear(); quadCount = 0;
+    buffers.xy.clear(); buffers.cols.clear(); quadCount = 0;
   };
 
   for (size_t i = 0; i < n; ++i) {
@@ -907,11 +917,11 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Append vertices for two triangles (v0,v1,v2) and (v2,v3,v0)
-    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    buffers.xy.insert(buffers.xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
     SDL_FColor col{r, g, b, a};
-    cols.insert(cols.end(), {col, col, col, col, col, col});
+    buffers.cols.insert(buffers.cols.end(), {col, col, col, col, col, col});
     ++quadCount;
-    if (quadCount == MAX_RECTS_PER_BATCH) flush();
+    if (quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
   flush();
 
@@ -937,19 +947,17 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
 
-  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);
-  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6);
+  BatchRenderBuffers buffers;
   size_t quadCount = 0;
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          xy.data(), sizeof(float) * 2,
-                          cols.data(), sizeof(SDL_FColor),
+                          buffers.xy.data(), sizeof(float) * 2,
+                          buffers.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
                           static_cast<int>(quadCount * 6),
                           nullptr, 0, 0);
-    xy.clear(); cols.clear(); quadCount = 0;
+    buffers.xy.clear(); buffers.cols.clear(); quadCount = 0;
   };
   for (size_t i = 0; i < n; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
@@ -969,10 +977,10 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     const float x1 = cx + hx, y1 = cy - hy;
     const float x2 = cx + hx, y2 = cy + hy;
     const float x3 = cx - hx, y3 = cy + hy;
-    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    buffers.xy.insert(buffers.xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
     SDL_FColor col{r, g, b, a};
-    cols.insert(cols.end(), {col, col, col, col, col, col});
-    if (++quadCount == MAX_RECTS_PER_BATCH) flush();
+    buffers.cols.insert(buffers.cols.end(), {col, col, col, col, col, col});
+    if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
   flush();
 }
@@ -988,19 +996,17 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   const auto &particles = m_storage.getParticlesForRead();
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
-  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);
-  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6);
+  BatchRenderBuffers buffers;
   size_t quadCount = 0;
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          xy.data(), sizeof(float) * 2,
-                          cols.data(), sizeof(SDL_FColor),
+                          buffers.xy.data(), sizeof(float) * 2,
+                          buffers.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
                           static_cast<int>(quadCount * 6),
                           nullptr, 0, 0);
-    xy.clear(); cols.clear(); quadCount = 0;
+    buffers.xy.clear(); buffers.cols.clear(); quadCount = 0;
   };
   for (size_t i = 0; i < n; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
@@ -1020,10 +1026,10 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     const float x1 = cx + hx, y1 = cy - hy;
     const float x2 = cx + hx, y2 = cy + hy;
     const float x3 = cx - hx, y3 = cy + hy;
-    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    buffers.xy.insert(buffers.xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
     SDL_FColor col{r, g, b, a};
-    cols.insert(cols.end(), {col, col, col, col, col, col});
-    if (++quadCount == MAX_RECTS_PER_BATCH) flush();
+    buffers.cols.insert(buffers.cols.end(), {col, col, col, col, col, col});
+    if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
   flush();
 }

@@ -155,7 +155,8 @@ BOOST_AUTO_TEST_CASE(TestGetCategories) {
     settings.set("audio", "key", 2);
     settings.set("input", "key", 3);
 
-    auto categories = settings.getCategories();
+    std::vector<std::string> categories;
+    settings.getCategories(categories);
 
     BOOST_CHECK_EQUAL(categories.size(), 3);
 
@@ -178,12 +179,14 @@ BOOST_AUTO_TEST_CASE(TestGetKeys) {
     settings.set("test", "key2", 2);
     settings.set("test", "key3", 3);
 
-    auto keys = settings.getKeys("test");
+    std::vector<std::string> keys;
+    settings.getKeys("test", keys);
 
     BOOST_CHECK_EQUAL(keys.size(), 3);
 
     // Empty category
-    auto emptyKeys = settings.getKeys("nonexistent");
+    std::vector<std::string> emptyKeys;
+    settings.getKeys("nonexistent", emptyKeys);
     BOOST_CHECK_EQUAL(emptyKeys.size(), 0);
 }
 
