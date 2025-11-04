@@ -22,6 +22,12 @@ void LoadingState::configure(const std::string& targetStateName,
     m_loadComplete.store(false, std::memory_order_release);
     m_loadFailed.store(false, std::memory_order_release);
     setStatusText("Initializing...");
+
+    // Clear any previous error
+    {
+        std::lock_guard<std::mutex> lock(m_errorMutex);
+        m_lastError.clear();
+    }
 }
 
 bool LoadingState::enter() {
@@ -40,7 +46,14 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
     // Check if loading is complete
     if (m_loadComplete.load(std::memory_order_acquire)) {
         if (m_loadFailed.load(std::memory_order_acquire)) {
-            GAMESTATE_ERROR("World loading failed - transitioning anyway");
+            std::string errorMsg = "World loading failed - transitioning anyway";
+            GAMESTATE_ERROR(errorMsg);
+
+            // Store error if not already set by the loadTask lambda
+            if (!hasError()) {
+                std::lock_guard<std::mutex> lock(m_errorMutex);
+                m_lastError = errorMsg;
+            }
             // Continue to target state even on failure (matches current behavior)
         } else {
             GAMESTATE_INFO("World loading complete - transitioning to " + m_targetStateName);
@@ -52,7 +65,14 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
         if (gameStateManager && gameStateManager->hasState(m_targetStateName)) {
             gameStateManager->changeState(m_targetStateName);
         } else {
-            GAMESTATE_ERROR("Target state not found: " + m_targetStateName);
+            std::string errorMsg = "Target state not found: " + m_targetStateName;
+            GAMESTATE_ERROR(errorMsg);
+
+            // Store error for diagnostic purposes
+            {
+                std::lock_guard<std::mutex> lock(m_errorMutex);
+                m_lastError = errorMsg;
+            }
         }
     }
 }
@@ -89,7 +109,14 @@ bool LoadingState::exit() {
         try {
             m_loadTask.wait();
         } catch (const std::exception& e) {
-            GAMESTATE_ERROR("Exception while waiting for load task: " + std::string(e.what()));
+            std::string errorMsg = "Exception while waiting for load task: " + std::string(e.what());
+            GAMESTATE_ERROR(errorMsg);
+
+            // Store error for diagnostic purposes
+            {
+                std::lock_guard<std::mutex> lock(m_errorMutex);
+                m_lastError = errorMsg;
+            }
         }
     }
 
@@ -136,7 +163,14 @@ void LoadingState::startAsyncWorldLoad() {
         if (success) {
             GAMESTATE_INFO("Async world generation completed successfully");
         } else {
-            GAMESTATE_ERROR("Async world generation failed");
+            std::string errorMsg = "Async world generation failed";
+            GAMESTATE_ERROR(errorMsg);
+
+            // Store error for diagnostic purposes
+            {
+                std::lock_guard<std::mutex> lock(m_errorMutex);
+                m_lastError = errorMsg;
+            }
         }
 
         // Mark loading as complete
@@ -162,6 +196,16 @@ void LoadingState::setStatusText(const std::string& status) {
 std::string LoadingState::getStatusText() const {
     std::lock_guard<std::mutex> lock(m_statusMutex);
     return m_statusText;
+}
+
+std::string LoadingState::getLastError() const {
+    std::lock_guard<std::mutex> lock(m_errorMutex);
+    return m_lastError;
+}
+
+bool LoadingState::hasError() const {
+    std::lock_guard<std::mutex> lock(m_errorMutex);
+    return !m_lastError.empty();
 }
 
 void LoadingState::initializeUI() {

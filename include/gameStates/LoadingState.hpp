@@ -53,6 +53,18 @@ public:
     void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
     std::string getName() const override;
 
+    /**
+     * @brief Get the last error message from failed loading
+     * @return Error message string, empty if no error occurred
+     */
+    std::string getLastError() const;
+
+    /**
+     * @brief Check if an error occurred during loading
+     * @return true if loading failed with an error, false otherwise
+     */
+    bool hasError() const;
+
 private:
     // Target state to transition to after loading
     std::string m_targetStateName;
@@ -68,6 +80,10 @@ private:
     // Status message (mutex-protected for string safety)
     std::string m_statusText{"Initializing..."};
     mutable std::mutex m_statusMutex;
+
+    // Error tracking (mutex-protected for string safety)
+    std::string m_lastError;
+    mutable std::mutex m_errorMutex;
 
     // Future for async world loading task
     std::future<bool> m_loadTask;

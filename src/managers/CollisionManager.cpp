@@ -106,7 +106,7 @@ void CollisionManager::prepareForStateTransition() {
    * after state transition anyway, and new state will rebuild static bodies
    * when it loads its world.
    */
-  [[maybe_unused]] size_t soaBodyCount = m_storage.size();
+  size_t soaBodyCount = m_storage.size();
   COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
                  std::to_string(soaBodyCount) + " SOA bodies (dynamic + static)");
 
@@ -178,7 +178,7 @@ void CollisionManager::prepareForStateTransition() {
   // Reset verbose logging to default
   m_verboseLogs = false;
 
-  [[maybe_unused]] size_t finalBodyCount = m_storage.size();
+  size_t finalBodyCount = m_storage.size();
   COLLISION_INFO("CollisionManager state transition complete - " + std::to_string(finalBodyCount) + " bodies remaining");
 }
 
@@ -588,9 +588,9 @@ void CollisionManager::addCollisionCallback(CollisionCB cb) {
 }
 
 void CollisionManager::logCollisionStatistics() const {
-  [[maybe_unused]] size_t staticBodies = getStaticBodyCount();
-  [[maybe_unused]] size_t kinematicBodies = getKinematicBodyCount();
-  [[maybe_unused]] size_t dynamicBodies = getDynamicBodyCount();
+  size_t staticBodies = getStaticBodyCount();
+  size_t kinematicBodies = getKinematicBodyCount();
+  size_t dynamicBodies = getDynamicBodyCount();
 
   COLLISION_INFO("Collision Statistics:");
   COLLISION_INFO("  Total Bodies: " + std::to_string(getBodyCount()));
@@ -612,7 +612,7 @@ void CollisionManager::logCollisionStatistics() const {
 
   COLLISION_INFO("  Layer Distribution:");
   for (const auto &layerCount : layerCounts) {
-    [[maybe_unused]] std::string layerName;
+    std::string layerName;
     switch (layerCount.first) {
     case CollisionLayer::Layer_Default:
       layerName = "Default";
@@ -676,9 +676,9 @@ void CollisionManager::rebuildStaticFromWorld() {
   // Create solid collision bodies for obstacles and triggers for movement
   // penalties
   size_t solidBodies = createStaticObstacleBodies();
-  [[maybe_unused]] size_t waterTriggers =
+  size_t waterTriggers =
       createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
-  [[maybe_unused]] size_t obstacleTriggers =
+  size_t obstacleTriggers =
       createTriggersForObstacles(); // Always returns 0 - obstacle penalties
                                     // handled by pathfinding
 
@@ -2288,6 +2288,13 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   m_perf.cacheEntriesEvicted = evictedCount;
   m_perf.totalCacheEvictions += evictedCount;
   m_perf.cacheEntriesActive = m_coarseRegionStaticCache.size();
+
+  // Log cache maintenance activity if any changes occurred
+  if (evictedCount > 0 || invalidatedCount > 0) {
+    COLLISION_DEBUG("Cache maintenance: evicted=" + std::to_string(evictedCount) +
+                    ", invalidated=" + std::to_string(invalidatedCount) +
+                    ", active=" + std::to_string(m_perf.cacheEntriesActive));
+  }
 }
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
@@ -2744,7 +2751,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
   // Periodic statistics (every 300 frames like AIManager)
   if (m_perf.frames % 300 == 0 && bodyCount > 0) {
     // PERFORMANCE OPTIMIZATION REPORTING: Show optimization effectiveness
-    [[maybe_unused]] std::string optimizationStats = " [Optimizations: Active=" + std::to_string(m_perf.getActiveBodiesRate()) + "%";
+    std::string optimizationStats = " [Optimizations: Active=" + std::to_string(m_perf.getActiveBodiesRate()) + "%";
     if (dynamicBodiesCulled > 0) {
       optimizationStats += ", DynCulled=" + std::to_string(m_perf.getDynamicCullingRate()) + "%";
     }
@@ -2757,10 +2764,10 @@ void CollisionManager::updatePerformanceMetricsSOA(
     optimizationStats += "]";
 
     // Coarse region cache statistics
-    [[maybe_unused]] size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
-    [[maybe_unused]] float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
-    [[maybe_unused]] size_t activeRegions = m_coarseRegionStaticCache.size();
-    [[maybe_unused]] std::string cacheStatsStr = " [RegionCache: Active=" + std::to_string(activeRegions) +
+    size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
+    float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
+    size_t activeRegions = m_coarseRegionStaticCache.size();
+    std::string cacheStatsStr = " [RegionCache: Active=" + std::to_string(activeRegions) +
                                 ", Hits=" + std::to_string(m_cacheHits) +
                                 ", Misses=" + std::to_string(m_cacheMisses) +
                                 ", HitRate=" + std::to_string(static_cast<int>(cacheHitRate)) + "%";
