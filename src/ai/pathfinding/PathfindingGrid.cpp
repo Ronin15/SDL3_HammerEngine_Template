@@ -377,6 +377,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         // Quick connectivity test on coarse grid to fail fast for unreachable paths
         // Coarse grid already configured with reduced iteration budget (see initializeCoarseGrid)
         std::vector<Vector2D> coarsePath;
+        coarsePath.reserve(directDistance / 4 + 10); // Reserve estimated path length
         auto coarseResult = m_coarseGrid->findPath(gridToWorld(sx, sy), gridToWorld(gx, gy), coarsePath);
 
         // Only fail early if coarse grid definitively finds NO_PATH_FOUND (not TIMEOUT)
@@ -498,6 +499,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         if (cur.x == gx && cur.y == gy) {
             // reconstruct
             std::vector<Vector2D> rev;
+            rev.reserve(directDistance + 20); // Reserve estimated path length
             int cx = cur.x, cy = cur.y;
             while (!(cx == sx && cy == sy)) {
                 rev.push_back(gridToWorld(cx, cy));
@@ -758,6 +760,10 @@ PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, c
     
     // Step 1: Find coarse path on low-resolution grid
     std::vector<Vector2D> coarsePath;
+    auto [sx, sy] = worldToGrid(start);
+    auto [gx, gy] = worldToGrid(goal);
+    int estimatedDistance = std::max(std::abs(gx - sx), std::abs(gy - sy));
+    coarsePath.reserve(estimatedDistance / 4 + 10); // Reserve estimated path length
     auto coarseResult = m_coarseGrid->findPath(start, goal, coarsePath);
     
     if (coarseResult != PathfindingResult::SUCCESS) {
