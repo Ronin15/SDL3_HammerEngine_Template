@@ -952,9 +952,6 @@ size_t AIManager::processPendingBehaviorAssignments() {
       lastUpdateTimeMs
   );
 
-  size_t assignmentsPerBatch = batchSize;
-  size_t remaining = assignmentCount % batchCount;
-
   // Submit batches using futures for deterministic completion tracking
   {
     std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
@@ -963,8 +960,11 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
     size_t start = 0;
     for (size_t i = 0; i < batchCount; ++i) {
-      size_t end =
-          start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
+      // Early exit if all items have been processed
+      if (start >= assignmentCount) break;
+
+      // Ensure end never exceeds assignmentCount (batchSize uses ceiling division)
+      size_t end = std::min(start + batchSize, assignmentCount);
 
       // Copy the batch data (we need to own this data for async processing)
       std::vector<PendingAssignment> batchData(toProcess.begin() + start,
