@@ -223,11 +223,22 @@ bool AdvancedAIDemoState::enter() {
         auto& ui = UIManager::Instance();
         ui.createTitle("advanced_ai_title", {0, 5, gameEngine.getLogicalWidth(), 25}, "Advanced AI Demo State");
         ui.setTitleAlignment("advanced_ai_title", UIAlignment::CENTER_CENTER);
+        // Set auto-repositioning: top-aligned, full width
+        ui.setComponentPositioning("advanced_ai_title", {UIPositionMode::TOP_ALIGNED, 0, 5, -1, 25});
+
         ui.createLabel("advanced_ai_instructions_line1", {10, 40, gameEngine.getLogicalWidth() - 20, 20},
                        "Advanced AI Demo: [B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] Flee | [3] Follow");
+        // Set auto-repositioning: top-aligned, full width minus 20px margin
+        ui.setComponentPositioning("advanced_ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, 10, 40, -20, 20});
+
         ui.createLabel("advanced_ai_instructions_line2", {10, 75, gameEngine.getLogicalWidth() - 20, 20},
                        "Combat & Social: [4] Guard | [5] Attack");
+        // Set auto-repositioning: top-aligned, full width minus 20px margin
+        ui.setComponentPositioning("advanced_ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, 10, 75, -20, 20});
+
         ui.createLabel("advanced_ai_status", {10, 110, 400, 20}, "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
+        // Set auto-repositioning: fixed position (absolute)
+        ui.setComponentPositioning("advanced_ai_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
         // Log status
         GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
@@ -308,26 +319,10 @@ bool AdvancedAIDemoState::exit() {
 
 void AdvancedAIDemoState::onWindowResize(int newLogicalWidth,
                                           int newLogicalHeight) {
-    // Recalculate UI positions based on new window dimensions
-    auto& ui = UIManager::Instance();
-
-    // Reposition title (centered across full width)
-    ui.setComponentBounds("advanced_ai_title",
-                          {0, 5, newLogicalWidth, 25});
-
-    // Reposition instruction labels (full width minus margin)
-    ui.setComponentBounds("advanced_ai_instructions_line1",
-                          {10, 40, newLogicalWidth - 20, 20});
-
-    ui.setComponentBounds("advanced_ai_instructions_line2",
-                          {10, 75, newLogicalWidth - 20, 20});
-
-    // Status label keeps fixed position (left side)
-    // No need to reposition as it doesn't depend on window width
-
-    GAMESTATE_DEBUG("AdvancedAIDemoState: Repositioned UI for new window size: " +
+    // Auto-repositioning now handled by UIManager - no manual updates needed!
+    GAMESTATE_DEBUG("AdvancedAIDemoState: Window resized to " +
                     std::to_string(newLogicalWidth) + "x" +
-                    std::to_string(newLogicalHeight));
+                    std::to_string(newLogicalHeight) + " (auto-repositioning active)");
 }
 
 void AdvancedAIDemoState::update(float deltaTime) {

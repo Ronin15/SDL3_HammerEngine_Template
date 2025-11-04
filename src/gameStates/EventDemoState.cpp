@@ -134,18 +134,30 @@ bool EventDemoState::enter() {
 
     // Create simple UI components using auto-detecting methods with dramatic spacing
     auto &ui = UIManager::Instance();
-    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35
+    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35 (auto-repositions)
+
     ui.createLabel("event_phase", {10, 25, 300, 25}, "Phase: Initialization");  // Moved up from y=45 to y=25
+    // Set auto-repositioning: fixed position (absolute)
+    ui.setComponentPositioning("event_phase", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel("event_status", {10, 60, 400, 25},  // Moved up from y=80 to y=60
                    "FPS: -- | Weather: Clear | NPCs: 0");
+    // Set auto-repositioning: fixed position (absolute)
+    ui.setComponentPositioning("event_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel(
         "event_controls", {10, 95, ui.getLogicalWidth() - 20, 25},  // Moved up from y=115 to y=95
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
         "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
+    // Set auto-repositioning: top-aligned, spans full width minus 20px margin (10px each side)
+    ui.setComponentPositioning("event_controls", {UIPositionMode::TOP_ALIGNED, 10, 95, -20, 25});  // -20 = full width minus 20px
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
                       7);
+    // Set auto-repositioning: anchored to bottom with fixed offset
+    ui.setComponentPositioning("event_log", {UIPositionMode::BOTTOM_ALIGNED, 10, 20, 730, 180});
+
     ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
     // Create right-aligned inventory panel for resource demo visualization with dramatic spacing
@@ -158,11 +170,14 @@ bool EventDemoState::enter() {
     ui.createPanel("inventory_panel",
                    {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
     ui.setComponentVisible("inventory_panel", false);
+    // Set auto-repositioning: right-aligned with fixed offsetY
+    ui.setComponentPositioning("inventory_panel", {UIPositionMode::RIGHT_ALIGNED, 20, inventoryY - (ui.getLogicalHeight() - inventoryHeight) / 2, inventoryWidth, inventoryHeight});
 
     ui.createTitle("inventory_title",
                    {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},  // Increased height from 30 to 35
                    "Player Inventory");
     ui.setComponentVisible("inventory_title", false);
+    // Children will be repositioned in onWindowResize based on panel position
 
     ui.createLabel("inventory_status",
                    {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},  // Increased height from 20 to 25

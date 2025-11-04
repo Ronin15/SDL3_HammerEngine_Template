@@ -45,6 +45,27 @@ enum class UIComponentType {
 // Layout Types
 enum class UILayoutType { ABSOLUTE_POS, FLOW, GRID, STACK, ANCHOR };
 
+// Position Modes for auto-repositioning on window resize
+enum class UIPositionMode {
+  ABSOLUTE,       // Fixed x,y (default, backward compatible)
+  CENTERED_H,     // Horizontal center + offsetX, fixed offsetY
+  CENTERED_V,     // Vertical center + offsetY, fixed offsetX
+  CENTERED_BOTH,  // Center both axes + offsets
+  TOP_ALIGNED,    // Top edge + offsetY, horizontally centered
+  BOTTOM_ALIGNED, // Bottom edge - height - offsetY, fixed offsetX
+  LEFT_ALIGNED,   // Left edge + offsetX, vertically centered
+  RIGHT_ALIGNED   // Right edge - width - offsetX, vertically centered
+};
+
+// UI Positioning structure for auto-repositioning
+struct UIPositioning {
+  UIPositionMode mode{UIPositionMode::ABSOLUTE};
+  int offsetX{0};      // Offset from positioning anchor
+  int offsetY{0};      // Offset from positioning anchor
+  int fixedWidth{0};   // Fixed width (0 = use current width)
+  int fixedHeight{0};  // Fixed height (0 = use current height)
+};
+
 // UI States
 enum class UIState { NORMAL, HOVERED, PRESSED, DISABLED, FOCUSED };
 
@@ -121,6 +142,9 @@ struct UIComponent {
   bool m_visible{true};
   bool m_enabled{true};
   int m_zOrder{0};
+
+  // Auto-repositioning properties
+  UIPositioning m_positioning{};
 
   // Auto-sizing properties
   bool m_autoSize{true}; // Enable content-aware auto-sizing by default
@@ -235,6 +259,9 @@ public:
   void setRenderer(SDL_Renderer *renderer) { m_cachedRenderer = renderer; }
   SDL_Renderer *getRenderer() const { return m_cachedRenderer; }
 
+  // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
+  void onWindowResize(int newLogicalWidth, int newLogicalHeight);
+
   // UI Component creation methods
   void createButton(const std::string &id, const UIRect &bounds,
                     const std::string &text = "");
@@ -280,6 +307,7 @@ public:
   void setComponentEnabled(const std::string &id, bool enabled);
   void setComponentBounds(const std::string &id, const UIRect &bounds);
   void setComponentZOrder(const std::string &id, int zOrder);
+  void setComponentPositioning(const std::string &id, const UIPositioning &positioning);
 
   // Component property setters
   void setText(const std::string &id, const std::string &text);
@@ -480,6 +508,10 @@ private:
   std::unordered_map<std::string, EventLogState> m_eventLogStates{};
   bool m_isShutdown{false};
 
+  // Window resize tracking for auto-repositioning
+  int m_currentLogicalWidth{0};
+  int m_currentLogicalHeight{0};
+
   // Thread safety
   mutable std::recursive_mutex m_componentsMutex;
 
@@ -492,6 +524,10 @@ private:
   std::shared_ptr<UIComponent> getComponent(const std::string &id);
   std::shared_ptr<const UIComponent> getComponent(const std::string &id) const;
   std::shared_ptr<UILayout> getLayout(const std::string &id);
+
+  // Auto-repositioning system (private helpers)
+  void repositionAllComponents(int width, int height);
+  void applyPositioning(std::shared_ptr<UIComponent> component, int width, int height);
 
   void handleInput();
   void updateAnimations(float deltaTime);

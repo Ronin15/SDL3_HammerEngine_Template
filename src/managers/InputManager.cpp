@@ -531,6 +531,13 @@ void InputManager::onWindowResize(const SDL_Event& event) {
      INPUT_INFO("Font system reinitialized successfully after window resize");
    }
 
+   // Auto-reposition all UI components based on new dimensions
+   UIManager& uiManager = UIManager::Instance();
+   if (!uiManager.isShutdown()) {
+     uiManager.onWindowResize(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+     INPUT_INFO("UIManager auto-repositioned components for new window size");
+   }
+
    // Notify active game state about resize for UI layout recalculation
    if (gameEngine.getGameStateManager()) {
      gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),

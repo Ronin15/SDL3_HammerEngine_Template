@@ -39,40 +39,59 @@ bool UIExampleState::enter() {
     // Back button using auto-positioning and instruction
     ui.createButtonAtBottom("uiexample_back_btn", "Back", 120, 40);
     ui.createLabel("uiexample_back_instruction", {leftColumnX + 130, ui.getLogicalHeight() - 75, 200, 30}, "Press B to go back");
+    ui.setComponentPositioning("uiexample_back_instruction", {UIPositionMode::BOTTOM_ALIGNED, leftColumnX + 130, 85, 200, 30});
 
-    // Slider demo
+    // Slider demo (left column - fixed position)
     ui.createSlider("uiexample_demo_slider", {leftColumnX, 140, 200, 30}, 0.0f, 1.0f);
     ui.setValue("uiexample_demo_slider", 0.5f);
+    ui.setComponentPositioning("uiexample_demo_slider", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel("uiexample_slider_label", {leftColumnX + 210, 140, 200, 30}, "Slider: 0.50");
+    ui.setComponentPositioning("uiexample_slider_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Checkbox demo
+    // Checkbox demo (left column - fixed position)
     ui.createCheckbox("uiexample_demo_checkbox", {leftColumnX, 190, 250, 30}, "Toggle Option");
+    ui.setComponentPositioning("uiexample_demo_checkbox", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Input field demo
+    // Input field demo (left column - fixed position)
     ui.createInputField("uiexample_demo_input", {leftColumnX, 240, 200, 30}, "Type here...");
+    ui.setComponentPositioning("uiexample_demo_input", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel("uiexample_input_label", {leftColumnX + 210, 240, 300, 30}, "Input: (empty)");
+    ui.setComponentPositioning("uiexample_input_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Progress bar demo
+    // Progress bar demo (left column - fixed position)
     ui.createProgressBar("uiexample_demo_progress", {leftColumnX, 290, 200, 20}, 0.0f, 1.0f);
+    ui.setComponentPositioning("uiexample_demo_progress", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel("uiexample_progress_label", {leftColumnX + 210, 290, 200, 20}, "Auto Progress");
+    ui.setComponentPositioning("uiexample_progress_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // List demo
+    // List demo (left column - fixed position)
     ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
+    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Event Log demo - fixed size following industry standard
+    // Event Log demo - bottom-aligned, right side
     ui.createEventLog("uiexample_demo_event_log", {rightColumnX, ui.getLogicalHeight() - 150, rightColumnWidth, 90}, 6);
+    ui.setComponentPositioning("uiexample_demo_event_log", {UIPositionMode::BOTTOM_ALIGNED, rightColumnX, 60, rightColumnWidth, 90});
+
     ui.createLabel("uiexample_event_log_label", {rightColumnX, ui.getLogicalHeight() - 190, rightColumnWidth/2, 20}, "Event Log (Fixed Size):");
+    ui.setComponentPositioning("uiexample_event_log_label", {UIPositionMode::BOTTOM_ALIGNED, rightColumnX, 100, rightColumnWidth/2, 20});
+
     ui.setupDemoEventLog("uiexample_demo_event_log");
 
-    // Animation button
+    // Animation button (right column - fixed position)
     ui.createButton("uiexample_animate_btn", {rightColumnX, 340, 120, 40}, "Animate");
+    ui.setComponentPositioning("uiexample_animate_btn", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Theme toggle button
+    // Theme toggle button (right column - fixed position)
     ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 150, 40}, "Dark Theme");
+    ui.setComponentPositioning("uiexample_theme_btn", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Instructions - adjusted position and size to prevent overlap
+    // Instructions (right column - fixed position)
     ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, rightColumnWidth - 150, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
+    ui.setComponentPositioning("uiexample_instructions", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
     // Populate list
     ui.addListItem("uiexample_demo_list", "Option 1: Basic Item");

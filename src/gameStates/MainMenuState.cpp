@@ -39,13 +39,28 @@ bool MainMenuState::enter() {
   int startY = ui.getLogicalHeight() / 2 - 100;
 
   ui.createButton("mainmenu_start_game_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
+  ui.setComponentPositioning("mainmenu_start_game_btn", {UIPositionMode::CENTERED_H, 0, startY, buttonWidth, buttonHeight});
+
   ui.createButton("mainmenu_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
+  ui.setComponentPositioning("mainmenu_ai_demo_btn", {UIPositionMode::CENTERED_H, 0, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
+
   ui.createButton("mainmenu_advanced_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Advanced AI Demo");
+  ui.setComponentPositioning("mainmenu_advanced_ai_demo_btn", {UIPositionMode::CENTERED_H, 0, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
+
   ui.createButton("mainmenu_event_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
+  ui.setComponentPositioning("mainmenu_event_demo_btn", {UIPositionMode::CENTERED_H, 0, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
+
   ui.createButton("mainmenu_ui_example_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Demo");
+  ui.setComponentPositioning("mainmenu_ui_example_btn", {UIPositionMode::CENTERED_H, 0, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
+
   ui.createButton("mainmenu_overlay_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
+  ui.setComponentPositioning("mainmenu_overlay_demo_btn", {UIPositionMode::CENTERED_H, 0, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
+
   ui.createButton("mainmenu_settings_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Settings");
+  ui.setComponentPositioning("mainmenu_settings_btn", {UIPositionMode::CENTERED_H, 0, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
+
   ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 7 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+  ui.setComponentPositioning("mainmenu_exit_btn", {UIPositionMode::CENTERED_H, 0, startY + 7 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight});
 
   // Set up button callbacks
   ui.setOnClick("mainmenu_start_game_btn", []() {
@@ -173,60 +188,8 @@ std::string MainMenuState::getName() const {
 
 void MainMenuState::onWindowResize(int newLogicalWidth,
                                     int newLogicalHeight) {
-  // Recalculate button positions based on new window dimensions
-  auto& ui = UIManager::Instance();
-
-  // Button dimensions (must match those in enter())
-  const int buttonWidth = 300;
-  const int buttonHeight = 50;
-  const int buttonSpacing = 20;
-  const int startY = newLogicalHeight / 2 - 100;
-
-  // Title repositioning (handled by createTitleAtTop, but we can update if needed)
-  // The title component uses full width, so we just need to update its width
-  ui.setComponentBounds("mainmenu_title", {0, 0, newLogicalWidth, 60});
-
-  // Reposition all buttons to be centered horizontally
-  ui.setComponentBounds("mainmenu_start_game_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2, startY,
-                         buttonWidth, buttonHeight});
-
-  ui.setComponentBounds("mainmenu_ai_demo_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + (buttonHeight + buttonSpacing), buttonWidth,
-                         buttonHeight});
-
-  ui.setComponentBounds("mainmenu_advanced_ai_demo_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + 2 * (buttonHeight + buttonSpacing),
-                         buttonWidth, buttonHeight});
-
-  ui.setComponentBounds("mainmenu_event_demo_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + 3 * (buttonHeight + buttonSpacing),
-                         buttonWidth, buttonHeight});
-
-  ui.setComponentBounds("mainmenu_ui_example_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + 4 * (buttonHeight + buttonSpacing),
-                         buttonWidth, buttonHeight});
-
-  ui.setComponentBounds("mainmenu_overlay_demo_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + 5 * (buttonHeight + buttonSpacing),
-                         buttonWidth, buttonHeight});
-
-  ui.setComponentBounds("mainmenu_settings_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + 6 * (buttonHeight + buttonSpacing),
-                         buttonWidth, buttonHeight});
-
-  ui.setComponentBounds("mainmenu_exit_btn",
-                        {newLogicalWidth / 2 - buttonWidth / 2,
-                         startY + 7 * (buttonHeight + buttonSpacing),
-                         buttonWidth, buttonHeight});
-
-  GAMESTATE_DEBUG("MainMenuState: Repositioned menu buttons for new window size: " +
+  // Auto-repositioning now handled by UIManager - no manual updates needed!
+  GAMESTATE_DEBUG("MainMenuState: Window resized to " +
                   std::to_string(newLogicalWidth) + "x" +
-                  std::to_string(newLogicalHeight));
+                  std::to_string(newLogicalHeight) + " (auto-repositioning active)");
 }
