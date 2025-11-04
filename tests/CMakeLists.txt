@@ -17,7 +17,6 @@ message(STATUS "Building tests with Boost Test support")
 
 # --- Create TestMocks Library ---
 set(MOCK_SOURCES
-    mocks/MockAIBehavior.cpp
     mocks/MockPlayer.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp

@@ -19,6 +19,8 @@
 #include <boost/test/unit_test_suite.hpp>
 
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include "core/ThreadSystem.hpp"
 // GameEngine.hpp removed - not used directly
 
@@ -149,14 +151,20 @@ void performSafeCleanup() {
         std::cout << "Waiting for pending tasks to complete..." << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(200));
 
-        // First clean AIManager since it depends on ThreadSystem
+        // Clean managers in reverse order of initialization
         std::cout << "Cleaning AIManager..." << std::endl;
         AIManager::Instance().clean();
 
         // Wait for AIManager to finish any potential cleanup tasks
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
-        // Then clean ThreadSystem
+        std::cout << "Cleaning PathfinderManager..." << std::endl;
+        PathfinderManager::Instance().clean();
+
+        std::cout << "Cleaning CollisionManager..." << std::endl;
+        CollisionManager::Instance().clean();
+
+        // Then clean ThreadSystem last
         std::cout << "Cleaning ThreadSystem..." << std::endl;
         HammerEngine::ThreadSystem::Instance().clean();
 
@@ -201,6 +209,20 @@ struct GlobalTestFixture {
         if (!HammerEngine::ThreadSystem::Instance().init()) {
             std::cerr << "Failed to initialize ThreadSystem" << std::endl;
             throw std::runtime_error("ThreadSystem initialization failed");
+        }
+
+        // Initialize dependencies in proper order
+        // AIManager requires PathfinderManager and CollisionManager to be initialized first
+        std::cout << "Initializing CollisionManager" << std::endl;
+        if (!CollisionManager::Instance().init()) {
+            std::cerr << "Failed to initialize CollisionManager" << std::endl;
+            throw std::runtime_error("CollisionManager initialization failed");
+        }
+
+        std::cout << "Initializing PathfinderManager" << std::endl;
+        if (!PathfinderManager::Instance().init()) {
+            std::cerr << "Failed to initialize PathfinderManager" << std::endl;
+            throw std::runtime_error("PathfinderManager initialization failed");
         }
 
         // Initialize AI manager
