@@ -1014,21 +1014,23 @@ private:
 
   // Fast trigonometric functions using lookup tables
   inline float fastSin(float x) const {
-    x = fmodf(x, 2.0f * 3.14159265f);
-    if (x < 0)
-      x += 2.0f * 3.14159265f;
-    const size_t index =
-        static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
-    return m_sinLUT[index];
+    // Optimized: avoid fmodf by using integer modulo directly
+    // Convert to index space and handle negative values with bitwise AND
+    // (only works because TRIG_LUT_SIZE is power of 2)
+    const int index = static_cast<int>(x * TRIG_LUT_SCALE);
+    // Handle negative indices: add multiple of TRIG_LUT_SIZE, then mask
+    const size_t wrappedIndex = (index + (TRIG_LUT_SIZE * 64)) & (TRIG_LUT_SIZE - 1);
+    return m_sinLUT[wrappedIndex];
   }
 
   inline float fastCos(float x) const {
-    x = fmodf(x, 2.0f * 3.14159265f);
-    if (x < 0)
-      x += 2.0f * 3.14159265f;
-    const size_t index =
-        static_cast<size_t>(x * TRIG_LUT_SCALE) % TRIG_LUT_SIZE;
-    return m_cosLUT[index];
+    // Optimized: avoid fmodf by using integer modulo directly
+    // Convert to index space and handle negative values with bitwise AND
+    // (only works because TRIG_LUT_SIZE is power of 2)
+    const int index = static_cast<int>(x * TRIG_LUT_SCALE);
+    // Handle negative indices: add multiple of TRIG_LUT_SIZE, then mask
+    const size_t wrappedIndex = (index + (TRIG_LUT_SIZE * 64)) & (TRIG_LUT_SIZE - 1);
+    return m_cosLUT[wrappedIndex];
   }
 
   // Weather type conversion helpers

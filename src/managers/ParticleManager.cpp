@@ -2605,14 +2605,29 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // SIMD main loop - use aligned loads for maximum performance
   const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  // Safe SIMD flag load limit - need 16 bytes for load_byte16
+  const size_t simdFlagSafeEnd = particleCount >= 16 ? particleCount - 15 : 0;
+
   for (; i < simdEnd; i += 4) {
-    // SIMD flag check for 4 particles: skip if none active using SIMDMath abstraction
-    const Byte16 flagsv = load_byte16(&particles.flags[i]);
-    const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
-    const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
-    const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
-    const int maskBits = movemask_byte(gt0);
-    if ((maskBits & 0xF) == 0) continue;
+    // SIMD flag check for 4 particles: skip if none active
+    // Only use SIMD flag load when we have at least 16 elements available
+    bool anyActive = false;
+    if (i < simdFlagSafeEnd) {
+      // Safe to load 16 bytes
+      const Byte16 flagsv = load_byte16(&particles.flags[i]);
+      const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+      const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
+      const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
+      const int maskBits = movemask_byte(gt0);
+      anyActive = (maskBits & 0xF) != 0;
+    } else {
+      // Scalar flag check for safety near array end
+      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
+    }
+    if (!anyActive) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
     Float4 posXv = load4(&particles.posX[i]);
@@ -2675,14 +2690,29 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // NEON main loop - use aligned loads for maximum performance
   const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  // Safe SIMD flag load limit - need 16 bytes for load_byte16
+  const size_t simdFlagSafeEnd = particleCount >= 16 ? particleCount - 15 : 0;
+
   for (; i < simdEnd; i += 4) {
-    // SIMD flag check for 4 particles: skip if none active using SIMDMath abstraction
-    const Byte16 flagsv = load_byte16(&particles.flags[i]);
-    const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
-    const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
-    const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
-    const int maskBits = movemask_byte(gt0);
-    if ((maskBits & 0xFFFFFFFF) == 0) continue;
+    // SIMD flag check for 4 particles: skip if none active
+    // Only use SIMD flag load when we have at least 16 elements available
+    bool anyActive = false;
+    if (i < simdFlagSafeEnd) {
+      // Safe to load 16 bytes
+      const Byte16 flagsv = load_byte16(&particles.flags[i]);
+      const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+      const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
+      const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
+      const int maskBits = movemask_byte(gt0);
+      anyActive = (maskBits & 0xFFFFFFFF) != 0;
+    } else {
+      // Scalar flag check for safety near array end
+      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
+    }
+    if (!anyActive) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
     Float4 posXv = load4(&particles.posX[i]);
