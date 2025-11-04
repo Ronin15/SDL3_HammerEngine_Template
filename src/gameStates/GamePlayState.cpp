@@ -99,7 +99,7 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
     config.mountainLevel = 0.7f;
 
     // Configure LoadingState and transition to it
-    auto& gameEngine = GameEngine::Instance();
+    const auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     if (gameStateManager) {
       auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());

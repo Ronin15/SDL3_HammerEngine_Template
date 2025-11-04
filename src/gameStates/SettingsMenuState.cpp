@@ -73,7 +73,7 @@ bool SettingsMenuState::exit() {
 }
 
 void SettingsMenuState::handleInput() {
-    auto& inputManager = InputManager::Instance();
+    const auto& inputManager = InputManager::Instance();
 
     // ESC to go back without saving
     if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
@@ -234,7 +234,7 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createCheckbox("settings_vsync_checkbox", {controlX, startY, 30, 30}, "Enabled");
     ui.setChecked("settings_vsync_checkbox", m_tempSettings.vsync);
     ui.setOnClick("settings_vsync_checkbox", [this]() {
-        auto& ui = UIManager::Instance();
+        const auto& ui = UIManager::Instance();
         m_tempSettings.vsync = ui.getChecked("settings_vsync_checkbox");
     });
 
@@ -243,7 +243,7 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createCheckbox("settings_fullscreen_checkbox", {controlX, startY + rowHeight, 30, 30}, "Enabled");
     ui.setChecked("settings_fullscreen_checkbox", m_tempSettings.fullscreen);
     ui.setOnClick("settings_fullscreen_checkbox", [this]() {
-        auto& ui = UIManager::Instance();
+        const auto& ui = UIManager::Instance();
         m_tempSettings.fullscreen = ui.getChecked("settings_fullscreen_checkbox");
     });
 
@@ -252,7 +252,7 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createCheckbox("settings_showfps_checkbox", {controlX, startY + 2 * rowHeight, 30, 30}, "Enabled");
     ui.setChecked("settings_showfps_checkbox", m_tempSettings.showFps);
     ui.setOnClick("settings_showfps_checkbox", [this]() {
-        auto& ui = UIManager::Instance();
+        const auto& ui = UIManager::Instance();
         m_tempSettings.showFps = ui.getChecked("settings_showfps_checkbox");
     });
 
@@ -313,7 +313,7 @@ void SettingsMenuState::createAudioUI() {
     ui.createCheckbox("settings_mute_checkbox", {sliderX, startY + 3 * rowHeight, 30, 30}, "Muted");
     ui.setChecked("settings_mute_checkbox", m_tempSettings.muted);
     ui.setOnClick("settings_mute_checkbox", [this]() {
-        auto& ui = UIManager::Instance();
+        const auto& ui = UIManager::Instance();
         m_tempSettings.muted = ui.getChecked("settings_mute_checkbox");
     });
 
@@ -349,7 +349,7 @@ void SettingsMenuState::createGameplayUI() {
     ui.createCheckbox("settings_autosave_checkbox", {controlX, startY + rowHeight, 30, 30}, "Enabled");
     ui.setChecked("settings_autosave_checkbox", m_tempSettings.autosaveEnabled);
     ui.setOnClick("settings_autosave_checkbox", [this]() {
-        auto& ui = UIManager::Instance();
+        const auto& ui = UIManager::Instance();
         m_tempSettings.autosaveEnabled = ui.getChecked("settings_autosave_checkbox");
     });
 

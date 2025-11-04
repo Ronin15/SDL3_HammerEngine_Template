@@ -117,7 +117,7 @@ void PathfindingGrid::rebuildFromWorld() {
     const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
     if (tilesW <= 0 || tilesH <= 0) { PATHFIND_WARN("rebuildFromWorld(): world has no tiles"); return; }
 
-    constexpr float TILE_SIZE = HammerEngine::TILE_SIZE;
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
     int blockedCount = 0;
 
     for (int cy = 0; cy < cellsH; ++cy) {
@@ -128,10 +128,10 @@ void PathfindingGrid::rebuildFromWorld() {
             float x1 = x0 + m_cell;
             float y1 = y0 + m_cell;
 
-            int tx0 = static_cast<int>(std::floor(x0 / TILE_SIZE));
-            int ty0 = static_cast<int>(std::floor(y0 / TILE_SIZE));
-            int tx1 = static_cast<int>(std::floor((x1 - 1.0f) / TILE_SIZE));
-            int ty1 = static_cast<int>(std::floor((y1 - 1.0f) / TILE_SIZE));
+            int tx0 = static_cast<int>(std::floor(x0 / tileSize));
+            int ty0 = static_cast<int>(std::floor(y0 / tileSize));
+            int tx1 = static_cast<int>(std::floor((x1 - 1.0f) / tileSize));
+            int ty1 = static_cast<int>(std::floor((y1 - 1.0f) / tileSize));
 
             tx0 = std::clamp(tx0, 0, tilesW - 1);
             ty0 = std::clamp(ty0, 0, tilesH - 1);

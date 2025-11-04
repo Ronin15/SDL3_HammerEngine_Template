@@ -292,7 +292,7 @@ inline Float4 bitwise_or(Float4 a, Float4 b) {
 #elif defined(HAMMER_SIMD_NEON)
     return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)));
 #else
-    Float4 result;
+    Float4 result{};  // Initialize to zero
     uint32_t* ra = reinterpret_cast<uint32_t*>(&result.data);
     const uint32_t* aa = reinterpret_cast<const uint32_t*>(&a.data);
     const uint32_t* ba = reinterpret_cast<const uint32_t*>(&b.data);

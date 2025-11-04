@@ -56,7 +56,7 @@ struct SpatialQueryCache {
     uint64_t key = hashQuery(center, radius);
     size_t index = key % CACHE_SIZE;
 
-    CacheEntry& entry = entries[index];
+    const CacheEntry& entry = entries[index];
     // Frame-based validation: entry is valid only if frame matches
     // No need to check 'valid' flag - frame comparison is sufficient
     if (entry.frameNumber == currentFrame && entry.queryKey == key) {
