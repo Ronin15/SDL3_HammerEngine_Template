@@ -10,12 +10,7 @@ NC='\033[0m' # No Color
 
 echo -e "${YELLOW}Running AI Optimization Tests...${NC}"
 
-# Navigate to project root directory (in case script is run from elsewhere)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
-
-# Create directory for test results
-mkdir -p ../../test_results
+# Note: We calculate paths below and don't cd here to avoid path resolution issues
 
 # Set default build type
 BUILD_TYPE="Debug"
@@ -85,11 +80,11 @@ fi
 echo -e "${YELLOW}Running AI Optimization tests...${NC}"
 
 # Ensure test_results directory exists
-mkdir -p ../../test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Output file
-OUTPUT_FILE="../../test_results/ai_optimization_tests_output.txt"
-METRICS_FILE="../../test_results/ai_optimization_tests_performance_metrics.txt"
+OUTPUT_FILE="$PROJECT_ROOT/test_results/ai_optimization_tests_output.txt"
+METRICS_FILE="$PROJECT_ROOT/test_results/ai_optimization_tests_performance_metrics.txt"
 
 # Set test command options
 TEST_OPTS="--log_level=all --catch_system_errors=no"

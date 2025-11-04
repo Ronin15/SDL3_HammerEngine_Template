@@ -106,10 +106,8 @@ print_status "Starting EventManager Scaling Benchmark..."
 print_status "Build type: $BUILD_TYPE"
 print_status "Results will be saved to: $OUTPUT_FILE"
 
-# Navigate to script directory
-cd "$SCRIPT_DIR"
-
 # Get the directory where this script is located and find project root
+# Note: SCRIPT_DIR already calculated at line 10, no need to cd
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Check if benchmark executable exists
