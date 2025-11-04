@@ -61,6 +61,13 @@ bool UIManager::init() {
   m_mousePressed = false;
   m_mouseReleased = false;
 
+  // Initialize current logical dimensions from GameEngine
+  const auto& gameEngine = GameEngine::Instance();
+  m_currentLogicalWidth = gameEngine.getLogicalWidth();
+  m_currentLogicalHeight = gameEngine.getLogicalHeight();
+  UI_INFO("Initialized logical dimensions: " + std::to_string(m_currentLogicalWidth) +
+          "x" + std::to_string(m_currentLogicalHeight));
+
   // Register callback with InputManager for window resize events
   InputManager::Instance().setWindowResizeCallback(
       [this](int width, int height) {

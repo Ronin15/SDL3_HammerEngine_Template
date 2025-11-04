@@ -55,8 +55,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     GAMEENGINE_INFO("Settings loaded from res/settings.json");
   }
 
+  // Read graphics settings from SettingsManager
+  const int windowWidth = settingsManager.get<int>("graphics", "resolution_width", WINDOW_WIDTH);
+  const int windowHeight = settingsManager.get<int>("graphics", "resolution_height", WINDOW_HEIGHT);
+  const bool fullscreen = settingsManager.get<bool>("graphics", "fullscreen", false);
+
   // Initialize GameEngine
-  if (!GameEngine::Instance().init(GAME_NAME, WINDOW_WIDTH, WINDOW_HEIGHT, false)) {
+  if (!GameEngine::Instance().init(GAME_NAME, windowWidth, windowHeight, fullscreen)) {
     GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
     
     // CRITICAL: Always clean up on init failure to prevent memory corruption

@@ -131,6 +131,7 @@ void SettingsMenuState::loadCurrentSettings() {
 void SettingsMenuState::applySettings() {
     using namespace HammerEngine;
     auto& settings = SettingsManager::Instance();
+    auto& gameEngine = GameEngine::Instance();
 
     // Graphics
     settings.set("graphics", "resolution_width", m_tempSettings.resolutionWidth);
@@ -139,8 +140,20 @@ void SettingsMenuState::applySettings() {
     settings.set("graphics", "fps_limit", m_tempSettings.fpsLimit);
     settings.set("graphics", "show_fps", m_tempSettings.showFps);
 
+    // Apply fullscreen setting immediately
+    bool fullscreenChanged = (gameEngine.isFullscreen() != m_tempSettings.fullscreen);
+    if (fullscreenChanged) {
+        gameEngine.setFullscreen(m_tempSettings.fullscreen);
+
+        // Manually trigger UI repositioning after fullscreen change
+        // SDL may not always fire resize event immediately
+        auto& ui = UIManager::Instance();
+        ui.onWindowResize(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+        GAMESTATE_INFO("UI repositioned after fullscreen change");
+    }
+
     // Apply VSync setting to GameEngine (also saves to SettingsManager internally)
-    GameEngine::Instance().setVSyncEnabled(m_tempSettings.vsync);
+    gameEngine.setVSyncEnabled(m_tempSettings.vsync);
 
     // Audio
     settings.set("audio", "master_volume", m_tempSettings.masterVolume);
