@@ -11,6 +11,8 @@
 #include <cmath>
 #include <array>
 #include <atomic>
+#include <string>
+#include "Logger.hpp"
 
 namespace HammerEngine {
 
@@ -29,8 +31,9 @@ struct WorkerBudget {
     size_t aiAllocated;        // Workers allocated to AIManager
     size_t particleAllocated;  // Workers allocated to ParticleManager
     size_t eventAllocated;     // Workers allocated to EventManager
-    size_t collisionAllocated; // Workers allocated to CollisionManager
     size_t remaining;          // Buffer workers available for burst capacity
+
+    // NOTE: collisionAllocated removed - CollisionManager is single-threaded
 
     /**
      * @brief Calculate optimal worker count for a subsystem based on workload
@@ -157,23 +160,27 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
  * 2. Priority access to buffer threads during burst workloads
  *
  * Higher weight = more base workers + higher priority for buffer access
+ *
+ * NOTE: CollisionManager is single-threaded and NOT included in allocation.
+ * The 3 worker weight units previously allocated to collision have been
+ * redistributed: AI (+1), Particle (+1), Event (unchanged).
  */
-static constexpr size_t AI_WORKER_WEIGHT = 6;
-static constexpr size_t PARTICLE_WORKER_WEIGHT = 3;
-static constexpr size_t EVENT_WORKER_WEIGHT = 2;
-static constexpr size_t COLLISION_WORKER_WEIGHT = 3;
+static constexpr size_t AI_WORKER_WEIGHT = 7;        // Was 6, increased for higher computation load
+static constexpr size_t PARTICLE_WORKER_WEIGHT = 4;  // Was 3, increased for parallel particle updates
+static constexpr size_t EVENT_WORKER_WEIGHT = 2;     // Unchanged, lightweight event processing
 static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for GameEngine
 static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
 
 /**
  * @brief Unified queue pressure management thresholds
- * 
+ *
  * Consistent queue pressure thresholds across all managers to eliminate
  * performance inconsistencies and ensure proper thread coordination.
  */
 static constexpr float QUEUE_PRESSURE_WARNING = 0.70f;       // Early adaptation threshold (70%)
 static constexpr float QUEUE_PRESSURE_CRITICAL = 0.90f;     // Fallback trigger for AI/Event managers (90%)
 static constexpr float QUEUE_PRESSURE_PATHFINDING = 0.75f;  // PathfinderManager threshold (75%)
+static constexpr double BUFFER_RESERVE_RATIO = 0.30;        // 30% of workers reserved for burst capacity
 
 /**
  * @brief Calculate optimal batch count and size for threaded processing
@@ -363,6 +370,17 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
 /**
  * @brief Calculate optimal worker budget allocation with hardware-adaptive scaling
  *
+ * IMPORTANT: CollisionManager is NOT included in worker allocation.
+ * CollisionManager uses single-threaded collision detection optimized for
+ * cache-friendly SOA access patterns. Future parallelization would require
+ * per-batch spatial hashes with significant memory overhead.
+ *
+ * Worker Distribution (based on weights):
+ * - AI: 7/13 (~54%) - Highest priority, most computation-heavy
+ * - Particle: 4/13 (~31%) - Second priority, parallel particle updates
+ * - Event: 2/13 (~15%) - Lowest priority, lightweight event processing
+ * - Buffer: Remaining workers for burst workloads
+ *
  * @param availableWorkers Total workers available in ThreadSystem
  * @return WorkerBudget Allocation strategy for all subsystems
  *
@@ -388,7 +406,6 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = 0;         // Single-threaded fallback
         budget.particleAllocated = 0;   // Single-threaded fallback
         budget.eventAllocated = 0;      // Single-threaded fallback
-        budget.collisionAllocated = 0;  // Single-threaded fallback
         budget.remaining = 0;
         return budget;
     }
@@ -412,21 +429,19 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
         budget.particleAllocated = (remainingWorkers >= 3) ? 1 : 0;
         budget.eventAllocated = 0; // Remains single-threaded on low-end
-        budget.collisionAllocated = (remainingWorkers >= 2) ? 1 : 0;
+        // NOTE: collisionAllocated removed - CollisionManager is single-threaded
     } else {
         // Tier 3: High-end systems (5+ workers) - Base allocation + buffer
         // Reserve 30% of remaining workers as buffer for burst capacity
-        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(remainingWorkers * 0.3));
+        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(remainingWorkers * BUFFER_RESERVE_RATIO));
         size_t workersToAllocate = remainingWorkers - bufferReserve;
 
-        // Weighted distribution for base allocations only
-        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT +
-                                   EVENT_WORKER_WEIGHT + COLLISION_WORKER_WEIGHT;
+        // Weighted distribution for base allocations only (CollisionManager excluded - single-threaded)
+        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT + EVENT_WORKER_WEIGHT;
 
-        std::array<size_t, 4> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT,
-                                         EVENT_WORKER_WEIGHT, COLLISION_WORKER_WEIGHT};
-        std::array<double, 4> rawShares{};
-        std::array<size_t, 4> shares{};
+        std::array<size_t, 3> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT, EVENT_WORKER_WEIGHT};
+        std::array<double, 3> rawShares{};
+        std::array<size_t, 3> shares{};
 
         for (size_t i = 0; i < weights.size(); ++i) {
             if (weights[i] == 0 || workersToAllocate == 0) {
@@ -440,10 +455,10 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
             }
         }
 
-        size_t used = shares[0] + shares[1] + shares[2] + shares[3];
+        size_t used = shares[0] + shares[1] + shares[2];
 
-        // Ensure minimum allocation for high-priority subsystems
-        std::array<size_t, 4> priorityOrder = {0, 3, 1, 2}; // AI, Collision, Particle, Event
+        // Ensure minimum allocation for high-priority subsystems (CollisionManager excluded)
+        std::array<size_t, 3> priorityOrder = {0, 1, 2}; // AI, Particle, Event
         for (size_t index : priorityOrder) {
             if (weights[index] > 0 && shares[index] == 0 && used < workersToAllocate) {
                 shares[index] = 1;
@@ -477,7 +492,6 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = shares[0];
         budget.particleAllocated = shares[1];
         budget.eventAllocated = shares[2];
-        budget.collisionAllocated = shares[3];
 
         // Buffer was already reserved upfront
         budget.remaining = bufferReserve;
@@ -485,22 +499,33 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
     // For low-end systems, calculate remaining after allocation
     if (availableWorkers <= 4) {
-        size_t allocated = budget.aiAllocated + budget.particleAllocated +
-                          budget.eventAllocated + budget.collisionAllocated;
+        size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
         budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
     }
 
     // Validation: Ensure we never over-allocate
     size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.collisionAllocated;
-    if (totalAllocated > availableWorkers) {
-        // Emergency fallback - should never happen with correct logic above
-        budget.aiAllocated = 0;
-        budget.particleAllocated = 0;
-        budget.eventAllocated = 0;
-        budget.collisionAllocated = 0;
-        budget.remaining = availableWorkers - budget.engineReserved;
+                            budget.particleAllocated + budget.eventAllocated + budget.remaining;
+
+    if (totalAllocated != availableWorkers) {
+        // LOG WARNING with detailed breakdown for debugging
+        std::string breakdown = "Worker allocation mismatch: " +
+            std::to_string(totalAllocated) + " allocated vs " +
+            std::to_string(availableWorkers) + " available\n" +
+            "  Engine Reserved: " + std::to_string(budget.engineReserved) + "\n" +
+            "  AI: " + std::to_string(budget.aiAllocated) + "\n" +
+            "  Particle: " + std::to_string(budget.particleAllocated) + "\n" +
+            "  Event: " + std::to_string(budget.eventAllocated) + "\n" +
+            "  Buffer: " + std::to_string(budget.remaining);
+        THREADSYSTEM_WARN(breakdown);
+
+        // Adjust buffer to fix discrepancy
+        if (totalAllocated > availableWorkers) {
+            size_t excess = totalAllocated - availableWorkers;
+            budget.remaining = (budget.remaining > excess) ? (budget.remaining - excess) : 0;
+        } else {
+            budget.remaining += (availableWorkers - totalAllocated);
+        }
     }
 
     return budget;

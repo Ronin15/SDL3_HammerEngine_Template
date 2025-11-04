@@ -3,6 +3,25 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
+/* ARCHITECTURAL NOTE: CollisionManager Threading Strategy
+ *
+ * CollisionManager uses SINGLE-THREADED collision detection and is NOT included
+ * in WorkerBudget calculations.
+ *
+ * Rationale:
+ * - Collision detection requires complex synchronization (spatial hash updates)
+ * - Current SOA implementation optimized for cache-friendly single-threaded access
+ * - Parallelization would require per-batch spatial hashes (significant memory overhead)
+ * - Broadphase already highly optimized (SIMD, spatial hashing, culling)
+ *
+ * Performance: Handles 27K+ bodies @ 60 FPS single-threaded on Apple Silicon.
+ * Threading is not a bottleneck for current game scale.
+ *
+ * If future profiling shows collision as bottleneck:
+ * - Consider parallel narrowphase after single-threaded broadphase
+ * - Re-add COLLISION_WORKER_WEIGHT to WorkerBudget.hpp
+ */
+
 #include "managers/CollisionManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
