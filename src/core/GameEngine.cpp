@@ -411,7 +411,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
-  initTasks.reserve(10); // Reserve capacity for typical number of init tasks
+  initTasks.reserve(12); // Reserve capacity for typical number of init tasks
 
   // CRITICAL: Initialize Event Manager FIRST - #1
   // All other managers that register event handlers depend on this
@@ -522,9 +522,35 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // PathfinderManager initialized by AIManager
+  // Initialize Pathfinder Manager in a separate thread - #7
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Pathfinder Manager");
+            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+            if (!pathfinderMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
+            return true;
+          }));
 
-  // Initialize Particle Manager in a separate thread - #7
+  // Initialize Collision Manager in a separate thread - #8
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Collision Manager");
+            CollisionManager &collisionMgr = CollisionManager::Instance();
+            if (!collisionMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Collision Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Collision Manager initialized successfully");
+            return true;
+          }));
+
+  // Initialize Particle Manager in a separate thread - #9
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
@@ -543,7 +569,7 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
-  // Initialize Resource Template Manager in a separate thread - #8
+  // Initialize Resource Template Manager in a separate thread - #10
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
@@ -558,7 +584,7 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
-  // Initialize World Resource Manager for global resource tracking - #9
+  // Initialize World Resource Manager for global resource tracking - #11
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -574,7 +600,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize World Manager for world generation and management - #10
+  // Initialize World Manager for world generation and management - #12
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -587,8 +613,6 @@ bool GameEngine::init(const std::string_view title, const int width,
             GAMEENGINE_INFO("World Manager initialized successfully");
             return true;
           }));
-
-  // CollisionManager initialized by AIManager
 
   // Initialize game state manager (on main thread because it directly calls
   // rendering) - MAIN THREAD
@@ -1156,9 +1180,14 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Event Manager...");
   EventManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up Pathfinder Manager...");
+  PathfinderManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Collision Manager...");
+  CollisionManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
-  // PathfinderManager and CollisionManager cleaned up by AIManager
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();
@@ -1183,8 +1212,8 @@ void GameEngine::clean() {
   mp_aiManager = nullptr;
   mp_eventManager = nullptr;
   mp_particleManager = nullptr;
-  mp_pathfinderManager = nullptr; // Cleaned up by AIManager
-  mp_collisionManager = nullptr; // Cleaned up by AIManager
+  mp_pathfinderManager = nullptr;
+  mp_collisionManager = nullptr;
   mp_resourceTemplateManager = nullptr;
   mp_worldResourceManager = nullptr;
   mp_worldManager = nullptr;
