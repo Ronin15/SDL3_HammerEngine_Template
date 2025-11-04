@@ -1359,15 +1359,9 @@ void GameEngine::toggleFullscreen() {
   m_isFullscreen = !m_isFullscreen;
 
   GAMEENGINE_INFO("Toggling fullscreen mode: " +
-                  std::string(m_isFullscreen ? "ON" : "OFF"));
-
-  // Save current windowed size before entering fullscreen
-  if (m_isFullscreen) {
-    m_windowedWidth = m_windowWidth;
-    m_windowedHeight = m_windowHeight;
-    GAMEENGINE_DEBUG("Saved windowed size: " + std::to_string(m_windowedWidth) + "x" +
-                     std::to_string(m_windowedHeight));
-  }
+                  std::string(m_isFullscreen ? "ON" : "OFF") +
+                  " (windowed size: " + std::to_string(m_windowedWidth) + "x" +
+                  std::to_string(m_windowedHeight) + ")");
 
 #ifdef __APPLE__
   // macOS: Use borderless fullscreen desktop mode for better compatibility

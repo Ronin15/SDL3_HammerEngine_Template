@@ -141,15 +141,12 @@ void SettingsMenuState::applySettings() {
     settings.set("graphics", "show_fps", m_tempSettings.showFps);
 
     // Apply fullscreen setting immediately
-    bool fullscreenChanged = (gameEngine.isFullscreen() != m_tempSettings.fullscreen);
-    if (fullscreenChanged) {
+    // SDL will automatically fire SDL_EVENT_WINDOW_RESIZED which triggers
+    // InputManager::onWindowResize() → UIManager::onWindowResize()
+    // This ensures clean, single-path UI repositioning
+    if (gameEngine.isFullscreen() != m_tempSettings.fullscreen) {
         gameEngine.setFullscreen(m_tempSettings.fullscreen);
-
-        // Manually trigger UI repositioning after fullscreen change
-        // SDL may not always fire resize event immediately
-        auto& ui = UIManager::Instance();
-        ui.onWindowResize(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
-        GAMESTATE_INFO("UI repositioned after fullscreen change");
+        GAMESTATE_INFO("Fullscreen setting applied - UI will update via SDL resize event");
     }
 
     // Apply VSync setting to GameEngine (also saves to SettingsManager internally)
