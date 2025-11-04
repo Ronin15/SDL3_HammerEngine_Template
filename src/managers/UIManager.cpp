@@ -3151,6 +3151,12 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
     bounds.y = height - bounds.height - pos.offsetY;
     break;
 
+  case UIPositionMode::BOTTOM_RIGHT:
+    // Bottom-right corner: right edge - width - offsetX, bottom edge - height - offsetY
+    bounds.x = width - bounds.width - pos.offsetX;
+    bounds.y = height - bounds.height - pos.offsetY;
+    break;
+
   case UIPositionMode::LEFT_ALIGNED:
     // Left edge + offsetX, vertically centered + offsetY
     bounds.x = pos.offsetX;

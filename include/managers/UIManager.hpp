@@ -54,6 +54,7 @@ enum class UIPositionMode {
   TOP_ALIGNED,     // Top edge + offsetY, horizontally centered
   BOTTOM_ALIGNED,  // Bottom edge - height - offsetY, fixed offsetX
   BOTTOM_CENTERED, // Bottom edge - height - offsetY, horizontally centered
+  BOTTOM_RIGHT,    // Bottom-right corner: bottom - height - offsetY, right - width - offsetX
   LEFT_ALIGNED,    // Left edge + offsetX, vertically centered
   RIGHT_ALIGNED    // Right edge - width - offsetX, vertically centered
 };
