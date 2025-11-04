@@ -2020,6 +2020,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       activeParticleCount,
       threshold,
       optimalWorkerCount,
+      budget.particleAllocated,  // Base allocation for buffer detection
       queuePressure,
       m_adaptiveBatchState,  // Adaptive state for performance tuning
       lastFrameTime          // Previous frame's completion time

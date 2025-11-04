@@ -953,6 +953,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
       localEvents->size(),
       threshold,
       optimalWorkerCount,
+      eventWorkerBudget,     // Base allocation for buffer detection
       queuePressure,
       m_adaptiveBatchState,  // Adaptive state for performance tuning
       lastFrameTime          // Previous frame's completion time

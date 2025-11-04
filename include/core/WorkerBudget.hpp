@@ -206,6 +206,7 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     size_t workloadSize,
     size_t threshold,
     size_t optimalWorkers,
+    size_t baseAllocation,
     double queuePressure)
 {
     // Handle empty workload
@@ -225,8 +226,8 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
 
     // Adapt batch strategy based on ThreadSystem queue pressure
     // IMPORTANT: Only apply queue pressure overrides when NOT using buffer capacity
-    // If optimalWorkers > config.maxBatchCount, buffer workers are allocated and should be used fully
-    bool usingBufferWorkers = (optimalWorkers > config.maxBatchCount);
+    // If optimalWorkers > baseAllocation, buffer workers are allocated and should be used fully
+    bool usingBufferWorkers = (optimalWorkers > baseAllocation);
 
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
         // High pressure: Use larger batches to reduce queue overhead
@@ -284,6 +285,7 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     size_t workloadSize,
     size_t threshold,
     size_t optimalWorkers,
+    size_t baseAllocation,
     double queuePressure,
     AdaptiveBatchState& adaptiveState,
     double lastUpdateTimeMs)
@@ -324,8 +326,8 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
 
     // Adapt batch strategy based on ThreadSystem queue pressure
     // IMPORTANT: Only apply queue pressure overrides when NOT using buffer capacity
-    // If optimalWorkers > config.maxBatchCount, buffer workers are allocated and should be used fully
-    bool usingBufferWorkers = (optimalWorkers > config.maxBatchCount);
+    // If optimalWorkers > baseAllocation, buffer workers are allocated and should be used fully
+    bool usingBufferWorkers = (optimalWorkers > baseAllocation);
 
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
         // High pressure: Use larger batches to reduce queue overhead
