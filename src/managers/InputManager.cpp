@@ -102,6 +102,11 @@ void InputManager::reset() {
   m_mouseButtonStates[MIDDLE] = false;
 }
 
+void InputManager::setWindowResizeCallback(std::function<void(int, int)> callback) {
+  m_onWindowResizeCallback = std::move(callback);
+  INPUT_INFO("Window resize callback registered");
+}
+
 bool InputManager::isKeyDown(SDL_Scancode key) const {
   if (m_keystates != nullptr) {
     return m_keystates[key] == 1;
@@ -531,11 +536,10 @@ void InputManager::onWindowResize(const SDL_Event& event) {
      INPUT_INFO("Font system reinitialized successfully after window resize");
    }
 
-   // Auto-reposition all UI components based on new dimensions
-   UIManager& uiManager = UIManager::Instance();
-   if (!uiManager.isShutdown()) {
-     uiManager.onWindowResize(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
-     INPUT_INFO("UIManager auto-repositioned components for new window size");
+   // Notify registered callback (typically UIManager) for UI component repositioning
+   if (m_onWindowResizeCallback) {
+     m_onWindowResizeCallback(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+     INPUT_INFO("Window resize callback invoked for new window size");
    }
 
    // Notify active game state about resize for UI layout recalculation

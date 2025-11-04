@@ -61,6 +61,13 @@ bool UIManager::init() {
   m_mousePressed = false;
   m_mouseReleased = false;
 
+  // Register callback with InputManager for window resize events
+  InputManager::Instance().setWindowResizeCallback(
+      [this](int width, int height) {
+        this->onWindowResize(width, height);
+      });
+  UI_INFO("Registered window resize callback with InputManager");
+
   return true;
 }
 
