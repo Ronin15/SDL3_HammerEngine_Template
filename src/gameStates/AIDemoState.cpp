@@ -294,16 +294,27 @@ bool AIDemoState::enter() {
     ui.createTitle("ai_title", {0, 5, gameEngine.getLogicalWidth(), 25},
                    "AI Demo State");
     ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
+    // Set auto-repositioning: top-aligned, full width
+    ui.setComponentPositioning("ai_title", {UIPositionMode::TOP_ALIGNED, 0, 5, -1, 25});
+
     ui.createLabel("ai_instructions_line1",
                    {10, 40, gameEngine.getLogicalWidth() - 20, 20},
                    "Controls: [B] Exit | [SPACE] Pause/Resume | [N] Spawn 2K Standard | "
                    "[M] Spawn 2K Random | [ ] Zoom");
+    // Set auto-repositioning: top-aligned, full width minus 20px margin
+    ui.setComponentPositioning("ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, 10, 40, -20, 20});
+
     ui.createLabel("ai_instructions_line2",
                    {10, 75, gameEngine.getLogicalWidth() - 20, 20},
                    "Behaviors: [1] Wander | [2] Patrol | [3] Chase | [4] Small | [5] Large | "
                    "[6] Event | [7] Random | [8] Circle | [9] Target");
+    // Set auto-repositioning: top-aligned, full width minus 20px margin
+    ui.setComponentPositioning("ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, 10, 75, -20, 20});
+
     ui.createLabel("ai_status", {10, 110, 400, 20},
                    "FPS: -- | Entities: -- | AI: RUNNING");
+    // Set auto-repositioning: fixed position (absolute)
+    ui.setComponentPositioning("ai_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();

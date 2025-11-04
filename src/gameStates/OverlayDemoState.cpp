@@ -30,8 +30,12 @@ bool OverlayDemoState::enter() {
 
     // Control buttons that persist across all modes using auto-detected dimensions
     ui.createButtonAtBottom("overlay_control_back_btn", "Back", 100, 40);
+
     ui.createButton("overlay_control_next_mode_btn", {140, ui.getLogicalHeight() - 60, 150, 40}, "Next Mode");
+    ui.setComponentPositioning("overlay_control_next_mode_btn", {UIPositionMode::BOTTOM_ALIGNED, 140, 20, 150, 40});
+
     ui.createLabel("overlay_control_instructions", {310, ui.getLogicalHeight() - 55, 400, 30}, "Space = Next Mode, B = Back");
+    ui.setComponentPositioning("overlay_control_instructions", {UIPositionMode::BOTTOM_ALIGNED, 310, 15, 400, 30});
 
     // Set up button callbacks
     ui.setOnClick("overlay_control_back_btn", [this]() {
