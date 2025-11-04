@@ -231,7 +231,8 @@ public:
     stopping.store(true, std::memory_order_release);
     notifyAllThreads(); // Wake up all threads to exit
 
-    std::lock_guard<std::mutex> lock(queueMutex);
+    // Clear queues WITHOUT holding queueMutex to avoid deadlock
+    // Workers need queueMutex to check stopping flag during condition.wait()
     for (int i = 0; i <= static_cast<int>(TaskPriority::Idle); ++i) {
       std::lock_guard<std::mutex> priorityLock(m_priorityMutexes[i]);
       m_priorityQueues[i].clear();
@@ -239,6 +240,9 @@ public:
     }
     // Clear all bitmask bits
     m_queueBitmask.store(0, std::memory_order_relaxed);
+
+    // Wake again after clearing to ensure workers see empty queues
+    notifyAllThreads();
   }
 
   bool isEmpty() const {

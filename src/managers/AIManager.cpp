@@ -916,9 +916,9 @@ size_t AIManager::processPendingBehaviorAssignments() {
   double queuePressure = static_cast<double>(queueSize) / queueCapacity;
 
   // Safety check: If queue is too full, process synchronously
-  if (queuePressure > 0.7) {
+  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
     AI_DEBUG("ThreadSystem queue pressure high (" +
-             std::to_string(queuePressure * 100) +
+             std::to_string(static_cast<int>(queuePressure * 100)) +
              "%) - processing assignments synchronously");
     for (const auto &assignment : toProcess) {
       if (assignment.entity) {
@@ -928,33 +928,29 @@ size_t AIManager::processPendingBehaviorAssignments() {
     return assignmentCount;
   }
 
-  // Calculate optimal batching
+  // Calculate optimal batching using unified API
   HammerEngine::WorkerBudget budget =
       HammerEngine::calculateWorkerBudget(availableWorkers);
   size_t optimalWorkerCount =
       budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, 1000);
 
-  size_t minAssignmentsPerBatch = 1000;
-  size_t maxBatches = 4;
-  
-  // Skip pathfinding coordination for small entity counts to avoid overhead
   size_t assignmentThreadingThreshold =
       std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-  if (assignmentCount > assignmentThreadingThreshold / 2) {
-    // Removed pathfinding load coordination
-  }
-  if (queuePressure > 0.5) {
-    minAssignmentsPerBatch = 1500;
-    maxBatches = 2;
-  } else if (queuePressure < 0.25) {
-    minAssignmentsPerBatch = 800;
-    maxBatches = 4;
-  }
 
-  size_t batchCount =
-      std::min(optimalWorkerCount, assignmentCount / minAssignmentsPerBatch);
-  batchCount = std::max(size_t(1), std::min(batchCount, maxBatches));
-  size_t assignmentsPerBatch = assignmentCount / batchCount;
+  // Get previous frame's completion time for adaptive feedback
+  double lastUpdateTimeMs = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
+
+  auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+      HammerEngine::AI_BATCH_CONFIG,
+      assignmentCount,
+      assignmentThreadingThreshold,
+      optimalWorkerCount,
+      queuePressure,
+      m_adaptiveBatchState,
+      lastUpdateTimeMs
+  );
+
+  size_t assignmentsPerBatch = batchSize;
   size_t remaining = assignmentCount % batchCount;
 
   // Submit batches using futures for deterministic completion tracking

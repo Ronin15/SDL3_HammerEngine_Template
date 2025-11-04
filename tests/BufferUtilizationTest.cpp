@@ -74,16 +74,21 @@ BOOST_AUTO_TEST_CASE(TestLowEndSystemBuffer) {
               << ", Events: " << budget.eventAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
-    // No buffer available
-BOOST_CHECK_EQUAL(budget.remaining, 0);
-BOOST_CHECK(!budget.hasBufferCapacity());
+    // After removing CollisionManager allocation, low-end systems (3 workers) now have 1 buffer worker
+// Old: engine=1, ai=1, collision=1, buffer=0
+// New: engine=1, ai=1, buffer=1 (more efficient!)
+BOOST_CHECK_EQUAL(budget.remaining, 1);
+BOOST_CHECK(budget.hasBufferCapacity());
 
-    // Should always return base allocation regardless of workload
+    // Has buffer capacity, but with only 1 buffer worker, 75% usage rounds down to 0
+    // So optimalWorkerCount still returns base allocation
     size_t highWorkload = 10000;
     size_t optimalWorkers = budget.getOptimalWorkerCount(budget.aiAllocated, highWorkload, 1000);
+    // With small buffer (1 worker), integer math means no burst workers: (1 * 75%) = 0
     BOOST_CHECK_EQUAL(optimalWorkers, budget.aiAllocated);
 
-    std::cout << "High workload with no buffer: " << optimalWorkers << " workers (same as base)\n";
+    std::cout << "High workload with small buffer: " << optimalWorkers << " workers (base="
+              << budget.aiAllocated << ", buffer too small for burst)\n";
 }
 
 BOOST_AUTO_TEST_CASE(TestVeryHighEndSystem) {
