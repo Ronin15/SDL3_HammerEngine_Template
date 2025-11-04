@@ -395,10 +395,8 @@ private:
     std::vector<float> halfWidths;  // entity half extents for clamp
     std::vector<float> halfHeights; // entity half extents for clamp
 
-    // Double buffering (deprecated - now using single-copy pre-fetch pattern)
+    // Using single-copy pre-fetch pattern:
     // PreFetchedBatchData copies directly from hotData, eliminating redundant copy
-    std::atomic<int> currentBuffer{0};
-    std::array<std::vector<AIEntityData::HotData>, 2> doubleBuffer;
 
     size_t size() const { return entities.size(); }
     void reserve(size_t capacity) {
@@ -408,8 +406,6 @@ private:
       lastUpdateTimes.reserve(capacity);
       halfWidths.reserve(capacity);
       halfHeights.reserve(capacity);
-      doubleBuffer[0].reserve(capacity);
-      doubleBuffer[1].reserve(capacity);
     }
   };
 
@@ -557,6 +553,15 @@ private:
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
+
+  // SIMD-optimized distance calculation helper
+  static void calculateDistancesSIMD(size_t start, size_t end,
+                                     const Vector2D& playerPos,
+                                     uint64_t distanceUpdateSlice,
+                                     const EntityStorage& storage,
+                                     std::vector<float>& outDistances,
+                                     std::vector<Vector2D>& outPositions);
+
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos, uint64_t distanceUpdateSlice,
                     const EntityStorage& storage,
