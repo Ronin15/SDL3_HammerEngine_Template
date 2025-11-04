@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 ForgeEngine Template - Comprehensive Valgrind Analysis Suite
+# SDL3 HammerEngine Template - Comprehensive Valgrind Analysis Suite
 # This script runs various Valgrind tools to analyze memory usage, thread safety, and performance
 
 set -e
@@ -37,7 +37,6 @@ declare -A TEST_EXECUTABLES=(
     ["settings_manager"]="settings_manager_tests"
     ["weather_events"]="weather_event_tests"
     ["ui_stress"]="ui_stress_test"
-    ["resource_manager"]="resource_manager_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["resource_template_manager"]="resource_template_manager_tests"
     ["resource_integration"]="resource_integration_tests"
@@ -55,7 +54,7 @@ CACHE_OPTS="--tool=cachegrind --cache-sim=yes"
 MEMCHECK_OPTS="--tool=memcheck ${COMMON_OPTS}"
 
 echo -e "${BLUE}========================================${NC}"
-echo -e "${BLUE}  SDL3 ForgeEngine Valgrind Analysis   ${NC}"
+echo -e "${BLUE}  SDL3 HammerEngine Valgrind Analysis   ${NC}"
 echo -e "${BLUE}========================================${NC}"
 echo ""
 
@@ -264,14 +263,14 @@ generate_report() {
     local report_file="${RESULTS_DIR}/valgrind_analysis_report.md"
 
     cat > "${report_file}" << EOF
-# Valgrind Analysis Report - SDL3 ForgeEngine Template
+# Valgrind Analysis Report - SDL3 HammerEngine Template
 
 Generated on: $(date)
 Analysis Duration: Comprehensive multi-tool analysis
 
 ## Executive Summary
 
-This report provides a comprehensive analysis of the SDL3 ForgeEngine Template using multiple Valgrind tools:
+This report provides a comprehensive analysis of the SDL3 HammerEngine Template using multiple Valgrind tools:
 - **Memcheck**: Memory leak and error detection
 - **Helgrind**: Thread error detection
 - **Cachegrind**: Cache performance analysis

@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 ForgeEngine Template - Thread Safety Analysis
+# SDL3 HammerEngine Template - Thread Safety Analysis
 # Focused thread safety testing without overflow scenarios
 
 set -e
@@ -35,7 +35,6 @@ declare -A THREAD_TESTS=(
     ["ai_optimization"]="ai_optimization_tests"
     ["particle_threading"]="particle_manager_threading_tests"
     ["resource_integration"]="resource_integration_tests"
-    ["resource_manager"]="resource_manager_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["world_generator"]="world_generator_tests"
     ["world_manager_events"]="world_manager_event_integration_tests"
@@ -177,7 +176,7 @@ Analysis Tools: Helgrind, DRD (Data Race Detector)
 
 ## Executive Summary
 
-This report analyzes thread safety in the SDL3 ForgeEngine Template using Valgrind's thread analysis tools.
+This report analyzes thread safety in the SDL3 HammerEngine Template using Valgrind's thread analysis tools.
 
 ## Test Results
 
