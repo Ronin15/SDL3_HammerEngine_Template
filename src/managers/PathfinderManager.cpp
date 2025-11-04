@@ -556,16 +556,14 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     // Cache statistics
     stats.cacheHits = m_cacheHits.load(std::memory_order_relaxed);
     stats.cacheMisses = m_cacheMisses.load(std::memory_order_relaxed);
-    stats.negativeHits = 0; // Not implemented
-    
+
     // Cache size statistics
     {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         stats.cacheSize = m_pathCache.size();
         stats.segmentCacheSize = 0; // Segment cache removed for performance
     }
-    stats.negativeCacheSize = 0;
-    
+
     // Calculate approximate memory usage
     size_t gridMemory = 0;
     if (m_grid) {
