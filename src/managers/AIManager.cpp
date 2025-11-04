@@ -102,13 +102,9 @@ void AIManager::clean() {
   // CRITICAL: Wait for any pending async batches to complete before cleanup
   waitForAsyncBatchCompletion();
 
-  // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
-  // Brief sleep allows ThreadSystem to process remaining tasks
-  if (m_assignmentInProgress.load(std::memory_order_acquire)) {
-    AI_INFO("Waiting for async assignments to drain...");
-    std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    m_assignmentInProgress.store(false, std::memory_order_release);
-  }
+  // DETERMINISTIC: Wait for any pending assignments to complete
+  AI_INFO("Waiting for async assignments to complete...");
+  waitForAssignmentCompletion();
 
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
@@ -166,31 +162,21 @@ void AIManager::prepareForStateTransition() {
   // CRITICAL: Wait for any pending async batches to complete before state transition
   waitForAsyncBatchCompletion();
 
-  // FIRE-AND-FORGET: No futures to wait for - let tasks drain naturally
+  // DETERMINISTIC SYNCHRONIZATION: Wait for all assignment batches to complete
   //
-  // CRITICAL: 100ms sleep prevents use-after-free when transitioning with 2000+ entities
-  // ---------------------------------------------------------------------------------
-  // Root Cause: Fire-and-forget async tasks don't provide completion guarantees.
-  // When async batches were accessing entity data after state transition cleared it,
-  // it caused race conditions and crashes. This was diagnosed after increasing load
-  // from 1000 to 2000 entities where 10ms was insufficient.
+  // Replaces empirical 100ms sleep with futures-based completion tracking.
+  // This ensures all async assignment tasks complete before state transition clears
+  // entity data, preventing use-after-free and race conditions.
   //
-  // Why 100ms: Tested empirically with 2000 entities and complex behaviors.
-  // - 10ms: Frequent crashes (use-after-free detected)
-  // - 50ms: Occasional crashes under load
-  // - 100ms: Stable across all test scenarios
+  // History: Previously used 100ms sleep (empirically tested with 2000 entities).
+  // - 10ms: Frequent crashes
+  // - 50ms: Occasional crashes
+  // - 100ms: Stable but not deterministic
   //
-  // Limitations: Not deterministic - could fail with 10K+ entities or slow hardware.
-  //
-  // TODO: Replace with deterministic synchronization (std::future tracking or atomic
-  // completion counter) for production scalability. See commit history for original
-  // diagnosis and testing methodology.
-  AI_DEBUG("Waiting for all AI thread tasks to complete...");
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  if (m_assignmentInProgress.load(std::memory_order_acquire)) {
-    m_assignmentInProgress.store(false, std::memory_order_release);
-  }
+  // Current approach: Blocks on std::future::wait() for each assignment batch.
+  // Scalable to any entity count, deterministic completion guarantee.
+  AI_DEBUG("Waiting for all AI assignment tasks to complete...");
+  waitForAssignmentCompletion();
 
   // Process and clear any pending messages
   processMessageQueue();
@@ -658,6 +644,30 @@ void AIManager::waitForAsyncBatchCompletion() {
   }
 }
 
+void AIManager::waitForAssignmentCompletion() {
+  // ASSIGNMENT SYNCHRONIZATION: Wait for all async assignment batches to complete
+  // This ensures no dangling references to entity data during state transitions.
+  //
+  // DETERMINISTIC COMPLETION: Replaces empirical 100ms sleep with future.wait()
+  //   - Old approach: sleep_for(100ms) - works empirically but not scalable
+  //   - New approach: Block on futures until all assignments complete
+  //   - Result: Deterministic completion, scalable to any entity count
+
+  std::vector<std::future<void>> localFutures;
+
+  {
+    std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
+    localFutures = std::move(m_assignmentFutures);
+  }
+
+  // Wait for all assignment futures to complete
+  for (auto& future : localFutures) {
+    if (future.valid()) {
+      future.wait();  // Block until assignment batch completes
+    }
+  }
+}
+
 void AIManager::registerBehavior(const std::string &name,
                                  std::shared_ptr<AIBehavior> behavior) {
   if (!behavior) {
@@ -853,11 +863,8 @@ void AIManager::queueBehaviorAssignment(EntityPtr entity,
 }
 
 size_t AIManager::processPendingBehaviorAssignments() {
-  // FIRE-AND-FORGET: No futures tracking - ThreadSystem monitors queue health
-  // If we're still processing previous assignments, don't start new ones
-  if (m_assignmentInProgress.load(std::memory_order_acquire)) {
-    return 0; // Come back next frame
-  }
+  // FUTURES-BASED: Deterministic completion tracking with m_assignmentFutures
+  // Assignments use std::future<void> for safe state transition synchronization
 
   std::vector<PendingAssignment> toProcess;
   {
@@ -948,54 +955,46 @@ size_t AIManager::processPendingBehaviorAssignments() {
   size_t assignmentsPerBatch = assignmentCount / batchCount;
   size_t remaining = assignmentCount % batchCount;
 
-  // Set the flag to indicate async processing is starting
-  m_assignmentInProgress.store(true, std::memory_order_release);
+  // Submit batches using futures for deterministic completion tracking
+  {
+    std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
+    m_assignmentFutures.clear();  // Clear old futures, keeps capacity
+    m_assignmentFutures.reserve(batchCount);
 
-  // Submit async batches - FIRE-AND-FORGET (no futures tracking)
-  size_t start = 0;
-  for (size_t i = 0; i < batchCount; ++i) {
-    size_t end =
-        start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
+    size_t start = 0;
+    for (size_t i = 0; i < batchCount; ++i) {
+      size_t end =
+          start + assignmentsPerBatch + (i == batchCount - 1 ? remaining : 0);
 
-    // Copy the batch data (we need to own this data for async processing)
-    std::vector<PendingAssignment> batchData(toProcess.begin() + start,
-                                             toProcess.begin() + end);
+      // Copy the batch data (we need to own this data for async processing)
+      std::vector<PendingAssignment> batchData(toProcess.begin() + start,
+                                               toProcess.begin() + end);
 
-    // Fire-and-forget: Use shared_ptr to track completion of last batch
-    auto completionFlag = (i == batchCount - 1)
-        ? std::make_shared<std::atomic<bool>>(false)
-        : nullptr;
-
-    threadSystem.enqueueTask(
-        [this, batchData = std::move(batchData), completionFlag]() {
-          // Check if AIManager is shutting down
-          if (m_isShutdown) {
-            if (completionFlag) completionFlag->store(true, std::memory_order_release);
-            return; // Don't process assignments during shutdown
-          }
-
-          for (const auto &assignment : batchData) {
-            if (assignment.entity) {
-              try {
-              assignBehaviorToEntity(assignment.entity,
-                                     assignment.behaviorName);
-            } catch (const std::exception &e) {
-              AI_ERROR("Exception during async behavior assignment: " +
-                       std::string(e.what()));
-            } catch (...) {
-              AI_ERROR("Unknown exception during async behavior assignment");
+      // Submit each batch with future for completion tracking
+      m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
+          [this, batchData = std::move(batchData)]() -> void {
+            // Check if AIManager is shutting down
+            if (m_isShutdown) {
+              return; // Don't process assignments during shutdown
             }
-          }
-        }
 
-        // Last batch resets the in-progress flag
-        if (completionFlag) {
-          completionFlag->store(true, std::memory_order_release);
-          m_assignmentInProgress.store(false, std::memory_order_release);
-        }
-      },
-      HammerEngine::TaskPriority::High, "AI_AssignmentBatch");
-    start = end;
+            for (const auto &assignment : batchData) {
+              if (assignment.entity) {
+                try {
+                  assignBehaviorToEntity(assignment.entity,
+                                         assignment.behaviorName);
+                } catch (const std::exception &e) {
+                  AI_ERROR("Exception during async behavior assignment: " +
+                           std::string(e.what()));
+                } catch (...) {
+                  AI_ERROR("Unknown exception during async behavior assignment");
+                }
+              }
+            }
+          },
+          HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
+      start = end;
+    }
   }
 
   // Async assignment processing statistics are now tracked in periodic summary
