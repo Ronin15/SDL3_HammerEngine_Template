@@ -7,6 +7,7 @@
 #define ATTACK_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/behaviors/AttackBehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -144,6 +145,18 @@ private:
     }
   };
 
+  // Helper methods for executeLogic refactoring
+  void updateTimers(EntityState& state, float deltaTime);
+  EntityState& ensureEntityState(EntityPtr entity);
+  void updateTargetTracking(EntityPtr entity, EntityState& state, EntityPtr target);
+  void updateTargetDistance(EntityPtr entity, EntityPtr target, EntityState& state);
+  void updateCombatState(EntityState& state);
+  void handleNoTarget(EntityState& state);
+  void dispatchModeUpdate(EntityPtr entity, EntityState& state, float deltaTime);
+
+  // Configuration system
+  void applyConfig(const HammerEngine::AttackBehaviorConfig& config);
+
   // Map to store per-entity state
   std::unordered_map<EntityPtr, EntityState> m_entityStates;
 
@@ -187,12 +200,22 @@ private:
   // bool m_useAsyncPathfinding removed
   float m_chargeDamageMultiplier{1.5f};
 
+  // Combat state transition thresholds
+  static constexpr float COMBAT_ENTER_RANGE_MULT = 1.2f;  // Enter combat at 120% of attack range
+  static constexpr float COMBAT_EXIT_RANGE_MULT = 2.0f;   // Exit combat at 200% of attack range
+
   // Timing constants
   static constexpr float COMBO_TIMEOUT = 3.0f; // 3 seconds
   static constexpr float CHARGE_TIME = 1.0f;   // 1 second charge
   static constexpr float STRAFE_INTERVAL = 2.0f; // 2 seconds between direction changes
   static constexpr float RETREAT_SPEED_MULTIPLIER = 1.5f;
   static constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
+
+  // Combat multipliers
+  static constexpr float COMBO_DAMAGE_PER_LEVEL = 0.2f;    // 20% damage increase per combo level
+  static constexpr float SPECIAL_ATTACK_MULTIPLIER = 1.5f; // 1.5x damage/knockback for special attacks
+  static constexpr float COMBO_FINISHER_MULTIPLIER = 2.0f; // 2x damage/knockback for combo finishers
+  static constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f; // Charge when > 150% of optimal range
 
   // Random number generation
   mutable std::mt19937 m_rng{std::random_device{}()};
