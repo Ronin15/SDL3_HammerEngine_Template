@@ -35,6 +35,9 @@ using ::WorldManager;
 using ::WorldUnloadedEvent;
 using ::HammerEngine::ObstacleType;
 
+// Building collision body limits
+constexpr uint16_t MAX_BUILDING_SUB_BODIES = 1000;
+
 bool CollisionManager::init() {
   if (m_initialized)
     return true;
@@ -888,7 +891,7 @@ void CollisionManager::onTileChanged(int x, int y) {
 
         // Then, remove all NEW format multi-body collision bodies
         uint16_t subBodyIndex = 0;
-        while (subBodyIndex < 1000) { // Safety limit to prevent infinite loop
+        while (subBodyIndex < MAX_BUILDING_SUB_BODIES) { // Safety limit to prevent infinite loop
           EntityID newMultiBodyId = (static_cast<EntityID>(3ull) << 61) |
                                     (static_cast<EntityID>(tile.buildingId) << 16) |
                                     static_cast<EntityID>(subBodyIndex);

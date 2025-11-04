@@ -75,6 +75,23 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   EntityState &state = m_entityStates[entity];
 
   // Update all timers
+  updateTimers(state, deltaTime);
+
+  // Check if we need to start movement after delay
+  if (!handleStartDelay(entity, state, deltaTime)) {
+    return; // Still in delay period
+  }
+
+  // Update wander state (direction changes, etc.)
+  updateWanderState(entity, deltaTime);
+
+  // Handle movement logic (pathfinding, boundary avoidance, etc.)
+  if (state.movementStarted) {
+    handleMovement(entity, state, deltaTime);
+  }
+}
+
+void WanderBehavior::updateTimers(EntityState& state, float deltaTime) {
   state.directionChangeTimer += deltaTime;
   state.lastDirectionFlip += deltaTime;
   state.baseState.pathUpdateTimer += deltaTime;
@@ -82,215 +99,215 @@ void WanderBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   state.stallTimer += deltaTime;
   state.unstickTimer += deltaTime;
   state.baseState.lastCrowdAnalysis += deltaTime;
-  if (state.baseState.pathRequestCooldown > 0.0f) state.baseState.pathRequestCooldown -= deltaTime;
+  if (state.baseState.pathRequestCooldown > 0.0f) {
+    state.baseState.pathRequestCooldown -= deltaTime;
+  }
+}
 
-  // Check if we need to start movement after delay
-  if (!state.movementStarted) {
-    if (state.directionChangeTimer >= state.startDelay) {
-      state.movementStarted = true;
-      Vector2D intended = state.currentDirection * m_speed;
-
-      // PERFORMANCE OPTIMIZATION: Use cached collision data if available
-      if (!state.baseState.cachedNearbyPositions.empty()) {
-        applySeparationWithCache(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
-                                 state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
-      } else {
-        // Fallback to direct calculation on first frame
-        applyDecimatedSeparation(entity, entity->getPosition(), intended,
-                                 m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
-                                 state.baseState.lastSepVelocity, deltaTime);
-      }
-    }
-    return;
+bool WanderBehavior::handleStartDelay(EntityPtr entity, EntityState& state, float deltaTime) {
+  if (state.movementStarted) {
+    return true; // Already started
   }
 
-  updateWanderState(entity, deltaTime);
+  if (state.directionChangeTimer < state.startDelay) {
+    return false; // Still waiting
+  }
 
-  // Try to follow a short path towards the current direction destination
-  if (state.movementStarted) {
-    // Dynamic movement distance based on local density and world scale
-    float baseDistance = std::min(600.0f, m_areaRadius * 1.5f); // Increased base distance
+  // Time to start moving
+  state.movementStarted = true;
+  Vector2D intended = state.currentDirection * m_speed;
 
-    // PERFORMANCE FIX: Check local entity density less frequently to avoid expensive CollisionManager calls
-    Vector2D position = entity->getPosition();
+  // PERFORMANCE OPTIMIZATION: Use cached collision data if available
+  if (!state.baseState.cachedNearbyPositions.empty()) {
+    applySeparationWithCache(entity, entity->getPosition(), intended,
+                             m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                             state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
+  } else {
+    // Fallback to direct calculation on first frame
+    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+                             m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                             state.baseState.lastSepVelocity, deltaTime);
+  }
 
-    // Cache crowd analysis results to avoid expensive collision queries every frame
-    int nearbyCount = state.baseState.cachedNearbyCount;
-    const std::vector<Vector2D>& nearbyPositions = state.baseState.cachedNearbyPositions;  // Use reference to avoid copy (~0.8ms savings)
+  return false; // Return false to indicate we should skip the rest of executeLogic this frame
+}
 
-    // PERFORMANCE FIX: Update crowd analysis every 3-5 seconds (was 333-500ms)
-    // At 2000 entities: 5000 queries/sec → 500 queries/sec (90% reduction!)
-    float crowdInterval = 3.0f + (entity->getID() % 200) * 0.01f; // 3-5 seconds range
-    if (state.baseState.lastCrowdAnalysis >= crowdInterval) {
-      float queryRadius = 120.0f;
-      // Update cache directly (can't use const reference here)
-      nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius, state.baseState.cachedNearbyPositions);
-      state.baseState.cachedNearbyCount = nearbyCount;
+float WanderBehavior::calculateMoveDistance(EntityPtr entity, EntityState& state,
+                                           const Vector2D& position, float baseDistance) {
+  // Cache crowd analysis results to avoid expensive collision queries every frame
+  int nearbyCount = state.baseState.cachedNearbyCount;
+  const std::vector<Vector2D>& nearbyPositions = state.baseState.cachedNearbyPositions;
 
-      // OPTIMIZATION: Cache cluster center calculation to avoid std::accumulate in hot path
-      if (!state.baseState.cachedNearbyPositions.empty()) {
-        Vector2D sum = std::accumulate(state.baseState.cachedNearbyPositions.begin(),
-                                       state.baseState.cachedNearbyPositions.end(),
-                                       Vector2D(0, 0));
-        state.baseState.cachedClusterCenter = sum / static_cast<float>(state.baseState.cachedNearbyPositions.size());
-      }
+  // PERFORMANCE FIX: Update crowd analysis every 3-5 seconds (was 333-500ms)
+  float crowdInterval = 3.0f + (entity->getID() % 200) * 0.01f;
+  if (state.baseState.lastCrowdAnalysis >= crowdInterval) {
+    float queryRadius = 120.0f;
+    nearbyCount = AIInternal::GetNearbyEntitiesWithPositions(entity, position, queryRadius,
+                                                             state.baseState.cachedNearbyPositions);
+    state.baseState.cachedNearbyCount = nearbyCount;
 
-      state.baseState.lastCrowdAnalysis = 0.0f; // Reset timer
+    // OPTIMIZATION: Cache cluster center calculation
+    if (!state.baseState.cachedNearbyPositions.empty()) {
+      Vector2D sum = std::accumulate(state.baseState.cachedNearbyPositions.begin(),
+                                     state.baseState.cachedNearbyPositions.end(),
+                                     Vector2D(0, 0));
+      state.baseState.cachedClusterCenter = sum / static_cast<float>(state.baseState.cachedNearbyPositions.size());
     }
 
-     // Dynamic distance adjustment based on crowding
-     // PERFORMANCE FIX: Simplified cluster calculations with higher thresholds
-     float moveDistance = baseDistance;
+    state.baseState.lastCrowdAnalysis = 0.0f;
+  }
 
-     if (nearbyCount > m_config.crowdEscapeThreshold) {
-       // Very high density: pick completely different target away from cluster
-       moveDistance = baseDistance * m_config.crowdEscapeDistanceMultiplier; // Long distance to escape cluster
+  // Dynamic distance adjustment based on crowding
+  float moveDistance = baseDistance;
 
-       // SIMPLIFIED: Direct escape direction without complex rotation
-       if (!nearbyPositions.empty()) {
-         // OPTIMIZATION: Use cached cluster center instead of recalculating with std::accumulate
-         Vector2D escapeDirection = (position - state.baseState.cachedClusterCenter).normalized();
+  if (nearbyCount > m_config.crowdEscapeThreshold) {
+    // Very high density: escape cluster
+    moveDistance = baseDistance * m_config.crowdEscapeDistanceMultiplier;
 
-         // Simple randomization using entity ID
-         float randomOffset = (entity->getID() % 60 - 30) * 0.01f; // ±0.3 variation
-         escapeDirection.setX(escapeDirection.getX() + randomOffset);
-         escapeDirection.setY(escapeDirection.getY() + randomOffset);
-         escapeDirection.normalize();
+    if (!nearbyPositions.empty()) {
+      Vector2D escapeDirection = (position - state.baseState.cachedClusterCenter).normalized();
 
-         // Override current direction with escape direction
-         state.currentDirection = escapeDirection;
-       }
-     } else if (nearbyCount > 5) {
-       // High density: encourage longer wandering to spread out
-       moveDistance = baseDistance * 2.0f; // Up to 1200px movement for spreading
+      // Simple randomization using entity ID
+      float randomOffset = (entity->getID() % 60 - 30) * 0.01f;
+      escapeDirection.setX(escapeDirection.getX() + randomOffset);
+      escapeDirection.setY(escapeDirection.getY() + randomOffset);
+      escapeDirection.normalize();
 
-       // SIMPLIFIED: Lighter blending, no cluster center calculation
-       state.currentDirection = state.currentDirection.normalized();
-     } else if (nearbyCount > 2) {
-       // Medium density: moderate expansion
-       moveDistance = baseDistance * 1.3f;
-     }
-
-    // PERFORMANCE FIX: Use cached world bounds instead of expensive WorldManager call
-    // Cache world bounds in entity state to avoid repeated WorldManager calls
-    if (state.cachedBounds.maxX == 0.0f) { // Initialize cached bounds once
-      float minX, minY, maxX, maxY;
-      if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        state.cachedBounds.minX = minX;
-        state.cachedBounds.minY = minY;
-        state.cachedBounds.maxX = maxX;
-        state.cachedBounds.maxY = maxY;
-      } else {
-        // No world loaded - skip boundary avoidance
-        return;
-      }
+      state.currentDirection = escapeDirection;
     }
+  } else if (nearbyCount > 5) {
+    // High density: encourage spreading
+    moveDistance = baseDistance * 2.0f;
+    state.currentDirection = state.currentDirection.normalized();
+  } else if (nearbyCount > 2) {
+    // Medium density: moderate expansion
+    moveDistance = baseDistance * 1.3f;
+  }
 
-    // BOUNDARY AVOIDANCE: Bias direction away from world edges to prevent stuck NPCs
-    const float EDGE_THRESHOLD = m_config.edgeThreshold; // Start avoiding when close to edge
-    Vector2D boundaryForce(0, 0);
+  return moveDistance;
+}
 
-    if (position.getX() < state.cachedBounds.minX + EDGE_THRESHOLD) {
-      // Near left edge - push right
-      float strength = 1.0f - ((position.getX() - state.cachedBounds.minX) / EDGE_THRESHOLD);
-      boundaryForce = boundaryForce + Vector2D(strength, 0);
-    } else if (position.getX() > state.cachedBounds.maxX - EDGE_THRESHOLD) {
-      // Near right edge - push left
-      float strength = 1.0f - ((state.cachedBounds.maxX - position.getX()) / EDGE_THRESHOLD);
-      boundaryForce = boundaryForce + Vector2D(-strength, 0);
-    }
-
-    if (position.getY() < state.cachedBounds.minY + EDGE_THRESHOLD) {
-      // Near top edge - push down
-      float strength = 1.0f - ((position.getY() - state.cachedBounds.minY) / EDGE_THRESHOLD);
-      boundaryForce = boundaryForce + Vector2D(0, strength);
-    } else if (position.getY() > state.cachedBounds.maxY - EDGE_THRESHOLD) {
-      // Near bottom edge - push up
-      float strength = 1.0f - ((state.cachedBounds.maxY - position.getY()) / EDGE_THRESHOLD);
-      boundaryForce = boundaryForce + Vector2D(0, -strength);
-    }
-
-    // Apply boundary avoidance to direction (blend with current direction)
-    if (boundaryForce.lengthSquared() > 0.01f) {
-      state.currentDirection = (state.currentDirection * 0.4f + boundaryForce.normalized() * 0.6f).normalized();
-    }
-
-    Vector2D dest = position + state.currentDirection * moveDistance;
-
-    // Clamp destination as final safety net
-    const float MARGIN = m_config.worldPaddingMargin;
-    dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
-    dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
-    
-    // Additional validation: don't pathfind to current position
-    float distanceToGoal = (dest - position).length();
-    if (distanceToGoal < 64.0f) { // Too close to current position
-      return; // Skip pathfinding request entirely
-    }
-
-    // CACHE-AWARE PATHFINDING: Check for existing path first
-    bool needsNewPath = state.baseState.pathPoints.empty() ||
-                       state.baseState.currentPathIndex >= state.baseState.pathPoints.size() ||
-                       state.baseState.pathUpdateTimer > 15.0f; // Only refresh after 15 seconds
-
-    // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms without progress)
-    bool stuckOnObstacle = state.baseState.progressTimer > 0.8f;
-    if (stuckOnObstacle) {
-      state.baseState.pathPoints.clear(); // Clear path to force refresh
-      state.baseState.currentPathIndex = 0;
-    }
-
-    if ((needsNewPath || stuckOnObstacle) && state.baseState.pathRequestCooldown <= 0.0f) {
-      // SMART REQUEST: Only request if goal significantly different from last request
-      const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance; // Minimum distance change to justify new request
-      bool goalChanged = true;
-      if (!state.baseState.pathPoints.empty()) {
-        Vector2D lastGoal = state.baseState.pathPoints.back();
-        // OPTIMIZATION: Use lengthSquared to avoid expensive sqrt operation
-        float goalDistanceSquared = (dest - lastGoal).lengthSquared();
-        goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);
-      }
-
-      if (goalChanged) {
-        // ASYNC PATHFINDING: Use background processing for wandering behavior
-        pathfinder().requestPath(
-            entity->getID(), entity->getPosition(), dest,
-            PathfinderManager::Priority::Normal,
-            [this, entity](EntityID, const std::vector<Vector2D>& path) {
-              auto stateIt = m_entityStates.find(entity);
-              if (stateIt != m_entityStates.end() && !path.empty()) {
-                stateIt->second.baseState.pathPoints = path;
-                stateIt->second.baseState.currentPathIndex = 0;
-                stateIt->second.baseState.pathUpdateTimer = 0.0f;
-              }
-            });
-        // PERFORMANCE FIX: 30 second cooldown (was 5s)
-        // At 2000 entities: 400 requests/sec → 67 requests/sec (83% reduction!)
-        state.baseState.pathRequestCooldown = m_config.pathRequestCooldown;
-      }
-    }
-    if (!state.baseState.pathPoints.empty() && state.baseState.currentPathIndex < state.baseState.pathPoints.size()) {
-      // Follow current path; velocity will be updated inside followPathStep
-      bool following = pathfinder().followPathStep(
-          entity, entity->getPosition(), state.baseState.pathPoints, state.baseState.currentPathIndex,
-          m_speed, state.baseState.navRadius);
-      if (following) {
-        // PERFORMANCE OPTIMIZATION: Use cached collision data from crowd analysis
-        // This eliminates redundant collision queries (was querying every 2 seconds)
-        applySeparationWithCache(entity, entity->getPosition(),
-                                 entity->getVelocity(), m_speed, 28.0f, 0.30f,
-                                 6, state.baseState.separationTimer, state.baseState.lastSepVelocity, deltaTime,
-                                 state.baseState.cachedNearbyPositions);
-      }
+void WanderBehavior::applyBoundaryAvoidance(EntityState& state, const Vector2D& position) {
+  // PERFORMANCE FIX: Use cached world bounds
+  if (state.cachedBounds.maxX == 0.0f) {
+    float minX, minY, maxX, maxY;
+    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+      state.cachedBounds.minX = minX;
+      state.cachedBounds.minY = minY;
+      state.cachedBounds.maxX = maxX;
+      state.cachedBounds.maxY = maxY;
     } else {
-      // Always apply base velocity (in case something external changed it)
-      Vector2D intended = state.currentDirection * m_speed;
-      // PERFORMANCE OPTIMIZATION: Use cached collision data
-      applySeparationWithCache(entity, entity->getPosition(), intended,
-                               m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
-                               state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
+      return; // No world loaded
     }
+  }
+
+  // BOUNDARY AVOIDANCE: Bias direction away from world edges
+  const float EDGE_THRESHOLD = m_config.edgeThreshold;
+  Vector2D boundaryForce(0, 0);
+
+  if (position.getX() < state.cachedBounds.minX + EDGE_THRESHOLD) {
+    float strength = 1.0f - ((position.getX() - state.cachedBounds.minX) / EDGE_THRESHOLD);
+    boundaryForce = boundaryForce + Vector2D(strength, 0);
+  } else if (position.getX() > state.cachedBounds.maxX - EDGE_THRESHOLD) {
+    float strength = 1.0f - ((state.cachedBounds.maxX - position.getX()) / EDGE_THRESHOLD);
+    boundaryForce = boundaryForce + Vector2D(-strength, 0);
+  }
+
+  if (position.getY() < state.cachedBounds.minY + EDGE_THRESHOLD) {
+    float strength = 1.0f - ((position.getY() - state.cachedBounds.minY) / EDGE_THRESHOLD);
+    boundaryForce = boundaryForce + Vector2D(0, strength);
+  } else if (position.getY() > state.cachedBounds.maxY - EDGE_THRESHOLD) {
+    float strength = 1.0f - ((state.cachedBounds.maxY - position.getY()) / EDGE_THRESHOLD);
+    boundaryForce = boundaryForce + Vector2D(0, -strength);
+  }
+
+  // Apply boundary avoidance to direction
+  if (boundaryForce.lengthSquared() > 0.01f) {
+    state.currentDirection = (state.currentDirection * 0.4f + boundaryForce.normalized() * 0.6f).normalized();
+  }
+}
+
+void WanderBehavior::handlePathfinding(EntityPtr entity, EntityState& state,
+                                       const Vector2D& position, const Vector2D& dest) {
+  // Additional validation: don't pathfind to current position
+  float distanceToGoal = (dest - position).length();
+  if (distanceToGoal < 64.0f) {
+    return; // Too close
+  }
+
+  // CACHE-AWARE PATHFINDING: Check for existing path first
+  bool needsNewPath = state.baseState.pathPoints.empty() ||
+                     state.baseState.currentPathIndex >= state.baseState.pathPoints.size() ||
+                     state.baseState.pathUpdateTimer > 15.0f;
+
+  // OBSTACLE DETECTION: Force path refresh if stuck
+  bool stuckOnObstacle = state.baseState.progressTimer > 0.8f;
+  if (stuckOnObstacle) {
+    state.baseState.pathPoints.clear();
+    state.baseState.currentPathIndex = 0;
+  }
+
+  if ((needsNewPath || stuckOnObstacle) && state.baseState.pathRequestCooldown <= 0.0f) {
+    // SMART REQUEST: Only request if goal significantly different
+    const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance;
+    bool goalChanged = true;
+    if (!state.baseState.pathPoints.empty()) {
+      Vector2D lastGoal = state.baseState.pathPoints.back();
+      float goalDistanceSquared = (dest - lastGoal).lengthSquared();
+      goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);
+    }
+
+    if (goalChanged) {
+      // ASYNC PATHFINDING: Use background processing
+      pathfinder().requestPath(
+          entity->getID(), entity->getPosition(), dest,
+          PathfinderManager::Priority::Normal,
+          [this, entity](EntityID, const std::vector<Vector2D>& path) {
+            auto stateIt = m_entityStates.find(entity);
+            if (stateIt != m_entityStates.end() && !path.empty()) {
+              stateIt->second.baseState.pathPoints = path;
+              stateIt->second.baseState.currentPathIndex = 0;
+              stateIt->second.baseState.pathUpdateTimer = 0.0f;
+            }
+          });
+      state.baseState.pathRequestCooldown = m_config.pathRequestCooldown;
+    }
+  }
+}
+
+void WanderBehavior::handleMovement(EntityPtr entity, EntityState& state, float deltaTime) {
+  // Dynamic movement distance based on local density and world scale
+  float baseDistance = std::min(600.0f, m_areaRadius * 1.5f);
+  Vector2D position = entity->getPosition();
+
+  float moveDistance = calculateMoveDistance(entity, state, position, baseDistance);
+  applyBoundaryAvoidance(state, position);
+
+  Vector2D dest = position + state.currentDirection * moveDistance;
+
+  // Clamp destination as final safety net
+  const float MARGIN = m_config.worldPaddingMargin;
+  dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
+  dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
+
+  handlePathfinding(entity, state, position, dest);
+
+  // Follow path or apply base movement
+  if (!state.baseState.pathPoints.empty() && state.baseState.currentPathIndex < state.baseState.pathPoints.size()) {
+    bool following = pathfinder().followPathStep(
+        entity, entity->getPosition(), state.baseState.pathPoints, state.baseState.currentPathIndex,
+        m_speed, state.baseState.navRadius);
+    if (following) {
+      applySeparationWithCache(entity, entity->getPosition(),
+                               entity->getVelocity(), m_speed, 28.0f, 0.30f,
+                               6, state.baseState.separationTimer, state.baseState.lastSepVelocity, deltaTime,
+                               state.baseState.cachedNearbyPositions);
+    }
+  } else {
+    Vector2D intended = state.currentDirection * m_speed;
+    applySeparationWithCache(entity, entity->getPosition(), intended,
+                             m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
+                             state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
   }
 }
 

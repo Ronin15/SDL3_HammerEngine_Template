@@ -58,9 +58,7 @@ public:
   std::shared_ptr<AIBehavior> clone() const override;
 
 private:
-  void updateWanderState(EntityPtr entity, float deltaTime);
-
-  // Entity-specific state data
+  // Entity-specific state data (must be defined before helper methods that use it)
   struct EntityState {
     // Base AI behavior state (pathfinding, separation, cooldowns, crowd cache)
     AIBehaviorState baseState;
@@ -89,6 +87,15 @@ private:
       baseState.navRadius = 18.0f; // Wander-specific nav radius
     }
   };
+
+  // Helper methods for executeLogic refactoring
+  void updateWanderState(EntityPtr entity, float deltaTime);
+  void updateTimers(EntityState& state, float deltaTime);
+  bool handleStartDelay(EntityPtr entity, EntityState& state, float deltaTime);
+  float calculateMoveDistance(EntityPtr entity, EntityState& state, const Vector2D& position, float baseDistance);
+  void applyBoundaryAvoidance(EntityState& state, const Vector2D& position);
+  void handlePathfinding(EntityPtr entity, EntityState& state, const Vector2D& position, const Vector2D& dest);
+  void handleMovement(EntityPtr entity, EntityState& state, float deltaTime);
 
   // Map to store per-entity state using shared_ptr as key
   std::unordered_map<EntityPtr, EntityState> m_entityStates;

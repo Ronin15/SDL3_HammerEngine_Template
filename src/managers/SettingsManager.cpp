@@ -193,35 +193,32 @@ void SettingsManager::unregisterChangeListener(size_t callbackId) {
     );
 }
 
-std::vector<std::string> SettingsManager::getCategories() const {
+void SettingsManager::getCategories(std::vector<std::string>& outCategories) const {
     std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
 
-    std::vector<std::string> categories;
-    categories.reserve(m_settings.size());
+    outCategories.clear();
+    outCategories.reserve(m_settings.size());
 
     for (const auto& [category, _] : m_settings) {
-        categories.push_back(category);
+        outCategories.push_back(category);
     }
-
-    return categories;
 }
 
-std::vector<std::string> SettingsManager::getKeys(const std::string& category) const {
+void SettingsManager::getKeys(const std::string& category, std::vector<std::string>& outKeys) const {
     std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
+
+    outKeys.clear();
 
     auto categoryIt = m_settings.find(category);
     if (categoryIt == m_settings.end()) {
-        return {};
+        return;
     }
 
-    std::vector<std::string> keys;
-    keys.reserve(categoryIt->second.size());
+    outKeys.reserve(categoryIt->second.size());
 
     for (const auto& [key, _] : categoryIt->second) {
-        keys.push_back(key);
+        outKeys.push_back(key);
     }
-
-    return keys;
 }
 
 void SettingsManager::notifyListeners(const std::string& category, const std::string& key, const SettingValue& newValue) {
