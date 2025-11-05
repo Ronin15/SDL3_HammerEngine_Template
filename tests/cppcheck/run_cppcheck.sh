@@ -16,7 +16,7 @@ PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 INCLUDE_DIRS="include src"
 LIBRARY_CONFIG="cppcheck_lib.cfg"
 SUPPRESSIONS="cppcheck_suppressions.txt"
-OUTPUT_DIR="../../test_results"
+OUTPUT_DIR="${PROJECT_ROOT}/test_results"
 TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
 
 # Create output directory if it doesn't exist
