@@ -61,12 +61,12 @@ echo -e "${BLUE}================================================${NC}"
 
 # Run with appropriate options
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" --log_level=all | tee test_output.log
+  "$TEST_EXECUTABLE" --log_level=all 2>&1 | tee test_output.log
 else
-  "$TEST_EXECUTABLE" | tee test_output.log
+  "$TEST_EXECUTABLE" 2>&1 | tee test_output.log
 fi
 
-TEST_RESULT=$?
+TEST_RESULT=${PIPESTATUS[0]}
 echo -e "${BLUE}================================================${NC}"
 
 # Create test_results directory if it doesn't exist

@@ -105,11 +105,11 @@ fi
 # Run the tests with additional safeguards
 echo -e "${YELLOW}Running with options: $TEST_OPTS${NC}"
 if [ -n "$TIMEOUT_CMD" ]; then
-  $TIMEOUT_CMD 30s "$TEST_EXECUTABLE" $TEST_OPTS | tee "$OUTPUT_FILE"
-  TEST_RESULT=$?
+  $TIMEOUT_CMD 30s "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$OUTPUT_FILE"
+  TEST_RESULT=${PIPESTATUS[0]}
 else
-  "$TEST_EXECUTABLE" $TEST_OPTS | tee "$OUTPUT_FILE"
-  TEST_RESULT=$?
+  "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$OUTPUT_FILE"
+  TEST_RESULT=${PIPESTATUS[0]}
 fi
 
 # Force success if tests passed but cleanup had issues
