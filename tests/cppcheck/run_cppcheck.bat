@@ -9,7 +9,7 @@ set PROJECT_ROOT=%~dp0..\..
 set INCLUDE_DIRS=include src
 set LIBRARY_CONFIG=cppcheck_lib.cfg
 set SUPPRESSIONS=cppcheck_suppressions.txt
-set OUTPUT_DIR=..\..\test_results
+set OUTPUT_DIR=%PROJECT_ROOT%\test_results
 for /f "tokens=2 delims==" %%I in ('wmic OS Get localdatetime /value') do set datetime=%%I
 set TIMESTAMP=%datetime:~0,8%_%datetime:~8,6%
 
