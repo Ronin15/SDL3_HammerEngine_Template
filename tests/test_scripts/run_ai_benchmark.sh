@@ -21,6 +21,7 @@ mkdir -p ../../test_results
 BUILD_TYPE="Debug"
 VERBOSE=false
 EXTREME_TEST=false
+BENCHMARK_MODE="both"  # Can be "synthetic", "integrated", or "both"
 
 # Process command-line options
 while [[ $# -gt 0 ]]; do
@@ -41,18 +42,33 @@ while [[ $# -gt 0 ]]; do
       BUILD_TYPE="Release"
       shift
       ;;
+    --synthetic)
+      BENCHMARK_MODE="synthetic"
+      shift
+      ;;
+    --integrated)
+      BENCHMARK_MODE="integrated"
+      shift
+      ;;
+    --both)
+      BENCHMARK_MODE="both"
+      shift
+      ;;
     --help)
-      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--help]"
-      echo "  --debug     Run debug build (default)"
-      echo "  --release   Run release build"
-      echo "  --verbose   Show detailed output"
-      echo "  --extreme   Run extended benchmarks"
-      echo "  --help      Show this help message"
+      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--synthetic] [--integrated] [--both] [--help]"
+      echo "  --debug       Run debug build (default)"
+      echo "  --release     Run release build"
+      echo "  --verbose     Show detailed output"
+      echo "  --extreme     Run extended benchmarks"
+      echo "  --synthetic   Run only synthetic benchmarks (isolated AIManager)"
+      echo "  --integrated  Run only integrated benchmarks (production behaviors)"
+      echo "  --both        Run both synthetic and integrated (default)"
+      echo "  --help        Show this help message"
       exit 0
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--help]"
+      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--synthetic] [--integrated] [--both] [--help]"
       exit 1
       ;;
   esac
@@ -121,6 +137,21 @@ else
   TEST_OPTS="$TEST_OPTS --log_level=test_suite"
 fi
 
+# Add benchmark mode filtering
+case "$BENCHMARK_MODE" in
+  synthetic)
+    TEST_OPTS="$TEST_OPTS --run_test=AIScalingTests/TestSynthetic*"
+    echo -e "${BLUE}Running SYNTHETIC benchmarks only (isolated AIManager with BenchmarkBehavior)${NC}"
+    ;;
+  integrated)
+    TEST_OPTS="$TEST_OPTS --run_test=AIScalingTests/TestIntegrated*"
+    echo -e "${BLUE}Running INTEGRATED benchmarks only (production behaviors with PathfinderManager)${NC}"
+    ;;
+  both)
+    echo -e "${BLUE}Running BOTH synthetic and integrated benchmarks${NC}"
+    ;;
+esac
+
 # Add extreme test flag if requested
 if [ "$EXTREME_TEST" = true ]; then
   TEST_OPTS="$TEST_OPTS --extreme"
@@ -140,6 +171,7 @@ echo -e "${YELLOW}Timeout duration: $TIMEOUT_DURATION${NC}"
 echo "============ BENCHMARK START ============" > "$RESULTS_FILE"
 echo "Date: $(date)" >> "$RESULTS_FILE"
 echo "Build type: $BUILD_TYPE" >> "$RESULTS_FILE"
+echo "Benchmark mode: $BENCHMARK_MODE" >> "$RESULTS_FILE"
 echo "Command: $BENCHMARK_EXECUTABLE $TEST_OPTS" >> "$RESULTS_FILE"
 echo "=========================================" >> "$RESULTS_FILE"
 echo >> "$RESULTS_FILE"
@@ -276,6 +308,7 @@ SUMMARY_FILE="../../test_results/ai_benchmark_summary_$(date +%Y%m%d_%H%M%S).txt
 echo "============ BENCHMARK SUMMARY ============" > "$SUMMARY_FILE"
 echo "Date: $(date)" >> "$SUMMARY_FILE"
 echo "Build type: $BUILD_TYPE" >> "$SUMMARY_FILE"
+echo "Benchmark mode: $BENCHMARK_MODE" >> "$SUMMARY_FILE"
 echo "Exit code: $TEST_RESULT" >> "$SUMMARY_FILE"
 echo >> "$SUMMARY_FILE"
 

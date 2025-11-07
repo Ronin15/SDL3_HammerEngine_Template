@@ -1113,6 +1113,7 @@ void AIManager::resetBehaviors() {
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
+  m_activeEntityCount.store(0, std::memory_order_relaxed);  // BUGFIX: Reset active count when clearing storage
 }
 
 void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
@@ -1431,21 +1432,11 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         // Pure distance-based culling - entities too far away don't update
         shouldUpdate = (hotData.distanceSquared <= effectiveMaxDistSquared);
-
-        // DEBUG: Log culling decision for first few entities
-        if (i < start + 5) {
-          std::cout << "[AIManager::processBatch] Entity " << i << ": distSq=" << hotData.distanceSquared
-                    << ", maxDistSq=" << effectiveMaxDistSquared << ", shouldUpdate="
-                    << (shouldUpdate ? "true" : "false") << std::endl;
-        }
       }
 
       if (shouldUpdate) {
         // PERFORMANCE: Use shared_ptr only for executeLogic (required by interface)
         // This is the only place we need shared ownership semantics
-        if (i < start + 5) {
-          std::cout << "[AIManager::processBatch] Calling executeLogic for entity " << i << std::endl;
-        }
         behavior->executeLogic(storage.entities[i], deltaTime);
 
         // OPTIMIZATION: Only update animations/sprites for entities near the player
@@ -1519,10 +1510,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   // we accumulate updates into the passed-in vector. The caller will submit all batches' updates
   // in a single call after all parallel processing completes, reducing lock acquisitions from
   // O(batches) to O(1) and eliminating inter-batch contention.
-
-  // DEBUG: Log batch execution count
-  std::cout << "[AIManager::processBatch] Batch[" << start << "-" << end << "]: batchExecutions="
-            << batchExecutions << ", hasPlayer=" << (hasPlayer ? "true" : "false") << std::endl;
 
   if (batchExecutions > 0) {
     m_totalBehaviorExecutions.fetch_add(batchExecutions,
