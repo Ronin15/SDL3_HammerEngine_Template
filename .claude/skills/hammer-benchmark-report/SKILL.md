@@ -85,21 +85,35 @@ find test_results/ -name "performance_metrics.txt" -type f
 
 **Extraction Patterns:**
 
-#### AI System Metrics
+#### AI System Metrics (Dual Benchmark System)
+
+**Synthetic Benchmarks** (AIManager infrastructure):
 ```bash
-grep -E "^(Entities|FPS|CPU|Update Time|Batch Processing|Behavior Updates):" \
-  test_results/ai_benchmark/performance_metrics.txt
+grep -B 5 -A 10 "TestSynthetic" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "Entity updates per second:|entities"
+```
+
+**Integrated Benchmarks** (Production behaviors):
+```bash
+grep -B 5 -A 10 "TestIntegrated" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "Entity updates per second:|entities"
 ```
 
 **Parse into structure:**
 ```
-AI_System:
-  Entities: 10000
-  FPS: 62.3
-  CPU: 5.8%
-  Update_Time: 12.4ms
-  Batch_Processing: 2.1ms
-  Behavior_Updates: 8.3ms
+AI_System_Synthetic:
+  Entity_100: 170000
+  Entity_200: 750000
+  Entity_1000: 975000
+  Entity_5000: 925000
+  Entity_10000: 995000
+
+AI_System_Integrated:
+  Entity_100: 569152
+  Entity_200: 579794
+  Entity_500: 611098
+  Entity_1000: 1192606
+  Entity_2000: 1587491
 ```
 
 #### Collision System Metrics
@@ -274,34 +288,78 @@ SDL3 HammerEngine demonstrates <strong/adequate/weak> performance across all cri
 ```markdown
 ## Detailed Performance Analysis
 
-### AI System (10K+ Entity Scaling)
+### AI System - Synthetic Benchmarks (Infrastructure Performance)
 
-#### Target Requirements
-- **Entities:** 10,000+
-- **FPS:** 60+
-- **CPU Usage:** <6%
-- **Update Time:** <16.67ms (60 FPS budget)
+#### Purpose
+Tests AIManager infrastructure without integration overhead
 
 #### Benchmark Results
 
-| Metric | Value | Status | Baseline | Change |
-|--------|-------|--------|----------|--------|
-| Entities | 10,000 | ✓ | 10,000 | 0.0% |
-| FPS | 62.3 | ✓ | 62.1 | +0.3% |
-| CPU Usage | 5.8% | ✓ | 5.9% | -1.7% |
-| Update Time | 12.4ms | ✓ | 12.6ms | -1.6% |
-| Batch Processing | 2.1ms | ✓ | 2.3ms | -8.7% |
-| Behavior Updates | 8.3ms | ✓ | 8.1ms | +2.5% |
+| Entity Count | Value (updates/sec) | Status | Baseline | Change |
+|--------------|---------------------|--------|----------|--------|
+| 100 | 170K | ✓ | 170K | 0.0% |
+| 200 | 750K | ✓ | 750K | 0.0% |
+| 1000 | 975K | ✓ | 975K | 0.0% |
+| 5000 | 925K | ✓ | 925K | 0.0% |
+| 10000 | 995K | ✓ | 995K | 0.0% |
+
+#### Threading Efficiency
+- Single-threaded (100): 170K updates/sec
+- Multi-threaded (5000): 925K updates/sec
+- Speedup: 5.4x
 
 #### Statistical Summary
+- Mean: 963K updates/sec (across entity counts)
+- Std Dev: 138K (14% CoV)
+- Consistent performance across entity scales
 
-**FPS Distribution:**
-- Mean: 62.3 FPS
-- Median: 62.1 FPS
-- Std Dev: 1.8 FPS (2.9% CoV)
-- P95: 65.2 FPS
-- P99: 66.8 FPS
-- Min/Max: 58.3 / 68.1 FPS
+---
+
+### AI System - Integrated Benchmarks (Production Workload)
+
+#### Purpose
+Tests AIManager with PathfinderManager/CollisionManager integration
+
+#### Benchmark Results
+
+| Entity Count | Value (updates/sec) | Status | Baseline | Change |
+|--------------|---------------------|--------|----------|--------|
+| 100 | 569K | ✓ | 569K | 0.0% |
+| 200 | 580K | ✓ | 580K | 0.0% |
+| 500 | 611K | ✓ | 611K | 0.0% |
+| 1000 | 1193K | ✓ | 1193K | 0.0% |
+| 2000 | 1587K | ✓ | 1587K | 0.0% |
+
+#### Threading Efficiency
+- Single-threaded (100): 569K updates/sec
+- Multi-threaded (2000): 1587K updates/sec
+- Speedup: 2.8x
+
+#### Statistical Summary
+- Mean: 908K updates/sec (across entity counts)
+- Std Dev: 444K (49% CoV)
+- Performance scales with entity count
+
+---
+
+### AI System - Integration Overhead Analysis
+
+#### Overhead Metrics
+
+| Entity Count | Synthetic | Integrated | Overhead | Assessment |
+|--------------|-----------|------------|----------|------------|
+| 100 | 170K/s | 569K/s | -70% | Data inconsistency* |
+| 200 | 750K/s | 580K/s | +23% | Expected |
+| 1000 | 975K/s | 1193K/s | -22% | Data inconsistency* |
+| 2000 | N/A | 1587K/s | N/A | N/A |
+
+*Note: Negative overhead indicates synthetic values are estimates while integrated are measured.
+Expected overhead: 20-40% (integrated slower due to PathfinderManager)
+
+#### Overhead Sources
+- PathfinderManager: Path requests, cache lookups, A* computation
+- CollisionManager: Spatial hash queries for neighbors
+- Production behaviors: Complex state machines and calculations
 
 **Stability Analysis:**
 - ✓ FPS variance low (2.9% CoV) - excellent stability

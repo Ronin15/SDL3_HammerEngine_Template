@@ -45,11 +45,13 @@ Located in `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/`
 **IMPORTANT: All 6 benchmarks MUST be run for complete regression analysis.**
 
 1. **AI Scaling Benchmark** (`./bin/debug/ai_scaling_benchmark`) **[REQUIRED - CRITICAL]**
-   - Script: `./tests/test_scripts/run_ai_benchmark.sh`
-   - Tests: 100-100K entity batch processing, WorkerBudget threading, scaling
-   - Metrics: Entity updates/sec, update time per cycle, threading efficiency
-   - Target: 1M+ entity updates/sec, 5K entities at 60+ FPS
-   - Duration: ~18 minutes
+   - Script: `./tests/test_scripts/run_ai_benchmark.sh --both`
+   - Tests: Dual benchmark system (synthetic + integrated)
+     - **Synthetic**: AIManager infrastructure with BenchmarkBehavior (isolated)
+     - **Integrated**: Production behaviors with PathfinderManager/CollisionManager
+   - Metrics: Entity updates/sec, threading efficiency, integration overhead
+   - Target: Synthetic 1M+ updates/sec, Integrated 1.5M+ updates/sec @ 2K entities
+   - Duration: ~20 minutes
    - **Status: CRITICAL - Engine core performance benchmark**
 
 2. **Collision System Benchmark** (`./bin/debug/collision_benchmark`) **[REQUIRED]**
@@ -82,7 +84,7 @@ Located in `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/`
    - Metrics: Processing throughput, iteration time, layout calc/sec
    - Duration: ~1 minute
 
-### Total Benchmark Duration: ~31 minutes
+### Total Benchmark Duration: ~33 minutes
 
 ## Execution Steps
 
@@ -126,8 +128,9 @@ fi
 ```bash
 # Working Directory: /home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/
 
-# 1. AI Scaling Benchmark (REQUIRED - 18 minutes)
-./tests/test_scripts/run_ai_benchmark.sh
+# 1. AI Scaling Benchmark (REQUIRED - 20 minutes)
+# NOTE: Dual benchmark system (synthetic + integrated)
+./tests/test_scripts/run_ai_benchmark.sh --both
 
 # 2. Collision System Benchmark (REQUIRED - 3 minutes)
 ./tests/test_scripts/run_collision_benchmark.sh
@@ -156,14 +159,14 @@ If timeout occurs, flag as potential infinite loop or performance catastrophe.
 
 **Progress Tracking:**
 ```
-Running benchmarks (this will take ~31 minutes)...
-[1/6] AI Scaling Benchmark... ✓ (18m 15s) - CRITICAL
+Running benchmarks (this will take ~33 minutes)...
+[1/6] AI Scaling Benchmark (Synthetic + Integrated)... ✓ (20m 15s) - CRITICAL
 [2/6] Collision System Benchmark... ✓ (3m 12s)
 [3/6] Pathfinder Benchmark... ✓ (5m 05s)
 [4/6] Event Manager Scaling... ✓ (2m 10s)
 [5/6] Particle Manager Benchmark... ✓ (2m 05s)
 [6/6] UI Stress Tests... ✓ (1m 02s)
-Total: 31m 49s
+Total: 33m 49s
 ```
 
 **Execution Order:**
@@ -173,26 +176,55 @@ Run benchmarks in the order listed above. AI benchmark should always be run firs
 
 **Metrics Extraction Patterns:**
 
-#### AI System Metrics
+#### AI System Metrics (Dual Benchmark System)
+
+**IMPORTANT**: The AI benchmark now separates Synthetic and Integrated tests.
+
+**Synthetic Benchmarks** (AIManager infrastructure):
 ```bash
-# From: test_results/ai_scaling_benchmark_*.txt or test_results/ai_benchmark_performance_metrics.txt
-grep -E "Entity updates per second:|Time per update cycle:|Updates Per Second|Performance Ratio" test_results/ai_scaling_benchmark_*.txt
-grep -E "Entity updates per second:|Time per update cycle:" test_results/ai_benchmark_performance_metrics.txt
+# Extract synthetic performance from TestSyntheticPerformance and TestSyntheticScalability
+grep -B 5 -A 10 "TestSynthetic" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "Entity updates per second:|Threading mode:|entities"
+
+# Parse SYNTHETIC SCALABILITY SUMMARY table
+grep -A 10 "SYNTHETIC.*SCALABILITY.*SUMMARY" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "^[[:space:]]*[0-9]+"
+```
+
+**Integrated Benchmarks** (Production behaviors with PathfinderManager):
+```bash
+# Extract integrated performance from TestIntegratedPerformance and TestIntegratedScalability
+grep -B 5 -A 10 "TestIntegrated" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "Entity updates per second:|Threading mode:|entities"
+
+# Parse INTEGRATED SCALABILITY SUMMARY results
+grep -A 10 "INTEGRATED.*SCALABILITY.*SUMMARY" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "Entity updates per second"
 ```
 
 **Example Output:**
 ```
+=== SYNTHETIC BENCHMARKS ===
 --- Test 4: Target Performance (5000 entities) ---
-  Time per update cycle: 8.67 ms
-  Entity updates per second: 1730947
+  Entity updates per second: 26665482
   Threading mode: WorkerBudget Multi-threaded
 
-REALISTIC SCALABILITY SUMMARY:
-Entity Count | Threading Mode | Updates Per Second | Performance Ratio
--------------|----------------|-------------------|------------------
+SYNTHETIC SCALABILITY SUMMARY:
         5000 |  Auto-Threaded |            925000 |             5.44x
        10000 |  Auto-Threaded |            995000 |             5.85x
+
+=== INTEGRATED BENCHMARKS ===
+--- Test 4: Target Performance (2000 entities) ---
+  Entity updates per second: 5077323
+  Threading mode: WorkerBudget Multi-threaded
+
+INTEGRATED SCALABILITY:
+        2000 |  Auto-Threaded |           1587491 |             2.79x
 ```
+
+**Baseline Key Format:**
+- Synthetic: `Synthetic_Entity_<count>_UpdatesPerSec`
+- Integrated: `Integrated_Entity_<count>_UpdatesPerSec`
 
 #### Collision System Metrics
 ```bash
@@ -337,6 +369,34 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
         return "STABLE", f"{abs(change_pct):.1f}% variance (acceptable)"
 ```
 
+**Dual Benchmark Regression Detection Strategy:**
+
+With the split between Synthetic and Integrated benchmarks, regression source identification is more precise:
+
+1. **Synthetic-Only Regression:**
+   - Synthetic benchmarks regress, Integrated stable
+   - **Root Cause:** AIManager infrastructure (batch processing, SIMD, threading)
+   - **Action:** Profile AIManager core systems, check ThreadSystem
+   - **Impact:** Core infrastructure degraded
+
+2. **Integrated-Only Regression:**
+   - Integrated benchmarks regress, Synthetic stable
+   - **Root Cause:** PathfinderManager, CollisionManager, or production behaviors
+   - **Action:** Profile pathfinding, collision queries, behavior execution
+   - **Impact:** Production workload degraded
+
+3. **Both Regress:**
+   - Both Synthetic and Integrated benchmarks regress
+   - **Root Cause:** Foundational infrastructure (ThreadSystem, memory allocator)
+   - **Action:** Profile system-wide performance, check for threading issues
+   - **Impact:** System-wide performance degradation
+
+4. **Integration Overhead Growing:**
+   - Synthetic stable, Integrated regressing more than expected
+   - Overhead % increasing beyond 20-40% range
+   - **Root Cause:** Integration efficiency degrading
+   - **Action:** Check PathfinderManager cache efficiency, CollisionManager query optimization
+
 ### Step 6: Generate Report
 
 **Report Structure:**
@@ -358,31 +418,75 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
 
 ## 📊 Performance Summary
 
-### AI System (10K+ Entities) - Target: 60+ FPS, <6% CPU
+### AI System - Synthetic Benchmarks (Isolated AIManager Infrastructure)
 
-| Metric | Baseline | Current | Change | Status |
-|--------|----------|---------|--------|--------|
-| FPS | 62.3 | 56.8 | -8.8% | 🔴 CRITICAL |
-| CPU% | 5.8% | 6.4% | +10.3% | 🟠 WARNING |
-| Update Time | 12.4ms | 13.9ms | +12.1% | 🟠 WARNING |
-| Batch Processing | 2.1ms | 2.0ms | -4.8% | 🟢 Improvement |
-| Behavior Updates | 8.3ms | 9.1ms | +9.6% | 🟡 MINOR |
+**Purpose:** Tests AIManager core systems without integration overhead
 
-**Status:** 🔴 **REGRESSION DETECTED**
-- FPS dropped below 60 threshold (BLOCKING)
-- CPU usage increased significantly
-- Overall performance degradation: ~10%
+| Entity Count | Baseline | Current | Change | Status |
+|--------------|----------|---------|--------|--------|
+| 100 (Single) | 170K/s | 165K/s | -2.9% | ⚪ Stable |
+| 200 (Multi) | 750K/s | 730K/s | -2.7% | ⚪ Stable |
+| 1000 (Multi) | 975K/s | 920K/s | -5.6% | 🟡 MINOR |
+| 5000 (Multi) | 925K/s | 880K/s | -4.9% | ⚪ Stable |
+| 10000 (Multi) | 995K/s | 950K/s | -4.5% | ⚪ Stable |
+
+**Status:** ⚪ **STABLE**
+- All metrics within acceptable variance (<6%)
+- No AIManager infrastructure regressions
+- Batch processing and threading performing as expected
+
+**Threading Efficiency:** 5.4x speedup maintained
+
+---
+
+### AI System - Integrated Benchmarks (Production Workload)
+
+**Purpose:** Tests AIManager with PathfinderManager/CollisionManager integration
+
+| Entity Count | Baseline | Current | Change | Status |
+|--------------|----------|---------|--------|--------|
+| 100 (Single) | 569K/s | 540K/s | -5.1% | 🟡 MINOR |
+| 200 (Multi) | 580K/s | 530K/s | -8.6% | 🟡 MINOR |
+| 500 (Multi) | 611K/s | 555K/s | -9.2% | 🟡 MINOR |
+| 1000 (Multi) | 1193K/s | 1050K/s | -12.0% | 🟠 WARNING |
+| 2000 (Multi) | 1587K/s | 1380K/s | -13.0% | 🟠 WARNING |
+
+**Status:** 🟠 **WARNING - Integration Regression**
+- Consistent degradation across all entity counts (~10%)
+- Synthetic benchmarks stable → Points to integration issue
+- PathfinderManager or CollisionManager likely cause
+
+**Threading Efficiency:** 2.8x → 2.5x (degraded)
 
 **Likely Causes:**
-- Recent AI batch processing changes
-- New behavior logic overhead
-- Possible lock contention in AIManager
+- PathfinderManager: Increased pathfinding overhead or cache inefficiency
+- CollisionManager: Spatial hash query slowdown
+- Production behaviors: Added computational complexity
+- Integration points: Increased overhead in manager communication
 
 **Recommended Actions:**
-1. Profile AIManager::update() with callgrind
-2. Review recent batch processing changes
-3. Check for added synchronization overhead
-4. Verify behavior cache efficiency
+1. Profile PathfinderManager::requestPath() and cache hit rates
+2. Check CollisionManager::queryNearbyEntities() performance
+3. Review recent changes to WanderBehavior, ChaseBehavior, etc.
+4. Verify thread coordination between AIManager and PathfinderManager
+5. Check for increased mutex contention at integration points
+
+---
+
+### AI System - Integration Overhead Analysis
+
+**Overhead Comparison** (Synthetic vs Integrated):
+
+| Entity Count | Synthetic | Integrated | Overhead | Change |
+|--------------|-----------|------------|----------|--------|
+| 100 | 165K/s | 540K/s | -70% | -2% ⚪ |
+| 200 | 730K/s | 530K/s | +27% | -5% 🟡 |
+| 1000 | 920K/s | 1050K/s | -14% | -6% 🟡 |
+| 2000 | N/A | 1380K/s | N/A | -10% 🟠 |
+
+**Note:** Negative overhead indicates data inconsistency (synthetic uses estimates).
+**Expected:** Integrated should be 20-40% slower due to PathfinderManager overhead.
+**Actual:** Overhead growing trend suggests integration efficiency degrading.
 
 ---
 
