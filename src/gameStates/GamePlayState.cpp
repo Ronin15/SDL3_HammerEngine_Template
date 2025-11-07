@@ -26,8 +26,9 @@
 
 
 bool GamePlayState::enter() {
-  // Reset transition flag when entering state
+  // Reset transition flags when entering state
   m_transitioningToPause = false;
+  m_transitioningToLoading = false;
 
   // Check if already initialized (resuming from pause)
   if (m_initialized) {
@@ -105,6 +106,8 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
       auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
       if (loadingState) {
         loadingState->configure("GamePlayState", config);
+        // Set flag before transitioning to preserve m_worldLoaded in exit()
+        m_transitioningToLoading = true;
         // Use changeState (called from update) to properly exit and re-enter
         gameStateManager->changeState("LoadingState");
       }
@@ -186,6 +189,57 @@ bool GamePlayState::exit() {
     m_transitioningToPause = false;
 
     // Return early - NO cleanup when going to pause, keep m_initialized = true
+    return true;
+  }
+
+  if (m_transitioningToLoading) {
+    // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+    // This prevents infinite loop when returning from LoadingState
+
+    // Reset the flag after using it
+    m_transitioningToLoading = false;
+
+    // Clean up managers (same as full exit)
+    AIManager& aiMgr = AIManager::Instance();
+    aiMgr.prepareForStateTransition();
+
+    CollisionManager& collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
+
+    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    ParticleManager& particleMgr = ParticleManager::Instance();
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+      particleMgr.prepareForStateTransition();
+    }
+
+    // Clean up camera
+    m_camera.reset();
+
+    // Unload world (LoadingState will reload it)
+    auto& worldManager = WorldManager::Instance();
+    if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
+      worldManager.unloadWorld();
+      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+      // when LoadingState returns to this state
+    }
+
+    // Clean up UI
+    auto &ui = UIManager::Instance();
+    ui.prepareForStateTransition();
+
+    // Reset player
+    mp_Player = nullptr;
+
+    // Reset initialized flag so state re-initializes after loading
+    m_initialized = false;
+
+    // Keep m_worldLoaded = true to remember we've already been through loading
     return true;
   }
 

@@ -230,6 +230,9 @@ void AIDemoState::handleInput() {
 bool AIDemoState::enter() {
   GAMESTATE_INFO("Entering AIDemoState...");
 
+  // Reset transition flag when entering state
+  m_transitioningToLoading = false;
+
   // Check if already initialized (resuming after LoadingState)
   if (m_initialized) {
     GAMESTATE_INFO("Already initialized - resuming AIDemoState");
@@ -341,6 +344,63 @@ bool AIDemoState::exit() {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 
+  if (m_transitioningToLoading) {
+    // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+    // This prevents infinite loop when returning from LoadingState
+
+    // Reset the flag after using it
+    m_transitioningToLoading = false;
+
+    // Clean up managers (same as full exit)
+    aiMgr.prepareForStateTransition();
+
+    CollisionManager &collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
+
+    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    // Clear NPCs
+    m_npcs.clear();
+
+    // Clean up player
+    if (m_player) {
+      m_player.reset();
+    }
+
+    // Clean up camera
+    m_camera.reset();
+
+    // Clean up UI
+    auto &ui = UIManager::Instance();
+    ui.prepareForStateTransition();
+
+    // Unload world (LoadingState will reload it)
+    WorldManager &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
+      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+      // when LoadingState returns to this state
+    }
+
+    // Restore AI to unpaused state
+    aiMgr.setGlobalPause(false);
+    m_aiPaused = false;
+
+    // Reset initialized flag so state re-initializes after loading
+    m_initialized = false;
+
+    // Keep m_worldLoaded = true to remember we've already been through loading
+    GAMESTATE_INFO("AIDemoState cleanup for LoadingState transition complete");
+    return true;
+  }
+
+  // Full exit (going to main menu, other states, or shutting down)
+
   // Use prepareForStateTransition methods for deterministic cleanup
   aiMgr.prepareForStateTransition();
 
@@ -376,8 +436,7 @@ bool AIDemoState::exit() {
   WorldManager &worldMgr = WorldManager::Instance();
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
     worldMgr.unloadWorld();
-    // CRITICAL: Only reset m_worldLoaded when actually unloading a world
-    // This prevents infinite loop when transitioning to LoadingState (no world yet)
+    // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
     m_worldLoaded = false;
   }
 
@@ -418,6 +477,8 @@ void AIDemoState::update(float deltaTime) {
         auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
         if (loadingState) {
           loadingState->configure("AIDemoState", config);
+          // Set flag before transitioning to preserve m_worldLoaded in exit()
+          m_transitioningToLoading = true;
           // Use changeState (called from update) to properly exit and re-enter
           gameStateManager->changeState("LoadingState");
         } else {

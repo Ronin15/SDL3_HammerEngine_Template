@@ -57,6 +57,9 @@ EventDemoState::~EventDemoState() {
 bool EventDemoState::enter() {
   GAMESTATE_INFO("Entering EventDemoState...");
 
+  // Reset transition flag when entering state
+  m_transitioningToLoading = false;
+
   // Check if already initialized (resuming after LoadingState)
   if (m_initialized) {
     GAMESTATE_INFO("Already initialized - resuming EventDemoState");
@@ -254,6 +257,75 @@ bool EventDemoState::exit() {
   GAMESTATE_INFO("Exiting EventDemoState...");
 
   try {
+    if (m_transitioningToLoading) {
+      // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+      // This prevents infinite loop when returning from LoadingState
+
+      // Reset the flag after using it
+      m_transitioningToLoading = false;
+
+      // Reset player
+      m_player.reset();
+
+      // Clear spawned NPCs vector and reset limit flag
+      m_spawnedNPCs.clear();
+      m_limitMessageShown = false;
+
+      // Clear event log
+      m_eventLog.clear();
+      m_eventStates.clear();
+
+      // Reset demo state
+      m_currentPhase = DemoPhase::Initialization;
+      m_phaseTimer = 0.0f;
+
+      // Unregister our specific handlers via tokens
+      unregisterEventHandlers();
+
+      // Clean up managers (same as full exit)
+      AIManager &aiMgr = AIManager::Instance();
+      aiMgr.prepareForStateTransition();
+
+      CollisionManager &collisionMgr = CollisionManager::Instance();
+      if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+        collisionMgr.prepareForStateTransition();
+      }
+
+      PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+      if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+        pathfinderMgr.prepareForStateTransition();
+      }
+
+      ParticleManager &particleMgr = ParticleManager::Instance();
+      if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+        particleMgr.prepareForStateTransition();
+      }
+
+      // Clean up camera
+      m_camera.reset();
+
+      // Clean up UI
+      auto &ui = UIManager::Instance();
+      ui.prepareForStateTransition();
+
+      // Unload world (LoadingState will reload it)
+      WorldManager &worldMgr = WorldManager::Instance();
+      if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+        worldMgr.unloadWorld();
+        // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+        // when LoadingState returns to this state
+      }
+
+      // Reset initialized flag so state re-initializes after loading
+      m_initialized = false;
+
+      // Keep m_worldLoaded = true to remember we've already been through loading
+      GAMESTATE_INFO("EventDemoState cleanup for LoadingState transition complete");
+      return true;
+    }
+
+    // Full exit (going to main menu, other states, or shutting down)
+
     // Reset player
     m_player.reset();
 
@@ -309,8 +381,7 @@ bool EventDemoState::exit() {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
-      // CRITICAL: Only reset m_worldLoaded when actually unloading a world
-      // This prevents infinite loop when transitioning to LoadingState (no world yet)
+      // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
       m_worldLoaded = false;
     }
 
@@ -397,6 +468,8 @@ void EventDemoState::update(float deltaTime) {
       auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
       if (loadingState) {
         loadingState->configure("EventDemo", config);
+        // Set flag before transitioning to preserve m_worldLoaded in exit()
+        m_transitioningToLoading = true;
         // Use changeState (called from update) to properly exit and re-enter
         gameStateManager->changeState("LoadingState");
       } else {
