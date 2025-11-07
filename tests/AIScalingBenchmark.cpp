@@ -86,6 +86,13 @@ public:
 
         auto benchmarkEntity = std::dynamic_pointer_cast<BenchmarkEntity>(entity);
 
+        // DEBUG: Log first few executions
+        static std::atomic<int> callCount{0};
+        int currentCall = callCount.fetch_add(1, std::memory_order_relaxed);
+        if (currentCall < 5) {
+            std::cout << "[DEBUG] BenchmarkBehavior::executeLogic called (count=" << currentCall << ")" << std::endl;
+        }
+
         // === REALISTIC PRODUCTION AI BEHAVIOR PATTERNS ===
         // Based on WanderBehavior, ChaseBehavior, PatrolBehavior production implementations
 
@@ -387,7 +394,20 @@ struct AIScalingFixture {
         behaviors.clear();
     }
 
-    // Legacy functionRun realistic benchmark with automatic threading behavior
+    /**
+     * Run realistic benchmark with automatic threading behavior.
+     *
+     * IMPORTANT: This benchmark includes a 16-frame warmup phase before measurements.
+     * The warmup is REQUIRED due to AIManager's SIMD distance staggering optimization
+     * which updates only 1/16th of entities per frame (rotating through entities mod 16).
+     * Without warmup, most entities won't have distance initialized, causing them to
+     * fail culling checks and report 0 or very low update counts.
+     *
+     * @param numEntities Number of entities to create
+     * @param numBehaviors Number of different behaviors to use
+     * @param numUpdates Number of update cycles to measure
+     * @param numMeasurements Number of measurement runs to average
+     */
     void runRealisticBenchmark(int numEntities, int numBehaviors, int numUpdates, int numMeasurements = 3) {
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
@@ -499,10 +519,28 @@ struct AIScalingFixture {
             behaviorEntities[behaviorIdx].push_back(entities[i]);
         }
 
+        // ===== WARMUP PHASE =====
+        // Run 16 warmup frames to initialize distance staggering.
+        // AIManager's SIMD distance optimization staggers distance calculations across 16 frames
+        // (updating 1/16th of entities per frame). Without warmup, entities may not have their
+        // distance calculated, causing them to fail culling checks and report 0 updates.
+        // This warmup ensures all entities get at least one distance update before measurement.
+        std::cout << "  [DEBUG] Running 16 warmup frames for distance staggering initialization..." << std::endl;
+        for (int warmup = 0; warmup < 16; ++warmup) {
+            AIManager::Instance().update(0.016f);
+        }
+
+        // Wait for warmup to complete
+        while (HammerEngine::ThreadSystem::Instance().isBusy()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::cout << "  [DEBUG] Warmup complete. Starting measurement..." << std::endl;
+
         // Run specified number of times for measurements
         std::vector<double> durations;
 
-        // Get starting behavior execution count from AIManager
+        // Get starting behavior execution count from AIManager (AFTER warmup)
         size_t startingExecutions = AIManager::Instance().getBehaviorUpdateCount();
 
 
@@ -589,22 +627,22 @@ struct AIScalingFixture {
         // Print results in clean format matching event benchmark
         std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "  Total time: " << totalTimeMs << " ms" << std::endl;
+        std::cout << "  Total dispatch time: " << totalTimeMs << " ms" << std::endl;
         std::cout << "  Time per update cycle: " << timePerUpdateMs << " ms" << std::endl;
-        std::cout << std::setprecision(6);
         std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
         std::cout << std::setprecision(0);
         std::cout << "  Entity updates per second: " << entitiesPerSecond << std::endl;
+        std::cout << std::setprecision(2);
         std::cout << "  Total behavior updates: " << totalBehaviorExecutions << std::endl;
         std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
         // Verification status based on behavior executions
         int expectedExecutions = numEntities * numUpdates;
-        std::cout << "  Entity updates: " << numEntities << "/" << numEntities;
+        std::cout << "  Entity updates: " << totalBehaviorExecutions << "/" << expectedExecutions;
         if (totalBehaviorExecutions >= expectedExecutions / 2) {
             std::cout << " ✓" << std::endl;
         } else {
-            std::cout << " ✗ (Low execution count: " << totalBehaviorExecutions << "/" << expectedExecutions << ")" << std::endl;
+            std::cout << " ✗ (Low execution count)" << std::endl;
         }
 
         // Clear all entity frame counters
@@ -702,7 +740,8 @@ struct AIScalingFixture {
         // Enable threading and let system decide automatically
         AIManager::Instance().configureThreading(true);
 
-        std::cout << "\nREALISTIC SCALABILITY SUMMARY:" << std::endl;
+        std::cout << "\n⚠️  NOTE: This test uses ESTIMATED performance rates (not live benchmarks)" << std::endl;
+        std::cout << "REALISTIC SCALABILITY SUMMARY (ESTIMATED):" << std::endl;
         std::cout << "Entity Count | Threading Mode | Updates Per Second | Performance Ratio" << std::endl;
         std::cout << "-------------|----------------|-------------------|------------------" << std::endl;
 
@@ -865,6 +904,22 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
             AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
         }
 
+        // ===== WARMUP PHASE =====
+        // Run 16 warmup frames to initialize distance staggering.
+        // AIManager's SIMD distance optimization staggers distance calculations across 16 frames.
+        // Without warmup, distance calculations won't be initialized for most entities,
+        // causing them to fail culling checks and report 0 or very low updates.
+        // See runRealisticBenchmark() for detailed explanation.
+        for (int warmup = 0; warmup < 16; ++warmup) {
+            AIManager::Instance().update(0.016f);
+        }
+
+        // Wait for warmup to complete
+        while (HammerEngine::ThreadSystem::Instance().isBusy()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(500));
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
         // Run benchmark measurements
         std::vector<double> times;
         for (int run = 0; run < 3; ++run) {
@@ -941,13 +996,24 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
         // Run realistic benchmark - system will automatically use threading
         fixture.runRealisticBenchmark(numEntities, adjustedNumBehaviors, adjustedNumUpdates);
 
-        // Verify entities were actually created and processed
+        // Verify entities were actually created and behaviors executed
         size_t actualEntityCount = fixture.entities.size();
-        std::cout << "\nVerification - Created entities: " << actualEntityCount << "/" << numEntities;
+        size_t expectedExecutions = static_cast<size_t>(numEntities) * adjustedNumUpdates;
+        size_t behaviorExecutions = AIManager::Instance().getBehaviorUpdateCount();
+
+        std::cout << "\nVerification:" << std::endl;
+        std::cout << "  Created entities: " << actualEntityCount << "/" << numEntities;
         if (actualEntityCount == numEntities) {
             std::cout << " ✓" << std::endl;
         } else {
             std::cout << " ✗" << std::endl;
+        }
+
+        std::cout << "  Behavior executions: " << behaviorExecutions;
+        if (behaviorExecutions >= expectedExecutions / 2) {
+            std::cout << " ✓ (threshold: " << (expectedExecutions / 2) << ")" << std::endl;
+        } else {
+            std::cout << " ✗ (threshold: " << (expectedExecutions / 2) << ", low execution count)" << std::endl;
         }
 
         std::cout << "\n===== EXTREME ENTITY COUNT TEST COMPLETED =====\n" << std::endl;
@@ -1032,6 +1098,7 @@ BOOST_AUTO_TEST_CASE(TestThreadSystemQueueLoad) {
         std::cout << "    Average queue size: " << std::fixed << std::setprecision(1) << avgQueueSize << std::endl;
         std::cout << "    Non-zero queue samples: " << nonZeroSamples << "/" << queueSnapshots.size() << std::endl;
         std::cout << "    Queue overflow risk: " << (queueOverflow ? "CRITICAL" : "SAFE") << std::endl;
+        std::cout << "    Queue impact on performance: " << (queueOverflow ? "DEGRADED" : "NORMAL") << std::endl;
 
         // DEFENSIVE ASSERTIONS - Will fail if future changes break queue management
         BOOST_CHECK_LT(maxQueueSize, 4000); // Critical: Must stay below ThreadSystem limit
