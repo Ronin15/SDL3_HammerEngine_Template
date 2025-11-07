@@ -1070,7 +1070,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
     // Enqueue worker tasks to ThreadSystem for random operations
     for (int t = 0; t < NUM_THREADS; ++t) {
       HammerEngine::ThreadSystem::Instance().enqueueTask(
-        [t, &entityPtrs, &stopFlag, &completedTasks, NUM_BEHAVIORS, OPERATIONS_PER_THREAD]() {
+        [t, &entityPtrs, &stopFlag, &completedTasks]() {
           try {
             std::mt19937 rng(
                 t + 1); // Use thread id as seed for deterministic randomness
