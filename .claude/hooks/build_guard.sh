@@ -32,14 +32,18 @@ check_running_builds() {
     local cmake_count=0
 
     # Check for ninja processes in the build directory
-    if pgrep -f "ninja -C build" > /dev/null 2>&1; then
-        ninja_count=$(pgrep -f "ninja -C build" -c 2>/dev/null || echo 0)
-    fi
+    # Exclude pgrep itself and build_guard.sh invocations to avoid false positives
+    ninja_count=$(pgrep -f "ninja -C build" -a 2>/dev/null | \
+                  grep -v "pgrep" | \
+                  grep -v "build_guard.sh" | \
+                  wc -l)
 
     # Check for cmake processes targeting the build directory
-    if pgrep -f "cmake -B build" > /dev/null 2>&1; then
-        cmake_count=$(pgrep -f "cmake -B build" -c 2>/dev/null || echo 0)
-    fi
+    # Exclude pgrep itself and build_guard.sh invocations to avoid false positives
+    cmake_count=$(pgrep -f "cmake -B build" -a 2>/dev/null | \
+                  grep -v "pgrep" | \
+                  grep -v "build_guard.sh" | \
+                  wc -l)
 
     echo $((ninja_count + cmake_count))
 }
