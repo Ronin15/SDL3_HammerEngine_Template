@@ -415,7 +415,6 @@ void GamePlayState::onWindowResize(int newLogicalWidth,
   auto &ui = UIManager::Instance();
 
   const int inventoryWidth = 280;
-  const int inventoryHeight = 400;
 
   // Get the panel's new position (auto-repositioned by UIManager)
   UIRect panelBounds = ui.getBounds("gameplay_inventory_panel");
