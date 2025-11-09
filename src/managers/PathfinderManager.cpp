@@ -125,6 +125,7 @@ void PathfinderManager::clean() {
     m_grid.reset();
 
     m_initialized.store(false);
+    m_isShutdown = true;
     PATHFIND_INFO("PathfinderManager cleaned up");
 }
 
