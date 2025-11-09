@@ -615,6 +615,10 @@ void InputManager::onDisplayChange(const SDL_Event& event) {
 }
 
 void InputManager::clean() {
+  if (m_isShutdown) {
+    return;
+  }
+
   if(m_gamePadInitialized) {
     int gamepadCount{0};
     // Close all gamepads if detected
