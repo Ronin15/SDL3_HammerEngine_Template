@@ -51,7 +51,7 @@ Comprehensive event management system with EventManager as the single source of 
 - **[EventManager Overview](events/EventManager.md)** - Complete unified documentation for EventManager as the single source of truth
 - **[EventManager Quick Reference](events/EventManager_QuickReference.md)** - Fast API lookup for all event functionality through EventManager
 - **[EventManager Advanced](events/EventManager_Advanced.md)** - Advanced topics like threading, performance optimization, and complex event patterns
-- **[EventManager Examples](events/EventManager_Examples.cpp)** - Comprehensive code examples and best practices
+- **[EventManager Examples](events/EventManager_Examples.cpp)** - Comprehensive C++ code examples and best practices (code file)
 - **[EventFactory](events/EventFactory.md)** - Definition-driven creation, custom creators, and event sequences
 
 ### UI System
@@ -90,11 +90,10 @@ See the [Manager Documentation Index](managers/README.md) for a complete, alphab
 - **[SettingsManager](managers/SettingsManager.md)** – Thread-safe settings management with JSON persistence, category organization, and change listener callbacks.
 - **[SoundManager](managers/SoundManager.md)** – Centralized audio system for sound effects and music playback, supporting multiple formats and volume control.
 - **[TextureManager](managers/TextureManager.md)** – Handles loading, management, and rendering of textures (PNG), with batch loading and animation support.
-- **[TimestepManager](managers/TimestepManager.md)** – Provides consistent game timing with fixed timestep updates and variable timestep rendering.
 - **[WorldManager](managers/WorldManager.md)** – Oversees world generation, streaming, and region management with tight integration to collision and AI systems.
 - **[WorldResourceManager](managers/WorldResourceManager.md)** – Tracks and manipulates resource quantities across multiple worlds, supporting thread-safe operations and statistics.
 
-Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated with other systems and may have additional documentation in other folders. See the [Manager Documentation Index](managers/README.md) for details.
+**Note:** Some managers have dedicated documentation in specialized sections due to their extensive sub-systems: **AIManager** (see [AI System](#ai-system) section), **EventManager** (see [Event System](#event-system) section), and **UIManager** (see [UI System](#ui-system) section). See the [Manager Documentation Index](managers/README.md) for the complete alphabetized list of all managers.
 
 **Resource System**: ResourceTemplateManager and WorldResourceManager work together to provide a complete resource management solution. See the [Resource System Integration](#resource-system-integration) section below for details on how these systems integrate with events, entities, and JSON loading.
 
@@ -109,6 +108,8 @@ See the [GameState Documentation Index](gameStates/README.md) for complete docum
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
+See the [Utility Documentation Index](utils/README.md) for additional utility documentation and organization.
+
 - **[Logger System](utils/Logger.md)** - Comprehensive logging system with debug/release optimization and system-specific macros
 - **[JsonReader](utils/JsonReader.md)** - RFC 8259 compliant JSON parser with type-safe accessors and robust error handling
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
@@ -116,7 +117,7 @@ Core utility classes and helper systems used throughout the engine.
 - **[ResourceHandle System](utils/ResourceHandle_System.md)** - Lightweight, type-safe handle indirection for resource lookups across modules
 - **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
 - **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
-- **[Performance Notes](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
+- **[Performance Notes](../../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks (project root)
 
 ## Resource System Integration
 
