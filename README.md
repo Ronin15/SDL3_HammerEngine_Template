@@ -28,8 +28,8 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - **Comprehensive Testing & Analysis**  
   Extensive Boost.Test suite, static analysis (cppcheck), and Valgrind integration for performance, memory, and thread safety validation.
 
-- **Cross-Platform Optimizations**  
-  Unified codebase with platform-specific enhancements: macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
+- **Cross-Platform Optimizations**
+  Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
 
 - **Extensive Documentation**  
   Full guides, API references, best practices, and troubleshooting for all major systems.
@@ -53,6 +53,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 ### Prerequisites
 
 - CMake 3.28+, Ninja, C++20 compiler (GCC/Clang/MSVC) - MSVC planned
+- Platforms: Windows, macOS (Apple Silicon only), Linux
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (image, ttf, mixer)
 - Boost (for tests), cppcheck (for static analysis), Valgrind (for memory, cache, call profiling, thread safety, checks and validations)
 
@@ -115,8 +116,7 @@ ninja -C build
 
 ## Contributing
 
-Contributions welcome!  
-- See [AGENTS.md](AGENTS.md) for build, test, and style guidelines.
+Contributions welcome!
 - Report issues via GitHub with environment details and steps to reproduce.
 - Fork, branch, test, and submit PRs with clear descriptions.
 
