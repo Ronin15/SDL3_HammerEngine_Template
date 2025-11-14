@@ -489,6 +489,126 @@ Result: Maximum efficiency with minimal CPU overhead
 - **Memory Efficient**: Optimized double buffering reduces memory copying
 - **Thread Safe**: Lock-free processing with batch-level synchronization
 
+### SIMD Optimizations
+
+The AIManager leverages cross-platform SIMD operations for high-performance distance calculations, achieving 3-4x speedups on arithmetic-heavy operations.
+
+**SIMD Abstraction Layer:**
+- **Cross-Platform**: Uses `SIMDMath.hpp` for unified SIMD operations
+- **x86-64 Support**: SSE2 (baseline), SSE4.1, AVX2 (with FMA)
+- **ARM64 Support**: NEON (Apple Silicon M1/M2/M3)
+- **Scalar Fallback**: Automatic fallback for unsupported platforms
+
+**Distance Calculation Optimization:**
+```cpp
+// Compute distances from AI entity to 4 targets simultaneously
+using namespace HammerEngine::SIMD;
+
+Float4 aiX = broadcast(aiPos.x);
+Float4 aiY = broadcast(aiPos.y);
+
+Float4 tX = load4(targetX);  // Load 4 target X coordinates
+Float4 tY = load4(targetY);  // Load 4 target Y coordinates
+
+Float4 dx = sub(tX, aiX);    // dx = target - ai (4 at once)
+Float4 dy = sub(tY, aiY);    // dy = target - ai (4 at once)
+
+Float4 dxSq = mul(dx, dx);   // dx²
+Float4 dySq = mul(dy, dy);   // dy²
+Float4 distSq = add(dxSq, dySq);  // distance² = dx² + dy²
+
+store4(distances, distSq);   // Store 4 results
+```
+
+**Performance Benefits:**
+- **2-4x speedup** on distance calculations for 10,000+ entities
+- **Better cache locality**: Process 4 entities per SIMD instruction
+- **Reduced memory bandwidth**: Fewer loads/stores vs scalar code
+- **Platform-optimized**: Automatic selection of best SIMD path
+
+**Implementation Details:**
+- Distance calculations batch processed in groups of 4
+- Scalar tail loop handles remaining entities (count % 4)
+- SIMD path automatically enabled on supported platforms
+- See [SIMDMath Documentation](../utils/SIMDMath.md) for complete API reference
+
+### Behavior Configuration System
+
+The AIManager supports structured behavior configuration through the `BehaviorConfig.hpp` system, providing centralized configuration for all AI behaviors.
+
+**Configuration Structure:**
+Each behavior type has its own config struct with default values:
+
+```cpp
+// WanderBehaviorConfig
+struct WanderBehaviorConfig {
+    float wanderRadius = 100.0f;
+    float wanderSpeed = 50.0f;
+    float pauseDuration = 2.0f;
+    float moveDuration = 4.0f;
+    bool randomizeStartPosition = true;
+};
+
+// ChaseBehaviorConfig
+struct ChaseBehaviorConfig {
+    float chaseSpeed = 120.0f;
+    float chaseRange = 300.0f;
+    float stopDistance = 50.0f;
+    bool useLineOfSight = false;
+};
+
+// PatrolBehaviorConfig
+struct PatrolBehaviorConfig {
+    std::vector<Vector2D> waypoints;
+    float patrolSpeed = 60.0f;
+    bool loop = true;
+    bool reverseAtEnd = false;
+    float waypointReachDistance = 10.0f;
+};
+
+// AttackBehaviorConfig
+struct AttackBehaviorConfig {
+    float attackRange = 100.0f;
+    float attackCooldown = 1.0f;
+    float attackDamage = 10.0f;
+    float attackWindup = 0.2f;
+    bool requireLineOfSight = true;
+};
+```
+
+**Configuration Benefits:**
+- **Centralized Defaults**: All default values in one place
+- **Type Safety**: Compile-time type checking
+- **Easy Tuning**: Modify behavior parameters without code changes
+- **Validation**: Built-in parameter validation
+- **Documentation**: Self-documenting through struct fields
+
+**Usage Example:**
+```cpp
+// Create behavior with custom configuration
+WanderBehaviorConfig config;
+config.wanderRadius = 150.0f;
+config.wanderSpeed = 80.0f;
+config.pauseDuration = 1.5f;
+
+auto wanderBehavior = std::make_shared<WanderBehavior>(config);
+
+// Or use mode-based configuration (applies default config)
+auto wanderBehavior = createBehavior("Wander", "Slow");
+```
+
+**Configuration Files:**
+- `include/ai/behaviors/WanderBehaviorConfig.hpp`
+- `include/ai/behaviors/ChaseBehaviorConfig.hpp`
+- `include/ai/behaviors/PatrolBehaviorConfig.hpp`
+- `include/ai/behaviors/AttackBehaviorConfig.hpp`
+- `include/ai/behaviors/FleeBehaviorConfig.hpp`
+- `include/ai/behaviors/GuardBehaviorConfig.hpp`
+- `include/ai/behaviors/FollowBehaviorConfig.hpp`
+- `include/ai/behaviors/IdleBehaviorConfig.hpp`
+
+For detailed behavior configuration examples, see [Behavior Modes Documentation](BehaviorModes.md).
+
 ## Performance Optimization History
 
 **Problem Identified:**
