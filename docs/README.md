@@ -10,6 +10,7 @@
   - [UI System](#ui-system)
   - [Threading System](#threading-system)
   - [Manager Systems](#manager-systems)
+  - [GameState System](#gamestate-system)
   - [Utility Systems](#utility-systems)
 - [Getting Started](#getting-started)
 - [Key Features](#key-features)
@@ -72,7 +73,7 @@ High-performance multithreading framework with intelligent WorkerBudget allocati
 - **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
 
 ### Manager Systems
-Resource management systems for fonts, textures, audio, particles, game data, entity states, and world resources.
+Resource management systems for fonts, textures, audio, particles, game data, entity states, settings, and world resources.
 
 See the [Manager Documentation Index](managers/README.md) for a complete, alphabetized list of all manager docs.
 
@@ -86,6 +87,7 @@ See the [Manager Documentation Index](managers/README.md) for a complete, alphab
 - **[ResourceFactory](managers/ResourceFactory.md)** – Blueprint-driven instantiation pipeline for complex game objects with dependency resolution.
 - **[ResourceTemplateManager](managers/ResourceTemplateManager.md)** – Registers, indexes, and instantiates resource templates (items, blueprints) with thread safety and statistics.
 - **[SaveGameManager](managers/SaveGameManager.md)** – Comprehensive save/load system with binary format, slot management, and robust error handling.
+- **[SettingsManager](managers/SettingsManager.md)** – Thread-safe settings management with JSON persistence, category organization, and change listener callbacks.
 - **[SoundManager](managers/SoundManager.md)** – Centralized audio system for sound effects and music playback, supporting multiple formats and volume control.
 - **[TextureManager](managers/TextureManager.md)** – Handles loading, management, and rendering of textures (PNG), with batch loading and animation support.
 - **[TimestepManager](managers/TimestepManager.md)** – Provides consistent game timing with fixed timestep updates and variable timestep rendering.
@@ -96,6 +98,14 @@ Some managers (e.g., ParticleManager, SaveGameManager) are tightly integrated wi
 
 **Resource System**: ResourceTemplateManager and WorldResourceManager work together to provide a complete resource management solution. See the [Resource System Integration](#resource-system-integration) section below for details on how these systems integrate with events, entities, and JSON loading.
 
+### GameState System
+GameState management for different gameplay modes and screens with async loading support.
+
+See the [GameState Documentation Index](gameStates/README.md) for complete documentation on the GameState system.
+
+- **[LoadingState](gameStates/LoadingState.md)** – Non-blocking loading screen with async world generation on ThreadSystem and responsive progress UI.
+- **[SettingsMenuState](gameStates/SettingsMenuState.md)** – Tab-based settings UI with Apply/Cancel functionality and SettingsManager integration.
+
 ### Utility Systems
 Core utility classes and helper systems used throughout the engine.
 
@@ -104,6 +114,8 @@ Core utility classes and helper systems used throughout the engine.
 - **[JSON Resource Loading](utils/JSON_Resource_Loading_Guide.md)** - Complete guide to loading items, materials, currency, and game resources from JSON files with ResourceTemplateManager integration
 - **[Binary Serialization](utils/SERIALIZATION.md)** - Fast, header-only serialization system for game data
 - **[ResourceHandle System](utils/ResourceHandle_System.md)** - Lightweight, type-safe handle indirection for resource lookups across modules
+- **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
+- **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Performance Notes](../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks
 
 ## Resource System Integration
