@@ -396,6 +396,10 @@ private:
     // Event subscription tracking
     std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 
+    // Async task synchronization (mirroring AIManager pattern)
+    std::vector<std::future<void>> m_gridRebuildFutures;
+    std::mutex m_gridRebuildFuturesMutex;
+
     // Internal methods - simplified
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
@@ -403,6 +407,7 @@ private:
     void evictOldestCacheEntry();
     void clearOldestCacheEntries(float percentage); // Smart cache clearing (partial LRU eviction)
     void clearAllCache(); // Complete cache clear for world load/unload
+    void waitForGridRebuildCompletion(); // Wait for pending async grid rebuild tasks
     void subscribeToEvents(); // Subscribe to collision and world events
     void unsubscribeFromEvents(); // Unsubscribe from events
 
