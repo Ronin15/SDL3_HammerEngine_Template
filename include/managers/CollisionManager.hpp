@@ -513,9 +513,8 @@ private:
                 expectedPairs = bodyCount / 8; // Large body counts benefit from spatial culling
             }
 
-            size_t expectedCollisions = expectedPairs / 2; // About 50% pair→collision ratio observed
-
             if (pairBuffer.capacity() < expectedPairs) {
+                size_t expectedCollisions = expectedPairs / 2; // About 50% pair→collision ratio observed
                 pairBuffer.reserve(expectedPairs);
                 candidateBuffer.reserve(bodyCount / 2);
                 collisionBuffer.reserve(expectedCollisions);

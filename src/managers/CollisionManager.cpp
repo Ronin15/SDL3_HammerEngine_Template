@@ -1644,7 +1644,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
     if (regionCacheIt != m_coarseRegionStaticCache.end()) {
 
-      if (regionCacheIt != m_coarseRegionStaticCache.end() && regionCacheIt->second.valid) {
+      if (regionCacheIt->second.valid) {
         // Mark cache entry as accessed (reset stale count)
         regionCacheIt->second.lastAccessFrame = m_perf.frames;
         regionCacheIt->second.staleCount = 0;

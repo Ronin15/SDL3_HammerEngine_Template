@@ -481,7 +481,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         }
         
         // EARLY SUCCESS: Check if we're very close to the goal for quick termination
-        if (iterations > 100 && iterations % 500 == 0 && !open.empty()) {
+        if (iterations > 100 && iterations % 500 == 0) {
             NodePool::Node topNode = open.top();
             int distToGoal = std::abs(topNode.x - gx) + std::abs(topNode.y - gy);
             if (distToGoal <= 2) {
