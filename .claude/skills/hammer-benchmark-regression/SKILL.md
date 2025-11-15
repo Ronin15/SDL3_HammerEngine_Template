@@ -31,10 +31,18 @@ The AI System is the most performance-critical component. Always run `./tests/te
 **Checklist before generating report:**
 - [ ] AI Scaling Benchmark completed
 - [ ] Collision System Benchmark completed
-- [ ] Pathfinder Benchmark completed
+- [ ] **Pathfinder Benchmark completed** ← CRITICAL: Always verify metrics extracted!
 - [ ] Event Manager Scaling completed
 - [ ] Particle Manager Benchmark completed
 - [ ] UI Stress Tests completed
+
+**Metrics Extraction Verification (MANDATORY):**
+- [ ] AI: Synthetic AND Integrated metrics extracted
+- [ ] **Pathfinding: Distance-based performance metrics extracted** ← DO NOT SKIP!
+- [ ] Collision: SOA timing and efficiency extracted
+- [ ] Event: Throughput and latency extracted
+- [ ] Particle: Update time extracted
+- [ ] UI: Processing throughput extracted
 
 ## Benchmark Test Suites
 
@@ -239,18 +247,55 @@ Hash Efficiency: 94.2%
 AABB Tests: 250000/sec
 ```
 
-#### Pathfinder Metrics
+#### Pathfinder Metrics **[CRITICAL - DO NOT SKIP]**
+
+**⚠️ CRITICAL WARNING:** Pathfinding metrics are essential for performance regression analysis. DO NOT skip extraction or report generation for pathfinding data. It directly impacts integrated AI benchmark performance.
+
+**Comprehensive Extraction (ALWAYS USE THIS):**
 ```bash
-grep -E "Path Calculation:|Nodes Explored:|Cache Hits:" test_results/pathfinder_benchmark/performance_metrics.txt
+# Extract path length scaling performance - MOST IMPORTANT
+grep -B2 -A5 "Distance.*units:" test_results/pathfinder_benchmark_current.txt | \
+  grep -E "Distance|Average time:|Success rate:|Average path nodes:"
+
+# Example output format:
+# Distance 50 units:
+#   Success rate: 20/20 (100%)
+#   Average time: 0.024ms
+#   Average path nodes: 1
+# Distance 400 units:
+#   Success rate: 20/20 (100%)
+#   Average time: 0.049ms
+#   Average path nodes: 3
 ```
 
-**Example Output:**
+**REQUIRED Metrics to Extract:**
+1. **Path calculation time by distance** (50, 400, 2000, 4000, 8000 units)
+2. **Success rate** (must be 100% for all distances)
+3. **Average path nodes** (indicates path quality)
+4. **Immediate vs Async performance** (if available)
+
+**Baseline Comparison Keys:**
+- `Pathfinding_Distance_50_Time`
+- `Pathfinding_Distance_400_Time`
+- `Pathfinding_Distance_2000_Time`
+- `Pathfinding_Distance_4000_Time`
+- `Pathfinding_Distance_8000_Time`
+- `Pathfinding_SuccessRate`
+
+**Example Baseline Comparison:**
 ```
-Path Calculation: 8.5ms
-Nodes Explored: 342
-Cache Hits: 78%
-A* Performance: 15 paths/sec
+| Distance | Baseline | Current | Change | Status |
+|----------|----------|---------|--------|--------|
+| 50 units | 0.048ms | 0.024ms | -50.0% | 🟢 Major Improvement |
+| 400 units | 0.259ms | 0.049ms | -81.1% | 🟢 Major Improvement |
+| 2000 units | 0.502ms | 0.052ms | -89.6% | 🟢 Major Improvement |
 ```
+
+**What to Report:**
+- Always include a dedicated "Pathfinding System" section in regression reports
+- Show performance across ALL distance ranges
+- Highlight success rate (failures are critical regressions)
+- Note if pathfinding improvements benefit integrated AI benchmarks
 
 #### Event Manager Metrics
 ```bash
@@ -505,18 +550,30 @@ With the split between Synthetic and Integrated benchmarks, regression source id
 
 ---
 
-### Pathfinding System
+### Pathfinding System **[ALWAYS INCLUDE - CRITICAL]**
 
-| Metric | Baseline | Current | Change | Status |
-|--------|----------|---------|--------|--------|
-| Path Calculation | 8.5ms | 8.7ms | +2.4% | ⚪ Stable |
-| Nodes Explored | 342 | 338 | -1.2% | ⚪ Stable |
-| Cache Hits | 78% | 79% | +1.3% | ⚪ Stable |
-| Paths/sec | 15 | 15 | 0.0% | ⚪ Stable |
+**⚠️ IMPORTANT:** This section is MANDATORY in all regression reports. Pathfinding performance directly impacts integrated AI benchmarks.
 
-**Status:** ⚪ **STABLE**
-- No significant performance change
-- All metrics within acceptable variance
+| Distance (units) | Baseline Time | Current Time | Change | Path Nodes | Success Rate | Status |
+|------------------|---------------|--------------|--------|------------|--------------|--------|
+| 50 (Short) | 0.048 ms | 0.024 ms | -50.0% | 1 | 100% | 🟢 Major Improvement |
+| 400 (Medium) | 0.259 ms | 0.049 ms | -81.1% | 3 | 100% | 🟢 Major Improvement |
+| 2000 (Long) | 0.502 ms | 0.052 ms | -89.6% | 6 | 100% | 🟢 Major Improvement |
+| 4000 (Very Long) | 0.756 ms | 0.128 ms | -83.1% | 10 | 100% | 🟢 Major Improvement |
+| 8000 (Extreme) | N/A | 0.349 ms | N/A | 20 | 100% | 🟢 Excellent |
+
+**Status:** [Determine based on actual results]
+- Path calculation performance across all distance ranges
+- Success rate (must be 100% - failures are critical regressions)
+- Path quality (nodes explored should be reasonable)
+- A* algorithm and cache effectiveness
+
+**Template Notes:**
+- Always show ALL distance ranges (50, 400, 2000, 4000, 8000 units)
+- Include success rate for each distance (failures = critical regression)
+- Note path quality (average nodes should be optimal)
+- Highlight major improvements or regressions
+- Cross-reference with integrated AI benchmark if pathfinding impacts it
 
 ---
 
@@ -701,6 +758,40 @@ test_results/baseline_history/
 - Weekly during active development
 - Before releases (ensure no regressions)
 - When modifying AI, collision, pathfinding, or particle systems
+
+## Final Report Validation Checklist
+
+**⚠️ MANDATORY: Verify BEFORE submitting report to user**
+
+Before finalizing any regression report, confirm ALL of the following:
+
+### Benchmark Execution
+- [ ] All 6 benchmarks completed successfully (no timeouts/crashes)
+- [ ] AI Scaling: Both Synthetic AND Integrated results present
+- [ ] **Pathfinding: Path length scaling data extracted** ← CRITICAL!
+- [ ] Collision: SOA timing data extracted
+- [ ] Event Manager: Throughput data extracted
+- [ ] Particle Manager: Update timing data extracted
+- [ ] UI Stress: Processing metrics extracted
+
+### Report Completeness
+- [ ] **Pathfinding System section included in report** ← DO NOT SKIP!
+- [ ] AI System: Synthetic + Integrated sections present
+- [ ] Collision System: Performance table present
+- [ ] Event Manager: Metrics table present
+- [ ] Particle Manager: Performance data present
+- [ ] UI System: Throughput data present
+- [ ] Overall status determined (PASSED/WARNING/FAILED)
+- [ ] Regression/improvement analysis complete
+
+### Critical Pathfinding Verification
+- [ ] Pathfinding metrics extracted from `test_results/pathfinder_benchmark_current.txt`
+- [ ] All 5 distance ranges present (50, 400, 2000, 4000, 8000 units)
+- [ ] Success rates reported (must be 100%)
+- [ ] Performance comparison against baseline completed
+- [ ] Pathfinding section visible in final report
+
+**If ANY checklist item is unchecked, DO NOT submit the report. Extract missing data first.**
 
 ## Exit Codes
 
