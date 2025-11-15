@@ -275,18 +275,28 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     auto [sx_raw, sy_raw] = worldToGrid(start);
     auto [gx_raw, gy_raw] = worldToGrid(goal);
 
+    PATHFIND_DEBUG("findPath: start(" + std::to_string(start.getX()) + "," + std::to_string(start.getY()) +
+                   ") → grid(" + std::to_string(sx_raw) + "," + std::to_string(sy_raw) + ") " +
+                   "goal(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) +
+                   ") → grid(" + std::to_string(gx_raw) + "," + std::to_string(gy_raw) + ") " +
+                   "gridSize(" + std::to_string(m_w) + "x" + std::to_string(m_h) + ")");
+
     // Validate original grid indices before any clamping
     if (!inBounds(sx_raw, sy_raw)) {
+        PATHFIND_ERROR("findPath: INVALID_START - grid coords (" + std::to_string(sx_raw) + "," + std::to_string(sy_raw) +
+                       ") out of bounds (0,0) to (" + std::to_string(m_w-1) + "," + std::to_string(m_h-1) + ")");
         m_stats.totalRequests++;
-        m_stats.invalidStarts++; 
+        m_stats.invalidStarts++;
         // Invalid start warnings removed - covered in PathfinderManager status reporting
-        return PathfindingResult::INVALID_START; 
+        return PathfindingResult::INVALID_START;
     }
     if (!inBounds(gx_raw, gy_raw)) {
+        PATHFIND_ERROR("findPath: INVALID_GOAL - grid coords (" + std::to_string(gx_raw) + "," + std::to_string(gy_raw) +
+                       ") out of bounds (0,0) to (" + std::to_string(m_w-1) + "," + std::to_string(m_h-1) + ")");
         m_stats.totalRequests++;
-        m_stats.invalidGoals++; 
+        m_stats.invalidGoals++;
         // Invalid goal warnings removed - covered in PathfinderManager status reporting
-        return PathfindingResult::INVALID_GOAL; 
+        return PathfindingResult::INVALID_GOAL;
     }
 
     // Start from validated indices and then clamp to keep away from exact edges

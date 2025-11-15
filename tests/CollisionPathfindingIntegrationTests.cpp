@@ -49,6 +49,12 @@ struct CollisionPathfindingFixture {
 
         // Set up a test world with some static obstacles
         setupTestWorld();
+
+        // Process any deferred collision events from setupTestWorld()
+        EventManager::Instance().update();
+
+        // Allow collision events to propagate and trigger pathfinder updates
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
 
     ~CollisionPathfindingFixture() {
@@ -83,15 +89,6 @@ struct CollisionPathfindingFixture {
             CollisionManager::Instance().addCollisionBodySOA(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         }
         CollisionManager::Instance().processPendingCommands();
-
-        // Allow time for collision events to propagate to pathfinder
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-        // Rebuild pathfinding grid to incorporate collision data
-        PathfinderManager::Instance().rebuildGrid();
-
-        // Allow world loading events to complete before pathfinding requests
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 };
 
@@ -106,6 +103,10 @@ BOOST_FIXTURE_TEST_CASE(TestObstacleAvoidancePathfinding, CollisionPathfindingFi
 
     std::vector<Vector2D> path;
     auto result = PathfinderManager::Instance().findPathImmediate(start, goal, path);
+
+    // Path should be found successfully
+    BOOST_REQUIRE_EQUAL(result, PathfindingResult::SUCCESS);
+    BOOST_REQUIRE_GE(path.size(), 2);
 
     if (result == PathfindingResult::SUCCESS) {
         BOOST_CHECK_GE(path.size(), 2);
@@ -162,9 +163,9 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
     std::vector<Vector2D> newPath;
     auto newResult = PathfinderManager::Instance().findPathImmediate(start, goal, newPath);
 
-    // Both paths should be valid (or both fail consistently)
-    BOOST_CHECK_EQUAL(originalResult == PathfindingResult::SUCCESS,
-                      newResult == PathfindingResult::SUCCESS);
+    // Both paths should be valid
+    BOOST_CHECK_EQUAL(originalResult, PathfindingResult::SUCCESS);
+    BOOST_CHECK_EQUAL(newResult, PathfindingResult::SUCCESS);
 
     if (originalResult == PathfindingResult::SUCCESS && newResult == PathfindingResult::SUCCESS) {
         // New path might be different due to dynamic obstacle
@@ -364,6 +365,9 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionLayerPathfindingInteraction, CollisionPathf
 
     std::vector<Vector2D> path;
     auto result = PathfinderManager::Instance().findPathImmediate(start, goal, path);
+
+    // Should successfully find a path through layered obstacles
+    BOOST_CHECK_EQUAL(result, PathfindingResult::SUCCESS);
 
     // Should handle layered obstacles appropriately
     if (result == PathfindingResult::SUCCESS) {
