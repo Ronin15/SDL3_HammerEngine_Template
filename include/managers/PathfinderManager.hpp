@@ -18,6 +18,30 @@
  * - Dynamic obstacle integration from CollisionManager
  * - Scales to 10K+ entities while maintaining 60+ FPS
  * - Lock-free request queuing with minimal contention
+ *
+ * ARCHITECTURE: Strict Event-Driven Grid Rebuilding
+ * ===================================================
+ * Grid rebuilds happen ONLY via event system (no synchronous fallbacks):
+ *
+ * 1. WorldLoadedEvent → PathfinderManager::onWorldLoaded() → rebuildGrid() (async on ThreadSystem)
+ * 2. CollisionObstacleChanged → PathfinderManager::onCollisionObstacleChanged() → rebuildGrid() (async)
+ * 3. TileChanged → PathfinderManager::onTileChanged() → rebuildGrid() (async)
+ *
+ * Integration Requirements:
+ * - GameEngine MUST call EventManager::update() each frame to process events
+ * - WorldManager MUST fire WorldLoadedEvent after loading worlds
+ * - CollisionManager MUST fire CollisionObstacleChanged when obstacles change
+ *
+ * Entity Behavior When Grid Not Ready:
+ * - PathfindingResult::NO_PATH_FOUND returned if grid doesn't exist
+ * - Entities should continue current path or use fallback behavior
+ * - Retry path request next frame (grid rebuild completes asynchronously)
+ *
+ * This ensures:
+ * - No blocking operations on main thread (grid rebuilds on worker threads)
+ * - Clean separation between pathfinding and world systems
+ * - Testable event-driven architecture
+ * - Entities handle gracefully degraded service during rebuilds
  */
 
 #include "utils/Vector2D.hpp"
@@ -121,21 +145,6 @@ public:
         const Vector2D& goal,
         Priority priority = Priority::High,
         std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
-    );
-
-    
-
-    /**
-     * @brief Get a path synchronously (blocking)
-     * @param start Starting position in world coordinates
-     * @param goal Goal position in world coordinates
-     * @param outPath Vector to store the resulting path
-     * @return PathfindingResult indicating success or failure
-     */
-    HammerEngine::PathfindingResult findPathImmediate(
-        const Vector2D& start,
-        const Vector2D& goal,
-        std::vector<Vector2D>& outPath
     );
 
     /**
@@ -312,6 +321,15 @@ private:
 
     // Helpers
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
+
+    // INTERNAL ONLY: Synchronous pathfinding computation (used by async system)
+    // DO NOT use directly - use requestPath() instead
+    HammerEngine::PathfindingResult findPathImmediate(
+        const Vector2D& start,
+        const Vector2D& goal,
+        std::vector<Vector2D>& outPath,
+        bool skipNormalization = false
+    );
 
     // Request management - simplified
     std::atomic<uint64_t> m_nextRequestId{1};

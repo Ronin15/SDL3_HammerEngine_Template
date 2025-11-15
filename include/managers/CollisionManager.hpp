@@ -101,6 +101,7 @@ public:
     // Type/flags helpers for filtering
     bool isDynamic(EntityID id) const;
     bool isKinematic(EntityID id) const;
+    bool isStatic(EntityID id) const;
     bool isTrigger(EntityID id) const;
 
     // World coupling

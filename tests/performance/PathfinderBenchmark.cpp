@@ -8,7 +8,6 @@
  * @brief Performance benchmarks for the PathfinderManager system
  *
  * Comprehensive pathfinding performance tests covering:
- * - Immediate pathfinding performance across different grid sizes
  * - Async pathfinding request throughput and latency
  * - Cache performance and hit rates
  * - Threading overhead vs benefits analysis
@@ -25,6 +24,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/EventManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "world/WorldGenerator.hpp"
 #include "utils/Vector2D.hpp"
@@ -49,6 +49,9 @@ public:
         ResourceTemplateManager::Instance().init();
         WorldResourceManager::Instance().init();
 
+        // Initialize EventManager for event-driven architecture
+        EventManager::Instance().init();
+
         // Initialize world and collision managers
         WorldManager::Instance().init();
         CollisionManager::Instance().init();
@@ -62,13 +65,9 @@ public:
     }
 
     ~PathfinderBenchmarkFixture() {
-        // Clean up in reverse order
-        PathfinderManager::Instance().clean();
-        CollisionManager::Instance().clean();
-        WorldManager::Instance().clean();
-        WorldResourceManager::Instance().clean();
-        ResourceTemplateManager::Instance().clean();
-        HammerEngine::ThreadSystem::Instance().clean();
+        // For benchmarks, we keep the world and managers loaded across all test cases
+        // to measure steady-state performance rather than cold-start performance.
+        // Clean only happens at the very end via global fixture.
     }
 
 private:
@@ -88,6 +87,19 @@ private:
         if (!worldLoaded) {
             throw std::runtime_error("Failed to load test world for pathfinding benchmark");
         }
+
+        // EVENT-DRIVEN: Process deferred events (triggers WorldLoaded task on ThreadSystem)
+        EventManager::Instance().update();
+
+        // Give ThreadSystem time to execute the WorldLoaded task and enqueue the deferred event
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+        // Process the deferred WorldLoadedEvent (delivers to PathfinderManager)
+        EventManager::Instance().update();
+
+        // Wait for async grid rebuild to complete (~100-200ms for test world)
+        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        std::cout << "Pathfinding grid ready for benchmarks\n";
 
         // Set world bounds for collision manager (required for collision system)
         CollisionManager::Instance().setWorldBounds(0, 0, config.width * 32, config.height * 32);
@@ -150,17 +162,30 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
             Vector2D goal(coordDist(rng) * HammerEngine::TILE_SIZE, coordDist(rng) * HammerEngine::TILE_SIZE);
 
             std::vector<Vector2D> path;
+            std::atomic<bool> pathReady{false};
+            bool pathSuccess = false;
 
             auto pathStart = high_resolution_clock::now();
-            HammerEngine::PathfindingResult result = PathfinderManager::Instance().findPathImmediate(
-                start, goal, path
+            PathfinderManager::Instance().requestPath(
+                static_cast<EntityID>(i + 10000), start, goal,
+                PathfinderManager::Priority::High,
+                [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                    path = resultPath;
+                    pathSuccess = !resultPath.empty();
+                    pathReady.store(true, std::memory_order_release);
+                }
             );
+
+            // Wait for async pathfinding to complete
+            while (!pathReady.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
             auto pathEnd = high_resolution_clock::now();
 
             double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
             pathTimes.push_back(pathTimeMs);
 
-            if (result == HammerEngine::PathfindingResult::SUCCESS) {
+            if (pathSuccess) {
                 successfulPaths++;
             }
         }
@@ -271,18 +296,31 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
 
         for (int test = 0; test < testsPerPath; ++test) {
             std::vector<Vector2D> path;
+            std::atomic<bool> pathReady{false};
+            bool pathSuccess = false;
 
             auto pathStart = high_resolution_clock::now();
-            HammerEngine::PathfindingResult result = PathfinderManager::Instance().findPathImmediate(
-                start, goal, path
+            PathfinderManager::Instance().requestPath(
+                static_cast<EntityID>(test + 20000), start, goal,
+                PathfinderManager::Priority::High,
+                [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                    path = resultPath;
+                    pathSuccess = !resultPath.empty();
+                    pathReady.store(true, std::memory_order_release);
+                }
             );
+
+            // Wait for async pathfinding to complete
+            while (!pathReady.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
             auto pathEnd = high_resolution_clock::now();
 
             double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
             pathTimes.push_back(pathTimeMs);
             pathLengths.push_back(path.size());
 
-            if (result == HammerEngine::PathfindingResult::SUCCESS) {
+            if (pathSuccess) {
                 successfulPaths++;
             }
         }
@@ -326,11 +364,24 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
 
     // First run - populate cache
     auto firstRunStart = high_resolution_clock::now();
+    int entityIdCounter = 30000;
     for (const auto& [start, goal] : uniquePaths) {
         std::vector<Vector2D> path;
+        std::atomic<bool> pathReady{false};
 
         auto pathStart = high_resolution_clock::now();
-        PathfinderManager::Instance().findPathImmediate(start, goal, path);
+        PathfinderManager::Instance().requestPath(
+            static_cast<EntityID>(entityIdCounter++), start, goal,
+            PathfinderManager::Priority::High,
+            [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                path = resultPath;
+                pathReady.store(true, std::memory_order_release);
+            }
+        );
+
+        while (!pathReady.load(std::memory_order_acquire)) {
+            std::this_thread::sleep_for(std::chrono::microseconds(10));
+        }
         auto pathEnd = high_resolution_clock::now();
 
         double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
@@ -343,9 +394,21 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
     for (int repeat = 0; repeat < repeatsPerPath; ++repeat) {
         for (const auto& [start, goal] : uniquePaths) {
             std::vector<Vector2D> path;
+            std::atomic<bool> pathReady{false};
 
             auto pathStart = high_resolution_clock::now();
-            PathfinderManager::Instance().findPathImmediate(start, goal, path);
+            PathfinderManager::Instance().requestPath(
+                static_cast<EntityID>(entityIdCounter++), start, goal,
+                PathfinderManager::Priority::High,
+                [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                    path = resultPath;
+                    pathReady.store(true, std::memory_order_release);
+                }
+            );
+
+            while (!pathReady.load(std::memory_order_acquire)) {
+                std::this_thread::sleep_for(std::chrono::microseconds(10));
+            }
             auto pathEnd = high_resolution_clock::now();
 
             double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
@@ -385,9 +448,22 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Performance summary output
-struct BenchmarkResults {
-    static void outputSummary() {
+// Global fixture for benchmark suite - handles final cleanup
+struct BenchmarkGlobalFixture {
+    BenchmarkGlobalFixture() {
+        // Global setup (if needed)
+    }
+
+    ~BenchmarkGlobalFixture() {
+        // Clean up all managers at the end of all benchmark tests
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        WorldManager::Instance().clean();
+        EventManager::Instance().clean();
+        WorldResourceManager::Instance().clean();
+        ResourceTemplateManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
+
         std::cout << "\n=== Pathfinder Benchmark Summary ===\n";
         std::cout << "Benchmark completed successfully!\n";
         std::cout << "\nKey Performance Indicators:\n";
@@ -401,4 +477,4 @@ struct BenchmarkResults {
 };
 
 // Global test setup
-BOOST_GLOBAL_FIXTURE(BenchmarkResults);
+BOOST_GLOBAL_FIXTURE(BenchmarkGlobalFixture);

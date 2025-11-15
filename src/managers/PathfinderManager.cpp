@@ -255,8 +255,11 @@ uint64_t PathfinderManager::requestPath(
         }
         
         // Compute path if cache miss
+        // IMPORTANT: Pass skipNormalization=true since coordinates are already normalized
+        // and cache key was computed from that normalization. Re-normalizing could cause
+        // cache key mismatch if grid changed between main thread and worker thread.
         if (!cacheHit) {
-            findPathImmediate(nStart, nGoal, path);
+            findPathImmediate(nStart, nGoal, path, true);
         }
         
         // Cache path and update statistics
@@ -324,7 +327,8 @@ uint64_t PathfinderManager::requestPath(
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,
     const Vector2D& goal,
-    std::vector<Vector2D>& outPath
+    std::vector<Vector2D>& outPath,
+    bool skipNormalization
 ) {
     if (!m_initialized.load() || m_isShutdown) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
@@ -334,9 +338,8 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     auto startTime = std::chrono::steady_clock::now();
 
     // Ensure grid is initialized BEFORE normalizing endpoints (needs grid for bounds)
-    PATHFIND_DEBUG("findPathImmediate() checking grid initialization");
     if (!ensureGridInitialized()) {
-        PATHFIND_ERROR("findPathImmediate() FAILED: ensureGridInitialized() returned false");
+        PATHFIND_DEBUG("findPathImmediate() called before grid ready - returning NO_PATH_FOUND");
         // Record timing even for failed requests
         auto endTime = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
@@ -355,9 +358,12 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     }
 
     // Normalize endpoints AFTER grid exists (needs grid for bounds/snapping)
+    // Skip if already normalized (prevents double normalization in async path flow)
     Vector2D nStart = start;
     Vector2D nGoal = goal;
-    normalizeEndpoints(nStart, nGoal);
+    if (!skipNormalization) {
+        normalizeEndpoints(nStart, nGoal);
+    }
 
     // Determine which pathfinding algorithm to use based on sophisticated heuristics
     HammerEngine::PathfindingResult result;
@@ -636,16 +642,11 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
             std::clamp(position.getY(), margin, worldHeight - margin)
         );
 
-        PATHFIND_DEBUG("clampToWorldBounds: input(" + std::to_string(position.getX()) + "," +
-                       std::to_string(position.getY()) + ") worldSize(" + std::to_string(worldWidth) + "x" +
-                       std::to_string(worldHeight) + ") margin=" + std::to_string(margin) +
-                       " → result(" + std::to_string(result.getX()) + "," + std::to_string(result.getY()) + ")");
-
         return result;
     }
 
-    // No grid available - world not loaded yet, return position as-is
-    PATHFIND_WARN("clampToWorldBounds: NO GRID! Returning position unchanged");
+    // No grid available - world not loaded yet, return position as-is (valid fallback)
+    PATHFIND_DEBUG("clampToWorldBounds called before grid ready - returning position unchanged");
     return position;
 }
 
@@ -778,25 +779,17 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desir
 }
 
 void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) const {
-    PATHFIND_DEBUG("normalizeEndpoints: INPUT start(" + std::to_string(start.getX()) + "," + std::to_string(start.getY()) +
-                   ") goal(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) + ")");
-
-    // Clamp to world bounds with a modest interior margin
-    const float margin = 96.0f;
-    start = clampToWorldBounds(start, margin);
-    goal = clampToWorldBounds(goal, margin);
-    PATHFIND_DEBUG("normalizeEndpoints: After clamp(margin=" + std::to_string(margin) + ") start(" +
-                   std::to_string(start.getX()) + "," + std::to_string(start.getY()) +
-                   ") goal(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) + ")");
+    // Clamp to world bounds with interior margin (1.5x cell size = 96px keeps pathfinding
+    // away from exact world edges where grid cells may be invalid or blocked)
+    constexpr float EDGE_MARGIN = 96.0f;
+    start = clampToWorldBounds(start, EDGE_MARGIN);
+    goal = clampToWorldBounds(goal, EDGE_MARGIN);
 
     // Snap to nearest open cells if grid available
     if (auto grid = std::atomic_load(&m_grid)) {
         float r = grid->getCellSize() * 2.0f;
         start = grid->snapToNearestOpenWorld(start, r);
         goal = grid->snapToNearestOpenWorld(goal, r);
-        PATHFIND_DEBUG("normalizeEndpoints: After snap start(" + std::to_string(start.getX()) + "," +
-                       std::to_string(start.getY()) + ") goal(" + std::to_string(goal.getX()) + "," +
-                       std::to_string(goal.getY()) + ")");
     }
 
     // Quantize to improve cache hits - use dynamic quantization scaled to world size
@@ -804,17 +797,14 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
                      std::round(start.getY() / m_endpointQuantization) * m_endpointQuantization);
     goal = Vector2D(std::round(goal.getX() / m_endpointQuantization) * m_endpointQuantization,
                     std::round(goal.getY() / m_endpointQuantization) * m_endpointQuantization);
-    PATHFIND_DEBUG("normalizeEndpoints: After quantize(q=" + std::to_string(m_endpointQuantization) +
-                   ") start(" + std::to_string(start.getX()) + "," + std::to_string(start.getY()) +
-                   ") goal(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) + ")");
 
-    // CRITICAL: Clamp again after quantization to prevent rounding to exact world edges
-    // which would create out-of-bounds grid coordinates
-    start = clampToWorldBounds(start, margin);
-    goal = clampToWorldBounds(goal, margin);
-    PATHFIND_DEBUG("normalizeEndpoints: FINAL start(" + std::to_string(start.getX()) + "," +
-                   std::to_string(start.getY()) + ") goal(" + std::to_string(goal.getX()) + "," +
-                   std::to_string(goal.getY()) + ")");
+    // Re-clamp after quantization since rounding can push coordinates beyond margin
+    // in edge cases where quantization grid doesn't align with world bounds.
+    // Example: position at (worldWidth-64) within margin=96, quantization=128
+    // rounds to either (worldWidth-128) or (worldWidth), latter exceeds bounds.
+    // Cost: ~20 cycles per path request, prevents rare INVALID_GOAL errors.
+    start = clampToWorldBounds(start, EDGE_MARGIN);
+    goal = clampToWorldBounds(goal, EDGE_MARGIN);
 }
 
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
@@ -882,83 +872,8 @@ void PathfinderManager::reportStatistics() const {
 }
 
 bool PathfinderManager::ensureGridInitialized() {
-    if (std::atomic_load(&m_grid)) {
-        PATHFIND_DEBUG("ensureGridInitialized(): Grid already exists, returning true");
-        return true; // Grid already exists
-    }
-
-    PATHFIND_DEBUG("ensureGridInitialized(): Grid does NOT exist, attempting to create it");
-
-    // Check if we have an active world to get dimensions from
-    const auto& worldManager = WorldManager::Instance();
-    if (!worldManager.hasActiveWorld()) {
-        PATHFIND_DEBUG("Cannot initialize pathfinding grid - no active world");
-        return false;
-    }
-
-    // Get world dimensions
-    int worldWidth = 0;
-    int worldHeight = 0;
-    if (!worldManager.getWorldDimensions(worldWidth, worldHeight)) {
-        PATHFIND_WARN("Cannot get world dimensions for pathfinding grid initialization");
-        return false;
-    }
-
-    // Validate dimensions to prevent 0x0 grids
-    if (worldWidth <= 0 || worldHeight <= 0) {
-        PATHFIND_WARN("Invalid world dimensions for pathfinding grid: " + 
-                        std::to_string(worldWidth) + "x" + std::to_string(worldHeight));
-        return false;
-    }
-
-    // Calculate grid dimensions in cells
-    float worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
-    float worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
-    int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
-    int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
-
-    // Ensure minimum grid size
-    if (gridWidth <= 0 || gridHeight <= 0) {
-        PATHFIND_WARN("Calculated grid dimensions too small: " + 
-                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
-                        " (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
-                        ", cellSize: " + std::to_string(m_cellSize) + ")");
-        return false;
-    }
-
-    try {
-        // Create the pathfinding grid
-        auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
-            gridWidth,
-            gridHeight,
-            m_cellSize,
-            Vector2D(0, 0)
-        );
-
-        // Apply configuration settings
-        newGrid->setAllowDiagonal(m_allowDiagonal);
-        newGrid->setMaxIterations(m_maxIterations);
-
-        // Build the grid from world data
-        newGrid->rebuildFromWorld();
-
-        std::atomic_store(&m_grid, newGrid);
-
-        PATHFIND_INFO("Pathfinding grid initialized: " +
-                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) +
-                        " cells (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) +
-                        ", cellSize: " + std::to_string(m_cellSize) + ")");
-
-        // Auto-calculate optimal cache settings for this world size
-        calculateOptimalCacheSettings();
-
-        return true;
-    }
-    catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to create pathfinding grid: " + std::string(e.what()));
-        std::atomic_store(&m_grid, std::shared_ptr<HammerEngine::PathfindingGrid>());
-        return false;
-    }
+    // Check if grid exists - no fallback
+    return std::atomic_load(&m_grid) != nullptr;
 }
 
 uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
