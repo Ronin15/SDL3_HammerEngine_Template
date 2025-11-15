@@ -112,7 +112,10 @@ void PathfinderManager::clean() {
     }
 
     PATHFIND_INFO("Cleaning up PathfinderManager");
-    
+
+    // Wait for grid rebuild tasks to complete before shutdown
+    waitForGridRebuildCompletion();
+
     // Unsubscribe from events
     unsubscribeFromEvents();
 
@@ -139,6 +142,10 @@ void PathfinderManager::prepareForStateTransition() {
         PATHFIND_WARN("PathfinderManager not initialized or already shutdown during state transition");
         return;
     }
+
+    // CRITICAL: Wait for any running grid rebuild tasks to complete BEFORE clearing data
+    // This prevents async tasks from accessing deleted world data during state transitions
+    waitForGridRebuildCompletion();
 
     // Clear path cache completely for fresh state
     {
@@ -433,8 +440,8 @@ void PathfinderManager::rebuildGrid() {
     bool allowDiagonal = m_allowDiagonal;
     int maxIterations = m_maxIterations;
 
-    // Submit rebuild task to ThreadSystem (background thread)
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
+    // Submit rebuild task to ThreadSystem (background thread) and track future for synchronization
+    auto rebuildFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
         [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, this]() {
             PATHFIND_DEBUG("ASYNC TASK EXECUTING: Starting grid rebuild on background thread");
             try {
@@ -474,6 +481,12 @@ void PathfinderManager::rebuildGrid() {
         HammerEngine::TaskPriority::Low, // Low priority - doesn't block gameplay
         "PathfindingGridRebuild"
     );
+
+    // Store future for synchronization during state transitions (prevents world data race)
+    {
+        std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+        m_gridRebuildFutures.push_back(std::move(rebuildFuture));
+    }
 
     PATHFIND_DEBUG("Grid rebuild submitted to background thread");
 }
@@ -1263,6 +1276,35 @@ void PathfinderManager::onTileChanged(int x, int y) {
     if (removedCount > 0) {
         PATHFIND_DEBUG("Tile changed at (" + std::to_string(x) + ", " + std::to_string(y) +
                       "), invalidated " + std::to_string(removedCount) + " cached paths");
+    }
+}
+
+void PathfinderManager::waitForGridRebuildCompletion() {
+    // Swap out futures to avoid holding lock during wait (mirrors AIManager pattern)
+    std::vector<std::future<void>> localFutures;
+
+    {
+        std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+        localFutures = std::move(m_gridRebuildFutures);
+        // m_gridRebuildFutures is now empty, new tasks can be added concurrently
+    }
+
+    if (!localFutures.empty()) {
+        PATHFIND_INFO("Waiting for " + std::to_string(localFutures.size()) +
+                      " grid rebuild task(s) to complete before state transition...");
+
+        for (auto& future : localFutures) {
+            if (future.valid()) {
+                try {
+                    future.wait(); // Block until task completes
+                    PATHFIND_DEBUG("Grid rebuild task completed");
+                } catch (const std::exception& e) {
+                    PATHFIND_ERROR("Exception waiting for grid rebuild: " + std::string(e.what()));
+                }
+            }
+        }
+
+        PATHFIND_INFO("Grid rebuild synchronization complete - safe to proceed with state transition");
     }
 }
 
