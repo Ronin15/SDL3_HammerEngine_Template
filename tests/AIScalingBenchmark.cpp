@@ -565,7 +565,8 @@ struct AIScalingFixture {
         std::vector<double> durations;
 
         // Get starting behavior execution count from AIManager (AFTER warmup)
-        size_t startingExecutions = AIManager::Instance().getBehaviorUpdateCount();
+        // Store in totalBehaviorExecutions so we can calculate delta at cleanup
+        totalBehaviorExecutions = AIManager::Instance().getBehaviorUpdateCount();
 
 
 
@@ -639,14 +640,15 @@ struct AIScalingFixture {
 
         // Get total behavior execution count from AIManager for all runs
         size_t endingExecutions = AIManager::Instance().getBehaviorUpdateCount();
-        int totalBehaviorExecutions = static_cast<int>(endingExecutions - startingExecutions);
+        size_t startingExecutions = totalBehaviorExecutions;  // Starting count was stored in member variable
+        int totalBehaviorUpdates = static_cast<int>(endingExecutions - startingExecutions);
 
-        double timePerEntityMs = totalBehaviorExecutions > 0 ?
-            totalTimeMs / static_cast<double>(totalBehaviorExecutions) : 0.0;
+        double timePerEntityMs = totalBehaviorUpdates > 0 ?
+            totalTimeMs / static_cast<double>(totalBehaviorUpdates) : 0.0;
 
         // Calculate entity updates per second based on actual executions
-        double entitiesPerSecond = totalBehaviorExecutions > 0 ?
-            static_cast<double>(totalBehaviorExecutions) / (totalTimeMs / 1000.0) : 0.0;
+        double entitiesPerSecond = totalBehaviorUpdates > 0 ?
+            static_cast<double>(totalBehaviorUpdates) / (totalTimeMs / 1000.0) : 0.0;
 
         // Print results in clean format matching event benchmark
         std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
@@ -657,7 +659,7 @@ struct AIScalingFixture {
         std::cout << std::setprecision(0);
         std::cout << "  Entity updates per second: " << entitiesPerSecond << std::endl;
         std::cout << std::setprecision(2);
-        std::cout << "  Total behavior updates: " << totalBehaviorExecutions << std::endl;
+        std::cout << "  Total behavior updates: " << totalBehaviorUpdates << std::endl;
         std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
         // Verification status based on behavior executions
@@ -932,6 +934,11 @@ struct AIScalingFixture {
         // Wait for unassign operations to complete
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+        // Capture behavior execution count BEFORE resetting (reset clears the counter)
+        // This gives us the delta for just this test run (subtract the starting count captured in runSyntheticBenchmark)
+        size_t endCount = AIManager::Instance().getBehaviorUpdateCount();
+        totalBehaviorExecutions = endCount - totalBehaviorExecutions;  // Delta for this test only
+
         // Reset all behaviors
         try {
             AIManager::Instance().resetBehaviors();
@@ -1020,6 +1027,7 @@ struct AIScalingFixture {
 
     std::vector<std::shared_ptr<BenchmarkEntity>> entities;
     std::vector<std::shared_ptr<BenchmarkBehavior>> behaviors;
+    size_t totalBehaviorExecutions = 0;  // Track total behavior executions before cleanup
 
 };
 
@@ -1242,7 +1250,7 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
         // Verify entities were actually created and behaviors executed
         size_t actualEntityCount = fixture.entities.size();
         size_t expectedExecutions = static_cast<size_t>(numEntities) * adjustedNumUpdates;
-        size_t behaviorExecutions = AIManager::Instance().getBehaviorUpdateCount();
+        size_t behaviorExecutions = fixture.totalBehaviorExecutions;  // Use saved count from before reset
 
         std::cout << "\nVerification:" << std::endl;
         std::cout << "  Created entities: " << actualEntityCount << "/" << numEntities;
