@@ -579,6 +579,17 @@ bool CollisionManager::isKinematic(EntityID id) const {
   return static_cast<BodyType>(m_storage.hotData[it->second].bodyType) == BodyType::KINEMATIC;
 }
 
+bool CollisionManager::isStatic(EntityID id) const {
+  // Thread-safe read access - single lock for entire operation
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
+
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end())
+    return false;
+
+  return static_cast<BodyType>(m_storage.hotData[it->second].bodyType) == BodyType::STATIC;
+}
+
 bool CollisionManager::isTrigger(EntityID id) const {
   // Thread-safe read access - single lock for entire operation
   std::shared_lock<std::shared_mutex> lock(m_storageMutex);

@@ -6,6 +6,7 @@
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "world/WorldData.hpp"
 #include <queue>
 #include <limits>
@@ -119,6 +120,7 @@ void PathfindingGrid::rebuildFromWorld() {
 
     constexpr float tileSize = HammerEngine::TILE_SIZE;
     int blockedCount = 0;
+    int collisionBlockedCount = 0;
 
     for (int cy = 0; cy < cellsH; ++cy) {
         for (int cx = 0; cx < cellsW; ++cx) {
@@ -164,6 +166,28 @@ void PathfindingGrid::rebuildFromWorld() {
             bool cellBlocked = (totalTiles > 0) && (static_cast<float>(blockedTiles) / static_cast<float>(totalTiles) > 0.50f);
             float cellWeight = (totalTiles > 0) ? (weightSum / static_cast<float>(totalTiles)) : 1.0f;
 
+            // COLLISION INTEGRATION: Check for collision obstacles in this cell
+            // Query collision bodies with entity clearance margin (1.75x typical entity radius)
+            // This prevents paths from getting too close to obstacles, avoiding clipping
+            if (!cellBlocked && CollisionManager::Instance().isInitialized()) {
+                const float ENTITY_CLEARANCE = 28.0f; // 1.75x entity radius for safe clearance
+                AABB cellAABB(x0 + m_cell * 0.5f, y0 + m_cell * 0.5f,
+                             m_cell * 0.5f + ENTITY_CLEARANCE,
+                             m_cell * 0.5f + ENTITY_CLEARANCE);
+                std::vector<EntityID> bodiesInCell;
+                CollisionManager::Instance().queryArea(cellAABB, bodiesInCell);
+
+                // Filter to only STATIC bodies (buildings, world obstacles)
+                // KINEMATIC (NPCs) and DYNAMIC (player, projectiles) should NOT permanently block paths
+                for (EntityID bodyId : bodiesInCell) {
+                    if (CollisionManager::Instance().isStatic(bodyId)) {
+                        cellBlocked = true;
+                        collisionBlockedCount++;
+                        break; // Found at least one static obstacle
+                    }
+                }
+            }
+
             size_t cidx = static_cast<size_t>(cy * cellsW + cx);
             m_blocked[cidx] = cellBlocked ? 1 : 0;
             if (cellBlocked) ++blockedCount;
@@ -173,7 +197,8 @@ void PathfindingGrid::rebuildFromWorld() {
 
     PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
                   ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
-                  " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)");
+                  " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)" +
+                  ", collision-blocked=" + std::to_string(collisionBlockedCount) + " cells");
     
     // Update coarse grid for hierarchical pathfinding
     if (m_coarseGrid) {
@@ -274,12 +299,6 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     outPath.clear();
     auto [sx_raw, sy_raw] = worldToGrid(start);
     auto [gx_raw, gy_raw] = worldToGrid(goal);
-
-    PATHFIND_DEBUG("findPath: start(" + std::to_string(start.getX()) + "," + std::to_string(start.getY()) +
-                   ") → grid(" + std::to_string(sx_raw) + "," + std::to_string(sy_raw) + ") " +
-                   "goal(" + std::to_string(goal.getX()) + "," + std::to_string(goal.getY()) +
-                   ") → grid(" + std::to_string(gx_raw) + "," + std::to_string(gy_raw) + ") " +
-                   "gridSize(" + std::to_string(m_w) + "x" + std::to_string(m_h) + ")");
 
     // Validate original grid indices before any clamping
     if (!inBounds(sx_raw, sy_raw)) {

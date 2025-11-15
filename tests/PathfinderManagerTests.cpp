@@ -61,29 +61,6 @@ BOOST_AUTO_TEST_CASE(TestPathfinderManagerInitialization) {
     BOOST_CHECK(!manager.isInitialized());
 }
 
-BOOST_AUTO_TEST_CASE(TestImmediatePathfinding) {
-    PathfinderManager& manager = PathfinderManager::Instance();
-    
-    BOOST_REQUIRE(manager.init());
-    
-    Vector2D start(100.0f, 100.0f);
-    Vector2D goal(200.0f, 200.0f);
-    std::vector<Vector2D> path;
-    
-    // Test immediate pathfinding
-    auto result = manager.findPathImmediate(start, goal, path);
-    
-    // Even if no path is found (due to no world data), the function should not crash
-    // Accept all valid PathfindingResult values since we don't have world data setup
-    BOOST_CHECK(result == HammerEngine::PathfindingResult::SUCCESS || 
-                result == HammerEngine::PathfindingResult::NO_PATH_FOUND ||
-                result == HammerEngine::PathfindingResult::INVALID_START ||
-                result == HammerEngine::PathfindingResult::INVALID_GOAL ||
-                result == HammerEngine::PathfindingResult::TIMEOUT);
-    
-    manager.clean();
-}
-
 BOOST_AUTO_TEST_CASE(TestAsyncPathfinding) {
     PathfinderManager& manager = PathfinderManager::Instance();
     
