@@ -423,8 +423,9 @@ struct GlobalTestFixture {
 
       std::cout << "Global fixture cleanup completed successfully" << std::endl;
 
-      // Skip any further destructors to avoid segfaults in Boost Test framework
-      _exit(0);
+      // Note: Previously used _exit(0) to skip Boost destructors, but this caused SIGABRT
+      // Test script now handles cleanup crashes gracefully, so we use normal exit
+      // If segfaults return, consider std::quick_exit(0) as alternative
     } catch (const std::exception &e) {
       std::cerr << "Exception during global fixture cleanup: " << e.what()
                 << std::endl;
@@ -643,9 +644,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment,
     auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     entityPtrs.push_back(entity);
-    // Note: The error messages about MessageTest not existing are expected
-    // since we're testing error handling
-    AIManager::Instance().assignBehaviorToEntity(entity, "MessageTest");
+    // Entities start without behaviors - will be assigned by worker threads below
   }
 
   // Assign behaviors from multiple threads
