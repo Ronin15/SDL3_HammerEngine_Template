@@ -346,7 +346,6 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
 
     // Ensure grid is initialized BEFORE normalizing endpoints (needs grid for bounds)
     if (!ensureGridInitialized()) {
-        PATHFIND_DEBUG("findPathImmediate() called before grid ready - returning NO_PATH_FOUND");
         // Record timing even for failed requests
         auto endTime = std::chrono::steady_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
@@ -659,7 +658,6 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
     }
 
     // No grid available - world not loaded yet, return position as-is (valid fallback)
-    PATHFIND_DEBUG("clampToWorldBounds called before grid ready - returning position unchanged");
     return position;
 }
 
