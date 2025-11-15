@@ -62,9 +62,9 @@ public:
   explicit JsonValue(bool value) : m_value(value) {}
   explicit JsonValue(int value) : m_value(static_cast<double>(value)) {}
   explicit JsonValue(double value) : m_value(value) {}
-  JsonValue(const std::string &value) : m_value(value) {}
-  JsonValue(std::string &&value) : m_value(std::move(value)) {}
-  JsonValue(const char *value) : m_value(std::string(value)) {}
+  explicit JsonValue(const std::string &value) : m_value(value) {}
+  explicit JsonValue(std::string &&value) : m_value(std::move(value)) {}
+  explicit JsonValue(const char *value) : m_value(std::string(value)) {}
   explicit JsonValue(const JsonArray &value) : m_value(value) {}
   explicit JsonValue(JsonArray &&value) : m_value(std::move(value)) {}
   explicit JsonValue(const JsonObject &value) : m_value(value) {}

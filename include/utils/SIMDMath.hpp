@@ -19,6 +19,7 @@
  */
 
 #include "utils/Vector2D.hpp"
+#include <bit>
 #include <cmath>
 
 // ============================================================================
@@ -292,12 +293,12 @@ inline Float4 bitwise_or(Float4 a, Float4 b) {
 #elif defined(HAMMER_SIMD_NEON)
     return vreinterpretq_f32_u32(vorrq_u32(vreinterpretq_u32_f32(a), vreinterpretq_u32_f32(b)));
 #else
-    Float4 result{};  // Initialize to zero
-    uint32_t* ra = reinterpret_cast<uint32_t*>(&result.data);
-    const uint32_t* aa = reinterpret_cast<const uint32_t*>(&a.data);
-    const uint32_t* ba = reinterpret_cast<const uint32_t*>(&b.data);
+    // Use std::bit_cast for portable type-punning (C++20)
+    Float4 result{};
     for (int i = 0; i < 4; ++i) {
-        ra[i] = aa[i] | ba[i];
+        uint32_t a_bits = std::bit_cast<uint32_t>(a.data[i]);
+        uint32_t b_bits = std::bit_cast<uint32_t>(b.data[i]);
+        result.data[i] = std::bit_cast<float>(a_bits | b_bits);
     }
     return result;
 #endif
@@ -320,9 +321,11 @@ inline int movemask(Float4 v) {
                      (vgetq_lane_u32(shifted, 3) << 3);
     return static_cast<int>(result);
 #else
+    // Use std::bit_cast for portable type-punning (C++20)
     int result = 0;
     for (int i = 0; i < 4; ++i) {
-        if (reinterpret_cast<const uint32_t*>(&v.data)[i] & 0x80000000) {
+        uint32_t bits = std::bit_cast<uint32_t>(v.data[i]);
+        if (bits & 0x80000000) {
             result |= (1 << i);
         }
     }

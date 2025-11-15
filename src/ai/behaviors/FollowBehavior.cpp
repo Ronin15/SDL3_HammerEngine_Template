@@ -134,132 +134,130 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // ALWAYS follow like a pet/party member - no range limits, never stop
   state.isFollowing = true;
 
-  if (state.isFollowing) {
-    // Increment timers (deltaTime in seconds, timers in seconds)
-    state.pathUpdateTimer += deltaTime;
-    state.progressTimer += deltaTime;
-    if (state.backoffTimer > 0.0f) {
-      state.backoffTimer -= deltaTime; // Countdown timer
-    }
+  // Increment timers (deltaTime in seconds, timers in seconds)
+  state.pathUpdateTimer += deltaTime;
+  state.progressTimer += deltaTime;
+  if (state.backoffTimer > 0.0f) {
+    state.backoffTimer -= deltaTime; // Countdown timer
+  }
 
-    // OPTIMIZATION: Path-following extracted to method for better compiler optimization
+  // OPTIMIZATION: Path-following extracted to method for better compiler optimization
 
-    // Stall detection: only check when not actively following a fresh path AND not intentionally stopped
-    // Prevents false positives when NPCs naturally slow down near waypoints or are stopped at personal space
-    bool hasActivePath = !state.pathPoints.empty() && state.pathUpdateTimer < 2.0f;
+  // Stall detection: only check when not actively following a fresh path AND not intentionally stopped
+  // Prevents false positives when NPCs naturally slow down near waypoints or are stopped at personal space
+  bool hasActivePath = !state.pathPoints.empty() && state.pathUpdateTimer < 2.0f;
 
-    if (!hasActivePath && !state.isStopped) {
-      float speedNow = entity->getVelocity().length();
-      const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
-      const float stallTime = 0.6f; // 600ms
-      if (speedNow < stallSpeed) {
-        if (state.progressTimer > stallTime) {
-          // Enter a brief backoff to reduce clumping; vary per-entity
-          state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f; // 250-650ms
-          // Clear path and small micro-jitter to yield
-          state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
-          float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
-          Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
-          float c = std::cos(jitter), s = std::sin(jitter);
-          Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
-          // Use reduced speed for stall recovery to prevent shooting off at high speed
-          rotated.normalize(); entity->setVelocity(rotated * (m_followSpeed * 0.5f));
-          state.progressTimer = 0.0f;
-        }
-      } else {
+  if (!hasActivePath && !state.isStopped) {
+    float speedNow = entity->getVelocity().length();
+    const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
+    const float stallTime = 0.6f; // 600ms
+    if (speedNow < stallSpeed) {
+      if (state.progressTimer > stallTime) {
+        // Enter a brief backoff to reduce clumping; vary per-entity
+        state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f; // 250-650ms
+        // Clear path and small micro-jitter to yield
+        state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
+        float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
+        Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
+        float c = std::cos(jitter), s = std::sin(jitter);
+        Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
+        // Use reduced speed for stall recovery to prevent shooting off at high speed
+        rotated.normalize(); entity->setVelocity(rotated * (m_followSpeed * 0.5f));
         state.progressTimer = 0.0f;
       }
+    } else {
+      state.progressTimer = 0.0f;
     }
+  }
 
-    // Calculate desired position with formation offset
-    Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-    float distanceToDesired = (currentPos - desiredPos).length();
+  // Calculate desired position with formation offset
+  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
+  float distanceToDesired = (currentPos - desiredPos).length();
 
-    // CRITICAL: Check distance to PLAYER for stop (prevent pushing)
-    // Use distance to formation for pathfinding
-    float distanceToPlayer = (currentPos - targetPos).length();
+  // CRITICAL: Check distance to PLAYER for stop (prevent pushing)
+  // Use distance to formation for pathfinding
+  float distanceToPlayer = (currentPos - targetPos).length();
 
-    // ARRIVAL RADIUS: If very close to desired formation position, stop (prevent micro-oscillations)
-    const float ARRIVAL_RADIUS = 25.0f;
-    if (distanceToDesired < ARRIVAL_RADIUS && !state.isStopped) {
+  // ARRIVAL RADIUS: If very close to desired formation position, stop (prevent micro-oscillations)
+  const float ARRIVAL_RADIUS = 25.0f;
+  if (distanceToDesired < ARRIVAL_RADIUS && !state.isStopped) {
+    entity->setVelocity(Vector2D(0, 0));
+    entity->setAcceleration(Vector2D(0, 0));
+    state.progressTimer = 0.0f;
+    state.isStopped = true;
+    state.pathPoints.clear();
+    state.currentPathIndex = 0;
+    return;
+  }
+
+  // Hysteresis to prevent jittering at boundary
+  // Stop at 40px from PLAYER (not formation), resume at 55px (prevents pushing player)
+  if (state.isStopped) {
+    // Already stopped - only resume if beyond resume distance FROM PLAYER
+    if (distanceToPlayer < m_resumeDistance) {
       entity->setVelocity(Vector2D(0, 0));
-      entity->setAcceleration(Vector2D(0, 0));
+      entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
+      state.progressTimer = 0.0f;
+      return;
+    }
+    // Resuming - clear the stopped flag and any old path data
+    state.isStopped = false;
+    state.pathPoints.clear();
+    state.currentPathIndex = 0;
+  } else {
+    // Moving - check if we should stop based on distance to PLAYER
+    if (distanceToPlayer < m_stopDistance) {
+      entity->setVelocity(Vector2D(0, 0));
+      entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
       state.progressTimer = 0.0f;
       state.isStopped = true;
+      // Clear path to prevent any residual path-following
       state.pathPoints.clear();
       state.currentPathIndex = 0;
       return;
     }
+  }
 
-    // Hysteresis to prevent jittering at boundary
-    // Stop at 40px from PLAYER (not formation), resume at 55px (prevents pushing player)
-    if (state.isStopped) {
-      // Already stopped - only resume if beyond resume distance FROM PLAYER
-      if (distanceToPlayer < m_resumeDistance) {
-        entity->setVelocity(Vector2D(0, 0));
-        entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
-        state.progressTimer = 0.0f;
-        return;
-      }
-      // Resuming - clear the stopped flag and any old path data
-      state.isStopped = false;
-      state.pathPoints.clear();
-      state.currentPathIndex = 0;
-    } else {
-      // Moving - check if we should stop based on distance to PLAYER
-      if (distanceToPlayer < m_stopDistance) {
-        entity->setVelocity(Vector2D(0, 0));
-        entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
-        state.progressTimer = 0.0f;
-        state.isStopped = true;
-        // Clear path to prevent any residual path-following
-        state.pathPoints.clear();
-        state.currentPathIndex = 0;
-        return;
-      }
-    }
+  // Use distance to player for catch-up speed calculation
+  float dynamicSpeed = calculateFollowSpeed(entity, state, distanceToPlayer);
 
-    // Use distance to player for catch-up speed calculation
-    float dynamicSpeed = calculateFollowSpeed(entity, state, distanceToPlayer);
+  // Execute appropriate follow behavior based on mode (use pre-calculated desiredPos)
+  // Track whether we're using pathfinding or direct movement
+  bool usingPathfinding = false;
+  switch (m_followMode) {
+  case FollowMode::CLOSE_FOLLOW:
+    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
+    if (!usingPathfinding)
+      updateCloseFollow(entity, state);
+    break;
+  case FollowMode::LOOSE_FOLLOW:
+    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
+    if (!usingPathfinding)
+      updateLooseFollow(entity, state);
+    break;
+  case FollowMode::FLANKING_FOLLOW:
+    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
+    if (!usingPathfinding)
+      updateFlankingFollow(entity, state);
+    break;
+  case FollowMode::REAR_GUARD:
+    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
+    if (!usingPathfinding)
+      updateRearGuard(entity, state);
+    break;
+  case FollowMode::ESCORT_FORMATION:
+    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
+    if (!usingPathfinding)
+      updateEscortFormation(entity, state);
+    break;
+  }
 
-    // Execute appropriate follow behavior based on mode (use pre-calculated desiredPos)
-    // Track whether we're using pathfinding or direct movement
-    bool usingPathfinding = false;
-    switch (m_followMode) {
-    case FollowMode::CLOSE_FOLLOW:
-      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-      if (!usingPathfinding)
-        updateCloseFollow(entity, state);
-      break;
-    case FollowMode::LOOSE_FOLLOW:
-      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-      if (!usingPathfinding)
-        updateLooseFollow(entity, state);
-      break;
-    case FollowMode::FLANKING_FOLLOW:
-      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-      if (!usingPathfinding)
-        updateFlankingFollow(entity, state);
-      break;
-    case FollowMode::REAR_GUARD:
-      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-      if (!usingPathfinding)
-        updateRearGuard(entity, state);
-      break;
-    case FollowMode::ESCORT_FORMATION:
-      usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-      if (!usingPathfinding)
-        updateEscortFormation(entity, state);
-      break;
-    }
-
-    // Only apply separation during DIRECT MOVEMENT (not pathfinding)
-    // Pathfinder already handles obstacle avoidance; separation during pathfinding causes oscillation
-    if (!usingPathfinding) {
-      applyAdditiveDecimatedSeparation(entity, currentPos, entity->getVelocity(),
-                                       dynamicSpeed, 25.0f, 0.08f, 8,
-                                       state.separationTimer, state.lastSepForce, deltaTime);
-    }
+  // Only apply separation during DIRECT MOVEMENT (not pathfinding)
+  // Pathfinder already handles obstacle avoidance; separation during pathfinding causes oscillation
+  if (!usingPathfinding) {
+    applyAdditiveDecimatedSeparation(entity, currentPos, entity->getVelocity(),
+                                     dynamicSpeed, 25.0f, 0.08f, 8,
+                                     state.separationTimer, state.lastSepForce, deltaTime);
   }
 }
 
