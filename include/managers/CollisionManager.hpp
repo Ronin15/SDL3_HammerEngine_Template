@@ -47,7 +47,39 @@ public:
 
     bool init();
     void clean();
+
+    /**
+     * @brief Prepares CollisionManager for state transition by clearing all collision bodies
+     *
+     * CRITICAL ARCHITECTURAL REQUIREMENT:
+     * This method MUST clear ALL collision bodies (both dynamic and static) during state transitions.
+     *
+     * WHY THIS IS NECESSARY:
+     * prepareForStateTransition() is called BEFORE state exit, which unregisters event handlers.
+     * This means WorldUnloadedEvent handlers will NOT fire after state transition begins.
+     *
+     * Previous "smart" logic tried to keep static bodies when a world was active, expecting
+     * WorldUnloadedEvent to clean them up. This was BROKEN because:
+     * 1. prepareForStateTransition() unregisters event handlers first
+     * 2. WorldUnloadedEvent handler never fires
+     * 3. Static bodies from old world persist into new world
+     *
+     * CONSEQUENCES OF NOT CLEARING ALL BODIES:
+     * - Duplicate/stale collision bodies across state transitions
+     * - Spatial hash corruption (bodies from multiple worlds in same hash)
+     * - Collision detection failures (entities colliding with phantom geometry)
+     * - Memory leaks (bodies never cleaned up)
+     *
+     * CORRECT BEHAVIOR:
+     * Always clear ALL bodies. The world will be unloaded immediately after state transition,
+     * and the new state will rebuild static bodies when it loads its world via WorldLoadedEvent.
+     *
+     * @note This is called automatically by GameStateManager before state transitions
+     * @note Event handlers are unregistered AFTER this method completes
+     * @see GameStateManager::changeState()
+     */
     void prepareForStateTransition();
+
     bool isInitialized() const { return m_initialized; }
     bool isShutdown() const { return m_isShutdown; }
 
