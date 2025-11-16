@@ -413,8 +413,8 @@ private:
     std::atomic<bool> m_lastWasThreaded{false};
 
     // Request batching configuration
-    static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 64; // Minimum requests before batching (ensures meaningful batch sizes)
-    static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;   // Rate limiting (60 FPS = 45K requests/sec capacity)
+    static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)
+    static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;    // Rate limiting (60 FPS = 45K requests/sec capacity)
 
     // Request buffer for batching (instead of immediate submission)
     struct BufferedRequest {
