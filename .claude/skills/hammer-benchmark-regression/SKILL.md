@@ -38,7 +38,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 
 **Metrics Extraction Verification (MANDATORY):**
 - [ ] AI: Synthetic AND Integrated metrics extracted
-- [ ] **Pathfinding: Distance-based performance metrics extracted** ← DO NOT SKIP!
+- [ ] **Pathfinding: Async throughput metrics extracted (NOT immediate timing)** ← PRODUCTION METRIC ONLY!
 - [ ] Collision: SOA timing and efficiency extracted
 - [ ] Event: Throughput and latency extracted
 - [ ] Particle: Update time extracted
@@ -71,8 +71,9 @@ All paths below are relative to project root.
 
 3. **Pathfinder Benchmark** (`./bin/debug/pathfinder_benchmark`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_pathfinder_benchmark.sh`
-   - Tests: A* pathfinding at scale
-   - Metrics: Path calculation time, nodes explored, cache hits
+   - Tests: Async pathfinding throughput at scale
+   - Metrics: **Async throughput (paths/sec), batch processing performance, success rate**
+   - **Note:** Immediate pathfinding deprecated - only track async metrics
    - Duration: ~5 minutes
 
 4. **Event Manager Scaling** (`./bin/debug/event_manager_scaling_benchmark`) **[REQUIRED]**
@@ -247,55 +248,52 @@ Hash Efficiency: 94.2%
 AABB Tests: 250000/sec
 ```
 
-#### Pathfinder Metrics **[CRITICAL - DO NOT SKIP]**
+#### Pathfinder Metrics **[ASYNC THROUGHPUT ONLY]**
 
-**⚠️ CRITICAL WARNING:** Pathfinding metrics are essential for performance regression analysis. DO NOT skip extraction or report generation for pathfinding data. It directly impacts integrated AI benchmark performance.
+**⚠️ IMPORTANT:** PathfinderManager uses **async-only pathfinding** in production. Immediate (synchronous) pathfinding is deprecated and should NOT be tracked in regression analysis.
 
-**Comprehensive Extraction (ALWAYS USE THIS):**
+**Production Metrics Extraction:**
 ```bash
-# Extract path length scaling performance - MOST IMPORTANT
-grep -B2 -A5 "Distance.*units:" test_results/pathfinder_benchmark_current.txt | \
-  grep -E "Distance|Average time:|Success rate:|Average path nodes:"
+# Extract async pathfinding throughput - PRIMARY METRIC
+grep -E "Async.*Throughput|paths/sec" test_results/pathfinder_benchmark_results.txt | \
+  grep -E "Throughput:"
 
 # Example output format:
-# Distance 50 units:
-#   Success rate: 20/20 (100%)
-#   Average time: 0.024ms
-#   Average path nodes: 1
-# Distance 400 units:
-#   Success rate: 20/20 (100%)
-#   Average time: 0.049ms
-#   Average path nodes: 3
+#   Throughput: 3e+02 paths/sec
+#   Throughput: 4e+02 paths/sec
+#   Throughput: 4e+02 paths/sec
 ```
 
 **REQUIRED Metrics to Extract:**
-1. **Path calculation time by distance** (50, 400, 2000, 4000, 8000 units)
-2. **Success rate** (must be 100% for all distances)
-3. **Average path nodes** (indicates path quality)
-4. **Immediate vs Async performance** (if available)
+1. **Async throughput** (paths/second) - Production metric
+2. **Success rate** (must be 100%)
+3. **Batch processing performance** (if high-volume scenarios tested)
+
+**DEPRECATED Metrics (DO NOT TRACK):**
+- ❌ Immediate pathfinding timing (deprecated, not used in production)
+- ❌ Path calculation time by distance (legacy synchronous metric)
+- ❌ Per-path latency measurements (not relevant for async architecture)
 
 **Baseline Comparison Keys:**
-- `Pathfinding_Distance_50_Time`
-- `Pathfinding_Distance_400_Time`
-- `Pathfinding_Distance_2000_Time`
-- `Pathfinding_Distance_4000_Time`
-- `Pathfinding_Distance_8000_Time`
+- `Pathfinding_Async_Throughput_PathsPerSec`
+- `Pathfinding_Batch_Processing_Enabled`
 - `Pathfinding_SuccessRate`
 
 **Example Baseline Comparison:**
 ```
-| Distance | Baseline | Current | Change | Status |
-|----------|----------|---------|--------|--------|
-| 50 units | 0.048ms | 0.024ms | -50.0% | 🟢 Major Improvement |
-| 400 units | 0.259ms | 0.049ms | -81.1% | 🟢 Major Improvement |
-| 2000 units | 0.502ms | 0.052ms | -89.6% | 🟢 Major Improvement |
+| Metric | Baseline | Current | Change | Status |
+|--------|----------|---------|--------|--------|
+| Async Throughput | 300-400 paths/sec | 300-400 paths/sec | 0% | ⚪ Stable |
+| Batch Processing | 50K paths/sec | 100K paths/sec | +100% | 🟢 Major Improvement |
+| Success Rate | 100% | 100% | 0% | ✓ Maintained |
 ```
 
 **What to Report:**
 - Always include a dedicated "Pathfinding System" section in regression reports
-- Show performance across ALL distance ranges
-- Highlight success rate (failures are critical regressions)
-- Note if pathfinding improvements benefit integrated AI benchmarks
+- Focus on async throughput as primary metric
+- Highlight batch processing performance for high-volume scenarios
+- Note success rate (failures are critical regressions)
+- Exclude deprecated immediate pathfinding metrics from analysis
 
 #### Event Manager Metrics
 ```bash
