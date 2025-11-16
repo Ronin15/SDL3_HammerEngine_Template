@@ -535,6 +535,15 @@ private:
   // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
   std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
 
+  // Pre-allocated batch buffers for assignment processing (Issue #1 fix)
+  // Eliminates ~200-400 allocations/sec during heavy NPC spawning
+  std::vector<std::vector<PendingAssignment>> m_assignmentBatchBuffers;
+
+  // Pre-allocated batch buffers for distance/position calculations (Issue #2 fix)
+  // Eliminates ~480 allocations/sec @ 60 FPS with 8 batches (1-2ms frame spikes)
+  std::vector<std::vector<float>> m_distanceBuffers;
+  std::vector<std::vector<Vector2D>> m_positionBuffers;
+
   // Camera bounds cache for entity update culling
   // Only update animations/sprites for entities within camera view + buffer
   float m_cameraMinX{0.0f};
@@ -563,7 +572,8 @@ private:
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos, uint64_t distanceUpdateSlice,
                     const EntityStorage& storage,
-                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
+                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
+                    size_t batchIndex = 0);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();

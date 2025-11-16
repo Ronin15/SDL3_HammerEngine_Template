@@ -63,6 +63,29 @@ bool AIManager::init() {
     // Reserve with 10% headroom for growth (typical: 4000 NPCs → 4400 capacity)
     m_reusableCollisionBuffer.reserve(static_cast<size_t>(INITIAL_CAPACITY * 1.1));
 
+    // Pre-allocate assignment batch buffers (Issue #1 fix)
+    // Estimate max batches based on worker budget: typically 4-8 batches for assignment processing
+    constexpr size_t MAX_ASSIGNMENT_BATCHES = 16; // Conservative upper bound
+    constexpr size_t TYPICAL_BATCH_SIZE = 128;    // Typical batch size for assignments
+    m_assignmentBatchBuffers.resize(MAX_ASSIGNMENT_BATCHES);
+    for (auto& buffer : m_assignmentBatchBuffers) {
+      buffer.reserve(TYPICAL_BATCH_SIZE);
+    }
+
+    // Pre-allocate distance/position buffers (Issue #2 fix)
+    // WorkerBudget.hpp: AI_BATCH_CONFIG allows up to 16 batches (maxBatchCount * 2)
+    // Batch size = (workloadSize + batchCount - 1) / batchCount
+    // Worst case: 10K entities / 4 batches (high queue pressure) = 2,500 entities/batch
+    // Conservative sizing: 16 batches * 3,000 entities/batch = handles up to 48K entities
+    constexpr size_t MAX_UPDATE_BATCHES = 16;     // AI_BATCH_CONFIG.maxBatchCount * 2
+    constexpr size_t MAX_BATCH_SIZE = 3000;       // Worst case: 10K entities / 4 batches with headroom
+    m_distanceBuffers.resize(MAX_UPDATE_BATCHES);
+    m_positionBuffers.resize(MAX_UPDATE_BATCHES);
+    for (size_t i = 0; i < MAX_UPDATE_BATCHES; ++i) {
+      m_distanceBuffers[i].reserve(MAX_BATCH_SIZE);
+      m_positionBuffers[i].reserve(MAX_BATCH_SIZE);
+    }
+
     // Initialize lock-free message queue
     for (auto &msg : m_lockFreeMessages) {
       msg.ready.store(false, std::memory_order_relaxed);
@@ -495,7 +518,7 @@ void AIManager::update(float deltaTime) {
                   // Multiple batches can hold shared_locks simultaneously (parallel reads)
                   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
                   processBatch(start, end, deltaTime, playerPos,
-                              distanceUpdateSlice, m_storage, (*batchCollisionUpdatesPtr)[i]);
+                              distanceUpdateSlice, m_storage, (*batchCollisionUpdatesPtr)[i], i);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::string("Exception in AI batch: ") + e.what());
                 } catch (...) {
@@ -967,9 +990,14 @@ size_t AIManager::processPendingBehaviorAssignments() {
       // Ensure end never exceeds assignmentCount (batchSize uses ceiling division)
       size_t end = std::min(start + batchSize, assignmentCount);
 
-      // Copy the batch data (we need to own this data for async processing)
-      std::vector<PendingAssignment> batchData(toProcess.begin() + start,
-                                               toProcess.begin() + end);
+      // Use pre-allocated batch buffer to avoid per-batch allocation (Issue #1 fix)
+      // Reuse buffer from pool, clear() keeps capacity for next use
+      std::vector<PendingAssignment>& batchBuffer = m_assignmentBatchBuffers[i % m_assignmentBatchBuffers.size()];
+      batchBuffer.clear();
+      batchBuffer.insert(batchBuffer.end(), toProcess.begin() + start, toProcess.begin() + end);
+
+      // Copy batch data for async processing (need owned copy for lambda capture)
+      std::vector<PendingAssignment> batchData = batchBuffer;
 
       // Submit each batch with future for completion tracking
       m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
@@ -1369,7 +1397,8 @@ void AIManager::calculateDistancesSIMD(
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                              const Vector2D &playerPos, uint64_t distanceUpdateSlice,
                              const EntityStorage& storage,
-                             std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
+                             std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
+                             size_t batchIndex) {
   size_t batchExecutions = 0;
 
   // Reserve space in collision updates accumulator (approximate size)
@@ -1394,8 +1423,17 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // SIMD OPTIMIZATION: Pre-compute distances for this batch using SIMD
   // Process 4 entities at once for 2-4x speedup
-  std::vector<float> precomputedDistances(batchSize, -1.0f); // -1 = not computed
-  std::vector<Vector2D> precomputedPositions(batchSize);
+  // Use pre-allocated buffers to avoid per-batch allocation (Issue #2 fix)
+  size_t bufferIndex = batchIndex % m_distanceBuffers.size();
+  std::vector<float>& precomputedDistances = m_distanceBuffers[bufferIndex];
+  std::vector<Vector2D>& precomputedPositions = m_positionBuffers[bufferIndex];
+
+  // Resize buffers for this batch (clear() + resize keeps capacity, minimal allocation)
+  precomputedDistances.clear();
+  precomputedDistances.resize(batchSize, -1.0f);
+  precomputedPositions.clear();
+  precomputedPositions.resize(batchSize);
+
   calculateDistancesSIMD(start, end, playerPos, distanceUpdateSlice, storage,
                         precomputedDistances, precomputedPositions);
 
