@@ -1406,8 +1406,7 @@ void PathfinderManager::processPendingRequests() {
         return;
     }
 
-    // Batch processing with WorkerBudget coordination
-    auto startTime = std::chrono::steady_clock::now();
+    // Batch processing with WorkerBudget coordination (non-blocking)
 
     // Calculate batch strategy using WorkerBudget
     auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
@@ -1424,15 +1423,6 @@ void PathfinderManager::processPendingRequests() {
     PATHFIND_DEBUG("Processing " + std::to_string(requestsToProcess) + " requests in " +
                   std::to_string(batchCount) + " batches (size: " + std::to_string(batchSize) +
                   "), workers: " + std::to_string(optimalWorkerCount));
-
-    // Wait for previous batch to complete before starting new one
-    waitForBatchCompletion();
-
-    // Clear old futures
-    {
-        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-        m_batchFutures.clear();
-    }
 
     // Submit batches
     for (size_t i = 0; i < batchCount; ++i) {
@@ -1523,13 +1513,8 @@ void PathfinderManager::processPendingRequests() {
         ));
     }
 
-    // Update adaptive batch state with completion time
-    waitForBatchCompletion();
-
-    auto endTime = std::chrono::steady_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-    double completionTimeMs = duration.count() / 1000.0;
-    m_adaptiveBatchState.lastUpdateTimeMs.store(completionTimeMs, std::memory_order_release);
+    // Batches submitted asynchronously - callbacks will fire when paths complete
+    // waitForBatchCompletion() is only called during cleanup/state transitions
 }
 
 void PathfinderManager::waitForBatchCompletion() {
