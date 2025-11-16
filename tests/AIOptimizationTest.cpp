@@ -86,6 +86,9 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     // Process pending assignments
     AIManager::Instance().update(0.016f);
 
+    // Wait for async assignments to complete (matches production behavior)
+    AIManager::Instance().waitForAssignmentCompletion();
+
     // Verify entities are registered
     BOOST_CHECK_EQUAL(AIManager::Instance().getManagedEntityCount(), 10);
 
@@ -115,6 +118,9 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
 
     // Process pending assignments
     AIManager::Instance().update(0.016f);
+
+    // Wait for async assignments to complete before timing updates
+    AIManager::Instance().waitForAssignmentCompletion();
 
     // Time the unified entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -162,6 +168,9 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     // Process pending assignments
     AIManager::Instance().update(0.016f);
 
+    // Wait for async assignments to complete
+    AIManager::Instance().waitForAssignmentCompletion();
+
     // Test that behavior is assigned
     BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
 
@@ -184,6 +193,9 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
 
     // Process pending assignments
     AIManager::Instance().update(0.016f);
+
+    // Wait for async assignments to complete (matches production behavior)
+    AIManager::Instance().waitForAssignmentCompletion();
 
     // Queue several messages
     AIManager::Instance().sendMessageToEntity(entity, "test1");
