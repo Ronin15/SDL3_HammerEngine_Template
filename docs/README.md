@@ -230,7 +230,7 @@ The Hammer Game Engine provides several core systems that work together:
 ### Performance Optimized
 - **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and WorkerBudget allocation
 - **Priority-Based Threading**: Critical tasks processed first with tiered worker allocation and optimal resource distribution
-- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1–2 workers, AI: ~45% of remaining, Particles: ~25%, Events: ~20%, Buffer: dynamic scaling)
+- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1 worker, AI: ~54% of remaining, Particles: ~31%, Events: ~15%, Buffer: dynamic scaling)
 - **Efficient UI Rendering**: Only processes visible components with auto-sizing
 - **Memory Optimizations**: Smart pointers and cache-friendly data structures
 - **Batched Operations**: Bulk processing for better performance across all systems

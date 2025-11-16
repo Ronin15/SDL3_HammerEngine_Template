@@ -218,8 +218,8 @@ void GameLoop::runMainThread() {
 ### WorkerBudget-Aware Multi-Threaded Mode
 
 ```cpp
-void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
-    GAMELOOP_INFO("Update worker started with " + std::to_string(budget.engineReserved) + " allocated workers");
+void GameLoop::runUpdateWorker() {
+    GAMELOOP_INFO("GameLoop allocated 1 worker from WorkerBudget");
 
     // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
@@ -228,37 +228,30 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
     // Performance tracking for adaptive sleep
     auto avgUpdateTime = std::chrono::microseconds(0);
 
-    // System capability detection
-    bool canUseParallelUpdates = (budget.engineReserved >= 2);
-    bool isHighEndSystem = (budget.totalWorkers > 4);
-
     while (m_updateTaskRunning.load() && !m_stopRequested.load()) {
-        // Adaptive update processing based on available workers
-        if (canUseParallelUpdates && !m_paused.load()) {
-            processUpdatesParallel();
-        } else if (!m_paused.load()) {
+        // Process all pending updates sequentially
+        if (!m_paused.load()) {
             processUpdates();
         }
 
-        // Adaptive sleep timing based on system capabilities
+        // Adaptive sleep timing based on target frame rate
         // ... (sophisticated timing logic)
     }
 }
 ```
 
-### WorkerBudget Resource Scaling
+### WorkerBudget Resource Allocation
 
-The GameLoop automatically scales its resource usage based on the WorkerBudget allocation:
+The GameLoop receives a consistent worker allocation from WorkerBudget:
 
-- **Low-End Systems** (`budget.engineReserved < 2`): Standard sequential processing
-- **High-End Systems** (`budget.engineReserved >= 2`): Enhanced parallel processing
-- **Resource Monitoring**: Continuous performance tracking and adaptation
-- **Dynamic Allocation**: Respects system-wide thread budget constraints
+- **All Systems**: 1 worker allocated for update thread (main thread handles rendering and events)
+- **Sequential Processing**: Updates processed sequentially to maintain game logic consistency
+- **Critical Priority**: Update worker runs with Critical priority to ensure consistent frame timing
+- **Dynamic Allocation**: Frees remaining workers for AI/Particle/Event manager use
 
-**Example Allocation:**
-- 4-core system: 1-2 workers allocated to GameLoop
-- 8-core system: 2-4 workers allocated to GameLoop
-- 16-core system: 4-8 workers allocated to GameLoop
+**Worker Allocation:**
+- All systems: 1 worker for GameLoop update thread
+- Main thread: Handles event processing and rendering (not part of worker pool)
 
 ### Thread Synchronization & Critical Priority
 
@@ -275,9 +268,9 @@ private:
     // Performance tracking
     std::atomic<int> m_updateCount;
 
-    // Enhanced processing methods
-    void runUpdateWorker(const HammerEngine::WorkerBudget& budget);
-    void processUpdatesParallel();
+    // Update processing methods
+    void runUpdateWorker();
+    void processUpdates();
 };
 ```
 

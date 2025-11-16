@@ -26,10 +26,10 @@ ThreadSystem (Singleton)
 │       ├── Exponential Backoff
 │       └── Exception Handling
 └── WorkerBudget System (Intelligent resource allocation)
-    ├── AI: ~45% of remaining workers
-    ├── Particles: ~25% of remaining workers
-    ├── Events: ~20% of remaining workers
-    ├── Engine: 1–2 workers reserved
+    ├── AI: ~54% of remaining workers
+    ├── Particles: ~31% of remaining workers
+    ├── Events: ~15% of remaining workers
+    ├── Engine: 1 worker reserved
     └── Buffer: Dynamic burst capacity
 ```
 
@@ -121,7 +121,7 @@ bool isStopping() const {
 - **📊 Performance Monitoring**: Built-in profiling, statistics tracking, and performance analytics
 - **🛡️ Thread Safety**: Lock-free operations where possible with comprehensive synchronization
 - **🎯 Engine Integration**: Seamless integration with AIManager, EventManager, and core systems
-- **⚙️ WorkerBudget System**: Weight-based resource allocation across engine subsystems (AI: 6, Collision: 3, Particles: 3, Events: 2 weights; 1–2 engine workers reserved; 30% buffer reserve for burst capacity)
+- **⚙️ WorkerBudget System**: Weight-based resource allocation across engine subsystems (AI: 7, Particles: 4, Events: 2 weights; 1 engine worker reserved; 30% buffer reserve for burst capacity)
 - **🔧 Clean Shutdown**: Graceful termination with proper resource cleanup
 
 ## Quick Start
@@ -324,39 +324,37 @@ WorkerBudget budget = {
 };
 
 // 8-core/16-thread system (15 workers available) - High-end
-// Remaining: 13 workers, Buffer: 30% × 13 = 4, Allocate: 9 workers
-// Total weight: 6+3+3+2 = 14
+// Engine: 1, Remaining: 14 workers, Buffer: 30% × 14 = 4, Allocate: 10 workers
+// Total weight: 7+4+2 = 13
 WorkerBudget budget = {
     .totalWorkers = 15,
-    .engineReserved = 2,         // 13% - Enhanced engine capacity
-    .aiAllocated = 4,            // (6/14) × 9 ≈ 4 workers (weight: 6)
-    .collisionAllocated = 2,     // (3/14) × 9 ≈ 2 workers (weight: 3)
-    .particleAllocated = 2,      // (3/14) × 9 ≈ 2 workers (weight: 3)
-    .eventAllocated = 1,         // (2/14) × 9 ≈ 1 worker  (weight: 2)
-    .remaining = 4               // 30% - Buffer for burst workloads
+    .engineReserved = 1,         // 7% - Engine update thread
+    .aiAllocated = 5,            // (7/13) × 10 ≈ 5 workers (weight: 7)
+    .particleAllocated = 3,      // (4/13) × 10 ≈ 3 workers (weight: 4)
+    .eventAllocated = 2,         // (2/13) × 10 ≈ 2 workers (weight: 2)
+    .remaining = 4               // 27% - Buffer for burst workloads
 };
 
 // 2-core/4-thread system (3 workers available) - Low-end
 WorkerBudget budget = {
     .totalWorkers = 3,
-    .engineReserved = 1,         // 33% - Critical engine operations
+    .engineReserved = 1,         // 33% - Engine update thread
     .aiAllocated = 1,            // 33% - Minimal AI processing
-    .collisionAllocated = 1,     // 33% - Minimal collision processing
     .particleAllocated = 0,      // 0%  - Single-threaded fallback
     .eventAllocated = 0,         // 0%  - Single-threaded fallback
-    .remaining = 0               // No buffer available
+    .remaining = 1               // 33% - Small buffer
 };
 
 // 12-core/24-thread system (23 workers available) - Enthusiast
-// Remaining: 21 workers, Buffer: 30% × 21 = 6, Allocate: 15 workers
+// Engine: 1, Remaining: 22 workers, Buffer: 30% × 22 = 7, Allocate: 15 workers
+// Total weight: 7+4+2 = 13
 WorkerBudget budget = {
     .totalWorkers = 23,
-    .engineReserved = 2,         // 9% - Enhanced engine capacity
-    .aiAllocated = 6,            // (6/14) × 15 ≈ 6 workers (weight: 6)
-    .collisionAllocated = 3,     // (3/14) × 15 ≈ 3 workers (weight: 3)
-    .particleAllocated = 3,      // (3/14) × 15 ≈ 3 workers (weight: 3)
-    .eventAllocated = 3,         // (2/14) × 15 ≈ 2-3 workers (weight: 2, rounded up)
-    .remaining = 6               // 30% - Buffer for burst workloads
+    .engineReserved = 1,         // 4% - Engine update thread
+    .aiAllocated = 8,            // (7/13) × 15 ≈ 8 workers (weight: 7)
+    .particleAllocated = 5,      // (4/13) × 15 ≈ 5 workers (weight: 4)
+    .eventAllocated = 2,         // (2/13) × 15 ≈ 2 workers (weight: 2)
+    .remaining = 7               // 30% - Buffer for burst workloads
 };
 ```
 
@@ -1178,13 +1176,12 @@ private:
         return HammerEngine::calculateWorkerBudget(totalWorkers);
 
         /* Weight-based allocation logic (from WorkerBudget.hpp):
-         * - Engine: 1-2 workers (adaptive based on system tier)
+         * - Engine: 1 worker (all system tiers)
          * - Buffer: 30% of remaining workers reserved
          * - Base allocation: 70% distributed by weights
-         *   - AI: weight 6 → (6/14) of base = ~43%
-         *   - Collision: weight 3 → (3/14) of base = ~21%
-         *   - Particles: weight 3 → (3/14) of base = ~21%
-         *   - Events: weight 2 → (2/14) of base = ~14%
+         *   - AI: weight 7 → (7/13) of base = ~54%
+         *   - Particles: weight 4 → (4/13) of base = ~31%
+         *   - Events: weight 2 → (2/13) of base = ~15%
          */
     }
 
