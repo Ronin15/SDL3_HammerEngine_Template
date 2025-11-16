@@ -13,6 +13,7 @@ NC='\033[0m' # No Color
 
 # Directory where all scripts are located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Process command line arguments
 VERBOSE=false
@@ -119,8 +120,8 @@ if [ "$RUN_BENCHMARKS" = true ]; then
 fi
 
 # Create a directory for the combined test results
-mkdir -p "$SCRIPT_DIR/../../test_results/combined"
-COMBINED_RESULTS="$SCRIPT_DIR/../../test_results/combined/all_tests_results.txt"
+mkdir -p "$PROJECT_ROOT/test_results/combined"
+COMBINED_RESULTS="$PROJECT_ROOT/test_results/combined/all_tests_results.txt"
 echo "All Tests Run $(date)" > "$COMBINED_RESULTS"
 
 # Track overall success

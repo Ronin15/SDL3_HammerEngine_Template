@@ -27,7 +27,7 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 ```
 
-**Working Directory:** `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/`
+**Working Directory:** `$PROJECT_ROOT/`
 
 **Checks:**
 - Count total warnings
