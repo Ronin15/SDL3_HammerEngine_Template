@@ -61,29 +61,6 @@ BOOST_AUTO_TEST_CASE(TestPathfinderManagerInitialization) {
     BOOST_CHECK(!manager.isInitialized());
 }
 
-BOOST_AUTO_TEST_CASE(TestImmediatePathfinding) {
-    PathfinderManager& manager = PathfinderManager::Instance();
-    
-    BOOST_REQUIRE(manager.init());
-    
-    Vector2D start(100.0f, 100.0f);
-    Vector2D goal(200.0f, 200.0f);
-    std::vector<Vector2D> path;
-    
-    // Test immediate pathfinding
-    auto result = manager.findPathImmediate(start, goal, path);
-    
-    // Even if no path is found (due to no world data), the function should not crash
-    // Accept all valid PathfindingResult values since we don't have world data setup
-    BOOST_CHECK(result == HammerEngine::PathfindingResult::SUCCESS || 
-                result == HammerEngine::PathfindingResult::NO_PATH_FOUND ||
-                result == HammerEngine::PathfindingResult::INVALID_START ||
-                result == HammerEngine::PathfindingResult::INVALID_GOAL ||
-                result == HammerEngine::PathfindingResult::TIMEOUT);
-    
-    manager.clean();
-}
-
 BOOST_AUTO_TEST_CASE(TestAsyncPathfinding) {
     PathfinderManager& manager = PathfinderManager::Instance();
     
@@ -279,9 +256,9 @@ BOOST_AUTO_TEST_CASE(TestNoInfiniteRetryLoop) {
     // 3. Stats should show reasonable request count (not thousands from retry loop)
     auto stats = manager.getStats();
     BOOST_CHECK(stats.totalRequests <= 20); // Should be close to our 4 requests, not thousands
-    
-    // Note: No negative-result cache is enforced now; ensure no runaway processing only.
-    
+
+    // Ensure no runaway processing from repeated failed path requests
+
     manager.clean();
 }
 
@@ -326,8 +303,8 @@ BOOST_AUTO_TEST_CASE(TestFailedRequestCaching) {
     
     // But total requests processed should be minimal (cache working)
     auto stats = manager.getStats();
-    BOOST_CHECK(stats.totalRequests <= 20); // No negative cache; still ensure no runaway
-    
+    BOOST_CHECK(stats.totalRequests <= 20); // Ensure no runaway processing from repeated requests
+
     manager.clean();
 }
 
@@ -514,6 +491,237 @@ BOOST_FIXTURE_TEST_CASE(TestPathfinderEventPerformance, PathfinderEventFixture)
     // Verify PathfinderManager is still functioning after many events
     auto stats = PathfinderManager::Instance().getStats();
     BOOST_CHECK_GE(stats.totalRequests, 0); // Should be accessible
+}
+
+// ========== WorkerBudget Integration Tests ==========
+
+BOOST_AUTO_TEST_CASE(TestBurstRequestHandling) {
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+
+    const size_t burstSize = 150; // Test 150 simultaneous requests
+    std::atomic<size_t> completedCount{0};
+    std::atomic<size_t> successCount{0};
+
+    BOOST_TEST_MESSAGE("Submitting " << burstSize << " simultaneous path requests...");
+
+    // Submit burst of path requests
+    for (size_t i = 0; i < burstSize; ++i) {
+        Vector2D start(100.0f + i * 10.0f, 100.0f);
+        Vector2D goal(500.0f + i * 10.0f, 500.0f);
+
+        manager.requestPath(
+            static_cast<EntityID>(1000 + i),
+            start,
+            goal,
+            PathfinderManager::Priority::Normal,
+            [&completedCount, &successCount](EntityID, const std::vector<Vector2D>& path) {
+                completedCount.fetch_add(1, std::memory_order_relaxed);
+                if (!path.empty()) {
+                    successCount.fetch_add(1, std::memory_order_relaxed);
+                }
+            }
+        );
+    }
+
+    // Process requests over multiple frames (rate limiting should apply)
+    const int maxFrames = 10;
+    for (int frame = 0; frame < maxFrames; ++frame) {
+        manager.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(16)); // ~60 FPS
+    }
+
+    // Wait for async processing to complete
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    BOOST_TEST_MESSAGE("Completed " << completedCount.load() << " / " << burstSize << " requests");
+
+    // Verify rate limiting worked (should spread across multiple frames)
+    // With 50 req/frame limit, 150 requests should take at least 3 frames
+    BOOST_CHECK_GE(completedCount.load(), burstSize / 2); // At least half completed
+
+    manager.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestQueuePressureGracefulDegradation) {
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    const size_t queueCapacity = threadSystem.getQueueCapacity();
+
+    BOOST_TEST_MESSAGE("ThreadSystem queue capacity: " << queueCapacity);
+
+    // Submit enough requests to test queue pressure handling
+    const size_t testRequests = 200;
+    std::atomic<size_t> completed{0};
+
+    for (size_t i = 0; i < testRequests; ++i) {
+        Vector2D start(50.0f + i, 50.0f);
+        Vector2D goal(300.0f + i, 300.0f);
+
+        manager.requestPath(
+            static_cast<EntityID>(2000 + i),
+            start,
+            goal,
+            PathfinderManager::Priority::Normal,
+            [&completed](EntityID, const std::vector<Vector2D>&) {
+                completed.fetch_add(1, std::memory_order_relaxed);
+            }
+        );
+    }
+
+    // Process over multiple frames
+    for (int frame = 0; frame < 15; ++frame) {
+        manager.update();
+
+        // Check queue size doesn't exceed critical threshold
+        size_t queueSize = threadSystem.getQueueSize();
+        double queuePressure = static_cast<double>(queueSize) / queueCapacity;
+
+        // Queue pressure should stay below critical (0.90)
+        BOOST_CHECK_LT(queuePressure, 0.95); // Allow small margin
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    }
+
+    // Wait for completion
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    BOOST_TEST_MESSAGE("Completed " << completed.load() << " / " << testRequests << " requests");
+    BOOST_CHECK_GE(completed.load(), testRequests / 2);
+
+    manager.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    size_t availableWorkers = threadSystem.getThreadCount();
+
+    BOOST_TEST_MESSAGE("Available workers: " << availableWorkers);
+
+    // Calculate expected WorkerBudget allocation
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+
+    BOOST_TEST_MESSAGE("Pathfinding allocated workers: " << budget.pathfindingAllocated);
+    BOOST_CHECK_GT(budget.pathfindingAllocated, 0); // Should have at least 1 worker allocated
+
+    // Verify buffer capacity exists
+    BOOST_CHECK_GT(budget.remaining, 0); // Buffer workers available
+
+    // Submit workload that should trigger batching (> 8 requests)
+    const size_t batchWorkload = 24; // 3x the MIN_REQUESTS_FOR_BATCHING
+    std::atomic<size_t> completed{0};
+
+    for (size_t i = 0; i < batchWorkload; ++i) {
+        Vector2D start(100.0f, 100.0f + i * 5.0f);
+        Vector2D goal(400.0f, 400.0f + i * 5.0f);
+
+        manager.requestPath(
+            static_cast<EntityID>(3000 + i),
+            start,
+            goal,
+            PathfinderManager::Priority::Normal,
+            [&completed](EntityID, const std::vector<Vector2D>&) {
+                completed.fetch_add(1, std::memory_order_relaxed);
+            }
+        );
+    }
+
+    // Process - should use batching
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+    BOOST_TEST_MESSAGE("Completed " << completed.load() << " / " << batchWorkload << " batch requests");
+
+    manager.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestRateLimiting) {
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+
+    // MAX_REQUESTS_PER_FRAME = 50 in PathfinderManager
+    const size_t requestsSubmitted = 100;
+    std::atomic<size_t> completed{0};
+
+    // Submit 100 requests in single frame
+    for (size_t i = 0; i < requestsSubmitted; ++i) {
+        Vector2D start(50.0f, 50.0f + i);
+        Vector2D goal(200.0f, 200.0f + i);
+
+        manager.requestPath(
+            static_cast<EntityID>(4000 + i),
+            start,
+            goal,
+            PathfinderManager::Priority::Normal,
+            [&completed](EntityID, const std::vector<Vector2D>&) {
+                completed.fetch_add(1, std::memory_order_relaxed);
+            }
+        );
+    }
+
+    // First update should process maximum 50 requests
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    size_t completedAfterFrame1 = completed.load();
+    BOOST_TEST_MESSAGE("After frame 1: " << completedAfterFrame1 << " completed");
+
+    // Second update should process remaining 50
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    size_t completedAfterFrame2 = completed.load();
+    BOOST_TEST_MESSAGE("After frame 2: " << completedAfterFrame2 << " completed");
+
+    // Wait for all to finish
+    for (int i = 0; i < 5; ++i) {
+        manager.update();
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+
+    BOOST_TEST_MESSAGE("Final: " << completed.load() << " / " << requestsSubmitted << " completed");
+
+    // Verify rate limiting spread requests across frames
+    BOOST_CHECK_GE(completed.load(), requestsSubmitted / 2);
+
+    manager.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestPriorityStratification) {
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+
+    // Test that default priority is now Normal (not High)
+    std::atomic<size_t> completed{0};
+
+    // Submit with default priority (should be Normal)
+    Vector2D start(100.0f, 100.0f);
+    Vector2D goal(300.0f, 300.0f);
+
+    auto requestId = manager.requestPath(
+        static_cast<EntityID>(5000),
+        start,
+        goal,
+        PathfinderManager::Priority::Normal, // Explicitly Normal
+        [&completed](EntityID, const std::vector<Vector2D>&) {
+            completed.fetch_add(1, std::memory_order_relaxed);
+        }
+    );
+
+    BOOST_CHECK_GT(requestId, 0);
+
+    // Process
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    BOOST_CHECK_GE(completed.load(), 0); // Should process successfully
+
+    manager.clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

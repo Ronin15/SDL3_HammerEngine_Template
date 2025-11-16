@@ -138,9 +138,13 @@ void Player::update(float deltaTime) {
   // State machine handles input and sets velocity
   m_stateManager.update(deltaTime);
 
-  // Sync velocity to collision body - let collision system handle movement integration
-  // This prevents micro-bouncing from double integration (entity + physics)
+  // MOVEMENT INTEGRATION: Apply velocity to position (same as AIManager does for NPCs)
+  // This is the core physics step that makes the player move
+  m_position = m_position + (m_velocity * deltaTime);
+
+  // Update collision body with new position and velocity
   auto &cm = CollisionManager::Instance();
+  cm.updateCollisionBodyPositionSOA(m_id, m_position);
   cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
 
   // If the texture dimensions haven't been loaded yet, try loading them
@@ -204,8 +208,10 @@ void Player::ensurePhysicsBodyRegistered() {
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
 
   // Use new SOA-based collision system
+  // Player collides with everything except pets (pets pass through player)
+  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Pet;
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
-                        HammerEngine::CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+                        HammerEngine::CollisionLayer::Layer_Player, mask);
   // Process queued command to ensure body exists before attaching
   cm.processPendingCommands();
   // Attach entity reference to SOA storage

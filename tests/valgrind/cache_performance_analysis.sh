@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# SDL3 ForgeEngine Template - Detailed Cache Performance Analysis
+# SDL3 HammerEngine Template - Detailed Cache Performance Analysis
 # Comprehensive cachegrind analysis with performance comparisons and detailed reporting
 
 set -e
@@ -37,6 +37,7 @@ declare -A CACHE_TESTS=(
     ["event_manager_behavior"]="event_manager_behavior_tests"
     ["event_types"]="event_types_tests"
     ["save_manager"]="save_manager_tests"
+    ["settings_manager"]="settings_manager_tests"
     ["weather_events"]="weather_event_tests"
     ["thread_safe_ai_mgr"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integ"]="thread_safe_ai_integration_tests"
@@ -55,6 +56,7 @@ declare -A CACHE_TESTS=(
     ["resource_factory"]="resource_factory_tests"
     ["resource_template_json"]="resource_template_manager_json_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
+    ["settings_manager"]="settings_manager_tests"
     ["game_state_manager"]="game_state_manager_tests"
     ["world_generator"]="world_generator_tests"
     ["world_manager"]="world_manager_tests"
@@ -260,7 +262,7 @@ System: $(uname -a)
 
 ## Executive Summary
 
-This report provides detailed cache performance analysis of the SDL3 ForgeEngine Template components using Valgrind's Cachegrind tool.
+This report provides detailed cache performance analysis of the SDL3 HammerEngine Template components using Valgrind's Cachegrind tool.
 
 ## System Configuration
 
@@ -364,7 +366,7 @@ cg_annotate cachegrind.out.[pid]
 
 ---
 
-This analysis confirms the SDL3 ForgeEngine Template's exceptional cache efficiency, placing it in the top tier of optimized applications worldwide.
+This analysis confirms the SDL3 HammerEngine Template's exceptional cache efficiency, placing it in the top tier of optimized applications worldwide.
 
 EOF
 

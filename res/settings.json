@@ -1,0 +1,21 @@
+{
+  "gameplay": {
+    "autosave_interval": 300,
+    "autosave_enabled": true,
+    "difficulty": "normal"
+  },
+  "audio": {
+    "sfx_volume": 0.8,
+    "muted": false,
+    "music_volume": 0.7,
+    "master_volume": 1
+  },
+  "graphics": {
+    "vsync": true,
+    "show_fps": false,
+    "fullscreen": false,
+    "resolution_height": 1080,
+    "fps_limit": 60,
+    "resolution_width": 1920
+  }
+}

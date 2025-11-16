@@ -23,7 +23,8 @@ enum class CameraEventType {
     CameraTargetChanged,// Camera target entity changed
     CameraShakeStarted, // Camera shake effect started
     CameraShakeEnded,   // Camera shake effect ended
-    ViewportChanged     // Camera viewport size changed
+    ViewportChanged,    // Camera viewport size changed
+    CameraZoomChanged   // Camera zoom level changed
 };
 
 /**
@@ -202,19 +203,19 @@ public:
 class ViewportChangedEvent : public CameraEvent {
 public:
     ViewportChangedEvent(float newWidth, float newHeight, float oldWidth, float oldHeight)
-        : CameraEvent(CameraEventType::ViewportChanged), 
+        : CameraEvent(CameraEventType::ViewportChanged),
           m_newWidth(newWidth), m_newHeight(newHeight),
           m_oldWidth(oldWidth), m_oldHeight(oldHeight) {}
-    
+
     float getNewWidth() const { return m_newWidth; }
     float getNewHeight() const { return m_newHeight; }
     float getOldWidth() const { return m_oldWidth; }
     float getOldHeight() const { return m_oldHeight; }
-    
+
     std::string getTypeName() const override { return "ViewportChangedEvent"; }
     std::string getName() const override { return "ViewportChangedEvent"; }
     std::string getType() const override { return "ViewportChangedEvent"; }
-    
+
     void reset() override {
         CameraEvent::reset();
         m_newWidth = 0.0f;
@@ -228,6 +229,33 @@ private:
     float m_newHeight{0.0f};
     float m_oldWidth{0.0f};
     float m_oldHeight{0.0f};
+};
+
+/**
+ * @brief Event fired when camera zoom level changes
+ */
+class CameraZoomChangedEvent : public CameraEvent {
+public:
+    CameraZoomChangedEvent(float newZoom, float oldZoom)
+        : CameraEvent(CameraEventType::CameraZoomChanged),
+          m_newZoom(newZoom), m_oldZoom(oldZoom) {}
+
+    float getNewZoom() const { return m_newZoom; }
+    float getOldZoom() const { return m_oldZoom; }
+
+    std::string getTypeName() const override { return "CameraZoomChangedEvent"; }
+    std::string getName() const override { return "CameraZoomChangedEvent"; }
+    std::string getType() const override { return "CameraZoomChangedEvent"; }
+
+    void reset() override {
+        CameraEvent::reset();
+        m_newZoom = 1.0f;
+        m_oldZoom = 1.0f;
+    }
+
+private:
+    float m_newZoom{1.0f};
+    float m_oldZoom{1.0f};
 };
 
 #endif // CAMERA_EVENT_HPP

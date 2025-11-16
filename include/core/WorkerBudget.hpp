@@ -11,6 +11,8 @@
 #include <cmath>
 #include <array>
 #include <atomic>
+#include <string>
+#include "Logger.hpp"
 
 namespace HammerEngine {
 
@@ -29,8 +31,10 @@ struct WorkerBudget {
     size_t aiAllocated;        // Workers allocated to AIManager
     size_t particleAllocated;  // Workers allocated to ParticleManager
     size_t eventAllocated;     // Workers allocated to EventManager
-    size_t collisionAllocated; // Workers allocated to CollisionManager
+    size_t pathfindingAllocated; // Workers allocated to PathfinderManager
     size_t remaining;          // Buffer workers available for burst capacity
+
+    // NOTE: collisionAllocated removed - CollisionManager is single-threaded
 
     /**
      * @brief Calculate optimal worker count for a subsystem based on workload
@@ -149,6 +153,14 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
     0.2     // targetUpdateTimeMs: 200µs target for event updates (adaptive tuning)
 };
 
+static constexpr BatchConfig PATHFINDING_BATCH_CONFIG = {
+    4,      // baseDivisor: threshold/4 for moderate parallelism
+    16,     // minBatchSize: minimum 16 path requests per batch (larger batches for high-volume scenarios)
+    2,      // minBatchCount: at least 2 batches
+    8,      // maxBatchCount: up to 8 batches (better parallelism at scale)
+    1.0     // targetUpdateTimeMs: 1ms target for pathfinding batch (adaptive tuning)
+};
+
 /**
  * @brief Worker allocation weights
  *
@@ -157,23 +169,28 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
  * 2. Priority access to buffer threads during burst workloads
  *
  * Higher weight = more base workers + higher priority for buffer access
+ *
+ * NOTE: CollisionManager is single-threaded and NOT included in allocation.
+ * Worker distribution: AI (7/16 = 44%), Particle (4/16 = 25%), Event (2/16 = 12.5%), Pathfinding (3/16 = 19%)
+ * This allocation prioritizes AI behavior updates while ensuring pathfinding gets dedicated workers
+ * to prevent queue flooding during burst scenarios (500+ simultaneous path requests).
  */
-static constexpr size_t AI_WORKER_WEIGHT = 6;
-static constexpr size_t PARTICLE_WORKER_WEIGHT = 3;
-static constexpr size_t EVENT_WORKER_WEIGHT = 2;
-static constexpr size_t COLLISION_WORKER_WEIGHT = 3;
-static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for GameEngine
-static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
+static constexpr size_t AI_WORKER_WEIGHT = 7;        // Was 6, increased for higher computation load
+static constexpr size_t PARTICLE_WORKER_WEIGHT = 4;  // Was 3, increased for parallel particle updates
+static constexpr size_t PATHFINDING_WORKER_WEIGHT = 3; // NEW: Dedicated pathfinding allocation for burst coordination
+static constexpr size_t EVENT_WORKER_WEIGHT = 2;     // Unchanged, lightweight event processing
+static constexpr size_t ENGINE_WORKERS = 1;          // GameLoop uses 1 worker (update thread); main thread handles rendering
 
 /**
  * @brief Unified queue pressure management thresholds
- * 
+ *
  * Consistent queue pressure thresholds across all managers to eliminate
  * performance inconsistencies and ensure proper thread coordination.
  */
 static constexpr float QUEUE_PRESSURE_WARNING = 0.70f;       // Early adaptation threshold (70%)
 static constexpr float QUEUE_PRESSURE_CRITICAL = 0.90f;     // Fallback trigger for AI/Event managers (90%)
 static constexpr float QUEUE_PRESSURE_PATHFINDING = 0.75f;  // PathfinderManager threshold (75%)
+static constexpr double BUFFER_RESERVE_RATIO = 0.30;        // 30% of workers reserved for burst capacity
 
 /**
  * @brief Calculate optimal batch count and size for threaded processing
@@ -199,6 +216,7 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     size_t workloadSize,
     size_t threshold,
     size_t optimalWorkers,
+    size_t baseAllocation,
     double queuePressure)
 {
     // Handle empty workload
@@ -217,20 +235,26 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
                                  std::min(optimalWorkers, config.maxBatchCount * 2));
 
     // Adapt batch strategy based on ThreadSystem queue pressure
+    // IMPORTANT: Only apply queue pressure overrides when NOT using buffer capacity
+    // If optimalWorkers > baseAllocation, buffer workers are allocated and should be used fully
+    bool usingBufferWorkers = (optimalWorkers > baseAllocation);
+
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
-        // High pressure: Use fewer, larger batches to reduce queue overhead
-        // This prevents overwhelming the ThreadSystem when other subsystems are busy
+        // High pressure: Use larger batches to reduce queue overhead
+        // But DON'T reduce maxBatches if buffer workers are allocated - we need them to drain the queue!
         minItemsPerBatch = std::min(baseBatchSize * 2, threshold * 2);
-        size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
-        maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
+
+        if (!usingBufferWorkers) {
+            // Only limit batch count when using base allocation (no buffer)
+            size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
+            maxBatches = std::max(highPressureMax, static_cast<size_t>(1));
+        }
+        // else: Keep maxBatches scaled to optimalWorkers - use all allocated buffer workers
     } else if (queuePressure < (1.0 - QUEUE_PRESSURE_WARNING)) {
         // Low pressure: Use more, smaller batches for better parallelism
-        // ThreadSystem has capacity, so maximize parallel execution
         size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
         minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
-        // Scale with workers in low pressure (more cores = more parallelism opportunity)
-        maxBatches = std::max(config.maxBatchCount,
-                             std::min(optimalWorkers, config.maxBatchCount * 2));
+        // maxBatches already set correctly above based on optimalWorkers
     }
 
     // Calculate actual batch count based on workload and constraints
@@ -271,6 +295,7 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     size_t workloadSize,
     size_t threshold,
     size_t optimalWorkers,
+    size_t baseAllocation,
     double queuePressure,
     AdaptiveBatchState& adaptiveState,
     double lastUpdateTimeMs)
@@ -310,18 +335,26 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
                                  std::min(optimalWorkers, config.maxBatchCount * 2));
 
     // Adapt batch strategy based on ThreadSystem queue pressure
+    // IMPORTANT: Only apply queue pressure overrides when NOT using buffer capacity
+    // If optimalWorkers > baseAllocation, buffer workers are allocated and should be used fully
+    bool usingBufferWorkers = (optimalWorkers > baseAllocation);
+
     if (queuePressure > QUEUE_PRESSURE_WARNING) {
-        // High pressure: Use fewer, larger batches to reduce queue overhead
+        // High pressure: Use larger batches to reduce queue overhead
+        // But DON'T reduce maxBatches if buffer workers are allocated - we need them to drain the queue!
         minItemsPerBatch = std::min(baseBatchSize * 2, threshold * 2);
-        size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
-        maxBatches = highPressureMax;
+
+        if (!usingBufferWorkers) {
+            // Only limit batch count when using base allocation (no buffer)
+            size_t highPressureMax = std::max(config.minBatchCount, optimalWorkers / 2);
+            maxBatches = highPressureMax;
+        }
+        // else: Keep maxBatches scaled to optimalWorkers - use all allocated buffer workers
     } else if (queuePressure < (1.0 - QUEUE_PRESSURE_WARNING)) {
         // Low pressure: Use more, smaller batches for better parallelism
         size_t minLowPressure = std::max(threshold / (config.baseDivisor * 2), config.minBatchSize);
         minItemsPerBatch = std::max(baseBatchSize / 2, minLowPressure);
-        // Scale with workers in low pressure (more cores = more parallelism opportunity)
-        maxBatches = std::max(config.maxBatchCount,
-                             std::min(optimalWorkers, config.maxBatchCount * 2));
+        // maxBatches already set correctly above based on optimalWorkers
     }
 
     // Calculate batch count
@@ -329,9 +362,16 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
     batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
 
     // Apply adaptive multiplier for performance-based tuning
-    float multiplier = adaptiveState.batchMultiplier.load(std::memory_order_acquire);
-    batchCount = static_cast<size_t>(batchCount * multiplier);
-    batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+    // IMPORTANT: When buffer workers are allocated, don't let adaptive tuning waste them
+    // The buffer allocation itself is already adaptive (based on workload), so adaptive
+    // batch reduction would just waste the workers we specifically allocated for this workload
+    if (!usingBufferWorkers) {
+        // Only apply adaptive reduction when using base allocation
+        float multiplier = adaptiveState.batchMultiplier.load(std::memory_order_acquire);
+        batchCount = static_cast<size_t>(batchCount * multiplier);
+        batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+    }
+    // else: Using buffer workers - use all of them (batchCount already calculated correctly)
 
     // Calculate final batch size (distribute workload evenly)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
@@ -342,13 +382,25 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
 /**
  * @brief Calculate optimal worker budget allocation with hardware-adaptive scaling
  *
+ * IMPORTANT: CollisionManager is NOT included in worker allocation.
+ * CollisionManager uses single-threaded collision detection optimized for
+ * cache-friendly SOA access patterns. Future parallelization would require
+ * per-batch spatial hashes with significant memory overhead.
+ *
+ * Worker Distribution (based on weights):
+ * - AI: 7/16 (~44%) - Highest priority, most computation-heavy
+ * - Particle: 4/16 (~25%) - Second priority, parallel particle updates
+ * - Pathfinding: 3/16 (~19%) - NEW: Dedicated workers for coordinated burst handling
+ * - Event: 2/16 (~12.5%) - Lowest priority, lightweight event processing
+ * - Buffer: Remaining workers for burst workloads
+ *
  * @param availableWorkers Total workers available in ThreadSystem
  * @return WorkerBudget Allocation strategy for all subsystems
  *
  * Tiered Strategy (prevents over-allocation):
- * - Tier 1 (≤1 workers): GameLoop=1, AI=0 (single-threaded), Events=0 (single-threaded)
- * - Tier 2 (2-4 workers): GameLoop=1, AI=1 if possible, Events=0 (shares with AI)
- * - Tier 3 (5+ workers): GameLoop=2, weighted base allocation, 30% buffer reserve
+ * - Tier 1 (≤1 workers): GameLoop=1, AI=0 (single-threaded), Events=0, Pathfinding=0 (single-threaded)
+ * - Tier 2 (2-4 workers): GameLoop=1, AI=1 if possible, Pathfinding=0, Events=0 (shares with AI)
+ * - Tier 3 (5+ workers): GameLoop=1, weighted base allocation (AI/Particle/Pathfinding/Event), 30% buffer reserve
  *
  * Buffer Strategy:
  * - 30% of available workers reserved as buffer for burst capacity
@@ -367,21 +419,14 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = 0;         // Single-threaded fallback
         budget.particleAllocated = 0;   // Single-threaded fallback
         budget.eventAllocated = 0;      // Single-threaded fallback
-        budget.collisionAllocated = 0;  // Single-threaded fallback
+        budget.pathfindingAllocated = 0; // Single-threaded fallback
         budget.remaining = 0;
         return budget;
     }
 
-    // Dynamic GameLoop worker allocation based on available cores
-    // Low-end systems (≤4 workers): 1 worker for GameLoop coordination
-    // Higher-end systems (>4 workers): 2 workers for GameLoop tasks
-    if (availableWorkers <= 2) {
-        budget.engineReserved = 1;  // Very limited systems
-    } else if (availableWorkers <= 4) {
-        budget.engineReserved = ENGINE_MIN_WORKERS;  // Low-end systems: 1 worker
-    } else {
-        budget.engineReserved = ENGINE_OPTIMAL_WORKERS;  // Higher-end systems: 2 workers
-    }
+    // GameLoop worker allocation: 1 worker for update thread (all systems)
+    // Main thread handles rendering and events; update worker runs game logic
+    budget.engineReserved = ENGINE_WORKERS;
 
     // Calculate remaining workers after engine reservation
     size_t remainingWorkers = availableWorkers - budget.engineReserved;
@@ -391,19 +436,18 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
         budget.particleAllocated = (remainingWorkers >= 3) ? 1 : 0;
         budget.eventAllocated = 0; // Remains single-threaded on low-end
-        budget.collisionAllocated = (remainingWorkers >= 2) ? 1 : 0;
+        budget.pathfindingAllocated = 0; // Remains single-threaded on low-end
+        // NOTE: collisionAllocated removed - CollisionManager is single-threaded
     } else {
         // Tier 3: High-end systems (5+ workers) - Base allocation + buffer
         // Reserve 30% of remaining workers as buffer for burst capacity
-        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(remainingWorkers * 0.3));
+        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(remainingWorkers * BUFFER_RESERVE_RATIO));
         size_t workersToAllocate = remainingWorkers - bufferReserve;
 
-        // Weighted distribution for base allocations only
-        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT +
-                                   EVENT_WORKER_WEIGHT + COLLISION_WORKER_WEIGHT;
+        // Weighted distribution for base allocations only (CollisionManager excluded - single-threaded)
+        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT + PATHFINDING_WORKER_WEIGHT + EVENT_WORKER_WEIGHT;
 
-        std::array<size_t, 4> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT,
-                                         EVENT_WORKER_WEIGHT, COLLISION_WORKER_WEIGHT};
+        std::array<size_t, 4> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT, PATHFINDING_WORKER_WEIGHT, EVENT_WORKER_WEIGHT};
         std::array<double, 4> rawShares{};
         std::array<size_t, 4> shares{};
 
@@ -421,8 +465,8 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
         size_t used = shares[0] + shares[1] + shares[2] + shares[3];
 
-        // Ensure minimum allocation for high-priority subsystems
-        std::array<size_t, 4> priorityOrder = {0, 3, 1, 2}; // AI, Collision, Particle, Event
+        // Ensure minimum allocation for high-priority subsystems (CollisionManager excluded)
+        std::array<size_t, 4> priorityOrder = {0, 1, 2, 3}; // AI, Particle, Pathfinding, Event
         for (size_t index : priorityOrder) {
             if (weights[index] > 0 && shares[index] == 0 && used < workersToAllocate) {
                 shares[index] = 1;
@@ -455,8 +499,8 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
         budget.aiAllocated = shares[0];
         budget.particleAllocated = shares[1];
-        budget.eventAllocated = shares[2];
-        budget.collisionAllocated = shares[3];
+        budget.pathfindingAllocated = shares[2];
+        budget.eventAllocated = shares[3];
 
         // Buffer was already reserved upfront
         budget.remaining = bufferReserve;
@@ -464,22 +508,34 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
     // For low-end systems, calculate remaining after allocation
     if (availableWorkers <= 4) {
-        size_t allocated = budget.aiAllocated + budget.particleAllocated +
-                          budget.eventAllocated + budget.collisionAllocated;
+        size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.pathfindingAllocated + budget.eventAllocated;
         budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
     }
 
     // Validation: Ensure we never over-allocate
     size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.collisionAllocated;
-    if (totalAllocated > availableWorkers) {
-        // Emergency fallback - should never happen with correct logic above
-        budget.aiAllocated = 0;
-        budget.particleAllocated = 0;
-        budget.eventAllocated = 0;
-        budget.collisionAllocated = 0;
-        budget.remaining = availableWorkers - budget.engineReserved;
+                            budget.particleAllocated + budget.pathfindingAllocated + budget.eventAllocated + budget.remaining;
+
+    if (totalAllocated != availableWorkers) {
+        // LOG WARNING with detailed breakdown for debugging
+        std::string breakdown = "Worker allocation mismatch: " +
+            std::to_string(totalAllocated) + " allocated vs " +
+            std::to_string(availableWorkers) + " available\n" +
+            "  Engine Reserved: " + std::to_string(budget.engineReserved) + "\n" +
+            "  AI: " + std::to_string(budget.aiAllocated) + "\n" +
+            "  Particle: " + std::to_string(budget.particleAllocated) + "\n" +
+            "  Pathfinding: " + std::to_string(budget.pathfindingAllocated) + "\n" +
+            "  Event: " + std::to_string(budget.eventAllocated) + "\n" +
+            "  Buffer: " + std::to_string(budget.remaining);
+        THREADSYSTEM_WARN(breakdown);
+
+        // Adjust buffer to fix discrepancy
+        if (totalAllocated > availableWorkers) {
+            size_t excess = totalAllocated - availableWorkers;
+            budget.remaining = (budget.remaining > excess) ? (budget.remaining - excess) : 0;
+        } else {
+            budget.remaining += (availableWorkers - totalAllocated);
+        }
     }
 
     return budget;

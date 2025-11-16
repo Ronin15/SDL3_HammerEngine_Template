@@ -20,8 +20,8 @@
 #include <set>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
-         int frameWidth, int frameHeight)
-    : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight) {
+         int frameWidth, int frameHeight, NPCType type)
+    : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight), m_npcType(type) {
   // Initialize entity properties
   m_position = startPosition;
   m_velocity = Vector2D(0, 0);
@@ -473,9 +473,19 @@ void NPC::ensurePhysicsBodyRegistered() {
             std::to_string(m_position.getY()) + ")" + ", Size: " +
             std::to_string(halfW * 2) + "x" + std::to_string(halfH * 2));
 
-  // All NPCs use Layer_Enemy and collide with everything except other NPCs
-  uint32_t layer = HammerEngine::CollisionLayer::Layer_Enemy;
-  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Enemy;
+  // Configure collision layers based on NPC type
+  uint32_t layer, mask;
+  if (m_npcType == NPCType::Pet) {
+    // Pets use Layer_Pet and don't collide with Layer_Player or other Pets
+    layer = HammerEngine::CollisionLayer::Layer_Pet;
+    mask = 0xFFFFFFFFu & ~(HammerEngine::CollisionLayer::Layer_Player |
+                           HammerEngine::CollisionLayer::Layer_Pet);
+  } else {
+    // Standard NPCs use Layer_Enemy and collide with everything except other NPCs and Pets
+    layer = HammerEngine::CollisionLayer::Layer_Enemy;
+    mask = 0xFFFFFFFFu & ~(HammerEngine::CollisionLayer::Layer_Enemy |
+                           HammerEngine::CollisionLayer::Layer_Pet);
+  }
 
   // Use new SOA-based collision system (deferred command queue)
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
@@ -485,7 +495,8 @@ void NPC::ensurePhysicsBodyRegistered() {
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 
-  NPC_DEBUG("Collision body registered successfully - KINEMATIC type with Layer_Enemy");
+  std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
+  NPC_DEBUG("Collision body registered successfully - KINEMATIC type with " + layerName);
 }
 
 void NPC::setFaction(Faction f) {

@@ -9,6 +9,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <atomic>
 #include <unordered_set>
 #include <vector>
 #include <functional>
@@ -22,19 +23,6 @@
 #include "collisions/HierarchicalSpatialHash.hpp"
 #include "collisions/TriggerTag.hpp"
 #include "managers/EventManager.hpp"
-
-// SIMD support detection (following ParticleManager pattern)
-#if defined(__SSE2__) || \
-    (defined(_MSC_VER) && \
-     (defined(_M_X64) || (defined(_M_IX86_FP) && _M_IX86_FP >= 2)))
-#define COLLISION_SIMD_SSE2 1
-#include <emmintrin.h>
-#endif
-
-#if defined(__SSE4_1__) || (defined(_MSC_VER) && defined(__AVX__))
-#define COLLISION_SIMD_SSE4 1
-#include <smmintrin.h>
-#endif
 
 // Forward declarations
 namespace HammerEngine {
@@ -59,7 +47,39 @@ public:
 
     bool init();
     void clean();
+
+    /**
+     * @brief Prepares CollisionManager for state transition by clearing all collision bodies
+     *
+     * CRITICAL ARCHITECTURAL REQUIREMENT:
+     * This method MUST clear ALL collision bodies (both dynamic and static) during state transitions.
+     *
+     * WHY THIS IS NECESSARY:
+     * prepareForStateTransition() is called BEFORE state exit, which unregisters event handlers.
+     * This means WorldUnloadedEvent handlers will NOT fire after state transition begins.
+     *
+     * Previous "smart" logic tried to keep static bodies when a world was active, expecting
+     * WorldUnloadedEvent to clean them up. This was BROKEN because:
+     * 1. prepareForStateTransition() unregisters event handlers first
+     * 2. WorldUnloadedEvent handler never fires
+     * 3. Static bodies from old world persist into new world
+     *
+     * CONSEQUENCES OF NOT CLEARING ALL BODIES:
+     * - Duplicate/stale collision bodies across state transitions
+     * - Spatial hash corruption (bodies from multiple worlds in same hash)
+     * - Collision detection failures (entities colliding with phantom geometry)
+     * - Memory leaks (bodies never cleaned up)
+     *
+     * CORRECT BEHAVIOR:
+     * Always clear ALL bodies. The world will be unloaded immediately after state transition,
+     * and the new state will rebuild static bodies when it loads its world via WorldLoadedEvent.
+     *
+     * @note This is called automatically by GameStateManager before state transitions
+     * @note Event handlers are unregistered AFTER this method completes
+     * @see GameStateManager::changeState()
+     */
     void prepareForStateTransition();
+
     bool isInitialized() const { return m_initialized; }
     bool isShutdown() const { return m_isShutdown; }
 
@@ -84,6 +104,9 @@ public:
 
     // Per-batch collision updates (zero contention - each AI batch has its own buffer)
     void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
+
+    // Single-vector overload for non-batched updates (convenience wrapper)
+    void applyKinematicUpdates(std::vector<KinematicUpdate>& updates);
 
     // Convenience methods for triggers
     EntityID createTriggerArea(const AABB& aabb,
@@ -110,10 +133,12 @@ public:
     // Type/flags helpers for filtering
     bool isDynamic(EntityID id) const;
     bool isKinematic(EntityID id) const;
+    bool isStatic(EntityID id) const;
     bool isTrigger(EntityID id) const;
 
     // World coupling
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid
+    void populateStaticCache();                   // populate static collision cache after world load
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
 
@@ -142,6 +167,18 @@ public:
 
     // SOA Body Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
+
+    // Configuration setters for collision culling (runtime adjustable)
+    void setCullingBuffer(float buffer) { m_cullingBuffer = buffer; }
+    void setCacheEvictionMultiplier(float multiplier) { m_cacheEvictionMultiplier = multiplier; }
+    void setCacheEvictionInterval(size_t interval) { m_cacheEvictionInterval = interval; }
+    void setCacheStaleThreshold(uint8_t threshold) { m_cacheStaleThreshold = threshold; }
+
+    // Configuration getters
+    float getCullingBuffer() const { return m_cullingBuffer; }
+    float getCacheEvictionMultiplier() const { return m_cacheEvictionMultiplier; }
+    size_t getCacheEvictionInterval() const { return m_cacheEvictionInterval; }
+    uint8_t getCacheStaleThreshold() const { return m_cacheStaleThreshold; }
     void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
     void setVelocity(EntityID id, const Vector2D& velocity);
     void setBodyTrigger(EntityID id, bool isTrigger);
@@ -183,7 +220,9 @@ public:
         size_t activeBodies,
         size_t dynamicBodiesCulled,
         size_t staticBodiesCulled,
-        double cullingMs);
+        double cullingMs,
+        size_t totalStaticBodies,
+        size_t totalMovableBodies);
 
     // Debug utilities
     void logCollisionStatistics() const;
@@ -217,7 +256,6 @@ private:
     void updateStaticCollisionCacheForMovableBodies();
 
     // Building collision validation
-    void validateBuildingCollisionCoverage();
 
     void subscribeWorldEvents(); // hook to world events
 
@@ -243,24 +281,39 @@ private:
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
     static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
+    static constexpr float CACHE_EVICTION_MULTIPLIER = 3.0f;        // Cache entries beyond 3x culling buffer are marked stale
+    static constexpr size_t CACHE_EVICTION_INTERVAL = 300;          // Check for stale cache entries every 300 frames (5 seconds at 60 FPS)
+    static constexpr uint8_t CACHE_STALE_THRESHOLD = 3;             // Remove cache entries after 3 consecutive eviction cycles without access
 
     // Collision prediction configuration - prevents diagonal tunneling through corners
     static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
     static constexpr float FAST_VELOCITY_THRESHOLD = 250.0f;        // Velocity threshold for AABB expansion (pixels/frame)
 
-    // Camera culling support
+    // Spatial culling support (area-based, not camera-based)
     struct CullingArea {
         float minX, minY, maxX, maxY;
-        float bufferSize{COLLISION_CULLING_BUFFER}; // Buffer around camera view
+        float bufferSize{COLLISION_CULLING_BUFFER}; // Buffer around specified culling area
 
         bool contains(float x, float y) const {
             return x >= minX && x <= maxX && y >= minY && y <= maxY;
         }
     };
 
-    void buildActiveIndicesSOA(const CullingArea& cullingArea) const;
+    // Returns body type counts: {totalStatic, totalDynamic, totalKinematic}
+    std::tuple<size_t, size_t, size_t> buildActiveIndicesSOA(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
+    void evictStaleCacheEntries(const CullingArea& cullingArea);
 
+    // OPTIMIZATION HELPERS: Static spatial grid and frame decimation
+    void rebuildStaticSpatialGrid();
+    void queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const;
+
+
+    // Configurable collision culling parameters (runtime adjustable)
+    float m_cullingBuffer{COLLISION_CULLING_BUFFER};
+    float m_cacheEvictionMultiplier{CACHE_EVICTION_MULTIPLIER};
+    size_t m_cacheEvictionInterval{CACHE_EVICTION_INTERVAL};
+    uint8_t m_cacheStaleThreshold{CACHE_STALE_THRESHOLD};
 
     bool m_initialized{false};
     bool m_isShutdown{false};
@@ -269,24 +322,32 @@ private:
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
     struct CollisionStorage {
         // Hot data: Accessed every frame during collision detection
+        // OPTIMIZED: Reduced from 64 bytes with wasted space to efficient 64-byte layout
         struct HotData {
             Vector2D position;           // 8 bytes: Current position (center of AABB)
             Vector2D velocity;           // 8 bytes: Current velocity
             Vector2D halfSize;           // 8 bytes: Half-width and half-height
-            uint32_t layers;             // 4 bytes: Layer mask (what layer this body is on) - REVERTED from uint16_t
-            uint32_t collidesWith;       // 4 bytes: Collision mask (what layers this body collides with) - REVERTED from uint16_t
-            float restitution;           // 4 bytes: Bounce/restitution coefficient (moved mass/friction to cold data)
+            
+            // Cached AABB for performance - exactly 16 bytes (4 floats)
+            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
+            
+            uint16_t layers;             // 2 bytes: Layer mask (supports 16 layers, 7 currently defined)
+            uint16_t collidesWith;       // 2 bytes: Collision mask
             uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
             uint8_t triggerTag;          // 1 byte: TriggerTag enum for triggers
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
             mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
-
-            // Cached AABB for performance - exactly 16 bytes (4 floats)
-            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
-
-            // Padding to exactly 64 bytes: we're at 60, need 4 more bytes
-            uint8_t _padding[4];
+            
+            // OPTIMIZATION: Cached coarse grid coords (eliminates m_bodyCoarseCell map lookup)
+            int16_t coarseCellX;         // 2 bytes: Cached coarse grid X coordinate
+            int16_t coarseCellY;         // 2 bytes: Cached coarse grid Y coordinate
+            
+            // Reserved for future optimizations (e.g., collision flags, frame counters)
+            uint8_t _reserved[5];        // 5 bytes: Future expansion space
+            
+            // Padding to exactly 64 bytes (current size: 62, need 2 more)
+            uint8_t _padding[2];
 
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
@@ -297,6 +358,9 @@ private:
             Vector2D acceleration;       // Acceleration (rarely used)
             Vector2D lastPosition;       // Previous position for optimization
             AABB fullAABB;              // Full AABB (computed from position + halfSize)
+            float restitution;           // Bounce coefficient (0.0-1.0) - moved from HotData for cache optimization
+            float friction;              // Surface friction (0.0-1.0) - for future physics implementation
+            float mass;                  // Mass (kg) - for future physics implementation
         };
 
         // Primary storage arrays (SOA layout)
@@ -413,14 +477,13 @@ private:
     struct CoarseRegionStaticCache {
         std::vector<size_t> staticIndices;
         bool valid{false};
+        uint64_t lastAccessFrame{0};  // Frame number when this cache entry was last accessed
+        uint8_t staleCount{0};         // Number of consecutive eviction cycles without access
     };
     std::unordered_map<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
                        CoarseRegionStaticCache,
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
-
-    // Track which coarse cell each dynamic body currently occupies
-    std::unordered_map<size_t, HammerEngine::HierarchicalSpatialHash::CoarseCoord> m_bodyCoarseCell;
 
     // Cache statistics
     mutable size_t m_cacheHits{0};
@@ -428,6 +491,26 @@ private:
 
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
+
+    // OPTIMIZATION: Static Spatial Grid for efficient culling queries
+    // Coarse grid (512×512 cells) to quickly filter static bodies by culling area
+    // Grid is rebuilt only on world events (statics added/removed), not every frame
+    static constexpr float STATIC_GRID_CELL_SIZE = 512.0f;
+    struct StaticGridCell {
+        int32_t x;
+        int32_t y;
+        bool operator==(const StaticGridCell& other) const {
+            return x == other.x && y == other.y;
+        }
+    };
+    struct StaticGridCellHash {
+        size_t operator()(const StaticGridCell& cell) const {
+            // Simple hash combining x and y
+            return std::hash<int32_t>()(cell.x) ^ (std::hash<int32_t>()(cell.y) << 1);
+        }
+    };
+    std::unordered_map<StaticGridCell, std::vector<size_t>, StaticGridCellHash> m_staticSpatialGrid;
+    bool m_staticGridDirty{true};  // Rebuild grid when statics added/removed
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
@@ -463,9 +546,8 @@ private:
                 expectedPairs = bodyCount / 8; // Large body counts benefit from spatial culling
             }
 
-            size_t expectedCollisions = expectedPairs / 2; // About 50% pair→collision ratio observed
-
             if (pairBuffer.capacity() < expectedPairs) {
+                size_t expectedCollisions = expectedPairs / 2; // About 50% pair→collision ratio observed
                 pairBuffer.reserve(expectedPairs);
                 candidateBuffer.reserve(bodyCount / 2);
                 collisionBuffer.reserve(expectedCollisions);
@@ -500,7 +582,7 @@ private:
 
     // PERFORMANCE: Vector pool for temporary allocations in hot paths
     mutable std::vector<std::vector<size_t>> m_vectorPool;
-    mutable size_t m_nextPoolIndex{0};
+    mutable std::atomic<size_t> m_nextPoolIndex{0};
 
     // Performance metrics
     struct PerfStats {
@@ -519,8 +601,15 @@ private:
         size_t lastActiveBodies{0};           // Bodies after culling optimizations
         size_t lastDynamicBodiesCulled{0};    // Dynamic bodies culled by distance
         size_t lastStaticBodiesCulled{0};     // Static bodies culled by area
+        size_t totalStaticBodies{0};          // Total static bodies before culling
+        size_t totalMovableBodies{0};         // Total dynamic+kinematic bodies before culling
         double lastCullingMs{0.0};            // Time spent on culling operations
         double avgBroadphaseMs{0.0};          // Average broadphase time
+
+        // CACHE PERFORMANCE METRICS: Track coarse-grid static cache effectiveness
+        size_t cacheEntriesActive{0};         // Number of active cache entries
+        size_t cacheEntriesEvicted{0};        // Cache entries evicted this frame
+        size_t totalCacheEvictions{0};        // Total evictions since start
 
         // High-performance exponential moving average (no loops, O(1))
         static constexpr double ALPHA = 0.01; // ~100 frame average, much faster than windowing
@@ -544,11 +633,11 @@ private:
 
         // Calculate culling effectiveness percentages
         double getDynamicCullingRate() const {
-            return bodyCount > 0 ? (100.0 * lastDynamicBodiesCulled) / bodyCount : 0.0;
+            return totalMovableBodies > 0 ? (100.0 * lastDynamicBodiesCulled) / totalMovableBodies : 0.0;
         }
 
         double getStaticCullingRate() const {
-            return bodyCount > 0 ? (100.0 * lastStaticBodiesCulled) / bodyCount : 0.0;
+            return totalStaticBodies > 0 ? (100.0 * lastStaticBodiesCulled) / totalStaticBodies : 0.0;
         }
 
         double getActiveBodiesRate() const {
@@ -570,6 +659,9 @@ private:
 
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
+
+    // Cache eviction: Track frame count for periodic eviction
+    size_t m_framesSinceLastEviction{0};
 
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;

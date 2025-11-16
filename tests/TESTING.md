@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 24+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, event management, particle systems, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 25+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -42,6 +42,7 @@ The Hammer Game Engine has the following test suites:
    - Dynamic Weight Tests: Validate weight-based avoidance areas and path cost modification
    - Pathfinding Performance Tests: Benchmark pathfinding across various grid sizes (50x50 to 200x200)
    - Edge Case Tests: Test blocked start/goal positions, extreme distances, and nearest open cell finding
+   - PathfinderManager & AIManager Contention Tests: Integration tests for WorkerBudget coordination under heavy load
 
 6. **Utility System Tests**
    - JsonReader Tests: RFC 8259 compliant JSON parser validation with comprehensive error handling and type safety testing
@@ -71,6 +72,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_json_reader_tests.sh           # JSON parser validation tests
 ./tests/test_scripts/run_collision_tests.sh             # Collision system and spatial hash tests
 ./tests/test_scripts/run_pathfinding_tests.sh           # Pathfinding algorithm and grid tests
+./tests/test_scripts/run_pathfinder_ai_contention_tests.sh  # PathfinderManager & AIManager WorkerBudget coordination tests
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -398,9 +400,9 @@ Located in `BufferUtilizationTest.cpp`, these tests verify the intelligent buffe
 5. **Graceful Degradation**: Tests single-threaded fallback on resource-constrained systems
 
 **Test Coverage:**
-- **Ultra Low-End (1-2 workers)**: GameLoop priority, AI/Events single-threaded
+- **Ultra Low-End (1 worker)**: GameLoop only, AI/Events/Particles single-threaded
 - **Low-End (3-4 workers)**: Conservative allocation with limited buffer
-- **Target Minimum (7 workers)**: Optimal allocation (GameLoop: 2, AI: 3, Events: 1, Buffer: 1)
+- **Target Minimum (7 workers)**: Optimal allocation (GameLoop: 1, AI: 3, Particles: 1, Buffer: 2)
 - **High-End (12+ workers)**: Full buffer utilization for burst capacity
 
 **Validation Examples:**
@@ -700,6 +702,55 @@ tests/test_scripts/run_pathfinding_tests.bat [--verbose]
 - Small grids (≤100x100): < 10ms per pathfinding request
 - Large grids (≤200x200): < 50ms per pathfinding request
 - Iteration limits prevent indefinite stalls
+
+### PathfinderManager & AIManager Contention Tests
+
+Located in `tests/integration/PathfinderAIContentionTests.cpp`, these integration tests validate WorkerBudget coordination between PathfinderManager and AIManager under heavy load:
+
+#### Test Coverage
+
+1. **WorkerBudget Allocation Tests**:
+   - Verify pathfinding gets 19% worker allocation (PATHFINDING_WORKER_WEIGHT = 3)
+   - Validate AI gets 44% worker allocation (AI_WORKER_WEIGHT = 7)
+   - Confirm buffer workers (30%) are available for burst capacity
+   - Check total allocations don't exceed available workers
+
+2. **Simultaneous Load Tests**:
+   - Submit 100+ simultaneous pathfinding requests alongside AI updates
+   - Validate both managers process work without starvation
+   - Confirm rate limiting (50 requests/frame) prevents queue flooding
+   - Verify queue pressure stays below critical threshold (< 95%)
+
+3. **Worker Starvation Prevention**:
+   - Heavy load testing with 200+ pathfinding requests
+   - Concurrent AIManager updates to simulate realistic game conditions
+   - Validate neither manager monopolizes ThreadSystem workers
+   - Confirm graceful degradation under extreme stress
+
+4. **Queue Pressure Coordination**:
+   - Test 150+ requests triggering rate limiting
+   - Monitor queue pressure across multiple update frames
+   - Verify adaptive batching responds to queue pressure
+   - Validate Normal priority prevents AIManager contention
+
+#### Running Contention Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_pathfinder_ai_contention_tests.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_pathfinder_ai_contention_tests.bat [--verbose]
+```
+
+**Key Validations:**
+- WorkerBudget integration: Pathfinding uses 19% allocation properly
+- Request batching: Adaptive batch sizes based on available workers
+- Rate limiting: Maximum 50 requests processed per frame
+- Queue pressure: Monitoring triggers graceful degradation
+- No worker starvation: Both managers make progress under heavy load
+
+**Estimated Runtime:** ~2 seconds (4 integration tests)
 
 ### Collision System Performance Benchmark
 

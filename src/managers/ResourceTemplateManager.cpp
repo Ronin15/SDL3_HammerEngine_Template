@@ -84,6 +84,10 @@ bool ResourceTemplateManager::init() {
 }
 
 void ResourceTemplateManager::clean() {
+  if (m_isShutdown) {
+    return;
+  }
+
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
   // Clear all data structures

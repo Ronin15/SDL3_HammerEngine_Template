@@ -9,6 +9,7 @@
 #include "gameStates/GameState.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
+#include "utils/Camera.hpp"
 
 #include <memory>
 #include <vector>
@@ -32,7 +33,8 @@ public:
     bool enter() override;
     bool exit() override;
 
-    std::string getName() const override { return "AdvancedAIDemo"; }
+    std::string getName() const override { return "AdvancedAIDemoState"; }
+    void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
     // Get the player entity for AI behaviors to access
     EntityPtr getPlayer() const { return m_player; }
@@ -43,23 +45,38 @@ private:
     void createAdvancedNPCs();
     void setupCombatAttributes();
     void updateCombatSystem(float deltaTime);
+    void initializeCamera();
+    void updateCamera(float deltaTime);
 
     // Members
     std::vector<NPCPtr> m_npcs{};
     PlayerPtr m_player{};
+    std::unique_ptr<HammerEngine::Camera> m_camera;
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
 
     // Advanced demo settings optimized for behavior showcasing
-    int m_idleNPCCount{3};      // Small group for idle demonstration
-    int m_fleeNPCCount{5};      // Enough to show fleeing patterns
-    int m_followNPCCount{4};    // Moderate group for following behavior
-    int m_guardNPCCount{6};     // Strategic positions for guarding
-    int m_attackNPCCount{4};    // Combat-focused group
-    int m_totalNPCCount{22};    // Total optimized for advanced behavior showcase
-    
+    int m_idleNPCCount{4};      // Small group for idle demonstration
+    int m_fleeNPCCount{7};      // Enough to show fleeing patterns
+    int m_followNPCCount{5};    // Moderate group for following behavior
+    int m_guardNPCCount{8};     // Strategic positions for guarding
+    int m_attackNPCCount{6};    // Combat-focused group
+    int m_totalNPCCount{30};    // Total optimized for advanced behavior showcase
+
     float m_worldWidth{800.0f};
     float m_worldHeight{600.0f};
+
+    // Track whether world has been loaded (prevents re-entering LoadingState)
+    bool m_worldLoaded{false};
+
+    // Track if we need to transition to loading screen on first update
+    bool m_needsLoading{false};
+
+    // Track if we're transitioning to LoadingState (prevents infinite loop)
+    bool m_transitioningToLoading{false};
+
+    // Track if state is fully initialized (after returning from LoadingState)
+    bool m_initialized{false};
 
     // Combat system attributes (architecturally integrated)
     struct CombatAttributes {

@@ -14,9 +14,11 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/EventDemoState.hpp"
 #include "gameStates/GamePlayState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "gameStates/LogoState.hpp"
 #include "gameStates/MainMenuState.hpp"
 #include "gameStates/OverlayDemoState.hpp"
+#include "gameStates/SettingsMenuState.hpp"
 #include "gameStates/UIDemoState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EventManager.hpp"
@@ -27,6 +29,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/SaveGameManager.hpp"
+#include "managers/SettingsManager.hpp"
 #include "managers/SoundManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/UIManager.hpp"
@@ -101,6 +104,10 @@ bool GameEngine::init(const std::string_view title, const int width,
         std::to_string(m_windowHeight));
   }
 
+  // Save windowed dimensions before fullscreen might override them
+  m_windowedWidth = m_windowWidth;
+  m_windowedHeight = m_windowHeight;
+
 // For macOS compatibility, use fullscreen for large window requests
 #ifdef __APPLE__
   if (m_windowWidth >= 1920 || m_windowHeight >= 1080) {
@@ -140,6 +147,9 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
 #endif
   }
+
+  // Track initial fullscreen state
+  m_isFullscreen = fullscreen;
 
   mp_window.reset(
       SDL_CreateWindow(title.data(), m_windowWidth, m_windowHeight, flags));
@@ -211,9 +221,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   GAMEENGINE_DEBUG("Rendering system online");
 
-  // Platform-specific VSync handling for timing issues
-  // Check if we're using Wayland (known to have VSync timing issues with some
-  // drivers)
+  // Unified VSync initialization with automatic fallback
+  // Detect platform for logging purposes only (not used to disable VSync)
   const std::string videoDriverRaw =
       SDL_GetCurrentVideoDriver() ? SDL_GetCurrentVideoDriver() : "";
   std::string_view videoDriver = videoDriverRaw;
@@ -232,29 +241,64 @@ bool GameEngine::init(const std::string_view title, const int width,
     m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
-  // Platform-aware VSync configuration
-  // Wayland: disable VSync and rely on software frame limiting
-  // Others: try enabling VSync; fall back to software limiting on failure
+  // Log detected platform
   if (m_isWayland) {
-    if (!SDL_SetRenderVSync(mp_renderer.get(), 0)) {
-      GAMEENGINE_ERROR("Failed to disable VSync on Wayland: " +
-                       std::string(SDL_GetError()));
-    } else {
-      GAMEENGINE_INFO(
-          "Wayland detected: VSync disabled; using software frame limiting");
-    }
+    GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
-    if (!SDL_SetRenderVSync(mp_renderer.get(), 1)) {
-      GAMEENGINE_WARN(
-          "Failed to enable VSync; will rely on software frame limiting: " +
-          std::string(SDL_GetError()));
-    } else {
-      GAMEENGINE_INFO("VSync enabled successfully");
-    }
+    GAMEENGINE_INFO("Platform detected: " + std::string(videoDriver.empty() ? "Unknown" : videoDriver));
   }
 
-  // Store Wayland detection for GameLoop configuration
-  m_usingSoftwareFrameLimiting = m_isWayland;
+  // Load VSync preference from SettingsManager (defaults to enabled)
+  auto& settings = HammerEngine::SettingsManager::Instance();
+  bool vsyncRequested = settings.get<bool>("graphics", "vsync", true);
+  GAMEENGINE_INFO("VSync setting from SettingsManager: " + std::string(vsyncRequested ? "enabled" : "disabled"));
+
+  // Attempt to set VSync based on user preference
+  bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
+
+  if (!vsyncSetSuccessfully) {
+    GAMEENGINE_WARN("Failed to " + std::string(vsyncRequested ? "enable" : "disable") +
+                    " VSync: " + std::string(SDL_GetError()));
+  }
+
+  // Verify VSync is actually working
+  int vsyncState = 0;
+  bool vsyncVerified = false;
+  if (vsyncSetSuccessfully && SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
+    if (vsyncRequested) {
+      // When enabling, verify it's actually on
+      vsyncVerified = (vsyncState > 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
+      } else {
+        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    } else {
+      // When disabling, verify it's actually off
+      vsyncVerified = (vsyncState == 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync disabled and verified");
+      } else {
+        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    }
+  } else {
+    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+  }
+
+  // Configure software frame limiting as fallback when VSync is not working
+  // Use software limiting when: VSync requested but verification failed, or VSync intentionally disabled
+  m_usingSoftwareFrameLimiting = vsyncRequested ? !vsyncVerified : true;
+
+  if (m_usingSoftwareFrameLimiting) {
+    if (vsyncRequested) {
+      GAMEENGINE_INFO("Using software frame limiting (VSync unavailable or failed verification)");
+    } else {
+      GAMEENGINE_INFO("Using software frame limiting (VSync disabled by user)");
+    }
+  } else {
+    GAMEENGINE_INFO("Using hardware VSync for frame timing");
+  }
 
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
@@ -371,7 +415,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
-  initTasks.reserve(10); // Reserve capacity for typical number of init tasks
+  initTasks.reserve(12); // Reserve capacity for typical number of init tasks
 
   // CRITICAL: Initialize Event Manager FIRST - #1
   // All other managers that register event handlers depend on this
@@ -468,7 +512,58 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize AI Manager in a separate thread - #6
+  // Initialize Pathfinder Manager - #6
+  // CRITICAL: Must complete BEFORE AIManager (explicit dependency)
+  GAMEENGINE_INFO("Creating Pathfinder Manager (AIManager dependency)");
+  auto pathfinderFuture =
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Initializing PathfinderManager");
+            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+            if (!pathfinderMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
+            return true;
+          });
+
+  // Initialize Collision Manager - #7
+  // CRITICAL: Must complete BEFORE AIManager (explicit dependency)
+  GAMEENGINE_INFO("Creating Collision Manager (AIManager dependency)");
+  auto collisionFuture =
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Initializing CollisionManager");
+            CollisionManager &collisionMgr = CollisionManager::Instance();
+            if (!collisionMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Collision Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Collision Manager initialized successfully");
+            return true;
+          });
+
+  // Wait for AIManager dependencies to complete before proceeding
+  // This enforces the initialization dependency graph explicitly
+  GAMEENGINE_INFO("Waiting for AIManager dependencies (PathfinderManager, CollisionManager)");
+  try {
+    if (!pathfinderFuture.get()) {
+      GAMEENGINE_CRITICAL("PathfinderManager initialization failed");
+      return false;
+    }
+    if (!collisionFuture.get()) {
+      GAMEENGINE_CRITICAL("CollisionManager initialization failed");
+      return false;
+    }
+  } catch (const std::exception &e) {
+    GAMEENGINE_CRITICAL("AIManager dependency initialization threw exception: " + std::string(e.what()));
+    return false;
+  }
+  GAMEENGINE_INFO("AIManager dependencies initialized successfully");
+
+  // Initialize AI Manager - #8
+  // Dependencies satisfied: PathfinderManager and CollisionManager are now fully initialized
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -482,21 +577,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize Pathfinder Manager in a separate thread - #7
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Pathfinder Manager");
-            PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
-            if (!pathfinderMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Pathfinder Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Pathfinder Manager initialized successfully");
-            return true;
-          }));
-
-  // Initialize Particle Manager in a separate thread - #8
+  // Initialize Particle Manager in a separate thread - #9
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
@@ -515,7 +596,7 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
-  // Initialize Resource Template Manager in a separate thread - #8
+  // Initialize Resource Template Manager in a separate thread - #10
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]()
                                                                        -> bool {
@@ -530,7 +611,7 @@ bool GameEngine::init(const std::string_view title, const int width,
         return true;
       }));
 
-  // Initialize World Resource Manager for global resource tracking - #9
+  // Initialize World Resource Manager for global resource tracking - #11
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -546,7 +627,7 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
-  // Initialize World Manager for world generation and management - #10
+  // Initialize World Manager for world generation and management - #12
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -557,20 +638,6 @@ bool GameEngine::init(const std::string_view title, const int width,
               return false;
             }
             GAMEENGINE_INFO("World Manager initialized successfully");
-            return true;
-          }));
-
-  // Initialize Physics Manager - #11
-  initTasks.push_back(
-      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
-            GAMEENGINE_INFO("Creating Physics Manager");
-            auto &physicsMgr = CollisionManager::Instance();
-            if (!physicsMgr.init()) {
-              GAMEENGINE_CRITICAL("Failed to initialize Physics Manager");
-              return false;
-            }
-            GAMEENGINE_INFO("Physics Manager initialized successfully");
             return true;
           }));
 
@@ -595,7 +662,9 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
+  mp_gameStateManager->addState(std::make_unique<LoadingState>());  // Shared loading screen state
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
+  mp_gameStateManager->addState(std::make_unique<SettingsMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
   mp_gameStateManager->addState(std::make_unique<AIDemoState>());
   mp_gameStateManager->addState(std::make_unique<AdvancedAIDemoState>());
@@ -649,7 +718,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
     mp_particleManager = &particleMgrTest;
 
-    // Validate Pathfinder Manager before caching
+    // Validate Pathfinder Manager before caching (initialized by AIManager)
     PathfinderManager &pathfinderMgrTest = PathfinderManager::Instance();
     if (!pathfinderMgrTest.isInitialized()) {
       GAMEENGINE_CRITICAL(
@@ -657,6 +726,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_pathfinderManager = &pathfinderMgrTest;
+
+    // Validate Collision Manager before caching (initialized by AIManager)
+    CollisionManager &collisionMgrTest = CollisionManager::Instance();
+    if (!collisionMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "CollisionManager not properly initialized before caching!");
+      return false;
+    }
+    mp_collisionManager = &collisionMgrTest;
 
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
@@ -686,15 +764,6 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_worldManager = &worldMgrTest;
-
-    // Validate Physics Manager before caching
-    auto &physicsMgrTest = CollisionManager::Instance();
-    if (!physicsMgrTest.isInitialized()) {
-      GAMEENGINE_CRITICAL(
-          "CollisionManager not properly initialized before caching!");
-      return false;
-    }
-    mp_collisionManager = &physicsMgrTest;
 
     // InputManager not cached - handled in handleEvents() for proper SDL
     // architecture
@@ -778,6 +847,11 @@ void GameEngine::handleEvents() {
   // architecture
   InputManager &inputMgr = InputManager::Instance();
   inputMgr.update();
+
+  // Global fullscreen toggle (F1 key) - processed before state input
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F1)) {
+    toggleFullscreen();
+  }
 
   // Handle game state input on main thread where SDL events are processed (SDL3
   // requirement) This prevents cross-thread input state access between main
@@ -875,6 +949,7 @@ void GameEngine::update(float deltaTime) {
   }
 
   // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
+  // PathfinderManager initialized by AIManager, cached by GameEngine for performance
   if (mp_pathfinderManager) {
     mp_pathfinderManager->update();
   } else {
@@ -1132,15 +1207,14 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Event Manager...");
   EventManager::Instance().clean();
 
-  GAMEENGINE_INFO("Cleaning up AI Manager...");
-  AIManager::Instance().clean();
-
-  // Ensure PathfinderManager is shut down after AI to avoid dangling tasks and late logs
-  GAMEENGINE_INFO("Shutting down Pathfinder Manager...");
-  PathfinderManager::shutdown();
+  GAMEENGINE_INFO("Cleaning up Pathfinder Manager...");
+  PathfinderManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up AI Manager...");
+  AIManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();
@@ -1192,6 +1266,174 @@ void GameEngine::clean() {
 
   GAMEENGINE_INFO("SDL resources cleaned!");
   GAMEENGINE_INFO("Shutdown complete!");
+}
+
+bool GameEngine::setVSyncEnabled(bool enable) {
+  if (!mp_renderer) {
+    GAMEENGINE_ERROR("Cannot set VSync - renderer not initialized");
+    return false;
+  }
+
+  GAMEENGINE_INFO(std::string(enable ? "Enabling" : "Disabling") + " VSync...");
+
+  // Attempt to set VSync
+  bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
+
+  if (!vsyncSetSuccessfully) {
+    GAMEENGINE_ERROR("Failed to " + std::string(enable ? "enable" : "disable") +
+                     " VSync: " + std::string(SDL_GetError()));
+    // Ensure software frame limiting is enabled if VSync enable failed
+    if (enable) {
+      m_usingSoftwareFrameLimiting = true;
+      GAMEENGINE_INFO("Falling back to software frame limiting");
+
+      // Update TimestepManager
+      if (auto gameLoop = m_gameLoop.lock()) {
+        gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
+      }
+    }
+    return false;
+  }
+
+  // Verify VSync is actually working
+  int vsyncState = 0;
+  bool vsyncVerified = false;
+
+  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
+    if (enable) {
+      // When enabling, verify it's actually on
+      vsyncVerified = (vsyncState > 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
+      } else {
+        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    } else {
+      // When disabling, verify it's actually off
+      vsyncVerified = (vsyncState == 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync disabled and verified");
+      } else {
+        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    }
+  } else {
+    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+    vsyncVerified = false;
+  }
+
+  // Update software frame limiting flag
+  // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
+  m_usingSoftwareFrameLimiting = enable ? !vsyncVerified : true;
+
+  // Update TimestepManager
+  if (auto gameLoop = m_gameLoop.lock()) {
+    gameLoop->getTimestepManager().setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
+    GAMEENGINE_DEBUG("TimestepManager updated: software frame limiting " +
+                     std::string(m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
+  }
+
+  if (m_usingSoftwareFrameLimiting && enable) {
+    GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
+  } else if (!m_usingSoftwareFrameLimiting) {
+    GAMEENGINE_INFO("Using hardware VSync for frame timing");
+  } else {
+    GAMEENGINE_INFO("VSync disabled, using software frame limiting");
+  }
+
+  // Save VSync setting to SettingsManager for persistence
+  auto& settings = HammerEngine::SettingsManager::Instance();
+  settings.set("graphics", "vsync", enable && vsyncVerified);
+  settings.saveToFile("res/settings.json");
+
+  return vsyncVerified;
+}
+
+void GameEngine::toggleFullscreen() {
+  if (!mp_window) {
+    GAMEENGINE_ERROR("Cannot toggle fullscreen - window not initialized");
+    return;
+  }
+
+  // Toggle fullscreen state
+  m_isFullscreen = !m_isFullscreen;
+
+  GAMEENGINE_INFO("Toggling fullscreen mode: " +
+                  std::string(m_isFullscreen ? "ON" : "OFF") +
+                  " (windowed size: " + std::to_string(m_windowedWidth) + "x" +
+                  std::to_string(m_windowedHeight) + ")");
+
+#ifdef __APPLE__
+  // macOS: Use borderless fullscreen desktop mode for better compatibility
+  if (m_isFullscreen) {
+    if (!SDL_SetWindowFullscreen(mp_window.get(), true)) {
+      GAMEENGINE_ERROR("Failed to enable fullscreen: " +
+                       std::string(SDL_GetError()));
+      m_isFullscreen = false; // Revert state on failure
+      return;
+    }
+    // Set to borderless fullscreen desktop mode (nullptr = use desktop mode)
+    if (!SDL_SetWindowFullscreenMode(mp_window.get(), nullptr)) {
+      GAMEENGINE_WARN("Failed to set borderless fullscreen mode: " +
+                      std::string(SDL_GetError()));
+    }
+    GAMEENGINE_INFO("macOS: Enabled borderless fullscreen desktop mode");
+  } else {
+    if (!SDL_SetWindowFullscreen(mp_window.get(), false)) {
+      GAMEENGINE_ERROR("Failed to disable fullscreen: " +
+                       std::string(SDL_GetError()));
+      m_isFullscreen = true; // Revert state on failure
+      return;
+    }
+    // Restore windowed size
+    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
+      GAMEENGINE_ERROR("Failed to restore window size: " + std::string(SDL_GetError()));
+    } else {
+      GAMEENGINE_INFO("macOS: Restored window size to " + std::to_string(m_windowedWidth) + "x" +
+                      std::to_string(m_windowedHeight));
+    }
+  }
+#else
+  // Other platforms: Use standard fullscreen toggle
+  if (!SDL_SetWindowFullscreen(mp_window.get(), m_isFullscreen)) {
+    GAMEENGINE_ERROR("Failed to toggle fullscreen: " +
+                     std::string(SDL_GetError()));
+    m_isFullscreen = !m_isFullscreen; // Revert state on failure
+    return;
+  }
+
+  // Restore windowed size when exiting fullscreen
+  if (!m_isFullscreen) {
+    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
+      GAMEENGINE_ERROR("Failed to restore window size: " + std::string(SDL_GetError()));
+    } else {
+      GAMEENGINE_INFO("Restored window size to " + std::to_string(m_windowedWidth) + "x" +
+                      std::to_string(m_windowedHeight));
+    }
+  }
+
+  GAMEENGINE_INFO("Fullscreen mode " +
+                  std::string(m_isFullscreen ? "enabled" : "disabled"));
+#endif
+
+  // Note: SDL will automatically trigger SDL_EVENT_WINDOW_RESIZED
+  // which will be handled by InputManager::onWindowResize()
+  // This ensures fonts and UI are properly updated for the new display mode
+}
+
+void GameEngine::setFullscreen(bool enabled) {
+  if (!mp_window) {
+    GAMEENGINE_ERROR("Cannot set fullscreen - window not initialized");
+    return;
+  }
+
+  // Only change if the state is different
+  if (m_isFullscreen == enabled) {
+    return;
+  }
+
+  // Use the existing toggle function since the state needs to change
+  toggleFullscreen();
 }
 
 int GameEngine::getOptimalDisplayIndex() const {

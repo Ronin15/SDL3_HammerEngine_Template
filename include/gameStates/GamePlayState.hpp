@@ -15,18 +15,21 @@
 class GamePlayState : public GameState {
 public:
   GamePlayState()
-      : m_transitioningToPause{false}, mp_Player{nullptr},
-        m_inventoryVisible{false}, m_initialized{false} {}
+      : m_transitioningToPause{false}, m_transitioningToLoading{false},
+        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false} {}
   bool enter() override;
   void update(float deltaTime) override;
   void render() override;
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;
+  void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
 private:
   bool m_transitioningToPause{
       false}; // Flag to indicate we're transitioning to pause state
+  bool m_transitioningToLoading{
+      false}; // Flag to indicate we're transitioning to loading state
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
   bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)
@@ -45,6 +48,12 @@ private:
   HammerEngine::ResourceHandle m_ironOreHandle;
   HammerEngine::ResourceHandle m_woodHandle;
 
+  // Track whether world has been loaded (prevents re-entering LoadingState)
+  bool m_worldLoaded{false};
+
+  // Track if we need to transition to loading screen on first update
+  bool m_needsLoading{false};
+
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();
@@ -54,9 +63,8 @@ private:
                           int quantity);
   void
   initializeResourceHandles(); // Resolve names to handles during initialization
-  
+
   // Camera management methods
-  void initializeWorld();
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed

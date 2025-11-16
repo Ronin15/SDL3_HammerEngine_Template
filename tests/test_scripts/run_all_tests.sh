@@ -13,6 +13,7 @@ NC='\033[0m' # No Color
 
 # Directory where all scripts are located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Process command line arguments
 VERBOSE=false
@@ -55,8 +56,8 @@ for arg in "$@"; do
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Static analysis, Thread, AI, Behavior, GameState, Save, Event, Collision, Pathfinding functionality tests"
-      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, Collision system, and Pathfinder performance benchmarks"
+      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding, WorkerBudget coordination tests"
+      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, and Pathfinder performance benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
       echo -e "  Benchmarks:       ~5-15 minutes total"
@@ -75,7 +76,6 @@ done
 # Define test categories
 # Core functionality tests (fast execution)
 CORE_TEST_SCRIPTS=(
-  "$SCRIPT_DIR/run_cppcheck_focused.sh"
   "$SCRIPT_DIR/run_thread_tests.sh"
   "$SCRIPT_DIR/run_buffer_utilization_tests.sh"
   "$SCRIPT_DIR/run_thread_safe_ai_tests.sh"
@@ -83,6 +83,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_ai_optimization_tests.sh"
   "$SCRIPT_DIR/run_behavior_functionality_tests.sh"
   "$SCRIPT_DIR/run_save_tests.sh"
+  "$SCRIPT_DIR/run_settings_tests.sh"
   "$SCRIPT_DIR/run_game_state_manager_tests.sh"
   "$SCRIPT_DIR/run_event_tests.sh"
   "$SCRIPT_DIR/run_weather_event_tests.sh"
@@ -97,6 +98,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_collision_tests.sh"
   "$SCRIPT_DIR/run_pathfinding_tests.sh"
   "$SCRIPT_DIR/run_collision_pathfinding_integration_tests.sh"
+  "$SCRIPT_DIR/run_pathfinder_ai_contention_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
@@ -104,6 +106,7 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_event_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_ai_benchmark.sh"
   "$SCRIPT_DIR/run_ui_stress_tests.sh"
+  "$SCRIPT_DIR/run_particle_manager_benchmark.sh"
   "$SCRIPT_DIR/run_collision_benchmark.sh"
   "$SCRIPT_DIR/run_pathfinder_benchmark.sh"
 )
@@ -118,8 +121,8 @@ if [ "$RUN_BENCHMARKS" = true ]; then
 fi
 
 # Create a directory for the combined test results
-mkdir -p "$SCRIPT_DIR/../../test_results/combined"
-COMBINED_RESULTS="$SCRIPT_DIR/../../test_results/combined/all_tests_results.txt"
+mkdir -p "$PROJECT_ROOT/test_results/combined"
+COMBINED_RESULTS="$PROJECT_ROOT/test_results/combined/all_tests_results.txt"
 echo "All Tests Run $(date)" > "$COMBINED_RESULTS"
 
 # Track overall success

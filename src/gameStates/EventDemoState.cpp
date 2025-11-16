@@ -4,6 +4,7 @@
  */
 
 #include "gameStates/EventDemoState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
@@ -17,6 +18,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -55,13 +57,42 @@ EventDemoState::~EventDemoState() {
 bool EventDemoState::enter() {
   GAMESTATE_INFO("Entering EventDemoState...");
 
+  // Reset transition flag when entering state
+  m_transitioningToLoading = false;
+
+  // Check if already initialized (resuming after LoadingState)
+  if (m_initialized) {
+    GAMESTATE_INFO("Already initialized - resuming EventDemoState");
+    return true;  // Skip all loading logic
+  }
+
+  // Check if world needs to be loaded
+  if (!m_worldLoaded) {
+    GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
+    m_needsLoading = true;
+    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+    return true;  // Will transition to loading screen in update()
+  }
+
+  // World is loaded - proceed with normal initialization
+  GAMESTATE_INFO("World already loaded - initializing event demo");
+
   try {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
+    auto& worldManager = WorldManager::Instance();
 
-    // Setup world dimensions using logical coordinates for consistency
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
+    // Update world dimensions from loaded world
+    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+      m_worldWidth = std::max(0.0f, maxX - minX);
+      m_worldHeight = std::max(0.0f, maxY - minY);
+      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+    } else {
+      // Fallback to screen dimensions if world bounds unavailable
+      m_worldWidth = gameEngine.getLogicalWidth();
+      m_worldHeight = gameEngine.getLogicalHeight();
+    }
 
     // Initialize event system
     setupEventSystem();
@@ -106,18 +137,30 @@ bool EventDemoState::enter() {
 
     // Create simple UI components using auto-detecting methods with dramatic spacing
     auto &ui = UIManager::Instance();
-    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35
+    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35 (auto-repositions)
+
     ui.createLabel("event_phase", {10, 25, 300, 25}, "Phase: Initialization");  // Moved up from y=45 to y=25
+    // Set auto-repositioning: fixed position (absolute)
+    ui.setComponentPositioning("event_phase", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel("event_status", {10, 60, 400, 25},  // Moved up from y=80 to y=60
                    "FPS: -- | Weather: Clear | NPCs: 0");
+    // Set auto-repositioning: fixed position (absolute)
+    ui.setComponentPositioning("event_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+
     ui.createLabel(
         "event_controls", {10, 95, ui.getLogicalWidth() - 20, 25},  // Moved up from y=115 to y=95
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
-        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory");
+        "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
+    // Set auto-repositioning: top-aligned, spans full width minus 20px margin (10px each side)
+    ui.setComponentPositioning("event_controls", {UIPositionMode::TOP_ALIGNED, 10, 95, -20, 25});  // -20 = full width minus 20px
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
                       7);
+    // Set auto-repositioning: anchored to bottom with fixed offset
+    ui.setComponentPositioning("event_log", {UIPositionMode::BOTTOM_ALIGNED, 10, 20, 730, 180});
+
     ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
     // Create right-aligned inventory panel for resource demo visualization with dramatic spacing
@@ -130,11 +173,14 @@ bool EventDemoState::enter() {
     ui.createPanel("inventory_panel",
                    {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
     ui.setComponentVisible("inventory_panel", false);
+    // Set auto-repositioning: right-aligned with fixed offsetY
+    ui.setComponentPositioning("inventory_panel", {UIPositionMode::RIGHT_ALIGNED, 20, inventoryY - (ui.getLogicalHeight() - inventoryHeight) / 2, inventoryWidth, inventoryHeight});
 
     ui.createTitle("inventory_title",
                    {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},  // Increased height from 30 to 35
                    "Player Inventory");
     ui.setComponentVisible("inventory_title", false);
+    // Children will be repositioned in onWindowResize based on panel position
 
     ui.createLabel("inventory_status",
                    {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},  // Increased height from 20 to 25
@@ -189,9 +235,11 @@ bool EventDemoState::enter() {
         return items;
     });
 
-    // Initialize camera for world navigation
-    initializeWorld();
+    // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
+
+    // Mark as fully initialized to prevent re-entering loading logic
+    m_initialized = true;
 
     GAMESTATE_INFO("EventDemoState initialized successfully");
     return true;
@@ -209,6 +257,75 @@ bool EventDemoState::exit() {
   GAMESTATE_INFO("Exiting EventDemoState...");
 
   try {
+    if (m_transitioningToLoading) {
+      // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+      // This prevents infinite loop when returning from LoadingState
+
+      // Reset the flag after using it
+      m_transitioningToLoading = false;
+
+      // Reset player
+      m_player.reset();
+
+      // Clear spawned NPCs vector and reset limit flag
+      m_spawnedNPCs.clear();
+      m_limitMessageShown = false;
+
+      // Clear event log
+      m_eventLog.clear();
+      m_eventStates.clear();
+
+      // Reset demo state
+      m_currentPhase = DemoPhase::Initialization;
+      m_phaseTimer = 0.0f;
+
+      // Unregister our specific handlers via tokens
+      unregisterEventHandlers();
+
+      // Clean up managers (same as full exit)
+      AIManager &aiMgr = AIManager::Instance();
+      aiMgr.prepareForStateTransition();
+
+      CollisionManager &collisionMgr = CollisionManager::Instance();
+      if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+        collisionMgr.prepareForStateTransition();
+      }
+
+      PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+      if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+        pathfinderMgr.prepareForStateTransition();
+      }
+
+      ParticleManager &particleMgr = ParticleManager::Instance();
+      if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+        particleMgr.prepareForStateTransition();
+      }
+
+      // Clean up camera
+      m_camera.reset();
+
+      // Clean up UI
+      auto &ui = UIManager::Instance();
+      ui.prepareForStateTransition();
+
+      // Unload world (LoadingState will reload it)
+      WorldManager &worldMgr = WorldManager::Instance();
+      if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+        worldMgr.unloadWorld();
+        // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+        // when LoadingState returns to this state
+      }
+
+      // Reset initialized flag so state re-initializes after loading
+      m_initialized = false;
+
+      // Keep m_worldLoaded = true to remember we've already been through loading
+      GAMESTATE_INFO("EventDemoState cleanup for LoadingState transition complete");
+      return true;
+    }
+
+    // Full exit (going to main menu, other states, or shutting down)
+
     // Reset player
     m_player.reset();
 
@@ -264,7 +381,12 @@ bool EventDemoState::exit() {
     WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
+      // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
+      m_worldLoaded = false;
     }
+
+    // Reset initialization flag for next fresh start
+    m_initialized = false;
 
     GAMESTATE_INFO("EventDemoState cleanup complete");
     return true;
@@ -276,6 +398,38 @@ bool EventDemoState::exit() {
     GAMESTATE_ERROR("Unknown exception in EventDemoState::exit()");
     return false;
   }
+}
+
+void EventDemoState::onWindowResize(int newLogicalWidth,
+                                     int newLogicalHeight) {
+  // Recalculate UI positions based on new window dimensions
+  auto &ui = UIManager::Instance();
+
+  // Reposition inventory panel (matches initializeWorld pattern)
+  const int inventoryWidth = 280;
+  const int inventoryHeight = 400;
+  const int inventoryX = newLogicalWidth - inventoryWidth - 20;
+  const int inventoryY = 170;
+
+  ui.setComponentBounds("inventory_panel",
+                        {inventoryX, inventoryY, inventoryWidth,
+                         inventoryHeight});
+
+  ui.setComponentBounds("inventory_title",
+                        {inventoryX + 10, inventoryY + 25,
+                         inventoryWidth - 20, 35});
+
+  ui.setComponentBounds("inventory_status",
+                        {inventoryX + 10, inventoryY + 75,
+                         inventoryWidth - 20, 25});
+
+  ui.setComponentBounds("inventory_list",
+                        {inventoryX + 10, inventoryY + 110,
+                         inventoryWidth - 20, 270});
+
+  GAMESTATE_DEBUG("EventDemoState: Repositioned UI for new window size: " +
+                  std::to_string(newLogicalWidth) + "x" +
+                  std::to_string(newLogicalHeight));
 }
 
 void EventDemoState::unregisterEventHandlers() {
@@ -291,6 +445,41 @@ void EventDemoState::unregisterEventHandlers() {
 }
 
 void EventDemoState::update(float deltaTime) {
+  // Check if we need to transition to loading screen (do this in update, not enter)
+  if (m_needsLoading) {
+    m_needsLoading = false;  // Clear flag
+
+    GAMESTATE_INFO("Transitioning to LoadingState for world generation");
+
+    // Create world configuration for event demo (HUGE world)
+    HammerEngine::WorldGenerationConfig config;
+    config.width = 500;  // Massive 500x500 world
+    config.height = 500;
+    config.seed = static_cast<int>(std::time(nullptr));
+    config.elevationFrequency = 0.05f;
+    config.humidityFrequency = 0.03f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    // Configure LoadingState and transition to it
+    const auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    if (gameStateManager) {
+      auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+      if (loadingState) {
+        loadingState->configure("EventDemo", config);
+        // Set flag before transitioning to preserve m_worldLoaded in exit()
+        m_transitioningToLoading = true;
+        // Use changeState (called from update) to properly exit and re-enter
+        gameStateManager->changeState("LoadingState");
+      } else {
+        GAMESTATE_ERROR("LoadingState not found in GameStateManager");
+      }
+    }
+
+    return;  // Don't continue with rest of update
+  }
+
   // Update timing
   updateDemoTimer(deltaTime);
 
@@ -452,6 +641,10 @@ void EventDemoState::render() {
     cameraView = m_camera->getViewRect();
   }
 
+  // Set render scale for zoom (scales all world/entity rendering automatically)
+  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
+  SDL_SetRenderScale(renderer, zoom, zoom);
+
   // Render world first (background layer) using unified camera position
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
@@ -493,6 +686,9 @@ void EventDemoState::render() {
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.renderForeground(renderer, cameraView.x, cameraView.y);
   }
+
+  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
+  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
   // Update and render UI components through UIManager using cached renderer for
   // cleaner API
@@ -601,9 +797,8 @@ void EventDemoState::createTestEvents() {
     addLogEntry("Some events failed to create - check logs");
   }
 
-  // Register per-name handlers for a few demo events to showcase the API
-  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_forest", [this](const EventData &data){ if (data.isActive()) onSceneChanged("demo_forest"); }));
-  m_handlerTokens.push_back(eventMgr.registerHandlerForName("demo_rainy", [this](const EventData &data){ if (data.isActive()) onWeatherChanged("demo_rainy"); }));
+  // Name-based handlers removed - EventManager now uses type-based dispatch only
+  // The type-based handlers registered in setupEventSystem() handle all events
 
   // Show current event counts by type for monitoring
   size_t weatherCount = eventMgr.getEventCount(EventTypeId::Weather);
@@ -769,6 +964,14 @@ void EventDemoState::handleInput() {
   // Inventory toggle (I key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
     toggleInventoryDisplay();
+  }
+
+  // Camera zoom controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -1836,36 +2039,6 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   // - Generate reports for game designers
 }
 
-void EventDemoState::initializeWorld() {
-  // Create world manager and generate a world for event demo
-  WorldManager& worldManager = WorldManager::Instance();
-
-  // Create a moderately-sized world configuration for event demo (focused on events, but with exploration)
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 100;  // Increased from 50 to 100 for more exploration
-  config.height = 100; // Increased from 50 to 100 for more exploration
-  config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
-  config.elevationFrequency = 0.1f;
-  config.humidityFrequency = 0.1f;
-  config.waterLevel = 0.25f;
-  config.mountainLevel = 0.75f;
-
-  if (!worldManager.loadNewWorld(config)) {
-    GAMESTATE_ERROR("Failed to load new world in EventDemoState");
-    // Continue anyway - event demo can function without world
-  } else {
-    GAMESTATE_INFO("Successfully loaded event demo world with seed: " + std::to_string(config.seed));
-
-    // Setup camera to work with the world (will be called in initializeCamera)
-    // Update demo world dimensions to match generated world (pixels)
-    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
-    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-      m_worldWidth = std::max(0.0f, maxX - minX);
-      m_worldHeight = std::max(0.0f, maxY - minY);
-    }
-  }
-}
-
 void EventDemoState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
 
@@ -1904,6 +2077,10 @@ void EventDemoState::initializeCamera() {
 
 void EventDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
+    // Sync viewport with current window size (handles resize events)
+    m_camera->syncViewportWithEngine();
+
+    // Update camera position and following logic
     m_camera->update(deltaTime);
   }
 }

@@ -8,8 +8,9 @@ set -e  # Exit on any error
 
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/../../build"
-RESULTS_DIR="$SCRIPT_DIR/../../test_results"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BUILD_DIR="$PROJECT_ROOT/build"
+RESULTS_DIR="$PROJECT_ROOT/test_results"
 OUTPUT_FILE="$RESULTS_DIR/event_scaling_benchmark_output.txt"
 BUILD_TYPE="debug"
 VERBOSE=false
@@ -106,10 +107,8 @@ print_status "Starting EventManager Scaling Benchmark..."
 print_status "Build type: $BUILD_TYPE"
 print_status "Results will be saved to: $OUTPUT_FILE"
 
-# Navigate to script directory
-cd "$SCRIPT_DIR"
-
 # Get the directory where this script is located and find project root
+# Note: SCRIPT_DIR already calculated at line 10, no need to cd
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Check if benchmark executable exists

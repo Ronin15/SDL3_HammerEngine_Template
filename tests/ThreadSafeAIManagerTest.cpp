@@ -29,6 +29,7 @@
 #include "core/ThreadSystem.hpp"
 #include "entities/Entity.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 
 // Simple test entity
@@ -76,7 +77,7 @@ private:
 public:
   ThreadTestBehavior(int id) : m_id(id) {}
 
-  void executeLogic(EntityPtr entity) override {
+  void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
     if (!entity)
       return;
 
@@ -222,7 +223,7 @@ void performSafeCleanup() {
     g_allBehaviors.clear();
   }
 
-  // Clean AIManager if initialized
+  // Clean managers in reverse order of initialization
   if (g_aiManagerInitialized.exchange(false)) {
     try {
       // Additional pause to ensure AIManager is not in use
@@ -238,6 +239,30 @@ void performSafeCleanup() {
     } catch (...) {
       std::cerr << "Unknown exception during AIManager cleanup" << std::endl;
     }
+  }
+
+  // Clean PathfinderManager
+  try {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    PathfinderManager::Instance().clean();
+    std::cerr << "PathfinderManager cleaned up successfully" << std::endl;
+  } catch (const std::exception &e) {
+    std::cerr << "Exception during PathfinderManager cleanup: " << e.what()
+              << std::endl;
+  } catch (...) {
+    std::cerr << "Unknown exception during PathfinderManager cleanup" << std::endl;
+  }
+
+  // Clean CollisionManager
+  try {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    CollisionManager::Instance().clean();
+    std::cerr << "CollisionManager cleaned up successfully" << std::endl;
+  } catch (const std::exception &e) {
+    std::cerr << "Exception during CollisionManager cleanup: " << e.what()
+              << std::endl;
+  } catch (...) {
+    std::cerr << "Unknown exception during CollisionManager cleanup" << std::endl;
   }
 
   // Clean ThreadSystem if initialized - do this last
@@ -349,6 +374,20 @@ struct GlobalTestFixture {
       g_threadSystemInitialized = true;
     }
 
+    // Initialize dependencies in proper order
+    // AIManager requires PathfinderManager and CollisionManager to be initialized first
+    std::cout << "Initializing CollisionManager" << std::endl;
+    if (!CollisionManager::Instance().init()) {
+      std::cerr << "Failed to initialize CollisionManager" << std::endl;
+      throw std::runtime_error("CollisionManager initialization failed");
+    }
+
+    std::cout << "Initializing PathfinderManager" << std::endl;
+    if (!PathfinderManager::Instance().init()) {
+      std::cerr << "Failed to initialize PathfinderManager" << std::endl;
+      throw std::runtime_error("PathfinderManager initialization failed");
+    }
+
     // Then initialize AI manager
     if (!g_aiManagerInitialized) {
       std::cout << "Initializing AIManager" << std::endl;
@@ -384,7 +423,9 @@ struct GlobalTestFixture {
 
       std::cout << "Global fixture cleanup completed successfully" << std::endl;
 
-      // Skip any further destructors to avoid segfaults in Boost Test framework
+      // Use _exit(0) to skip Boost Test framework destructors which cause segfaults on macOS
+      // This prevents the destructor chain from running and avoids SIGSEGV
+      // Note: Causes SIGABRT which test script handles gracefully
       _exit(0);
     } catch (const std::exception &e) {
       std::cerr << "Exception during global fixture cleanup: " << e.what()
@@ -573,6 +614,7 @@ BOOST_FIXTURE_TEST_CASE(TestAsyncPathRequestsUnderWorkerLoad,
 
   // Wait briefly for callbacks to arrive under load
   for (int i = 0; i < 25 && callbacks.load(std::memory_order_relaxed) == 0; ++i) {
+    PathfinderManager::Instance().update(); // Process buffered requests
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
@@ -604,9 +646,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment,
     auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     entityPtrs.push_back(entity);
-    // Note: The error messages about MessageTest not existing are expected
-    // since we're testing error handling
-    AIManager::Instance().assignBehaviorToEntity(entity, "MessageTest");
+    // Entities start without behaviors - will be assigned by worker threads below
   }
 
   // Assign behaviors from multiple threads
@@ -642,6 +682,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorAssignment,
 }
 
 // Test case for thread-safe batch updates
+// FIXED: update() must be called sequentially, not concurrently (it spawns its own worker threads)
 BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
   std::cout << "Starting TestThreadSafeBatchUpdates..." << std::endl;
   const int NUM_ENTITIES = 200;
@@ -675,22 +716,13 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     AIManager::Instance().registerEntityForUpdates(entity);
   }
 
-  // Run concurrent managed entity updates from multiple threads
-  std::vector<std::future<void>> futures;
-  for (int i = 0; i < NUM_BEHAVIORS; ++i) {
-    auto future =
-        HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([]() {
-          for (int j = 0; j < UPDATES_PER_BEHAVIOR; ++j) {
-            // Use the unified entity update system
-            AIManager::Instance().update(0.016f);
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-          }
-        });
-    futures.push_back(std::move(future));
+  // Run managed entity updates sequentially (update() internally uses worker threads)
+  // NOTE: update() is designed to be called from a single thread (main game loop)
+  // It internally spawns worker threads for parallel entity processing
+  for (int j = 0; j < UPDATES_PER_BEHAVIOR * NUM_BEHAVIORS; ++j) {
+    AIManager::Instance().update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
-
-  // Wait for all updates to complete
-  waitForThreadSystemTasks(futures);
 
   // Give a longer delay to ensure all updates are processed
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
@@ -1024,90 +1056,102 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
       entityPtrs.push_back(entity);
     }
 
-    // Start worker threads to perform random operations
-    std::vector<std::thread> threads;
+    // Use ThreadSystem instead of raw std::thread (per CLAUDE.md standards)
     std::atomic<bool> stopFlag(false);
+    std::atomic<int> completedTasks(0);
 
+    // Enqueue worker tasks to ThreadSystem for random operations
     for (int t = 0; t < NUM_THREADS; ++t) {
-      threads.emplace_back([t, &entityPtrs, &stopFlag]() {
-        try {
-          std::mt19937 rng(
-              t + 1); // Use thread id as seed for deterministic randomness
+      HammerEngine::ThreadSystem::Instance().enqueueTask(
+        [t, &entityPtrs, &stopFlag, &completedTasks]() {
+          try {
+            std::mt19937 rng(
+                t + 1); // Use thread id as seed for deterministic randomness
 
-          for (int i = 0; i < OPERATIONS_PER_THREAD && !stopFlag; ++i) {
-            // Pick a random operation
-            int operation = rng() % 5;
+            for (int i = 0; i < OPERATIONS_PER_THREAD && !stopFlag; ++i) {
+              // Pick a random operation
+              int operation = rng() % 5;
 
-            try {
-              switch (operation) {
-              case 0: {
-                // Assign behavior
-                int entityIdx = rng() % entityPtrs.size();
-                int behaviorIdx = rng() % NUM_BEHAVIORS;
-                auto ptr = entityPtrs[entityIdx]->shared_this();
-                AIManager::Instance().assignBehaviorToEntity(
-                    ptr, "StressBehavior" + std::to_string(behaviorIdx));
-                break;
+              try {
+                switch (operation) {
+                case 0: {
+                  // Assign behavior
+                  int entityIdx = rng() % entityPtrs.size();
+                  int behaviorIdx = rng() % NUM_BEHAVIORS;
+                  auto ptr = entityPtrs[entityIdx]->shared_this();
+                  AIManager::Instance().assignBehaviorToEntity(
+                      ptr, "StressBehavior" + std::to_string(behaviorIdx));
+                  break;
+                }
+                case 1: {
+                  // Unassign behavior
+                  int entityIdx = rng() % entityPtrs.size();
+                  AIManager::Instance().unassignBehaviorFromEntity(
+                      entityPtrs[entityIdx]);
+                  break;
+                }
+                case 2: {
+                  // Send message to random entity
+                  int entityIdx = rng() % entityPtrs.size();
+                  AIManager::Instance().sendMessageToEntity(
+                      entityPtrs[entityIdx], "StressMessage" + std::to_string(i));
+                  break;
+                }
+                case 3: {
+                  // Broadcast message
+                  AIManager::Instance().broadcastMessage("BroadcastMessage" +
+                                                         std::to_string(i));
+                  break;
+                }
+                case 4: {
+                  // Query entity behavior status (thread-safe read operation)
+                  int entityIdx = rng() % entityPtrs.size();
+                  AIManager::Instance().entityHasBehavior(entityPtrs[entityIdx]);
+                  break;
+                }
+                }
+              } catch (const std::exception &e) {
+                std::cerr << "Task " << t << " operation " << operation
+                          << " exception: " << e.what() << std::endl;
+                // Don't stop the test for expected race conditions
               }
-              case 1: {
-                // Unassign behavior
-                int entityIdx = rng() % entityPtrs.size();
-                AIManager::Instance().unassignBehaviorFromEntity(
-                    entityPtrs[entityIdx]);
-                break;
-              }
-              case 2: {
-                // Send message to random entity
-                int entityIdx = rng() % entityPtrs.size();
-                AIManager::Instance().sendMessageToEntity(
-                    entityPtrs[entityIdx], "StressMessage" + std::to_string(i));
-                break;
-              }
-              case 3: {
-                // Broadcast message
-                AIManager::Instance().broadcastMessage("BroadcastMessage" +
-                                                       std::to_string(i));
-                break;
-              }
-              case 4: {
-                // Query entity behavior status (thread-safe read operation)
-                int entityIdx = rng() % entityPtrs.size();
-                AIManager::Instance().entityHasBehavior(entityPtrs[entityIdx]);
-                break;
-              }
-              }
-            } catch (const std::exception &e) {
-              std::cerr << "Thread " << t << " operation " << operation
-                        << " exception: " << e.what() << std::endl;
-              // Don't stop the test for expected race conditions
+
+              // Small sleep to simulate real-world timing
+              std::this_thread::sleep_for(std::chrono::microseconds(rng() % 100));
             }
 
-            // Small sleep to simulate real-world timing
-            std::this_thread::sleep_for(std::chrono::microseconds(rng() % 100));
+            completedTasks.fetch_add(1);
+          } catch (const std::exception &e) {
+            std::cerr << "Task " << t << " unexpected exception: " << e.what()
+                      << std::endl;
+            stopFlag = true;
+            completedTasks.fetch_add(1);
           }
-        } catch (const std::exception &e) {
-          std::cerr << "Thread " << t << " unexpected exception: " << e.what()
-                    << std::endl;
-          stopFlag = true;
-        }
-      });
+        },
+        HammerEngine::TaskPriority::Normal,
+        "StressTest_" + std::to_string(t)
+      );
     }
 
-    // Let the stress test run for a limited time
-    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    // Wait for all tasks to complete (with timeout)
+    auto startTime = std::chrono::steady_clock::now();
+    const auto timeout = std::chrono::milliseconds(2000);
 
-    // Set stop flag to ensure all threads terminate
-    stopFlag = true;
+    while (completedTasks.load() < NUM_THREADS) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
 
-    // Wait a small amount of time for threads to notice the stop flag
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Join all threads
-    for (auto &thread : threads) {
-      if (thread.joinable()) {
-        thread.join();
+      // Check for timeout
+      auto elapsed = std::chrono::steady_clock::now() - startTime;
+      if (elapsed > timeout) {
+        std::cerr << "Stress test timeout - only " << completedTasks.load()
+                  << " of " << NUM_THREADS << " tasks completed" << std::endl;
+        stopFlag = true;
+        break;
       }
     }
+
+    // Give a bit more time for any final operations
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // SINGLE-THREADED UPDATE SECTION - Only after all multi-threaded operations complete
     // This reflects the real engine design where update() is called from one thread only

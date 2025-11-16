@@ -26,10 +26,10 @@ ThreadSystem (Singleton)
 │       ├── Exponential Backoff
 │       └── Exception Handling
 └── WorkerBudget System (Intelligent resource allocation)
-    ├── AI: ~45% of remaining workers
-    ├── Particles: ~25% of remaining workers
-    ├── Events: ~20% of remaining workers
-    ├── Engine: 1–2 workers reserved
+    ├── AI: ~54% of remaining workers
+    ├── Particles: ~31% of remaining workers
+    ├── Events: ~15% of remaining workers
+    ├── Engine: 1 worker reserved
     └── Buffer: Dynamic burst capacity
 ```
 
@@ -121,7 +121,7 @@ bool isStopping() const {
 - **📊 Performance Monitoring**: Built-in profiling, statistics tracking, and performance analytics
 - **🛡️ Thread Safety**: Lock-free operations where possible with comprehensive synchronization
 - **🎯 Engine Integration**: Seamless integration with AIManager, EventManager, and core systems
-- **⚙️ WorkerBudget System**: Weight-based resource allocation across engine subsystems (AI: 6, Collision: 3, Particles: 3, Events: 2 weights; 1–2 engine workers reserved; 30% buffer reserve for burst capacity)
+- **⚙️ WorkerBudget System**: Weight-based resource allocation across engine subsystems (AI: 7, Particles: 4, Events: 2 weights; 1 engine worker reserved; 30% buffer reserve for burst capacity)
 - **🔧 Clean Shutdown**: Graceful termination with proper resource cleanup
 
 ## Quick Start
@@ -324,39 +324,37 @@ WorkerBudget budget = {
 };
 
 // 8-core/16-thread system (15 workers available) - High-end
-// Remaining: 13 workers, Buffer: 30% × 13 = 4, Allocate: 9 workers
-// Total weight: 6+3+3+2 = 14
+// Engine: 1, Remaining: 14 workers, Buffer: 30% × 14 = 4, Allocate: 10 workers
+// Total weight: 7+4+2 = 13
 WorkerBudget budget = {
     .totalWorkers = 15,
-    .engineReserved = 2,         // 13% - Enhanced engine capacity
-    .aiAllocated = 4,            // (6/14) × 9 ≈ 4 workers (weight: 6)
-    .collisionAllocated = 2,     // (3/14) × 9 ≈ 2 workers (weight: 3)
-    .particleAllocated = 2,      // (3/14) × 9 ≈ 2 workers (weight: 3)
-    .eventAllocated = 1,         // (2/14) × 9 ≈ 1 worker  (weight: 2)
-    .remaining = 4               // 30% - Buffer for burst workloads
+    .engineReserved = 1,         // 7% - Engine update thread
+    .aiAllocated = 5,            // (7/13) × 10 ≈ 5 workers (weight: 7)
+    .particleAllocated = 3,      // (4/13) × 10 ≈ 3 workers (weight: 4)
+    .eventAllocated = 2,         // (2/13) × 10 ≈ 2 workers (weight: 2)
+    .remaining = 4               // 27% - Buffer for burst workloads
 };
 
 // 2-core/4-thread system (3 workers available) - Low-end
 WorkerBudget budget = {
     .totalWorkers = 3,
-    .engineReserved = 1,         // 33% - Critical engine operations
+    .engineReserved = 1,         // 33% - Engine update thread
     .aiAllocated = 1,            // 33% - Minimal AI processing
-    .collisionAllocated = 1,     // 33% - Minimal collision processing
     .particleAllocated = 0,      // 0%  - Single-threaded fallback
     .eventAllocated = 0,         // 0%  - Single-threaded fallback
-    .remaining = 0               // No buffer available
+    .remaining = 1               // 33% - Small buffer
 };
 
 // 12-core/24-thread system (23 workers available) - Enthusiast
-// Remaining: 21 workers, Buffer: 30% × 21 = 6, Allocate: 15 workers
+// Engine: 1, Remaining: 22 workers, Buffer: 30% × 22 = 7, Allocate: 15 workers
+// Total weight: 7+4+2 = 13
 WorkerBudget budget = {
     .totalWorkers = 23,
-    .engineReserved = 2,         // 9% - Enhanced engine capacity
-    .aiAllocated = 6,            // (6/14) × 15 ≈ 6 workers (weight: 6)
-    .collisionAllocated = 3,     // (3/14) × 15 ≈ 3 workers (weight: 3)
-    .particleAllocated = 3,      // (3/14) × 15 ≈ 3 workers (weight: 3)
-    .eventAllocated = 3,         // (2/14) × 15 ≈ 2-3 workers (weight: 2, rounded up)
-    .remaining = 6               // 30% - Buffer for burst workloads
+    .engineReserved = 1,         // 4% - Engine update thread
+    .aiAllocated = 8,            // (7/13) × 15 ≈ 8 workers (weight: 7)
+    .particleAllocated = 5,      // (4/13) × 15 ≈ 5 workers (weight: 4)
+    .eventAllocated = 2,         // (2/13) × 15 ≈ 2 workers (weight: 2)
+    .remaining = 7               // 30% - Buffer for burst workloads
 };
 ```
 
@@ -520,17 +518,18 @@ class ThreadSystem {
 public:
     // Singleton access
     static ThreadSystem& Instance();
-    static bool Exists();
+    static bool Exists();  // Returns false if shutdown
 
     // Initialization and cleanup
     bool init(size_t queueCapacity = DEFAULT_QUEUE_CAPACITY,
               unsigned int customThreadCount = 0,
               bool enableProfiling = false);
-    void clean();
+    void clean();  // Graceful shutdown with pending task logging
 
     // System status
     bool isShutdown() const;
     unsigned int getThreadCount() const;
+    int64_t getTimeSinceLastEnqueue() const;  // Low-activity detection (ms)
 };
 ```
 
@@ -847,6 +846,157 @@ void executeWithRetry(std::function<void()> task, int maxRetries = 3) {
 }
 ```
 
+## Shutdown and Low-Activity Detection
+
+### Graceful Shutdown Process
+
+The ThreadSystem provides a robust shutdown mechanism that ensures clean termination and proper resource cleanup:
+
+**Shutdown Sequence:**
+```cpp
+void ThreadSystem::clean() {
+    // 1. Set shutdown flag to reject new task submissions
+    m_isShutdown.store(true, std::memory_order_release);
+    std::atomic_thread_fence(std::memory_order_seq_cst);
+
+    // 2. Notify all worker threads to check shutdown flag
+    m_threadPool->getTaskQueue().notifyAllThreads();
+
+    // 3. Brief delay for threads to notice shutdown signal
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+
+    // 4. Log pending tasks before cancellation
+    size_t pendingTasks = m_threadPool->getTaskQueue().size();
+    if (pendingTasks > 0) {
+        THREADSYSTEM_INFO("Canceling " + std::to_string(pendingTasks) +
+                          " pending tasks during shutdown...");
+    }
+
+    // 5. Reset thread pool (triggers destructor for clean thread termination)
+    m_threadPool.reset();
+
+    // 6. Final delay for thread message propagation
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+}
+```
+
+**Shutdown Features:**
+- **Atomic Shutdown Flag**: Prevents new task submissions after shutdown begins
+- **Memory Fence**: Ensures shutdown flag visibility across all threads
+- **Pending Task Logging**: Reports number of canceled tasks for debugging
+- **Clean Thread Termination**: Worker threads exit gracefully without forced termination
+- **Double-Shutdown Protection**: Destructor checks shutdown flag to prevent duplicate cleanup
+- **Re-initialization Prevention**: `init()` rejects calls after shutdown
+
+**Shutdown Safety Example:**
+```cpp
+void GameEngine::cleanup() {
+    // Wait for critical tasks to complete
+    while (ThreadSystem::Instance().isBusy()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // Clean shutdown
+    ThreadSystem::Instance().clean();
+
+    // Attempting to use ThreadSystem after shutdown
+    if (ThreadSystem::Exists()) {
+        // Safe to use
+        ThreadSystem::Instance().enqueueTask(/*...*/);
+    } else {
+        // ThreadSystem is shutdown - this branch will execute
+        GAMEENGINE_WARN("ThreadSystem shutdown, skipping task");
+    }
+}
+```
+
+### Low-Activity Detection
+
+The ThreadSystem tracks thread pool activity to enable intelligent system optimizations and diagnostics:
+
+**Activity Tracking:**
+```cpp
+// Automatic tracking on every task enqueue
+void TaskQueue::pushTask(PrioritizedTask task, ...) {
+    // Update activity timestamp atomically
+    m_lastEnqueueTime.store(std::chrono::steady_clock::now(),
+                           std::memory_order_relaxed);
+    // ... enqueue task
+}
+
+// Query time since last activity
+int64_t idleTime = ThreadSystem::Instance().getTimeSinceLastEnqueue();
+```
+
+**Use Cases:**
+
+1. **Idle Detection for Power Management:**
+```cpp
+void GameEngine::update(float deltaTime) {
+    auto& ts = ThreadSystem::Instance();
+    int64_t idleTimeMs = ts.getTimeSinceLastEnqueue();
+
+    if (idleTimeMs > 5000) {  // 5 seconds idle
+        GAMEENGINE_INFO("ThreadSystem idle for " + std::to_string(idleTimeMs) +
+                       "ms - reducing update frequency");
+        // Reduce update rate or enter low-power mode
+        updateFrequency = 30;  // 30 FPS instead of 60
+    }
+}
+```
+
+2. **Performance Monitoring:**
+```cpp
+void monitorThreadActivity() {
+    int64_t idleTime = ThreadSystem::Instance().getTimeSinceLastEnqueue();
+
+    if (idleTime > 1000) {
+        THREADSYSTEM_INFO("ThreadSystem idle for " + std::to_string(idleTime) + "ms");
+    } else {
+        THREADSYSTEM_DEBUG("Active workload - last task " + std::to_string(idleTime) + "ms ago");
+    }
+}
+```
+
+3. **Load Balancing Decisions:**
+```cpp
+void AIManager::update(float deltaTime) {
+    auto& ts = ThreadSystem::Instance();
+    int64_t idleTime = ts.getTimeSinceLastEnqueue();
+
+    // If thread pool is idle, safe to submit more granular batches
+    if (idleTime > 100) {
+        // Thread pool has capacity - use smaller batches for better parallelism
+        batchCount = optimalWorkerCount;
+    } else {
+        // Thread pool is busy - use larger batches to reduce overhead
+        batchCount = std::min(optimalWorkerCount, size_t(4));
+    }
+}
+```
+
+4. **Diagnostic Logging:**
+```cpp
+void logThreadSystemHealth() {
+    auto& ts = ThreadSystem::Instance();
+
+    std::stringstream ss;
+    ss << "ThreadSystem Health Report:\n";
+    ss << "  Queue Size: " << ts.getQueueSize() << "\n";
+    ss << "  Busy: " << (ts.isBusy() ? "Yes" : "No") << "\n";
+    ss << "  Time Since Last Enqueue: " << ts.getTimeSinceLastEnqueue() << "ms\n";
+    ss << "  Tasks Processed: " << ts.getTotalTasksProcessed() << "\n";
+
+    THREADSYSTEM_INFO(ss.str());
+}
+```
+
+**Activity Detection Best Practices:**
+- **Idle Threshold**: 100-1000ms is a reasonable idle threshold for most games
+- **Power Management**: Use longer thresholds (5000ms+) for battery optimization
+- **Load Balancing**: Check activity before submitting large batch workloads
+- **Diagnostic Logging**: Include activity metrics in performance reports
+
 ## Integration Examples
 
 ### Complete Game Loop Integration
@@ -1026,13 +1176,12 @@ private:
         return HammerEngine::calculateWorkerBudget(totalWorkers);
 
         /* Weight-based allocation logic (from WorkerBudget.hpp):
-         * - Engine: 1-2 workers (adaptive based on system tier)
+         * - Engine: 1 worker (all system tiers)
          * - Buffer: 30% of remaining workers reserved
          * - Base allocation: 70% distributed by weights
-         *   - AI: weight 6 → (6/14) of base = ~43%
-         *   - Collision: weight 3 → (3/14) of base = ~21%
-         *   - Particles: weight 3 → (3/14) of base = ~21%
-         *   - Events: weight 2 → (2/14) of base = ~14%
+         *   - AI: weight 7 → (7/13) of base = ~54%
+         *   - Particles: weight 4 → (4/13) of base = ~31%
+         *   - Events: weight 2 → (2/13) of base = ~15%
          */
     }
 
@@ -1199,3 +1348,20 @@ The ThreadSystem provides a robust, high-performance foundation for multi-thread
 - **Performance Focused**: Optimized for game development workloads
 
 The ThreadSystem transforms complex concurrent programming into simple task submission, enabling developers to focus on game logic while achieving optimal multi-core performance automatically.
+
+## See Also
+
+**Core Systems:**
+- [GameEngine](GameEngine.md) - Central engine coordination and integration
+- [GameLoop](GameLoop.md) - Fixed timestep timing and update/render separation
+- [WorkerBudget](../utils/WorkerBudget.md) - Resource allocation across engine subsystems
+
+**Manager Integration:**
+- [AIManager](../ai/AIManager.md) - AI system threading with optimal batching
+- [ParticleManager](../managers/ParticleManager.md) - Particle system WorkerBudget integration
+- [EventManager](../events/EventManager.md) - Event system parallel processing
+- [CollisionManager](../managers/CollisionManager.md) - Collision detection threading
+
+**Performance:**
+- [SIMDMath](../utils/SIMDMath.md) - SIMD optimizations for parallel workloads
+- [Performance Notes](../../hammer_engine_performance.md) - Engine-wide performance benchmarks

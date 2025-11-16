@@ -49,14 +49,14 @@ show_usage() {
 # Function to find benchmark files
 find_benchmark_files() {
     local pattern="$1"
-    local test_results_dir=""
 
-    # Determine test_results directory location
-    if [ -d "test_results" ]; then
-        test_results_dir="test_results"
-    elif [ -d "../test_results" ]; then
-        test_results_dir="../test_results"
-    else
+    # Get script directory and project root
+    local script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    local project_root="$(cd "$script_dir/.." && pwd)"
+    local test_results_dir="$project_root/test_results"
+
+    # Check if test_results directory exists in project root
+    if [ ! -d "$test_results_dir" ]; then
         return 1
     fi
 
@@ -392,8 +392,11 @@ else
     if [ ${#FILES_TO_ANALYZE[@]} -eq 0 ]; then
         FILES_TO_ANALYZE=($(find_benchmark_files "$ENTITY_FILTER"))
         if [ ${#FILES_TO_ANALYZE[@]} -eq 0 ]; then
-            if [ ! -d "test_results" ] && [ ! -d "../test_results" ]; then
-                print_colored $RED "Error: test_results directory not found (checked current dir and parent dir)"
+            # Get script directory and project root
+            script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+            project_root="$(cd "$script_dir/.." && pwd)"
+            if [ ! -d "$project_root/test_results" ]; then
+                print_colored $RED "Error: test_results directory not found at $project_root/test_results"
                 exit 1
             fi
         fi

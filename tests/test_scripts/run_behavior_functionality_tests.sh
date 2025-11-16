@@ -11,12 +11,7 @@ NC='\033[0m' # No Color
 
 echo -e "${BLUE}Running Behavior Functionality Tests...${NC}"
 
-# Navigate to project root directory (in case script is run from elsewhere)
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$SCRIPT_DIR"
-
-# Create directory for test results
-mkdir -p ../../test_results
+# Note: We calculate paths below and don't cd here to avoid path resolution issues
 
 # Set default build type
 BUILD_TYPE="Debug"
@@ -97,12 +92,12 @@ fi
 echo -e "${YELLOW}Running Behavior Functionality tests...${NC}"
 
 # Ensure test_results directory exists
-mkdir -p ../../test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Output files
-OUTPUT_FILE="../../test_results/behavior_functionality_tests_output.txt"
-SUMMARY_FILE="../../test_results/behavior_functionality_tests_summary.txt"
-BEHAVIOR_REPORT="../../test_results/behavior_test_report.txt"
+OUTPUT_FILE="$PROJECT_ROOT/test_results/behavior_functionality_tests_output.txt"
+SUMMARY_FILE="$PROJECT_ROOT/test_results/behavior_functionality_tests_summary.txt"
+BEHAVIOR_REPORT="$PROJECT_ROOT/test_results/behavior_test_report.txt"
 
 # Set test command options
 TEST_OPTS="--log_level=all --catch_system_errors=no"
@@ -129,11 +124,11 @@ fi
 # Run the tests with additional safeguards
 echo -e "${YELLOW}Running with options: $TEST_OPTS${NC}"
 if [ -n "$TIMEOUT_CMD" ]; then
-  $TIMEOUT_CMD 60s "$TEST_EXECUTABLE" $TEST_OPTS | tee "$OUTPUT_FILE"
-  TEST_RESULT=$?
+  $TIMEOUT_CMD 60s "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$OUTPUT_FILE"
+  TEST_RESULT=${PIPESTATUS[0]}
 else
-  "$TEST_EXECUTABLE" $TEST_OPTS | tee "$OUTPUT_FILE"
-  TEST_RESULT=$?
+  "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$OUTPUT_FILE"
+  TEST_RESULT=${PIPESTATUS[0]}
 fi
 
 # Force success if tests passed but cleanup had issues

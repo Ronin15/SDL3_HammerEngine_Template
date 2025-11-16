@@ -54,7 +54,7 @@ void DroppedItem::update(float deltaTime) {
 
   // Update animation frame (manual implementation since Entity is pure virtual)
   if (getNumFrames() > 1 && getAnimSpeed() > 0) {
-    static float animTimer = 0.0f;
+    static thread_local float animTimer = 0.0f;
     animTimer += deltaTime * getAnimSpeed();
     if (animTimer >= 100.0f) { // Reset at 100ms intervals
       setCurrentFrame((getCurrentFrame() + 1) % getNumFrames());

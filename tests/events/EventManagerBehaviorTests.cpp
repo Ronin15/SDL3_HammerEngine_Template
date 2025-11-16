@@ -113,4 +113,69 @@ BOOST_AUTO_TEST_CASE(RemoveNameHandlers_RemovesHandlers) {
   BOOST_CHECK(EventManager::Instance().executeEvent("TestName"));
 }
 
+BOOST_AUTO_TEST_CASE(ConditionalEvent_AutoExecutes_WhenConditionsMet) {
+  // Test conditional event auto-execution feature
+  class ConditionalTestEvent : public Event {
+  public:
+    explicit ConditionalTestEvent(const std::string &name) : m_name(name) {}
+    void update() override { ++m_updateCount; }
+    void execute() override { ++m_executeCount; }
+    void reset() override { m_updateCount = 0; m_executeCount = 0; }
+    void clean() override {}
+    std::string getName() const override { return m_name; }
+    std::string getType() const override { return "Custom"; }
+    std::string getTypeName() const override { return "ConditionalTestEvent"; }
+    EventTypeId getTypeId() const override { return EventTypeId::Custom; }
+    bool checkConditions() override { return m_conditionMet; }
+
+    void setCondition(bool met) { m_conditionMet = met; }
+    int getUpdateCount() const { return m_updateCount; }
+    int getExecuteCount() const { return m_executeCount; }
+
+  private:
+    std::string m_name;
+    bool m_conditionMet{false};
+    int m_updateCount{0};
+    int m_executeCount{0};
+  };
+
+  auto event = std::make_shared<ConditionalTestEvent>("ConditionalTest");
+  EventManager::Instance().registerEvent("ConditionalTest", event);
+
+  // Register a handler to count dispatches
+  int handlerCallCount = 0;
+  auto token = EventManager::Instance().registerHandlerWithToken(
+      EventTypeId::Custom,
+      [&handlerCallCount](const EventData &data) {
+        if (data.isActive()) {
+          ++handlerCallCount;
+        }
+      });
+
+  // Update with condition FALSE - should update but not dispatch to handlers
+  event->setCondition(false);
+  EventManager::Instance().update();
+  BOOST_CHECK_EQUAL(event->getUpdateCount(), 1);
+  BOOST_CHECK_EQUAL(handlerCallCount, 0);  // Handler not called
+
+  // Update with condition TRUE - should update AND dispatch to handlers
+  event->setCondition(true);
+  EventManager::Instance().update();
+  BOOST_CHECK_EQUAL(event->getUpdateCount(), 2);
+  BOOST_CHECK_EQUAL(handlerCallCount, 1);  // Handler called once
+
+  // Update again with condition TRUE - should dispatch again
+  EventManager::Instance().update();
+  BOOST_CHECK_EQUAL(event->getUpdateCount(), 3);
+  BOOST_CHECK_EQUAL(handlerCallCount, 2);  // Handler called twice total
+
+  // Update with condition FALSE again - no more handler calls
+  event->setCondition(false);
+  EventManager::Instance().update();
+  BOOST_CHECK_EQUAL(event->getUpdateCount(), 4);
+  BOOST_CHECK_EQUAL(handlerCallCount, 2);  // Handler count unchanged
+
+  EventManager::Instance().removeHandler(token);
+}
+
 BOOST_AUTO_TEST_SUITE_END()

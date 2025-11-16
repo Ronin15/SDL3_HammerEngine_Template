@@ -193,14 +193,14 @@ BOOST_FIXTURE_TEST_CASE(EventUpdateAndConditions, EventManagerFixture) {
   // Reset event for next test
   eventPtr->reset();
 
-  // TEST PHASE 2: Event with true conditions should update but not execute
-  // (execution only happens on explicit triggers now)
+  // TEST PHASE 2: Event with true conditions but no handlers should NOT execute
+  // (EventManager optimization: only dispatch if handlers exist)
   eventPtr->setConditionsMet(true);
   EventManager::Instance().update();
   // Wait for any ThreadSystem tasks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(20));
   BOOST_CHECK(eventPtr->wasUpdated());
-  // Events no longer execute during update() - only when explicitly triggered
+  // No handlers registered - event should NOT execute (correct behavior)
   BOOST_CHECK(!eventPtr->wasExecuted());
 
   // TEST PHASE 3: Explicit execution should work
@@ -439,7 +439,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
   // Allow time for ThreadSystem tasks to complete
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-  // Verify update worked - events update but don't execute during update()
+  // Verify update worked - no handlers registered, so should NOT execute
   BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
                   EventManager::Instance().getEvent("ThreadTest"))
                   ->wasUpdated());
@@ -467,8 +467,7 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
 
   EventManager::Instance().update();
 
-  // Verify update worked without threading - events update but don't execute
-  // during update()
+  // Verify update worked without threading - no handlers, so should NOT execute
   BOOST_CHECK(std::dynamic_pointer_cast<MockEvent>(
                   EventManager::Instance().getEvent("ThreadTest"))
                   ->wasUpdated());

@@ -29,7 +29,7 @@ public:
                         float detectionRange = 400.0f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -64,38 +64,44 @@ private:
     Vector2D lastThreatPosition{0, 0};
     Vector2D fleeDirection{0, 0};
     Vector2D lastKnownSafeDirection{0, 0};
-    Uint64 fleeStartTime{0};
-    Uint64 lastDirectionChange{0};
-    Uint64 panicEndTime{0};
+    float fleeTimer{0.0f};
+    float directionChangeTimer{0.0f};
+    float panicTimer{0.0f};
     float currentStamina{100.0f};
     bool isFleeing{false};
     bool isInPanic{false};
     bool hasValidThreat{false};
     int zigzagDirection{1}; // For evasive maneuvers
-    Uint64 lastZigzagTime{0};
+    float zigzagTimer{0.0f};
 
     // Optional path-following state for strategic/seek-cover modes
     std::vector<Vector2D> pathPoints;
     size_t currentPathIndex{0};
-    Uint64 lastPathUpdate{0};
-    Uint64 lastProgressTime{0};
+    float pathUpdateTimer{0.0f};
+    float progressTimer{0.0f};
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
     float navRadius{18.0f};
-    Uint64 nextPathAllowed{0};
-    Uint64 backoffUntil{0};
+    float pathCooldown{0.0f};
+    float backoffTimer{0.0f};
     // Separation decimation
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
+
+    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
+    int cachedNearbyCount{0};
+    std::vector<Vector2D> cachedNearbyPositions;
+    float lastCrowdAnalysis{0.0f};
 
     EntityState()
         : lastThreatPosition(0, 0), fleeDirection(0, 0),
-          lastKnownSafeDirection(0, 0), fleeStartTime(0),
-          lastDirectionChange(0), panicEndTime(0), currentStamina(100.0f),
+          lastKnownSafeDirection(0, 0), fleeTimer(0.0f),
+          directionChangeTimer(0.0f), panicTimer(0.0f), currentStamina(100.0f),
           isFleeing(false), isInPanic(false), hasValidThreat(false),
-          zigzagDirection(1), lastZigzagTime(0), pathPoints(),
-          currentPathIndex(0), lastPathUpdate(0), lastProgressTime(0),
+          zigzagDirection(1), zigzagTimer(0.0f), pathPoints(),
+          currentPathIndex(0), pathUpdateTimer(0.0f), progressTimer(0.0f),
           lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), nextPathAllowed(0), backoffUntil(0) {}
+          navRadius(18.0f), pathCooldown(0.0f), backoffTimer(0.0f),
+          separationTimer(0.0f), lastSepVelocity(0, 0) {}
   };
 
   // Safe zone structure
@@ -113,7 +119,7 @@ private:
   float m_fleeSpeed{4.0f};
   float m_detectionRange{400.0f};
   float m_safeDistance{600.0f};
-  float m_panicDuration{3000.0f}; // 3 seconds of panic by default
+  float m_panicDuration{3.0f}; // 3 seconds of panic by default
 
   // Stamina system
   bool m_useStamina{false};
@@ -127,8 +133,8 @@ private:
       100.0f}; // Distance from world edge to consider unsafe
 
   // Evasive maneuver parameters
-  float m_zigzagAngle{45.0f};   // Degrees
-  Uint64 m_zigzagInterval{500}; // Milliseconds between direction changes
+  float m_zigzagAngle{45.0f};  // Degrees
+  float m_zigzagInterval{0.5f}; // Seconds between direction changes
 
   // Random number generation
   mutable std::mt19937 m_rng{std::random_device{}()};
@@ -150,14 +156,17 @@ private:
   Vector2D avoidBoundaries(const Vector2D &position,
                            const Vector2D &direction) const;
 
-  void updatePanicFlee(EntityPtr entity, EntityState &state);
-  void updateStrategicRetreat(EntityPtr entity, EntityState &state);
-  void updateEvasiveManeuver(EntityPtr entity, EntityState &state);
-  void updateSeekCover(EntityPtr entity, EntityState &state);
+  void updatePanicFlee(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateStrategicRetreat(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateEvasiveManeuver(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateSeekCover(EntityPtr entity, EntityState &state, float deltaTime);
 
   void updateStamina(EntityState &state, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;
   float calculateFleeSpeedModifier(const EntityState &state) const;
+
+  // OPTIMIZATION: Extracted lambda for better compiler optimization
+  bool tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& goal, float speed);
 
 public:
 };

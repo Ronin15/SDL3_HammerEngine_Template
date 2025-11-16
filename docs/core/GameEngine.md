@@ -223,13 +223,6 @@ void GameEngine::update(float deltaTime) {
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
         }, HammerEngine::TaskPriority::High, "GameEngine_Coordination");
-
-        // Submit secondary tasks if multiple workers available
-        if (budget.engineReserved > 1) {
-            threadSystem.enqueueTask([this]() {
-                processEngineSecondaryTasks();
-            }, HammerEngine::TaskPriority::Normal, "GameEngine_Secondary");
-        }
     }
 
     // Hybrid Manager Update Architecture:
@@ -273,16 +266,16 @@ void GameEngine::render(float dt) {
 The GameEngine implements sophisticated threading with centralized resource management through the WorkerBudget system:
 
 **Engine Resource Allocation:**
-- Receives **2 workers** (Critical priority) from ThreadSystem's WorkerBudget system
+- Receives **1 worker** (Critical priority) from ThreadSystem's WorkerBudget system
 - Uses `HammerEngine::calculateWorkerBudget()` for centralized resource allocation
 - Coordinates with GameLoop to ensure optimal frame-rate performance
 - Submits tasks with appropriate priorities to prevent system overload
 
 **Threading Architecture:**
-- **Primary Coordination**: Engine coordination tasks with High priority
-- **Secondary Tasks**: Resource management and cleanup with Normal priority (only if 2+ workers allocated)
+- **Engine Coordination**: Receives **1 worker** (Critical priority) from ThreadSystem's WorkerBudget system
 - **Manager Integration**: Coordinates AI and Event manager threading
 - **Queue Pressure Management**: Monitors ThreadSystem load to prevent bottlenecks
+- **Double Buffering**: Enables concurrent update and render without blocking
 
 #### Thread-Safe State Management
 ```cpp
@@ -373,11 +366,6 @@ public:
 void GameEngine::processEngineCoordination(float deltaTime) {
     // Critical engine coordination tasks
     // Runs with high priority in WorkerBudget system
-}
-
-void GameEngine::processEngineSecondaryTasks() {
-    // Secondary tasks that only run with multiple workers allocated
-    // Examples: performance monitoring, resource cleanup
 }
 ```
 
@@ -594,16 +582,10 @@ void GameEngine::update(float deltaTime) {
         size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
         HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
 
-        // Engine receives 2 workers from WorkerBudget allocation
+        // Engine receives 1 worker from WorkerBudget allocation
         threadSystem.enqueueTask([this, deltaTime]() {
             processEngineCoordination(deltaTime);
         }, HammerEngine::TaskPriority::High, "GameEngine_Coordination");
-
-        if (budget.engineReserved > 1) {
-            threadSystem.enqueueTask([this]() {
-                processEngineSecondaryTasks();
-            }, HammerEngine::TaskPriority::Normal, "GameEngine_Secondary");
-        }
     }
 }
 ```
@@ -644,10 +626,9 @@ void clean();                                                    // Cleanup all 
 
 ```cpp
 void processBackgroundTasks();                                   // Process background tasks
-void processEngineCoordination(float dt);                // Engine coordination (high priority)
-void processEngineSecondaryTasks();                            // Secondary tasks (normal priority)
-void waitForUpdate();                                           // Wait for update completion
-void signalUpdateComplete();                                    // Signal update complete
+void processEngineCoordination(float dt);                        // Engine coordination (high priority)
+void waitForUpdate();                                            // Wait for update completion
+void signalUpdateComplete();                                     // Signal update complete
 bool hasNewFrameToRender() const noexcept;                     // Check if new frame ready
 bool isUpdateRunning() const noexcept;                         // Check if update in progress
 void swapBuffers();                                             // Swap double buffers

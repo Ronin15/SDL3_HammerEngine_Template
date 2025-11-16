@@ -1,3 +1,8 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+
 #ifndef WORLD_DATA_HPP
 #define WORLD_DATA_HPP
 
@@ -17,6 +22,9 @@ struct WorldGenerationConfig {
     float waterLevel;
     float mountainLevel;
 };
+
+// World rendering and spatial constants
+constexpr float TILE_SIZE = 32.0f;  // Tile size in pixels
 
 enum class Biome {
     DESERT,

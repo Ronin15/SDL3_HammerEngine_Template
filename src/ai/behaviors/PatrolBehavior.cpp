@@ -29,13 +29,26 @@ std::mt19937 &getSharedRNG() {
 }
 } // namespace
 
+PatrolBehavior::PatrolBehavior(const HammerEngine::PatrolBehaviorConfig& config)
+    : m_config(config), m_waypoints(), m_currentWaypoint(0), m_moveSpeed(config.moveSpeed),
+      m_waypointRadius(config.waypointReachedRadius),
+      m_includeOffscreenPoints(false), m_needsReset(false),
+      m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
+      m_seedSet(true) {
+  m_waypoints.reserve(10);
+}
+
 PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
                                float moveSpeed, bool includeOffscreenPoints)
     : m_waypoints(waypoints), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
-      m_waypointRadius(250.0f), // 10X larger
+      m_waypointRadius(80.0f), // 2.5 tiles - natural waypoint arrival distance
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
       m_seedSet(true) {
+  // Update config to match legacy parameters
+  m_config.moveSpeed = moveSpeed;
+  m_config.waypointReachedRadius = 80.0f;
+
   m_waypoints.reserve(10);
 
   if (m_waypoints.size() < 2) {
@@ -47,14 +60,14 @@ PatrolBehavior::PatrolBehavior(const std::vector<Vector2D> &waypoints,
 PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
                                bool includeOffscreenPoints)
     : m_waypoints(), m_currentWaypoint(0), m_moveSpeed(moveSpeed),
-      m_waypointRadius(250.0f), // 10X larger
+      m_waypointRadius(80.0f), // 2.5 tiles - natural waypoint arrival distance
       m_includeOffscreenPoints(includeOffscreenPoints), m_needsReset(false),
       m_patrolMode(mode), m_rng(getSharedRNG()), m_seedSet(true) {
   setupModeDefaults(mode);
 }
 
 void PatrolBehavior::init(EntityPtr entity) {
-  if (!entity)
+  if (!entity || m_waypoints.empty())
     return;
 
   m_currentWaypoint = 0;
@@ -66,7 +79,7 @@ void PatrolBehavior::init(EntityPtr entity) {
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
-void PatrolBehavior::executeLogic(EntityPtr entity) {
+void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !m_active || m_waypoints.empty()) {
     return;
   }
@@ -77,7 +90,16 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   }
 
   Vector2D position = entity->getPosition();
-  Uint64 now = SDL_GetTicks();
+
+  // Increment timers (deltaTime in seconds)
+  m_pathUpdateTimer += deltaTime;
+  m_progressTimer += deltaTime;
+  if (m_backoffTimer > 0.0f) {
+    m_backoffTimer -= deltaTime; // Countdown
+  }
+  if (m_waypointCooldown > 0.0f) {
+    m_waypointCooldown -= deltaTime; // Countdown
+  }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
@@ -85,9 +107,9 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
-    // Enforce minimum time between waypoint transitions to prevent oscillation
-    if (now - m_lastWaypointTime >= 750) { // Increased from 500ms to 750ms
-      m_lastWaypointTime = now;
+    // Enforce minimum time between waypoint transitions to prevent oscillation (750ms)
+    if (m_waypointCooldown <= 0.0f) {
+      m_waypointCooldown = m_config.waypointCooldown; // Cooldown before advancing to next waypoint
 
       // Advance to next waypoint
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
@@ -104,15 +126,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
       // Clear path state when changing waypoints to force new pathfinding
       m_navPath.clear();
       m_navIndex = 0;
-      m_lastPathUpdate = 0;
-      m_stallStart = 0; // Reset stall detection
+      m_pathUpdateTimer = 0.0f;
+      m_stallTimer = 0.0f; // Reset stall detection
     }
     // If still in cooldown, continue toward current waypoint without advancing
   }
 
   // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
   bool needsNewPath = false;
-  
+
   // Only request new path if:
   // 1. No current path exists, OR
   // 2. Path is completed, OR
@@ -120,20 +142,29 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
   // 4. We changed waypoints
   if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
     needsNewPath = true;
-  } else if (now - m_lastPathUpdate > 5000) { // Path older than 5 seconds
-    needsNewPath = true;  
+  } else if (m_pathUpdateTimer > 5.0f) { // Path older than 5 seconds
+    needsNewPath = true;
   } else {
     // Check if we're targeting a different waypoint than when path was computed
+    // PERFORMANCE: Use squared distance to avoid sqrt()
     Vector2D pathGoal = m_navPath.back();
-    float waypointChange = (targetWaypoint - pathGoal).length();
-    needsNewPath = (waypointChange > 50.0f); // Waypoint changed significantly
+    float waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
+    needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
   }
-  
-  // Per-instance cooldown via m_backoffUntil; no global static throttle
-  if (needsNewPath && now >= m_backoffUntil) {
+
+  // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
+  bool stuckOnObstacle = (m_progressTimer > 0.8f);
+  if (stuckOnObstacle) {
+    m_navPath.clear(); // Clear path to force refresh
+    m_navIndex = 0;
+  }
+
+  // Per-instance cooldown via m_backoffTimer; no global static throttle
+  if ((needsNewPath || stuckOnObstacle) && m_backoffTimer <= 0.0f) {
     // GOAL VALIDATION: Don't request path if already at waypoint
-    float distanceToWaypoint = (targetWaypoint - position).length();
-    if (distanceToWaypoint < m_waypointRadius) { // Already at waypoint
+    // PERFORMANCE: Use squared distance to avoid sqrt()
+    float distanceSquared = (targetWaypoint - position).lengthSquared();
+    if (distanceSquared < (m_waypointRadius * m_waypointRadius)) { // Already at waypoint
       return; // Skip pathfinding request
     }
     
@@ -148,11 +179,12 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
           if (!path.empty()) {
             m_navPath = path;
             m_navIndex = 0;
-            m_lastPathUpdate = SDL_GetTicks();
+            m_pathUpdateTimer = 0.0f;
           }
         });
-    // Staggered per-instance backoff to prevent bursty re-requests (more conservative)
-    m_backoffUntil = now + 1200 + (entity->getID() % 600);
+    // PERFORMANCE FIX: Long cooldown to match WanderBehavior (15-18 seconds)
+    // Reduces path requests from 1333/sec to ~120/sec with 2000 NPCs
+    m_backoffTimer = m_config.pathRequestCooldown + (entity->getID() % static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) * 0.001f;
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
@@ -163,11 +195,11 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
         pathfinder().followPathStep(entity, position, m_navPath, m_navIndex,
                                  m_moveSpeed, m_navRadius);
     if (following) {
-      m_lastProgressTime = now;
-      // Separation decimation: compute at most every 2 ticks
+      m_progressTimer = 0.0f;
+      // Separation decimation: compute at most every 2-4 seconds
       applyDecimatedSeparation(entity, position, entity->getVelocity(),
-                               m_moveSpeed, 24.0f, 0.20f, 4, m_lastSepTick,
-                               m_lastSepVelocity);
+                               m_moveSpeed, 24.0f, 0.20f, 4, m_separationTimer,
+                               m_lastSepVelocity, deltaTime);
     }
   } else {
     // Direct movement to waypoint
@@ -179,17 +211,18 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
       direction.normalize();
     }
     entity->setVelocity(direction * m_moveSpeed);
-    m_lastProgressTime = now;
+    m_progressTimer = 0.0f;
   }
 
   // State: STALL_DETECTION - Handle entities that get stuck
-  float currentSpeed = entity->getVelocity().length();
-  const float stallThreshold = std::max(1.0f, m_moveSpeed * 0.3f);
+  // PERFORMANCE: Use squared length to avoid sqrt()
+  float currentSpeedSquared = entity->getVelocity().lengthSquared();
+  const float stallThreshold = std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
+  const float stallThresholdSquared = stallThreshold * stallThreshold;
 
-  if (currentSpeed < stallThreshold) {
-    if (m_stallStart == 0) {
-      m_stallStart = now;
-    } else if (now - m_stallStart > 2000) { // 2 second stall detection
+  if (currentSpeedSquared < stallThresholdSquared) {
+    m_stallTimer += deltaTime; // Accumulate stall time
+    if (m_stallTimer > 2.0f) { // 2 second stall detection
       // Apply stall recovery: try sidestep maneuver or advance waypoint
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
         Vector2D toNode = m_navPath[m_navIndex] - position;
@@ -207,33 +240,33 @@ void PatrolBehavior::executeLogic(EntityPtr entity) {
                 if (!path.empty()) {
                   m_navPath = path;
                   m_navIndex = 0;
-                  m_lastPathUpdate = SDL_GetTicks();
+                  m_pathUpdateTimer = 0.0f;
                 }
               });
 
           if (m_navPath.empty()) {
-            // Fallback: advance waypoint and apply backoff
-            m_backoffUntil = now + 800 + (entity->getID() % 400);
+            // Fallback: advance waypoint and apply backoff (10-12 seconds)
+            m_backoffTimer = 10.0f + (entity->getID() % 2000) * 0.001f;
             m_navPath.clear();
             m_navIndex = 0;
-            if (now - m_lastWaypointTime > 1500) {
+            if (m_waypointCooldown <= 0.0f) { // Cooldown already expired (>1.5s since last advance)
               m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-              m_lastWaypointTime = now;
+              m_waypointCooldown = 1.5f;
             }
           }
         }
       } else {
-        // No path available, advance waypoint
-        m_backoffUntil = now + 800 + (entity->getID() % 400);
-        if (now - m_lastWaypointTime > 1500) {
+        // No path available, advance waypoint (10-12 seconds backoff)
+        m_backoffTimer = 10.0f + (entity->getID() % 2000) * 0.001f;
+        if (m_waypointCooldown <= 0.0f) { // Cooldown already expired
           m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-          m_lastWaypointTime = now;
+          m_waypointCooldown = 1.5f;
         }
       }
-      m_stallStart = 0; // Reset stall timer after recovery attempt
+      m_stallTimer = 0.0f; // Reset stall timer after recovery attempt
     }
   } else {
-    m_stallStart = 0; // Reset stall timer when moving normally
+    m_stallTimer = 0.0f; // Reset stall timer when moving normally
   }
 }
 
@@ -268,11 +301,17 @@ std::string PatrolBehavior::getName() const { return "Patrol"; }
 
 std::shared_ptr<AIBehavior> PatrolBehavior::clone() const {
   std::shared_ptr<PatrolBehavior> cloned;
+
+  // For FIXED_WAYPOINTS: copy waypoints (intentional shared routes)
+  // For RANDOM/CIRCULAR/EVENT modes: regenerate unique waypoints per entity
   if (m_patrolMode == PatrolMode::FIXED_WAYPOINTS && !m_waypoints.empty()) {
-    cloned = std::make_shared<PatrolBehavior>(m_patrolMode, m_moveSpeed,
+    // Copy waypoints for fixed patrol routes (formations, convoys, etc.)
+    cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed,
                                               m_includeOffscreenPoints);
   } else {
-    cloned = std::make_shared<PatrolBehavior>(m_waypoints, m_moveSpeed,
+    // Use mode constructor to regenerate unique waypoints for random modes
+    // This ensures each NPC clone gets different patrol routes
+    cloned = std::make_shared<PatrolBehavior>(m_patrolMode, m_moveSpeed,
                                               m_includeOffscreenPoints);
   }
 
@@ -321,8 +360,9 @@ void PatrolBehavior::setMoveSpeed(float speed) { m_moveSpeed = speed; }
 
 bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
                                   const Vector2D &waypoint) const {
+  // PERFORMANCE: Use squared distance to avoid expensive sqrt()
   Vector2D difference = position - waypoint;
-  float distance = difference.length();
+  float distanceSquared = difference.lengthSquared();
 
   // Use a more forgiving radius when moving fast to prevent oscillation
   float dynamicRadius = m_waypointRadius;
@@ -332,7 +372,7 @@ bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
     dynamicRadius *= 1.5f; // Larger radius for fast-moving entities
   }
 
-  return distance < dynamicRadius;
+  return distanceSquared < (dynamicRadius * dynamicRadius);
 }
 
 void PatrolBehavior::resetEntityPosition(EntityPtr entity) {
@@ -438,7 +478,7 @@ void PatrolBehavior::generateRandomWaypointsInRectangle() {
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     Vector2D newPoint;
     int attempts = 0;
-    const int maxAttempts = 50;
+    const int maxAttempts = m_config.randomWaypointGenerationAttempts;
 
     do {
       newPoint = generateRandomPointInRectangle();
@@ -466,7 +506,7 @@ void PatrolBehavior::generateRandomWaypointsInCircle() {
   for (int i = 0; i < m_waypointCount && m_waypoints.size() < 10; ++i) {
     Vector2D newPoint;
     int attempts = 0;
-    const int maxAttempts = 50;
+    const int maxAttempts = m_config.randomWaypointGenerationAttempts;
 
     do {
       newPoint = generateRandomPointInCircle();
@@ -553,16 +593,18 @@ void PatrolBehavior::ensureRandomSeed() const {}
 void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   m_patrolMode = mode;
 
-  // Use world bounds instead of screen dimensions for true world-scale
-  // patrolling
+  // Use world bounds instead of screen dimensions for true world-scale patrolling
   float minX, minY, maxX, maxY;
-  bool hasWorldBounds =
-      WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY);
-  const float TILE = 32.0f;
-  float worldWidth = hasWorldBounds ? (maxX - minX) * TILE : 3200.0f;
-  float worldHeight = hasWorldBounds ? (maxY - minY) * TILE : 3200.0f;
-  float worldMinX = hasWorldBounds ? minX * TILE : 0.0f;
-  float worldMinY = hasWorldBounds ? minY * TILE : 0.0f;
+  if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+    // No world loaded - can't initialize patrol
+    return;
+  }
+
+  constexpr float TILE = HammerEngine::TILE_SIZE;
+  float worldWidth = (maxX - minX) * TILE;
+  float worldHeight = (maxY - minY) * TILE;
+  float worldMinX = minX * TILE;
+  float worldMinY = minY * TILE;
 
   switch (mode) {
   case PatrolMode::FIXED_WAYPOINTS:

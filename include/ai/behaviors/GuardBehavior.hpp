@@ -40,7 +40,7 @@ public:
                          float guardRadius = 200.0f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -93,6 +93,10 @@ public:
 private:
   
   struct EntityState {
+    // Base AI behavior state (pathfinding, separation, cooldowns)
+    AIBehaviorState baseState;
+
+    // Guard-specific state
     Vector2D assignedPosition{0, 0};
     Vector2D lastKnownThreatPosition{0, 0};
     Vector2D investigationTarget{0, 0};
@@ -101,12 +105,12 @@ private:
     AlertLevel currentAlertLevel{AlertLevel::CALM};
     GuardMode currentMode{GuardMode::STATIC_GUARD};
 
-    Uint64 lastThreatSighting{0};
-    Uint64 alertStartTime{0};
-    Uint64 investigationStartTime{0};
-    Uint64 lastPositionCheck{0};
-    Uint64 lastPatrolMove{0};
-    Uint64 lastAlertDecay{0};
+    float threatSightingTimer{0.0f};
+    float alertTimer{0.0f};
+    float investigationTimer{0.0f};
+    float positionCheckTimer{0.0f};
+    float patrolMoveTimer{0.0f};
+    float alertDecayTimer{0.0f};
 
     size_t currentPatrolIndex{0};
     float currentHeading{0.0f};
@@ -119,31 +123,11 @@ private:
 
     // Roaming state
     Vector2D roamTarget{0, 0};
-    Uint64 nextRoamTime{0};
+    float roamTimer{0.0f};
 
-    // Pathfinding state
-    std::vector<Vector2D> pathPoints;
-    size_t currentPathIndex{0};
-    Uint64 lastPathUpdate{0};
-    Uint64 lastProgressTime{0};
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{18.0f};
-    Uint64 backoffUntil{0};
-    // Separation decimation
-    Uint64 lastSepTick{0};
-    Vector2D lastSepVelocity{0, 0};
-
-    EntityState()
-        : assignedPosition(0, 0), lastKnownThreatPosition(0, 0),
-          investigationTarget(0, 0), currentPatrolTarget(0, 0),
-          currentAlertLevel(AlertLevel::CALM),
-          currentMode(GuardMode::STATIC_GUARD), lastThreatSighting(0),
-          alertStartTime(0), investigationStartTime(0), lastPositionCheck(0),
-          lastPatrolMove(0), lastAlertDecay(0), currentPatrolIndex(0),
-          currentHeading(0.0f), hasActiveThreat(false), isInvestigating(false),
-          returningToPost(false), onDuty(true), alertRaised(false),
-          helpCalled(false), roamTarget(0, 0), nextRoamTime(0),
-          pathPoints(), currentPathIndex(0), lastPathUpdate(0), navRadius(16.0f) {}
+    EntityState() {
+      baseState.navRadius = 18.0f; // Guard-specific nav radius
+    }
   };
 
   // Map to store per-entity state
@@ -185,9 +169,9 @@ private:
   int m_guardGroup{0}; // 0 = no group
 
   // Alert thresholds
-  static constexpr Uint64 SUSPICIOUS_THRESHOLD = 2000;    // 2 seconds
-  static constexpr Uint64 INVESTIGATING_THRESHOLD = 5000; // 5 seconds
-  static constexpr Uint64 HOSTILE_THRESHOLD = 1000;       // 1 second in sight
+  static constexpr float SUSPICIOUS_THRESHOLD = 2.0f;    // 2 seconds
+  static constexpr float INVESTIGATING_THRESHOLD = 5.0f; // 5 seconds
+  static constexpr float HOSTILE_THRESHOLD = 1.0f;       // 1 second in sight
 
   // Random number generation
   mutable std::mt19937 m_rng{std::random_device{}()};
@@ -210,29 +194,24 @@ private:
   void updateAlertLevel(EntityPtr entity, EntityState &state,
                         bool threatPresent) const;
   void handleThreatDetection(EntityPtr entity, EntityState &state,
-                             EntityPtr threat);
-  void handleInvestigation(EntityPtr entity, EntityState &state);
-  void handleReturnToPost(EntityPtr entity, EntityState &state);
+                             EntityPtr threat, float deltaTime);
+  void handleInvestigation(EntityPtr entity, EntityState &state, float deltaTime);
+  void handleReturnToPost(EntityPtr entity, EntityState &state, float deltaTime);
 
   // Mode-specific updates
-  void updateStaticGuard(EntityPtr entity, EntityState &state);
-  void updatePatrolGuard(EntityPtr entity, EntityState &state);
-  void updateAreaGuard(EntityPtr entity, EntityState &state);
-  void updateRoamingGuard(EntityPtr entity, EntityState &state);
-  void updateAlertGuard(EntityPtr entity, EntityState &state);
+  void updateStaticGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updatePatrolGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAreaGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateRoamingGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAlertGuard(EntityPtr entity, EntityState &state, float deltaTime);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed);
+  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
   Vector2D getNextPatrolWaypoint(const EntityState &state) const;
   Vector2D generateRoamTarget(EntityPtr entity, const EntityState &state) const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,
                     float threshold = 25.0f) const;
   bool isWithinGuardArea(const Vector2D &position) const;
-
-  // Utility methods
-  Vector2D normalizeDirection(const Vector2D &direction) const;
-  float normalizeAngle(float angle) const;
-  float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;
   Vector2D clampToGuardArea(const Vector2D &position) const;
 
   // Communication helpers

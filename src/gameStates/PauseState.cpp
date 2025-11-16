@@ -18,9 +18,12 @@ bool PauseState::enter() {
   
   // Create overlay background to dim the game behind the pause menu
   ui.createOverlay(windowWidth, windowHeight);
-  
+  // Overlay auto-repositions via createOverlay's positioning rules
+
   ui.createTitle("pause_title", {0, 100, windowWidth, 40}, "Game Paused");
   ui.setTitleAlignment("pause_title", UIAlignment::CENTER_CENTER);
+  // Set auto-repositioning: centered horizontally, fixed Y position
+  ui.setComponentPositioning("pause_title", {UIPositionMode::CENTERED_H, 0, 100, -1, 40});
   
   return true;
 }

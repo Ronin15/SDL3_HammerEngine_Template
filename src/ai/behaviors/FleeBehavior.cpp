@@ -54,7 +54,7 @@ void FleeBehavior::init(EntityPtr entity) {
     state.lastThreatPosition = entity->getPosition();
 }
 
-void FleeBehavior::executeLogic(EntityPtr entity) {
+void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     if (!entity || !isActive()) return;
 
     auto it = m_entityStates.find(entity);
@@ -65,8 +65,31 @@ void FleeBehavior::executeLogic(EntityPtr entity) {
     }
 
     EntityState& state = it->second;
+
+    // Update all timers
+    state.fleeTimer += deltaTime;
+    state.directionChangeTimer += deltaTime;
+    if (state.panicTimer > 0.0f) state.panicTimer -= deltaTime;
+    state.zigzagTimer += deltaTime;
+    state.pathUpdateTimer += deltaTime;
+    state.progressTimer += deltaTime;
+    if (state.pathCooldown > 0.0f) state.pathCooldown -= deltaTime;
+    if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
+    state.lastCrowdAnalysis += deltaTime;
+
+    // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
+    // Reduces CollisionManager queries significantly for fleeing entities
+    float crowdCacheInterval = 3.0f + (entity->getID() % 200) * 0.01f; // 3-5 seconds
+    if (state.lastCrowdAnalysis >= crowdCacheInterval) {
+      Vector2D position = entity->getPosition();
+      float queryRadius = 100.0f; // Smaller radius for flee (lighter separation)
+      state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
+          entity, position, queryRadius, state.cachedNearbyPositions);
+      state.lastCrowdAnalysis = 0.0f; // Reset timer
+    }
+
     EntityPtr threat = getThreat();
-    
+
     if (!threat) {
         // No threat detected, stop fleeing and recover stamina
         if (state.isFleeing) {
@@ -83,19 +106,19 @@ void FleeBehavior::executeLogic(EntityPtr entity) {
 
     // Check if threat is in detection range
     bool threatInRange = isThreatInRange(entity, threat);
-    Uint64 currentTime = SDL_GetTicks();
+    
     
     if (threatInRange) {
         // Start fleeing if not already
         if (!state.isFleeing) {
             state.isFleeing = true;
-            state.fleeStartTime = currentTime;
+            state.fleeTimer = 0.0f;
             state.lastThreatPosition = threat->getPosition();
             
             // Determine if this should trigger panic
             if (m_fleeMode == FleeMode::PANIC_FLEE) {
                 state.isInPanic = true;
-                state.panicEndTime = currentTime + static_cast<Uint64>(m_panicDuration * m_panicVariation(m_rng));
+                state.panicTimer = m_panicDuration * m_panicVariation(m_rng);
             }
         }
         
@@ -113,7 +136,7 @@ void FleeBehavior::executeLogic(EntityPtr entity) {
     }
 
     // Update panic state
-    if (state.isInPanic && currentTime >= state.panicEndTime) {
+    if (state.isInPanic && state.panicTimer <= 0.0f) {
         state.isInPanic = false;
     }
 
@@ -121,16 +144,16 @@ void FleeBehavior::executeLogic(EntityPtr entity) {
     if (state.isFleeing) {
         switch (m_fleeMode) {
             case FleeMode::PANIC_FLEE:
-                updatePanicFlee(entity, state);
+                updatePanicFlee(entity, state, deltaTime);
                 break;
             case FleeMode::STRATEGIC_RETREAT:
-                updateStrategicRetreat(entity, state);
+                updateStrategicRetreat(entity, state, deltaTime);
                 break;
             case FleeMode::EVASIVE_MANEUVER:
-                updateEvasiveManeuver(entity, state);
+                updateEvasiveManeuver(entity, state, deltaTime);
                 break;
             case FleeMode::SEEK_COVER:
-                updateSeekCover(entity, state);
+                updateSeekCover(entity, state, deltaTime);
                 break;
         }
         
@@ -156,7 +179,7 @@ void FleeBehavior::onMessage(EntityPtr entity, const std::string& message) {
 
     if (message == "panic") {
         state.isInPanic = true;
-        state.panicEndTime = SDL_GetTicks() + static_cast<Uint64>(m_panicDuration);
+        state.panicTimer = m_panicDuration;
     } else if (message == "calm_down") {
         state.isInPanic = false;
     } else if (message == "stop_fleeing") {
@@ -312,93 +335,78 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
 [[maybe_unused]] bool FleeBehavior::isNearBoundary(const Vector2D& position) const {
     // Use world bounds for boundary detection
     float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f;
-        float worldMinX = minX * TILE + m_boundaryPadding;
-        float worldMinY = minY * TILE + m_boundaryPadding;
-        float worldMaxX = maxX * TILE - m_boundaryPadding;
-        float worldMaxY = maxY * TILE - m_boundaryPadding;
-        
-        return (position.getX() < worldMinX || 
-                position.getX() > worldMaxX ||
-                position.getY() < worldMinY || 
-                position.getY() > worldMaxY);
-    } else {
-        // Fallback: assume a large world if bounds unavailable
-        const float defaultWorldSize = 3200.0f;
-        return (position.getX() < m_boundaryPadding || 
-                position.getX() > defaultWorldSize - m_boundaryPadding ||
-                position.getY() < m_boundaryPadding || 
-                position.getY() > defaultWorldSize - m_boundaryPadding);
+    if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        // No world loaded - can't determine boundaries
+        return false;
     }
+
+    constexpr float TILE = HammerEngine::TILE_SIZE;
+    float worldMinX = minX * TILE + m_boundaryPadding;
+    float worldMinY = minY * TILE + m_boundaryPadding;
+    float worldMaxX = maxX * TILE - m_boundaryPadding;
+    float worldMaxY = maxY * TILE - m_boundaryPadding;
+
+    return (position.getX() < worldMinX ||
+            position.getX() > worldMaxX ||
+            position.getY() < worldMinY ||
+            position.getY() > worldMaxY);
 }
 
 Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D& direction) const {
-    Vector2D adjustedDir = direction;
-    
     // Use world bounds for boundary avoidance with world-scale padding
     float minX, minY, maxX, maxY;
-    if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-        const float TILE = 32.0f;
-        const float worldPadding = 80.0f; // Increased padding for world-scale movement
-        float worldMinX = minX * TILE + worldPadding;
-        float worldMinY = minY * TILE + worldPadding;
-        float worldMaxX = maxX * TILE - worldPadding;
-        float worldMaxY = maxY * TILE - worldPadding;
-        
-        // Check world boundaries and adjust direction
-        if (position.getX() < worldMinX && direction.getX() < 0) {
-            adjustedDir.setX(std::abs(direction.getX())); // Force rightward
-        } else if (position.getX() > worldMaxX && direction.getX() > 0) {
-            adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
-        }
-        
-        if (position.getY() < worldMinY && direction.getY() < 0) {
-            adjustedDir.setY(std::abs(direction.getY())); // Force downward
-        } else if (position.getY() > worldMaxY && direction.getY() > 0) {
-            adjustedDir.setY(-std::abs(direction.getY())); // Force upward
-        }
-    } else {
-        // Fallback: assume a large world if bounds unavailable
-        const float defaultWorldSize = 3200.0f;
-        if (position.getX() < m_boundaryPadding && direction.getX() < 0) {
-            adjustedDir.setX(std::abs(direction.getX())); // Force rightward
-        } else if (position.getX() > defaultWorldSize - m_boundaryPadding && direction.getX() > 0) {
-            adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
-        }
-        
-        if (position.getY() < m_boundaryPadding && direction.getY() < 0) {
-            adjustedDir.setY(std::abs(direction.getY())); // Force downward
-        } else if (position.getY() > defaultWorldSize - m_boundaryPadding && direction.getY() > 0) {
-            adjustedDir.setY(-std::abs(direction.getY())); // Force upward
-        }
+    if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
+        // No world loaded - return direction unchanged
+        return direction;
     }
-    
+
+    Vector2D adjustedDir = direction;
+    constexpr float TILE = HammerEngine::TILE_SIZE;
+    const float worldPadding = 80.0f; // Increased padding for world-scale movement
+    float worldMinX = minX * TILE + worldPadding;
+    float worldMinY = minY * TILE + worldPadding;
+    float worldMaxX = maxX * TILE - worldPadding;
+    float worldMaxY = maxY * TILE - worldPadding;
+
+    // Check world boundaries and adjust direction
+    if (position.getX() < worldMinX && direction.getX() < 0) {
+        adjustedDir.setX(std::abs(direction.getX())); // Force rightward
+    } else if (position.getX() > worldMaxX && direction.getX() > 0) {
+        adjustedDir.setX(-std::abs(direction.getX())); // Force leftward
+    }
+
+    if (position.getY() < worldMinY && direction.getY() < 0) {
+        adjustedDir.setY(std::abs(direction.getY())); // Force downward
+    } else if (position.getY() > worldMaxY && direction.getY() > 0) {
+        adjustedDir.setY(-std::abs(direction.getY())); // Force upward
+    }
+
     return adjustedDir;
 }
 
-void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
-    Uint64 currentTime = SDL_GetTicks();
     
+
+
     // In panic mode, change direction more frequently and use longer distances
-    if (currentTime - state.lastDirectionChange > 200 || state.fleeDirection.length() < 0.001f) {
+    if (state.directionChangeTimer > 0.2f || state.fleeDirection.length() < 0.001f) {
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
-        
+
         // Add more randomness to panic movement for world-scale escape
         float randomAngle = m_angleVariation(m_rng) * 0.8f; // Increased randomness
         float cos_a = std::cos(randomAngle);
         float sin_a = std::sin(randomAngle);
-        
+
         Vector2D rotated(
             state.fleeDirection.getX() * cos_a - state.fleeDirection.getY() * sin_a,
             state.fleeDirection.getX() * sin_a + state.fleeDirection.getY() * cos_a
         );
-        
+
         state.fleeDirection = rotated;
-        state.lastDirectionChange = currentTime;
+        state.directionChangeTimer = 0.0f;
         
         // In panic, try to flee much further to break out of small areas
         Vector2D currentPos = entity->getPosition();
@@ -410,21 +418,23 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state) {
     
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-    // Separation decimation: compute at most every 2 ticks per entity
-    applyDecimatedSeparation(entity, entity->getPosition(), intended,
+    // PERFORMANCE OPTIMIZATION: Use cached collision data to avoid redundant queries
+    applySeparationWithCache(entity, entity->getPosition(), intended,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.lastSepTick, state.lastSepVelocity);
+                             state.separationTimer, state.lastSepVelocity, deltaTime,
+                             state.cachedNearbyPositions);
 }
 
-void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
     
     Vector2D currentPos = entity->getPosition();
-    Uint64 currentTime = SDL_GetTicks();
+
+
 
     // Strategic retreat: aim for a point away from threat (or toward nearest safe zone)
-    if (currentTime - state.lastDirectionChange > 1000 || state.fleeDirection.length() < 0.001f) {
+    if (state.directionChangeTimer > 1.0f || state.fleeDirection.length() < 0.001f) {
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
 
         // Blend with nearest safe zone direction if exists
@@ -433,7 +443,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
             Vector2D blended = (state.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
             state.fleeDirection = normalizeVector(blended);
         }
-        state.lastDirectionChange = currentTime;
+        state.directionChangeTimer = 0.0f;
     }
 
     // Dynamic retreat distance based on local entity density
@@ -460,84 +470,30 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state) 
     // Compute a retreat destination further ahead and clamp to world bounds
     Vector2D dest = pathfinder().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
 
-    // Try to path toward the retreat destination with TTL and no-progress checks
-    auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
-        Uint64 now = SDL_GetTicks();
-        // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-        const Uint64 pathTTL = 2500; const Uint64 noProgressWindow = 400;
-        bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
-        if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-            float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-            if (d + 1.0f < state.lastNodeDistance) { state.lastNodeDistance = d; state.lastProgressTime = now; }
-            else if (state.lastProgressTime == 0) { state.lastProgressTime = now; }
-            else if (now - state.lastProgressTime > noProgressWindow) { needRefresh = true; }
-        }
-        if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
-        if (needRefresh && now >= state.nextPathAllowed) {
-            // Gate refresh on significant goal change to avoid thrash
-            // PERFORMANCE: Use squared distance and higher threshold
-            bool goalChanged = true;
-            if (!state.pathPoints.empty()) {
-                Vector2D lastGoal = state.pathPoints.back();
-                const float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
-                goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
-            }
-            if (!goalChanged && !state.pathPoints.empty()) {
-                // Keep following existing path; skip request
-                goto follow_existing;
-            }
-            // Use PathfinderManager for pathfinding requests
-            auto& pathfinder = this->pathfinder();
-            pathfinder.requestPath(entity->getID(), pathfinder.clampToWorldBounds(currentPos, 100.0f), goal, PathfinderManager::Priority::High,
-                [&state](EntityID /* id */, const std::vector<Vector2D>& path) {
-                    state.pathPoints = path;
-                    state.currentPathIndex = 0;
-                });
-            // Note: Path will be set via callback when ready
-            if (!state.pathPoints.empty()) {
-                state.currentPathIndex = 0;
-                state.lastPathUpdate = now;
-                state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                state.lastProgressTime = now;
-                state.nextPathAllowed = now + 800; // cooldown
-            } else {
-                // Async path not ready, apply cooldown to prevent spam
-                state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
-            }
-        }
-        follow_existing:
-        if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-            Vector2D node = state.pathPoints[state.currentPathIndex];
-            Vector2D dir = node - currentPos; float len = dir.length();
-            if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
-            if ((node - currentPos).length() <= state.navRadius) {
-                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.lastProgressTime = now;
-            }
-            return true;
-        }
-        return false;
-    };
-
+    // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
     float speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
+    if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
         Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        applyDecimatedSeparation(entity, entity->getPosition(), intended2,
+        // PERFORMANCE OPTIMIZATION: Use cached collision data
+        applySeparationWithCache(entity, entity->getPosition(), intended2,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.lastSepTick, state.lastSepVelocity);
+                                 state.separationTimer, state.lastSepVelocity, deltaTime,
+                                 state.cachedNearbyPositions);
     }
 }
 
-void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, float deltaTime) {
     EntityPtr threat = getThreat();
     if (!threat) return;
-    
-    Uint64 currentTime = SDL_GetTicks();
-    
+
+
+
+
     // Zigzag pattern
-    if (currentTime - state.lastZigzagTime > m_zigzagInterval) {
+    if (state.zigzagTimer > m_zigzagInterval) {
         state.zigzagDirection *= -1; // Flip direction
-        state.lastZigzagTime = currentTime;
+        state.zigzagTimer = 0.0f;
     }
     
     // Base flee direction
@@ -554,15 +510,17 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state) {
     );
     
     state.fleeDirection = normalizeVector(zigzagDir);
-    
+
     float speedModifier = calculateFleeSpeedModifier(state);
     Vector2D intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
-    applyDecimatedSeparation(entity, entity->getPosition(), intended3,
+    // PERFORMANCE OPTIMIZATION: Use cached collision data
+    applySeparationWithCache(entity, entity->getPosition(), intended3,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.lastSepTick, state.lastSepVelocity);
+                             state.separationTimer, state.lastSepVelocity, deltaTime,
+                             state.cachedNearbyPositions);
 }
 
-void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
+void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float deltaTime) {
     // Move toward nearest safe zone using pathfinding when possible
     Vector2D currentPos = entity->getPosition();
     Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
@@ -599,74 +557,16 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state) {
     // Clamp destination within world bounds
     dest = pathfinder().clampToWorldBounds(dest, 100.0f);
 
-    auto tryFollowPath = [&](const Vector2D &goal, float speed)->bool {
-        Uint64 now = SDL_GetTicks();
-        // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-        const Uint64 pathTTL = 2500; const Uint64 noProgressWindow = 400;
-        bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
-        if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-            float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-            if (d + 1.0f < state.lastNodeDistance) { state.lastNodeDistance = d; state.lastProgressTime = now; }
-            else if (state.lastProgressTime == 0) { state.lastProgressTime = now; }
-            else if (now - state.lastProgressTime > noProgressWindow) { needRefresh = true; }
-        }
-        if (now - state.lastPathUpdate > pathTTL) needRefresh = true;
-        if (needRefresh && now >= state.nextPathAllowed) {
-            // Gate refresh on significant goal change to avoid thrash
-            // PERFORMANCE: Use squared distance and higher threshold
-            bool goalChanged = true;
-            if (!state.pathPoints.empty()) {
-                Vector2D lastGoal = state.pathPoints.back();
-                const float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
-                goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
-            }
-            if (!goalChanged && !state.pathPoints.empty()) {
-                // Keep following existing path; skip request
-                goto follow_existing2;
-            }
-            // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-            pathfinder().requestPath(
-                entity->getID(), pathfinder().clampToWorldBounds(currentPos, 100.0f), goal, PathfinderManager::Priority::High,
-                [this, entity](EntityID, const std::vector<Vector2D>& path) {
-                  if (!path.empty()) {
-                    // Find the behavior state for this entity
-                    auto it = m_entityStates.find(entity);
-                    if (it != m_entityStates.end()) {
-                      it->second.pathPoints = path;
-                      it->second.currentPathIndex = 0;
-                      it->second.lastPathUpdate = SDL_GetTicks();
-                      it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-                      it->second.lastProgressTime = SDL_GetTicks();
-                      it->second.nextPathAllowed = SDL_GetTicks() + 800; // cooldown
-                    }
-                  }
-                });
-            // Remove the synchronous path check since we're using callback-based async path
-            {
-                // Async path not ready, apply cooldown to prevent spam
-                state.nextPathAllowed = now + 600; // Shorter cooldown for flee (more urgent)
-            }
-        }
-        follow_existing2:
-        if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-            Vector2D node = state.pathPoints[state.currentPathIndex];
-            Vector2D dir = node - currentPos; float len = dir.length();
-            if (len > 0.01f) { dir = dir * (1.0f/len); entity->setVelocity(dir * speed); }
-            if ((node - currentPos).length() <= state.navRadius) {
-                ++state.currentPathIndex; state.lastNodeDistance = std::numeric_limits<float>::infinity(); state.lastProgressTime = now;
-            }
-            return true;
-        }
-        return false;
-    };
-
+    // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
     float speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPath(dest, m_fleeSpeed * speedModifier)) {
+    if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
         Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        applyDecimatedSeparation(entity, entity->getPosition(), intended4,
+        // PERFORMANCE OPTIMIZATION: Use cached collision data
+        applySeparationWithCache(entity, entity->getPosition(), intended4,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.lastSepTick, state.lastSepVelocity);
+                                 state.separationTimer, state.lastSepVelocity, deltaTime,
+                                 state.cachedNearbyPositions);
     }
 }
 
@@ -690,17 +590,103 @@ Vector2D FleeBehavior::normalizeVector(const Vector2D& direction) const {
 
 float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
     float modifier = 1.0f;
-    
+
     // Panic increases speed
     if (state.isInPanic) {
         modifier *= 1.3f;
     }
-    
+
     // Stamina affects speed
     if (m_useStamina) {
         float staminaRatio = state.currentStamina / m_maxStamina;
         modifier *= (0.3f + 0.7f * staminaRatio); // Speed ranges from 30% to 100%
     }
-    
+
     return modifier;
+}
+
+// OPTIMIZATION: Extracted from lambda for better compiler optimization
+// This method handles path-following logic with TTL and no-progress checks
+bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& goal, float speed) {
+    // PERFORMANCE: Increase TTL to reduce pathfinding frequency
+    constexpr float pathTTL = 2.5f;
+    constexpr float noProgressWindow = 0.4f;
+    constexpr float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
+
+    // Check if path needs refresh
+    bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+
+    // Check for progress towards current waypoint
+    if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+        float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+        if (d + 1.0f < state.lastNodeDistance) {
+            state.lastNodeDistance = d;
+            state.progressTimer = 0.0f;
+        } else if (state.progressTimer > noProgressWindow) {
+            needRefresh = true;
+        }
+    }
+
+    // Check if path is stale
+    if (state.pathUpdateTimer > pathTTL) {
+        needRefresh = true;
+    }
+
+    // Request new path if needed and cooldown allows
+    if (needRefresh && state.pathCooldown <= 0.0f) {
+        // Gate refresh on significant goal change to avoid thrash
+        bool goalChanged = true;
+        if (!state.pathPoints.empty()) {
+            Vector2D lastGoal = state.pathPoints.back();
+            goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
+        }
+
+        // Only request new path if goal changed significantly
+        if (goalChanged) {
+            // Use PathfinderManager for pathfinding requests
+            auto& pf = this->pathfinder();
+            pf.requestPath(
+                entity->getID(),
+                pf.clampToWorldBounds(currentPos, 100.0f),
+                goal,
+                PathfinderManager::Priority::High,
+                [this, entity](EntityID, const std::vector<Vector2D>& path) {
+                    auto it = m_entityStates.find(entity);
+                    if (it != m_entityStates.end() && !path.empty()) {
+                        it->second.pathPoints = path;
+                        it->second.currentPathIndex = 0;
+                        it->second.pathUpdateTimer = 0.0f;
+                        it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
+                        it->second.progressTimer = 0.0f;
+                        it->second.pathCooldown = 0.8f;
+                    }
+                });
+
+            // Apply cooldown to prevent spam (async path not ready yet)
+            state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
+        }
+    }
+
+    // Follow existing path if available
+    if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+        Vector2D node = state.pathPoints[state.currentPathIndex];
+        Vector2D dir = node - currentPos;
+        float len = dir.length();
+
+        if (len > 0.01f) {
+            dir = dir * (1.0f / len);
+            entity->setVelocity(dir * speed);
+        }
+
+        // Check if reached current waypoint
+        if ((node - currentPos).length() <= state.navRadius) {
+            ++state.currentPathIndex;
+            state.lastNodeDistance = std::numeric_limits<float>::infinity();
+            state.progressTimer = 0.0f;
+        }
+
+        return true;
+    }
+
+    return false;
 }

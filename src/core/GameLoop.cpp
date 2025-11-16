@@ -60,14 +60,13 @@ bool GameLoop::run() {
             if (HammerEngine::ThreadSystem::Exists()) {
                 const auto& threadSystem = HammerEngine::ThreadSystem::Instance();
                 size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-                HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
 
-                GAMELOOP_INFO("GameLoop allocated " + std::to_string(budget.engineReserved) +
-                             " workers from WorkerBudget (total: " + std::to_string(availableWorkers) + ")");
+                GAMELOOP_INFO("GameLoop allocated 1 worker from WorkerBudget (total: " +
+                             std::to_string(availableWorkers) + " workers)");
 
                 m_updateTaskRunning.store(true, std::memory_order_relaxed);
                 m_updateTaskFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-                    [this, budget]() { runUpdateWorker(budget); },
+                    [this]() { runUpdateWorker(); },
                     HammerEngine::TaskPriority::Critical,
                     "GameLoop WorkerBudget Update Worker"
                 );
@@ -157,9 +156,9 @@ void GameLoop::runMainThread() {
     }
 }
 
-void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
-    // WorkerBudget-aware update worker - respects allocated resources
-    
+void GameLoop::runUpdateWorker() {
+    // Update worker running on dedicated thread from WorkerBudget allocation
+
     // Adaptive timing system
     float targetFPS = m_timestepManager->getTargetFPS();
     const auto targetFrameTime = std::chrono::microseconds(static_cast<long>(1000000.0f / targetFPS));
@@ -170,9 +169,6 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
     const int performanceSamples = 10;
     int sampleCount = 0;
 
-    // System capability detection
-    bool canUseParallelUpdates = (budget.engineReserved >= 2);
-
     // Initial fixed sleep duration for consistent frame timing
     const auto fixedSleepDuration = std::chrono::microseconds(
         static_cast<long>(targetFrameTime.count() * 0.92f)
@@ -182,16 +178,8 @@ void GameLoop::runUpdateWorker(const HammerEngine::WorkerBudget& budget) {
         try {
             auto updateStart = std::chrono::high_resolution_clock::now();
 
-            if (canUseParallelUpdates && HammerEngine::ThreadSystem::Exists()) {
-                // Use enhanced processing for high-end systems, which includes
-                // more detailed performance monitoring. Note: This does NOT
-                // parallelize the update loop itself, which runs sequentially
-                // to maintain game logic consistency.
-                processUpdatesHighPerformance();
-            } else {
-                // Standard processing for low-end systems
-                processUpdates();
-            }
+            // Process all pending updates sequentially
+            processUpdates();
 
             auto updateEnd = std::chrono::high_resolution_clock::now();
             auto updateDuration = std::chrono::duration_cast<std::chrono::microseconds>(
@@ -278,30 +266,6 @@ void GameLoop::processUpdates() {
         float deltaTime = m_timestepManager->getUpdateDeltaTime();
         invokeUpdateHandler(deltaTime);
         m_updateCount.fetch_add(1, std::memory_order_relaxed);
-    }
-}
-
-void GameLoop::processUpdatesHighPerformance() {
-    // Enhanced parallel processing for high-end systems with 2+ allocated workers
-    // Still process updates sequentially to maintain game logic consistency
-    // but optimized for systems with more worker budget allocation
-
-    // Use enhanced timing precision for high-end systems
-    auto highPrecisionStart = std::chrono::high_resolution_clock::now();
-
-    while (m_timestepManager->shouldUpdate()) {
-        float deltaTime = m_timestepManager->getUpdateDeltaTime();
-        invokeUpdateHandler(deltaTime);
-        m_updateCount.fetch_add(1, std::memory_order_relaxed);
-    }
-
-    // Monitor performance on high-end systems (every 1000 updates)
-    if (m_updateCount.load(std::memory_order_relaxed) % 1000 == 0) {
-        auto duration = std::chrono::high_resolution_clock::now() - highPrecisionStart;
-        auto microseconds = std::chrono::duration_cast<std::chrono::microseconds>(duration).count();
-        if (microseconds > 20000) { // > 20ms for 1000 updates indicates potential performance issues
-            GAMELOOP_WARN("High-end system update batch took " + std::to_string(microseconds) + " microseconds");
-        }
     }
 }
 

@@ -4,9 +4,11 @@
 */
 
 #include "gameStates/AdvancedAIDemoState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "SDL3/SDL_scancode.h"
@@ -22,6 +24,7 @@
 
 #include <sstream>
 #include <iomanip>
+#include <cmath>
 
 
 
@@ -123,22 +126,52 @@ void AdvancedAIDemoState::handleInput() {
             aiMgr.queueBehaviorAssignment(npc, "Attack");
         }
     }
+
+    // Camera zoom controls
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+        m_camera->zoomIn();  // [ key = zoom in (objects larger)
+    }
+    if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+        m_camera->zoomOut();  // ] key = zoom out (objects smaller)
+    }
 }
 
 bool AdvancedAIDemoState::enter() {
     GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
+    // Reset transition flag when entering state
+    m_transitioningToLoading = false;
+
+    // Check if already initialized (resuming after LoadingState)
+    if (m_initialized) {
+        GAMESTATE_INFO("Already initialized - resuming AdvancedAIDemoState");
+        return true;  // Skip all loading logic
+    }
+
+    // Check if world needs to be loaded
+    if (!m_worldLoaded) {
+        GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
+        m_needsLoading = true;
+        m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+        return true;  // Will transition to loading screen in update()
+    }
+
+    // World is loaded - proceed with normal initialization
+    GAMESTATE_INFO("World already loaded - initializing advanced AI demo");
+
     try {
         // Cache GameEngine reference for better performance
         const GameEngine& gameEngine = GameEngine::Instance();
+        auto& worldManager = WorldManager::Instance();
 
-        // Setup world size using actual world bounds instead of screen dimensions
+        // Setup world size using actual world bounds from loaded world
         float worldMinX, worldMinY, worldMaxX, worldMaxY;
-        if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+        if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
             m_worldWidth = worldMaxX;
             m_worldHeight = worldMaxY;
+            GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
         } else {
-            // Fallback to screen dimensions if world not loaded
+            // Fallback to screen dimensions if world bounds unavailable
             m_worldWidth = gameEngine.getLogicalWidth();
             m_worldHeight = gameEngine.getLogicalHeight();
         }
@@ -146,22 +179,42 @@ bool AdvancedAIDemoState::enter() {
         // Initialize game time
         m_gameTime = 0.0f;
 
-        // Setup advanced AI behaviors
-        setupAdvancedAIBehaviors();
-
         // Create player first (required for flee/follow/attack behaviors)
         m_player = std::make_shared<Player>();
         m_player->ensurePhysicsBodyRegistered();
+        m_player->initializeInventory(); // Initialize inventory after construction
         m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
 
-        // Setup combat attributes for player
-        setupCombatAttributes();
+        // Initialize camera (world is already loaded by LoadingState)
+        initializeCamera();
+
+        // Initialize PathfinderManager for Follow behavior pathfinding
+        PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+        if (!pathfinderMgr.isInitialized()) {
+            pathfinderMgr.init();
+            GAMESTATE_INFO("PathfinderManager initialized for Follow behavior");
+        }
+
+        // Manually trigger grid rebuild now that world is loaded
+        // This ensures the pathfinding grid is ready before NPCs start following
+        pathfinderMgr.rebuildGrid();
+        GAMESTATE_INFO("PathfinderManager grid rebuild initiated");
 
         // Cache AIManager reference for better performance
         AIManager& aiMgr = AIManager::Instance();
 
-        // Set player reference in AIManager for advanced behaviors
-        aiMgr.setPlayerForDistanceOptimization(m_player);
+        // Set player reference in AIManager BEFORE registering behaviors
+        // This ensures Follow/Flee/Attack behaviors can access the player target
+        // Explicitly cast PlayerPtr to EntityPtr to ensure proper conversion
+        EntityPtr playerAsEntity = std::static_pointer_cast<Entity>(m_player);
+        aiMgr.setPlayerForDistanceOptimization(playerAsEntity);
+
+        // Setup advanced AI behaviors AFTER world is initialized and player is set
+        // This ensures Guard behavior uses correct world dimensions and Follow has player target
+        setupAdvancedAIBehaviors();
+
+        // Setup combat attributes for player
+        setupCombatAttributes();
 
         // Configure priority multiplier for proper advanced behavior progression
         aiMgr.configurePriorityMultiplier(1.2f); // Slightly higher for advanced behaviors
@@ -173,15 +226,29 @@ bool AdvancedAIDemoState::enter() {
         auto& ui = UIManager::Instance();
         ui.createTitle("advanced_ai_title", {0, 5, gameEngine.getLogicalWidth(), 25}, "Advanced AI Demo State");
         ui.setTitleAlignment("advanced_ai_title", UIAlignment::CENTER_CENTER);
+        // Set auto-repositioning: top-aligned, full width
+        ui.setComponentPositioning("advanced_ai_title", {UIPositionMode::TOP_ALIGNED, 0, 5, -1, 25});
+
         ui.createLabel("advanced_ai_instructions_line1", {10, 40, gameEngine.getLogicalWidth() - 20, 20},
                        "Advanced AI Demo: [B] Exit | [SPACE] Pause/Resume | [1] Idle | [2] Flee | [3] Follow");
+        // Set auto-repositioning: top-aligned, full width minus 20px margin
+        ui.setComponentPositioning("advanced_ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, 10, 40, -20, 20});
+
         ui.createLabel("advanced_ai_instructions_line2", {10, 75, gameEngine.getLogicalWidth() - 20, 20},
                        "Combat & Social: [4] Guard | [5] Attack");
+        // Set auto-repositioning: top-aligned, full width minus 20px margin
+        ui.setComponentPositioning("advanced_ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, 10, 75, -20, 20});
+
         ui.createLabel("advanced_ai_status", {10, 110, 400, 20}, "FPS: -- | NPCs: -- | AI: RUNNING | Combat: ON");
+        // Set auto-repositioning: fixed position (absolute)
+        ui.setComponentPositioning("advanced_ai_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
         // Log status
         GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
         GAMESTATE_INFO("Combat system initialized with health/damage attributes");
+
+        // Mark as fully initialized to prevent re-entering loading logic
+        m_initialized = true;
 
         return true;
     } catch (const std::exception& e) {
@@ -198,6 +265,66 @@ bool AdvancedAIDemoState::exit() {
 
     // Cache AIManager reference for better performance
     AIManager& aiMgr = AIManager::Instance();
+
+    if (m_transitioningToLoading) {
+        // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+        // This prevents infinite loop when returning from LoadingState
+
+        // Reset the flag after using it
+        m_transitioningToLoading = false;
+
+        // Clean up managers (same as full exit)
+        aiMgr.prepareForStateTransition();
+
+        CollisionManager &collisionMgr = CollisionManager::Instance();
+        if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+          collisionMgr.prepareForStateTransition();
+        }
+
+        PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+        if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+          pathfinderMgr.prepareForStateTransition();
+        }
+
+        // Clear NPCs
+        m_npcs.clear();
+
+        // Clear combat attributes
+        m_combatAttributes.clear();
+
+        // Clean up player
+        if (m_player) {
+            m_player.reset();
+        }
+
+        // Clean up camera
+        m_camera.reset();
+
+        // Clean up UI
+        auto& ui = UIManager::Instance();
+        ui.prepareForStateTransition();
+
+        // Unload world (LoadingState will reload it)
+        WorldManager& worldMgr = WorldManager::Instance();
+        if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+            worldMgr.unloadWorld();
+            // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+            // when LoadingState returns to this state
+        }
+
+        // Restore AI to unpaused state
+        aiMgr.setGlobalPause(false);
+        m_aiPaused = false;
+
+        // Reset initialized flag so state re-initializes after loading
+        m_initialized = false;
+
+        // Keep m_worldLoaded = true to remember we've already been through loading
+        GAMESTATE_INFO("AdvancedAIDemoState cleanup for LoadingState transition complete");
+        return true;
+    }
+
+    // Full exit (going to main menu, other states, or shutting down)
 
     // Use prepareForStateTransition methods for deterministic cleanup
     aiMgr.prepareForStateTransition();
@@ -225,20 +352,78 @@ bool AdvancedAIDemoState::exit() {
         m_player.reset();
     }
 
+    // Clean up camera first to stop world rendering
+    m_camera.reset();
+
     // Clean up UI components using simplified method
     auto& ui = UIManager::Instance();
     ui.prepareForStateTransition();
+
+    // Unload the world when fully exiting, but only if there's actually a world loaded
+    // This matches EventDemoState's safety pattern and prevents crashes
+    WorldManager& worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+        worldMgr.unloadWorld();
+        // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
+        m_worldLoaded = false;
+    }
 
     // Always restore AI to unpaused state when exiting the demo state
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
+    // Reset initialization flag for next fresh start
+    m_initialized = false;
+
     GAMESTATE_INFO("AdvancedAIDemoState exit complete");
     return true;
 }
 
+void AdvancedAIDemoState::onWindowResize(int newLogicalWidth,
+                                          int newLogicalHeight) {
+    // Auto-repositioning now handled by UIManager - no manual updates needed!
+    GAMESTATE_DEBUG("AdvancedAIDemoState: Window resized to " +
+                    std::to_string(newLogicalWidth) + "x" +
+                    std::to_string(newLogicalHeight) + " (auto-repositioning active)");
+}
+
 void AdvancedAIDemoState::update(float deltaTime) {
     try {
+        // Check if we need to transition to loading screen (do this in update, not enter)
+        if (m_needsLoading) {
+            m_needsLoading = false;  // Clear flag
+
+            GAMESTATE_INFO("Transitioning to LoadingState for world generation");
+
+            // Create world configuration for advanced AI demo
+            HammerEngine::WorldGenerationConfig config;
+            config.width = 350;  // Medium-sized world for advanced AI showcase
+            config.height = 350;
+            config.seed = static_cast<int>(std::time(nullptr));
+            config.elevationFrequency = 0.08f;
+            config.humidityFrequency = 0.06f;
+            config.waterLevel = 0.3f;
+            config.mountainLevel = 0.7f;
+
+            // Configure LoadingState and transition to it
+            const auto& gameEngine = GameEngine::Instance();
+            auto* gameStateManager = gameEngine.getGameStateManager();
+            if (gameStateManager) {
+                auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+                if (loadingState) {
+                    loadingState->configure("AdvancedAIDemoState", config);
+                    // Set flag before transitioning to preserve m_worldLoaded in exit()
+                    m_transitioningToLoading = true;
+                    // Use changeState (called from update) to properly exit and re-enter
+                    gameStateManager->changeState("LoadingState");
+                } else {
+                    GAMESTATE_ERROR("LoadingState not found in GameStateManager");
+                }
+            }
+
+            return;  // Don't continue with rest of update
+        }
+
         // Update game time for combat system
         m_gameTime += deltaTime;
 
@@ -246,6 +431,9 @@ void AdvancedAIDemoState::update(float deltaTime) {
         if (m_player) {
             m_player->update(deltaTime);
         }
+
+        // Update camera (follows player automatically)
+        updateCamera(deltaTime);
 
         // Update combat system
         updateCombatSystem(deltaTime);
@@ -261,10 +449,36 @@ void AdvancedAIDemoState::update(float deltaTime) {
 }
 
 void AdvancedAIDemoState::render() {
+    // Get renderer using the standard pattern
+    auto& gameEngine = GameEngine::Instance();
+    SDL_Renderer* renderer = gameEngine.getRenderer();
 
-    // Render all NPCs
+    // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+    HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+    if (m_camera) {
+        cameraView = m_camera->getViewRect();
+    }
+
+    // Set render scale for zoom (scales all world/entity rendering automatically)
+    float zoom = m_camera ? m_camera->getZoom() : 1.0f;
+    SDL_SetRenderScale(renderer, zoom, zoom);
+
+    // Render world first (background layer) using unified camera position
+    if (m_camera) {
+        auto& worldMgr = WorldManager::Instance();
+        if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+            // Use the camera view for world rendering
+            worldMgr.render(renderer,
+                           cameraView.x,
+                           cameraView.y,
+                           gameEngine.getLogicalWidth(),
+                           gameEngine.getLogicalHeight());
+        }
+    }
+
+    // Render all NPCs using camera-aware rendering
     for (auto& npc : m_npcs) {
-        npc->render(nullptr);  // No camera transformation needed in advanced AI demo
+        npc->render(m_camera.get());
 
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
@@ -277,9 +491,9 @@ void AdvancedAIDemoState::render() {
         }
     }
 
-    // Render player
+    // Render player using camera-aware rendering
     if (m_player) {
-        m_player->render(nullptr);  // No camera transformation needed in advanced AI demo
+        m_player->render(m_camera.get());
 
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);
@@ -295,7 +509,6 @@ void AdvancedAIDemoState::render() {
         ui.update(0.0); // UI updates are not time-dependent in this state
 
         // Update status display with combat information
-        const auto& gameEngine = GameEngine::Instance();
         auto& aiManager = AIManager::Instance();
         std::stringstream status;
         status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
@@ -329,7 +542,8 @@ void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
 
     // Register Follow behavior
     if (!aiMgr.hasBehavior("Follow")) {
-    auto followBehavior = std::make_unique<FollowBehavior>(56.25f, 50.0f, 90.0f); // follow speed, follow distance, max distance
+        auto followBehavior = std::make_unique<FollowBehavior>(80.0f, 50.0f, 300.0f); // follow speed, follow distance, max distance
+        followBehavior->setStopWhenTargetStops(false); // Always follow, even if player is stationary
         aiMgr.registerBehavior("Follow", std::move(followBehavior));
         GAMESTATE_INFO("AdvancedAIDemoState: Registered Follow behavior");
     }
@@ -357,38 +571,38 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
     AIManager& aiMgr = AIManager::Instance();
 
     try {
-        // Random number generation for positioning
+        // Random number generation for positioning near player
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<float> xDist(80.0f, m_worldWidth - 80.0f);
-        std::uniform_real_distribution<float> yDist(80.0f, m_worldHeight - 80.0f);
+
+        // Player is at world center - spawn NPCs in a reasonable radius around player
+        Vector2D playerPos = m_player->getPosition();
+        float spawnRadius = 400.0f; // Spawn within ~400 pixels of player (visible on screen)
+        std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+        std::uniform_real_distribution<float> radiusDist(100.0f, spawnRadius);
 
         // Create NPCs with optimized counts for behavior demonstration
         for (int i = 0; i < m_totalNPCCount; ++i) {
             try {
-                // Create NPC with strategic positioning for behavior showcase
+                // Create NPC with strategic positioning near player for behavior showcase
                 Vector2D position;
 
-                // Position NPCs in different areas based on intended behavior
-                if (i < m_idleNPCCount) {
-                    // Idle NPCs in corners
-                    position = Vector2D(
-                        (i % 2 == 0) ? 100.0f : m_worldWidth - 100.0f,
-                        (i < 2) ? 100.0f : m_worldHeight - 100.0f
-                    );
-                } else if (i < m_idleNPCCount + m_guardNPCCount) {
-                    // Guard NPCs at strategic positions
-                    int guardIndex = i - m_idleNPCCount;
-                    position = Vector2D(
-                        150.0f + (guardIndex * (m_worldWidth - 300.0f) / (m_guardNPCCount - 1)),
-                        150.0f + (guardIndex % 2) * (m_worldHeight - 300.0f)
-                    );
-                } else {
-                    // Other NPCs randomly positioned
-                    position = Vector2D(xDist(gen), yDist(gen));
-                }
+                // Position all NPCs in a circle around the player for easy visibility
+                float angle = angleDist(gen);
+                float distance = radiusDist(gen);
 
-                auto npc = NPC::create("npc", position);
+                position = Vector2D(
+                    playerPos.getX() + distance * std::cos(angle),
+                    playerPos.getY() + distance * std::sin(angle)
+                );
+
+                // First 3 NPCs are pets (pass through player), rest are regular NPCs
+                std::shared_ptr<NPC> npc;
+                if (i < 3) {
+                    npc = NPC::create("npc", position, 0, 0, NPC::NPCType::Pet);
+                } else {
+                    npc = NPC::create("npc", position);
+                }
 
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
@@ -470,5 +684,52 @@ void AdvancedAIDemoState::updateCombatSystem(float deltaTime) {
             combat.isDead = true;
             // In a full implementation, this would trigger death animations/effects
         }
+    }
+}
+
+
+void AdvancedAIDemoState::initializeCamera() {
+    const auto& gameEngine = GameEngine::Instance();
+
+    // Initialize camera at player's position to avoid any interpolation jitter
+    Vector2D playerPosition = m_player ? m_player->getPosition() : Vector2D(0, 0);
+
+    // Create camera starting at player position
+    m_camera = std::make_unique<HammerEngine::Camera>(
+        playerPosition.getX(), playerPosition.getY(), // Start at player position
+        static_cast<float>(gameEngine.getLogicalWidth()),
+        static_cast<float>(gameEngine.getLogicalHeight())
+    );
+
+    // Configure camera to follow player
+    if (m_player) {
+        // Disable camera event firing for consistency
+        m_camera->setEventFiringEnabled(false);
+
+        // Set target and enable follow mode
+        std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
+        m_camera->setTarget(playerAsEntity);
+        m_camera->setMode(HammerEngine::Camera::Mode::Follow);
+
+        // Set up camera configuration for fast, smooth following
+        HammerEngine::Camera::Config config;
+        config.followSpeed = 8.0f;         // Faster follow for action gameplay
+        config.deadZoneRadius = 0.0f;      // No dead zone - always follow
+        config.smoothingFactor = 0.80f;    // Quicker response smoothing
+        config.maxFollowDistance = 9999.0f; // No distance limit
+        config.clampToWorldBounds = true;   // Keep camera within world
+        m_camera->setConfig(config);
+
+        // Camera auto-synchronizes world bounds on update
+    }
+}
+
+void AdvancedAIDemoState::updateCamera(float deltaTime) {
+    if (m_camera) {
+        // Sync viewport with current window size (handles resize events)
+        m_camera->syncViewportWithEngine();
+
+        // Update camera position and following logic
+        m_camera->update(deltaTime);
     }
 }

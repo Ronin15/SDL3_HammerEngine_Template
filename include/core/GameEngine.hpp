@@ -208,6 +208,23 @@ public:
   void setWindowSize(int width, int height) {
     m_windowWidth = width;
     m_windowHeight = height;
+
+    // Track windowed size for restoration when exiting fullscreen
+    // Only update when NOT in fullscreen mode (windowed resizes only)
+    if (!m_isFullscreen) {
+      m_windowedWidth = width;
+      m_windowedHeight = height;
+    }
+  }
+
+  /**
+   * @brief Sets the logical rendering size
+   * @param width New logical width in pixels
+   * @param height New logical height in pixels
+   */
+  void setLogicalSize(int width, int height) {
+    m_logicalWidth = width;
+    m_logicalHeight = height;
   }
 
   /**
@@ -260,6 +277,29 @@ public:
    */
   bool isWayland() const { return m_isWayland; }
 
+  /**
+   * @brief Checks if the engine is using software frame limiting.
+   * @return true if using software frame limiting, false if using hardware VSync.
+   */
+  bool isUsingSoftwareFrameLimiting() const { return m_usingSoftwareFrameLimiting; }
+
+  /**
+   * @brief Toggles fullscreen mode at runtime
+   */
+  void toggleFullscreen();
+
+  /**
+   * @brief Sets fullscreen mode to a specific state
+   * @param enabled true to enable fullscreen, false to disable
+   */
+  void setFullscreen(bool enabled);
+
+  /**
+   * @brief Checks if the engine is currently in fullscreen mode
+   * @return true if fullscreen is enabled, false otherwise
+   */
+  bool isFullscreen() const noexcept { return m_isFullscreen; }
+
 private:
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
@@ -269,6 +309,8 @@ private:
   std::weak_ptr<GameLoop> m_gameLoop{}; // Non-owning weak reference to GameLoop
   int m_windowWidth{0};
   int m_windowHeight{0};
+  int m_windowedWidth{1920};  // Windowed mode width (for restoring from fullscreen)
+  int m_windowedHeight{1080}; // Windowed mode height (for restoring from fullscreen)
   int m_logicalWidth{1920};  // Logical rendering width for UI positioning
   int m_logicalHeight{1080}; // Logical rendering height for UI positioning
 
@@ -279,7 +321,7 @@ private:
   AIManager *mp_aiManager{nullptr};
   EventManager *mp_eventManager{nullptr};
   ParticleManager *mp_particleManager{nullptr};
-  PathfinderManager *mp_pathfinderManager{nullptr};
+  PathfinderManager *mp_pathfinderManager{nullptr}; // Initialized by AIManager, cached by GameEngine
   ResourceTemplateManager *mp_resourceTemplateManager{nullptr};
   WorldResourceManager *mp_worldResourceManager{nullptr};
   WorldManager *mp_worldManager{nullptr};
@@ -295,6 +337,7 @@ private:
   // Platform-specific flags
   bool m_isWayland{false};
   bool m_usingSoftwareFrameLimiting{false};
+  bool m_isFullscreen{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

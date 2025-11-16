@@ -42,9 +42,7 @@ done
 # Run the tests
 echo "Running Thread-Safe AI Integration tests..."
 
-# Get the directory where this script is located and find project root
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# Note: SCRIPT_DIR and PROJECT_ROOT already calculated at top of script
 
 # Determine test executable path based on build type
 if [ "$BUILD_TYPE" = "Debug" ]; then
@@ -63,10 +61,10 @@ fi
 echo "Running Thread-Safe AI Integration tests..."
 
 # Create the test_results directory if it doesn't exist
-mkdir -p ../../test_results
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Create a temporary file for test output
-TEMP_OUTPUT="../../test_results/thread_safe_ai_integration_test_output.txt"
+TEMP_OUTPUT="$PROJECT_ROOT/test_results/thread_safe_ai_integration_test_output.txt"
 
 # Clear any existing output file
 > "$TEMP_OUTPUT"
@@ -120,7 +118,7 @@ fi
 
 # Extract performance metrics
 echo "Extracting performance metrics..."
-grep -E "time:|entities:|processed:|Concurrent processing time" "$TEMP_OUTPUT" > "../../test_results/thread_safe_ai_integration_performance_metrics.txt" || true
+grep -E "time:|entities:|processed:|Concurrent processing time" "$TEMP_OUTPUT" > "$PROJECT_ROOT/test_results/thread_safe_ai_integration_performance_metrics.txt" || true
 
 # Check for timeout
 if [ -n "$TIMEOUT_CMD" ] && grep -q "Operation timed out" "$TEMP_OUTPUT"; then
@@ -166,13 +164,13 @@ fi
 # Only if no success pattern was found, check for errors
 # Check for crash indicators during test execution (not after all tests passed)
 if grep -q "memory access violation\|segmentation fault\|Segmentation fault\|Abort trap" "$TEMP_OUTPUT" && ! grep -q "\*\*\* No errors detected\|Tests completed successfully with known cleanup issue" "$TEMP_OUTPUT"; then
-  echo "❌ Tests crashed! See ../../test_results/thread_safe_ai_integration_test_output.txt for details."
+  echo "❌ Tests crashed! See $PROJECT_ROOT/test_results/thread_safe_ai_integration_test_output.txt for details."
   exit 1
 fi
 
 # Check for any failed assertions, but exclude "Test is aborted" as a fatal error
 if grep -v "Test is aborted" "$TEMP_OUTPUT" | grep -q "fail\|error:\|assertion.*failed\|exception"; then
-  echo "❌ Some tests failed! See ../../test_results/thread_safe_ai_integration_test_output.txt for details."
+  echo "❌ Some tests failed! See $PROJECT_ROOT/test_results/thread_safe_ai_integration_test_output.txt for details."
   exit 1
 fi
 
@@ -220,7 +218,7 @@ else
     exit 0
   else
     echo "❓ Test execution status is unclear. Check the test output for details."
-    echo "Review ../../test_results/thread_safe_ai_integration_test_output.txt for details."
+    echo "Review $PROJECT_ROOT/test_results/thread_safe_ai_integration_test_output.txt for details."
 
     # Show the beginning and end of the output for context
     echo "First few lines of test output:"

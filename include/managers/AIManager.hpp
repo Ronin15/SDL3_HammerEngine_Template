@@ -209,6 +209,18 @@ public:
   void waitForAsyncBatchCompletion();
 
   /**
+   * @brief Wait for all pending behavior assignment batches to complete
+   *
+   * Provides deterministic synchronization for state transitions.
+   * Blocks until all assignment futures complete, ensuring no dangling references
+   * to entity data that may be cleared during state changes.
+   *
+   * Fast path: ~1ns check if no assignments running
+   * Slow path: blocks until all assignment batches complete
+   */
+  void waitForAssignmentCompletion();
+
+  /**
    * @brief Checks if AIManager has been shut down
    * @return true if manager is shut down, false otherwise
    */
@@ -377,9 +389,8 @@ private:
     std::vector<float> halfWidths;  // entity half extents for clamp
     std::vector<float> halfHeights; // entity half extents for clamp
 
-    // Double buffering for lock-free updates
-    std::atomic<int> currentBuffer{0};
-    std::array<std::vector<AIEntityData::HotData>, 2> doubleBuffer;
+    // Using single-copy pre-fetch pattern:
+    // PreFetchedBatchData copies directly from hotData, eliminating redundant copy
 
     size_t size() const { return entities.size(); }
     void reserve(size_t capacity) {
@@ -389,8 +400,6 @@ private:
       lastUpdateTimes.reserve(capacity);
       halfWidths.reserve(capacity);
       halfHeights.reserve(capacity);
-      doubleBuffer[0].reserve(capacity);
-      doubleBuffer[1].reserve(capacity);
     }
   };
 
@@ -481,8 +490,8 @@ private:
   // Frame counter for periodic logging (thread-safe)
   std::atomic<uint64_t> m_frameCounter{0};
 
-  // Asynchronous assignment processing (fire-and-forget, no futures)
-  std::atomic<bool> m_assignmentInProgress{false};
+  // Asynchronous assignment processing (replaced with futures for deterministic tracking)
+  // std::atomic<bool> m_assignmentInProgress{false};  // DEPRECATED: Replaced by m_assignmentFutures
 
   // Frame throttling for task submission (thread-safe)
   std::atomic<uint64_t> m_lastFrameWithTasks{0};
@@ -507,8 +516,37 @@ private:
   std::vector<std::future<void>> m_batchFutures;
   std::mutex m_batchFuturesMutex;  // Protect futures vector
 
+  // Async assignment tracking for deterministic synchronization (replaces m_assignmentInProgress)
+  std::vector<std::future<void>> m_assignmentFutures;
+  std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
+
   // Per-batch collision update buffers (zero contention approach)
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
+
+  // Reusable pre-fetch buffer to avoid per-frame allocations (128KB for 2000 entities)
+  // Cleared each frame but capacity is retained to eliminate heap churn
+  PreFetchedBatchData m_reusablePreFetchBuffer;
+
+  // Reusable buffer for multi-threaded path (shared_ptr for lambda capture safety)
+  // Multi-threaded batches run async, so we need shared_ptr to extend lifetime
+  std::shared_ptr<PreFetchedBatchData> m_reusableMultiThreadedBuffer;
+
+  // Reusable collision update buffer for single-threaded paths
+  // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
+  std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
+
+  // Pre-allocated batch buffers for distance/position calculations (Issue #2 fix)
+  // Eliminates ~480 allocations/sec @ 60 FPS with 8 batches (1-2ms frame spikes)
+  std::vector<std::vector<float>> m_distanceBuffers;
+  std::vector<std::vector<Vector2D>> m_positionBuffers;
+
+  // Camera bounds cache for entity update culling
+  // Only update animations/sprites for entities within camera view + buffer
+  float m_cameraMinX{0.0f};
+  float m_cameraMaxX{0.0f};
+  float m_cameraMinY{0.0f};
+  float m_cameraMaxY{0.0f};
+  bool m_hasCameraCache{false};
 
   // Optimized batch processing constants
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
@@ -518,10 +556,20 @@ private:
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
+
+  // SIMD-optimized distance calculation helper
+  static void calculateDistancesSIMD(size_t start, size_t end,
+                                     const Vector2D& playerPos,
+                                     uint64_t distanceUpdateSlice,
+                                     const EntityStorage& storage,
+                                     std::vector<float>& outDistances,
+                                     std::vector<Vector2D>& outPositions);
+
   void processBatch(size_t start, size_t end, float deltaTime,
-                    const Vector2D &playerPos, bool updateDistances,
-                    const PreFetchedBatchData& preFetchedData,
-                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
+                    const Vector2D &playerPos, uint64_t distanceUpdateSlice,
+                    const EntityStorage& storage,
+                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
+                    size_t batchIndex = 0);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();

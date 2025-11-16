@@ -4,6 +4,7 @@
  */
 
 #include "gameStates/AIDemoState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
@@ -12,6 +13,7 @@
 #include "core/Logger.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
@@ -170,18 +172,100 @@ void AIDemoState::handleInput() {
       aiMgr.queueBehaviorAssignment(npc, "EventTarget");
     }
   }
+
+  // Camera zoom controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
+  }
+
+  // NPC spawning controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_N)) {
+    // Spawn all NPCs up to m_npcCount with standard behavior (Wander)
+    if (m_npcsSpawned < m_npcCount) {
+      // Set CollisionManager bounds once before spawning starts
+      if (m_npcsSpawned == 0) {
+        CollisionManager &collisionMgr = CollisionManager::Instance();
+        if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+          collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+          GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
+                         " x " + std::to_string(m_worldHeight));
+        }
+      }
+
+      int npcsToSpawn = m_npcCount - m_npcsSpawned;
+      GAMESTATE_INFO("Spawning " + std::to_string(npcsToSpawn) + " NPCs with Wander behavior...");
+      createNPCBatch(npcsToSpawn);
+      m_npcsSpawned += npcsToSpawn;
+      GAMESTATE_INFO("Spawned " + std::to_string(m_npcsSpawned) + " / " +
+                     std::to_string(m_npcCount) + " NPCs (Standard behavior)");
+    } else {
+      GAMESTATE_INFO("Already spawned " + std::to_string(m_npcCount) + " NPCs (max reached)");
+    }
+  }
+
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
+    // Spawn 2000 NPCs with random behaviors (like EventDemoState)
+    // Set CollisionManager bounds if this is the first spawn
+    if (m_npcs.empty()) {
+      CollisionManager &collisionMgr = CollisionManager::Instance();
+      if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+        collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
+        GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
+                       " x " + std::to_string(m_worldHeight));
+      }
+    }
+
+    int previousCount = m_npcs.size();
+    GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
+    createNPCBatchWithRandomBehaviors(2000);
+    int actualSpawned = m_npcs.size() - previousCount;
+    GAMESTATE_INFO("Spawned " + std::to_string(actualSpawned) + " NPCs with random behaviors (Total: " +
+                   std::to_string(m_npcs.size()) + ")");
+  }
 }
 
 bool AIDemoState::enter() {
   GAMESTATE_INFO("Entering AIDemoState...");
 
+  // Reset transition flag when entering state
+  m_transitioningToLoading = false;
+
+  // Check if already initialized (resuming after LoadingState)
+  if (m_initialized) {
+    GAMESTATE_INFO("Already initialized - resuming AIDemoState");
+    return true;  // Skip all loading logic
+  }
+
+  // Check if world needs to be loaded
+  if (!m_worldLoaded) {
+    GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
+    m_needsLoading = true;
+    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+    return true;  // Will transition to loading screen in update()
+  }
+
+  // World is loaded - proceed with normal initialization
+  GAMESTATE_INFO("World already loaded - initializing AI demo");
+
   try {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
+    auto& worldManager = WorldManager::Instance();
 
-    // Setup world size using logical coordinates initially (will be updated after world loads)
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
+    // Update world dimensions from loaded world
+    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
+    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
+      m_worldWidth = std::max(0.0f, maxX - minX);
+      m_worldHeight = std::max(0.0f, maxY - minY);
+      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+    } else {
+      // Fallback to screen dimensions if world bounds unavailable
+      m_worldWidth = gameEngine.getLogicalWidth();
+      m_worldHeight = gameEngine.getLogicalHeight();
+    }
 
     // Texture has to be loaded by NPC or Player can't be loaded here
     setupAIBehaviors();
@@ -213,28 +297,36 @@ bool AIDemoState::enter() {
     ui.createTitle("ai_title", {0, 5, gameEngine.getLogicalWidth(), 25},
                    "AI Demo State");
     ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
+    // Set auto-repositioning: top-aligned, full width
+    ui.setComponentPositioning("ai_title", {UIPositionMode::TOP_ALIGNED, 0, 5, -1, 25});
+
     ui.createLabel("ai_instructions_line1",
                    {10, 40, gameEngine.getLogicalWidth() - 20, 20},
-                   "Controls: [B] Exit | [SPACE] Pause/Resume | [1] Wander | "
-                   "[2] Patrol | [3] Chase");
+                   "Controls: [B] Exit | [SPACE] Pause/Resume | [N] Spawn 2K Standard | "
+                   "[M] Spawn 2K Random | [ ] Zoom");
+    // Set auto-repositioning: top-aligned, full width minus 20px margin
+    ui.setComponentPositioning("ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, 10, 40, -20, 20});
+
     ui.createLabel("ai_instructions_line2",
                    {10, 75, gameEngine.getLogicalWidth() - 20, 20},
-                   "Advanced: [4] Small | [5] Large | [6] Event | [7] Random | "
-                   "[8] Circle | [9] Target");
+                   "Behaviors: [1] Wander | [2] Patrol | [3] Chase | [4] Small | [5] Large | "
+                   "[6] Event | [7] Random | [8] Circle | [9] Target");
+    // Set auto-repositioning: top-aligned, full width minus 20px margin
+    ui.setComponentPositioning("ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, 10, 75, -20, 20});
+
     ui.createLabel("ai_status", {10, 110, 400, 20},
                    "FPS: -- | Entities: -- | AI: RUNNING");
+    // Set auto-repositioning: fixed position (absolute)
+    ui.setComponentPositioning("ai_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
 
-    // Initialize world and camera LAST, just like EventDemoState
-    // WorldGeneratedEvent is fired but processed asynchronously
-    initializeWorld();
-
-    // Reposition player to world center now that world is loaded
-    m_player->setPosition(Vector2D(m_worldWidth / 2, m_worldHeight / 2));
-
+    // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
-    // NPCs will be spawned gradually in update() starting on the first frame
+    // NPCs can be spawned using keyboard triggers (N for standard, M for random behaviors)
     m_npcsSpawned = 0;
+
+    // Mark as fully initialized to prevent re-entering loading logic
+    m_initialized = true;
 
     return true;
   } catch (const std::exception &e) {
@@ -251,6 +343,63 @@ bool AIDemoState::exit() {
 
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
+
+  if (m_transitioningToLoading) {
+    // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+    // This prevents infinite loop when returning from LoadingState
+
+    // Reset the flag after using it
+    m_transitioningToLoading = false;
+
+    // Clean up managers (same as full exit)
+    aiMgr.prepareForStateTransition();
+
+    CollisionManager &collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
+
+    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    // Clear NPCs
+    m_npcs.clear();
+
+    // Clean up player
+    if (m_player) {
+      m_player.reset();
+    }
+
+    // Clean up camera
+    m_camera.reset();
+
+    // Clean up UI
+    auto &ui = UIManager::Instance();
+    ui.prepareForStateTransition();
+
+    // Unload world (LoadingState will reload it)
+    WorldManager &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
+      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+      // when LoadingState returns to this state
+    }
+
+    // Restore AI to unpaused state
+    aiMgr.setGlobalPause(false);
+    m_aiPaused = false;
+
+    // Reset initialized flag so state re-initializes after loading
+    m_initialized = false;
+
+    // Keep m_worldLoaded = true to remember we've already been through loading
+    GAMESTATE_INFO("AIDemoState cleanup for LoadingState transition complete");
+    return true;
+  }
+
+  // Full exit (going to main menu, other states, or shutting down)
 
   // Use prepareForStateTransition methods for deterministic cleanup
   aiMgr.prepareForStateTransition();
@@ -287,6 +436,8 @@ bool AIDemoState::exit() {
   WorldManager &worldMgr = WorldManager::Instance();
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
     worldMgr.unloadWorld();
+    // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
+    m_worldLoaded = false;
   }
 
   // Always restore AI to unpaused state when exiting the demo state
@@ -294,45 +445,52 @@ bool AIDemoState::exit() {
   aiMgr.setGlobalPause(false);
   m_aiPaused = false;
 
+  // Reset initialization flag for next fresh start
+  m_initialized = false;
+
   GAMESTATE_INFO("AIDemoState exit complete");
   return true;
 }
 
 void AIDemoState::update(float deltaTime) {
   try {
-    // Batch spawn NPCs (30 NPCs every 10 frames instead of 3 every frame)
-    if (m_npcsSpawned < m_npcCount) {
-      // Set CollisionManager bounds once before spawning starts
-      if (m_npcsSpawned == 0) {
-        CollisionManager &collisionMgr = CollisionManager::Instance();
-        if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
-          collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-          GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
-                         " x " + std::to_string(m_worldHeight));
-        }
+    // Check if we need to transition to loading screen (do this in update, not enter)
+    if (m_needsLoading) {
+      m_needsLoading = false;  // Clear flag
 
-        GAMESTATE_INFO("Batch spawning: " + std::to_string(m_npcsPerBatch) + " NPCs every " +
-                       std::to_string(m_spawnInterval) + " frames");
+      GAMESTATE_INFO("Transitioning to LoadingState for world generation");
+
+      // Create world configuration for AI demo
+      HammerEngine::WorldGenerationConfig config;
+      config.width = 500;  // Massive world matching EventDemoState
+      config.height = 500;
+      config.seed = static_cast<int>(std::time(nullptr));
+      config.elevationFrequency = 0.1f;
+      config.humidityFrequency = 0.1f;
+      config.waterLevel = 0.25f;
+      config.mountainLevel = 0.75f;
+
+      // Configure LoadingState and transition to it
+      const auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      if (gameStateManager) {
+        auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+        if (loadingState) {
+          loadingState->configure("AIDemoState", config);
+          // Set flag before transitioning to preserve m_worldLoaded in exit()
+          m_transitioningToLoading = true;
+          // Use changeState (called from update) to properly exit and re-enter
+          gameStateManager->changeState("LoadingState");
+        } else {
+          GAMESTATE_ERROR("LoadingState not found in GameStateManager");
+        }
       }
 
-      // Increment frame counter
-      m_framesSinceLastSpawn++;
-
-      // Only spawn on interval frames
-      if (m_framesSinceLastSpawn >= m_spawnInterval) {
-        m_framesSinceLastSpawn = 0;  // Reset counter
-
-        int npcsToSpawn = std::min(m_npcsPerBatch, m_npcCount - m_npcsSpawned);
-        createNPCBatch(npcsToSpawn);
-        m_npcsSpawned += npcsToSpawn;
-
-        // Log progress every 1000 NPCs
-        if (m_npcsSpawned % 1000 == 0 || m_npcsSpawned == m_npcCount) {
-          GAMESTATE_INFO("Spawned " + std::to_string(m_npcsSpawned) + " / " +
-                         std::to_string(m_npcCount) + " NPCs");
-        }
-      }
+      return;  // Don't continue with rest of update
     }
+
+    // Auto-spawning disabled - use keyboard triggers instead (N key for standard spawn, M key for random behaviors)
+    // Collision bounds are set on first spawn via keyboard trigger
 
     // Update player
     if (m_player) {
@@ -364,6 +522,10 @@ void AIDemoState::render() {
     cameraView = m_camera->getViewRect();
   }
 
+  // Set render scale for zoom (scales all world/entity rendering automatically)
+  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
+  SDL_SetRenderScale(renderer, zoom, zoom);
+
   // Render world first (background layer) using unified camera position
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
@@ -386,6 +548,9 @@ void AIDemoState::render() {
   if (m_player) {
     m_player->render(m_camera.get());
   }
+
+  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
+  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
   // Update and render UI components through UIManager using cached renderer for
   // cleaner API
@@ -441,9 +606,9 @@ void AIDemoState::setupAIBehaviors() {
 
   if (!aiMgr.hasBehavior("Patrol")) {
     auto patrolBehavior = std::make_unique<PatrolBehavior>(
-        PatrolBehavior::PatrolMode::FIXED_WAYPOINTS, 75.0f, true);
+        PatrolBehavior::PatrolMode::RANDOM_AREA, 75.0f, false);
     aiMgr.registerBehavior("Patrol", std::move(patrolBehavior));
-    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior");
+    GAMESTATE_INFO("AIDemoState: Registered Patrol behavior (random area)");
   }
 
   if (!aiMgr.hasBehavior("RandomPatrol")) {
@@ -488,7 +653,7 @@ void AIDemoState::createNPCBatch(int count) {
     // Random number generation for positioning across the entire world
     static std::random_device rd;
     static std::mt19937 gen(rd());
-    const float tileSize = 32.0f;
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
 
     // Calculate tile range
     int maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
@@ -550,38 +715,91 @@ void AIDemoState::createNPCBatch(int count) {
   }
 }
 
-void AIDemoState::initializeWorld() {
-  // Create world manager and generate a large world for 10K NPCs
-  WorldManager& worldManager = WorldManager::Instance();
+void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
+  // Cache AIManager reference for better performance
+  AIManager &aiMgr = AIManager::Instance();
+  WorldManager &worldMgr = WorldManager::Instance();
+  const auto *worldData = worldMgr.getWorldData();
 
-  // Create a very large world configuration to spread 10,000 NPCs comfortably
-  // 400x400 tiles = 160,000 tiles, giving approximately 16 tiles per NPC
-  // At 32 pixels per tile, this is 12800x12800 pixels (4x bigger than before)
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 400;  // Very large world for 10K NPCs with plenty of space
-  config.height = 400; // Very large world for 10K NPCs with plenty of space
-  config.seed = static_cast<int>(std::time(nullptr)); // Random seed for variety
-  config.elevationFrequency = 0.1f;
-  config.humidityFrequency = 0.1f;
-  config.waterLevel = 0.25f;
-  config.mountainLevel = 0.75f;
+  if (!worldData) {
+    GAMESTATE_ERROR("Cannot create NPCs with random behaviors - world data not available");
+    return;
+  }
 
-  if (!worldManager.loadNewWorld(config)) {
-    GAMESTATE_ERROR("Failed to load new world in AIDemoState");
-    // Fallback to screen dimensions if world fails to load
-    const GameEngine &gameEngine = GameEngine::Instance();
-    m_worldWidth = gameEngine.getLogicalWidth();
-    m_worldHeight = gameEngine.getLogicalHeight();
-  } else {
-    GAMESTATE_INFO("Successfully loaded AI demo world with seed: " + std::to_string(config.seed));
+  try {
+    // Random number generation for positioning across the entire world
+    static std::random_device rd;
+    static std::mt19937 gen(rd());
+    constexpr float tileSize = HammerEngine::TILE_SIZE;
 
-    // Update world dimensions to match generated world (pixels)
-    float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
-    if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
-      m_worldWidth = std::max(0.0f, maxX - minX);
-      m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+    // Calculate tile range
+    int maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
+    int maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
+
+    std::uniform_int_distribution<int> tileDistX(1, maxTileX);  // Start at 1 for margin
+    std::uniform_int_distribution<int> tileDistY(1, maxTileY);
+
+    // Available behaviors for random assignment (matching EventDemoState variety)
+    std::vector<std::string> behaviors = {
+        "Wander", "SmallWander", "LargeWander", "EventWander",
+        "Patrol", "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"
+    };
+    std::uniform_int_distribution<size_t> behaviorDist(0, behaviors.size() - 1);
+
+    // Create batch of NPCs
+    int attempts = 0;
+    int created = 0;
+    const int maxAttempts = count * 10;  // Allow multiple attempts to find valid positions
+
+    while (created < count && attempts < maxAttempts) {
+      attempts++;
+
+      // Pick a random tile
+      int tileX = tileDistX(gen);
+      int tileY = tileDistY(gen);
+
+      // Check if tile is valid (not water, not a building)
+      if (tileY >= 0 && tileY < static_cast<int>(worldData->grid.size()) &&
+          tileX >= 0 && tileX < static_cast<int>(worldData->grid[tileY].size())) {
+
+        const auto &tile = worldData->grid[tileY][tileX];
+
+        // Only spawn on walkable ground (not water, not buildings)
+        if (!tile.isWater && tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+          // Random position within the tile
+          std::uniform_real_distribution<float> offsetDist(0.0f, tileSize);
+          float x = tileX * tileSize + offsetDist(gen);
+          float y = tileY * tileSize + offsetDist(gen);
+          Vector2D position(x, y);
+
+          try {
+            auto npc = NPC::create("npc", position);
+            npc->initializeInventory();
+            npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
+
+            // Assign random behavior from the list
+            std::string randomBehavior = behaviors[behaviorDist(gen)];
+            aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, randomBehavior);
+
+            m_npcs.push_back(npc);
+            created++;
+          } catch (const std::exception &e) {
+            GAMESTATE_ERROR("Exception creating NPC with random behavior: " + std::string(e.what()));
+          }
+        }
+      }
     }
+
+    if (created < count) {
+      GAMESTATE_WARN("Only created " + std::to_string(created) + " of " +
+                     std::to_string(count) + " requested NPCs with random behaviors after " +
+                     std::to_string(attempts) + " attempts");
+    }
+
+  } catch (const std::exception &e) {
+    GAMESTATE_ERROR("Exception in createNPCBatchWithRandomBehaviors(): " + std::string(e.what()));
+  } catch (...) {
+    GAMESTATE_ERROR("Unknown exception in createNPCBatchWithRandomBehaviors()");
   }
 }
 
@@ -623,6 +841,10 @@ void AIDemoState::initializeCamera() {
 
 void AIDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
+    // Sync viewport with current window size (handles resize events)
+    m_camera->syncViewportWithEngine();
+
+    // Update camera position and following logic
     m_camera->update(deltaTime);
   }
 }
