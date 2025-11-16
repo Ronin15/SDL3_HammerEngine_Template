@@ -623,14 +623,14 @@ private:
     size_t tasksProcessed = 0;
     size_t highPriorityTasks = 0;
 
-    // For idle tracking and logging
-    auto lastTaskTime = std::chrono::steady_clock::now();
-    bool isIdle = false;
-    // Minimum idle time before logging (20 seconds) - only log truly idle states
-    constexpr int64_t MIN_IDLE_TIME_MS = 20000;
-
     // Set thread as interruptible (platform-specific if needed)
     try {
+      // For idle tracking and logging (scoped to try block)
+      auto lastTaskTime = std::chrono::steady_clock::now();
+      bool isIdle = false;
+      // Minimum idle time before logging (20 seconds) - only log truly idle states
+      constexpr int64_t MIN_IDLE_TIME_MS = 20000;
+
       // Main worker loop
       while (isRunning.load(std::memory_order_acquire)) {
         // Check for shutdown immediately at loop start
