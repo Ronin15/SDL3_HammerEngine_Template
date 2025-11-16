@@ -279,14 +279,15 @@ if "%ERRORS_ONLY%"=="true" (
     set test_exit_code=!ERRORLEVEL!
     
     :: Check for failures - use more specific patterns for actual test failures
+    :: Exclude false positives like "check !failed has passed" by using "has failed" instead of "Test.*failed"
     set has_failures=0
-    findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"Test.*failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!" >nul 2>&1
+    findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"has failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!" | findstr /V /C:"has passed" >nul 2>&1
     if !ERRORLEVEL! equ 0 set has_failures=1
-    
+
     :: Show failures if found
     if !has_failures! equ 1 (
         echo FAILURES DETECTED:
-        findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"Test.*failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!"
+        findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"has failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!" | findstr /V /C:"has passed"
     ) else (
         if not "!test_exit_code!"=="0" (
             echo Test failed with exit code !test_exit_code!

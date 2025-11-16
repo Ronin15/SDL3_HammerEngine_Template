@@ -295,7 +295,18 @@ struct AIIntegrationTestFixture {
         }
 
         // Process the queued assignments (like production does on next frame)
-        AIManager::Instance().update(0.016f);
+        // Call update multiple times to ensure all async assignments complete
+        for (int i = 0; i < 5; ++i) {
+            AIManager::Instance().update(0.016f);
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+
+        // Verify all entities have behaviors assigned
+        for (const auto& entity : entities) {
+            if (!AIManager::Instance().entityHasBehavior(entity)) {
+                std::cerr << "Warning: Entity " << entity.get() << " didn't receive behavior after setup" << std::endl;
+            }
+        }
     }
 
     void safelyUnassignBehaviors() {
