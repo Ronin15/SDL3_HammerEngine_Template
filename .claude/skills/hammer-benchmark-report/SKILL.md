@@ -22,11 +22,12 @@ This Skill creates comprehensive, professional-quality performance reports from 
 
 ### Benchmark Result Files
 
-**Location:** `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/test_results/`
+**Location:** `$PROJECT_ROOT/test_results/`
+(Ensure PROJECT_ROOT environment variable is set to project root directory)
 
 **Files to Scan:**
 ```
-test_results/
+$PROJECT_ROOT/test_results/
 ├── ai_benchmark/
 │   ├── performance_metrics.txt
 │   └── performance_report.md
@@ -55,8 +56,8 @@ test_results/
 ### Historical Baselines (if available)
 
 ```
-test_results/baseline/
-test_results/baseline_history/
+$PROJECT_ROOT/test_results/baseline/
+$PROJECT_ROOT/test_results/baseline_history/
 ```
 
 ## Execution Steps
@@ -65,7 +66,7 @@ test_results/baseline_history/
 
 **Scan for results:**
 ```bash
-find test_results/ -name "performance_metrics.txt" -type f
+find "$PROJECT_ROOT/test_results/" -name "performance_metrics.txt" -type f
 ```
 
 **Expected benchmarks:**
@@ -89,13 +90,13 @@ find test_results/ -name "performance_metrics.txt" -type f
 
 **Synthetic Benchmarks** (AIManager infrastructure):
 ```bash
-grep -B 5 -A 10 "TestSynthetic" test_results/ai_scaling_benchmark_*.txt | \
+grep -B 5 -A 10 "TestSynthetic" "$PROJECT_ROOT/test_results/ai_scaling_benchmark_"*.txt | \
   grep -E "Entity updates per second:|entities"
 ```
 
 **Integrated Benchmarks** (Production behaviors):
 ```bash
-grep -B 5 -A 10 "TestIntegrated" test_results/ai_scaling_benchmark_*.txt | \
+grep -B 5 -A 10 "TestIntegrated" "$PROJECT_ROOT/test_results/ai_scaling_benchmark_"*.txt | \
   grep -E "Entity updates per second:|entities"
 ```
 
@@ -119,31 +120,31 @@ AI_System_Integrated:
 #### Collision System Metrics
 ```bash
 grep -E "^(Collision Checks|Query Time|Hash Efficiency|AABB Tests):" \
-  test_results/collision_benchmark/performance_metrics.txt
+  "$PROJECT_ROOT/test_results/collision_benchmark/performance_metrics.txt"
 ```
 
 #### Pathfinder Metrics
 ```bash
 grep -E "^(Path Calculation|Nodes Explored|Cache Hits|A\* Performance):" \
-  test_results/pathfinder_benchmark/performance_metrics.txt
+  "$PROJECT_ROOT/test_results/pathfinder_benchmark/performance_metrics.txt"
 ```
 
 #### Event Manager Metrics
 ```bash
 grep -E "^(Events/sec|Dispatch Latency|Queue Depth|Peak Throughput):" \
-  test_results/event_manager_scaling/performance_metrics.txt
+  "$PROJECT_ROOT/test_results/event_manager_scaling/performance_metrics.txt"
 ```
 
 #### Particle Manager Metrics
 ```bash
 grep -E "^(Particles/frame|Render Time|Batch Count|Culling Efficiency):" \
-  test_results/particle_benchmark/performance_metrics.txt
+  "$PROJECT_ROOT/test_results/particle_benchmark/performance_metrics.txt"
 ```
 
 #### UI System Metrics
 ```bash
 grep -E "^(Components|Render Time|Event Handling|DPI Scaling):" \
-  test_results/ui_stress/performance_metrics.txt
+  "$PROJECT_ROOT/test_results/ui_stress/performance_metrics.txt"
 ```
 
 ### Step 3: Statistical Analysis
@@ -200,7 +201,7 @@ def calculate_statistics(values):
 
 ```bash
 # Find most recent callgrind output
-CALLGRIND_FILE=$(ls -t test_results/valgrind/callgrind/callgrind.out.* | head -n 1)
+CALLGRIND_FILE=$(ls -t "$PROJECT_ROOT/test_results/valgrind/callgrind/callgrind.out."* 2>/dev/null | head -n 1)
 
 if [ -f "$CALLGRIND_FILE" ]; then
     # Extract top hotspots using callgrind_annotate
@@ -624,7 +625,7 @@ Total Engine:      130 MB
 ### Data Collection
 
 - **Metrics Collection:** Automated via test scripts
-- **Storage:** test_results/ directory
+- **Storage:** $PROJECT_ROOT/test_results/ directory
 - **Baseline:** Updated monthly
 - **History:** 6 months retained
 

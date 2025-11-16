@@ -50,7 +50,7 @@ This Skill automates the creation of standardized test infrastructure for new SD
 **Reference Template:**
 ```bash
 # Read existing test script to extract pattern
-Read: /home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/tests/test_scripts/run_ai_optimization_tests.sh
+Read: $PROJECT_ROOT/tests/test_scripts/run_ai_optimization_tests.sh
 ```
 
 **Common Pattern Elements:**
@@ -202,7 +202,7 @@ fi
 
 **Save to:**
 ```
-/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/tests/test_scripts/run_<system>_tests.sh
+$PROJECT_ROOT/tests/test_scripts/run_<system>_tests.sh
 ```
 
 **Make executable:**
@@ -215,7 +215,7 @@ chmod +x tests/test_scripts/run_<system>_tests.sh
 **Reference Template:**
 ```bash
 # Read existing test file to extract pattern
-Read: /home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/tests/ai_optimization_tests.cpp
+Read: $PROJECT_ROOT/tests/ai_optimization_tests.cpp
 ```
 
 **Template:**
@@ -430,7 +430,7 @@ BOOST_AUTO_TEST_SUITE_END()
 
 **Save to:**
 ```
-/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/tests/<system>_tests.cpp
+$PROJECT_ROOT/tests/<system>_tests.cpp
 ```
 
 ### Step 4: Generate Benchmark Test Source (Optional)
@@ -489,7 +489,11 @@ private:
 
 void saveMetric(const std::string& name, double value, const std::string& unit)
 {
-    std::ofstream file("test_results/<system>/performance_metrics.txt", std::ios::app);
+    // NOTE: Requires PROJECT_ROOT environment variable
+    const char* root = std::getenv("PROJECT_ROOT");
+    std::string path = root ? std::string(root) + "/test_results/<system>/performance_metrics.txt"
+                            : "test_results/<system>/performance_metrics.txt";
+    std::ofstream file(path, std::ios::app);
     file << name << ": " << value << " " << unit << std::endl;
     std::cout << name << ": " << value << " " << unit << std::endl;
 }
@@ -503,10 +507,10 @@ struct <SystemName>BenchmarkFixture
     <SystemName>BenchmarkFixture()
     {
         BOOST_TEST_MESSAGE("Setting up <SystemName> benchmark fixture");
-        // Create output directory
-        system("mkdir -p test_results/<system>");
+        // Create output directory (requires PROJECT_ROOT environment variable)
+        system("mkdir -p \"$PROJECT_ROOT/test_results/<system>\"");
         // Clear previous metrics
-        system("rm -f test_results/<system>/performance_metrics.txt");
+        system("rm -f \"$PROJECT_ROOT/test_results/<system>/performance_metrics.txt\"");
     }
 
     ~<SystemName>BenchmarkFixture()
@@ -630,8 +634,11 @@ struct BenchmarkSummaryFixture
 {
     ~BenchmarkSummaryFixture()
     {
+        const char* root = std::getenv("PROJECT_ROOT");
+        std::string resultsPath = root ? std::string(root) + "/test_results/<system>/performance_metrics.txt"
+                                        : "test_results/<system>/performance_metrics.txt";
         BOOST_TEST_MESSAGE("=== <SystemName> Benchmark Summary ===");
-        BOOST_TEST_MESSAGE("Results saved to: test_results/<system>/performance_metrics.txt");
+        BOOST_TEST_MESSAGE("Results saved to: " << resultsPath);
         BOOST_TEST_MESSAGE("Review metrics for performance analysis");
     }
 };
@@ -641,7 +648,10 @@ BOOST_FIXTURE_TEST_SUITE(SummaryGeneration, BenchmarkSummaryFixture)
 BOOST_AUTO_TEST_CASE(GenerateSummary)
 {
     // Generate summary report
-    std::ofstream report("test_results/<system>/performance_report.md");
+    const char* root = std::getenv("PROJECT_ROOT");
+    std::string reportPath = root ? std::string(root) + "/test_results/<system>/performance_report.md"
+                                   : "test_results/<system>/performance_report.md";
+    std::ofstream report(reportPath);
     report << "# <SystemName> Performance Report\n\n";
     report << "**Date:** " << __DATE__ << " " << __TIME__ << "\n\n";
     report << "## Metrics\n\n";
@@ -658,14 +668,14 @@ BOOST_AUTO_TEST_SUITE_END()
 
 **Save to:**
 ```
-/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/tests/<system>_benchmark.cpp
+$PROJECT_ROOT/tests/<system>_benchmark.cpp
 ```
 
 ### Step 5: Update CMakeLists.txt
 
 **Read CMakeLists.txt:**
 ```bash
-Read: /home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/CMakeLists.txt
+Read: $PROJECT_ROOT/CMakeLists.txt
 ```
 
 **Add Test Executables:**
@@ -703,7 +713,7 @@ set_target_properties(<system>_benchmark PROPERTIES
 
 **Read run_all_tests.sh:**
 ```bash
-Read: /home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/run_all_tests.sh
+Read: $PROJECT_ROOT/run_all_tests.sh
 ```
 
 **Add test to appropriate section:**
@@ -730,8 +740,8 @@ check_status $? "<SystemName> Benchmark"
 
 **Create directories:**
 ```bash
-mkdir -p test_results/<system>
-touch test_results/<system>/.gitkeep
+mkdir -p "$PROJECT_ROOT/test_results/<system>"
+touch "$PROJECT_ROOT/test_results/<system>/.gitkeep"
 ```
 
 ### Step 8: Generate Documentation Stub
@@ -805,7 +815,7 @@ TODO: Document any known test issues or limitations.
 
 **Save to:**
 ```
-/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/tests/docs/<SystemName>_Testing.md
+$PROJECT_ROOT/tests/docs/<SystemName>_Testing.md
 ```
 
 ### Step 9: Verification Build
@@ -813,7 +823,7 @@ TODO: Document any known test issues or limitations.
 **Build new test executables:**
 
 ```bash
-cd /home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template
+cd $PROJECT_ROOT
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 ```
 

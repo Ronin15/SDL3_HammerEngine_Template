@@ -170,26 +170,26 @@ for EXEC in "${EXECUTABLES[@]}"; do
   # Display the test output
   cat "${EXEC}_output.log"
   echo -e "${BLUE}====================================${NC}"
-  
+
   # Create test_results directory if it doesn't exist
-  mkdir -p ../../test_results
-  
+  mkdir -p "$PROJECT_ROOT/test_results"
+
   # Save test results with timestamp
   TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
-  cp "${EXEC}_output.log" "../../test_results/${EXEC}_output_${TIMESTAMP}.txt"
+  cp "${EXEC}_output.log" "$PROJECT_ROOT/test_results/${EXEC}_output_${TIMESTAMP}.txt"
   # Also save to the standard location for compatibility
-  cp "${EXEC}_output.log" "../../test_results/${EXEC}_output.txt"
+  cp "${EXEC}_output.log" "$PROJECT_ROOT/test_results/${EXEC}_output.txt"
   
   # Extract performance metrics and test cases run
   echo -e "${YELLOW}Saving test results for $EXEC...${NC}"
-  grep -E "time:|performance|TestEvent|TestWeatherEvent|TestSceneChange|TestNPCSpawn|TestEventFactory|TestEventManager" "${EXEC}_output.log" > "../../test_results/${EXEC}_performance_metrics.txt" || true
+  grep -E "time:|performance|TestEvent|TestWeatherEvent|TestSceneChange|TestNPCSpawn|TestEventFactory|TestEventManager" "${EXEC}_output.log" > "$PROJECT_ROOT/test_results/${EXEC}_performance_metrics.txt" || true
   
   # Extract test cases that were run
-  echo -e "\n=== Test Cases Executed ===" > "../../test_results/${EXEC}_test_cases.txt"
-  grep -E "Entering test case|Test case.*passed" "${EXEC}_output.log" >> "../../test_results/${EXEC}_test_cases.txt" || true
+  echo -e "\n=== Test Cases Executed ===" > "$PROJECT_ROOT/test_results/${EXEC}_test_cases.txt"
+  grep -E "Entering test case|Test case.*passed" "${EXEC}_output.log" >> "$PROJECT_ROOT/test_results/${EXEC}_test_cases.txt" || true
   
   # Extract just the test case names for easy reporting
-  grep -E "Entering test case" "${EXEC}_output.log" | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "../../test_results/${EXEC}_test_cases_run.txt" || true
+  grep -E "Entering test case" "${EXEC}_output.log" | sed 's/.*Entering test case "\([^"]*\)".*/\1/' > "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt" || true
   
   # Report test results
   if [ $TEST_RESULT -eq 0 ]; then
@@ -198,10 +198,10 @@ for EXEC in "${EXECUTABLES[@]}"; do
     
     # Print summary of test cases run
     echo -e "\n${BLUE}Test Cases Run:${NC}"
-    if [ -f "../../test_results/${EXEC}_test_cases_run.txt" ] && [ -s "../../test_results/${EXEC}_test_cases_run.txt" ]; then
+    if [ -f "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt" ] && [ -s "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt" ]; then
       while read -r testcase; do
         echo -e "  - ${testcase}"
-      done < "../../test_results/${EXEC}_test_cases_run.txt"
+      done < "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt"
     else
       echo -e "${YELLOW}  No test case details found.${NC}"
     fi
@@ -211,14 +211,14 @@ for EXEC in "${EXECUTABLES[@]}"; do
     
     # Print a summary of failed tests if available
     echo -e "\n${YELLOW}Failed Test Summary:${NC}"
-    grep -E "FAILED|ASSERT" "../../test_results/${EXEC}_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
+    grep -E "FAILED|ASSERT" "$PROJECT_ROOT/test_results/${EXEC}_output.txt" || echo -e "${YELLOW}No specific failure details found.${NC}"
     
     # Print summary of test cases run
     echo -e "\n${BLUE}Test Cases Run:${NC}"
-    if [ -f "../../test_results/${EXEC}_test_cases_run.txt" ] && [ -s "../../test_results/${EXEC}_test_cases_run.txt" ]; then
+    if [ -f "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt" ] && [ -s "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt" ]; then
       while read -r testcase; do
         echo -e "  - ${testcase}"
-      done < "../../test_results/${EXEC}_test_cases_run.txt"
+      done < "$PROJECT_ROOT/test_results/${EXEC}_test_cases_run.txt"
     else
       echo -e "${YELLOW}  No test case details found.${NC}"
     fi

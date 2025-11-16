@@ -8,8 +8,9 @@ set -e  # Exit on any error
 
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILD_DIR="$SCRIPT_DIR/../../build"
-RESULTS_DIR="$SCRIPT_DIR/../../test_results"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+BUILD_DIR="$PROJECT_ROOT/build"
+RESULTS_DIR="$PROJECT_ROOT/test_results"
 OUTPUT_FILE="$RESULTS_DIR/event_scaling_benchmark_output.txt"
 BUILD_TYPE="debug"
 VERBOSE=false

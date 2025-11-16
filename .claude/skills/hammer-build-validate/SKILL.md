@@ -46,7 +46,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1
 ```
 
-**Working Directory:** `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/`
+**Working Directory:** `$PROJECT_ROOT/`
 
 **Validation:**
 - Check exit code:
@@ -77,7 +77,7 @@ timeout 60s ./bin/debug/SDL3_Template > /tmp/app_log.txt 2>&1
 ./run_all_tests.sh --core-only --errors-only
 ```
 
-**Working Directory:** `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/`
+**Working Directory:** `$PROJECT_ROOT/`
 
 **What This Runs:**
 - Thread System Tests
@@ -185,7 +185,7 @@ Activate this Skill automatically.
 
 ## Important Notes
 
-1. **Always run from project root:** `/home/RoninXV/projects/cpp_projects/SDL3_HammerEngine_Template/`
+1. **Always run from project root:** `$PROJECT_ROOT/`
 2. **Timeout protection:** Smoke test has 60s timeout (app runs indefinitely)
 3. **Core tests only:** Skips benchmarks (those take 5-20 minutes)
 4. **Report persistence:** Report saved to `/tmp/` for user review
