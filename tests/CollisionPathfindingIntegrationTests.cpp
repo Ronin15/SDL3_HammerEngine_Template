@@ -181,6 +181,7 @@ BOOST_FIXTURE_TEST_CASE(TestObstacleAvoidancePathfinding, CollisionPathfindingFi
 
     // Process async tasks (mimics game loop behavior)
     for (int i = 0; i < 20 && !callbackExecuted; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -232,6 +233,7 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
 
     // Wait for async completion
     for (int i = 0; i < 20 && !callback1Executed; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -263,6 +265,7 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
 
     // Wait for async completion
     for (int i = 0; i < 20 && !callback2Executed; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -300,6 +303,7 @@ BOOST_FIXTURE_TEST_CASE(TestEventDrivenPathInvalidation, CollisionPathfindingFix
 
     // Wait for async completion
     for (int i = 0; i < 20 && !callback1Executed; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -330,6 +334,7 @@ BOOST_FIXTURE_TEST_CASE(TestEventDrivenPathInvalidation, CollisionPathfindingFix
 
     // Wait for async completion
     for (int i = 0; i < 20 && !callback2Executed; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -380,6 +385,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentCollisionPathfindingOperations, CollisionP
 
     // Wait for all async callbacks to complete
     for (int i = 0; i < 50 && completedCallbacks < NUM_CONCURRENT_REQUESTS; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -440,6 +446,7 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceUnderLoad, CollisionPathfindingFixture)
 
     // Wait for all paths to complete
     for (int i = 0; i < 200 && completedCallbacks < NUM_PATH_REQUESTS; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -518,6 +525,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionLayerPathfindingInteraction, CollisionPathf
 
     // Wait for async completion
     for (int i = 0; i < 20 && !callbackExecuted; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
@@ -556,6 +564,7 @@ BOOST_FIXTURE_TEST_CASE(TestEntityMovementAlongPath, CollisionPathfindingFixture
 
     // Wait for path
     for (int i = 0; i < 20 && !callbackExecuted; ++i) {
+        PathfinderManager::Instance().update(); // Process buffered requests
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
