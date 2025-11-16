@@ -68,7 +68,8 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding, WorkerBudget coordination tests
+    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,
+    echo                     GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager
     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, and Pathfinder performance benchmarks
     echo.
     echo Execution Time:
@@ -91,7 +92,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=23
+set CORE_TEST_COUNT=31
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=6
 
@@ -167,6 +168,14 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_pathfinding_tests.bat" false
     call :run_single_test "run_collision_pathfinding_integration_tests.bat" false
     call :run_single_test "run_pathfinder_ai_contention_tests.bat" false
+    call :run_single_test "run_game_engine_tests.bat" false
+    call :run_single_test "run_camera_tests.bat" false
+    call :run_single_test "run_input_manager_tests.bat" false
+    call :run_single_test "run_simd_correctness_tests.bat" false
+    call :run_single_test "run_buffer_reuse_tests.bat" false
+    call :run_single_test "run_rendering_pipeline_tests.bat" false
+    call :run_single_test "run_loading_state_tests.bat" false
+    call :run_single_test "run_ui_manager_functional_tests.bat" false
 )
 
 :: Run benchmark tests last

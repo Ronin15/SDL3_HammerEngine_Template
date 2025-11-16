@@ -56,7 +56,8 @@ for arg in "$@"; do
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding, WorkerBudget coordination tests"
+      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,"
+      echo -e "                    GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, and Pathfinder performance benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
@@ -99,6 +100,14 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_pathfinding_tests.sh"
   "$SCRIPT_DIR/run_collision_pathfinding_integration_tests.sh"
   "$SCRIPT_DIR/run_pathfinder_ai_contention_tests.sh"
+  "$SCRIPT_DIR/run_game_engine_tests.sh"
+  "$SCRIPT_DIR/run_camera_tests.sh"
+  "$SCRIPT_DIR/run_input_manager_tests.sh"
+  "$SCRIPT_DIR/run_simd_correctness_tests.sh"
+  "$SCRIPT_DIR/run_buffer_reuse_tests.sh"
+  "$SCRIPT_DIR/run_rendering_pipeline_tests.sh"
+  "$SCRIPT_DIR/run_loading_state_tests.sh"
+  "$SCRIPT_DIR/run_ui_manager_functional_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
