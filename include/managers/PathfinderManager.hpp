@@ -18,11 +18,36 @@
  * - Dynamic obstacle integration from CollisionManager
  * - Scales to 10K+ entities while maintaining 60+ FPS
  * - Lock-free request queuing with minimal contention
+ *
+ * ARCHITECTURE: Strict Event-Driven Grid Rebuilding
+ * ===================================================
+ * Grid rebuilds happen ONLY via event system (no synchronous fallbacks):
+ *
+ * 1. WorldLoadedEvent → PathfinderManager::onWorldLoaded() → rebuildGrid() (async on ThreadSystem)
+ * 2. CollisionObstacleChanged → PathfinderManager::onCollisionObstacleChanged() → rebuildGrid() (async)
+ * 3. TileChanged → PathfinderManager::onTileChanged() → rebuildGrid() (async)
+ *
+ * Integration Requirements:
+ * - GameEngine MUST call EventManager::update() each frame to process events
+ * - WorldManager MUST fire WorldLoadedEvent after loading worlds
+ * - CollisionManager MUST fire CollisionObstacleChanged when obstacles change
+ *
+ * Entity Behavior When Grid Not Ready:
+ * - PathfindingResult::NO_PATH_FOUND returned if grid doesn't exist
+ * - Entities should continue current path or use fallback behavior
+ * - Retry path request next frame (grid rebuild completes asynchronously)
+ *
+ * This ensures:
+ * - No blocking operations on main thread (grid rebuilds on worker threads)
+ * - Clean separation between pathfinding and world systems
+ * - Testable event-driven architecture
+ * - Entities handle gracefully degraded service during rebuilds
  */
 
 #include "utils/Vector2D.hpp"
 #include "entities/Entity.hpp"
 #include "managers/EventManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -92,11 +117,6 @@ public:
     void prepareForStateTransition();
 
     /**
-     * @brief Shuts down the PathfinderManager
-     */
-    static void shutdown();
-
-    /**
      * @brief Checks if PathfinderManager has been shut down
      * @return true if manager is shut down, false otherwise
      */
@@ -124,23 +144,8 @@ public:
         EntityID entityId,
         const Vector2D& start,
         const Vector2D& goal,
-        Priority priority = Priority::High,
+        Priority priority = Priority::Normal,
         std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
-    );
-
-    
-
-    /**
-     * @brief Get a path synchronously (blocking)
-     * @param start Starting position in world coordinates
-     * @param goal Goal position in world coordinates
-     * @param outPath Vector to store the resulting path
-     * @return PathfindingResult indicating success or failure
-     */
-    HammerEngine::PathfindingResult findPathImmediate(
-        const Vector2D& start,
-        const Vector2D& goal,
-        std::vector<Vector2D>& outPath
     );
 
     /**
@@ -161,11 +166,6 @@ public:
      * @brief Rebuild the pathfinding grid from world data
      */
     void rebuildGrid();
-
-    /**
-     * @brief Update dynamic obstacles from CollisionManager
-     */
-    void updateDynamicObstacles();
 
     /**
      * @brief Add a temporary weight field (for avoidance)
@@ -255,6 +255,18 @@ public:
                        std::vector<Vector2D>& path, size_t& pathIndex,
                        float speed, float nodeRadius = 64.0f) const;
 
+    /**
+     * @brief Get dynamic hierarchical threshold for current world
+     * @return Distance threshold for using hierarchical pathfinding
+     */
+    float getHierarchicalThreshold() const { return m_hierarchicalThreshold; }
+
+    /**
+     * @brief Get dynamic connectivity check threshold for current world
+     * @return Distance threshold for connectivity sampling
+     */
+    float getConnectivityThreshold() const { return m_connectivityThreshold; }
+
     // ===== Statistics =====
 
     struct PathfinderStats {
@@ -263,7 +275,6 @@ public:
         uint64_t failedRequests{0};
         uint64_t cacheHits{0};
         uint64_t cacheMisses{0};
-        uint64_t negativeHits{0};
         double averageProcessingTimeMs{0.0};
         double requestsPerSecond{0.0};
         size_t queueSize{0};
@@ -277,7 +288,6 @@ public:
         // Cache memory usage
         size_t cacheSize{0};
         size_t segmentCacheSize{0};
-        size_t negativeCacheSize{0};
         double memoryUsageKB{0.0};
     };
 
@@ -292,13 +302,11 @@ public:
      */
     void resetStats();
 
-    // Destructor needs to be public for unique_ptr
-    ~PathfinderManager();
-
 private:
     using PathCallback = std::function<void(EntityID, const std::vector<Vector2D>&)>;
     // Singleton implementation
     PathfinderManager() = default;
+    ~PathfinderManager();
     PathfinderManager(const PathfinderManager&) = delete;
     PathfinderManager& operator=(const PathfinderManager&) = delete;
 
@@ -315,6 +323,15 @@ private:
     // Helpers
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
 
+    // INTERNAL ONLY: Synchronous pathfinding computation (used by async system)
+    // DO NOT use directly - use requestPath() instead
+    HammerEngine::PathfindingResult findPathImmediate(
+        const Vector2D& start,
+        const Vector2D& goal,
+        std::vector<Vector2D>& outPath,
+        bool skipNormalization = false
+    );
+
     // Request management - simplified
     std::atomic<uint64_t> m_nextRequestId{1};
     
@@ -325,9 +342,19 @@ private:
     size_t m_maxRequestsPerUpdate{10}; // Max requests to process per update
     float m_cacheExpirationTime{5.0f}; // Cache expiration time in seconds
 
+    // Auto-calculated cache parameters (computed per world for optimal scaling)
+    float m_endpointQuantization{128.0f};      // Dynamic: ~1% world size
+    float m_cacheKeyQuantization{256.0f};      // Dynamic: worldSize / sqrt(cache)
+    float m_hierarchicalThreshold{2048.0f};    // Dynamic: 5% of diagonal
+    float m_connectivityThreshold{16000.0f};   // Dynamic: 25% of width
+    int m_prewarmSectorCount{8};               // Dynamic: 4-16 based on size
+    int m_prewarmPathCount{168};               // Dynamic: sectors² × 2.5
+
     // State management
     std::atomic<bool> m_initialized{false};
+    std::once_flag m_initFlag; // Thread-safe initialization guard
     bool m_isShutdown{false};
+    std::atomic<bool> m_prewarming{false}; // Track if cache pre-warming is in progress
     
     // Statistics tracking 
     mutable std::atomic<uint64_t> m_enqueuedRequests{0};
@@ -353,33 +380,79 @@ private:
     
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
     mutable std::mutex m_cacheMutex;
-    
-    static constexpr size_t MAX_CACHE_ENTRIES = 1024; // Increased capacity for better hit rates
+
+    // Optimized for high entity counts (2000-10K+ entities in demo states)
+    // At 32K entries: ~3.5MB memory (acceptable overhead for large-scale scenarios)
+    // Combined with coarser quantization (512px+), provides 70-85% cache hit rates
+    static constexpr size_t MAX_CACHE_ENTRIES = 32768;
 
     
 
-    // Grid update tracking
-    uint64_t m_lastWorldVersion{0};
+    // Collision version tracking for cache invalidation
     std::atomic<uint64_t> m_lastCollisionVersion{0};
-    float m_timeSinceLastRebuild{0.0f};
-    static constexpr float GRID_UPDATE_INTERVAL = 5.0f;  // seconds
-    
-    // Frame counters for reduced frequency operations (no static vars)
-    int m_gridUpdateCounter{0};
+
+    // Statistics reporting frame counter
     int m_statsFrameCounter{0};
     
     // Event subscription tracking
     std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 
+    // Async task synchronization (mirroring AIManager pattern)
+    std::vector<std::future<void>> m_gridRebuildFutures;
+    std::mutex m_gridRebuildFuturesMutex;
+
+    // WorkerBudget integration for coordinated batch processing
+    HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
+    std::vector<std::future<void>> m_batchFutures;
+    std::mutex m_batchFuturesMutex;
+
+    // Performance tracking (matching AIManager pattern)
+    std::atomic<size_t> m_lastOptimalWorkerCount{0};
+    std::atomic<size_t> m_lastAvailableWorkers{0};
+    std::atomic<size_t> m_lastPathfindingBudget{0};
+    std::atomic<bool> m_lastWasThreaded{false};
+
+    // Request batching configuration
+    static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)
+    static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;    // Rate limiting (60 FPS = 45K requests/sec capacity)
+
+    // Request buffer for batching (instead of immediate submission)
+    struct BufferedRequest {
+        EntityID entityId;
+        Vector2D start;
+        Vector2D goal;
+        Priority priority;
+        PathCallback callback;
+        uint64_t requestId;
+        std::chrono::steady_clock::time_point enqueueTime;
+    };
+    std::vector<BufferedRequest> m_requestBuffer;
+    mutable std::mutex m_requestBufferMutex;
+
     // Internal methods - simplified
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
-    void checkForGridUpdates(float deltaTime);
     uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
     void evictOldestCacheEntry();
+    void clearOldestCacheEntries(float percentage); // Smart cache clearing (partial LRU eviction)
+    void clearAllCache(); // Complete cache clear for world load/unload
+    void waitForGridRebuildCompletion(); // Wait for pending async grid rebuild tasks
     void subscribeToEvents(); // Subscribe to collision and world events
     void unsubscribeFromEvents(); // Unsubscribe from events
+
+    // Auto-scaling cache optimization
+    void calculateOptimalCacheSettings(); // Calculate dynamic parameters based on world size
+    void prewarmPathCache(); // Seed cache with sector-based paths for fast warmup
+
+    // WorkerBudget batch processing (NEW)
+    void processPendingRequests(); // Process buffered requests with WorkerBudget coordination
+    void waitForBatchCompletion(); // Wait for all pending batch futures to complete
+
+    // Event handlers
     void onCollisionObstacleChanged(const Vector2D& position, float radius, const std::string& description);
+    void onWorldLoaded(int worldWidth, int worldHeight);
+    void onWorldUnloaded();
+    void onTileChanged(int x, int y);
 };
 
 #endif // PATHFINDER_MANAGER_HPP

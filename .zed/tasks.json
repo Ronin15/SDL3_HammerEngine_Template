@@ -1,0 +1,52 @@
+// Project tasks configuration for SDL3 HammerEngine
+// Build tasks using Ninja and CMake
+[
+  {
+    "label": "ninja_build",
+    "command": "ninja -C build",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "reveal_target": "dock",
+    "hide": "never",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true
+  },
+  {
+    "label": "ninja_run",
+    "command": "ninja -C build && ./bin/debug/SDL3_Template",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "reveal_target": "dock",
+    "hide": "never",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true
+  },
+  {
+    "label": "ninja_clean",
+    "command": "ninja -C build clean",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": true,
+    "reveal": "always",
+    "reveal_target": "dock",
+    "hide": "never",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true
+  },
+  {
+    "label": "ninja_rebuild",
+    "command": "rm -rf build/ && cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build",
+    "use_new_terminal": false,
+    "allow_concurrent_runs": false,
+    "reveal": "always",
+    "reveal_target": "dock",
+    "hide": "never",
+    "shell": "system",
+    "show_summary": true,
+    "show_command": true
+  }
+]

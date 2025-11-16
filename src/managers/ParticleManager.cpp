@@ -16,6 +16,21 @@
 #include <cmath>
 #include <thread>
 
+// Use SIMD abstraction layer
+using namespace HammerEngine::SIMD;
+
+// Helper struct for batch rendering buffers
+struct BatchRenderBuffers {
+    static constexpr size_t MAX_RECTS_PER_BATCH = 2048;
+    std::vector<float> xy;
+    std::vector<SDL_FColor> cols;
+
+    BatchRenderBuffers() {
+        xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);  // 6 verts * 2 floats
+        cols.reserve(MAX_RECTS_PER_BATCH * 6);    // 6 verts
+    }
+};
+
 // A simple and fast pseudo-random number generator
 inline int fast_rand() {
     static thread_local unsigned int g_seed = []() {
@@ -866,20 +881,18 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
   if (n == 0) return;
 
   // Batch geometry rendering (indices-free: draw arrays for simplicity/safety)
-  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);     // 6 verts * 2 floats
-  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6); // 6 verts
+  BatchRenderBuffers buffers;
   size_t quadCount = 0;
 
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          xy.data(), sizeof(float) * 2,
-                          cols.data(), sizeof(SDL_FColor),
+                          buffers.xy.data(), sizeof(float) * 2,
+                          buffers.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
                           static_cast<int>(quadCount * 6),
                           nullptr, 0, 0);
-    xy.clear(); cols.clear(); quadCount = 0;
+    buffers.xy.clear(); buffers.cols.clear(); quadCount = 0;
   };
 
   for (size_t i = 0; i < n; ++i) {
@@ -904,11 +917,11 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Append vertices for two triangles (v0,v1,v2) and (v2,v3,v0)
-    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    buffers.xy.insert(buffers.xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
     SDL_FColor col{r, g, b, a};
-    cols.insert(cols.end(), {col, col, col, col, col, col});
+    buffers.cols.insert(buffers.cols.end(), {col, col, col, col, col, col});
     ++quadCount;
-    if (quadCount == MAX_RECTS_PER_BATCH) flush();
+    if (quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
   flush();
 
@@ -934,19 +947,17 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
 
-  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);
-  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6);
+  BatchRenderBuffers buffers;
   size_t quadCount = 0;
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          xy.data(), sizeof(float) * 2,
-                          cols.data(), sizeof(SDL_FColor),
+                          buffers.xy.data(), sizeof(float) * 2,
+                          buffers.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
                           static_cast<int>(quadCount * 6),
                           nullptr, 0, 0);
-    xy.clear(); cols.clear(); quadCount = 0;
+    buffers.xy.clear(); buffers.cols.clear(); quadCount = 0;
   };
   for (size_t i = 0; i < n; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
@@ -966,10 +977,10 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     const float x1 = cx + hx, y1 = cy - hy;
     const float x2 = cx + hx, y2 = cy + hy;
     const float x3 = cx - hx, y3 = cy + hy;
-    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    buffers.xy.insert(buffers.xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
     SDL_FColor col{r, g, b, a};
-    cols.insert(cols.end(), {col, col, col, col, col, col});
-    if (++quadCount == MAX_RECTS_PER_BATCH) flush();
+    buffers.cols.insert(buffers.cols.end(), {col, col, col, col, col, col});
+    if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
   flush();
 }
@@ -985,19 +996,17 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   const auto &particles = m_storage.getParticlesForRead();
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
-  constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-  std::vector<float> xy; xy.reserve(MAX_RECTS_PER_BATCH * 6 * 2);
-  std::vector<SDL_FColor> cols; cols.reserve(MAX_RECTS_PER_BATCH * 6);
+  BatchRenderBuffers buffers;
   size_t quadCount = 0;
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          xy.data(), sizeof(float) * 2,
-                          cols.data(), sizeof(SDL_FColor),
+                          buffers.xy.data(), sizeof(float) * 2,
+                          buffers.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
                           static_cast<int>(quadCount * 6),
                           nullptr, 0, 0);
-    xy.clear(); cols.clear(); quadCount = 0;
+    buffers.xy.clear(); buffers.cols.clear(); quadCount = 0;
   };
   for (size_t i = 0; i < n; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
@@ -1017,10 +1026,10 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     const float x1 = cx + hx, y1 = cy - hy;
     const float x2 = cx + hx, y2 = cy + hy;
     const float x3 = cx - hx, y3 = cy + hy;
-    xy.insert(xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
+    buffers.xy.insert(buffers.xy.end(), {x0, y0, x1, y1, x2, y2,  x2, y2, x3, y3, x0, y0});
     SDL_FColor col{r, g, b, a};
-    cols.insert(cols.end(), {col, col, col, col, col, col});
-    if (++quadCount == MAX_RECTS_PER_BATCH) flush();
+    buffers.cols.insert(buffers.cols.end(), {col, col, col, col, col, col});
+    if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
   flush();
 }
@@ -2011,6 +2020,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       activeParticleCount,
       threshold,
       optimalWorkerCount,
+      budget.particleAllocated,  // Base allocation for buffer detection
       queuePressure,
       m_adaptiveBatchState,  // Adaptive state for performance tuning
       lastFrameTime          // Previous frame's completion time
@@ -2568,11 +2578,11 @@ void ParticleManager::initTrigLookupTables() {
 void ParticleManager::updateParticlePhysicsSIMD(
     LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
     float deltaTime) {
-    
-#ifdef PARTICLE_SIMD_SSE2
-  // Prepare aligned SIMD constants
-  const __m128 deltaTimeVec = _mm_set1_ps(deltaTime);
-  const __m128 atmosphericDragVec = _mm_set1_ps(0.98f);
+
+#if defined(HAMMER_SIMD_SSE2)
+  // Prepare aligned SIMD constants using SIMDMath abstraction
+  const Float4 deltaTimeVec = broadcast(deltaTime);
+  const Float4 atmosphericDragVec = broadcast(0.98f);
 
   // Quick bounds check - only validate once
   const size_t particleCount = particles.size();
@@ -2595,35 +2605,136 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // SIMD main loop - use aligned loads for maximum performance
   const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  // Safe SIMD flag load limit - need 16 bytes for load_byte16
+  const size_t simdFlagSafeEnd = particleCount >= 16 ? particleCount - 15 : 0;
+
   for (; i < simdEnd; i += 4) {
     // SIMD flag check for 4 particles: skip if none active
-    const __m128i flagsv = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&particles.flags[i]));
-    const __m128i activeMask = _mm_set1_epi8(static_cast<char>(UnifiedParticle::FLAG_ACTIVE));
-    const __m128i activev = _mm_and_si128(flagsv, activeMask);
-    const __m128i gt0 = _mm_cmpgt_epi8(activev, _mm_setzero_si128());
-    const int maskBits = _mm_movemask_epi8(gt0);
-    if ((maskBits & 0xF) == 0) continue;
+    // Only use SIMD flag load when we have at least 16 elements available
+    bool anyActive = false;
+    if (i < simdFlagSafeEnd) {
+      // Safe to load 16 bytes
+      const Byte16 flagsv = load_byte16(&particles.flags[i]);
+      const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+      const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
+      const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
+      const int maskBits = movemask_byte(gt0);
+      anyActive = (maskBits & 0xF) != 0;
+    } else {
+      // Scalar flag check for safety near array end
+      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
+    }
+    if (!anyActive) continue;
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
-    __m128 posXv = _mm_load_ps(&particles.posX[i]);
-    __m128 posYv = _mm_load_ps(&particles.posY[i]);
-    __m128 velXv = _mm_load_ps(&particles.velX[i]);
-    __m128 velYv = _mm_load_ps(&particles.velY[i]);
-    const __m128 accXv = _mm_load_ps(&particles.accX[i]);
-    const __m128 accYv = _mm_load_ps(&particles.accY[i]);
+    Float4 posXv = load4(&particles.posX[i]);
+    Float4 posYv = load4(&particles.posY[i]);
+    Float4 velXv = load4(&particles.velX[i]);
+    Float4 velYv = load4(&particles.velY[i]);
+    const Float4 accXv = load4(&particles.accX[i]);
+    const Float4 accYv = load4(&particles.accY[i]);
 
-    // SIMD physics update
-    velXv = _mm_mul_ps(_mm_add_ps(velXv, _mm_mul_ps(accXv, deltaTimeVec)), atmosphericDragVec);
-    velYv = _mm_mul_ps(_mm_add_ps(velYv, _mm_mul_ps(accYv, deltaTimeVec)), atmosphericDragVec);
+    // SIMD physics update: vel = (vel + acc * dt) * drag
+    velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
+    velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
 
-    posXv = _mm_add_ps(posXv, _mm_mul_ps(velXv, deltaTimeVec));
-    posYv = _mm_add_ps(posYv, _mm_mul_ps(velYv, deltaTimeVec));
+    // pos = pos + vel * dt
+    posXv = madd(velXv, deltaTimeVec, posXv);
+    posYv = madd(velYv, deltaTimeVec, posYv);
 
     // Store results back to SIMD arrays
-    _mm_store_ps(&particles.velX[i], velXv);
-    _mm_store_ps(&particles.velY[i], velYv);
-    _mm_store_ps(&particles.posX[i], posXv);
-    _mm_store_ps(&particles.posY[i], posYv);
+    store4(&particles.velX[i], velXv);
+    store4(&particles.velY[i], velYv);
+    store4(&particles.posX[i], posXv);
+    store4(&particles.posY[i], posYv);
+  }
+
+  // Scalar tail
+  for (; i < endIdx; ++i) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+  }
+
+  // No Vector2D sync required
+
+#elif defined(HAMMER_SIMD_NEON)
+  // ARM NEON: Prepare SIMD constants using SIMDMath abstraction
+  const Float4 deltaTimeVec = broadcast(deltaTime);
+  const Float4 atmosphericDragVec = broadcast(0.98f);
+
+  // Quick bounds check - only validate once
+  const size_t particleCount = particles.size();
+  if (endIdx > particleCount || startIdx >= endIdx) return;
+  endIdx = std::min(endIdx, particleCount);
+
+  // SIMD arrays are primary storage; operate directly on them
+
+  // Scalar pre-loop to align to 4-float boundary for aligned loads
+  size_t i = startIdx;
+  while (i < endIdx && (i & 0x3) != 0) {
+    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
+      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
+      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
+      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+    }
+    ++i;
+  }
+
+  // NEON main loop - use aligned loads for maximum performance
+  const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+  // Safe SIMD flag load limit - need 16 bytes for load_byte16
+  const size_t simdFlagSafeEnd = particleCount >= 16 ? particleCount - 15 : 0;
+
+  for (; i < simdEnd; i += 4) {
+    // SIMD flag check for 4 particles: skip if none active
+    // Only use SIMD flag load when we have at least 16 elements available
+    bool anyActive = false;
+    if (i < simdFlagSafeEnd) {
+      // Safe to load 16 bytes
+      const Byte16 flagsv = load_byte16(&particles.flags[i]);
+      const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
+      const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
+      const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
+      const int maskBits = movemask_byte(gt0);
+      anyActive = (maskBits & 0xFFFFFFFF) != 0;
+    } else {
+      // Scalar flag check for safety near array end
+      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
+                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
+                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
+    }
+    if (!anyActive) continue;
+
+    // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
+    Float4 posXv = load4(&particles.posX[i]);
+    Float4 posYv = load4(&particles.posY[i]);
+    Float4 velXv = load4(&particles.velX[i]);
+    Float4 velYv = load4(&particles.velY[i]);
+    const Float4 accXv = load4(&particles.accX[i]);
+    const Float4 accYv = load4(&particles.accY[i]);
+
+    // SIMD physics update: vel = (vel + acc * dt) * drag
+    velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
+    velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
+
+    // pos = pos + vel * dt
+    posXv = madd(velXv, deltaTimeVec, posXv);
+    posYv = madd(velYv, deltaTimeVec, posYv);
+
+    // Store results back to SIMD arrays
+    store4(&particles.velX[i], velXv);
+    store4(&particles.velY[i], velYv);
+    store4(&particles.posX[i], posXv);
+    store4(&particles.posY[i], posYv);
   }
 
   // Scalar tail
@@ -2639,7 +2750,7 @@ void ParticleManager::updateParticlePhysicsSIMD(
   // No Vector2D sync required
 
 #else
-  // Fallback to scalar implementation for platforms without SSE2
+  // Fallback to scalar implementation for platforms without SIMD
   for (size_t i = startIdx; i < endIdx; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
     particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;

@@ -9,28 +9,31 @@
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
-    : m_updateFrequency(4), m_entityStates(), m_idleMode(mode),
-      m_idleRadius(idleRadius) {
+    : m_entityStates(), m_idleMode(mode), m_idleRadius(idleRadius) {
   // m_movementFrequency, m_turnFrequency, m_rng, m_angleDistribution,
   // m_radiusDistribution, m_frequencyVariation use default initializers
 
-  // Initialize random distributions based on mode
+  // Initialize parameters based on mode with mode-specific radii
   switch (mode) {
   case IdleMode::STATIONARY:
     m_movementFrequency = 0.0f; // No movement
     m_turnFrequency = 0.0f;     // No turning
+    m_idleRadius = 0.0f;        // No movement radius (completely still)
     break;
   case IdleMode::SUBTLE_SWAY:
     m_movementFrequency = 2.0f; // Gentle swaying every 2 seconds
     m_turnFrequency = 8.0f;     // Occasional turns
+    m_idleRadius = 30.0f;       // ~1 tile subtle sway radius
     break;
   case IdleMode::OCCASIONAL_TURN:
     m_movementFrequency = 0.0f; // No position movement
     m_turnFrequency = 4.0f;     // Turn every 4 seconds
+    m_idleRadius = 0.0f;        // No movement radius (rotation only)
     break;
   case IdleMode::LIGHT_FIDGET:
     m_movementFrequency = 1.5f; // Light fidgeting
     m_turnFrequency = 3.0f;     // More frequent turns
+    m_idleRadius = 50.0f;       // ~1.5 tiles moderate fidget radius
     break;
   }
 }
@@ -43,7 +46,7 @@ void IdleBehavior::init(EntityPtr entity) {
   initializeEntityState(entity, state);
 }
 
-void IdleBehavior::executeLogic(EntityPtr entity) {
+void IdleBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !isActive())
     return;
 
@@ -67,13 +70,13 @@ void IdleBehavior::executeLogic(EntityPtr entity) {
     updateStationary(entity, state);
     break;
   case IdleMode::SUBTLE_SWAY:
-    updateSubtleSway(entity, state);
+    updateSubtleSway(entity, state, deltaTime);
     break;
   case IdleMode::OCCASIONAL_TURN:
-    updateOccasionalTurn(entity, state);
+    updateOccasionalTurn(entity, state, deltaTime);
     break;
   case IdleMode::LIGHT_FIDGET:
-    updateLightFidget(entity, state);
+    updateLightFidget(entity, state, deltaTime);
     break;
   }
 }
@@ -111,23 +114,27 @@ std::string IdleBehavior::getName() const { return "Idle"; }
 void IdleBehavior::setIdleMode(IdleMode mode) {
   m_idleMode = mode;
 
-  // Update timing parameters based on new mode
+  // Update timing parameters and radius based on new mode
   switch (mode) {
   case IdleMode::STATIONARY:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 0.0f;
+    m_idleRadius = 0.0f;        // No movement radius
     break;
   case IdleMode::SUBTLE_SWAY:
     m_movementFrequency = 2.0f;
     m_turnFrequency = 8.0f;
+    m_idleRadius = 30.0f;       // ~1 tile subtle sway
     break;
   case IdleMode::OCCASIONAL_TURN:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 4.0f;
+    m_idleRadius = 0.0f;        // No movement radius
     break;
   case IdleMode::LIGHT_FIDGET:
     m_movementFrequency = 1.5f;
     m_turnFrequency = 3.0f;
+    m_idleRadius = 50.0f;       // ~1.5 tiles moderate fidget
     break;
   }
 }
@@ -155,10 +162,10 @@ std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
 void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) const {
   state.originalPosition = entity->getPosition();
   state.currentOffset = Vector2D(0, 0);
-  state.lastMovementTime = SDL_GetTicks();
-  state.lastTurnTime = SDL_GetTicks();
-  state.nextMovementTime = state.lastMovementTime + getRandomMovementInterval();
-  state.nextTurnTime = state.lastTurnTime + getRandomTurnInterval();
+  state.movementTimer = 0.0f;
+  state.turnTimer = 0.0f;
+  state.movementInterval = getRandomMovementInterval();
+  state.turnInterval = getRandomTurnInterval();
   state.currentAngle = 0.0f;
   state.initialized = true;
 }
@@ -169,32 +176,32 @@ void IdleBehavior::updateStationary(EntityPtr entity,
   entity->setVelocity(Vector2D(0, 0));
 }
 
-void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state) const {
-  Uint64 currentTime = SDL_GetTicks();
+void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const {
+  state.movementTimer += deltaTime;
 
-  if (m_movementFrequency > 0.0f && currentTime >= state.nextMovementTime) {
+  if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
     entity->setVelocity(swayDirection * 35.0f); // Increased from 20px for world-scale movement
-    state.lastMovementTime = currentTime;
-    state.nextMovementTime = currentTime + getRandomMovementInterval();
+    state.movementTimer = 0.0f;
+    state.movementInterval = getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation - don't reset to zero
   // Apply very light separation (decimated) so idlers don't stack perfectly
   applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
-                           35.0f, 30.0f, 0.15f, 4, state.lastSepTick,
-                           state.lastSepVelocity);
+                           35.0f, 30.0f, 0.15f, 4, state.separationTimer,
+                           state.lastSepVelocity, deltaTime);
 }
 
-void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) const {
-  Uint64 currentTime = SDL_GetTicks();
+void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const {
+  state.turnTimer += deltaTime;
 
-  if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {
+  if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
     // Change facing direction
     state.currentAngle = m_angleDistribution(m_rng);
-    state.lastTurnTime = currentTime;
-    state.nextTurnTime = currentTime + getRandomTurnInterval();
+    state.turnTimer = 0.0f;
+    state.turnInterval = getRandomTurnInterval();
 
     // Note: In a full implementation, you might set entity rotation here
     // entity->setRotation(state.currentAngle);
@@ -204,28 +211,29 @@ void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state) co
   entity->setVelocity(Vector2D(0, 0));
 }
 
-void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state) const {
-  Uint64 currentTime = SDL_GetTicks();
+void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const {
+  state.movementTimer += deltaTime;
+  state.turnTimer += deltaTime;
 
   // Handle movement fidgeting
-  if (m_movementFrequency > 0.0f && currentTime >= state.nextMovementTime) {
+  if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
     entity->setVelocity(fidgetDirection * 40.0f); // Increased from 25px for world-scale fidgeting
-    state.lastMovementTime = currentTime;
-    state.nextMovementTime = currentTime + getRandomMovementInterval();
+    state.movementTimer = 0.0f;
+    state.movementInterval = getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation and apply very light separation (decimated)
   applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
-                           40.0f, 30.0f, 0.15f, 4, state.lastSepTick,
-                           state.lastSepVelocity);
+                           40.0f, 30.0f, 0.15f, 4, state.separationTimer,
+                           state.lastSepVelocity, deltaTime);
 
   // Handle turning
-  if (m_turnFrequency > 0.0f && currentTime >= state.nextTurnTime) {
+  if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
     state.currentAngle = m_angleDistribution(m_rng);
-    state.lastTurnTime = currentTime;
-    state.nextTurnTime = currentTime + getRandomTurnInterval();
+    state.turnTimer = 0.0f;
+    state.turnInterval = getRandomTurnInterval();
   }
 }
 
@@ -236,22 +244,22 @@ Vector2D IdleBehavior::generateRandomOffset() const {
   return Vector2D(radius * std::cos(angle), radius * std::sin(angle));
 }
 
-Uint64 IdleBehavior::getRandomMovementInterval() const {
+float IdleBehavior::getRandomMovementInterval() const {
   if (m_movementFrequency <= 0.0f)
-    return UINT64_MAX;
+    return std::numeric_limits<float>::max();
 
-  float baseInterval = 1000.0f / m_movementFrequency; // Convert to milliseconds
+  float baseInterval = 1.0f / m_movementFrequency; // Convert to seconds
   float variation = m_frequencyVariation(m_rng);
 
-  return static_cast<Uint64>(baseInterval * variation);
+  return baseInterval * variation;
 }
 
-Uint64 IdleBehavior::getRandomTurnInterval() const {
+float IdleBehavior::getRandomTurnInterval() const {
   if (m_turnFrequency <= 0.0f)
-    return UINT64_MAX;
+    return std::numeric_limits<float>::max();
 
-  float baseInterval = 1000.0f / m_turnFrequency; // Convert to milliseconds
+  float baseInterval = 1.0f / m_turnFrequency; // Convert to seconds
   float variation = m_frequencyVariation(m_rng);
 
-  return static_cast<Uint64>(baseInterval * variation);
+  return baseInterval * variation;
 }

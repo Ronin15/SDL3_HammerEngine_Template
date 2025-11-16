@@ -8,6 +8,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp" // Must include for HandlerToken definition
 #include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/WorldEvent.hpp"
 #include <string_view>
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -15,16 +16,9 @@
 #include <algorithm>
 #include <cmath>
 
-// Static instance for singleton
-static std::unique_ptr<PathfinderManager> s_instance;
-static std::mutex s_instanceMutex;
-
 PathfinderManager& PathfinderManager::Instance() {
-    std::lock_guard<std::mutex> lock(s_instanceMutex);
-    if (!s_instance) {
-        s_instance.reset(new PathfinderManager());
-    }
-    return *s_instance;
+    static PathfinderManager instance;
+    return instance;
 }
 
 PathfinderManager::~PathfinderManager() {
@@ -65,17 +59,20 @@ bool PathfinderManager::init() {
     try {
         PATHFIND_INFO("Initializing PathfinderManager with clean architecture");
 
+        // Reset shutdown flag (allows re-initialization after clean())
+        m_isShutdown = false;
+
         // No queue needed - requests processed directly on ThreadSystem
-        
+
         // Grid will be created lazily when first needed and world is available
         m_cellSize = 64.0f; // Optimized cell size for 4x performance improvement
 
         // Cache initialized in header with default expiration time
-        
+
         PATHFIND_INFO("PathfinderManager initialized successfully");
 
         // ThreadSystem initialization is managed by the application/tests
-        
+
         // Subscribe to collision obstacle change events for cache invalidation
         subscribeToEvents();
 
@@ -98,14 +95,12 @@ void PathfinderManager::update() {
         return;
     }
 
-    // Check for grid updates and report statistics - reduced frequency to eliminate per-frame overhead
-    
-    // Grid updates every 5 seconds (300 frames at 60 FPS)
-    if (++m_gridUpdateCounter >= 300) {
-        m_gridUpdateCounter = 0;
-        checkForGridUpdates(GRID_UPDATE_INTERVAL); // Pass fixed interval since we control timing
-    }
-    
+    // Process buffered path requests with WorkerBudget coordination
+    processPendingRequests();
+
+    // Event-driven architecture: Grid updates happen via World events (no polling needed)
+    // Only report statistics periodically for monitoring
+
     // Statistics every 10 seconds (600 frames at 60 FPS)
     if (++m_statsFrameCounter >= 600) {
         m_statsFrameCounter = 0;
@@ -120,7 +115,19 @@ void PathfinderManager::clean() {
     }
 
     PATHFIND_INFO("Cleaning up PathfinderManager");
-    
+
+    // Wait for grid rebuild tasks to complete before shutdown
+    waitForGridRebuildCompletion();
+
+    // Wait for batch processing to complete before shutdown
+    waitForBatchCompletion();
+
+    // Clear request buffer
+    {
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        m_requestBuffer.clear();
+    }
+
     // Unsubscribe from events
     unsubscribeFromEvents();
 
@@ -136,15 +143,33 @@ void PathfinderManager::clean() {
     m_grid.reset();
 
     m_initialized.store(false);
+    m_isShutdown = true;
     PATHFIND_INFO("PathfinderManager cleaned up");
 }
 
 void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("Preparing PathfinderManager for state transition...");
-    
+
     if (!m_initialized.load() || m_isShutdown) {
         PATHFIND_WARN("PathfinderManager not initialized or already shutdown during state transition");
         return;
+    }
+
+    // CRITICAL: Wait for any running grid rebuild tasks to complete BEFORE clearing data
+    // This prevents async tasks from accessing deleted world data during state transitions
+    waitForGridRebuildCompletion();
+
+    // Wait for batch processing to complete before clearing data
+    waitForBatchCompletion();
+
+    // Clear request buffer
+    {
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        size_t bufferSize = m_requestBuffer.size();
+        m_requestBuffer.clear();
+        if (bufferSize > 0) {
+            PATHFIND_DEBUG("Cleared " + std::to_string(bufferSize) + " buffered requests");
+        }
     }
 
     // Clear path cache completely for fresh state
@@ -156,7 +181,7 @@ void PathfinderManager::prepareForStateTransition() {
             PATHFIND_DEBUG("Cleared " + std::to_string(cacheSize) + " cached paths");
         }
     }
-    
+
     // Clear pending requests to avoid callbacks to old game state
     {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
@@ -177,14 +202,11 @@ void PathfinderManager::prepareForStateTransition() {
     m_processedCount.store(0);
     m_lastRequestsPerSecond = 0.0;
     m_lastTotalRequests = 0;
-    
-    // Reset frame counters
-    m_gridUpdateCounter = 0;
+
+    // Reset statistics frame counter
     m_statsFrameCounter = 0;
-    
-    // Reset grid update tracking
-    m_timeSinceLastRebuild = 0.0f;
-    m_lastWorldVersion = 0;
+
+    // Reset collision version tracking
     m_lastCollisionVersion.store(0);
     
     // Keep grid instance but invalidate any cached data within it
@@ -201,14 +223,6 @@ void PathfinderManager::prepareForStateTransition() {
     PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
 }
 
-void PathfinderManager::shutdown() {
-    std::lock_guard<std::mutex> lock(s_instanceMutex);
-    if (s_instance) {
-        s_instance->clean();
-        s_instance->m_isShutdown = true;
-        s_instance.reset();
-    }
-}
 
 bool PathfinderManager::isShutdown() const {
     return m_isShutdown;
@@ -230,110 +244,24 @@ uint64_t PathfinderManager::requestPath(
     Vector2D nGoal = goal;
     normalizeEndpoints(nStart, nGoal);
 
-    uint64_t cacheKey = computeCacheKey(nStart, nGoal);
-
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1);
     m_enqueuedRequests.fetch_add(1, std::memory_order_relaxed);
 
-    // Coalesce in-flight requests
+    // Buffer request for batch processing with WorkerBudget coordination
     {
-        std::lock_guard<std::mutex> lock(m_pendingMutex);
-        auto it = m_pending.find(cacheKey);
-        if (it != m_pending.end()) {
-            if (callback) it->second.callbacks.push_back(callback);
-            return requestId; // Will be fulfilled when the in-flight request completes
-        } else {
-            PendingCallbacks pc;
-            if (callback) pc.callbacks.push_back(callback);
-            m_pending.emplace(cacheKey, std::move(pc));
-        }
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        m_requestBuffer.push_back({
+            entityId,
+            nStart,
+            nGoal,
+            priority,
+            callback,
+            requestId,
+            std::chrono::steady_clock::now()
+        });
     }
 
-    // Process directly on ThreadSystem - no queue overhead
-    auto work = [this, entityId, nStart, nGoal, cacheKey]() {
-        std::vector<Vector2D> path;
-        bool cacheHit = false;
-        
-        // Fast cache lookup - primary cache only for maximum performance
-        {
-            std::lock_guard<std::mutex> lock(m_cacheMutex);
-            auto it = m_pathCache.find(cacheKey);
-            if (it != m_pathCache.end()) {
-                // Cache hit - update usage tracking
-                path = it->second.path;
-                it->second.lastUsed = std::chrono::steady_clock::now();
-                it->second.useCount++;
-                cacheHit = true;
-                m_cacheHits.fetch_add(1, std::memory_order_relaxed);
-            } else {
-                // Cache miss - will need full pathfinding
-                m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
-            }
-        }
-        
-        // Compute path if cache miss
-        if (!cacheHit) {
-            findPathImmediate(nStart, nGoal, path);
-        }
-        
-        // Cache path and update statistics
-        if (!path.empty()) {
-            // Cache the successful path
-            {
-                std::lock_guard<std::mutex> lock(m_cacheMutex);
-                
-                // Smart cache management with LRU eviction
-                if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                    evictOldestCacheEntry();
-                }
-                
-                // Cache the full path
-                PathCacheEntry entry;
-                entry.path = path;
-                entry.lastUsed = std::chrono::steady_clock::now();
-                entry.useCount = 1;
-                m_pathCache[cacheKey] = std::move(entry);
-            }
-            
-            // Update success statistics
-            m_completedRequests.fetch_add(1, std::memory_order_relaxed);
-        } else {
-            // Update failure statistics
-            m_failedRequests.fetch_add(1, std::memory_order_relaxed);
-        }
-        
-        // Update basic processing count (no timing overhead)
-        m_processedCount.fetch_add(1, std::memory_order_relaxed);
-        
-        // Fan out to all pending callbacks for this key
-        std::vector<PathCallback> callbacks;
-        {
-            std::lock_guard<std::mutex> lock(m_pendingMutex);
-            auto it = m_pending.find(cacheKey);
-            if (it != m_pending.end()) {
-                callbacks.swap(it->second.callbacks);
-                m_pending.erase(it);
-            }
-        }
-        for (const auto &cb : callbacks) {
-            if (cb) cb(entityId, path);
-        }
-    };
-
-    // Submit pathfinding work to ThreadSystem with mapped priority
-    const auto taskPri = mapEnumToTaskPriority(priority);
-    const auto priLabel = priorityLabel(priority);
-    std::string taskDesc;
-    taskDesc.reserve(24 + priLabel.size());
-    taskDesc = "PathfindingComputation/";
-    taskDesc.append(priLabel);
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
-        work,
-        taskPri,
-        taskDesc
-    );
-    
     return requestId;
 }
 
@@ -342,7 +270,8 @@ uint64_t PathfinderManager::requestPath(
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,
     const Vector2D& goal,
-    std::vector<Vector2D>& outPath
+    std::vector<Vector2D>& outPath,
+    bool skipNormalization
 ) {
     if (!m_initialized.load() || m_isShutdown) {
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
@@ -351,12 +280,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     // Start timing for performance statistics
     auto startTime = std::chrono::steady_clock::now();
 
-    // Normalize endpoints for safe and cache-friendly pathfinding
-    Vector2D nStart = start;
-    Vector2D nGoal = goal;
-    normalizeEndpoints(nStart, nGoal);
-
-    // Ensure grid is initialized before pathfinding
+    // Ensure grid is initialized BEFORE normalizing endpoints (needs grid for bounds)
     if (!ensureGridInitialized()) {
         // Record timing even for failed requests
         auto endTime = std::chrono::steady_clock::now();
@@ -373,6 +297,14 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
         m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
         return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+    }
+
+    // Normalize endpoints AFTER grid exists (needs grid for bounds/snapping)
+    // Skip if already normalized (prevents double normalization in async path flow)
+    Vector2D nStart = start;
+    Vector2D nGoal = goal;
+    if (!skipNormalization) {
+        normalizeEndpoints(nStart, nGoal);
     }
 
     // Determine which pathfinding algorithm to use based on sophisticated heuristics
@@ -413,7 +345,10 @@ bool PathfinderManager::hasPendingWork() const {
 }
 
 void PathfinderManager::rebuildGrid() {
-    // Build a new grid from current world data and swap atomically
+    // ASYNC OPTIMIZATION: Submit grid rebuild to background thread to eliminate main thread spikes
+    // The expensive rebuildFromWorld() operation (2-3ms for 500x500 grid) runs on ThreadSystem
+    // Grid is swapped atomically when complete, so pathfinding continues with old grid briefly
+
     const auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
         PATHFIND_DEBUG("Cannot rebuild grid - no active world");
@@ -426,9 +361,8 @@ void PathfinderManager::rebuildGrid() {
         return;
     }
 
-    const float TILE_SIZE = 32.0f;
-    float worldPixelWidth = worldWidth * TILE_SIZE;
-    float worldPixelHeight = worldHeight * TILE_SIZE;
+    float worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
+    float worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
     int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
     if (gridWidth <= 0 || gridHeight <= 0) {
@@ -436,33 +370,60 @@ void PathfinderManager::rebuildGrid() {
         return;
     }
 
-    try {
-        auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
-            gridWidth, gridHeight, m_cellSize, Vector2D(0, 0)
-        );
-        newGrid->setAllowDiagonal(m_allowDiagonal);
-        newGrid->setMaxIterations(m_maxIterations);
-        newGrid->rebuildFromWorld();
+    // Capture rebuild parameters for async execution
+    float cellSize = m_cellSize;
+    bool allowDiagonal = m_allowDiagonal;
+    int maxIterations = m_maxIterations;
 
-        // Publish the new grid atomically
-        std::atomic_store(&m_grid, newGrid);
+    // Submit rebuild task to ThreadSystem (background thread) and track future for synchronization
+    auto rebuildFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+        [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, this]() {
+            PATHFIND_DEBUG("ASYNC TASK EXECUTING: Starting grid rebuild on background thread");
+            try {
+                // Create and build new grid on background thread
+                auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
+                    gridWidth, gridHeight, cellSize, Vector2D(0, 0)
+                );
+                newGrid->setAllowDiagonal(allowDiagonal);
+                newGrid->setMaxIterations(maxIterations);
+                PATHFIND_DEBUG("ASYNC TASK: Calling rebuildFromWorld()");
+                newGrid->rebuildFromWorld(); // EXPENSIVE: 2-3ms, now off main thread!
 
-        // Clear cache since grid changed
-        {
-            std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-            m_pathCache.clear();
-        }
+                // Atomically swap the grid (thread-safe)
+                std::atomic_store(&m_grid, newGrid);
+                PATHFIND_DEBUG("ASYNC TASK: Grid stored atomically, grid now exists");
 
-        PATHFIND_INFO("Grid rebuilt successfully");
-    } catch (const std::exception& e) {
-        PATHFIND_ERROR("Grid rebuild failed: " + std::string(e.what()));
+                // Smart cache invalidation: Clear only 50% oldest entries (mutex-protected)
+                // SAFETY: Check if manager still initialized before touching cache
+                // This prevents race with state transition or shutdown
+                if (m_initialized.load(std::memory_order_acquire)) {
+                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                    clearOldestCacheEntries(0.5f); // Remove 50% oldest paths
+                    PATHFIND_INFO("Grid rebuilt successfully (async, partial cache clear)");
+
+                    // Now that grid is ready, calculate optimal cache settings and pre-warm
+                    // These must happen AFTER grid rebuild completes
+                    calculateOptimalCacheSettings();
+                    prewarmPathCache();
+                    PATHFIND_DEBUG("ASYNC TASK: Grid rebuild FULLY COMPLETE");
+                } else {
+                    PATHFIND_DEBUG("Grid rebuilt but manager shutting down, skipped cache clear");
+                }
+            } catch (const std::exception& e) {
+                PATHFIND_ERROR("ASYNC TASK FAILED WITH EXCEPTION: " + std::string(e.what()));
+            }
+        },
+        HammerEngine::TaskPriority::Low, // Low priority - doesn't block gameplay
+        "PathfindingGridRebuild"
+    );
+
+    // Store future for synchronization during state transitions (prevents world data race)
+    {
+        std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+        m_gridRebuildFutures.push_back(std::move(rebuildFuture));
     }
-}
 
-void PathfinderManager::updateDynamicObstacles() {
-    // This method is called by GameEngine for periodic grid updates
-    // We just check if a rebuild is needed and schedule it
-    checkForGridUpdates(GRID_UPDATE_INTERVAL);
+    PATHFIND_DEBUG("Grid rebuild submitted to background thread");
 }
 
 void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float radius, float weight) {
@@ -537,13 +498,20 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     if (timeDiff.count() > 1000) { // Update RPS every second
         double secondsSinceLastUpdate = timeDiff.count() / 1000.0;
         uint64_t currentTotalRequests = m_enqueuedRequests.load(std::memory_order_relaxed);
-        
+
         if (m_lastStatsUpdate != std::chrono::steady_clock::time_point{}) {
             // Calculate RPS based on request DELTA since last update (not total)
-            uint64_t deltaRequests = currentTotalRequests - m_lastTotalRequests;
-            m_lastRequestsPerSecond = deltaRequests / secondsSinceLastUpdate;
+            // Handle counter resets: if currentTotal < lastTotal, counters were reset
+            int64_t deltaRequests = 0;
+            if (currentTotalRequests >= m_lastTotalRequests) {
+                deltaRequests = static_cast<int64_t>(currentTotalRequests - m_lastTotalRequests);
+            } else {
+                // Counter was reset, use current value as delta
+                deltaRequests = static_cast<int64_t>(currentTotalRequests);
+            }
+            m_lastRequestsPerSecond = (deltaRequests > 0) ? (deltaRequests / secondsSinceLastUpdate) : 0.0;
         }
-        
+
         m_lastTotalRequests = currentTotalRequests;
         m_lastStatsUpdate = now;
     }
@@ -552,16 +520,14 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     // Cache statistics
     stats.cacheHits = m_cacheHits.load(std::memory_order_relaxed);
     stats.cacheMisses = m_cacheMisses.load(std::memory_order_relaxed);
-    stats.negativeHits = 0; // Not implemented
-    
+
     // Cache size statistics
     {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         stats.cacheSize = m_pathCache.size();
         stats.segmentCacheSize = 0; // Segment cache removed for performance
     }
-    stats.negativeCacheSize = 0;
-    
+
     // Calculate approximate memory usage
     size_t gridMemory = 0;
     if (m_grid) {
@@ -611,26 +577,24 @@ void PathfinderManager::resetStats() {
 Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float margin) const {
     // PERFORMANCE FIX: Use cached bounds instead of calling WorldManager every time
     // Cache the bounds during grid initialization and use fallback if not available
-    
+
     // Use cached bounds from grid initialization if available
     if (m_grid) {
         // Get bounds from the pathfinding grid which are cached
         const float gridCellSize = 64.0f; // Match m_cellSize
         const float worldWidth = m_grid->getWidth() * gridCellSize;
         const float worldHeight = m_grid->getHeight() * gridCellSize;
-        
-        return Vector2D(
+
+        Vector2D result(
             std::clamp(position.getX(), margin, worldWidth - margin),
             std::clamp(position.getY(), margin, worldHeight - margin)
         );
+
+        return result;
     }
-    
-    // Fast fallback bounds - avoid calling WorldManager during AI updates
-    const float fallbackMargin = std::max(margin, 256.0f);
-    return Vector2D(
-        std::clamp(position.getX(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin),
-        std::clamp(position.getY(), 0.0f + fallbackMargin, 3200.0f - fallbackMargin)
-    );
+
+    // No grid available - world not loaded yet, return position as-is (valid fallback)
+    return position;
 }
 
 bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) const {
@@ -641,9 +605,7 @@ bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) 
         outHeight = grid->getHeight() * gridCellSize;
         return true;
     }
-    // Fallback to default world size
-    outWidth = 3200.0f;
-    outHeight = 3200.0f;
+    // No grid available - world not loaded yet
     return false;
 }
 
@@ -662,13 +624,8 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
             std::clamp(position.getY(), minY, maxY)
         );
     }
-    // Fallback
-    float fallbackW = 3200.0f;
-    float fallbackH = 3200.0f;
-    return Vector2D(
-        std::clamp(position.getX(), halfW, fallbackW - halfW),
-        std::clamp(position.getY(), halfH, fallbackH - halfH)
-    );
+    // No grid available - world not loaded yet, return position as-is
+    return position;
 }
 
 Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, float halfW, float halfH, float interiorMargin) const {
@@ -769,10 +726,11 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desir
 }
 
 void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) const {
-    // Clamp to world bounds with a modest interior margin
-    const float margin = 96.0f;
-    start = clampToWorldBounds(start, margin);
-    goal = clampToWorldBounds(goal, margin);
+    // Clamp to world bounds with interior margin (1.5x cell size = 96px keeps pathfinding
+    // away from exact world edges where grid cells may be invalid or blocked)
+    constexpr float EDGE_MARGIN = 96.0f;
+    start = clampToWorldBounds(start, EDGE_MARGIN);
+    goal = clampToWorldBounds(goal, EDGE_MARGIN);
 
     // Snap to nearest open cells if grid available
     if (auto grid = std::atomic_load(&m_grid)) {
@@ -781,11 +739,19 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
         goal = grid->snapToNearestOpenWorld(goal, r);
     }
 
-    // Quantize to improve cache hits - use 256-pixel quantization
-    start = Vector2D(std::round(start.getX() / 256.0f) * 256.0f,
-                     std::round(start.getY() / 256.0f) * 256.0f);
-    goal = Vector2D(std::round(goal.getX() / 256.0f) * 256.0f,
-                    std::round(goal.getY() / 256.0f) * 256.0f);
+    // Quantize to improve cache hits - use dynamic quantization scaled to world size
+    start = Vector2D(std::round(start.getX() / m_endpointQuantization) * m_endpointQuantization,
+                     std::round(start.getY() / m_endpointQuantization) * m_endpointQuantization);
+    goal = Vector2D(std::round(goal.getX() / m_endpointQuantization) * m_endpointQuantization,
+                    std::round(goal.getY() / m_endpointQuantization) * m_endpointQuantization);
+
+    // Re-clamp after quantization since rounding can push coordinates beyond margin
+    // in edge cases where quantization grid doesn't align with world bounds.
+    // Example: position at (worldWidth-64) within margin=96, quantization=128
+    // rounds to either (worldWidth-128) or (worldWidth), latter exceeds bounds.
+    // Cost: ~20 cycles per path request, prevents rare INVALID_GOAL errors.
+    start = clampToWorldBounds(start, EDGE_MARGIN);
+    goal = clampToWorldBounds(goal, EDGE_MARGIN);
 }
 
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
@@ -853,111 +819,18 @@ void PathfinderManager::reportStatistics() const {
 }
 
 bool PathfinderManager::ensureGridInitialized() {
-    if (std::atomic_load(&m_grid)) {
-        return true; // Grid already exists
-    }
-
-    // Check if we have an active world to get dimensions from
-    const auto& worldManager = WorldManager::Instance();
-    if (!worldManager.hasActiveWorld()) {
-        PATHFIND_DEBUG("Cannot initialize pathfinding grid - no active world");
-        return false;
-    }
-
-    // Get world dimensions
-    int worldWidth = 0;
-    int worldHeight = 0;
-    if (!worldManager.getWorldDimensions(worldWidth, worldHeight)) {
-        PATHFIND_WARN("Cannot get world dimensions for pathfinding grid initialization");
-        return false;
-    }
-
-    // Validate dimensions to prevent 0x0 grids
-    if (worldWidth <= 0 || worldHeight <= 0) {
-        PATHFIND_WARN("Invalid world dimensions for pathfinding grid: " + 
-                        std::to_string(worldWidth) + "x" + std::to_string(worldHeight));
-        return false;
-    }
-
-    // Calculate grid dimensions in cells
-    const float TILE_SIZE = 32.0f; // Match WorldManager::TILE_SIZE
-    float worldPixelWidth = worldWidth * TILE_SIZE;
-    float worldPixelHeight = worldHeight * TILE_SIZE;
-    int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
-    int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
-
-    // Ensure minimum grid size
-    if (gridWidth <= 0 || gridHeight <= 0) {
-        PATHFIND_WARN("Calculated grid dimensions too small: " + 
-                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
-                        " (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
-                        ", cellSize: " + std::to_string(m_cellSize) + ")");
-        return false;
-    }
-
-    try {
-        // Create the pathfinding grid
-        auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
-            gridWidth,
-            gridHeight,
-            m_cellSize,
-            Vector2D(0, 0)
-        );
-
-        // Apply configuration settings
-        newGrid->setAllowDiagonal(m_allowDiagonal);
-        newGrid->setMaxIterations(m_maxIterations);
-
-        // Build the grid from world data
-        newGrid->rebuildFromWorld();
-
-        std::atomic_store(&m_grid, newGrid);
-
-        PATHFIND_INFO("Pathfinding grid initialized: " + 
-                        std::to_string(gridWidth) + "x" + std::to_string(gridHeight) + 
-                        " cells (world: " + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) + 
-                        ", cellSize: " + std::to_string(m_cellSize) + ")");
-        
-        return true;
-    }
-    catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to create pathfinding grid: " + std::string(e.what()));
-        std::atomic_store(&m_grid, std::shared_ptr<HammerEngine::PathfindingGrid>());
-        return false;
-    }
-}
-
-void PathfinderManager::checkForGridUpdates(float deltaTime) {
-    m_timeSinceLastRebuild += deltaTime;
-    
-    // Only check for updates every GRID_UPDATE_INTERVAL seconds  
-    if (m_timeSinceLastRebuild < GRID_UPDATE_INTERVAL) {
-        return;
-    }
-    
-    // Check if world has changed by getting version from WorldManager
-    const auto& worldManager = WorldManager::Instance();
-    uint64_t currentWorldVersion = worldManager.getWorldVersion();
-    
-    // Rebuild when version changed or every 30 seconds as a fallback
-    bool worldChanged = (currentWorldVersion != m_lastWorldVersion);
-    bool shouldRebuild = worldChanged || (m_timeSinceLastRebuild >= 30.0f);
-    
-    if (shouldRebuild) {
-        rebuildGrid();
-        m_lastWorldVersion = currentWorldVersion;
-        m_timeSinceLastRebuild = 0.0f;
-    }
+    // Check if grid exists - no fallback
+    return std::atomic_load(&m_grid) != nullptr;
 }
 
 uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
-    // Coarser quantization: 256-pixel grid for better cache hit rates
-    // Trade some spatial precision for much higher cache reuse
-    int sx = static_cast<int>(start.getX() / 256.0f);
-    int sy = static_cast<int>(start.getY() / 256.0f);
-    int gx = static_cast<int>(goal.getX() / 256.0f);
-    int gy = static_cast<int>(goal.getY() / 256.0f);
-    
+    // Dynamic quantization scaled to world size for optimal cache coverage
+    // Automatically calculated to ensure cache buckets ≈ sqrt(MAX_CACHE_ENTRIES)
+    int sx = static_cast<int>(start.getX() / m_cacheKeyQuantization);
+    int sy = static_cast<int>(start.getY() / m_cacheKeyQuantization);
+    int gx = static_cast<int>(goal.getX() / m_cacheKeyQuantization);
+    int gy = static_cast<int>(goal.getY() / m_cacheKeyQuantization);
+
     // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
     return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
            (static_cast<uint64_t>(sy & 0xFFFF) << 32) |
@@ -968,12 +841,195 @@ uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2
 
 void PathfinderManager::evictOldestCacheEntry() {
     if (m_pathCache.empty()) return;
-    
+
     auto oldest = std::min_element(m_pathCache.begin(), m_pathCache.end(),
                                    [](const auto& a, const auto& b) {
                                        return a.second.lastUsed < b.second.lastUsed;
                                    });
     m_pathCache.erase(oldest);
+}
+
+void PathfinderManager::clearOldestCacheEntries(float percentage) {
+    if (m_pathCache.empty() || percentage <= 0.0f) return;
+
+    // Clamp percentage to [0, 1]
+    percentage = std::min(1.0f, std::max(0.0f, percentage));
+
+    size_t numToRemove = static_cast<size_t>(m_pathCache.size() * percentage);
+    if (numToRemove == 0) return;
+
+    // Build vector of entries sorted by lastUsed (oldest first)
+    std::vector<std::pair<uint64_t, std::chrono::steady_clock::time_point>> entries;
+    entries.reserve(m_pathCache.size());
+
+    for (const auto& [key, entry] : m_pathCache) {
+        entries.emplace_back(key, entry.lastUsed);
+    }
+
+    // Partial sort to find the oldest N entries (faster than full sort)
+    std::partial_sort(entries.begin(), entries.begin() + numToRemove, entries.end(),
+                     [](const auto& a, const auto& b) {
+                         return a.second < b.second; // Oldest first
+                     });
+
+    // Remove the oldest entries
+    for (size_t i = 0; i < numToRemove; ++i) {
+        m_pathCache.erase(entries[i].first);
+    }
+
+    PATHFIND_DEBUG("Cleared " + std::to_string(numToRemove) + " oldest cache entries (" +
+                   std::to_string(static_cast<int>(percentage * 100)) + "%)");
+}
+
+void PathfinderManager::clearAllCache() {
+    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    size_t clearedCount = m_pathCache.size();
+    m_pathCache.clear();
+    PATHFIND_INFO("Cleared all cache entries: " + std::to_string(clearedCount) + " paths removed");
+}
+
+void PathfinderManager::calculateOptimalCacheSettings() {
+    if (!m_grid) {
+        PATHFIND_WARN("Cannot calculate cache settings - no grid available");
+        return;
+    }
+
+    float worldW = m_grid->getWidth() * m_cellSize;
+    float worldH = m_grid->getHeight() * m_cellSize;
+    float diagonal = std::sqrt(worldW * worldW + worldH * worldH);
+
+    // ADAPTIVE QUANTIZATION: Single unified quantization for correctness
+
+    // Endpoint quantization: Conservative scaling for ACCURACY (minimize path failures)
+    // 0.5% of world size with strict 256px cap to keep quantization fine-grained
+    // This prevents entities from snapping to blocked cells
+    m_endpointQuantization = std::clamp(worldW / 200.0f, 128.0f, 256.0f);
+
+    // BUGFIX: Cache key quantization MUST match endpoint quantization to prevent
+    // coalescing requests with different normalized goals. Previously, cache key was
+    // 4-8x coarser than endpoint quantization, causing coalesced entities to receive
+    // paths to wrong destinations (off by 160-512px from their actual normalized goal).
+    // Example bug scenario with old values (endpoint=160px, cache=1280px):
+    //   Entity A requests path to (5920, 6720) [after endpoint quantization]
+    //   Entity B requests path to (6080, 6720) [after endpoint quantization]
+    //   Both get same cache key due to coarse cache quantization
+    //   Entity B receives path to (5920, 6720) instead of (6080, 6720) - 160px error!
+    m_cacheKeyQuantization = m_endpointQuantization;
+
+    // ADAPTIVE THRESHOLDS
+    m_hierarchicalThreshold = diagonal * 0.05f;      // 5% of world diagonal
+    m_connectivityThreshold = worldW * 0.25f;        // 25% of world width
+
+    // ADAPTIVE PRE-WARMING (8-connected sector graph)
+    // Small worlds (< 16K): 4×4 sectors = 56 paths
+    // Medium worlds (32K): 8×8 sectors = 210 paths
+    // Large worlds (64K+): 16×16 sectors = 930 paths
+    if (worldW < 16000.0f) {
+        m_prewarmSectorCount = 4;
+    } else if (worldW < 48000.0f) {
+        m_prewarmSectorCount = 8;
+    } else {
+        m_prewarmSectorCount = 16;
+    }
+    // Calculate actual path count for 8-connected grid: 2×N×(N-1) + 2×(N-1)²
+    // For N=8: 2×8×7 + 2×7² = 112 + 98 = 210 paths
+    int N = m_prewarmSectorCount;
+    m_prewarmPathCount = 2 * N * (N - 1) + 2 * (N - 1) * (N - 1);
+
+    // Calculate expected cache bucket count for logging
+    int bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
+    int bucketsY = static_cast<int>(worldH / m_cacheKeyQuantization);
+    int totalBuckets = bucketsX * bucketsY;
+    float cacheEfficiency = (static_cast<float>(MAX_CACHE_ENTRIES) / static_cast<float>(totalBuckets)) * 100.0f;
+
+    PATHFIND_INFO("Auto-tuned cache settings for " +
+                  std::to_string(static_cast<int>(worldW)) + "×" +
+                  std::to_string(static_cast<int>(worldH)) + "px world:");
+    PATHFIND_INFO("  Endpoint quantization: " +
+                  std::to_string(static_cast<int>(m_endpointQuantization)) + "px (" +
+                  std::to_string(static_cast<int>((m_endpointQuantization / worldW) * 100.0f * 10.0f) / 10.0f) + "% world)");
+    PATHFIND_INFO("  Cache key quantization: " +
+                  std::to_string(static_cast<int>(m_cacheKeyQuantization)) + "px");
+    PATHFIND_INFO("  Expected cache buckets: " +
+                  std::to_string(bucketsX) + "×" + std::to_string(bucketsY) +
+                  " = " + std::to_string(totalBuckets) + " total");
+    PATHFIND_INFO("  Cache efficiency: " +
+                  std::to_string(static_cast<int>(cacheEfficiency)) + "% coverage");
+    PATHFIND_INFO("  Hierarchical threshold: " +
+                  std::to_string(static_cast<int>(m_hierarchicalThreshold)) + "px");
+    PATHFIND_INFO("  Pre-warm sectors: " +
+                  std::to_string(m_prewarmSectorCount) + "×" +
+                  std::to_string(m_prewarmSectorCount) +
+                  " = " + std::to_string(m_prewarmPathCount) + " paths");
+}
+
+void PathfinderManager::prewarmPathCache() {
+    // Use compare_exchange to ensure only one thread executes pre-warming
+    bool expected = false;
+    if (!m_prewarming.compare_exchange_strong(expected, true) || !m_grid) {
+        return;
+    }
+
+    float worldW = m_grid->getWidth() * m_cellSize;
+    float worldH = m_grid->getHeight() * m_cellSize;
+    int sectors = m_prewarmSectorCount;
+    float sectorW = worldW / static_cast<float>(sectors);
+    float sectorH = worldH / static_cast<float>(sectors);
+
+    PATHFIND_INFO("Pre-warming cache with " +
+                  std::to_string(m_prewarmPathCount) + " sector-based paths (world: " +
+                  std::to_string(static_cast<int>(worldW)) + "×" +
+                  std::to_string(static_cast<int>(worldH)) + "px, sectors: " +
+                  std::to_string(sectors) + "×" + std::to_string(sectors) + ")...");
+
+    // Generate paths between sector centers
+    std::vector<std::pair<Vector2D, Vector2D>> seedPaths;
+    seedPaths.reserve(m_prewarmPathCount);
+
+    for (int sy = 0; sy < sectors; sy++) {
+        for (int sx = 0; sx < sectors; sx++) {
+            Vector2D sectorCenter(
+                (static_cast<float>(sx) + 0.5f) * sectorW,
+                (static_cast<float>(sy) + 0.5f) * sectorH
+            );
+
+            // Connect to adjacent and diagonal sectors (8-connectivity)
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dx = -1; dx <= 1; dx++) {
+                    if (dx == 0 && dy == 0) continue; // Skip self
+
+                    int nx = sx + dx;
+                    int ny = sy + dy;
+
+                    // Only connect to valid neighbors within bounds
+                    if (nx >= 0 && nx < sectors && ny >= 0 && ny < sectors) {
+                        // Only add each connection once (avoid duplicates by only connecting forward)
+                        if (ny > sy || (ny == sy && nx > sx)) {
+                            Vector2D neighborCenter(
+                                (static_cast<float>(nx) + 0.5f) * sectorW,
+                                (static_cast<float>(ny) + 0.5f) * sectorH
+                            );
+                            seedPaths.emplace_back(sectorCenter, neighborCenter);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Submit pre-warming paths with Low priority (background processing)
+    // These will be distributed automatically by ThreadSystem
+    int pathCount = 0;
+    for (const auto& [start, goal] : seedPaths) {
+        // Use Low priority and no callback for pre-warming
+        requestPath(0, start, goal, Priority::Low, nullptr);
+        pathCount++;
+    }
+
+    PATHFIND_INFO("Submitted " + std::to_string(pathCount) +
+                  " pre-warming paths to background ThreadSystem");
+
+    m_prewarming.store(false);
 }
 
 void PathfinderManager::subscribeToEvents() {
@@ -1000,7 +1056,36 @@ void PathfinderManager::subscribeToEvents() {
         
         m_eventHandlerTokens.push_back(token);
         PATHFIND_DEBUG("PathfinderManager subscribed to CollisionObstacleChanged events");
-        
+
+        // Subscribe to world events (WorldLoaded, WorldUnloaded, TileChanged)
+        auto worldToken = eventMgr.registerHandlerWithToken(EventTypeId::World,
+            [this](const EventData& data) {
+                auto baseEvent = data.event;
+                if (!baseEvent) return;
+
+                // Handle WorldLoadedEvent
+                if (auto loadedEvent = std::dynamic_pointer_cast<WorldLoadedEvent>(baseEvent)) {
+                    onWorldLoaded(loadedEvent->getWidth(), loadedEvent->getHeight());
+                    return;
+                }
+
+                // Handle WorldUnloadedEvent
+                if (auto unloadedEvent = std::dynamic_pointer_cast<WorldUnloadedEvent>(baseEvent)) {
+                    (void)unloadedEvent; // Acknowledge event
+                    onWorldUnloaded();
+                    return;
+                }
+
+                // Handle TileChangedEvent
+                if (auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(baseEvent)) {
+                    onTileChanged(tileEvent->getX(), tileEvent->getY());
+                    return;
+                }
+            });
+
+        m_eventHandlerTokens.push_back(worldToken);
+        PATHFIND_DEBUG("PathfinderManager subscribed to World events (WorldLoaded, WorldUnloaded, TileChanged)");
+
     } catch (const std::exception& e) {
         PATHFIND_ERROR("Failed to subscribe to events: " + std::string(e.what()));
     }
@@ -1060,4 +1145,395 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
     }
 }
 
-// End of file - optimized single-tier cache implementation with collision integration
+void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
+    PATHFIND_INFO("World loaded (" + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) +
+                  ") - rebuilding pathfinding grid and clearing cache");
+
+    // Clear all cached paths - old world paths are completely invalid
+    clearAllCache();
+
+    // Rebuild pathfinding grid from new world data
+    // Note: calculateOptimalCacheSettings() and prewarmPathCache() are called
+    // automatically when the async rebuild completes (see rebuildGrid() implementation)
+    rebuildGrid();
+
+    PATHFIND_INFO("Pathfinding grid rebuild initiated (async)");
+}
+
+void PathfinderManager::onWorldUnloaded() {
+    PATHFIND_INFO("World unloaded - clearing all pathfinding cache and pending requests");
+
+    // Clear all cached paths
+    clearAllCache();
+
+    // Clear pending callbacks since entities may no longer exist
+    {
+        std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
+        m_pending.clear();
+    }
+
+    PATHFIND_INFO("Pathfinding cache and pending requests cleared");
+}
+
+void PathfinderManager::onTileChanged(int x, int y) {
+    // Convert tile coordinates to world position (assuming 64px tiles)
+    constexpr float TILE_SIZE = 64.0f;
+    Vector2D tileWorldPos(x * TILE_SIZE + TILE_SIZE * 0.5f, y * TILE_SIZE + TILE_SIZE * 0.5f);
+
+    // Invalidate paths that pass through or near the changed tile
+    // Use slightly larger radius than tile size to catch paths that pass nearby
+    constexpr float INVALIDATION_RADIUS = TILE_SIZE * 1.5f;
+
+    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    size_t removedCount = 0;
+
+    for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ) {
+        bool pathIntersectsTile = false;
+
+        // Check if any point in the cached path is within the tile's influence radius
+        for (const auto& pathPoint : it->second.path) {
+            float distance2 = (pathPoint - tileWorldPos).dot(pathPoint - tileWorldPos);
+            if (distance2 <= (INVALIDATION_RADIUS * INVALIDATION_RADIUS)) {
+                pathIntersectsTile = true;
+                break;
+            }
+        }
+
+        if (pathIntersectsTile) {
+            it = m_pathCache.erase(it);
+            removedCount++;
+        } else {
+            ++it;
+        }
+    }
+
+    if (removedCount > 0) {
+        PATHFIND_DEBUG("Tile changed at (" + std::to_string(x) + ", " + std::to_string(y) +
+                      "), invalidated " + std::to_string(removedCount) + " cached paths");
+    }
+}
+
+void PathfinderManager::waitForGridRebuildCompletion() {
+    // Swap out futures to avoid holding lock during wait (mirrors AIManager pattern)
+    std::vector<std::future<void>> localFutures;
+
+    {
+        std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+        localFutures = std::move(m_gridRebuildFutures);
+        // m_gridRebuildFutures is now empty, new tasks can be added concurrently
+    }
+
+    if (!localFutures.empty()) {
+        PATHFIND_INFO("Waiting for " + std::to_string(localFutures.size()) +
+                      " grid rebuild task(s) to complete before state transition...");
+
+        for (auto& future : localFutures) {
+            if (future.valid()) {
+                try {
+                    future.wait(); // Block until task completes
+                    PATHFIND_DEBUG("Grid rebuild task completed");
+                } catch (const std::exception& e) {
+                    PATHFIND_ERROR("Exception waiting for grid rebuild: " + std::string(e.what()));
+                }
+            }
+        }
+
+        PATHFIND_INFO("Grid rebuild synchronization complete - safe to proceed with state transition");
+    }
+}
+
+// WorkerBudget Batch Processing Implementation
+
+void PathfinderManager::processPendingRequests() {
+    // Swap out buffered requests to avoid holding lock during processing
+    std::vector<BufferedRequest> requests;
+    {
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        if (m_requestBuffer.empty()) {
+            return; // No work to do
+        }
+        requests.swap(m_requestBuffer);
+    }
+
+    const size_t requestCount = requests.size();
+    if (requestCount == 0) {
+        return;
+    }
+
+    // Get ThreadSystem reference
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+
+    // Query ThreadSystem state for WorkerBudget coordination
+    size_t availableWorkers = threadSystem.getThreadCount();
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = threadSystem.getQueueCapacity();
+    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
+
+    // CRITICAL: Queue pressure monitoring - graceful degradation
+    if (queuePressure > HammerEngine::QUEUE_PRESSURE_CRITICAL) {
+        // Queue critically full - defer requests to next frame
+        PATHFIND_WARN("Queue pressure critical (" + std::to_string(queuePressure * 100.0) +
+                      "%), deferring " + std::to_string(requestCount) + " path requests to next frame");
+
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        // Re-insert requests at the front for next frame processing
+        m_requestBuffer.insert(m_requestBuffer.begin(), requests.begin(), requests.end());
+        return;
+    }
+
+    // Rate limiting - cap requests per frame to prevent queue flooding
+    size_t requestsToProcess = std::min(requestCount, MAX_REQUESTS_PER_FRAME);
+    if (requestsToProcess < requestCount) {
+        PATHFIND_DEBUG("Rate limiting: Processing " + std::to_string(requestsToProcess) +
+                      " of " + std::to_string(requestCount) + " requests this frame");
+
+        // Re-buffer excess requests for next frame
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        m_requestBuffer.insert(m_requestBuffer.end(),
+                              requests.begin() + requestsToProcess,
+                              requests.end());
+        requests.resize(requestsToProcess);
+    }
+
+    // WorkerBudget coordination
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+
+    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
+        budget.pathfindingAllocated,
+        requestsToProcess,
+        MIN_REQUESTS_FOR_BATCHING
+    );
+
+    // Store metrics for debugging/profiling
+    m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+    m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+    m_lastPathfindingBudget.store(budget.pathfindingAllocated, std::memory_order_relaxed);
+
+    // Determine if threading is beneficial
+    const bool useThreading = (requestsToProcess >= MIN_REQUESTS_FOR_BATCHING) &&
+                             (optimalWorkerCount > 0) &&
+                             (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
+
+    m_lastWasThreaded.store(useThreading, std::memory_order_relaxed);
+
+    if (!useThreading) {
+        // Process sequentially on main thread (low request count or high queue pressure)
+        for (size_t i = 0; i < requests.size(); ++i) {
+            const auto& req = requests[i];
+            uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+
+            // Coalesce with pending requests
+            {
+                std::lock_guard<std::mutex> lock(m_pendingMutex);
+                auto it = m_pending.find(cacheKey);
+                if (it != m_pending.end()) {
+                    if (req.callback) it->second.callbacks.push_back(req.callback);
+                    continue; // Already in flight
+                } else {
+                    PendingCallbacks pc;
+                    if (req.callback) pc.callbacks.push_back(req.callback);
+                    m_pending.emplace(cacheKey, std::move(pc));
+                }
+            }
+
+            // Submit single task to ThreadSystem
+            auto work = [this, req, cacheKey]() {
+                std::vector<Vector2D> path;
+                bool cacheHit = false;
+
+                // Cache lookup
+                {
+                    std::lock_guard<std::mutex> lock(m_cacheMutex);
+                    auto it = m_pathCache.find(cacheKey);
+                    if (it != m_pathCache.end()) {
+                        path = it->second.path;
+                        it->second.lastUsed = std::chrono::steady_clock::now();
+                        it->second.useCount++;
+                        cacheHit = true;
+                        m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+
+                // Compute path if needed
+                if (!cacheHit) {
+                    findPathImmediate(req.start, req.goal, path, true);
+                }
+
+                // Cache result
+                if (!path.empty()) {
+                    {
+                        std::lock_guard<std::mutex> lock(m_cacheMutex);
+                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                            evictOldestCacheEntry();
+                        }
+                        PathCacheEntry entry;
+                        entry.path = path;
+                        entry.lastUsed = std::chrono::steady_clock::now();
+                        entry.useCount = 1;
+                        m_pathCache[cacheKey] = std::move(entry);
+                    }
+                    m_completedRequests.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    m_failedRequests.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                m_processedCount.fetch_add(1, std::memory_order_relaxed);
+
+                // Fire callbacks
+                std::vector<PathCallback> callbacks;
+                {
+                    std::lock_guard<std::mutex> lock(m_pendingMutex);
+                    auto it = m_pending.find(cacheKey);
+                    if (it != m_pending.end()) {
+                        callbacks.swap(it->second.callbacks);
+                        m_pending.erase(it);
+                    }
+                }
+                for (const auto &cb : callbacks) {
+                    if (cb) cb(req.entityId, path);
+                }
+            };
+
+            const auto taskPri = mapEnumToTaskPriority(req.priority);
+            const auto priLabel = priorityLabel(req.priority);
+            std::string taskDesc = "PathfindingComputation/" + std::string(priLabel);
+
+            threadSystem.enqueueTask(work, taskPri, taskDesc);
+        }
+
+        return;
+    }
+
+    // Batch processing with WorkerBudget coordination (non-blocking)
+
+    // Calculate batch strategy using WorkerBudget
+    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+        HammerEngine::PATHFINDING_BATCH_CONFIG,
+        requestsToProcess,
+        MIN_REQUESTS_FOR_BATCHING,
+        optimalWorkerCount,
+        budget.pathfindingAllocated,
+        queuePressure,
+        m_adaptiveBatchState,
+        m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire)
+    );
+
+    PATHFIND_DEBUG("Processing " + std::to_string(requestsToProcess) + " requests in " +
+                  std::to_string(batchCount) + " batches (size: " + std::to_string(batchSize) +
+                  "), workers: " + std::to_string(optimalWorkerCount));
+
+    // Submit batches
+    for (size_t i = 0; i < batchCount; ++i) {
+        size_t start = i * batchSize;
+        size_t end = std::min(start + batchSize, requestsToProcess);
+
+        auto batchWork = [this, requests, start, end]() {
+            for (size_t idx = start; idx < end; ++idx) {
+                const auto& req = requests[idx];
+                uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+
+                // Coalesce
+                {
+                    std::lock_guard<std::mutex> lock(m_pendingMutex);
+                    auto it = m_pending.find(cacheKey);
+                    if (it != m_pending.end()) {
+                        if (req.callback) it->second.callbacks.push_back(req.callback);
+                        continue;
+                    } else {
+                        PendingCallbacks pc;
+                        if (req.callback) pc.callbacks.push_back(req.callback);
+                        m_pending.emplace(cacheKey, std::move(pc));
+                    }
+                }
+
+                // Process request
+                std::vector<Vector2D> path;
+                bool cacheHit = false;
+
+                {
+                    std::lock_guard<std::mutex> lock(m_cacheMutex);
+                    auto it = m_pathCache.find(cacheKey);
+                    if (it != m_pathCache.end()) {
+                        path = it->second.path;
+                        it->second.lastUsed = std::chrono::steady_clock::now();
+                        it->second.useCount++;
+                        cacheHit = true;
+                        m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+
+                if (!cacheHit) {
+                    findPathImmediate(req.start, req.goal, path, true);
+                }
+
+                if (!path.empty()) {
+                    {
+                        std::lock_guard<std::mutex> lock(m_cacheMutex);
+                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                            evictOldestCacheEntry();
+                        }
+                        PathCacheEntry entry;
+                        entry.path = path;
+                        entry.lastUsed = std::chrono::steady_clock::now();
+                        entry.useCount = 1;
+                        m_pathCache[cacheKey] = std::move(entry);
+                    }
+                    m_completedRequests.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    m_failedRequests.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                m_processedCount.fetch_add(1, std::memory_order_relaxed);
+
+                // Fire callbacks
+                std::vector<PathCallback> callbacks;
+                {
+                    std::lock_guard<std::mutex> lock(m_pendingMutex);
+                    auto it = m_pending.find(cacheKey);
+                    if (it != m_pending.end()) {
+                        callbacks.swap(it->second.callbacks);
+                        m_pending.erase(it);
+                    }
+                }
+                for (const auto &cb : callbacks) {
+                    if (cb) cb(req.entityId, path);
+                }
+            }
+        };
+
+        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+        m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+            batchWork,
+            HammerEngine::TaskPriority::High,
+            "Pathfinding_Batch_" + std::to_string(i)
+        ));
+    }
+
+    // Batches submitted asynchronously - callbacks will fire when paths complete
+    // waitForBatchCompletion() is only called during cleanup/state transitions
+}
+
+void PathfinderManager::waitForBatchCompletion() {
+    std::vector<std::future<void>> localFutures;
+
+    {
+        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+        localFutures = std::move(m_batchFutures);
+    }
+
+    for (auto& future : localFutures) {
+        if (future.valid()) {
+            try {
+                future.wait();
+            } catch (const std::exception& e) {
+                PATHFIND_ERROR("Exception waiting for batch completion: " + std::string(e.what()));
+            }
+        }
+    }
+}
+
+// End of file - event-driven pathfinding with collision and world integration

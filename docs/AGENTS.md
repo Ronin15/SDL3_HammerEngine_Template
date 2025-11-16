@@ -1,301 +1,170 @@
 # Repository Guidelines
 
-## Project Structure & Module Organization
-- `src/`: Engine/game implementation (managers, gameStates, utils).
-- `include/`: Public headers aligned with `src/` modules.
-- `tests/`: Boost.Test suites and scripts under `tests/test_scripts/`.
-- `bin/debug`, `bin/release`: Final executables. Tests run from `bin/debug/`.
-- `build/`: CMake/Ninja artifacts (don’t remove; re-configure first).
-- `res/`: Assets (fonts, images, audio).  `docs/`: Developer docs (e.g., `docs/Logger.md`).
+SDL3 HammerEngine development guide for AI agents.
+
+## Project Structure
+
+```
+src/{core, managers, gameStates, entities, events, ai, collisions, utils, world}
+include/       # Headers mirror src/
+tests/         # Boost.Test (68+ executables)
+bin/debug/     # Debug builds & test binaries
+bin/release/   # Release builds
+build/         # CMake/Ninja artifacts (reconfigure, don't delete)
+res/           # Assets (fonts, images, audio, data)
+docs/          # Developer documentation
+```
 
 ## Build Commands
 
-### Debug Build
 ```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug
-ninja -C build
-```
+# Debug
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 
-### Debug Build with Warning/Error Filtering
-```bash
+# Release
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# Debug with AddressSanitizer (requires -DUSE_MOLD_LINKER=OFF)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
+
+# Filter warnings/errors
 ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 ```
 
-### Release Build
-```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release  
-ninja -C build
-```
-
-### Debug with AddressSanitizer
-```bash
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address"
-ninja -C build
-```
-
-### Build System Notes
-- **Compile Commands**: `compile_commands.json` is automatically generated and copied to the project root for tooling support (e.g., `clangd`)
-- **Output Directories**: Debug builds output to `bin/debug/`, Release builds to `bin/release/`
-
-### Running the Application
-- Debug: `./bin/debug/SDL3_Template`
-- Release: `./bin/release/SDL3_Template`
-- Testing: `timeout 25s ./bin/debug/SDL3_Template` (25 second timeout for behavior testing)
+**Outputs**: `bin/debug/` or `bin/release/`  
+**Run**: `./bin/debug/SDL3_Template` | `timeout 60s ./bin/debug/SDL3_Template`
 
 ## Testing
 
-**Framework**: Uses Boost.Test framework. Test binaries are placed in `bin/debug/` and write focused, thorough tests covering both success and error paths. Clean up test artifacts after execution.
+**Framework**: Boost.Test (68+ test executables). Use targeted tests for specific systems during development.
 
-**Extensive Test Suite**: The project includes 68+ specialized test executables covering all systems (AI, collision, pathfinding, threading, events, particles, resources, etc.). When working on a specific system, use targeted tests rather than the full suite for faster iteration.
-
-### Run All Tests
 ```bash
+# All tests
 ./run_all_tests.sh --core-only --errors-only
-```
 
-**Note**: Use targeted tests when developing specific systems to avoid running the entire suite unnecessarily. Only run the full test suite when needed for comprehensive validation.
-
-### Run Specific Tests
-```bash
-# Save/Load tests
+# Targeted tests
 ./tests/test_scripts/run_save_tests.sh --verbose
-
-# AI system tests
 ./tests/test_scripts/run_ai_optimization_tests.sh
-
-# Thread safety tests
 ./tests/test_scripts/run_thread_tests.sh
-
-# Individual test binaries
 ./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
-```
 
-### Static Analysis
-```bash
+# Static analysis
 ./tests/test_scripts/run_cppcheck_focused.sh
-```
 
-### Performance Analysis (Valgrind)
-```bash
-# Quick memory check
+# Performance analysis
 ./tests/valgrind/quick_memory_check.sh
-
-# Cache performance analysis  
 ./tests/valgrind/cache_performance_analysis.sh
-
-# Complete Valgrind suite
-./tests/valgrind/run_complete_valgrind_suite.sh
 ```
 
-## Code Architecture
+## Architecture
 
-### Core Components
-- **GameEngine**: Central coordinator managing all subsystems with double-buffered rendering
-- **GameLoop**: Fixed-timestep game loop with separate update/render threads
-- **Managers**: Singleton pattern with `m_isShutdown` guard for clean shutdown
-- **ThreadSystem**: Production-grade thread pool with WorkerBudget priority system
+**Core**: GameEngine (double-buffered coordinator) | GameLoop (fixed timestep, update/render threads) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
 
-### Key Systems
-- **AI System**: High-performance batch-processed AI supporting 10K+ entities at 60+ FPS
-- **Event System**: Thread-safe event-driven architecture with batch processing
-- **Resource Management**: JSON-based loading with handle-based runtime access
-- **UI System**: Professional theming with auto-sizing and DPI awareness
-- **Collision System**: Spatial hash-based collision detection with pathfinding integration
+**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed) | EventManager (thread-safe, batch) | CollisionManager (spatial hash, pathfinding) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
 
-### Module Organization
-```
-src/
-├── core/           # GameEngine, GameLoop, ThreadSystem, Logger
-├── managers/       # All manager classes (AI, Event, Collision, etc.)
-├── gameStates/     # Game state implementations
-├── entities/       # Player, NPC, Entity base classes
-├── events/         # Event system and event types
-├── ai/             # AI behaviors and pathfinding
-├── collisions/     # Collision detection and spatial partitioning
-├── utils/          # Utilities, Camera, Vector2D
-└── world/          # World generation and management
-
-include/            # Public headers mirroring src/ structure
-tests/              # Boost.Test framework with test scripts
-res/                # Game assets (fonts, images, audio, data files)
-```
+**Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 
 ## Coding Standards
 
-### C++ Standards
-- **Language**: C++20
-- **Style**: 4-space indentation, Allman-style braces
-- **Memory**: RAII with smart pointers, no raw new/delete
-- **Threading**: Use ThreadSystem, avoid raw std::thread
-- **Copyright**: All files must include the standard copyright header:
-  ```cpp
-  /* Copyright (c) 2025 Hammer Forged Games
-   * All rights reserved.
-   * Licensed under the MIT License - see LICENSE file for details
-  */
-  ```
+**C++20** | 4-space indent, Allman braces | RAII + smart pointers | ThreadSystem (not raw std::thread) | Logger macros | Cross-platform guards | STL algorithms > manual loops
 
-### Naming Conventions
-- **Classes/Enums**: UpperCamelCase (`GameEngine`, `EventType`)
-- **Functions/Variables**: lowerCamelCase (`updateGame`, `playerHealth`) 
-- **Member Variables**: `m_` prefix (`m_isRunning`, `m_playerPosition`), `mp_` prefix for pointers (`mp_window`, `mp_renderer`)
-- **Constants**: ALL_CAPS (`MAX_PLAYERS`, `DEFAULT_SPEED`)
+**Naming**: UpperCamelCase (classes/enums) | lowerCamelCase (functions/vars) | `m_` prefix (members), `mp_` (pointers) | ALL_CAPS (constants)
 
-### Manager Pattern
-All managers follow this singleton pattern:
+**Headers**: `.hpp` (C++), `.h` (C) | Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors | Templates/constexpr/trivial members in headers | All logic, constructors, singletons in .cpp
+
+**Threading**: Update (mutex-locked, fixed timestep) | Render (main thread only, double-buffered) | Background (ThreadSystem + WorkerBudget) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
+
+**Strings**: `std::string_view` for input-only params | `std::string` for ownership | C strings only at C/SDL/OS boundaries | Never persist `string_view` beyond source lifetime
+
+**Copyright** (all files):
+```cpp
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+```
+
+### Manager Singleton Pattern
 ```cpp
 class ExampleManager {
 private:
     std::atomic<bool> m_isShutdown{false};
-    
 public:
     static ExampleManager& Instance() {
         static ExampleManager instance;
         return instance;
     }
-    
     void shutdown();
 };
 ```
 
-### Threading Architecture
-- **Update Loop**: Thread-safe via mutex, fixed timestep
-- **Render Loop**: Main thread only, double-buffered
-- **Background Work**: Use ThreadSystem with WorkerBudget priorities
-- **No Cross-Thread Rendering**: All drawing happens on main thread
+## Memory Management
 
-### Performance Guidelines
-- **STL Algorithms**: Prefer STL algorithms (`std::sort`, `std::find_if`, `std::transform`) over manual loops for better optimization
-- **Platform Guards**: Use platform-specific logic guards (`#ifdef __APPLE__`, `#ifdef WIN32`) for OS-specific code
+**Avoid Per-Frame Allocations**: Heap allocations cause frame dips due to allocator overhead. Reuse buffers.
 
-### Logging
-Use provided macros for consistent logging:
-- `GAMEENGINE_ERROR(message)`
-- `GAMEENGINE_WARN(message)`  
-- `GAMEENGINE_INFO(message)`
+```cpp
+// BAD: Allocates/deallocates every frame
+void update() {
+    std::vector<Data> buffer;
+    buffer.reserve(entityCount);
+    // ... use buffer
+}  // Deallocation
 
-### Strings & Text Handling
-- Prefer `std::string_view` for input-only string parameters in C++ APIs to avoid copies.
-- Use `std::string` when taking ownership or returning strings. Do not return `std::string_view` to temporaries or short-lived buffers.
-- Avoid raw `char*`/`const char*` in C++ interfaces. Only use C strings at strict C/SDL/OS boundaries; convert at the boundary via `.c_str()` or safe adapter utilities.
-- Never persist `std::string_view` beyond the lifetime of the referenced data. If persistence is needed, copy into a `std::string`.
+// GOOD: Reuses capacity across frames
+class Manager {
+    std::vector<Data> m_reusableBuffer;  // Member variable
+    
+    void update() {
+        m_reusableBuffer.clear();  // Keeps capacity
+        // ... use m_reusableBuffer
+    }
+};
+```
 
-### Header/Implementation Guidelines
-- **Headers**: Minimal, stable interface with forward declarations
-- **Implementation**: All non-trivial logic goes in .cpp files
-- **Inline**: Only trivial 1-2 line accessors and getters
-- **Dependencies**: Avoid leaking implementation details through headers
+**Rules**: Member vars for hot-path buffers | `clear()` over reconstruction | `reserve()` before loops | Avoid `push_back()` without reserve | Profile with -fsanitize=address
 
-## C++ Header vs Implementation
-- Keep headers minimal and stable:
-  - Prefer forward declarations over including other headers.
-  - Expose declarations only; avoid leaking dependencies.
-- Define in headers:
-  - Templates, `constexpr`, and header-only utilities by design.
-  - Trivial special members (`=default`/`=delete`) and trivial POD-like ctor/dtor.
-  - Tiny, non-throwing accessors (1–2 lines) that just read/set state.
-  - `inline` variables and constants.
-- Define in `.cpp` files:
-  - Any function with logic (control flow, logging, locking, allocation, exceptions).
-  - Constructors/destructors that do more than trivial init/cleanup.
-  - Singleton wiring and subsystems likely to change (reduces rebuild churn, stabilizes ABI).
-  - Enum stream operators and helpers (keep test output helpers out of headers).
-- Rationale: faster incremental builds, tighter compile-time hygiene, fewer ODR/ABI pitfalls; compilers/LTO can still inline across translation units when beneficial.
+## Engine Loop & Render Flow
 
-## Dependencies
+**GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.
 
-### Required
-- CMake 3.28+, Ninja, C++20 compiler
-- SDL3 (fetched automatically via FetchContent)
-- SDL3_image, SDL3_ttf, SDL3_mixer (fetched automatically)
+**Update** (thread-safe, mutex-locked): `GameEngine::update(deltaTime)` updates global systems (AIManager, EventManager, ParticleManager) → delegates to `GameStateManager::update`. Completes before render starts.
 
-### Optional
-- Boost (for testing framework)
-- cppcheck (static analysis)
-- Valgrind (performance/memory analysis)
+**Double Buffer**: `m_currentBufferIndex` (update) + `m_renderBufferIndex` (render) + `m_bufferReady[]`. Main loop calls `hasNewFrameToRender()` + `swapBuffers()` before update; render consumes stable previous buffer.
 
-## Platform Support
+**Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera). World tiles use `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)`. Entities use `Entity::render(const Camera*)` for world→screen conversion.
 
-### Cross-Platform Features
-- **macOS**: Optimized build flags, dSYM generation, letterbox mode
-- **Linux**: Wayland detection, adaptive VSync
-- **Windows**: Console output control, DLL management (planned)
-
-### Debug vs Release
-- **Debug**: Console output enabled, full debug symbols, no optimization
-- **Release**: Optimized builds, LTO enabled, platform-specific flags
-
-## Key Performance Notes
-
-### AI System
-- Designed for 10K+ entities at 60+ FPS with 4-6% CPU usage
-- Uses cache-friendly batch processing and distance-based culling
-- Lock-free design with spatial partitioning
-
-### Memory Management  
-- All dynamic allocation uses smart pointers
-- RAII patterns throughout for resource management
-- Binary serialization system for save/load operations
-
-### Rendering Pipeline
-- Double-buffered rendering with buffer swapping
-- Camera-aware rendering with consistent world-to-screen conversion
-- Batched particle and UI rendering
-
-## Large-Scale Organization
-- Public API surface lives under `include/` mirroring modules in `src/`.
-- Keep modules cohesive: one primary header in `include/<module>/` with a corresponding `.cpp` in `src/<module>/` for behavior.
-- Use forward declarations at API boundaries; include concrete types only in `.cpp`.
-- Keep hot-path, trivial accessors inline in headers; move all non-trivial logic to `.cpp`.
-- Central subsystems (managers, engine loop) expose minimal, stable interfaces; implementation details remain in `src/`.
-- Header-only utilities are exceptions and should be documented as such (e.g., items under `include/utils/`).
-
-### Resource Loading
-- JSON-based configuration for items, materials, currency
-- ResourceTemplateManager handles template loading and instantiation
-- Handle-based access pattern for performance and safety
+**Rules**: No background thread rendering | No extra manager sync (rely on mutexed update + buffer swap) | Snapshot camera once per render | NEVER static vars in threaded code
 
 ## Critical System Patterns
 
 ### InputManager SDL Cleanup Pattern
 
-**CRITICAL:** The InputManager has a very specific SDL gamepad subsystem cleanup pattern that must be maintained exactly as implemented. Do NOT modify this pattern without extreme caution.
+**CRITICAL**: The InputManager has a specific SDL gamepad cleanup pattern that MUST be maintained exactly. Do NOT modify without extreme caution.
 
-**The Issue:** When no gamepads are detected during initialization, the SDL gamepad subsystem is still initialized via `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` but if not properly cleaned up, it causes a "trace trap" crash during `SDL_Quit()` on macOS.
+**Issue**: When no gamepads are detected, `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` still initializes the subsystem. Improper cleanup causes "trace trap" crash during `SDL_Quit()` on macOS.
 
-**The Correct Pattern:**
-1. In `initializeGamePad()`: Use `SDL_InitSubSystem(SDL_INIT_GAMEPAD)` to initialize the subsystem
-2. If no gamepads are found: Immediately call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` before returning
-3. If gamepads are found: Set `m_gamePadInitialized = true` and let normal cleanup handle it
-4. In `clean()`: Only call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` if `m_gamePadInitialized` is true
+**Correct Pattern**:
+1. `initializeGamePad()`: Call `SDL_InitSubSystem(SDL_INIT_GAMEPAD)`
+2. If no gamepads found: Immediately call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` before returning
+3. If gamepads found: Set `m_gamePadInitialized = true` and let normal cleanup handle it
+4. `clean()`: Only call `SDL_QuitSubSystem(SDL_INIT_GAMEPAD)` if `m_gamePadInitialized` is true
 
-**What NOT to do:**
-- Do NOT call `SDL_QuitSubSystem()` in both initialization and cleanup paths
-- Do NOT use platform-specific `#ifdef` blocks to skip SDL cleanup
-- Do NOT rely solely on `SDL_Quit()` to clean up subsystems if they were individually initialized
-- Do NOT remove or modify the `m_gamePadInitialized` flag logic
+**Do NOT**:
+- Call `SDL_QuitSubSystem()` in both init and cleanup paths
+- Use platform `#ifdef` blocks to skip SDL cleanup
+- Rely solely on `SDL_Quit()` to clean up individually initialized subsystems
+- Remove/modify `m_gamePadInitialized` flag logic
 
-This pattern has been broken multiple times by well-meaning "fixes" that cause crashes. The current implementation is correct and tested.
+This pattern has been broken multiple times. Current implementation is correct and tested.
 
-## Testing Guidelines
-- Framework: Boost.Test. Place tests under `tests/`; binaries output to `bin/debug/`.
-- Write focused/thorough tests (success and error paths). Clean up test artifacts.
+## Dependencies
 
-## Architecture & Safety Notes
-- Update/Render: GameEngine coordinates update/render; don’t add extra sync in managers.
-- Managers: Follow Singleton shutdown pattern (`m_isShutdown` guard).
-- InputManager: Preserve SDL gamepad init/quit pattern to avoid macOS crashes.
+**Required**: CMake 3.28+, Ninja, C++20 compiler | SDL3, SDL3_image, SDL3_ttf, SDL3_mixer (auto-fetched via FetchContent)
 
-## Engine Loop & Render Flow
-- GameLoop: Drives three callbacks — events (main thread), fixed-timestep updates, and rendering. Target FPS and fixed timestep are configured in `HammerMain.cpp` via `GameLoop`.
-- Update (thread-safe): `GameEngine::update(deltaTime)` runs under a mutex to guarantee completion before any render. It updates global systems (AIManager, EventManager, ParticleManager), then delegates to the current `GameStateManager::update`.
-- Double buffering: `GameEngine` maintains `m_currentBufferIndex` (update) and `m_renderBufferIndex` (render) with `m_bufferReady[]`. The main loop calls `hasNewFrameToRender()` and `swapBuffers()` before each update, allowing render to consume a stable buffer from the previous tick.
-- Render (main thread): `GameEngine::render()` clears the renderer and calls `GameStateManager::render()`. States render world, entities, particles, and UI in a deterministic order using the current camera view.
-- World tiles: `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)` renders visible tiles using the same camera view for consistent alignment with entities.
-- Entities: `Entity::render(const Camera*)` converts world → screen using the provided camera; do not compute per-entity camera offsets outside this path.
-- Threading: No rendering from background threads. AI/particles may schedule work but all drawing occurs during `GameEngine::render()` on the main thread.
+**Optional**: Boost (testing) | cppcheck (static analysis) | Valgrind (performance/memory)
 
-Guidelines
-- Do not introduce additional synchronization between managers for rendering; rely on `GameEngine`’s mutexed update and double-buffer swap.
-- When adding a new state, snapshot camera/view once per render pass and reuse it for all world-space systems.
-- Keep camera-aware rendering centralized; avoid ad-hoc camera math inside managers that don’t own presentation.
+## Platform Support
+
+**Cross-Platform**: macOS (optimized flags, dSYM, letterbox) | Linux (Wayland, adaptive VSync) | Windows (console control, DLL planned)
+
+**Build Types**: Debug (console, full symbols, no opt) | Release (optimized, LTO, platform flags)

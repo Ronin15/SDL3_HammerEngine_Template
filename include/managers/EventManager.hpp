@@ -65,22 +65,19 @@ using EntityPtr = std::shared_ptr<Entity>;
  * Optimized for natural alignment and minimal padding
  */
 struct EventData {
-  EventPtr event;   // Smart pointer to event (16 bytes)
-  std::string name; // Stable name for mapping/compaction (~24+ bytes)
-  std::function<void()>
-      onConsumed;     // Optional callback after dispatch (~32 bytes)
+  EventPtr event;     // Smart pointer to event (16 bytes)
   uint32_t flags;     // Active, dirty, etc. (4 bytes)
   uint32_t priority;  // For priority-based processing (4 bytes)
-  EventTypeId typeId; // Type for fast dispatch (4 bytes)
-  // Natural padding will align this to 8-byte boundary (~88 bytes total)
+  EventTypeId typeId; // Type for fast dispatch AND name-based lookup (4 bytes)
+  uint32_t padding;   // Explicit padding for alignment (4 bytes)
+  // Total: 32 bytes (was 88 bytes - 64% reduction! Better cache locality)
 
   // Flags bit definitions
   static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
   static constexpr uint32_t FLAG_DIRTY = 1 << 1;
   static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
   EventData()
-      : event(nullptr), name(), flags(0), priority(0),
-        typeId(EventTypeId::Custom) {}
+      : event(nullptr), flags(0), priority(0), typeId(EventTypeId::Custom), padding(0) {}
   bool isActive() const { return flags & FLAG_ACTIVE; }
   void setActive(bool active) {
     if (active) flags |= FLAG_ACTIVE; else flags &= ~FLAG_ACTIVE;
@@ -106,6 +103,20 @@ struct EventPriority {
  * @brief Fast event handler function type
  */
 using FastEventHandler = std::function<void(const EventData &)>;
+
+/**
+ * @brief Handler entry combining callable with ID for token-based removal
+ */
+struct HandlerEntry {
+  FastEventHandler callable;
+  uint64_t id = 0;
+
+  HandlerEntry() = default;
+  HandlerEntry(FastEventHandler c, uint64_t i)
+    : callable(std::move(c)), id(i) {}
+
+  explicit operator bool() const { return static_cast<bool>(callable); }
+};
 
 /**
  * @brief Event pool for memory-efficient event management
@@ -229,6 +240,13 @@ public:
    * @brief Updates all active events and processes event systems
    */
   void update();
+
+  /**
+   * @brief Drains all deferred events from the dispatch queue
+   * @details Calls update() multiple times until all deferred events are processed.
+   *          Primarily intended for testing to ensure deterministic event processing.
+   */
+  void drainAllDeferredEvents();
 
   /**
    * @brief Checks if EventManager has been shut down
@@ -488,6 +506,8 @@ public:
   triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget,
                              std::weak_ptr<Entity> oldTarget,
                              DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerCameraZoomChanged(float newZoom, float oldZoom,
+                                DispatchMode mode = DispatchMode::Deferred) const;
 
   // Alternative trigger methods (aliases for compatibility)
   bool triggerWeatherChange(const std::string &weatherType,
@@ -530,7 +550,7 @@ public:
 
 
 private:
-  EventManager() = default;
+  EventManager(); // Constructor pre-allocates handler vectors (see .cpp)
 
   // Shutdown state
   bool m_isShutdown{false};
@@ -554,30 +574,38 @@ private:
   mutable EventPool<WorldEvent> m_worldPool;
   mutable EventPool<CameraEvent> m_cameraPool;
 
-  // Handler storage (type-indexed). Keep parallel id vectors for token removal
-  std::array<std::vector<FastEventHandler>,
-             static_cast<size_t>(EventTypeId::COUNT)>
+  // Handler storage (type-indexed with consolidated HandlerEntry)
+  // OPTIMIZATION: Eliminates parallel ID vectors, improves cache locality
+  std::array<std::vector<HandlerEntry>, static_cast<size_t>(EventTypeId::COUNT)>
       m_handlersByType;
-  std::array<std::vector<uint64_t>, static_cast<size_t>(EventTypeId::COUNT)>
-      m_handlerIdsByType;
   std::atomic<uint64_t> m_nextHandlerId{1};
 
-  // Per-name handlers
-  std::unordered_map<std::string, std::vector<FastEventHandler>> m_nameHandlers;
-  std::unordered_map<std::string, std::vector<uint64_t>> m_nameHandlerIds;
+  // Per-name handlers (consolidated)
+  std::unordered_map<std::string, std::vector<HandlerEntry>> m_nameHandlers;
 
   // Threading and synchronization
   mutable std::shared_mutex m_eventsMutex;
-  mutable std::mutex m_handlersMutex;
+  mutable std::shared_mutex m_handlersMutex;
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
   size_t m_threadingThreshold{
-      50}; // Thread for medium+ event counts (consistent with buffer threshold)
+      100}; // Global threshold: Thread when total events > 100
+  static constexpr size_t PER_TYPE_THREAD_THRESHOLD = 20; // Per-type minimum: Only thread types with 20+ events
 
   // Performance monitoring
   mutable std::array<PerformanceStats, static_cast<size_t>(EventTypeId::COUNT)>
       m_performanceStats;
   mutable std::mutex m_perfMutex;
+
+  // Performance tracking for DEBUG logging (matching AIManager/CollisionManager style)
+  static constexpr size_t PERF_SAMPLE_SIZE = 60;  // Rolling average over 60 frames
+  mutable std::array<double, PERF_SAMPLE_SIZE> m_updateTimeSamples{};
+  mutable size_t m_currentSampleIndex{0};
+  mutable double m_avgUpdateTimeMs{0.0};
+  mutable uint64_t m_frameCounter{0};
+  mutable uint64_t m_lastDebugLogFrame{0};
+  mutable uint64_t m_totalHandlerCalls{0};
+  static constexpr uint64_t DEBUG_LOG_INTERVAL = 300;  // Log every 300 frames (~5 seconds at 60fps)
 
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
@@ -614,6 +642,11 @@ private:
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
   void drainDispatchQueueWithBudget();
+
+  // OPTIMIZATION: Consolidated dispatch helper (eliminates code duplication across all trigger methods)
+  // Handles both immediate and deferred dispatch with single mutex lock and direct handler iteration
+  bool dispatchEvent(EventTypeId typeId, EventData& eventData, DispatchMode mode,
+                     const char* errorContext = "dispatchEvent") const;
 
   // Internal registration helper
   bool registerEventInternal(const std::string &name, EventPtr event,

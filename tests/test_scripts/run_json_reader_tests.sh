@@ -112,12 +112,12 @@ cd "$PROJECT_ROOT"
 
 # Run with appropriate options
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" $TEST_FILTER --log_level=all | tee "$PROJECT_ROOT/test_output.log"
+  "$TEST_EXECUTABLE" $TEST_FILTER --log_level=all 2>&1 | tee "$PROJECT_ROOT/test_output.log"
 else
-  "$TEST_EXECUTABLE" $TEST_FILTER | tee "$PROJECT_ROOT/test_output.log"
+  "$TEST_EXECUTABLE" $TEST_FILTER 2>&1 | tee "$PROJECT_ROOT/test_output.log"
 fi
 
-TEST_RESULT=$?
+TEST_RESULT=${PIPESTATUS[0]}
 echo -e "${BLUE}====================================${NC}"
 
 # Create test_results directory if it doesn't exist

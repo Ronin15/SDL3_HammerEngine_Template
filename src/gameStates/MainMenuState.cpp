@@ -32,19 +32,40 @@ bool MainMenuState::enter() {
   // Create title using auto-positioning
   ui.createTitleAtTop("mainmenu_title", "Hammer Game Engine - Main Menu", 60);
 
-  // Create menu buttons
+  // Create menu buttons with centered positioning
   int buttonWidth = 300;
   int buttonHeight = 50;
   int buttonSpacing = 20;
-  int startY = ui.getLogicalHeight() / 2 - 100;
 
-  ui.createButton("mainmenu_start_game_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY, buttonWidth, buttonHeight}, "Start Game");
-  ui.createButton("mainmenu_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "AI Demo");
-  ui.createButton("mainmenu_advanced_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 2 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Advanced AI Demo");
-  ui.createButton("mainmenu_event_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 3 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Event Demo");
-  ui.createButton("mainmenu_ui_example_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 4 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "UI Demo");
-  ui.createButton("mainmenu_overlay_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 5 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Overlay Demo");
-  ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, startY + 6 * (buttonHeight + buttonSpacing), buttonWidth, buttonHeight}, "Exit");
+  // Calculate relative offsets from center for 8 buttons
+  // Total height: 8 buttons * 50px + 7 gaps * 20px = 540px
+  // Center the group by starting at -270 from center
+  int buttonStep = buttonHeight + buttonSpacing; // 70px between each button
+  int firstButtonOffset = -270; // Top of centered button group
+
+  ui.createButton("mainmenu_start_game_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset, buttonWidth, buttonHeight}, "Start Game");
+  ui.setComponentPositioning("mainmenu_start_game_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset, buttonWidth, buttonHeight});
+
+  ui.createButton("mainmenu_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + buttonStep, buttonWidth, buttonHeight}, "AI Demo");
+  ui.setComponentPositioning("mainmenu_ai_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + buttonStep, buttonWidth, buttonHeight});
+
+  ui.createButton("mainmenu_advanced_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 2 * buttonStep, buttonWidth, buttonHeight}, "Advanced AI Demo");
+  ui.setComponentPositioning("mainmenu_advanced_ai_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 2 * buttonStep, buttonWidth, buttonHeight});
+
+  ui.createButton("mainmenu_event_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 3 * buttonStep, buttonWidth, buttonHeight}, "Event Demo");
+  ui.setComponentPositioning("mainmenu_event_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 3 * buttonStep, buttonWidth, buttonHeight});
+
+  ui.createButton("mainmenu_ui_example_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 4 * buttonStep, buttonWidth, buttonHeight}, "UI Demo");
+  ui.setComponentPositioning("mainmenu_ui_example_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 4 * buttonStep, buttonWidth, buttonHeight});
+
+  ui.createButton("mainmenu_overlay_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 5 * buttonStep, buttonWidth, buttonHeight}, "Overlay Demo");
+  ui.setComponentPositioning("mainmenu_overlay_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 5 * buttonStep, buttonWidth, buttonHeight});
+
+  ui.createButton("mainmenu_settings_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 6 * buttonStep, buttonWidth, buttonHeight}, "Settings");
+  ui.setComponentPositioning("mainmenu_settings_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 6 * buttonStep, buttonWidth, buttonHeight});
+
+  ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight}, "Exit");
+  ui.setComponentPositioning("mainmenu_exit_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight});
 
   // Set up button callbacks
   ui.setOnClick("mainmenu_start_game_btn", []() {
@@ -56,13 +77,13 @@ bool MainMenuState::enter() {
   ui.setOnClick("mainmenu_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AIDemo");
+    gameStateManager->changeState("AIDemoState");
   });
 
   ui.setOnClick("mainmenu_advanced_ai_demo_btn", []() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AdvancedAIDemo");
+    gameStateManager->changeState("AdvancedAIDemoState");
   });
 
   ui.setOnClick("mainmenu_event_demo_btn", []() {
@@ -81,6 +102,12 @@ bool MainMenuState::enter() {
     auto& gameEngine = GameEngine::Instance();
     auto* gameStateManager = gameEngine.getGameStateManager();
     gameStateManager->changeState("OverlayDemoState");
+  });
+
+  ui.setOnClick("mainmenu_settings_btn", []() {
+    auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    gameStateManager->changeState("SettingsMenuState");
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
@@ -127,7 +154,7 @@ void MainMenuState::handleInput() {
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
       auto& gameEngine = GameEngine::Instance();
       auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("AIDemo");
+      gameStateManager->changeState("AIDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
@@ -148,6 +175,12 @@ void MainMenuState::handleInput() {
       gameStateManager->changeState("OverlayDemoState");
   }
 
+  if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
+      auto& gameEngine = GameEngine::Instance();
+      auto* gameStateManager = gameEngine.getGameStateManager();
+      gameStateManager->changeState("SettingsMenuState");
+  }
+
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
       auto& gameEngine = GameEngine::Instance();
       gameEngine.setRunning(false);
@@ -156,4 +189,12 @@ void MainMenuState::handleInput() {
 
 std::string MainMenuState::getName() const {
   return "MainMenuState";
+}
+
+void MainMenuState::onWindowResize(int newLogicalWidth,
+                                    int newLogicalHeight) {
+  // Auto-repositioning now handled by UIManager - no manual updates needed!
+  GAMESTATE_DEBUG("MainMenuState: Window resized to " +
+                  std::to_string(newLogicalWidth) + "x" +
+                  std::to_string(newLogicalHeight) + " (auto-repositioning active)");
 }

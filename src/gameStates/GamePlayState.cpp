@@ -7,6 +7,7 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/FontManager.hpp"
@@ -25,8 +26,9 @@
 
 
 bool GamePlayState::enter() {
-  // Reset transition flag when entering state
+  // Reset transition flags when entering state
   m_transitioningToPause = false;
+  m_transitioningToLoading = false;
 
   // Check if already initialized (resuming from pause)
   if (m_initialized) {
@@ -36,33 +38,84 @@ bool GamePlayState::enter() {
     return true;
   }
 
-  // Initialize resource handles first
-  initializeResourceHandles();
+  // Check if world needs to be loaded
+  if (!m_worldLoaded) {
+    GAMEPLAY_INFO("World not loaded yet - will transition to LoadingState on first update");
+    m_needsLoading = true;
+    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
+    return true;  // Will transition to loading screen in update()
+  }
 
-  // Create player and position at screen center
-  mp_Player = std::make_shared<Player>();
-  mp_Player->ensurePhysicsBodyRegistered();
-  mp_Player->initializeInventory();
+  // World is loaded - proceed with normal initialization
+  GAMEPLAY_INFO("World already loaded - initializing gameplay");
 
-  // Position player at screen center
-  const auto &gameEngine = GameEngine::Instance();
-  Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
-  mp_Player->setPosition(screenCenter);
+  try {
+    const auto &gameEngine = GameEngine::Instance();
 
-  // Initialize the inventory UI
-  initializeInventoryUI();
+    // Initialize resource handles first
+    initializeResourceHandles();
 
-  // Initialize world and camera
-  initializeWorld();
-  initializeCamera();
+    // Create player and position at screen center
+    mp_Player = std::make_shared<Player>();
+    mp_Player->ensurePhysicsBodyRegistered();
+    mp_Player->initializeInventory();
 
-  // Mark as initialized for future pause/resume cycles
-  m_initialized = true;
+    // Position player at screen center
+    Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
+    mp_Player->setPosition(screenCenter);
+
+    // Initialize the inventory UI
+    initializeInventoryUI();
+
+    // Initialize camera (world already loaded)
+    initializeCamera();
+
+    // Mark as initialized for future pause/resume cycles
+    m_initialized = true;
+
+    GAMEPLAY_INFO("GamePlayState initialization complete");
+  } catch (const std::exception& e) {
+    GAMEPLAY_ERROR("Exception during GamePlayState initialization: " + std::string(e.what()));
+    return false;
+  }
 
   return true;
 }
 
 void GamePlayState::update([[maybe_unused]] float deltaTime) {
+  // Check if we need to transition to loading screen (do this in update, not enter)
+  if (m_needsLoading) {
+    m_needsLoading = false;  // Clear flag
+
+    GAMEPLAY_INFO("Transitioning to LoadingState for world generation");
+
+    // Create world configuration for gameplay
+    HammerEngine::WorldGenerationConfig config;
+    config.width = 100;   // Standard gameplay world
+    config.height = 100;
+    config.seed = static_cast<int>(std::time(nullptr));
+    config.elevationFrequency = 0.05f;
+    config.humidityFrequency = 0.03f;
+    config.waterLevel = 0.3f;
+    config.mountainLevel = 0.7f;
+
+    // Configure LoadingState and transition to it
+    const auto& gameEngine = GameEngine::Instance();
+    auto* gameStateManager = gameEngine.getGameStateManager();
+    if (gameStateManager) {
+      auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+      if (loadingState) {
+        loadingState->configure("GamePlayState", config);
+        // Set flag before transitioning to preserve m_worldLoaded in exit()
+        m_transitioningToLoading = true;
+        // Use changeState (called from update) to properly exit and re-enter
+        gameStateManager->changeState("LoadingState");
+      }
+    }
+
+    return;  // Don't continue with rest of update
+  }
+
   // Update player if it exists
   if (mp_Player) {
     mp_Player->update(deltaTime);
@@ -88,26 +141,38 @@ void GamePlayState::render() {
   // Cache manager references for better performance
   FontManager &fontMgr = FontManager::Instance();
 
-  // Get camera view area for culling and rendering
-  HammerEngine::Camera::ViewRect viewRect = m_camera->getViewRect();
+  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+  HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
+  if (m_camera) {
+    viewRect = m_camera->getViewRect();
+  }
+
+  // Set render scale for zoom (scales all world/entity rendering automatically)
+  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
+  SDL_SetRenderScale(renderer, zoom, zoom);
 
   // Render world using camera coordinate transformations
-  auto &worldMgr = WorldManager::Instance();
-  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-    worldMgr.render(renderer,
-                   viewRect.x, viewRect.y,  // Camera view area
-                   viewRect.width, viewRect.height);
+  if (m_camera) {
+    auto &worldMgr = WorldManager::Instance();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.render(renderer,
+                     viewRect.x, viewRect.y,  // Camera view area
+                     viewRect.width, viewRect.height);
+    }
   }
 
   // Render player using camera coordinate transformations
-  if (mp_Player) {
+  if (mp_Player && m_camera) {
     mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
   }
+
+  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
+  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
   // Render UI components (no camera transformation)
   SDL_Color fontColor = {200, 200, 200, 255};
   fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
-                   "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items",
+                   "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items <-> [ ] Zoom",
                    "fonts_Arial",
                    gameEngine.getLogicalWidth() / 2, // Center horizontally
                    20, fontColor, renderer);
@@ -124,6 +189,57 @@ bool GamePlayState::exit() {
     m_transitioningToPause = false;
 
     // Return early - NO cleanup when going to pause, keep m_initialized = true
+    return true;
+  }
+
+  if (m_transitioningToLoading) {
+    // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
+    // This prevents infinite loop when returning from LoadingState
+
+    // Reset the flag after using it
+    m_transitioningToLoading = false;
+
+    // Clean up managers (same as full exit)
+    AIManager& aiMgr = AIManager::Instance();
+    aiMgr.prepareForStateTransition();
+
+    CollisionManager& collisionMgr = CollisionManager::Instance();
+    if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
+      collisionMgr.prepareForStateTransition();
+    }
+
+    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
+    ParticleManager& particleMgr = ParticleManager::Instance();
+    if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+      particleMgr.prepareForStateTransition();
+    }
+
+    // Clean up camera
+    m_camera.reset();
+
+    // Unload world (LoadingState will reload it)
+    auto& worldManager = WorldManager::Instance();
+    if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
+      worldManager.unloadWorld();
+      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
+      // when LoadingState returns to this state
+    }
+
+    // Clean up UI
+    auto &ui = UIManager::Instance();
+    ui.prepareForStateTransition();
+
+    // Reset player
+    mp_Player = nullptr;
+
+    // Reset initialized flag so state re-initializes after loading
+    m_initialized = false;
+
+    // Keep m_worldLoaded = true to remember we've already been through loading
     return true;
   }
 
@@ -158,6 +274,9 @@ bool GamePlayState::exit() {
   auto& worldManager = WorldManager::Instance();
   if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
     worldManager.unloadWorld();
+    // CRITICAL: Only reset m_worldLoaded when actually unloading a world
+    // This prevents infinite loop when transitioning to LoadingState (no world yet)
+    m_worldLoaded = false;
   }
 
   // Full UI cleanup using standard pattern
@@ -210,6 +329,14 @@ void GamePlayState::handleInput() {
     toggleInventoryDisplay();
   }
 
+  // Camera zoom controls
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
+    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
+    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
+  }
+
   // Resource addition demo keys
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     addDemoResource(m_goldHandle, 10);
@@ -234,8 +361,8 @@ void GamePlayState::handleInput() {
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
-            int tileX = static_cast<int>(worldPos.getX() / 32);
-            int tileY = static_cast<int>(worldPos.getY() / 32);
+            int tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
+            int tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
             auto& worldMgr = WorldManager::Instance();
             if (worldMgr.isValidPosition(tileX, tileY)) {
@@ -269,11 +396,14 @@ void GamePlayState::initializeInventoryUI() {
   ui.createPanel("gameplay_inventory_panel",
                  {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
   ui.setComponentVisible("gameplay_inventory_panel", false);
+  // Set auto-repositioning: right-aligned with fixed offsetY from top
+  ui.setComponentPositioning("gameplay_inventory_panel", {UIPositionMode::RIGHT_ALIGNED, 20, inventoryY - (ui.getLogicalHeight() - inventoryHeight) / 2, inventoryWidth, inventoryHeight});
 
   ui.createTitle("gameplay_inventory_title",
                  {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},
                  "Player Inventory");
   ui.setComponentVisible("gameplay_inventory_title", false);
+  // Children will be repositioned in onWindowResize based on panel position
 
   ui.createLabel("gameplay_inventory_status",
                  {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},
@@ -333,7 +463,35 @@ void GamePlayState::initializeInventoryUI() {
   });
 }
 
+void GamePlayState::onWindowResize(int newLogicalWidth,
+                                    int newLogicalHeight) {
+  // Panel auto-repositions via UIManager, but children need manual updates (they're relative to panel)
+  auto &ui = UIManager::Instance();
 
+  const int inventoryWidth = 280;
+
+  // Get the panel's new position (auto-repositioned by UIManager)
+  UIRect panelBounds = ui.getBounds("gameplay_inventory_panel");
+  const int inventoryX = panelBounds.x;
+  const int inventoryY = panelBounds.y;
+
+  // Reposition children relative to panel's new position
+  ui.setComponentBounds("gameplay_inventory_title",
+                        {inventoryX + 10, inventoryY + 25,
+                         inventoryWidth - 20, 35});
+
+  ui.setComponentBounds("gameplay_inventory_status",
+                        {inventoryX + 10, inventoryY + 75,
+                         inventoryWidth - 20, 25});
+
+  ui.setComponentBounds("gameplay_inventory_list",
+                        {inventoryX + 10, inventoryY + 110,
+                         inventoryWidth - 20, 270});
+
+  GAMEPLAY_DEBUG("Repositioned inventory UI for new window size: " +
+                 std::to_string(newLogicalWidth) + "x" +
+                 std::to_string(newLogicalHeight) + " (panel auto-positioned)");
+}
 
 void GamePlayState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();
@@ -396,37 +554,6 @@ void GamePlayState::initializeResourceHandles() {
       woodResource ? woodResource->getHandle() : HammerEngine::ResourceHandle();
 }
 
-void GamePlayState::initializeWorld() {
-  // Initialize and load a new world following EventDemoState pattern
-  auto& worldManager = WorldManager::Instance();
-  if (!worldManager.isInitialized()) {
-    if (!worldManager.init()) {
-      std::cerr << "Failed to initialize WorldManager" << std::endl;
-      return;
-    }
-  }
-
-  // Create a default world configuration
-  // TODO: Make this configurable or load from settings
-  HammerEngine::WorldGenerationConfig config;
-  config.width = 100;
-  config.height = 100;
-
-  // Generate a random seed for world variety
-  std::random_device rd;
-  config.seed = rd();
-
-  // Set reasonable defaults for world generation
-  config.elevationFrequency = 0.05f;
-  config.humidityFrequency = 0.03f;
-  config.waterLevel = 0.3f;
-  config.mountainLevel = 0.7f;
-
-  if (!worldManager.loadNewWorld(config)) {
-    std::cerr << "Failed to load new world in GamePlayState" << std::endl;
-    // Continue anyway like EventDemoState - game can function without world
-  }
-}
 
 void GamePlayState::initializeCamera() {
   const auto &gameEngine = GameEngine::Instance();
@@ -464,6 +591,10 @@ void GamePlayState::initializeCamera() {
 void GamePlayState::updateCamera(float deltaTime) {
   // Defensive null check (camera always initialized in enter(), but kept for safety)
   if (m_camera) {
+    // Sync viewport with current window size (handles resize events)
+    m_camera->syncViewportWithEngine();
+
+    // Update camera position and following logic
     m_camera->update(deltaTime);
   }
 }

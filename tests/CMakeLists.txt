@@ -17,7 +17,6 @@ message(STATUS "Building tests with Boost Test support")
 
 # --- Create TestMocks Library ---
 set(MOCK_SOURCES
-    mocks/MockAIBehavior.cpp
     mocks/MockPlayer.cpp
     mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
@@ -37,6 +36,7 @@ target_link_libraries(TestMocks PUBLIC HammerEngineLib)
 # Simple tests (no mocks needed)
 set(SIMPLE_TESTS
     save_manager_tests
+    settings_manager_tests
     thread_system_tests
     game_state_manager_tests
     ai_optimization_tests
@@ -52,7 +52,6 @@ set(SIMPLE_TESTS
     world_manager_tests
     world_manager_event_integration_tests
     ui_stress_test
-    event_manager_behavior_tests
     collision_system_tests
     pathfinding_system_tests
     pathfinder_manager_tests
@@ -66,6 +65,7 @@ set(MOCK_TESTS
     thread_safe_ai_integration_tests
     event_manager_tests
     event_types_tests
+    event_manager_behavior_tests
     particle_manager_core_tests
     particle_manager_performance_tests
     particle_manager_weather_tests
@@ -75,6 +75,7 @@ set(MOCK_TESTS
     collision_pathfinding_integration_tests
     collision_benchmark
     pathfinder_benchmark
+    pathfinder_ai_contention_tests
 )
 
 # Tests that need special mock combinations
@@ -89,6 +90,8 @@ foreach(test_name ${SIMPLE_TESTS})
     # Determine source file based on test name
     if(${test_name} STREQUAL "save_manager_tests")
         set(test_source "SaveManagerTests.cpp")
+    elseif(${test_name} STREQUAL "settings_manager_tests")
+        set(test_source "SettingsManagerTests.cpp")
     elseif(${test_name} STREQUAL "thread_system_tests")
         set(test_source "ThreadSystemTests.cpp")
     elseif(${test_name} STREQUAL "game_state_manager_tests")
@@ -154,6 +157,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "events/EventManagerTest.cpp")
     elseif(${test_name} STREQUAL "event_types_tests")
         set(test_source "events/EventTypesTest.cpp")
+    elseif(${test_name} STREQUAL "event_manager_behavior_tests")
+        set(test_source "events/EventManagerBehaviorTests.cpp")
     elseif(${test_name} STREQUAL "weather_event_tests")
         set(test_source "events/WeatherEventTest.cpp")
     elseif(${test_name} STREQUAL "behavior_functionality_tests")
@@ -164,6 +169,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "performance/CollisionBenchmark.cpp")
     elseif(${test_name} STREQUAL "pathfinder_benchmark")
         set(test_source "performance/PathfinderBenchmark.cpp")
+    elseif(${test_name} STREQUAL "pathfinder_ai_contention_tests")
+        set(test_source "integration/PathfinderAIContentionTests.cpp")
     elseif(${test_name} MATCHES "^particle_manager_")
         string(REPLACE "particle_manager_" "" suffix ${test_name})
         string(REPLACE "_tests" "" suffix ${suffix})
@@ -204,7 +211,6 @@ target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
-target_link_libraries(event_manager_behavior_tests PRIVATE TestMocks)
 
 # Add save_manager_tests special mock
 target_sources(save_manager_tests PRIVATE mocks/MockPlayer.cpp)

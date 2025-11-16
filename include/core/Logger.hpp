@@ -221,6 +221,12 @@ inline std::mutex Logger::s_logMutex{};
 #define UI_INFO(msg) HAMMER_INFO("UIManager", msg)
 #define UI_DEBUG(msg) HAMMER_DEBUG("UIManager", msg)
 
+#define CAMERA_CRITICAL(msg) HAMMER_CRITICAL("Camera", msg)
+#define CAMERA_ERROR(msg) HAMMER_ERROR("Camera", msg)
+#define CAMERA_WARN(msg) HAMMER_WARN("Camera", msg)
+#define CAMERA_INFO(msg) HAMMER_INFO("Camera", msg)
+#define CAMERA_DEBUG(msg) HAMMER_DEBUG("Camera", msg)
+
 #define SAVEGAME_CRITICAL(msg) HAMMER_CRITICAL("SaveGameManager", msg)
 #define SAVEGAME_ERROR(msg) HAMMER_ERROR("SaveGameManager", msg)
 #define SAVEGAME_WARN(msg) HAMMER_WARN("SaveGameManager", msg)
@@ -302,6 +308,12 @@ inline std::mutex Logger::s_logMutex{};
 #define PATHFIND_WARN(msg) HAMMER_WARN("Pathfinding", msg)
 #define PATHFIND_INFO(msg) HAMMER_INFO("Pathfinding", msg)
 #define PATHFIND_DEBUG(msg) HAMMER_DEBUG("Pathfinding", msg)
+
+#define SETTINGS_CRITICAL(msg) HAMMER_CRITICAL("SettingsManager", msg)
+#define SETTINGS_ERROR(msg) HAMMER_ERROR("SettingsManager", msg)
+#define SETTINGS_WARNING(msg) HAMMER_WARN("SettingsManager", msg)
+#define SETTINGS_INFO(msg) HAMMER_INFO("SettingsManager", msg)
+#define SETTINGS_DEBUG(msg) HAMMER_DEBUG("SettingsManager", msg)
 
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \

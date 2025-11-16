@@ -7,6 +7,7 @@
 #define ATTACK_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/behaviors/AttackBehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -43,7 +44,7 @@ public:
                           float attackDamage = 10.0f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -100,24 +101,28 @@ public:
 private:
   
   struct EntityState {
+    // Base AI behavior state (pathfinding, separation, cooldowns)
+    AIBehaviorState baseState;
+
+    // Attack-specific state
     Vector2D lastTargetPosition{0, 0};
     Vector2D attackPosition{0, 0};
     Vector2D retreatPosition{0, 0};
     Vector2D strafeVector{0, 0};
 
     AttackState currentState{AttackState::SEEKING};
-    Uint64 lastAttackTime{0};
-    Uint64 stateChangeTime{0};
-    Uint64 lastDamageTime{0};
-    Uint64 comboStartTime{0};
-    Uint64 nextStrafeTime{0};
+    float attackTimer{0.0f};
+    float stateChangeTimer{0.0f};
+    float damageTimer{0.0f};
+    float comboTimer{0.0f};
+    float strafeTimer{0.0f};
 
     float currentHealth{100.0f};
     float maxHealth{100.0f};
     float currentStamina{100.0f};
     float targetDistance{0.0f};
     float attackChargeTime{0.0f};
-    float recoveryStartTime{0.0f};
+    float recoveryTimer{0.0f};
 
     int currentCombo{0};
     int attacksInCombo{0};
@@ -135,34 +140,22 @@ private:
     float preferredAttackAngle{0.0f};
     int strafeDirectionInt{1}; // 1 for clockwise, -1 for counter-clockwise
 
-    // Lightweight per-entity path-following state
-    std::vector<Vector2D> pathPoints;      // queued path nodes
-    size_t currentPathIndex{0};            // current node index
-    Uint64 lastPathUpdate{0};              // last time we refreshed the path
-    Uint64 lastProgressTime{0};            // last time we made progress
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float navRadius{18.0f};                // node snap radius
-    Uint64 backoffUntil{0};
-    // Separation decimation
-    Uint64 lastSepTick{0};
-    Vector2D lastSepVelocity{0, 0};
-
-    EntityState()
-        : lastTargetPosition(0, 0), attackPosition(0, 0), retreatPosition(0, 0),
-          strafeVector(0, 0), currentState(AttackState::SEEKING),
-          lastAttackTime(0), stateChangeTime(0), lastDamageTime(0),
-          comboStartTime(0), nextStrafeTime(0), currentHealth(100.0f),
-          maxHealth(100.0f), currentStamina(100.0f), targetDistance(0.0f),
-          attackChargeTime(0.0f), recoveryStartTime(0.0f), currentCombo(0),
-          attacksInCombo(0), inCombat(false), hasTarget(false),
-          isCharging(false), isRetreating(false), canAttack(true),
-          lastAttackHit(false), specialAttackReady(false),
-          circleStrafing(false), flanking(false), preferredAttackAngle(0.0f),
-          strafeDirectionInt(1), pathPoints(), currentPathIndex(0),
-          lastPathUpdate(0), lastProgressTime(0),
-          lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), backoffUntil(0) {}
+    EntityState() {
+      baseState.navRadius = 18.0f; // Attack-specific nav radius
+    }
   };
+
+  // Helper methods for executeLogic refactoring
+  void updateTimers(EntityState& state, float deltaTime);
+  EntityState& ensureEntityState(EntityPtr entity);
+  void updateTargetTracking(EntityPtr entity, EntityState& state, EntityPtr target);
+  void updateTargetDistance(EntityPtr entity, EntityPtr target, EntityState& state);
+  void updateCombatState(EntityState& state);
+  void handleNoTarget(EntityState& state);
+  void dispatchModeUpdate(EntityPtr entity, EntityState& state, float deltaTime);
+
+  // Configuration system
+  void applyConfig(const HammerEngine::AttackBehaviorConfig& config);
 
   // Map to store per-entity state
   std::unordered_map<EntityPtr, EntityState> m_entityStates;
@@ -207,13 +200,22 @@ private:
   // bool m_useAsyncPathfinding removed
   float m_chargeDamageMultiplier{1.5f};
 
+  // Combat state transition thresholds
+  static constexpr float COMBAT_ENTER_RANGE_MULT = 1.2f;  // Enter combat at 120% of attack range
+  static constexpr float COMBAT_EXIT_RANGE_MULT = 2.0f;   // Exit combat at 200% of attack range
+
   // Timing constants
-  static constexpr Uint64 COMBO_TIMEOUT = 3000; // 3 seconds
-  static constexpr Uint64 CHARGE_TIME = 1000;   // 1 second charge
-  static constexpr Uint64 STRAFE_INTERVAL =
-      2000; // 2 seconds between direction changes
+  static constexpr float COMBO_TIMEOUT = 3.0f; // 3 seconds
+  static constexpr float CHARGE_TIME = 1.0f;   // 1 second charge
+  static constexpr float STRAFE_INTERVAL = 2.0f; // 2 seconds between direction changes
   static constexpr float RETREAT_SPEED_MULTIPLIER = 1.5f;
   static constexpr float CHARGE_SPEED_MULTIPLIER = 2.0f;
+
+  // Combat multipliers
+  static constexpr float COMBO_DAMAGE_PER_LEVEL = 0.2f;    // 20% damage increase per combo level
+  static constexpr float SPECIAL_ATTACK_MULTIPLIER = 1.5f; // 1.5x damage/knockback for special attacks
+  static constexpr float COMBO_FINISHER_MULTIPLIER = 2.0f; // 2x damage/knockback for combo finishers
+  static constexpr float CHARGE_DISTANCE_THRESHOLD_MULT = 1.5f; // Charge when > 150% of optimal range
 
   // Random number generation
   mutable std::mt19937 m_rng{std::random_device{}()};
@@ -254,39 +256,34 @@ private:
                                float damage);
 
   // Mode-specific updates
-  void updateMeleeAttack(EntityPtr entity, EntityState &state);
-  void updateRangedAttack(EntityPtr entity, EntityState &state);
-  void updateChargeAttack(EntityPtr entity, EntityState &state);
-  void updateAmbushAttack(EntityPtr entity, EntityState &state);
-  void updateCoordinatedAttack(EntityPtr entity, EntityState &state);
-  void updateHitAndRun(EntityPtr entity, EntityState &state);
-  void updateBerserkerAttack(EntityPtr entity, EntityState &state);
+  void updateMeleeAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateRangedAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateChargeAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAmbushAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateCoordinatedAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateHitAndRun(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateBerserkerAttack(EntityPtr entity, EntityState &state, float deltaTime);
 
   // State-specific updates
   void updateSeeking(EntityPtr entity, EntityState &state);
-  void updateApproaching(EntityPtr entity, EntityState &state);
-  void updatePositioning(EntityPtr entity, EntityState &state);
+  void updateApproaching(EntityPtr entity, EntityState &state, float deltaTime);
+  void updatePositioning(EntityPtr entity, EntityState &state, float deltaTime);
   void updateAttacking(EntityPtr entity, EntityState &state);
   void updateRecovering(EntityPtr entity, EntityState &state);
   void updateRetreating(EntityPtr entity, EntityState &state);
   void updateCooldown(EntityPtr entity, EntityState &state);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed);
+  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
   [[maybe_unused]] void maintainDistance(EntityPtr entity, EntityPtr target,
-                                         float desiredDistance);
+                                         float desiredDistance, float deltaTime);
   [[maybe_unused]] void circleStrafe(EntityPtr entity, EntityPtr target,
-                                     EntityState &state);
+                                     EntityState &state, float deltaTime);
   [[maybe_unused]] void performFlankingManeuver(EntityPtr entity,
                                                 EntityPtr target,
-                                                EntityState &state);
+                                                EntityState &state, float deltaTime);
 
-  // Utility methods
-  Vector2D normalizeDirection(const Vector2D &direction) const;
-  [[maybe_unused]] float calculateAngleToTarget(const Vector2D &from,
-                                                const Vector2D &to) const;
-  [[maybe_unused]] float normalizeAngle(float angle) const;
-  Vector2D rotateVector(const Vector2D &vector, float angle) const;
+  // Utility methods (most moved to base class)
   [[maybe_unused]] bool isValidAttackPosition(const Vector2D &position,
                                               EntityPtr target) const;
 

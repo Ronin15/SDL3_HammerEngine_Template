@@ -54,13 +54,34 @@ tests/    # Boost.Test scripts
 res/      # Assets
 ```
 
+## Development Workflow
+
+**ALWAYS Check Established Patterns First**: Before implementing new features, search the codebase for existing patterns. Don't reinvent solutions that already exist.
+
+**Pattern Discovery**:
+```bash
+# UI positioning/components
+grep -rn "createEventLog\|BOTTOM_\|createOverlay" src/gameStates/
+grep -n "enum class UIPositionMode" include/managers/UIManager.hpp
+
+# Reference states: EventDemoState (event log, bottom-left), UIDemoState (full UI showcase),
+# SettingsMenuState (centered buttons, tabs), MainMenuState (simple menus)
+
+# Manager patterns
+grep -rn "class.*Manager" include/managers/
+```
+
+**When to Add New Patterns**: Only when (1) existing patterns don't solve the use case, (2) new pattern is a logical extension of existing ones. Mirror established implementations whenever possible.
+
 ## Standards
 
 **C++20** | 4-space indent, Allman braces | RAII + smart pointers | ThreadSystem (not raw std::thread) | Exceptions for critical errors, codes for expected failures | Logger macros | Cross-platform guards | STL algorithms > manual loops
 
+**Parameter Passing**: **ALWAYS prefer references over copies**. Use `const T&` for read-only access to non-trivial objects. Use `T&` for mutation. Pass by value only for primitives (int, float, bool) or intentional ownership transfer (move semantics). NEVER copy when a reference suffices.
+
 **Naming**: UpperCamelCase (classes/enums) | lowerCamelCase (functions/vars) | `m_` prefix (members), `mp_` (pointers) | ALL_CAPS (constants)
 
-**Headers**: Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
+**Headers**: `.hpp` for C++, `.h` for C | Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
 
 **Threading**: Update (mutex-locked, fixed timestep) | Render (main thread only, double-buffered) | Background (ThreadSystem + WorkerBudget) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
 
@@ -71,6 +92,108 @@ res/      # Assets
  * Licensed under the MIT License - see LICENSE file for details
 */
 ```
+
+## Memory Management
+
+**Avoid Per-Frame Allocations**: Heap allocations cause periodic frame dips due to allocator overhead (defragmentation, OS paging). Reuse buffers across frames.
+
+**Buffer Reuse Pattern**:
+```cpp
+// BAD: Allocates/deallocates 128KB every frame
+void update() {
+    std::vector<Data> buffer;  // Fresh allocation
+    buffer.reserve(entityCount);
+    // ... use buffer
+}  // Deallocation
+
+// GOOD: Reuses capacity across frames
+class Manager {
+    std::vector<Data> m_reusableBuffer;  // Member variable
+
+    void update() {
+        m_reusableBuffer.clear();  // Keeps capacity, no dealloc
+        // ... use m_reusableBuffer
+    }
+};
+```
+
+**Pre-allocation**: Always `reserve()` when size is known to avoid incremental reallocations:
+```cpp
+std::vector<Entity> entities;
+entities.reserve(expectedCount);  // Single allocation
+for (size_t i = 0; i < expectedCount; ++i) {
+    entities.push_back(data[i]);  // No reallocs
+}
+```
+
+**Rules**: Member vars for hot-path buffers | `clear()` over reconstruction | `reserve()` before loops | Avoid `push_back()` without reserve | Profile allocations with -fsanitize=address
+
+## Cross-Platform SIMD Optimizations
+
+**Supported Platforms**: x86-64 (SSE2/AVX2) + ARM64 (NEON). Intel Macs are NOT supported.
+
+**SIMD-Optimized Systems**:
+- **AIManager**: Distance calculations (3-4x speedup on 10K+ entities)
+- **CollisionManager**: Bounds calculation, layer mask filtering (2-3x speedup on Apple Silicon)
+- **ParticleManager**: Various particle operations
+
+**Platform Detection** (automatic):
+```cpp
+#ifdef AI_SIMD_SSE2        // x86-64 with SSE2
+#ifdef AI_SIMD_AVX2        // x86-64 with AVX2
+#ifdef AI_SIMD_NEON        // ARM64 (Apple Silicon)
+```
+
+**SIMD Abstraction Layer**: `include/utils/SIMDMath.hpp` provides cross-platform SIMD utilities:
+```cpp
+using namespace HammerEngine::SIMD;
+
+// Platform-agnostic SIMD operations
+Float4 a = load4(ptr);              // Load 4 floats
+Float4 b = broadcast(value);         // Broadcast scalar to all lanes
+Float4 c = add(a, b);               // Add vectors
+Float4 d = mul(c, broadcast(2.0f)); // Multiply by scalar
+store4(ptr, d);                      // Store results
+```
+
+**Implementation Pattern**:
+```cpp
+void processData(const std::vector<Data>& input) {
+#if defined(AI_SIMD_SSE2)
+    // x86-64 SSE2 path - process 4 elements at once
+    for (size_t i = 0; i + 3 < input.size(); i += 4) {
+        __m128 data = _mm_loadu_ps(&input[i].value);
+        // ... SIMD processing ...
+    }
+    // Scalar tail for remaining elements
+#elif defined(AI_SIMD_NEON)
+    // ARM NEON path - process 4 elements at once
+    for (size_t i = 0; i + 3 < input.size(); i += 4) {
+        float32x4_t data = vld1q_f32(&input[i].value);
+        // ... SIMD processing ...
+    }
+    // Scalar tail for remaining elements
+#else
+    // Scalar fallback - always works
+    for (size_t i = 0; i < input.size(); ++i) {
+        // ... scalar processing ...
+    }
+#endif
+}
+```
+
+**Best Practices**:
+- Always provide scalar fallback path (portability + debugging)
+- Process 4 elements per iteration (SSE2/NEON native width)
+- Handle non-multiple-of-4 counts with scalar tail loop
+- Use aligned loads/stores when possible (`alignas(16)`)
+- Test on both x86-64 and ARM64 platforms
+
+**Performance Notes**:
+- SIMD provides 2-4x speedup for arithmetic-heavy operations
+- Memory bandwidth can be bottleneck (ensure cache-friendly access)
+- Branch prediction matters - minimize conditionals in SIMD loops
+- Release builds (`-O3 -march=native`) enable full SIMD utilization
 
 ## GameEngine Update/Render Flow
 
@@ -83,3 +206,47 @@ res/      # Assets
 **Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera).
 
 **Rules**: No background thread rendering (all drawing in `GameEngine::render()`) | No extra manager sync (rely on mutexed update + buffer swap) | Snapshot camera once per render | NEVER static vars in threaded code
+
+## Rendering Rules
+
+**Critical for SDL3_GPU Compatibility**: SDL3_GPU uses command buffer architecture requiring **exactly one Present() per frame** through unified render path.
+
+**NEVER Manual Rendering in GameStates**:
+- NEVER call `SDL_RenderClear()` or `SDL_RenderPresent()` directly in GameState classes
+- ALL rendering MUST go through: `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`
+- Multiple Present() calls break SDL3_GPU's command buffer system
+
+**Loading Screens**: Use `LoadingState` with async operations (never blocking with manual rendering):
+```cpp
+// Configure LoadingState before transition
+auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
+loadingState->configure("TargetStateName", worldConfig);
+gameStateManager->changeState("LoadingState");
+
+// LoadingState handles async world generation on ThreadSystem
+// Progress bar renders through normal GameEngine::render() flow
+// No manual SDL_RenderClear/Present calls needed
+```
+
+**Deferred State Transitions**: State changes from `enter()` cause timing issues. Use deferred pattern:
+```cpp
+bool GameState::enter() {
+    if (!m_worldLoaded) {
+        m_needsLoading = true;    // Set flag
+        m_worldLoaded = true;      // Prevent loop
+        return true;               // Exit early
+    }
+    // Normal initialization when world loaded
+}
+
+void GameState::update(float deltaTime) {
+    if (m_needsLoading) {
+        m_needsLoading = false;
+        // Configure and transition to LoadingState here
+        return;
+    }
+    // Normal update
+}
+```
+
+**Rules**: One Present per frame | Use LoadingState for async loading | Deferred transitions from update() | No manual SDL rendering calls in GameStates

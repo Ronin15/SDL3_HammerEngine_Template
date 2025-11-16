@@ -117,16 +117,21 @@ EventManager
 ```
 
 ### EventData Structure
-Core data structure managed by EventManager:
+Core data structure managed by EventManager (optimized for cache efficiency):
 
 ```cpp
-struct alignas(32) EventData {
-  EventPtr event;       // Smart pointer to event
-  std::string name;     // Stable name for mapping
-  uint32_t flags;       // Active, dirty, pending removal
-  uint32_t priority;    // Processing priority
-  EventTypeId typeId;   // Type for fast dispatch
-  std::function<void()> onConsumed; // Optional post-dispatch callback
+struct EventData {
+  EventPtr event;     // Smart pointer to event (16 bytes)
+  uint32_t flags;     // Active, dirty, pending removal (4 bytes)
+  uint32_t priority;  // Processing priority (4 bytes)
+  EventTypeId typeId; // Type for fast dispatch (4 bytes)
+  uint32_t padding;   // Explicit padding for alignment (4 bytes)
+  // Total: 32 bytes (was 88 bytes - 64% reduction!)
+
+  // Flags bit definitions
+  static constexpr uint32_t FLAG_ACTIVE = 1 << 0;
+  static constexpr uint32_t FLAG_DIRTY = 1 << 1;
+  static constexpr uint32_t FLAG_PENDING_REMOVAL = 1 << 2;
 
   bool isActive() const;
   void setActive(bool active);
@@ -134,6 +139,29 @@ struct alignas(32) EventData {
   void setDirty(bool dirty);
 };
 ```
+
+**Memory Optimization (v2024):**
+- **64% size reduction**: 88 bytes → 32 bytes
+- **Removed `name` field**: Name-based lookup now uses typeId + internal mapping
+- **Removed `onConsumed` callback**: Eliminated per-event callback overhead
+- **Better cache locality**: Fits 2 events per cache line (64 bytes) vs 1 event previously
+
+### HandlerEntry Structure
+Consolidates handler callable with ID for token-based removal:
+
+```cpp
+struct HandlerEntry {
+  FastEventHandler callable; // std::function<void(const EventData&)>
+  uint64_t id = 0;           // Unique ID for unregistration
+
+  explicit operator bool() const { return static_cast<bool>(callable); }
+};
+```
+
+**Benefits:**
+- **Single structure**: Replaces parallel `m_handlerIdsByType` vectors
+- **Better cache coherency**: Handler + ID stored together
+- **Simpler management**: One vector per event type instead of two
 
 ## Event Types
 
@@ -379,6 +407,7 @@ bool isInitialized() const;    // Query initialized state
 void clean();                  // Clean shutdown
 void prepareForStateTransition(); // Clear handlers/events for state changes
 void update();                 // Process all events (call each frame)
+void drainAllDeferredEvents(); // Process all deferred events immediately (useful for state transitions)
 bool isShutdown() const;       // Check shutdown state
 ```
 
@@ -467,6 +496,7 @@ bool triggerCameraModeChanged(int newMode, int oldMode, DispatchMode mode = Disp
 bool triggerCameraShakeStarted(float duration, float intensity, DispatchMode mode = DispatchMode::Deferred) const;
 bool triggerCameraShakeEnded(DispatchMode mode = DispatchMode::Deferred) const;
 bool triggerCameraTargetChanged(std::weak_ptr<Entity> newTarget, std::weak_ptr<Entity> oldTarget, DispatchMode mode = DispatchMode::Deferred) const;
+bool triggerCameraZoomChanged(float newZoom, float oldZoom, DispatchMode mode = DispatchMode::Deferred) const;
 
 // Resource change
 bool triggerResourceChange(EntityPtr owner, HammerEngine::ResourceHandle handle,

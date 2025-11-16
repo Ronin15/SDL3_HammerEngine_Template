@@ -74,12 +74,11 @@ void GuardBehavior::init(EntityPtr entity) {
     state.currentPatrolIndex = 0;
   } else if (m_guardMode == GuardMode::ROAMING_GUARD) {
     state.roamTarget = generateRoamTarget(entity, state);
-    state.nextRoamTime =
-        SDL_GetTicks() + static_cast<Uint64>(m_roamInterval * 1000);
+    state.roamTimer = m_roamInterval;
   }
 }
 
-void GuardBehavior::executeLogic(EntityPtr entity) {
+void GuardBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (!entity || !isActive())
     return;
 
@@ -97,7 +96,17 @@ void GuardBehavior::executeLogic(EntityPtr entity) {
     return; // Guard is off duty
   }
 
-  Uint64 currentTime = SDL_GetTicks();
+  // Update all timers
+  state.threatSightingTimer += deltaTime;
+  state.alertTimer += deltaTime;
+  state.investigationTimer += deltaTime;
+  state.positionCheckTimer += deltaTime;
+  state.patrolMoveTimer += deltaTime;
+  state.alertDecayTimer += deltaTime;
+  state.roamTimer -= deltaTime;
+  state.baseState.pathUpdateTimer += deltaTime;
+  state.baseState.progressTimer += deltaTime;
+  if (state.baseState.backoffTimer > 0.0f) state.baseState.backoffTimer -= deltaTime;
 
   // Detect threats
   EntityPtr threat = detectThreat(entity, state);
@@ -107,41 +116,40 @@ void GuardBehavior::executeLogic(EntityPtr entity) {
   updateAlertLevel(entity, state, threatPresent);
 
   if (threatPresent) {
-    handleThreatDetection(entity, state, threat);
+    handleThreatDetection(entity, state, threat, deltaTime);
   } else if (state.isInvestigating) {
-    handleInvestigation(entity, state);
+    handleInvestigation(entity, state, deltaTime);
   } else if (state.returningToPost) {
-    handleReturnToPost(entity, state);
+    handleReturnToPost(entity, state, deltaTime);
   } else {
     // Normal guard behavior based on mode
     switch (state.currentMode) {
     case GuardMode::STATIC_GUARD:
-      updateStaticGuard(entity, state);
+      updateStaticGuard(entity, state, deltaTime);
       break;
     case GuardMode::PATROL_GUARD:
-      updatePatrolGuard(entity, state);
+      updatePatrolGuard(entity, state, deltaTime);
       break;
     case GuardMode::AREA_GUARD:
-      updateAreaGuard(entity, state);
+      updateAreaGuard(entity, state, deltaTime);
       break;
     case GuardMode::ROAMING_GUARD:
-      updateRoamingGuard(entity, state);
+      updateRoamingGuard(entity, state, deltaTime);
       break;
     case GuardMode::ALERT_GUARD:
-      updateAlertGuard(entity, state);
+      updateAlertGuard(entity, state, deltaTime);
       break;
     }
   }
 
   // Handle alert decay
   if (state.currentAlertLevel > AlertLevel::CALM &&
-      currentTime - state.lastAlertDecay >
-          static_cast<Uint64>(m_alertDecayTime * 1000)) {
+      state.alertDecayTimer > m_alertDecayTime) {
 
     // Reduce alert level by one step
     state.currentAlertLevel =
         static_cast<AlertLevel>(static_cast<int>(state.currentAlertLevel) - 1);
-    state.lastAlertDecay = currentTime;
+    state.alertDecayTimer = 0.0f;
   }
 }
 
@@ -168,14 +176,14 @@ void GuardBehavior::onMessage(EntityPtr entity, const std::string &message) {
     state.currentAlertLevel = AlertLevel::CALM;
   } else if (message == "raise_alert") {
     state.currentAlertLevel = AlertLevel::HOSTILE;
-    state.alertStartTime = SDL_GetTicks();
+    state.alertTimer = 0.0f;
   } else if (message == "clear_alert") {
     clearAlert(entity);
   } else if (message == "investigate_position") {
     state.isInvestigating = true;
     state.investigationTarget =
         entity->getPosition(); // Use current position as default
-    state.investigationStartTime = SDL_GetTicks();
+    state.investigationTimer = 0.0f;
   } else if (message == "return_to_post") {
     state.returningToPost = true;
     state.isInvestigating = false;
@@ -262,7 +270,7 @@ void GuardBehavior::setAlertLevel(AlertLevel level) {
   for (auto &pair : m_entityStates) {
     pair.second.currentAlertLevel = level;
     if (level > AlertLevel::CALM) {
-      pair.second.alertStartTime = SDL_GetTicks();
+      pair.second.alertTimer = 0.0f;
     }
   }
 }
@@ -276,7 +284,7 @@ void GuardBehavior::raiseAlert(EntityPtr entity,
   if (it != m_entityStates.end()) {
     EntityState &state = it->second;
     state.currentAlertLevel = AlertLevel::HOSTILE;
-    state.alertStartTime = SDL_GetTicks();
+    state.alertTimer = 0.0f;
     state.lastKnownThreatPosition = alertPosition;
     state.alertRaised = true;
 
@@ -471,18 +479,18 @@ float GuardBehavior::calculateThreatDistance(EntityPtr entity,
 
 void GuardBehavior::updateAlertLevel(EntityPtr /*entity*/, EntityState &state,
                                      bool threatPresent) const {
-  Uint64 currentTime = SDL_GetTicks();
+
 
   if (threatPresent) {
-    state.lastThreatSighting = currentTime;
+    state.threatSightingTimer = 0.0f; // Reset threat sighting timer
     state.hasActiveThreat = true;
 
     // Escalate alert level based on how long threat has been present
-    Uint64 threatDuration = currentTime - state.alertStartTime;
+    float threatDuration = state.alertTimer;
 
     if (state.currentAlertLevel == AlertLevel::CALM) {
       state.currentAlertLevel = AlertLevel::SUSPICIOUS;
-      state.alertStartTime = currentTime;
+      state.alertTimer = 0.0f;
     } else if (state.currentAlertLevel == AlertLevel::SUSPICIOUS &&
                threatDuration > SUSPICIOUS_THRESHOLD) {
       state.currentAlertLevel = AlertLevel::INVESTIGATING;
@@ -494,15 +502,14 @@ void GuardBehavior::updateAlertLevel(EntityPtr /*entity*/, EntityState &state,
     state.hasActiveThreat = false;
 
     // Start alert decay if no threat seen for a while
-    if (currentTime - state.lastThreatSighting >
-        static_cast<Uint64>(m_alertDecayTime * 1000 * 0.5f)) {
-      state.lastAlertDecay = currentTime;
+    if (state.threatSightingTimer > m_alertDecayTime * 0.5f) {
+      state.alertDecayTimer = 0.0f;
     }
   }
 }
 
 void GuardBehavior::handleThreatDetection(EntityPtr entity, EntityState &state,
-                                          EntityPtr threat) {
+                                              EntityPtr threat, float deltaTime) {
   if (!entity || !threat)
     return;
 
@@ -521,8 +528,8 @@ void GuardBehavior::handleThreatDetection(EntityPtr entity, EntityState &state,
     // Move towards threat for investigation
     state.isInvestigating = true;
     state.investigationTarget = threatPos;
-    state.investigationStartTime = SDL_GetTicks();
-    moveToPosition(entity, threatPos, m_movementSpeed);
+    state.investigationTimer = 0.0f;
+    moveToPosition(entity, threatPos, m_movementSpeed, deltaTime);
     break;
 
   case AlertLevel::HOSTILE:
@@ -532,12 +539,12 @@ void GuardBehavior::handleThreatDetection(EntityPtr entity, EntityState &state,
       state.helpCalled = true;
     }
     // Move towards threat at alert speed
-    moveToPosition(entity, threatPos, m_alertSpeed);
+    moveToPosition(entity, threatPos, m_alertSpeed, deltaTime);
     break;
 
   case AlertLevel::ALARM:
     // Maximum response - could switch to combat behavior
-    moveToPosition(entity, threatPos, m_alertSpeed * 1.2f);
+    moveToPosition(entity, threatPos, m_alertSpeed * 1.2f, deltaTime);
     break;
 
   default:
@@ -545,15 +552,14 @@ void GuardBehavior::handleThreatDetection(EntityPtr entity, EntityState &state,
   }
 }
 
-void GuardBehavior::handleInvestigation(EntityPtr entity, EntityState &state) {
+void GuardBehavior::handleInvestigation(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity)
     return;
 
-  Uint64 currentTime = SDL_GetTicks();
+
 
   // Check if investigation time has expired
-  if (currentTime - state.investigationStartTime >
-      static_cast<Uint64>(m_investigationTime * 1000)) {
+  if (state.investigationTimer > m_investigationTime) {
     state.isInvestigating = false;
     state.returningToPost = true;
     return;
@@ -562,11 +568,11 @@ void GuardBehavior::handleInvestigation(EntityPtr entity, EntityState &state) {
   // Move to investigation target
   Vector2D currentPos = entity->getPosition();
   if (!isAtPosition(currentPos, state.investigationTarget)) {
-    moveToPosition(entity, state.investigationTarget, m_movementSpeed);
+    moveToPosition(entity, state.investigationTarget, m_movementSpeed, deltaTime);
   }
 }
 
-void GuardBehavior::handleReturnToPost(EntityPtr entity, EntityState &state) {
+void GuardBehavior::handleReturnToPost(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity)
     return;
 
@@ -574,14 +580,14 @@ void GuardBehavior::handleReturnToPost(EntityPtr entity, EntityState &state) {
 
   // Return to assigned position
   if (!isAtPosition(currentPos, state.assignedPosition)) {
-    moveToPosition(entity, state.assignedPosition, m_movementSpeed);
+    moveToPosition(entity, state.assignedPosition, m_movementSpeed, deltaTime);
   } else {
     state.returningToPost = false;
     state.currentAlertLevel = AlertLevel::CALM;
   }
 }
 
-void GuardBehavior::updateStaticGuard(EntityPtr entity, EntityState &state) {
+void GuardBehavior::updateStaticGuard(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity)
     return;
 
@@ -589,19 +595,19 @@ void GuardBehavior::updateStaticGuard(EntityPtr entity, EntityState &state) {
 
   // Stay at assigned position
   if (!isAtPosition(currentPos, state.assignedPosition, 10.0f)) {
-    moveToPosition(entity, state.assignedPosition, m_movementSpeed);
+    moveToPosition(entity, state.assignedPosition, m_movementSpeed, deltaTime);
   }
 
   // Update heading to scan area
-  Uint64 currentTime = SDL_GetTicks();
-  if (currentTime - state.lastPositionCheck > 2000) { // Check every 2 seconds
-    state.currentHeading += 0.5f;                     // Slow rotation
+
+  if (state.positionCheckTimer > 2.0f) { // Check every 2 seconds
+    state.currentHeading += 0.5f;        // Slow rotation
     state.currentHeading = normalizeAngle(state.currentHeading);
-    state.lastPositionCheck = currentTime;
+    state.positionCheckTimer = 0.0f;
   }
 }
 
-void GuardBehavior::updatePatrolGuard(EntityPtr entity, EntityState &state) {
+void GuardBehavior::updatePatrolGuard(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity || m_patrolWaypoints.empty())
     return;
 
@@ -623,11 +629,11 @@ void GuardBehavior::updatePatrolGuard(EntityPtr entity, EntityState &state) {
 
     state.currentPatrolTarget = getNextPatrolWaypoint(state);
   } else {
-    moveToPosition(entity, state.currentPatrolTarget, m_movementSpeed);
+    moveToPosition(entity, state.currentPatrolTarget, m_movementSpeed, deltaTime);
   }
 }
 
-void GuardBehavior::updateAreaGuard(EntityPtr entity, EntityState &state) {
+void GuardBehavior::updateAreaGuard(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity)
     return;
 
@@ -636,42 +642,39 @@ void GuardBehavior::updateAreaGuard(EntityPtr entity, EntityState &state) {
   // Ensure we're within the guard area
   if (!isWithinGuardArea(currentPos)) {
     Vector2D clampedPos = clampToGuardArea(currentPos);
-    moveToPosition(entity, clampedPos, m_movementSpeed);
+    moveToPosition(entity, clampedPos, m_movementSpeed, deltaTime);
   } else {
     // Patrol within the area
-    Uint64 currentTime = SDL_GetTicks();
-    if (currentTime >= state.nextRoamTime) {
+
+    if (state.roamTimer <= 0.0f) {
       state.roamTarget = generateRoamTarget(entity, state);
-      state.nextRoamTime =
-          currentTime + static_cast<Uint64>(m_roamInterval * 1000);
+      state.roamTimer = m_roamInterval;
     }
 
     if (!isAtPosition(currentPos, state.roamTarget)) {
-      moveToPosition(entity, state.roamTarget, m_movementSpeed);
+      moveToPosition(entity, state.roamTarget, m_movementSpeed, deltaTime);
     }
   }
 }
 
-void GuardBehavior::updateRoamingGuard(EntityPtr entity, EntityState &state) {
+void GuardBehavior::updateRoamingGuard(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity)
     return;
 
   Vector2D currentPos = entity->getPosition();
-  Uint64 currentTime = SDL_GetTicks();
+
 
   // Generate new roam target if needed
-  if (currentTime >= state.nextRoamTime ||
-      isAtPosition(currentPos, state.roamTarget)) {
+  if (state.roamTimer <= 0.0f || isAtPosition(currentPos, state.roamTarget)) {
     state.roamTarget = generateRoamTarget(entity, state);
-    state.nextRoamTime =
-        currentTime + static_cast<Uint64>(m_roamInterval * 1000);
+    state.roamTimer = m_roamInterval;
   }
 
   // Move to roam target
-  moveToPosition(entity, state.roamTarget, m_movementSpeed);
+  moveToPosition(entity, state.roamTarget, m_movementSpeed, deltaTime);
 }
 
-void GuardBehavior::updateAlertGuard(EntityPtr entity, EntityState &state) {
+void GuardBehavior::updateAlertGuard(EntityPtr entity, EntityState &state, float deltaTime) {
   if (!entity)
     return;
 
@@ -679,102 +682,27 @@ void GuardBehavior::updateAlertGuard(EntityPtr entity, EntityState &state) {
   if (state.currentAlertLevel >= AlertLevel::INVESTIGATING) {
     // Move towards last known threat position
     if (state.lastKnownThreatPosition.length() > 0) {
-      moveToPosition(entity, state.lastKnownThreatPosition, m_alertSpeed);
+      moveToPosition(entity, state.lastKnownThreatPosition, m_alertSpeed, deltaTime);
     }
   } else {
     // Patrol more aggressively
-    updatePatrolGuard(entity, state);
+    updatePatrolGuard(entity, state, deltaTime);
   }
 }
 
 void GuardBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
-                                   float speed) {
+                                   float speed, float deltaTime) {
   if (!entity || speed <= 0.0f)
     return;
   auto it = m_entityStates.find(entity);
   if (it == m_entityStates.end()) return;
   auto &state = it->second;
-  Vector2D currentPos = entity->getPosition();
-  Uint64 now = SDL_GetTicks();
 
-  // Determine if a fresh path is actually needed
-  const Uint64 PATH_TTL = 1800; // ms
-  bool needsNewPath = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+  // Determine priority based on alert level (0=Low, 1=Normal, 2=High, 3=Critical)
+  int priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ? 2 : 1; // High or Normal
 
-  if (!needsNewPath && state.lastPathUpdate > 0 && (now - state.lastPathUpdate) > PATH_TTL) {
-    needsNewPath = true; // Stale path
-  }
-
-  if (!needsNewPath && !state.pathPoints.empty()) {
-    // Only refresh when goal changed significantly
-    const float GOAL_CHANGE_THRESH = 64.0f; // px
-    Vector2D currentGoal = state.pathPoints.back();
-    float goalDelta = (targetPos - currentGoal).length();
-    if (goalDelta > GOAL_CHANGE_THRESH) {
-      needsNewPath = true;
-    }
-  }
-
-  // Skip pathfinding if we’re basically at the goal already
-  float distanceToTarget = (targetPos - currentPos).length();
-  if (distanceToTarget <= state.navRadius * 1.1f) {
-    needsNewPath = false;
-  }
-
-  // Respect backoff to avoid spamming requests
-  if (needsNewPath && now >= state.backoffUntil) {
-    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager
-    auto priority = (state.currentAlertLevel >= AlertLevel::INVESTIGATING) ?
-        PathfinderManager::Priority::High : PathfinderManager::Priority::Normal;
-
-    Vector2D clampedStart = pathfinder().clampToWorldBounds(currentPos, 100.0f);
-    Vector2D clampedGoal  = pathfinder().clampToWorldBounds(targetPos, 100.0f);
-
-    pathfinder().requestPath(
-        entity->getID(), clampedStart, clampedGoal, priority,
-        [this, entity](EntityID, const std::vector<Vector2D>& path) {
-          auto it = m_entityStates.find(entity);
-          if (it != m_entityStates.end() && !path.empty()) {
-            it->second.pathPoints = path;
-            it->second.currentPathIndex = 0;
-            it->second.lastPathUpdate = SDL_GetTicks();
-            it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-            it->second.lastProgressTime = SDL_GetTicks();
-          }
-        });
-
-    // Gentle staggered backoff to prevent per-frame re-requests
-    state.backoffUntil = now + 300 + (entity->getID() % 300);
-  }
-
-  // Follow existing path if available; fallback to direct steering
-  bool following = pathfinder().followPathStep(entity, currentPos,
-                        state.pathPoints, state.currentPathIndex,
-                        speed, state.navRadius);
-  if (following) { state.lastProgressTime = now; }
-  if (!following) {
-    // Fallback: direct steering
-    Vector2D direction = normalizeDirection(targetPos - currentPos);
-    if (direction.length() > 0.001f) { entity->setVelocity(direction * speed); state.lastProgressTime = now; }
-  }
-
-  // Dynamic backoff when stalled for a while
-  float spd = entity->getVelocity().length();
-  const float stallSpeed = std::max(0.5f, speed * 0.5f);
-  if (spd < stallSpeed) {
-    if (state.lastProgressTime != 0 && now - state.lastProgressTime > 600) {
-      state.backoffUntil = now + 250 + (entity->getID() % 400);
-      state.pathPoints.clear(); state.currentPathIndex = 0; state.lastPathUpdate = 0;
-    }
-  }
-
-  // Apply local separation to reduce on-top stacking when following
-  if (following) {
-    auto &st = state;
-    applyDecimatedSeparation(entity, currentPos, entity->getVelocity(), speed,
-                             24.0f, 0.18f, 4, st.lastSepTick,
-                             st.lastSepVelocity);
-  }
+  // Use base class moveToPosition implementation
+  AIBehavior::moveToPosition(entity, targetPos, speed, deltaTime, state.baseState, priority);
 }
 
 Vector2D GuardBehavior::getNextPatrolWaypoint(const EntityState &state) const {
@@ -830,27 +758,7 @@ bool GuardBehavior::isWithinGuardArea(const Vector2D &position) const {
   }
 }
 
-Vector2D GuardBehavior::normalizeDirection(const Vector2D &direction) const {
-  float magnitude = direction.length();
-  if (magnitude < 0.001f) {
-    return Vector2D(0, 0);
-  }
-  return direction / magnitude;
-}
-
-float GuardBehavior::normalizeAngle(float angle) const {
-  while (angle > M_PI)
-    angle -= 2.0f * M_PI;
-  while (angle < -M_PI)
-    angle += 2.0f * M_PI;
-  return angle;
-}
-
-float GuardBehavior::calculateAngleToTarget(const Vector2D &from,
-                                            const Vector2D &to) const {
-  Vector2D direction = to - from;
-  return std::atan2(direction.getY(), direction.getX());
-}
+// Utility methods removed - now using base class implementations
 
 Vector2D GuardBehavior::clampToGuardArea(const Vector2D &position) const {
   if (m_useCircularArea) {

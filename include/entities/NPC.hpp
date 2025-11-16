@@ -18,17 +18,20 @@
 class NPC : public Entity {
 public:
   enum class Faction { Friendly, Enemy, Neutral };
+  enum class NPCType { Standard, Pet };
+
   NPC(const std::string &textureID, const Vector2D &startPosition,
-      int frameWidth, int frameHeight);
+      int frameWidth, int frameHeight, NPCType type = NPCType::Standard);
   ~NPC() override;
 
   // Factory method to ensure proper shared_ptr creation
   // Factory method to ensure NPCs are always created with shared_ptr
   static std::shared_ptr<NPC> create(const std::string &textureID,
                                      const Vector2D &startPosition,
-                                     int frameWidth = 0, int frameHeight = 0) {
+                                     int frameWidth = 0, int frameHeight = 0,
+                                     NPCType type = NPCType::Standard) {
     auto npc = std::make_shared<NPC>(textureID, startPosition, frameWidth,
-                                     frameHeight);
+                                     frameHeight, type);
     npc->ensurePhysicsBodyRegistered();
     // Collision layers are set atomically in ensurePhysicsBodyRegistered()
     // No need to call setFaction as m_faction defaults to Neutral
@@ -78,16 +81,18 @@ public:
   // Helper method to set up loot drops during initialization
   void setLootDropRate(HammerEngine::ResourceHandle itemHandle, float dropRate);
 
+protected:
+  int m_frameWidth{0};                // Width of a single animation frame
+
 private:
   void loadDimensionsFromTexture();
-  void ensurePhysicsBodyRegistered();
+  virtual void ensurePhysicsBodyRegistered();
   void setupInventory();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
 
   std::unique_ptr<InventoryComponent>
       m_inventory;                    // NPC inventory for trading/loot
-  int m_frameWidth{0};                // Width of a single animation frame
   int m_frameHeight{0};               // Height of a single animation frame
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
@@ -106,11 +111,12 @@ private:
       m_dropRates; // itemHandle -> drop probability
 
   Faction m_faction{Faction::Neutral};
+  NPCType m_npcType{NPCType::Standard};
 
   // Texture flip smoothing
   int m_lastFlipSign{1};
   Uint64 m_lastFlipTime{0};
-  
+
   // Diagnostic throttling
   Uint64 m_lastStuckLogTime{0};
 };

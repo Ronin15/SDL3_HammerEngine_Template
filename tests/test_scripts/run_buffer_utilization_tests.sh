@@ -60,36 +60,37 @@ echo -e "${GREEN}Running WorkerBudget buffer utilization tests...${NC}"
 echo -e "${BLUE}================================================${NC}"
 
 # Run with appropriate options
+TEMP_LOG="$PROJECT_ROOT/test_output.log"
 if [ "$VERBOSE" = true ]; then
-  "$TEST_EXECUTABLE" --log_level=all | tee test_output.log
+  "$TEST_EXECUTABLE" --log_level=all 2>&1 | tee "$TEMP_LOG"
 else
-  "$TEST_EXECUTABLE" | tee test_output.log
+  "$TEST_EXECUTABLE" 2>&1 | tee "$TEMP_LOG"
 fi
 
-TEST_RESULT=$?
+TEST_RESULT=${PIPESTATUS[0]}
 echo -e "${BLUE}================================================${NC}"
 
 # Create test_results directory if it doesn't exist
 mkdir -p "$PROJECT_ROOT/test_results"
 
 # Check if there were any failures in the output
-FAILURES=$(grep -o "[0-9]\+ failures\? are detected" test_output.log 2>/dev/null | grep -o "[0-9]\+" || echo "0")
+FAILURES=$(grep -o "[0-9]\+ failures\? are detected" "$TEMP_LOG" 2>/dev/null | grep -o "[0-9]\+" || echo "0")
 
 # Save test results
-if [ -f test_output.log ]; then
-  cp test_output.log "$PROJECT_ROOT/test_results/buffer_utilization_test_output.txt"
+if [ -f "$TEMP_LOG" ]; then
+  cp "$TEMP_LOG" "$PROJECT_ROOT/test_results/buffer_utilization_test_output.txt"
 fi
 
 # Extract WorkerBudget allocation metrics if they exist
 echo -e "${YELLOW}Saving test results and allocation metrics...${NC}"
-if [ -f test_output.log ]; then
-  grep -E "workers|allocation|buffer|utilization|tier:" test_output.log > "$PROJECT_ROOT/test_results/buffer_utilization_metrics.txt" || true
-  
+if [ -f "$TEMP_LOG" ]; then
+  grep -E "workers|allocation|buffer|utilization|tier:" "$TEMP_LOG" > "$PROJECT_ROOT/test_results/buffer_utilization_metrics.txt" || true
+
   # Extract specific allocation patterns for analysis
-  grep -E "Base allocations|optimal.*workers|burst.*workers" test_output.log > "$PROJECT_ROOT/test_results/buffer_allocation_patterns.txt" || true
-  
+  grep -E "Base allocations|optimal.*workers|burst.*workers" "$TEMP_LOG" > "$PROJECT_ROOT/test_results/buffer_allocation_patterns.txt" || true
+
   # Clean up temporary file
-  rm test_output.log
+  rm "$TEMP_LOG"
 fi
 
 # Report test results

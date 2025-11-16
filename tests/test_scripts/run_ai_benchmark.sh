@@ -13,14 +13,13 @@ echo -e "${YELLOW}Running AI Scaling Benchmark...${NC}"
 
 # Navigate to project root directory (in case script is run from elsewhere)
 # Note: SCRIPT_DIR will be properly set later in the script
-
-# Create directory for test results
-mkdir -p ../../test_results
+# (test_results directory will be created after PROJECT_ROOT is established)
 
 # Set default build type
 BUILD_TYPE="Debug"
 VERBOSE=false
 EXTREME_TEST=false
+BENCHMARK_MODE="both"  # Can be "synthetic", "integrated", or "both"
 
 # Process command-line options
 while [[ $# -gt 0 ]]; do
@@ -41,18 +40,33 @@ while [[ $# -gt 0 ]]; do
       BUILD_TYPE="Release"
       shift
       ;;
+    --synthetic)
+      BENCHMARK_MODE="synthetic"
+      shift
+      ;;
+    --integrated)
+      BENCHMARK_MODE="integrated"
+      shift
+      ;;
+    --both)
+      BENCHMARK_MODE="both"
+      shift
+      ;;
     --help)
-      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--help]"
-      echo "  --debug     Run debug build (default)"
-      echo "  --release   Run release build"
-      echo "  --verbose   Show detailed output"
-      echo "  --extreme   Run extended benchmarks"
-      echo "  --help      Show this help message"
+      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--synthetic] [--integrated] [--both] [--help]"
+      echo "  --debug       Run debug build (default)"
+      echo "  --release     Run release build"
+      echo "  --verbose     Show detailed output"
+      echo "  --extreme     Run extended benchmarks"
+      echo "  --synthetic   Run only synthetic benchmarks (isolated AIManager)"
+      echo "  --integrated  Run only integrated benchmarks (production behaviors)"
+      echo "  --both        Run both synthetic and integrated (default)"
+      echo "  --help        Show this help message"
       exit 0
       ;;
     *)
       echo "Unknown option: $1"
-      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--help]"
+      echo "Usage: $0 [--debug] [--verbose] [--extreme] [--release] [--synthetic] [--integrated] [--both] [--help]"
       exit 1
       ;;
   esac
@@ -97,8 +111,8 @@ echo -e "${YELLOW}This may take several minutes depending on your hardware.${NC}
 echo
 
 # Create output file for results
-RESULTS_FILE="../../test_results/ai_scaling_benchmark_$(date +%Y%m%d_%H%M%S).txt"
-mkdir -p ../../test_results
+RESULTS_FILE="$PROJECT_ROOT/test_results/ai_scaling_benchmark_$(date +%Y%m%d_%H%M%S).txt"
+mkdir -p "$PROJECT_ROOT/test_results"
 
 # Check for timeout command availability
 TIMEOUT_CMD=""
@@ -121,6 +135,21 @@ else
   TEST_OPTS="$TEST_OPTS --log_level=test_suite"
 fi
 
+# Add benchmark mode filtering
+case "$BENCHMARK_MODE" in
+  synthetic)
+    TEST_OPTS="$TEST_OPTS --run_test=AIScalingTests/TestSynthetic*"
+    echo -e "${BLUE}Running SYNTHETIC benchmarks only (isolated AIManager with BenchmarkBehavior)${NC}"
+    ;;
+  integrated)
+    TEST_OPTS="$TEST_OPTS --run_test=AIScalingTests/TestIntegrated*"
+    echo -e "${BLUE}Running INTEGRATED benchmarks only (production behaviors with PathfinderManager)${NC}"
+    ;;
+  both)
+    echo -e "${BLUE}Running BOTH synthetic and integrated benchmarks${NC}"
+    ;;
+esac
+
 # Add extreme test flag if requested
 if [ "$EXTREME_TEST" = true ]; then
   TEST_OPTS="$TEST_OPTS --extreme"
@@ -140,6 +169,7 @@ echo -e "${YELLOW}Timeout duration: $TIMEOUT_DURATION${NC}"
 echo "============ BENCHMARK START ============" > "$RESULTS_FILE"
 echo "Date: $(date)" >> "$RESULTS_FILE"
 echo "Build type: $BUILD_TYPE" >> "$RESULTS_FILE"
+echo "Benchmark mode: $BENCHMARK_MODE" >> "$RESULTS_FILE"
 echo "Command: $BENCHMARK_EXECUTABLE $TEST_OPTS" >> "$RESULTS_FILE"
 echo "=========================================" >> "$RESULTS_FILE"
 echo >> "$RESULTS_FILE"
@@ -222,42 +252,42 @@ echo -e "${GREEN}Results saved to $RESULTS_FILE${NC}"
 
 # Extract performance metrics
 echo -e "${YELLOW}Extracting performance metrics...${NC}"
-echo "============ PERFORMANCE SUMMARY ============" > "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "Date: $(date)" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "Build type: $BUILD_TYPE" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "===========================================" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
+echo "============ PERFORMANCE SUMMARY ============" > "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "Date: $(date)" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "Build type: $BUILD_TYPE" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "===========================================" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
 
 # Use updated grep patterns to capture metrics including WorkerBudget information
-grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:|Entity updates per second:|Total behavior updates:|Entity updates:|SCALABILITY SUMMARY|Entity Count|Updates Per Second|WorkerBudget|Threading mode:|System:|hardware threads|allocated to AI" "$RESULTS_FILE" >> "../../test_results/ai_benchmark_performance_metrics.txt" || true
+grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:|Entity updates per second:|Total behavior updates:|Entity updates:|SCALABILITY SUMMARY|Entity Count|Updates Per Second|WorkerBudget|Threading mode:|System:|hardware threads|allocated to AI" "$RESULTS_FILE" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" || true
 
 # Extract specific benchmark configurations and results for better analysis
-echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "============ DETAILED ANALYSIS ============" >> "../../test_results/ai_benchmark_performance_metrics.txt"
+echo >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "============ DETAILED ANALYSIS ============" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
 
 # Extract WorkerBudget system configuration
-echo "WorkerBudget System Configuration:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-grep -E "System Configuration:|WorkerBudget:|hardware threads" "$RESULTS_FILE" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+echo "WorkerBudget System Configuration:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+grep -E "System Configuration:|WorkerBudget:|hardware threads" "$RESULTS_FILE" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
 
 # Extract threading mode comparisons with better pattern matching
-echo "Threading Mode Comparisons:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "Single-Threaded Results:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-grep -A 15 "Single-Threaded mode\|Single-threaded" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results|Threading mode:" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
-echo "Multi-Threaded Results:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-grep -A 15 "Multi-threaded\|WorkerBudget Multi-threaded" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results|Threading mode:" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+echo "Threading Mode Comparisons:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "Single-Threaded Results:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+grep -A 15 "Single-Threaded mode\|Single-threaded" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results|Threading mode:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+echo "Multi-Threaded Results:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+grep -A 15 "Multi-threaded\|WorkerBudget Multi-threaded" "$RESULTS_FILE" | grep -E "Total time:|Entity updates per second:|Time per entity:|Performance Results|Threading mode:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
 
 # Extract scalability test results
-echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "Scalability Results:" >> "../../test_results/ai_benchmark_performance_metrics.txt"
-grep -A 20 "SCALABILITY SUMMARY" "$RESULTS_FILE" >> "../../test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
+echo >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "Scalability Results:" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+grep -A 20 "SCALABILITY SUMMARY" "$RESULTS_FILE" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" 2>/dev/null || true
 
 # Add summary footer
-echo >> "../../test_results/ai_benchmark_performance_metrics.txt"
-echo "============ END OF SUMMARY ============" >> "../../test_results/ai_benchmark_performance_metrics.txt"
+echo >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
+echo "============ END OF SUMMARY ============" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
 
 # Display the performance summary
 echo -e "${BLUE}Performance Summary:${NC}"
-cat "../../test_results/ai_benchmark_performance_metrics.txt"
+cat "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
 
 # Extract and display WorkerBudget system information
 echo -e "${BLUE}WorkerBudget System Analysis:${NC}"
@@ -272,10 +302,11 @@ fi
 echo -e "${BLUE}Creating final benchmark report...${NC}"
 
 # Create a more comprehensive results summary
-SUMMARY_FILE="../../test_results/ai_benchmark_summary_$(date +%Y%m%d_%H%M%S).txt"
+SUMMARY_FILE="$PROJECT_ROOT/test_results/ai_benchmark_summary_$(date +%Y%m%d_%H%M%S).txt"
 echo "============ BENCHMARK SUMMARY ============" > "$SUMMARY_FILE"
 echo "Date: $(date)" >> "$SUMMARY_FILE"
 echo "Build type: $BUILD_TYPE" >> "$SUMMARY_FILE"
+echo "Benchmark mode: $BENCHMARK_MODE" >> "$SUMMARY_FILE"
 echo "Exit code: $TEST_RESULT" >> "$SUMMARY_FILE"
 echo >> "$SUMMARY_FILE"
 
@@ -353,7 +384,7 @@ grep -n "Entity updates per second:" "$RESULTS_FILE" | head -10
 # Final output
 echo -e "${GREEN}Results saved to:${NC}"
 echo -e "  - Full log: ${BLUE}$RESULTS_FILE${NC}"
-echo -e "  - Performance metrics: ${BLUE}../../test_results/ai_benchmark_performance_metrics.txt${NC}"
+echo -e "  - Performance metrics: ${BLUE}$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt${NC}"
 echo -e "  - Summary: ${BLUE}$SUMMARY_FILE${NC}"
 
 # Exit with appropriate code based on whether we got results

@@ -1,3 +1,8 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+
 #include "managers/GameStateManager.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/GameState.hpp"
@@ -99,6 +104,14 @@ void GameStateManager::handleInput() {
   // Only the top state handles input
   if (!m_activeStates.empty()) {
     m_activeStates.back()->handleInput();
+  }
+}
+
+void GameStateManager::notifyResize(int newLogicalWidth,
+                                    int newLogicalHeight) {
+  // Notify the top state about window resize
+  if (!m_activeStates.empty()) {
+    m_activeStates.back()->onWindowResize(newLogicalWidth, newLogicalHeight);
   }
 }
 

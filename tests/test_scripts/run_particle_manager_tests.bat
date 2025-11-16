@@ -71,13 +71,21 @@ if "%~1"=="--help" (
     echo Test Suites:
     echo   Core Tests:        Basic ParticleManager functionality (14 tests)
     echo   Weather Tests:     Weather integration and effects (9 tests)
-    echo   Performance Tests: Performance benchmarks and scaling (8 tests)
+    echo   Performance Tests: Performance benchmarks and scaling (8 tests) - requires explicit --performance flag
     echo   Threading Tests:   Multi-threading safety (7 tests)
     echo.
+    echo Execution Time:
+    echo   Core tests:        ~30 seconds
+    echo   Weather tests:     ~45 seconds
+    echo   Performance tests: ~2-3 minutes
+    echo   Threading tests:   ~1-2 minutes
+    echo   All tests:         ~2-3 minutes ^(core+weather+threading, excludes performance^)
+    echo.
     echo Examples:
-    echo   run_particle_manager_tests.bat              # Run all tests
+    echo   run_particle_manager_tests.bat              # Run core, weather, and threading tests
     echo   run_particle_manager_tests.bat --core       # Quick core validation
     echo   run_particle_manager_tests.bat --weather    # Weather functionality only
+    echo   run_particle_manager_tests.bat --performance # Performance benchmarks only
     echo   run_particle_manager_tests.bat --verbose    # All tests with detailed output
     goto :eof
 )
@@ -95,20 +103,23 @@ set "SCRIPT_DIR=%~dp0"
 set "PROJECT_ROOT=%SCRIPT_DIR%..\..\"
 
 REM Define test executables based on what to run
+REM Note: Performance tests are excluded from RUN_ALL by default (use --performance explicitly)
 set TEST_EXECUTABLES=
 if "%RUN_ALL%"=="true" (
-    set TEST_EXECUTABLES=particle_manager_core_tests particle_manager_weather_tests particle_manager_performance_tests particle_manager_threading_tests
+    set TEST_EXECUTABLES=particle_manager_core_tests particle_manager_weather_tests particle_manager_threading_tests
 ) else (
     if "%RUN_CORE%"=="true" set TEST_EXECUTABLES=!TEST_EXECUTABLES! particle_manager_core_tests
     if "%RUN_WEATHER%"=="true" set TEST_EXECUTABLES=!TEST_EXECUTABLES! particle_manager_weather_tests
-    if "%RUN_PERFORMANCE%"=="true" set TEST_EXECUTABLES=!TEST_EXECUTABLES! particle_manager_performance_tests
     if "%RUN_THREADING%"=="true" set TEST_EXECUTABLES=!TEST_EXECUTABLES! particle_manager_threading_tests
 )
+REM Performance tests require explicit flag (not included in --all by default)
+if "%RUN_PERFORMANCE%"=="true" set TEST_EXECUTABLES=!TEST_EXECUTABLES! particle_manager_performance_tests
 
 REM Show execution plan
 if "%RUN_ALL%"=="true" (
-    echo Execution Plan: All Particle Manager tests
-    echo Note: Performance and threading tests may take several minutes
+    echo Execution Plan: Core Particle Manager tests
+    echo Includes: Core, Weather, Threading tests ^(excludes Performance benchmarks^)
+    echo For performance benchmarks, use: run_particle_manager_benchmark.bat
 ) else if "%RUN_CORE%"=="true" (
     echo Execution Plan: Core functionality tests only
     echo Fast execution mode - basic ParticleManager validation
@@ -118,6 +129,7 @@ if "%RUN_ALL%"=="true" (
 ) else if "%RUN_PERFORMANCE%"=="true" (
     echo Execution Plan: Performance tests only
     echo Note: This will take 2-3 minutes to complete
+    echo Consider using: run_particle_manager_benchmark.bat
 ) else if "%RUN_THREADING%"=="true" (
     echo Execution Plan: Threading tests only
     echo Testing multi-threading safety and concurrency
@@ -174,11 +186,11 @@ REM Exit with appropriate status code and summary
 if "%OVERALL_SUCCESS%"=="true" (
     if "%RUN_ALL%"=="true" (
         echo.
-        echo All Particle Manager tests completed successfully!
+        echo Particle Manager core tests completed successfully!
         echo ✓ Core functionality: Verified
         echo ✓ Weather integration: Verified
-        echo ✓ Performance benchmarks: Completed
         echo ✓ Threading safety: Verified
+        echo To run performance benchmarks: run_particle_manager_benchmark.bat
     ) else if "%RUN_CORE%"=="true" (
         echo.
         echo Core Particle Manager tests completed successfully!
@@ -186,11 +198,11 @@ if "%OVERALL_SUCCESS%"=="true" (
     ) else if "%RUN_WEATHER%"=="true" (
         echo.
         echo Weather integration tests completed successfully!
-        echo To run performance tests: run_particle_manager_tests.bat --performance
+        echo To run performance benchmarks: run_particle_manager_benchmark.bat
     ) else if "%RUN_PERFORMANCE%"=="true" (
         echo.
         echo Performance benchmarks completed successfully!
-        echo To run threading tests: run_particle_manager_tests.bat --threading
+        echo Consider using run_particle_manager_benchmark.bat for dedicated benchmarks
     ) else if "%RUN_THREADING%"=="true" (
         echo.
         echo Threading safety tests completed successfully!
@@ -269,11 +281,11 @@ if %ERRORLEVEL% neq 0 (
     echo WARNING: Failed to copy test output to timestamped file
 )
 
-REM Extract performance metrics and test summary
-echo Extracting performance metrics...
-findstr /i "time: performance TestCase Running.*test.*cases failures.*detected No.*errors.*detected" "%OUTPUT_FILE%" > "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_summary.txt"
+REM Extract test summary
+echo Extracting test summary...
+findstr /i "TestCase Running.*test.*cases failures.*detected No.*errors.*detected" "%OUTPUT_FILE%" > "%PROJECT_ROOT%\test_results\particle_manager\%exec_name%_summary.txt"
 if %ERRORLEVEL% neq 0 (
-    echo WARNING: No performance metrics found in test output
+    echo WARNING: No test summary found in test output
 )
 REM Check test results
 findstr /i "failure test.*cases.*failed errors.*detected.*[1-9]" "%OUTPUT_FILE%" >nul

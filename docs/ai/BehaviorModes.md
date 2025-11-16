@@ -13,6 +13,120 @@ See also:
 - [ThreadSystem](../core/ThreadSystem.md) — priorities and WorkerBudget
 - [GameEngine](../core/GameEngine.md) — update integration and buffering
 
+## Behavior Configuration System
+
+The AI system uses structured configuration through dedicated `BehaviorConfig` header files, providing centralized default values and type-safe configuration for all behaviors.
+
+### Configuration Architecture
+
+Each behavior has its own configuration struct in `include/ai/behaviors/`:
+- `WanderBehaviorConfig.hpp` - Wander parameters (radius, speed, pause/move duration)
+- `ChaseBehaviorConfig.hpp` - Chase parameters (speed, range, stop distance)
+- `PatrolBehaviorConfig.hpp` - Patrol parameters (waypoints, speed, loop behavior)
+- `AttackBehaviorConfig.hpp` - Attack parameters (range, cooldown, damage, windup)
+- `FleeBehaviorConfig.hpp` - Flee parameters (speed, distance, panic threshold)
+- `GuardBehaviorConfig.hpp` - Guard parameters (detection range, alert behavior)
+- `FollowBehaviorConfig.hpp` - Follow parameters (distance, formation, speed matching)
+- `IdleBehaviorConfig.hpp` - Idle parameters (movement/turn frequency, radius)
+
+### Configuration Benefits
+
+**Centralized Defaults**: All default values in one location per behavior type
+```cpp
+struct WanderBehaviorConfig {
+    float wanderRadius = 100.0f;        // Default wander radius
+    float wanderSpeed = 50.0f;          // Default movement speed
+    float pauseDuration = 2.0f;         // Default pause between moves
+    float moveDuration = 4.0f;          // Default movement duration
+    bool randomizeStartPosition = true; // Random initial position
+};
+```
+
+**Type Safety**: Compile-time checking prevents invalid configurations
+```cpp
+// Compile error if wrong type
+config.wanderRadius = "100";  // ✗ Error: string instead of float
+config.wanderRadius = 100.0f; // ✓ Correct
+```
+
+**Self-Documenting**: Config struct fields serve as documentation
+```cpp
+// Clear what each parameter does
+AttackBehaviorConfig config;
+config.attackRange = 100.0f;      // How far entity can attack
+config.attackCooldown = 1.0f;     // Time between attacks
+config.requireLineOfSight = true; // Need clear view to attack
+```
+
+### Using BehaviorConfig
+
+**Option 1: Mode-Based (Recommended)**
+Modes automatically apply appropriate config values:
+```cpp
+// Mode applies preconfigured BehaviorConfig internally
+auto wander = std::make_shared<WanderBehavior>(WanderMode::LARGE_AREA);
+AIManager::Instance().registerBehavior("Explorer", wander);
+```
+
+**Option 2: Custom Configuration**
+Directly construct with custom config:
+```cpp
+WanderBehaviorConfig config;
+config.wanderRadius = 150.0f;
+config.wanderSpeed = 80.0f;
+config.pauseDuration = 1.5f;
+
+auto wander = std::make_shared<WanderBehavior>(config);
+AIManager::Instance().registerBehavior("FastWanderer", wander);
+```
+
+**Option 3: Hybrid Approach**
+Start with mode, modify specific parameters:
+```cpp
+auto wander = std::make_shared<WanderBehavior>(WanderMode::MEDIUM_AREA);
+wander->setSpeed(120.0f);  // Override speed while keeping other mode defaults
+```
+
+### Configuration Validation
+
+BehaviorConfig structs include validation to prevent invalid values:
+```cpp
+struct ChaseBehaviorConfig {
+    float chaseSpeed = 120.0f;
+    float chaseRange = 300.0f;
+    float stopDistance = 50.0f;
+
+    bool isValid() const {
+        return chaseSpeed > 0.0f &&
+               chaseRange > 0.0f &&
+               stopDistance >= 0.0f &&
+               stopDistance < chaseRange; // Stop distance must be less than chase range
+    }
+};
+```
+
+### Migration from Hardcoded Values
+
+**Before (Hardcoded):**
+```cpp
+// Values scattered throughout behavior implementation
+void WanderBehavior::init() {
+    m_radius = 100.0f;        // Magic number
+    m_speed = 50.0f;          // Magic number
+    m_pauseDuration = 2.0f;   // Magic number
+}
+```
+
+**After (BehaviorConfig):**
+```cpp
+// Values centralized in config
+WanderBehavior::WanderBehavior(const WanderBehaviorConfig& config)
+    : m_radius(config.wanderRadius)
+    , m_speed(config.wanderSpeed)
+    , m_pauseDuration(config.pauseDuration)
+{}
+```
+
 ## Complete Behavior System
 
 | Behavior | Purpose | Complexity | Modes Available |

@@ -43,6 +43,7 @@ declare -A PROFILE_TESTS=(
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integration"]="thread_safe_ai_integration_tests"
     ["save_manager"]="save_manager_tests"
+    ["settings_manager"]="settings_manager_tests"
     ["game_state_manager"]="game_state_manager_tests"
     ["ui_stress"]="ui_stress_test"
     ["resource_architecture"]="resource_architecture_tests"

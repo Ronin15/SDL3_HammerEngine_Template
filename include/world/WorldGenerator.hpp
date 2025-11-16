@@ -1,12 +1,21 @@
+/* Copyright (c) 2025 Hammer Forged Games
+ * All rights reserved.
+ * Licensed under the MIT License - see LICENSE file for details
+*/
+
 #ifndef WORLD_GENERATOR_HPP
 #define WORLD_GENERATOR_HPP
 
 #include <memory>
 #include <vector>
 #include <random>
+#include <functional>
 #include "world/WorldData.hpp"
 
 namespace HammerEngine {
+
+// Progress callback type: void callback(float percentComplete, const std::string& statusMessage)
+using WorldGenerationProgressCallback = std::function<void(float, const std::string&)>;
 
 class WorldGenerator {
 private:
@@ -72,7 +81,10 @@ private:
     );
 
 public:
-    static std::unique_ptr<WorldData> generateWorld(const WorldGenerationConfig& config);
+    static std::unique_ptr<WorldData> generateWorld(
+        const WorldGenerationConfig& config,
+        const WorldGenerationProgressCallback& progressCallback = nullptr
+    );
 };
 
 }

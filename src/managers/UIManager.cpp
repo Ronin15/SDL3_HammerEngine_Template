@@ -61,6 +61,20 @@ bool UIManager::init() {
   m_mousePressed = false;
   m_mouseReleased = false;
 
+  // Initialize current logical dimensions from GameEngine
+  const auto& gameEngine = GameEngine::Instance();
+  m_currentLogicalWidth = gameEngine.getLogicalWidth();
+  m_currentLogicalHeight = gameEngine.getLogicalHeight();
+  UI_INFO("Initialized logical dimensions: " + std::to_string(m_currentLogicalWidth) +
+          "x" + std::to_string(m_currentLogicalHeight));
+
+  // Register callback with InputManager for window resize events
+  InputManager::Instance().setWindowResizeCallback(
+      [this](int width, int height) {
+        this->onWindowResize(width, height);
+      });
+  UI_INFO("Registered window resize callback with InputManager");
+
   return true;
 }
 
@@ -70,6 +84,8 @@ void UIManager::update(float deltaTime) {
   }
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
+
+  // Note: Window resize is now event-driven via onWindowResize(), not polled every frame
 
   // Process data bindings
   for (auto const& [id, component] : m_components) {
@@ -2968,6 +2984,16 @@ void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
   int width = getLogicalWidth();
   createTitle(id, {0, 10, width, height}, text);
   setTitleAlignment(id, UIAlignment::CENTER_CENTER);
+
+  // Store positioning rule for auto-repositioning
+  auto component = getComponent(id);
+  if (component) {
+    component->m_positioning = {.mode = UIPositionMode::TOP_ALIGNED,
+                                .offsetX = 0,
+                                .offsetY = 10,
+                                .fixedWidth = -1,  // -1 = use full window width
+                                .fixedHeight = height};
+  }
 }
 
 void UIManager::createButtonAtBottom(const std::string &id,
@@ -2976,6 +3002,16 @@ void UIManager::createButtonAtBottom(const std::string &id,
   int logicalHeight = getLogicalHeight();
   createButtonDanger(id, {20, logicalHeight - height - 20, width, height},
                      text);
+
+  // Store positioning rule for auto-repositioning
+  auto component = getComponent(id);
+  if (component) {
+    component->m_positioning = {.mode = UIPositionMode::BOTTOM_ALIGNED,
+                                .offsetX = 20,
+                                .offsetY = 20,
+                                .fixedWidth = width,
+                                .fixedHeight = height};
+  }
 }
 
 void UIManager::createCenteredDialog(const std::string &id, int width,
@@ -3001,4 +3037,147 @@ void UIManager::createCenteredDialog(const std::string &id, int width,
   }
 
   createModal(id, {x, y, width, height}, theme, overlayWidth, overlayHeight);
+
+  // Store positioning rule for auto-repositioning (dialog itself)
+  auto component = getComponent(id);
+  if (component) {
+    component->m_positioning = {.mode = UIPositionMode::CENTERED_BOTH,
+                                .offsetX = 0,
+                                .offsetY = 0,
+                                .fixedWidth = width,
+                                .fixedHeight = height};
+  }
+
+  // Also update the overlay positioning (if it exists)
+  auto overlay = getComponent("overlay_background");
+  if (overlay) {
+    overlay->m_positioning = {.mode = UIPositionMode::TOP_ALIGNED,
+                              .offsetX = 0,
+                              .offsetY = 0,
+                              .fixedWidth = -1,   // Full width
+                              .fixedHeight = -1}; // Full height (special case)
+  }
+}
+
+// Auto-repositioning system implementation
+void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
+  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
+
+  UI_DEBUG("Window resized: " + std::to_string(newLogicalWidth) + "x" +
+           std::to_string(newLogicalHeight) + " - auto-repositioning UI components");
+
+  repositionAllComponents(newLogicalWidth, newLogicalHeight);
+  m_currentLogicalWidth = newLogicalWidth;
+  m_currentLogicalHeight = newLogicalHeight;
+}
+
+void UIManager::repositionAllComponents(int width, int height) {
+  // Note: Called from onWindowResize() which already holds m_componentsMutex
+  for (auto &[id, component] : m_components) {
+    if (component) {
+      applyPositioning(component, width, height);
+    }
+  }
+}
+
+void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
+                                 int width, int height) {
+  if (!component) {
+    return;
+  }
+
+  auto &pos = component->m_positioning;
+  auto &bounds = component->m_bounds;
+
+  // Update dimensions if fixed sizes specified
+  // Special cases:
+  //   -1 = use full window dimension
+  //   < -1 = use full window dimension minus the absolute value (for margins)
+  if (pos.fixedWidth == -1) {
+    bounds.width = width;
+  } else if (pos.fixedWidth < -1) {
+    bounds.width = width + pos.fixedWidth;  // fixedWidth is negative, so this subtracts
+  } else if (pos.fixedWidth > 0) {
+    bounds.width = pos.fixedWidth;
+  }
+
+  if (pos.fixedHeight == -1) {
+    bounds.height = height;
+  } else if (pos.fixedHeight < -1) {
+    bounds.height = height + pos.fixedHeight;  // fixedHeight is negative, so this subtracts
+  } else if (pos.fixedHeight > 0) {
+    bounds.height = pos.fixedHeight;
+  }
+
+  // Apply positioning based on mode
+  switch (pos.mode) {
+  case UIPositionMode::ABSOLUTE:
+    // No change - keep current position
+    break;
+
+  case UIPositionMode::CENTERED_H:
+    // Horizontally centered + offsetX, fixed offsetY
+    bounds.x = (width - bounds.width) / 2 + pos.offsetX;
+    bounds.y = pos.offsetY;
+    break;
+
+  case UIPositionMode::CENTERED_V:
+    // Vertically centered + offsetY, fixed offsetX
+    bounds.x = pos.offsetX;
+    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    break;
+
+  case UIPositionMode::CENTERED_BOTH:
+    // Center both axes + offsets
+    bounds.x = (width - bounds.width) / 2 + pos.offsetX;
+    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    break;
+
+  case UIPositionMode::TOP_ALIGNED:
+    // Top edge + offsetY, left aligned at offsetX
+    bounds.x = pos.offsetX;
+    bounds.y = pos.offsetY;
+    break;
+
+  case UIPositionMode::BOTTOM_ALIGNED:
+    // Bottom edge - height - offsetY, fixed offsetX
+    bounds.x = pos.offsetX;
+    bounds.y = height - bounds.height - pos.offsetY;
+    break;
+
+  case UIPositionMode::BOTTOM_CENTERED:
+    // Bottom edge - height - offsetY, horizontally centered + offsetX
+    bounds.x = (width - bounds.width) / 2 + pos.offsetX;
+    bounds.y = height - bounds.height - pos.offsetY;
+    break;
+
+  case UIPositionMode::BOTTOM_RIGHT:
+    // Bottom-right corner: right edge - width - offsetX, bottom edge - height - offsetY
+    bounds.x = width - bounds.width - pos.offsetX;
+    bounds.y = height - bounds.height - pos.offsetY;
+    break;
+
+  case UIPositionMode::LEFT_ALIGNED:
+    // Left edge + offsetX, vertically centered + offsetY
+    bounds.x = pos.offsetX;
+    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    break;
+
+  case UIPositionMode::RIGHT_ALIGNED:
+    // Right edge - width - offsetX, vertically centered + offsetY
+    bounds.x = width - bounds.width - pos.offsetX;
+    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    break;
+  }
+}
+
+void UIManager::setComponentPositioning(const std::string &id,
+                                        const UIPositioning &positioning) {
+  std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
+  auto component = getComponent(id);
+  if (component) {
+    component->m_positioning = positioning;
+    // Immediately apply the new positioning
+    applyPositioning(component, m_currentLogicalWidth, m_currentLogicalHeight);
+  }
 }

@@ -24,10 +24,13 @@ This directory contains documentation for all major manager systems in the Hamme
 - **[ResourceTemplateManager](ResourceTemplateManager.md)**  
   Singleton for registering, indexing, and instantiating resource templates (items, loot, blueprints). Supports fast lookup, thread safety, and statistics tracking.
 
-- **[SaveGameManager](SaveGameManager.md)**  
+- **[SaveGameManager](SaveGameManager.md)**
   Comprehensive save/load system with binary format, slot management, metadata extraction, and robust error handling. Integrates with the engine's BinarySerializer.
 
-- **[SoundManager](SoundManager.md)**  
+- **[SettingsManager](SettingsManager.md)**
+  Thread-safe settings management system with JSON persistence, category organization, type-safe access (int/float/bool/string), and change listener callbacks. Integrates with SettingsMenuState for user configuration.
+
+- **[SoundManager](SoundManager.md)**
   Centralized audio system for sound effects and music playback. Supports multiple formats, volume control, and efficient resource management.
 
 - **[TextureManager](TextureManager.md)**  

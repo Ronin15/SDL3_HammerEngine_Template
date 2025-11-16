@@ -7,6 +7,7 @@
 #define PATROL_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -21,6 +22,9 @@ public:
     EVENT_TARGET     // Generate waypoints around an event target
   };
 
+  explicit PatrolBehavior(const HammerEngine::PatrolBehaviorConfig& config = HammerEngine::PatrolBehaviorConfig{});
+
+  // Legacy constructors for backward compatibility
   explicit PatrolBehavior(const std::vector<Vector2D> &waypoints,
                           float moveSpeed = 2.0f,
                           bool includeOffscreenPoints = false);
@@ -30,7 +34,7 @@ public:
                           bool includeOffscreenPoints = false);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -74,8 +78,11 @@ public:
 
 
 private:
+  // Configuration
+  HammerEngine::PatrolBehaviorConfig m_config;
+
   std::vector<Vector2D> m_waypoints;
-  
+
   size_t m_currentWaypoint{0};
   float m_moveSpeed{2.0f};
   float m_waypointRadius{25.0f}; // How close entity needs to be to "reach" a
@@ -143,16 +150,16 @@ private:
   size_t m_navIndex{0};
   float m_navRadius{18.0f};
 
-  // Per-instance progress and refresh tracking (fixes thread-local cross-entity interference)
-  Uint64 m_lastPathUpdate{0};
-  Uint64 m_lastProgressTime{0};
+  // Per-instance progress and refresh tracking (deltaTime accumulators)
+  float m_pathUpdateTimer{0.0f};      // Replaces m_lastPathUpdate
+  float m_progressTimer{0.0f};        // Replaces m_lastProgressTime
   float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
-  Uint64 m_stallStart{0};
-  Uint64 m_backoffUntil{0};
-  Uint64 m_lastWaypointTime{0}; // Prevent rapid waypoint switching
-  Uint64 m_lastCrowdCheck{0}; // Timer for crowd density checks
+  float m_stallTimer{0.0f};           // Replaces m_stallStart (accumulates when stalled)
+  float m_backoffTimer{0.0f};         // Replaces m_backoffUntil (counts down)
+  float m_waypointCooldown{0.0f};     // Replaces m_lastWaypointTime (counts down)
+  float m_crowdCheckTimer{0.0f};      // Replaces m_lastCrowdCheck
   // Separation decimation
-  Uint64 m_lastSepTick{0};
+  float m_separationTimer{0.0f};      // Replaces m_lastSepTick
   Vector2D m_lastSepVelocity{0, 0};
   
   // Async pathfinding control

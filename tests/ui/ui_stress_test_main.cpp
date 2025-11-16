@@ -556,11 +556,15 @@ int main(int argc, char* argv[]) {
         tester.printResults();
         
         if (options.saveResults && !options.resultsPath.empty()) {
-            // Create directory if needed
-            std::error_code ec;
-            std::filesystem::create_directories("test_results/ui_stress", ec);
-            if (ec) {
-                std::cerr << "Warning: Failed to create directory test_results/ui_stress: " << ec.message() << "\n";
+            // Create directory if needed (extract from results path)
+            std::filesystem::path resultsPath(options.resultsPath);
+            std::filesystem::path parentDir = resultsPath.parent_path();
+            if (!parentDir.empty()) {
+                std::error_code ec;
+                std::filesystem::create_directories(parentDir, ec);
+                if (ec) {
+                    std::cerr << "Warning: Failed to create directory " << parentDir << ": " << ec.message() << "\n";
+                }
             }
             saveResults(options.resultsPath, tester.getResults());
             std::cout << "Results saved to: " << options.resultsPath << "\n";

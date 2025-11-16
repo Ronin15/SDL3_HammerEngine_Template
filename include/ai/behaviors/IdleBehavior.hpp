@@ -25,7 +25,7 @@ public:
                         float idleRadius = 20.0f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -44,33 +44,24 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-public:
-  // --- Staggering system overrides ---
-  bool useStaggering() const { return true; }
-  uint32_t getUpdateFrequency() const { return m_updateFrequency; }
-  void setUpdateFrequency(uint32_t frequency) {
-    m_updateFrequency = frequency > 0 ? frequency : 1;
-  }
-
 private:
   // Entity-specific state data
-  uint32_t m_updateFrequency{4}; // Default: update every 4 frames
   struct EntityState {
     Vector2D originalPosition{0, 0};
     Vector2D currentOffset{0, 0};
-    Uint64 lastMovementTime{0};
-    Uint64 lastTurnTime{0};
-    Uint64 nextMovementTime{0};
-    Uint64 nextTurnTime{0};
+    float movementTimer{0.0f};
+    float turnTimer{0.0f};
+    float movementInterval{0.0f};
+    float turnInterval{0.0f};
     float currentAngle{0.0f};
     bool initialized{false};
     // Separation decimation (for idle crowding)
-    Uint64 lastSepTick{0};
+    float separationTimer{0.0f};
     Vector2D lastSepVelocity{0, 0};
 
     EntityState()
-        : originalPosition(0, 0), currentOffset(0, 0), lastMovementTime(0),
-          lastTurnTime(0), nextMovementTime(0), nextTurnTime(0),
+        : originalPosition(0, 0), currentOffset(0, 0), movementTimer(0.0f),
+          turnTimer(0.0f), movementInterval(0.0f), turnInterval(0.0f),
           currentAngle(0.0f), initialized(false) {}
   };
 
@@ -95,13 +86,13 @@ private:
   // Helper methods
   void initializeEntityState(EntityPtr entity, EntityState &state) const;
   void updateStationary(EntityPtr entity, EntityState &state);
-  void updateSubtleSway(EntityPtr entity, EntityState &state) const;
-  void updateOccasionalTurn(EntityPtr entity, EntityState &state) const;
-  void updateLightFidget(EntityPtr entity, EntityState &state) const;
+  void updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const;
+  void updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const;
+  void updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const;
 
   Vector2D generateRandomOffset() const;
-  Uint64 getRandomMovementInterval() const;
-  Uint64 getRandomTurnInterval() const;
+  float getRandomMovementInterval() const;
+  float getRandomTurnInterval() const;
 };
 
 #endif // IDLE_BEHAVIOR_HPP

@@ -148,10 +148,9 @@ private:
 
     // Internal methods
     void runMainThread();
-    void runUpdateWorker(const HammerEngine::WorkerBudget& budget);
+    void runUpdateWorker();
     void processEvents();
     void processUpdates();
-    void processUpdatesHighPerformance();
     void processRender();
     void cleanup();
 

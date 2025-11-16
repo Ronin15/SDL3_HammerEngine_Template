@@ -31,7 +31,7 @@ public:
   explicit FollowBehavior(FollowMode mode, float followSpeed = 2.5f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity) override;
+  void executeLogic(EntityPtr entity, float deltaTime) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -72,33 +72,32 @@ private:
     Vector2D currentVelocity{0, 0};
     Vector2D desiredPosition{0, 0};
     Vector2D formationOffset{0, 0};
-    Uint64 lastTargetMoveTime{0};
-    Uint64 stationaryStartTime{0};
     float currentSpeed{0.0f};
     float currentHeading{0.0f}; // In radians
     bool isFollowing{false};
     bool targetMoving{false};
     bool inFormation{true};
+    bool isStopped{false}; // Track if stopped at personal space boundary
     int formationSlot{0}; // For escort formation
 
-    // Pathfinding state
+    // Pathfinding state (using deltaTime accumulators instead of SDL_GetTicks)
     std::vector<Vector2D> pathPoints;
     size_t currentPathIndex{0};
-    Uint64 lastPathUpdate{0};
+    float pathUpdateTimer{0.0f};     // Replaces lastPathUpdate
     float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    Uint64 lastProgressTime{0};
-    Uint64 backoffUntil{0};
-    // Separation decimation
-    Uint64 lastSepTick{0};
-    Vector2D lastSepVelocity{0, 0};
+    float progressTimer{0.0f};       // Replaces lastProgressTime
+    float backoffTimer{0.0f};        // Replaces backoffUntil (counts down)
+    // Separation decimation (stores separation FORCE, not velocity)
+    float separationTimer{0.0f};     // Replaces lastSepTick
+    Vector2D lastSepForce{0, 0};
 
     EntityState()
         : lastTargetPosition(0, 0), currentVelocity(0, 0),
-          desiredPosition(0, 0), formationOffset(0, 0), lastTargetMoveTime(0),
-          stationaryStartTime(0), currentSpeed(0.0f), currentHeading(0.0f),
-          isFollowing(false), targetMoving(false), inFormation(true),
-          formationSlot(0), currentPathIndex(0), lastPathUpdate(0),
-          lastNodeDistance(std::numeric_limits<float>::infinity()), lastProgressTime(0), backoffUntil(0) {}
+          desiredPosition(0, 0), formationOffset(0, 0), currentSpeed(0.0f), currentHeading(0.0f),
+          isFollowing(false), targetMoving(false), inFormation(true), isStopped(false),
+          formationSlot(0), currentPathIndex(0), pathUpdateTimer(0.0f),
+          lastNodeDistance(std::numeric_limits<float>::infinity()), progressTimer(0.0f), backoffTimer(0.0f),
+          separationTimer(0.0f) {}
   };
 
   // Map to store per-entity state
@@ -107,6 +106,8 @@ private:
   // Behavior parameters
   FollowMode m_followMode{FollowMode::LOOSE_FOLLOW};
   float m_followSpeed{2.5f};
+  float m_stopDistance{40.0f};          // Minimum distance - stop moving when this close
+  float m_resumeDistance{55.0f};        // Distance before resuming movement (prevents jitter)
   float m_followDistance{100.0f};       // Preferred distance from target
   float m_maxDistance{300.0f};          // Maximum distance before catch-up
   float m_catchUpSpeedMultiplier{1.5f}; // Speed boost when catching up
@@ -150,7 +151,7 @@ private:
   Vector2D predictTargetPosition(EntityPtr target,
                                  const EntityState &state) const;
 
-  bool isTargetMoving(EntityPtr target, const EntityState &state) const;
+  bool isTargetMoving(EntityPtr target) const;
   bool shouldCatchUp(float distanceToTarget) const;
   float calculateFollowSpeed(EntityPtr entity, const EntityState &state,
                              float distanceToTarget) const;
@@ -169,6 +170,9 @@ private:
 
   // Utility methods
   Vector2D normalizeVector(const Vector2D &vector) const;
+
+  // OPTIMIZATION: Extracted lambda for better compiler optimization
+  bool tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& desiredPos, float speed);
 
   // Formation setup
   void initializeFormationOffsets();

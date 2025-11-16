@@ -104,13 +104,13 @@ if [ -n "$TIMEOUT_CMD" ]; then
   # This prevents the script from exiting when threads cause segfaults during cleanup
   trap 'echo "Signal 11 (segmentation fault) caught but continuing..." >> "$TEMP_OUTPUT"' SEGV
   # Run timeout with --preserve-status to preserve the exit status of the command
-  $TIMEOUT_CMD --preserve-status 30s "$TEST_EXECUTABLE" $TEST_OPTS | tee "$TEMP_OUTPUT"
-  TEST_RESULT=$?
+  $TIMEOUT_CMD --preserve-status 30s "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$TEMP_OUTPUT"
+  TEST_RESULT=${PIPESTATUS[0]}
   trap - SEGV
 else
   trap 'echo "Signal 11 (segmentation fault) caught but continuing..." >> "$TEMP_OUTPUT"' SEGV
-  "$TEST_EXECUTABLE" $TEST_OPTS | tee "$TEMP_OUTPUT"
-  TEST_RESULT=$?
+  "$TEST_EXECUTABLE" $TEST_OPTS 2>&1 | tee "$TEMP_OUTPUT"
+  TEST_RESULT=${PIPESTATUS[0]}
   trap - SEGV
 fi
 
