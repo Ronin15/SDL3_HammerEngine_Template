@@ -614,6 +614,7 @@ BOOST_FIXTURE_TEST_CASE(TestAsyncPathRequestsUnderWorkerLoad,
 
   // Wait briefly for callbacks to arrive under load
   for (int i = 0; i < 25 && callbacks.load(std::memory_order_relaxed) == 0; ++i) {
+    PathfinderManager::Instance().update(); // Process buffered requests
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
