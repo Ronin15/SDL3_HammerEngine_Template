@@ -56,7 +56,7 @@ for arg in "$@"; do
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding functionality tests"
+      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding, WorkerBudget coordination tests"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, and Pathfinder performance benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
@@ -98,6 +98,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_collision_tests.sh"
   "$SCRIPT_DIR/run_pathfinding_tests.sh"
   "$SCRIPT_DIR/run_collision_pathfinding_integration_tests.sh"
+  "$SCRIPT_DIR/run_pathfinder_ai_contention_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)

@@ -31,6 +31,7 @@ struct WorkerBudget {
     size_t aiAllocated;        // Workers allocated to AIManager
     size_t particleAllocated;  // Workers allocated to ParticleManager
     size_t eventAllocated;     // Workers allocated to EventManager
+    size_t pathfindingAllocated; // Workers allocated to PathfinderManager
     size_t remaining;          // Buffer workers available for burst capacity
 
     // NOTE: collisionAllocated removed - CollisionManager is single-threaded
@@ -152,6 +153,14 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
     0.2     // targetUpdateTimeMs: 200µs target for event updates (adaptive tuning)
 };
 
+static constexpr BatchConfig PATHFINDING_BATCH_CONFIG = {
+    4,      // baseDivisor: threshold/4 for moderate parallelism
+    8,      // minBatchSize: minimum 8 path requests per batch
+    2,      // minBatchCount: at least 2 batches
+    6,      // maxBatchCount: up to 6 batches
+    1.0     // targetUpdateTimeMs: 1ms target for pathfinding batch (adaptive tuning)
+};
+
 /**
  * @brief Worker allocation weights
  *
@@ -162,11 +171,13 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
  * Higher weight = more base workers + higher priority for buffer access
  *
  * NOTE: CollisionManager is single-threaded and NOT included in allocation.
- * The 3 worker weight units previously allocated to collision have been
- * redistributed: AI (+1), Particle (+1), Event (unchanged).
+ * Worker distribution: AI (7/16 = 44%), Particle (4/16 = 25%), Event (2/16 = 12.5%), Pathfinding (3/16 = 19%)
+ * This allocation prioritizes AI behavior updates while ensuring pathfinding gets dedicated workers
+ * to prevent queue flooding during burst scenarios (500+ simultaneous path requests).
  */
 static constexpr size_t AI_WORKER_WEIGHT = 7;        // Was 6, increased for higher computation load
 static constexpr size_t PARTICLE_WORKER_WEIGHT = 4;  // Was 3, increased for parallel particle updates
+static constexpr size_t PATHFINDING_WORKER_WEIGHT = 3; // NEW: Dedicated pathfinding allocation for burst coordination
 static constexpr size_t EVENT_WORKER_WEIGHT = 2;     // Unchanged, lightweight event processing
 static constexpr size_t ENGINE_WORKERS = 1;          // GameLoop uses 1 worker (update thread); main thread handles rendering
 
@@ -377,18 +388,19 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
  * per-batch spatial hashes with significant memory overhead.
  *
  * Worker Distribution (based on weights):
- * - AI: 7/13 (~54%) - Highest priority, most computation-heavy
- * - Particle: 4/13 (~31%) - Second priority, parallel particle updates
- * - Event: 2/13 (~15%) - Lowest priority, lightweight event processing
+ * - AI: 7/16 (~44%) - Highest priority, most computation-heavy
+ * - Particle: 4/16 (~25%) - Second priority, parallel particle updates
+ * - Pathfinding: 3/16 (~19%) - NEW: Dedicated workers for coordinated burst handling
+ * - Event: 2/16 (~12.5%) - Lowest priority, lightweight event processing
  * - Buffer: Remaining workers for burst workloads
  *
  * @param availableWorkers Total workers available in ThreadSystem
  * @return WorkerBudget Allocation strategy for all subsystems
  *
  * Tiered Strategy (prevents over-allocation):
- * - Tier 1 (≤1 workers): GameLoop=1, AI=0 (single-threaded), Events=0 (single-threaded)
- * - Tier 2 (2-4 workers): GameLoop=1, AI=1 if possible, Events=0 (shares with AI)
- * - Tier 3 (5+ workers): GameLoop=2, weighted base allocation, 30% buffer reserve
+ * - Tier 1 (≤1 workers): GameLoop=1, AI=0 (single-threaded), Events=0, Pathfinding=0 (single-threaded)
+ * - Tier 2 (2-4 workers): GameLoop=1, AI=1 if possible, Pathfinding=0, Events=0 (shares with AI)
+ * - Tier 3 (5+ workers): GameLoop=1, weighted base allocation (AI/Particle/Pathfinding/Event), 30% buffer reserve
  *
  * Buffer Strategy:
  * - 30% of available workers reserved as buffer for burst capacity
@@ -407,6 +419,7 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = 0;         // Single-threaded fallback
         budget.particleAllocated = 0;   // Single-threaded fallback
         budget.eventAllocated = 0;      // Single-threaded fallback
+        budget.pathfindingAllocated = 0; // Single-threaded fallback
         budget.remaining = 0;
         return budget;
     }
@@ -423,6 +436,7 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
         budget.particleAllocated = (remainingWorkers >= 3) ? 1 : 0;
         budget.eventAllocated = 0; // Remains single-threaded on low-end
+        budget.pathfindingAllocated = 0; // Remains single-threaded on low-end
         // NOTE: collisionAllocated removed - CollisionManager is single-threaded
     } else {
         // Tier 3: High-end systems (5+ workers) - Base allocation + buffer
@@ -431,11 +445,11 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         size_t workersToAllocate = remainingWorkers - bufferReserve;
 
         // Weighted distribution for base allocations only (CollisionManager excluded - single-threaded)
-        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT + EVENT_WORKER_WEIGHT;
+        const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT + PATHFINDING_WORKER_WEIGHT + EVENT_WORKER_WEIGHT;
 
-        std::array<size_t, 3> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT, EVENT_WORKER_WEIGHT};
-        std::array<double, 3> rawShares{};
-        std::array<size_t, 3> shares{};
+        std::array<size_t, 4> weights = {AI_WORKER_WEIGHT, PARTICLE_WORKER_WEIGHT, PATHFINDING_WORKER_WEIGHT, EVENT_WORKER_WEIGHT};
+        std::array<double, 4> rawShares{};
+        std::array<size_t, 4> shares{};
 
         for (size_t i = 0; i < weights.size(); ++i) {
             if (weights[i] == 0 || workersToAllocate == 0) {
@@ -449,10 +463,10 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
             }
         }
 
-        size_t used = shares[0] + shares[1] + shares[2];
+        size_t used = shares[0] + shares[1] + shares[2] + shares[3];
 
         // Ensure minimum allocation for high-priority subsystems (CollisionManager excluded)
-        std::array<size_t, 3> priorityOrder = {0, 1, 2}; // AI, Particle, Event
+        std::array<size_t, 4> priorityOrder = {0, 1, 2, 3}; // AI, Particle, Pathfinding, Event
         for (size_t index : priorityOrder) {
             if (weights[index] > 0 && shares[index] == 0 && used < workersToAllocate) {
                 shares[index] = 1;
@@ -485,7 +499,8 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
         budget.aiAllocated = shares[0];
         budget.particleAllocated = shares[1];
-        budget.eventAllocated = shares[2];
+        budget.pathfindingAllocated = shares[2];
+        budget.eventAllocated = shares[3];
 
         // Buffer was already reserved upfront
         budget.remaining = bufferReserve;
@@ -493,13 +508,13 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
 
     // For low-end systems, calculate remaining after allocation
     if (availableWorkers <= 4) {
-        size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.eventAllocated;
+        size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.pathfindingAllocated + budget.eventAllocated;
         budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
     }
 
     // Validation: Ensure we never over-allocate
     size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated + budget.remaining;
+                            budget.particleAllocated + budget.pathfindingAllocated + budget.eventAllocated + budget.remaining;
 
     if (totalAllocated != availableWorkers) {
         // LOG WARNING with detailed breakdown for debugging
@@ -509,6 +524,7 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
             "  Engine Reserved: " + std::to_string(budget.engineReserved) + "\n" +
             "  AI: " + std::to_string(budget.aiAllocated) + "\n" +
             "  Particle: " + std::to_string(budget.particleAllocated) + "\n" +
+            "  Pathfinding: " + std::to_string(budget.pathfindingAllocated) + "\n" +
             "  Event: " + std::to_string(budget.eventAllocated) + "\n" +
             "  Buffer: " + std::to_string(budget.remaining);
         THREADSYSTEM_WARN(breakdown);
