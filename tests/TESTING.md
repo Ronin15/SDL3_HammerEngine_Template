@@ -398,9 +398,9 @@ Located in `BufferUtilizationTest.cpp`, these tests verify the intelligent buffe
 5. **Graceful Degradation**: Tests single-threaded fallback on resource-constrained systems
 
 **Test Coverage:**
-- **Ultra Low-End (1-2 workers)**: GameLoop priority, AI/Events single-threaded
+- **Ultra Low-End (1 worker)**: GameLoop only, AI/Events/Particles single-threaded
 - **Low-End (3-4 workers)**: Conservative allocation with limited buffer
-- **Target Minimum (7 workers)**: Optimal allocation (GameLoop: 2, AI: 3, Events: 1, Buffer: 1)
+- **Target Minimum (7 workers)**: Optimal allocation (GameLoop: 1, AI: 3, Particles: 1, Buffer: 2)
 - **High-End (12+ workers)**: Full buffer utilization for burst capacity
 
 **Validation Examples:**
