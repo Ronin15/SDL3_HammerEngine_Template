@@ -177,8 +177,10 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
             );
 
             // Wait for async pathfinding to complete
+            // IMPORTANT: Call update() to process buffered requests with WorkerBudget integration
             while (!pathReady.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::microseconds(10));
+                PathfinderManager::Instance().update(); // Process buffered requests
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
             auto pathEnd = high_resolution_clock::now();
 
@@ -254,8 +256,12 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
         // Wait for all requests to complete (with timeout)
         auto waitStart = high_resolution_clock::now();
 
-        // Give pathfinder time to process all requests
-        std::this_thread::sleep_for(std::chrono::milliseconds(batchSize * 2)); // 2ms per request max
+        // Process requests with update() calls
+        int maxIterations = batchSize * 2; // Max iterations to wait
+        for (int i = 0; i < maxIterations; ++i) {
+            PathfinderManager::Instance().update(); // Process buffered requests
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
 
         auto waitEnd = high_resolution_clock::now();
         double waitTimeMs = duration_cast<milliseconds>(waitEnd - waitStart).count();
@@ -311,8 +317,10 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
             );
 
             // Wait for async pathfinding to complete
+            // IMPORTANT: Call update() to process buffered requests with WorkerBudget integration
             while (!pathReady.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::microseconds(10));
+                PathfinderManager::Instance().update(); // Process buffered requests
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
             auto pathEnd = high_resolution_clock::now();
 
@@ -380,7 +388,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
         );
 
         while (!pathReady.load(std::memory_order_acquire)) {
-            std::this_thread::sleep_for(std::chrono::microseconds(10));
+            PathfinderManager::Instance().update(); // Process buffered requests
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
         auto pathEnd = high_resolution_clock::now();
 
@@ -407,7 +416,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
             );
 
             while (!pathReady.load(std::memory_order_acquire)) {
-                std::this_thread::sleep_for(std::chrono::microseconds(10));
+                PathfinderManager::Instance().update(); // Process buffered requests
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
             auto pathEnd = high_resolution_clock::now();
 
