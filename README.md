@@ -40,7 +40,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 - **Safety**: Smart pointers, RAII, strong typing, and robust error handling throughout.
 - **Extensibility**: Modular managers, clear APIs, and easy resource and UI customization.
 - **Developer Experience**: Clean code, strict style, automated testing, and comprehensive docs.
-- **Production-Ready**: Used for real-world projects, with proven reliability and scalability.
+- **Production-Ready Design**: Architecture and tooling designed for serious game development, with comprehensive testing infrastructure and performance validation.
 
 ---
 
