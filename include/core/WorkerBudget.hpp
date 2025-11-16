@@ -155,9 +155,9 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
 
 static constexpr BatchConfig PATHFINDING_BATCH_CONFIG = {
     4,      // baseDivisor: threshold/4 for moderate parallelism
-    8,      // minBatchSize: minimum 8 path requests per batch
+    16,     // minBatchSize: minimum 16 path requests per batch (larger batches for high-volume scenarios)
     2,      // minBatchCount: at least 2 batches
-    6,      // maxBatchCount: up to 6 batches
+    8,      // maxBatchCount: up to 8 batches (better parallelism at scale)
     1.0     // targetUpdateTimeMs: 1ms target for pathfinding batch (adaptive tuning)
 };
 
