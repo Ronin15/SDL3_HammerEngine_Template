@@ -168,8 +168,7 @@ static constexpr BatchConfig EVENT_BATCH_CONFIG = {
 static constexpr size_t AI_WORKER_WEIGHT = 7;        // Was 6, increased for higher computation load
 static constexpr size_t PARTICLE_WORKER_WEIGHT = 4;  // Was 3, increased for parallel particle updates
 static constexpr size_t EVENT_WORKER_WEIGHT = 2;     // Unchanged, lightweight event processing
-static constexpr size_t ENGINE_MIN_WORKERS = 1;        // Minimum workers for GameEngine
-static constexpr size_t ENGINE_OPTIMAL_WORKERS = 2;    // Optimal workers for GameEngine on higher-end systems
+static constexpr size_t ENGINE_WORKERS = 1;          // GameLoop uses 1 worker (update thread); main thread handles rendering
 
 /**
  * @brief Unified queue pressure management thresholds
@@ -412,16 +411,9 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         return budget;
     }
 
-    // Dynamic GameLoop worker allocation based on available cores
-    // Low-end systems (≤4 workers): 1 worker for GameLoop coordination
-    // Higher-end systems (>4 workers): 2 workers for GameLoop tasks
-    if (availableWorkers <= 2) {
-        budget.engineReserved = 1;  // Very limited systems
-    } else if (availableWorkers <= 4) {
-        budget.engineReserved = ENGINE_MIN_WORKERS;  // Low-end systems: 1 worker
-    } else {
-        budget.engineReserved = ENGINE_OPTIMAL_WORKERS;  // Higher-end systems: 2 workers
-    }
+    // GameLoop worker allocation: 1 worker for update thread (all systems)
+    // Main thread handles rendering and events; update worker runs game logic
+    budget.engineReserved = ENGINE_WORKERS;
 
     // Calculate remaining workers after engine reservation
     size_t remainingWorkers = availableWorkers - budget.engineReserved;
