@@ -186,9 +186,10 @@ run_test_script() {
     
     # Show only script name and result - suppress all normal output
     # Only show content if there are actual test failures
-    if [ $result -ne 0 ] || grep -qE "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output"; then
+    # Filter out "has passed" lines first to avoid false positives from "check !failed has passed"
+    if [ $result -ne 0 ] || grep -v "has passed" "$temp_output" | grep -qE "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|has failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)"; then
       echo -e "\n${RED}Test failures detected in $script_name:${NC}"
-      grep -E "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output" || echo "Script failed with exit code $result"
+      grep -v "has passed" "$temp_output" | grep -E "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|has failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" || echo "Script failed with exit code $result"
     fi
     rm -f "$temp_output"
   else
