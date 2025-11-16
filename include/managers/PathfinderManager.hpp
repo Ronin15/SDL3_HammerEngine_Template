@@ -47,6 +47,7 @@
 #include "utils/Vector2D.hpp"
 #include "entities/Entity.hpp"
 #include "managers/EventManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include <atomic>
 #include <chrono>
 #include <functional>
@@ -143,7 +144,7 @@ public:
         EntityID entityId,
         const Vector2D& start,
         const Vector2D& goal,
-        Priority priority = Priority::High,
+        Priority priority = Priority::Normal,
         std::function<void(EntityID, const std::vector<Vector2D>&)> callback = nullptr
     );
 
@@ -400,6 +401,34 @@ private:
     std::vector<std::future<void>> m_gridRebuildFutures;
     std::mutex m_gridRebuildFuturesMutex;
 
+    // WorkerBudget integration for coordinated batch processing
+    HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
+    std::vector<std::future<void>> m_batchFutures;
+    std::mutex m_batchFuturesMutex;
+
+    // Performance tracking (matching AIManager pattern)
+    std::atomic<size_t> m_lastOptimalWorkerCount{0};
+    std::atomic<size_t> m_lastAvailableWorkers{0};
+    std::atomic<size_t> m_lastPathfindingBudget{0};
+    std::atomic<bool> m_lastWasThreaded{false};
+
+    // Request batching configuration
+    static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 8; // Minimum requests before batching
+    static constexpr size_t MAX_REQUESTS_PER_FRAME = 50;   // Rate limiting
+
+    // Request buffer for batching (instead of immediate submission)
+    struct BufferedRequest {
+        EntityID entityId;
+        Vector2D start;
+        Vector2D goal;
+        Priority priority;
+        PathCallback callback;
+        uint64_t requestId;
+        std::chrono::steady_clock::time_point enqueueTime;
+    };
+    std::vector<BufferedRequest> m_requestBuffer;
+    mutable std::mutex m_requestBufferMutex;
+
     // Internal methods - simplified
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
@@ -414,6 +443,10 @@ private:
     // Auto-scaling cache optimization
     void calculateOptimalCacheSettings(); // Calculate dynamic parameters based on world size
     void prewarmPathCache(); // Seed cache with sector-based paths for fast warmup
+
+    // WorkerBudget batch processing (NEW)
+    void processPendingRequests(); // Process buffered requests with WorkerBudget coordination
+    void waitForBatchCompletion(); // Wait for all pending batch futures to complete
 
     // Event handlers
     void onCollisionObstacleChanged(const Vector2D& position, float radius, const std::string& description);

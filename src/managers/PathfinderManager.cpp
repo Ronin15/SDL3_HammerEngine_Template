@@ -95,6 +95,9 @@ void PathfinderManager::update() {
         return;
     }
 
+    // Process buffered path requests with WorkerBudget coordination
+    processPendingRequests();
+
     // Event-driven architecture: Grid updates happen via World events (no polling needed)
     // Only report statistics periodically for monitoring
 
@@ -115,6 +118,15 @@ void PathfinderManager::clean() {
 
     // Wait for grid rebuild tasks to complete before shutdown
     waitForGridRebuildCompletion();
+
+    // Wait for batch processing to complete before shutdown
+    waitForBatchCompletion();
+
+    // Clear request buffer
+    {
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        m_requestBuffer.clear();
+    }
 
     // Unsubscribe from events
     unsubscribeFromEvents();
@@ -147,6 +159,19 @@ void PathfinderManager::prepareForStateTransition() {
     // This prevents async tasks from accessing deleted world data during state transitions
     waitForGridRebuildCompletion();
 
+    // Wait for batch processing to complete before clearing data
+    waitForBatchCompletion();
+
+    // Clear request buffer
+    {
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        size_t bufferSize = m_requestBuffer.size();
+        m_requestBuffer.clear();
+        if (bufferSize > 0) {
+            PATHFIND_DEBUG("Cleared " + std::to_string(bufferSize) + " buffered requests");
+        }
+    }
+
     // Clear path cache completely for fresh state
     {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
@@ -156,7 +181,7 @@ void PathfinderManager::prepareForStateTransition() {
             PATHFIND_DEBUG("Cleared " + std::to_string(cacheSize) + " cached paths");
         }
     }
-    
+
     // Clear pending requests to avoid callbacks to old game state
     {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
@@ -219,113 +244,24 @@ uint64_t PathfinderManager::requestPath(
     Vector2D nGoal = goal;
     normalizeEndpoints(nStart, nGoal);
 
-    uint64_t cacheKey = computeCacheKey(nStart, nGoal);
-
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1);
     m_enqueuedRequests.fetch_add(1, std::memory_order_relaxed);
 
-    // Coalesce in-flight requests
+    // Buffer request for batch processing with WorkerBudget coordination
     {
-        std::lock_guard<std::mutex> lock(m_pendingMutex);
-        auto it = m_pending.find(cacheKey);
-        if (it != m_pending.end()) {
-            if (callback) it->second.callbacks.push_back(callback);
-            return requestId; // Will be fulfilled when the in-flight request completes
-        } else {
-            PendingCallbacks pc;
-            if (callback) pc.callbacks.push_back(callback);
-            m_pending.emplace(cacheKey, std::move(pc));
-        }
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        m_requestBuffer.push_back({
+            entityId,
+            nStart,
+            nGoal,
+            priority,
+            callback,
+            requestId,
+            std::chrono::steady_clock::now()
+        });
     }
 
-    // Process directly on ThreadSystem - no queue overhead
-    auto work = [this, entityId, nStart, nGoal, cacheKey]() {
-        std::vector<Vector2D> path;
-        bool cacheHit = false;
-        
-        // Fast cache lookup - primary cache only for maximum performance
-        {
-            std::lock_guard<std::mutex> lock(m_cacheMutex);
-            auto it = m_pathCache.find(cacheKey);
-            if (it != m_pathCache.end()) {
-                // Cache hit - update usage tracking
-                path = it->second.path;
-                it->second.lastUsed = std::chrono::steady_clock::now();
-                it->second.useCount++;
-                cacheHit = true;
-                m_cacheHits.fetch_add(1, std::memory_order_relaxed);
-            } else {
-                // Cache miss - will need full pathfinding
-                m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
-            }
-        }
-        
-        // Compute path if cache miss
-        // IMPORTANT: Pass skipNormalization=true since coordinates are already normalized
-        // and cache key was computed from that normalization. Re-normalizing could cause
-        // cache key mismatch if grid changed between main thread and worker thread.
-        if (!cacheHit) {
-            findPathImmediate(nStart, nGoal, path, true);
-        }
-        
-        // Cache path and update statistics
-        if (!path.empty()) {
-            // Cache the successful path
-            {
-                std::lock_guard<std::mutex> lock(m_cacheMutex);
-                
-                // Smart cache management with LRU eviction
-                if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                    evictOldestCacheEntry();
-                }
-                
-                // Cache the full path
-                PathCacheEntry entry;
-                entry.path = path;
-                entry.lastUsed = std::chrono::steady_clock::now();
-                entry.useCount = 1;
-                m_pathCache[cacheKey] = std::move(entry);
-            }
-            
-            // Update success statistics
-            m_completedRequests.fetch_add(1, std::memory_order_relaxed);
-        } else {
-            // Update failure statistics
-            m_failedRequests.fetch_add(1, std::memory_order_relaxed);
-        }
-        
-        // Update basic processing count (no timing overhead)
-        m_processedCount.fetch_add(1, std::memory_order_relaxed);
-        
-        // Fan out to all pending callbacks for this key
-        std::vector<PathCallback> callbacks;
-        {
-            std::lock_guard<std::mutex> lock(m_pendingMutex);
-            auto it = m_pending.find(cacheKey);
-            if (it != m_pending.end()) {
-                callbacks.swap(it->second.callbacks);
-                m_pending.erase(it);
-            }
-        }
-        for (const auto &cb : callbacks) {
-            if (cb) cb(entityId, path);
-        }
-    };
-
-    // Submit pathfinding work to ThreadSystem with mapped priority
-    const auto taskPri = mapEnumToTaskPriority(priority);
-    const auto priLabel = priorityLabel(priority);
-    std::string taskDesc;
-    taskDesc.reserve(24 + priLabel.size());
-    taskDesc = "PathfindingComputation/";
-    taskDesc.append(priLabel);
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
-        work,
-        taskPri,
-        taskDesc
-    );
-    
     return requestId;
 }
 
@@ -1303,6 +1239,315 @@ void PathfinderManager::waitForGridRebuildCompletion() {
         }
 
         PATHFIND_INFO("Grid rebuild synchronization complete - safe to proceed with state transition");
+    }
+}
+
+// WorkerBudget Batch Processing Implementation
+
+void PathfinderManager::processPendingRequests() {
+    // Swap out buffered requests to avoid holding lock during processing
+    std::vector<BufferedRequest> requests;
+    {
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        if (m_requestBuffer.empty()) {
+            return; // No work to do
+        }
+        requests.swap(m_requestBuffer);
+    }
+
+    const size_t requestCount = requests.size();
+    if (requestCount == 0) {
+        return;
+    }
+
+    // Get ThreadSystem reference
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+
+    // Query ThreadSystem state for WorkerBudget coordination
+    size_t availableWorkers = threadSystem.getThreadCount();
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = threadSystem.getQueueCapacity();
+    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
+
+    // CRITICAL: Queue pressure monitoring - graceful degradation
+    if (queuePressure > HammerEngine::QUEUE_PRESSURE_CRITICAL) {
+        // Queue critically full - defer requests to next frame
+        PATHFIND_WARN("Queue pressure critical (" + std::to_string(queuePressure * 100.0) +
+                      "%), deferring " + std::to_string(requestCount) + " path requests to next frame");
+
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        // Re-insert requests at the front for next frame processing
+        m_requestBuffer.insert(m_requestBuffer.begin(), requests.begin(), requests.end());
+        return;
+    }
+
+    // Rate limiting - cap requests per frame to prevent queue flooding
+    size_t requestsToProcess = std::min(requestCount, MAX_REQUESTS_PER_FRAME);
+    if (requestsToProcess < requestCount) {
+        PATHFIND_DEBUG("Rate limiting: Processing " + std::to_string(requestsToProcess) +
+                      " of " + std::to_string(requestCount) + " requests this frame");
+
+        // Re-buffer excess requests for next frame
+        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
+        m_requestBuffer.insert(m_requestBuffer.end(),
+                              requests.begin() + requestsToProcess,
+                              requests.end());
+        requests.resize(requestsToProcess);
+    }
+
+    // WorkerBudget coordination
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+
+    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
+        budget.pathfindingAllocated,
+        requestsToProcess,
+        MIN_REQUESTS_FOR_BATCHING
+    );
+
+    // Store metrics for debugging/profiling
+    m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
+    m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
+    m_lastPathfindingBudget.store(budget.pathfindingAllocated, std::memory_order_relaxed);
+
+    // Determine if threading is beneficial
+    const bool useThreading = (requestsToProcess >= MIN_REQUESTS_FOR_BATCHING) &&
+                             (optimalWorkerCount > 0) &&
+                             (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
+
+    m_lastWasThreaded.store(useThreading, std::memory_order_relaxed);
+
+    if (!useThreading) {
+        // Process sequentially on main thread (low request count or high queue pressure)
+        for (size_t i = 0; i < requests.size(); ++i) {
+            const auto& req = requests[i];
+            uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+
+            // Coalesce with pending requests
+            {
+                std::lock_guard<std::mutex> lock(m_pendingMutex);
+                auto it = m_pending.find(cacheKey);
+                if (it != m_pending.end()) {
+                    if (req.callback) it->second.callbacks.push_back(req.callback);
+                    continue; // Already in flight
+                } else {
+                    PendingCallbacks pc;
+                    if (req.callback) pc.callbacks.push_back(req.callback);
+                    m_pending.emplace(cacheKey, std::move(pc));
+                }
+            }
+
+            // Submit single task to ThreadSystem
+            auto work = [this, req, cacheKey]() {
+                std::vector<Vector2D> path;
+                bool cacheHit = false;
+
+                // Cache lookup
+                {
+                    std::lock_guard<std::mutex> lock(m_cacheMutex);
+                    auto it = m_pathCache.find(cacheKey);
+                    if (it != m_pathCache.end()) {
+                        path = it->second.path;
+                        it->second.lastUsed = std::chrono::steady_clock::now();
+                        it->second.useCount++;
+                        cacheHit = true;
+                        m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+
+                // Compute path if needed
+                if (!cacheHit) {
+                    findPathImmediate(req.start, req.goal, path, true);
+                }
+
+                // Cache result
+                if (!path.empty()) {
+                    {
+                        std::lock_guard<std::mutex> lock(m_cacheMutex);
+                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                            evictOldestCacheEntry();
+                        }
+                        PathCacheEntry entry;
+                        entry.path = path;
+                        entry.lastUsed = std::chrono::steady_clock::now();
+                        entry.useCount = 1;
+                        m_pathCache[cacheKey] = std::move(entry);
+                    }
+                    m_completedRequests.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    m_failedRequests.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                m_processedCount.fetch_add(1, std::memory_order_relaxed);
+
+                // Fire callbacks
+                std::vector<PathCallback> callbacks;
+                {
+                    std::lock_guard<std::mutex> lock(m_pendingMutex);
+                    auto it = m_pending.find(cacheKey);
+                    if (it != m_pending.end()) {
+                        callbacks.swap(it->second.callbacks);
+                        m_pending.erase(it);
+                    }
+                }
+                for (const auto &cb : callbacks) {
+                    if (cb) cb(req.entityId, path);
+                }
+            };
+
+            const auto taskPri = mapEnumToTaskPriority(req.priority);
+            const auto priLabel = priorityLabel(req.priority);
+            std::string taskDesc = "PathfindingComputation/" + std::string(priLabel);
+
+            threadSystem.enqueueTask(work, taskPri, taskDesc);
+        }
+
+        return;
+    }
+
+    // Batch processing with WorkerBudget coordination
+    auto startTime = std::chrono::steady_clock::now();
+
+    // Calculate batch strategy using WorkerBudget
+    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+        HammerEngine::PATHFINDING_BATCH_CONFIG,
+        requestsToProcess,
+        MIN_REQUESTS_FOR_BATCHING,
+        optimalWorkerCount,
+        budget.pathfindingAllocated,
+        queuePressure,
+        m_adaptiveBatchState,
+        m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire)
+    );
+
+    PATHFIND_DEBUG("Processing " + std::to_string(requestsToProcess) + " requests in " +
+                  std::to_string(batchCount) + " batches (size: " + std::to_string(batchSize) +
+                  "), workers: " + std::to_string(optimalWorkerCount));
+
+    // Wait for previous batch to complete before starting new one
+    waitForBatchCompletion();
+
+    // Clear old futures
+    {
+        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+        m_batchFutures.clear();
+    }
+
+    // Submit batches
+    for (size_t i = 0; i < batchCount; ++i) {
+        size_t start = i * batchSize;
+        size_t end = std::min(start + batchSize, requestsToProcess);
+
+        auto batchWork = [this, requests, start, end]() {
+            for (size_t idx = start; idx < end; ++idx) {
+                const auto& req = requests[idx];
+                uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+
+                // Coalesce
+                {
+                    std::lock_guard<std::mutex> lock(m_pendingMutex);
+                    auto it = m_pending.find(cacheKey);
+                    if (it != m_pending.end()) {
+                        if (req.callback) it->second.callbacks.push_back(req.callback);
+                        continue;
+                    } else {
+                        PendingCallbacks pc;
+                        if (req.callback) pc.callbacks.push_back(req.callback);
+                        m_pending.emplace(cacheKey, std::move(pc));
+                    }
+                }
+
+                // Process request
+                std::vector<Vector2D> path;
+                bool cacheHit = false;
+
+                {
+                    std::lock_guard<std::mutex> lock(m_cacheMutex);
+                    auto it = m_pathCache.find(cacheKey);
+                    if (it != m_pathCache.end()) {
+                        path = it->second.path;
+                        it->second.lastUsed = std::chrono::steady_clock::now();
+                        it->second.useCount++;
+                        cacheHit = true;
+                        m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+                    } else {
+                        m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+
+                if (!cacheHit) {
+                    findPathImmediate(req.start, req.goal, path, true);
+                }
+
+                if (!path.empty()) {
+                    {
+                        std::lock_guard<std::mutex> lock(m_cacheMutex);
+                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                            evictOldestCacheEntry();
+                        }
+                        PathCacheEntry entry;
+                        entry.path = path;
+                        entry.lastUsed = std::chrono::steady_clock::now();
+                        entry.useCount = 1;
+                        m_pathCache[cacheKey] = std::move(entry);
+                    }
+                    m_completedRequests.fetch_add(1, std::memory_order_relaxed);
+                } else {
+                    m_failedRequests.fetch_add(1, std::memory_order_relaxed);
+                }
+
+                m_processedCount.fetch_add(1, std::memory_order_relaxed);
+
+                // Fire callbacks
+                std::vector<PathCallback> callbacks;
+                {
+                    std::lock_guard<std::mutex> lock(m_pendingMutex);
+                    auto it = m_pending.find(cacheKey);
+                    if (it != m_pending.end()) {
+                        callbacks.swap(it->second.callbacks);
+                        m_pending.erase(it);
+                    }
+                }
+                for (const auto &cb : callbacks) {
+                    if (cb) cb(req.entityId, path);
+                }
+            }
+        };
+
+        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+        m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+            batchWork,
+            HammerEngine::TaskPriority::High,
+            "Pathfinding_Batch_" + std::to_string(i)
+        ));
+    }
+
+    // Update adaptive batch state with completion time
+    waitForBatchCompletion();
+
+    auto endTime = std::chrono::steady_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+    double completionTimeMs = duration.count() / 1000.0;
+    m_adaptiveBatchState.lastUpdateTimeMs.store(completionTimeMs, std::memory_order_release);
+}
+
+void PathfinderManager::waitForBatchCompletion() {
+    std::vector<std::future<void>> localFutures;
+
+    {
+        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+        localFutures = std::move(m_batchFutures);
+    }
+
+    for (auto& future : localFutures) {
+        if (future.valid()) {
+            try {
+                future.wait();
+            } catch (const std::exception& e) {
+                PATHFIND_ERROR("Exception waiting for batch completion: " + std::string(e.what()));
+            }
+        }
     }
 }
 
