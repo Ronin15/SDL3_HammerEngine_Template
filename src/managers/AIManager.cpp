@@ -63,15 +63,6 @@ bool AIManager::init() {
     // Reserve with 10% headroom for growth (typical: 4000 NPCs → 4400 capacity)
     m_reusableCollisionBuffer.reserve(static_cast<size_t>(INITIAL_CAPACITY * 1.1));
 
-    // Pre-allocate assignment batch buffers (Issue #1 fix)
-    // Estimate max batches based on worker budget: typically 4-8 batches for assignment processing
-    constexpr size_t MAX_ASSIGNMENT_BATCHES = 16; // Conservative upper bound
-    constexpr size_t TYPICAL_BATCH_SIZE = 128;    // Typical batch size for assignments
-    m_assignmentBatchBuffers.resize(MAX_ASSIGNMENT_BATCHES);
-    for (auto& buffer : m_assignmentBatchBuffers) {
-      buffer.reserve(TYPICAL_BATCH_SIZE);
-    }
-
     // Pre-allocate distance/position buffers (Issue #2 fix)
     // WorkerBudget.hpp: AI_BATCH_CONFIG allows up to 16 batches (maxBatchCount * 2)
     // Batch size = (workloadSize + batchCount - 1) / batchCount
@@ -909,17 +900,7 @@ size_t AIManager::processPendingBehaviorAssignments() {
     return 0;
   }
 
-  // For small batches, process synchronously on main thread
-  if (assignmentCount <= 100) {
-    for (const auto &assignment : toProcess) {
-      if (assignment.entity) {
-        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
-      }
-    }
-    return assignmentCount;
-  }
-
-  // For large batches, process asynchronously
+  // Check if threading is available
   bool useThreading = m_useThreading.load(std::memory_order_acquire) &&
                       HammerEngine::ThreadSystem::Exists();
 
@@ -956,11 +937,12 @@ size_t AIManager::processPendingBehaviorAssignments() {
   // Calculate optimal batching using unified API
   HammerEngine::WorkerBudget budget =
       HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t optimalWorkerCount =
-      budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, 1000);
 
   size_t assignmentThreadingThreshold =
       std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
+
+  size_t optimalWorkerCount =
+      budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, assignmentThreadingThreshold);
 
   // Get previous frame's completion time for adaptive feedback
   double lastUpdateTimeMs = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
@@ -976,42 +958,50 @@ size_t AIManager::processPendingBehaviorAssignments() {
       lastUpdateTimeMs
   );
 
+  // If WorkerBudget recommends single-threaded execution, process synchronously
+  if (batchCount <= 1) {
+    AI_DEBUG("WorkerBudget recommends single-threaded processing for " +
+             std::to_string(assignmentCount) + " assignments");
+    for (const auto &assignment : toProcess) {
+      if (assignment.entity) {
+        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+      }
+    }
+    return assignmentCount;
+  }
+
   // Submit batches using futures for deterministic completion tracking
   {
     std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
     m_assignmentFutures.clear();  // Clear old futures, keeps capacity
-    m_assignmentFutures.reserve(batchCount);
 
-    size_t start = 0;
-    for (size_t i = 0; i < batchCount; ++i) {
-      // Early exit if all items have been processed
-      if (start >= assignmentCount) break;
+    // Calculate actual needed batches (avoid submitting empty tasks)
+    size_t actualBatchesNeeded = (assignmentCount + batchSize - 1) / batchSize;
+    size_t tasksToSubmit = std::min(batchCount, actualBatchesNeeded);
 
-      // Ensure end never exceeds assignmentCount (batchSize uses ceiling division)
+    m_assignmentFutures.reserve(tasksToSubmit);
+
+    // Convert toProcess to shared_ptr for safe async access (zero-copy, matches collision pattern)
+    auto toProcessShared = std::make_shared<std::vector<PendingAssignment>>(std::move(toProcess));
+
+    // Submit tasks with index ranges (deterministic task count, no buffer pool needed)
+    for (size_t i = 0; i < tasksToSubmit; ++i) {
+      size_t start = i * batchSize;
       size_t end = std::min(start + batchSize, assignmentCount);
 
-      // Use pre-allocated batch buffer to avoid per-batch allocation (Issue #1 fix)
-      // Reuse buffer from pool, clear() keeps capacity for next use
-      std::vector<PendingAssignment>& batchBuffer = m_assignmentBatchBuffers[i % m_assignmentBatchBuffers.size()];
-      batchBuffer.clear();
-      batchBuffer.insert(batchBuffer.end(), toProcess.begin() + start, toProcess.begin() + end);
-
-      // Copy batch data for async processing (need owned copy for lambda capture)
-      std::vector<PendingAssignment> batchData = batchBuffer;
-
-      // Submit each batch with future for completion tracking
       m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
-          [this, batchData = std::move(batchData)]() -> void {
+          [this, toProcessShared, start, end]() -> void {
             // Check if AIManager is shutting down
             if (m_isShutdown) {
               return; // Don't process assignments during shutdown
             }
 
-            for (const auto &assignment : batchData) {
+            // Process index range directly (no intermediate buffer)
+            for (size_t idx = start; idx < end; ++idx) {
+              const auto& assignment = (*toProcessShared)[idx];
               if (assignment.entity) {
                 try {
-                  assignBehaviorToEntity(assignment.entity,
-                                         assignment.behaviorName);
+                  assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
                 } catch (const std::exception &e) {
                   AI_ERROR("Exception during async behavior assignment: " +
                            std::string(e.what()));
@@ -1022,7 +1012,6 @@ size_t AIManager::processPendingBehaviorAssignments() {
             }
           },
           HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
-      start = end;
     }
   }
 

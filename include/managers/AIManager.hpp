@@ -535,10 +535,6 @@ private:
   // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
   std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
 
-  // Pre-allocated batch buffers for assignment processing (Issue #1 fix)
-  // Eliminates ~200-400 allocations/sec during heavy NPC spawning
-  std::vector<std::vector<PendingAssignment>> m_assignmentBatchBuffers;
-
   // Pre-allocated batch buffers for distance/position calculations (Issue #2 fix)
   // Eliminates ~480 allocations/sec @ 60 FPS with 8 batches (1-2ms frame spikes)
   std::vector<std::vector<float>> m_distanceBuffers;
