@@ -21,6 +21,7 @@
 #include "events/WorldEvent.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "collisions/CollisionBody.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -32,7 +33,7 @@
 
 using namespace HammerEngine;
 
-// Test logging helper
+// Test logging helper (kept for backward compatibility within test cases)
 #define TEST_LOG(msg) do { \
     std::cout << "[TEST] " << msg << std::endl; \
 } while(0)
@@ -142,23 +143,50 @@ private:
  */
 struct GlobalEventCoordinationFixture {
     GlobalEventCoordinationFixture() {
-        TEST_LOG("Initializing EventCoordinationIntegrationTests global fixture");
+        std::cout << "=== EventCoordinationIntegrationTests Global Setup ===" << std::endl;
 
         // Initialize managers in dependency order
-        BOOST_REQUIRE(ThreadSystem::Instance().init());
-        BOOST_REQUIRE(ResourceTemplateManager::Instance().init());
-        BOOST_REQUIRE(EventManager::Instance().init());
-        BOOST_REQUIRE(WorldManager::Instance().init());
-        BOOST_REQUIRE(CollisionManager::Instance().init());
-        BOOST_REQUIRE(PathfinderManager::Instance().init());
-        BOOST_REQUIRE(AIManager::Instance().init());
-        BOOST_REQUIRE(ParticleManager::Instance().init());
+        // Note: Use throw instead of BOOST_REQUIRE in fixture constructors
+        if (!ThreadSystem::Instance().init()) {
+            throw std::runtime_error("ThreadSystem initialization failed");
+        }
 
-        TEST_LOG("All managers initialized successfully");
+        if (!ResourceTemplateManager::Instance().init()) {
+            throw std::runtime_error("ResourceTemplateManager initialization failed");
+        }
+
+        if (!EventManager::Instance().init()) {
+            throw std::runtime_error("EventManager initialization failed");
+        }
+
+        if (!WorldManager::Instance().init()) {
+            throw std::runtime_error("WorldManager initialization failed");
+        }
+
+        if (!CollisionManager::Instance().init()) {
+            throw std::runtime_error("CollisionManager initialization failed");
+        }
+
+        if (!PathfinderManager::Instance().init()) {
+            throw std::runtime_error("PathfinderManager initialization failed");
+        }
+
+        if (!AIManager::Instance().init()) {
+            throw std::runtime_error("AIManager initialization failed");
+        }
+
+        if (!ParticleManager::Instance().init()) {
+            throw std::runtime_error("ParticleManager initialization failed");
+        }
+
+        std::cout << "=== Global Setup Complete ===" << std::endl;
     }
 
     ~GlobalEventCoordinationFixture() {
-        TEST_LOG("Cleaning up EventCoordinationIntegrationTests global fixture");
+        std::cout << "=== EventCoordinationIntegrationTests Global Teardown ===" << std::endl;
+
+        // Wait for pending operations
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Clean up in reverse order
         ParticleManager::Instance().clean();
@@ -170,7 +198,7 @@ struct GlobalEventCoordinationFixture {
         ResourceTemplateManager::Instance().clean();
         ThreadSystem::Instance().clean();
 
-        TEST_LOG("All managers cleaned up successfully");
+        std::cout << "=== Global Teardown Complete ===" << std::endl;
     }
 };
 
@@ -215,8 +243,22 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
     for (int i = 0; i < 5; ++i) {
         auto entity = TestEntity::create(i, Vector2D(50.0f + i * 10.0f, 50.0f));
         testEntities.push_back(entity);
+
+        // Register collision body (required for AIManager's syncCollisionPositions)
+        CollisionManager::Instance().addCollisionBodySOA(
+            entity->getID(),
+            entity->getPosition(),
+            Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
+            BodyType::KINEMATIC,
+            Layer_Enemy, // Using Enemy layer for AI test entities
+            0xFFFFFFFFu
+        );
+
         AIManager::Instance().registerEntityForUpdates(entity, 5, "WeatherResponse");
     }
+
+    // Process collision body commands
+    CollisionManager::Instance().processPendingCommands();
 
     // Process queued assignments
     for (int i = 0; i < 5; ++i) {
@@ -314,9 +356,12 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
     for (auto& entity : testEntities) {
         AIManager::Instance().unregisterEntityFromUpdates(entity);
         AIManager::Instance().unassignBehaviorFromEntity(entity);
+        CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
     }
+    CollisionManager::Instance().processPendingCommands();
     testEntities.clear();
-    WorldManager::Instance().clean();
+    // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
+    // Just unload the world if needed
     EventManager::Instance().clearAllHandlers();
 
     TEST_LOG("TestWeatherEventCoordination completed successfully");
@@ -356,8 +401,22 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     for (int i = 0; i < 3; ++i) {
         auto entity = TestEntity::create(i, Vector2D(i * 20.0f, i * 20.0f));
         oldSceneEntities.push_back(entity);
+
+        // Register collision body (required for AIManager's syncCollisionPositions)
+        CollisionManager::Instance().addCollisionBodySOA(
+            entity->getID(),
+            entity->getPosition(),
+            Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
+            BodyType::KINEMATIC,
+            Layer_Enemy, // Using Enemy layer for AI test entities
+            0xFFFFFFFFu
+        );
+
         AIManager::Instance().registerEntityForUpdates(entity, 5);
     }
+
+    // Process collision body commands
+    CollisionManager::Instance().processPendingCommands();
 
     // Process registrations
     for (int i = 0; i < 5; ++i) {
@@ -395,7 +454,9 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     for (auto& entity : oldSceneEntities) {
         AIManager::Instance().unregisterEntityFromUpdates(entity);
         AIManager::Instance().unassignBehaviorFromEntity(entity);
+        CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
     }
+    CollisionManager::Instance().processPendingCommands();
     oldSceneEntities.clear();
 
     // Wait for cleanup to process
@@ -443,7 +504,7 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     BOOST_CHECK_EQUAL(height, 15);
 
     // Cleanup
-    WorldManager::Instance().clean();
+    // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
     EventManager::Instance().clearAllHandlers();
 
     TEST_LOG("TestSceneChangeEventCoordination completed successfully");
