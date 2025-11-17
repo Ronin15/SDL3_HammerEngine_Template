@@ -46,6 +46,37 @@ public:
    * @param height Initial window height (0 for auto-sizing)
    * @param fullscreen Whether to start in fullscreen mode
    * @return true if initialization successful, false otherwise
+   *
+   * @details Manager Initialization Dependency Graph:
+   *
+   * Phase 1 (No Dependencies - Core Infrastructure):
+   *   - Logger (CRITICAL: Must be first for diagnostic output)
+   *   - ThreadSystem (Required by all async operations)
+   *   - InputManager (No dependencies)
+   *   - TextureManager (No dependencies)
+   *   - ResourceManager (No dependencies)
+   *
+   * Phase 2 (Requires Core Infrastructure):
+   *   - EventManager (CRITICAL: Must precede all event subscribers)
+   *   - SettingsManager (Independent of other game managers)
+   *   - SaveManager (Independent of other game managers)
+   *
+   * Phase 3 (Requires EventManager for event subscriptions):
+   *   - PathfinderManager (Subscribes to WorldLoaded and CollisionObstacleChanged events)
+   *   - CollisionManager (Subscribes to WorldLoaded events)
+   *   - UIManager (May subscribe to game events)
+   *   - AudioManager (Independent but needs ThreadSystem)
+   *
+   * Phase 4 (Requires Pathfinder + Collision):
+   *   - AIManager (CRITICAL: Depends on PathfinderManager and CollisionManager)
+   *   - ParticleManager (Independent but initialized after core systems)
+   *   - WorldManager (Needs CollisionManager for static geometry)
+   *
+   * Phase 5 (Post-Initialization Event Setup):
+   *   - WorldManager::setupEventHandlers() (Requires EventManager fully initialized)
+   *
+   * Note: Initialization uses ThreadSystem futures to parallelize where possible
+   * while respecting the dependency constraints above.
    */
   bool init(const std::string_view title, const int width, const int height,
             bool fullscreen);

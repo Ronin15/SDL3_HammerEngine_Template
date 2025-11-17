@@ -49,9 +49,11 @@ bool LoadingState::enter() {
 }
 
 void LoadingState::update([[maybe_unused]] float deltaTime) {
-    // Check if loading is complete
-    if (m_loadComplete.load(std::memory_order_acquire)) {
-        if (m_loadFailed.load(std::memory_order_acquire)) {
+    // Fast path: Check with relaxed ordering first (no memory barrier)
+    if (m_loadComplete.load(std::memory_order_relaxed)) {
+        // Slow path: Verify with acquire barrier only when likely true
+        if (m_loadComplete.load(std::memory_order_acquire)) {
+            if (m_loadFailed.load(std::memory_order_acquire)) {
             std::string errorMsg = "World loading failed - transitioning anyway";
             GAMESTATE_ERROR(errorMsg);
 
@@ -79,6 +81,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
                 std::lock_guard<std::mutex> lock(m_errorMutex);
                 m_lastError = errorMsg;
             }
+        }
         }
     }
 }
