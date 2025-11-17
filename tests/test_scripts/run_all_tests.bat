@@ -69,8 +69,9 @@ if /i "%~1"=="--help" (
     echo.
     echo Test Categories:
     echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,
-    echo                     GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager
-    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, and Pathfinder performance benchmarks
+    echo                     GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,
+    echo                     AI-Collision Integration, Event Coordination Integration
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, Pathfinder, and SIMD performance benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~4-8 minutes total
@@ -92,9 +93,9 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=31
+set CORE_TEST_COUNT=33
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=6
+set BENCHMARK_TEST_COUNT=7
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0
@@ -176,6 +177,8 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_rendering_pipeline_tests.bat" false
     call :run_single_test "run_loading_state_tests.bat" false
     call :run_single_test "run_ui_manager_functional_tests.bat" false
+    call :run_single_test "run_ai_collision_integration_tests.bat" false
+    call :run_single_test "run_event_coordination_integration_tests.bat" false
 )
 
 :: Run benchmark tests last
@@ -188,6 +191,7 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_particle_manager_benchmark.bat" true
     call :run_single_test "run_collision_benchmark.bat" true
     call :run_single_test "run_pathfinder_benchmark.bat" true
+    call :run_single_test "run_simd_benchmark.bat" true
 )
 
 :: Print summary
