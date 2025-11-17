@@ -195,13 +195,55 @@ void processData(const std::vector<Data>& input) {
 - Branch prediction matters - minimize conditionals in SIMD loops
 - Release builds (`-O3 -march=native`) enable full SIMD utilization
 
+**Real-World SIMD Usage Example** (AIManager distance calculation):
+```cpp
+void calculateDistancesSIMD(size_t start, size_t end,
+                            const Vector2D& playerPos,
+                            const EntityStorage& storage,
+                            std::vector<float>& outDistances) {
+    using namespace HammerEngine::SIMD;
+
+    Float4 playerPosX = broadcast(playerPos.x);
+    Float4 playerPosY = broadcast(playerPos.y);
+
+    // Process 4 entities per iteration (SSE2/NEON native width)
+    for (size_t i = start; i + 3 < end; i += 4) {
+        // Load 4 entity positions at once
+        Float4 entityX = load4(&storage.hotData[i].position.x);
+        Float4 entityY = load4(&storage.hotData[i].position.y);
+
+        // Calculate distance squared (4 entities in parallel)
+        Float4 dx = sub(entityX, playerPosX);
+        Float4 dy = sub(entityY, playerPosY);
+        Float4 distSq = add(mul(dx, dx), mul(dy, dy));
+
+        // Store results
+        store4(&outDistances[i], distSq);
+    }
+
+    // Scalar tail for remaining elements (handles non-multiple-of-4 counts)
+    for (size_t i = (end / 4) * 4; i < end; ++i) {
+        float dx = storage.hotData[i].position.x - playerPos.x;
+        float dy = storage.hotData[i].position.y - playerPos.y;
+        outDistances[i] = dx * dx + dy * dy;
+    }
+}
+```
+
+**Key SIMD Patterns**:
+- Always provide scalar tail loop for remaining elements
+- Use `broadcast()` to replicate scalar values across SIMD lanes
+- `load4()` and `store4()` handle unaligned memory access safely
+- The abstraction layer handles platform differences (SSE2/AVX2/NEON) automatically
+- Batch processing reduces function call overhead and improves cache locality
+
 ## GameEngine Update/Render Flow
 
 **GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.
 
 **Update** (thread-safe, mutex-locked): `GameEngine::update(deltaTime)` updates global systems (AIManager, EventManager, ParticleManager) → delegates to `GameStateManager::update`. Completes before render starts.
 
-**Double Buffer**: `m_currentBufferIndex` (update) + `m_renderBufferIndex` (render) + `m_bufferReady[]`. Main loop calls `hasNewFrameToRender()` + `swapBuffers()` before update; render consumes stable previous buffer.
+**Double Buffer Synchronization**: `m_currentBufferIndex` (update) + `m_renderBufferIndex` (render) + `m_bufferReady[]` control frame synchronization. Buffer indices select which `m_bufferReady[]` flag indicates a complete update frame. Entity data is single-buffered with mutex protection during update; atomic flags ensure render reads stable data. Main loop calls `hasNewFrameToRender()` + `swapBuffers()` before update using lock-free atomic operations.
 
 **Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera).
 
