@@ -12,8 +12,9 @@ set "NC=[0m"
 echo !YELLOW!Running Game Engine Tests...!NC!
 
 cd /d "%~dp0"
+cd ..\..
 
-if not exist "..\..\test_results" mkdir "..\..\test_results"
+if not exist "test_results" mkdir "test_results"
 
 set BUILD_TYPE=Debug
 set VERBOSE=false
@@ -45,9 +46,9 @@ exit /b 1
 :done_parsing
 
 if "%BUILD_TYPE%"=="Debug" (
-    set TEST_EXECUTABLE=..\..\bin\debug\game_engine_tests.exe
+    set TEST_EXECUTABLE=bin\debug\game_engine_tests.exe
 ) else (
-    set TEST_EXECUTABLE=..\..\bin\release\game_engine_tests.exe
+    set TEST_EXECUTABLE=bin\release\game_engine_tests.exe
 )
 
 if not exist "!TEST_EXECUTABLE!" (
@@ -55,7 +56,7 @@ if not exist "!TEST_EXECUTABLE!" (
     exit /b 1
 )
 
-set OUTPUT_FILE=..\..\test_results\game_engine_tests_output.txt
+set OUTPUT_FILE=test_results\game_engine_tests_output.txt
 
 set TEST_OPTS=--log_level=all --catch_system_errors=no
 if "%VERBOSE%"=="true" (
@@ -74,7 +75,7 @@ if %ERRORLEVEL% equ 0 (
         echo !RED!❌ Some tests failed! See !OUTPUT_FILE! for details.!NC!
         exit /b 1
     ) else (
-        echo !GREEN!✅ All Game Engine tests passed!!NC!
+        echo !GREEN!✅ All Game Engine tests passed! !NC!
         exit /b 0
     )
 )
