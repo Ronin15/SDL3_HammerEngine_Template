@@ -792,72 +792,77 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeMessaging, ThreadedAITestFixture) {
               << std::endl;
   }
 
-  // SIMPLER TEST APPROACH: Just do a single, direct message test
-  std::cout << "\nSending a single direct message..." << std::endl;
+  // TEST APPROACH 1: Direct synchronous message test
+  // This tests the core messaging functionality without threading complexity
+  std::cout << "\nTesting direct synchronous messaging..." << std::endl;
 
-  // Use the first entity for a simple test
+  // Use the first entity for a simple test with immediate processing
   AIManager::Instance().sendMessageToEntity(entities[0], "TEST_DIRECT_MESSAGE",
                                             true);
 
-  // Sleep a bit to give time for processing
+  // Give time for immediate message processing
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Check if message was received (use shared counter for cloned behaviors)
-  int msgCount = ThreadTestBehavior::getSharedMessageCount();
+  int directMessageCount = ThreadTestBehavior::getSharedMessageCount();
+  std::cout << "Direct message test: received " << directMessageCount << " messages" << std::endl;
 
-  // If first test failed, try a second approach with broadcast
-  if (msgCount == 0) {
-    // Try with broadcast message
-    AIManager::Instance().broadcastMessage("TEST_BROADCAST_MESSAGE", true);
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    msgCount = ThreadTestBehavior::getSharedMessageCount();
+  // Direct messaging should work - if it doesn't, the system is broken
+  BOOST_REQUIRE_MESSAGE(directMessageCount > 0,
+                        "Direct messaging failed - messaging system may be broken");
 
-    // If broadcast also failed, try manual approach
-    if (msgCount == 0) {
-      behavior->onMessage(entities[0], "MANUAL_TEST_MESSAGE");
-      msgCount = ThreadTestBehavior::getSharedMessageCount();
-    }
+  // TEST APPROACH 2: Broadcast message test
+  std::cout << "\nTesting broadcast messaging..." << std::endl;
+  ThreadTestBehavior::resetSharedMessageCount(); // Reset counter for clean test
+
+  AIManager::Instance().broadcastMessage("TEST_BROADCAST_MESSAGE", true);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+  int broadcastMessageCount = ThreadTestBehavior::getSharedMessageCount();
+  std::cout << "Broadcast test: received " << broadcastMessageCount << " messages" << std::endl;
+
+  // Broadcast should reach multiple entities (at least 50% of entities)
+  // Note: This is a reasonable expectation since all entities have the same behavior
+  BOOST_CHECK_GE(broadcastMessageCount, NUM_ENTITIES / 2);
+
+  // TEST APPROACH 3: Multi-threaded message stress test
+  std::cout << "\nRunning multi-threaded message stress test..." << std::endl;
+  ThreadTestBehavior::resetSharedMessageCount(); // Reset counter for clean test
+
+  // Send a mix of direct and broadcast messages from multiple threads
+  std::vector<std::future<void>> futures;
+  for (int i = 0; i < NUM_MESSAGES; ++i) {
+    auto future =
+        HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+            [i, &entities]() {
+              std::string message = "ThreadMessage_" + std::to_string(i);
+
+              if (i % 2 == 0) {
+                // Broadcast message
+                AIManager::Instance().broadcastMessage(message, true);
+              } else {
+                // Send to a specific entity
+                int entityIdx = i % entities.size();
+                AIManager::Instance().sendMessageToEntity(entities[entityIdx],
+                                                          message, true);
+              }
+            });
+    futures.push_back(std::move(future));
   }
 
-  // Verify at least one message was received (using shared counter)
-  BOOST_CHECK_GT(ThreadTestBehavior::getSharedMessageCount(), 0);
+  // Wait for all messages to be sent
+  waitForThreadSystemTasks(futures);
 
-  // If we've succeeded, no need for the more complex test
-  if (ThreadTestBehavior::getSharedMessageCount() > 0) {
-    // Basic test passed
-  } else {
-    std::cout << "\nRunning multi-threaded message test..." << std::endl;
+  // Allow time for messages to be processed
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-    // Send a mix of direct and broadcast messages from multiple threads
-    std::vector<std::future<void>> futures;
-    for (int i = 0; i < NUM_MESSAGES; ++i) {
-      auto future =
-          HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-              [i, &entities]() {
-                std::string message = "ThreadMessage_" + std::to_string(i);
+  // Verify messages were delivered under multi-threaded load
+  int stressTestMessageCount = ThreadTestBehavior::getSharedMessageCount();
+  std::cout << "Stress test: received " << stressTestMessageCount << " messages" << std::endl;
 
-                if (i % 2 == 0) {
-                  // Broadcast message
-                  AIManager::Instance().broadcastMessage(message, true);
-                } else {
-                  // Send to a specific entity
-                  int entityIdx = i % entities.size();
-                  AIManager::Instance().sendMessageToEntity(entities[entityIdx],
-                                                            message, true);
-                }
-              });
-      futures.push_back(std::move(future));
-    }
-
-    // Wait for all messages to be sent
-    waitForThreadSystemTasks(futures);
-
-    // Allow time for messages to be processed
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-    // Check message count
-    BOOST_CHECK_GT(ThreadTestBehavior::getSharedMessageCount(), 0);
-  }
+  // Under stress test, we should receive a significant portion of messages
+  // Require at least 50% message delivery rate under stress
+  BOOST_CHECK_GE(stressTestMessageCount, NUM_MESSAGES / 2);
 
   // Cleanup
   for (auto &entity : entities) {

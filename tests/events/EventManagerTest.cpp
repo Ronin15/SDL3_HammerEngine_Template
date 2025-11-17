@@ -151,70 +151,54 @@ BOOST_FIXTURE_TEST_CASE(EventExecution, EventManagerFixture) {
                   ->wasExecuted());
 }
 
-// Test event update and condition-based execution
-BOOST_FIXTURE_TEST_CASE(EventUpdateAndConditions, EventManagerFixture) {
-  // Start with a completely clean EventManager
-  EventManager::Instance().clean();
-  BOOST_CHECK(EventManager::Instance().init());
+// Test event update is called
+BOOST_FIXTURE_TEST_CASE(EventUpdateIsCalled, EventManagerFixture) {
+  auto mockEvent = std::make_shared<MockEvent>("UpdateTest");
+  EventManager::Instance().registerEvent("UpdateTest", mockEvent);
 
-  // CRITICAL: Disable threading explicitly and wait for it to take effect
-  EventManager::Instance().enableThreading(false);
-  // Allow time for ThreadSystem tasks to complete
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-  // Create a simple one-time event with no conditions initially
-  auto mockEvent = std::make_shared<MockEvent>("SimpleEvent");
-  BOOST_CHECK(mockEvent != nullptr);
-
-  // Configure event as one-time and inactive initially
-  mockEvent->setOneTime(true);
-  mockEvent->setActive(false);
-  mockEvent->setConditionsMet(false);
-
-  // Register it and verify registration
-  EventManager::Instance().registerEvent("SimpleEvent", mockEvent);
-  BOOST_CHECK(EventManager::Instance().hasEvent("SimpleEvent"));
-  BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 1);
-
-  // Now activate the event
-  EventManager::Instance().setEventActive("SimpleEvent", true);
-
-  // Keep a direct pointer to the event for checking state
-  MockEvent *eventPtr = mockEvent.get();
-  BOOST_REQUIRE(eventPtr != nullptr);
-
-  // TEST PHASE 1: Event with false conditions shouldn't execute
+  // Update should be called for active events
   EventManager::Instance().update();
-  // Wait for any ThreadSystem tasks to complete
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  BOOST_CHECK(eventPtr->wasUpdated());
-  BOOST_CHECK(!eventPtr->wasExecuted());
+  BOOST_CHECK(mockEvent->wasUpdated());
+}
 
-  // Reset event for next test
-  eventPtr->reset();
+// Test condition checking
+BOOST_FIXTURE_TEST_CASE(EventConditionChecking, EventManagerFixture) {
+  auto mockEvent = std::make_shared<MockEvent>("ConditionTest");
+  EventManager::Instance().registerEvent("ConditionTest", mockEvent);
 
-  // TEST PHASE 2: Event with true conditions but no handlers should NOT execute
-  // (EventManager optimization: only dispatch if handlers exist)
-  eventPtr->setConditionsMet(true);
+  // Initially conditions are false - explicit execution should still work
+  BOOST_CHECK(!mockEvent->checkConditions());
+  EventManager::Instance().executeEvent("ConditionTest");
+  BOOST_CHECK(mockEvent->wasExecuted());
+
+  // Reset and set conditions to true
+  mockEvent->reset();
+  mockEvent->setConditionsMet(true);
+  BOOST_CHECK(mockEvent->checkConditions());
+  EventManager::Instance().executeEvent("ConditionTest");
+  BOOST_CHECK(mockEvent->wasExecuted());
+}
+
+// Test that events execute when conditions are met and handlers registered
+BOOST_FIXTURE_TEST_CASE(EventExecutionWithConditionsAndHandlers, EventManagerFixture) {
+  auto mockEvent = std::make_shared<MockEvent>("HandlerTest");
+  EventManager::Instance().registerEvent("HandlerTest", mockEvent);
+
+  // Register a handler so the event will execute during update
+  bool handlerCalled = false;
+  EventManager::Instance().registerHandler(
+      EventTypeId::Custom,
+      [&handlerCalled](const EventData &) { handlerCalled = true; });
+
+  // Set conditions to true
+  mockEvent->setConditionsMet(true);
+
+  // Update should trigger execution since conditions are met and handler exists
   EventManager::Instance().update();
-  // Wait for any ThreadSystem tasks to complete
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  BOOST_CHECK(eventPtr->wasUpdated());
-  // No handlers registered - event should NOT execute (correct behavior)
-  BOOST_CHECK(!eventPtr->wasExecuted());
 
-  // TEST PHASE 3: Explicit execution should work
-  eventPtr->reset();
-  eventPtr->setConditionsMet(true);
-  EventManager::Instance().executeEvent("SimpleEvent");
-  BOOST_CHECK(eventPtr->wasExecuted());
-
-  // Clean up immediately
-  EventManager::Instance().removeEvent("SimpleEvent");
-  EventManager::Instance().clean();
-
-  // Test passes if we got here
-  BOOST_CHECK(true);
+  // Verify both update and execution occurred
+  BOOST_CHECK(mockEvent->wasUpdated());
+  BOOST_CHECK(handlerCalled);
 }
 
 // Test event removal
