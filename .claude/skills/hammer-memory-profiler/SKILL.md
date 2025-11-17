@@ -8,6 +8,16 @@ allowed-tools: [Bash, Read, Write, Grep, Glob]
 
 Comprehensive memory profiling and leak detection for SDL3 HammerEngine. Identifies memory leaks, per-frame allocation hotspots, buffer reuse violations, and provides actionable optimization recommendations following CLAUDE.md patterns.
 
+## Available Scripts
+
+This skill includes utility scripts in `.claude/skills/hammer-memory-profiler/scripts/`:
+
+- **`run_leak_check.sh`** - Quick memory leak detection with valgrind memcheck
+- **`run_massif_all_tests.sh`** - Run valgrind massif on all test executables
+- **`parse_massif.py`** - Parse massif reports and generate comprehensive analysis
+
+Use these scripts directly or let the skill invoke them automatically.
+
 ## Purpose
 
 Memory management is critical for HammerEngine's performance targets (10K+ entities @ 60 FPS). This Skill automates:
