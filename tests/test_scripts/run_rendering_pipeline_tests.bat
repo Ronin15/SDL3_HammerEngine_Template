@@ -12,8 +12,9 @@ set "NC=[0m"
 echo !YELLOW!Running Rendering Pipeline Tests...!NC!
 
 cd /d "%~dp0"
+cd ..\..
 
-if not exist "..\..\test_results" mkdir "..\..\test_results"
+if not exist "test_results" mkdir "test_results"
 
 set BUILD_TYPE=Debug
 set VERBOSE=false
@@ -29,9 +30,9 @@ echo Unknown option: %1& exit /b 1
 :done_parsing
 
 if "%BUILD_TYPE%"=="Debug" (
-    set TEST_EXECUTABLE=..\..\bin\debug\rendering_pipeline_tests.exe
+    set TEST_EXECUTABLE=bin\debug\rendering_pipeline_tests.exe
 ) else (
-    set TEST_EXECUTABLE=..\..\bin\release\rendering_pipeline_tests.exe
+    set TEST_EXECUTABLE=bin\release\rendering_pipeline_tests.exe
 )
 
 if not exist "!TEST_EXECUTABLE!" (
@@ -39,7 +40,7 @@ if not exist "!TEST_EXECUTABLE!" (
     exit /b 1
 )
 
-set OUTPUT_FILE=..\..\test_results\rendering_pipeline_tests_output.txt
+set OUTPUT_FILE=test_results\rendering_pipeline_tests_output.txt
 set TEST_OPTS=--log_level=all --catch_system_errors=no
 if "%VERBOSE%"=="true" (set TEST_OPTS=!TEST_OPTS! --report_level=detailed)
 
