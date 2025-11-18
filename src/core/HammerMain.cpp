@@ -12,8 +12,8 @@
 #include <string_view>
 #include <cstdlib>
 
-const int WINDOW_WIDTH{1920};
-const int WINDOW_HEIGHT{1080};
+const int WINDOW_WIDTH{1280};
+const int WINDOW_HEIGHT{720};
 const float TARGET_FPS{60.0f};
 const float FIXED_TIMESTEP{1.0f / 60.0f}; // 1:1 with frame rate for responsive input
 // Game Name goes here.
