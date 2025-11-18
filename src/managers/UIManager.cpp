@@ -3082,35 +3082,19 @@ int UIManager::getLogicalHeight() const {
 
 // Auto-detecting overlay creation
 void UIManager::createOverlay() {
-  int logicalWidth = getLogicalWidth();
-  int logicalHeight = getLogicalHeight();
+  // Use baseline dimensions - createOverlay(width, height) will scale to logical space
+  const int baselineWidth = 1920;
+  const int baselineHeight = 1080;
 
-  // Check if we're using logical presentation (macOS)
-  int overlayWidth = logicalWidth;
-  int overlayHeight = logicalHeight;
-
-  if (m_cachedRenderer) {
-    int actualWidth, actualHeight;
-    if (SDL_GetCurrentRenderOutputSize(m_cachedRenderer, &actualWidth,
-                                       &actualHeight)) {
-      // If actual render size differs significantly from logical size,
-      // we're likely using logical presentation and should use actual size for
-      // overlay
-      if (actualWidth != logicalWidth || actualHeight != logicalHeight) {
-        overlayWidth = actualWidth;
-        overlayHeight = actualHeight;
-      }
-    }
-  }
-
-  createOverlay(overlayWidth, overlayHeight);
+  createOverlay(baselineWidth, baselineHeight);
 }
 
 // Convenience positioning methods
 void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
                                  int height) {
-  int width = getLogicalWidth();
-  createTitle(id, {0, 10, width, height}, text);
+  // Use baseline width - createTitle() will scale to logical space
+  const int baselineWidth = 1920;
+  createTitle(id, {0, 10, baselineWidth, height}, text);
   setTitleAlignment(id, UIAlignment::CENTER_CENTER);
 
   // Store positioning rule for auto-repositioning
@@ -3127,8 +3111,9 @@ void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
 void UIManager::createButtonAtBottom(const std::string &id,
                                      const std::string &text, int width,
                                      int height) {
-  int logicalHeight = getLogicalHeight();
-  createButtonDanger(id, {20, logicalHeight - height - 20, width, height},
+  // Use baseline height - createButtonDanger() will scale to logical space
+  const int baselineHeight = 1080;
+  createButtonDanger(id, {20, baselineHeight - height - 20, width, height},
                      text);
 
   // Store positioning rule for auto-repositioning
@@ -3144,25 +3129,17 @@ void UIManager::createButtonAtBottom(const std::string &id,
 
 void UIManager::createCenteredDialog(const std::string &id, int width,
                                      int height, const std::string &theme) {
-  int logicalWidth = getLogicalWidth();
-  int logicalHeight = getLogicalHeight();
-  int x = (logicalWidth - width) / 2;
-  int y = (logicalHeight - height) / 2;
+  // Use baseline dimensions - createModal() will scale to logical space
+  const int baselineWidth = 1920;
+  const int baselineHeight = 1080;
 
-  // Use actual render output size for overlay if available
-  int overlayWidth = logicalWidth;
-  int overlayHeight = logicalHeight;
+  // Calculate centered position in baseline space
+  int x = (baselineWidth - width) / 2;
+  int y = (baselineHeight - height) / 2;
 
-  if (m_cachedRenderer) {
-    int actualWidth, actualHeight;
-    if (SDL_GetCurrentRenderOutputSize(m_cachedRenderer, &actualWidth,
-                                       &actualHeight)) {
-      if (actualWidth != logicalWidth || actualHeight != logicalHeight) {
-        overlayWidth = actualWidth;
-        overlayHeight = actualHeight;
-      }
-    }
-  }
+  // Overlay also uses baseline dimensions
+  int overlayWidth = baselineWidth;
+  int overlayHeight = baselineHeight;
 
   createModal(id, {x, y, width, height}, theme, overlayWidth, overlayHeight);
 
