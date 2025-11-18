@@ -232,14 +232,15 @@ void LoadingState::initializeUI() {
                    "Loading World...");
     ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
 
-    // Create progress bar in center of screen
+    // Create progress bar in center of screen using centered positioning
     int progressBarWidth = 400;
     int progressBarHeight = 30;
-    int progressBarX = (windowWidth - progressBarWidth) / 2;
     int progressBarY = windowHeight / 2;
     ui.createProgressBar("loading_progress",
-                        {progressBarX, progressBarY, progressBarWidth, progressBarHeight},
+                        {0, progressBarY, progressBarWidth, progressBarHeight},
                         0.0f, 100.0f);
+    ui.setComponentPositioning("loading_progress",
+                              {UIPositionMode::CENTERED_H, 0, progressBarY, progressBarWidth, progressBarHeight});
 
     // Create status text below progress bar
     ui.createTitle("loading_status",

@@ -213,18 +213,25 @@ void OverlayDemoState::setupModalOverlayMode() {
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
 
-    // Simulate modal dialog using auto-centered positioning
-    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "dark");
-    
-    int dialogX = (ui.getLogicalWidth() - 400) / 2;
-    int dialogY = (ui.getLogicalHeight() - 200) / 2;
+    // Calculate dialog position (400x200 centered on screen)
+    int logicalWidth = ui.getLogicalWidth();
+    int logicalHeight = ui.getLogicalHeight();
+    int dialogWidth = 400;
+    int dialogHeight = 200;
+    int dialogX = (logicalWidth - dialogWidth) / 2;
+    int dialogY = (logicalHeight - dialogHeight) / 2;
 
+    // Create centered dialog
+    ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "dark");
+
+    // Position child components with absolute coordinates relative to dialog
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
-    
+
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
+
     ui.createButtonSuccess("overlay_demo_modal_yes_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
     ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
@@ -239,18 +246,25 @@ void OverlayDemoState::setupLightModalOverlayMode() {
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
 
-    // Simulate modal dialog using auto-centered positioning
-    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "light");
-    
-    int dialogX = (ui.getLogicalWidth() - 400) / 2;
-    int dialogY = (ui.getLogicalHeight() - 200) / 2;
+    // Calculate dialog position (400x200 centered on screen)
+    int logicalWidth = ui.getLogicalWidth();
+    int logicalHeight = ui.getLogicalHeight();
+    int dialogWidth = 400;
+    int dialogHeight = 200;
+    int dialogX = (logicalWidth - dialogWidth) / 2;
+    int dialogY = (logicalHeight - dialogHeight) / 2;
 
+    // Create centered dialog
+    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "light");
+
+    // Position child components with absolute coordinates relative to dialog
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?");
-    
+
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
+
     ui.createButtonSuccess("overlay_demo_modal_save_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Save");
     ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
