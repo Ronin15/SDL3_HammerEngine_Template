@@ -213,18 +213,18 @@ void OverlayDemoState::setupModalOverlayMode() {
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
 
-    // Calculate dialog position (400x200 centered on screen)
-    int logicalWidth = ui.getLogicalWidth();
-    int logicalHeight = ui.getLogicalHeight();
-    int dialogWidth = 400;
-    int dialogHeight = 200;
-    int dialogX = (logicalWidth - dialogWidth) / 2;
-    int dialogY = (logicalHeight - dialogHeight) / 2;
+    // Calculate dialog position in baseline space (1920x1080)
+    const int baselineWidth = 1920;
+    const int baselineHeight = 1080;
+    const int dialogWidth = 400;
+    const int dialogHeight = 200;
+    const int dialogX = (baselineWidth - dialogWidth) / 2;   // 760
+    const int dialogY = (baselineHeight - dialogHeight) / 2; // 440
 
     // Create centered dialog
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "dark");
 
-    // Position child components with absolute coordinates relative to dialog
+    // Position child components using absolute baseline coordinates relative to dialog
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
 
@@ -246,18 +246,18 @@ void OverlayDemoState::setupLightModalOverlayMode() {
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
 
-    // Calculate dialog position (400x200 centered on screen)
-    int logicalWidth = ui.getLogicalWidth();
-    int logicalHeight = ui.getLogicalHeight();
-    int dialogWidth = 400;
-    int dialogHeight = 200;
-    int dialogX = (logicalWidth - dialogWidth) / 2;
-    int dialogY = (logicalHeight - dialogHeight) / 2;
+    // Calculate dialog position in baseline space (1920x1080)
+    const int baselineWidth = 1920;
+    const int baselineHeight = 1080;
+    const int dialogWidth = 400;
+    const int dialogHeight = 200;
+    const int dialogX = (baselineWidth - dialogWidth) / 2;   // 760
+    const int dialogY = (baselineHeight - dialogHeight) / 2; // 440
 
     // Create centered dialog
-    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "light");
+    ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "light");
 
-    // Position child components with absolute coordinates relative to dialog
+    // Position child components using absolute baseline coordinates relative to dialog
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?");
 
