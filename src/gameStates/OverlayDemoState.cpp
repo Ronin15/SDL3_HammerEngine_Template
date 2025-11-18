@@ -180,10 +180,12 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.enableTextBackground(MODE_LABEL, true);
     ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
-    // Simulate menu buttons
-    ui.createButton(MENU_BUTTON_1, {ui.getLogicalWidth()/2 - 100, 150, 200, 50}, "New Game");
-    ui.createButton(MENU_BUTTON_2, {ui.getLogicalWidth()/2 - 100, 220, 200, 50}, "Load Game");
-    ui.createButton(MENU_BUTTON_3, {ui.getLogicalWidth()/2 - 100, 290, 200, 50}, "Options");
+    // Simulate menu buttons using baseline coordinates for centering
+    const int baselineWidth = 1920;
+    const int buttonX = baselineWidth/2 - 100; // Center in baseline space
+    ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "New Game");
+    ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Load Game");
+    ui.createButton(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Options");
 }
 
 void OverlayDemoState::setupDarkOverlayMode() {
@@ -198,10 +200,12 @@ void OverlayDemoState::setupDarkOverlayMode() {
     ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
                    "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
 
-    // Simulate pause menu
-    ui.createButton(MENU_BUTTON_1, {ui.getLogicalWidth()/2 - 100, 150, 200, 50}, "Resume");
-    ui.createButton(MENU_BUTTON_2, {ui.getLogicalWidth()/2 - 100, 220, 200, 50}, "Settings");
-    ui.createButtonDanger(MENU_BUTTON_3, {ui.getLogicalWidth()/2 - 100, 290, 200, 50}, "Quit to Menu");
+    // Simulate pause menu using baseline coordinates for centering
+    const int baselineWidth = 1920;
+    const int buttonX = baselineWidth/2 - 100; // Center in baseline space
+    ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "Resume");
+    ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Settings");
+    ui.createButtonDanger(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Quit to Menu");
 
 }
 
