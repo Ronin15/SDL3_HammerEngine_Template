@@ -2110,6 +2110,9 @@ void UIManager::renderLabel(SDL_Renderer *renderer,
 
   int textX, textY, alignment;
 
+  // Scale padding for resolution-aware spacing
+  int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
   switch (component->m_style.textAlign) {
   case UIAlignment::CENTER_CENTER:
     textX = component->m_bounds.x + component->m_bounds.width / 2;
@@ -2117,35 +2120,33 @@ void UIManager::renderLabel(SDL_Renderer *renderer,
     alignment = 0; // center
     break;
   case UIAlignment::CENTER_RIGHT:
-    textX = component->m_bounds.x + component->m_bounds.width -
-            component->m_style.padding;
+    textX = component->m_bounds.x + component->m_bounds.width - scaledPadding;
     textY = component->m_bounds.y + component->m_bounds.height / 2;
     alignment = 2; // right
     break;
   case UIAlignment::CENTER_LEFT:
-    textX = component->m_bounds.x + component->m_style.padding;
+    textX = component->m_bounds.x + scaledPadding;
     textY = component->m_bounds.y + component->m_bounds.height / 2;
     alignment = 1; // left
     break;
   case UIAlignment::TOP_CENTER:
     textX = component->m_bounds.x + component->m_bounds.width / 2;
-    textY = component->m_bounds.y + component->m_style.padding;
+    textY = component->m_bounds.y + scaledPadding;
     alignment = 4; // top-center
     break;
   case UIAlignment::TOP_LEFT:
-    textX = component->m_bounds.x + component->m_style.padding;
-    textY = component->m_bounds.y + component->m_style.padding;
+    textX = component->m_bounds.x + scaledPadding;
+    textY = component->m_bounds.y + scaledPadding;
     alignment = 3; // top-left
     break;
   case UIAlignment::TOP_RIGHT:
-    textX = component->m_bounds.x + component->m_bounds.width -
-            component->m_style.padding;
-    textY = component->m_bounds.y + component->m_style.padding;
+    textX = component->m_bounds.x + component->m_bounds.width - scaledPadding;
+    textY = component->m_bounds.y + scaledPadding;
     alignment = 5; // top-right
     break;
   default:
     // CENTER_LEFT is default
-    textX = component->m_bounds.x + component->m_style.padding;
+    textX = component->m_bounds.x + scaledPadding;
     textY = component->m_bounds.y + component->m_bounds.height / 2;
     alignment = 1; // left
     break;
@@ -2168,11 +2169,12 @@ void UIManager::renderLabel(SDL_Renderer *renderer,
 #endif
 
   // Use a custom text drawing method that renders background and text together
+  int scaledTextBgPadding = static_cast<int>(component->m_style.textBackgroundPadding * m_globalScale);
   drawTextWithBackground(component->m_text, component->m_style.fontID, finalTextX,
                          finalTextY, component->m_style.textColor, renderer,
                          alignment, needsBackground,
                          component->m_style.textBackgroundColor,
-                         component->m_style.textBackgroundPadding);
+                         scaledTextBgPadding);
 }
 
 void UIManager::renderPanel(SDL_Renderer *renderer,
@@ -2238,6 +2240,9 @@ void UIManager::renderInputField(
   drawBorder(renderer, component->m_bounds, borderColor,
              component->m_style.borderWidth);
 
+  // Scale padding for resolution-aware spacing
+  int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
   // Draw text or placeholder
   std::string displayText =
       component->m_text.empty() ? component->m_placeholder : component->m_text;
@@ -2250,12 +2255,12 @@ void UIManager::renderInputField(
 #ifdef __APPLE__
     // On macOS, use logical coordinates directly - SDL3 handles scaling
     // automatically
-    int textX = component->m_bounds.x + component->m_style.padding;
+    int textX = component->m_bounds.x + scaledPadding;
     int textY = component->m_bounds.y + component->m_bounds.height / 2;
 #else
     // Use logical coordinates directly - SDL3 logical presentation handles
     // scaling
-    int textX = component->m_bounds.x + component->m_style.padding;
+    int textX = component->m_bounds.x + scaledPadding;
     int textY = component->m_bounds.y + component->m_bounds.height / 2;
 #endif
     fontManager.drawTextAligned(displayText, component->m_style.fontID, textX,
@@ -2265,12 +2270,12 @@ void UIManager::renderInputField(
 
   // Draw cursor if focused
   if (component->m_state == UIState::FOCUSED) {
-    int cursorX = component->m_bounds.x + component->m_style.padding +
+    int cursorX = component->m_bounds.x + scaledPadding +
                   static_cast<int>(component->m_text.length() *
                                    8); // Approximate char width
     drawRect(renderer,
-             {cursorX, component->m_bounds.y + component->m_style.padding / 2, 1,
-              component->m_bounds.height - component->m_style.padding},
+             {cursorX, component->m_bounds.y + scaledPadding / 2, 1,
+              component->m_bounds.height - scaledPadding},
              component->m_style.textColor, true);
   }
 }
@@ -2324,15 +2329,17 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
   if (!component)
     return;
 
+  // Scale checkbox size and padding for resolution-aware sizing
+  int scaledCheckboxSize = static_cast<int>(24 * m_globalScale);
+  int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+
   // Draw box
   UIRect boxBounds;
   boxBounds.x = component->m_bounds.x;
   boxBounds.y = component->m_bounds.y +
-                (component->m_bounds.height -
-                 24) / // Use fixed size for checkbox
-                    2;
-  boxBounds.width = 24;
-  boxBounds.height = 24;
+                (component->m_bounds.height - scaledCheckboxSize) / 2;
+  boxBounds.width = scaledCheckboxSize;
+  boxBounds.height = scaledCheckboxSize;
 
   SDL_Color boxColor = component->m_style.backgroundColor;
   if (component->m_state == UIState::HOVERED) {
@@ -2353,7 +2360,7 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
   // Draw text
   if (!component->m_text.empty()) {
     auto &fontManager = FontManager::Instance();
-    int textX = boxBounds.x + boxBounds.width + component->m_style.padding;
+    int textX = boxBounds.x + boxBounds.width + scaledPadding;
     int textY = component->m_bounds.y + component->m_bounds.height / 2;
 
     // Map UIAlignment enum to FontManager alignment codes
@@ -2475,12 +2482,16 @@ void UIManager::renderList(SDL_Renderer *renderer,
                component->m_style.borderWidth);
   }
 
+  // Scale padding and listItemHeight for resolution-aware spacing
+  int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+  int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
+
   // Draw list items using cached textures
-  int itemY = component->m_bounds.y + component->m_style.padding;
-  int itemHeight = component->m_style.listItemHeight;
+  int itemY = component->m_bounds.y + scaledPadding;
+  int itemHeight = scaledItemHeight;
 
   const size_t numItems = std::min(component->m_listItemTextures.size(), component->m_listItems.size());
-  
+
   for (size_t i = 0; i < numItems; ++i) {
     UIRect itemBounds = {component->m_bounds.x, itemY, component->m_bounds.width,
                          itemHeight};
@@ -2496,7 +2507,7 @@ void UIManager::renderList(SDL_Renderer *renderer,
         if (texture) {
             float texW, texH;
             SDL_GetTextureSize(texture.get(), &texW, &texH);
-            int textX = component->m_bounds.x + component->m_style.padding * 2;
+            int textX = component->m_bounds.x + scaledPadding * 2;
             int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
             SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
             SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
@@ -2525,9 +2536,13 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
                component->m_style.borderWidth);
   }
 
+  // Scale padding and listItemHeight for resolution-aware spacing
+  int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
+  int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
+
   // Event logs scroll from bottom to top (newest entries at bottom)
-  int itemHeight = component->m_style.listItemHeight;
-  int availableHeight = component->m_bounds.height - (2 * component->m_style.padding);
+  int itemHeight = scaledItemHeight;
+  int availableHeight = component->m_bounds.height - (2 * scaledPadding);
   int maxVisibleItems = availableHeight / itemHeight;
 
   // Calculate which items to show (most recent at bottom)
@@ -2536,7 +2551,7 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
     startIndex = component->m_listItems.size() - maxVisibleItems;
   }
 
-  int itemY = component->m_bounds.y + component->m_style.padding;
+  int itemY = component->m_bounds.y + scaledPadding;
   size_t renderedCount = 0;
 
   for (size_t i = startIndex; i < component->m_listItems.size() && renderedCount < static_cast<size_t>(maxVisibleItems); ++i, ++renderedCount) {
@@ -2546,7 +2561,7 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
         if (texture) {
             float texW, texH;
             SDL_GetTextureSize(texture.get(), &texW, &texH);
-            int textX = component->m_bounds.x + component->m_style.padding;
+            int textX = component->m_bounds.x + scaledPadding;
             int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
             SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
             SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
@@ -2577,6 +2592,11 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
     return;
   }
 
+  // Scale padding for resolution-aware sizing
+  int scaledPaddingWidth = static_cast<int>(16 * m_globalScale);
+  int scaledPaddingHeight = static_cast<int>(8 * m_globalScale);
+  int scaledMouseOffset = static_cast<int>(10 * m_globalScale);
+
   // Calculate actual text dimensions for content-aware sizing
   auto &fontManager = FontManager::Instance();
   auto tooltipTexture =
@@ -2589,13 +2609,13 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
   if (tooltipTexture) {
     float textW, textH;
     SDL_GetTextureSize(tooltipTexture.get(), &textW, &textH);
-    tooltipWidth = static_cast<int>(textW) + 16; // Add padding
-    tooltipHeight = static_cast<int>(textH) + 8; // Add padding
+    tooltipWidth = static_cast<int>(textW) + scaledPaddingWidth; // Add padding
+    tooltipHeight = static_cast<int>(textH) + scaledPaddingHeight; // Add padding
   }
 
   UIRect tooltipRect = {
-      static_cast<int>(m_lastMousePosition.getX() + 10),
-      static_cast<int>(m_lastMousePosition.getY() - tooltipHeight - 10),
+      static_cast<int>(m_lastMousePosition.getX() + scaledMouseOffset),
+      static_cast<int>(m_lastMousePosition.getY() - tooltipHeight - scaledMouseOffset),
       tooltipWidth, tooltipHeight};
 
   // Ensure tooltip stays on screen
@@ -2604,7 +2624,7 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
     tooltipRect.x = gameEngine.getLogicalWidth() - tooltipRect.width;
   }
   if (tooltipRect.y < 0) {
-    tooltipRect.y = static_cast<int>(m_lastMousePosition.getY() + 20);
+    tooltipRect.y = static_cast<int>(m_lastMousePosition.getY() + scaledMouseOffset * 2);
   }
   if (tooltipRect.y + tooltipRect.height > gameEngine.getLogicalHeight()) {
     tooltipRect.y = gameEngine.getLogicalHeight() - tooltipRect.height;
@@ -2844,9 +2864,10 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
     return; // Failed to measure content
   }
 
-  // Apply content padding
-  int totalWidth = contentWidth + (component->m_contentPadding * 2);
-  int totalHeight = contentHeight + (component->m_contentPadding * 2);
+  // Apply content padding (scaled for resolution-aware sizing)
+  int scaledContentPadding = static_cast<int>(component->m_contentPadding * m_globalScale);
+  int totalWidth = contentWidth + (scaledContentPadding * 2);
+  int totalHeight = contentHeight + (scaledContentPadding * 2);
 
   // Implement grow-only behavior for lists to prevent shrinking
   if (component->m_type == UIComponentType::LIST) {
@@ -2934,17 +2955,18 @@ bool UIManager::measureComponentContent(
       fontManager.measureText("Sample Text", component->m_style.fontID, width,
                               height);
     }
-    // Input fields need extra space for cursor and interaction
-    *width += 20;
+    // Input fields need extra space for cursor and interaction (scaled)
+    *width += static_cast<int>(20 * m_globalScale);
     return true;
 
   case UIComponentType::LIST: {
     // Calculate height based on font metrics dynamically
     int lineHeight = 0;
     int itemHeight = 32; // Default fallback
+    int scaledPadding = static_cast<int>(8 * m_globalScale);
     if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                    nullptr, nullptr)) {
-      itemHeight = lineHeight + 8; // Add padding for better mouse accuracy
+      itemHeight = lineHeight + scaledPadding; // Add padding for better mouse accuracy
     } else {
       // If font metrics fail, use reasonable fallback based on expected font
       // sizes Assume 21px font (typical for UI) + 8px padding = 29px
@@ -2966,7 +2988,8 @@ bool UIManager::measureComponentContent(
               std::max(maxItemWidth, static_cast<int>(item.length() * 12));
         }
       }
-      *width = std::max(maxItemWidth + 20,
+      int scaledScrollbarSpace = static_cast<int>(20 * m_globalScale);
+      *width = std::max(maxItemWidth + scaledScrollbarSpace,
                         150); // Add scrollbar space, minimum 150px
       *height = itemHeight * static_cast<int>(component->m_listItems.size());
     } else {
