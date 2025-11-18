@@ -126,17 +126,26 @@ void TextureManager::draw(const std::string& textureID,
                           int height,
                           SDL_Renderer* p_renderer,
                           SDL_FlipMode flip) {
+  // Get actual texture dimensions for source rectangle
+  float texWidth, texHeight;
+  if (!SDL_GetTextureSize(m_textureMap[textureID].get(), &texWidth, &texHeight)) {
+    TEXTURE_ERROR("Failed to get texture size for '" + textureID + "': " + std::string(SDL_GetError()));
+    return;
+  }
+
   SDL_FRect srcRect;
   SDL_FRect destRect;
   SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
   // Inset source rectangle by a small amount to prevent texture bleeding
+  // Use actual texture dimensions, not destination dimensions
   srcRect.x = 0.1f;
   srcRect.y = 0.1f;
-  srcRect.w = static_cast<float>(width) - 0.2f;
-  srcRect.h = static_cast<float>(height) - 0.2f;
+  srcRect.w = texWidth - 0.2f;
+  srcRect.h = texHeight - 0.2f;
 
+  // Destination rectangle uses requested width/height for scaling
   destRect.w = static_cast<float>(width);
   destRect.h = static_cast<float>(height);
   destRect.x = static_cast<float>(x);
@@ -152,17 +161,26 @@ void TextureManager::drawF(const std::string& textureID,
                            int height,
                            SDL_Renderer* p_renderer,
                            SDL_FlipMode flip) {
+  // Get actual texture dimensions for source rectangle
+  float texWidth, texHeight;
+  if (!SDL_GetTextureSize(m_textureMap[textureID].get(), &texWidth, &texHeight)) {
+    TEXTURE_ERROR("Failed to get texture size for '" + textureID + "': " + std::string(SDL_GetError()));
+    return;
+  }
+
   SDL_FRect srcRect;
   SDL_FRect destRect;
   SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
   double angle = 0.0;
 
   // Inset source rectangle by a small amount to prevent texture bleeding
+  // Use actual texture dimensions, not destination dimensions
   srcRect.x = 0.1f;
   srcRect.y = 0.1f;
-  srcRect.w = static_cast<float>(width) - 0.2f;
-  srcRect.h = static_cast<float>(height) - 0.2f;
+  srcRect.w = texWidth - 0.2f;
+  srcRect.h = texHeight - 0.2f;
 
+  // Destination rectangle uses requested width/height for scaling
   destRect.w = static_cast<float>(width);
   destRect.h = static_cast<float>(height);
   destRect.x = x;  // Use float precision directly
