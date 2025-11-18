@@ -1727,7 +1727,8 @@ void UIManager::cleanupForStateTransition() {
   // Reset global settings to defaults
   m_globalStyle = UIStyle{};
   m_globalFontID = UIConstants::DEFAULT_FONT;
-  m_globalScale = 1.0f;
+  // NOTE: m_globalScale is NOT reset here - it's resolution-dependent and should
+  // persist across state transitions. Only init() and onWindowResize() modify it.
 
   UI_INFO("UIManager prepared for state transition");
 }
