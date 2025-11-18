@@ -470,6 +470,7 @@ public:
   void setGlobalFont(const std::string &fontID);
   void setGlobalScale(float scale);
   float getGlobalScale() const { return m_globalScale; }
+  float calculateOptimalScale(int width, int height) const;  // Calculate resolution-aware scale
   void enableTooltips(bool enable) { m_tooltipsEnabled = enable; }
   void setTooltipDelay(float delay) { m_tooltipDelay = delay; }
 

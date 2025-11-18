@@ -26,20 +26,6 @@ bool UIManager::init() {
   m_titleFontID = UIConstants::TITLE_FONT;
   m_uiFontID = UIConstants::UI_FONT;
 
-// Platform-specific scaling approach to ensure compatibility
-#ifdef __APPLE__
-  // On macOS, use 1.0 scaling since our aspect ratio-based logical resolution
-  // handles proper sizing
-  m_globalScale = 1.0f;
-  UI_INFO("macOS: Global scale set to 1.0 (aspect ratio-based logical "
-          "resolution handles scaling)");
-#else
-  // On other platforms, use consistent scaling with logical presentation
-  m_globalScale = 1.0f;
-  UI_INFO("Non-macOS: Global scale set to 1.0 (SDL3 logical presentation "
-          "handles scaling)");
-#endif
-
   // Clear any existing data and reserve capacity for performance
   m_components.clear();
   m_layouts.clear();
@@ -67,6 +53,12 @@ bool UIManager::init() {
   m_currentLogicalHeight = gameEngine.getLogicalHeight();
   UI_INFO("Initialized logical dimensions: " + std::to_string(m_currentLogicalWidth) +
           "x" + std::to_string(m_currentLogicalHeight));
+
+  // Calculate and set resolution-aware UI scale (1920x1080 baseline, capped at 1.0)
+  m_globalScale = calculateOptimalScale(m_currentLogicalWidth, m_currentLogicalHeight);
+  UI_INFO("UI scale set to " + std::to_string(m_globalScale) +
+          " for resolution " + std::to_string(m_currentLogicalWidth) + "x" +
+          std::to_string(m_currentLogicalHeight));
 
   // Register callback with InputManager for window resize events
   InputManager::Instance().setWindowResizeCallback(
@@ -216,7 +208,13 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing (1920x1080 baseline, capped at 1.0)
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON);
   component->m_zOrder = 10; // Interactive elements on top
@@ -230,7 +228,13 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_DANGER;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
   component->m_zOrder = 10; // Interactive elements on top
@@ -244,7 +248,13 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_SUCCESS;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
   component->m_zOrder = 10; // Interactive elements on top
@@ -258,7 +268,13 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_WARNING;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
   component->m_zOrder = 10; // Interactive elements on top
@@ -272,7 +288,13 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::LABEL;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::LABEL);
   component->m_zOrder = 20; // Text on top
@@ -289,7 +311,13 @@ void UIManager::createTitle(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::TITLE;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::TITLE);
   component->m_zOrder = 25; // Titles on top
@@ -304,7 +332,13 @@ void UIManager::createPanel(const std::string &id, const UIRect &bounds) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::PANEL;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_style = m_currentTheme.getStyle(UIComponentType::PANEL);
   component->m_zOrder = 0; // Background panels
 
@@ -316,7 +350,13 @@ void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::PROGRESS_BAR;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_minValue = minVal;
   component->m_maxValue = maxVal;
   component->m_value = minVal;
@@ -331,7 +371,13 @@ void UIManager::createInputField(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::INPUT_FIELD;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_placeholder = placeholder;
   component->m_style = m_currentTheme.getStyle(UIComponentType::INPUT_FIELD);
   component->m_zOrder = 15; // Interactive elements
@@ -344,7 +390,13 @@ void UIManager::createImage(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::IMAGE;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_textureID = textureID;
   component->m_style = m_currentTheme.getStyle(UIComponentType::IMAGE);
   component->m_zOrder = 1; // Background images
@@ -357,7 +409,13 @@ void UIManager::createSlider(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::SLIDER;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_minValue = minVal;
   component->m_maxValue = maxVal;
   component->m_value = minVal;
@@ -372,7 +430,13 @@ void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::CHECKBOX;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_text = text;
   component->m_checked = false;
   component->m_style = m_currentTheme.getStyle(UIComponentType::CHECKBOX);
@@ -385,7 +449,13 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::LIST;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_selectedIndex = -1;
   component->m_style = m_currentTheme.getStyle(UIComponentType::LIST);
   component->m_zOrder = 8; // UI elements
@@ -414,7 +484,13 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::EVENT_LOG;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_maxLength = maxEntries; // Store max entries in maxLength field
   component->m_style = m_currentTheme.getStyle(
       UIComponentType::EVENT_LOG); // Use event log styling
@@ -428,7 +504,13 @@ void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
   auto component = std::make_shared<UIComponent>();
   component->m_id = id;
   component->m_type = UIComponentType::DIALOG;
-  component->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  component->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
   component->m_style = m_currentTheme.getStyle(UIComponentType::DIALOG);
   component->m_zOrder = -10; // Render behind other elements by default
 
@@ -509,7 +591,13 @@ void UIManager::setComponentBounds(const std::string &id,
                                    const UIRect &bounds) {
   auto component = getComponent(id);
   if (component) {
-    component->m_bounds = bounds;
+    // Apply global scale for resolution-aware sizing
+    component->m_bounds = {
+      static_cast<int>(bounds.x * m_globalScale),
+      static_cast<int>(bounds.y * m_globalScale),
+      static_cast<int>(bounds.width * m_globalScale),
+      static_cast<int>(bounds.height * m_globalScale)
+    };
   }
 }
 
@@ -701,7 +789,13 @@ void UIManager::createLayout(const std::string &id, UILayoutType type,
   auto layout = std::make_shared<UILayout>();
   layout->m_id = id;
   layout->m_type = type;
-  layout->m_bounds = bounds;
+  // Apply global scale for resolution-aware sizing
+  layout->m_bounds = {
+    static_cast<int>(bounds.x * m_globalScale),
+    static_cast<int>(bounds.y * m_globalScale),
+    static_cast<int>(bounds.width * m_globalScale),
+    static_cast<int>(bounds.height * m_globalScale)
+  };
 
   m_layouts[id] = layout;
 }
@@ -1666,6 +1760,16 @@ void UIManager::setGlobalFont(const std::string &fontID) {
 }
 
 void UIManager::setGlobalScale(float scale) { m_globalScale = scale; }
+
+float UIManager::calculateOptimalScale(int width, int height) const {
+  // Use 1920x1080 as baseline resolution (matches LogoState pattern)
+  // Cap at 1.0 to prevent UI from scaling larger than original on high resolutions
+  const float baselineWidth = 1920.0f;
+  const float baselineHeight = 1080.0f;
+
+  float scale = std::min(width / baselineWidth, height / baselineHeight);
+  return std::min(1.0f, scale);  // Cap at 1.0
+}
 
 // Private helper methods
 std::shared_ptr<UIComponent> UIManager::getComponent(const std::string &id) {
@@ -3066,6 +3170,12 @@ void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
   UI_DEBUG("Window resized: " + std::to_string(newLogicalWidth) + "x" +
            std::to_string(newLogicalHeight) + " - auto-repositioning UI components");
 
+  // Recalculate UI scale for new resolution (1920x1080 baseline, capped at 1.0)
+  m_globalScale = calculateOptimalScale(newLogicalWidth, newLogicalHeight);
+  UI_INFO("UI scale updated to " + std::to_string(m_globalScale) +
+          " for new resolution " + std::to_string(newLogicalWidth) + "x" +
+          std::to_string(newLogicalHeight));
+
   repositionAllComponents(newLogicalWidth, newLogicalHeight);
   m_currentLogicalWidth = newLogicalWidth;
   m_currentLogicalHeight = newLogicalHeight;
@@ -3089,27 +3199,30 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
   auto &pos = component->m_positioning;
   auto &bounds = component->m_bounds;
 
-  // Update dimensions if fixed sizes specified
+  // Update dimensions if fixed sizes specified, applying global scale for resolution adaptation
   // Special cases:
   //   -1 = use full window dimension
   //   < -1 = use full window dimension minus the absolute value (for margins)
   if (pos.fixedWidth == -1) {
     bounds.width = width;
   } else if (pos.fixedWidth < -1) {
-    bounds.width = width + pos.fixedWidth;  // fixedWidth is negative, so this subtracts
+    bounds.width = width + static_cast<int>(pos.fixedWidth * m_globalScale);  // Scale negative margin
   } else if (pos.fixedWidth > 0) {
-    bounds.width = pos.fixedWidth;
+    bounds.width = static_cast<int>(pos.fixedWidth * m_globalScale);  // Scale fixed width
   }
 
   if (pos.fixedHeight == -1) {
     bounds.height = height;
   } else if (pos.fixedHeight < -1) {
-    bounds.height = height + pos.fixedHeight;  // fixedHeight is negative, so this subtracts
+    bounds.height = height + static_cast<int>(pos.fixedHeight * m_globalScale);  // Scale negative margin
   } else if (pos.fixedHeight > 0) {
-    bounds.height = pos.fixedHeight;
+    bounds.height = static_cast<int>(pos.fixedHeight * m_globalScale);  // Scale fixed height
   }
 
-  // Apply positioning based on mode
+  // Apply positioning based on mode, with scaled offsets for resolution adaptation
+  int scaledOffsetX = static_cast<int>(pos.offsetX * m_globalScale);
+  int scaledOffsetY = static_cast<int>(pos.offsetY * m_globalScale);
+
   switch (pos.mode) {
   case UIPositionMode::ABSOLUTE:
     // No change - keep current position
@@ -3117,56 +3230,56 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
 
   case UIPositionMode::CENTERED_H:
     // Horizontally centered + offsetX, fixed offsetY
-    bounds.x = (width - bounds.width) / 2 + pos.offsetX;
-    bounds.y = pos.offsetY;
+    bounds.x = (width - bounds.width) / 2 + scaledOffsetX;
+    bounds.y = scaledOffsetY;
     break;
 
   case UIPositionMode::CENTERED_V:
     // Vertically centered + offsetY, fixed offsetX
-    bounds.x = pos.offsetX;
-    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    bounds.x = scaledOffsetX;
+    bounds.y = (height - bounds.height) / 2 + scaledOffsetY;
     break;
 
   case UIPositionMode::CENTERED_BOTH:
     // Center both axes + offsets
-    bounds.x = (width - bounds.width) / 2 + pos.offsetX;
-    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    bounds.x = (width - bounds.width) / 2 + scaledOffsetX;
+    bounds.y = (height - bounds.height) / 2 + scaledOffsetY;
     break;
 
   case UIPositionMode::TOP_ALIGNED:
     // Top edge + offsetY, left aligned at offsetX
-    bounds.x = pos.offsetX;
-    bounds.y = pos.offsetY;
+    bounds.x = scaledOffsetX;
+    bounds.y = scaledOffsetY;
     break;
 
   case UIPositionMode::BOTTOM_ALIGNED:
     // Bottom edge - height - offsetY, fixed offsetX
-    bounds.x = pos.offsetX;
-    bounds.y = height - bounds.height - pos.offsetY;
+    bounds.x = scaledOffsetX;
+    bounds.y = height - bounds.height - scaledOffsetY;
     break;
 
   case UIPositionMode::BOTTOM_CENTERED:
     // Bottom edge - height - offsetY, horizontally centered + offsetX
-    bounds.x = (width - bounds.width) / 2 + pos.offsetX;
-    bounds.y = height - bounds.height - pos.offsetY;
+    bounds.x = (width - bounds.width) / 2 + scaledOffsetX;
+    bounds.y = height - bounds.height - scaledOffsetY;
     break;
 
   case UIPositionMode::BOTTOM_RIGHT:
     // Bottom-right corner: right edge - width - offsetX, bottom edge - height - offsetY
-    bounds.x = width - bounds.width - pos.offsetX;
-    bounds.y = height - bounds.height - pos.offsetY;
+    bounds.x = width - bounds.width - scaledOffsetX;
+    bounds.y = height - bounds.height - scaledOffsetY;
     break;
 
   case UIPositionMode::LEFT_ALIGNED:
     // Left edge + offsetX, vertically centered + offsetY
-    bounds.x = pos.offsetX;
-    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    bounds.x = scaledOffsetX;
+    bounds.y = (height - bounds.height) / 2 + scaledOffsetY;
     break;
 
   case UIPositionMode::RIGHT_ALIGNED:
     // Right edge - width - offsetX, vertically centered + offsetY
-    bounds.x = width - bounds.width - pos.offsetX;
-    bounds.y = (height - bounds.height) / 2 + pos.offsetY;
+    bounds.x = width - bounds.width - scaledOffsetX;
+    bounds.y = (height - bounds.height) / 2 + scaledOffsetY;
     break;
   }
 }
