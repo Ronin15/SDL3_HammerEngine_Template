@@ -108,42 +108,54 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_windowedWidth = m_windowWidth;
   m_windowedHeight = m_windowHeight;
 
-// For macOS compatibility, use fullscreen for large window requests
-#ifdef __APPLE__
-  if (m_windowWidth >= 1920 || m_windowHeight >= 1080) {
-    if (!fullscreen) { // Only log if we're changing it
+  // Query display capabilities for intelligent window sizing (all platforms)
+  int displayCount = 0;
+  std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
+      SDL_GetDisplays(&displayCount), SDL_free);
+
+  const SDL_DisplayMode* displayMode = nullptr;
+  if (displays && displayCount > 0) {
+    displayMode = SDL_GetDesktopDisplayMode(displays[0]);
+    if (displayMode) {
       GAMEENGINE_INFO(
-          "Large window on macOS - enabling fullscreen for compatibility");
+          "Primary display: " + std::to_string(displayMode->w) + "x" +
+          std::to_string(displayMode->h) + " @ " +
+          std::to_string(displayMode->refresh_rate) + "Hz");
+
+      // If requested window size is larger than 90% of display, use fullscreen
+      // This prevents awkward oversized windows on smaller displays (handhelds, laptops)
+      const float displayUsageThreshold = 0.9f;
+      if (!fullscreen &&
+          (m_windowWidth > static_cast<int>(displayMode->w * displayUsageThreshold) ||
+           m_windowHeight > static_cast<int>(displayMode->h * displayUsageThreshold))) {
+        GAMEENGINE_INFO(
+            "Requested window size (" + std::to_string(m_windowWidth) + "x" +
+            std::to_string(m_windowHeight) + ") is larger than " +
+            std::to_string(static_cast<int>(displayUsageThreshold * 100)) +
+            "% of display - enabling fullscreen for better UX");
+        fullscreen = true;
+      }
     }
-    fullscreen = true;
+  } else {
+    GAMEENGINE_WARN("Could not query display capabilities - proceeding with requested dimensions");
   }
-#endif
   // Window handling with platform-specific optimizations
   SDL_WindowFlags flags =
       fullscreen ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
 
   if (fullscreen) {
-
 #ifdef __APPLE__
     // On macOS, keep logical dimensions for proper scaling
     // Don't override m_windowWidth and m_windowHeight for macOS
     GAMEENGINE_INFO("Window set to Fullscreen mode for macOS compatibility");
 #else
-    // setting window width and height to fullscreen dimensions for detected
-    // monitor
-    int displayCount = 0;
-    std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
-        SDL_GetDisplays(&displayCount), SDL_free);
-    if (displays && displayCount > 0) {
-      const SDL_DisplayMode *displayMode =
-          SDL_GetDesktopDisplayMode(displays[0]);
-      if (displayMode) {
-        m_windowWidth = displayMode->w;
-        m_windowHeight = displayMode->h;
-        GAMEENGINE_INFO(
-            "Window size set to Full Screen: " + std::to_string(m_windowWidth) +
-            "x" + std::to_string(m_windowHeight));
-      }
+    // On non-macOS platforms, use native display resolution for fullscreen
+    if (displayMode) {
+      m_windowWidth = displayMode->w;
+      m_windowHeight = displayMode->h;
+      GAMEENGINE_INFO(
+          "Window size set to Full Screen: " + std::to_string(m_windowWidth) +
+          "x" + std::to_string(m_windowHeight));
     }
 #endif
   }
@@ -306,41 +318,8 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_ERROR("Failed to set initial render draw color: " +
                      std::string(SDL_GetError()));
   }
-#ifdef __APPLE__
-  // On macOS, use logical presentation with stretch mode for consistent UI
-  // scaling
-  int actualWidth = pixelWidth;
-  int actualHeight = pixelHeight;
-
-  // Use standard logical resolution to ensure UI elements are positioned
-  // correctly This prevents buttons from going off-screen while maintaining
-  // good scaling
-  int targetLogicalWidth = 1920;
-  int targetLogicalHeight = 1080;
-
-  // Store logical dimensions for UI positioning
-  m_logicalWidth = targetLogicalWidth;
-  m_logicalHeight = targetLogicalHeight;
-
-  // Use LETTERBOX mode to preserve all UI elements (with DPI-aware scaling for
-  // sharp text)
-  SDL_RendererLogicalPresentation presentationMode =
-      SDL_LOGICAL_PRESENTATION_LETTERBOX;
-  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth,
-                                        targetLogicalHeight,
-                                        presentationMode)) {
-    GAMEENGINE_ERROR("Failed to set render logical presentation: " +
-                     std::string(SDL_GetError()));
-  }
-
-  GAMEENGINE_INFO(
-      "macOS using standard logical resolution with letterbox mode: " +
-      std::to_string(targetLogicalWidth) + "x" +
-      std::to_string(targetLogicalHeight) + " on " +
-      std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-#else
-  // On non-Apple platforms, use actual screen resolution to eliminate scaling
-  // blur
+  // Use native resolution rendering on all platforms for crisp, sharp text
+  // This eliminates GPU scaling blur and provides consistent cross-platform behavior
   int actualWidth = pixelWidth;
   int actualHeight = pixelHeight;
 
@@ -360,7 +339,6 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO("Using native resolution for crisp rendering: " +
                   std::to_string(actualWidth) + "x" +
                   std::to_string(actualHeight));
-#endif
   // Render Mode.
   SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
 
