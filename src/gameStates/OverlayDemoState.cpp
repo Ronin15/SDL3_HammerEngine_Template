@@ -181,8 +181,7 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
     // Simulate menu buttons using baseline coordinates for centering
-    const int baselineWidth = 1920;
-    const int buttonX = baselineWidth/2 - 100; // Center in baseline space
+    const int buttonX = UIConstants::BASELINE_WIDTH/2 - 100; // Center in baseline space
     ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "New Game");
     ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Load Game");
     ui.createButton(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Options");
@@ -201,8 +200,7 @@ void OverlayDemoState::setupDarkOverlayMode() {
                    "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
 
     // Simulate pause menu using baseline coordinates for centering
-    const int baselineWidth = 1920;
-    const int buttonX = baselineWidth/2 - 100; // Center in baseline space
+    const int buttonX = UIConstants::BASELINE_WIDTH/2 - 100; // Center in baseline space
     ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "Resume");
     ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Settings");
     ui.createButtonDanger(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Quit to Menu");
@@ -218,12 +216,10 @@ void OverlayDemoState::setupModalOverlayMode() {
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
 
     // Calculate dialog position in baseline space (1920x1080)
-    const int baselineWidth = 1920;
-    const int baselineHeight = 1080;
     const int dialogWidth = 400;
     const int dialogHeight = 200;
-    const int dialogX = (baselineWidth - dialogWidth) / 2;   // 760
-    const int dialogY = (baselineHeight - dialogHeight) / 2; // 440
+    const int dialogX = (UIConstants::BASELINE_WIDTH - dialogWidth) / 2;   // 760
+    const int dialogY = (UIConstants::BASELINE_HEIGHT - dialogHeight) / 2; // 440
 
     // Create centered dialog
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "dark");
@@ -251,12 +247,10 @@ void OverlayDemoState::setupLightModalOverlayMode() {
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
 
     // Calculate dialog position in baseline space (1920x1080)
-    const int baselineWidth = 1920;
-    const int baselineHeight = 1080;
     const int dialogWidth = 400;
     const int dialogHeight = 200;
-    const int dialogX = (baselineWidth - dialogWidth) / 2;   // 760
-    const int dialogY = (baselineHeight - dialogHeight) / 2; // 440
+    const int dialogX = (UIConstants::BASELINE_WIDTH - dialogWidth) / 2;   // 760
+    const int dialogY = (UIConstants::BASELINE_HEIGHT - dialogHeight) / 2; // 440
 
     // Create centered dialog
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "light");
