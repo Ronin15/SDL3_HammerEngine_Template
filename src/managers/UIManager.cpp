@@ -1625,6 +1625,10 @@ void UIManager::createOverlay(int windowWidth, int windowHeight) {
 
   // Create semi-transparent overlay panel using current theme's panel style
   createPanel("__overlay", {0, 0, windowWidth, windowHeight});
+
+  // Set positioning to always fill window on resize (fixedWidth/Height = -1 means full window dimensions)
+  // This ensures overlay properly resizes during fullscreen toggles and window resize events
+  setComponentPositioning("__overlay", {UIPositionMode::TOP_ALIGNED, 0, 0, -1, -1});
 }
 
 void UIManager::removeOverlay() {
