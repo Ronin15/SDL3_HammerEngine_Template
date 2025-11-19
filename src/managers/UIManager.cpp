@@ -1763,12 +1763,9 @@ void UIManager::setGlobalFont(const std::string &fontID) {
 void UIManager::setGlobalScale(float scale) { m_globalScale = scale; }
 
 float UIManager::calculateOptimalScale(int width, int height) const {
-  // Use 1920x1080 as baseline resolution (matches LogoState pattern)
+  // Use baseline resolution from UIConstants for consistent UI scaling
   // Cap at 1.0 to prevent UI from scaling larger than original on high resolutions
-  const float baselineWidth = 1920.0f;
-  const float baselineHeight = 1080.0f;
-
-  float scale = std::min(width / baselineWidth, height / baselineHeight);
+  float scale = std::min(width / UIConstants::BASELINE_WIDTH_F, height / UIConstants::BASELINE_HEIGHT_F);
   return std::min(1.0f, scale);  // Cap at 1.0
 }
 
@@ -2331,7 +2328,7 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
     return;
 
   // Scale checkbox size and padding for resolution-aware sizing
-  int scaledCheckboxSize = static_cast<int>(24 * m_globalScale);
+  int scaledCheckboxSize = static_cast<int>(UIConstants::CHECKBOX_SIZE * m_globalScale);
   int scaledPadding = static_cast<int>(component->m_style.padding * m_globalScale);
 
   // Draw box
@@ -2594,9 +2591,9 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
   }
 
   // Scale padding for resolution-aware sizing
-  int scaledPaddingWidth = static_cast<int>(16 * m_globalScale);
-  int scaledPaddingHeight = static_cast<int>(8 * m_globalScale);
-  int scaledMouseOffset = static_cast<int>(10 * m_globalScale);
+  int scaledPaddingWidth = static_cast<int>(UIConstants::TOOLTIP_PADDING_WIDTH * m_globalScale);
+  int scaledPaddingHeight = static_cast<int>(UIConstants::TOOLTIP_PADDING_HEIGHT * m_globalScale);
+  int scaledMouseOffset = static_cast<int>(UIConstants::TOOLTIP_MOUSE_OFFSET * m_globalScale);
 
   // Calculate actual text dimensions for content-aware sizing
   auto &fontManager = FontManager::Instance();
@@ -2957,14 +2954,14 @@ bool UIManager::measureComponentContent(
                               height);
     }
     // Input fields need extra space for cursor and interaction (scaled)
-    *width += static_cast<int>(20 * m_globalScale);
+    *width += static_cast<int>(UIConstants::INPUT_CURSOR_SPACE * m_globalScale);
     return true;
 
   case UIComponentType::LIST: {
     // Calculate height based on font metrics dynamically
     int lineHeight = 0;
     int itemHeight = 32; // Default fallback
-    int scaledPadding = static_cast<int>(8 * m_globalScale);
+    int scaledPadding = static_cast<int>(UIConstants::LIST_ITEM_PADDING * m_globalScale);
     if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                    nullptr, nullptr)) {
       itemHeight = lineHeight + scaledPadding; // Add padding for better mouse accuracy
@@ -2989,7 +2986,7 @@ bool UIManager::measureComponentContent(
               std::max(maxItemWidth, static_cast<int>(item.length() * 12));
         }
       }
-      int scaledScrollbarSpace = static_cast<int>(20 * m_globalScale);
+      int scaledScrollbarSpace = static_cast<int>(UIConstants::SCROLLBAR_WIDTH * m_globalScale);
       *width = std::max(maxItemWidth + scaledScrollbarSpace,
                         150); // Add scrollbar space, minimum 150px
       *height = itemHeight * static_cast<int>(component->m_listItems.size());
@@ -3082,19 +3079,15 @@ int UIManager::getLogicalHeight() const {
 
 // Auto-detecting overlay creation
 void UIManager::createOverlay() {
-  // Use baseline dimensions - createOverlay(width, height) will scale to logical space
-  const int baselineWidth = 1920;
-  const int baselineHeight = 1080;
-
-  createOverlay(baselineWidth, baselineHeight);
+  // Use baseline dimensions from UIConstants - createOverlay(width, height) will scale to logical space
+  createOverlay(UIConstants::BASELINE_WIDTH, UIConstants::BASELINE_HEIGHT);
 }
 
 // Convenience positioning methods
 void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
                                  int height) {
-  // Use baseline width - createTitle() will scale to logical space
-  const int baselineWidth = 1920;
-  createTitle(id, {0, 10, baselineWidth, height}, text);
+  // Use baseline width from UIConstants - createTitle() will scale to logical space
+  createTitle(id, {0, 10, UIConstants::BASELINE_WIDTH, height}, text);
   setTitleAlignment(id, UIAlignment::CENTER_CENTER);
 
   // Store positioning rule for auto-repositioning
@@ -3111,9 +3104,8 @@ void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
 void UIManager::createButtonAtBottom(const std::string &id,
                                      const std::string &text, int width,
                                      int height) {
-  // Use baseline height - createButtonDanger() will scale to logical space
-  const int baselineHeight = 1080;
-  createButtonDanger(id, {20, baselineHeight - height - 20, width, height},
+  // Use baseline height from UIConstants - createButtonDanger() will scale to logical space
+  createButtonDanger(id, {20, UIConstants::BASELINE_HEIGHT - height - 20, width, height},
                      text);
 
   // Store positioning rule for auto-repositioning
@@ -3129,19 +3121,13 @@ void UIManager::createButtonAtBottom(const std::string &id,
 
 void UIManager::createCenteredDialog(const std::string &id, int width,
                                      int height, const std::string &theme) {
-  // Use baseline dimensions - createModal() will scale to logical space
-  const int baselineWidth = 1920;
-  const int baselineHeight = 1080;
-
+  // Use baseline dimensions from UIConstants - createModal() will scale to logical space
   // Calculate centered position in baseline space
-  int x = (baselineWidth - width) / 2;
-  int y = (baselineHeight - height) / 2;
+  int x = (UIConstants::BASELINE_WIDTH - width) / 2;
+  int y = (UIConstants::BASELINE_HEIGHT - height) / 2;
 
   // Overlay also uses baseline dimensions
-  int overlayWidth = baselineWidth;
-  int overlayHeight = baselineHeight;
-
-  createModal(id, {x, y, width, height}, theme, overlayWidth, overlayHeight);
+  createModal(id, {x, y, width, height}, theme, UIConstants::BASELINE_WIDTH, UIConstants::BASELINE_HEIGHT);
 
   // Store positioning rule for auto-repositioning (dialog itself)
   auto component = getComponent(id);
