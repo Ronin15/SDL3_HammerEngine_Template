@@ -43,8 +43,15 @@ set OUTPUT_FILE=..\..\test_results\event_coordination_integration_tests_output.t
 set TEST_OPTS=--log_level=all --catch_system_errors=no
 if "%VERBOSE%"=="true" (set TEST_OPTS=!TEST_OPTS! --report_level=detailed)
 
-"!TEST_EXECUTABLE!" !TEST_OPTS! > "!OUTPUT_FILE!" 2>&1
+:: Set up test environment for headless execution
+set SDL_VIDEODRIVER=dummy
+
+:: Run from project root so test can find res/data/ files
+for %%f in ("!TEST_EXECUTABLE!") do set "ABS_TEST_EXECUTABLE=%%~ff"
+cd /d "%~dp0..\.."
+"!ABS_TEST_EXECUTABLE!" !TEST_OPTS! > "test_results\event_coordination_integration_tests_output.txt" 2>&1
 set TEST_RESULT=%ERRORLEVEL%
+cd /d "%~dp0"
 
 findstr /c:"failure" /c:"test cases failed" /c:"fatal error" "!OUTPUT_FILE!" >nul 2>&1
 if %ERRORLEVEL% equ 0 (
