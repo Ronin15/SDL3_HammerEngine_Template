@@ -217,7 +217,7 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON);
-  component->m_zOrder = 10; // Interactive elements on top
+  component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -237,7 +237,7 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
-  component->m_zOrder = 10; // Interactive elements on top
+  component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -257,7 +257,7 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
-  component->m_zOrder = 10; // Interactive elements on top
+  component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -277,7 +277,7 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
-  component->m_zOrder = 10; // Interactive elements on top
+  component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -297,7 +297,7 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::LABEL);
-  component->m_zOrder = 20; // Text on top
+  component->m_zOrder = UIConstants::ZORDER_LABEL; // Text on top
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -320,7 +320,7 @@ void UIManager::createTitle(const std::string &id, const UIRect &bounds,
   };
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::TITLE);
-  component->m_zOrder = 25; // Titles on top
+  component->m_zOrder = UIConstants::ZORDER_TITLE; // Titles on top
 
   m_components[id] = component;
 
@@ -340,7 +340,7 @@ void UIManager::createPanel(const std::string &id, const UIRect &bounds) {
     static_cast<int>(bounds.height * m_globalScale)
   };
   component->m_style = m_currentTheme.getStyle(UIComponentType::PANEL);
-  component->m_zOrder = 0; // Background panels
+  component->m_zOrder = UIConstants::ZORDER_PANEL; // Background panels
 
   m_components[id] = component;
 }
@@ -361,7 +361,7 @@ void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
   component->m_maxValue = maxVal;
   component->m_value = minVal;
   component->m_style = m_currentTheme.getStyle(UIComponentType::PROGRESS_BAR);
-  component->m_zOrder = 5; // UI elements
+  component->m_zOrder = UIConstants::ZORDER_PROGRESS_BAR; // UI elements
 
   m_components[id] = component;
 }
@@ -380,7 +380,7 @@ void UIManager::createInputField(const std::string &id, const UIRect &bounds,
   };
   component->m_placeholder = placeholder;
   component->m_style = m_currentTheme.getStyle(UIComponentType::INPUT_FIELD);
-  component->m_zOrder = 15; // Interactive elements
+  component->m_zOrder = UIConstants::ZORDER_INPUT_FIELD; // Interactive elements
 
   m_components[id] = component;
 }
@@ -399,7 +399,7 @@ void UIManager::createImage(const std::string &id, const UIRect &bounds,
   };
   component->m_textureID = textureID;
   component->m_style = m_currentTheme.getStyle(UIComponentType::IMAGE);
-  component->m_zOrder = 1; // Background images
+  component->m_zOrder = UIConstants::ZORDER_IMAGE; // Background images
 
   m_components[id] = component;
 }
@@ -420,7 +420,7 @@ void UIManager::createSlider(const std::string &id, const UIRect &bounds,
   component->m_maxValue = maxVal;
   component->m_value = minVal;
   component->m_style = m_currentTheme.getStyle(UIComponentType::SLIDER);
-  component->m_zOrder = 12; // Interactive elements
+  component->m_zOrder = UIConstants::ZORDER_SLIDER; // Interactive elements
 
   m_components[id] = component;
 }
@@ -440,7 +440,7 @@ void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
   component->m_text = text;
   component->m_checked = false;
   component->m_style = m_currentTheme.getStyle(UIComponentType::CHECKBOX);
-  component->m_zOrder = 13; // Interactive elements
+  component->m_zOrder = UIConstants::ZORDER_CHECKBOX; // Interactive elements
 
   m_components[id] = component;
 }
@@ -458,7 +458,7 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   };
   component->m_selectedIndex = -1;
   component->m_style = m_currentTheme.getStyle(UIComponentType::LIST);
-  component->m_zOrder = 8; // UI elements
+  component->m_zOrder = UIConstants::ZORDER_LIST; // UI elements
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -474,7 +474,7 @@ void UIManager::createTooltip(const std::string &id, const std::string &text) {
   component->m_text = text;
   component->m_visible = false;
   component->m_style = m_currentTheme.getStyle(UIComponentType::TOOLTIP);
-  component->m_zOrder = 1000; // Always on top
+  component->m_zOrder = UIConstants::ZORDER_TOOLTIP; // Always on top
 
   m_components[id] = component;
 }
@@ -494,7 +494,7 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
   component->m_maxLength = maxEntries; // Store max entries in maxLength field
   component->m_style = m_currentTheme.getStyle(
       UIComponentType::EVENT_LOG); // Use event log styling
-  component->m_zOrder = 6;           // UI elements
+  component->m_zOrder = UIConstants::ZORDER_EVENT_LOG;           // UI elements
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
@@ -512,7 +512,7 @@ void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
     static_cast<int>(bounds.height * m_globalScale)
   };
   component->m_style = m_currentTheme.getStyle(UIComponentType::DIALOG);
-  component->m_zOrder = -10; // Render behind other elements by default
+  component->m_zOrder = UIConstants::ZORDER_DIALOG; // Render behind other elements by default
 
   m_components[id] = component;
 }
@@ -1267,7 +1267,7 @@ void UIManager::setLightTheme() {
   buttonStyle.textColor = {255, 255, 255, 255};
   buttonStyle.hoverColor = {80, 140, 200, 255};
   buttonStyle.pressedColor = {40, 100, 160, 255};
-  buttonStyle.borderWidth = 1;
+  buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
   buttonStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::BUTTON] = buttonStyle;
@@ -1306,14 +1306,14 @@ void UIManager::setLightTheme() {
   labelStyle.useTextBackground = true;
   labelStyle.textBackgroundColor = {255, 255, 255,
                                     100}; // More transparent white
-  labelStyle.textBackgroundPadding = 6;
+  labelStyle.textBackgroundPadding = UIConstants::LABEL_TEXT_BG_PADDING;
   lightTheme.m_componentStyles[UIComponentType::LABEL] = labelStyle;
 
   // Panel style - light overlay for subtle UI separation
   UIStyle panelStyle;
   panelStyle.backgroundColor = {0, 0, 0,
                                 40}; // Very light overlay (15% opacity)
-  panelStyle.borderWidth = 0;
+  panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
   panelStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
@@ -1322,7 +1322,7 @@ void UIManager::setLightTheme() {
   progressStyle.backgroundColor = {40, 40, 40, 255};
   progressStyle.borderColor = {180, 180, 180, 255}; // Stronger borders
   progressStyle.hoverColor = {0, 180, 0, 255};      // Green fill
-  progressStyle.borderWidth = 1;
+  progressStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   progressStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
@@ -1332,7 +1332,7 @@ void UIManager::setLightTheme() {
   inputStyle.textColor = {20, 20, 20, 255}; // Dark text for good contrast
   inputStyle.borderColor = {180, 180, 180, 255};
   inputStyle.hoverColor = {235, 245, 255, 255};
-  inputStyle.borderWidth = 1;
+  inputStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
   inputStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
@@ -1343,10 +1343,10 @@ void UIManager::setLightTheme() {
   listStyle.borderColor = {180, 180, 180, 255};
   listStyle.textColor = {20, 20, 20, 255};     // Dark text on light background
   listStyle.hoverColor = {180, 200, 255, 255}; // Light blue selection
-  listStyle.borderWidth = 1;
+  listStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
-      32; // Will be calculated dynamically during rendering
+      UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Will be calculated dynamically during rendering
   listStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::LIST] = listStyle;
 
@@ -1356,7 +1356,7 @@ void UIManager::setLightTheme() {
   sliderStyle.borderColor = {180, 180, 180, 255};
   sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
   sliderStyle.pressedColor = {40, 100, 160, 255};
-  sliderStyle.borderWidth = 1;
+  sliderStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   sliderStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
@@ -1374,7 +1374,7 @@ void UIManager::setLightTheme() {
   UIStyle tooltipStyle = panelStyle;
   tooltipStyle.backgroundColor = {40, 40, 40, 230}; // More opaque for tooltips
   tooltipStyle.borderColor = {180, 180, 180, 255};
-  tooltipStyle.borderWidth = 1;
+  tooltipStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   tooltipStyle.textColor = {255, 255, 255,
                             255}; // White text for dark tooltip background
   tooltipStyle.fontID = UIConstants::TOOLTIP_FONT;
@@ -1401,21 +1401,21 @@ void UIManager::setLightTheme() {
   UIStyle titleStyle;
   titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
   titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
-  titleStyle.fontSize = 24;                  // Use native 24px font size
+  titleStyle.fontSize = UIConstants::TITLE_FONT_SIZE;                  // Use native title font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
   titleStyle.fontID = UIConstants::TITLE_FONT;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
   titleStyle.textBackgroundColor = {20, 20, 20,
                                     120}; // More transparent dark for gold text
-  titleStyle.textBackgroundPadding = 8;
+  titleStyle.textBackgroundPadding = UIConstants::TITLE_TEXT_BG_PADDING;
   lightTheme.m_componentStyles[UIComponentType::TITLE] = titleStyle;
 
   // Dialog style - solid background for modal dialogs
   UIStyle dialogStyle;
   dialogStyle.backgroundColor = {245, 245, 245, 255}; // Light solid background
   dialogStyle.borderColor = {120, 120, 120, 255}; // Dark border for definition
-  dialogStyle.borderWidth = 2;
+  dialogStyle.borderWidth = UIConstants::BORDER_WIDTH_DIALOG;
   dialogStyle.fontID = UIConstants::UI_FONT;
   lightTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
@@ -1443,7 +1443,7 @@ void UIManager::setDarkTheme() {
   buttonStyle.textColor = {255, 255, 255, 255};
   buttonStyle.hoverColor = {70, 70, 80, 255};
   buttonStyle.pressedColor = {30, 30, 40, 255};
-  buttonStyle.borderWidth = 1;
+  buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
   buttonStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::BUTTON] = buttonStyle;
@@ -1480,13 +1480,13 @@ void UIManager::setDarkTheme() {
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
   labelStyle.textBackgroundColor = {0, 0, 0, 100}; // More transparent black
-  labelStyle.textBackgroundPadding = 6;
+  labelStyle.textBackgroundPadding = UIConstants::LABEL_TEXT_BG_PADDING;
   darkTheme.m_componentStyles[UIComponentType::LABEL] = labelStyle;
 
   // Panel style - slightly more overlay for dark theme
   UIStyle panelStyle;
   panelStyle.backgroundColor = {0, 0, 0, 50}; // 19% opacity
-  panelStyle.borderWidth = 0;
+  panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
   panelStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
@@ -1495,7 +1495,7 @@ void UIManager::setDarkTheme() {
   progressStyle.backgroundColor = {20, 20, 20, 255};
   progressStyle.borderColor = {180, 180, 180, 255};
   progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
-  progressStyle.borderWidth = 1;
+  progressStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   progressStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
@@ -1505,7 +1505,7 @@ void UIManager::setDarkTheme() {
   inputStyle.textColor = {255, 255, 255, 255}; // White text
   inputStyle.borderColor = {180, 180, 180, 255};
   inputStyle.hoverColor = {50, 50, 50, 255};
-  inputStyle.borderWidth = 1;
+  inputStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
   inputStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
@@ -1516,10 +1516,10 @@ void UIManager::setDarkTheme() {
   listStyle.borderColor = {180, 180, 180, 255};
   listStyle.textColor = {255, 255, 255, 255}; // White text
   listStyle.hoverColor = {60, 80, 150, 255};  // Blue selection
-  listStyle.borderWidth = 1;
+  listStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
-      32; // Will be calculated dynamically during rendering
+      UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Will be calculated dynamically during rendering
   listStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::LIST] = listStyle;
 
@@ -1529,7 +1529,7 @@ void UIManager::setDarkTheme() {
   sliderStyle.borderColor = {180, 180, 180, 255};
   sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
   sliderStyle.pressedColor = {40, 100, 160, 255};
-  sliderStyle.borderWidth = 1;
+  sliderStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   sliderStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
@@ -1546,7 +1546,7 @@ void UIManager::setDarkTheme() {
   UIStyle tooltipStyle;
   tooltipStyle.backgroundColor = {20, 20, 20, 240};
   tooltipStyle.borderColor = {180, 180, 180, 255};
-  tooltipStyle.borderWidth = 1;
+  tooltipStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   tooltipStyle.textColor = {255, 255, 255, 255};
   tooltipStyle.fontID = UIConstants::TOOLTIP_FONT;
   darkTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
@@ -1574,21 +1574,21 @@ void UIManager::setDarkTheme() {
   UIStyle titleStyle;
   titleStyle.backgroundColor = {0, 0, 0, 0}; // Transparent background
   titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
-  titleStyle.fontSize = 24;                  // Use native 24px font size
+  titleStyle.fontSize = UIConstants::TITLE_FONT_SIZE;                  // Use native title font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
   titleStyle.fontID = UIConstants::TITLE_FONT;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
   titleStyle.textBackgroundColor = {
       0, 0, 0, 120}; // More transparent black for gold text
-  titleStyle.textBackgroundPadding = 8;
+  titleStyle.textBackgroundPadding = UIConstants::TITLE_TEXT_BG_PADDING;
   darkTheme.m_componentStyles[UIComponentType::TITLE] = titleStyle;
 
   // Dialog style - solid background for modal dialogs
   UIStyle dialogStyle;
   dialogStyle.backgroundColor = {45, 45, 45, 255}; // Dark solid background
   dialogStyle.borderColor = {160, 160, 160, 255}; // Light border for definition
-  dialogStyle.borderWidth = 2;
+  dialogStyle.borderWidth = UIConstants::BORDER_WIDTH_DIALOG;
   dialogStyle.fontID = UIConstants::UI_FONT;
   darkTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
@@ -1639,7 +1639,7 @@ void UIManager::removeComponentsWithPrefix(const std::string &prefix) {
 
   // Collect components to remove (can't modify map while iterating)
   std::vector<std::string> componentsToRemove;
-  componentsToRemove.reserve(32); // Reserve capacity for performance
+  componentsToRemove.reserve(UIConstants::DEFAULT_COMPONENT_BATCH_SIZE); // Reserve capacity for performance
 
   for (const auto &[id, component] : m_components) {
     if (id.substr(0, prefix.length()) == prefix) {
@@ -1663,7 +1663,7 @@ void UIManager::clearAllComponents() {
   // Enhanced clearAllComponents - preserve theme background but clear
   // everything else
   std::vector<std::string> componentsToRemove;
-  componentsToRemove.reserve(64); // Reserve capacity for performance
+  componentsToRemove.reserve(UIConstants::MAX_COMPONENT_BATCH_SIZE); // Reserve capacity for performance
 
   for (const auto &[id, component] : m_components) {
     if (id != "__overlay") {
@@ -1764,9 +1764,9 @@ void UIManager::setGlobalScale(float scale) { m_globalScale = scale; }
 
 float UIManager::calculateOptimalScale(int width, int height) const {
   // Use baseline resolution from UIConstants for consistent UI scaling
-  // Cap at 1.0 to prevent UI from scaling larger than original on high resolutions
+  // Cap at max UI scale to prevent UI from scaling larger than original on high resolutions
   float scale = std::min(width / UIConstants::BASELINE_WIDTH_F, height / UIConstants::BASELINE_HEIGHT_F);
-  return std::min(1.0f, scale);  // Cap at 1.0
+  return std::min(UIConstants::MAX_UI_SCALE, scale);  // Cap at maximum UI scale
 }
 
 // Private helper methods
@@ -1905,10 +1905,10 @@ void UIManager::handleInput() {
         // Calculate item height dynamically based on current font metrics
         auto &fontManager = FontManager::Instance();
         int lineHeight = 0;
-        int itemHeight = 32; // Default fallback
+        int itemHeight = UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Default fallback
         if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                        nullptr, nullptr)) {
-          itemHeight = lineHeight + 8; // Add padding for better mouse accuracy
+          itemHeight = lineHeight + UIConstants::LIST_ITEM_PADDING; // Add padding for better mouse accuracy
         }
         int itemIndex = static_cast<int>(
             (mousePos.getY() - component->m_bounds.y) / itemHeight);
@@ -2270,7 +2270,7 @@ void UIManager::renderInputField(
   if (component->m_state == UIState::FOCUSED) {
     int cursorX = component->m_bounds.x + scaledPadding +
                   static_cast<int>(component->m_text.length() *
-                                   8); // Approximate char width
+                                   UIConstants::INPUT_CURSOR_CHAR_WIDTH); // Approximate char width
     drawRect(renderer,
              {cursorX, component->m_bounds.y + scaledPadding / 2, 1,
               component->m_bounds.height - scaledPadding},
@@ -2298,10 +2298,10 @@ void UIManager::renderSlider(SDL_Renderer *renderer,
 
   // Draw track
   UIRect trackRect = {component->m_bounds.x,
-                      component->m_bounds.y + component->m_bounds.height / 2 - 2,
-                      component->m_bounds.width, 4};
+                      component->m_bounds.y + component->m_bounds.height / 2 - UIConstants::SLIDER_TRACK_OFFSET,
+                      component->m_bounds.width, UIConstants::SLIDER_TRACK_HEIGHT};
   drawRect(renderer, trackRect, component->m_style.backgroundColor, true);
-  drawBorder(renderer, trackRect, component->m_style.borderColor, 1);
+  drawBorder(renderer, trackRect, component->m_style.borderColor, UIConstants::BORDER_WIDTH_NORMAL);
 
   // Calculate handle position
   float progress = (component->m_value - component->m_minValue) /
@@ -2309,8 +2309,8 @@ void UIManager::renderSlider(SDL_Renderer *renderer,
   progress = std::clamp(progress, 0.0f, 1.0f);
 
   int handleX = component->m_bounds.x +
-                static_cast<int>((component->m_bounds.width - 16) * progress);
-  UIRect handleRect = {handleX, component->m_bounds.y, 16,
+                static_cast<int>((component->m_bounds.width - UIConstants::SLIDER_HANDLE_WIDTH) * progress);
+  UIRect handleRect = {handleX, component->m_bounds.y, UIConstants::SLIDER_HANDLE_WIDTH,
                        component->m_bounds.height};
 
   SDL_Color handleColor = component->m_style.hoverColor;
@@ -2601,8 +2601,8 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
       fontManager.renderText(component->m_text, component->m_style.fontID,
                              component->m_style.textColor, renderer);
 
-  int tooltipWidth = 200; // fallback width
-  int tooltipHeight = 32; // fallback height
+  int tooltipWidth = UIConstants::TOOLTIP_FALLBACK_WIDTH; // fallback width
+  int tooltipHeight = UIConstants::TOOLTIP_FALLBACK_HEIGHT; // fallback height
 
   if (tooltipTexture) {
     float textW, textH;
@@ -2960,7 +2960,7 @@ bool UIManager::measureComponentContent(
   case UIComponentType::LIST: {
     // Calculate height based on font metrics dynamically
     int lineHeight = 0;
-    int itemHeight = 32; // Default fallback
+    int itemHeight = UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Default fallback
     int scaledPadding = static_cast<int>(UIConstants::LIST_ITEM_PADDING * m_globalScale);
     if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                    nullptr, nullptr)) {
@@ -2968,7 +2968,7 @@ bool UIManager::measureComponentContent(
     } else {
       // If font metrics fail, use reasonable fallback based on expected font
       // sizes Assume 21px font (typical for UI) + 8px padding = 29px
-      itemHeight = 29;
+      itemHeight = UIConstants::FALLBACK_LIST_ITEM_HEIGHT;
     }
 
     // Calculate based on list items and item height
@@ -2983,17 +2983,17 @@ bool UIManager::measureComponentContent(
           // If text measurement fails, estimate based on character count
           // Assume ~12px per character for UI fonts
           maxItemWidth =
-              std::max(maxItemWidth, static_cast<int>(item.length() * 12));
+              std::max(maxItemWidth, static_cast<int>(item.length() * UIConstants::CHAR_WIDTH_ESTIMATE));
         }
       }
       int scaledScrollbarSpace = static_cast<int>(UIConstants::SCROLLBAR_WIDTH * m_globalScale);
       *width = std::max(maxItemWidth + scaledScrollbarSpace,
-                        150); // Add scrollbar space, minimum 150px
+                        UIConstants::MIN_LIST_WIDTH); // Add scrollbar space, minimum list width
       *height = itemHeight * static_cast<int>(component->m_listItems.size());
     } else {
       // Provide reasonable defaults for empty lists
-      *width = 200;             // Default width
-      *height = itemHeight * 3; // Height for 3 items as reasonable default
+      *width = UIConstants::DEFAULT_LIST_WIDTH;             // Default width
+      *height = itemHeight * UIConstants::DEFAULT_LIST_VISIBLE_ITEMS; // Height for default visible items
     }
     return true;
   }
@@ -3087,7 +3087,7 @@ void UIManager::createOverlay() {
 void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
                                  int height) {
   // Use baseline width from UIConstants - createTitle() will scale to logical space
-  createTitle(id, {0, 10, UIConstants::BASELINE_WIDTH, height}, text);
+  createTitle(id, {0, UIConstants::TITLE_TOP_OFFSET, UIConstants::BASELINE_WIDTH, height}, text);
   setTitleAlignment(id, UIAlignment::CENTER_CENTER);
 
   // Store positioning rule for auto-repositioning
@@ -3095,7 +3095,7 @@ void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
   if (component) {
     component->m_positioning = {.mode = UIPositionMode::TOP_ALIGNED,
                                 .offsetX = 0,
-                                .offsetY = 10,
+                                .offsetY = UIConstants::TITLE_TOP_OFFSET,
                                 .fixedWidth = -1,  // -1 = use full window width
                                 .fixedHeight = height};
   }
@@ -3105,15 +3105,15 @@ void UIManager::createButtonAtBottom(const std::string &id,
                                      const std::string &text, int width,
                                      int height) {
   // Use baseline height from UIConstants - createButtonDanger() will scale to logical space
-  createButtonDanger(id, {20, UIConstants::BASELINE_HEIGHT - height - 20, width, height},
+  createButtonDanger(id, {UIConstants::BUTTON_BOTTOM_OFFSET, UIConstants::BASELINE_HEIGHT - height - UIConstants::BUTTON_BOTTOM_OFFSET, width, height},
                      text);
 
   // Store positioning rule for auto-repositioning
   auto component = getComponent(id);
   if (component) {
     component->m_positioning = {.mode = UIPositionMode::BOTTOM_ALIGNED,
-                                .offsetX = 20,
-                                .offsetY = 20,
+                                .offsetX = UIConstants::BUTTON_BOTTOM_OFFSET,
+                                .offsetY = UIConstants::BUTTON_BOTTOM_OFFSET,
                                 .fixedWidth = width,
                                 .fixedHeight = height};
   }
