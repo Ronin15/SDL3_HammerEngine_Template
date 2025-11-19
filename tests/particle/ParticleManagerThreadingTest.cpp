@@ -119,7 +119,9 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleCreation,
             << NUM_THREADS << " threads" << std::endl;
 }
 
-// Test concurrent particle updates
+// Test high-frequency sequential particle updates
+// Note: update() is designed to be called once per frame from a single thread
+// (the game loop), not concurrently. Internal threading is handled automatically.
 BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleUpdates,
                         ParticleManagerThreadingFixture) {
   // Create some particles first
@@ -136,42 +138,23 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentParticleUpdates,
   size_t initialCount = manager->getActiveParticleCount();
   BOOST_CHECK_GT(initialCount, 0);
 
-  const int NUM_UPDATE_THREADS = 3;
-  const int UPDATES_PER_THREAD = 20;
+  // Test high-frequency sequential updates (simulates fast game loop)
+  // This matches real-world usage: update() called once per frame sequentially
+  const int TOTAL_UPDATES = 60;
+  int updateCount = 0;
 
-  std::atomic<int> updateCount{0};
-  std::vector<std::future<void>> futures;
-
-  // Launch concurrent update tasks
-  for (int threadId = 0; threadId < NUM_UPDATE_THREADS; ++threadId) {
-    auto future = threadSystem->enqueueTaskWithResult(
-        [=, this, &updateCount]() -> void {
-          for (int i = 0; i < UPDATES_PER_THREAD; ++i) {
-            manager->update(0.016f);
-            updateCount.fetch_add(1, std::memory_order_relaxed);
-
-            // Small delay between updates
-            std::this_thread::sleep_for(std::chrono::microseconds(50));
-          }
-        },
-        HammerEngine::TaskPriority::Normal, "ParticleUpdateTask");
-
-    futures.push_back(std::move(future));
-  }
-
-  // Wait for all update tasks to complete
-  for (auto &future : futures) {
-    future.wait();
+  for (int i = 0; i < TOTAL_UPDATES; ++i) {
+    manager->update(0.016f);
+    updateCount++;
   }
 
   // Verify all updates completed
-  BOOST_CHECK_EQUAL(updateCount.load(),
-                    NUM_UPDATE_THREADS * UPDATES_PER_THREAD);
+  BOOST_CHECK_EQUAL(updateCount, TOTAL_UPDATES);
 
   // Particles should still exist or have been cleaned up naturally
   size_t finalCount = manager->getActiveParticleCount();
-  std::cout << "Particle count after concurrent updates: " << finalCount
-            << " (started with " << initialCount << ")" << std::endl;
+  std::cout << "Particle count after " << TOTAL_UPDATES << " sequential updates: "
+            << finalCount << " (started with " << initialCount << ")" << std::endl;
 }
 
 // Test thread-safe effect management
@@ -317,23 +300,17 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentStatsAccess,
   std::atomic<int> updateCalls{0};
   std::vector<std::future<void>> futures;
 
-  // Launch tasks that read stats and update concurrently
+  // Launch tasks that read stats concurrently (stats getters are thread-safe)
   for (int threadId = 0; threadId < NUM_THREADS; ++threadId) {
     auto future = threadSystem->enqueueTaskWithResult(
-        [=, this, &statsReads, &updateCalls]() -> void {
+        [=, this, &statsReads]() -> void {
           for (int i = 0; i < STATS_READS_PER_THREAD; ++i) {
-            // Read various stats
+            // Read various stats (thread-safe getters)
             size_t activeCount = manager->getActiveParticleCount();
             size_t maxCapacity = manager->getMaxParticleCapacity();
             ParticlePerformanceStats stats = manager->getPerformanceStats();
 
             statsReads.fetch_add(1, std::memory_order_relaxed);
-
-            // Occasionally trigger updates and effect operations
-            if (i % 10 == 0) {
-              manager->update(0.016f);
-              updateCalls.fetch_add(1, std::memory_order_relaxed);
-            }
 
             // Use the stats to prevent optimization away
             (void)activeCount;
@@ -353,12 +330,18 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentStatsAccess,
     future.wait();
   }
 
+  // Main thread performs updates (correct usage pattern)
+  for (int i = 0; i < 30; ++i) {
+    manager->update(0.016f);
+    updateCalls++;
+  }
+
   std::cout << "Stats reads completed: " << statsReads.load() << std::endl;
   std::cout << "Update calls: " << updateCalls.load() << std::endl;
 
   // Verify all stats reads completed without issues
   BOOST_CHECK_EQUAL(statsReads.load(), NUM_THREADS * STATS_READS_PER_THREAD);
-  BOOST_CHECK_GT(updateCalls.load(), 0);
+  BOOST_CHECK_EQUAL(updateCalls.load(), 30);
 }
 
 // Test thread safety during cleanup
@@ -383,16 +366,14 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCleanup,
   std::atomic<bool> cleanupStarted{false};
   std::vector<std::future<void>> futures;
 
-  // Launch tasks that continue operations while cleanup happens
+  // Launch tasks that continue reading stats while cleanup happens
   for (int threadId = 0; threadId < NUM_THREADS; ++threadId) {
     auto future = threadSystem->enqueueTaskWithResult(
         [=, this, &cleanupStarted]() -> void {
           int operations = 0;
           while (!cleanupStarted.load(std::memory_order_acquire) &&
                  operations < 50) {
-            // Continue particle operations
-            manager->update(0.016f);
-
+            // Continue reading particle stats (thread-safe)
             size_t count = manager->getActiveParticleCount();
             (void)count; // Use the value
 
@@ -405,8 +386,11 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCleanup,
     futures.push_back(std::move(future));
   }
 
-  // Give tasks time to start
-  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  // Main thread continues updates while tasks read stats
+  for (int i = 0; i < 10; ++i) {
+    manager->update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
 
   // Signal cleanup and perform it
   cleanupStarted.store(true, std::memory_order_release);
@@ -448,42 +432,37 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
   std::atomic<int> totalOperations{0};
   std::vector<std::future<void>> futures;
 
-  // Launch mixed operation tasks
+  // Launch mixed operation tasks (thread-safe operations only)
   for (int threadId = 0; threadId < NUM_THREADS; ++threadId) {
     auto future = threadSystem->enqueueTaskWithResult(
         [=, this, &totalOperations]() -> void {
           for (int i = 0; i < OPERATIONS_PER_THREAD; ++i) {
             Vector2D position(150 + threadId * 80, 150 + i * 15);
 
-            switch (i % 5) {
+            switch (i % 4) { // Changed from 5 to 4 cases (removed update)
             case 0: {
-              // Create effect
+              // Create effect (thread-safe with mutex)
               uint32_t effectId =
                   manager->playEffect(ParticleEffectType::Rain, position, 0.6f);
               (void)effectId;
               break;
             }
             case 1: {
-              // Update particles
-              manager->update(0.016f);
-              break;
-            }
-            case 2: {
-              // Check stats
+              // Check stats (thread-safe getters)
               size_t count = manager->getActiveParticleCount();
               (void)count;
               break;
             }
-            case 3: {
-              // Weather effect
-              if (i % 10 == 3) {
+            case 2: {
+              // Weather effect (thread-safe with mutex)
+              if (i % 10 == 2) {
                 manager->triggerWeatherEffect("Snowy", 0.4f);
               }
               break;
             }
-            case 4: {
-              // Pause/resume
-              if (i % 15 == 4) {
+            case 3: {
+              // Pause/resume (atomic operations)
+              if (i % 15 == 3) {
                 bool currentlyPaused = manager->isGloballyPaused();
                 manager->setGlobalPause(!currentlyPaused);
 
@@ -504,12 +483,27 @@ BOOST_FIXTURE_TEST_CASE(TestMixedConcurrentOperations,
     futures.push_back(std::move(future));
   }
 
+  // Main thread performs updates while tasks run (correct usage pattern)
+  std::atomic<bool> tasksComplete{false};
+  auto updateFuture = threadSystem->enqueueTaskWithResult(
+      [this, &tasksComplete]() -> void {
+        while (!tasksComplete.load(std::memory_order_acquire)) {
+          manager->update(0.016f);
+          std::this_thread::sleep_for(std::chrono::milliseconds(16));
+        }
+      },
+      HammerEngine::TaskPriority::Normal, "UpdateTask");
+
   // Wait for all mixed operations to complete
   for (auto &future : futures) {
     future.wait();
   }
 
-  // Final update to ensure consistent state
+  // Signal update task to stop
+  tasksComplete.store(true, std::memory_order_release);
+  updateFuture.wait();
+
+  // Final updates to ensure consistent state
   for (int i = 0; i < 5; ++i) {
     manager->update(0.016f);
   }
