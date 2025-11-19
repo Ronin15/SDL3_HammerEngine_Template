@@ -120,16 +120,16 @@ struct UIStyle {
   SDL_Color textBackgroundColor{0, 0, 0,
                                 128}; // Semi-transparent black by default
   bool useTextBackground{false};      // Enable text background for readability
-  int textBackgroundPadding{4};       // Extra padding around text background
+  int textBackgroundPadding{UIConstants::DEFAULT_TEXT_BG_PADDING};       // Extra padding around text background
 
-  int borderWidth{1};
-  int padding{8};
-  int margin{4};
-  int listItemHeight{32}; // Configurable height for list items (increased from
+  int borderWidth{UIConstants::BORDER_WIDTH_NORMAL};
+  int padding{UIConstants::DEFAULT_COMPONENT_PADDING};
+  int margin{UIConstants::DEFAULT_MARGIN};
+  int listItemHeight{UIConstants::DEFAULT_LIST_ITEM_HEIGHT}; // Configurable height for list items (increased from
                           // 20 for better mouse accuracy)
 
   std::string fontID{UIConstants::UI_FONT};
-  int fontSize{16};
+  int fontSize{UIConstants::DEFAULT_FONT_SIZE};
 
   UIAlignment textAlign{UIAlignment::CENTER_CENTER};
 };
@@ -150,11 +150,11 @@ struct UIComponent {
 
   // Auto-sizing properties
   bool m_autoSize{true}; // Enable content-aware auto-sizing by default
-  UIRect m_minBounds{0, 0, 32,
-                   16}; // Minimum size constraints (only width/height used)
-  UIRect m_maxBounds{0, 0, 800,
-                   600};    // Maximum size constraints (only width/height used)
-  int m_contentPadding{8};    // Padding around content for size calculations
+  UIRect m_minBounds{0, 0, UIConstants::MIN_COMPONENT_WIDTH,
+                   UIConstants::MIN_COMPONENT_HEIGHT}; // Minimum size constraints (only width/height used)
+  UIRect m_maxBounds{0, 0, UIConstants::MAX_COMPONENT_WIDTH,
+                   UIConstants::MAX_COMPONENT_HEIGHT};    // Maximum size constraints (only width/height used)
+  int m_contentPadding{UIConstants::DEFAULT_CONTENT_PADDING};    // Padding around content for size calculations
   bool m_autoWidth{true};     // Auto-size width based on content
   bool m_autoHeight{true};    // Auto-size height based on content
   bool m_sizeToContent{true}; // Size exactly to fit content (vs. expand to fill)
@@ -173,7 +173,7 @@ struct UIComponent {
   std::function<std::vector<std::string>()> m_listBinding{}; // For data-bound lists
   int m_selectedIndex{-1};
   std::string m_placeholder{};
-  int m_maxLength{256};
+  int m_maxLength{UIConstants::DEFAULT_INPUT_MAX_LENGTH};
 
   // Callbacks
   std::function<void()> m_onClick{};
@@ -195,7 +195,7 @@ struct UILayout {
   std::vector<std::string> m_childComponents{};
 
   // Layout-specific properties
-  int m_spacing{4};
+  int m_spacing{UIConstants::DEFAULT_LAYOUT_SPACING};
   int m_columns{1};
   int m_rows{1};
   UIAlignment m_alignment{UIAlignment::TOP_LEFT};
@@ -291,7 +291,7 @@ public:
   void createList(const std::string &id, const UIRect &bounds);
   void createTooltip(const std::string &id, const std::string &text = "");
   void createEventLog(const std::string &id, const UIRect &bounds,
-                      int maxEntries = 5);
+                      int maxEntries = UIConstants::DEFAULT_EVENT_LOG_MAX_ENTRIES);
   void createDialog(const std::string &id, const UIRect &bounds);
 
   // Modal creation helper - combines theme + overlay + dialog
@@ -381,7 +381,7 @@ public:
   void setEventLogMaxEntries(const std::string &logID, int maxEntries);
   void setupDemoEventLog(const std::string &logID);
   void enableEventLogAutoUpdate(const std::string &logID,
-                                float interval = 2.0f);
+                                float interval = UIConstants::DEFAULT_EVENT_LOG_UPDATE_INTERVAL);
   void disableEventLogAutoUpdate(const std::string &logID);
 
   // Title specific methods
@@ -460,9 +460,9 @@ public:
   int getLogicalWidth() const;  // Auto-detect logical width from GameEngine
   int getLogicalHeight() const; // Auto-detect logical height from GameEngine
   void createTitleAtTop(const std::string &id, const std::string &text,
-                        int height = 40);
+                        int height = UIConstants::DEFAULT_TITLE_HEIGHT);
   void createButtonAtBottom(const std::string &id, const std::string &text,
-                            int width = 120, int height = 40);
+                            int width = UIConstants::DEFAULT_BUTTON_WIDTH, int height = UIConstants::DEFAULT_BUTTON_HEIGHT);
   void createCenteredDialog(const std::string &id, int width, int height,
                             const std::string &theme = "dark");
 
