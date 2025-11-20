@@ -8,7 +8,9 @@
 
 #include "managers/GameStateManager.hpp"
 #include <SDL3_image/SDL_image.h>
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -25,6 +27,83 @@ class ResourceTemplateManager;
 class WorldResourceManager;
 class WorldManager;
 class CollisionManager;
+
+#ifdef DEBUG
+/**
+ * @brief Buffer telemetry statistics for monitoring double/triple buffering performance
+ * @details Tracks swap success/failures, render stalls, and timing metrics using rolling averages
+ *
+ * Only compiled in DEBUG builds for zero-overhead performance monitoring.
+ * Follows EventManager's PerformanceStats pattern for consistency.
+ */
+struct BufferTelemetryStats {
+    // Swap tracking
+    uint64_t swapAttempts{0};        // Total buffer swap attempts
+    uint64_t swapSuccesses{0};       // Successful swaps (buffer available)
+    uint64_t swapBlocked{0};         // Swaps blocked (buffer not ready or rendering conflict)
+    uint64_t casFailures{0};         // Compare-and-swap failures (atomic contention)
+
+    // Render tracking
+    uint64_t renderStalls{0};        // Render stalled (no buffer ready)
+    uint64_t framesSkipped{0};       // Frames where lastUpdate == lastRendered
+
+    // Timing (rolling averages over 60 frames)
+    static constexpr size_t SAMPLE_SIZE = 60;
+    std::array<double, SAMPLE_SIZE> mutexWaitTimes{};    // Time waiting for update mutex (ms)
+    std::array<double, SAMPLE_SIZE> bufferReadyDelays{};  // Time from update complete to buffer ready (ms)
+    size_t currentSample{0};
+
+    double avgMutexWaitMs{0.0};
+    double avgBufferReadyMs{0.0};
+
+    /**
+     * @brief Adds a timing sample to the rolling average
+     * @param mutexWait Time spent waiting for update mutex (ms)
+     * @param bufferDelay Time from update complete to buffer marked ready (ms)
+     */
+    void addTimingSample(double mutexWait, double bufferDelay) {
+        mutexWaitTimes[currentSample] = mutexWait;
+        bufferReadyDelays[currentSample] = bufferDelay;
+        currentSample = (currentSample + 1) % SAMPLE_SIZE;
+
+        // Calculate rolling averages
+        double mutexSum = 0.0;
+        double bufferSum = 0.0;
+        for (size_t i = 0; i < SAMPLE_SIZE; ++i) {
+            mutexSum += mutexWaitTimes[i];
+            bufferSum += bufferReadyDelays[i];
+        }
+        avgMutexWaitMs = mutexSum / SAMPLE_SIZE;
+        avgBufferReadyMs = bufferSum / SAMPLE_SIZE;
+    }
+
+    /**
+     * @brief Resets all telemetry counters and timing samples
+     */
+    void reset() {
+        swapAttempts = 0;
+        swapSuccesses = 0;
+        swapBlocked = 0;
+        casFailures = 0;
+        renderStalls = 0;
+        framesSkipped = 0;
+        mutexWaitTimes.fill(0.0);
+        bufferReadyDelays.fill(0.0);
+        currentSample = 0;
+        avgMutexWaitMs = 0.0;
+        avgBufferReadyMs = 0.0;
+    }
+
+    /**
+     * @brief Calculates swap success rate as percentage
+     * @return Swap success rate (0.0 to 100.0)
+     */
+    double getSwapSuccessRate() const {
+        if (swapAttempts == 0) return 100.0;
+        return (static_cast<double>(swapSuccesses) / swapAttempts) * 100.0;
+    }
+};
+#endif // DEBUG
 
 class GameEngine {
 public:
@@ -371,11 +450,12 @@ private:
   std::atomic<uint64_t> m_lastUpdateFrame{0};
   std::atomic<uint64_t> m_lastRenderedFrame{0};
 
-  // Double buffering (ping-pong buffers)
-  static constexpr size_t BUFFER_COUNT = 2;
+  // Double/Triple buffering (runtime configurable)
+  static constexpr size_t MAX_BUFFER_COUNT = 3;  // Support up to 3 buffers
+  size_t m_bufferCount{2};                        // Runtime buffer count (2 or 3)
   std::atomic<size_t> m_currentBufferIndex{0};
   std::atomic<size_t> m_renderBufferIndex{0};
-  std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
+  std::atomic<bool> m_bufferReady[MAX_BUFFER_COUNT]{false, false, false};
 
   // Buffer synchronization (lock-free atomic operations)
   std::condition_variable m_bufferCondition{};
@@ -385,6 +465,14 @@ private:
 
   // Render synchronization
   std::mutex m_renderMutex{};
+
+#ifdef DEBUG
+  // Buffer telemetry (debug-only, F3 to toggle overlay)
+  mutable BufferTelemetryStats m_bufferTelemetry{};
+  std::atomic<bool> m_showBufferTelemetry{false};
+  mutable uint64_t m_telemetryLogFrame{0};
+  static constexpr uint64_t TELEMETRY_LOG_INTERVAL = 300;  // Log every 300 frames (~5s @ 60fps)
+#endif // DEBUG
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying

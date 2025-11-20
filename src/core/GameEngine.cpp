@@ -312,6 +312,25 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_INFO("Using hardware VSync for frame timing");
   }
 
+  // Load buffer configuration from SettingsManager (developer settings)
+  m_bufferCount = static_cast<size_t>(settings.get<int>("developer", "buffer_count", 2));
+  // Clamp to valid range [2, 3]
+  if (m_bufferCount < 2) m_bufferCount = 2;
+  if (m_bufferCount > 3) m_bufferCount = 3;
+  GAMEENGINE_INFO("Buffer mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)") +
+                  " buffering configured");
+
+#ifdef DEBUG
+  // Load telemetry settings (debug builds only)
+  bool telemetryEnabled = settings.get<bool>("developer", "show_buffer_telemetry", false);
+  m_showBufferTelemetry.store(telemetryEnabled, std::memory_order_relaxed);
+  if (telemetryEnabled) {
+    GAMEENGINE_INFO("Buffer telemetry ENABLED (F3 to toggle, logs every 1s)");
+  } else {
+    GAMEENGINE_INFO("Buffer telemetry disabled (F3 to enable, logs every 5s when off)");
+  }
+#endif
+
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
           HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
@@ -831,6 +850,17 @@ void GameEngine::handleEvents() {
     toggleFullscreen();
   }
 
+#ifdef DEBUG
+  // Global buffer telemetry overlay toggle (F3 key) - debug builds only
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
+    bool currentState = m_showBufferTelemetry.load(std::memory_order_relaxed);
+    m_showBufferTelemetry.store(!currentState, std::memory_order_relaxed);
+    GAMEENGINE_INFO("Buffer telemetry overlay " +
+                    std::string(!currentState ? "ENABLED" : "DISABLED") +
+                    " (F3 to toggle)");
+  }
+#endif
+
   // Handle game state input on main thread where SDL events are processed (SDL3
   // requirement) This prevents cross-thread input state access between main
   // thread and update worker thread
@@ -867,7 +897,18 @@ float GameEngine::getCurrentFPS() const {
 
 void GameEngine::update(float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
+#ifdef DEBUG
+  // TELEMETRY POINT 7: Start timing mutex wait
+  auto mutexWaitStart = std::chrono::high_resolution_clock::now();
+#endif
+
   std::lock_guard<std::mutex> lock(m_updateMutex);
+
+#ifdef DEBUG
+  // TELEMETRY POINT 8: Mutex acquired - calculate wait time
+  auto mutexAcquired = std::chrono::high_resolution_clock::now();
+  double mutexWaitMs = std::chrono::duration<double, std::milli>(mutexAcquired - mutexWaitStart).count();
+#endif
 
   // Mark update as running with relaxed ordering (protected by mutex)
   m_updateRunning.store(true, std::memory_order_relaxed);
@@ -950,6 +991,44 @@ void GameEngine::update(float deltaTime) {
   // Mark this buffer as ready for rendering
   m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 
+#ifdef DEBUG
+  // TELEMETRY POINT 9: Buffer marked ready - record timing sample
+  auto bufferReadyTime = std::chrono::high_resolution_clock::now();
+  double bufferReadyDelayMs = std::chrono::duration<double, std::milli>(bufferReadyTime - mutexAcquired).count();
+  m_bufferTelemetry.addTimingSample(mutexWaitMs, bufferReadyDelayMs);
+
+  // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
+  // When F3 overlay is enabled, log every 60 frames (1s @ 60fps) for real-time monitoring
+  uint64_t currentFrame = m_lastUpdateFrame.load(std::memory_order_relaxed);
+  uint64_t logInterval = m_showBufferTelemetry.load(std::memory_order_relaxed) ? 60 : TELEMETRY_LOG_INTERVAL;
+
+  if (currentFrame - m_telemetryLogFrame >= logInterval) {
+    m_telemetryLogFrame = currentFrame;
+
+    GAMEENGINE_DEBUG("=== Buffer Telemetry Report (last " +
+                     std::to_string(logInterval) + " frames) ===");
+    GAMEENGINE_DEBUG("  Buffer Mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
+    GAMEENGINE_DEBUG("  Swap Success Rate: " +
+                     std::to_string(m_bufferTelemetry.getSwapSuccessRate()) + "%");
+    GAMEENGINE_DEBUG("  Swap Stats: " +
+                     std::to_string(m_bufferTelemetry.swapSuccesses) + " success / " +
+                     std::to_string(m_bufferTelemetry.swapBlocked) + " blocked / " +
+                     std::to_string(m_bufferTelemetry.casFailures) + " CAS failures");
+    GAMEENGINE_DEBUG("  Render Stalls: " + std::to_string(m_bufferTelemetry.renderStalls));
+    GAMEENGINE_DEBUG("  Frames Skipped: " + std::to_string(m_bufferTelemetry.framesSkipped));
+    GAMEENGINE_DEBUG("  Avg Mutex Wait: " +
+                     std::to_string(m_bufferTelemetry.avgMutexWaitMs) + "ms");
+    GAMEENGINE_DEBUG("  Avg Buffer Ready Delay: " +
+                     std::to_string(m_bufferTelemetry.avgBufferReadyMs) + "ms");
+    GAMEENGINE_DEBUG("  Current Buffers: [Write:" +
+                     std::to_string(m_currentBufferIndex.load(std::memory_order_relaxed)) +
+                     " Read:" + std::to_string(m_renderBufferIndex.load(std::memory_order_relaxed)) + "]");
+
+    // Reset counters for next interval
+    m_bufferTelemetry.reset();
+  }
+#endif
+
   // Mark update as completed with relaxed ordering (protected by condition
   // variable)
   m_updateCompleted.store(true, std::memory_order_relaxed);
@@ -997,17 +1076,29 @@ void GameEngine::render() {
 
 void GameEngine::swapBuffers() {
   // Thread-safe buffer swap with proper synchronization
+  // Supports both double (2) and triple (3) buffering modes
   size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-  size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
+  size_t nextUpdateIndex = (currentIndex + 1) % m_bufferCount;  // Use runtime buffer count
 
-  // Check if we have a valid render buffer before attempting swap
-  size_t currentRenderIndex =
-      m_renderBufferIndex.load(std::memory_order_acquire);
+#ifdef DEBUG
+  // TELEMETRY POINT 1: Track swap attempt
+  m_bufferTelemetry.swapAttempts++;
+#endif
 
-  // Only swap if current buffer is ready AND next buffer isn't being rendered
-  if (m_bufferReady[currentIndex].load(std::memory_order_acquire) &&
-      nextUpdateIndex != currentRenderIndex) {
+  // TRIPLE BUFFERING OPTIMIZATION:
+  // With 3 buffers, there's always a free buffer available (one for update, one for render, one free).
+  // With 2 buffers, we must check that next buffer isn't being rendered to prevent overwriting.
 
+  bool canSwap = m_bufferReady[currentIndex].load(std::memory_order_acquire);
+
+  if (m_bufferCount == 2) {
+    // Double buffering: also check that next buffer isn't being rendered
+    size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+    canSwap = canSwap && (nextUpdateIndex != currentRenderIndex);
+  }
+  // Triple buffering: always has a free buffer, no additional check needed
+
+  if (canSwap) {
     // Atomic compare-exchange to ensure no race condition
     size_t expected = currentIndex;
     if (m_currentBufferIndex.compare_exchange_strong(
@@ -1021,7 +1112,22 @@ void GameEngine::swapBuffers() {
 
       // Signal buffer swap completion
       m_bufferCondition.notify_one();
+
+#ifdef DEBUG
+      // TELEMETRY POINT 2: Successful swap
+      m_bufferTelemetry.swapSuccesses++;
+#endif
+    } else {
+#ifdef DEBUG
+      // TELEMETRY POINT 3: CAS failure (atomic contention)
+      m_bufferTelemetry.casFailures++;
+#endif
     }
+  } else {
+#ifdef DEBUG
+    // TELEMETRY POINT 4: Swap blocked (buffer not ready or rendering conflict)
+    m_bufferTelemetry.swapBlocked++;
+#endif
   }
 }
 
@@ -1031,6 +1137,10 @@ bool GameEngine::hasNewFrameToRender() const noexcept {
 
   // Single check for buffer readiness
   if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
+#ifdef DEBUG
+    // TELEMETRY POINT 5: Render stall (no buffer ready)
+    m_bufferTelemetry.renderStalls++;
+#endif
     return false;
   }
 
@@ -1038,6 +1148,13 @@ bool GameEngine::hasNewFrameToRender() const noexcept {
   // counters
   uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
   uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
+
+#ifdef DEBUG
+  // TELEMETRY POINT 6: Frame skipped (update hasn't advanced)
+  if (lastUpdate == lastRendered) {
+    m_bufferTelemetry.framesSkipped++;
+  }
+#endif
 
   return lastUpdate > lastRendered;
 }
