@@ -208,6 +208,11 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "New Game");
     ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Load Game");
     ui.createButton(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Options");
+
+    // Set positioning to CENTERED_H for proper resizing during fullscreen toggle
+    ui.setComponentPositioning(MENU_BUTTON_1, {UIPositionMode::CENTERED_H, 0, 150, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_2, {UIPositionMode::CENTERED_H, 0, 220, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_3, {UIPositionMode::CENTERED_H, 0, 290, 200, 50});
 }
 
 void OverlayDemoState::setupDarkOverlayMode() {
@@ -238,6 +243,11 @@ void OverlayDemoState::setupDarkOverlayMode() {
     ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "Resume");
     ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Settings");
     ui.createButtonDanger(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Quit to Menu");
+
+    // Set positioning to CENTERED_H for proper resizing during fullscreen toggle
+    ui.setComponentPositioning(MENU_BUTTON_1, {UIPositionMode::CENTERED_H, 0, 150, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_2, {UIPositionMode::CENTERED_H, 0, 220, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_3, {UIPositionMode::CENTERED_H, 0, 290, 200, 50});
 
 }
 
@@ -280,6 +290,13 @@ void OverlayDemoState::setupModalOverlayMode() {
     ui.createButtonSuccess("overlay_demo_modal_yes_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
     ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
 
+    // Set CENTERED_BOTH positioning for all dialog children to move with dialog during fullscreen toggle
+    // Offsets calculated from baseline center (960, 540)
+    ui.setComponentPositioning("overlay_demo_dialog_title", {UIPositionMode::CENTERED_BOTH, 0, -65, 360, 30});
+    ui.setComponentPositioning("overlay_demo_dialog_text", {UIPositionMode::CENTERED_BOTH, 0, -20, 360, 40});
+    ui.setComponentPositioning("overlay_demo_modal_yes_btn", {UIPositionMode::CENTERED_BOTH, -100, 40, 100, 40});
+    ui.setComponentPositioning("overlay_demo_modal_cancel_btn", {UIPositionMode::CENTERED_BOTH, 100, 40, 100, 40});
+
     // All styling handled by UIManager theme - no custom colors in state
 }
 
@@ -321,6 +338,13 @@ void OverlayDemoState::setupLightModalOverlayMode() {
 
     ui.createButtonSuccess("overlay_demo_modal_save_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Save");
     ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+
+    // Set CENTERED_BOTH positioning for all dialog children to move with dialog during fullscreen toggle
+    // Offsets calculated from baseline center (960, 540)
+    ui.setComponentPositioning("overlay_demo_dialog_title", {UIPositionMode::CENTERED_BOTH, 0, -65, 360, 30});
+    ui.setComponentPositioning("overlay_demo_dialog_text", {UIPositionMode::CENTERED_BOTH, 0, -20, 360, 40});
+    ui.setComponentPositioning("overlay_demo_modal_save_btn", {UIPositionMode::CENTERED_BOTH, -100, 40, 100, 40});
+    ui.setComponentPositioning("overlay_demo_modal_cancel_btn", {UIPositionMode::CENTERED_BOTH, 100, 40, 100, 40});
 
     // All styling handled by UIManager theme - no custom colors in state
 }
