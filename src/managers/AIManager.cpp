@@ -149,8 +149,11 @@ void AIManager::clean() {
 
     m_entityToIndex.clear();
     m_behaviorTemplates.clear();
-    m_behaviorCache.clear();
-    m_behaviorTypeCache.clear();
+    {
+      std::lock_guard<std::mutex> cacheLock(m_behaviorCacheMutex);
+      m_behaviorCache.clear();
+      m_behaviorTypeCache.clear();
+    }
     m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
@@ -282,8 +285,11 @@ void AIManager::prepareForStateTransition() {
   // above Just clear the behavior caches
   {
     std::lock_guard<std::shared_mutex> lock(m_behaviorsMutex);
-    m_behaviorCache.clear();
-    m_behaviorTypeCache.clear();
+    {
+      std::lock_guard<std::mutex> cacheLock(m_behaviorCacheMutex);
+      m_behaviorCache.clear();
+      m_behaviorTypeCache.clear();
+    }
   }
 
   // Reset pause state to false so next state starts unpaused
@@ -694,15 +700,18 @@ void AIManager::registerBehavior(const std::string &name,
   }
 
   std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
-  
+
   // OPTIMIZATION: Only invalidate cache entry for this specific behavior (not entire cache)
   // If behavior already exists, we're replacing it - clear its cache entry
   // If it's new, no cache entry exists anyway
   auto existingIt = m_behaviorTemplates.find(name);
   if (existingIt != m_behaviorTemplates.end()) {
     // Replacing existing behavior - invalidate its cache entries
-    m_behaviorCache.erase(name);
-    m_behaviorTypeCache.erase(name);
+    {
+      std::lock_guard<std::mutex> cacheLock(m_behaviorCacheMutex);
+      m_behaviorCache.erase(name);
+      m_behaviorTypeCache.erase(name);
+    }
   }
   
   m_behaviorTemplates[name] = behavior;
@@ -718,9 +727,12 @@ bool AIManager::hasBehavior(const std::string &name) const {
 std::shared_ptr<AIBehavior>
 AIManager::getBehavior(const std::string &name) const {
   // Check cache first for O(1) lookup
-  auto cacheIt = m_behaviorCache.find(name);
-  if (cacheIt != m_behaviorCache.end()) {
-    return cacheIt->second;
+  {
+    std::lock_guard<std::mutex> cacheLock(m_behaviorCacheMutex);
+    auto cacheIt = m_behaviorCache.find(name);
+    if (cacheIt != m_behaviorCache.end()) {
+      return cacheIt->second;
+    }
   }
 
   // Cache miss - lookup and cache result
@@ -730,7 +742,10 @@ AIManager::getBehavior(const std::string &name) const {
       (it != m_behaviorTemplates.end()) ? it->second : nullptr;
 
   // Cache the result (even if nullptr)
-  m_behaviorCache[name] = result;
+  {
+    std::lock_guard<std::mutex> cacheLock(m_behaviorCacheMutex);
+    m_behaviorCache[name] = result;
+  }
   return result;
 }
 

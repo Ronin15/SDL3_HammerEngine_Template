@@ -43,6 +43,8 @@ Memory management is critical for HammerEngine's performance targets (10K+ entit
 - Identify per-frame allocation patterns
 - **Use when:** Investigating frame spikes, performance issues
 
+**Note:** For thread safety validation (data races, deadlocks), use ThreadSanitizer instead of AddressSanitizer. See TSAN section below.
+
 ### Mode 3: Full Memory Profile (15-30 minutes)
 - Run valgrind massif (heap profiler)
 - Detailed memory usage over time
@@ -352,6 +354,112 @@ for (...) {
     entities.push_back(entity);  // Incremental reallocations
 }
 ```
+
+---
+
+### Mode 2b: Thread Safety Validation (ThreadSanitizer)
+
+**Use ThreadSanitizer (TSAN) for:**
+- Data race detection in multi-threaded code
+- Deadlock detection
+- Thread synchronization issues
+- **Use when:** Testing threading systems (AIManager, EventManager, ParticleManager threading tests)
+
+**Important:** ThreadSanitizer and AddressSanitizer are **mutually exclusive** - use one or the other, not both.
+
+**2a. Build with ThreadSanitizer**
+
+```bash
+echo "Building with ThreadSanitizer..."
+
+# Clean build
+rm -rf build/
+
+# Configure with TSan
+cmake -B build/ -G Ninja \
+    -DCMAKE_BUILD_TYPE=Debug \
+    -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=thread -fno-omit-frame-pointer -g" \
+    -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" \
+    -DUSE_MOLD_LINKER=OFF
+
+# Build
+ninja -C build
+```
+
+**Why ThreadSanitizer:**
+- Detects data races at runtime (reads/writes without synchronization)
+- Finds deadlocks and lock order violations
+- Validates thread-safe container usage
+- ~5-15x slowdown (acceptable for thread safety validation)
+
+**2b. Run Threading Tests with TSan**
+
+```bash
+OUTPUT_DIR="test_results/memory_profiles"
+mkdir -p "$OUTPUT_DIR"
+
+# Threading-focused tests
+THREAD_TESTS=(
+    "./bin/debug/thread_system_tests"
+    "./bin/debug/thread_safe_ai_manager_tests"
+    "./bin/debug/thread_safe_ai_integration_tests"
+    "./bin/debug/particle_manager_threading_tests"
+    "./bin/debug/event_coordination_integration_tests"
+)
+
+for TEST_EXEC in "${THREAD_TESTS[@]}"; do
+    TEST_NAME=$(basename "$TEST_EXEC")
+    echo "Running TSan on $TEST_NAME..."
+
+    "$TEST_EXEC" --log_level=test_suite 2>&1 | tee "$OUTPUT_DIR/${TEST_NAME}_tsan_output.txt"
+done
+```
+
+**2c. Parse TSan Output**
+
+**Look for thread safety violations:**
+```bash
+for OUTPUT in "$OUTPUT_DIR"/*_tsan_output.txt; do
+    TEST_NAME=$(basename "$OUTPUT" _tsan_output.txt)
+
+    echo "=== $TEST_NAME TSan Analysis ==="
+
+    # Data races
+    DATA_RACES=$(grep -c "WARNING: ThreadSanitizer: data race" "$OUTPUT")
+    if [ "$DATA_RACES" -gt 0 ]; then
+        echo "🔴 CRITICAL: $DATA_RACES data race(s) detected"
+        grep -A 15 "WARNING: ThreadSanitizer: data race" "$OUTPUT"
+    fi
+
+    # Deadlocks
+    DEADLOCKS=$(grep -c "WARNING: ThreadSanitizer: lock-order-inversion" "$OUTPUT")
+    if [ "$DEADLOCKS" -gt 0 ]; then
+        echo "🔴 CRITICAL: $DEADLOCKS potential deadlock(s) detected"
+        grep -A 15 "WARNING: ThreadSanitizer: lock-order-inversion" "$OUTPUT"
+    fi
+
+    # Thread leaks
+    THREAD_LEAKS=$(grep -c "WARNING: ThreadSanitizer: thread leak" "$OUTPUT")
+    if [ "$THREAD_LEAKS" -gt 0 ]; then
+        echo "⚠️  WARNING: $THREAD_LEAKS thread leak(s) detected"
+    fi
+
+    if [ "$DATA_RACES" -eq 0 ] && [ "$DEADLOCKS" -eq 0 ] && [ "$THREAD_LEAKS" -eq 0 ]; then
+        echo "✅ No thread safety issues detected"
+    fi
+
+    echo ""
+done
+```
+
+**Severity Classification:**
+- **CRITICAL (Block merge):**
+  - Data races (concurrent reads/writes without synchronization)
+  - Deadlocks or lock-order inversions
+
+- **WARNING (Review required):**
+  - Thread leaks (threads not properly joined)
+  - Signal-unsafe function calls
 
 ---
 
