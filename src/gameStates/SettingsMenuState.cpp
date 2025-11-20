@@ -121,8 +121,8 @@ void SettingsMenuState::loadCurrentSettings() {
     m_tempSettings.autosaveEnabled = settings.get<bool>("gameplay", "autosave_enabled", true);
     m_tempSettings.autosaveInterval = settings.get<int>("gameplay", "autosave_interval", 300);
 
-    // Developer
-    m_tempSettings.bufferCount = settings.get<int>("developer", "buffer_count", 2);
+    // Graphics (Advanced)
+    m_tempSettings.bufferCount = settings.get<int>("graphics", "buffer_count", 2);
 }
 
 void SettingsMenuState::applySettings() {
@@ -160,8 +160,8 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_enabled", m_tempSettings.autosaveEnabled);
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
-    // Developer
-    settings.set("developer", "buffer_count", m_tempSettings.bufferCount);
+    // Graphics (Advanced)
+    settings.set("graphics", "buffer_count", m_tempSettings.bufferCount);
 
     // Save to disk
     settings.saveToFile("res/settings.json");
