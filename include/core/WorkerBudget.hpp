@@ -382,6 +382,18 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
 /**
  * @brief Calculate optimal worker budget allocation with hardware-adaptive scaling
  *
+ * THREAD ALLOCATION COORDINATION:
+ * This function receives availableWorkers from ThreadSystem (hardware_concurrency - 1).
+ * GameLoop's update thread pre-allocates ENGINE_WORKERS (1 worker) from this pool.
+ * This function calculates manager allocations based on the remaining workers AFTER
+ * GameLoop's reservation, ensuring accurate worker accounting across the engine.
+ *
+ * Example (8-core system):
+ * - ThreadSystem provides: 7 workers (8 - 1 for main rendering thread)
+ * - GameLoop consumes: 1 worker (ENGINE_WORKERS, already running)
+ * - Available for managers: 6 workers (7 - 1)
+ * - This function allocates those 6 workers to AI/Particle/Pathfinding/Event
+ *
  * IMPORTANT: CollisionManager is NOT included in worker allocation.
  * CollisionManager uses single-threaded collision detection optimized for
  * cache-friendly SOA access patterns. Future parallelization would require
@@ -394,28 +406,51 @@ inline std::pair<size_t, size_t> calculateBatchStrategy(
  * - Event: 2/16 (~12.5%) - Lowest priority, lightweight event processing
  * - Buffer: Remaining workers for burst workloads
  *
- * @param availableWorkers Total workers available in ThreadSystem
+ * @param availableWorkers Total workers available in ThreadSystem (includes ENGINE_WORKERS)
  * @return WorkerBudget Allocation strategy for all subsystems
  *
- * Tiered Strategy (prevents over-allocation):
- * - Tier 1 (≤1 workers): GameLoop=1, AI=0 (single-threaded), Events=0, Pathfinding=0 (single-threaded)
- * - Tier 2 (2-4 workers): GameLoop=1, AI=1 if possible, Pathfinding=0, Events=0 (shares with AI)
- * - Tier 3 (5+ workers): GameLoop=1, weighted base allocation (AI/Particle/Pathfinding/Event), 30% buffer reserve
+ * Tiered Strategy (based on workers available AFTER GameLoop reservation):
+ * - Tier 1 (0 manager workers): GameLoop=1 (all workers), Managers single-threaded
+ * - Tier 2 (1-3 manager workers): GameLoop=1, conservative manager allocation
+ * - Tier 3 (4+ manager workers): GameLoop=1, weighted manager distribution + 30% buffer
  *
  * Buffer Strategy:
- * - 30% of available workers reserved as buffer for burst capacity
+ * - 30% of manager workers reserved as buffer for burst capacity
  * - Base allocations use weighted distribution of remaining 70%
  * - Subsystems can dynamically use buffer threads based on workload
  * - Weights determine both base allocation AND priority access to buffer
  */
 inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
+    // Defensive check: Should never happen, but handle gracefully
+    if (availableWorkers == 0) {
+        THREADSYSTEM_WARN("calculateWorkerBudget called with 0 workers - invalid ThreadSystem configuration");
+        WorkerBudget budget;
+        budget.totalWorkers = 0;
+        budget.engineReserved = 0;
+        budget.aiAllocated = 0;
+        budget.particleAllocated = 0;
+        budget.eventAllocated = 0;
+        budget.pathfindingAllocated = 0;
+        budget.remaining = 0;
+        return budget;
+    }
+
     WorkerBudget budget;
     budget.totalWorkers = availableWorkers;
 
-    // Handle edge cases for very low-end systems
-    if (availableWorkers <= 1) {
-        // Tier 1: Ultra low-end - GameLoop gets priority, others single-threaded
-        budget.engineReserved = 1;
+    // GameLoop worker allocation: 1 worker for update thread (pre-allocated when GameLoop starts)
+    // Main thread handles rendering and events; update worker runs game logic
+    budget.engineReserved = ENGINE_WORKERS;
+
+    // Calculate workers ACTUALLY available for managers after GameLoop's pre-allocation
+    // This is the key fix: tier decisions based on manager-available workers, not total
+    size_t actualManagerWorkers = (availableWorkers > ENGINE_WORKERS)
+        ? (availableWorkers - ENGINE_WORKERS)
+        : 0;
+
+    // Tier 1: No workers available for managers (all consumed by GameLoop)
+    // Occurs on 1-2 core systems: hardware_concurrency=1 or 2 → ThreadSystem=1 → GameLoop=1 → Managers=0
+    if (actualManagerWorkers == 0) {
         budget.aiAllocated = 0;         // Single-threaded fallback
         budget.particleAllocated = 0;   // Single-threaded fallback
         budget.eventAllocated = 0;      // Single-threaded fallback
@@ -424,25 +459,20 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         return budget;
     }
 
-    // GameLoop worker allocation: 1 worker for update thread (all systems)
-    // Main thread handles rendering and events; update worker runs game logic
-    budget.engineReserved = ENGINE_WORKERS;
-
-    // Calculate remaining workers after engine reservation
-    size_t remainingWorkers = availableWorkers - budget.engineReserved;
-
-    if (availableWorkers <= 4) {
-        // Tier 2: Low-end systems (2-4 workers) - Conservative allocation
-        budget.aiAllocated = (remainingWorkers >= 1) ? 1 : 0;
-        budget.particleAllocated = (remainingWorkers >= 3) ? 1 : 0;
+    // Tier 2: Low-end systems (1-3 manager workers) - Conservative allocation
+    // Occurs on 3-5 core systems: hardware_concurrency=3-5 → ThreadSystem=2-4 → GameLoop=1 → Managers=1-3
+    if (actualManagerWorkers <= 3) {
+        budget.aiAllocated = (actualManagerWorkers >= 1) ? 1 : 0;
+        budget.particleAllocated = (actualManagerWorkers >= 3) ? 1 : 0;
         budget.eventAllocated = 0; // Remains single-threaded on low-end
         budget.pathfindingAllocated = 0; // Remains single-threaded on low-end
         // NOTE: collisionAllocated removed - CollisionManager is single-threaded
     } else {
-        // Tier 3: High-end systems (5+ workers) - Base allocation + buffer
-        // Reserve 30% of remaining workers as buffer for burst capacity
-        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(remainingWorkers * BUFFER_RESERVE_RATIO));
-        size_t workersToAllocate = remainingWorkers - bufferReserve;
+        // Tier 3: High-end systems (4+ manager workers) - Base allocation + buffer
+        // Occurs on 6+ core systems: hardware_concurrency=6+ → ThreadSystem=5+ → GameLoop=1 → Managers=4+
+        // Reserve 30% of manager workers as buffer for burst capacity
+        size_t bufferReserve = std::max(size_t(1), static_cast<size_t>(actualManagerWorkers * BUFFER_RESERVE_RATIO));
+        size_t workersToAllocate = actualManagerWorkers - bufferReserve;
 
         // Weighted distribution for base allocations only (CollisionManager excluded - single-threaded)
         const size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT + PATHFINDING_WORKER_WEIGHT + EVENT_WORKER_WEIGHT;
@@ -506,10 +536,10 @@ inline WorkerBudget calculateWorkerBudget(size_t availableWorkers) {
         budget.remaining = bufferReserve;
     }
 
-    // For low-end systems, calculate remaining after allocation
-    if (availableWorkers <= 4) {
+    // For Tier 2 (low-end systems), calculate buffer from remaining manager workers
+    if (actualManagerWorkers <= 3) {
         size_t allocated = budget.aiAllocated + budget.particleAllocated + budget.pathfindingAllocated + budget.eventAllocated;
-        budget.remaining = (remainingWorkers > allocated) ? remainingWorkers - allocated : 0;
+        budget.remaining = (actualManagerWorkers > allocated) ? actualManagerWorkers - allocated : 0;
     }
 
     // Validation: Ensure we never over-allocate

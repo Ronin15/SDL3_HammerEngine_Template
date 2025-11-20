@@ -60,9 +60,11 @@ bool GameLoop::run() {
             if (HammerEngine::ThreadSystem::Exists()) {
                 const auto& threadSystem = HammerEngine::ThreadSystem::Instance();
                 size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
+                size_t remainingForManagers = (availableWorkers > 1) ? (availableWorkers - 1) : 0;
 
-                GAMELOOP_INFO("GameLoop allocated 1 worker from WorkerBudget (total: " +
-                             std::to_string(availableWorkers) + " workers)");
+                GAMELOOP_INFO("GameLoop using 1 worker (" +
+                             std::to_string(remainingForManagers) + " remaining for managers, " +
+                             std::to_string(availableWorkers) + " total)");
 
                 m_updateTaskRunning.store(true, std::memory_order_relaxed);
                 m_updateTaskFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
