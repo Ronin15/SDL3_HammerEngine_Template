@@ -16,11 +16,7 @@
     "fullscreen": false,
     "resolution_height": 720,
     "fps_limit": 60,
-    "resolution_width": 1280
-  },
-  "developer": {
-    "show_buffer_telemetry": false,
-    "buffer_count": 3,
-    "telemetry_log_interval": 300
+    "resolution_width": 1280,
+    "buffer_count": 3
   }
 }

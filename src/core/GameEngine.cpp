@@ -312,8 +312,8 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_INFO("Using hardware VSync for frame timing");
   }
 
-  // Load buffer configuration from SettingsManager (developer settings)
-  m_bufferCount = static_cast<size_t>(settings.get<int>("developer", "buffer_count", 2));
+  // Load buffer configuration from SettingsManager (graphics settings)
+  m_bufferCount = static_cast<size_t>(settings.get<int>("graphics", "buffer_count", 2));
   // Clamp to valid range [2, 3]
   if (m_bufferCount < 2) m_bufferCount = 2;
   if (m_bufferCount > 3) m_bufferCount = 3;
@@ -321,14 +321,8 @@ bool GameEngine::init(const std::string_view title, const int width,
                   " buffering configured");
 
 #ifdef DEBUG
-  // Load telemetry settings (debug builds only)
-  bool telemetryEnabled = settings.get<bool>("developer", "show_buffer_telemetry", false);
-  m_showBufferTelemetry.store(telemetryEnabled, std::memory_order_relaxed);
-  if (telemetryEnabled) {
-    GAMEENGINE_INFO("Buffer telemetry ENABLED (F3 to toggle, logs every 1s)");
-  } else {
-    GAMEENGINE_INFO("Buffer telemetry disabled (F3 to enable, logs every 5s when off)");
-  }
+  // Buffer telemetry is disabled by default, press F3 to enable console logging
+  GAMEENGINE_INFO("Buffer telemetry: OFF (F3 to enable console logging every 5s)");
 #endif
 
   if (!SDL_SetRenderDrawColor(
@@ -851,12 +845,12 @@ void GameEngine::handleEvents() {
   }
 
 #ifdef DEBUG
-  // Global buffer telemetry overlay toggle (F3 key) - debug builds only
+  // Global buffer telemetry console logging toggle (F3 key) - debug builds only
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
     bool currentState = m_showBufferTelemetry.load(std::memory_order_relaxed);
     m_showBufferTelemetry.store(!currentState, std::memory_order_relaxed);
-    GAMEENGINE_INFO("Buffer telemetry overlay " +
-                    std::string(!currentState ? "ENABLED" : "DISABLED") +
+    GAMEENGINE_INFO("Buffer telemetry console logging " +
+                    std::string(!currentState ? "ENABLED (every 5s)" : "DISABLED") +
                     " (F3 to toggle)");
   }
 #endif
@@ -998,15 +992,15 @@ void GameEngine::update(float deltaTime) {
   m_bufferTelemetry.addTimingSample(mutexWaitMs, bufferReadyDelayMs);
 
   // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
-  // When F3 overlay is enabled, log every 60 frames (1s @ 60fps) for real-time monitoring
+  // Only logs when F3 toggle is enabled, otherwise silent
   uint64_t currentFrame = m_lastUpdateFrame.load(std::memory_order_relaxed);
-  uint64_t logInterval = m_showBufferTelemetry.load(std::memory_order_relaxed) ? 60 : TELEMETRY_LOG_INTERVAL;
 
-  if (currentFrame - m_telemetryLogFrame >= logInterval) {
+  if (m_showBufferTelemetry.load(std::memory_order_relaxed) &&
+      currentFrame - m_telemetryLogFrame >= TELEMETRY_LOG_INTERVAL) {
     m_telemetryLogFrame = currentFrame;
 
     GAMEENGINE_DEBUG("=== Buffer Telemetry Report (last " +
-                     std::to_string(logInterval) + " frames) ===");
+                     std::to_string(TELEMETRY_LOG_INTERVAL) + " frames) ===");
     GAMEENGINE_DEBUG("  Buffer Mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
     GAMEENGINE_DEBUG("  Swap Success Rate: " +
                      std::to_string(m_bufferTelemetry.getSwapSuccessRate()) + "%");
