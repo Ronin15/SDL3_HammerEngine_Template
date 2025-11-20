@@ -10,10 +10,10 @@
 
 namespace UIConstants {
   // Standard UI Fonts
-  constexpr std::string_view UI_FONT = "fonts_UI_Arial";
-  constexpr std::string_view TITLE_FONT = "fonts_title_Arial";
-  constexpr std::string_view TOOLTIP_FONT = "fonts_tooltip_Arial";
-  constexpr std::string_view DEFAULT_FONT = "fonts_UI_Arial";
+  constexpr std::string_view FONT_UI = "fonts_UI_Arial";
+  constexpr std::string_view FONT_TITLE = "fonts_title_Arial";
+  constexpr std::string_view FONT_TOOLTIP = "fonts_tooltip_Arial";
+  constexpr std::string_view FONT_DEFAULT = "fonts_UI_Arial";
 
   // UI Baseline Resolution (for scaling calculations)
   // This is the reference resolution used for UI design - all UI elements are defined
@@ -121,6 +121,15 @@ namespace UIConstants {
   constexpr int INFO_LINE_SPACING = 8;             // Vertical gap between consecutive info lines
   constexpr int INFO_STATUS_SPACING = 12;          // Extra gap before status line
   constexpr int INFO_LABEL_MARGIN_X = 10;          // Left margin for info labels
+
+  // Form/Settings Layout Constants (reusable for any form-like interface)
+  constexpr int CONTENT_START_Y_AFTER_TABS = 160;    // Y position where content starts below tabs
+  constexpr int FORM_ROW_HEIGHT = 60;                // Vertical spacing between form rows
+  constexpr int FORM_LABEL_WIDTH = 250;              // Standard width for form labels
+  constexpr int FORM_CONTROL_WIDTH = 300;            // Standard width for form controls (sliders, inputs)
+  constexpr int FORM_LABEL_CONTROL_GAP = 20;         // Horizontal gap between label and control
+  constexpr int DEFAULT_SLIDER_HEIGHT = 30;          // Standard slider component height
+  constexpr int BOTTOM_BUTTON_MARGIN = 80;           // Distance from screen bottom for bottom-aligned buttons
 
   // Text Measurement Estimates
   constexpr int CHAR_WIDTH_ESTIMATE = 12;       // Estimated character width for fallback calculations
