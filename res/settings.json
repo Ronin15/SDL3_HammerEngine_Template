@@ -12,11 +12,11 @@
   },
   "graphics": {
     "vsync": true,
-    "show_fps": false,
-    "fullscreen": false,
     "resolution_height": 720,
+    "buffer_count": 3,
+    "fullscreen": false,
+    "show_fps": false,
     "fps_limit": 60,
-    "resolution_width": 1280,
-    "buffer_count": 3
+    "resolution_width": 1280
   }
 }

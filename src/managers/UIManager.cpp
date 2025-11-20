@@ -22,9 +22,9 @@ bool UIManager::init() {
 
   // Set global fonts to match what's loaded by FontManager's
   // loadFontsForDisplay
-  m_globalFontID = UIConstants::DEFAULT_FONT;
-  m_titleFontID = UIConstants::TITLE_FONT;
-  m_uiFontID = UIConstants::UI_FONT;
+  m_globalFontID = UIConstants::FONT_DEFAULT;
+  m_titleFontID = UIConstants::FONT_TITLE;
+  m_uiFontID = UIConstants::FONT_UI;
 
   // Clear any existing data and reserve capacity for performance
   m_components.clear();
@@ -209,12 +209,7 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON;
   // Apply global scale for resolution-aware sizing (1920x1080 baseline, capped at 1.0)
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
@@ -229,12 +224,7 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_DANGER;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_DANGER);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
@@ -249,12 +239,7 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_SUCCESS;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_SUCCESS);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
@@ -269,12 +254,7 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::BUTTON_WARNING;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::BUTTON_WARNING);
   component->m_zOrder = UIConstants::ZORDER_BUTTON; // Interactive elements on top
@@ -289,12 +269,7 @@ void UIManager::createLabel(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::LABEL;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::LABEL);
   component->m_zOrder = UIConstants::ZORDER_LABEL; // Text on top
@@ -312,12 +287,7 @@ void UIManager::createTitle(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::TITLE;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_style = m_currentTheme.getStyle(UIComponentType::TITLE);
   component->m_zOrder = UIConstants::ZORDER_TITLE; // Titles on top
@@ -333,12 +303,7 @@ void UIManager::createPanel(const std::string &id, const UIRect &bounds) {
   component->m_id = id;
   component->m_type = UIComponentType::PANEL;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_style = m_currentTheme.getStyle(UIComponentType::PANEL);
   component->m_zOrder = UIConstants::ZORDER_PANEL; // Background panels
 
@@ -351,12 +316,7 @@ void UIManager::createProgressBar(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::PROGRESS_BAR;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_minValue = minVal;
   component->m_maxValue = maxVal;
   component->m_value = minVal;
@@ -372,12 +332,7 @@ void UIManager::createInputField(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::INPUT_FIELD;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_placeholder = placeholder;
   component->m_style = m_currentTheme.getStyle(UIComponentType::INPUT_FIELD);
   component->m_zOrder = UIConstants::ZORDER_INPUT_FIELD; // Interactive elements
@@ -391,12 +346,7 @@ void UIManager::createImage(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::IMAGE;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_textureID = textureID;
   component->m_style = m_currentTheme.getStyle(UIComponentType::IMAGE);
   component->m_zOrder = UIConstants::ZORDER_IMAGE; // Background images
@@ -410,12 +360,7 @@ void UIManager::createSlider(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::SLIDER;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_minValue = minVal;
   component->m_maxValue = maxVal;
   component->m_value = minVal;
@@ -431,12 +376,7 @@ void UIManager::createCheckbox(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::CHECKBOX;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_text = text;
   component->m_checked = false;
   component->m_style = m_currentTheme.getStyle(UIComponentType::CHECKBOX);
@@ -450,12 +390,7 @@ void UIManager::createList(const std::string &id, const UIRect &bounds) {
   component->m_id = id;
   component->m_type = UIComponentType::LIST;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_selectedIndex = -1;
   component->m_style = m_currentTheme.getStyle(UIComponentType::LIST);
   component->m_zOrder = UIConstants::ZORDER_LIST; // UI elements
@@ -485,12 +420,7 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
   component->m_id = id;
   component->m_type = UIComponentType::EVENT_LOG;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_maxLength = maxEntries; // Store max entries in maxLength field
   component->m_style = m_currentTheme.getStyle(
       UIComponentType::EVENT_LOG); // Use event log styling
@@ -505,12 +435,7 @@ void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
   component->m_id = id;
   component->m_type = UIComponentType::DIALOG;
   // Apply global scale for resolution-aware sizing
-  component->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  component->m_bounds = scaleRect(bounds);
   component->m_style = m_currentTheme.getStyle(UIComponentType::DIALOG);
   component->m_zOrder = UIConstants::ZORDER_DIALOG; // Render behind other elements by default
 
@@ -592,12 +517,7 @@ void UIManager::setComponentBounds(const std::string &id,
   auto component = getComponent(id);
   if (component) {
     // Apply global scale for resolution-aware sizing
-    component->m_bounds = {
-      static_cast<int>(bounds.x * m_globalScale),
-      static_cast<int>(bounds.y * m_globalScale),
-      static_cast<int>(bounds.width * m_globalScale),
-      static_cast<int>(bounds.height * m_globalScale)
-    };
+    component->m_bounds = scaleRect(bounds);
   }
 }
 
@@ -790,12 +710,7 @@ void UIManager::createLayout(const std::string &id, UILayoutType type,
   layout->m_id = id;
   layout->m_type = type;
   // Apply global scale for resolution-aware sizing
-  layout->m_bounds = {
-    static_cast<int>(bounds.x * m_globalScale),
-    static_cast<int>(bounds.y * m_globalScale),
-    static_cast<int>(bounds.width * m_globalScale),
-    static_cast<int>(bounds.height * m_globalScale)
-  };
+  layout->m_bounds = scaleRect(bounds);
 
   m_layouts[id] = layout;
 }
@@ -1269,7 +1184,7 @@ void UIManager::setLightTheme() {
   buttonStyle.pressedColor = {40, 100, 160, 255};
   buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-  buttonStyle.fontID = UIConstants::UI_FONT;
+  buttonStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::BUTTON] = buttonStyle;
 
   // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
@@ -1301,7 +1216,7 @@ void UIManager::setLightTheme() {
   labelStyle.backgroundColor = {0, 0, 0, 0}; // Transparent
   labelStyle.textColor = {20, 20, 20, 255};  // Dark text for light backgrounds
   labelStyle.textAlign = UIAlignment::CENTER_LEFT;
-  labelStyle.fontID = UIConstants::UI_FONT;
+  labelStyle.fontID = UIConstants::FONT_UI;
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
   labelStyle.textBackgroundColor = {255, 255, 255,
@@ -1314,7 +1229,7 @@ void UIManager::setLightTheme() {
   panelStyle.backgroundColor = {0, 0, 0,
                                 40}; // Very light overlay (15% opacity)
   panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
-  panelStyle.fontID = UIConstants::UI_FONT;
+  panelStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
   // Progress bar style - enhanced visibility
@@ -1323,7 +1238,7 @@ void UIManager::setLightTheme() {
   progressStyle.borderColor = {180, 180, 180, 255}; // Stronger borders
   progressStyle.hoverColor = {0, 180, 0, 255};      // Green fill
   progressStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
-  progressStyle.fontID = UIConstants::UI_FONT;
+  progressStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
   // Input field style - light background with dark text
@@ -1334,7 +1249,7 @@ void UIManager::setLightTheme() {
   inputStyle.hoverColor = {235, 245, 255, 255};
   inputStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
-  inputStyle.fontID = UIConstants::UI_FONT;
+  inputStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
 
   // List style - light background with enhanced item height
@@ -1347,7 +1262,7 @@ void UIManager::setLightTheme() {
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
       UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Will be calculated dynamically during rendering
-  listStyle.fontID = UIConstants::UI_FONT;
+  listStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::LIST] = listStyle;
 
   // Slider style - enhanced borders
@@ -1357,7 +1272,7 @@ void UIManager::setLightTheme() {
   sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
   sliderStyle.pressedColor = {40, 100, 160, 255};
   sliderStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
-  sliderStyle.fontID = UIConstants::UI_FONT;
+  sliderStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
   // Checkbox style - enhanced visibility
@@ -1367,7 +1282,7 @@ void UIManager::setLightTheme() {
   checkboxStyle.textColor = {20, 20, 20,
                              255}; // Dark text for light backgrounds
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
-  checkboxStyle.fontID = UIConstants::UI_FONT;
+  checkboxStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
 
   // Tooltip style
@@ -1377,13 +1292,13 @@ void UIManager::setLightTheme() {
   tooltipStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   tooltipStyle.textColor = {255, 255, 255,
                             255}; // White text for dark tooltip background
-  tooltipStyle.fontID = UIConstants::TOOLTIP_FONT;
+  tooltipStyle.fontID = UIConstants::FONT_TOOLTIP;
   lightTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
   // Image component uses transparent background
   UIStyle imageStyle;
   imageStyle.backgroundColor = {0, 0, 0, 0};
-  imageStyle.fontID = UIConstants::UI_FONT;
+  imageStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::IMAGE] = imageStyle;
 
   // Event log style - similar to list but optimized for display-only
@@ -1403,7 +1318,7 @@ void UIManager::setLightTheme() {
   titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
   titleStyle.fontSize = UIConstants::TITLE_FONT_SIZE;                  // Use native title font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-  titleStyle.fontID = UIConstants::TITLE_FONT;
+  titleStyle.fontID = UIConstants::FONT_TITLE;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
   titleStyle.textBackgroundColor = {20, 20, 20,
@@ -1416,7 +1331,7 @@ void UIManager::setLightTheme() {
   dialogStyle.backgroundColor = {245, 245, 245, 255}; // Light solid background
   dialogStyle.borderColor = {120, 120, 120, 255}; // Dark border for definition
   dialogStyle.borderWidth = UIConstants::BORDER_WIDTH_DIALOG;
-  dialogStyle.fontID = UIConstants::UI_FONT;
+  dialogStyle.fontID = UIConstants::FONT_UI;
   lightTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
   m_currentTheme = lightTheme;
@@ -1445,7 +1360,7 @@ void UIManager::setDarkTheme() {
   buttonStyle.pressedColor = {30, 30, 40, 255};
   buttonStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   buttonStyle.textAlign = UIAlignment::CENTER_CENTER;
-  buttonStyle.fontID = UIConstants::UI_FONT;
+  buttonStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::BUTTON] = buttonStyle;
 
   // Button Danger style - red buttons for Back, Quit, Exit, Delete, etc.
@@ -1476,7 +1391,7 @@ void UIManager::setDarkTheme() {
   labelStyle.backgroundColor = {0, 0, 0, 0};   // Transparent
   labelStyle.textColor = {255, 255, 255, 255}; // Pure white
   labelStyle.textAlign = UIAlignment::CENTER_LEFT;
-  labelStyle.fontID = UIConstants::UI_FONT;
+  labelStyle.fontID = UIConstants::FONT_UI;
   // Text background enabled by default for readability on any background
   labelStyle.useTextBackground = true;
   labelStyle.textBackgroundColor = {0, 0, 0, 100}; // More transparent black
@@ -1487,7 +1402,7 @@ void UIManager::setDarkTheme() {
   UIStyle panelStyle;
   panelStyle.backgroundColor = {0, 0, 0, 50}; // 19% opacity
   panelStyle.borderWidth = UIConstants::BORDER_WIDTH_NONE;
-  panelStyle.fontID = UIConstants::UI_FONT;
+  panelStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::PANEL] = panelStyle;
 
   // Progress bar style
@@ -1496,7 +1411,7 @@ void UIManager::setDarkTheme() {
   progressStyle.borderColor = {180, 180, 180, 255};
   progressStyle.hoverColor = {0, 180, 0, 255}; // Green fill
   progressStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
-  progressStyle.fontID = UIConstants::UI_FONT;
+  progressStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::PROGRESS_BAR] = progressStyle;
 
   // Input field style - dark theme
@@ -1507,7 +1422,7 @@ void UIManager::setDarkTheme() {
   inputStyle.hoverColor = {50, 50, 50, 255};
   inputStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   inputStyle.textAlign = UIAlignment::CENTER_LEFT;
-  inputStyle.fontID = UIConstants::UI_FONT;
+  inputStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::INPUT_FIELD] = inputStyle;
 
   // List style - dark theme
@@ -1520,7 +1435,7 @@ void UIManager::setDarkTheme() {
   // Calculate list item height based on font metrics
   listStyle.listItemHeight =
       UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Will be calculated dynamically during rendering
-  listStyle.fontID = UIConstants::UI_FONT;
+  listStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::LIST] = listStyle;
 
   // Slider style
@@ -1530,7 +1445,7 @@ void UIManager::setDarkTheme() {
   sliderStyle.hoverColor = {60, 120, 180, 255}; // Blue handle
   sliderStyle.pressedColor = {40, 100, 160, 255};
   sliderStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
-  sliderStyle.fontID = UIConstants::UI_FONT;
+  sliderStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::SLIDER] = sliderStyle;
 
   // Checkbox style
@@ -1539,7 +1454,7 @@ void UIManager::setDarkTheme() {
   checkboxStyle.hoverColor = {80, 80, 80, 255};
   checkboxStyle.textColor = {255, 255, 255, 255};
   checkboxStyle.textAlign = UIAlignment::CENTER_LEFT;
-  checkboxStyle.fontID = UIConstants::UI_FONT;
+  checkboxStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::CHECKBOX] = checkboxStyle;
 
   // Tooltip style
@@ -1548,13 +1463,13 @@ void UIManager::setDarkTheme() {
   tooltipStyle.borderColor = {180, 180, 180, 255};
   tooltipStyle.borderWidth = UIConstants::BORDER_WIDTH_NORMAL;
   tooltipStyle.textColor = {255, 255, 255, 255};
-  tooltipStyle.fontID = UIConstants::TOOLTIP_FONT;
+  tooltipStyle.fontID = UIConstants::FONT_TOOLTIP;
   darkTheme.m_componentStyles[UIComponentType::TOOLTIP] = tooltipStyle;
 
   // Image component uses transparent background
   UIStyle imageStyle;
   imageStyle.backgroundColor = {0, 0, 0, 0};
-  imageStyle.fontID = UIConstants::UI_FONT;
+  imageStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::IMAGE] = imageStyle;
 
   // Event log style - similar to list but optimized for display-only
@@ -1576,7 +1491,7 @@ void UIManager::setDarkTheme() {
   titleStyle.textColor = {0, 198, 230, 255}; // Dark Cyan color for titles
   titleStyle.fontSize = UIConstants::TITLE_FONT_SIZE;                  // Use native title font size
   titleStyle.textAlign = UIAlignment::CENTER_LEFT;
-  titleStyle.fontID = UIConstants::TITLE_FONT;
+  titleStyle.fontID = UIConstants::FONT_TITLE;
   // Text background enabled by default for readability on any background
   titleStyle.useTextBackground = true;
   titleStyle.textBackgroundColor = {
@@ -1589,7 +1504,7 @@ void UIManager::setDarkTheme() {
   dialogStyle.backgroundColor = {45, 45, 45, 255}; // Dark solid background
   dialogStyle.borderColor = {160, 160, 160, 255}; // Light border for definition
   dialogStyle.borderWidth = UIConstants::BORDER_WIDTH_DIALOG;
-  dialogStyle.fontID = UIConstants::UI_FONT;
+  dialogStyle.fontID = UIConstants::FONT_UI;
   darkTheme.m_componentStyles[UIComponentType::DIALOG] = dialogStyle;
 
   m_currentTheme = darkTheme;
@@ -1730,7 +1645,7 @@ void UIManager::cleanupForStateTransition() {
 
   // Reset global settings to defaults
   m_globalStyle = UIStyle{};
-  m_globalFontID = UIConstants::DEFAULT_FONT;
+  m_globalFontID = UIConstants::FONT_DEFAULT;
   // NOTE: m_globalScale is NOT reset here - it's resolution-dependent and should
   // persist across state transitions. Only init() and onWindowResize() modify it.
 

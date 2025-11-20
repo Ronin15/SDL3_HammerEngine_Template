@@ -128,7 +128,7 @@ struct UIStyle {
   int listItemHeight{UIConstants::DEFAULT_LIST_ITEM_HEIGHT}; // Configurable height for list items (increased from
                           // 20 for better mouse accuracy)
 
-  std::string fontID{UIConstants::UI_FONT};
+  std::string fontID{UIConstants::FONT_UI};
   int fontSize{UIConstants::DEFAULT_FONT_SIZE};
 
   UIAlignment textAlign{UIAlignment::CENTER_CENTER};
@@ -470,6 +470,17 @@ public:
   void setGlobalFont(const std::string &fontID);
   void setGlobalScale(float scale);
   float getGlobalScale() const { return m_globalScale; }
+
+  // Helper to scale UIRect by global scale factor (eliminates redundant per-component multiplication)
+  inline UIRect scaleRect(const UIRect& bounds) const {
+    return {
+      static_cast<int>(bounds.x * m_globalScale),
+      static_cast<int>(bounds.y * m_globalScale),
+      static_cast<int>(bounds.width * m_globalScale),
+      static_cast<int>(bounds.height * m_globalScale)
+    };
+  }
+
   float calculateOptimalScale(int width, int height) const;  // Calculate resolution-aware scale
   void enableTooltips(bool enable) { m_tooltipsEnabled = enable; }
   void setTooltipDelay(float delay) { m_tooltipDelay = delay; }
@@ -495,9 +506,9 @@ private:
   // Theme and styling
   UITheme m_currentTheme{};
   UIStyle m_globalStyle{};
-  std::string m_globalFontID{UIConstants::DEFAULT_FONT};
-  std::string m_titleFontID{UIConstants::TITLE_FONT};
-  std::string m_uiFontID{UIConstants::UI_FONT};
+  std::string m_globalFontID{UIConstants::FONT_DEFAULT};
+  std::string m_titleFontID{UIConstants::FONT_TITLE};
+  std::string m_uiFontID{UIConstants::FONT_UI};
   float m_globalScale{1.0f};
   std::string m_currentThemeMode{"light"};
 

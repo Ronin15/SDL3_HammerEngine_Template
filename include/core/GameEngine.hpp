@@ -451,6 +451,15 @@ private:
   std::atomic<uint64_t> m_lastRenderedFrame{0};
 
   // Double/Triple buffering (runtime configurable)
+  // Triple buffering (m_bufferCount=3) benefits workloads with:
+  //   - Frame time bursts: occasional heavy updates exceeding frame budget (16.67ms @ 60 FPS)
+  //   - Variable update costs: pathfinding spikes, AI batch processing, world generation
+  //   - Smoother frame delivery: always has a free buffer available, reducing swap contention
+  //   - Trade-off: +1 frame input latency (~16ms), +33% memory for buffer (acceptable for most games)
+  // Double buffering (m_bufferCount=2) recommended for:
+  //   - Consistent frame times: predictable update costs that rarely exceed budget
+  //   - Low-latency requirements: fighting games, competitive shooters, rhythm games
+  // Use F3 key (DEBUG builds) to monitor buffer telemetry and make data-driven decisions
   static constexpr size_t MAX_BUFFER_COUNT = 3;  // Support up to 3 buffers
   size_t m_bufferCount{2};                        // Runtime buffer count (2 or 3)
   std::atomic<size_t> m_currentBufferIndex{0};
