@@ -860,11 +860,35 @@ public:
     m_enableProfiling = enableProfiling;
 
     // Determine optimal thread count based on hardware
+    //
+    // HARDWARE CONCURRENCY - 1 PATTERN:
+    // ThreadSystem allocates (hardware_concurrency - 1) workers to reserve one core
+    // for the main rendering thread, which performs active work every frame:
+    //   - SDL_RenderPresent (blocks on VSync)
+    //   - SDL_PollEvent (event polling)
+    //   - Double-buffer coordination (swapBuffers)
+    //
+    // This prevents CPU oversubscription and context switching overhead that would
+    // cause inconsistent frame times. The main thread is NOT idle - it needs dedicated
+    // CPU resources for real-time rendering at 60 FPS.
+    //
+    // Thread allocation breakdown (8-core example):
+    //   - Main thread: 1 (rendering/events, NOT in worker pool)
+    //   - ThreadSystem workers: 7 (hardware_concurrency - 1)
+    //   - GameLoop update thread: 1 (from worker pool, see ENGINE_WORKERS in WorkerBudget.hpp)
+    //   - Manager workers: 6 (remaining workers shared via WorkerBudget)
+    //
+    // Minimum worker count is 1 (not 0) even on single-core systems, maintaining
+    // the concurrent update/render pattern with main thread + 1 update worker.
+    //
+    // COORDINATION WITH WORKERBUDGET:
+    // WorkerBudget::calculateWorkerBudget() receives this worker count and subtracts
+    // ENGINE_WORKERS (1) to calculate manager allocations. See WorkerBudget.hpp:423+
     if (customThreadCount > 0) {
       m_numThreads = customThreadCount;
     } else {
       unsigned int hardwareThreads = std::thread::hardware_concurrency();
-      // Ensure we have at least one thread and leave one for main thread
+      // Reserve one core for main rendering thread; minimum 1 worker for update thread
       m_numThreads = (hardwareThreads > 1) ? (hardwareThreads - 1) : 1;
     }
 
