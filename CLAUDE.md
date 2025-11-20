@@ -138,133 +138,38 @@ for (size_t i = 0; i < expectedCount; ++i) {
 
 ## Cross-Platform SIMD Optimizations
 
-**Supported Platforms**: x86-64 (SSE2/AVX2) + ARM64 (NEON). Intel Macs are NOT supported.
+**Platforms**: x86-64 (SSE2/AVX2) + ARM64 (NEON). See `include/utils/SIMDMath.hpp` for cross-platform abstraction layer.
 
-**SIMD-Optimized Systems**:
-- **AIManager**: Distance calculations (3-4x speedup on 10K+ entities)
-- **CollisionManager**: Bounds calculation, layer mask filtering (2-3x speedup on Apple Silicon)
-- **ParticleManager**: Various particle operations
+**Optimized Systems**: AIManager (distances: 3-4x faster) | CollisionManager (bounds/masks: 2-3x faster) | ParticleManager
 
-**Platform Detection** (automatic):
-```cpp
-#ifdef AI_SIMD_SSE2        // x86-64 with SSE2
-#ifdef AI_SIMD_AVX2        // x86-64 with AVX2
-#ifdef AI_SIMD_NEON        // ARM64 (Apple Silicon)
-```
+**Pattern**: Process 4 elements/iteration (SSE2/NEON width) with scalar tail loop for remainder. Always provide scalar fallback. See `AIManager::calculateDistancesSIMD()` for reference implementation.
 
-**SIMD Abstraction Layer**: `include/utils/SIMDMath.hpp` provides cross-platform SIMD utilities:
-```cpp
-using namespace HammerEngine::SIMD;
-
-// Platform-agnostic SIMD operations
-Float4 a = load4(ptr);              // Load 4 floats
-Float4 b = broadcast(value);         // Broadcast scalar to all lanes
-Float4 c = add(a, b);               // Add vectors
-Float4 d = mul(c, broadcast(2.0f)); // Multiply by scalar
-store4(ptr, d);                      // Store results
-```
-
-**Implementation Pattern**:
-```cpp
-void processData(const std::vector<Data>& input) {
-#if defined(AI_SIMD_SSE2)
-    // x86-64 SSE2 path - process 4 elements at once
-    for (size_t i = 0; i + 3 < input.size(); i += 4) {
-        __m128 data = _mm_loadu_ps(&input[i].value);
-        // ... SIMD processing ...
-    }
-    // Scalar tail for remaining elements
-#elif defined(AI_SIMD_NEON)
-    // ARM NEON path - process 4 elements at once
-    for (size_t i = 0; i + 3 < input.size(); i += 4) {
-        float32x4_t data = vld1q_f32(&input[i].value);
-        // ... SIMD processing ...
-    }
-    // Scalar tail for remaining elements
-#else
-    // Scalar fallback - always works
-    for (size_t i = 0; i < input.size(); ++i) {
-        // ... scalar processing ...
-    }
-#endif
-}
-```
-
-**Best Practices**:
-- Always provide scalar fallback path (portability + debugging)
-- Process 4 elements per iteration (SSE2/NEON native width)
-- Handle non-multiple-of-4 counts with scalar tail loop
-- Use aligned loads/stores when possible (`alignas(16)`)
-- Test on both x86-64 and ARM64 platforms
-
-**Performance Notes**:
-- SIMD provides 2-4x speedup for arithmetic-heavy operations
-- Memory bandwidth can be bottleneck (ensure cache-friendly access)
-- Branch prediction matters - minimize conditionals in SIMD loops
-- Release builds (`-O3 -march=native`) enable full SIMD utilization
-
-**Real-World SIMD Usage Example** (AIManager distance calculation):
-```cpp
-void calculateDistancesSIMD(size_t start, size_t end,
-                            const Vector2D& playerPos,
-                            const EntityStorage& storage,
-                            std::vector<float>& outDistances) {
-    using namespace HammerEngine::SIMD;
-
-    Float4 playerPosX = broadcast(playerPos.x);
-    Float4 playerPosY = broadcast(playerPos.y);
-
-    // Process 4 entities per iteration (SSE2/NEON native width)
-    for (size_t i = start; i + 3 < end; i += 4) {
-        // Load 4 entity positions at once
-        Float4 entityX = load4(&storage.hotData[i].position.x);
-        Float4 entityY = load4(&storage.hotData[i].position.y);
-
-        // Calculate distance squared (4 entities in parallel)
-        Float4 dx = sub(entityX, playerPosX);
-        Float4 dy = sub(entityY, playerPosY);
-        Float4 distSq = add(mul(dx, dx), mul(dy, dy));
-
-        // Store results
-        store4(&outDistances[i], distSq);
-    }
-
-    // Scalar tail for remaining elements (handles non-multiple-of-4 counts)
-    for (size_t i = (end / 4) * 4; i < end; ++i) {
-        float dx = storage.hotData[i].position.x - playerPos.x;
-        float dy = storage.hotData[i].position.y - playerPos.y;
-        outDistances[i] = dx * dx + dy * dy;
-    }
-}
-```
-
-**Key SIMD Patterns**:
-- Always provide scalar tail loop for remaining elements
-- Use `broadcast()` to replicate scalar values across SIMD lanes
-- `load4()` and `store4()` handle unaligned memory access safely
-- The abstraction layer handles platform differences (SSE2/AVX2/NEON) automatically
-- Batch processing reduces function call overhead and improves cache locality
+**Rules**: Scalar fallback required | Handle non-multiple-of-4 with tail loop | `alignas(16)` for aligned data | Test both x86-64 and ARM64 | Release builds (`-O3 -march=native`) for full utilization
 
 ## GameEngine Update/Render Flow
 
-**GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.
+**Pattern**: VSync-based lock-free double-buffering. Update thread (mutex-locked) runs game logic concurrently with main thread rendering.
 
-**Update** (thread-safe, mutex-locked): `GameEngine::update(deltaTime)` updates global systems (AIManager, EventManager, ParticleManager) → delegates to `GameStateManager::update`. Completes before render starts.
+**Core Loop** (HammerMain.cpp):
+```cpp
+if (gameEngine.hasNewFrameToRender()) gameEngine.swapBuffers();  // Atomic check + swap
+gameEngine.update(deltaTime);  // Concurrent with render
+```
 
-**Double Buffer Synchronization**: `m_currentBufferIndex` (update) + `m_renderBufferIndex` (render) + `m_bufferReady[]` control frame synchronization. Buffer indices select which `m_bufferReady[]` flag indicates a complete update frame. Entity data is single-buffered with mutex protection during update; atomic flags ensure render reads stable data. Main loop calls `hasNewFrameToRender()` + `swapBuffers()` before update using lock-free atomic operations.
+**Frame Pacing**: VSync blocks `SDL_RenderPresent()` (default) | Software fallback uses `SDL_Delay()` on Wayland (auto-configured via `setSoftwareFrameLimiting()`).
 
-**Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera).
+**Coordination**: Atomic flags (`m_bufferReady[]`) + buffer indices (`m_currentBufferIndex`/`m_renderBufferIndex`) enable lock-free buffer swaps. No explicit wait/signal synchronization.
 
-**Rules**: No background thread rendering (all drawing in `GameEngine::render()`) | No extra manager sync (rely on mutexed update + buffer swap) | Snapshot camera once per render | NEVER static vars in threaded code
+**Rules**: Update/render concurrent | VSync provides timing | No background rendering | NEVER static vars in threaded code
 
 ## Rendering Rules
 
-**Critical for SDL3_GPU Compatibility**: SDL3_GPU uses command buffer architecture requiring **exactly one Present() per frame** through unified render path.
+**Critical for SDL3_Renderer**: Requires **exactly one Present() per frame** through unified render path.
 
 **NEVER Manual Rendering in GameStates**:
 - NEVER call `SDL_RenderClear()` or `SDL_RenderPresent()` directly in GameState classes
 - ALL rendering MUST go through: `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`
-- Multiple Present() calls break SDL3_GPU's command buffer system
+- Multiple Present() calls break frame pacing and cause rendering artifacts
 
 **Loading Screens**: Use `LoadingState` with async operations (never blocking with manual rendering):
 ```cpp
