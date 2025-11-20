@@ -107,6 +107,17 @@ namespace UIConstants {
   constexpr int DEFAULT_BUTTON_WIDTH = 120;     // Default button width
   constexpr int DEFAULT_BUTTON_HEIGHT = 40;     // Default button height
 
+  // Info/Status Label Sizing Constants (baseline pixels, auto-scaled by UIManager)
+  constexpr int INFO_LABEL_HEIGHT = 36;            // Standard info label height for demo states (balanced for windowed and fullscreen)
+  constexpr int INFO_LABEL_HEIGHT_STANDARD = 28;   // Standard info/instruction labels (increased for readability)
+  constexpr int INFO_LABEL_HEIGHT_COMPACT = 24;    // Compact info labels (tighter layouts)
+
+  // Info Label Positioning Constants (baseline pixels)
+  constexpr int INFO_FIRST_LINE_Y = 55;            // Y position of first info line after title (5px gap from title end)
+  constexpr int INFO_LINE_SPACING = 8;             // Vertical gap between consecutive info lines
+  constexpr int INFO_STATUS_SPACING = 12;          // Extra gap before status line
+  constexpr int INFO_LABEL_MARGIN_X = 10;          // Left margin for info labels
+
   // Text Measurement Estimates
   constexpr int CHAR_WIDTH_ESTIMATE = 12;       // Estimated character width for fallback calculations
   constexpr int INPUT_CURSOR_CHAR_WIDTH = 8;    // Character width estimate for input cursor positioning

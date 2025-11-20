@@ -137,23 +137,26 @@ bool EventDemoState::enter() {
 
     // Create simple UI components using auto-detecting methods with dramatic spacing
     auto &ui = UIManager::Instance();
-    ui.createTitleAtTop("event_title", "Event Demo State", 35);  // Increased title height from 25 to 35 (auto-repositions)
+    ui.createTitleAtTop("event_title", "Event Demo State", UIConstants::DEFAULT_TITLE_HEIGHT);  // Use standard title height (auto-repositions)
 
-    ui.createLabel("event_phase", {10, 25, 300, 25}, "Phase: Initialization");  // Moved up from y=45 to y=25
-    // Set auto-repositioning: fixed position (absolute)
-    ui.setComponentPositioning("event_phase", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.createLabel("event_phase", {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y, 300, UIConstants::INFO_LABEL_HEIGHT}, "Phase: Initialization");
+    // Set auto-repositioning: top-aligned with calculated position (fixes fullscreen transition)
+    ui.setComponentPositioning("event_phase", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y, 300, UIConstants::INFO_LABEL_HEIGHT});
 
-    ui.createLabel("event_status", {10, 60, 400, 25},  // Moved up from y=80 to y=60
+    const int statusY = UIConstants::INFO_FIRST_LINE_Y + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+    ui.createLabel("event_status", {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | Weather: Clear | NPCs: 0");
-    // Set auto-repositioning: fixed position (absolute)
-    ui.setComponentPositioning("event_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    // Set auto-repositioning: top-aligned with calculated position (fixes fullscreen transition)
+    ui.setComponentPositioning("event_status", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT});
 
+    const int controlsY = statusY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING + UIConstants::INFO_STATUS_SPACING;
     ui.createLabel(
-        "event_controls", {10, 95, ui.getLogicalWidth() - 20, 25},  // Moved up from y=115 to y=95
+        "event_controls", {UIConstants::INFO_LABEL_MARGIN_X, controlsY, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT},
         "[B] Exit | [SPACE] Manual | [1-6] Events | [A] Auto | [R] "
         "Reset | [F] Fire | [S] Smoke | [K] Sparks | [I] Inventory | [ ] Zoom");
-    // Set auto-repositioning: top-aligned, spans full width minus 20px margin (10px each side)
-    ui.setComponentPositioning("event_controls", {UIPositionMode::TOP_ALIGNED, 10, 95, -20, 25});  // -20 = full width minus 20px
+    // Set auto-repositioning: top-aligned, spans full width minus margins
+    ui.setComponentPositioning("event_controls", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, controlsY,
+                                                  -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
