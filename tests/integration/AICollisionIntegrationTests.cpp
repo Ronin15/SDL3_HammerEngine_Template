@@ -675,6 +675,10 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
 
     CollisionManager::Instance().processPendingCommands();
 
+    // Wait for async behavior assignments to complete before testing
+    AIManager::Instance().waitForAsyncBatchCompletion();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
     std::cout << "Entities created. Starting performance test..." << std::endl;
 
     // Run simulation for 60 frames (1 second at 60 FPS)
@@ -698,10 +702,6 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
         // Small sleep to allow async processing
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
-
-    // Wait for async operations
-    AIManager::Instance().waitForAsyncBatchCompletion();
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     // Calculate statistics
     double totalTime = 0.0;
