@@ -115,16 +115,6 @@ public:
   bool loadResourcesAsync(const std::string &path);
 
   /**
-   * @brief Waits for update thread to complete current frame
-   */
-  void waitForUpdate();
-
-  /**
-   * @brief Signals that update processing is complete
-   */
-  void signalUpdateComplete();
-
-  /**
    * @brief Checks if there's a new frame ready to render
    * @return true if new frame available, false otherwise
    */

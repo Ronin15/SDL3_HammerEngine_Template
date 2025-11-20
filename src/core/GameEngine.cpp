@@ -995,35 +995,6 @@ void GameEngine::render() {
   m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
 }
 
-void GameEngine::waitForUpdate() {
-  std::unique_lock<std::mutex> lock(m_updateMutex);
-
-  // Calculate an adaptive timeout based on the target FPS.
-  auto timeout = std::chrono::milliseconds(100); // Default timeout
-  if (auto gameLoop = m_gameLoop.lock()) {
-    const float targetFPS = gameLoop->getTargetFPS();
-    if (targetFPS > 0) {
-      // Set timeout to 2x the frame time as a responsive safety net
-      const auto frameTimeMs = static_cast<long long>(1000.0 / targetFPS);
-      timeout = std::chrono::milliseconds(frameTimeMs * 2);
-    }
-  }
-
-  // Wait for update completion with the adaptive timeout
-  m_updateCondition.wait_for(lock, timeout, [this] {
-    return m_updateCompleted.load(std::memory_order_acquire) ||
-           m_stopRequested.load(std::memory_order_acquire);
-  });
-}
-
-void GameEngine::signalUpdateComplete() {
-  {
-    std::lock_guard<std::mutex> lock(m_updateMutex);
-    m_updateCompleted.store(false,
-                            std::memory_order_release); // Reset for next frame
-  }
-}
-
 void GameEngine::swapBuffers() {
   // Thread-safe buffer swap with proper synchronization
   size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
