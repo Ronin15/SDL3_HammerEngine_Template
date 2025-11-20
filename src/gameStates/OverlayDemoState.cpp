@@ -5,6 +5,7 @@
 
 #include "gameStates/OverlayDemoState.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/UIConstants.hpp"
 #include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
@@ -144,10 +145,21 @@ void OverlayDemoState::setupNoOverlayMode() {
     // NO OVERLAY - Perfect for HUD elements
     // This shows how HUD elements look without any background interference
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: HUD Elements (No Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: HUD Elements (No Overlay)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Health bars, Score, Minimap, Chat\nGame content remains fully visible");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
     // Enable text backgrounds for readability over variable backgrounds
     ui.enableTextBackground(MODE_LABEL, true);
@@ -171,10 +183,21 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.setThemeMode("light");
     ui.createOverlay(); // Auto-detecting overlay creation
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Main Menu (Light Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Main Menu (Light Theme)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Main menus, Settings screens\nSubtle separation from background");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
     // Enable text backgrounds for readability over variable backgrounds
     ui.enableTextBackground(MODE_LABEL, true);
@@ -194,10 +217,21 @@ void OverlayDemoState::setupDarkOverlayMode() {
     ui.setThemeMode("dark");
     ui.createOverlay(); // Auto-detecting overlay creation
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Pause Menu (Dark Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Pause Menu (Dark Theme)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
     // Simulate pause menu using baseline coordinates for centering
     const int buttonX = UIConstants::BASELINE_WIDTH/2 - 100; // Center in baseline space
@@ -210,18 +244,29 @@ void OverlayDemoState::setupDarkOverlayMode() {
 void OverlayDemoState::setupModalOverlayMode() {
     auto& ui = UIManager::Instance();
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
-                   "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
 
-    // Calculate dialog position in baseline space (1920x1080)
-    const int dialogWidth = 400;
-    const int dialogHeight = 200;
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Modal Dialog (Strong Overlay)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
+                   "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
+
+    // Calculate dialog position in baseline space (1920x1080) using UIConstants
+    const int dialogWidth = UIConstants::DEFAULT_DIALOG_WIDTH;
+    const int dialogHeight = UIConstants::DEFAULT_DIALOG_HEIGHT;
     const int dialogX = (UIConstants::BASELINE_WIDTH - dialogWidth) / 2;   // 760
     const int dialogY = (UIConstants::BASELINE_HEIGHT - dialogHeight) / 2; // 440
 
-    // Create centered dialog
+    // Create centered dialog with standardized dimensions
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "dark");
 
     // Position child components using absolute baseline coordinates relative to dialog
@@ -241,18 +286,29 @@ void OverlayDemoState::setupModalOverlayMode() {
 void OverlayDemoState::setupLightModalOverlayMode() {
     auto& ui = UIManager::Instance();
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Light Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
-                   "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
 
-    // Calculate dialog position in baseline space (1920x1080)
-    const int dialogWidth = 400;
-    const int dialogHeight = 200;
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Light Modal Dialog (Strong Overlay)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
+                   "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
+
+    // Calculate dialog position in baseline space (1920x1080) using UIConstants
+    const int dialogWidth = UIConstants::DEFAULT_DIALOG_WIDTH;
+    const int dialogHeight = UIConstants::DEFAULT_DIALOG_HEIGHT;
     const int dialogX = (UIConstants::BASELINE_WIDTH - dialogWidth) / 2;   // 760
     const int dialogY = (UIConstants::BASELINE_HEIGHT - dialogHeight) / 2; // 440
 
-    // Create centered dialog
+    // Create centered dialog with standardized dimensions
     ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "light");
 
     // Position child components using absolute baseline coordinates relative to dialog
