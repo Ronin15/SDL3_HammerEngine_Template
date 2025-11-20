@@ -66,6 +66,10 @@ namespace UIConstants {
   constexpr int MAX_COMPONENT_HEIGHT = 600;   // Maximum component height
   constexpr int DEFAULT_INPUT_MAX_LENGTH = 256; // Max input field characters
 
+  // Dialog/Modal Size Constants (baseline pixels, auto-scaled by UIManager)
+  constexpr int DEFAULT_DIALOG_WIDTH = 400;   // Default modal dialog width
+  constexpr int DEFAULT_DIALOG_HEIGHT = 200;  // Default modal dialog height
+
   // Padding and Spacing Defaults
   constexpr int DEFAULT_COMPONENT_PADDING = 8;  // Default component internal padding
   constexpr int DEFAULT_CONTENT_PADDING = 8;    // Default content padding for auto-sizing
