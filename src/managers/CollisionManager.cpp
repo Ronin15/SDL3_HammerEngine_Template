@@ -1349,6 +1349,10 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
 }
 
 void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
+  // Acquire exclusive lock for writing entityWeak pointer
+  // Ensures thread-safe access during concurrent reads from syncEntitiesToSOA()
+  std::unique_lock<std::shared_mutex> lock(m_storageMutex);
+
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
     size_t index = it->second;
@@ -2576,6 +2580,10 @@ void CollisionManager::syncEntitiesToSOA() {
   // This prevents CollisionManager from overwriting AIManager's movement integration.
 
   m_isSyncing = true;
+
+  // Acquire shared lock for reading storage during entity sync
+  // Prevents races with prepareForStateTransition() clearing storage
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
   // Build set of entity IDs that were involved in collisions this frame
   std::unordered_set<EntityID> collidedEntities;
