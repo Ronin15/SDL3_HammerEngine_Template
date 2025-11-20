@@ -511,7 +511,6 @@ private:
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
-  mutable std::mutex m_behaviorCacheMutex;  // Protects m_behaviorCache concurrent access
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
