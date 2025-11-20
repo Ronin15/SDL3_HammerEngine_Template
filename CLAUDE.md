@@ -12,7 +12,15 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 
 # Debug with AddressSanitizer (requires -DUSE_MOLD_LINKER=OFF)
-cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
+
+# Debug with ThreadSanitizer (requires -DUSE_MOLD_LINKER=OFF)
+# Use for data races, deadlocks, thread synchronization issues. Mutually exclusive with ASAN.
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=thread -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" -DUSE_MOLD_LINKER=OFF && ninja -C build
+
+# Run tests with TSAN suppressions (filters benign lock-free races)
+export TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt"
+./bin/debug/thread_safe_ai_manager_tests
 
 # Filter warnings/errors
 ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
