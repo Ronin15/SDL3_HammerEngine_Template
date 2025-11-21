@@ -503,7 +503,7 @@ GameLoop → GameEngine::render() → GameStateManager::render() → LoadingStat
 **Key Points:**
 - GameEngine manages `SDL_RenderClear()` and `SDL_RenderPresent()`
 - Each state only calls manager `render()` methods (UI, particles, etc.)
-- This pattern is compatible with future SDL3_GPU migration
+- This pattern is compatible with future SDL3_GPU → SDL3_Renderer rendering system improvements
 - Multiple `Present()` calls per frame break command buffer architecture
 
 ### Correct Pattern
