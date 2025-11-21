@@ -5,16 +5,20 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 ## Key Features
 
 - **Modern C++20 & SDL3 Core**  
-  Clean, modular codebase with strict style, memory, and type safety.
+    
+    Clean, modular codebase with strict style, memory, and type safety.
 
 - **Adaptive Multi-Threading System**
-  Hardware-adaptive thread pool with intelligent WorkerBudget allocation that scales from 1 to 16+ cores. Dynamic burst capacity (30% buffer reserve), queue pressure adaptation, and performance-based batch tuning that converges to optimal parallelism for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
+   
+   Hardware-adaptive thread pool with intelligent WorkerBudget allocation that scales from 1 to 16+ cores. Dynamic burst capacity (30% buffer reserve), queue pressure adaptation, and performance-based batch tuning that converges to optimal parallelism for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
 
 - **High-Performance AI System**  
-  Cache-friendly, lock-free, and batch-processed AI manager. Supports 10K+ entities at 60+ FPS with only 4-6% CPU usage. Includes dynamic behaviors (Wander, Patrol, Guard, Flee, Attack, etc.), message system, and distance-based culling.
+    
+    Cache-friendly, lock-free, and batch-processed AI manager. Supports 10K+ entities at 60+ FPS with only 4-6% CPU usage. Includes dynamic behaviors (Wander, Patrol, Guard, Flee, Attack, etc.), message system, and distance-based culling.
 
 - **Robust Event & State Management**  
-  Event-driven architecture with batch event processing, state machines for entities and game flow, and thread-safe manager updates.
+    
+    Event-driven architecture with batch event processing, state machines for entities and game flow, and thread-safe manager updates.
 
 - **Professional UI System**
 
