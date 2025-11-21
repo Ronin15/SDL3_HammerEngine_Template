@@ -78,7 +78,7 @@ ninja -C build
 - See [tests/TESTING.md](tests/TESTING.md) for comprehensive test documentation and options
 - Static analysis: `./tests/test_scripts/run_cppcheck_focused.sh`
   See [tests/cppcheck/README.md](tests/cppcheck/README.md) for more.
-- Thread safety validation: ThreadSanitizer (TSAN) support with 110 documented benign race suppressions
+- Memory & thread safety validation: AddressSanitizer (ASAN) and ThreadSanitizer (TSAN) support
   See [docs/core/ThreadSystem.md#threadsanitizer-tsan-support](docs/core/ThreadSystem.md#threadsanitizer-tsan-support) for details
 
 ### Valgrind Analysis Suite
