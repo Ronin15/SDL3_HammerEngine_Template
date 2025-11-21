@@ -17,22 +17,28 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
   Event-driven architecture with batch event processing, state machines for entities and game flow, and thread-safe manager updates.
 
 - **Professional UI System**
-  Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
+
+    Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
 
 - **Automatic Resource Management**  
-  JSON-based resource loading for items, materials, currency, and custom types. Handle-based runtime access for performance and extensibility.
+  
+    JSON-based resource loading for items, materials, currency, and custom types. Handle-based runtime access for performance and extensibility.
 
 - **Fast, Safe Serialization**
-  Header-only binary serialization system with smart pointer memory management. Used by SaveGameManager for robust, versioned save/load across platforms.
+  
+    Header-only binary serialization system with smart pointer memory management. Used by SaveGameManager for robust, versioned save/load across platforms.
 
 - **Comprehensive Testing & Analysis**
-  68+ test executables with Boost.Test framework covering functional, performance, memory, and thread safety validation. Static analysis (cppcheck), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+  
+    68+ test executables with Boost.Test framework covering functional, performance, memory, and thread safety validation. Static analysis (cppcheck), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
 
 - **Cross-Platform Optimizations**
-  Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
+    
+    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
 
 - **Extensive Documentation**  
-  Full guides, API references, best practices, and troubleshooting for all major systems.
+    
+    Full guides, API references, best practices, and troubleshooting for all major systems.
 
 ### Why Choose HammerEngine Template?
 
