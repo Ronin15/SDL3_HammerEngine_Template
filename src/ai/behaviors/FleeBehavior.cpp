@@ -645,14 +645,15 @@ bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& current
         if (goalChanged) {
             // Use PathfinderManager for pathfinding requests
             auto& pf = this->pathfinder();
+            auto self = std::static_pointer_cast<FleeBehavior>(shared_from_this());
             pf.requestPath(
                 entity->getID(),
                 pf.clampToWorldBounds(currentPos, 100.0f),
                 goal,
                 PathfinderManager::Priority::High,
-                [this, entity](EntityID, const std::vector<Vector2D>& path) {
-                    auto it = m_entityStates.find(entity);
-                    if (it != m_entityStates.end() && !path.empty()) {
+                [self, entity](EntityID, const std::vector<Vector2D>& path) {
+                    auto it = self->m_entityStates.find(entity);
+                    if (it != self->m_entityStates.end() && !path.empty()) {
                         it->second.pathPoints = path;
                         it->second.currentPathIndex = 0;
                         it->second.pathUpdateTimer = 0.0f;

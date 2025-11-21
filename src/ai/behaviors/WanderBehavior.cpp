@@ -259,12 +259,13 @@ void WanderBehavior::handlePathfinding(EntityPtr entity, EntityState& state,
 
     if (goalChanged) {
       // ASYNC PATHFINDING: Use background processing
+      auto self = std::static_pointer_cast<WanderBehavior>(shared_from_this());
       pathfinder().requestPath(
           entity->getID(), entity->getPosition(), dest,
           PathfinderManager::Priority::Normal,
-          [this, entity](EntityID, const std::vector<Vector2D>& path) {
-            auto stateIt = m_entityStates.find(entity);
-            if (stateIt != m_entityStates.end() && !path.empty()) {
+          [self, entity](EntityID, const std::vector<Vector2D>& path) {
+            auto stateIt = self->m_entityStates.find(entity);
+            if (stateIt != self->m_entityStates.end() && !path.empty()) {
               stateIt->second.baseState.pathPoints = path;
               stateIt->second.baseState.currentPathIndex = 0;
               stateIt->second.baseState.pathUpdateTimer = 0.0f;
