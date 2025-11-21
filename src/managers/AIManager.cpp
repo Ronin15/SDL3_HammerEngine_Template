@@ -717,19 +717,30 @@ bool AIManager::hasBehavior(const std::string &name) const {
 
 std::shared_ptr<AIBehavior>
 AIManager::getBehavior(const std::string &name) const {
-  // Check cache first for O(1) lookup
+  // Fast path: Check cache first for O(1) lookup (unprotected read is safe after initial population)
   auto cacheIt = m_behaviorCache.find(name);
   if (cacheIt != m_behaviorCache.end()) {
     return cacheIt->second;
   }
 
-  // Cache miss - lookup and cache result
-  std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+  // Cache miss - use EXCLUSIVE lock for template read + cache write
+  // THREADING FIX: Changed from shared_lock to unique_lock to prevent double-free
+  // when multiple threads write to m_behaviorCache simultaneously
+  std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
+
+  // Double-checked locking: Re-check cache after acquiring exclusive lock
+  // Another thread may have populated it while we were waiting for the lock
+  cacheIt = m_behaviorCache.find(name);
+  if (cacheIt != m_behaviorCache.end()) {
+    return cacheIt->second;
+  }
+
+  // Lookup template and cache result (now thread-safe with exclusive lock)
   auto it = m_behaviorTemplates.find(name);
   std::shared_ptr<AIBehavior> result =
       (it != m_behaviorTemplates.end()) ? it->second : nullptr;
 
-  // Cache the result (even if nullptr)
+  // Cache the result (even if nullptr) - safe with exclusive lock
   m_behaviorCache[name] = result;
   return result;
 }
