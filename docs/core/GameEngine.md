@@ -79,7 +79,7 @@ private:
 - **Threading System**: Multi-threaded task processing with WorkerBudget system
 - **Resource Loading**: Asynchronous resource initialization
 - **State Management**: Integration with GameStateManager
-- **Double Buffering**: Thread-safe rendering with lock-free buffer management
+- **Configurable Buffering**: Thread-safe rendering with lock-free double or triple buffering (configurable via `setBufferCount()`, toggle with F3 in debug mode)
 
 ### System Dependencies
 
@@ -275,7 +275,7 @@ The GameEngine implements sophisticated threading with centralized resource mana
 - **Engine Coordination**: Receives **1 worker** (Critical priority) from ThreadSystem's WorkerBudget system
 - **Manager Integration**: Coordinates AI and Event manager threading
 - **Queue Pressure Management**: Monitors ThreadSystem load to prevent bottlenecks
-- **Double Buffering**: Enables concurrent update and render without blocking
+- **Configurable Double/Triple Buffering**: Enables concurrent update and render without blocking. Toggle with F3 in debug mode
 
 #### Thread-Safe State Management
 ```cpp
@@ -298,25 +298,46 @@ private:
 };
 ```
 
-#### Lock-Free Double Buffering System
+#### Lock-Free Configurable Buffering System (Double/Triple)
+
+The GameEngine supports both **double buffering** (2 buffers) and **triple buffering** (3 buffers) for flexible performance tuning:
+
 ```cpp
 class GameEngine {
 private:
-    static constexpr size_t BUFFER_COUNT = 2;
+    // Configurable buffer count (default: 2 for double buffering)
+    size_t m_bufferCount{2};                    // Set to 3 for triple buffering
     std::atomic<size_t> m_currentBufferIndex{0};
     std::atomic<size_t> m_renderBufferIndex{0};
-    std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
+    std::atomic<bool> m_bufferReady[3]{false, false, false};  // Max 3 buffers
     std::condition_variable m_bufferCondition{};
 
     // Frame tracking for synchronization
     std::atomic<uint64_t> m_lastUpdateFrame{0};
     std::atomic<uint64_t> m_lastRenderedFrame{0};
 
+    // DEBUG MODE ONLY: Buffer telemetry statistics
+    struct BufferTelemetryStats {
+        uint64_t swapAttempts{0};      // Total swap attempts
+        uint64_t renderStalls{0};      // Times renderer waited for update
+        uint64_t mutexWaitTime{0};     // Total mutex wait time (microseconds)
+    };
+    #ifdef DEBUG
+    BufferTelemetryStats m_bufferStats{};
+    #endif
+
 public:
+    // Configure double (2 buffers) or triple (3 buffers) buffering
+    void setBufferCount(size_t count) {
+        if (count == 2 || count == 3) {
+            m_bufferCount = count;
+        }
+    }
+
     void swapBuffers() {
         // Thread-safe buffer swap with proper synchronization
         size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-        size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
+        size_t nextUpdateIndex = (currentIndex + 1) % m_bufferCount;
 
         // Check if we have a valid render buffer before attempting swap
         size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
@@ -357,8 +378,46 @@ public:
 
         return lastUpdate > lastRendered;
     }
+
+    // DEBUG MODE: Get buffer telemetry statistics
+    #ifdef DEBUG
+    const BufferTelemetryStats& getBufferTelemetry() const {
+        return m_bufferStats;
+    }
+    #endif
 };
 ```
+
+**Double vs Triple Buffering:**
+
+| Feature | Double Buffering (2) | Triple Buffering (3) |
+|---------|---------------------|----------------------|
+| Memory Usage | Lower (2 buffers) | Higher (3 buffers) |
+| Latency | Lower (simpler logic) | Slightly higher |
+| Smoothness | Good (no wait) | Excellent (guaranteed) |
+| Render Stalls | Possible if update slow | Never (always has buffer) |
+| Typical Use | Most games | High frame rate games |
+
+**Usage:**
+
+```cpp
+auto& engine = GameEngine::Instance();
+
+// Switch to triple buffering (default is double)
+engine.setBufferCount(3);
+
+// In debug mode, check buffer statistics
+#ifdef DEBUG
+const auto& stats = engine.getBufferTelemetry();
+std::cout << "Swap attempts: " << stats.swapAttempts << "\n";
+std::cout << "Render stalls: " << stats.renderStalls << "\n";
+#endif
+```
+
+**Debug Toggle:**
+
+Press **F3** in debug mode to toggle between double and triple buffering at runtime.
+
 
 #### Background Task Processing
 
