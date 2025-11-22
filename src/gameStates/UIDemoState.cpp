@@ -71,8 +71,9 @@ bool UIExampleState::enter() {
     ui.setComponentPositioning("uiexample_progress_label", {UIPositionMode::TOP_ALIGNED, 260, 290, 200, 20});
 
     // List demo (left column - TOP_ALIGNED for exact positioning)
-    ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
-    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::TOP_ALIGNED, 50, 340, 300, 140});
+    // Height: 180px = 5 items × 32px/item + 20px buffer
+    ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 180});
+    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::TOP_ALIGNED, 50, 340, 300, 180});
 
     // Event Log demo - mirroring EventDemoState pattern but on right side
     // EventDemoState uses: BOTTOM_ALIGNED, offsetX=10, offsetY=20, width=730, height=180
