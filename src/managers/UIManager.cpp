@@ -184,22 +184,32 @@ void UIManager::clean() {
 }
 
 std::vector<std::shared_ptr<UIComponent>> UIManager::getSortedComponents() const {
-  std::vector<std::shared_ptr<UIComponent>> sorted;
-  sorted.reserve(m_components.size());
-  
-  for (const auto &[id, component] : m_components) {
-    if (component) {
-      sorted.push_back(component);
+  // Performance optimization: Only rebuild sorted list when components added/removed/z-order changed
+  if (m_sortedComponentsDirty) {
+    m_sortedComponentsCache.clear();
+    m_sortedComponentsCache.reserve(m_components.size());
+
+    for (const auto &[id, component] : m_components) {
+      if (component) {
+        m_sortedComponentsCache.push_back(component);
+      }
     }
+
+    std::sort(m_sortedComponentsCache.begin(), m_sortedComponentsCache.end(),
+              [](const std::shared_ptr<UIComponent> &a,
+                 const std::shared_ptr<UIComponent> &b) {
+                return a->m_zOrder < b->m_zOrder;
+              });
+
+    m_sortedComponentsDirty = false;
   }
-  
-  std::sort(sorted.begin(), sorted.end(),
-            [](const std::shared_ptr<UIComponent> &a,
-               const std::shared_ptr<UIComponent> &b) {
-              return a->m_zOrder < b->m_zOrder;
-            });
-  
-  return sorted;
+
+  return m_sortedComponentsCache;
+}
+
+// Performance optimization helper - centralized cache invalidation
+void UIManager::invalidateComponentCache() {
+  m_sortedComponentsDirty = true;
 }
 
 // Component creation methods
@@ -216,6 +226,7 @@ void UIManager::createButton(const std::string &id, const UIRect &bounds,
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
+  invalidateComponentCache();
 }
 
 void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
@@ -231,6 +242,7 @@ void UIManager::createButtonDanger(const std::string &id, const UIRect &bounds,
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
+  invalidateComponentCache();
 }
 
 void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
@@ -246,6 +258,7 @@ void UIManager::createButtonSuccess(const std::string &id, const UIRect &bounds,
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
+  invalidateComponentCache();
 }
 
 void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
@@ -261,6 +274,7 @@ void UIManager::createButtonWarning(const std::string &id, const UIRect &bounds,
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
+  invalidateComponentCache();
 }
 
 void UIManager::createLabel(const std::string &id, const UIRect &bounds,
@@ -428,6 +442,7 @@ void UIManager::createEventLog(const std::string &id, const UIRect &bounds,
 
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
   m_components[id] = component;
+  invalidateComponentCache();
 }
 
 void UIManager::createDialog(const std::string &id, const UIRect &bounds) {
@@ -475,6 +490,11 @@ void UIManager::removeComponent(const std::string &id) {
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
   m_components.erase(id);
+  invalidateComponentCache();
+
+  // Clear from value/text caches
+  m_valueCache.erase(id);
+  m_textCache.erase(id);
 
   // Remove from any layouts
   for (auto &[layoutId, layout] : m_layouts) {
@@ -525,15 +545,22 @@ void UIManager::setComponentZOrder(const std::string &id, int zOrder) {
   auto component = getComponent(id);
   if (component) {
     component->m_zOrder = zOrder;
+    invalidateComponentCache();
   }
 }
 
 // Component property setters
 void UIManager::setText(const std::string &id, const std::string &text) {
+  // Performance optimization: Check cache first to avoid mutex lock + hash lookup when text unchanged
+  auto cacheIt = m_textCache.find(id);
+  if (cacheIt != m_textCache.end() && cacheIt->second == text) {
+    return; // Text unchanged, skip expensive getComponent() call
+  }
+
   auto component = getComponent(id);
   if (component) {
-    // Always update the text - remove caching that prevents updates
     component->m_text = text;
+    m_textCache[id] = text; // Update cache
   }
 }
 
@@ -546,15 +573,25 @@ void UIManager::setTexture(const std::string &id,
 }
 
 void UIManager::setValue(const std::string &id, float value) {
+  // Performance optimization: Check cache first to avoid mutex lock + hash lookup when value unchanged
+  auto cacheIt = m_valueCache.find(id);
+  if (cacheIt != m_valueCache.end() && cacheIt->second == value) {
+    return; // Value unchanged, skip expensive getComponent() call
+  }
+
   auto component = getComponent(id);
   if (component) {
     float clampedValue =
         std::clamp(value, component->m_minValue, component->m_maxValue);
     if (component->m_value != clampedValue) {
       component->m_value = clampedValue;
+      m_valueCache[id] = clampedValue; // Update cache
       if (component->m_onValueChanged) {
         component->m_onValueChanged(clampedValue);
       }
+    } else {
+      // Value was already at clampedValue, ensure cache is updated
+      m_valueCache[id] = clampedValue;
     }
   }
 }
@@ -1615,6 +1652,11 @@ void UIManager::cleanupForStateTransition() {
 
   // Clear all UI components
   m_components.clear();
+  invalidateComponentCache();
+
+  // Clear value/text caches
+  m_valueCache.clear();
+  m_textCache.clear();
 
   // Clear all layouts
   m_layouts.clear();

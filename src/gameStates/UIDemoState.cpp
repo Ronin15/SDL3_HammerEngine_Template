@@ -246,6 +246,7 @@ void UIExampleState::updateProgressBar(float deltaTime) {
         }
     }
 
+    // UIManager now has built-in caching, so calling setValue() every frame is safe
     auto& ui = UIManager::Instance();
     ui.setValue("uiexample_demo_progress", m_progressValue);
 }
