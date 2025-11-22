@@ -465,6 +465,8 @@ public:
                             int width = UIConstants::DEFAULT_BUTTON_WIDTH, int height = UIConstants::DEFAULT_BUTTON_HEIGHT);
   void createCenteredDialog(const std::string &id, int width, int height,
                             const std::string &theme = "dark");
+  void createCenteredButton(const std::string &id, int offsetY,
+                           int width, int height, const std::string &text);
 
   // Utility methods
   void setGlobalFont(const std::string &fontID);

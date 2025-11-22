@@ -165,13 +165,17 @@ void OverlayDemoState::setupNoOverlayMode() {
     ui.enableTextBackground(MODE_LABEL, true);
     ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
-    // Simulate HUD elements
+    // Simulate HUD elements with proper positioning for fullscreen compatibility
     ui.createProgressBar(HEALTH_BAR, {20, 150, 200, 25}, 0.0f, 100.0f);
     ui.setValue(HEALTH_BAR, 75.0f);
-    ui.createLabel(SCORE_LABEL, {20, 185, 150, 20}, "Score: 12,450");
+    ui.setComponentPositioning(HEALTH_BAR, {UIPositionMode::TOP_ALIGNED, 20, 150, 200, 25});
 
-    // Minimap simulation
+    ui.createLabel(SCORE_LABEL, {20, 185, 150, 20}, "Score: 12,450");
+    ui.setComponentPositioning(SCORE_LABEL, {UIPositionMode::TOP_ALIGNED, 20, 185, 150, 20});
+
+    // Minimap simulation with right-alignment for fullscreen compatibility
     ui.createPanel(MINIMAP_PANEL, {ui.getLogicalWidth() - 160, 20, 140, 140});
+    ui.setComponentPositioning(MINIMAP_PANEL, {UIPositionMode::RIGHT_ALIGNED, 20, 20, 140, 140});
 
     // HUD elements and minimap use theme styling - no custom colors needed
 }
