@@ -16,6 +16,7 @@
 #include <atomic>
 #include <stdexcept>
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 
 namespace HammerEngine {
 
@@ -123,6 +124,14 @@ void PathfindingGrid::rebuildFromWorld() {
     int collisionBlockedCount = 0;
 
     for (int cy = 0; cy < cellsH; ++cy) {
+        // Check if ThreadSystem is shutting down (matches EventManager pattern)
+        // This allows worker thread to exit early during shutdown
+        if (!HammerEngine::ThreadSystem::Exists() ||
+            HammerEngine::ThreadSystem::Instance().isShutdown()) {
+            PATHFIND_DEBUG("Grid rebuild interrupted by ThreadSystem shutdown");
+            return;
+        }
+
         for (int cx = 0; cx < cellsW; ++cx) {
             // Compute the world-space rect covered by this cell
             float x0 = m_offset.getX() + cx * m_cell;

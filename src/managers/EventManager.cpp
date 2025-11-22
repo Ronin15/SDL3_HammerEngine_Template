@@ -167,6 +167,10 @@ void EventManager::clean() {
     return;
   }
 
+  // Set shutdown flags EARLY to prevent new work (matches AIManager pattern)
+  m_isShutdown = true;
+  m_initialized.store(false, std::memory_order_release);
+
   // Wait for any pending async batches to complete before cleanup
   {
     std::vector<std::future<void>> localFutures;
@@ -219,8 +223,7 @@ void EventManager::clean() {
   // Reset performance stats
   resetPerformanceStats();
 
-  m_initialized.store(false);
-  m_isShutdown = true;
+  // Shutdown flags already set at beginning of clean()
   // Skip logging during shutdown to avoid static destruction order issues
 }
 
@@ -256,7 +259,7 @@ void EventManager::prepareForStateTransition() {
 }
 
 void EventManager::update() {
-  if (!m_initialized.load()) {
+  if (!m_initialized.load() || m_isShutdown) {
     return;
   }
 
@@ -870,8 +873,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
-  if (!HammerEngine::ThreadSystem::Exists()) {
-    // Fall back to single-threaded if ThreadSystem not available
+  if (m_isShutdown || !HammerEngine::ThreadSystem::Exists()) {
+    // Fall back to single-threaded if shutting down or ThreadSystem not available
     updateEventTypeBatch(typeId);
     return;
   }
