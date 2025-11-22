@@ -3009,15 +3009,12 @@ void UIManager::createTitleAtTop(const std::string &id, const std::string &text,
   createTitle(id, {0, UIConstants::TITLE_TOP_OFFSET, UIConstants::BASELINE_WIDTH, height}, text);
   setTitleAlignment(id, UIAlignment::CENTER_CENTER);
 
-  // Store positioning rule for auto-repositioning
-  auto component = getComponent(id);
-  if (component) {
-    component->m_positioning = {.mode = UIPositionMode::TOP_ALIGNED,
-                                .offsetX = 0,
-                                .offsetY = UIConstants::TITLE_TOP_OFFSET,
-                                .fixedWidth = -1,  // -1 = use full window width
-                                .fixedHeight = height};
-  }
+  // Apply positioning using unified API
+  setComponentPositioning(id, {UIPositionMode::TOP_ALIGNED,
+                               0,
+                               UIConstants::TITLE_TOP_OFFSET,
+                               -1,  // -1 = use full window width
+                               height});
 }
 
 void UIManager::createButtonAtBottom(const std::string &id,
@@ -3027,15 +3024,12 @@ void UIManager::createButtonAtBottom(const std::string &id,
   createButtonDanger(id, {UIConstants::BUTTON_BOTTOM_OFFSET, UIConstants::BASELINE_HEIGHT - height - UIConstants::BUTTON_BOTTOM_OFFSET, width, height},
                      text);
 
-  // Store positioning rule for auto-repositioning
-  auto component = getComponent(id);
-  if (component) {
-    component->m_positioning = {.mode = UIPositionMode::BOTTOM_ALIGNED,
-                                .offsetX = UIConstants::BUTTON_BOTTOM_OFFSET,
-                                .offsetY = UIConstants::BUTTON_BOTTOM_OFFSET,
-                                .fixedWidth = width,
-                                .fixedHeight = height};
-  }
+  // Apply positioning using unified API
+  setComponentPositioning(id, {UIPositionMode::BOTTOM_ALIGNED,
+                               UIConstants::BUTTON_BOTTOM_OFFSET,
+                               UIConstants::BUTTON_BOTTOM_OFFSET,
+                               width,
+                               height});
 }
 
 void UIManager::createCenteredDialog(const std::string &id, int width,
@@ -3048,25 +3042,36 @@ void UIManager::createCenteredDialog(const std::string &id, int width,
   // Overlay also uses baseline dimensions
   createModal(id, {x, y, width, height}, theme, UIConstants::BASELINE_WIDTH, UIConstants::BASELINE_HEIGHT);
 
-  // Store positioning rule for auto-repositioning (dialog itself)
-  auto component = getComponent(id);
-  if (component) {
-    component->m_positioning = {.mode = UIPositionMode::CENTERED_BOTH,
-                                .offsetX = 0,
-                                .offsetY = 0,
-                                .fixedWidth = width,
-                                .fixedHeight = height};
-  }
+  // Apply positioning using unified API (dialog itself)
+  setComponentPositioning(id, {UIPositionMode::CENTERED_BOTH,
+                               0,
+                               0,
+                               width,
+                               height});
 
-  // Also update the overlay positioning (if it exists)
-  auto overlay = getComponent("overlay_background");
-  if (overlay) {
-    overlay->m_positioning = {.mode = UIPositionMode::TOP_ALIGNED,
-                              .offsetX = 0,
-                              .offsetY = 0,
-                              .fixedWidth = -1,   // Full width
-                              .fixedHeight = -1}; // Full height (special case)
-  }
+  // Apply positioning for overlay background using unified API
+  setComponentPositioning("overlay_background", {UIPositionMode::TOP_ALIGNED,
+                                                 0,
+                                                 0,
+                                                 -1,   // Full width
+                                                 -1}); // Full height
+}
+
+void UIManager::createCenteredButton(const std::string &id, int offsetY,
+                                     int width, int height,
+                                     const std::string &text) {
+  // Calculate baseline center position
+  int centerX = (UIConstants::BASELINE_WIDTH - width) / 2;
+  int centerY = UIConstants::BASELINE_HEIGHT / 2 + offsetY;
+
+  createButton(id, {centerX, centerY, width, height}, text);
+
+  // Apply positioning using unified API
+  setComponentPositioning(id, {UIPositionMode::CENTERED_BOTH,
+                               0,
+                               offsetY,
+                               width,
+                               height});
 }
 
 // Auto-repositioning system implementation

@@ -44,35 +44,35 @@ bool UIExampleState::enter() {
     ui.createLabel("uiexample_back_instruction", {150, ui.getLogicalHeight() - 75, 200, 30}, "Press B to go back");
     ui.setComponentPositioning("uiexample_back_instruction", {UIPositionMode::BOTTOM_ALIGNED, 150, 20, 200, 30});
 
-    // Slider demo (left column - fixed position)
+    // Slider demo (left column - left-aligned for fullscreen compatibility)
     ui.createSlider("uiexample_demo_slider", {leftColumnX, 140, 200, 30}, 0.0f, 1.0f);
     ui.setValue("uiexample_demo_slider", 0.5f);
-    ui.setComponentPositioning("uiexample_demo_slider", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_slider", {UIPositionMode::LEFT_ALIGNED, 50, 140, 200, 30});
 
     ui.createLabel("uiexample_slider_label", {leftColumnX + 210, 140, 200, 30}, "Slider: 0.50");
-    ui.setComponentPositioning("uiexample_slider_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_slider_label", {UIPositionMode::LEFT_ALIGNED, 260, 140, 200, 30});
 
-    // Checkbox demo (left column - fixed position)
+    // Checkbox demo (left column - left-aligned for fullscreen compatibility)
     ui.createCheckbox("uiexample_demo_checkbox", {leftColumnX, 190, 250, 30}, "Toggle Option");
-    ui.setComponentPositioning("uiexample_demo_checkbox", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_checkbox", {UIPositionMode::LEFT_ALIGNED, 50, 190, 250, 30});
 
-    // Input field demo (left column - fixed position)
+    // Input field demo (left column - left-aligned for fullscreen compatibility)
     ui.createInputField("uiexample_demo_input", {leftColumnX, 240, 200, 30}, "Type here...");
-    ui.setComponentPositioning("uiexample_demo_input", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_input", {UIPositionMode::LEFT_ALIGNED, 50, 240, 200, 30});
 
     ui.createLabel("uiexample_input_label", {leftColumnX + 210, 240, 300, 30}, "Input: (empty)");
-    ui.setComponentPositioning("uiexample_input_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_input_label", {UIPositionMode::LEFT_ALIGNED, 260, 240, 300, 30});
 
-    // Progress bar demo (left column - fixed position)
+    // Progress bar demo (left column - left-aligned for fullscreen compatibility)
     ui.createProgressBar("uiexample_demo_progress", {leftColumnX, 290, 200, 20}, 0.0f, 1.0f);
-    ui.setComponentPositioning("uiexample_demo_progress", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_progress", {UIPositionMode::LEFT_ALIGNED, 50, 290, 200, 20});
 
     ui.createLabel("uiexample_progress_label", {leftColumnX + 210, 290, 200, 20}, "Auto Progress");
-    ui.setComponentPositioning("uiexample_progress_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_progress_label", {UIPositionMode::LEFT_ALIGNED, 260, 290, 200, 20});
 
-    // List demo (left column - fixed position)
+    // List demo (left column - left-aligned for fullscreen compatibility)
     ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
-    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::LEFT_ALIGNED, 50, 340, 220, 140});
 
     // Event Log demo - mirroring EventDemoState pattern but on right side
     // EventDemoState uses: BOTTOM_ALIGNED, offsetX=10, offsetY=20, width=730, height=180
@@ -85,18 +85,18 @@ bool UIExampleState::enter() {
 
     ui.setupDemoEventLog("uiexample_demo_event_log");
 
-    // Animation button (right column - fixed position)
+    // Animation button (right column - left-aligned at baseline center+50)
     ui.createButton("uiexample_animate_btn", {rightColumnX, 340, 120, 40}, "Animate");
-    ui.setComponentPositioning("uiexample_animate_btn", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_animate_btn", {UIPositionMode::LEFT_ALIGNED, 1010, 340, 120, 40});
 
-    // Theme toggle button (right column - fixed position)
+    // Theme toggle button (right column - left-aligned at baseline center+50)
     ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 150, 40}, "Dark Theme");
-    ui.setComponentPositioning("uiexample_theme_btn", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_theme_btn", {UIPositionMode::LEFT_ALIGNED, 1010, 390, 150, 40});
 
-    // Instructions (right column - fixed position)
+    // Instructions (right column - left-aligned with fixed width for stability)
     ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, rightColumnWidth - 150, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
-    ui.setComponentPositioning("uiexample_instructions", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_instructions", {UIPositionMode::LEFT_ALIGNED, 1160, 340, 750, 120});
 
     // Populate list
     ui.addListItem("uiexample_demo_list", "Option 1: Basic Item");
