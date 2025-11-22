@@ -72,7 +72,7 @@ bool UIExampleState::enter() {
 
     // List demo (left column - TOP_ALIGNED for exact positioning)
     ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
-    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::TOP_ALIGNED, 50, 340, 220, 140});
+    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::TOP_ALIGNED, 50, 340, 300, 140});
 
     // Event Log demo - mirroring EventDemoState pattern but on right side
     // EventDemoState uses: BOTTOM_ALIGNED, offsetX=10, offsetY=20, width=730, height=180

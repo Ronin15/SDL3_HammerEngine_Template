@@ -81,109 +81,25 @@ grep -rn "class.*Manager" include/managers/
 
 **When to Add New Patterns**: Only when (1) existing patterns don't solve the use case, (2) new pattern is a logical extension of existing ones. Mirror established implementations whenever possible.
 
-## UI Positioning Best Practices
+## UI Positioning
 
-**CRITICAL**: Always call `setComponentPositioning()` after creating UI components to ensure proper behavior during fullscreen transitions and window resizing.
+**CRITICAL**: Always call `setComponentPositioning()` after creating UI components to ensure proper fullscreen/resize behavior.
 
-### Available Helper Methods (Auto-Positioning)
+**Helper methods** (auto-position):
+- `createTitleAtTop()` - Page titles
+- `createButtonAtBottom()` - Back buttons
+- `createCenteredButton()` - Menu buttons
+- `createCenteredDialog()` - Modal dialogs
 
-**Use these for common patterns** (they combine creation + positioning in one call):
-
+**Manual pattern** (everything else):
 ```cpp
-// Page titles (all states)
-ui.createTitleAtTop("title", "My State Title");
-
-// Back buttons (bottom-left)
-ui.createButtonAtBottom("back", "Back");
-
-// Centered button stacks (menus)
-int buttonStep = 70;
-ui.createCenteredButton("play_btn", -135, 300, 50, "Play Game");
-ui.createCenteredButton("settings_btn", -135 + buttonStep, 300, 50, "Settings");
-ui.createCenteredButton("quit_btn", -135 + 2*buttonStep, 300, 50, "Quit");
-
-// Modal dialogs
-ui.createCenteredDialog("dialog", 400, 300);
+ui.createButton("my_btn", {100, 200, 120, 40}, "Click");
+ui.setComponentPositioning("my_btn", {UIPositionMode::TOP_ALIGNED, 100, 200, 120, 40});
 ```
 
-**For everything else, use manual pattern:**
+**Common modes**: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT_ALIGNED, RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H, CENTERED_BOTH. See `include/managers/UIManager.hpp` for full list.
 
-```cpp
-// HUD elements - top-left
-ui.createProgressBar("health", {20, 150, 200, 25}, 0.0f, 100.0f);
-ui.setComponentPositioning("health", {UIPositionMode::TOP_ALIGNED, 20, 150, 200, 25});
-
-// Panels - right-aligned
-ui.createPanel("minimap", {ui.getLogicalWidth() - 160, 20, 140, 140});
-ui.setComponentPositioning("minimap", {UIPositionMode::RIGHT_ALIGNED, 20, 20, 140, 140});
-
-// Event logs - bottom-right
-ui.createEventLog("log", {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
-ui.setComponentPositioning("log", {UIPositionMode::BOTTOM_RIGHT, 10, 20, 730, 180});
-```
-
-### Manual Positioning Pattern
-
-When not using helper methods, **ALWAYS** call `setComponentPositioning()`:
-
-```cpp
-// ❌ WRONG - Will break during fullscreen toggle
-ui.createButton("my_btn", {100, 200, 120, 40}, "Click Me");
-// Component defaults to ABSOLUTE mode - won't reposition on window resize
-
-// ✅ CORRECT - Fullscreen-safe
-ui.createButton("my_btn", {100, 200, 120, 40}, "Click Me");
-ui.setComponentPositioning("my_btn", {UIPositionMode::LEFT_ALIGNED, 100, 200, 120, 40});
-// Component will reposition correctly during fullscreen transitions
-```
-
-### Positioning Modes Reference
-
-```cpp
-// Anchored to edges (use baseline coordinates for offsets)
-UIPositionMode::LEFT_ALIGNED      // offsetX from left edge
-UIPositionMode::RIGHT_ALIGNED     // offsetX from right edge (margin)
-UIPositionMode::TOP_ALIGNED       // offsetY from top edge
-UIPositionMode::BOTTOM_ALIGNED    // offsetY from bottom edge (margin)
-UIPositionMode::BOTTOM_RIGHT      // Both right and bottom edges
-UIPositionMode::BOTTOM_CENTERED   // Bottom edge, centered horizontally
-
-// Centered positioning
-UIPositionMode::CENTERED_H        // Horizontal center + offsetX
-UIPositionMode::CENTERED_V        // Vertical center + offsetY
-UIPositionMode::CENTERED_BOTH     // Both axes centered
-
-// Fixed positioning (avoid unless truly needed)
-UIPositionMode::ABSOLUTE          // No auto-repositioning - breaks in fullscreen
-```
-
-### Common Patterns
-
-```cpp
-// Centered menu buttons (MainMenuState pattern)
-ui.createButton("play", {960, 300, 200, 50}, "Play Game");
-ui.setComponentPositioning("play", {UIPositionMode::CENTERED_BOTH, 0, 0, 200, 50});
-
-// Top-left HUD info (EventDemoState pattern)
-ui.createLabel("fps", {10, 55, 200, 36}, "FPS: 60");
-ui.setComponentPositioning("fps", {UIPositionMode::TOP_ALIGNED, 10, 55, 200, 36});
-
-// Bottom-right event log (UIDemoState pattern)
-ui.createEventLog("log", {1180, 900, 730, 180}, 5);
-ui.setComponentPositioning("log", {UIPositionMode::BOTTOM_RIGHT, 10, 20, 730, 180});
-
-// Left column form elements
-ui.createSlider("volume", {50, 140, 200, 30}, 0.0f, 1.0f);
-ui.setComponentPositioning("volume", {UIPositionMode::LEFT_ALIGNED, 50, 140, 200, 30});
-```
-
-### Why This Matters
-
-**Without proper positioning**: Toggling fullscreen before entering a state causes misaligned UI because components calculate positions using the current window size at creation time but never recalculate during resize.
-
-**With proper positioning**: Components automatically reposition when window size changes (fullscreen toggle, manual resize, state transitions), using the positioning rules you specify.
-
-**Rule of thumb**: If you're calculating positions using `ui.getLogicalWidth()` or `ui.getLogicalHeight()`, you MUST call `setComponentPositioning()` afterward.
+**Why**: Without `setComponentPositioning()`, components won't reposition during fullscreen toggle or window resize.
 
 ## Standards
 
