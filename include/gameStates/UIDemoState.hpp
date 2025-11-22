@@ -47,6 +47,7 @@ private:
     bool m_darkTheme{false};
     float m_progressValue{0.0f};
     bool m_progressIncreasing{true};
+    float m_lastDeltaTime{0.0f}; // Track deltaTime for ui.update() in render()
 };
 
 #endif // UI_EXAMPLE_STATE_HPP
