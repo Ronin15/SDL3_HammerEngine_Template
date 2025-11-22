@@ -114,7 +114,7 @@ void LogoState::render() {
   // Draw SDL logo centered below version text
   texMgr.draw(
       "sdl_logo",
-      windowWidth / 2 - sdlWidth / 2,  // Center horizontally with scaled size
+      (windowWidth / 2) - (sdlWidth / 2) + static_cast<int>(20 * scale),  // Center horizontally with right adjustment
       (windowHeight / 2) + static_cast<int>(290 * scale),  // Scaled vertical position
       sdlWidth, sdlHeight,
       renderer);

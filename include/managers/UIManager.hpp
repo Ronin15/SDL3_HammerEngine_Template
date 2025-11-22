@@ -536,6 +536,14 @@ private:
   bool m_mousePressed{false};
   bool m_mouseReleased{false};
 
+  // Performance optimization: Cached sorted components to avoid per-frame allocation + sorting
+  mutable std::vector<std::shared_ptr<UIComponent>> m_sortedComponentsCache{};
+  mutable bool m_sortedComponentsDirty{true};
+
+  // Performance optimization: Value caches to avoid mutex lock + hash lookup when values unchanged
+  std::unordered_map<std::string, float> m_valueCache{};
+  std::unordered_map<std::string, std::string> m_textCache{};
+
   // Private helper methods
   std::shared_ptr<UIComponent> getComponent(const std::string &id);
   std::shared_ptr<const UIComponent> getComponent(const std::string &id) const;
@@ -553,6 +561,9 @@ private:
                        const std::shared_ptr<UIComponent> &component);
   void renderTooltip(SDL_Renderer *renderer);
   std::vector<std::shared_ptr<UIComponent>> getSortedComponents() const;
+
+  // Performance optimization helper
+  void invalidateComponentCache();
 
   // Component-specific rendering
   void renderButton(SDL_Renderer *renderer,
