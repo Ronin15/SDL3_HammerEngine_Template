@@ -648,6 +648,52 @@ bool EventManager::removeEvent(const std::string &name) {
   return true;
 }
 
+size_t EventManager::removeEventsByType(EventTypeId typeId) {
+  std::unique_lock<std::shared_mutex> lock(m_eventsMutex);
+
+  if (typeId >= EventTypeId::COUNT) {
+    return 0;
+  }
+
+  size_t typeIndex = static_cast<size_t>(typeId);
+  auto &container = m_eventsByType[typeIndex];
+  size_t removedCount = 0;
+
+  // Mark all events of this type for removal
+  for (auto &eventData : container) {
+    if (!(eventData.flags & EventData::FLAG_PENDING_REMOVAL)) {
+      eventData.flags |= EventData::FLAG_PENDING_REMOVAL;
+      removedCount++;
+    }
+  }
+
+  // Remove from name mappings (iterate through copy to avoid invalidation)
+  std::vector<std::string> namesToRemove;
+  for (const auto &[name, eventTypeId] : m_nameToType) {
+    if (eventTypeId == typeId) {
+      namesToRemove.push_back(name);
+    }
+  }
+
+  for (const auto &name : namesToRemove) {
+    m_nameToIndex.erase(name);
+    m_nameToType.erase(name);
+  }
+
+  return removedCount;
+}
+
+size_t EventManager::clearAllEvents() {
+  size_t totalRemoved = 0;
+
+  // Remove events for each type
+  for (size_t i = 0; i < static_cast<size_t>(EventTypeId::COUNT); ++i) {
+    totalRemoved += removeEventsByType(static_cast<EventTypeId>(i));
+  }
+
+  return totalRemoved;
+}
+
 bool EventManager::hasEvent(const std::string &name) const {
   std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
   return m_nameToIndex.find(name) != m_nameToIndex.end();

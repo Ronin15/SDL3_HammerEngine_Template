@@ -285,6 +285,9 @@ bool EventDemoState::exit() {
       // Unregister our specific handlers via tokens
       unregisterEventHandlers();
 
+      // Remove all events from EventManager
+      EventManager::Instance().clearAllEvents();
+
       // Clean up managers (same as full exit)
       AIManager &aiMgr = AIManager::Instance();
       aiMgr.prepareForStateTransition();
@@ -346,6 +349,9 @@ bool EventDemoState::exit() {
 
     // Unregister our specific handlers via tokens
     unregisterEventHandlers();
+
+    // Remove all events from EventManager
+    EventManager::Instance().clearAllEvents();
 
     // Optional: leave global handlers intact for other states; no blanket clear here
 
@@ -1480,9 +1486,14 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
+  // Remove all events from EventManager
+  EventManager &eventMgr = EventManager::Instance();
+  size_t removedCount = eventMgr.clearAllEvents();
+  addLogEntry("Removed " + std::to_string(removedCount) + " events from EventManager");
+
   // Trigger clear weather via EventManager
-  EventManager::Instance().changeWeather("Clear", 1.0f,
-                                         EventManager::DispatchMode::Deferred);
+  eventMgr.changeWeather("Clear", 1.0f,
+                         EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 
