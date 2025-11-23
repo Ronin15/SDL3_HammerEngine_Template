@@ -1076,22 +1076,10 @@ void CollisionManager::subscribeWorldEvents() {
         if (auto unloaded =
                 std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
           (void)unloaded;
-          std::vector<EntityID> toRemove;
-          for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-            const auto& hot = m_storage.hotData[i];
-            if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-              toRemove.push_back(m_storage.entityIds[i]);
-            }
-          }
-          for (auto id : toRemove) {
-            removeCollisionBodySOA(id);
-          }
-          COLLISION_INFO("World unloaded - removed static colliders: " +
-                         std::to_string(toRemove.size()));
-          // Clear static spatial hash and cache since all static bodies were removed
-          m_staticSpatialHash.clear();
-          m_coarseRegionStaticCache.clear();
-          m_staticHashDirty = false;
+          COLLISION_INFO("Responding to WorldUnloadedEvent");
+
+          // Static bodies already cleared by prepareForStateTransition()
+          // This event handler serves as confirmation that world cleanup completed
           return;
         }
         if (auto tileChanged =

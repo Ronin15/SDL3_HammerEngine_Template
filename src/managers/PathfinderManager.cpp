@@ -178,7 +178,7 @@ void PathfinderManager::prepareForStateTransition() {
         size_t cacheSize = m_pathCache.size();
         m_pathCache.clear();
         if (cacheSize > 0) {
-            PATHFIND_DEBUG("Cleared " + std::to_string(cacheSize) + " cached paths");
+            PATHFIND_INFO("Cleared " + std::to_string(cacheSize) + " cached paths for state transition");
         }
     }
 
@@ -1161,18 +1161,10 @@ void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
 }
 
 void PathfinderManager::onWorldUnloaded() {
-    PATHFIND_INFO("World unloaded - clearing all pathfinding cache and pending requests");
+    PATHFIND_INFO("Responding to WorldUnloadedEvent");
 
-    // Clear all cached paths
-    clearAllCache();
-
-    // Clear pending callbacks since entities may no longer exist
-    {
-        std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
-        m_pending.clear();
-    }
-
-    PATHFIND_INFO("Pathfinding cache and pending requests cleared");
+    // Cache and pending requests already cleared by prepareForStateTransition()
+    // This event handler serves as confirmation that world cleanup completed
 }
 
 void PathfinderManager::onTileChanged(int x, int y) {
