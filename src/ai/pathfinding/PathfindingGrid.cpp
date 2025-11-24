@@ -103,6 +103,10 @@ bool PathfindingGrid::isWorldBlocked(const Vector2D& pos) const {
 }
 
 void PathfindingGrid::rebuildFromWorld() {
+    rebuildFromWorld(0, m_h);
+}
+
+void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
     if (!world) { PATHFIND_WARN("rebuildFromWorld(): no active world"); return; }
@@ -112,8 +116,17 @@ void PathfindingGrid::rebuildFromWorld() {
     const int cellsH = m_h;
     if (cellsW <= 0 || cellsH <= 0) { PATHFIND_WARN("rebuildFromWorld(): invalid grid dims"); return; }
 
-    m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
-    m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+    // Clamp row range to valid bounds
+    rowStart = std::clamp(rowStart, 0, cellsH);
+    rowEnd = std::clamp(rowEnd, 0, cellsH);
+    if (rowStart >= rowEnd) { PATHFIND_WARN("rebuildFromWorld(): invalid row range"); return; }
+
+    // Only initialize arrays on full rebuild (rowStart == 0 && rowEnd == cellsH)
+    const bool isFullRebuild = (rowStart == 0 && rowEnd == cellsH);
+    if (isFullRebuild) {
+        m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
+        m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+    }
 
     const int tilesH = static_cast<int>(world->grid.size());
     const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
@@ -123,7 +136,7 @@ void PathfindingGrid::rebuildFromWorld() {
     int blockedCount = 0;
     int collisionBlockedCount = 0;
 
-    for (int cy = 0; cy < cellsH; ++cy) {
+    for (int cy = rowStart; cy < rowEnd; ++cy) {
         // Check if ThreadSystem is shutting down (matches EventManager pattern)
         // This allows worker thread to exit early during shutdown
         if (!HammerEngine::ThreadSystem::Exists() ||
@@ -159,13 +172,13 @@ void PathfindingGrid::rebuildFromWorld() {
                     // BUILDING obstacles and MOUNTAIN biome tiles are truly blocked, ROCK/TREE have movement penalties
                     bool blocked = tile.obstacleType == ObstacleType::BUILDING || tile.biome == Biome::MOUNTAIN;
                     if (blocked) blockedTiles++;
-                    
+
                     // Movement weight penalties: BUILDING=blocked, WATER=2.0x, ROCK/TREE=2.5x, normal=1.0x
                     float tw = 1.0f;
                     if (tile.isWater) {
                         tw = 2.0f;  // Water movement penalty
                     } else if (tile.obstacleType == ObstacleType::ROCK || tile.obstacleType == ObstacleType::TREE) {
-                        tw = 2.5f;  // Rock/Tree movement penalty 
+                        tw = 2.5f;  // Rock/Tree movement penalty
                     }
                     weightSum += tw;
                     totalTiles++;
@@ -204,14 +217,16 @@ void PathfindingGrid::rebuildFromWorld() {
         }
     }
 
-    PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
-                  ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
-                  " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)" +
-                  ", collision-blocked=" + std::to_string(collisionBlockedCount) + " cells");
-    
-    // Update coarse grid for hierarchical pathfinding
-    if (m_coarseGrid) {
-        updateCoarseGrid();
+    // Only log and update coarse grid on full rebuild
+    if (isFullRebuild) {
+        PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
+                      ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
+                      " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)" +
+                      ", collision-blocked=" + std::to_string(collisionBlockedCount) + " cells");
+
+        // Update coarse grid for hierarchical pathfinding
+        if (m_coarseGrid) {
+            updateCoarseGrid();
         
         // Log coarse grid statistics for debugging
         int coarseW = m_coarseGrid->getWidth();
@@ -230,6 +245,7 @@ void PathfindingGrid::rebuildFromWorld() {
         PATHFIND_DEBUG("Coarse grid updated: " + std::to_string(coarseW) + "x" + std::to_string(coarseH) +
                      ", blocked=" + std::to_string(coarseBlockedCount) + "/" + std::to_string(coarseW * coarseH) +
                      " (" + std::to_string(coarseBlockedPercent) + "% blocked)");
+        }
     }
 }
 
