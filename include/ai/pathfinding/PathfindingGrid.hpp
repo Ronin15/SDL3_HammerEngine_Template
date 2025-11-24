@@ -36,7 +36,9 @@ class PathfindingGrid {
 public:
     PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset, bool createCoarseGrid = true);
 
-    void rebuildFromWorld();                 // pull from WorldManager::grid
+    void rebuildFromWorld();                 // pull from WorldManager::grid (full rebuild)
+    void rebuildFromWorld(int rowStart, int rowEnd); // rebuild specific row range (for parallel batching)
+    void updateCoarseGrid();                 // update hierarchical coarse grid (call after parallel batch rebuild)
     PathfindingResult findPath(const Vector2D& start, const Vector2D& goal,
                                std::vector<Vector2D>& outPath);
     
@@ -115,7 +117,6 @@ private:
     
     // Hierarchical pathfinding helpers
     void initializeCoarseGrid();
-    void updateCoarseGrid();
     PathfindingResult refineCoarsePath(const std::vector<Vector2D>& coarsePath,
                                      const Vector2D& start, const Vector2D& goal,
                                      std::vector<Vector2D>& outPath);

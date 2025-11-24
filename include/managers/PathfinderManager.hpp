@@ -422,6 +422,9 @@ private:
     static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)
     static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;    // Rate limiting (60 FPS = 45K requests/sec capacity)
 
+    // Grid rebuild batching configuration
+    static constexpr size_t MIN_GRID_ROWS_FOR_BATCHING = 64; // Batch grid rebuild when grid has 64+ rows
+
     // Request buffer for batching (instead of immediate submission)
     struct BufferedRequest {
         EntityID entityId;
