@@ -76,6 +76,7 @@ private:
     std::atomic<float> m_progress{0.0f};
     std::atomic<bool> m_loadComplete{false};
     std::atomic<bool> m_loadFailed{false};
+    std::atomic<bool> m_waitingForPathfinding{false};
 
     // Status message (mutex-protected for string safety)
     std::string m_statusText{"Initializing..."};

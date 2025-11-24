@@ -10,6 +10,7 @@
 #include "managers/GameStateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include <random>
 
 void LoadingState::configure(const std::string& targetStateName,
@@ -21,6 +22,7 @@ void LoadingState::configure(const std::string& targetStateName,
     m_progress.store(0.0f, std::memory_order_release);
     m_loadComplete.store(false, std::memory_order_release);
     m_loadFailed.store(false, std::memory_order_release);
+    m_waitingForPathfinding.store(false, std::memory_order_release);
     setStatusText("Initializing...");
 
     // Clear any previous error
@@ -53,35 +55,52 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
     if (m_loadComplete.load(std::memory_order_relaxed)) {
         // Slow path: Verify with acquire barrier only when likely true
         if (m_loadComplete.load(std::memory_order_acquire)) {
+            // Check if we need to wait for pathfinding grid
+            if (!m_waitingForPathfinding.load(std::memory_order_acquire)) {
+                // World loading just completed - now wait for pathfinding
+                m_waitingForPathfinding.store(true, std::memory_order_release);
+                setStatusText("Preparing pathfinding grid...");
+                GAMESTATE_INFO("World loading complete - waiting for pathfinding grid");
+                return; // Wait for next frame to check grid readiness
+            }
+
+            // Check if pathfinding grid is ready
+            auto& pathfinderManager = PathfinderManager::Instance();
+            if (!pathfinderManager.isGridReady()) {
+                // Grid still building - keep waiting
+                return;
+            }
+
+            // Both world and pathfinding grid are ready - proceed with transition
             if (m_loadFailed.load(std::memory_order_acquire)) {
-            std::string errorMsg = "World loading failed - transitioning anyway";
-            GAMESTATE_ERROR(errorMsg);
+                std::string errorMsg = "World loading failed - transitioning anyway";
+                GAMESTATE_ERROR(errorMsg);
 
-            // Store error if not already set by the loadTask lambda
-            if (!hasError()) {
-                std::lock_guard<std::mutex> lock(m_errorMutex);
-                m_lastError = errorMsg;
+                // Store error if not already set by the loadTask lambda
+                if (!hasError()) {
+                    std::lock_guard<std::mutex> lock(m_errorMutex);
+                    m_lastError = errorMsg;
+                }
+                // Continue to target state even on failure (matches current behavior)
+            } else {
+                GAMESTATE_INFO("World and pathfinding ready - transitioning to " + m_targetStateName);
             }
-            // Continue to target state even on failure (matches current behavior)
-        } else {
-            GAMESTATE_INFO("World loading complete - transitioning to " + m_targetStateName);
-        }
 
-        // Transition to target state
-        const auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        if (gameStateManager && gameStateManager->hasState(m_targetStateName)) {
-            gameStateManager->changeState(m_targetStateName);
-        } else {
-            std::string errorMsg = "Target state not found: " + m_targetStateName;
-            GAMESTATE_ERROR(errorMsg);
+            // Transition to target state
+            const auto& gameEngine = GameEngine::Instance();
+            auto* gameStateManager = gameEngine.getGameStateManager();
+            if (gameStateManager && gameStateManager->hasState(m_targetStateName)) {
+                gameStateManager->changeState(m_targetStateName);
+            } else {
+                std::string errorMsg = "Target state not found: " + m_targetStateName;
+                GAMESTATE_ERROR(errorMsg);
 
-            // Store error for diagnostic purposes
-            {
-                std::lock_guard<std::mutex> lock(m_errorMutex);
-                m_lastError = errorMsg;
+                // Store error for diagnostic purposes
+                {
+                    std::lock_guard<std::mutex> lock(m_errorMutex);
+                    m_lastError = errorMsg;
+                }
             }
-        }
         }
     }
 }
