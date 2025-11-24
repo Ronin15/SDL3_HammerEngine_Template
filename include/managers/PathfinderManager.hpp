@@ -170,8 +170,9 @@ public:
 
     /**
      * @brief Rebuild the pathfinding grid from world data
+     * @param allowIncremental If true, allow incremental rebuild if grid has dirty regions (default: true)
      */
-    void rebuildGrid();
+    void rebuildGrid(bool allowIncremental = true);
 
     /**
      * @brief Add a temporary weight field (for avoidance)
@@ -424,6 +425,9 @@ private:
 
     // Grid rebuild batching configuration
     static constexpr size_t MIN_GRID_ROWS_FOR_BATCHING = 64; // Batch grid rebuild when grid has 64+ rows
+
+    // Incremental update configuration
+    static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty
 
     // Request buffer for batching (instead of immediate submission)
     struct BufferedRequest {

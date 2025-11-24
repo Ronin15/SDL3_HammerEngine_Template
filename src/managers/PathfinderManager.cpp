@@ -361,15 +361,48 @@ bool PathfinderManager::hasPendingWork() const {
     return false; // No queue - work submitted directly to ThreadSystem
 }
 
-void PathfinderManager::rebuildGrid() {
-    // PARALLEL OPTIMIZATION: Use WorkerBudget coordination for batch processing
-    // Split grid rebuild into row batches using allocated pathfinding workers
-    // Expected speedup: 2-4× on typical systems (uses budget.pathfindingAllocated workers)
+void PathfinderManager::rebuildGrid(bool allowIncremental) {
+    // HYBRID OPTIMIZATION: Smart decision between full parallel rebuild and incremental update
+    // - Full rebuild: Use WorkerBudget parallel batching (2-4× speedup)
+    // - Incremental: Rebuild only dirty regions (~10-30× speedup for small changes)
 
     const auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
         PATHFIND_DEBUG("Cannot rebuild grid - no active world");
         return;
+    }
+
+    // Smart rebuild decision: check if incremental update is beneficial
+    if (allowIncremental && m_grid && m_grid->hasDirtyRegions()) {
+        float dirtyPercent = m_grid->calculateDirtyPercent();
+
+        if (dirtyPercent <= DIRTY_THRESHOLD_PERCENT * 100.0f) {
+            // Incremental update is beneficial (small change)
+            PATHFIND_DEBUG("Incremental rebuild: " + std::to_string(dirtyPercent) +
+                          "% dirty (threshold: " + std::to_string(DIRTY_THRESHOLD_PERCENT * 100.0f) + "%)");
+
+            // Submit incremental rebuild to ThreadSystem (non-blocking)
+            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            auto rebuildFuture = threadSystem.enqueueTaskWithResult(
+                [this]() {
+                    if (m_grid) {
+                        m_grid->rebuildDirtyRegions();
+                        PATHFIND_INFO("Incremental grid rebuild complete");
+                    }
+                },
+                HammerEngine::TaskPriority::Low,
+                "PathfindingGridRebuild_Incremental"
+            );
+
+            std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+            m_gridRebuildFutures.push_back(std::move(rebuildFuture));
+            return; // Early return - incremental rebuild submitted
+        } else {
+            // Too much dirty (>25%) - full rebuild is faster
+            PATHFIND_DEBUG("Full rebuild: " + std::to_string(dirtyPercent) +
+                          "% dirty exceeds threshold (" + std::to_string(DIRTY_THRESHOLD_PERCENT * 100.0f) + "%)");
+            m_grid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
+        }
     }
 
     int worldWidth = 0, worldHeight = 0;
@@ -1251,9 +1284,30 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
         }
         
         if (removedCount > 0) {
-            PATHFIND_DEBUG("Invalidated " + std::to_string(removedCount) + 
+            PATHFIND_DEBUG("Invalidated " + std::to_string(removedCount) +
                           " cached paths due to obstacle change: " + description);
         }
+    }
+
+    // Mark dirty region on pathfinding grid for incremental update
+    if (m_grid) {
+        // Convert world position to grid cell coordinates
+        int gridX = static_cast<int>((position.getX()) / m_cellSize);
+        int gridY = static_cast<int>((position.getY()) / m_cellSize);
+        int gridRadius = static_cast<int>(std::ceil(radius / m_cellSize)) + 1; // +1 for safety margin
+
+        // Mark circular dirty region
+        for (int dy = -gridRadius; dy <= gridRadius; ++dy) {
+            for (int dx = -gridRadius; dx <= gridRadius; ++dx) {
+                float distSq = dx * dx + dy * dy;
+                if (distSq <= gridRadius * gridRadius) {
+                    m_grid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
+                }
+            }
+        }
+        PATHFIND_DEBUG("Marked dirty region for obstacle change at grid (" +
+                      std::to_string(gridX) + "," + std::to_string(gridY) +
+                      ") radius " + std::to_string(gridRadius));
     }
 }
 
@@ -1264,10 +1318,10 @@ void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
     // Clear all cached paths - old world paths are completely invalid
     clearAllCache();
 
-    // Rebuild pathfinding grid from new world data
+    // Rebuild pathfinding grid from new world data (always full rebuild for world loads)
     // Note: calculateOptimalCacheSettings() and prewarmPathCache() are called
     // automatically when the async rebuild completes (see rebuildGrid() implementation)
-    rebuildGrid();
+    rebuildGrid(false); // allowIncremental=false for world loads
 
     PATHFIND_INFO("Pathfinding grid rebuild initiated (async)");
 }
@@ -1314,6 +1368,20 @@ void PathfinderManager::onTileChanged(int x, int y) {
     if (removedCount > 0) {
         PATHFIND_DEBUG("Tile changed at (" + std::to_string(x) + ", " + std::to_string(y) +
                       "), invalidated " + std::to_string(removedCount) + " cached paths");
+    }
+
+    // Mark dirty region on pathfinding grid for incremental update
+    if (m_grid) {
+        // Convert tile coordinates to grid cell coordinates
+        // Tile coordinates are in world tiles, grid cells may be different size
+        constexpr float TILE_SIZE = 64.0f;
+        int gridX = static_cast<int>((x * TILE_SIZE) / m_cellSize);
+        int gridY = static_cast<int>((y * TILE_SIZE) / m_cellSize);
+
+        // Mark single cell dirty (tile changes typically affect one cell)
+        m_grid->markDirtyRegion(gridX, gridY, 1, 1);
+        PATHFIND_DEBUG("Marked dirty region for tile change at grid (" +
+                      std::to_string(gridX) + "," + std::to_string(gridY) + ")");
     }
 }
 
