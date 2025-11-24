@@ -228,6 +228,23 @@ bool PathfinderManager::isShutdown() const {
     return m_isShutdown;
 }
 
+bool PathfinderManager::isGridReady() const {
+    // Grid is ready if it exists and all rebuild tasks are complete
+    if (!m_grid) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_gridRebuildFuturesMutex));
+
+    // Check if all futures are ready (completed or invalid)
+    for (const auto& future : m_gridRebuildFutures) {
+        if (future.valid() && future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+            return false;  // At least one rebuild task still running
+        }
+    }
+    return true;  // All tasks complete or no tasks running
+}
+
 uint64_t PathfinderManager::requestPath(
     EntityID entityId,
     const Vector2D& start,

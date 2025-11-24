@@ -122,6 +122,12 @@ public:
      */
     bool isShutdown() const;
 
+    /**
+     * @brief Checks if the pathfinding grid is ready for use
+     * @return true if grid exists and no pending rebuilds, false otherwise
+     */
+    bool isGridReady() const;
+
     // ===== Pathfinding Request Interface =====
 
     /**
