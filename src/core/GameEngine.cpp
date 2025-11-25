@@ -1005,15 +1005,15 @@ void GameEngine::update(float deltaTime) {
     GAMEENGINE_DEBUG("  Swap Success Rate: " +
                      std::to_string(m_bufferTelemetry.getSwapSuccessRate()) + "%");
     GAMEENGINE_DEBUG("  Swap Stats: " +
-                     std::to_string(m_bufferTelemetry.swapSuccesses) + " success / " +
-                     std::to_string(m_bufferTelemetry.swapBlocked) + " blocked / " +
-                     std::to_string(m_bufferTelemetry.casFailures) + " CAS failures");
-    GAMEENGINE_DEBUG("  Render Stalls: " + std::to_string(m_bufferTelemetry.renderStalls));
-    GAMEENGINE_DEBUG("  Frames Skipped: " + std::to_string(m_bufferTelemetry.framesSkipped));
+                     std::to_string(m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed)) + " success / " +
+                     std::to_string(m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed)) + " blocked / " +
+                     std::to_string(m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)) + " CAS failures");
+    GAMEENGINE_DEBUG("  Render Stalls: " + std::to_string(m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG("  Frames Skipped: " + std::to_string(m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG("  Avg Mutex Wait: " +
-                     std::to_string(m_bufferTelemetry.avgMutexWaitMs) + "ms");
+                     std::to_string(m_bufferTelemetry.avgMutexWaitMs.load(std::memory_order_relaxed)) + "ms");
     GAMEENGINE_DEBUG("  Avg Buffer Ready Delay: " +
-                     std::to_string(m_bufferTelemetry.avgBufferReadyMs) + "ms");
+                     std::to_string(m_bufferTelemetry.avgBufferReadyMs.load(std::memory_order_relaxed)) + "ms");
     GAMEENGINE_DEBUG("  Current Buffers: [Write:" +
                      std::to_string(m_currentBufferIndex.load(std::memory_order_relaxed)) +
                      " Read:" + std::to_string(m_renderBufferIndex.load(std::memory_order_relaxed)) + "]");
@@ -1076,7 +1076,7 @@ void GameEngine::swapBuffers() {
 
 #ifdef DEBUG
   // TELEMETRY POINT 1: Track swap attempt
-  m_bufferTelemetry.swapAttempts++;
+  m_bufferTelemetry.swapAttempts.fetch_add(1, std::memory_order_relaxed);
 #endif
 
   // TRIPLE BUFFERING OPTIMIZATION:
@@ -1109,18 +1109,18 @@ void GameEngine::swapBuffers() {
 
 #ifdef DEBUG
       // TELEMETRY POINT 2: Successful swap
-      m_bufferTelemetry.swapSuccesses++;
+      m_bufferTelemetry.swapSuccesses.fetch_add(1, std::memory_order_relaxed);
 #endif
     } else {
 #ifdef DEBUG
       // TELEMETRY POINT 3: CAS failure (atomic contention)
-      m_bufferTelemetry.casFailures++;
+      m_bufferTelemetry.casFailures.fetch_add(1, std::memory_order_relaxed);
 #endif
     }
   } else {
 #ifdef DEBUG
     // TELEMETRY POINT 4: Swap blocked (buffer not ready or rendering conflict)
-    m_bufferTelemetry.swapBlocked++;
+    m_bufferTelemetry.swapBlocked.fetch_add(1, std::memory_order_relaxed);
 #endif
   }
 }
@@ -1133,7 +1133,7 @@ bool GameEngine::hasNewFrameToRender() const noexcept {
   if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
 #ifdef DEBUG
     // TELEMETRY POINT 5: Render stall (no buffer ready)
-    m_bufferTelemetry.renderStalls++;
+    m_bufferTelemetry.renderStalls.fetch_add(1, std::memory_order_relaxed);
 #endif
     return false;
   }
@@ -1146,7 +1146,7 @@ bool GameEngine::hasNewFrameToRender() const noexcept {
 #ifdef DEBUG
   // TELEMETRY POINT 6: Frame skipped (update hasn't advanced)
   if (lastUpdate == lastRendered) {
-    m_bufferTelemetry.framesSkipped++;
+    m_bufferTelemetry.framesSkipped.fetch_add(1, std::memory_order_relaxed);
   }
 #endif
 

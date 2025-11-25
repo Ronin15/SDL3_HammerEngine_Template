@@ -35,31 +35,36 @@ class CollisionManager;
  *
  * Only compiled in DEBUG builds for zero-overhead performance monitoring.
  * Follows EventManager's PerformanceStats pattern for consistency.
+ *
+ * Thread Safety: Counters use atomics (Main/Render thread increments).
+ * Timing arrays accessed only from Update thread via addTimingSample().
+ * Read operations (getSwapSuccessRate, avgMutexWaitMs) are safe for display.
  */
 struct BufferTelemetryStats {
-    // Swap tracking
-    uint64_t swapAttempts{0};        // Total buffer swap attempts
-    uint64_t swapSuccesses{0};       // Successful swaps (buffer available)
-    uint64_t swapBlocked{0};         // Swaps blocked (buffer not ready or rendering conflict)
-    uint64_t casFailures{0};         // Compare-and-swap failures (atomic contention)
+    // Swap tracking (atomic - incremented from Main/Render thread)
+    std::atomic<uint64_t> swapAttempts{0};   // Total buffer swap attempts
+    std::atomic<uint64_t> swapSuccesses{0};  // Successful swaps (buffer available)
+    std::atomic<uint64_t> swapBlocked{0};    // Swaps blocked (buffer not ready or rendering conflict)
+    std::atomic<uint64_t> casFailures{0};    // Compare-and-swap failures (atomic contention)
 
-    // Render tracking
-    uint64_t renderStalls{0};        // Render stalled (no buffer ready)
-    uint64_t framesSkipped{0};       // Frames where lastUpdate == lastRendered
+    // Render tracking (atomic - incremented from Main/Render thread)
+    std::atomic<uint64_t> renderStalls{0};   // Render stalled (no buffer ready)
+    std::atomic<uint64_t> framesSkipped{0};  // Frames where lastUpdate == lastRendered
 
-    // Timing (rolling averages over 60 frames)
+    // Timing (rolling averages over 60 frames) - accessed only from Update thread
     static constexpr size_t SAMPLE_SIZE = 60;
     std::array<double, SAMPLE_SIZE> mutexWaitTimes{};    // Time waiting for update mutex (ms)
     std::array<double, SAMPLE_SIZE> bufferReadyDelays{};  // Time from update complete to buffer ready (ms)
     size_t currentSample{0};
 
-    double avgMutexWaitMs{0.0};
-    double avgBufferReadyMs{0.0};
+    std::atomic<double> avgMutexWaitMs{0.0};
+    std::atomic<double> avgBufferReadyMs{0.0};
 
     /**
      * @brief Adds a timing sample to the rolling average
      * @param mutexWait Time spent waiting for update mutex (ms)
      * @param bufferDelay Time from update complete to buffer marked ready (ms)
+     * @note Called only from Update thread - timing arrays not shared
      */
     void addTimingSample(double mutexWait, double bufferDelay) {
         mutexWaitTimes[currentSample] = mutexWait;
@@ -73,25 +78,26 @@ struct BufferTelemetryStats {
             mutexSum += mutexWaitTimes[i];
             bufferSum += bufferReadyDelays[i];
         }
-        avgMutexWaitMs = mutexSum / SAMPLE_SIZE;
-        avgBufferReadyMs = bufferSum / SAMPLE_SIZE;
+        avgMutexWaitMs.store(mutexSum / SAMPLE_SIZE, std::memory_order_relaxed);
+        avgBufferReadyMs.store(bufferSum / SAMPLE_SIZE, std::memory_order_relaxed);
     }
 
     /**
      * @brief Resets all telemetry counters and timing samples
+     * @note Should be called when no other threads are accessing telemetry
      */
     void reset() {
-        swapAttempts = 0;
-        swapSuccesses = 0;
-        swapBlocked = 0;
-        casFailures = 0;
-        renderStalls = 0;
-        framesSkipped = 0;
+        swapAttempts.store(0, std::memory_order_relaxed);
+        swapSuccesses.store(0, std::memory_order_relaxed);
+        swapBlocked.store(0, std::memory_order_relaxed);
+        casFailures.store(0, std::memory_order_relaxed);
+        renderStalls.store(0, std::memory_order_relaxed);
+        framesSkipped.store(0, std::memory_order_relaxed);
         mutexWaitTimes.fill(0.0);
         bufferReadyDelays.fill(0.0);
         currentSample = 0;
-        avgMutexWaitMs = 0.0;
-        avgBufferReadyMs = 0.0;
+        avgMutexWaitMs.store(0.0, std::memory_order_relaxed);
+        avgBufferReadyMs.store(0.0, std::memory_order_relaxed);
     }
 
     /**
@@ -99,8 +105,10 @@ struct BufferTelemetryStats {
      * @return Swap success rate (0.0 to 100.0)
      */
     double getSwapSuccessRate() const {
-        if (swapAttempts == 0) return 100.0;
-        return (static_cast<double>(swapSuccesses) / swapAttempts) * 100.0;
+        uint64_t attempts = swapAttempts.load(std::memory_order_relaxed);
+        if (attempts == 0) return 100.0;
+        uint64_t successes = swapSuccesses.load(std::memory_order_relaxed);
+        return (static_cast<double>(successes) / attempts) * 100.0;
     }
 };
 #endif // DEBUG
