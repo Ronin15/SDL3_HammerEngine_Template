@@ -39,6 +39,7 @@ public:
 
     void rebuildFromWorld();                 // pull from WorldManager::grid (full rebuild)
     void rebuildFromWorld(int rowStart, int rowEnd); // rebuild specific row range (for parallel batching)
+    void initializeArrays();                 // initialize grid arrays without processing (for parallel batching)
     void updateCoarseGrid();                 // update hierarchical coarse grid (call after parallel batch rebuild)
 
     // Incremental update support

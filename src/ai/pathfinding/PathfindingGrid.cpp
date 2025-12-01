@@ -106,6 +106,17 @@ void PathfindingGrid::rebuildFromWorld() {
     rebuildFromWorld(0, m_h);
 }
 
+void PathfindingGrid::initializeArrays() {
+    const int cellsW = m_w;
+    const int cellsH = m_h;
+    if (cellsW <= 0 || cellsH <= 0) {
+        PATHFIND_WARN("initializeArrays(): invalid grid dims");
+        return;
+    }
+    m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
+    m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+}
+
 void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
