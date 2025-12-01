@@ -171,30 +171,6 @@ void SettingsMenuState::applySettings() {
                    " - restart required for changes to take effect");
 }
 
-void SettingsMenuState::revertSettings() {
-    loadCurrentSettings();
-
-    // Update UI to reflect reverted values
-    auto& ui = UIManager::Instance();
-
-    // Graphics
-    ui.setValue("settings_vsync_checkbox", m_tempSettings.vsync ? 1.0f : 0.0f);
-    ui.setChecked("settings_vsync_checkbox", m_tempSettings.vsync);
-    ui.setChecked("settings_fullscreen_checkbox", m_tempSettings.fullscreen);
-    ui.setChecked("settings_showfps_checkbox", m_tempSettings.showFps);
-    ui.setText("settings_buffer_button", m_tempSettings.bufferCount == 2 ? "Double (2)" : "Triple (3)");
-
-    // Audio
-    ui.setValue("settings_master_volume_slider", m_tempSettings.masterVolume);
-    ui.setValue("settings_music_volume_slider", m_tempSettings.musicVolume);
-    ui.setValue("settings_sfx_volume_slider", m_tempSettings.sfxVolume);
-    ui.setChecked("settings_mute_checkbox", m_tempSettings.muted);
-
-    // Gameplay
-    ui.setChecked("settings_autosave_checkbox", m_tempSettings.autosaveEnabled);
-
-    GAMESTATE_INFO("Settings reverted");
-}
 
 void SettingsMenuState::createTabButtons() {
     auto& ui = UIManager::Instance();

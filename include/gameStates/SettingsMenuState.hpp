@@ -72,10 +72,6 @@ private:
      */
     void applySettings();
 
-    /**
-     * @brief Revert temp settings to match current SettingsManager values
-     */
-    void revertSettings();
 
     /**
      * @brief Create tab button UI

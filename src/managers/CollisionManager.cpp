@@ -2278,7 +2278,6 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   size_t invalidatedCount = 0;
   for (auto it = m_coarseRegionStaticCache.begin(); it != m_coarseRegionStaticCache.end(); ) {
     const auto& coord = it->first;
-    auto& cache = it->second;
 
     // Calculate center of this coarse cell
     float cellCenterX = (coord.x + 0.5f) * COARSE_CELL_SIZE;
@@ -2289,6 +2288,7 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
                          cellCenterY < evictionMinY || cellCenterY > evictionMaxY);
 
     if (outsideBounds) {
+      auto& cache = it->second;
       // Cache entry is far from active area - increment stale count
       cache.staleCount++;
 

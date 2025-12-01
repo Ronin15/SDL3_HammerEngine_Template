@@ -650,7 +650,6 @@ private:
   std::string getEventTypeName(EventTypeId typeId) const;
   void updateEventTypeBatch(EventTypeId typeId) const;
   void updateEventTypeBatchThreaded(EventTypeId typeId);
-  void processEventDirect(EventData &eventData);
   void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;
