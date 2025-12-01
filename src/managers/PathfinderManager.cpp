@@ -237,12 +237,10 @@ bool PathfinderManager::isGridReady() const {
     std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_gridRebuildFuturesMutex));
 
     // Check if all futures are ready (completed or invalid)
-    for (const auto& future : m_gridRebuildFutures) {
-        if (future.valid() && future.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
-            return false;  // At least one rebuild task still running
-        }
-    }
-    return true;  // All tasks complete or no tasks running
+    return std::all_of(m_gridRebuildFutures.begin(), m_gridRebuildFutures.end(),
+        [](const auto& future) {
+            return !future.valid() || future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+        });
 }
 
 uint64_t PathfinderManager::requestPath(
@@ -1333,13 +1331,13 @@ void PathfinderManager::onWorldUnloaded() {
 }
 
 void PathfinderManager::onTileChanged(int x, int y) {
-    // Convert tile coordinates to world position (assuming 64px tiles)
-    constexpr float TILE_SIZE = 64.0f;
-    Vector2D tileWorldPos(x * TILE_SIZE + TILE_SIZE * 0.5f, y * TILE_SIZE + TILE_SIZE * 0.5f);
+    // Convert tile coordinates to world position using global tile size constant
+    Vector2D tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                          y * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
 
     // Invalidate paths that pass through or near the changed tile
     // Use slightly larger radius than tile size to catch paths that pass nearby
-    constexpr float INVALIDATION_RADIUS = TILE_SIZE * 1.5f;
+    constexpr float INVALIDATION_RADIUS = HammerEngine::TILE_SIZE * 1.5f;
 
     std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
     size_t removedCount = 0;
@@ -1373,9 +1371,8 @@ void PathfinderManager::onTileChanged(int x, int y) {
     if (m_grid) {
         // Convert tile coordinates to grid cell coordinates
         // Tile coordinates are in world tiles, grid cells may be different size
-        constexpr float TILE_SIZE = 64.0f;
-        int gridX = static_cast<int>((x * TILE_SIZE) / m_cellSize);
-        int gridY = static_cast<int>((y * TILE_SIZE) / m_cellSize);
+        int gridX = static_cast<int>((x * HammerEngine::TILE_SIZE) / m_cellSize);
+        int gridY = static_cast<int>((y * HammerEngine::TILE_SIZE) / m_cellSize);
 
         // Mark single cell dirty (tile changes typically affect one cell)
         m_grid->markDirtyRegion(gridX, gridY, 1, 1);
