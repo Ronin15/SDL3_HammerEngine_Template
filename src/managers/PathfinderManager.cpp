@@ -511,13 +511,12 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                 newGrid->setAllowDiagonal(allowDiagonal);
                 newGrid->setMaxIterations(maxIterations);
 
-                // Initialize arrays once with full rebuild (initializes m_blocked and m_weight)
-                // This triggers isFullRebuild=true which initializes arrays
-                // But we immediately override with parallel batches, so this is just initialization
-                newGrid->rebuildFromWorld(0, gridHeight);
+                // Initialize arrays only - don't process any cells yet
+                // Batches will process all cells in parallel
+                newGrid->initializeArrays();
 
-                // Now submit row batches to process cells in parallel
-                // Each batch skips initialization (isFullRebuild=false) and just processes its row range
+                // Submit row batches to process cells in parallel
+                // Each batch processes its row range without re-initializing arrays
                 std::vector<std::future<void>> batchFutures;
                 batchFutures.reserve(batchCount);
 
