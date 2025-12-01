@@ -1108,20 +1108,6 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   }
 }
 
-void EventManager::processEventDirect(EventData &eventData) {
-  if (!eventData.event) {
-    return;
-  }
-
-  // Only update the event, don't automatically execute or call handlers
-  // Events should only execute when explicitly triggered, not every frame
-  eventData.event->update();
-
-  // Note: Handlers are only called when events are explicitly triggered
-  // via changeWeather(), changeScene(), spawnNPC(), etc.
-  // This prevents the continuous handler from being called repeatedly
-}
-
 bool EventManager::changeWeather(const std::string &weatherType,
                                  float transitionTime,
                                  DispatchMode mode) const {

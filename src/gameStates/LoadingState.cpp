@@ -65,7 +65,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
             }
 
             // Check if pathfinding grid is ready
-            auto& pathfinderManager = PathfinderManager::Instance();
+            const auto& pathfinderManager = PathfinderManager::Instance();
             if (!pathfinderManager.isGridReady()) {
                 // Grid still building - keep waiting
                 return;

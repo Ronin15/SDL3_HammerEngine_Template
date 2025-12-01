@@ -15,6 +15,8 @@
 #include <unordered_map>
 #include <atomic>
 #include <stdexcept>
+#include <algorithm>
+#include <numeric>
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 
@@ -212,12 +214,10 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
 
                 // Filter to only STATIC bodies (buildings, world obstacles)
                 // KINEMATIC (NPCs) and DYNAMIC (player, projectiles) should NOT permanently block paths
-                for (EntityID bodyId : bodiesInCell) {
-                    if (CollisionManager::Instance().isStatic(bodyId)) {
-                        cellBlocked = true;
-                        collisionBlockedCount++;
-                        break; // Found at least one static obstacle
-                    }
+                if (std::any_of(bodiesInCell.begin(), bodiesInCell.end(),
+                    [](EntityID bodyId) { return CollisionManager::Instance().isStatic(bodyId); })) {
+                    cellBlocked = true;
+                    collisionBlockedCount++;
                 }
             }
 
@@ -360,10 +360,8 @@ float PathfindingGrid::calculateDirtyPercent() const {
     }
 
     // Calculate total dirty cells (with overlap handling)
-    int totalDirtyCells = 0;
-    for (const auto& region : m_dirtyRegions) {
-        totalDirtyCells += region.width * region.height;
-    }
+    int totalDirtyCells = std::accumulate(m_dirtyRegions.begin(), m_dirtyRegions.end(), 0,
+        [](int sum, const auto& region) { return sum + region.width * region.height; });
 
     // Simple approximation (may overcount overlaps, but conservative)
     int totalCells = m_w * m_h;
