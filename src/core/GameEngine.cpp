@@ -273,35 +273,13 @@ bool GameEngine::init(const std::string_view title, const int width,
                     " VSync: " + std::string(SDL_GetError()));
   }
 
-  // Verify VSync is actually working
-  int vsyncState = 0;
-  bool vsyncVerified = false;
-  if (vsyncSetSuccessfully && SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
-    if (vsyncRequested) {
-      // When enabling, verify it's actually on
-      vsyncVerified = (vsyncState > 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
-      } else {
-        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    } else {
-      // When disabling, verify it's actually off
-      vsyncVerified = (vsyncState == 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync disabled and verified");
-      } else {
-        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    }
-  } else {
-    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+  // Verify VSync state and update software frame limiting flag
+  // verifyVSyncState() updates m_usingSoftwareFrameLimiting as a side effect
+  if (vsyncSetSuccessfully) {
+    verifyVSyncState(vsyncRequested);
   }
 
-  // Configure software frame limiting as fallback when VSync is not working
-  // Use software limiting when: VSync requested but verification failed, or VSync intentionally disabled
-  m_usingSoftwareFrameLimiting = vsyncRequested ? !vsyncVerified : true;
-
+  // Log frame timing mode
   if (m_usingSoftwareFrameLimiting) {
     if (vsyncRequested) {
       GAMEENGINE_INFO("Using software frame limiting (VSync unavailable or failed verification)");
@@ -818,7 +796,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_currentBufferIndex.store(0, std::memory_order_release);
   m_renderBufferIndex.store(0, std::memory_order_release);
 
-  // Mark first buffer as ready with initial clear frame
+  // Mark first buffer as ready to ensure render() has a valid buffer before the first
+  // update() completes. This prevents a render stall on the very first frame where
+  // hasNewFrameToRender() would otherwise return false. The initial "frame" is just
+  // the cleared screen (HAMMER_GRAY background) set up above.
   m_bufferReady[0].store(true, std::memory_order_release);
   m_bufferReady[1].store(false, std::memory_order_release);
 
@@ -1166,16 +1147,32 @@ size_t GameEngine::getRenderBufferIndex() const noexcept {
 }
 
 void GameEngine::processBackgroundTasks() {
-  // This method can be used to perform background processing
-  // It should be safe to run on worker threads
+  // Background task processing hook for non-critical work
+  //
+  // PURPOSE: Provides a designated entry point for background processing that:
+  //   - Runs on worker threads via ThreadSystem (NOT the main thread)
+  //   - Executes asynchronously while main thread handles events/rendering
+  //   - Is separate from the main update loop to avoid impacting frame timing
+  //
+  // USE CASES:
+  //   - Asset pre-loading for upcoming game states
+  //   - Background save game serialization
+  //   - Analytics/telemetry data collection
+  //   - Periodic cache cleanup or memory defragmentation
+  //   - Network polling for non-latency-critical updates
+  //
+  // ARCHITECTURE NOTE:
+  //   Global systems (EventManager, AIManager, etc.) are updated in the main
+  //   update loop for deterministic ordering and proper synchronization.
+  //   This method is for truly asynchronous, non-critical tasks only.
+  //
+  // THREAD SAFETY:
+  //   Any work added here must be thread-safe and not require main-thread
+  //   resources (SDL rendering, UI state, etc.).
 
   try {
     // Background processing tasks can be added here
-    // Note: EventManager is now updated in the main update loop for optimal
-    // performance and consistency with other global systems (AI, Input)
-
-    // Example: Process non-critical background tasks
-    // These tasks can run while the main thread is handling rendering
+    // Currently a placeholder - extend as needed for specific use cases
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR("Exception in background tasks: " + std::string(e.what()));
   } catch (...) {
@@ -1355,36 +1352,8 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     return false;
   }
 
-  // Verify VSync is actually working
-  int vsyncState = 0;
-  bool vsyncVerified = false;
-
-  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
-    if (enable) {
-      // When enabling, verify it's actually on
-      vsyncVerified = (vsyncState > 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
-      } else {
-        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    } else {
-      // When disabling, verify it's actually off
-      vsyncVerified = (vsyncState == 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync disabled and verified");
-      } else {
-        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    }
-  } else {
-    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
-    vsyncVerified = false;
-  }
-
-  // Update software frame limiting flag
-  // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
-  m_usingSoftwareFrameLimiting = enable ? !vsyncVerified : true;
+  // Verify VSync state and update software frame limiting flag
+  bool vsyncVerified = verifyVSyncState(enable);
 
   // Update TimestepManager
   if (auto gameLoop = m_gameLoop.lock()) {
@@ -1393,6 +1362,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
                      std::string(m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
   }
 
+  // Log frame timing mode
   if (m_usingSoftwareFrameLimiting && enable) {
     GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
   } else if (!m_usingSoftwareFrameLimiting) {
@@ -1507,4 +1477,39 @@ int GameEngine::getOptimalDisplayIndex() const {
       SDL_GetDisplays(&displayCount), SDL_free);
   return (displayCount > 1) ? 1 : 0;
 #endif
+}
+
+bool GameEngine::verifyVSyncState(bool requested) {
+  // Verify VSync state matches requested setting
+  int vsyncState = 0;
+  bool vsyncVerified = false;
+
+  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
+    if (requested) {
+      // When enabling, verify it's actually on
+      vsyncVerified = (vsyncState > 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
+      } else {
+        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    } else {
+      // When disabling, verify it's actually off
+      vsyncVerified = (vsyncState == 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync disabled and verified");
+      } else {
+        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    }
+  } else {
+    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+    vsyncVerified = false;
+  }
+
+  // Update software frame limiting flag based on verification result
+  // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
+  m_usingSoftwareFrameLimiting = requested ? !vsyncVerified : true;
+
+  return vsyncVerified;
 }
