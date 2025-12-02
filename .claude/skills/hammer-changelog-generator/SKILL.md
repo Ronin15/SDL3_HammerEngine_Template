@@ -538,13 +538,8 @@ After generating the changelog:
    - Overall grade (if reviewed)
    - Key improvements
    - Files changed count
-   - Suggested next steps (commit, review, merge)
 
-3. **Provide commit command:**
-   ```bash
-   git add changelogs/CHANGELOG_[UPDATE_NAME].md
-   git commit -m "docs: Add changelog for [Update Name]"
-   ```
+**IMPORTANT: Do NOT commit anything. The user will handle commits manually.**
 
 ---
 
