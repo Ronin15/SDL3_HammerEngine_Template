@@ -190,16 +190,22 @@ public:
   void clean();
 
   /**
-   * @brief Processes background tasks using the thread system
+   * @brief Processes non-critical background tasks using the thread system
+   * @details Provides a designated entry point for asynchronous background work that
+   *          runs on worker threads (not the main thread). Suitable for:
+   *          - Asset pre-loading for upcoming game states
+   *          - Background save game serialization
+   *          - Analytics/telemetry data collection
+   *          - Periodic cache cleanup or memory defragmentation
+   *          - Network polling for non-latency-critical updates
+   *
+   * @note Global systems (EventManager, AIManager, etc.) are updated in the main
+   *       update loop for deterministic ordering. This method is for truly
+   *       asynchronous, non-critical tasks only.
+   * @warning Any work added must be thread-safe and not require main-thread
+   *          resources (SDL rendering, UI state, etc.).
    */
   void processBackgroundTasks();
-
-  /**
-   * @brief Loads resources asynchronously in background threads
-   * @param path Path to resources to load
-   * @return true if loading started successfully, false otherwise
-   */
-  bool loadResourcesAsync(const std::string &path);
 
   /**
    * @brief Checks if there's a new frame ready to render
@@ -409,6 +415,14 @@ public:
   bool isFullscreen() const noexcept { return m_isFullscreen; }
 
 private:
+  /**
+   * @brief Verifies VSync state matches the requested setting
+   * @param requested true if VSync should be enabled, false if disabled
+   * @return true if VSync state verified to match requested, false otherwise
+   * @details Updates m_usingSoftwareFrameLimiting based on verification result.
+   *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
+   */
+  bool verifyVSyncState(bool requested);
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};
