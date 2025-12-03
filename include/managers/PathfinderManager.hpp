@@ -122,6 +122,12 @@ public:
      */
     bool isShutdown() const;
 
+    /**
+     * @brief Checks if the pathfinding grid is ready for use
+     * @return true if grid exists and no pending rebuilds, false otherwise
+     */
+    bool isGridReady() const;
+
     // ===== Pathfinding Request Interface =====
 
     /**
@@ -164,8 +170,9 @@ public:
 
     /**
      * @brief Rebuild the pathfinding grid from world data
+     * @param allowIncremental If true, allow incremental rebuild if grid has dirty regions (default: true)
      */
-    void rebuildGrid();
+    void rebuildGrid(bool allowIncremental = true);
 
     /**
      * @brief Add a temporary weight field (for avoidance)
@@ -415,6 +422,12 @@ private:
     // Request batching configuration
     static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)
     static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;    // Rate limiting (60 FPS = 45K requests/sec capacity)
+
+    // Grid rebuild batching configuration
+    static constexpr size_t MIN_GRID_ROWS_FOR_BATCHING = 64; // Batch grid rebuild when grid has 64+ rows
+
+    // Incremental update configuration
+    static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty
 
     // Request buffer for batching (instead of immediate submission)
     struct BufferedRequest {

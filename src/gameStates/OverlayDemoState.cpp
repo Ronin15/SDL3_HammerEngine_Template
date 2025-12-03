@@ -5,6 +5,7 @@
 
 #include "gameStates/OverlayDemoState.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/UIConstants.hpp"
 #include "managers/InputManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
@@ -144,22 +145,37 @@ void OverlayDemoState::setupNoOverlayMode() {
     // NO OVERLAY - Perfect for HUD elements
     // This shows how HUD elements look without any background interference
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: HUD Elements (No Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: HUD Elements (No Overlay)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Health bars, Score, Minimap, Chat\nGame content remains fully visible");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
     // Enable text backgrounds for readability over variable backgrounds
     ui.enableTextBackground(MODE_LABEL, true);
     ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
-    // Simulate HUD elements
+    // Simulate HUD elements with proper positioning for fullscreen compatibility
     ui.createProgressBar(HEALTH_BAR, {20, 150, 200, 25}, 0.0f, 100.0f);
     ui.setValue(HEALTH_BAR, 75.0f);
-    ui.createLabel(SCORE_LABEL, {20, 185, 150, 20}, "Score: 12,450");
+    ui.setComponentPositioning(HEALTH_BAR, {UIPositionMode::TOP_ALIGNED, 20, 150, 200, 25});
 
-    // Minimap simulation
+    ui.createLabel(SCORE_LABEL, {20, 185, 150, 20}, "Score: 12,450");
+    ui.setComponentPositioning(SCORE_LABEL, {UIPositionMode::TOP_ALIGNED, 20, 185, 150, 20});
+
+    // Minimap simulation with right-alignment for fullscreen compatibility
     ui.createPanel(MINIMAP_PANEL, {ui.getLogicalWidth() - 160, 20, 140, 140});
+    ui.setComponentPositioning(MINIMAP_PANEL, {UIPositionMode::RIGHT_ALIGNED, 20, 20, 140, 140});
 
     // HUD elements and minimap use theme styling - no custom colors needed
 }
@@ -171,19 +187,36 @@ void OverlayDemoState::setupLightOverlayMode() {
     ui.setThemeMode("light");
     ui.createOverlay(); // Auto-detecting overlay creation
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Main Menu (Light Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Main Menu (Light Theme)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Main menus, Settings screens\nSubtle separation from background");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
     // Enable text backgrounds for readability over variable backgrounds
     ui.enableTextBackground(MODE_LABEL, true);
     ui.enableTextBackground(DESCRIPTION_LABEL, true);
 
-    // Simulate menu buttons
-    ui.createButton(MENU_BUTTON_1, {ui.getLogicalWidth()/2 - 100, 150, 200, 50}, "New Game");
-    ui.createButton(MENU_BUTTON_2, {ui.getLogicalWidth()/2 - 100, 220, 200, 50}, "Load Game");
-    ui.createButton(MENU_BUTTON_3, {ui.getLogicalWidth()/2 - 100, 290, 200, 50}, "Options");
+    // Simulate menu buttons using baseline coordinates for centering
+    const int buttonX = UIConstants::BASELINE_WIDTH/2 - 100; // Center in baseline space
+    ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "New Game");
+    ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Load Game");
+    ui.createButton(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Options");
+
+    // Set positioning to CENTERED_H for proper resizing during fullscreen toggle
+    ui.setComponentPositioning(MENU_BUTTON_1, {UIPositionMode::CENTERED_H, 0, 150, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_2, {UIPositionMode::CENTERED_H, 0, 220, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_3, {UIPositionMode::CENTERED_H, 0, 290, 200, 50});
 }
 
 void OverlayDemoState::setupDarkOverlayMode() {
@@ -193,40 +226,80 @@ void OverlayDemoState::setupDarkOverlayMode() {
     ui.setThemeMode("dark");
     ui.createOverlay(); // Auto-detecting overlay creation
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Pause Menu (Dark Theme)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
-                   "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
 
-    // Simulate pause menu
-    ui.createButton(MENU_BUTTON_1, {ui.getLogicalWidth()/2 - 100, 150, 200, 50}, "Resume");
-    ui.createButton(MENU_BUTTON_2, {ui.getLogicalWidth()/2 - 100, 220, 200, 50}, "Settings");
-    ui.createButtonDanger(MENU_BUTTON_3, {ui.getLogicalWidth()/2 - 100, 290, 200, 50}, "Quit to Menu");
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Pause Menu (Dark Theme)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
+                   "Perfect for: Pause menus, In-game menus\nDarker theme for focus during gameplay");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
+
+    // Simulate pause menu using baseline coordinates for centering
+    const int buttonX = UIConstants::BASELINE_WIDTH/2 - 100; // Center in baseline space
+    ui.createButton(MENU_BUTTON_1, {buttonX, 150, 200, 50}, "Resume");
+    ui.createButton(MENU_BUTTON_2, {buttonX, 220, 200, 50}, "Settings");
+    ui.createButtonDanger(MENU_BUTTON_3, {buttonX, 290, 200, 50}, "Quit to Menu");
+
+    // Set positioning to CENTERED_H for proper resizing during fullscreen toggle
+    ui.setComponentPositioning(MENU_BUTTON_1, {UIPositionMode::CENTERED_H, 0, 150, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_2, {UIPositionMode::CENTERED_H, 0, 220, 200, 50});
+    ui.setComponentPositioning(MENU_BUTTON_3, {UIPositionMode::CENTERED_H, 0, 290, 200, 50});
 
 }
 
 void OverlayDemoState::setupModalOverlayMode() {
     auto& ui = UIManager::Instance();
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Modal Dialog (Strong Overlay)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Confirmation dialogs, Settings panels\nStrong overlay demands attention");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
-    // Simulate modal dialog using auto-centered positioning
-    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "dark");
-    
-    int dialogX = (ui.getLogicalWidth() - 400) / 2;
-    int dialogY = (ui.getLogicalHeight() - 200) / 2;
+    // Calculate dialog position in baseline space (1920x1080) using UIConstants
+    const int dialogWidth = UIConstants::DEFAULT_DIALOG_WIDTH;
+    const int dialogHeight = UIConstants::DEFAULT_DIALOG_HEIGHT;
+    const int dialogX = (UIConstants::BASELINE_WIDTH - dialogWidth) / 2;   // 760
+    const int dialogY = (UIConstants::BASELINE_HEIGHT - dialogHeight) / 2; // 440
 
+    // Create centered dialog with standardized dimensions
+    ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "dark");
+
+    // Position child components using absolute baseline coordinates relative to dialog
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Are you sure you want to quit?");
-    
+
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
+
     ui.createButtonSuccess("overlay_demo_modal_yes_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Yes");
     ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+
+    // Set CENTERED_BOTH positioning for all dialog children to move with dialog during fullscreen toggle
+    // Offsets calculated from baseline center (960, 540)
+    ui.setComponentPositioning("overlay_demo_dialog_title", {UIPositionMode::CENTERED_BOTH, 0, -65, 360, 30});
+    ui.setComponentPositioning("overlay_demo_dialog_text", {UIPositionMode::CENTERED_BOTH, 0, -20, 360, 40});
+    ui.setComponentPositioning("overlay_demo_modal_yes_btn", {UIPositionMode::CENTERED_BOTH, -100, 40, 100, 40});
+    ui.setComponentPositioning("overlay_demo_modal_cancel_btn", {UIPositionMode::CENTERED_BOTH, 100, 40, 100, 40});
 
     // All styling handled by UIManager theme - no custom colors in state
 }
@@ -234,25 +307,48 @@ void OverlayDemoState::setupModalOverlayMode() {
 void OverlayDemoState::setupLightModalOverlayMode() {
     auto& ui = UIManager::Instance();
 
-    // Mode indicator
-    ui.createLabel(MODE_LABEL, {20, 50, 400, 30}, "Mode: Light Modal Dialog (Strong Overlay)");
-    ui.createLabel(DESCRIPTION_LABEL, {20, 85, std::min(600, ui.getLogicalWidth() - 40), 50},
+    // Mode indicator with standardized spacing using UIConstants
+    const int modeY = UIConstants::INFO_FIRST_LINE_Y;
+    const int descY = modeY + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
+
+    ui.createLabel(MODE_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, modeY, 400, UIConstants::INFO_LABEL_HEIGHT},
+                   "Mode: Light Modal Dialog (Strong Overlay)");
+    ui.setComponentPositioning(MODE_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, modeY,
+                                            400, UIConstants::INFO_LABEL_HEIGHT});
+
+    ui.createLabel(DESCRIPTION_LABEL, {UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                        std::min(600, ui.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X),
+                                        UIConstants::INFO_LABEL_HEIGHT},
                    "Perfect for: Light-themed dialogs, Settings panels\nLight strong overlay with good contrast");
+    ui.setComponentPositioning(DESCRIPTION_LABEL, {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, descY,
+                                                   -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
-    // Simulate modal dialog using auto-centered positioning
-    ui.createCenteredDialog("overlay_demo_dialog_panel", 400, 200, "light");
-    
-    int dialogX = (ui.getLogicalWidth() - 400) / 2;
-    int dialogY = (ui.getLogicalHeight() - 200) / 2;
+    // Calculate dialog position in baseline space (1920x1080) using UIConstants
+    const int dialogWidth = UIConstants::DEFAULT_DIALOG_WIDTH;
+    const int dialogHeight = UIConstants::DEFAULT_DIALOG_HEIGHT;
+    const int dialogX = (UIConstants::BASELINE_WIDTH - dialogWidth) / 2;   // 760
+    const int dialogY = (UIConstants::BASELINE_HEIGHT - dialogHeight) / 2; // 440
 
+    // Create centered dialog with standardized dimensions
+    ui.createCenteredDialog("overlay_demo_dialog_panel", dialogWidth, dialogHeight, "light");
+
+    // Position child components using absolute baseline coordinates relative to dialog
     ui.createLabel("overlay_demo_dialog_title", {dialogX + 20, dialogY + 20, 360, 30}, "Confirm Action");
     ui.createLabel("overlay_demo_dialog_text", {dialogX + 20, dialogY + 60, 360, 40}, "Save changes before closing?");
-    
+
     // Disable text backgrounds for labels inside modal (they have solid modal background)
     ui.enableTextBackground("overlay_demo_dialog_title", false);
     ui.enableTextBackground("overlay_demo_dialog_text", false);
+
     ui.createButtonSuccess("overlay_demo_modal_save_btn", {dialogX + 50, dialogY + 120, 100, 40}, "Save");
     ui.createButtonWarning("overlay_demo_modal_cancel_btn", {dialogX + 250, dialogY + 120, 100, 40}, "Cancel");
+
+    // Set CENTERED_BOTH positioning for all dialog children to move with dialog during fullscreen toggle
+    // Offsets calculated from baseline center (960, 540)
+    ui.setComponentPositioning("overlay_demo_dialog_title", {UIPositionMode::CENTERED_BOTH, 0, -65, 360, 30});
+    ui.setComponentPositioning("overlay_demo_dialog_text", {UIPositionMode::CENTERED_BOTH, 0, -20, 360, 40});
+    ui.setComponentPositioning("overlay_demo_modal_save_btn", {UIPositionMode::CENTERED_BOTH, -100, 40, 100, 40});
+    ui.setComponentPositioning("overlay_demo_modal_cancel_btn", {UIPositionMode::CENTERED_BOTH, 100, 40, 100, 40});
 
     // All styling handled by UIManager theme - no custom colors in state
 }

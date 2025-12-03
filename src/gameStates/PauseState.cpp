@@ -7,6 +7,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/UIManager.hpp"
+#include "managers/UIConstants.hpp"
 #include "core/GameEngine.hpp"
 
 bool PauseState::enter() {
@@ -20,10 +21,12 @@ bool PauseState::enter() {
   ui.createOverlay(windowWidth, windowHeight);
   // Overlay auto-repositions via createOverlay's positioning rules
 
-  ui.createTitle("pause_title", {0, 100, windowWidth, 40}, "Game Paused");
+  ui.createTitle("pause_title", {0, UIConstants::TITLE_TOP_OFFSET * 10, windowWidth, UIConstants::DEFAULT_TITLE_HEIGHT},
+                 "Game Paused");
   ui.setTitleAlignment("pause_title", UIAlignment::CENTER_CENTER);
   // Set auto-repositioning: centered horizontally, fixed Y position
-  ui.setComponentPositioning("pause_title", {UIPositionMode::CENTERED_H, 0, 100, -1, 40});
+  ui.setComponentPositioning("pause_title", {UIPositionMode::CENTERED_H, 0, UIConstants::TITLE_TOP_OFFSET * 10,
+                                             -1, UIConstants::DEFAULT_TITLE_HEIGHT});
   
   return true;
 }

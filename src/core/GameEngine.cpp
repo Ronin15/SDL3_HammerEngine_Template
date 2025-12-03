@@ -108,42 +108,54 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_windowedWidth = m_windowWidth;
   m_windowedHeight = m_windowHeight;
 
-// For macOS compatibility, use fullscreen for large window requests
-#ifdef __APPLE__
-  if (m_windowWidth >= 1920 || m_windowHeight >= 1080) {
-    if (!fullscreen) { // Only log if we're changing it
+  // Query display capabilities for intelligent window sizing (all platforms)
+  int displayCount = 0;
+  std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
+      SDL_GetDisplays(&displayCount), SDL_free);
+
+  const SDL_DisplayMode* displayMode = nullptr;
+  if (displays && displayCount > 0) {
+    displayMode = SDL_GetDesktopDisplayMode(displays[0]);
+    if (displayMode) {
       GAMEENGINE_INFO(
-          "Large window on macOS - enabling fullscreen for compatibility");
+          "Primary display: " + std::to_string(displayMode->w) + "x" +
+          std::to_string(displayMode->h) + " @ " +
+          std::to_string(displayMode->refresh_rate) + "Hz");
+
+      // If requested window size is larger than 90% of display, use fullscreen
+      // This prevents awkward oversized windows on smaller displays (handhelds, laptops)
+      const float displayUsageThreshold = 0.9f;
+      if (!fullscreen &&
+          (m_windowWidth > static_cast<int>(displayMode->w * displayUsageThreshold) ||
+           m_windowHeight > static_cast<int>(displayMode->h * displayUsageThreshold))) {
+        GAMEENGINE_INFO(
+            "Requested window size (" + std::to_string(m_windowWidth) + "x" +
+            std::to_string(m_windowHeight) + ") is larger than " +
+            std::to_string(static_cast<int>(displayUsageThreshold * 100)) +
+            "% of display - enabling fullscreen for better UX");
+        fullscreen = true;
+      }
     }
-    fullscreen = true;
+  } else {
+    GAMEENGINE_WARN("Could not query display capabilities - proceeding with requested dimensions");
   }
-#endif
   // Window handling with platform-specific optimizations
   SDL_WindowFlags flags =
       fullscreen ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
 
   if (fullscreen) {
-
 #ifdef __APPLE__
     // On macOS, keep logical dimensions for proper scaling
     // Don't override m_windowWidth and m_windowHeight for macOS
     GAMEENGINE_INFO("Window set to Fullscreen mode for macOS compatibility");
 #else
-    // setting window width and height to fullscreen dimensions for detected
-    // monitor
-    int displayCount = 0;
-    std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
-        SDL_GetDisplays(&displayCount), SDL_free);
-    if (displays && displayCount > 0) {
-      const SDL_DisplayMode *displayMode =
-          SDL_GetDesktopDisplayMode(displays[0]);
-      if (displayMode) {
-        m_windowWidth = displayMode->w;
-        m_windowHeight = displayMode->h;
-        GAMEENGINE_INFO(
-            "Window size set to Full Screen: " + std::to_string(m_windowWidth) +
-            "x" + std::to_string(m_windowHeight));
-      }
+    // On non-macOS platforms, use native display resolution for fullscreen
+    if (displayMode) {
+      m_windowWidth = displayMode->w;
+      m_windowHeight = displayMode->h;
+      GAMEENGINE_INFO(
+          "Window size set to Full Screen: " + std::to_string(m_windowWidth) +
+          "x" + std::to_string(m_windowHeight));
     }
 #endif
   }
@@ -261,35 +273,13 @@ bool GameEngine::init(const std::string_view title, const int width,
                     " VSync: " + std::string(SDL_GetError()));
   }
 
-  // Verify VSync is actually working
-  int vsyncState = 0;
-  bool vsyncVerified = false;
-  if (vsyncSetSuccessfully && SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
-    if (vsyncRequested) {
-      // When enabling, verify it's actually on
-      vsyncVerified = (vsyncState > 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
-      } else {
-        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    } else {
-      // When disabling, verify it's actually off
-      vsyncVerified = (vsyncState == 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync disabled and verified");
-      } else {
-        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    }
-  } else {
-    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+  // Verify VSync state and update software frame limiting flag
+  // verifyVSyncState() updates m_usingSoftwareFrameLimiting as a side effect
+  if (vsyncSetSuccessfully) {
+    verifyVSyncState(vsyncRequested);
   }
 
-  // Configure software frame limiting as fallback when VSync is not working
-  // Use software limiting when: VSync requested but verification failed, or VSync intentionally disabled
-  m_usingSoftwareFrameLimiting = vsyncRequested ? !vsyncVerified : true;
-
+  // Log frame timing mode
   if (m_usingSoftwareFrameLimiting) {
     if (vsyncRequested) {
       GAMEENGINE_INFO("Using software frame limiting (VSync unavailable or failed verification)");
@@ -300,47 +290,27 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_INFO("Using hardware VSync for frame timing");
   }
 
+  // Load buffer configuration from SettingsManager (graphics settings)
+  m_bufferCount = static_cast<size_t>(settings.get<int>("graphics", "buffer_count", 2));
+  // Clamp to valid range [2, 3]
+  if (m_bufferCount < 2) m_bufferCount = 2;
+  if (m_bufferCount > 3) m_bufferCount = 3;
+  GAMEENGINE_INFO("Buffer mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)") +
+                  " buffering configured");
+
+#ifdef DEBUG
+  // Buffer telemetry is disabled by default, press F3 to enable console logging
+  GAMEENGINE_INFO("Buffer telemetry: OFF (F3 to enable console logging every 5s)");
+#endif
+
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
           HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
     GAMEENGINE_ERROR("Failed to set initial render draw color: " +
                      std::string(SDL_GetError()));
   }
-#ifdef __APPLE__
-  // On macOS, use logical presentation with stretch mode for consistent UI
-  // scaling
-  int actualWidth = pixelWidth;
-  int actualHeight = pixelHeight;
-
-  // Use standard logical resolution to ensure UI elements are positioned
-  // correctly This prevents buttons from going off-screen while maintaining
-  // good scaling
-  int targetLogicalWidth = 1920;
-  int targetLogicalHeight = 1080;
-
-  // Store logical dimensions for UI positioning
-  m_logicalWidth = targetLogicalWidth;
-  m_logicalHeight = targetLogicalHeight;
-
-  // Use LETTERBOX mode to preserve all UI elements (with DPI-aware scaling for
-  // sharp text)
-  SDL_RendererLogicalPresentation presentationMode =
-      SDL_LOGICAL_PRESENTATION_LETTERBOX;
-  if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), targetLogicalWidth,
-                                        targetLogicalHeight,
-                                        presentationMode)) {
-    GAMEENGINE_ERROR("Failed to set render logical presentation: " +
-                     std::string(SDL_GetError()));
-  }
-
-  GAMEENGINE_INFO(
-      "macOS using standard logical resolution with letterbox mode: " +
-      std::to_string(targetLogicalWidth) + "x" +
-      std::to_string(targetLogicalHeight) + " on " +
-      std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-#else
-  // On non-Apple platforms, use actual screen resolution to eliminate scaling
-  // blur
+  // Use native resolution rendering on all platforms for crisp, sharp text
+  // This eliminates GPU scaling blur and provides consistent cross-platform behavior
   int actualWidth = pixelWidth;
   int actualHeight = pixelHeight;
 
@@ -360,7 +330,6 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO("Using native resolution for crisp rendering: " +
                   std::to_string(actualWidth) + "x" +
                   std::to_string(actualHeight));
-#endif
   // Render Mode.
   SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
 
@@ -827,7 +796,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_currentBufferIndex.store(0, std::memory_order_release);
   m_renderBufferIndex.store(0, std::memory_order_release);
 
-  // Mark first buffer as ready with initial clear frame
+  // Mark first buffer as ready to ensure render() has a valid buffer before the first
+  // update() completes. This prevents a render stall on the very first frame where
+  // hasNewFrameToRender() would otherwise return false. The initial "frame" is just
+  // the cleared screen (HAMMER_GRAY background) set up above.
   m_bufferReady[0].store(true, std::memory_order_release);
   m_bufferReady[1].store(false, std::memory_order_release);
 
@@ -852,6 +824,17 @@ void GameEngine::handleEvents() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F1)) {
     toggleFullscreen();
   }
+
+#ifdef DEBUG
+  // Global buffer telemetry console logging toggle (F3 key) - debug builds only
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
+    bool currentState = m_showBufferTelemetry.load(std::memory_order_relaxed);
+    m_showBufferTelemetry.store(!currentState, std::memory_order_relaxed);
+    GAMEENGINE_INFO("Buffer telemetry console logging " +
+                    std::string(!currentState ? "ENABLED (every 5s)" : "DISABLED") +
+                    " (F3 to toggle)");
+  }
+#endif
 
   // Handle game state input on main thread where SDL events are processed (SDL3
   // requirement) This prevents cross-thread input state access between main
@@ -889,7 +872,18 @@ float GameEngine::getCurrentFPS() const {
 
 void GameEngine::update(float deltaTime) {
   // This method is now thread-safe and can be called from a worker thread
+#ifdef DEBUG
+  // TELEMETRY POINT 7: Start timing mutex wait
+  auto mutexWaitStart = std::chrono::high_resolution_clock::now();
+#endif
+
   std::lock_guard<std::mutex> lock(m_updateMutex);
+
+#ifdef DEBUG
+  // TELEMETRY POINT 8: Mutex acquired - calculate wait time
+  auto mutexAcquired = std::chrono::high_resolution_clock::now();
+  double mutexWaitMs = std::chrono::duration<double, std::milli>(mutexAcquired - mutexWaitStart).count();
+#endif
 
   // Mark update as running with relaxed ordering (protected by mutex)
   m_updateRunning.store(true, std::memory_order_relaxed);
@@ -972,6 +966,44 @@ void GameEngine::update(float deltaTime) {
   // Mark this buffer as ready for rendering
   m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 
+#ifdef DEBUG
+  // TELEMETRY POINT 9: Buffer marked ready - record timing sample
+  auto bufferReadyTime = std::chrono::high_resolution_clock::now();
+  double bufferReadyDelayMs = std::chrono::duration<double, std::milli>(bufferReadyTime - mutexAcquired).count();
+  m_bufferTelemetry.addTimingSample(mutexWaitMs, bufferReadyDelayMs);
+
+  // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
+  // Only logs when F3 toggle is enabled, otherwise silent
+  uint64_t currentFrame = m_lastUpdateFrame.load(std::memory_order_relaxed);
+
+  if (m_showBufferTelemetry.load(std::memory_order_relaxed) &&
+      currentFrame - m_telemetryLogFrame >= TELEMETRY_LOG_INTERVAL) {
+    m_telemetryLogFrame = currentFrame;
+
+    GAMEENGINE_DEBUG("=== Buffer Telemetry Report (last " +
+                     std::to_string(TELEMETRY_LOG_INTERVAL) + " frames) ===");
+    GAMEENGINE_DEBUG("  Buffer Mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
+    GAMEENGINE_DEBUG("  Swap Success Rate: " +
+                     std::to_string(m_bufferTelemetry.getSwapSuccessRate()) + "%");
+    GAMEENGINE_DEBUG("  Swap Stats: " +
+                     std::to_string(m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed)) + " success / " +
+                     std::to_string(m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed)) + " blocked / " +
+                     std::to_string(m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)) + " CAS failures");
+    GAMEENGINE_DEBUG("  Render Stalls: " + std::to_string(m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG("  Frames Skipped: " + std::to_string(m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG("  Avg Mutex Wait: " +
+                     std::to_string(m_bufferTelemetry.avgMutexWaitMs.load(std::memory_order_relaxed)) + "ms");
+    GAMEENGINE_DEBUG("  Avg Buffer Ready Delay: " +
+                     std::to_string(m_bufferTelemetry.avgBufferReadyMs.load(std::memory_order_relaxed)) + "ms");
+    GAMEENGINE_DEBUG("  Current Buffers: [Write:" +
+                     std::to_string(m_currentBufferIndex.load(std::memory_order_relaxed)) +
+                     " Read:" + std::to_string(m_renderBufferIndex.load(std::memory_order_relaxed)) + "]");
+
+    // Reset counters for next interval
+    m_bufferTelemetry.reset();
+  }
+#endif
+
   // Mark update as completed with relaxed ordering (protected by condition
   // variable)
   m_updateCompleted.store(true, std::memory_order_relaxed);
@@ -1017,48 +1049,31 @@ void GameEngine::render() {
   m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
 }
 
-void GameEngine::waitForUpdate() {
-  std::unique_lock<std::mutex> lock(m_updateMutex);
-
-  // Calculate an adaptive timeout based on the target FPS.
-  auto timeout = std::chrono::milliseconds(100); // Default timeout
-  if (auto gameLoop = m_gameLoop.lock()) {
-    const float targetFPS = gameLoop->getTargetFPS();
-    if (targetFPS > 0) {
-      // Set timeout to 2x the frame time as a responsive safety net
-      const auto frameTimeMs = static_cast<long long>(1000.0 / targetFPS);
-      timeout = std::chrono::milliseconds(frameTimeMs * 2);
-    }
-  }
-
-  // Wait for update completion with the adaptive timeout
-  m_updateCondition.wait_for(lock, timeout, [this] {
-    return m_updateCompleted.load(std::memory_order_acquire) ||
-           m_stopRequested.load(std::memory_order_acquire);
-  });
-}
-
-void GameEngine::signalUpdateComplete() {
-  {
-    std::lock_guard<std::mutex> lock(m_updateMutex);
-    m_updateCompleted.store(false,
-                            std::memory_order_release); // Reset for next frame
-  }
-}
-
 void GameEngine::swapBuffers() {
   // Thread-safe buffer swap with proper synchronization
+  // Supports both double (2) and triple (3) buffering modes
   size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-  size_t nextUpdateIndex = (currentIndex + 1) % BUFFER_COUNT;
+  size_t nextUpdateIndex = (currentIndex + 1) % m_bufferCount;  // Use runtime buffer count
 
-  // Check if we have a valid render buffer before attempting swap
-  size_t currentRenderIndex =
-      m_renderBufferIndex.load(std::memory_order_acquire);
+#ifdef DEBUG
+  // TELEMETRY POINT 1: Track swap attempt
+  m_bufferTelemetry.swapAttempts.fetch_add(1, std::memory_order_relaxed);
+#endif
 
-  // Only swap if current buffer is ready AND next buffer isn't being rendered
-  if (m_bufferReady[currentIndex].load(std::memory_order_acquire) &&
-      nextUpdateIndex != currentRenderIndex) {
+  // TRIPLE BUFFERING OPTIMIZATION:
+  // With 3 buffers, there's always a free buffer available (one for update, one for render, one free).
+  // With 2 buffers, we must check that next buffer isn't being rendered to prevent overwriting.
 
+  bool canSwap = m_bufferReady[currentIndex].load(std::memory_order_acquire);
+
+  if (m_bufferCount == 2) {
+    // Double buffering: also check that next buffer isn't being rendered
+    size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
+    canSwap = canSwap && (nextUpdateIndex != currentRenderIndex);
+  }
+  // Triple buffering: always has a free buffer, no additional check needed
+
+  if (canSwap) {
     // Atomic compare-exchange to ensure no race condition
     size_t expected = currentIndex;
     if (m_currentBufferIndex.compare_exchange_strong(
@@ -1072,7 +1087,22 @@ void GameEngine::swapBuffers() {
 
       // Signal buffer swap completion
       m_bufferCondition.notify_one();
+
+#ifdef DEBUG
+      // TELEMETRY POINT 2: Successful swap
+      m_bufferTelemetry.swapSuccesses.fetch_add(1, std::memory_order_relaxed);
+#endif
+    } else {
+#ifdef DEBUG
+      // TELEMETRY POINT 3: CAS failure (atomic contention)
+      m_bufferTelemetry.casFailures.fetch_add(1, std::memory_order_relaxed);
+#endif
     }
+  } else {
+#ifdef DEBUG
+    // TELEMETRY POINT 4: Swap blocked (buffer not ready or rendering conflict)
+    m_bufferTelemetry.swapBlocked.fetch_add(1, std::memory_order_relaxed);
+#endif
   }
 }
 
@@ -1082,6 +1112,10 @@ bool GameEngine::hasNewFrameToRender() const noexcept {
 
   // Single check for buffer readiness
   if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
+#ifdef DEBUG
+    // TELEMETRY POINT 5: Render stall (no buffer ready)
+    m_bufferTelemetry.renderStalls.fetch_add(1, std::memory_order_relaxed);
+#endif
     return false;
   }
 
@@ -1089,6 +1123,13 @@ bool GameEngine::hasNewFrameToRender() const noexcept {
   // counters
   uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
   uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
+
+#ifdef DEBUG
+  // TELEMETRY POINT 6: Frame skipped (update hasn't advanced)
+  if (lastUpdate == lastRendered) {
+    m_bufferTelemetry.framesSkipped.fetch_add(1, std::memory_order_relaxed);
+  }
+#endif
 
   return lastUpdate > lastRendered;
 }
@@ -1106,16 +1147,32 @@ size_t GameEngine::getRenderBufferIndex() const noexcept {
 }
 
 void GameEngine::processBackgroundTasks() {
-  // This method can be used to perform background processing
-  // It should be safe to run on worker threads
+  // Background task processing hook for non-critical work
+  //
+  // PURPOSE: Provides a designated entry point for background processing that:
+  //   - Runs on worker threads via ThreadSystem (NOT the main thread)
+  //   - Executes asynchronously while main thread handles events/rendering
+  //   - Is separate from the main update loop to avoid impacting frame timing
+  //
+  // USE CASES:
+  //   - Asset pre-loading for upcoming game states
+  //   - Background save game serialization
+  //   - Analytics/telemetry data collection
+  //   - Periodic cache cleanup or memory defragmentation
+  //   - Network polling for non-latency-critical updates
+  //
+  // ARCHITECTURE NOTE:
+  //   Global systems (EventManager, AIManager, etc.) are updated in the main
+  //   update loop for deterministic ordering and proper synchronization.
+  //   This method is for truly asynchronous, non-critical tasks only.
+  //
+  // THREAD SAFETY:
+  //   Any work added here must be thread-safe and not require main-thread
+  //   resources (SDL rendering, UI state, etc.).
 
   try {
     // Background processing tasks can be added here
-    // Note: EventManager is now updated in the main update loop for optimal
-    // performance and consistency with other global systems (AI, Input)
-
-    // Example: Process non-critical background tasks
-    // These tasks can run while the main thread is handling rendering
+    // Currently a placeholder - extend as needed for specific use cases
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR("Exception in background tasks: " + std::string(e.what()));
   } catch (...) {
@@ -1295,36 +1352,8 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     return false;
   }
 
-  // Verify VSync is actually working
-  int vsyncState = 0;
-  bool vsyncVerified = false;
-
-  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
-    if (enable) {
-      // When enabling, verify it's actually on
-      vsyncVerified = (vsyncState > 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
-      } else {
-        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    } else {
-      // When disabling, verify it's actually off
-      vsyncVerified = (vsyncState == 0);
-      if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync disabled and verified");
-      } else {
-        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
-      }
-    }
-  } else {
-    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
-    vsyncVerified = false;
-  }
-
-  // Update software frame limiting flag
-  // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
-  m_usingSoftwareFrameLimiting = enable ? !vsyncVerified : true;
+  // Verify VSync state and update software frame limiting flag
+  bool vsyncVerified = verifyVSyncState(enable);
 
   // Update TimestepManager
   if (auto gameLoop = m_gameLoop.lock()) {
@@ -1333,6 +1362,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
                      std::string(m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
   }
 
+  // Log frame timing mode
   if (m_usingSoftwareFrameLimiting && enable) {
     GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
   } else if (!m_usingSoftwareFrameLimiting) {
@@ -1447,4 +1477,39 @@ int GameEngine::getOptimalDisplayIndex() const {
       SDL_GetDisplays(&displayCount), SDL_free);
   return (displayCount > 1) ? 1 : 0;
 #endif
+}
+
+bool GameEngine::verifyVSyncState(bool requested) {
+  // Verify VSync state matches requested setting
+  int vsyncState = 0;
+  bool vsyncVerified = false;
+
+  if (SDL_GetRenderVSync(mp_renderer.get(), &vsyncState)) {
+    if (requested) {
+      // When enabling, verify it's actually on
+      vsyncVerified = (vsyncState > 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
+      } else {
+        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    } else {
+      // When disabling, verify it's actually off
+      vsyncVerified = (vsyncState == 0);
+      if (vsyncVerified) {
+        GAMEENGINE_INFO("VSync disabled and verified");
+      } else {
+        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+      }
+    }
+  } else {
+    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+    vsyncVerified = false;
+  }
+
+  // Update software frame limiting flag based on verification result
+  // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
+  m_usingSoftwareFrameLimiting = requested ? !vsyncVerified : true;
+
+  return vsyncVerified;
 }

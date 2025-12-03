@@ -1076,22 +1076,10 @@ void CollisionManager::subscribeWorldEvents() {
         if (auto unloaded =
                 std::dynamic_pointer_cast<WorldUnloadedEvent>(base)) {
           (void)unloaded;
-          std::vector<EntityID> toRemove;
-          for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-            const auto& hot = m_storage.hotData[i];
-            if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-              toRemove.push_back(m_storage.entityIds[i]);
-            }
-          }
-          for (auto id : toRemove) {
-            removeCollisionBodySOA(id);
-          }
-          COLLISION_INFO("World unloaded - removed static colliders: " +
-                         std::to_string(toRemove.size()));
-          // Clear static spatial hash and cache since all static bodies were removed
-          m_staticSpatialHash.clear();
-          m_coarseRegionStaticCache.clear();
-          m_staticHashDirty = false;
+          COLLISION_INFO("Responding to WorldUnloadedEvent");
+
+          // Static bodies already cleared by prepareForStateTransition()
+          // This event handler serves as confirmation that world cleanup completed
           return;
         }
         if (auto tileChanged =
@@ -1349,6 +1337,10 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
 }
 
 void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
+  // Acquire exclusive lock for writing entityWeak pointer
+  // Ensures thread-safe access during concurrent reads from syncEntitiesToSOA()
+  std::unique_lock<std::shared_mutex> lock(m_storageMutex);
+
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
     size_t index = it->second;
@@ -2286,7 +2278,6 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   size_t invalidatedCount = 0;
   for (auto it = m_coarseRegionStaticCache.begin(); it != m_coarseRegionStaticCache.end(); ) {
     const auto& coord = it->first;
-    auto& cache = it->second;
 
     // Calculate center of this coarse cell
     float cellCenterX = (coord.x + 0.5f) * COARSE_CELL_SIZE;
@@ -2297,6 +2288,7 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
                          cellCenterY < evictionMinY || cellCenterY > evictionMaxY);
 
     if (outsideBounds) {
+      auto& cache = it->second;
       // Cache entry is far from active area - increment stale count
       cache.staleCount++;
 
@@ -2576,6 +2568,10 @@ void CollisionManager::syncEntitiesToSOA() {
   // This prevents CollisionManager from overwriting AIManager's movement integration.
 
   m_isSyncing = true;
+
+  // Acquire shared lock for reading storage during entity sync
+  // Prevents races with prepareForStateTransition() clearing storage
+  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
   // Build set of entity IDs that were involved in collisions this frame
   std::unordered_set<EntityID> collidedEntities;

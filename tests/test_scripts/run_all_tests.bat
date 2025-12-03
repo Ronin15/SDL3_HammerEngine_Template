@@ -68,8 +68,10 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding, WorkerBudget coordination tests
-    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, and Pathfinder performance benchmarks
+    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,
+    echo                     GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,
+    echo                     AI-Collision Integration, Event Coordination Integration
+    echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, Pathfinder, and SIMD performance benchmarks
     echo.
     echo Execution Time:
     echo   Core tests:       ~4-8 minutes total
@@ -91,9 +93,9 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=23
+set CORE_TEST_COUNT=33
 :: Performance scaling benchmarks (slow execution)
-set BENCHMARK_TEST_COUNT=6
+set BENCHMARK_TEST_COUNT=7
 
 :: Build the test scripts array based on user selection
 set TOTAL_COUNT=0
@@ -167,6 +169,16 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_pathfinding_tests.bat" false
     call :run_single_test "run_collision_pathfinding_integration_tests.bat" false
     call :run_single_test "run_pathfinder_ai_contention_tests.bat" false
+    call :run_single_test "run_game_engine_tests.bat" false
+    call :run_single_test "run_camera_tests.bat" false
+    call :run_single_test "run_input_manager_tests.bat" false
+    call :run_single_test "run_simd_correctness_tests.bat" false
+    call :run_single_test "run_buffer_reuse_tests.bat" false
+    call :run_single_test "run_rendering_pipeline_tests.bat" false
+    call :run_single_test "run_loading_state_tests.bat" false
+    call :run_single_test "run_ui_manager_functional_tests.bat" false
+    call :run_single_test "run_ai_collision_integration_tests.bat" false
+    call :run_single_test "run_event_coordination_integration_tests.bat" false
 )
 
 :: Run benchmark tests last
@@ -179,6 +191,7 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_particle_manager_benchmark.bat" true
     call :run_single_test "run_collision_benchmark.bat" true
     call :run_single_test "run_pathfinder_benchmark.bat" true
+    call :run_single_test "run_simd_benchmark.bat" true
 )
 
 :: Print summary
@@ -270,14 +283,15 @@ if "%ERRORS_ONLY%"=="true" (
     set test_exit_code=!ERRORLEVEL!
     
     :: Check for failures - use more specific patterns for actual test failures
+    :: Exclude false positives like "check !failed has passed" by using "has failed" instead of "Test.*failed"
     set has_failures=0
-    findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"Test.*failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!" >nul 2>&1
+    findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"has failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!" | findstr /V /C:"has passed" >nul 2>&1
     if !ERRORLEVEL! equ 0 set has_failures=1
-    
+
     :: Show failures if found
     if !has_failures! equ 1 (
         echo FAILURES DETECTED:
-        findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"Test.*failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!"
+        findstr /I /C:"BOOST_CHECK.*failed" /C:"BOOST_REQUIRE.*failed" /C:"has failed" /C:"FAILED.*test" /C:"BUILD FAILED" /C:"compilation.*failed" /C:"Segmentation fault" /C:"Assertion.*failed" "!temp_file!" | findstr /V /C:"has passed"
     ) else (
         if not "!test_exit_code!"=="0" (
             echo Test failed with exit code !test_exit_code!

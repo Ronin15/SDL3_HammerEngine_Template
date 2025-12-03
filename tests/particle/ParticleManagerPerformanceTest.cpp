@@ -59,6 +59,11 @@ struct ParticleManagerPerformanceFixture {
   }
 
   // Helper to create particles for performance testing
+  // Note: Actual particle count may be lower than target due to:
+  // - Effect emission rates (particles emitted per frame)
+  // - Particle lifetimes (particles may expire during creation)
+  // - System limits (max effects, max particles per effect)
+  // Performance tests should validate >= 90% of target for meaningful results
   void
   createParticles(size_t targetCount,
                   ParticleEffectType effectType = ParticleEffectType::Rain) {
@@ -84,7 +89,10 @@ struct ParticleManagerPerformanceFixture {
       manager->update(0.016f); // 60 FPS
 
       // Safety check to prevent infinite loops
+      // If we can't reach target after 100 effects, system may have limits
       if (effectIds.size() > 100) {
+        std::cout << "Warning: Reached effect limit (" << effectIds.size()
+                  << " effects) before target particle count" << std::endl;
         break;
       }
     }
@@ -104,8 +112,11 @@ BOOST_FIXTURE_TEST_CASE(TestUpdatePerformance1000Particles,
   createParticles(TARGET_PARTICLES);
   size_t actualParticles = manager->getActiveParticleCount();
 
-  // We might not get exactly 1000, but should be reasonably close
-  BOOST_CHECK_GT(actualParticles, 500);
+  // Require at least 90% of target particle count for meaningful performance test
+  // If we can't create enough particles, the test results are not valid
+  BOOST_REQUIRE_MESSAGE(actualParticles >= TARGET_PARTICLES * 9 / 10,
+                        "Failed to create sufficient particles for test: got " << actualParticles
+                        << " but need at least " << (TARGET_PARTICLES * 9 / 10));
   std::cout << "Testing update performance with " << actualParticles
             << " particles" << std::endl;
 
@@ -134,7 +145,11 @@ BOOST_FIXTURE_TEST_CASE(TestUpdatePerformance5000Particles,
   createParticles(TARGET_PARTICLES);
   size_t actualParticles = manager->getActiveParticleCount();
 
-  BOOST_CHECK_GT(actualParticles, 2000); // Should get at least 2000
+  // Require at least 90% of target particle count for meaningful performance test
+  // If we can't create enough particles, the test results are not valid
+  BOOST_REQUIRE_MESSAGE(actualParticles >= TARGET_PARTICLES * 9 / 10,
+                        "Failed to create sufficient particles for test: got " << actualParticles
+                        << " but need at least " << (TARGET_PARTICLES * 9 / 10));
   std::cout << "Testing update performance with " << actualParticles
             << " particles" << std::endl;
 

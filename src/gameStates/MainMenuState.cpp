@@ -43,27 +43,16 @@ bool MainMenuState::enter() {
   int buttonStep = buttonHeight + buttonSpacing; // 70px between each button
   int firstButtonOffset = -270; // Top of centered button group
 
-  ui.createButton("mainmenu_start_game_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset, buttonWidth, buttonHeight}, "Start Game");
-  ui.setComponentPositioning("mainmenu_start_game_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset, buttonWidth, buttonHeight});
+  // Use createCenteredButton helper for streamlined button creation
+  ui.createCenteredButton("mainmenu_start_game_btn", firstButtonOffset, buttonWidth, buttonHeight, "Start Game");
+  ui.createCenteredButton("mainmenu_ai_demo_btn", firstButtonOffset + buttonStep, buttonWidth, buttonHeight, "AI Demo");
+  ui.createCenteredButton("mainmenu_advanced_ai_demo_btn", firstButtonOffset + 2 * buttonStep, buttonWidth, buttonHeight, "Advanced AI Demo");
+  ui.createCenteredButton("mainmenu_event_demo_btn", firstButtonOffset + 3 * buttonStep, buttonWidth, buttonHeight, "Event Demo");
+  ui.createCenteredButton("mainmenu_ui_example_btn", firstButtonOffset + 4 * buttonStep, buttonWidth, buttonHeight, "UI Demo");
+  ui.createCenteredButton("mainmenu_overlay_demo_btn", firstButtonOffset + 5 * buttonStep, buttonWidth, buttonHeight, "Overlay Demo");
+  ui.createCenteredButton("mainmenu_settings_btn", firstButtonOffset + 6 * buttonStep, buttonWidth, buttonHeight, "Settings");
 
-  ui.createButton("mainmenu_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + buttonStep, buttonWidth, buttonHeight}, "AI Demo");
-  ui.setComponentPositioning("mainmenu_ai_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + buttonStep, buttonWidth, buttonHeight});
-
-  ui.createButton("mainmenu_advanced_ai_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 2 * buttonStep, buttonWidth, buttonHeight}, "Advanced AI Demo");
-  ui.setComponentPositioning("mainmenu_advanced_ai_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 2 * buttonStep, buttonWidth, buttonHeight});
-
-  ui.createButton("mainmenu_event_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 3 * buttonStep, buttonWidth, buttonHeight}, "Event Demo");
-  ui.setComponentPositioning("mainmenu_event_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 3 * buttonStep, buttonWidth, buttonHeight});
-
-  ui.createButton("mainmenu_ui_example_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 4 * buttonStep, buttonWidth, buttonHeight}, "UI Demo");
-  ui.setComponentPositioning("mainmenu_ui_example_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 4 * buttonStep, buttonWidth, buttonHeight});
-
-  ui.createButton("mainmenu_overlay_demo_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 5 * buttonStep, buttonWidth, buttonHeight}, "Overlay Demo");
-  ui.setComponentPositioning("mainmenu_overlay_demo_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 5 * buttonStep, buttonWidth, buttonHeight});
-
-  ui.createButton("mainmenu_settings_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 6 * buttonStep, buttonWidth, buttonHeight}, "Settings");
-  ui.setComponentPositioning("mainmenu_settings_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 6 * buttonStep, buttonWidth, buttonHeight});
-
+  // Exit button uses danger style (manual creation + positioning)
   ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight}, "Exit");
   ui.setComponentPositioning("mainmenu_exit_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight});
 

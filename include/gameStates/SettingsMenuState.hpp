@@ -47,6 +47,9 @@ private:
         std::string difficulty = "normal";
         bool autosaveEnabled = true;
         int autosaveInterval = 300;
+
+        // Graphics (Advanced) - Buffer mode configuration
+        int bufferCount = 2;  // 2 = double, 3 = triple buffering (restart required)
     } m_tempSettings;
 
     /**
@@ -69,10 +72,6 @@ private:
      */
     void applySettings();
 
-    /**
-     * @brief Revert temp settings to match current SettingsManager values
-     */
-    void revertSettings();
 
     /**
      * @brief Create tab button UI

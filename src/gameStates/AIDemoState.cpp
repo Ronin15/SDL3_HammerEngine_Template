@@ -292,32 +292,38 @@ bool AIDemoState::enter() {
     // distance thresholds)
     aiMgr.configurePriorityMultiplier(1.0f);
 
-    // Create simple HUD UI
+    // Create simple HUD UI (matches EventDemoState spacing pattern)
     auto &ui = UIManager::Instance();
-    ui.createTitle("ai_title", {0, 5, gameEngine.getLogicalWidth(), 25},
+    ui.createTitle("ai_title", {0, UIConstants::TITLE_TOP_OFFSET, gameEngine.getLogicalWidth(), UIConstants::DEFAULT_TITLE_HEIGHT},
                    "AI Demo State");
     ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
     // Set auto-repositioning: top-aligned, full width
-    ui.setComponentPositioning("ai_title", {UIPositionMode::TOP_ALIGNED, 0, 5, -1, 25});
+    ui.setComponentPositioning("ai_title", {UIPositionMode::TOP_ALIGNED, 0, UIConstants::TITLE_TOP_OFFSET, -1, UIConstants::DEFAULT_TITLE_HEIGHT});
 
     ui.createLabel("ai_instructions_line1",
-                   {10, 40, gameEngine.getLogicalWidth() - 20, 20},
+                   {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
+                    gameEngine.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT},
                    "Controls: [B] Exit | [SPACE] Pause/Resume | [N] Spawn 2K Standard | "
                    "[M] Spawn 2K Random | [ ] Zoom");
-    // Set auto-repositioning: top-aligned, full width minus 20px margin
-    ui.setComponentPositioning("ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, 10, 40, -20, 20});
+    // Set auto-repositioning: top-aligned, full width minus margins
+    ui.setComponentPositioning("ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
+                                                         -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
+    const int line2Y = UIConstants::INFO_FIRST_LINE_Y + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
     ui.createLabel("ai_instructions_line2",
-                   {10, 75, gameEngine.getLogicalWidth() - 20, 20},
+                   {UIConstants::INFO_LABEL_MARGIN_X, line2Y,
+                    gameEngine.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT},
                    "Behaviors: [1] Wander | [2] Patrol | [3] Chase | [4] Small | [5] Large | "
                    "[6] Event | [7] Random | [8] Circle | [9] Target");
-    // Set auto-repositioning: top-aligned, full width minus 20px margin
-    ui.setComponentPositioning("ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, 10, 75, -20, 20});
+    // Set auto-repositioning: top-aligned, full width minus margins
+    ui.setComponentPositioning("ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, line2Y,
+                                                         -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
 
-    ui.createLabel("ai_status", {10, 110, 400, 20},
+    const int statusY = line2Y + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING + UIConstants::INFO_STATUS_SPACING;
+    ui.createLabel("ai_status", {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | Entities: -- | AI: RUNNING");
-    // Set auto-repositioning: fixed position (absolute)
-    ui.setComponentPositioning("ai_status", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    // Set auto-repositioning: top-aligned with calculated position (fixes fullscreen transition)
+    ui.setComponentPositioning("ai_status", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT});
 
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();

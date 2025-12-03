@@ -142,6 +142,32 @@ void Player::update(float deltaTime) {
   // This is the core physics step that makes the player move
   m_position = m_position + (m_velocity * deltaTime);
 
+  // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world boundaries
+  float worldMinX, worldMinY, worldMaxX, worldMaxY;
+  if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+    // Account for player half-size to prevent center from going out of bounds
+    const float halfWidth = m_frameWidth * 0.5f;
+    const float halfHeight = m_height * 0.5f;
+
+    // Store original position before clamping
+    const float originalX = m_position.getX();
+    const float originalY = m_position.getY();
+
+    // Clamp position to world bounds (with player size offset)
+    const float clampedX = std::clamp(originalX, worldMinX + halfWidth, worldMaxX - halfWidth);
+    const float clampedY = std::clamp(originalY, worldMinY + halfHeight, worldMaxY - halfHeight);
+
+    // Update position and stop velocity if we hit a boundary
+    if (clampedX != originalX) {
+      m_position.setX(clampedX);
+      m_velocity.setX(0.0f);  // Stop horizontal movement at edge
+    }
+    if (clampedY != originalY) {
+      m_position.setY(clampedY);
+      m_velocity.setY(0.0f);  // Stop vertical movement at edge
+    }
+  }
+
   // Update collision body with new position and velocity
   auto &cm = CollisionManager::Instance();
   cm.updateCollisionBodyPositionSOA(m_id, m_position);

@@ -20,9 +20,6 @@ class GameStateManager {
   void pushState(const std::string& stateName);
   void popState();
   void changeState(const std::string& stateName); // Pops the current state and pushes a new one
-  // Use requestStateChange() for all runtime transitions (from update/input/UI callbacks).
-  // Deferred processing at end of update avoids destroying the active state mid-cycle.
-  void requestStateChange(const std::string& stateName); // Request deferred state change
 
   void update(float deltaTime);
   void render();
@@ -41,10 +38,6 @@ class GameStateManager {
   std::vector<std::shared_ptr<GameState>> m_activeStates;
 
   float m_lastDeltaTime{0.0f}; // Store deltaTime from update to pass to render
-  
-  // Deferred state change mechanism
-  std::string m_pendingStateChange;
-  bool m_hasPendingStateChange{false};
 };
 
 #endif  // GAME_STATE_MANAGER_HPP

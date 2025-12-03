@@ -51,8 +51,8 @@ void TimestepManager::startFrame() {
     double deltaTime = deltaTimeMs / 1000.0;
     deltaTime = std::min(deltaTime, static_cast<double>(MAX_ACCUMULATOR));
     
-    // Add to accumulator for fixed timestep updates
-    m_accumulator += deltaTime;
+    // Add to accumulator for fixed timestep updates (atomic for thread safety)
+    m_accumulator.fetch_add(deltaTime, std::memory_order_relaxed);
     
     // Always render once per frame
     m_shouldRender = true;
@@ -63,8 +63,11 @@ void TimestepManager::startFrame() {
 
 bool TimestepManager::shouldUpdate() {
     // Use a proper accumulator to allow for multiple updates per frame if needed
-    if (m_accumulator >= m_fixedTimestep) {
-        m_accumulator -= m_fixedTimestep;
+    // Atomic load to check if update is needed
+    double current = m_accumulator.load(std::memory_order_relaxed);
+    if (current >= m_fixedTimestep) {
+        // Atomically subtract the timestep
+        m_accumulator.fetch_sub(m_fixedTimestep, std::memory_order_relaxed);
         return true;
     }
     return false;
@@ -81,7 +84,7 @@ float TimestepManager::getUpdateDeltaTime() const {
 
 double TimestepManager::getInterpolationAlpha() const {
     if (m_fixedTimestep > 0.0f) {
-        return m_accumulator / m_fixedTimestep;
+        return m_accumulator.load(std::memory_order_relaxed) / m_fixedTimestep;
     }
     return 1.0; // Default to 1.0 to avoid division by zero
 }
@@ -127,7 +130,7 @@ void TimestepManager::setFixedTimestep(float timestep) {
 }
 
 void TimestepManager::reset() {
-    m_accumulator = 0.0;
+    m_accumulator.store(0.0, std::memory_order_relaxed);
     m_frameCount = 0;
     m_firstFrame = true;
     m_shouldRender = true;

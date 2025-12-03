@@ -39,6 +39,7 @@ set(SIMPLE_TESTS
     settings_manager_tests
     thread_system_tests
     game_state_manager_tests
+    game_engine_tests
     ai_optimization_tests
     buffer_utilization_tests
     resource_template_manager_tests
@@ -55,6 +56,15 @@ set(SIMPLE_TESTS
     collision_system_tests
     pathfinding_system_tests
     pathfinder_manager_tests
+    camera_tests
+    input_manager_tests
+    simd_correctness_tests
+    simd_performance_benchmark
+    buffer_reuse_tests
+    rendering_pipeline_tests
+    loading_state_tests
+    ui_manager_functional_tests
+    integrated_system_benchmark
 )
 
 # Complex tests (need mocks)
@@ -76,6 +86,8 @@ set(MOCK_TESTS
     collision_benchmark
     pathfinder_benchmark
     pathfinder_ai_contention_tests
+    event_coordination_integration_tests
+    ai_collision_integration_tests
 )
 
 # Tests that need special mock combinations
@@ -96,6 +108,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "ThreadSystemTests.cpp")
     elseif(${test_name} STREQUAL "game_state_manager_tests")
         set(test_source "GameStateManagerTests.cpp")
+    elseif(${test_name} STREQUAL "game_engine_tests")
+        set(test_source "GameEngineTests.cpp")
     elseif(${test_name} STREQUAL "ai_optimization_tests")
         set(test_source "AIOptimizationTest.cpp")
     elseif(${test_name} STREQUAL "buffer_utilization_tests")
@@ -135,6 +149,24 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "pathfinding/PathfindingSystemTests.cpp")
     elseif(${test_name} STREQUAL "pathfinder_manager_tests")
         set(test_source "PathfinderManagerTests.cpp")
+    elseif(${test_name} STREQUAL "camera_tests")
+        set(test_source "CameraTests.cpp")
+    elseif(${test_name} STREQUAL "input_manager_tests")
+        set(test_source "InputManagerTests.cpp")
+    elseif(${test_name} STREQUAL "simd_correctness_tests")
+        set(test_source "SIMDCorrectnessTests.cpp")
+    elseif(${test_name} STREQUAL "simd_performance_benchmark")
+        set(test_source "performance/SIMDBenchmark.cpp")
+    elseif(${test_name} STREQUAL "buffer_reuse_tests")
+        set(test_source "BufferReuseTests.cpp")
+    elseif(${test_name} STREQUAL "rendering_pipeline_tests")
+        set(test_source "RenderingPipelineTests.cpp")
+    elseif(${test_name} STREQUAL "loading_state_tests")
+        set(test_source "LoadingStateTests.cpp")
+    elseif(${test_name} STREQUAL "ui_manager_functional_tests")
+        set(test_source "UIManagerFunctionalTests.cpp")
+    elseif(${test_name} STREQUAL "integrated_system_benchmark")
+        set(test_source "performance/IntegratedSystemBenchmark.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -171,6 +203,10 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "performance/PathfinderBenchmark.cpp")
     elseif(${test_name} STREQUAL "pathfinder_ai_contention_tests")
         set(test_source "integration/PathfinderAIContentionTests.cpp")
+    elseif(${test_name} STREQUAL "event_coordination_integration_tests")
+        set(test_source "integration/EventCoordinationIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "ai_collision_integration_tests")
+        set(test_source "integration/AICollisionIntegrationTests.cpp")
     elseif(${test_name} MATCHES "^particle_manager_")
         string(REPLACE "particle_manager_" "" suffix ${test_name})
         string(REPLACE "_tests" "" suffix ${suffix})

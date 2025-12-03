@@ -15,7 +15,10 @@
 #include <unordered_map>
 #include <atomic>
 #include <stdexcept>
+#include <algorithm>
+#include <numeric>
 #include "core/Logger.hpp"
+#include "core/ThreadSystem.hpp"
 
 namespace HammerEngine {
 
@@ -102,6 +105,21 @@ bool PathfindingGrid::isWorldBlocked(const Vector2D& pos) const {
 }
 
 void PathfindingGrid::rebuildFromWorld() {
+    rebuildFromWorld(0, m_h);
+}
+
+void PathfindingGrid::initializeArrays() {
+    const int cellsW = m_w;
+    const int cellsH = m_h;
+    if (cellsW <= 0 || cellsH <= 0) {
+        PATHFIND_WARN("initializeArrays(): invalid grid dims");
+        return;
+    }
+    m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
+    m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+}
+
+void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
     const WorldManager& wm = WorldManager::Instance();
     const auto* world = wm.getWorldData();
     if (!world) { PATHFIND_WARN("rebuildFromWorld(): no active world"); return; }
@@ -111,8 +129,17 @@ void PathfindingGrid::rebuildFromWorld() {
     const int cellsH = m_h;
     if (cellsW <= 0 || cellsH <= 0) { PATHFIND_WARN("rebuildFromWorld(): invalid grid dims"); return; }
 
-    m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
-    m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+    // Clamp row range to valid bounds
+    rowStart = std::clamp(rowStart, 0, cellsH);
+    rowEnd = std::clamp(rowEnd, 0, cellsH);
+    if (rowStart >= rowEnd) { PATHFIND_WARN("rebuildFromWorld(): invalid row range"); return; }
+
+    // Only initialize arrays on full rebuild (rowStart == 0 && rowEnd == cellsH)
+    const bool isFullRebuild = (rowStart == 0 && rowEnd == cellsH);
+    if (isFullRebuild) {
+        m_blocked.assign(static_cast<size_t>(cellsW * cellsH), 0);
+        m_weight.assign(static_cast<size_t>(cellsW * cellsH), 1.0f);
+    }
 
     const int tilesH = static_cast<int>(world->grid.size());
     const int tilesW = tilesH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
@@ -122,7 +149,15 @@ void PathfindingGrid::rebuildFromWorld() {
     int blockedCount = 0;
     int collisionBlockedCount = 0;
 
-    for (int cy = 0; cy < cellsH; ++cy) {
+    for (int cy = rowStart; cy < rowEnd; ++cy) {
+        // Check if ThreadSystem is shutting down (matches EventManager pattern)
+        // This allows worker thread to exit early during shutdown
+        if (!HammerEngine::ThreadSystem::Exists() ||
+            HammerEngine::ThreadSystem::Instance().isShutdown()) {
+            PATHFIND_DEBUG("Grid rebuild interrupted by ThreadSystem shutdown");
+            return;
+        }
+
         for (int cx = 0; cx < cellsW; ++cx) {
             // Compute the world-space rect covered by this cell
             float x0 = m_offset.getX() + cx * m_cell;
@@ -150,13 +185,13 @@ void PathfindingGrid::rebuildFromWorld() {
                     // BUILDING obstacles and MOUNTAIN biome tiles are truly blocked, ROCK/TREE have movement penalties
                     bool blocked = tile.obstacleType == ObstacleType::BUILDING || tile.biome == Biome::MOUNTAIN;
                     if (blocked) blockedTiles++;
-                    
+
                     // Movement weight penalties: BUILDING=blocked, WATER=2.0x, ROCK/TREE=2.5x, normal=1.0x
                     float tw = 1.0f;
                     if (tile.isWater) {
                         tw = 2.0f;  // Water movement penalty
                     } else if (tile.obstacleType == ObstacleType::ROCK || tile.obstacleType == ObstacleType::TREE) {
-                        tw = 2.5f;  // Rock/Tree movement penalty 
+                        tw = 2.5f;  // Rock/Tree movement penalty
                     }
                     weightSum += tw;
                     totalTiles++;
@@ -179,12 +214,10 @@ void PathfindingGrid::rebuildFromWorld() {
 
                 // Filter to only STATIC bodies (buildings, world obstacles)
                 // KINEMATIC (NPCs) and DYNAMIC (player, projectiles) should NOT permanently block paths
-                for (EntityID bodyId : bodiesInCell) {
-                    if (CollisionManager::Instance().isStatic(bodyId)) {
-                        cellBlocked = true;
-                        collisionBlockedCount++;
-                        break; // Found at least one static obstacle
-                    }
+                if (std::any_of(bodiesInCell.begin(), bodiesInCell.end(),
+                    [](EntityID bodyId) { return CollisionManager::Instance().isStatic(bodyId); })) {
+                    cellBlocked = true;
+                    collisionBlockedCount++;
                 }
             }
 
@@ -195,14 +228,16 @@ void PathfindingGrid::rebuildFromWorld() {
         }
     }
 
-    PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
-                  ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
-                  " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)" +
-                  ", collision-blocked=" + std::to_string(collisionBlockedCount) + " cells");
-    
-    // Update coarse grid for hierarchical pathfinding
-    if (m_coarseGrid) {
-        updateCoarseGrid();
+    // Only log and update coarse grid on full rebuild
+    if (isFullRebuild) {
+        PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
+                      ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
+                      " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)" +
+                      ", collision-blocked=" + std::to_string(collisionBlockedCount) + " cells");
+
+        // Update coarse grid for hierarchical pathfinding
+        if (m_coarseGrid) {
+            updateCoarseGrid();
         
         // Log coarse grid statistics for debugging
         int coarseW = m_coarseGrid->getWidth();
@@ -221,7 +256,121 @@ void PathfindingGrid::rebuildFromWorld() {
         PATHFIND_DEBUG("Coarse grid updated: " + std::to_string(coarseW) + "x" + std::to_string(coarseH) +
                      ", blocked=" + std::to_string(coarseBlockedCount) + "/" + std::to_string(coarseW * coarseH) +
                      " (" + std::to_string(coarseBlockedPercent) + "% blocked)");
+        }
     }
+}
+
+// Incremental Update Implementation
+
+void PathfindingGrid::markDirtyRegion(int cellX, int cellY, int width, int height) {
+    std::lock_guard<std::mutex> lock(m_dirtyRegionMutex);
+
+    // Clamp to grid bounds
+    cellX = std::clamp(cellX, 0, m_w - 1);
+    cellY = std::clamp(cellY, 0, m_h - 1);
+    width = std::clamp(width, 1, m_w - cellX);
+    height = std::clamp(height, 1, m_h - cellY);
+
+    // Check for overlaps with existing dirty regions and merge if possible
+    for (auto& region : m_dirtyRegions) {
+        // Check if new region overlaps or is adjacent to existing region
+        int r1x1 = cellX, r1y1 = cellY, r1x2 = cellX + width, r1y2 = cellY + height;
+        int r2x1 = region.x, r2y1 = region.y, r2x2 = region.x + region.width, r2y2 = region.y + region.height;
+
+        // Expand bounds by 1 to merge adjacent regions
+        if (!(r1x2 < r2x1 - 1 || r1x1 > r2x2 + 1 || r1y2 < r2y1 - 1 || r1y1 > r2y2 + 1)) {
+            // Merge: compute bounding box of both regions
+            int mergedX1 = std::min(r1x1, r2x1);
+            int mergedY1 = std::min(r1y1, r2y1);
+            int mergedX2 = std::max(r1x2, r2x2);
+            int mergedY2 = std::max(r1y2, r2y2);
+
+            region.x = mergedX1;
+            region.y = mergedY1;
+            region.width = mergedX2 - mergedX1;
+            region.height = mergedY2 - mergedY1;
+            return; // Merged, no need to add new region
+        }
+    }
+
+    // No overlap found, add as new dirty region
+    m_dirtyRegions.push_back({cellX, cellY, width, height});
+
+    // Limit dirty regions to prevent unbounded growth (merge if too many)
+    constexpr size_t MAX_DIRTY_REGIONS = 32;
+    if (m_dirtyRegions.size() > MAX_DIRTY_REGIONS) {
+        // Find two closest regions and merge them
+        // Simple heuristic: merge first two regions (could be improved)
+        if (m_dirtyRegions.size() >= 2) {
+            auto& r1 = m_dirtyRegions[0];
+            auto& r2 = m_dirtyRegions[1];
+
+            int mergedX1 = std::min(r1.x, r2.x);
+            int mergedY1 = std::min(r1.y, r2.y);
+            int mergedX2 = std::max(r1.x + r1.width, r2.x + r2.width);
+            int mergedY2 = std::max(r1.y + r1.height, r2.y + r2.height);
+
+            r1.x = mergedX1;
+            r1.y = mergedY1;
+            r1.width = mergedX2 - mergedX1;
+            r1.height = mergedY2 - mergedY1;
+
+            // Remove second region
+            m_dirtyRegions.erase(m_dirtyRegions.begin() + 1);
+        }
+    }
+}
+
+void PathfindingGrid::rebuildDirtyRegions() {
+    std::vector<DirtyRegion> regions;
+    {
+        std::lock_guard<std::mutex> lock(m_dirtyRegionMutex);
+        if (m_dirtyRegions.empty()) {
+            return; // Nothing to rebuild
+        }
+        regions.swap(m_dirtyRegions); // Move regions out for processing
+    }
+
+    // Rebuild each dirty region using the row-range rebuild
+    for (const auto& region : regions) {
+        int rowStart = region.y;
+        int rowEnd = std::min(region.y + region.height, m_h);
+
+        // Rebuild rows in this region
+        rebuildFromWorld(rowStart, rowEnd);
+    }
+
+    // Update coarse grid after all dirty regions rebuilt
+    if (m_coarseGrid) {
+        updateCoarseGrid();
+    }
+
+    PATHFIND_DEBUG("Incremental rebuild complete: " + std::to_string(regions.size()) + " dirty regions processed");
+}
+
+bool PathfindingGrid::hasDirtyRegions() const {
+    std::lock_guard<std::mutex> lock(m_dirtyRegionMutex);
+    return !m_dirtyRegions.empty();
+}
+
+float PathfindingGrid::calculateDirtyPercent() const {
+    std::lock_guard<std::mutex> lock(m_dirtyRegionMutex);
+    if (m_dirtyRegions.empty() || m_w <= 0 || m_h <= 0) {
+        return 0.0f;
+    }
+
+    // Calculate total dirty cells (with overlap handling)
+    int totalDirtyCells = std::accumulate(m_dirtyRegions.begin(), m_dirtyRegions.end(), 0,
+        [](int sum, const auto& region) { return sum + region.width * region.height; });
+
+    // Simple approximation (may overcount overlaps, but conservative)
+    int totalCells = m_w * m_h;
+    return std::min(100.0f, (static_cast<float>(totalDirtyCells) / totalCells) * 100.0f);
+}
+
+void PathfindingGrid::clearDirtyRegions() {
+    std::lock_guard<std::mutex> lock(m_dirtyRegionMutex);
+    m_dirtyRegions.clear();
 }
 
 void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {

@@ -487,45 +487,23 @@ void InputManager::onWindowResize(const SDL_Event& event) {
   // Update GameEngine window dimensions
   gameEngine.setWindowSize(newWidth, newHeight);
   
-  // Recalculate logical resolution based on our rendering approach
-  #ifdef __APPLE__
-  // On macOS, recalculate logical resolution with stretch mode
+  // Use native resolution rendering (all platforms) for crisp, sharp text
+  // This matches the initialization approach in GameEngine and ensures
+  // consistent rendering whether in windowed or fullscreen mode
   int actualWidth, actualHeight;
   if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &actualWidth, &actualHeight)) {
     INPUT_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
     actualWidth = newWidth;
     actualHeight = newHeight;
   }
-  
-  // Use standard logical resolution to ensure UI elements are positioned correctly
-  // This prevents buttons from going off-screen while maintaining good scaling
-  int targetLogicalWidth = 1920;
-  int targetLogicalHeight = 1080;
 
-  // Update renderer logical presentation with letterbox mode
-  SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), targetLogicalWidth, targetLogicalHeight, SDL_LOGICAL_PRESENTATION_LETTERBOX);
-
-  // Update GameEngine's cached logical dimensions
-  gameEngine.setLogicalSize(targetLogicalWidth, targetLogicalHeight);
-
-  INPUT_INFO("macOS: Updated standard logical resolution with letterbox mode: " + std::to_string(targetLogicalWidth) + "x" + std::to_string(targetLogicalHeight) + " on " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-  #else
-  // On non-Apple platforms, use actual screen resolution
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &actualWidth, &actualHeight)) {
-    INPUT_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
-    actualWidth = newWidth;
-    actualHeight = newHeight;
-  }
-  
-  // Update renderer to native resolution
+  // Update renderer to native resolution (no scaling)
   SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
 
   // Update GameEngine's cached logical dimensions
   gameEngine.setLogicalSize(actualWidth, actualHeight);
 
-   INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-   #endif
+  INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
    
    // Reload fonts for new display configuration
    INPUT_INFO("Reloading fonts for display configuration change...");
