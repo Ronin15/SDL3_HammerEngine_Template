@@ -99,6 +99,7 @@ namespace UIConstants {
   // Event Log Constants
   constexpr int DEFAULT_EVENT_LOG_MAX_ENTRIES = 5; // Default max event log entries
   constexpr float DEFAULT_EVENT_LOG_UPDATE_INTERVAL = 2.0f; // Default update interval in seconds
+  constexpr float EVENT_LOG_WIDTH_PERCENT = 0.30f; // Event log spans 25% of window width
 
   // Timing and Animation Constants
   constexpr float DEFAULT_TOOLTIP_DELAY = 1.0f; // Default tooltip hover delay in seconds

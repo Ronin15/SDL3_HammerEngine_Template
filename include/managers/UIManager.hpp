@@ -66,6 +66,8 @@ struct UIPositioning {
   int offsetY{0};      // Offset from positioning anchor
   int fixedWidth{0};   // Fixed width (0 = use current width)
   int fixedHeight{0};  // Fixed height (0 = use current height)
+  float widthPercent{0.0f};   // Width as fraction of window (e.g., 0.57 = 57%), takes precedence over fixedWidth
+  float heightPercent{0.0f};  // Height as fraction of window, takes precedence over fixedHeight
 };
 
 // UI States
