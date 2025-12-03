@@ -6,9 +6,8 @@
 #include "core/GameTime.hpp"
 #include "events/TimeEvent.hpp"
 #include "managers/EventManager.hpp"
-#include <iomanip>
-#include <sstream>
 #include <cmath>
+#include <cstdio>
 #include <random>
 
 // ============================================================================
@@ -316,16 +315,18 @@ void GameTime::dispatchTimeEvents()
     // Check for day change
     if (m_currentDay != m_previousDay && m_previousDay >= 0)
     {
+        // Convert string_view to string for event storage
         auto event = std::make_shared<DayChangedEvent>(
-            m_currentDay, m_dayOfMonth, m_currentMonth, getCurrentMonthName());
+            m_currentDay, m_dayOfMonth, m_currentMonth, std::string(getCurrentMonthName()));
         EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
     }
 
     // Check for month change
     if (m_currentMonth != m_previousMonth && m_previousMonth >= 0)
     {
+        // Convert string_view to string for event storage
         auto event = std::make_shared<MonthChangedEvent>(
-            m_currentMonth, getCurrentMonthName(), m_currentSeason);
+            m_currentMonth, std::string(getCurrentMonthName()), m_currentSeason);
         EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
     }
 
@@ -428,24 +429,16 @@ bool GameTime::isNighttime() const
     return !isDaytime();
 }
 
-std::string GameTime::getTimeOfDayName() const
+const char* GameTime::getTimeOfDayName() const
 {
     if (m_currentHour >= 5.0f && m_currentHour < 8.0f)
-    {
         return "Morning";
-    }
     else if (m_currentHour >= 8.0f && m_currentHour < 17.0f)
-    {
         return "Day";
-    }
     else if (m_currentHour >= 17.0f && m_currentHour < 21.0f)
-    {
         return "Evening";
-    }
     else
-    {
         return "Night";
-    }
 }
 
 int GameTime::getCurrentSeason(int daysPerSeason) const
@@ -462,34 +455,29 @@ int GameTime::getCurrentSeason(int daysPerSeason) const
     return seasonIndex;
 }
 
-std::string GameTime::formatCurrentTime(bool use24Hour) const
+std::string_view GameTime::formatCurrentTime(bool use24Hour)
 {
     int hours = static_cast<int>(m_currentHour);
     int minutes = static_cast<int>((m_currentHour - hours) * 60.0f);
 
-    std::stringstream ss;
-
     if (use24Hour)
     {
         // 24-hour format (e.g., "14:30")
-        ss << std::setw(2) << std::setfill('0') << hours << ":"
-           << std::setw(2) << std::setfill('0') << minutes;
+        snprintf(m_timeFormatBuffer, sizeof(m_timeFormatBuffer),
+                 "%02d:%02d", hours, minutes);
     }
     else
     {
         // 12-hour format (e.g., "2:30 PM")
         int displayHour = hours % 12;
         if (displayHour == 0)
-        {
-            displayHour = 12; // 0 should display as 12 in 12-hour format
-        }
+            displayHour = 12;
 
-        ss << displayHour << ":"
-           << std::setw(2) << std::setfill('0') << minutes
-           << (hours >= 12 ? " PM" : " AM");
+        snprintf(m_timeFormatBuffer, sizeof(m_timeFormatBuffer),
+                 "%d:%02d %s", displayHour, minutes, hours >= 12 ? "PM" : "AM");
     }
 
-    return ss.str();
+    return m_timeFormatBuffer;
 }
 
 // ============================================================================
@@ -502,12 +490,10 @@ void GameTime::setCalendarConfig(const CalendarConfig& config)
     updateCalendarState();
 }
 
-std::string GameTime::getCurrentMonthName() const
+std::string_view GameTime::getCurrentMonthName() const
 {
     if (m_calendarConfig.months.empty())
-    {
         return "Unknown";
-    }
 
     if (m_currentMonth >= 0 &&
         m_currentMonth < static_cast<int>(m_calendarConfig.months.size()))
@@ -538,15 +524,15 @@ int GameTime::getDaysInCurrentMonth() const
 // Season Methods
 // ============================================================================
 
-std::string GameTime::getSeasonName() const
+const char* GameTime::getSeasonName() const
 {
     switch (m_currentSeason)
     {
         case Season::Spring: return "Spring";
         case Season::Summer: return "Summer";
-        case Season::Fall: return "Fall";
+        case Season::Fall:   return "Fall";
         case Season::Winter: return "Winter";
-        default: return "Unknown";
+        default:             return "Unknown";
     }
 }
 

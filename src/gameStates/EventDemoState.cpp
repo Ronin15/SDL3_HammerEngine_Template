@@ -26,6 +26,8 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "world/WeatherController.hpp"
+#include "world/TimeEventController.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <ctime>
@@ -248,6 +250,12 @@ bool EventDemoState::enter() {
     // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
 
+    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
+    WeatherController::Instance().subscribe();
+
+    // Subscribe to time events for event log display
+    TimeEventController::Instance().subscribe("event_log");
+
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
 
@@ -400,6 +408,12 @@ bool EventDemoState::exit() {
       // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
       m_worldLoaded = false;
     }
+
+    // Unsubscribe from automatic weather events
+    WeatherController::Instance().unsubscribe();
+
+    // Unsubscribe from time event logging
+    TimeEventController::Instance().unsubscribe();
 
     // Reset initialization flag for next fresh start
     m_initialized = false;

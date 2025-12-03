@@ -21,6 +21,7 @@
 
 #include <chrono>
 #include <string>
+#include <string_view>
 #include <vector>
 #include <cstdint>
 
@@ -188,9 +189,9 @@ public:
 
     /**
      * @brief Get current time of day as string (Morning, Day, Evening, Night)
-     * @return String representation of time of day
+     * @return Static string pointer for time of day
      */
-    std::string getTimeOfDayName() const;
+    const char* getTimeOfDayName() const;
 
     /**
      * @brief Set the time scale factor
@@ -226,9 +227,10 @@ public:
     /**
      * @brief Format current game time as a string
      * @param use24Hour Whether to use 24-hour format
-     * @return Formatted time string (e.g., "14:30" or "2:30 PM")
+     * @return View into internal buffer (e.g., "14:30" or "2:30 PM")
+     * @note Non-const: modifies internal buffer
      */
-    std::string formatCurrentTime(bool use24Hour = true) const;
+    std::string_view formatCurrentTime(bool use24Hour = true);
 
     // ========================================================================
     // Calendar System
@@ -260,9 +262,9 @@ public:
 
     /**
      * @brief Get the name of the current month
-     * @return Month name (e.g., "Bloomtide", "Sunpeak")
+     * @return View into CalendarMonth name (e.g., "Bloomtide", "Sunpeak")
      */
-    std::string getCurrentMonthName() const;
+    std::string_view getCurrentMonthName() const;
 
     /**
      * @brief Get number of days in the current month
@@ -282,9 +284,9 @@ public:
 
     /**
      * @brief Get current season name as string
-     * @return "Spring", "Summer", "Fall", or "Winter"
+     * @return Static string pointer: "Spring", "Summer", "Fall", or "Winter"
      */
-    std::string getSeasonName() const;
+    const char* getSeasonName() const;
 
     /**
      * @brief Get environmental configuration for current season
@@ -379,6 +381,9 @@ private:
 
     // Pause state
     bool m_isPaused{false};
+
+    // Format buffer for formatCurrentTime()
+    char m_timeFormatBuffer[16]{};
 
     // Helper methods
     void advanceTime(float deltaGameSeconds);

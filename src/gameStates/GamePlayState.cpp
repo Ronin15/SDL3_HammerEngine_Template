@@ -20,6 +20,9 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
+#include "world/WeatherController.hpp"
+#include "world/TimeEventController.hpp"
+#include "managers/UIConstants.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 
@@ -33,8 +36,11 @@ bool GamePlayState::enter() {
 
   // Check if already initialized (resuming from pause)
   if (m_initialized) {
-    // No longer need to unpause GameLoop - PauseState simply pops off the stack
-    // GameStateManager will resume updating this state automatically
+    // Resuming from pause - show UI components again
+    auto& ui = UIManager::Instance();
+    ui.setComponentVisible("gameplay_event_log", true);
+    ui.setComponentVisible("gameplay_time_status", true);
+    ui.setComponentVisible("gameplay_time_label", true);
 
     return true;
   }
@@ -70,6 +76,46 @@ bool GamePlayState::enter() {
 
     // Initialize camera (world already loaded)
     initializeCamera();
+
+    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
+    WeatherController::Instance().subscribe();
+
+    // Create event log for time/weather messages
+    auto& ui = UIManager::Instance();
+    ui.createEventLog("gameplay_event_log",
+        {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
+    UIPositioning eventLogPos;
+    eventLogPos.mode = UIPositionMode::BOTTOM_ALIGNED;
+    eventLogPos.offsetX = 10;
+    eventLogPos.offsetY = 20;
+    eventLogPos.fixedHeight = 180;
+    eventLogPos.widthPercent = UIConstants::EVENT_LOG_WIDTH_PERCENT;
+    ui.setComponentPositioning("gameplay_event_log", eventLogPos);
+
+    // Subscribe to time events for event log display
+    TimeEventController::Instance().subscribe("gameplay_event_log");
+
+    // Create time status bar at top-right
+    int statusWidth = UIConstants::TIME_STATUS_WIDTH;
+    int statusHeight = UIConstants::TIME_STATUS_HEIGHT;
+    int statusX = ui.getLogicalWidth() - statusWidth - UIConstants::TIME_STATUS_RIGHT_OFFSET;
+    int statusY = UIConstants::TIME_STATUS_TOP_OFFSET;
+
+    ui.createPanel("gameplay_time_status", {statusX, statusY, statusWidth, statusHeight});
+    ui.createLabel("gameplay_time_label",
+        {statusX + 8, statusY + 6, statusWidth - 16, statusHeight - 12}, "");
+
+    // Set positioning for resize handling
+    UIPositioning statusPos;
+    statusPos.mode = UIPositionMode::RIGHT_ALIGNED;
+    statusPos.offsetX = UIConstants::TIME_STATUS_RIGHT_OFFSET;
+    statusPos.offsetY = -(ui.getLogicalHeight() / 2 - statusY - statusHeight / 2);
+    statusPos.fixedWidth = statusWidth;
+    statusPos.fixedHeight = statusHeight;
+    ui.setComponentPositioning("gameplay_time_status", statusPos);
+
+    // Connect status label to TimeEventController (event-driven updates)
+    TimeEventController::Instance().setStatusLabel("gameplay_time_label");
 
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
@@ -189,6 +235,12 @@ bool GamePlayState::exit() {
     // Transitioning to pause - PRESERVE ALL GAMEPLAY DATA
     // PauseState will overlay on top, and GameStateManager will only update PauseState
 
+    // Hide UI components during pause overlay
+    auto& ui = UIManager::Instance();
+    ui.setComponentVisible("gameplay_event_log", false);
+    ui.setComponentVisible("gameplay_time_status", false);
+    ui.setComponentVisible("gameplay_time_label", false);
+
     // Reset the flag after using it
     m_transitioningToPause = false;
 
@@ -289,6 +341,12 @@ bool GamePlayState::exit() {
 
   // Reset player
   mp_Player = nullptr;
+
+  // Unsubscribe from automatic weather events
+  WeatherController::Instance().unsubscribe();
+
+  // Unsubscribe from time event logging
+  TimeEventController::Instance().unsubscribe();
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
