@@ -9,8 +9,12 @@
 #include "managers/UIManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "core/GameEngine.hpp"
+#include "core/GameTime.hpp"
 
 bool PauseState::enter() {
+  // Pause game time while in pause state
+  GameTime::Instance().pause();
+
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
@@ -57,6 +61,9 @@ void PauseState::render() {
        gameEngine.getRenderer());
 }
 bool PauseState::exit() {
+  // Resume game time when leaving pause state
+  GameTime::Instance().resume();
+
   // Only clean up PauseState-specific UI components
   // Do NOT use prepareForStateTransition() as it would clear GamePlayState's preserved UI
   auto& ui = UIManager::Instance();

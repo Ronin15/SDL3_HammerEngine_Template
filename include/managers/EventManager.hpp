@@ -51,6 +51,7 @@ class CollisionEvent;
 class WorldTriggerEvent;
 class HarvestResourceEvent;
 class CollisionObstacleChangedEvent;
+class TimeEvent;
 class EventFactory;
 class Entity;
 
@@ -546,10 +547,18 @@ public:
                            DispatchMode mode = DispatchMode::Deferred) const;
 
   // Collision obstacle change notification for PathfinderManager
-  bool triggerCollisionObstacleChanged(const Vector2D& position, 
+  bool triggerCollisionObstacleChanged(const Vector2D& position,
                                       float radius = 64.0f,
                                       const std::string& description = "",
                                       DispatchMode mode = DispatchMode::Deferred) const;
+
+  /**
+   * @brief Dispatches an event directly without registration
+   * @param event Shared pointer to the event to dispatch
+   * @param mode Deferred (processed in update()) or Immediate
+   * @return true if dispatch successful, false otherwise
+   */
+  bool dispatchEvent(EventPtr event, DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;

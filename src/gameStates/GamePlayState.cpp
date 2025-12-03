@@ -5,6 +5,7 @@
 
 #include "gameStates/GamePlayState.hpp"
 #include "core/GameEngine.hpp"
+#include "core/GameTime.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
 #include "gameStates/LoadingState.hpp"
@@ -115,6 +116,9 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 
     return;  // Don't continue with rest of update
   }
+
+  // Update game time (advances calendar, dispatches time events)
+  GameTime::Instance().update(deltaTime);
 
   // Update player if it exists
   if (mp_Player) {
