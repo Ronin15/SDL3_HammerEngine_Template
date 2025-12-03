@@ -3154,9 +3154,12 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
 
   // Update dimensions if fixed sizes specified, applying global scale for resolution adaptation
   // Special cases:
+  //   widthPercent/heightPercent > 0 = percentage of window dimension (takes precedence)
   //   -1 = use full window dimension
   //   < -1 = use full window dimension minus the absolute value (for margins)
-  if (pos.fixedWidth == -1) {
+  if (pos.widthPercent > 0.0f && pos.widthPercent <= 1.0f) {
+    bounds.width = static_cast<int>(width * pos.widthPercent);  // Percentage-based width
+  } else if (pos.fixedWidth == -1) {
     bounds.width = width;
   } else if (pos.fixedWidth < -1) {
     bounds.width = width + static_cast<int>(pos.fixedWidth * m_globalScale);  // Scale negative margin
@@ -3164,7 +3167,9 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
     bounds.width = static_cast<int>(pos.fixedWidth * m_globalScale);  // Scale fixed width
   }
 
-  if (pos.fixedHeight == -1) {
+  if (pos.heightPercent > 0.0f && pos.heightPercent <= 1.0f) {
+    bounds.height = static_cast<int>(height * pos.heightPercent);  // Percentage-based height
+  } else if (pos.fixedHeight == -1) {
     bounds.height = height;
   } else if (pos.fixedHeight < -1) {
     bounds.height = height + static_cast<int>(pos.fixedHeight * m_globalScale);  // Scale negative margin
