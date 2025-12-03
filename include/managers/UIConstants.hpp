@@ -99,7 +99,13 @@ namespace UIConstants {
   // Event Log Constants
   constexpr int DEFAULT_EVENT_LOG_MAX_ENTRIES = 5; // Default max event log entries
   constexpr float DEFAULT_EVENT_LOG_UPDATE_INTERVAL = 2.0f; // Default update interval in seconds
-  constexpr float EVENT_LOG_WIDTH_PERCENT = 0.30f; // Event log spans 25% of window width
+  constexpr float EVENT_LOG_WIDTH_PERCENT = 0.30f; // Event log spans 30% of window width
+
+  // Time Status Bar Constants
+  constexpr int TIME_STATUS_WIDTH = 280;        // Width of time status panel
+  constexpr int TIME_STATUS_HEIGHT = 32;        // Height of time status panel
+  constexpr int TIME_STATUS_TOP_OFFSET = 10;    // Offset from top of screen
+  constexpr int TIME_STATUS_RIGHT_OFFSET = 10;  // Offset from right edge
 
   // Timing and Animation Constants
   constexpr float DEFAULT_TOOLTIP_DELAY = 1.0f; // Default tooltip hover delay in seconds
