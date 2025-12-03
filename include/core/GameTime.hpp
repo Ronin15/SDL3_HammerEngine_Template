@@ -8,17 +8,98 @@
 
 /**
  * @file GameTime.hpp
- * @brief Management of game time, including day/night cycles and time scaling
+ * @brief Management of game time, including day/night cycles, calendar, and seasons
  *
  * The GameTime class provides functionality for:
  * - Tracking real-time vs. game time
- * - Day/night cycles
- * - Time acceleration/deceleration
+ * - Day/night cycles with seasonal variations
+ * - Fantasy calendar with custom months and years
+ * - Season system with environmental parameters
+ * - Automatic weather triggering based on season
  * - Time-based events and scheduling
  */
 
 #include <chrono>
 #include <string>
+#include <vector>
+#include <cstdint>
+
+// Forward declaration
+enum class WeatherType;
+
+/**
+ * @brief Type-safe season enumeration
+ */
+enum class Season : uint8_t
+{
+    Spring = 0,
+    Summer = 1,
+    Fall = 2,
+    Winter = 3
+};
+
+/**
+ * @brief Weather probability configuration for a season
+ */
+struct WeatherProbabilities
+{
+    float clear{0.40f};
+    float cloudy{0.25f};
+    float rainy{0.15f};
+    float stormy{0.05f};
+    float foggy{0.10f};
+    float snowy{0.00f};
+    float windy{0.05f};
+};
+
+/**
+ * @brief Environmental configuration for a specific season
+ */
+struct SeasonConfig
+{
+    float sunriseHour{6.0f};
+    float sunsetHour{18.0f};
+    float minTemperature{50.0f};
+    float maxTemperature{80.0f};
+    WeatherProbabilities weatherProbs;
+
+    /**
+     * @brief Get default configuration for a specific season
+     * @param season The season to get defaults for
+     * @return SeasonConfig with appropriate defaults
+     */
+    static SeasonConfig getDefault(Season season);
+};
+
+/**
+ * @brief Definition of a calendar month
+ */
+struct CalendarMonth
+{
+    std::string name;
+    int dayCount{30};
+    Season season{Season::Spring};
+};
+
+/**
+ * @brief Calendar configuration with months
+ */
+struct CalendarConfig
+{
+    std::vector<CalendarMonth> months;
+
+    /**
+     * @brief Create default fantasy calendar (4 months, 30 days each)
+     * @return CalendarConfig with Bloomtide, Sunpeak, Harvestmoon, Frosthold
+     */
+    static CalendarConfig createDefault();
+
+    /**
+     * @brief Get total days in a year
+     * @return Sum of all month day counts
+     */
+    int getTotalDaysInYear() const;
+};
 
 class GameTime {
 public:
@@ -42,8 +123,31 @@ public:
     /**
      * @brief Update game time based on real elapsed time
      * @param deltaTime Real time elapsed in seconds since last update
+     * @note Does nothing if time is paused
      */
     void update(float deltaTime);
+
+    // ========================================================================
+    // Pause Control
+    // ========================================================================
+
+    /**
+     * @brief Pause time progression
+     * @note While paused, update() will not advance time or dispatch events
+     */
+    void pause();
+
+    /**
+     * @brief Resume time progression after pause
+     * @note Resets internal timing to avoid time jumps
+     */
+    void resume();
+
+    /**
+     * @brief Check if time is currently paused
+     * @return True if paused, false if running
+     */
+    bool isPaused() const { return m_isPaused; }
 
     /**
      * @brief Get current game hour (0-23.999)
@@ -126,6 +230,109 @@ public:
      */
     std::string formatCurrentTime(bool use24Hour = true) const;
 
+    // ========================================================================
+    // Calendar System
+    // ========================================================================
+
+    /**
+     * @brief Set the calendar configuration
+     * @param config Calendar configuration with months
+     */
+    void setCalendarConfig(const CalendarConfig& config);
+
+    /**
+     * @brief Get current month index (0-based)
+     * @return Current month index within calendar
+     */
+    int getCurrentMonth() const { return m_currentMonth; }
+
+    /**
+     * @brief Get day of the current month (1-based)
+     * @return Day within the current month
+     */
+    int getDayOfMonth() const { return m_dayOfMonth; }
+
+    /**
+     * @brief Get current game year
+     * @return Current year (starts at 1)
+     */
+    int getGameYear() const { return m_currentYear; }
+
+    /**
+     * @brief Get the name of the current month
+     * @return Month name (e.g., "Bloomtide", "Sunpeak")
+     */
+    std::string getCurrentMonthName() const;
+
+    /**
+     * @brief Get number of days in the current month
+     * @return Day count for current month
+     */
+    int getDaysInCurrentMonth() const;
+
+    // ========================================================================
+    // Type-Safe Season System
+    // ========================================================================
+
+    /**
+     * @brief Get current season as type-safe enum
+     * @return Current Season enum value
+     */
+    Season getSeason() const { return m_currentSeason; }
+
+    /**
+     * @brief Get current season name as string
+     * @return "Spring", "Summer", "Fall", or "Winter"
+     */
+    std::string getSeasonName() const;
+
+    /**
+     * @brief Get environmental configuration for current season
+     * @return SeasonConfig with daylight hours, temperatures, weather probabilities
+     */
+    const SeasonConfig& getSeasonConfig() const;
+
+    /**
+     * @brief Get current temperature based on season and time of day
+     * @return Temperature value interpolated between season min/max
+     */
+    float getCurrentTemperature() const;
+
+    // ========================================================================
+    // Automatic Weather System
+    // ========================================================================
+
+    /**
+     * @brief Enable or disable automatic weather changes
+     * @param enable True to enable, false to disable
+     */
+    void enableAutoWeather(bool enable) { m_autoWeatherEnabled = enable; }
+
+    /**
+     * @brief Check if automatic weather is enabled
+     * @return True if auto weather is active
+     */
+    bool isAutoWeatherEnabled() const { return m_autoWeatherEnabled; }
+
+    /**
+     * @brief Set interval between weather rolls (in game hours)
+     * @param gameHours Hours between automatic weather checks
+     */
+    void setWeatherCheckInterval(float gameHours);
+
+    /**
+     * @brief Roll for weather based on current season probabilities
+     * @return WeatherType based on probability roll
+     */
+    WeatherType rollWeatherForSeason() const;
+
+    /**
+     * @brief Roll for weather based on specific season probabilities
+     * @param season Season to use for probability lookup
+     * @return WeatherType based on probability roll
+     */
+    WeatherType rollWeatherForSeason(Season season) const;
+
 private:
     // Singleton constructor/destructor
     GameTime();
@@ -150,8 +357,35 @@ private:
     // Real-time tracking
     std::chrono::steady_clock::time_point m_lastUpdateTime;
 
+    // Calendar state
+    CalendarConfig m_calendarConfig;
+    int m_currentMonth{0};            // 0-based month index
+    int m_dayOfMonth{1};              // 1-based day within month
+    int m_currentYear{1};             // Year counter (starts at 1)
+    Season m_currentSeason{Season::Spring};
+    SeasonConfig m_currentSeasonConfig;
+
+    // Previous state for change detection
+    int m_previousHour{-1};
+    int m_previousDay{-1};
+    int m_previousMonth{-1};
+    int m_previousYear{-1};
+    Season m_previousSeason{Season::Spring};
+
+    // Weather system
+    float m_weatherCheckInterval{4.0f};  // Game hours between weather rolls
+    float m_lastWeatherCheckHour{0.0f};
+    bool m_autoWeatherEnabled{false};
+
+    // Pause state
+    bool m_isPaused{false};
+
     // Helper methods
     void advanceTime(float deltaGameSeconds);
+    void updateCalendarState();
+    void updateSeasonFromCalendar();
+    void dispatchTimeEvents();
+    void checkWeatherUpdate();
 };
 
 #endif // GAME_TIME_HPP

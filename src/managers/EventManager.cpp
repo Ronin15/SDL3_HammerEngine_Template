@@ -19,6 +19,7 @@
 #include "events/CollisionEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/TimeEvent.hpp"
 
 #include <algorithm>
 #include <chrono>
@@ -1530,6 +1531,8 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
     return "CollisionObstacleChanged";
   case EventTypeId::Custom:
     return "Custom";
+  case EventTypeId::Time:
+    return "Time";
   default:
     return "Unknown";
   }
@@ -1788,4 +1791,20 @@ bool EventManager::triggerCameraZoomChanged(float newZoom, float oldZoom, Dispat
   data.setActive(true);
   data.event = std::make_shared<CameraZoomChangedEvent>(newZoom, oldZoom);
   return dispatchEvent(EventTypeId::Camera, data, mode, "triggerCameraZoomChanged");
+}
+
+// Public dispatch method for EventPtr (used by GameTime for TimeEvents)
+bool EventManager::dispatchEvent(EventPtr event, DispatchMode mode) const {
+  if (!event) {
+    EVENT_ERROR("dispatchEvent called with null event");
+    return false;
+  }
+
+  EventTypeId typeId = event->getTypeId();
+  EventData data;
+  data.typeId = typeId;
+  data.setActive(true);
+  data.event = event;
+
+  return dispatchEvent(typeId, data, mode, "dispatchEvent(EventPtr)");
 }
