@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 68+ test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 83+ test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 

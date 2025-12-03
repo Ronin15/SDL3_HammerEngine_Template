@@ -303,6 +303,96 @@ void schedulePathfindingRequests() {
 }
 ```
 
+## Grid Rebuild Architecture
+
+The PathfinderManager implements intelligent grid management with threaded rebuilds and incremental updates for optimal state transition performance.
+
+### Threaded Grid Rebuild System
+
+Grid rebuilds execute on ThreadSystem workers using WorkerBudget allocation, enabling parallel cell processing for large grids.
+
+#### Parallel Batching Strategy
+```cpp
+// PathfinderManager automatically selects rebuild strategy based on grid size
+void rebuildGrid(bool allowIncremental = true);
+```
+
+The system determines optimal rebuild strategy:
+- **Small Grids** (<64 rows): Sequential rebuild on single ThreadSystem worker
+- **Large Grids** (≥64 rows): Parallel row batches using WorkerBudget allocation
+
+```cpp
+// Example: 200x200 grid with 12-worker system
+// - Calculates WorkerBudget allocation for pathfinding (~19% = 2-3 workers)
+// - Divides grid rows into batches (e.g., 8 batches of 25 rows each)
+// - Submits batch tasks with Low priority to avoid starving AI/Events
+// - Coordinator task waits for all batches then atomically swaps grid
+```
+
+#### State Transition Coordination
+```cpp
+// Called before game state changes (e.g., PlayState → MenuState)
+void prepareForStateTransition();
+
+// Blocks until all grid rebuild tasks complete
+void waitForGridRebuildCompletion();
+```
+
+### Incremental Update System
+
+For dynamic world changes, the system supports event-driven partial rebuilds that only recalculate affected regions.
+
+#### Event Subscriptions
+PathfinderManager subscribes to EventManager for automatic grid updates:
+- **CollisionObstacleChanged**: Invalidates cache and marks dirty regions
+- **WorldLoaded**: Triggers full grid rebuild for new world
+- **WorldUnloaded**: Clears grid and cache
+- **TileChanged**: Marks affected cells for incremental rebuild
+
+#### Dirty Region Tracking
+```cpp
+// When world tiles change:
+// 1. TileChangedEvent fires from WorldManager
+// 2. PathfinderManager marks affected grid cells as "dirty"
+// 3. Next rebuildGrid() call checks dirty percentage
+// 4. If dirty < 25%: Incremental rebuild (only dirty regions)
+// 5. If dirty ≥ 25%: Full parallel rebuild (faster for large changes)
+```
+
+#### Incremental Rebuild API
+```cpp
+// Grid tracks dirty regions internally
+m_grid->hasDirtyRegions();       // Check if incremental update needed
+m_grid->calculateDirtyPercent(); // Get percentage of grid needing update
+m_grid->rebuildDirtyRegions();   // Rebuild only marked cells
+
+// Automatic: rebuildGrid(true) uses incremental when beneficial
+PathfinderManager::Instance().rebuildGrid(true);  // Smart: incremental if <25% dirty
+PathfinderManager::Instance().rebuildGrid(false); // Force: full parallel rebuild
+```
+
+### Performance Impact
+
+| Operation | Description | Typical Time |
+|-----------|-------------|--------------|
+| Full Sequential | Single-threaded grid rebuild | 50-100ms (200×200) |
+| Full Parallel | WorkerBudget parallel batching | 15-30ms (200×200) |
+| Incremental | Dirty regions only (<25%) | 1-5ms |
+| State Transition | prepareForStateTransition() | <1ms (waits for completion) |
+
+### LoadingState Integration
+
+The LoadingState uses PathfinderManager's synchronization to ensure grid availability:
+
+```cpp
+// In LoadingState::enter() or update():
+// 1. Submit world generation to ThreadSystem
+// 2. WorldManager fires WorldLoadedEvent
+// 3. PathfinderManager receives event, starts parallel grid rebuild
+// 4. LoadingState calls waitForGridRebuildCompletion() before transitioning
+// 5. Target state receives fully initialized pathfinding grid
+```
+
 ## Error Handling
 
 ### Pathfinding Results

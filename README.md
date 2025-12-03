@@ -22,7 +22,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Professional UI System**
 
-    Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
+    Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Centralized UI constants with resolution-aware scaling (1920×1080 baseline) and event-driven resize handling. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
 
 - **Automatic Resource Management**  
   
@@ -33,8 +33,8 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
     Header-only binary serialization system with smart pointer memory management. Used by SaveGameManager for robust, versioned save/load across platforms.
 
 - **Comprehensive Testing & Analysis**
-  
-    68+ test executables with Boost.Test framework covering functional, performance, memory, and thread safety validation. Static analysis (cppcheck), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+
+    83+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
 
 - **Cross-Platform Optimizations**
     
