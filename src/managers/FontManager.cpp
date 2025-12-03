@@ -13,23 +13,18 @@
 
 // Font sizing configuration constants
 namespace {
-  // Platform-specific base font sizes
-  [[maybe_unused]] constexpr float APPLE_BASE_FONT_SIZE = 18.0f;
-  [[maybe_unused]] constexpr float NON_APPLE_HEIGHT_RATIO = 90.0f;
-  
+  // Universal height-based font sizing (all platforms)
+  constexpr float HEIGHT_RATIO = 90.0f;
+
   // Font size ratios for different text types
-  #ifdef __APPLE__
-  constexpr float UI_FONT_RATIO = 1.0f;       // 100% of base (slightly larger for macOS)
-  #else
   constexpr float UI_FONT_RATIO = 0.875f;     // 87.5% of base
-  #endif
   constexpr float TITLE_FONT_RATIO = 1.5f;    // 150% of base
   constexpr float TOOLTIP_FONT_RATIO = 0.6f;  // 60% of base
-  
+
   // Font size bounds for edge case protection
   constexpr int MAX_FONT_SIZE = 100;
-  
-  // Minimum readable sizes for specific font types (ensure good readability at 1080p)
+
+  // Minimum readable sizes for specific font types (ensure good readability)
   constexpr int MIN_BASE_FONT_SIZE = 18;
   constexpr int MIN_UI_FONT_SIZE = 16;
   constexpr int MIN_TITLE_FONT_SIZE = 24;
@@ -80,13 +75,9 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
         }
     }
 
-    // Calculate font sizes
-    #ifdef __APPLE__
-    float baseSizeFloat = APPLE_BASE_FONT_SIZE;
-    #else
+    // Calculate font sizes based on window height (universal for all platforms)
     int clampedHeight = std::clamp(windowHeight, 480, 8640);
-    float baseSizeFloat = static_cast<float>(clampedHeight) / NON_APPLE_HEIGHT_RATIO;
-    #endif
+    float baseSizeFloat = static_cast<float>(clampedHeight) / HEIGHT_RATIO;
 
     int baseFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat)), MIN_BASE_FONT_SIZE, MAX_FONT_SIZE);
     int uiFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * UI_FONT_RATIO)), MIN_UI_FONT_SIZE, MAX_FONT_SIZE);

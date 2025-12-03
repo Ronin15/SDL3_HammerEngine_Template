@@ -4,13 +4,30 @@
 
 The Auto-Sizing System is a core feature of the UIManager that automatically calculates optimal component dimensions based on content. This system eliminates manual sizing calculations and provides consistent, content-aware layouts across all UI components.
 
+## Baseline Resolution System
+
+The auto-sizing system works within the UIManager's **baseline resolution** of 1920×1080 pixels. All size measurements and constants are defined for this reference resolution, then automatically scaled to fit any window size.
+
+```cpp
+// From UIConstants.hpp
+constexpr int BASELINE_WIDTH = 1920;
+constexpr int BASELINE_HEIGHT = 1080;
+```
+
+See [UIConstants Reference - Baseline Resolution System](UIConstants.md#baseline-resolution-system) for complete details on:
+- How baseline resolution works
+- Automatic scaling with `calculateOptimalScale()`
+- Small screen support (1280×720 minimum)
+
+**Key Point:** Auto-sizing calculations are performed in baseline coordinate space, then the entire UI scales to match the actual window size.
+
 ## Core Features
 
 ### Content-Aware Sizing
 - **Text Measurement**: Precise calculation using FontManager with actual font metrics
 - **Multi-line Detection**: Automatic detection and sizing for text containing newlines
 - **Font-Based Calculations**: All measurements based on real font dimensions, not estimates
-- **Padding Integration**: Automatic content padding for proper spacing
+- **Padding Integration**: Automatic content padding for proper spacing (uses `UIConstants::DEFAULT_CONTENT_PADDING`)
 
 ### Smart Centering
 - **Title Auto-Centering**: Titles with CENTER alignment automatically reposition to stay centered
@@ -29,13 +46,18 @@ The Auto-Sizing System is a core feature of the UIManager that automatically cal
 ```cpp
 struct UIComponent {
     // Auto-sizing enabled by default
-    bool autoSize{true};                
-    UIRect minBounds{0, 0, 32, 16};     // Minimum size constraints
-    UIRect maxBounds{0, 0, 800, 600};   // Maximum size constraints
-    int contentPadding{8};              // Padding around content
+    bool autoSize{true};
+    // Min/max constraints from UIConstants
+    UIRect minBounds{0, 0,
+        UIConstants::MIN_COMPONENT_WIDTH,
+        UIConstants::MIN_COMPONENT_HEIGHT};
+    UIRect maxBounds{0, 0,
+        UIConstants::MAX_COMPONENT_WIDTH,
+        UIConstants::MAX_COMPONENT_HEIGHT};
+    int contentPadding{UIConstants::DEFAULT_CONTENT_PADDING};  // Padding around content
     bool autoWidth{true};               // Auto-size width based on content
     bool autoHeight{true};              // Auto-size height based on content
-    
+
     // Callback for content changes
     std::function<void()> onContentChanged;
 };

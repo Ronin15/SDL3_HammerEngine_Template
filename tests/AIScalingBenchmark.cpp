@@ -570,26 +570,35 @@ struct AIScalingFixture {
 
 
 
+        std::vector<double> completionDurations;
+
         for (int run = 0; run < numMeasurements; run++) {
-            // Measure DISPATCH timing only (true fire-and-forget performance)
-            auto startTime = std::chrono::high_resolution_clock::now();
+            // Measure DISPATCH timing (async performance - does not include completion wait)
+            auto dispatchStartTime = std::chrono::high_resolution_clock::now();
 
             // Use automatic threading behavior (already configured in function setup)
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f);
             }
 
-            // End timing immediately after dispatch (true async performance)
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
+            // End dispatch timing immediately after dispatch (true async performance)
+            auto dispatchEndTime = std::chrono::high_resolution_clock::now();
+            auto dispatchDuration = std::chrono::duration_cast<std::chrono::microseconds>(dispatchEndTime - dispatchStartTime);
 
             // Store the DISPATCH duration (fire-and-forget performance)
-            durations.push_back(std::max(1.0, static_cast<double>(duration.count())));
+            durations.push_back(std::max(1.0, static_cast<double>(dispatchDuration.count())));
 
-            // SEPARATELY wait for completion for accuracy verification (not timed)
+            // Measure COMPLETION timing (includes waiting for all work to finish)
+            // This metric is critical for frame budget planning
             while (HammerEngine::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
+
+            auto completionEndTime = std::chrono::high_resolution_clock::now();
+            auto completionDuration = std::chrono::duration_cast<std::chrono::microseconds>(completionEndTime - dispatchStartTime);
+
+            // Store the COMPLETION duration (total time including async work)
+            completionDurations.push_back(std::max(1.0, static_cast<double>(completionDuration.count())));
 
             // Add small additional delay to ensure all behavior counts are recorded
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -621,39 +630,54 @@ struct AIScalingFixture {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
-        // Calculate the average duration
-        double avgDuration = 0.0;
+        // Calculate the average dispatch duration
+        double avgDispatchDuration = 0.0;
         if (numMeasurements == 1) {
-            avgDuration = durations[0];
+            avgDispatchDuration = durations[0];
         } else {
             // Exclude the highest value for stability with multiple measurements
             std::sort(durations.begin(), durations.end());
             for (size_t i = 0; i < durations.size() - 1; i++) {
-                avgDuration += durations[i];
+                avgDispatchDuration += durations[i];
             }
-            avgDuration /= (durations.size() - 1);
+            avgDispatchDuration /= (durations.size() - 1);
         }
 
-        // Calculate statistics with the average duration
-        double totalTimeMs = avgDuration / 1000.0;
-        double timePerUpdateMs = totalTimeMs / numUpdates;
+        // Calculate the average completion duration
+        double avgCompletionDuration = 0.0;
+        if (numMeasurements == 1) {
+            avgCompletionDuration = completionDurations[0];
+        } else {
+            // Exclude the highest value for stability with multiple measurements
+            std::sort(completionDurations.begin(), completionDurations.end());
+            for (size_t i = 0; i < completionDurations.size() - 1; i++) {
+                avgCompletionDuration += completionDurations[i];
+            }
+            avgCompletionDuration /= (completionDurations.size() - 1);
+        }
+
+        // Calculate statistics with both dispatch and completion durations
+        double dispatchTimeMs = avgDispatchDuration / 1000.0;
+        double completionTimeMs = avgCompletionDuration / 1000.0;
+        double timePerUpdateMs = completionTimeMs / numUpdates;
 
         // Get total behavior execution count from AIManager for all runs
         size_t endingExecutions = AIManager::Instance().getBehaviorUpdateCount();
         size_t startingExecutions = totalBehaviorExecutions;  // Starting count was stored in member variable
-        int totalBehaviorUpdates = static_cast<int>(endingExecutions - startingExecutions);
+        size_t totalBehaviorUpdates = endingExecutions - startingExecutions;
 
         double timePerEntityMs = totalBehaviorUpdates > 0 ?
-            totalTimeMs / static_cast<double>(totalBehaviorUpdates) : 0.0;
+            completionTimeMs / static_cast<double>(totalBehaviorUpdates) : 0.0;
 
-        // Calculate entity updates per second based on actual executions
+        // Calculate entity updates per second based on actual executions and COMPLETION time
         double entitiesPerSecond = totalBehaviorUpdates > 0 ?
-            static_cast<double>(totalBehaviorUpdates) / (totalTimeMs / 1000.0) : 0.0;
+            static_cast<double>(totalBehaviorUpdates) / (completionTimeMs / 1000.0) : 0.0;
 
-        // Print results in clean format matching event benchmark
+        // Print results in clean format with BOTH dispatch and completion metrics
         std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "  Total dispatch time: " << totalTimeMs << " ms" << std::endl;
+        std::cout << "  Dispatch time (async): " << dispatchTimeMs << " ms" << std::endl;
+        std::cout << "  Completion time (total): " << completionTimeMs << " ms" << std::endl;
         std::cout << "  Time per update cycle: " << timePerUpdateMs << " ms" << std::endl;
         std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
         std::cout << std::setprecision(0);
@@ -662,13 +686,15 @@ struct AIScalingFixture {
         std::cout << "  Total behavior updates: " << totalBehaviorUpdates << std::endl;
         std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
-        // Verification status based on behavior executions
-        int expectedExecutions = numEntities * numUpdates;
+        // Verification status based on behavior executions - TIGHTENED to 90% threshold
+        size_t expectedExecutions = static_cast<size_t>(numEntities) * static_cast<size_t>(numUpdates);
+        size_t requiredExecutions = (expectedExecutions * 9) / 10; // 90% threshold
         std::cout << "  Entity updates: " << totalBehaviorExecutions << "/" << expectedExecutions;
-        if (totalBehaviorExecutions >= expectedExecutions / 2) {
+        if (totalBehaviorExecutions >= requiredExecutions) {
             std::cout << " ✓" << std::endl;
         } else {
-            std::cout << " ✗ (Low execution count)" << std::endl;
+            std::cout << " ✗ (Expected at least " << requiredExecutions
+                      << " updates [90% threshold]. Some updates may be skipped due to distance culling.)" << std::endl;
         }
 
         // Clear all entity frame counters
@@ -809,23 +835,30 @@ struct AIScalingFixture {
 
         // Run measurements
         std::vector<double> durations;
+        std::vector<double> completionDurations;
         size_t startingExecutions = AIManager::Instance().getBehaviorUpdateCount();
 
         for (int run = 0; run < numMeasurements; run++) {
-            auto startTime = std::chrono::high_resolution_clock::now();
+            // Measure DISPATCH timing (async performance - does not include completion wait)
+            auto dispatchStartTime = std::chrono::high_resolution_clock::now();
 
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f);
             }
 
-            auto endTime = std::chrono::high_resolution_clock::now();
-            auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
-            durations.push_back(std::max(1.0, static_cast<double>(duration.count())));
+            auto dispatchEndTime = std::chrono::high_resolution_clock::now();
+            auto dispatchDuration = std::chrono::duration_cast<std::chrono::microseconds>(dispatchEndTime - dispatchStartTime);
+            durations.push_back(std::max(1.0, static_cast<double>(dispatchDuration.count())));
 
-            // Wait for completion
+            // Measure COMPLETION timing (includes waiting for all work to finish)
             while (HammerEngine::ThreadSystem::Instance().isBusy()) {
                 std::this_thread::sleep_for(std::chrono::microseconds(500));
             }
+
+            auto completionEndTime = std::chrono::high_resolution_clock::now();
+            auto completionDuration = std::chrono::duration_cast<std::chrono::microseconds>(completionEndTime - dispatchStartTime);
+            completionDurations.push_back(std::max(1.0, static_cast<double>(completionDuration.count())));
+
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
 
@@ -848,34 +881,47 @@ struct AIScalingFixture {
             std::this_thread::sleep_for(std::chrono::milliseconds(50));
         }
 
-        // Calculate results
-        double avgDuration = 0.0;
+        // Calculate results for both dispatch and completion
+        double avgDispatchDuration = 0.0;
         if (numMeasurements == 1) {
-            avgDuration = durations[0];
+            avgDispatchDuration = durations[0];
         } else {
             std::sort(durations.begin(), durations.end());
             for (size_t i = 0; i < durations.size() - 1; i++) {
-                avgDuration += durations[i];
+                avgDispatchDuration += durations[i];
             }
-            avgDuration /= (durations.size() - 1);
+            avgDispatchDuration /= (durations.size() - 1);
         }
 
-        double totalTimeMs = avgDuration / 1000.0;
-        double timePerUpdateMs = totalTimeMs / numUpdates;
+        double avgCompletionDuration = 0.0;
+        if (numMeasurements == 1) {
+            avgCompletionDuration = completionDurations[0];
+        } else {
+            std::sort(completionDurations.begin(), completionDurations.end());
+            for (size_t i = 0; i < completionDurations.size() - 1; i++) {
+                avgCompletionDuration += completionDurations[i];
+            }
+            avgCompletionDuration /= (completionDurations.size() - 1);
+        }
+
+        double dispatchTimeMs = avgDispatchDuration / 1000.0;
+        double completionTimeMs = avgCompletionDuration / 1000.0;
+        double timePerUpdateMs = completionTimeMs / numUpdates;
 
         size_t endingExecutions = AIManager::Instance().getBehaviorUpdateCount();
-        int totalBehaviorExecutions = static_cast<int>(endingExecutions - startingExecutions);
+        size_t totalBehaviorExecutions = endingExecutions - startingExecutions;
 
         double timePerEntityMs = totalBehaviorExecutions > 0 ?
-            totalTimeMs / static_cast<double>(totalBehaviorExecutions) : 0.0;
+            completionTimeMs / static_cast<double>(totalBehaviorExecutions) : 0.0;
 
         double entitiesPerSecond = totalBehaviorExecutions > 0 ?
-            static_cast<double>(totalBehaviorExecutions) / (totalTimeMs / 1000.0) : 0.0;
+            static_cast<double>(totalBehaviorExecutions) / (completionTimeMs / 1000.0) : 0.0;
 
         // Print results
         std::cout << "\nPerformance Results (avg of " << numMeasurements << " runs):" << std::endl;
         std::cout << std::fixed << std::setprecision(2);
-        std::cout << "  Total dispatch time: " << totalTimeMs << " ms" << std::endl;
+        std::cout << "  Dispatch time (async): " << dispatchTimeMs << " ms" << std::endl;
+        std::cout << "  Completion time (total): " << completionTimeMs << " ms" << std::endl;
         std::cout << "  Time per update cycle: " << timePerUpdateMs << " ms" << std::endl;
         std::cout << "  Time per entity: " << timePerEntityMs << " ms" << std::endl;
         std::cout << std::setprecision(0);
@@ -884,13 +930,15 @@ struct AIScalingFixture {
         std::cout << "  Total behavior updates: " << totalBehaviorExecutions << std::endl;
         std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
-        // Verification
-        int expectedExecutions = numEntities * numUpdates;
+        // Verification - TIGHTENED to 90% threshold
+        size_t expectedExecutions = static_cast<size_t>(numEntities) * static_cast<size_t>(numUpdates);
+        size_t requiredExecutions = (expectedExecutions * 9) / 10; // 90% threshold
         std::cout << "  Entity updates: " << totalBehaviorExecutions << "/" << expectedExecutions;
-        if (totalBehaviorExecutions >= expectedExecutions / 2) {
+        if (totalBehaviorExecutions >= requiredExecutions) {
             std::cout << " ✓" << std::endl;
         } else {
-            std::cout << " ✗ (Low execution count)" << std::endl;
+            std::cout << " ✗ (Expected at least " << requiredExecutions
+                      << " updates [90% threshold]. Some updates may be skipped due to distance culling.)" << std::endl;
         }
 
         // Clean up
@@ -953,12 +1001,13 @@ struct AIScalingFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
 
-    // Calculate synthetic performance rate using MEASURED benchmark data (BenchmarkBehavior)
-    // Updated Nov 7, 2025: Using actual measured values instead of outdated estimates
-    double calculateSyntheticPerformanceRate(size_t numEntities, bool useThreading) {
+    // Historical performance data from previous benchmark runs (BenchmarkBehavior)
+    // WARNING: This is NOT a live benchmark - it's a lookup table of past results
+    // Updated Nov 7, 2025: Using actual measured values from historical TestSyntheticPerformance runs
+    double getHistoricalPerformanceRate(size_t numEntities, bool useThreading) {
         if (useThreading) {
             // Automatic threading behavior (respects 200 entity threshold)
-            // These are MEASURED values from TestSyntheticPerformance runs
+            // These are HISTORICAL MEASURED values from past TestSyntheticPerformance runs
             if (numEntities < 200) return 6987578.0;       // Single-threaded below threshold (~150 entities)
             else if (numEntities <= 200) return 8154944.0; // Threading activation
             else if (numEntities <= 500) return 12000000.0; // Interpolated (not directly measured)
@@ -977,25 +1026,25 @@ struct AIScalingFixture {
         }
     }
 
-    // Test synthetic scalability with automatic threading behavior
-    void runSyntheticScalabilityTest() {
-        std::cout << "\n===== SYNTHETIC AI SCALABILITY TEST SUITE (Isolated AIManager) =====" << std::endl;
-        std::cout << "Testing automatic threading behavior across entity counts using BenchmarkBehavior" << std::endl;
+    // Display historical benchmark results (NOT a live benchmark)
+    void displayHistoricalResults() {
+        std::cout << "\n=========================================================================" << std::endl;
+        std::cout << "                    HISTORICAL DATA - NOT A LIVE BENCHMARK                " << std::endl;
+        std::cout << "=========================================================================" << std::endl;
+        std::cout << "This displays lookup table data from previous TestSyntheticPerformance runs." << std::endl;
+        std::cout << "For ACTUAL performance measurements, see TestSyntheticPerformance test results." << std::endl;
+        std::cout << "=========================================================================" << std::endl;
 
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
         }
 
-        // Enable threading and let system decide automatically
-        AIManager::Instance().configureThreading(true);
-
-        std::cout << "\n⚠️  NOTE: This test uses ESTIMATED performance rates (not live benchmarks)" << std::endl;
-        std::cout << "SYNTHETIC SCALABILITY SUMMARY (ESTIMATED - BenchmarkBehavior):" << std::endl;
+        std::cout << "\nHISTORICAL SCALABILITY SUMMARY (BenchmarkBehavior - Past Results):" << std::endl;
         std::cout << "Entity Count | Threading Mode | Updates Per Second | Performance Ratio" << std::endl;
         std::cout << "-------------|----------------|-------------------|------------------" << std::endl;
 
-        // Test across realistic entity counts with automatic behavior
+        // Display historical data across entity counts
         std::vector<int> entityCounts = {100, 200, 500, 1000, 2000, 5000, 10000};
         const int AI_THRESHOLD = 200;
 
@@ -1005,24 +1054,26 @@ struct AIScalingFixture {
             bool willUseThreading = (numEntities >= AI_THRESHOLD);
             std::string threadingMode = willUseThreading ? "Auto-Threaded" : "Auto-Single";
 
-            // Use estimated rate for now, but this should be real benchmark data
-            double estimatedRate = calculateSyntheticPerformanceRate(numEntities, willUseThreading);
+            // Get historical rate from lookup table
+            double historicalRate = getHistoricalPerformanceRate(numEntities, willUseThreading);
 
             // Calculate performance ratio relative to smallest entity count
             if (i == 0) {
-                baselineRate = estimatedRate;
+                baselineRate = historicalRate;
             }
-            double performanceRatio = estimatedRate / baselineRate;
+            double performanceRatio = historicalRate / baselineRate;
 
             std::cout << std::setw(12) << numEntities << " | "
                       << std::setw(14) << threadingMode << " | "
-                      << std::setw(17) << static_cast<int>(estimatedRate) << " | "
+                      << std::setw(17) << static_cast<int>(historicalRate) << " | "
                       << std::fixed << std::setprecision(2) << std::setw(16) << performanceRatio << "x" << std::endl;
         }
 
-        std::cout << "\nNote: Performance varies with entity count and threading mode." << std::endl;
-        std::cout << "      Threading provides significant speedup above the threshold." << std::endl;
+        std::cout << "\n=========================================================================" << std::endl;
+        std::cout << "Note: This data is HISTORICAL and may not reflect current performance." << std::endl;
+        std::cout << "      Run TestSyntheticPerformance for live benchmarks." << std::endl;
         std::cout << "Threshold: " << AI_THRESHOLD << " entities for automatic threading activation." << std::endl;
+        std::cout << "=========================================================================" << std::endl;
     }
 
     std::vector<std::shared_ptr<BenchmarkEntity>> entities;
@@ -1075,7 +1126,7 @@ BOOST_AUTO_TEST_CASE(TestSyntheticPerformance) {
     cleanupEntitiesAndBehaviors();
 }
 
-// Test synthetic scalability with automatic threading behavior using BenchmarkBehavior
+// Display historical benchmark results (NOT a live test - just displays lookup table)
 BOOST_AUTO_TEST_CASE(TestSyntheticScalability) {
     // Skip if shutdown is in progress
     if (g_shutdownInProgress.load()) {
@@ -1084,22 +1135,13 @@ BOOST_AUTO_TEST_CASE(TestSyntheticScalability) {
     }
 
     try {
-        // Use maximum available threads for optimal performance
-        unsigned int maxThreads = std::thread::hardware_concurrency();
-        AIManager::Instance().configureThreading(true, maxThreads);
-        std::cout << "Running synthetic scalability test (BenchmarkBehavior) with " << maxThreads << " threads available" << std::endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // This is NOT a live benchmark - it just displays historical data
+        displayHistoricalResults();
 
-        runSyntheticScalabilityTest();
-
-        // Clean up after test
-        cleanupEntitiesAndBehaviors();
+        // No cleanup needed - no entities were created
     }
     catch (const std::exception& e) {
-        std::cerr << "Error in realistic scalability test: " << e.what() << std::endl;
-        AIManager::Instance().configureThreading(false);
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        cleanupEntitiesAndBehaviors();
+        std::cerr << "Error displaying historical results: " << e.what() << std::endl;
         throw;
     }
 }
@@ -1260,11 +1302,12 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
             std::cout << " ✗" << std::endl;
         }
 
+        size_t requiredExecutions = (expectedExecutions * 9) / 10; // 90% threshold
         std::cout << "  Behavior executions: " << behaviorExecutions;
-        if (behaviorExecutions >= expectedExecutions / 2) {
-            std::cout << " ✓ (threshold: " << (expectedExecutions / 2) << ")" << std::endl;
+        if (behaviorExecutions >= requiredExecutions) {
+            std::cout << " ✓ (threshold: " << requiredExecutions << " [90%])" << std::endl;
         } else {
-            std::cout << " ✗ (threshold: " << (expectedExecutions / 2) << ", low execution count)" << std::endl;
+            std::cout << " ✗ (threshold: " << requiredExecutions << " [90%], low execution count)" << std::endl;
         }
 
         std::cout << "\n===== EXTREME ENTITY COUNT TEST COMPLETED =====\n" << std::endl;

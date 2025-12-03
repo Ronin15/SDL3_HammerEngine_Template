@@ -360,6 +360,19 @@ public:
   bool removeEvent(const std::string &name);
 
   /**
+   * @brief Removes all events of a specific type
+   * @param typeId Type of events to remove
+   * @return Number of events marked for removal
+   */
+  size_t removeEventsByType(EventTypeId typeId);
+
+  /**
+   * @brief Removes all registered events from all types
+   * @return Total number of events marked for removal
+   */
+  size_t clearAllEvents();
+
+  /**
    * @brief Checks if an event is registered in the system
    * @param name Name of the event to check
    * @return true if event exists, false otherwise
@@ -637,7 +650,6 @@ private:
   std::string getEventTypeName(EventTypeId typeId) const;
   void updateEventTypeBatch(EventTypeId typeId) const;
   void updateEventTypeBatchThreaded(EventTypeId typeId);
-  void processEventDirect(EventData &eventData);
   void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;

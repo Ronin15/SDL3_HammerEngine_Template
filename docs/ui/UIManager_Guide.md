@@ -71,6 +71,27 @@ public:
 };
 ```
 
+## UIConstants Reference
+
+All UI measurements, spacing, and styling constants are centralized in the `UIConstants` namespace for consistency and maintainability. See [UIConstants Reference](UIConstants.md) for complete documentation.
+
+```cpp
+#include "managers/UIConstants.hpp"
+
+// Use constants instead of magic numbers
+ui.createButton("btn", {x, y, UIConstants::DEFAULT_BUTTON_WIDTH,
+                              UIConstants::DEFAULT_BUTTON_HEIGHT}, "Click");
+```
+
+**Key concepts documented in UIConstants:**
+- **Baseline Resolution**: 1920×1080 reference resolution with automatic scaling
+- **Z-Order Constants**: Automatic layering system (documented in Z-Order Management section below)
+- **Spacing & Sizing**: Component padding, margins, and default dimensions
+- **Font Constants**: Standard font identifiers for consistent text rendering
+- **Small Screen Support**: Scales down to 1280×720 minimum, optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer, etc.)
+
+---
+
 ## Core Features
 
 ### 1. Content-Aware Auto-Sizing
@@ -121,18 +142,33 @@ ui.createButtonWarning("reset", bounds, "Reset");          // Orange (caution)
 
 ### 3. Automatic Z-Order Management
 
-Components automatically layer correctly:
+Components automatically layer correctly based on their type. All z-order values are defined in the `UIConstants` namespace:
 
 ```cpp
 // No manual z-order needed - automatic layering by component type
-ui.createDialog("background", bounds);    // Z-order: -10 (backgrounds)
-ui.createPanel("container", bounds);      // Z-order: 0 (containers)
-ui.createButton("action", bounds, "OK");  // Z-order: 10 (interactive)
-ui.createLabel("text", bounds, "Label");  // Z-order: 20 (text on top)
+ui.createDialog("background", bounds);    // Auto: UIConstants::ZORDER_DIALOG (-10)
+ui.createPanel("container", bounds);      // Auto: UIConstants::ZORDER_PANEL (0)
+ui.createButton("action", bounds, "OK");  // Auto: UIConstants::ZORDER_BUTTON (10)
+ui.createLabel("text", bounds, "Label");  // Auto: UIConstants::ZORDER_LABEL (20)
 
 // Manual override only if needed (rarely required)
-ui.setComponentZOrder("special", 50);
+ui.setComponentZOrder("special", UIConstants::ZORDER_TITLE);  // Use constants
 ```
+
+**Complete Z-Order Hierarchy** (see [UIConstants Reference](UIConstants.md#z-order-layering-constants)):
+- Dialog backgrounds: -10
+- Panels: 0
+- Images: 1
+- Progress bars: 5
+- Event logs: 6
+- Lists: 8
+- Buttons: 10
+- Sliders: 12
+- Checkboxes: 13
+- Input fields: 15
+- Labels: 20
+- Titles: 25
+- Tooltips: 1000 (always on top)
 
 ### 4. Smart Text Backgrounds
 

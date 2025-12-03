@@ -172,14 +172,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     Vector2D clampedStart = position;
     Vector2D clampedGoal = targetWaypoint;
     
+    auto self = std::static_pointer_cast<PatrolBehavior>(shared_from_this());
     pathfinder().requestPath(
         entity->getID(), clampedStart, clampedGoal,
         PathfinderManager::Priority::Normal,
-        [this, entity](EntityID, const std::vector<Vector2D>& path) {
+        [self, entity](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {
-            m_navPath = path;
-            m_navIndex = 0;
-            m_pathUpdateTimer = 0.0f;
+            self->m_navPath = path;
+            self->m_navIndex = 0;
+            self->m_pathUpdateTimer = 0.0f;
           }
         });
     // PERFORMANCE FIX: Long cooldown to match WanderBehavior (15-18 seconds)
@@ -233,14 +234,15 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = pathfinder().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
+          auto self = std::static_pointer_cast<PatrolBehavior>(shared_from_this());
           pathfinder().requestPath(
               entity->getID(), pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
               PathfinderManager::Priority::Normal,
-              [this](EntityID, const std::vector<Vector2D> &path) {
+              [self](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {
-                  m_navPath = path;
-                  m_navIndex = 0;
-                  m_pathUpdateTimer = 0.0f;
+                  self->m_navPath = path;
+                  self->m_navIndex = 0;
+                  self->m_pathUpdateTimer = 0.0f;
                 }
               });
 

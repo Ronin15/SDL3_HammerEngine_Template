@@ -56,8 +56,11 @@ for arg in "$@"; do
       echo -e "  --no-benchmarks   Run core tests but skip benchmarks"
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
-      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding, WorkerBudget coordination tests"
-      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, and Pathfinder performance benchmarks"
+      echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,"
+      echo -e "                    GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,"
+      echo -e "                    Integration tests (AI-Collision, Event Coordination)"
+      echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, Pathfinder,"
+      echo -e "                    SIMD performance, and Integrated system benchmarks"
       echo -e "\nExecution Time:"
       echo -e "  Core tests:       ~2-5 minutes total"
       echo -e "  Benchmarks:       ~5-15 minutes total"
@@ -99,6 +102,16 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_pathfinding_tests.sh"
   "$SCRIPT_DIR/run_collision_pathfinding_integration_tests.sh"
   "$SCRIPT_DIR/run_pathfinder_ai_contention_tests.sh"
+  "$SCRIPT_DIR/run_ai_collision_integration_tests.sh"
+  "$SCRIPT_DIR/run_event_coordination_integration_tests.sh"
+  "$SCRIPT_DIR/run_game_engine_tests.sh"
+  "$SCRIPT_DIR/run_camera_tests.sh"
+  "$SCRIPT_DIR/run_input_manager_tests.sh"
+  "$SCRIPT_DIR/run_simd_correctness_tests.sh"
+  "$SCRIPT_DIR/run_buffer_reuse_tests.sh"
+  "$SCRIPT_DIR/run_rendering_pipeline_tests.sh"
+  "$SCRIPT_DIR/run_loading_state_tests.sh"
+  "$SCRIPT_DIR/run_ui_manager_functional_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
@@ -109,6 +122,8 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_particle_manager_benchmark.sh"
   "$SCRIPT_DIR/run_collision_benchmark.sh"
   "$SCRIPT_DIR/run_pathfinder_benchmark.sh"
+  "$SCRIPT_DIR/run_simd_benchmark.sh"
+  "$SCRIPT_DIR/run_integrated_benchmark.sh"
 )
 
 # Build the test scripts array based on user selection
@@ -177,9 +192,10 @@ run_test_script() {
     
     # Show only script name and result - suppress all normal output
     # Only show content if there are actual test failures
-    if [ $result -ne 0 ] || grep -qE "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output"; then
+    # Filter out "has passed" lines first to avoid false positives from "check !failed has passed"
+    if [ $result -ne 0 ] || grep -v "has passed" "$temp_output" | grep -qE "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|has failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)"; then
       echo -e "\n${RED}Test failures detected in $script_name:${NC}"
-      grep -E "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|Test.*failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" "$temp_output" || echo "Script failed with exit code $result"
+      grep -v "has passed" "$temp_output" | grep -E "(BOOST_CHECK.*failed|BOOST_REQUIRE.*failed|has failed|FAILED.*test|BUILD FAILED|compilation.*failed|Segmentation fault|Assertion.*failed|\[error\].*test|\*\*\* FAILURE|✗.*failed)" || echo "Script failed with exit code $result"
     fi
     rm -f "$temp_output"
   else

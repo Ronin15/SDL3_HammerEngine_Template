@@ -14,6 +14,7 @@
 #include <limits>
 #include <algorithm>
 #include <memory>
+#include <mutex>
 #include "utils/Vector2D.hpp"
 
 namespace HammerEngine {
@@ -36,7 +37,18 @@ class PathfindingGrid {
 public:
     PathfindingGrid(int width, int height, float cellSize, const Vector2D& worldOffset, bool createCoarseGrid = true);
 
-    void rebuildFromWorld();                 // pull from WorldManager::grid
+    void rebuildFromWorld();                 // pull from WorldManager::grid (full rebuild)
+    void rebuildFromWorld(int rowStart, int rowEnd); // rebuild specific row range (for parallel batching)
+    void initializeArrays();                 // initialize grid arrays without processing (for parallel batching)
+    void updateCoarseGrid();                 // update hierarchical coarse grid (call after parallel batch rebuild)
+
+    // Incremental update support
+    void markDirtyRegion(int cellX, int cellY, int width = 1, int height = 1); // mark region as needing rebuild
+    void rebuildDirtyRegions();              // rebuild only dirty regions (incremental update)
+    bool hasDirtyRegions() const;            // check if any dirty regions exist
+    float calculateDirtyPercent() const;     // calculate percentage of grid that is dirty
+    void clearDirtyRegions();                // clear dirty region tracking
+
     PathfindingResult findPath(const Vector2D& start, const Vector2D& goal,
                                std::vector<Vector2D>& outPath);
     
@@ -88,7 +100,15 @@ private:
     int m_w, m_h; float m_cell; Vector2D m_offset;
     std::vector<uint8_t> m_blocked; // 0 walkable, 1 blocked
     std::vector<float> m_weight;    // movement multipliers per cell
-    
+
+    // Incremental update support (dirty region tracking)
+    struct DirtyRegion {
+        int x, y;           // Grid cell coordinates
+        int width, height;  // Size in grid cells
+    };
+    std::vector<DirtyRegion> m_dirtyRegions;
+    mutable std::mutex m_dirtyRegionMutex; // Thread-safe dirty region access
+
     // Hierarchical pathfinding support (4x coarser grid for long distances)
     std::unique_ptr<PathfindingGrid> m_coarseGrid;
     static constexpr float COARSE_GRID_MULTIPLIER = 4.0f;
@@ -115,7 +135,6 @@ private:
     
     // Hierarchical pathfinding helpers
     void initializeCoarseGrid();
-    void updateCoarseGrid();
     PathfindingResult refineCoarsePath(const std::vector<Vector2D>& coarsePath,
                                      const Vector2D& start, const Vector2D& goal,
                                      std::vector<Vector2D>& outPath);

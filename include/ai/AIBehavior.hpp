@@ -11,6 +11,7 @@
 #include <SDL3/SDL.h>
 #include <cstddef>
 #include <limits>
+#include <memory>
 #include <vector>
 
 // Forward declarations
@@ -32,7 +33,7 @@ Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
 }
 #include <string>
 
-class AIBehavior {
+class AIBehavior : public std::enable_shared_from_this<AIBehavior> {
 public:
   virtual ~AIBehavior();
 

@@ -178,7 +178,7 @@ void PathfinderManager::prepareForStateTransition() {
         size_t cacheSize = m_pathCache.size();
         m_pathCache.clear();
         if (cacheSize > 0) {
-            PATHFIND_DEBUG("Cleared " + std::to_string(cacheSize) + " cached paths");
+            PATHFIND_INFO("Cleared " + std::to_string(cacheSize) + " cached paths for state transition");
         }
     }
 
@@ -226,6 +226,21 @@ void PathfinderManager::prepareForStateTransition() {
 
 bool PathfinderManager::isShutdown() const {
     return m_isShutdown;
+}
+
+bool PathfinderManager::isGridReady() const {
+    // Grid is ready if it exists and all rebuild tasks are complete
+    if (!m_grid) {
+        return false;
+    }
+
+    std::lock_guard<std::mutex> lock(const_cast<std::mutex&>(m_gridRebuildFuturesMutex));
+
+    // Check if all futures are ready (completed or invalid)
+    return std::all_of(m_gridRebuildFutures.begin(), m_gridRebuildFutures.end(),
+        [](const auto& future) {
+            return !future.valid() || future.wait_for(std::chrono::seconds(0)) == std::future_status::ready;
+        });
 }
 
 uint64_t PathfinderManager::requestPath(
@@ -344,15 +359,48 @@ bool PathfinderManager::hasPendingWork() const {
     return false; // No queue - work submitted directly to ThreadSystem
 }
 
-void PathfinderManager::rebuildGrid() {
-    // ASYNC OPTIMIZATION: Submit grid rebuild to background thread to eliminate main thread spikes
-    // The expensive rebuildFromWorld() operation (2-3ms for 500x500 grid) runs on ThreadSystem
-    // Grid is swapped atomically when complete, so pathfinding continues with old grid briefly
+void PathfinderManager::rebuildGrid(bool allowIncremental) {
+    // HYBRID OPTIMIZATION: Smart decision between full parallel rebuild and incremental update
+    // - Full rebuild: Use WorkerBudget parallel batching (2-4× speedup)
+    // - Incremental: Rebuild only dirty regions (~10-30× speedup for small changes)
 
     const auto& worldManager = WorldManager::Instance();
     if (!worldManager.hasActiveWorld()) {
         PATHFIND_DEBUG("Cannot rebuild grid - no active world");
         return;
+    }
+
+    // Smart rebuild decision: check if incremental update is beneficial
+    if (allowIncremental && m_grid && m_grid->hasDirtyRegions()) {
+        float dirtyPercent = m_grid->calculateDirtyPercent();
+
+        if (dirtyPercent <= DIRTY_THRESHOLD_PERCENT * 100.0f) {
+            // Incremental update is beneficial (small change)
+            PATHFIND_DEBUG("Incremental rebuild: " + std::to_string(dirtyPercent) +
+                          "% dirty (threshold: " + std::to_string(DIRTY_THRESHOLD_PERCENT * 100.0f) + "%)");
+
+            // Submit incremental rebuild to ThreadSystem (non-blocking)
+            auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+            auto rebuildFuture = threadSystem.enqueueTaskWithResult(
+                [this]() {
+                    if (m_grid) {
+                        m_grid->rebuildDirtyRegions();
+                        PATHFIND_INFO("Incremental grid rebuild complete");
+                    }
+                },
+                HammerEngine::TaskPriority::Low,
+                "PathfindingGridRebuild_Incremental"
+            );
+
+            std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+            m_gridRebuildFutures.push_back(std::move(rebuildFuture));
+            return; // Early return - incremental rebuild submitted
+        } else {
+            // Too much dirty (>25%) - full rebuild is faster
+            PATHFIND_DEBUG("Full rebuild: " + std::to_string(dirtyPercent) +
+                          "% dirty exceeds threshold (" + std::to_string(DIRTY_THRESHOLD_PERCENT * 100.0f) + "%)");
+            m_grid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
+        }
     }
 
     int worldWidth = 0, worldHeight = 0;
@@ -375,55 +423,149 @@ void PathfinderManager::rebuildGrid() {
     bool allowDiagonal = m_allowDiagonal;
     int maxIterations = m_maxIterations;
 
-    // Submit rebuild task to ThreadSystem (background thread) and track future for synchronization
-    auto rebuildFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-        [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, this]() {
-            PATHFIND_DEBUG("ASYNC TASK EXECUTING: Starting grid rebuild on background thread");
+    // Get ThreadSystem reference
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+
+    // Query ThreadSystem state for WorkerBudget coordination
+    size_t availableWorkers = threadSystem.getThreadCount();
+    size_t queueSize = threadSystem.getQueueSize();
+    size_t queueCapacity = threadSystem.getQueueCapacity();
+    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
+
+    // Calculate WorkerBudget allocation
+    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+
+    // Calculate optimal worker count for grid rebuild
+    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
+        budget.pathfindingAllocated,  // Base allocation (typically 1-2 workers)
+        static_cast<size_t>(gridHeight), // Workload = number of rows
+        MIN_GRID_ROWS_FOR_BATCHING    // Threshold (64 rows)
+    );
+
+    // Determine if parallel batching is beneficial
+    const bool useParallelBatching = (static_cast<size_t>(gridHeight) >= MIN_GRID_ROWS_FOR_BATCHING) &&
+                                     (optimalWorkerCount > 0) &&
+                                     (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
+
+    if (!useParallelBatching) {
+        // Sequential fallback for small grids or high queue pressure
+        auto rebuildFuture = threadSystem.enqueueTaskWithResult(
+            [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, this]() {
+                PATHFIND_DEBUG("Sequential grid rebuild starting");
+                try {
+                    auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
+                        gridWidth, gridHeight, cellSize, Vector2D(0, 0)
+                    );
+                    newGrid->setAllowDiagonal(allowDiagonal);
+                    newGrid->setMaxIterations(maxIterations);
+                    newGrid->rebuildFromWorld(); // Full sequential rebuild
+
+                    std::atomic_store(&m_grid, newGrid);
+
+                    if (m_initialized.load(std::memory_order_acquire)) {
+                        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                        clearOldestCacheEntries(0.5f);
+                        calculateOptimalCacheSettings();
+                        prewarmPathCache();
+                        PATHFIND_INFO("Grid rebuilt successfully (sequential)");
+                    }
+                } catch (const std::exception& e) {
+                    PATHFIND_ERROR("Sequential grid rebuild failed: " + std::string(e.what()));
+                }
+            },
+            HammerEngine::TaskPriority::Low,
+            "PathfindingGridRebuild_Sequential"
+        );
+
+        std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
+        m_gridRebuildFutures.push_back(std::move(rebuildFuture));
+        PATHFIND_DEBUG("Sequential grid rebuild submitted");
+        return;
+    }
+
+    // Parallel batching path: Use calculateBatchStrategy with PATHFINDING_BATCH_CONFIG
+    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
+        HammerEngine::PATHFINDING_BATCH_CONFIG,
+        static_cast<size_t>(gridHeight),  // Total rows
+        MIN_GRID_ROWS_FOR_BATCHING,
+        optimalWorkerCount,
+        budget.pathfindingAllocated,
+        queuePressure
+    );
+
+    PATHFIND_DEBUG("Parallel grid rebuild: " + std::to_string(gridHeight) + " rows in " +
+                  std::to_string(batchCount) + " batches (size: " + std::to_string(batchSize) +
+                  "), workers: " + std::to_string(optimalWorkerCount));
+
+    // Submit coordinated rebuild task that manages batches
+    auto rebuildFuture = threadSystem.enqueueTaskWithResult(
+        [gridWidth, gridHeight, cellSize, allowDiagonal, maxIterations, batchCount, batchSize, this]() {
+            PATHFIND_DEBUG("Parallel grid rebuild starting");
             try {
-                // Create and build new grid on background thread
+                // Create grid on coordinator thread
                 auto newGrid = std::make_shared<HammerEngine::PathfindingGrid>(
                     gridWidth, gridHeight, cellSize, Vector2D(0, 0)
                 );
                 newGrid->setAllowDiagonal(allowDiagonal);
                 newGrid->setMaxIterations(maxIterations);
-                PATHFIND_DEBUG("ASYNC TASK: Calling rebuildFromWorld()");
-                newGrid->rebuildFromWorld(); // EXPENSIVE: 2-3ms, now off main thread!
 
-                // Atomically swap the grid (thread-safe)
+                // Initialize arrays only - don't process any cells yet
+                // Batches will process all cells in parallel
+                newGrid->initializeArrays();
+
+                // Submit row batches to process cells in parallel
+                // Each batch processes its row range without re-initializing arrays
+                std::vector<std::future<void>> batchFutures;
+                batchFutures.reserve(batchCount);
+
+                for (size_t i = 0; i < batchCount; ++i) {
+                    int rowStart = static_cast<int>(i * batchSize);
+                    int rowEnd = std::min(rowStart + static_cast<int>(batchSize), gridHeight);
+
+                    auto batchFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+                        [newGrid, rowStart, rowEnd]() {
+                            newGrid->rebuildFromWorld(rowStart, rowEnd);
+                        },
+                        HammerEngine::TaskPriority::Low,
+                        "PathfindingGridBatch_" + std::to_string(i)
+                    );
+                    batchFutures.push_back(std::move(batchFuture));
+                }
+
+                // Wait for all batches to complete
+                for (auto& future : batchFutures) {
+                    future.wait();
+                }
+
+                // Update coarse grid after all batches complete (sequential, fast operation)
+                newGrid->updateCoarseGrid();
+
+                // Atomically swap the grid
                 std::atomic_store(&m_grid, newGrid);
-                PATHFIND_DEBUG("ASYNC TASK: Grid stored atomically, grid now exists");
+                PATHFIND_DEBUG("Parallel grid rebuild: Grid stored atomically");
 
-                // Smart cache invalidation: Clear only 50% oldest entries (mutex-protected)
-                // SAFETY: Check if manager still initialized before touching cache
-                // This prevents race with state transition or shutdown
                 if (m_initialized.load(std::memory_order_acquire)) {
                     std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
-                    clearOldestCacheEntries(0.5f); // Remove 50% oldest paths
-                    PATHFIND_INFO("Grid rebuilt successfully (async, partial cache clear)");
-
-                    // Now that grid is ready, calculate optimal cache settings and pre-warm
-                    // These must happen AFTER grid rebuild completes
+                    clearOldestCacheEntries(0.5f);
                     calculateOptimalCacheSettings();
                     prewarmPathCache();
-                    PATHFIND_DEBUG("ASYNC TASK: Grid rebuild FULLY COMPLETE");
-                } else {
-                    PATHFIND_DEBUG("Grid rebuilt but manager shutting down, skipped cache clear");
+                    PATHFIND_INFO("Grid rebuilt successfully (parallel, " + std::to_string(batchCount) + " batches)");
                 }
             } catch (const std::exception& e) {
-                PATHFIND_ERROR("ASYNC TASK FAILED WITH EXCEPTION: " + std::string(e.what()));
+                PATHFIND_ERROR("Parallel grid rebuild failed: " + std::string(e.what()));
             }
         },
-        HammerEngine::TaskPriority::Low, // Low priority - doesn't block gameplay
-        "PathfindingGridRebuild"
+        HammerEngine::TaskPriority::Low,
+        "PathfindingGridRebuild_Parallel"
     );
 
-    // Store future for synchronization during state transitions (prevents world data race)
+    // Store future for synchronization during state transitions
     {
         std::lock_guard<std::mutex> lock(m_gridRebuildFuturesMutex);
         m_gridRebuildFutures.push_back(std::move(rebuildFuture));
     }
 
-    PATHFIND_DEBUG("Grid rebuild submitted to background thread");
+    PATHFIND_DEBUG("Parallel grid rebuild submitted");
 }
 
 void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float radius, float weight) {
@@ -1139,9 +1281,30 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
         }
         
         if (removedCount > 0) {
-            PATHFIND_DEBUG("Invalidated " + std::to_string(removedCount) + 
+            PATHFIND_DEBUG("Invalidated " + std::to_string(removedCount) +
                           " cached paths due to obstacle change: " + description);
         }
+    }
+
+    // Mark dirty region on pathfinding grid for incremental update
+    if (m_grid) {
+        // Convert world position to grid cell coordinates
+        int gridX = static_cast<int>((position.getX()) / m_cellSize);
+        int gridY = static_cast<int>((position.getY()) / m_cellSize);
+        int gridRadius = static_cast<int>(std::ceil(radius / m_cellSize)) + 1; // +1 for safety margin
+
+        // Mark circular dirty region
+        for (int dy = -gridRadius; dy <= gridRadius; ++dy) {
+            for (int dx = -gridRadius; dx <= gridRadius; ++dx) {
+                float distSq = dx * dx + dy * dy;
+                if (distSq <= gridRadius * gridRadius) {
+                    m_grid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
+                }
+            }
+        }
+        PATHFIND_DEBUG("Marked dirty region for obstacle change at grid (" +
+                      std::to_string(gridX) + "," + std::to_string(gridY) +
+                      ") radius " + std::to_string(gridRadius));
     }
 }
 
@@ -1152,37 +1315,29 @@ void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
     // Clear all cached paths - old world paths are completely invalid
     clearAllCache();
 
-    // Rebuild pathfinding grid from new world data
+    // Rebuild pathfinding grid from new world data (always full rebuild for world loads)
     // Note: calculateOptimalCacheSettings() and prewarmPathCache() are called
     // automatically when the async rebuild completes (see rebuildGrid() implementation)
-    rebuildGrid();
+    rebuildGrid(false); // allowIncremental=false for world loads
 
     PATHFIND_INFO("Pathfinding grid rebuild initiated (async)");
 }
 
 void PathfinderManager::onWorldUnloaded() {
-    PATHFIND_INFO("World unloaded - clearing all pathfinding cache and pending requests");
+    PATHFIND_INFO("Responding to WorldUnloadedEvent");
 
-    // Clear all cached paths
-    clearAllCache();
-
-    // Clear pending callbacks since entities may no longer exist
-    {
-        std::lock_guard<std::mutex> pendingLock(m_pendingMutex);
-        m_pending.clear();
-    }
-
-    PATHFIND_INFO("Pathfinding cache and pending requests cleared");
+    // Cache and pending requests already cleared by prepareForStateTransition()
+    // This event handler serves as confirmation that world cleanup completed
 }
 
 void PathfinderManager::onTileChanged(int x, int y) {
-    // Convert tile coordinates to world position (assuming 64px tiles)
-    constexpr float TILE_SIZE = 64.0f;
-    Vector2D tileWorldPos(x * TILE_SIZE + TILE_SIZE * 0.5f, y * TILE_SIZE + TILE_SIZE * 0.5f);
+    // Convert tile coordinates to world position using global tile size constant
+    Vector2D tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                          y * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
 
     // Invalidate paths that pass through or near the changed tile
     // Use slightly larger radius than tile size to catch paths that pass nearby
-    constexpr float INVALIDATION_RADIUS = TILE_SIZE * 1.5f;
+    constexpr float INVALIDATION_RADIUS = HammerEngine::TILE_SIZE * 1.5f;
 
     std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
     size_t removedCount = 0;
@@ -1210,6 +1365,19 @@ void PathfinderManager::onTileChanged(int x, int y) {
     if (removedCount > 0) {
         PATHFIND_DEBUG("Tile changed at (" + std::to_string(x) + ", " + std::to_string(y) +
                       "), invalidated " + std::to_string(removedCount) + " cached paths");
+    }
+
+    // Mark dirty region on pathfinding grid for incremental update
+    if (m_grid) {
+        // Convert tile coordinates to grid cell coordinates
+        // Tile coordinates are in world tiles, grid cells may be different size
+        int gridX = static_cast<int>((x * HammerEngine::TILE_SIZE) / m_cellSize);
+        int gridY = static_cast<int>((y * HammerEngine::TILE_SIZE) / m_cellSize);
+
+        // Mark single cell dirty (tile changes typically affect one cell)
+        m_grid->markDirtyRegion(gridX, gridY, 1, 1);
+        PATHFIND_DEBUG("Marked dirty region for tile change at grid (" +
+                      std::to_string(gridX) + "," + std::to_string(gridY) + ")");
     }
 }
 

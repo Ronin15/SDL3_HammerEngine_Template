@@ -44,35 +44,36 @@ bool UIExampleState::enter() {
     ui.createLabel("uiexample_back_instruction", {150, ui.getLogicalHeight() - 75, 200, 30}, "Press B to go back");
     ui.setComponentPositioning("uiexample_back_instruction", {UIPositionMode::BOTTOM_ALIGNED, 150, 20, 200, 30});
 
-    // Slider demo (left column - fixed position)
+    // Slider demo (left column - TOP_ALIGNED for exact positioning like AIDemoState)
     ui.createSlider("uiexample_demo_slider", {leftColumnX, 140, 200, 30}, 0.0f, 1.0f);
     ui.setValue("uiexample_demo_slider", 0.5f);
-    ui.setComponentPositioning("uiexample_demo_slider", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_slider", {UIPositionMode::TOP_ALIGNED, 50, 140, 200, 30});
 
     ui.createLabel("uiexample_slider_label", {leftColumnX + 210, 140, 200, 30}, "Slider: 0.50");
-    ui.setComponentPositioning("uiexample_slider_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_slider_label", {UIPositionMode::TOP_ALIGNED, 260, 140, 200, 30});
 
-    // Checkbox demo (left column - fixed position)
+    // Checkbox demo (left column - TOP_ALIGNED for exact positioning)
     ui.createCheckbox("uiexample_demo_checkbox", {leftColumnX, 190, 250, 30}, "Toggle Option");
-    ui.setComponentPositioning("uiexample_demo_checkbox", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_checkbox", {UIPositionMode::TOP_ALIGNED, 50, 190, 250, 30});
 
-    // Input field demo (left column - fixed position)
+    // Input field demo (left column - TOP_ALIGNED for exact positioning)
     ui.createInputField("uiexample_demo_input", {leftColumnX, 240, 200, 30}, "Type here...");
-    ui.setComponentPositioning("uiexample_demo_input", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_input", {UIPositionMode::TOP_ALIGNED, 50, 240, 200, 30});
 
     ui.createLabel("uiexample_input_label", {leftColumnX + 210, 240, 300, 30}, "Input: (empty)");
-    ui.setComponentPositioning("uiexample_input_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_input_label", {UIPositionMode::TOP_ALIGNED, 260, 240, 300, 30});
 
-    // Progress bar demo (left column - fixed position)
+    // Progress bar demo (left column - TOP_ALIGNED for exact positioning)
     ui.createProgressBar("uiexample_demo_progress", {leftColumnX, 290, 200, 20}, 0.0f, 1.0f);
-    ui.setComponentPositioning("uiexample_demo_progress", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_demo_progress", {UIPositionMode::TOP_ALIGNED, 50, 290, 200, 20});
 
     ui.createLabel("uiexample_progress_label", {leftColumnX + 210, 290, 200, 20}, "Auto Progress");
-    ui.setComponentPositioning("uiexample_progress_label", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_progress_label", {UIPositionMode::TOP_ALIGNED, 260, 290, 200, 20});
 
-    // List demo (left column - fixed position)
-    ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 140});
-    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    // List demo (left column - TOP_ALIGNED for exact positioning)
+    // Height: 180px = 5 items × 32px/item + 20px buffer
+    ui.createList("uiexample_demo_list", {leftColumnX, 340, leftColumnWidth, 180});
+    ui.setComponentPositioning("uiexample_demo_list", {UIPositionMode::TOP_ALIGNED, 50, 340, 300, 180});
 
     // Event Log demo - mirroring EventDemoState pattern but on right side
     // EventDemoState uses: BOTTOM_ALIGNED, offsetX=10, offsetY=20, width=730, height=180
@@ -85,18 +86,23 @@ bool UIExampleState::enter() {
 
     ui.setupDemoEventLog("uiexample_demo_event_log");
 
-    // Animation button (right column - fixed position)
+    // Right column components - use CENTERED_H for responsive center-based layout
+    // CENTERED_H: bounds.x = (width - bounds.width) / 2 + offsetX
+    // To get left edge at center+50: offsetX = 50 + bounds.width/2
+    // To get left edge at center+200: offsetX = 200 + bounds.width/2
+
+    // Animation button: left edge at center+50 → offsetX = 50 + 120/2 = 110
     ui.createButton("uiexample_animate_btn", {rightColumnX, 340, 120, 40}, "Animate");
-    ui.setComponentPositioning("uiexample_animate_btn", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_animate_btn", {UIPositionMode::CENTERED_H, 110, 340, 120, 40});
 
-    // Theme toggle button (right column - fixed position)
+    // Theme button: left edge at center+50 → offsetX = 50 + 150/2 = 125
     ui.createButton("uiexample_theme_btn", {rightColumnX, 390, 150, 40}, "Dark Theme");
-    ui.setComponentPositioning("uiexample_theme_btn", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_theme_btn", {UIPositionMode::CENTERED_H, 125, 390, 150, 40});
 
-    // Instructions (right column - fixed position)
-    ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, rightColumnWidth - 150, 120},
+    // Instructions: left edge at center+200 (150px right of buttons) → offsetX = 200 + 600/2 = 500
+    ui.createLabel("uiexample_instructions", {rightColumnX + 150, 340, 600, 120},
                    "Controls:\n- Click buttons and UI elements\n- Type in input field\n- Select list items\n- B key to go back");
-    ui.setComponentPositioning("uiexample_instructions", {UIPositionMode::ABSOLUTE, 0, 0, 0, 0});
+    ui.setComponentPositioning("uiexample_instructions", {UIPositionMode::CENTERED_H, 500, 340, 600, 120});
 
     // Populate list
     ui.addListItem("uiexample_demo_list", "Option 1: Basic Item");
@@ -142,8 +148,8 @@ bool UIExampleState::enter() {
 }
 
 void UIExampleState::update(float deltaTime) {
-    // Advance UI animations and interactions
-    UIManager::Instance().update(deltaTime);
+    // Store deltaTime for ui.update() in render()
+    m_lastDeltaTime = deltaTime;
 
     // Update progress bar animation
     updateProgressBar(deltaTime);
@@ -154,6 +160,7 @@ void UIExampleState::render() {
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
     auto& ui = UIManager::Instance();
+    ui.update(m_lastDeltaTime);
     ui.render();
 }
 
@@ -240,6 +247,7 @@ void UIExampleState::updateProgressBar(float deltaTime) {
         }
     }
 
+    // UIManager now has built-in caching, so calling setValue() every frame is safe
     auto& ui = UIManager::Instance();
     ui.setValue("uiexample_demo_progress", m_progressValue);
 }

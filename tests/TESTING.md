@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 25+ individual test suites covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 83+ test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -19,8 +19,15 @@ The Hammer Game Engine has the following test suites:
 2. **UI System Tests**
    - UI Stress Tests: Validate UI performance and scalability in headless mode
    - UI Benchmark Tests: Measure UI component processing throughput and memory efficiency
+   - UIManagerFunctionalTests: Comprehensive UI component creation, management, and interaction
 
 3. **Core Systems Tests**
+   - Buffer Reuse Tests: Validate memory allocation patterns and buffer reuse across frames
+   - Camera Tests: Validate camera world/screen coordinate transformations
+   - GameEngine Tests: Test core engine initialization and manager lifecycle
+   - InputManager Tests: Validate input handling and coordinate conversion
+   - Loading State Tests: Test async loading and deferred state transitions
+   - Rendering Pipeline Tests: Validate frame pacing and render coordination
    - Save Manager Tests: Validate save/load functionality with directory creation and file operations
    - Thread System Tests: Verify multi-threading capabilities and priority scheduling
    - ThreadSystem Load Monitoring: Defensive tests ensuring AI doesn't overwhelm 4096 task limit
@@ -28,6 +35,7 @@ The Hammer Game Engine has the following test suites:
    - Event Types Tests: Test specific event type implementations (Weather, Scene Change, NPC Spawn)
    - Weather Event Tests: Focused tests for weather event functionality
    - Event Manager Scaling Benchmark: Performance testing for event system scalability
+   - Event Coordination Integration Tests: Multi-system event coordination and synchronization
    - Particle Manager Tests: Comprehensive particle system validation covering core functionality, weather integration, performance, and threading
 
 4. **Collision System Tests**
@@ -35,6 +43,7 @@ The Hammer Game Engine has the following test suites:
    - SpatialHash Tests: Test spatial hash insertion, removal, updating, and querying with deduplication
    - Collision Performance Tests: Benchmark insertion, query, and update operations with up to 10K entities
    - Collision Stress Tests: High-density collision detection and boundary condition testing
+   - AI Collision Integration Tests: Integration tests for AI pathfinding with collision system
 
 5. **Pathfinding System Tests**
    - PathfindingGrid Tests: Validate A* pathfinding algorithm with grid coordinate conversion
@@ -44,7 +53,12 @@ The Hammer Game Engine has the following test suites:
    - Edge Case Tests: Test blocked start/goal positions, extreme distances, and nearest open cell finding
    - PathfinderManager & AIManager Contention Tests: Integration tests for WorkerBudget coordination under heavy load
 
-6. **Utility System Tests**
+6. **SIMD & Performance Tests**
+   - SIMD Correctness Tests: Cross-platform SIMD correctness validation (SSE2/AVX2/NEON)
+   - SIMD Performance Benchmark: Performance validation of SIMD optimizations in AIManager, CollisionManager, ParticleManager
+   - Integrated System Benchmark: Full system performance profiling across all major systems
+
+7. **Utility System Tests**
    - JsonReader Tests: RFC 8259 compliant JSON parser validation with comprehensive error handling and type safety testing
 
 **Test Execution Categories:**

@@ -120,16 +120,16 @@ struct UIStyle {
   SDL_Color textBackgroundColor{0, 0, 0,
                                 128}; // Semi-transparent black by default
   bool useTextBackground{false};      // Enable text background for readability
-  int textBackgroundPadding{4};       // Extra padding around text background
+  int textBackgroundPadding{UIConstants::DEFAULT_TEXT_BG_PADDING};       // Extra padding around text background
 
-  int borderWidth{1};
-  int padding{8};
-  int margin{4};
-  int listItemHeight{32}; // Configurable height for list items (increased from
+  int borderWidth{UIConstants::BORDER_WIDTH_NORMAL};
+  int padding{UIConstants::DEFAULT_COMPONENT_PADDING};
+  int margin{UIConstants::DEFAULT_MARGIN};
+  int listItemHeight{UIConstants::DEFAULT_LIST_ITEM_HEIGHT}; // Configurable height for list items (increased from
                           // 20 for better mouse accuracy)
 
-  std::string fontID{UIConstants::UI_FONT};
-  int fontSize{16};
+  std::string fontID{UIConstants::FONT_UI};
+  int fontSize{UIConstants::DEFAULT_FONT_SIZE};
 
   UIAlignment textAlign{UIAlignment::CENTER_CENTER};
 };
@@ -150,11 +150,11 @@ struct UIComponent {
 
   // Auto-sizing properties
   bool m_autoSize{true}; // Enable content-aware auto-sizing by default
-  UIRect m_minBounds{0, 0, 32,
-                   16}; // Minimum size constraints (only width/height used)
-  UIRect m_maxBounds{0, 0, 800,
-                   600};    // Maximum size constraints (only width/height used)
-  int m_contentPadding{8};    // Padding around content for size calculations
+  UIRect m_minBounds{0, 0, UIConstants::MIN_COMPONENT_WIDTH,
+                   UIConstants::MIN_COMPONENT_HEIGHT}; // Minimum size constraints (only width/height used)
+  UIRect m_maxBounds{0, 0, UIConstants::MAX_COMPONENT_WIDTH,
+                   UIConstants::MAX_COMPONENT_HEIGHT};    // Maximum size constraints (only width/height used)
+  int m_contentPadding{UIConstants::DEFAULT_CONTENT_PADDING};    // Padding around content for size calculations
   bool m_autoWidth{true};     // Auto-size width based on content
   bool m_autoHeight{true};    // Auto-size height based on content
   bool m_sizeToContent{true}; // Size exactly to fit content (vs. expand to fill)
@@ -173,7 +173,7 @@ struct UIComponent {
   std::function<std::vector<std::string>()> m_listBinding{}; // For data-bound lists
   int m_selectedIndex{-1};
   std::string m_placeholder{};
-  int m_maxLength{256};
+  int m_maxLength{UIConstants::DEFAULT_INPUT_MAX_LENGTH};
 
   // Callbacks
   std::function<void()> m_onClick{};
@@ -195,7 +195,7 @@ struct UILayout {
   std::vector<std::string> m_childComponents{};
 
   // Layout-specific properties
-  int m_spacing{4};
+  int m_spacing{UIConstants::DEFAULT_LAYOUT_SPACING};
   int m_columns{1};
   int m_rows{1};
   UIAlignment m_alignment{UIAlignment::TOP_LEFT};
@@ -291,7 +291,7 @@ public:
   void createList(const std::string &id, const UIRect &bounds);
   void createTooltip(const std::string &id, const std::string &text = "");
   void createEventLog(const std::string &id, const UIRect &bounds,
-                      int maxEntries = 5);
+                      int maxEntries = UIConstants::DEFAULT_EVENT_LOG_MAX_ENTRIES);
   void createDialog(const std::string &id, const UIRect &bounds);
 
   // Modal creation helper - combines theme + overlay + dialog
@@ -381,7 +381,7 @@ public:
   void setEventLogMaxEntries(const std::string &logID, int maxEntries);
   void setupDemoEventLog(const std::string &logID);
   void enableEventLogAutoUpdate(const std::string &logID,
-                                float interval = 2.0f);
+                                float interval = UIConstants::DEFAULT_EVENT_LOG_UPDATE_INTERVAL);
   void disableEventLogAutoUpdate(const std::string &logID);
 
   // Title specific methods
@@ -460,16 +460,30 @@ public:
   int getLogicalWidth() const;  // Auto-detect logical width from GameEngine
   int getLogicalHeight() const; // Auto-detect logical height from GameEngine
   void createTitleAtTop(const std::string &id, const std::string &text,
-                        int height = 40);
+                        int height = UIConstants::DEFAULT_TITLE_HEIGHT);
   void createButtonAtBottom(const std::string &id, const std::string &text,
-                            int width = 120, int height = 40);
+                            int width = UIConstants::DEFAULT_BUTTON_WIDTH, int height = UIConstants::DEFAULT_BUTTON_HEIGHT);
   void createCenteredDialog(const std::string &id, int width, int height,
                             const std::string &theme = "dark");
+  void createCenteredButton(const std::string &id, int offsetY,
+                           int width, int height, const std::string &text);
 
   // Utility methods
   void setGlobalFont(const std::string &fontID);
   void setGlobalScale(float scale);
   float getGlobalScale() const { return m_globalScale; }
+
+  // Helper to scale UIRect by global scale factor (eliminates redundant per-component multiplication)
+  inline UIRect scaleRect(const UIRect& bounds) const {
+    return {
+      static_cast<int>(bounds.x * m_globalScale),
+      static_cast<int>(bounds.y * m_globalScale),
+      static_cast<int>(bounds.width * m_globalScale),
+      static_cast<int>(bounds.height * m_globalScale)
+    };
+  }
+
+  float calculateOptimalScale(int width, int height) const;  // Calculate resolution-aware scale
   void enableTooltips(bool enable) { m_tooltipsEnabled = enable; }
   void setTooltipDelay(float delay) { m_tooltipDelay = delay; }
 
@@ -494,9 +508,9 @@ private:
   // Theme and styling
   UITheme m_currentTheme{};
   UIStyle m_globalStyle{};
-  std::string m_globalFontID{UIConstants::DEFAULT_FONT};
-  std::string m_titleFontID{UIConstants::TITLE_FONT};
-  std::string m_uiFontID{UIConstants::UI_FONT};
+  std::string m_globalFontID{UIConstants::FONT_DEFAULT};
+  std::string m_titleFontID{UIConstants::FONT_TITLE};
+  std::string m_uiFontID{UIConstants::FONT_UI};
   float m_globalScale{1.0f};
   std::string m_currentThemeMode{"light"};
 
@@ -522,6 +536,14 @@ private:
   bool m_mousePressed{false};
   bool m_mouseReleased{false};
 
+  // Performance optimization: Cached sorted components to avoid per-frame allocation + sorting
+  mutable std::vector<std::shared_ptr<UIComponent>> m_sortedComponentsCache{};
+  mutable bool m_sortedComponentsDirty{true};
+
+  // Performance optimization: Value caches to avoid mutex lock + hash lookup when values unchanged
+  std::unordered_map<std::string, float> m_valueCache{};
+  std::unordered_map<std::string, std::string> m_textCache{};
+
   // Private helper methods
   std::shared_ptr<UIComponent> getComponent(const std::string &id);
   std::shared_ptr<const UIComponent> getComponent(const std::string &id) const;
@@ -539,6 +561,9 @@ private:
                        const std::shared_ptr<UIComponent> &component);
   void renderTooltip(SDL_Renderer *renderer);
   std::vector<std::shared_ptr<UIComponent>> getSortedComponents() const;
+
+  // Performance optimization helper
+  void invalidateComponentCache();
 
   // Component-specific rendering
   void renderButton(SDL_Renderer *renderer,

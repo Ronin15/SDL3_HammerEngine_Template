@@ -167,6 +167,10 @@ void EventManager::clean() {
     return;
   }
 
+  // Set shutdown flags EARLY to prevent new work (matches AIManager pattern)
+  m_isShutdown = true;
+  m_initialized.store(false, std::memory_order_release);
+
   // Wait for any pending async batches to complete before cleanup
   {
     std::vector<std::future<void>> localFutures;
@@ -219,8 +223,7 @@ void EventManager::clean() {
   // Reset performance stats
   resetPerformanceStats();
 
-  m_initialized.store(false);
-  m_isShutdown = true;
+  // Shutdown flags already set at beginning of clean()
   // Skip logging during shutdown to avoid static destruction order issues
 }
 
@@ -256,7 +259,7 @@ void EventManager::prepareForStateTransition() {
 }
 
 void EventManager::update() {
-  if (!m_initialized.load()) {
+  if (!m_initialized.load() || m_isShutdown) {
     return;
   }
 
@@ -645,6 +648,52 @@ bool EventManager::removeEvent(const std::string &name) {
   return true;
 }
 
+size_t EventManager::removeEventsByType(EventTypeId typeId) {
+  std::unique_lock<std::shared_mutex> lock(m_eventsMutex);
+
+  if (typeId >= EventTypeId::COUNT) {
+    return 0;
+  }
+
+  size_t typeIndex = static_cast<size_t>(typeId);
+  auto &container = m_eventsByType[typeIndex];
+  size_t removedCount = 0;
+
+  // Mark all events of this type for removal
+  for (auto &eventData : container) {
+    if (!(eventData.flags & EventData::FLAG_PENDING_REMOVAL)) {
+      eventData.flags |= EventData::FLAG_PENDING_REMOVAL;
+      removedCount++;
+    }
+  }
+
+  // Remove from name mappings (iterate through copy to avoid invalidation)
+  std::vector<std::string> namesToRemove;
+  for (const auto &[name, eventTypeId] : m_nameToType) {
+    if (eventTypeId == typeId) {
+      namesToRemove.push_back(name);
+    }
+  }
+
+  for (const auto &name : namesToRemove) {
+    m_nameToIndex.erase(name);
+    m_nameToType.erase(name);
+  }
+
+  return removedCount;
+}
+
+size_t EventManager::clearAllEvents() {
+  size_t totalRemoved = 0;
+
+  // Remove events for each type
+  for (size_t i = 0; i < static_cast<size_t>(EventTypeId::COUNT); ++i) {
+    totalRemoved += removeEventsByType(static_cast<EventTypeId>(i));
+  }
+
+  return totalRemoved;
+}
+
 bool EventManager::hasEvent(const std::string &name) const {
   std::shared_lock<std::shared_mutex> lock(m_eventsMutex);
   return m_nameToIndex.find(name) != m_nameToIndex.end();
@@ -870,8 +919,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
-  if (!HammerEngine::ThreadSystem::Exists()) {
-    // Fall back to single-threaded if ThreadSystem not available
+  if (m_isShutdown || !HammerEngine::ThreadSystem::Exists()) {
+    // Fall back to single-threaded if shutting down or ThreadSystem not available
     updateEventTypeBatch(typeId);
     return;
   }
@@ -1057,20 +1106,6 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
   if (timeMs > 1.0 || localEvents->size() > 50) {
     recordPerformance(typeId, timeMs);
   }
-}
-
-void EventManager::processEventDirect(EventData &eventData) {
-  if (!eventData.event) {
-    return;
-  }
-
-  // Only update the event, don't automatically execute or call handlers
-  // Events should only execute when explicitly triggered, not every frame
-  eventData.event->update();
-
-  // Note: Handlers are only called when events are explicitly triggered
-  // via changeWeather(), changeScene(), spawnNPC(), etc.
-  // This prevents the continuous handler from being called repeatedly
 }
 
 bool EventManager::changeWeather(const std::string &weatherType,

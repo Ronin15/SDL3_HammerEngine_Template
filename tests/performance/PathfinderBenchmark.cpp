@@ -36,6 +36,7 @@
 #include <fstream>
 #include <iomanip>
 #include <algorithm>
+#include <atomic>
 
 using namespace std::chrono;
 
@@ -150,8 +151,10 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
     for (const auto& [gridSize, description] : gridSizes) {
         std::uniform_int_distribution<int> coordDist(5, gridSize - 5);
 
-        std::vector<double> pathTimes;
-        pathTimes.reserve(pathsPerSize);
+        std::vector<double> queuingLatencies;
+        std::vector<double> completionTimes;
+        queuingLatencies.reserve(pathsPerSize);
+        completionTimes.reserve(pathsPerSize);
 
         int successfulPaths = 0;
 
@@ -164,28 +167,35 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
             std::vector<Vector2D> path;
             std::atomic<bool> pathReady{false};
             bool pathSuccess = false;
+            high_resolution_clock::time_point callbackTimestamp;
 
-            auto pathStart = high_resolution_clock::now();
+            auto requestStart = high_resolution_clock::now();
             PathfinderManager::Instance().requestPath(
                 static_cast<EntityID>(i + 10000), start, goal,
                 PathfinderManager::Priority::High,
                 [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                    callbackTimestamp = high_resolution_clock::now(); // Timestamp in callback
                     path = resultPath;
                     pathSuccess = !resultPath.empty();
                     pathReady.store(true, std::memory_order_release);
                 }
             );
+            auto requestQueued = high_resolution_clock::now();
+
+            // Measure queuing latency (request submission overhead)
+            double queuingLatencyUs = duration_cast<nanoseconds>(requestQueued - requestStart).count() / 1000.0;
+            queuingLatencies.push_back(queuingLatencyUs);
 
             // Wait for async pathfinding to complete
-            // IMPORTANT: Call update() to process buffered requests with WorkerBudget integration
+            // Process buffered requests without contaminating timing
             while (!pathReady.load(std::memory_order_acquire)) {
-                PathfinderManager::Instance().update(); // Process buffered requests
+                PathfinderManager::Instance().update(); // Process all buffered requests
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
-            auto pathEnd = high_resolution_clock::now();
 
-            double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
-            pathTimes.push_back(pathTimeMs);
+            // Measure total completion time (from request to callback)
+            double completionTimeMs = duration_cast<microseconds>(callbackTimestamp - requestStart).count() / 1000.0;
+            completionTimes.push_back(completionTimeMs);
 
             if (pathSuccess) {
                 successfulPaths++;
@@ -195,25 +205,36 @@ BOOST_AUTO_TEST_CASE(BenchmarkImmediatePathfinding) {
         auto endBatch = high_resolution_clock::now();
         double totalBatchTime = duration_cast<milliseconds>(endBatch - startBatch).count();
 
-        // Calculate statistics
-        std::sort(pathTimes.begin(), pathTimes.end());
-        double avgTime = std::accumulate(pathTimes.begin(), pathTimes.end(), 0.0) / pathTimes.size();
-        double medianTime = pathTimes[pathTimes.size() / 2];
-        double minTime = pathTimes.front();
-        double maxTime = pathTimes.back();
-        double p95Time = pathTimes[static_cast<size_t>(pathTimes.size() * 0.95)];
+        // Calculate statistics for queuing latency
+        std::sort(queuingLatencies.begin(), queuingLatencies.end());
+        double avgQueueLatency = std::accumulate(queuingLatencies.begin(), queuingLatencies.end(), 0.0) / queuingLatencies.size();
+        double medianQueueLatency = queuingLatencies[queuingLatencies.size() / 2];
+
+        // Calculate statistics for completion times
+        std::sort(completionTimes.begin(), completionTimes.end());
+        double avgTime = std::accumulate(completionTimes.begin(), completionTimes.end(), 0.0) / completionTimes.size();
+        double medianTime = completionTimes[completionTimes.size() / 2];
+        double minTime = completionTimes.front();
+        double maxTime = completionTimes.back();
+        double p95Time = completionTimes[static_cast<size_t>(completionTimes.size() * 0.95)];
 
         std::cout << description << ":\n";
         std::cout << "  Paths tested: " << pathsPerSize << "\n";
         std::cout << "  Successful paths: " << successfulPaths << " ("
                   << std::fixed << std::setprecision(1)
                   << (100.0 * successfulPaths / pathsPerSize) << "%)\n";
-        std::cout << "  Total batch time: " << totalBatchTime << "ms\n";
-        std::cout << "  Average time: " << std::setprecision(3) << avgTime << "ms\n";
-        std::cout << "  Median time: " << medianTime << "ms\n";
-        std::cout << "  Min time: " << minTime << "ms\n";
-        std::cout << "  Max time: " << maxTime << "ms\n";
-        std::cout << "  95th percentile: " << p95Time << "ms\n";
+        std::cout << "  Total batch time: " << totalBatchTime << "ms\n\n";
+
+        std::cout << "  Queuing latency:\n";
+        std::cout << "    Average: " << std::setprecision(2) << avgQueueLatency << "us\n";
+        std::cout << "    Median: " << medianQueueLatency << "us\n\n";
+
+        std::cout << "  Completion time (request to callback):\n";
+        std::cout << "    Average: " << std::setprecision(3) << avgTime << "ms\n";
+        std::cout << "    Median: " << medianTime << "ms\n";
+        std::cout << "    Min: " << minTime << "ms\n";
+        std::cout << "    Max: " << maxTime << "ms\n";
+        std::cout << "    95th percentile: " << p95Time << "ms\n";
         std::cout << "  Paths/second: " << std::setprecision(0)
                   << (1000.0 * pathsPerSize / totalBatchTime) << "\n\n";
     }
@@ -230,6 +251,10 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
         std::vector<uint64_t> requestIds;
         requestIds.reserve(batchSize);
 
+        // Track completion via atomic counter
+        std::atomic<int> completedCount{0};
+        std::vector<high_resolution_clock::time_point> completionTimestamps(batchSize);
+
         auto requestStart = high_resolution_clock::now();
 
         // Submit batch of async requests
@@ -242,8 +267,9 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
                 start,
                 goal,
                 PathfinderManager::Priority::Normal,
-                [](EntityID, const std::vector<Vector2D>&) {
-                    // Callback - just track completion
+                [&completedCount, &completionTimestamps, i](EntityID, const std::vector<Vector2D>&) {
+                    completionTimestamps[i] = high_resolution_clock::now();
+                    completedCount.fetch_add(1, std::memory_order_release);
                 }
             );
 
@@ -253,26 +279,47 @@ BOOST_AUTO_TEST_CASE(BenchmarkAsyncPathfinding) {
         auto requestEnd = high_resolution_clock::now();
         double requestTimeMs = duration_cast<microseconds>(requestEnd - requestStart).count() / 1000.0;
 
-        // Wait for all requests to complete (with timeout)
-        auto waitStart = high_resolution_clock::now();
+        // Wait for all requests to actually complete (verify via atomic counter)
+        auto processingStart = high_resolution_clock::now();
 
-        // Process requests with update() calls
-        int maxIterations = batchSize * 2; // Max iterations to wait
-        for (int i = 0; i < maxIterations; ++i) {
+        while (completedCount.load(std::memory_order_acquire) < batchSize) {
             PathfinderManager::Instance().update(); // Process buffered requests
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+
+            // Timeout safety (10 seconds max)
+            auto elapsed = duration_cast<seconds>(high_resolution_clock::now() - processingStart).count();
+            if (elapsed > 10) {
+                std::cout << "WARNING: Timeout waiting for batch completion ("
+                          << completedCount.load() << "/" << batchSize << " completed)\n";
+                break;
+            }
         }
 
-        auto waitEnd = high_resolution_clock::now();
-        double waitTimeMs = duration_cast<milliseconds>(waitEnd - waitStart).count();
+        auto processingEnd = high_resolution_clock::now();
+        double processingTimeMs = duration_cast<milliseconds>(processingEnd - processingStart).count();
+
+        // Calculate actual completion time from last callback timestamp
+        high_resolution_clock::time_point lastCompletion = processingStart;
+        for (const auto& timestamp : completionTimestamps) {
+            if (timestamp > lastCompletion) {
+                lastCompletion = timestamp;
+            }
+        }
+        double actualCompletionMs = duration_cast<milliseconds>(lastCompletion - requestEnd).count();
 
         std::cout << "Batch size " << batchSize << ":\n";
+        std::cout << "  Completed: " << completedCount.load() << "/" << batchSize << "\n";
         std::cout << "  Request submission: " << std::setprecision(3) << requestTimeMs << "ms\n";
         std::cout << "  Request rate: " << std::setprecision(0)
                   << (batchSize / (requestTimeMs / 1000.0)) << " requests/sec\n";
-        std::cout << "  Processing time: " << waitTimeMs << "ms\n";
-        std::cout << "  Throughput: " << std::setprecision(0)
-                  << (batchSize / (waitTimeMs / 1000.0)) << " paths/sec\n\n";
+        std::cout << "  Actual completion time: " << std::setprecision(1) << actualCompletionMs << "ms\n";
+        std::cout << "  Processing time (including polling): " << processingTimeMs << "ms\n";
+
+        if (completedCount.load() > 0) {
+            std::cout << "  Throughput: " << std::setprecision(0)
+                      << (completedCount.load() / (actualCompletionMs / 1000.0)) << " paths/sec\n";
+        }
+        std::cout << "\n";
     }
 }
 
@@ -293,9 +340,11 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
         const auto& [start, goal] = pathTests[i];
         float distance = (goal - start).length();
 
-        std::vector<double> pathTimes;
+        std::vector<double> queuingLatencies;
+        std::vector<double> completionTimes;
         std::vector<size_t> pathLengths;
-        pathTimes.reserve(testsPerPath);
+        queuingLatencies.reserve(testsPerPath);
+        completionTimes.reserve(testsPerPath);
         pathLengths.reserve(testsPerPath);
 
         int successfulPaths = 0;
@@ -304,28 +353,34 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
             std::vector<Vector2D> path;
             std::atomic<bool> pathReady{false};
             bool pathSuccess = false;
+            high_resolution_clock::time_point callbackTimestamp;
 
-            auto pathStart = high_resolution_clock::now();
+            auto requestStart = high_resolution_clock::now();
             PathfinderManager::Instance().requestPath(
                 static_cast<EntityID>(test + 20000), start, goal,
                 PathfinderManager::Priority::High,
                 [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                    callbackTimestamp = high_resolution_clock::now(); // Timestamp in callback
                     path = resultPath;
                     pathSuccess = !resultPath.empty();
                     pathReady.store(true, std::memory_order_release);
                 }
             );
+            auto requestQueued = high_resolution_clock::now();
+
+            // Measure queuing latency
+            double queuingLatencyUs = duration_cast<nanoseconds>(requestQueued - requestStart).count() / 1000.0;
+            queuingLatencies.push_back(queuingLatencyUs);
 
             // Wait for async pathfinding to complete
-            // IMPORTANT: Call update() to process buffered requests with WorkerBudget integration
             while (!pathReady.load(std::memory_order_acquire)) {
                 PathfinderManager::Instance().update(); // Process buffered requests
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
-            auto pathEnd = high_resolution_clock::now();
 
-            double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
-            pathTimes.push_back(pathTimeMs);
+            // Measure total completion time (from request to callback)
+            double completionTimeMs = duration_cast<microseconds>(callbackTimestamp - requestStart).count() / 1000.0;
+            completionTimes.push_back(completionTimeMs);
             pathLengths.push_back(path.size());
 
             if (pathSuccess) {
@@ -333,17 +388,19 @@ BOOST_AUTO_TEST_CASE(BenchmarkPathLengthScaling) {
             }
         }
 
-        if (!pathTimes.empty()) {
-            double avgTime = std::accumulate(pathTimes.begin(), pathTimes.end(), 0.0) / pathTimes.size();
+        if (!completionTimes.empty()) {
+            double avgQueueLatency = std::accumulate(queuingLatencies.begin(), queuingLatencies.end(), 0.0) / queuingLatencies.size();
+            double avgCompletionTime = std::accumulate(completionTimes.begin(), completionTimes.end(), 0.0) / completionTimes.size();
             double avgLength = std::accumulate(pathLengths.begin(), pathLengths.end(), 0.0) / pathLengths.size();
 
             std::cout << "Distance " << std::setprecision(0) << distance << " units:\n";
             std::cout << "  Success rate: " << successfulPaths << "/" << testsPerPath
                       << " (" << std::setprecision(1) << (100.0 * successfulPaths / testsPerPath) << "%)\n";
-            std::cout << "  Average time: " << std::setprecision(3) << avgTime << "ms\n";
+            std::cout << "  Average queuing latency: " << std::setprecision(2) << avgQueueLatency << "us\n";
+            std::cout << "  Average completion time: " << std::setprecision(3) << avgCompletionTime << "ms\n";
             std::cout << "  Average path nodes: " << std::setprecision(1) << avgLength << "\n";
             if (avgLength > 0) {
-                std::cout << "  Time per node: " << std::setprecision(3) << (avgTime / avgLength) << "ms\n";
+                std::cout << "  Time per node: " << std::setprecision(3) << (avgCompletionTime / avgLength) << "ms\n";
             }
             std::cout << "\n";
         }
@@ -376,12 +433,14 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
     for (const auto& [start, goal] : uniquePaths) {
         std::vector<Vector2D> path;
         std::atomic<bool> pathReady{false};
+        high_resolution_clock::time_point callbackTimestamp;
 
-        auto pathStart = high_resolution_clock::now();
+        auto requestStart = high_resolution_clock::now();
         PathfinderManager::Instance().requestPath(
             static_cast<EntityID>(entityIdCounter++), start, goal,
             PathfinderManager::Priority::High,
             [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                callbackTimestamp = high_resolution_clock::now(); // Timestamp in callback
                 path = resultPath;
                 pathReady.store(true, std::memory_order_release);
             }
@@ -391,9 +450,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
             PathfinderManager::Instance().update(); // Process buffered requests
             std::this_thread::sleep_for(std::chrono::microseconds(100));
         }
-        auto pathEnd = high_resolution_clock::now();
 
-        double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
+        double pathTimeMs = duration_cast<microseconds>(callbackTimestamp - requestStart).count() / 1000.0;
         firstRunTimes.push_back(pathTimeMs);
     }
     auto firstRunEnd = high_resolution_clock::now();
@@ -404,12 +462,14 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
         for (const auto& [start, goal] : uniquePaths) {
             std::vector<Vector2D> path;
             std::atomic<bool> pathReady{false};
+            high_resolution_clock::time_point callbackTimestamp;
 
-            auto pathStart = high_resolution_clock::now();
+            auto requestStart = high_resolution_clock::now();
             PathfinderManager::Instance().requestPath(
                 static_cast<EntityID>(entityIdCounter++), start, goal,
                 PathfinderManager::Priority::High,
                 [&](EntityID, const std::vector<Vector2D>& resultPath) {
+                    callbackTimestamp = high_resolution_clock::now(); // Timestamp in callback
                     path = resultPath;
                     pathReady.store(true, std::memory_order_release);
                 }
@@ -419,9 +479,8 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
                 PathfinderManager::Instance().update(); // Process buffered requests
                 std::this_thread::sleep_for(std::chrono::microseconds(100));
             }
-            auto pathEnd = high_resolution_clock::now();
 
-            double pathTimeMs = duration_cast<microseconds>(pathEnd - pathStart).count() / 1000.0;
+            double pathTimeMs = duration_cast<microseconds>(callbackTimestamp - requestStart).count() / 1000.0;
             cachedRunTimes.push_back(pathTimeMs);
         }
     }
@@ -431,6 +490,23 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
     double avgFirstRun = std::accumulate(firstRunTimes.begin(), firstRunTimes.end(), 0.0) / firstRunTimes.size();
     double avgCachedRun = std::accumulate(cachedRunTimes.begin(), cachedRunTimes.end(), 0.0) / cachedRunTimes.size();
 
+    // Calculate standard deviations for statistical significance testing
+    double firstRunVariance = 0.0;
+    for (double time : firstRunTimes) {
+        double diff = time - avgFirstRun;
+        firstRunVariance += diff * diff;
+    }
+    firstRunVariance /= firstRunTimes.size();
+    double firstRunStdDev = std::sqrt(firstRunVariance);
+
+    double cachedRunVariance = 0.0;
+    for (double time : cachedRunTimes) {
+        double diff = time - avgCachedRun;
+        cachedRunVariance += diff * diff;
+    }
+    cachedRunVariance /= cachedRunTimes.size();
+    double cachedRunStdDev = std::sqrt(cachedRunVariance);
+
     double firstRunTotal = duration_cast<milliseconds>(firstRunEnd - firstRunStart).count();
     double cachedRunTotal = duration_cast<milliseconds>(cachedRunEnd - cachedRunStart).count();
 
@@ -439,21 +515,38 @@ BOOST_AUTO_TEST_CASE(BenchmarkCachePerformance) {
 
     std::cout << "First run (cold cache):\n";
     std::cout << "  Average time per path: " << std::setprecision(3) << avgFirstRun << "ms\n";
-    std::cout << "  Total time: " << firstRunTotal << "ms\n";
+    std::cout << "  Std deviation: " << std::setprecision(3) << firstRunStdDev << "ms\n";
+    std::cout << "  Total time: " << std::setprecision(1) << firstRunTotal << "ms\n";
     std::cout << "  Paths/second: " << std::setprecision(0)
               << (1000.0 * numUniquePaths / firstRunTotal) << "\n\n";
 
     std::cout << "Cached runs (warm cache):\n";
     std::cout << "  Average time per path: " << std::setprecision(3) << avgCachedRun << "ms\n";
-    std::cout << "  Total time: " << cachedRunTotal << "ms\n";
+    std::cout << "  Std deviation: " << std::setprecision(3) << cachedRunStdDev << "ms\n";
+    std::cout << "  Total time: " << std::setprecision(1) << cachedRunTotal << "ms\n";
     std::cout << "  Paths/second: " << std::setprecision(0)
               << (1000.0 * cachedRunTimes.size() / cachedRunTotal) << "\n\n";
 
     double speedupRatio = avgFirstRun / avgCachedRun;
+    double speedupDiff = avgFirstRun - avgCachedRun;
+
+    // Statistical significance check: speedup should be larger than combined std deviations
+    double combinedStdDev = std::sqrt(firstRunStdDev * firstRunStdDev + cachedRunStdDev * cachedRunStdDev);
+    bool statisticallySignificant = speedupDiff > combinedStdDev;
+
     std::cout << "Cache performance:\n";
     std::cout << "  Speedup ratio: " << std::setprecision(2) << speedupRatio << "x\n";
+    std::cout << "  Speedup difference: " << std::setprecision(3) << speedupDiff << "ms\n";
+    std::cout << "  Combined std dev: " << std::setprecision(3) << combinedStdDev << "ms\n";
+    std::cout << "  Statistically significant: " << (statisticallySignificant ? "YES" : "NO")
+              << " (speedup > std dev)\n";
     std::cout << "  Cache efficiency: " << std::setprecision(1)
               << ((speedupRatio - 1.0) / speedupRatio * 100.0) << "%\n\n";
+
+    if (!statisticallySignificant) {
+        std::cout << "  NOTE: Cache speedup may be within timing variance.\n";
+        std::cout << "        Consider testing with longer paths or more samples.\n\n";
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

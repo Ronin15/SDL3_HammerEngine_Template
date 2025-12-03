@@ -217,7 +217,7 @@ void NPC::clean() {
   // This method is called before the object is destroyed,
   // but we need to be very careful about double-cleanup
 
-  static std::set<void *> cleanedNPCs;
+  static thread_local std::set<void *> cleanedNPCs;
 
   // Check if this NPC has already been cleaned
   if (cleanedNPCs.find(this) != cleanedNPCs.end()) {

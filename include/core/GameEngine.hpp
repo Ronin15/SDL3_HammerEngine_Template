@@ -8,7 +8,9 @@
 
 #include "managers/GameStateManager.hpp"
 #include <SDL3_image/SDL_image.h>
+#include <array>
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <memory>
 #include <mutex>
@@ -25,6 +27,91 @@ class ResourceTemplateManager;
 class WorldResourceManager;
 class WorldManager;
 class CollisionManager;
+
+#ifdef DEBUG
+/**
+ * @brief Buffer telemetry statistics for monitoring double/triple buffering performance
+ * @details Tracks swap success/failures, render stalls, and timing metrics using rolling averages
+ *
+ * Only compiled in DEBUG builds for zero-overhead performance monitoring.
+ * Follows EventManager's PerformanceStats pattern for consistency.
+ *
+ * Thread Safety: Counters use atomics (Main/Render thread increments).
+ * Timing arrays accessed only from Update thread via addTimingSample().
+ * Read operations (getSwapSuccessRate, avgMutexWaitMs) are safe for display.
+ */
+struct BufferTelemetryStats {
+    // Swap tracking (atomic - incremented from Main/Render thread)
+    std::atomic<uint64_t> swapAttempts{0};   // Total buffer swap attempts
+    std::atomic<uint64_t> swapSuccesses{0};  // Successful swaps (buffer available)
+    std::atomic<uint64_t> swapBlocked{0};    // Swaps blocked (buffer not ready or rendering conflict)
+    std::atomic<uint64_t> casFailures{0};    // Compare-and-swap failures (atomic contention)
+
+    // Render tracking (atomic - incremented from Main/Render thread)
+    std::atomic<uint64_t> renderStalls{0};   // Render stalled (no buffer ready)
+    std::atomic<uint64_t> framesSkipped{0};  // Frames where lastUpdate == lastRendered
+
+    // Timing (rolling averages over 60 frames) - accessed only from Update thread
+    static constexpr size_t SAMPLE_SIZE = 60;
+    std::array<double, SAMPLE_SIZE> mutexWaitTimes{};    // Time waiting for update mutex (ms)
+    std::array<double, SAMPLE_SIZE> bufferReadyDelays{};  // Time from update complete to buffer ready (ms)
+    size_t currentSample{0};
+
+    std::atomic<double> avgMutexWaitMs{0.0};
+    std::atomic<double> avgBufferReadyMs{0.0};
+
+    /**
+     * @brief Adds a timing sample to the rolling average
+     * @param mutexWait Time spent waiting for update mutex (ms)
+     * @param bufferDelay Time from update complete to buffer marked ready (ms)
+     * @note Called only from Update thread - timing arrays not shared
+     */
+    void addTimingSample(double mutexWait, double bufferDelay) {
+        mutexWaitTimes[currentSample] = mutexWait;
+        bufferReadyDelays[currentSample] = bufferDelay;
+        currentSample = (currentSample + 1) % SAMPLE_SIZE;
+
+        // Calculate rolling averages
+        double mutexSum = 0.0;
+        double bufferSum = 0.0;
+        for (size_t i = 0; i < SAMPLE_SIZE; ++i) {
+            mutexSum += mutexWaitTimes[i];
+            bufferSum += bufferReadyDelays[i];
+        }
+        avgMutexWaitMs.store(mutexSum / SAMPLE_SIZE, std::memory_order_relaxed);
+        avgBufferReadyMs.store(bufferSum / SAMPLE_SIZE, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Resets all telemetry counters and timing samples
+     * @note Should be called when no other threads are accessing telemetry
+     */
+    void reset() {
+        swapAttempts.store(0, std::memory_order_relaxed);
+        swapSuccesses.store(0, std::memory_order_relaxed);
+        swapBlocked.store(0, std::memory_order_relaxed);
+        casFailures.store(0, std::memory_order_relaxed);
+        renderStalls.store(0, std::memory_order_relaxed);
+        framesSkipped.store(0, std::memory_order_relaxed);
+        mutexWaitTimes.fill(0.0);
+        bufferReadyDelays.fill(0.0);
+        currentSample = 0;
+        avgMutexWaitMs.store(0.0, std::memory_order_relaxed);
+        avgBufferReadyMs.store(0.0, std::memory_order_relaxed);
+    }
+
+    /**
+     * @brief Calculates swap success rate as percentage
+     * @return Swap success rate (0.0 to 100.0)
+     */
+    double getSwapSuccessRate() const {
+        uint64_t attempts = swapAttempts.load(std::memory_order_relaxed);
+        if (attempts == 0) return 100.0;
+        uint64_t successes = swapSuccesses.load(std::memory_order_relaxed);
+        return (static_cast<double>(successes) / attempts) * 100.0;
+    }
+};
+#endif // DEBUG
 
 class GameEngine {
 public:
@@ -46,6 +133,37 @@ public:
    * @param height Initial window height (0 for auto-sizing)
    * @param fullscreen Whether to start in fullscreen mode
    * @return true if initialization successful, false otherwise
+   *
+   * @details Manager Initialization Dependency Graph:
+   *
+   * Phase 1 (No Dependencies - Core Infrastructure):
+   *   - Logger (CRITICAL: Must be first for diagnostic output)
+   *   - ThreadSystem (Required by all async operations)
+   *   - InputManager (No dependencies)
+   *   - TextureManager (No dependencies)
+   *   - ResourceManager (No dependencies)
+   *
+   * Phase 2 (Requires Core Infrastructure):
+   *   - EventManager (CRITICAL: Must precede all event subscribers)
+   *   - SettingsManager (Independent of other game managers)
+   *   - SaveManager (Independent of other game managers)
+   *
+   * Phase 3 (Requires EventManager for event subscriptions):
+   *   - PathfinderManager (Subscribes to WorldLoaded and CollisionObstacleChanged events)
+   *   - CollisionManager (Subscribes to WorldLoaded events)
+   *   - UIManager (May subscribe to game events)
+   *   - AudioManager (Independent but needs ThreadSystem)
+   *
+   * Phase 4 (Requires Pathfinder + Collision):
+   *   - AIManager (CRITICAL: Depends on PathfinderManager and CollisionManager)
+   *   - ParticleManager (Independent but initialized after core systems)
+   *   - WorldManager (Needs CollisionManager for static geometry)
+   *
+   * Phase 5 (Post-Initialization Event Setup):
+   *   - WorldManager::setupEventHandlers() (Requires EventManager fully initialized)
+   *
+   * Note: Initialization uses ThreadSystem futures to parallelize where possible
+   * while respecting the dependency constraints above.
    */
   bool init(const std::string_view title, const int width, const int height,
             bool fullscreen);
@@ -72,26 +190,22 @@ public:
   void clean();
 
   /**
-   * @brief Processes background tasks using the thread system
+   * @brief Processes non-critical background tasks using the thread system
+   * @details Provides a designated entry point for asynchronous background work that
+   *          runs on worker threads (not the main thread). Suitable for:
+   *          - Asset pre-loading for upcoming game states
+   *          - Background save game serialization
+   *          - Analytics/telemetry data collection
+   *          - Periodic cache cleanup or memory defragmentation
+   *          - Network polling for non-latency-critical updates
+   *
+   * @note Global systems (EventManager, AIManager, etc.) are updated in the main
+   *       update loop for deterministic ordering. This method is for truly
+   *       asynchronous, non-critical tasks only.
+   * @warning Any work added must be thread-safe and not require main-thread
+   *          resources (SDL rendering, UI state, etc.).
    */
   void processBackgroundTasks();
-
-  /**
-   * @brief Loads resources asynchronously in background threads
-   * @param path Path to resources to load
-   * @return true if loading started successfully, false otherwise
-   */
-  bool loadResourcesAsync(const std::string &path);
-
-  /**
-   * @brief Waits for update thread to complete current frame
-   */
-  void waitForUpdate();
-
-  /**
-   * @brief Signals that update processing is complete
-   */
-  void signalUpdateComplete();
 
   /**
    * @brief Checks if there's a new frame ready to render
@@ -301,6 +415,14 @@ public:
   bool isFullscreen() const noexcept { return m_isFullscreen; }
 
 private:
+  /**
+   * @brief Verifies VSync state matches the requested setting
+   * @param requested true if VSync should be enabled, false if disabled
+   * @return true if VSync state verified to match requested, false otherwise
+   * @details Updates m_usingSoftwareFrameLimiting based on verification result.
+   *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
+   */
+  bool verifyVSyncState(bool requested);
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};
@@ -350,11 +472,21 @@ private:
   std::atomic<uint64_t> m_lastUpdateFrame{0};
   std::atomic<uint64_t> m_lastRenderedFrame{0};
 
-  // Double buffering (ping-pong buffers)
-  static constexpr size_t BUFFER_COUNT = 2;
+  // Double/Triple buffering (runtime configurable)
+  // Triple buffering (m_bufferCount=3) benefits workloads with:
+  //   - Frame time bursts: occasional heavy updates exceeding frame budget (16.67ms @ 60 FPS)
+  //   - Variable update costs: pathfinding spikes, AI batch processing, world generation
+  //   - Smoother frame delivery: always has a free buffer available, reducing swap contention
+  //   - Trade-off: +1 frame input latency (~16ms), +33% memory for buffer (acceptable for most games)
+  // Double buffering (m_bufferCount=2) recommended for:
+  //   - Consistent frame times: predictable update costs that rarely exceed budget
+  //   - Low-latency requirements: fighting games, competitive shooters, rhythm games
+  // Use F3 key (DEBUG builds) to monitor buffer telemetry and make data-driven decisions
+  static constexpr size_t MAX_BUFFER_COUNT = 3;  // Support up to 3 buffers
+  size_t m_bufferCount{2};                        // Runtime buffer count (2 or 3)
   std::atomic<size_t> m_currentBufferIndex{0};
   std::atomic<size_t> m_renderBufferIndex{0};
-  std::atomic<bool> m_bufferReady[BUFFER_COUNT]{false, false};
+  std::atomic<bool> m_bufferReady[MAX_BUFFER_COUNT]{false, false, false};
 
   // Buffer synchronization (lock-free atomic operations)
   std::condition_variable m_bufferCondition{};
@@ -364,6 +496,14 @@ private:
 
   // Render synchronization
   std::mutex m_renderMutex{};
+
+#ifdef DEBUG
+  // Buffer telemetry (debug-only, F3 to toggle overlay)
+  mutable BufferTelemetryStats m_bufferTelemetry{};
+  std::atomic<bool> m_showBufferTelemetry{false};
+  mutable uint64_t m_telemetryLogFrame{0};
+  static constexpr uint64_t TELEMETRY_LOG_INTERVAL = 300;  // Log every 300 frames (~5s @ 60fps)
+#endif // DEBUG
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying

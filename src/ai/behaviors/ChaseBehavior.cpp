@@ -160,13 +160,14 @@ void ChaseBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
         // ASYNC PATHFINDING: Use high-performance background processing for chasing
         auto& pf = this->pathfinder();
+        auto self = std::static_pointer_cast<ChaseBehavior>(shared_from_this());
         pf.requestPath(entity->getID(), entityPos, goalPosition,
                               PathfinderManager::Priority::High,
-                              [this](EntityID, const std::vector<Vector2D>& path) {
+                              [self](EntityID, const std::vector<Vector2D>& path) {
                                 // Update path when received (may be from background thread)
-                                m_navPath = path;
-                                m_navIndex = 0;
-                                m_pathUpdateTimer = 0.0f;
+                                self->m_navPath = path;
+                                self->m_navIndex = 0;
+                                self->m_pathUpdateTimer = 0.0f;
                               });
         m_cooldowns.applyPathCooldown(m_config.pathRequestCooldown); // Cooldown for better performance
       }

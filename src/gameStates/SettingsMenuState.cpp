@@ -120,6 +120,9 @@ void SettingsMenuState::loadCurrentSettings() {
     m_tempSettings.difficulty = settings.get<std::string>("gameplay", "difficulty", "normal");
     m_tempSettings.autosaveEnabled = settings.get<bool>("gameplay", "autosave_enabled", true);
     m_tempSettings.autosaveInterval = settings.get<int>("gameplay", "autosave_interval", 300);
+
+    // Graphics (Advanced)
+    m_tempSettings.bufferCount = settings.get<int>("graphics", "buffer_count", 2);
 }
 
 void SettingsMenuState::applySettings() {
@@ -157,35 +160,17 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_enabled", m_tempSettings.autosaveEnabled);
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
+    // Graphics (Advanced)
+    settings.set("graphics", "buffer_count", m_tempSettings.bufferCount);
+
     // Save to disk
     settings.saveToFile("res/settings.json");
 
     GAMESTATE_INFO("Settings saved successfully");
+    GAMESTATE_INFO("Buffer mode changed to " + std::string(m_tempSettings.bufferCount == 2 ? "Double(2)" : "Triple(3)") +
+                   " - restart required for changes to take effect");
 }
 
-void SettingsMenuState::revertSettings() {
-    loadCurrentSettings();
-
-    // Update UI to reflect reverted values
-    auto& ui = UIManager::Instance();
-
-    // Graphics
-    ui.setValue("settings_vsync_checkbox", m_tempSettings.vsync ? 1.0f : 0.0f);
-    ui.setChecked("settings_vsync_checkbox", m_tempSettings.vsync);
-    ui.setChecked("settings_fullscreen_checkbox", m_tempSettings.fullscreen);
-    ui.setChecked("settings_showfps_checkbox", m_tempSettings.showFps);
-
-    // Audio
-    ui.setValue("settings_master_volume_slider", m_tempSettings.masterVolume);
-    ui.setValue("settings_music_volume_slider", m_tempSettings.musicVolume);
-    ui.setValue("settings_sfx_volume_slider", m_tempSettings.sfxVolume);
-    ui.setChecked("settings_mute_checkbox", m_tempSettings.muted);
-
-    // Gameplay
-    ui.setChecked("settings_autosave_checkbox", m_tempSettings.autosaveEnabled);
-
-    GAMESTATE_INFO("Settings reverted");
-}
 
 void SettingsMenuState::createTabButtons() {
     auto& ui = UIManager::Instance();
@@ -260,6 +245,21 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createLabel("settings_resolution_label", {leftColumnX, startY + 3 * rowHeight, labelWidth + controlWidth, 40},
                    "Resolution: " + std::to_string(m_tempSettings.resolutionWidth) + "x" +
                    std::to_string(m_tempSettings.resolutionHeight));
+
+    // Buffer Mode toggle (Double vs Triple buffering)
+    ui.createLabel("settings_buffer_label", {leftColumnX, startY + 4 * rowHeight, labelWidth, 40}, "Buffer Mode:");
+    ui.createButton("settings_buffer_button", {controlX, startY + 4 * rowHeight, 150, 40},
+                    m_tempSettings.bufferCount == 2 ? "Double (2)" : "Triple (3)");
+    ui.setOnClick("settings_buffer_button", [this]() {
+        // Toggle between 2 and 3
+        m_tempSettings.bufferCount = (m_tempSettings.bufferCount == 2) ? 3 : 2;
+        auto& ui = UIManager::Instance();
+        ui.setText("settings_buffer_button", m_tempSettings.bufferCount == 2 ? "Double (2)" : "Triple (3)");
+    });
+
+    // Add info label about restart requirement
+    ui.createLabel("settings_buffer_info", {controlX + 160, startY + 4 * rowHeight, 400, 40},
+                   "(Restart required)");
 }
 
 void SettingsMenuState::createAudioUI() {
@@ -435,6 +435,9 @@ void SettingsMenuState::updateTabVisibility() {
     ui.setComponentVisible("settings_showfps_label", false);
     ui.setComponentVisible("settings_showfps_checkbox", false);
     ui.setComponentVisible("settings_resolution_label", false);
+    ui.setComponentVisible("settings_buffer_label", false);
+    ui.setComponentVisible("settings_buffer_button", false);
+    ui.setComponentVisible("settings_buffer_info", false);
 
     // Audio
     ui.setComponentVisible("settings_master_volume_label", false);
@@ -465,6 +468,9 @@ void SettingsMenuState::updateTabVisibility() {
             ui.setComponentVisible("settings_showfps_label", true);
             ui.setComponentVisible("settings_showfps_checkbox", true);
             ui.setComponentVisible("settings_resolution_label", true);
+            ui.setComponentVisible("settings_buffer_label", true);
+            ui.setComponentVisible("settings_buffer_button", true);
+            ui.setComponentVisible("settings_buffer_info", true);
             break;
 
         case SettingsTab::Audio:

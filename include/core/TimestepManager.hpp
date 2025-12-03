@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <chrono>
+#include <atomic>
 #include <SDL3/SDL.h>
 
 /**
@@ -119,7 +120,7 @@ private:
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
     
     // Simplified timing pattern (eliminates accumulator drift)
-    double m_accumulator;                // Simple frame timing state
+    std::atomic<double> m_accumulator;   // Simple frame timing state (atomic for thread safety)
     static constexpr double MAX_ACCUMULATOR = 0.25; // Unused (kept for compatibility)
     
     // Frame statistics
