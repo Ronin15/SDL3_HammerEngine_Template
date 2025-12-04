@@ -60,6 +60,11 @@ void WeatherController::onTimeEvent(const EventData& data) {
     // Get recommended weather from the event (based on season probabilities)
     WeatherType recommended = weatherCheck->getRecommendedWeather();
 
+    // Skip if weather hasn't changed - avoid duplicate event log messages
+    if (recommended == m_currentWeather) {
+        return;
+    }
+
     // Track current weather for status bar display
     m_currentWeather = recommended;
 
