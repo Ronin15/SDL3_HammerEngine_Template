@@ -75,6 +75,9 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
+    // Cache ParticleManager pointer for render hot path
+    mp_particleMgr = &ParticleManager::Instance();
+
     // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
     WeatherController::Instance().subscribe();
 
@@ -208,6 +211,11 @@ void GamePlayState::render() {
   float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   SDL_SetRenderScale(renderer, zoom, zoom);
 
+  // Render background particles (rain, snow) BEFORE world - use cached pointer
+  if (mp_particleMgr && mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+    mp_particleMgr->renderBackground(renderer, viewRect.x, viewRect.y);
+  }
+
   // Render world using camera coordinate transformations
   if (m_camera) {
     auto &worldMgr = WorldManager::Instance();
@@ -221,6 +229,12 @@ void GamePlayState::render() {
   // Render player using camera coordinate transformations
   if (mp_Player && m_camera) {
     mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
+  }
+
+  // Render world-space and foreground particles (after player) - use cached pointer
+  if (mp_particleMgr && mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+    mp_particleMgr->render(renderer, viewRect.x, viewRect.y);
+    mp_particleMgr->renderForeground(renderer, viewRect.x, viewRect.y);
   }
 
   // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
@@ -340,6 +354,9 @@ bool GamePlayState::exit() {
 
   // Reset player
   mp_Player = nullptr;
+
+  // Clear cached manager pointer
+  mp_particleMgr = nullptr;
 
   // Unsubscribe from automatic weather events and disable auto-weather
   WeatherController::Instance().unsubscribe();

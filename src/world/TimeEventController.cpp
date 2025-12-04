@@ -194,6 +194,7 @@ void TimeEventController::onTimeEvent(const EventData& data) {
                     (weather == WeatherType::Windy)  ? "Wind picks up" : "Weather changes";
                 ui.addEventLogEntry(m_eventLogId, weatherName);
             }
+            updateStatusText();
             break;
         }
     }

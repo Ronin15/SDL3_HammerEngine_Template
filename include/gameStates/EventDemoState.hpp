@@ -9,6 +9,7 @@
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
 #include "managers/EventManager.hpp" // For EventData
+#include "managers/ParticleManager.hpp"
 
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
@@ -233,6 +234,9 @@ private:
 
   // Registered handler tokens for cleanup
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
+
+  // Cached manager pointer for render hot path (resolved in enter())
+  ParticleManager* mp_particleMgr{nullptr};
 };
 
 #endif // EVENT_DEMO_STATE_HPP
