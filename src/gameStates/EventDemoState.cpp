@@ -58,6 +58,11 @@ EventDemoState::~EventDemoState() {
 }
 
 bool EventDemoState::enter() {
+  // Cache manager pointers for render hot path (always valid after GameEngine init)
+  mp_particleMgr = &ParticleManager::Instance();
+  mp_worldMgr = &WorldManager::Instance();
+  mp_uiMgr = &UIManager::Instance();
+
   GAMESTATE_INFO("Entering EventDemoState...");
 
   // Reset transition flag when entering state
@@ -256,9 +261,6 @@ bool EventDemoState::enter() {
     // Subscribe to time events for event log display
     TimeEventController::Instance().subscribe("event_log");
 
-    // Cache ParticleManager pointer for render hot path
-    mp_particleMgr = &ParticleManager::Instance();
-
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
 
@@ -418,8 +420,10 @@ bool EventDemoState::exit() {
     // Unsubscribe from time event logging
     TimeEventController::Instance().unsubscribe();
 
-    // Clear cached manager pointer
+    // Clear cached manager pointers
     mp_particleMgr = nullptr;
+    mp_worldMgr = nullptr;
+    mp_uiMgr = nullptr;
 
     // Reset initialization flag for next fresh start
     m_initialized = false;
@@ -677,21 +681,19 @@ void EventDemoState::render() {
   float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   SDL_SetRenderScale(renderer, zoom, zoom);
 
-  // Render world first (background layer) using unified camera position
-  if (m_camera) {
-    auto &worldMgr = WorldManager::Instance();
-    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      // Use the SAME cameraView calculated above for consistency
-      worldMgr.render(renderer,
-                     cameraView.x,
-                     cameraView.y,
-                     gameEngine.getLogicalWidth(),
-                     gameEngine.getLogicalHeight());
-    }
+  // Render world first (background layer) using unified camera position - use cached pointer
+  // mp_worldMgr guaranteed valid between enter() and exit()
+  if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
+    mp_worldMgr->render(renderer,
+                       cameraView.x,
+                       cameraView.y,
+                       gameEngine.getLogicalWidth(),
+                       gameEngine.getLogicalHeight());
   }
 
   // Render background particles first (rain, snow) - behind player/NPCs - use cached pointer
-  if (mp_particleMgr && mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+  // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
+  if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
     mp_particleMgr->renderBackground(renderer, cameraView.x, cameraView.y);
   }
 
@@ -708,7 +710,8 @@ void EventDemoState::render() {
   }
 
   // Render world-space and foreground particles - use cached pointer
-  if (mp_particleMgr && mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+  // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
+  if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
     mp_particleMgr->render(renderer, cameraView.x, cameraView.y);
     mp_particleMgr->renderForeground(renderer, cameraView.x, cameraView.y);
   }
@@ -716,28 +719,27 @@ void EventDemoState::render() {
   // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
   SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
-  // Update and render UI components through UIManager using cached renderer for
-  // cleaner API
-  auto &ui = UIManager::Instance();
-  if (!ui.isShutdown()) {
-    ui.update(0.0); // UI updates are not time-dependent in this state
+  // Update and render UI components through cached pointer
+  // mp_uiMgr guaranteed valid between enter() and exit()
+  if (!mp_uiMgr->isShutdown()) {
+    mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
 
     // Update UI displays
     std::stringstream phaseText;
     phaseText << "Phase: " << getCurrentPhaseString();
-    ui.setText("event_phase", phaseText.str());
+    mp_uiMgr->setText("event_phase", phaseText.str());
 
     std::stringstream statusText;
     statusText << "FPS: " << std::fixed << std::setprecision(1)
                << gameEngine.getCurrentFPS()
                << " | Weather: " << getCurrentWeatherString()
                << " | NPCs: " << m_spawnedNPCs.size();
-    ui.setText("event_status", statusText.str());
+    mp_uiMgr->setText("event_status", statusText.str());
 
     // Update inventory display
     // updateInventoryUI(); // Now handled by data binding
   }
-  ui.render();
+  mp_uiMgr->render();
 }
 
 void EventDemoState::setupEventSystem() {

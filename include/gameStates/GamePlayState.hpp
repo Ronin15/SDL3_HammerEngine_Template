@@ -13,6 +13,10 @@
 #include "utils/Camera.hpp"
 #include <memory>
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+
 class GamePlayState : public GameState {
 public:
   GamePlayState()
@@ -55,8 +59,10 @@ private:
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
 
-  // Cached manager pointer for render hot path (resolved in enter())
+  // Cached manager pointers for render hot path (resolved in enter())
   ParticleManager* mp_particleMgr{nullptr};
+  WorldManager* mp_worldMgr{nullptr};
+  UIManager* mp_uiMgr{nullptr};
 
   // Inventory UI methods
   void initializeInventoryUI();
