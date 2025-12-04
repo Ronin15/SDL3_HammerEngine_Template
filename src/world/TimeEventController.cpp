@@ -211,17 +211,17 @@ void TimeEventController::onWeatherEvent(const EventData& data) {
     }
 
     auto& ui = UIManager::Instance();
-    WeatherType weather = weatherEvent->getWeatherType();
+    std::string weatherStr = weatherEvent->getWeatherTypeString();
 
-    // Use const char* - no allocation
+    // Map weather type to narrative message
     const char* weatherName =
-        (weather == WeatherType::Clear)  ? "Clear skies" :
-        (weather == WeatherType::Cloudy) ? "Clouds gather" :
-        (weather == WeatherType::Rainy)  ? "Rain begins" :
-        (weather == WeatherType::Stormy) ? "Storm approaches" :
-        (weather == WeatherType::Foggy)  ? "Fog rolls in" :
-        (weather == WeatherType::Snowy)  ? "Snow falls" :
-        (weather == WeatherType::Windy)  ? "Wind picks up" : "Weather changes";
+        (weatherStr == "Clear")  ? "Clear skies" :
+        (weatherStr == "Cloudy") ? "Clouds gather" :
+        (weatherStr == "Rainy")  ? "Rain begins" :
+        (weatherStr == "Stormy") ? "Storm approaches" :
+        (weatherStr == "Foggy")  ? "Fog rolls in" :
+        (weatherStr == "Snowy")  ? "Snow falls" :
+        (weatherStr == "Windy")  ? "Wind picks up" : "Weather changes";
 
     ui.addEventLogEntry(m_eventLogId, weatherName);
     updateStatusText();
