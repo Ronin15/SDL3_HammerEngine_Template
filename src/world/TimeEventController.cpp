@@ -6,6 +6,7 @@
 #include "world/TimeEventController.hpp"
 #include "core/GameTime.hpp"
 #include "events/TimeEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include "managers/UIManager.hpp"
 #include "world/WeatherController.hpp"
 #include "core/Logger.hpp"
@@ -25,14 +26,21 @@ void TimeEventController::subscribe(const std::string& eventLogId) {
     auto& eventMgr = EventManager::Instance();
 
     // Subscribe to Time events to log them
-    auto token = eventMgr.registerHandlerWithToken(
+    auto timeToken = eventMgr.registerHandlerWithToken(
         EventTypeId::Time,
         [this](const EventData& data) { onTimeEvent(data); }
     );
-    m_handlerTokens.push_back(token);
+    m_handlerTokens.push_back(timeToken);
+
+    // Subscribe to Weather events (actual weather changes, not checks)
+    auto weatherToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Weather,
+        [this](const EventData& data) { onWeatherEvent(data); }
+    );
+    m_handlerTokens.push_back(weatherToken);
 
     m_subscribed = true;
-    HAMMER_INFO("TimeEventController", "Subscribed to time events");
+    HAMMER_INFO("TimeEventController", "Subscribed to time and weather events");
 }
 
 void TimeEventController::unsubscribe() {
@@ -179,23 +187,42 @@ void TimeEventController::onTimeEvent(const EventData& data) {
             break;
         }
 
-        case TimeEventType::WeatherCheck: {
-            if (hasEventLog) {
-                auto weatherEvent = std::static_pointer_cast<WeatherCheckEvent>(data.event);
-                WeatherType weather = weatherEvent->getRecommendedWeather();
-                // Use const char* - no allocation
-                const char* weatherName =
-                    (weather == WeatherType::Clear)  ? "Clear skies" :
-                    (weather == WeatherType::Cloudy) ? "Clouds gather" :
-                    (weather == WeatherType::Rainy)  ? "Rain begins" :
-                    (weather == WeatherType::Stormy) ? "Storm approaches" :
-                    (weather == WeatherType::Foggy)  ? "Fog rolls in" :
-                    (weather == WeatherType::Snowy)  ? "Snow falls" :
-                    (weather == WeatherType::Windy)  ? "Wind picks up" : "Weather changes";
-                ui.addEventLogEntry(m_eventLogId, weatherName);
-            }
+        case TimeEventType::WeatherCheck:
+            // Weather logging handled by onWeatherEvent() which subscribes to
+            // WeatherEvent (actual changes) instead of WeatherCheckEvent (periodic checks)
             updateStatusText();
             break;
-        }
     }
+}
+
+void TimeEventController::onWeatherEvent(const EventData& data) {
+    if (!data.event) {
+        return;
+    }
+
+    auto weatherEvent = std::dynamic_pointer_cast<WeatherEvent>(data.event);
+    if (!weatherEvent) {
+        return;
+    }
+
+    // Only log if we have an event log configured
+    if (m_eventLogId.empty()) {
+        return;
+    }
+
+    auto& ui = UIManager::Instance();
+    WeatherType weather = weatherEvent->getWeatherType();
+
+    // Use const char* - no allocation
+    const char* weatherName =
+        (weather == WeatherType::Clear)  ? "Clear skies" :
+        (weather == WeatherType::Cloudy) ? "Clouds gather" :
+        (weather == WeatherType::Rainy)  ? "Rain begins" :
+        (weather == WeatherType::Stormy) ? "Storm approaches" :
+        (weather == WeatherType::Foggy)  ? "Fog rolls in" :
+        (weather == WeatherType::Snowy)  ? "Snow falls" :
+        (weather == WeatherType::Windy)  ? "Wind picks up" : "Weather changes";
+
+    ui.addEventLogEntry(m_eventLogId, weatherName);
+    updateStatusText();
 }
