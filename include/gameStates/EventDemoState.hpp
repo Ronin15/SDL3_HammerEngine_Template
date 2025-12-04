@@ -134,10 +134,11 @@ private:
   std::vector<WeatherType> m_weatherSequence{
       WeatherType::Clear,  WeatherType::Cloudy, WeatherType::Rainy,
       WeatherType::Stormy, WeatherType::Foggy,  WeatherType::Snowy,
-      WeatherType::Custom, WeatherType::Custom}; // Last two for HeavyRain and
-                                                 // HeavySnow
+      WeatherType::Windy,  WeatherType::Custom, WeatherType::Custom,
+      WeatherType::Custom, WeatherType::Custom}; // Custom for HeavyRain,
+                                                 // HeavySnow, WindyDust, WindyStorm
   std::vector<std::string> m_customWeatherTypes{
-      "", "", "", "", "", "", "HeavyRain", "HeavySnow"};
+      "", "", "", "", "", "", "", "HeavyRain", "HeavySnow", "WindyDust", "WindyStorm"};
   size_t m_currentWeatherIndex{0};
   float m_weatherChangeInterval{4.0f}; // Time between weather changes
   size_t m_weatherChangesShown{0};     // Track how many weather types shown

@@ -1310,6 +1310,10 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
     weatherPosition = Vector2D(960, -100); // High spawn for falling particles
   } else if (effectType == ParticleEffectType::Fog) {
     weatherPosition = Vector2D(960, 300); // Mid-screen for fog spread
+  } else if (effectType == ParticleEffectType::Windy ||
+             effectType == ParticleEffectType::WindyDust ||
+             effectType == ParticleEffectType::WindyStorm) {
+    weatherPosition = Vector2D(-50, 540); // Left edge, vertically centered for horizontal wind
   } else {
     weatherPosition = Vector2D(960, -50); // Default top spawn
   }
@@ -1583,6 +1587,9 @@ void ParticleManager::registerBuiltInEffects() {
   m_effectDefinitions[ParticleEffectType::HeavySnow] = createHeavySnowEffect();
   m_effectDefinitions[ParticleEffectType::Fog] = createFogEffect();
   m_effectDefinitions[ParticleEffectType::Cloudy] = createCloudyEffect();
+  m_effectDefinitions[ParticleEffectType::Windy] = createWindyEffect();
+  m_effectDefinitions[ParticleEffectType::WindyDust] = createWindyDustEffect();
+  m_effectDefinitions[ParticleEffectType::WindyStorm] = createWindyStormEffect();
 
   // Register independent particle effects
   m_effectDefinitions[ParticleEffectType::Fire] = createFireEffect();
@@ -1778,6 +1785,78 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   cloudy.emitterConfig.useWorldSpace = false;
   cloudy.intensityMultiplier = 1.2f; // Slightly enhanced intensity
   return cloudy;
+}
+
+ParticleEffectDefinition ParticleManager::createWindyEffect() {
+  const auto &gameEngine = GameEngine::Instance();
+  ParticleEffectDefinition windy("Windy", ParticleEffectType::Windy);
+  windy.layer = UnifiedParticle::RenderLayer::Background;
+  windy.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalHeight());  // Screen height for vertical spread
+  windy.emitterConfig.emissionRate = 80.0f;   // Sparse streaks
+  windy.emitterConfig.minSpeed = 600.0f;      // Very fast horizontal
+  windy.emitterConfig.maxSpeed = 900.0f;
+  windy.emitterConfig.minLife = 0.3f;         // Quick flash across screen
+  windy.emitterConfig.maxLife = 0.6f;
+  windy.emitterConfig.minSize = 2.0f;         // Thin streaks
+  windy.emitterConfig.maxSize = 3.0f;
+  windy.emitterConfig.minColor = 0xFFFFFF40;  // White, 25% alpha
+  windy.emitterConfig.maxColor = 0xFFFFFF80;  // White, 50% alpha
+  windy.emitterConfig.gravity = Vector2D(0.0f, 0.0f);  // No gravity
+  windy.emitterConfig.windForce = Vector2D(0.0f, 0.0f);
+  windy.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  windy.emitterConfig.useWorldSpace = false;
+  windy.emitterConfig.direction = Vector2D(1.0f, 0.05f);  // Nearly horizontal
+  windy.intensityMultiplier = 1.2f;
+  return windy;
+}
+
+ParticleEffectDefinition ParticleManager::createWindyDustEffect() {
+  const auto &gameEngine = GameEngine::Instance();
+  ParticleEffectDefinition dust("WindyDust", ParticleEffectType::WindyDust);
+  dust.layer = UnifiedParticle::RenderLayer::Background;
+  dust.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalHeight());  // Screen height for vertical spread
+  dust.emitterConfig.emissionRate = 150.0f;   // More particles for dust clouds
+  dust.emitterConfig.minSpeed = 300.0f;
+  dust.emitterConfig.maxSpeed = 500.0f;
+  dust.emitterConfig.minLife = 1.5f;
+  dust.emitterConfig.maxLife = 3.0f;
+  dust.emitterConfig.minSize = 3.0f;
+  dust.emitterConfig.maxSize = 6.0f;
+  dust.emitterConfig.minColor = 0xA9A9A9A0;   // Dark grey
+  dust.emitterConfig.maxColor = 0xD3D3D3C0;   // Light grey
+  dust.emitterConfig.gravity = Vector2D(0.0f, 30.0f);   // Slight downward
+  dust.emitterConfig.windForce = Vector2D(100.0f, 0.0f);
+  dust.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  dust.emitterConfig.useWorldSpace = false;
+  dust.emitterConfig.direction = Vector2D(1.0f, 0.1f);
+  dust.intensityMultiplier = 1.4f;
+  return dust;
+}
+
+ParticleEffectDefinition ParticleManager::createWindyStormEffect() {
+  const auto &gameEngine = GameEngine::Instance();
+  ParticleEffectDefinition storm("WindyStorm", ParticleEffectType::WindyStorm);
+  storm.layer = UnifiedParticle::RenderLayer::Background;
+  storm.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalHeight());  // Screen height for vertical spread
+  storm.emitterConfig.emissionRate = 100.0f;
+  storm.emitterConfig.minSpeed = 200.0f;
+  storm.emitterConfig.maxSpeed = 400.0f;
+  storm.emitterConfig.minLife = 3.0f;
+  storm.emitterConfig.maxLife = 5.0f;
+  storm.emitterConfig.minSize = 8.0f;         // Larger particles for leaves
+  storm.emitterConfig.maxSize = 14.0f;
+  storm.emitterConfig.minColor = 0x8B4513FF;  // Saddle brown (leaves)
+  storm.emitterConfig.maxColor = 0xD2691EFF;  // Chocolate (autumn leaves)
+  storm.emitterConfig.gravity = Vector2D(0.0f, 60.0f);   // Tumbling down
+  storm.emitterConfig.windForce = Vector2D(80.0f, 20.0f); // Strong gusts
+  storm.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  storm.emitterConfig.useWorldSpace = false;
+  storm.emitterConfig.direction = Vector2D(1.0f, 0.3f);  // Angled for tumbling
+  storm.intensityMultiplier = 1.6f;
+  return storm;
 }
 
 ParticleEffectDefinition ParticleManager::createFireEffect() {
@@ -2328,7 +2407,10 @@ void ParticleManager::createParticleForEffect(
         effectDef.type == ParticleEffectType::Rain ||
         effectDef.type == ParticleEffectType::HeavyRain ||
         effectDef.type == ParticleEffectType::Snow ||
-        effectDef.type == ParticleEffectType::HeavySnow) {
+        effectDef.type == ParticleEffectType::HeavySnow ||
+        effectDef.type == ParticleEffectType::Windy ||
+        effectDef.type == ParticleEffectType::WindyDust ||
+        effectDef.type == ParticleEffectType::WindyStorm) {
       spawnY = static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
     }
     request.position = Vector2D(spawnX, spawnY);
@@ -2349,14 +2431,20 @@ void ParticleManager::createParticleForEffect(
       config.minSpeed + (config.maxSpeed - config.minSpeed) * naturalRand;
   
   // Special handling for weather effects that use spread as screen coverage, not angle
-  if (effectDef.type == ParticleEffectType::Rain || 
+  if (effectDef.type == ParticleEffectType::Rain ||
       effectDef.type == ParticleEffectType::HeavyRain ||
       effectDef.type == ParticleEffectType::Snow ||
       effectDef.type == ParticleEffectType::HeavySnow) {
-    // For weather, use slight angular variation (±5 degrees) for natural movement
+    // For falling weather, use slight angular variation (±5 degrees) for natural movement
     float angleRange = 5.0f * 0.017453f; // 5 degrees in radians
     float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
     request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
+  } else if (effectDef.type == ParticleEffectType::Windy ||
+             effectDef.type == ParticleEffectType::WindyDust ||
+             effectDef.type == ParticleEffectType::WindyStorm) {
+    // For wind effects, use horizontal direction with slight vertical variation
+    float verticalVariation = (naturalRand * 2.0f - 1.0f) * 0.15f; // ±15% vertical wobble
+    request.velocity = Vector2D(speed, speed * verticalVariation);
   } else {
     // For other effects, use spread as angular range
     float angleRange = config.spread * 0.017453f; // Convert degrees to radians
@@ -2511,6 +2599,15 @@ ParticleManager::weatherStringToEnum(const std::string &weatherType,
     return ParticleEffectType::HeavyRain;
   } else if (weatherType == "HeavySnow") {
     return ParticleEffectType::HeavySnow;
+  } else if (weatherType == "Windy") {
+    // Intensity-based wind variants: streaks < 0.5, dust 0.5-0.8, storm > 0.8
+    return (intensity > 0.8f) ? ParticleEffectType::WindyStorm :
+           (intensity > 0.5f) ? ParticleEffectType::WindyDust :
+                                ParticleEffectType::Windy;
+  } else if (weatherType == "WindyDust") {
+    return ParticleEffectType::WindyDust;
+  } else if (weatherType == "WindyStorm") {
+    return ParticleEffectType::WindyStorm;
   }
 
   // Default/unknown weather type
@@ -2537,6 +2634,12 @@ std::string ParticleManager::effectTypeToString(ParticleEffectType type) const {
     return "Smoke";
   case ParticleEffectType::Sparks:
     return "Sparks";
+  case ParticleEffectType::Windy:
+    return "Windy";
+  case ParticleEffectType::WindyDust:
+    return "WindyDust";
+  case ParticleEffectType::WindyStorm:
+    return "WindyStorm";
   default:
     return "Custom";
   }
