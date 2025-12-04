@@ -92,6 +92,12 @@ private:
     void onTimeEvent(const EventData& data);
 
     /**
+     * @brief Handler for weather change events - logs weather changes
+     * @param data Event data containing the weather event
+     */
+    void onWeatherEvent(const EventData& data);
+
+    /**
      * @brief Update the status label with current time info
      * @note Called internally when time events fire
      */
