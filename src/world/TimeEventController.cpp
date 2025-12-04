@@ -79,10 +79,10 @@ void TimeEventController::updateStatusText() {
     auto timeStr = gt.formatCurrentTime();
 
     if (m_formatMode == StatusFormatMode::Extended) {
-        // Extended format: Day X Month, Year Y | HH:MM TimeOfDay | Season | TempF | Weather | Day/Night
+        // Extended format: Day X Month, Year Y | HH:MM TimeOfDay | Season | TempF | Weather
         auto& wc = WeatherController::Instance();
         snprintf(m_statusBuffer, sizeof(m_statusBuffer),
-                 "Day %d %.*s, Year %d | %.*s %s | %s | %dF | %s | %s",
+                 "Day %d %.*s, Year %d | %.*s %s | %s | %dF | %s",
                  gt.getDayOfMonth(),
                  static_cast<int>(monthName.size()), monthName.data(),
                  gt.getGameYear(),
@@ -90,8 +90,7 @@ void TimeEventController::updateStatusText() {
                  gt.getTimeOfDayName(),
                  gt.getSeasonName(),
                  static_cast<int>(gt.getCurrentTemperature()),
-                 wc.getCurrentWeatherString(),
-                 gt.isDaytime() ? "Day" : "Night");
+                 wc.getCurrentWeatherString());
     } else {
         // Default format: Day X Month, Year Y | HH:MM | TimeOfDay
         snprintf(m_statusBuffer, sizeof(m_statusBuffer),
