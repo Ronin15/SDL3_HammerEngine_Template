@@ -8,6 +8,7 @@
 
 #include "entities/Player.hpp"
 #include "gameStates/GameState.hpp"
+#include "managers/ParticleManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
 #include <memory>
@@ -53,6 +54,9 @@ private:
 
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
+
+  // Cached manager pointer for render hot path (resolved in enter())
+  ParticleManager* mp_particleMgr{nullptr};
 
   // Inventory UI methods
   void initializeInventoryUI();

@@ -256,6 +256,9 @@ bool EventDemoState::enter() {
     // Subscribe to time events for event log display
     TimeEventController::Instance().subscribe("event_log");
 
+    // Cache ParticleManager pointer for render hot path
+    mp_particleMgr = &ParticleManager::Instance();
+
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
 
@@ -414,6 +417,9 @@ bool EventDemoState::exit() {
 
     // Unsubscribe from time event logging
     TimeEventController::Instance().unsubscribe();
+
+    // Clear cached manager pointer
+    mp_particleMgr = nullptr;
 
     // Reset initialization flag for next fresh start
     m_initialized = false;
@@ -684,11 +690,9 @@ void EventDemoState::render() {
     }
   }
 
-  // Render background particles first (rain, snow) - behind player/NPCs
-  ParticleManager &particleMgr = ParticleManager::Instance();
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    // Use unified camera position for perfect sync with tiles
-    particleMgr.renderBackground(renderer, cameraView.x, cameraView.y);
+  // Render background particles first (rain, snow) - behind player/NPCs - use cached pointer
+  if (mp_particleMgr && mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+    mp_particleMgr->renderBackground(renderer, cameraView.x, cameraView.y);
   }
 
   // Render player using camera-aware rendering
@@ -703,14 +707,10 @@ void EventDemoState::render() {
     }
   }
 
-  // Render world-space particles using unified camera position
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.render(renderer, cameraView.x, cameraView.y);
-  }
-
-  // Render foreground particles last (fog) - in front of player/NPCs
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.renderForeground(renderer, cameraView.x, cameraView.y);
+  // Render world-space and foreground particles - use cached pointer
+  if (mp_particleMgr && mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+    mp_particleMgr->render(renderer, cameraView.x, cameraView.y);
+    mp_particleMgr->renderForeground(renderer, cameraView.x, cameraView.y);
   }
 
   // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
