@@ -15,6 +15,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -228,6 +229,11 @@ void AIDemoState::handleInput() {
 }
 
 bool AIDemoState::enter() {
+  // Cache manager pointers for render hot path (always valid after GameEngine init)
+  mp_particleMgr = &ParticleManager::Instance();
+  mp_worldMgr = &WorldManager::Instance();
+  mp_uiMgr = &UIManager::Instance();
+
   GAMESTATE_INFO("Entering AIDemoState...");
 
   // Reset transition flag when entering state
@@ -397,6 +403,11 @@ bool AIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
+    // Clear cached manager pointers
+    mp_worldMgr = nullptr;
+    mp_uiMgr = nullptr;
+    mp_particleMgr = nullptr;
+
     // Reset initialized flag so state re-initializes after loading
     m_initialized = false;
 
@@ -450,6 +461,11 @@ bool AIDemoState::exit() {
   // This prevents the global pause from affecting other states
   aiMgr.setGlobalPause(false);
   m_aiPaused = false;
+
+  // Clear cached manager pointers
+  mp_worldMgr = nullptr;
+  mp_uiMgr = nullptr;
+  mp_particleMgr = nullptr;
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
@@ -532,17 +548,14 @@ void AIDemoState::render() {
   float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   SDL_SetRenderScale(renderer, zoom, zoom);
 
-  // Render world first (background layer) using unified camera position
-  if (m_camera) {
-    auto &worldMgr = WorldManager::Instance();
-    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      // Use the camera view for world rendering
-      worldMgr.render(renderer,
-                     cameraView.x,
-                     cameraView.y,
-                     gameEngine.getLogicalWidth(),
-                     gameEngine.getLogicalHeight());
-    }
+  // Render world first (background layer) using unified camera position - use cached pointer
+  // mp_worldMgr guaranteed valid between enter() and exit()
+  if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
+    mp_worldMgr->render(renderer,
+                       cameraView.x,
+                       cameraView.y,
+                       gameEngine.getLogicalWidth(),
+                       gameEngine.getLogicalHeight());
   }
 
   // Render all NPCs using camera-aware rendering
@@ -558,11 +571,10 @@ void AIDemoState::render() {
   // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
   SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
-  // Update and render UI components through UIManager using cached renderer for
-  // cleaner API
-  auto &ui = UIManager::Instance();
-  if (!ui.isShutdown()) {
-    ui.update(0.0); // UI updates are not time-dependent in this state
+  // Update and render UI components through cached pointer
+  // mp_uiMgr guaranteed valid between enter() and exit()
+  if (!mp_uiMgr->isShutdown()) {
+    mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
 
     // Update status display
     auto &aiManager = AIManager::Instance();
@@ -571,9 +583,9 @@ void AIDemoState::render() {
            << gameEngine.getCurrentFPS() << " | Entities: " << m_npcs.size()
            << " | AI: "
            << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
-    ui.setText("ai_status", status.str());
+    mp_uiMgr->setText("ai_status", status.str());
   }
-  ui.render(); // Uses cached renderer from GameEngine
+  mp_uiMgr->render();
 }
 
 void AIDemoState::setupAIBehaviors() {

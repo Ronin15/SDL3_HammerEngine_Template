@@ -21,6 +21,11 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+class ParticleManager;
+
 class AdvancedAIDemoState : public GameState {
 public:
 
@@ -96,6 +101,11 @@ private:
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
+
+    // Cached manager pointers for render hot path (resolved in enter())
+    WorldManager* mp_worldMgr{nullptr};
+    UIManager* mp_uiMgr{nullptr};
+    ParticleManager* mp_particleMgr{nullptr};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP

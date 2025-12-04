@@ -21,6 +21,11 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+class ParticleManager;
+
 class AIDemoState : public GameState {
 public:
 
@@ -85,6 +90,11 @@ private:
     int m_npcsPerBatch{30};        // Spawn 30 NPCs per batch
     int m_spawnInterval{10};       // Spawn every 10 frames
     int m_framesSinceLastSpawn{0}; // Frame counter for spawn timing
+
+    // Cached manager pointers for render hot path (resolved in enter())
+    WorldManager* mp_worldMgr{nullptr};
+    UIManager* mp_uiMgr{nullptr};
+    ParticleManager* mp_particleMgr{nullptr};
 };
 
 #endif // AI_DEMO_STATE_HPP
