@@ -1053,6 +1053,14 @@ void UIManager::centerTitleInContainer(const std::string &titleID,
   }
 }
 
+void UIManager::setLabelAlignment(const std::string &labelID,
+                                  UIAlignment alignment) {
+  auto component = getComponent(labelID);
+  if (component && component->m_type == UIComponentType::LABEL) {
+    component->m_style.textAlign = alignment;
+  }
+}
+
 void UIManager::setupDemoEventLog(const std::string &logID) {
   addEventLogEntry(logID, "Event log initialized");
   addEventLogEntry(logID, "Demo components created");

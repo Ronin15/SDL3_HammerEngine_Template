@@ -32,6 +32,14 @@
 class TimeEventController {
 public:
     /**
+     * @brief Status format mode for status bar display
+     */
+    enum class StatusFormatMode {
+        Default,   // Basic: Day X Month, Year Y | HH:MM | TimeOfDay
+        Extended   // Full: Day X Month, Year Y | HH:MM TimeOfDay | Season | TempF | Weather | Day/Night
+    };
+
+    /**
      * @brief Get the singleton instance of TimeEventController
      * @return Reference to the TimeEventController instance
      */
@@ -63,6 +71,13 @@ public:
      */
     void setStatusLabel(std::string_view labelId);
 
+    /**
+     * @brief Set the status format mode
+     * @param mode Format mode (Default or Extended)
+     * @note Extended mode includes season, temperature, weather, day/night
+     */
+    void setStatusFormatMode(StatusFormatMode mode);
+
 private:
     // Singleton pattern
     TimeEventController() = default;
@@ -92,7 +107,8 @@ private:
 
     // Status label for time display
     std::string m_statusLabelId;
-    char m_statusBuffer[80]{};
+    char m_statusBuffer[256]{};
+    StatusFormatMode m_formatMode{StatusFormatMode::Default};
 };
 
 #endif // TIME_EVENT_CONTROLLER_HPP

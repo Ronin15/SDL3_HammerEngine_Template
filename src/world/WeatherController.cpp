@@ -5,6 +5,7 @@
 
 #include "world/WeatherController.hpp"
 #include "events/TimeEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include "core/Logger.hpp"
 
 WeatherController& WeatherController::Instance() {
@@ -59,6 +60,9 @@ void WeatherController::onTimeEvent(const EventData& data) {
     // Get recommended weather from the event (based on season probabilities)
     WeatherType recommended = weatherCheck->getRecommendedWeather();
 
+    // Track current weather for status bar display
+    m_currentWeather = recommended;
+
     // Convert WeatherType enum to string for EventManager
     const char* weatherName =
         (recommended == WeatherType::Clear)  ? "Clear" :
@@ -75,4 +79,17 @@ void WeatherController::onTimeEvent(const EventData& data) {
         EventManager::DispatchMode::Deferred);
 
     HAMMER_DEBUG("WeatherController", "Season-based weather change to " + std::string(weatherName));
+}
+
+const char* WeatherController::getCurrentWeatherString() const {
+    switch (m_currentWeather) {
+        case WeatherType::Clear:  return "Clear";
+        case WeatherType::Cloudy: return "Cloudy";
+        case WeatherType::Rainy:  return "Rainy";
+        case WeatherType::Stormy: return "Stormy";
+        case WeatherType::Foggy:  return "Foggy";
+        case WeatherType::Snowy:  return "Snowy";
+        case WeatherType::Windy:  return "Windy";
+        default: return "Clear";
+    }
 }

@@ -7,6 +7,7 @@
 #include "core/GameTime.hpp"
 #include "events/TimeEvent.hpp"
 #include "managers/UIManager.hpp"
+#include "world/WeatherController.hpp"
 #include "core/Logger.hpp"
 #include <cstdio>
 
@@ -49,6 +50,7 @@ void TimeEventController::unsubscribe() {
     m_previousHour = -1;
     m_wasNight = false;
     m_statusLabelId.clear();
+    m_formatMode = StatusFormatMode::Default;
     HAMMER_INFO("TimeEventController", "Unsubscribed from time events");
 }
 
@@ -59,23 +61,47 @@ void TimeEventController::setStatusLabel(std::string_view labelId) {
     }
 }
 
+void TimeEventController::setStatusFormatMode(StatusFormatMode mode) {
+    m_formatMode = mode;
+    if (!m_statusLabelId.empty()) {
+        updateStatusText();  // Update with new format
+    }
+}
+
 void TimeEventController::updateStatusText() {
     if (m_statusLabelId.empty()) {
         return;
     }
 
     auto& gt = GameTime::Instance();
-    // All getters now return const char* or string_view - no heap allocations
+    // All getters return const char* or string_view - zero heap allocations
     auto monthName = gt.getCurrentMonthName();
     auto timeStr = gt.formatCurrentTime();
 
-    snprintf(m_statusBuffer, sizeof(m_statusBuffer),
-             "Day %d %.*s, Year %d | %.*s | %s",
-             gt.getDayOfMonth(),
-             static_cast<int>(monthName.size()), monthName.data(),
-             gt.getGameYear(),
-             static_cast<int>(timeStr.size()), timeStr.data(),
-             gt.getTimeOfDayName());
+    if (m_formatMode == StatusFormatMode::Extended) {
+        // Extended format: Day X Month, Year Y | HH:MM TimeOfDay | Season | TempF | Weather | Day/Night
+        auto& wc = WeatherController::Instance();
+        snprintf(m_statusBuffer, sizeof(m_statusBuffer),
+                 "Day %d %.*s, Year %d | %.*s %s | %s | %dF | %s | %s",
+                 gt.getDayOfMonth(),
+                 static_cast<int>(monthName.size()), monthName.data(),
+                 gt.getGameYear(),
+                 static_cast<int>(timeStr.size()), timeStr.data(),
+                 gt.getTimeOfDayName(),
+                 gt.getSeasonName(),
+                 static_cast<int>(gt.getCurrentTemperature()),
+                 wc.getCurrentWeatherString(),
+                 gt.isDaytime() ? "Day" : "Night");
+    } else {
+        // Default format: Day X Month, Year Y | HH:MM | TimeOfDay
+        snprintf(m_statusBuffer, sizeof(m_statusBuffer),
+                 "Day %d %.*s, Year %d | %.*s | %s",
+                 gt.getDayOfMonth(),
+                 static_cast<int>(monthName.size()), monthName.data(),
+                 gt.getGameYear(),
+                 static_cast<int>(timeStr.size()), timeStr.data(),
+                 gt.getTimeOfDayName());
+    }
 
     UIManager::Instance().setText(m_statusLabelId, m_statusBuffer);
 }
