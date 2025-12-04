@@ -868,6 +868,10 @@ void ParticleManager::update(float deltaTime) {
 
 void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
                               float cameraY) {
+  // Store camera position for weather particle spawning
+  m_viewport.x = cameraX;
+  m_viewport.y = cameraY;
+
   if (m_globallyPaused.load(std::memory_order_acquire) ||
       !m_globallyVisible.load(std::memory_order_acquire)) {
     return;
@@ -937,6 +941,10 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
 void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
                                        float cameraY) {
+  // Store camera position for weather particle spawning
+  m_viewport.x = cameraX;
+  m_viewport.y = cameraY;
+
   if (m_globallyPaused.load(std::memory_order_acquire) ||
       !m_globallyVisible.load(std::memory_order_acquire)) {
     return;
@@ -987,6 +995,10 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
 
 void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
                                        float cameraY) {
+  // Store camera position for weather particle spawning
+  m_viewport.x = cameraX;
+  m_viewport.y = cameraY;
+
   if (m_globallyPaused.load(std::memory_order_acquire) ||
       !m_globallyVisible.load(std::memory_order_acquire)) {
     return;
@@ -2397,11 +2409,11 @@ void ParticleManager::createParticleForEffect(
   NewParticleRequest request;
 
   if (!config.useWorldSpace) {
-    // Screen-space effect (like weather)
+    // Screen-space effect (like weather) - spawn relative to camera position
     const auto &gameEngine = GameEngine::Instance();
-    float spawnX =
+    float spawnX = m_viewport.x +
         static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
-    float spawnY = config.position.getY();
+    float spawnY = m_viewport.y + config.position.getY();
     if (effectDef.type == ParticleEffectType::Fog ||
         effectDef.type == ParticleEffectType::Cloudy ||
         effectDef.type == ParticleEffectType::Rain ||
@@ -2411,7 +2423,7 @@ void ParticleManager::createParticleForEffect(
         effectDef.type == ParticleEffectType::Windy ||
         effectDef.type == ParticleEffectType::WindyDust ||
         effectDef.type == ParticleEffectType::WindyStorm) {
-      spawnY = static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
+      spawnY = m_viewport.y + static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
     }
     request.position = Vector2D(spawnX, spawnY);
   } else {
