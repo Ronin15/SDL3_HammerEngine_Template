@@ -78,6 +78,16 @@ bool GamePlayState::enter() {
     // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
     WeatherController::Instance().subscribe();
 
+    // Enable automatic weather changes
+    GameTime::Instance().enableAutoWeather(true);
+#ifdef NDEBUG
+    // Release: normal pacing (4 game hours between weather checks)
+    GameTime::Instance().setWeatherCheckInterval(4.0f);
+#else
+    // Debug: faster weather changes for testing (1 game hour)
+    GameTime::Instance().setWeatherCheckInterval(1.0f);
+#endif
+
     // Create event log for time/weather messages
     auto& ui = UIManager::Instance();
     ui.createEventLog("gameplay_event_log",
@@ -331,8 +341,9 @@ bool GamePlayState::exit() {
   // Reset player
   mp_Player = nullptr;
 
-  // Unsubscribe from automatic weather events
+  // Unsubscribe from automatic weather events and disable auto-weather
   WeatherController::Instance().unsubscribe();
+  GameTime::Instance().enableAutoWeather(false);
 
   // Reset status format mode and unsubscribe from time events
   TimeEventController::Instance().setStatusFormatMode(TimeEventController::StatusFormatMode::Default);
