@@ -11,7 +11,6 @@
 #include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
-#include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
@@ -39,7 +38,6 @@ bool GamePlayState::enter() {
     // Resuming from pause - show UI components again
     auto& ui = UIManager::Instance();
     ui.setComponentVisible("gameplay_event_log", true);
-    ui.setComponentVisible("gameplay_time_status", true);
     ui.setComponentVisible("gameplay_time_label", true);
 
     return true;
@@ -95,27 +93,29 @@ bool GamePlayState::enter() {
     // Subscribe to time events for event log display
     TimeEventController::Instance().subscribe("gameplay_event_log");
 
-    // Create time status bar at top-right
-    int statusWidth = UIConstants::TIME_STATUS_WIDTH;
-    int statusHeight = UIConstants::TIME_STATUS_HEIGHT;
-    int statusX = ui.getLogicalWidth() - statusWidth - UIConstants::TIME_STATUS_RIGHT_OFFSET;
-    int statusY = UIConstants::TIME_STATUS_TOP_OFFSET;
+    // Create time status label at top-right of screen (no panel, just label)
+    int barHeight = UIConstants::STATUS_BAR_HEIGHT;
+    int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
 
-    ui.createPanel("gameplay_time_status", {statusX, statusY, statusWidth, statusHeight});
     ui.createLabel("gameplay_time_label",
-        {statusX + 8, statusY + 6, statusWidth - 16, statusHeight - 12}, "");
+        {labelPadding, 6, ui.getLogicalWidth() - 2 * labelPadding, barHeight - 12}, "");
 
-    // Set positioning for resize handling
-    UIPositioning statusPos;
-    statusPos.mode = UIPositionMode::RIGHT_ALIGNED;
-    statusPos.offsetX = UIConstants::TIME_STATUS_RIGHT_OFFSET;
-    statusPos.offsetY = -(ui.getLogicalHeight() / 2 - statusY - statusHeight / 2);
-    statusPos.fixedWidth = statusWidth;
-    statusPos.fixedHeight = statusHeight;
-    ui.setComponentPositioning("gameplay_time_status", statusPos);
+    // Right-align the text within the label
+    ui.setLabelAlignment("gameplay_time_label", UIAlignment::CENTER_RIGHT);
 
-    // Connect status label to TimeEventController (event-driven updates)
-    TimeEventController::Instance().setStatusLabel("gameplay_time_label");
+    // Full-width positioning for resize handling
+    UIPositioning labelPos;
+    labelPos.mode = UIPositionMode::TOP_ALIGNED;
+    labelPos.offsetX = labelPadding;
+    labelPos.offsetY = 6;  // Small vertical offset from top
+    labelPos.fixedWidth = -2 * labelPadding;  // Full width minus margins
+    labelPos.fixedHeight = barHeight - 12;
+    ui.setComponentPositioning("gameplay_time_label", labelPos);
+
+    // Connect status label with extended format mode (zero allocation)
+    auto& timeController = TimeEventController::Instance();
+    timeController.setStatusLabel("gameplay_time_label");
+    timeController.setStatusFormatMode(TimeEventController::StatusFormatMode::Extended);
 
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
@@ -188,9 +188,6 @@ void GamePlayState::render() {
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
 
-  // Cache manager references for better performance
-  FontManager &fontMgr = FontManager::Instance();
-
   // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   if (m_camera) {
@@ -220,13 +217,6 @@ void GamePlayState::render() {
   SDL_SetRenderScale(renderer, 1.0f, 1.0f);
 
   // Render UI components (no camera transformation)
-  SDL_Color fontColor = {200, 200, 200, 255};
-  fontMgr.drawText("Game State with Inventory Demo <-> [P] Pause <-> [B] Main "
-                   "Menu <-> [I] Toggle Inventory <-> [1-5] Add Items <-> [ ] Zoom",
-                   "fonts_Arial",
-                   gameEngine.getLogicalWidth() / 2, // Center horizontally
-                   20, fontColor, renderer);
-
   auto &ui = UIManager::Instance();
   ui.render(renderer);
 }
@@ -238,7 +228,6 @@ bool GamePlayState::exit() {
     // Hide UI components during pause overlay
     auto& ui = UIManager::Instance();
     ui.setComponentVisible("gameplay_event_log", false);
-    ui.setComponentVisible("gameplay_time_status", false);
     ui.setComponentVisible("gameplay_time_label", false);
 
     // Reset the flag after using it
@@ -345,7 +334,8 @@ bool GamePlayState::exit() {
   // Unsubscribe from automatic weather events
   WeatherController::Instance().unsubscribe();
 
-  // Unsubscribe from time event logging
+  // Reset status format mode and unsubscribe from time events
+  TimeEventController::Instance().setStatusFormatMode(TimeEventController::StatusFormatMode::Default);
   TimeEventController::Instance().unsubscribe();
 
   // Reset initialization flag for next fresh start

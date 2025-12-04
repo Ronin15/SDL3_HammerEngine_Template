@@ -392,6 +392,9 @@ public:
   centerTitleInContainer(const std::string &titleID, int containerX,
                          int containerWidth); // Center title after auto-sizing
 
+  // Label specific methods
+  void setLabelAlignment(const std::string &labelID, UIAlignment alignment);
+
   // Input field specific methods
   void setInputFieldPlaceholder(const std::string &id,
                                 const std::string &placeholder);

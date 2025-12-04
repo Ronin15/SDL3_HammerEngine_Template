@@ -25,6 +25,9 @@
 #include "managers/EventManager.hpp"
 #include <vector>
 
+// Forward declaration
+enum class WeatherType;
+
 class WeatherController {
 public:
     /**
@@ -51,6 +54,18 @@ public:
      */
     bool isSubscribed() const { return m_subscribed; }
 
+    /**
+     * @brief Get the current weather type
+     * @return Current WeatherType enum value (defaults to Clear)
+     */
+    WeatherType getCurrentWeather() const { return m_currentWeather; }
+
+    /**
+     * @brief Get current weather as string (zero allocation)
+     * @return Static string pointer: "Clear", "Rainy", etc.
+     */
+    const char* getCurrentWeatherString() const;
+
 private:
     // Singleton pattern
     WeatherController() = default;
@@ -66,6 +81,7 @@ private:
 
     bool m_subscribed{false};
     std::vector<EventManager::HandlerToken> m_handlerTokens;
+    WeatherType m_currentWeather{};  // Initialized in cpp to avoid header dependency
 };
 
 #endif // WEATHER_CONTROLLER_HPP

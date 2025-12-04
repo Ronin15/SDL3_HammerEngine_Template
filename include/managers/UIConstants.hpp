@@ -107,6 +107,10 @@ namespace UIConstants {
   constexpr int TIME_STATUS_TOP_OFFSET = 10;    // Offset from top of screen
   constexpr int TIME_STATUS_RIGHT_OFFSET = 10;  // Offset from right edge
 
+  // Full-Width Status Bar Constants
+  constexpr int STATUS_BAR_HEIGHT = 40;           // Height of full-width status bar
+  constexpr int STATUS_BAR_LABEL_PADDING = 12;    // Label text inset from panel edges
+
   // Timing and Animation Constants
   constexpr float DEFAULT_TOOLTIP_DELAY = 1.0f; // Default tooltip hover delay in seconds
   constexpr float MAX_UI_SCALE = 1.0f;          // Maximum UI scale factor (prevents upscaling beyond baseline)
