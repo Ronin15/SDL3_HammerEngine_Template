@@ -9,6 +9,7 @@
 #include "entities/Player.hpp"
 #include "gameStates/GameState.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/EventManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
 #include <memory>
@@ -78,6 +79,27 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
+
+  // Day/night visual overlay state (updated via TimePeriodChangedEvent)
+  // Current interpolated values (what's actually rendered)
+  float m_dayNightOverlayR{0.0f};
+  float m_dayNightOverlayG{0.0f};
+  float m_dayNightOverlayB{0.0f};
+  float m_dayNightOverlayA{0.0f};
+  // Target values (from event, what we're interpolating toward)
+  float m_dayNightTargetR{0.0f};
+  float m_dayNightTargetG{0.0f};
+  float m_dayNightTargetB{0.0f};
+  float m_dayNightTargetA{0.0f};
+  // Transition timing
+  static constexpr float DAY_NIGHT_TRANSITION_DURATION{30.0f};  // seconds
+  EventManager::HandlerToken m_dayNightEventToken;
+  bool m_dayNightSubscribed{false};
+
+  // Day/night event handlers and update
+  void onTimePeriodChanged(const EventData& data);
+  void updateDayNightOverlay(float deltaTime);
+  void renderDayNightOverlay(SDL_Renderer* renderer, int width, int height);
 };
 
 #endif // GAME_PLAY_STATE_HPP

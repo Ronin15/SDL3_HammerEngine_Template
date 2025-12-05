@@ -12,16 +12,28 @@
 #include <string>
 
 /**
+ * @brief Time of day periods for visual effects
+ */
+enum class TimePeriod : uint8_t
+{
+    Morning = 0,   // 5:00 - 8:00
+    Day = 1,       // 8:00 - 17:00
+    Evening = 2,   // 17:00 - 21:00
+    Night = 3      // 21:00 - 5:00
+};
+
+/**
  * @brief Event types for time-related changes
  */
 enum class TimeEventType
 {
-    HourChanged,      // Every in-game hour
-    DayChanged,       // When day advances
-    MonthChanged,     // When month changes
-    SeasonChanged,    // When season changes
-    YearChanged,      // When year increments
-    WeatherCheck      // Periodic weather roll
+    HourChanged,        // Every in-game hour
+    DayChanged,         // When day advances
+    MonthChanged,       // When month changes
+    SeasonChanged,      // When season changes
+    YearChanged,        // When year increments
+    WeatherCheck,       // Periodic weather roll
+    TimePeriodChanged   // When time period changes (Morning/Day/Evening/Night)
 };
 
 /**
@@ -240,6 +252,78 @@ public:
 private:
     Season m_season{Season::Spring};
     WeatherType m_recommendedWeather;
+};
+
+/**
+ * @brief Visual configuration for a time period (overlay tint)
+ */
+struct TimePeriodVisuals
+{
+    uint8_t overlayR{0};
+    uint8_t overlayG{0};
+    uint8_t overlayB{0};
+    uint8_t overlayA{0};  // Alpha 0 = no tint
+
+    // Factory methods for default configurations
+    static TimePeriodVisuals getMorning() { return {255, 180, 120, 25}; }   // Warm orange
+    static TimePeriodVisuals getDay() { return {255, 255, 200, 8}; }        // Slight yellow
+    static TimePeriodVisuals getEvening() { return {255, 100, 50, 35}; }    // Deep orange
+    static TimePeriodVisuals getNight() { return {20, 20, 60, 90}; }        // Darker blue/purple
+
+    static TimePeriodVisuals getForPeriod(TimePeriod period)
+    {
+        switch (period) {
+            case TimePeriod::Morning: return getMorning();
+            case TimePeriod::Day:     return getDay();
+            case TimePeriod::Evening: return getEvening();
+            case TimePeriod::Night:   return getNight();
+            default:                  return getDay();
+        }
+    }
+};
+
+/**
+ * @brief Event fired when the time period changes (Morning/Day/Evening/Night)
+ */
+class TimePeriodChangedEvent : public TimeEvent
+{
+public:
+    TimePeriodChangedEvent(TimePeriod newPeriod, TimePeriod previousPeriod,
+                           const TimePeriodVisuals& visuals)
+        : TimeEvent(TimeEventType::TimePeriodChanged),
+          m_period(newPeriod), m_previousPeriod(previousPeriod), m_visuals(visuals) {}
+
+    TimePeriod getPeriod() const { return m_period; }
+    TimePeriod getPreviousPeriod() const { return m_previousPeriod; }
+    const TimePeriodVisuals& getVisuals() const { return m_visuals; }
+
+    const char* getPeriodName() const
+    {
+        switch (m_period) {
+            case TimePeriod::Morning: return "Morning";
+            case TimePeriod::Day:     return "Day";
+            case TimePeriod::Evening: return "Evening";
+            case TimePeriod::Night:   return "Night";
+            default:                  return "Unknown";
+        }
+    }
+
+    std::string getTypeName() const override { return "TimePeriodChangedEvent"; }
+    std::string getName() const override { return "TimePeriodChangedEvent"; }
+    std::string getType() const override { return "TimePeriodChangedEvent"; }
+
+    void reset() override
+    {
+        TimeEvent::reset();
+        m_period = TimePeriod::Day;
+        m_previousPeriod = TimePeriod::Day;
+        m_visuals = TimePeriodVisuals::getDay();
+    }
+
+private:
+    TimePeriod m_period{TimePeriod::Day};
+    TimePeriod m_previousPeriod{TimePeriod::Day};
+    TimePeriodVisuals m_visuals;
 };
 
 #endif // TIME_EVENT_HPP
