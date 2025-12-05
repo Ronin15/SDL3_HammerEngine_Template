@@ -1647,6 +1647,7 @@ rain.emitterConfig.gravity =
   // textureID removed
   rain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   rain.emitterConfig.useWorldSpace = false;
+  rain.emitterConfig.fullScreenSpawn = true;
   rain.emitterConfig.position.setY(0);
   rain.intensityMultiplier = 1.4f; // Higher multiplier for better intensity scaling
   return rain;
@@ -1678,6 +1679,7 @@ ParticleEffectDefinition ParticleManager::createHeavyRainEffect() {
   // textureID removed
   heavyRain.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavyRain.emitterConfig.useWorldSpace = false;
+  heavyRain.emitterConfig.fullScreenSpawn = true;
   heavyRain.emitterConfig.position.setY(0);
   heavyRain.intensityMultiplier = 1.8f; // High intensity for storms
   return heavyRain;
@@ -1708,6 +1710,7 @@ ParticleEffectDefinition ParticleManager::createSnowEffect() {
   // textureID removed
   snow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   snow.emitterConfig.useWorldSpace = false;
+  snow.emitterConfig.fullScreenSpawn = true;
   snow.emitterConfig.position.setY(0);
   snow.intensityMultiplier = 1.1f; // Slightly enhanced for visibility
   return snow;
@@ -1739,6 +1742,7 @@ ParticleEffectDefinition ParticleManager::createHeavySnowEffect() {
   // textureID removed
   heavySnow.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   heavySnow.emitterConfig.useWorldSpace = false;
+  heavySnow.emitterConfig.fullScreenSpawn = true;
   heavySnow.emitterConfig.position.setY(0);
   heavySnow.intensityMultiplier = 1.6f; // High intensity for blizzard
   return heavySnow;
@@ -1766,6 +1770,7 @@ ParticleEffectDefinition ParticleManager::createFogEffect() {
   // textureID removed
   fog.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   fog.emitterConfig.useWorldSpace = false;
+  fog.emitterConfig.fullScreenSpawn = true;
   fog.intensityMultiplier = 0.9f; // Balanced intensity for fog
   return fog;
 }
@@ -1799,6 +1804,7 @@ ParticleEffectDefinition ParticleManager::createCloudyEffect() {
   cloudy.emitterConfig.blendMode =
       ParticleBlendMode::Alpha;      // Standard alpha blending
   cloudy.emitterConfig.useWorldSpace = false;
+  cloudy.emitterConfig.fullScreenSpawn = true;
   cloudy.intensityMultiplier = 1.2f; // Slightly enhanced intensity
   return cloudy;
 }
@@ -1822,6 +1828,7 @@ ParticleEffectDefinition ParticleManager::createWindyEffect() {
   windy.emitterConfig.windForce = Vector2D(0.0f, 0.0f);
   windy.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   windy.emitterConfig.useWorldSpace = false;
+  windy.emitterConfig.fullScreenSpawn = true;
   windy.emitterConfig.direction = Vector2D(1.0f, 0.05f);  // Nearly horizontal
   windy.intensityMultiplier = 1.2f;
   return windy;
@@ -1846,6 +1853,7 @@ ParticleEffectDefinition ParticleManager::createWindyDustEffect() {
   dust.emitterConfig.windForce = Vector2D(100.0f, 0.0f);
   dust.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   dust.emitterConfig.useWorldSpace = false;
+  dust.emitterConfig.fullScreenSpawn = true;
   dust.emitterConfig.direction = Vector2D(1.0f, 0.1f);
   dust.intensityMultiplier = 1.4f;
   return dust;
@@ -1870,6 +1878,7 @@ ParticleEffectDefinition ParticleManager::createWindyStormEffect() {
   storm.emitterConfig.windForce = Vector2D(80.0f, 20.0f); // Strong gusts
   storm.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   storm.emitterConfig.useWorldSpace = false;
+  storm.emitterConfig.fullScreenSpawn = true;
   storm.emitterConfig.direction = Vector2D(1.0f, 0.3f);  // Angled for tumbling
   storm.intensityMultiplier = 1.6f;
   return storm;
@@ -1896,6 +1905,7 @@ ParticleEffectDefinition ParticleManager::createAmbientDustEffect() {
   dust.emitterConfig.windForce = Vector2D(8.0f, 2.0f);  // Slight drift
   dust.emitterConfig.blendMode = ParticleBlendMode::Alpha;
   dust.emitterConfig.useWorldSpace = false;
+  dust.emitterConfig.fullScreenSpawn = true;
   dust.emitterConfig.direction = Vector2D(0.3f, -1.0f); // Mostly upward with slight horizontal
   dust.intensityMultiplier = 0.6f;  // Subtle effect
   return dust;
@@ -1904,7 +1914,7 @@ ParticleEffectDefinition ParticleManager::createAmbientDustEffect() {
 ParticleEffectDefinition ParticleManager::createAmbientFireflyEffect() {
   const auto &gameEngine = GameEngine::Instance();
   ParticleEffectDefinition firefly("AmbientFirefly", ParticleEffectType::AmbientFirefly);
-  firefly.layer = UnifiedParticle::RenderLayer::World;  // Render with world elements
+  firefly.layer = UnifiedParticle::RenderLayer::Foreground;  // Render above day/night overlay
 
   // Glowing fireflies at night - bright additive particles
   firefly.emitterConfig.spread =
@@ -1922,6 +1932,7 @@ ParticleEffectDefinition ParticleManager::createAmbientFireflyEffect() {
   firefly.emitterConfig.windForce = Vector2D(15.0f, 8.0f); // Wander around
   firefly.emitterConfig.blendMode = ParticleBlendMode::Additive;  // Glowing effect
   firefly.emitterConfig.useWorldSpace = false;
+  firefly.emitterConfig.fullScreenSpawn = true;
   firefly.emitterConfig.direction = Vector2D(0.5f, -0.5f); // Diagonal wandering
   firefly.intensityMultiplier = 0.8f;
   return firefly;
@@ -2469,17 +2480,13 @@ void ParticleManager::createParticleForEffect(
     const auto &gameEngine = GameEngine::Instance();
     float spawnX = m_viewport.x +
         static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
-    float spawnY = m_viewport.y + config.position.getY();
-    if (effectDef.type == ParticleEffectType::Fog ||
-        effectDef.type == ParticleEffectType::Cloudy ||
-        effectDef.type == ParticleEffectType::Rain ||
-        effectDef.type == ParticleEffectType::HeavyRain ||
-        effectDef.type == ParticleEffectType::Snow ||
-        effectDef.type == ParticleEffectType::HeavySnow ||
-        effectDef.type == ParticleEffectType::Windy ||
-        effectDef.type == ParticleEffectType::WindyDust ||
-        effectDef.type == ParticleEffectType::WindyStorm) {
+    float spawnY;
+    if (config.fullScreenSpawn) {
+      // Spawn across full screen height (weather, ambient effects)
       spawnY = m_viewport.y + static_cast<float>(fast_rand() % gameEngine.getLogicalHeight());
+    } else {
+      // Spawn at configured Y position
+      spawnY = m_viewport.y + config.position.getY();
     }
     request.position = Vector2D(spawnX, spawnY);
   } else {

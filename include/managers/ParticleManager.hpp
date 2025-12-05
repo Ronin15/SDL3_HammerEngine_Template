@@ -207,6 +207,7 @@ struct ParticleEmitterConfig {
 
   // Advanced properties
   bool useWorldSpace{true};    // World space vs local space
+  bool fullScreenSpawn{false}; // If true, spawn particles randomly across full screen height
   float burstCount{0};         // Particles per burst
   float burstInterval{1.0f};   // Time between bursts
   bool enableCollision{false}; // Enable collision detection
