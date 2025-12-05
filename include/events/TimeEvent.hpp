@@ -265,9 +265,9 @@ struct TimePeriodVisuals
     uint8_t overlayA{0};  // Alpha 0 = no tint
 
     // Factory methods for default configurations
-    static TimePeriodVisuals getMorning() { return {255, 180, 120, 25}; }   // Warm orange
+    static TimePeriodVisuals getMorning() { return {255, 140, 80, 30}; }    // Red-orange dawn
     static TimePeriodVisuals getDay() { return {255, 255, 200, 8}; }        // Slight yellow
-    static TimePeriodVisuals getEvening() { return {255, 100, 50, 35}; }    // Deep orange
+    static TimePeriodVisuals getEvening() { return {255, 80, 40, 40}; }     // Orange-red sunset
     static TimePeriodVisuals getNight() { return {20, 20, 60, 90}; }        // Darker blue/purple
 
     static TimePeriodVisuals getForPeriod(TimePeriod period)
