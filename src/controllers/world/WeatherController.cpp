@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#include "world/WeatherController.hpp"
+#include "controllers/world/WeatherController.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "core/Logger.hpp"

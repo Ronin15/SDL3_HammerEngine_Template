@@ -3,21 +3,21 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#include "world/TimeEventController.hpp"
+#include "controllers/world/TimeController.hpp"
 #include "core/GameTime.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "managers/UIManager.hpp"
-#include "world/WeatherController.hpp"
+#include "controllers/world/WeatherController.hpp"
 #include "core/Logger.hpp"
-#include <cstdio>
+#include <format>
 
-TimeEventController& TimeEventController::Instance() {
-    static TimeEventController instance;
+TimeController& TimeController::Instance() {
+    static TimeController instance;
     return instance;
 }
 
-void TimeEventController::subscribe(const std::string& eventLogId) {
+void TimeController::subscribe(const std::string& eventLogId) {
     if (m_subscribed) {
         return;
     }
@@ -40,10 +40,10 @@ void TimeEventController::subscribe(const std::string& eventLogId) {
     m_handlerTokens.push_back(weatherToken);
 
     m_subscribed = true;
-    HAMMER_INFO("TimeEventController", "Subscribed to time and weather events");
+    HAMMER_INFO("TimeController", "Subscribed to time and weather events");
 }
 
-void TimeEventController::unsubscribe() {
+void TimeController::unsubscribe() {
     if (!m_subscribed) {
         return;
     }
@@ -59,24 +59,24 @@ void TimeEventController::unsubscribe() {
     m_wasNight = false;
     m_statusLabelId.clear();
     m_formatMode = StatusFormatMode::Default;
-    HAMMER_INFO("TimeEventController", "Unsubscribed from time events");
+    HAMMER_INFO("TimeController", "Unsubscribed from time events");
 }
 
-void TimeEventController::setStatusLabel(std::string_view labelId) {
+void TimeController::setStatusLabel(std::string_view labelId) {
     m_statusLabelId = labelId;
     if (!labelId.empty()) {
         updateStatusText();  // Initial update
     }
 }
 
-void TimeEventController::setStatusFormatMode(StatusFormatMode mode) {
+void TimeController::setStatusFormatMode(StatusFormatMode mode) {
     m_formatMode = mode;
     if (!m_statusLabelId.empty()) {
         updateStatusText();  // Update with new format
     }
 }
 
-void TimeEventController::updateStatusText() {
+void TimeController::updateStatusText() {
     if (m_statusLabelId.empty()) {
         return;
     }
@@ -113,7 +113,7 @@ void TimeEventController::updateStatusText() {
     UIManager::Instance().setText(m_statusLabelId, m_statusBuffer);
 }
 
-void TimeEventController::onTimeEvent(const EventData& data) {
+void TimeController::onTimeEvent(const EventData& data) {
     if (!data.event) {
         return;
     }
@@ -146,10 +146,8 @@ void TimeEventController::onTimeEvent(const EventData& data) {
         case TimeEventType::DayChanged: {
             if (hasEventLog) {
                 auto dayEvent = std::static_pointer_cast<DayChangedEvent>(data.event);
-                char buffer[64];
-                snprintf(buffer, sizeof(buffer), "Day %d of %s",
-                         dayEvent->getDayOfMonth(), dayEvent->getMonthName().c_str());
-                ui.addEventLogEntry(m_eventLogId, buffer);
+                ui.addEventLogEntry(m_eventLogId,
+                    std::format("Day {} of {}", dayEvent->getDayOfMonth(), dayEvent->getMonthName()));
             }
             updateStatusText();
             break;
@@ -158,9 +156,8 @@ void TimeEventController::onTimeEvent(const EventData& data) {
         case TimeEventType::MonthChanged: {
             if (hasEventLog) {
                 auto monthEvent = std::static_pointer_cast<MonthChangedEvent>(data.event);
-                char buffer[64];
-                snprintf(buffer, sizeof(buffer), "Month: %s", monthEvent->getMonthName().c_str());
-                ui.addEventLogEntry(m_eventLogId, buffer);
+                ui.addEventLogEntry(m_eventLogId,
+                    std::format("Month: {}", monthEvent->getMonthName()));
             }
             updateStatusText();
             break;
@@ -169,9 +166,8 @@ void TimeEventController::onTimeEvent(const EventData& data) {
         case TimeEventType::SeasonChanged: {
             if (hasEventLog) {
                 auto seasonEvent = std::static_pointer_cast<SeasonChangedEvent>(data.event);
-                char buffer[64];
-                snprintf(buffer, sizeof(buffer), "%s arrives", seasonEvent->getSeasonName().c_str());
-                ui.addEventLogEntry(m_eventLogId, buffer);
+                ui.addEventLogEntry(m_eventLogId,
+                    std::format("{} arrives", seasonEvent->getSeasonName()));
             }
             break;
         }
@@ -179,9 +175,8 @@ void TimeEventController::onTimeEvent(const EventData& data) {
         case TimeEventType::YearChanged: {
             if (hasEventLog) {
                 auto yearEvent = std::static_pointer_cast<YearChangedEvent>(data.event);
-                char buffer[32];
-                snprintf(buffer, sizeof(buffer), "Year %d", yearEvent->getYear());
-                ui.addEventLogEntry(m_eventLogId, buffer);
+                ui.addEventLogEntry(m_eventLogId,
+                    std::format("Year {}", yearEvent->getYear()));
             }
             updateStatusText();
             break;
@@ -195,7 +190,7 @@ void TimeEventController::onTimeEvent(const EventData& data) {
     }
 }
 
-void TimeEventController::onWeatherEvent(const EventData& data) {
+void TimeController::onWeatherEvent(const EventData& data) {
     if (!data.event) {
         return;
     }
