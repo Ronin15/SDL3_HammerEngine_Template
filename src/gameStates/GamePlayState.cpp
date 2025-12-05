@@ -144,6 +144,13 @@ bool GamePlayState::enter() {
     );
     m_dayNightSubscribed = true;
 
+    // Subscribe to WeatherChangedEvent for ambient particle management
+    m_weatherEventToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Weather,
+        [this](const EventData& data) { onWeatherChanged(data); }
+    );
+    m_weatherSubscribed = true;
+
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
 
@@ -395,6 +402,12 @@ bool GamePlayState::exit() {
   if (m_dayNightSubscribed) {
     EventManager::Instance().removeHandler(m_dayNightEventToken);
     m_dayNightSubscribed = false;
+  }
+
+  // Unsubscribe from WeatherChangedEvent
+  if (m_weatherSubscribed) {
+    EventManager::Instance().removeHandler(m_weatherEventToken);
+    m_weatherSubscribed = false;
   }
 
   // Reset status format mode and unsubscribe from time events
@@ -736,8 +749,11 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
   m_dayNightTargetB = static_cast<float>(visuals.overlayB);
   m_dayNightTargetA = static_cast<float>(visuals.overlayA);
 
+  // Track current period for weather change handling
+  m_currentTimePeriod = periodEvent->getPeriod();
+
   // Update ambient particles for the new time period
-  updateAmbientParticles(periodEvent->getPeriod());
+  updateAmbientParticles(m_currentTimePeriod);
 
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
@@ -773,6 +789,12 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
 }
 
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
+  // Only spawn ambient particles during clear weather
+  if (WeatherController::Instance().getCurrentWeather() != WeatherType::Clear) {
+    stopAmbientParticles();
+    return;
+  }
+
   auto& pm = ParticleManager::Instance();
   const auto& gameEngine = GameEngine::Instance();
   Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0f,
@@ -821,4 +843,19 @@ void GamePlayState::stopAmbientParticles() {
     pm.stopIndependentEffect(m_ambientFireflyEffectId);
     m_ambientFireflyEffectId = 0;
   }
+}
+
+void GamePlayState::onWeatherChanged(const EventData& data) {
+  if (!data.event) {
+    return;
+  }
+
+  // When weather changes, update ambient particles (they only show during clear weather)
+  auto weatherEvent = std::static_pointer_cast<WeatherEvent>(data.event);
+
+  // Re-evaluate ambient particles based on current time period and new weather
+  updateAmbientParticles(m_currentTimePeriod);
+
+  GAMEPLAY_DEBUG("Weather changed to: " + weatherEvent->getWeatherTypeString() +
+                 " - updating ambient particles");
 }

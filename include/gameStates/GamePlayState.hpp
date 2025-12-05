@@ -11,6 +11,7 @@
 #include "managers/ParticleManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/TimeEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
 #include <memory>
@@ -101,8 +102,12 @@ private:
   // Ambient particle effects (dust motes, fireflies) - managed per time period
   void updateAmbientParticles(TimePeriod period);
   void stopAmbientParticles();
+  void onWeatherChanged(const EventData& data);
   uint32_t m_ambientDustEffectId{0};
   uint32_t m_ambientFireflyEffectId{0};
+  EventManager::HandlerToken m_weatherEventToken;
+  bool m_weatherSubscribed{false};
+  TimePeriod m_currentTimePeriod{TimePeriod::Day};  // Track current period for weather changes
 };
 
 #endif // GAME_PLAY_STATE_HPP
