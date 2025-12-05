@@ -55,8 +55,10 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 **Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 
+**Controllers**: State-scoped helpers that control specific system behaviors. Unlike Managers (global lifecycle, own data), Controllers subscribe per-GameState and contain game logic without owning data. Organized by system: `controllers/world/` (TimeController, WeatherController), future: `controllers/ai/`, `controllers/combat/`, etc.
+
 ```
-src/{core, managers, gameStates, entities, events, ai, collisions, utils, world}
+src/{core, managers, controllers, gameStates, entities, events, ai, collisions, utils, world}
 include/  # Headers mirror src/
 tests/    # Boost.Test scripts
 res/      # Assets

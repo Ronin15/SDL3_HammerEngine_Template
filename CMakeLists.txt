@@ -212,6 +212,7 @@ file(GLOB_RECURSE SOURCES
     "src/ai/*.cpp"
     "src/world/*.cpp"
     "src/utils/*.cpp"
+    "src/controllers/*.cpp"
 )
 
 # Create object library for shared compilation

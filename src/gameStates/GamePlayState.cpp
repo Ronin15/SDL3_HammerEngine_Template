@@ -19,8 +19,8 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
-#include "world/WeatherController.hpp"
-#include "world/TimeEventController.hpp"
+#include "controllers/world/WeatherController.hpp"
+#include "controllers/world/TimeController.hpp"
 #include "managers/UIConstants.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
@@ -106,7 +106,7 @@ bool GamePlayState::enter() {
     ui.setComponentPositioning("gameplay_event_log", eventLogPos);
 
     // Subscribe to time events for event log display
-    TimeEventController::Instance().subscribe("gameplay_event_log");
+    TimeController::Instance().subscribe("gameplay_event_log");
 
     // Create time status label at top-right of screen (no panel, just label)
     int barHeight = UIConstants::STATUS_BAR_HEIGHT;
@@ -128,9 +128,9 @@ bool GamePlayState::enter() {
     ui.setComponentPositioning("gameplay_time_label", labelPos);
 
     // Connect status label with extended format mode (zero allocation)
-    auto& timeController = TimeEventController::Instance();
+    auto& timeController = TimeController::Instance();
     timeController.setStatusLabel("gameplay_time_label");
-    timeController.setStatusFormatMode(TimeEventController::StatusFormatMode::Extended);
+    timeController.setStatusFormatMode(TimeController::StatusFormatMode::Extended);
 
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
@@ -367,8 +367,8 @@ bool GamePlayState::exit() {
   GameTime::Instance().enableAutoWeather(false);
 
   // Reset status format mode and unsubscribe from time events
-  TimeEventController::Instance().setStatusFormatMode(TimeEventController::StatusFormatMode::Default);
-  TimeEventController::Instance().unsubscribe();
+  TimeController::Instance().setStatusFormatMode(TimeController::StatusFormatMode::Default);
+  TimeController::Instance().unsubscribe();
 
   // Reset initialization flag for next fresh start
   m_initialized = false;

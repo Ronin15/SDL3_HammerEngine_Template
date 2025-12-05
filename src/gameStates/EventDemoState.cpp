@@ -26,8 +26,8 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "world/WeatherController.hpp"
-#include "world/TimeEventController.hpp"
+#include "controllers/world/WeatherController.hpp"
+#include "controllers/world/TimeController.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <ctime>
@@ -259,7 +259,7 @@ bool EventDemoState::enter() {
     WeatherController::Instance().subscribe();
 
     // Subscribe to time events for event log display
-    TimeEventController::Instance().subscribe("event_log");
+    TimeController::Instance().subscribe("event_log");
 
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
@@ -418,7 +418,7 @@ bool EventDemoState::exit() {
     WeatherController::Instance().unsubscribe();
 
     // Unsubscribe from time event logging
-    TimeEventController::Instance().unsubscribe();
+    TimeController::Instance().unsubscribe();
 
     // Clear cached manager pointers
     mp_particleMgr = nullptr;
@@ -1017,7 +1017,6 @@ void EventDemoState::renderControls() {
 void EventDemoState::triggerWeatherDemo() { triggerWeatherDemoManual(); }
 
 void EventDemoState::triggerWeatherDemoAuto() {
-  size_t currentIndex = m_currentWeatherIndex;
   WeatherType newWeather = m_weatherSequence[m_currentWeatherIndex];
   std::string customType = m_customWeatherTypes[m_currentWeatherIndex];
   m_currentWeatherIndex =

@@ -3,11 +3,11 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#ifndef TIME_EVENT_CONTROLLER_HPP
-#define TIME_EVENT_CONTROLLER_HPP
+#ifndef TIME_CONTROLLER_HPP
+#define TIME_CONTROLLER_HPP
 
 /**
- * @file TimeEventController.hpp
+ * @file TimeController.hpp
  * @brief Lightweight controller that logs GameTime events to the UI event log
  *
  * Subscribes to TimeEvents and formats user-friendly messages for:
@@ -20,7 +20,7 @@
  *
  * Event flow:
  *   GameTime::dispatchTimeEvents() → TimeEvents (Deferred)
- *     → TimeEventController handles them
+ *     → TimeController handles them
  *     → UIManager::addEventLogEntry() to display
  */
 
@@ -29,7 +29,7 @@
 #include <string_view>
 #include <vector>
 
-class TimeEventController {
+class TimeController {
 public:
     /**
      * @brief Status format mode for status bar display
@@ -40,10 +40,10 @@ public:
     };
 
     /**
-     * @brief Get the singleton instance of TimeEventController
-     * @return Reference to the TimeEventController instance
+     * @brief Get the singleton instance of TimeController
+     * @return Reference to the TimeController instance
      */
-    static TimeEventController& Instance();
+    static TimeController& Instance();
 
     /**
      * @brief Subscribe to time events and set target event log
@@ -80,10 +80,10 @@ public:
 
 private:
     // Singleton pattern
-    TimeEventController() = default;
-    ~TimeEventController() = default;
-    TimeEventController(const TimeEventController&) = delete;
-    TimeEventController& operator=(const TimeEventController&) = delete;
+    TimeController() = default;
+    ~TimeController() = default;
+    TimeController(const TimeController&) = delete;
+    TimeController& operator=(const TimeController&) = delete;
 
     /**
      * @brief Handler for time events - formats and logs messages
@@ -117,4 +117,4 @@ private:
     StatusFormatMode m_formatMode{StatusFormatMode::Default};
 };
 
-#endif // TIME_EVENT_CONTROLLER_HPP
+#endif // TIME_CONTROLLER_HPP
