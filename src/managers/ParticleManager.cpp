@@ -1926,8 +1926,8 @@ ParticleEffectDefinition ParticleManager::createAmbientFireflyEffect() {
   firefly.emitterConfig.maxLife = 5.0f;
   firefly.emitterConfig.minSize = 2.0f;       // Small but visible glow
   firefly.emitterConfig.maxSize = 4.0f;
-  firefly.emitterConfig.minColor = 0xAAFF00C0; // Yellow-green glow
-  firefly.emitterConfig.maxColor = 0x88FF44E0; // Brighter lime glow
+  firefly.emitterConfig.minColor = 0xCCFF22FF; // Bright yellow-green, full alpha
+  firefly.emitterConfig.maxColor = 0xAAFF66FF; // Bright lime, full alpha
   firefly.emitterConfig.gravity = Vector2D(0.0f, -5.0f);  // Float upward gently
   firefly.emitterConfig.windForce = Vector2D(15.0f, 8.0f); // Wander around
   firefly.emitterConfig.blendMode = ParticleBlendMode::Additive;  // Glowing effect
