@@ -106,7 +106,9 @@ enum class ParticleEffectType : uint8_t {
   Windy = 11,
   WindyDust = 12,
   WindyStorm = 13,
-  COUNT = 14
+  AmbientDust = 14,
+  AmbientFirefly = 15,
+  COUNT = 16
 };
 
 /**
@@ -232,6 +234,8 @@ ParticleEffectDefinition createMagicEffect();
 ParticleEffectDefinition createWindyEffect();
 ParticleEffectDefinition createWindyDustEffect();
 ParticleEffectDefinition createWindyStormEffect();
+ParticleEffectDefinition createAmbientDustEffect();
+ParticleEffectDefinition createAmbientFireflyEffect();
 
 struct UnifiedParticle {
   // All particle data in one structure - no synchronization issues
@@ -1058,6 +1062,8 @@ private:
   ParticleEffectDefinition createWindyEffect();
   ParticleEffectDefinition createWindyDustEffect();
   ParticleEffectDefinition createWindyStormEffect();
+  ParticleEffectDefinition createAmbientDustEffect();
+  ParticleEffectDefinition createAmbientFireflyEffect();
 };
 
 #endif // PARTICLE_MANAGER_HPP

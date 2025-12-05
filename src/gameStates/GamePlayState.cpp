@@ -385,6 +385,9 @@ bool GamePlayState::exit() {
   WeatherController::Instance().unsubscribe();
   GameTime::Instance().enableAutoWeather(false);
 
+  // Stop ambient particles before unsubscribing
+  stopAmbientParticles();
+
   // Unsubscribe from day/night visual effects
   DayNightController::Instance().unsubscribe();
 
@@ -733,6 +736,9 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
   m_dayNightTargetB = static_cast<float>(visuals.overlayB);
   m_dayNightTargetA = static_cast<float>(visuals.overlayA);
 
+  // Update ambient particles for the new time period
+  updateAmbientParticles(periodEvent->getPeriod());
+
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
 }
@@ -764,4 +770,55 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
 
   SDL_FRect rect = {0, 0, static_cast<float>(width), static_cast<float>(height)};
   SDL_RenderFillRect(renderer, &rect);
+}
+
+void GamePlayState::updateAmbientParticles(TimePeriod period) {
+  auto& pm = ParticleManager::Instance();
+  const auto& gameEngine = GameEngine::Instance();
+  Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0f,
+                        gameEngine.getLogicalHeight() / 2.0f);
+
+  // Stop existing ambient particles with fade-out transition
+  stopAmbientParticles();
+
+  // Start appropriate particles for the new period
+  switch (period) {
+    case TimePeriod::Morning:
+      // Light dust motes in morning sunlight
+      m_ambientDustEffectId = pm.playIndependentEffect(
+          ParticleEffectType::AmbientDust, screenCenter, 0.6f, -1.0f, "ambient");
+      break;
+
+    case TimePeriod::Day:
+      // Subtle dust particles during the day
+      m_ambientDustEffectId = pm.playIndependentEffect(
+          ParticleEffectType::AmbientDust, screenCenter, 0.4f, -1.0f, "ambient");
+      break;
+
+    case TimePeriod::Evening:
+      // Golden dust in evening light
+      m_ambientDustEffectId = pm.playIndependentEffect(
+          ParticleEffectType::AmbientDust, screenCenter, 0.8f, -1.0f, "ambient");
+      break;
+
+    case TimePeriod::Night:
+      // Fireflies at night
+      m_ambientFireflyEffectId = pm.playIndependentEffect(
+          ParticleEffectType::AmbientFirefly, screenCenter, 1.0f, -1.0f, "ambient");
+      break;
+  }
+}
+
+void GamePlayState::stopAmbientParticles() {
+  auto& pm = ParticleManager::Instance();
+
+  if (m_ambientDustEffectId != 0) {
+    pm.stopIndependentEffect(m_ambientDustEffectId);
+    m_ambientDustEffectId = 0;
+  }
+
+  if (m_ambientFireflyEffectId != 0) {
+    pm.stopIndependentEffect(m_ambientFireflyEffectId);
+    m_ambientFireflyEffectId = 0;
+  }
 }
