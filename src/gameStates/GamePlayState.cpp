@@ -21,10 +21,11 @@
 #include "world/WorldData.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "controllers/world/TimeController.hpp"
+#include "controllers/world/DayNightController.hpp"
 #include "managers/UIConstants.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
-
+#include <cmath>
 #include <random>
 
 
@@ -132,6 +133,17 @@ bool GamePlayState::enter() {
     timeController.setStatusLabel("gameplay_time_label");
     timeController.setStatusFormatMode(TimeController::StatusFormatMode::Extended);
 
+    // Subscribe to day/night visual effects (controller dispatches events)
+    DayNightController::Instance().subscribe();
+
+    // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
+    auto& eventMgr = EventManager::Instance();
+    m_dayNightEventToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Time,
+        [this](const EventData& data) { onTimePeriodChanged(data); }
+    );
+    m_dayNightSubscribed = true;
+
     // Mark as initialized for future pause/resume cycles
     m_initialized = true;
 
@@ -189,6 +201,9 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
 
+  // Update day/night overlay interpolation
+  updateDayNightOverlay(deltaTime);
+
   // Update UI
   auto &ui = UIManager::Instance();
   if (!ui.isShutdown()) {
@@ -238,6 +253,10 @@ void GamePlayState::render() {
     mp_particleMgr->render(renderer, viewRect.x, viewRect.y);
     mp_particleMgr->renderForeground(renderer, viewRect.x, viewRect.y);
   }
+
+  // Render day/night overlay tint (after particles, before UI)
+  renderDayNightOverlay(renderer,
+      gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
 
   // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
   SDL_SetRenderScale(renderer, 1.0f, 1.0f);
@@ -365,6 +384,15 @@ bool GamePlayState::exit() {
   // Unsubscribe from automatic weather events and disable auto-weather
   WeatherController::Instance().unsubscribe();
   GameTime::Instance().enableAutoWeather(false);
+
+  // Unsubscribe from day/night visual effects
+  DayNightController::Instance().unsubscribe();
+
+  // Unsubscribe from TimePeriodChangedEvent
+  if (m_dayNightSubscribed) {
+    EventManager::Instance().removeHandler(m_dayNightEventToken);
+    m_dayNightSubscribed = false;
+  }
 
   // Reset status format mode and unsubscribe from time events
   TimeController::Instance().setStatusFormatMode(TimeController::StatusFormatMode::Default);
@@ -684,3 +712,56 @@ void GamePlayState::updateCamera(float deltaTime) {
 }
 
 // Removed setupCameraForWorld(): camera manages world bounds itself
+
+void GamePlayState::onTimePeriodChanged(const EventData& data) {
+  if (!data.event) {
+    return;
+  }
+
+  // Check if this is a TimePeriodChangedEvent
+  auto timeEvent = std::static_pointer_cast<TimeEvent>(data.event);
+  if (timeEvent->getTimeEventType() != TimeEventType::TimePeriodChanged) {
+    return;
+  }
+
+  auto periodEvent = std::static_pointer_cast<TimePeriodChangedEvent>(data.event);
+  const auto& visuals = periodEvent->getVisuals();
+
+  // Set target values - interpolation happens in updateDayNightOverlay()
+  m_dayNightTargetR = static_cast<float>(visuals.overlayR);
+  m_dayNightTargetG = static_cast<float>(visuals.overlayG);
+  m_dayNightTargetB = static_cast<float>(visuals.overlayB);
+  m_dayNightTargetA = static_cast<float>(visuals.overlayA);
+
+  GAMEPLAY_DEBUG("Day/night transition started to period: " +
+                 std::string(periodEvent->getPeriodName()));
+}
+
+void GamePlayState::updateDayNightOverlay(float deltaTime) {
+  // Calculate interpolation speed based on transition duration
+  // Using exponential smoothing for natural-feeling transitions
+  float lerpFactor = 1.0f - std::exp(-deltaTime * (3.0f / DAY_NIGHT_TRANSITION_DURATION));
+
+  // Interpolate each channel toward target
+  m_dayNightOverlayR += (m_dayNightTargetR - m_dayNightOverlayR) * lerpFactor;
+  m_dayNightOverlayG += (m_dayNightTargetG - m_dayNightOverlayG) * lerpFactor;
+  m_dayNightOverlayB += (m_dayNightTargetB - m_dayNightOverlayB) * lerpFactor;
+  m_dayNightOverlayA += (m_dayNightTargetA - m_dayNightOverlayA) * lerpFactor;
+}
+
+void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int height) {
+  // Skip if no tint (alpha near 0)
+  if (m_dayNightOverlayA < 0.5f) {
+    return;
+  }
+
+  // Blend mode already set globally by GameEngine at init
+  SDL_SetRenderDrawColor(renderer,
+      static_cast<uint8_t>(m_dayNightOverlayR),
+      static_cast<uint8_t>(m_dayNightOverlayG),
+      static_cast<uint8_t>(m_dayNightOverlayB),
+      static_cast<uint8_t>(m_dayNightOverlayA));
+
+  SDL_FRect rect = {0, 0, static_cast<float>(width), static_cast<float>(height)};
+  SDL_RenderFillRect(renderer, &rect);
+}

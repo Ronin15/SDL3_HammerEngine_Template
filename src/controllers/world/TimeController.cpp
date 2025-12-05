@@ -127,18 +127,10 @@ void TimeController::onTimeEvent(const EventData& data) {
 
     switch (eventType) {
         case TimeEventType::HourChanged: {
-            // Most frequent event - only log day/night transitions
+            // Update status text on every hour change
             auto hourEvent = std::static_pointer_cast<HourChangedEvent>(data.event);
-            bool isNight = hourEvent->isNight();
-            int hour = hourEvent->getHour();
-
-            // Only log on actual day/night transition
-            if (hasEventLog && m_previousHour >= 0 && isNight != m_wasNight) {
-                ui.addEventLogEntry(m_eventLogId, isNight ? "Night falls" : "Dawn breaks");
-            }
-
-            m_previousHour = hour;
-            m_wasNight = isNight;
+            m_previousHour = hourEvent->getHour();
+            m_wasNight = hourEvent->isNight();
             updateStatusText();
             break;
         }
@@ -187,6 +179,26 @@ void TimeController::onTimeEvent(const EventData& data) {
             // WeatherEvent (actual changes) instead of WeatherCheckEvent (periodic checks)
             updateStatusText();
             break;
+
+        case TimeEventType::TimePeriodChanged: {
+            // Log period-specific messages to event log
+            if (hasEventLog) {
+                auto periodEvent = std::static_pointer_cast<TimePeriodChangedEvent>(data.event);
+                TimePeriod period = periodEvent->getPeriod();
+
+                const char* message = nullptr;
+                switch (period) {
+                    case TimePeriod::Morning: message = "Dawn breaks"; break;
+                    case TimePeriod::Day:     message = "The sun rises high"; break;
+                    case TimePeriod::Evening: message = "Dusk settles in"; break;
+                    case TimePeriod::Night:   message = "Night falls"; break;
+                }
+                if (message) {
+                    ui.addEventLogEntry(m_eventLogId, message);
+                }
+            }
+            break;
+        }
     }
 }
 
