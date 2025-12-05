@@ -10,6 +10,7 @@
 #include "gameStates/GameState.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/EventManager.hpp"
+#include "events/TimeEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
 #include <memory>
@@ -42,10 +43,6 @@ private:
   
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
-  
-  // Camera transformation state (calculated in update, used in render)
-  float m_cameraOffsetX{0.0f};
-  float m_cameraOffsetY{0.0f};
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
@@ -100,6 +97,12 @@ private:
   void onTimePeriodChanged(const EventData& data);
   void updateDayNightOverlay(float deltaTime);
   void renderDayNightOverlay(SDL_Renderer* renderer, int width, int height);
+
+  // Ambient particle effects (dust motes, fireflies) - managed per time period
+  void updateAmbientParticles(TimePeriod period);
+  void stopAmbientParticles();
+  uint32_t m_ambientDustEffectId{0};
+  uint32_t m_ambientFireflyEffectId{0};
 };
 
 #endif // GAME_PLAY_STATE_HPP

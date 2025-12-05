@@ -34,6 +34,7 @@ void DayNightController::subscribe()
     m_previousPeriod = m_currentPeriod;
 
     // Dispatch initial event so subscribers know the current state
+    // This allows GamePlayState (and other subscribers) to set up ambient particles
     auto visuals = TimePeriodVisuals::getForPeriod(m_currentPeriod);
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
@@ -92,6 +93,7 @@ void DayNightController::transitionToPeriod(TimePeriod newPeriod)
     m_currentPeriod = newPeriod;
 
     // Dispatch TimePeriodChangedEvent through EventManager
+    // Subscribers (like GamePlayState) handle visual changes and ambient particles
     auto visuals = TimePeriodVisuals::getForPeriod(m_currentPeriod);
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);

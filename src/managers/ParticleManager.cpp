@@ -1608,6 +1608,10 @@ void ParticleManager::registerBuiltInEffects() {
   m_effectDefinitions[ParticleEffectType::Smoke] = createSmokeEffect();
   m_effectDefinitions[ParticleEffectType::Sparks] = createSparksEffect();
 
+  // Register ambient day/night effects
+  m_effectDefinitions[ParticleEffectType::AmbientDust] = createAmbientDustEffect();
+  m_effectDefinitions[ParticleEffectType::AmbientFirefly] = createAmbientFireflyEffect();
+
   PARTICLE_INFO("Built-in effects registered: " +
                 std::to_string(m_effectDefinitions.size()));
 
@@ -1869,6 +1873,58 @@ ParticleEffectDefinition ParticleManager::createWindyStormEffect() {
   storm.emitterConfig.direction = Vector2D(1.0f, 0.3f);  // Angled for tumbling
   storm.intensityMultiplier = 1.6f;
   return storm;
+}
+
+ParticleEffectDefinition ParticleManager::createAmbientDustEffect() {
+  const auto &gameEngine = GameEngine::Instance();
+  ParticleEffectDefinition dust("AmbientDust", ParticleEffectType::AmbientDust);
+  dust.layer = UnifiedParticle::RenderLayer::World;  // Render with world elements
+
+  // Subtle dust motes floating in the air - visible during daytime
+  dust.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalWidth());  // Screen-wide
+  dust.emitterConfig.emissionRate = 8.0f;   // Very sparse for subtle effect
+  dust.emitterConfig.minSpeed = 5.0f;       // Very slow drift
+  dust.emitterConfig.maxSpeed = 15.0f;
+  dust.emitterConfig.minLife = 4.0f;        // Long-lived for gentle motion
+  dust.emitterConfig.maxLife = 8.0f;
+  dust.emitterConfig.minSize = 1.0f;        // Tiny dust specks
+  dust.emitterConfig.maxSize = 3.0f;
+  dust.emitterConfig.minColor = 0xFFFFDD20; // Pale yellow, very transparent
+  dust.emitterConfig.maxColor = 0xFFEECC40; // Warm off-white, slightly more visible
+  dust.emitterConfig.gravity = Vector2D(0.0f, -3.0f);   // Gentle upward float
+  dust.emitterConfig.windForce = Vector2D(8.0f, 2.0f);  // Slight drift
+  dust.emitterConfig.blendMode = ParticleBlendMode::Alpha;
+  dust.emitterConfig.useWorldSpace = false;
+  dust.emitterConfig.direction = Vector2D(0.3f, -1.0f); // Mostly upward with slight horizontal
+  dust.intensityMultiplier = 0.6f;  // Subtle effect
+  return dust;
+}
+
+ParticleEffectDefinition ParticleManager::createAmbientFireflyEffect() {
+  const auto &gameEngine = GameEngine::Instance();
+  ParticleEffectDefinition firefly("AmbientFirefly", ParticleEffectType::AmbientFirefly);
+  firefly.layer = UnifiedParticle::RenderLayer::World;  // Render with world elements
+
+  // Glowing fireflies at night - bright additive particles
+  firefly.emitterConfig.spread =
+      static_cast<float>(gameEngine.getLogicalWidth());  // Screen-wide
+  firefly.emitterConfig.emissionRate = 3.0f;  // Very sparse - fireflies are special
+  firefly.emitterConfig.minSpeed = 10.0f;     // Lazy floating
+  firefly.emitterConfig.maxSpeed = 30.0f;
+  firefly.emitterConfig.minLife = 2.0f;       // Short-ish blinks
+  firefly.emitterConfig.maxLife = 5.0f;
+  firefly.emitterConfig.minSize = 2.0f;       // Small but visible glow
+  firefly.emitterConfig.maxSize = 4.0f;
+  firefly.emitterConfig.minColor = 0xAAFF00C0; // Yellow-green glow
+  firefly.emitterConfig.maxColor = 0x88FF44E0; // Brighter lime glow
+  firefly.emitterConfig.gravity = Vector2D(0.0f, -5.0f);  // Float upward gently
+  firefly.emitterConfig.windForce = Vector2D(15.0f, 8.0f); // Wander around
+  firefly.emitterConfig.blendMode = ParticleBlendMode::Additive;  // Glowing effect
+  firefly.emitterConfig.useWorldSpace = false;
+  firefly.emitterConfig.direction = Vector2D(0.5f, -0.5f); // Diagonal wandering
+  firefly.intensityMultiplier = 0.8f;
+  return firefly;
 }
 
 ParticleEffectDefinition ParticleManager::createFireEffect() {
@@ -2652,6 +2708,10 @@ std::string ParticleManager::effectTypeToString(ParticleEffectType type) const {
     return "WindyDust";
   case ParticleEffectType::WindyStorm:
     return "WindyStorm";
+  case ParticleEffectType::AmbientDust:
+    return "AmbientDust";
+  case ParticleEffectType::AmbientFirefly:
+    return "AmbientFirefly";
   default:
     return "Custom";
   }
