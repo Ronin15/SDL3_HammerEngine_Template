@@ -479,22 +479,26 @@ void AdvancedAIDemoState::render() {
     auto& gameEngine = GameEngine::Instance();
     SDL_Renderer* renderer = gameEngine.getRenderer();
 
-    // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+    // Get camera view rect for dimensions, use pixel-snapped coords for tile rendering
     HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+    float renderCamX = 0.0f;
+    float renderCamY = 0.0f;
     if (m_camera) {
         cameraView = m_camera->getViewRect();
+        renderCamX = m_camera->getRenderX();  // Pixel-snapped for tiles
+        renderCamY = m_camera->getRenderY();  // Pixel-snapped for tiles
     }
 
     // Set render scale for zoom (scales all world/entity rendering automatically)
     float zoom = m_camera ? m_camera->getZoom() : 1.0f;
     SDL_SetRenderScale(renderer, zoom, zoom);
 
-    // Render world first (background layer) using unified camera position - use cached pointer
+    // Render world first (background layer) using pixel-snapped camera - use cached pointer
     // mp_worldMgr guaranteed valid between enter() and exit()
     if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
         mp_worldMgr->render(renderer,
-                           cameraView.x,
-                           cameraView.y,
+                           renderCamX,
+                           renderCamY,
                            gameEngine.getLogicalWidth(),
                            gameEngine.getLogicalHeight());
     }
