@@ -27,7 +27,7 @@ public:
         mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false} {}
   bool enter() override;
   void update(float deltaTime) override;
-  void render(SDL_Renderer* renderer) override;
+  void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
   void handleInput() override;
   bool exit() override;
   std::string getName() const override;

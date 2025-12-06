@@ -111,7 +111,7 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
   // UI updates handled in render() for thread safety
 }
 
-void MainMenuState::render(SDL_Renderer* renderer) {
+void MainMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
   // Update and render UI components through UIManager using cached renderer for cleaner API
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {

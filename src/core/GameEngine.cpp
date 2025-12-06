@@ -1027,6 +1027,14 @@ void GameEngine::render() {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
+  // Calculate interpolation alpha from GameLoop's TimestepManager
+  // This enables smooth rendering at any refresh rate with fixed 60Hz updates
+  float interpolationAlpha = 1.0f;
+  if (auto gameLoop = m_gameLoop.lock()) {
+    interpolationAlpha = static_cast<float>(
+        gameLoop->getTimestepManager().getInterpolationAlpha());
+  }
+
   // Always render - optimized buffer management ensures render buffer is always
   // valid
   if (!SDL_SetRenderDrawColor(
@@ -1040,8 +1048,8 @@ void GameEngine::render() {
                      std::string(SDL_GetError()));
   }
 
-  // Pass renderer to GameStateManager for state rendering
-  mp_gameStateManager->render(mp_renderer.get());
+  // Pass renderer and interpolation alpha to GameStateManager for state rendering
+  mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
 
   if (!SDL_RenderPresent(mp_renderer.get())) {
     GAMEENGINE_ERROR("Failed to present renderer: " +

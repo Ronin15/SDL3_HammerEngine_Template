@@ -220,20 +220,20 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   // Inventory display is now updated automatically via data binding.
 }
 
-void GamePlayState::render(SDL_Renderer* renderer) {
+void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // Get camera view rect and UNIFIED render offset for this frame
-  // All rendering (tiles, entities, particles) uses the SAME cached offset
-  // to prevent 1-pixel drift between elements during camera movement
+  // Get camera view rect and INTERPOLATED render offset for this frame
+  // All rendering (tiles, entities, particles) uses the SAME offset
+  // Interpolation enables smooth camera at any refresh rate with fixed 60Hz updates
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
   if (m_camera) {
     viewRect = m_camera->getViewRect();
-    m_camera->getRenderOffset(renderCamX, renderCamY);  // Cached pixel-snapped offset
+    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);  // Interpolated offset
     zoom = m_camera->getZoom();
   }
 

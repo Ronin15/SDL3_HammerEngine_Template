@@ -147,6 +147,14 @@ public:
      * @param useSoftwareLimiting true to force fixed timestep mode
      */
     void setSoftwareFrameLimiting(bool useSoftwareLimiting) const;
+
+    /**
+     * High-precision frame wait using hybrid sleep+spinlock (industry standard)
+     * Used when VSync is unavailable for sub-millisecond timing accuracy.
+     *
+     * @param targetFrameTimeMs Target frame time in milliseconds (e.g., 1000.0/144.0 for 144Hz)
+     */
+    void preciseFrameWait(double targetFrameTimeMs) const;
 };
 
 #endif // TIMESTEP_MANAGER_HPP

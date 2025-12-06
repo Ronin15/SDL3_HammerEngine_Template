@@ -187,3 +187,39 @@ void TimestepManager::setSoftwareFrameLimiting(bool useSoftwareLimiting) const {
     m_explicitlySet = true;
 }
 
+void TimestepManager::preciseFrameWait(double targetFrameTimeMs) const {
+    // Industry-standard hybrid sleep+spinlock for precise frame timing when VSync unavailable
+    // SDL_Delay has ~10ms granularity + OS scheduling jitter, so we:
+    // 1. Sleep for ~80% of remaining time (saves CPU, imprecise)
+    // 2. Spinlock for final ~2ms (precise sub-millisecond timing)
+
+    uint64_t startTicks = SDL_GetPerformanceCounter();
+    uint64_t frequency = SDL_GetPerformanceFrequency();
+    double targetSeconds = targetFrameTimeMs / 1000.0;
+
+    // Lambda to calculate elapsed time in seconds
+    auto getElapsed = [&]() -> double {
+        return static_cast<double>(SDL_GetPerformanceCounter() - startTicks) /
+               static_cast<double>(frequency);
+    };
+
+    double remaining = targetSeconds - getElapsed();
+
+    // Phase 1: Sleep for most of the time (imprecise but CPU-friendly)
+    // Leave 2ms buffer for spinlock phase
+    if (remaining > 0.002) {
+        uint32_t sleepMs = static_cast<uint32_t>((remaining - 0.002) * 1000.0);
+        if (sleepMs > 0) {
+            SDL_Delay(sleepMs);
+        }
+    }
+
+    // Phase 2: Spinlock for final ~2ms (precise timing)
+    // This busy-wait yields sub-millisecond accuracy
+    while (getElapsed() < targetSeconds) {
+        // Busy wait - no-op yields precise timing
+        // Some implementations use _mm_pause() or std::this_thread::yield()
+        // but plain busy-wait is most portable and accurate
+    }
+}
+

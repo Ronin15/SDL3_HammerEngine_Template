@@ -293,16 +293,8 @@ public:
      * @param offsetX Output: pixel-snapped camera X offset (top-left)
      * @param offsetY Output: pixel-snapped camera Y offset (top-left)
      */
-    void getRenderOffset(float& offsetX, float& offsetY) const;
+    void getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
 
-    /**
-     * @brief Invalidates the cached render offset
-     *
-     * Call at the start of each frame (before camera update) to ensure
-     * fresh calculation. The offset will be recalculated on first
-     * getRenderOffset() call.
-     */
-    void invalidateRenderOffset() { m_renderOffsetValid = false; }
 
     /**
      * @brief Checks if a point is visible in the camera view
@@ -460,11 +452,8 @@ private:
     // Smooth follow velocity (for critically damped spring algorithm)
     Vector2D m_velocity{0.0f, 0.0f}; // Current camera velocity for smooth damping
 
-    // Cached pixel-snapped render offset (computed once per frame for consistency)
-    // All rendering (tiles, entities, particles) uses this same offset to prevent drift
-    mutable float m_cachedRenderOffsetX{0.0f};
-    mutable float m_cachedRenderOffsetY{0.0f};
-    mutable bool m_renderOffsetValid{false};
+    // Previous position for render interpolation (smooth camera at any refresh rate)
+    Vector2D m_previousPosition{960.0f, 540.0f};
 
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead
