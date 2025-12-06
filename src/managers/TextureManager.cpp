@@ -209,8 +209,8 @@ void TextureManager::drawTileF(const std::string& textureID,
 
   destRect.w = static_cast<float>(width);
   destRect.h = static_cast<float>(height);
-  destRect.x = x;  // Use float precision directly
-  destRect.y = y;  // Use float precision directly
+  destRect.x = std::floor(x);  // Snap to pixel grid to prevent shimmer
+  destRect.y = std::floor(y);  // Snap to pixel grid to prevent shimmer
 
   SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
 }
