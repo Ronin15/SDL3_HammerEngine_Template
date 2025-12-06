@@ -102,18 +102,37 @@ void Camera::update(float deltaTime) {
             }
         }
 
-        // Exponential smoothing - simple, stateless camera follow
-        // No velocity state means no momentum artifacts when changing direction
+        // Critically-damped spring (SmoothDamp) - industry standard camera follow
+        // Uses velocity tracking for consistent lag regardless of target movement
         const float smoothTime = std::max(0.0001f, m_config.smoothTime);
+        const float maxSpeed = m_config.maxSpeed;
 
-        // Exponential decay factor: how much of the gap remains after this frame
-        // decay approaches 0 as deltaTime increases (camera catches up faster)
-        // decay approaches 1 as deltaTime decreases (camera moves less per frame)
-        float decay = std::exp(-deltaTime / smoothTime);
+        // Calculate spring constants for critical damping (no oscillation)
+        // omega = 2/smoothTime gives critical damping behavior
+        const float omega = 2.0f / smoothTime;
+        const float x = omega * deltaTime;
+        const float exp_term = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
 
-        // Smoothly approach target: newPos = target + (current - target) * decay
-        float newX = idealPosition.getX() + (m_position.getX() - idealPosition.getX()) * decay;
-        float newY = idealPosition.getY() + (m_position.getY() - idealPosition.getY()) * decay;
+        // X axis
+        float deltaX = m_position.getX() - idealPosition.getX();
+        float tempX = (m_velocity.getX() + omega * deltaX) * deltaTime;
+        m_velocity.setX((m_velocity.getX() - omega * tempX) * exp_term);
+        float newX = idealPosition.getX() + (deltaX + tempX) * exp_term;
+
+        // Y axis
+        float deltaY = m_position.getY() - idealPosition.getY();
+        float tempY = (m_velocity.getY() + omega * deltaY) * deltaTime;
+        m_velocity.setY((m_velocity.getY() - omega * tempY) * exp_term);
+        float newY = idealPosition.getY() + (deltaY + tempY) * exp_term;
+
+        // Clamp velocity to maxSpeed to prevent overshooting on sudden target jumps
+        float velMagnitude = std::sqrt(m_velocity.getX() * m_velocity.getX() +
+                                        m_velocity.getY() * m_velocity.getY());
+        if (velMagnitude > maxSpeed) {
+            float scale = maxSpeed / velMagnitude;
+            m_velocity.setX(m_velocity.getX() * scale);
+            m_velocity.setY(m_velocity.getY() * scale);
+        }
 
         m_position.setX(newX);
         m_position.setY(newY);
