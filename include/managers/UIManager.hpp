@@ -255,13 +255,8 @@ public:
   bool init();
   void update(float deltaTime);
   void render(SDL_Renderer *renderer);
-  void render(); // Overloaded version using cached renderer
   void clean();
   bool isShutdown() const { return m_isShutdown; }
-
-  // Renderer management
-  void setRenderer(SDL_Renderer *renderer) { m_cachedRenderer = renderer; }
-  SDL_Renderer *getRenderer() const { return m_cachedRenderer; }
 
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newLogicalWidth, int newLogicalHeight);
@@ -613,9 +608,6 @@ private:
                              float t);
   UIRect interpolateRect(const UIRect &start, const UIRect &end, float t);
   void executeDeferredCallbacks();
-
-  // Cached renderer for performance
-  SDL_Renderer *m_cachedRenderer{nullptr};
 
   // Deferred execution queue to prevent iterator invalidation
   std::vector<std::function<void()>> m_deferredCallbacks{};

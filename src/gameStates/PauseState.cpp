@@ -57,14 +57,14 @@ bool PauseState::enter() {
 void PauseState::update([[maybe_unused]] float deltaTime) {
 }
 
-void PauseState::render([[maybe_unused]] SDL_Renderer* renderer) {
+void PauseState::render(SDL_Renderer* renderer) {
     auto& ui = UIManager::Instance();
 
     // Update and render UI components through UIManager
     if (!ui.isShutdown()) {
         ui.update(0.0);  // UI updates are not time-dependent in this state
     }
-    ui.render();
+    ui.render(renderer);
 }
 bool PauseState::exit() {
   // Resume game time when leaving pause state

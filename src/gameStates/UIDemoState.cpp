@@ -155,13 +155,13 @@ void UIExampleState::update(float deltaTime) {
     updateProgressBar(deltaTime);
 }
 
-void UIExampleState::render([[maybe_unused]] SDL_Renderer* renderer) {
+void UIExampleState::render(SDL_Renderer* renderer) {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
     auto& ui = UIManager::Instance();
     ui.update(m_lastDeltaTime);
-    ui.render();
+    ui.render(renderer);
 }
 
 bool UIExampleState::exit() {

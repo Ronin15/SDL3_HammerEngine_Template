@@ -55,12 +55,12 @@ void SettingsMenuState::update([[maybe_unused]] float deltaTime) {
     // UI updates handled in render() for thread safety
 }
 
-void SettingsMenuState::render([[maybe_unused]] SDL_Renderer* renderer) {
+void SettingsMenuState::render(SDL_Renderer* renderer) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.update(0.0);
     }
-    ui.render();
+    ui.render(renderer);
 }
 
 bool SettingsMenuState::exit() {

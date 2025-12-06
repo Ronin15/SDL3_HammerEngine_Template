@@ -61,13 +61,13 @@ void OverlayDemoState::update(float deltaTime) {
     m_transitionTimer += deltaTime;
 }
 
-void OverlayDemoState::render([[maybe_unused]] SDL_Renderer* renderer) {
+void OverlayDemoState::render(SDL_Renderer* renderer) {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.update(0.0); // UI updates are not time-dependent in this state
     }
-    ui.render();
+    ui.render(renderer);
 }
 
 bool OverlayDemoState::exit() {

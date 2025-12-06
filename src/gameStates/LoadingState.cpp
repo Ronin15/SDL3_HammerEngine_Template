@@ -105,7 +105,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
     }
 }
 
-void LoadingState::render([[maybe_unused]] SDL_Renderer* renderer) {
+void LoadingState::render(SDL_Renderer* renderer) {
     // All rendering happens through GameEngine::render() -> this method
     // No manual SDL_RenderClear() or SDL_RenderPresent() calls needed!
 
@@ -119,7 +119,7 @@ void LoadingState::render([[maybe_unused]] SDL_Renderer* renderer) {
     ui.setText("loading_status", getStatusText());
 
     // Actually render the UI to the screen!
-    ui.render();
+    ui.render(renderer);
 }
 
 void LoadingState::handleInput() {

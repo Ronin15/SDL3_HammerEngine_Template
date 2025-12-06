@@ -543,7 +543,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer) {
                << " | Combat: ON";
         mp_uiMgr->setText("advanced_ai_status", status.str());
     }
-    mp_uiMgr->render();
+    mp_uiMgr->render(renderer);
 }
 
 void AdvancedAIDemoState::setupAdvancedAIBehaviors() {

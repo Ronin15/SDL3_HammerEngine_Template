@@ -165,12 +165,6 @@ void UIManager::render(SDL_Renderer *renderer) {
   }
 }
 
-void UIManager::render() {
-  if (m_cachedRenderer) {
-    render(m_cachedRenderer);
-  }
-}
-
 void UIManager::clean() {
   if (m_isShutdown) {
     return;
