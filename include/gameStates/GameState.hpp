@@ -7,13 +7,16 @@
 #define GAME_STATE_HPP
 
 #include <string>
-// pure virtual for inheritance
 
+// Forward declaration for SDL renderer
+struct SDL_Renderer;
+
+// pure virtual for inheritance
 class GameState {
  public:
   virtual bool enter() = 0;
   virtual void update(float deltaTime) = 0;
-  virtual void render() = 0;
+  virtual void render(SDL_Renderer* renderer) = 0;
   virtual void handleInput() = 0;
   virtual bool exit() = 0;
   virtual void pause() {}

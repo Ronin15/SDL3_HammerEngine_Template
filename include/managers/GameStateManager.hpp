@@ -22,7 +22,7 @@ class GameStateManager {
   void changeState(const std::string& stateName); // Pops the current state and pushes a new one
 
   void update(float deltaTime);
-  void render();
+  void render(SDL_Renderer* renderer);
   void handleInput();
   void notifyResize(int newLogicalWidth, int newLogicalHeight);
 

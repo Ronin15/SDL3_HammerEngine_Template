@@ -37,7 +37,7 @@ public:
   ~EventDemoState() override;
 
   void update(float deltaTime) override;
-  void render() override;
+  void render(SDL_Renderer* renderer) override;
   void handleInput() override;
 
   bool enter() override;

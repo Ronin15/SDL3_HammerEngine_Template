@@ -155,7 +155,7 @@ void UIExampleState::update(float deltaTime) {
     updateProgressBar(deltaTime);
 }
 
-void UIExampleState::render() {
+void UIExampleState::render([[maybe_unused]] SDL_Renderer* renderer) {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management

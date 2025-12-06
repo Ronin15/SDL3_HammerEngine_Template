@@ -1042,8 +1042,8 @@ void GameEngine::render() {
                      std::string(SDL_GetError()));
   }
 
-  // Make sure GameStateManager knows which buffer to render from
-  mp_gameStateManager->render();
+  // Pass renderer to GameStateManager for state rendering
+  mp_gameStateManager->render(mp_renderer.get());
 
   if (!SDL_RenderPresent(mp_renderer.get())) {
     GAMEENGINE_ERROR("Failed to present renderer: " +
