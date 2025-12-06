@@ -277,8 +277,6 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
-
-
 bool Camera::isPointVisible(float x, float y) const {
     ViewRect view = getViewRect();
     return x >= view.left() && x <= view.right() && 

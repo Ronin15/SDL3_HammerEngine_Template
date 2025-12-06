@@ -164,17 +164,39 @@ public:
     const Vector2D& getPosition() const { return m_position; }
     
     /**
-     * @brief Gets camera X position
+     * @brief Gets camera X position (float precision for smooth entity positioning)
      * @return X coordinate
      */
     float getX() const { return m_position.getX(); }
-    
+
     /**
-     * @brief Gets camera Y position  
+     * @brief Gets camera Y position (float precision for smooth entity positioning)
      * @return Y coordinate
      */
     float getY() const { return m_position.getY(); }
-    
+
+    /**
+     * @brief Gets pixel-snapped camera X for tile/world rendering
+     *
+     * Use this for rendering tiles to eliminate sub-pixel artifacts.
+     * The floor() ensures tiles always render at integer pixel positions,
+     * preventing shimmer/jitter when camera moves at sub-pixel increments.
+     *
+     * @return X coordinate floored to integer pixel
+     */
+    float getRenderX() const { return std::floor(m_position.getX()); }
+
+    /**
+     * @brief Gets pixel-snapped camera Y for tile/world rendering
+     *
+     * Use this for rendering tiles to eliminate sub-pixel artifacts.
+     * The floor() ensures tiles always render at integer pixel positions,
+     * preventing shimmer/jitter when camera moves at sub-pixel increments.
+     *
+     * @return Y coordinate floored to integer pixel
+     */
+    float getRenderY() const { return std::floor(m_position.getY()); }
+
     /**
      * @brief Sets the viewport size
      * @param width Viewport width
@@ -269,7 +291,7 @@ public:
      */
     struct ViewRect {
         float x, y, width, height;
-        
+
         // Convenience methods
         float left() const { return x; }
         float right() const { return x + width; }
@@ -278,7 +300,7 @@ public:
         float centerX() const { return x + width * 0.5f; }
         float centerY() const { return y + height * 0.5f; }
     };
-    
+
     /**
      * @brief Gets the current view rectangle
      * @return View rectangle for culling and rendering
