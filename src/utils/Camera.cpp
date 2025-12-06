@@ -296,33 +296,40 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // Calculate offset from camera center
-    float offsetX = worldX - m_position.getX();
-    float offsetY = worldY - m_position.getY();
+    // Calculate top-left of visible area (same formula as getViewRect)
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
+    float cameraTopLeftX = m_position.getX() - (worldViewWidth * 0.5f);
+    float cameraTopLeftY = m_position.getY() - (worldViewHeight * 0.5f);
 
-    // Translate to screen space (camera at viewport center)
-    // With SDL_SetRenderScale, the logical coordinate space is scaled
-    // So viewport dimensions must be divided by zoom to get logical center
-    screenX = offsetX + (m_viewport.halfWidth() / m_zoom);
-    screenY = offsetY + (m_viewport.halfHeight() / m_zoom);
+    // Pixel-snap the top-left to match tile rendering
+    // This ensures entities align with tiles when camera moves at sub-pixel increments
+    float snappedTopLeftX = std::floor(cameraTopLeftX);
+    float snappedTopLeftY = std::floor(cameraTopLeftY);
+
+    // Transform world position to screen position
+    // screenPos = worldPos - cameraTopLeft (pixel-snapped to match tiles)
+    screenX = worldX - snappedTopLeftX;
+    screenY = worldY - snappedTopLeftY;
 }
 
 void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& worldY) const {
     // Mouse coordinates are in PHYSICAL window space (NOT scaled by SDL_SetRenderScale)
-    // But worldToScreen returns LOGICAL coordinates that SDL scales
-    // So we need to: physical -> logical -> world
-
-    // Convert physical mouse coords to logical coords
+    // Convert physical mouse coords to logical coords first
     float logicalX = screenX / m_zoom;
     float logicalY = screenY / m_zoom;
 
-    // Now inverse of worldToScreen (which outputs logical coords)
-    // worldToScreen: screenX = offsetX + (viewport.halfWidth() / zoom)
-    float offsetX = logicalX - (m_viewport.halfWidth() / m_zoom);
-    float offsetY = logicalY - (m_viewport.halfHeight() / m_zoom);
+    // Calculate pixel-snapped top-left (same as worldToScreen uses)
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
+    float cameraTopLeftX = m_position.getX() - (worldViewWidth * 0.5f);
+    float cameraTopLeftY = m_position.getY() - (worldViewHeight * 0.5f);
+    float snappedTopLeftX = std::floor(cameraTopLeftX);
+    float snappedTopLeftY = std::floor(cameraTopLeftY);
 
-    worldX = offsetX + m_position.getX();
-    worldY = offsetY + m_position.getY();
+    // Inverse of worldToScreen: worldPos = screenPos + cameraTopLeft
+    worldX = logicalX + snappedTopLeftX;
+    worldY = logicalY + snappedTopLeftY;
 }
 
 Vector2D Camera::screenToWorld(const Vector2D& screenCoords) const {

@@ -176,28 +176,6 @@ public:
     float getY() const { return m_position.getY(); }
 
     /**
-     * @brief Gets pixel-snapped camera X for tile/world rendering
-     *
-     * Use this for rendering tiles to eliminate sub-pixel artifacts.
-     * The floor() ensures tiles always render at integer pixel positions,
-     * preventing shimmer/jitter when camera moves at sub-pixel increments.
-     *
-     * @return X coordinate floored to integer pixel
-     */
-    float getRenderX() const { return std::floor(m_position.getX()); }
-
-    /**
-     * @brief Gets pixel-snapped camera Y for tile/world rendering
-     *
-     * Use this for rendering tiles to eliminate sub-pixel artifacts.
-     * The floor() ensures tiles always render at integer pixel positions,
-     * preventing shimmer/jitter when camera moves at sub-pixel increments.
-     *
-     * @return Y coordinate floored to integer pixel
-     */
-    float getRenderY() const { return std::floor(m_position.getY()); }
-
-    /**
      * @brief Sets the viewport size
      * @param width Viewport width
      * @param height Viewport height
