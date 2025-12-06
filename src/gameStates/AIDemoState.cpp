@@ -588,7 +588,7 @@ void AIDemoState::render(SDL_Renderer* renderer) {
            << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
     mp_uiMgr->setText("ai_status", status.str());
   }
-  mp_uiMgr->render();
+  mp_uiMgr->render(renderer);
 }
 
 void AIDemoState::setupAIBehaviors() {

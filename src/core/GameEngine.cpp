@@ -626,9 +626,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     return false;
   }
 
-  // Set cached renderer for performance optimization
-  uiMgr.setRenderer(mp_renderer.get());
-  GAMEENGINE_DEBUG("UI Manager initialized successfully with cached renderer");
+  GAMEENGINE_DEBUG("UI Manager initialized successfully");
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());

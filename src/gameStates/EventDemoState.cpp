@@ -742,7 +742,7 @@ void EventDemoState::render(SDL_Renderer* renderer) {
     // Update inventory display
     // updateInventoryUI(); // Now handled by data binding
   }
-  mp_uiMgr->render();
+  mp_uiMgr->render(renderer);
 }
 
 void EventDemoState::setupEventSystem() {
