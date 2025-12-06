@@ -671,22 +671,26 @@ void EventDemoState::render() {
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
 
-  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+  // Get camera view rect for dimensions, use pixel-snapped coords for tile rendering
   HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+  float renderCamX = 0.0f;
+  float renderCamY = 0.0f;
   if (m_camera) {
     cameraView = m_camera->getViewRect();
+    renderCamX = m_camera->getRenderX();  // Pixel-snapped for tiles
+    renderCamY = m_camera->getRenderY();  // Pixel-snapped for tiles
   }
 
   // Set render scale for zoom (scales all world/entity rendering automatically)
   float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   SDL_SetRenderScale(renderer, zoom, zoom);
 
-  // Render world first (background layer) using unified camera position - use cached pointer
+  // Render world first (background layer) using pixel-snapped camera - use cached pointer
   // mp_worldMgr guaranteed valid between enter() and exit()
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
     mp_worldMgr->render(renderer,
-                       cameraView.x,
-                       cameraView.y,
+                       renderCamX,
+                       renderCamY,
                        gameEngine.getLogicalWidth(),
                        gameEngine.getLogicalHeight());
   }
@@ -694,15 +698,15 @@ void EventDemoState::render() {
   // Render background particles first (rain, snow) - behind player/NPCs - use cached pointer
   // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->renderBackground(renderer, cameraView.x, cameraView.y);
+    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
   }
 
-  // Render player using camera-aware rendering
+  // Render player using camera-aware rendering (smooth camera via worldToScreen)
   if (m_player) {
     m_player->render(m_camera.get());
   }
 
-  // Render spawned NPCs using camera-aware rendering
+  // Render spawned NPCs using camera-aware rendering (smooth camera via worldToScreen)
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
       npc->render(m_camera.get());
@@ -712,8 +716,8 @@ void EventDemoState::render() {
   // Render world-space and foreground particles - use cached pointer
   // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->render(renderer, cameraView.x, cameraView.y);
-    mp_particleMgr->renderForeground(renderer, cameraView.x, cameraView.y);
+    mp_particleMgr->render(renderer, renderCamX, renderCamY);
+    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
   }
 
   // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
