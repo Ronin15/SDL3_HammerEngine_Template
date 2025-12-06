@@ -44,10 +44,9 @@ public:
      * @brief Camera configuration structure
      */
     struct Config {
-        float followSpeed{5.0f};        // Speed of camera interpolation when following
-        float deadZoneRadius{32.0f};    // Dead zone around target (no movement if target within this)
-        float maxFollowDistance{200.0f}; // Maximum distance camera can be from target
-        float smoothingFactor{0.85f};   // Smoothing factor for interpolation (0-1)
+        float smoothTime{0.15f};        // Time to reach target (seconds) - lower = snappier
+        float deadZoneRadius{0.0f};     // Dead zone around target (no movement if target within this)
+        float maxSpeed{1000.0f};        // Maximum camera speed (pixels/second)
         bool clampToWorldBounds{true};  // Whether to clamp camera to world bounds
 
         // Zoom configuration
@@ -56,10 +55,7 @@ public:
 
         // Validation
         bool isValid() const {
-            if (followSpeed <= 0.0f || deadZoneRadius < 0.0f || maxFollowDistance <= 0.0f) {
-                return false;
-            }
-            if (smoothingFactor < 0.0f || smoothingFactor > 1.0f) {
+            if (smoothTime <= 0.0f || deadZoneRadius < 0.0f || maxSpeed <= 0.0f) {
                 return false;
             }
             if (zoomLevels.empty()) {
@@ -284,7 +280,30 @@ public:
      * @return View rectangle for culling and rendering
      */
     ViewRect getViewRect() const;
-    
+
+    /**
+     * @brief Gets the pixel-snapped render offset for this frame
+     *
+     * Returns the authoritative camera offset that ALL rendering operations
+     * should use (tiles, entities, particles). Using this single cached value
+     * prevents 1-pixel drift between different rendered elements.
+     *
+     * The offset is computed once per frame (on first call) and cached.
+     *
+     * @param offsetX Output: pixel-snapped camera X offset (top-left)
+     * @param offsetY Output: pixel-snapped camera Y offset (top-left)
+     */
+    void getRenderOffset(float& offsetX, float& offsetY) const;
+
+    /**
+     * @brief Invalidates the cached render offset
+     *
+     * Call at the start of each frame (before camera update) to ensure
+     * fresh calculation. The offset will be recalculated on first
+     * getRenderOffset() call.
+     */
+    void invalidateRenderOffset() { m_renderOffsetValid = false; }
+
     /**
      * @brief Checks if a point is visible in the camera view
      * @param x Point X coordinate
@@ -438,8 +457,14 @@ private:
     float m_zoom{1.0f};              // Current zoom level (1.0 = native)
     int m_currentZoomIndex{0};       // Index into ZOOM_LEVELS array
 
-    // Pre-calculated values for performance (avoid per-frame expensive operations)
-    float m_smoothingK{0.1625f};     // -log(smoothingFactor), recalculated when config changes
+    // Smooth follow velocity (for critically damped spring algorithm)
+    Vector2D m_velocity{0.0f, 0.0f}; // Current camera velocity for smooth damping
+
+    // Cached pixel-snapped render offset (computed once per frame for consistency)
+    // All rendering (tiles, entities, particles) uses this same offset to prevent drift
+    mutable float m_cachedRenderOffsetX{0.0f};
+    mutable float m_cachedRenderOffsetY{0.0f};
+    mutable bool m_renderOffsetValid{false};
 
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead

@@ -102,15 +102,18 @@ void Camera::update(float deltaTime) {
             }
         }
 
-        // Smooth exponential interpolation toward target
-        // alpha = k * dt / (1 + k * dt) where k = -ln(smoothingFactor) * followSpeed
-        const float k = m_smoothingK * std::max(0.0f, m_config.followSpeed);
-        const float kdt = k * std::max(0.0f, deltaTime);
-        const float alpha = std::clamp(kdt / (1.0f + kdt), 0.0f, 1.0f);
+        // Exponential smoothing - simple, stateless camera follow
+        // No velocity state means no momentum artifacts when changing direction
+        const float smoothTime = std::max(0.0001f, m_config.smoothTime);
 
-        // Interpolate toward ideal position
-        float newX = m_position.getX() + (idealPosition.getX() - m_position.getX()) * alpha;
-        float newY = m_position.getY() + (idealPosition.getY() - m_position.getY()) * alpha;
+        // Exponential decay factor: how much of the gap remains after this frame
+        // decay approaches 0 as deltaTime increases (camera catches up faster)
+        // decay approaches 1 as deltaTime decreases (camera moves less per frame)
+        float decay = std::exp(-deltaTime / smoothTime);
+
+        // Smoothly approach target: newPos = target + (current - target) * decay
+        float newX = idealPosition.getX() + (m_position.getX() - idealPosition.getX()) * decay;
+        float newY = idealPosition.getY() + (m_position.getY() - idealPosition.getY()) * decay;
 
         m_position.setX(newX);
         m_position.setY(newY);
@@ -249,11 +252,8 @@ bool Camera::hasTarget() const {
 bool Camera::setConfig(const Config& config) {
     if (config.isValid()) {
         m_config = config;
-        // Pre-calculate smoothing constant to avoid per-frame std::log() call
-        // m_smoothingK = -log(smoothingFactor) for the fast approximation
-        const float sf = std::clamp(m_config.smoothingFactor, 0.01f, 0.99f);
-        m_smoothingK = -std::log(sf);
-        CAMERA_INFO("Camera configuration updated");
+        CAMERA_INFO("Camera configuration updated (smoothTime=" +
+                    std::to_string(m_config.smoothTime) + "s)");
         return true;
     } else {
         CAMERA_WARN("Invalid camera configuration provided");
@@ -277,6 +277,24 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
+void Camera::getRenderOffset(float& offsetX, float& offsetY) const {
+    if (!m_renderOffsetValid) {
+        // Calculate top-left of visible area in world coordinates
+        float worldViewWidth = m_viewport.width / m_zoom;
+        float worldViewHeight = m_viewport.height / m_zoom;
+
+        // Keep sub-pixel precision - no floor()!
+        // SDL3 GPU rendering handles sub-pixel positions via bilinear filtering.
+        // This ensures tiles and entities move together smoothly during camera tracking.
+        m_cachedRenderOffsetX = m_position.getX() - (worldViewWidth * 0.5f);
+        m_cachedRenderOffsetY = m_position.getY() - (worldViewHeight * 0.5f);
+        m_renderOffsetValid = true;
+    }
+
+    offsetX = m_cachedRenderOffsetX;
+    offsetY = m_cachedRenderOffsetY;
+}
+
 bool Camera::isPointVisible(float x, float y) const {
     ViewRect view = getViewRect();
     return x >= view.left() && x <= view.right() && 
@@ -296,21 +314,13 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // Calculate top-left of visible area (same formula as getViewRect)
-    float worldViewWidth = m_viewport.width / m_zoom;
-    float worldViewHeight = m_viewport.height / m_zoom;
-    float cameraTopLeftX = m_position.getX() - (worldViewWidth * 0.5f);
-    float cameraTopLeftY = m_position.getY() - (worldViewHeight * 0.5f);
-
-    // Pixel-snap the top-left to match tile rendering
-    // This ensures entities align with tiles when camera moves at sub-pixel increments
-    float snappedTopLeftX = std::floor(cameraTopLeftX);
-    float snappedTopLeftY = std::floor(cameraTopLeftY);
+    // Use cached render offset - ensures entities use SAME offset as tiles
+    float offsetX, offsetY;
+    getRenderOffset(offsetX, offsetY);
 
     // Transform world position to screen position
-    // screenPos = worldPos - cameraTopLeft (pixel-snapped to match tiles)
-    screenX = worldX - snappedTopLeftX;
-    screenY = worldY - snappedTopLeftY;
+    screenX = worldX - offsetX;
+    screenY = worldY - offsetY;
 }
 
 void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& worldY) const {
@@ -319,17 +329,13 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     float logicalX = screenX / m_zoom;
     float logicalY = screenY / m_zoom;
 
-    // Calculate pixel-snapped top-left (same as worldToScreen uses)
-    float worldViewWidth = m_viewport.width / m_zoom;
-    float worldViewHeight = m_viewport.height / m_zoom;
-    float cameraTopLeftX = m_position.getX() - (worldViewWidth * 0.5f);
-    float cameraTopLeftY = m_position.getY() - (worldViewHeight * 0.5f);
-    float snappedTopLeftX = std::floor(cameraTopLeftX);
-    float snappedTopLeftY = std::floor(cameraTopLeftY);
+    // Use cached render offset - consistent with worldToScreen
+    float offsetX, offsetY;
+    getRenderOffset(offsetX, offsetY);
 
-    // Inverse of worldToScreen: worldPos = screenPos + cameraTopLeft
-    worldX = logicalX + snappedTopLeftX;
-    worldY = logicalY + snappedTopLeftY;
+    // Inverse of worldToScreen: worldPos = screenPos + cameraOffset
+    worldX = logicalX + offsetX;
+    worldY = logicalY + offsetY;
 }
 
 Vector2D Camera::screenToWorld(const Vector2D& screenCoords) const {
@@ -554,6 +560,9 @@ void Camera::zoomIn() {
         m_currentZoomIndex++;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
+        // Invalidate cached render offset since zoom affects the calculation
+        invalidateRenderOffset();
+
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
             fireZoomChangedEvent(oldZoom, m_zoom);
@@ -571,6 +580,9 @@ void Camera::zoomOut() {
         float oldZoom = m_zoom;
         m_currentZoomIndex--;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
+
+        // Invalidate cached render offset since zoom affects the calculation
+        invalidateRenderOffset();
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
@@ -596,6 +608,9 @@ bool Camera::setZoomLevel(int levelIndex) {
         float oldZoom = m_zoom;
         m_currentZoomIndex = levelIndex;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
+
+        // Invalidate cached render offset since zoom affects the calculation
+        invalidateRenderOffset();
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {

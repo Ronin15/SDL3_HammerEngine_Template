@@ -224,17 +224,16 @@ void GamePlayState::render(SDL_Renderer* renderer) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // Get camera view rect for world rendering
-  // viewRect.x/y = top-left corner of visible area (pixel-snapped for tiles)
-  // Player uses camera->worldToScreen() for smooth sub-pixel motion
+  // Get camera view rect and UNIFIED render offset for this frame
+  // All rendering (tiles, entities, particles) uses the SAME cached offset
+  // to prevent 1-pixel drift between elements during camera movement
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
   if (m_camera) {
     viewRect = m_camera->getViewRect();
-    renderCamX = std::floor(viewRect.x);  // Top-left corner, pixel-snapped for tiles
-    renderCamY = std::floor(viewRect.y);  // Top-left corner, pixel-snapped for tiles
+    m_camera->getRenderOffset(renderCamX, renderCamY);  // Cached pixel-snapped offset
     zoom = m_camera->getZoom();
   }
 
@@ -710,12 +709,12 @@ void GamePlayState::initializeCamera() {
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for smooth following
+    // Using critically damped spring (SmoothDamp) for smooth, non-oscillating follow
     HammerEngine::Camera::Config config;
-    config.followSpeed = 8.0f;         // Faster follow for action gameplay
+    config.smoothTime = 0.12f;         // Time to reach target (lower = snappier, 0.1-0.3 typical)
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.80f;    // Quicker response smoothing
-    config.maxFollowDistance = 9999.0f; // No distance limit
-    config.clampToWorldBounds = true;  // ENABLE clamping - player is now bounded so no jitter
+    config.maxSpeed = 800.0f;          // Max camera speed in pixels/second
+    config.clampToWorldBounds = true;  // Keep camera within world bounds
     m_camera->setConfig(config);
 
     // Camera auto-synchronizes world bounds on update
@@ -725,6 +724,10 @@ void GamePlayState::initializeCamera() {
 void GamePlayState::updateCamera(float deltaTime) {
   // Defensive null check (camera always initialized in enter(), but kept for safety)
   if (m_camera) {
+    // Invalidate cached render offset before updating camera position
+    // This ensures fresh calculation for the upcoming render frame
+    m_camera->invalidateRenderOffset();
+
     // Sync viewport with current window size (handles resize events)
     m_camera->syncViewportWithEngine();
 

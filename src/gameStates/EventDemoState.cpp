@@ -677,8 +677,7 @@ void EventDemoState::render(SDL_Renderer* renderer) {
   float renderCamY = 0.0f;
   if (m_camera) {
     cameraView = m_camera->getViewRect();
-    renderCamX = std::floor(cameraView.x);  // Top-left corner, pixel-snapped for tiles
-    renderCamY = std::floor(cameraView.y);  // Top-left corner, pixel-snapped for tiles
+    m_camera->getRenderOffset(renderCamX, renderCamY);  // Cached pixel-snapped offset
   }
 
   // Set render scale for zoom (scales all world/entity rendering automatically)
@@ -1994,12 +1993,12 @@ void EventDemoState::initializeCamera() {
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following (match GamePlayState)
+    // Using critically damped spring (SmoothDamp) for smooth, non-oscillating follow
     HammerEngine::Camera::Config config;
-    config.followSpeed = 8.0f;         // Faster follow for action gameplay
+    config.smoothTime = 0.12f;         // Time to reach target (lower = snappier)
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.80f;    // Quicker response smoothing
-    config.maxFollowDistance = 9999.0f; // No distance limit
-    config.clampToWorldBounds = true; // Keep camera within world
+    config.maxSpeed = 800.0f;          // Max camera speed in pixels/second
+    config.clampToWorldBounds = true;  // Keep camera within world
     m_camera->setConfig(config);
 
     // Camera auto-synchronizes world bounds on update
@@ -2008,6 +2007,9 @@ void EventDemoState::initializeCamera() {
 
 void EventDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
+    // Invalidate cached render offset for fresh calculation this frame
+    m_camera->invalidateRenderOffset();
+
     // Sync viewport with current window size (handles resize events)
     m_camera->syncViewportWithEngine();
 
