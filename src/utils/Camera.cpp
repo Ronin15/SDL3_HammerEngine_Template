@@ -71,7 +71,7 @@ void Camera::update(float deltaTime) {
         }
     }
 
-    // Smooth follow mode using configured parameters
+    // Smooth follow mode - camera smoothly tracks target position
     if (m_mode == Mode::Follow && hasTarget()) {
         Vector2D targetPos = getTargetPosition();
 
@@ -102,45 +102,18 @@ void Camera::update(float deltaTime) {
             }
         }
 
-        // Offset from current to ideal
-        const float dx = idealPosition.getX() - m_position.getX();
-        const float dy = idealPosition.getY() - m_position.getY();
-        const float distanceSq = dx * dx + dy * dy;
+        // Smooth exponential interpolation toward target
+        // alpha = k * dt / (1 + k * dt) where k = -ln(smoothingFactor) * followSpeed
+        const float k = m_smoothingK * std::max(0.0f, m_config.followSpeed);
+        const float kdt = k * std::max(0.0f, deltaTime);
+        const float alpha = std::clamp(kdt / (1.0f + kdt), 0.0f, 1.0f);
 
-        // Dead zone from config to avoid micro-oscillations
-        // Use squared comparisons to avoid sqrt
-        const float deadZone = std::max(0.0f, m_config.deadZoneRadius);
-        const float deadZoneSq = deadZone * deadZone;
+        // Interpolate toward ideal position
+        float newX = m_position.getX() + (idealPosition.getX() - m_position.getX()) * alpha;
+        float newY = m_position.getY() + (idealPosition.getY() - m_position.getY()) * alpha;
 
-        if (distanceSq > deadZoneSq) [[likely]] {
-            // Fast exponential smoothing approximation (C++20 optimized)
-            // Original: alpha = 1 - smoothingFactor^(dt * followSpeed)
-            // Approximation: alpha ≈ k * dt / (1 + k * dt) where k = -ln(smoothingFactor) * followSpeed
-            // m_smoothingK is pre-calculated in setConfig() as -log(smoothingFactor)
-            const float k = m_smoothingK * std::max(0.0f, m_config.followSpeed);
-            const float kdt = k * std::max(0.0f, deltaTime);
-            const float alpha = std::clamp(kdt / (1.0f + kdt), 0.0f, 1.0f);
-
-            float newX = m_position.getX() + dx * alpha;
-            float newY = m_position.getY() + dy * alpha;
-
-            // If we would end up inside the dead zone, stop at its edge
-            // Use squared distance comparison to avoid sqrt in common case
-            const float ndx = idealPosition.getX() - newX;
-            const float ndy = idealPosition.getY() - newY;
-            const float newDistanceSq = ndx * ndx + ndy * ndy;
-
-            if (newDistanceSq < deadZoneSq && distanceSq > 0.0f) [[unlikely]] {
-                // Need actual distance only when stopping at edge (rare)
-                const float distance = std::sqrt(distanceSq);
-                const float ratio = (distance - deadZone) / distance;
-                newX = m_position.getX() + dx * ratio;
-                newY = m_position.getY() + dy * ratio;
-            }
-
-            m_position.setX(newX);
-            m_position.setY(newY);
-        }
+        m_position.setX(newX);
+        m_position.setY(newY);
     }
 
     // Ensure final camera position respects world bounds across all modes
@@ -294,6 +267,8 @@ Camera::ViewRect Camera::getViewRect() const {
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
+    // Use full floating-point precision for smooth sub-pixel camera movement
+    // Tile pixel-snapping is handled in TextureManager::drawTileF() to prevent shimmer
     return ViewRect{
         m_position.getX() - (worldViewWidth * 0.5f),
         m_position.getY() - (worldViewHeight * 0.5f),
