@@ -225,16 +225,16 @@ void GamePlayState::render(SDL_Renderer* renderer) {
   auto &gameEngine = GameEngine::Instance();
 
   // Get camera view rect for world rendering
-  // Use getRenderX/Y (pixel-snapped) for tiles to prevent sub-pixel artifacts
-  // Use getX/Y (float) for player to allow smooth sub-pixel motion
+  // viewRect.x/y = top-left corner of visible area (pixel-snapped for tiles)
+  // Player uses camera->worldToScreen() for smooth sub-pixel motion
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
   if (m_camera) {
     viewRect = m_camera->getViewRect();
-    renderCamX = m_camera->getRenderX();  // Pixel-snapped for tiles
-    renderCamY = m_camera->getRenderY();  // Pixel-snapped for tiles
+    renderCamX = std::floor(viewRect.x);  // Top-left corner, pixel-snapped for tiles
+    renderCamY = std::floor(viewRect.y);  // Top-left corner, pixel-snapped for tiles
     zoom = m_camera->getZoom();
   }
 

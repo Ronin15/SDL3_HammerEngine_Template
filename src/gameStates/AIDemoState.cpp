@@ -537,14 +537,15 @@ void AIDemoState::render(SDL_Renderer* renderer) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // Get camera view rect for dimensions, use pixel-snapped coords for tile rendering
+  // Get camera view rect for dimensions
+  // viewRect.x/y = top-left corner of visible area (pixel-snapped for tiles)
   HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   if (m_camera) {
     cameraView = m_camera->getViewRect();
-    renderCamX = m_camera->getRenderX();  // Pixel-snapped for tiles
-    renderCamY = m_camera->getRenderY();  // Pixel-snapped for tiles
+    renderCamX = std::floor(cameraView.x);  // Top-left corner, pixel-snapped for tiles
+    renderCamY = std::floor(cameraView.y);  // Top-left corner, pixel-snapped for tiles
   }
 
   // Set render scale for zoom (scales all world/entity rendering automatically)
