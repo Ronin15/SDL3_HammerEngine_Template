@@ -225,40 +225,47 @@ void GamePlayState::render() {
   auto &gameEngine = GameEngine::Instance();
   SDL_Renderer *renderer = gameEngine.getRenderer();
 
-  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
+  // Get camera view rect for world rendering
+  // Use getRenderX/Y (pixel-snapped) for tiles to prevent sub-pixel artifacts
+  // Use getX/Y (float) for player to allow smooth sub-pixel motion
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
+  float renderCamX = 0.0f;
+  float renderCamY = 0.0f;
+  float zoom = 1.0f;
   if (m_camera) {
     viewRect = m_camera->getViewRect();
+    renderCamX = m_camera->getRenderX();  // Pixel-snapped for tiles
+    renderCamY = m_camera->getRenderY();  // Pixel-snapped for tiles
+    zoom = m_camera->getZoom();
   }
 
   // Set render scale for zoom (scales all world/entity rendering automatically)
-  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   SDL_SetRenderScale(renderer, zoom, zoom);
 
   // Render background particles (rain, snow) BEFORE world - use cached pointer
   // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->renderBackground(renderer, viewRect.x, viewRect.y);
+    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
   }
 
-  // Render world using camera coordinate transformations - use cached pointer
+  // Render world using pixel-snapped camera coordinates - use cached pointer
   // mp_worldMgr guaranteed valid between enter() and exit()
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
     mp_worldMgr->render(renderer,
-                       viewRect.x, viewRect.y,  // Camera view area
+                       renderCamX, renderCamY,  // Pixel-snapped camera
                        viewRect.width, viewRect.height);
   }
 
-  // Render player using camera coordinate transformations
+  // Render player using smooth camera coordinates (allows sub-pixel motion)
   if (mp_Player && m_camera) {
-    mp_Player->render(m_camera.get());  // Pass camera for coordinate transformation
+    mp_Player->render(m_camera.get());
   }
 
   // Render world-space and foreground particles (after player) - use cached pointer
   // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->render(renderer, viewRect.x, viewRect.y);
-    mp_particleMgr->renderForeground(renderer, viewRect.x, viewRect.y);
+    mp_particleMgr->render(renderer, renderCamX, renderCamY);
+    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
   }
 
   // Render day/night overlay tint (after particles, before UI)
