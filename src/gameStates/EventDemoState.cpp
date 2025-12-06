@@ -2007,9 +2007,6 @@ void EventDemoState::initializeCamera() {
 
 void EventDemoState::updateCamera(float deltaTime) {
   if (m_camera) {
-    // Invalidate cached render offset for fresh calculation this frame
-    m_camera->invalidateRenderOffset();
-
     // Sync viewport with current window size (handles resize events)
     m_camera->syncViewportWithEngine();
 
