@@ -105,25 +105,34 @@ void Camera::update(float deltaTime) {
         // Offset from current to ideal
         const float dx = idealPosition.getX() - m_position.getX();
         const float dy = idealPosition.getY() - m_position.getY();
-        const float distance = std::sqrt(dx * dx + dy * dy);
+        const float distanceSq = dx * dx + dy * dy;
 
         // Dead zone from config to avoid micro-oscillations
+        // Use squared comparisons to avoid sqrt
         const float deadZone = std::max(0.0f, m_config.deadZoneRadius);
-        if (distance > deadZone) {
-            // Exponential smoothing with configurable responsiveness
-            // alpha = 1 - smoothingFactor^(dt * followSpeed)
-            float alpha = 1.0f - std::pow(std::clamp(m_config.smoothingFactor, 0.0f, 1.0f),
-                                          std::max(0.0f, deltaTime * std::max(0.0f, m_config.followSpeed)));
-            alpha = std::clamp(alpha, 0.0f, 1.0f);
+        const float deadZoneSq = deadZone * deadZone;
+
+        if (distanceSq > deadZoneSq) [[likely]] {
+            // Fast exponential smoothing approximation (C++20 optimized)
+            // Original: alpha = 1 - smoothingFactor^(dt * followSpeed)
+            // Approximation: alpha ≈ k * dt / (1 + k * dt) where k = -ln(smoothingFactor) * followSpeed
+            // m_smoothingK is pre-calculated in setConfig() as -log(smoothingFactor)
+            const float k = m_smoothingK * std::max(0.0f, m_config.followSpeed);
+            const float kdt = k * std::max(0.0f, deltaTime);
+            const float alpha = std::clamp(kdt / (1.0f + kdt), 0.0f, 1.0f);
 
             float newX = m_position.getX() + dx * alpha;
             float newY = m_position.getY() + dy * alpha;
 
             // If we would end up inside the dead zone, stop at its edge
+            // Use squared distance comparison to avoid sqrt in common case
             const float ndx = idealPosition.getX() - newX;
             const float ndy = idealPosition.getY() - newY;
-            const float newDistance = std::sqrt(ndx * ndx + ndy * ndy);
-            if (newDistance < deadZone && distance > 0.0f) {
+            const float newDistanceSq = ndx * ndx + ndy * ndy;
+
+            if (newDistanceSq < deadZoneSq && distanceSq > 0.0f) [[unlikely]] {
+                // Need actual distance only when stopping at edge (rare)
+                const float distance = std::sqrt(distanceSq);
                 const float ratio = (distance - deadZone) / distance;
                 newX = m_position.getX() + dx * ratio;
                 newY = m_position.getY() + dy * ratio;
@@ -131,8 +140,8 @@ void Camera::update(float deltaTime) {
 
             m_position.setX(newX);
             m_position.setY(newY);
+        }
     }
-}
 
     // Ensure final camera position respects world bounds across all modes
     if (m_config.clampToWorldBounds) {
@@ -267,6 +276,10 @@ bool Camera::hasTarget() const {
 bool Camera::setConfig(const Config& config) {
     if (config.isValid()) {
         m_config = config;
+        // Pre-calculate smoothing constant to avoid per-frame std::log() call
+        // m_smoothingK = -log(smoothingFactor) for the fast approximation
+        const float sf = std::clamp(m_config.smoothingFactor, 0.01f, 0.99f);
+        m_smoothingK = -std::log(sf);
         CAMERA_INFO("Camera configuration updated");
         return true;
     } else {
@@ -483,16 +496,14 @@ Vector2D Camera::lerp(const Vector2D& a, const Vector2D& b, float t) const {
 }
 
 Vector2D Camera::generateShakeOffset() const {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
-    
-    float normalizedTime = 1.0f - (m_shakeTimeRemaining / std::max(m_shakeTimeRemaining + 0.1f, 0.1f));
-    float currentIntensity = m_shakeIntensity * (1.0f - normalizedTime); // Fade out over time
-    
+    // Per CLAUDE.md: Use member vars instead of static for thread safety
+    const float normalizedTime = 1.0f - (m_shakeTimeRemaining / std::max(m_shakeTimeRemaining + 0.1f, 0.1f));
+    const float currentIntensity = m_shakeIntensity * (1.0f - normalizedTime); // Fade out over time
+
+    // Use member RNG and distribution for thread safety and performance
     return Vector2D{
-        dis(gen) * currentIntensity,
-        dis(gen) * currentIntensity
+        m_shakeDist(m_shakeRng) * currentIntensity,
+        m_shakeDist(m_shakeRng) * currentIntensity
     };
 }
 

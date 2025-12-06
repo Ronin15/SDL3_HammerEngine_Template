@@ -11,6 +11,7 @@
 #include <memory>
 #include <functional>
 #include <cstdint>
+#include <random>
 
 // Forward declarations
 class Entity;
@@ -436,6 +437,14 @@ private:
     // Zoom state
     float m_zoom{1.0f};              // Current zoom level (1.0 = native)
     int m_currentZoomIndex{0};       // Index into ZOOM_LEVELS array
+
+    // Pre-calculated values for performance (avoid per-frame expensive operations)
+    float m_smoothingK{0.1625f};     // -log(smoothingFactor), recalculated when config changes
+
+    // Shake random number generation (mutable for const generateShakeOffset)
+    // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead
+    mutable std::mt19937 m_shakeRng{std::random_device{}()};
+    mutable std::uniform_real_distribution<float> m_shakeDist{-1.0f, 1.0f};
 
     // Internal helper methods
     void updateFollowMode(float deltaTime);

@@ -21,13 +21,15 @@ using namespace HammerEngine::SIMD;
 
 // Helper struct for batch rendering buffers - pre-sized for zero allocations
 struct BatchRenderBuffers {
-    static constexpr size_t MAX_RECTS_PER_BATCH = 2048;
-    static constexpr size_t XY_STRIDE = 6 * 2;    // 6 verts * 2 floats (x,y)
-    static constexpr size_t COL_STRIDE = 6;       // 6 verts
+    static constexpr std::size_t MAX_RECTS_PER_BATCH = 2048;
+    static constexpr std::size_t VERTS_PER_QUAD = 6;      // 2 triangles × 3 verts
+    static constexpr std::size_t FLOATS_PER_VERT = 2;     // x, y
+    static constexpr std::size_t XY_STRIDE = VERTS_PER_QUAD * FLOATS_PER_VERT;
+    static constexpr std::size_t COL_STRIDE = VERTS_PER_QUAD;
 
     std::vector<float> xy;
     std::vector<SDL_FColor> cols;
-    size_t vertexCount{0};
+    std::size_t vertexCount{0};
 
     BatchRenderBuffers() {
         // Pre-size vectors to avoid any allocations during rendering
@@ -36,23 +38,23 @@ struct BatchRenderBuffers {
     }
 
     // Reset for new batch (no allocation, just counter reset)
-    void reset() {
+    constexpr void reset() noexcept {
         vertexCount = 0;
     }
 
     // Get vertex count for SDL_RenderGeometryRaw
-    [[nodiscard]] int getVertexCount() const {
+    [[nodiscard]] constexpr int getVertexCount() const noexcept {
         return static_cast<int>(vertexCount);
     }
 
     // Safe and fast quad append - uses pre-sized buffer with bounds guarantee
     // quadCount must be < MAX_RECTS_PER_BATCH (enforced by caller's flush logic)
-    void appendQuad(float x0, float y0, float x1, float y1,
-                    float x2, float y2, float x3, float y3,
-                    const SDL_FColor& col) {
+    void appendQuad(const float x0, const float y0, const float x1, const float y1,
+                    const float x2, const float y2, const float x3, const float y3,
+                    const SDL_FColor& col) noexcept {
         // Calculate base indices - safe because quadCount < MAX_RECTS_PER_BATCH
-        const size_t xyBase = vertexCount * 2;
-        const size_t colBase = vertexCount;
+        const std::size_t xyBase = vertexCount * FLOATS_PER_VERT;
+        const std::size_t colBase = vertexCount;
 
         // Triangle 1: v0, v1, v2
         xy[xyBase]      = x0; xy[xyBase + 1]  = y0;
@@ -68,7 +70,7 @@ struct BatchRenderBuffers {
         cols[colBase + 2] = col; cols[colBase + 3] = col;
         cols[colBase + 4] = col; cols[colBase + 5] = col;
 
-        vertexCount += 6;
+        vertexCount += VERTS_PER_QUAD;
     }
 };
 
