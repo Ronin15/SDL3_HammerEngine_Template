@@ -278,21 +278,15 @@ Camera::ViewRect Camera::getViewRect() const {
 }
 
 void Camera::getRenderOffset(float& offsetX, float& offsetY) const {
-    if (!m_renderOffsetValid) {
-        // Calculate top-left of visible area in world coordinates
-        float worldViewWidth = m_viewport.width / m_zoom;
-        float worldViewHeight = m_viewport.height / m_zoom;
+    // Calculate fresh each call - no caching, no stale data
+    // This eliminates timing bugs where cache invalidation happened before
+    // camera position updates, causing 1-frame desync between tiles and entities.
+    // Performance impact is negligible (2 divisions, 2 subtractions per frame).
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
 
-        // Keep sub-pixel precision - no floor()!
-        // SDL3 GPU rendering handles sub-pixel positions via bilinear filtering.
-        // This ensures tiles and entities move together smoothly during camera tracking.
-        m_cachedRenderOffsetX = m_position.getX() - (worldViewWidth * 0.5f);
-        m_cachedRenderOffsetY = m_position.getY() - (worldViewHeight * 0.5f);
-        m_renderOffsetValid = true;
-    }
-
-    offsetX = m_cachedRenderOffsetX;
-    offsetY = m_cachedRenderOffsetY;
+    offsetX = m_position.getX() - (worldViewWidth * 0.5f);
+    offsetY = m_position.getY() - (worldViewHeight * 0.5f);
 }
 
 bool Camera::isPointVisible(float x, float y) const {
