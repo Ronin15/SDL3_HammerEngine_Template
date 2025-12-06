@@ -60,6 +60,10 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
 }
 
 void Camera::update(float deltaTime) {
+    // Store previous position BEFORE updating for render interpolation
+    // This enables smooth camera at any refresh rate with fixed 60Hz updates
+    m_previousPosition = m_position;
+
     // Update camera shake first (no-ops if inactive)
     if (m_shakeTimeRemaining > 0.0f) {
         m_shakeTimeRemaining -= deltaTime;
@@ -296,16 +300,20 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
-void Camera::getRenderOffset(float& offsetX, float& offsetY) const {
-    // Calculate fresh each call - no caching, no stale data
-    // This eliminates timing bugs where cache invalidation happened before
-    // camera position updates, causing 1-frame desync between tiles and entities.
-    // Performance impact is negligible (2 divisions, 2 subtractions per frame).
+void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+    // Interpolate between previous and current position for smooth rendering
+    // at any refresh rate with fixed 60Hz game updates.
+    // interpolationAlpha: 0.0 = at previous position, 1.0 = at current position
+    float interpX = m_previousPosition.getX() +
+                    (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha;
+    float interpY = m_previousPosition.getY() +
+                    (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha;
+
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    offsetX = m_position.getX() - (worldViewWidth * 0.5f);
-    offsetY = m_position.getY() - (worldViewHeight * 0.5f);
+    offsetX = interpX - (worldViewWidth * 0.5f);
+    offsetY = interpY - (worldViewHeight * 0.5f);
 }
 
 bool Camera::isPointVisible(float x, float y) const {
@@ -573,9 +581,6 @@ void Camera::zoomIn() {
         m_currentZoomIndex++;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
-        // Invalidate cached render offset since zoom affects the calculation
-        invalidateRenderOffset();
-
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
             fireZoomChangedEvent(oldZoom, m_zoom);
@@ -593,9 +598,6 @@ void Camera::zoomOut() {
         float oldZoom = m_zoom;
         m_currentZoomIndex--;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
-
-        // Invalidate cached render offset since zoom affects the calculation
-        invalidateRenderOffset();
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {
@@ -621,9 +623,6 @@ bool Camera::setZoomLevel(int levelIndex) {
         float oldZoom = m_zoom;
         m_currentZoomIndex = levelIndex;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
-
-        // Invalidate cached render offset since zoom affects the calculation
-        invalidateRenderOffset();
 
         // Fire zoom changed event if enabled
         if (m_eventFiringEnabled) {

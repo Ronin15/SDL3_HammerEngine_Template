@@ -92,11 +92,11 @@ void GameStateManager::update(float deltaTime) {
   }
 }
 
-void GameStateManager::render(SDL_Renderer* renderer) {
+void GameStateManager::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Only render the current active state (top of stack)
   // Pause functionality preserves the previous state but doesn't render it
   if (!m_activeStates.empty()) {
-    m_activeStates.back()->render(renderer);
+    m_activeStates.back()->render(renderer, interpolationAlpha);
   }
 }
 

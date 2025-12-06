@@ -61,7 +61,7 @@ void OverlayDemoState::update(float deltaTime) {
     m_transitionTimer += deltaTime;
 }
 
-void OverlayDemoState::render(SDL_Renderer* renderer) {
+void OverlayDemoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {

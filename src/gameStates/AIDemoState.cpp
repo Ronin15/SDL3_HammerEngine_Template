@@ -533,18 +533,18 @@ void AIDemoState::update(float deltaTime) {
   }
 }
 
-void AIDemoState::render(SDL_Renderer* renderer) {
+void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // Get camera view rect and UNIFIED render offset for this frame
-  // All rendering uses the SAME cached offset to prevent drift
+  // Get camera view rect and INTERPOLATED render offset for this frame
+  // Interpolation enables smooth camera at any refresh rate with fixed 60Hz updates
   HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   if (m_camera) {
     cameraView = m_camera->getViewRect();
-    m_camera->getRenderOffset(renderCamX, renderCamY);  // Cached pixel-snapped offset
+    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);  // Interpolated offset
   }
 
   // Set render scale for zoom (scales all world/entity rendering automatically)

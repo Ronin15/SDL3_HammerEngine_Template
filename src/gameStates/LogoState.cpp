@@ -39,7 +39,7 @@ void LogoState::update(float deltaTime) {
     }
   }
 }
-void LogoState::render(SDL_Renderer* renderer) {
+void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
   GameEngine& gameEngine = GameEngine::Instance();

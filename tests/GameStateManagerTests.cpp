@@ -28,7 +28,7 @@ public:
         m_lastDeltaTime = deltaTime;
     }
     
-    void render([[maybe_unused]] SDL_Renderer* renderer) override {
+    void render([[maybe_unused]] SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha = 1.0f) override {
         m_renderCalled = true;
     }
     

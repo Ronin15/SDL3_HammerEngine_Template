@@ -105,7 +105,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
     }
 }
 
-void LoadingState::render(SDL_Renderer* renderer) {
+void LoadingState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     // All rendering happens through GameEngine::render() -> this method
     // No manual SDL_RenderClear() or SDL_RenderPresent() calls needed!
 

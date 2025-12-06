@@ -57,7 +57,7 @@ bool PauseState::enter() {
 void PauseState::update([[maybe_unused]] float deltaTime) {
 }
 
-void PauseState::render(SDL_Renderer* renderer) {
+void PauseState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
 
     // Update and render UI components through UIManager
