@@ -39,12 +39,11 @@ void LogoState::update(float deltaTime) {
     }
   }
 }
-void LogoState::render() {
+void LogoState::render(SDL_Renderer* renderer) {
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
   GameEngine& gameEngine = GameEngine::Instance();
   FontManager& fontMgr = FontManager::Instance();
-  SDL_Renderer* renderer = gameEngine.getRenderer();
   // Use logical rendering dimensions for proper UI positioning in all display modes
   int windowWidth = gameEngine.getLogicalWidth();
   int windowHeight = gameEngine.getLogicalHeight();

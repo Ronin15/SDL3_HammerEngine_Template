@@ -474,10 +474,9 @@ void AdvancedAIDemoState::update(float deltaTime) {
     }
 }
 
-void AdvancedAIDemoState::render() {
-    // Get renderer using the standard pattern
+void AdvancedAIDemoState::render(SDL_Renderer* renderer) {
+    // Get GameEngine for logical dimensions (renderer now passed as parameter)
     auto& gameEngine = GameEngine::Instance();
-    SDL_Renderer* renderer = gameEngine.getRenderer();
 
     // Get camera view rect for dimensions, use pixel-snapped coords for tile rendering
     HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};

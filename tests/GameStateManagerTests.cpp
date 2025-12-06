@@ -28,8 +28,8 @@ public:
         m_lastDeltaTime = deltaTime;
     }
     
-    void render() override { 
-        m_renderCalled = true; 
+    void render([[maybe_unused]] SDL_Renderer* renderer) override {
+        m_renderCalled = true;
     }
     
     void handleInput() override { 
@@ -232,7 +232,7 @@ BOOST_AUTO_TEST_CASE(TestRender) {
     state2Ptr->resetFlags();
     
     // Render should only call render on the top (current) active state
-    manager.render();
+    manager.render(nullptr);
     
     BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
     BOOST_CHECK(state2Ptr->wasRenderCalled());  // State2 is active, should render
@@ -240,7 +240,7 @@ BOOST_AUTO_TEST_CASE(TestRender) {
 
 BOOST_AUTO_TEST_CASE(TestRenderEmptyStack) {
     // Render with no active states should not crash
-    BOOST_CHECK_NO_THROW(manager.render());
+    BOOST_CHECK_NO_THROW(manager.render(nullptr));
 }
 
 BOOST_AUTO_TEST_CASE(TestHandleInput) {
@@ -408,10 +408,10 @@ BOOST_AUTO_TEST_CASE(TestStateStackBehavior) {
     state2Ptr->resetFlags();
     state3Ptr->resetFlags();
     
-    manager.render();
-    
+    manager.render(nullptr);
+
     BOOST_CHECK(!state1Ptr->wasRenderCalled()); // State1 is paused, should not render
-    BOOST_CHECK(!state2Ptr->wasRenderCalled()); // State2 is paused, should not render  
+    BOOST_CHECK(!state2Ptr->wasRenderCalled()); // State2 is paused, should not render
     BOOST_CHECK(state3Ptr->wasRenderCalled());  // State3 is active, should render
 }
 

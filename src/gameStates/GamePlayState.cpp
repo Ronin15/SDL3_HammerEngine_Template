@@ -220,10 +220,9 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   // Inventory display is now updated automatically via data binding.
 }
 
-void GamePlayState::render() {
-  // Get renderer using the standard pattern (consistent with other states)
+void GamePlayState::render(SDL_Renderer* renderer) {
+  // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
-  SDL_Renderer *renderer = gameEngine.getRenderer();
 
   // Get camera view rect for world rendering
   // Use getRenderX/Y (pixel-snapped) for tiles to prevent sub-pixel artifacts
