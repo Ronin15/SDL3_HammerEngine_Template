@@ -22,6 +22,10 @@ Camera::Camera() {
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
+    // Initialize atomic interpolation state with default position
+    float x = m_position.getX();
+    float y = m_position.getY();
+    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
     CAMERA_INFO("Camera created with default configuration");
 }
 
@@ -36,6 +40,10 @@ Camera::Camera(const Config& config) : m_config(config) {
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
+    // Initialize atomic interpolation state with default position
+    float x = m_position.getX();
+    float y = m_position.getY();
+    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
     CAMERA_INFO("Camera created with custom configuration");
 }
 
@@ -45,6 +53,11 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
     m_position.setY(y);
     m_targetPosition.setX(x);
     m_targetPosition.setY(y);
+    m_previousPosition.setX(x);
+    m_previousPosition.setY(y);
+
+    // Initialize atomic interpolation state with starting position
+    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
 
     if (!m_viewport.isValid()) {
         CAMERA_WARN("Invalid viewport dimensions provided, using defaults");
@@ -146,6 +159,12 @@ void Camera::update(float deltaTime) {
     if (m_config.clampToWorldBounds) {
         clampToWorldBounds();
     }
+
+    // Atomically publish interpolation state for render thread (industry-standard pattern)
+    // Render thread reads this via getRenderOffset() for smooth camera interpolation
+    m_interpState.store({m_position.getX(), m_position.getY(),
+                         m_previousPosition.getX(), m_previousPosition.getY()},
+                        std::memory_order_release);
 }
 
 void Camera::setPosition(float x, float y) {
@@ -301,13 +320,15 @@ Camera::ViewRect Camera::getViewRect() const {
 }
 
 void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+    // Atomically load consistent position pair from update thread
+    // This ensures render thread always sees a coherent (previous, current) snapshot
+    auto state = m_interpState.load(std::memory_order_acquire);
+
     // Interpolate between previous and current position for smooth rendering
     // at any refresh rate with fixed 60Hz game updates.
     // interpolationAlpha: 0.0 = at previous position, 1.0 = at current position
-    float interpX = m_previousPosition.getX() +
-                    (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha;
-    float interpY = m_previousPosition.getY() +
-                    (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha;
+    float interpX = state.prevPosX + (state.posX - state.prevPosX) * interpolationAlpha;
+    float interpY = state.prevPosY + (state.posY - state.prevPosY) * interpolationAlpha;
 
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
@@ -397,38 +418,6 @@ void Camera::shake(float duration, float intensity) {
     }
 }
 
-void Camera::updateCameraShake(float deltaTime) {
-    if (m_shakeTimeRemaining > 0.0f) {
-        m_shakeTimeRemaining -= deltaTime;
-        
-        if (m_shakeTimeRemaining <= 0.0f) {
-            m_shakeTimeRemaining = 0.0f;
-            m_shakeOffset = Vector2D{0.0f, 0.0f};
-            
-            // Fire shake ended event if enabled (we were definitely shaking if we're here)
-            if (m_eventFiringEnabled) {
-                fireShakeEndedEvent();
-            }
-        } else {
-            // Generate random shake offset
-            m_shakeOffset = generateShakeOffset();
-        }
-    }
-}
-
-void Camera::updateFollowMode(float deltaTime) {
-    (void)deltaTime; // Suppress unused parameter warning
-    
-    if (!hasTarget()) {
-        return;
-    }
-    
-    Vector2D targetPos = getTargetPosition();
-    
-    // Direct follow - no smoothing lag for tight, responsive camera control
-    m_position = targetPos;
-}
-
 void Camera::clampToWorldBounds() {
     // Auto-sync world bounds with WorldManager if enabled
     if (m_autoSyncWorldBounds) {
@@ -486,20 +475,6 @@ Vector2D Camera::getTargetPosition() const {
         return m_positionGetter();
     }
     return m_position; // Fallback to current position
-}
-
-float Camera::calculateDistance(const Vector2D& a, const Vector2D& b) const {
-    float dx = b.getX() - a.getX();
-    float dy = b.getY() - a.getY();
-    return std::sqrt(dx * dx + dy * dy);
-}
-
-Vector2D Camera::lerp(const Vector2D& a, const Vector2D& b, float t) const {
-    t = std::clamp(t, 0.0f, 1.0f);
-    return Vector2D{
-        a.getX() + (b.getX() - a.getX()) * t,
-        a.getY() + (b.getY() - a.getY()) * t
-    };
 }
 
 Vector2D Camera::generateShakeOffset() const {

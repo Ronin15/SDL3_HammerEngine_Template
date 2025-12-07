@@ -12,6 +12,7 @@
 #include <functional>
 #include <cstdint>
 #include <random>
+#include <atomic>
 
 // Forward declarations
 class Entity;
@@ -439,7 +440,6 @@ private:
     
     // Event firing
     bool m_eventFiringEnabled{false};      // Whether to fire events on state changes
-    Vector2D m_lastPosition{960.0f, 540.0f}; // Last position for movement events
     
     // World sync (auto-correct camera bounds when world changes)
     bool m_autoSyncWorldBounds{true};
@@ -455,18 +455,22 @@ private:
     // Previous position for render interpolation (smooth camera at any refresh rate)
     Vector2D m_previousPosition{960.0f, 540.0f};
 
+    // Thread-safe interpolation state for render thread access
+    // 16-byte atomic is lock-free on x86-64 (CMPXCHG16B) and ARM64 (LDXP/STXP)
+    struct alignas(16) InterpolationState {
+        float posX{0.0f}, posY{0.0f};
+        float prevPosX{0.0f}, prevPosY{0.0f};
+    };
+    std::atomic<InterpolationState> m_interpState{};
+
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead
     mutable std::mt19937 m_shakeRng{std::random_device{}()};
     mutable std::uniform_real_distribution<float> m_shakeDist{-1.0f, 1.0f};
 
     // Internal helper methods
-    void updateFollowMode(float deltaTime);
-    void updateCameraShake(float deltaTime);
     void clampToWorldBounds();
     Vector2D getTargetPosition() const;
-    float calculateDistance(const Vector2D& a, const Vector2D& b) const;
-    Vector2D lerp(const Vector2D& a, const Vector2D& b, float t) const;
     Vector2D generateShakeOffset() const;
     
     // Event firing helpers
