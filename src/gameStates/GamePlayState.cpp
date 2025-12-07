@@ -35,19 +35,8 @@ bool GamePlayState::enter() {
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
 
-  // Reset transition flags when entering state
-  m_transitioningToPause = false;
+  // Reset transition flag when entering state
   m_transitioningToLoading = false;
-
-  // Check if already initialized (resuming from pause)
-  if (m_initialized) {
-    // Resuming from pause - show UI components again
-    auto& ui = UIManager::Instance();
-    ui.setComponentVisible("gameplay_event_log", true);
-    ui.setComponentVisible("gameplay_time_label", true);
-
-    return true;
-  }
 
   // Check if world needs to be loaded
   if (!m_worldLoaded) {
@@ -278,22 +267,6 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   mp_uiMgr->render(renderer);
 }
 bool GamePlayState::exit() {
-  if (m_transitioningToPause) {
-    // Transitioning to pause - PRESERVE ALL GAMEPLAY DATA
-    // PauseState will overlay on top, and GameStateManager will only update PauseState
-
-    // Hide UI components during pause overlay
-    auto& ui = UIManager::Instance();
-    ui.setComponentVisible("gameplay_event_log", false);
-    ui.setComponentVisible("gameplay_time_label", false);
-
-    // Reset the flag after using it
-    m_transitioningToPause = false;
-
-    // Return early - NO cleanup when going to pause, keep m_initialized = true
-    return true;
-  }
-
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
     // This prevents infinite loop when returning from LoadingState
@@ -427,6 +400,45 @@ bool GamePlayState::exit() {
 
 std::string GamePlayState::getName() const { return "GamePlayState"; }
 
+void GamePlayState::pause() {
+  // Hide gameplay UI when paused (PauseState overlays on top)
+  auto& ui = UIManager::Instance();
+  ui.setComponentVisible("gameplay_event_log", false);
+  ui.setComponentVisible("gameplay_time_label", false);
+
+  // Also hide inventory components if visible
+  if (m_inventoryVisible) {
+    ui.setComponentVisible("gameplay_inventory_panel", false);
+    ui.setComponentVisible("gameplay_inventory_title", false);
+    ui.setComponentVisible("gameplay_inventory_status", false);
+    ui.setComponentVisible("gameplay_inventory_list", false);
+  }
+
+  // Stop player movement to prevent drift during pause
+  if (mp_Player) {
+    mp_Player->setVelocity(Vector2D(0, 0));
+  }
+
+  GAMEPLAY_INFO("GamePlayState paused");
+}
+
+void GamePlayState::resume() {
+  // Show gameplay UI when resuming from pause
+  auto& ui = UIManager::Instance();
+  ui.setComponentVisible("gameplay_event_log", true);
+  ui.setComponentVisible("gameplay_time_label", true);
+
+  // Restore inventory visibility state
+  if (m_inventoryVisible) {
+    ui.setComponentVisible("gameplay_inventory_panel", true);
+    ui.setComponentVisible("gameplay_inventory_title", true);
+    ui.setComponentVisible("gameplay_inventory_status", true);
+    ui.setComponentVisible("gameplay_inventory_list", true);
+  }
+
+  GAMEPLAY_INFO("GamePlayState resumed");
+}
+
 void GamePlayState::handleInput() {
   const auto &inputMgr = InputManager::Instance();
 
@@ -438,12 +450,7 @@ void GamePlayState::handleInput() {
     if (!gameStateManager->hasState("PauseState")) {
       gameStateManager->addState(std::make_unique<PauseState>());
     }
-    // Stop player movement to prevent jittering during pause
-    if (mp_Player) {
-      mp_Player->setVelocity(Vector2D(0, 0));
-    }
-
-    m_transitioningToPause = true; // Set flag before transitioning
+    // pushState will call pause() which handles UI hiding and player velocity
     gameStateManager->pushState("PauseState");
   }
 
