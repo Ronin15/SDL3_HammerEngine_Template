@@ -163,23 +163,21 @@ void TimestepManager::updateFPS() {
 }
 
 void TimestepManager::limitFrameRate() const {
-    // If using hardware VSync (typical non-Wayland), avoid additional sleeping
+    // If using hardware VSync, skip software limiting - VSync handles timing via SDL_RenderPresent()
     if (!m_usingSoftwareFrameLimiting) {
         return;
     }
 
     auto currentTime = std::chrono::high_resolution_clock::now();
     auto frameTimeNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_frameStart);
-    double frameTime = static_cast<double>(frameTimeNs.count()) / 1000000000.0; // Convert to seconds
-    
-    // If we finished early, delay to meet target frame rate
-    if (frameTime < m_targetFrameTime) {
-        double sleepTime = m_targetFrameTime - frameTime;
-        uint32_t sleepMs = static_cast<uint32_t>(sleepTime * 1000.0);
-        
-        if (sleepMs > 0) {
-            SDL_Delay(sleepMs);
-        }
+    double frameTimeMs = static_cast<double>(frameTimeNs.count()) / 1000000.0;  // Convert to milliseconds
+
+    double targetFrameTimeMs = m_targetFrameTime * 1000.0;  // Convert seconds to ms
+    double remainingMs = targetFrameTimeMs - frameTimeMs;
+
+    // Use hybrid sleep+spinlock for sub-millisecond precision
+    if (remainingMs > 0.0) {
+        preciseFrameWait(remainingMs);
     }
 }
 
