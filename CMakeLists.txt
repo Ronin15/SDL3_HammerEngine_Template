@@ -242,6 +242,12 @@ target_link_libraries(HammerEngineObjects PUBLIC
     SDL3_mixer::SDL3_mixer
 )
 
+# Link libatomic for 16-byte atomic operations (required on Linux/macOS with GCC/Clang)
+# Windows MSVC has built-in 16-byte atomics, no external library needed
+if(NOT MSVC)
+    target_link_libraries(HammerEngineObjects PUBLIC atomic)
+endif()
+
 # Create shared library for tests
 add_library(HammerEngineLib STATIC $<TARGET_OBJECTS:HammerEngineObjects>)
 target_include_directories(HammerEngineLib PUBLIC

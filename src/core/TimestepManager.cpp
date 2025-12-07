@@ -84,7 +84,8 @@ float TimestepManager::getUpdateDeltaTime() const {
 
 double TimestepManager::getInterpolationAlpha() const {
     if (m_fixedTimestep > 0.0f) {
-        return m_accumulator.load(std::memory_order_relaxed) / m_fixedTimestep;
+        double alpha = m_accumulator.load(std::memory_order_relaxed) / m_fixedTimestep;
+        return std::clamp(alpha, 0.0, 1.0);  // Prevent extrapolation during frame drops
     }
     return 1.0; // Default to 1.0 to avoid division by zero
 }
