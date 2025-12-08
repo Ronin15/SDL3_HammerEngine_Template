@@ -23,8 +23,7 @@
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
 
-#include <sstream>
-#include <iomanip>
+#include <format>
 #include <cmath>
 
 
@@ -262,6 +261,9 @@ bool AdvancedAIDemoState::enter() {
         // Log status
         GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
         GAMESTATE_INFO("Combat system initialized with health/damage attributes");
+
+        // Pre-allocate status buffer to avoid per-frame allocations
+        m_statusBuffer.reserve(64);
 
         // Mark as fully initialized to prevent re-entering loading logic
         m_initialized = true;
@@ -534,14 +536,26 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     if (!mp_uiMgr->isShutdown()) {
         mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
 
-        // Update status display with combat information
+        // Update status only when values change (C++20 type-safe, zero allocations)
         auto& aiManager = AIManager::Instance();
-        std::stringstream status;
-        status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
-               << " | NPCs: " << m_npcs.size()
-               << " | AI: " << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING")
-               << " | Combat: ON";
-        mp_uiMgr->setText("advanced_ai_status", status.str());
+        int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+        size_t npcCount = m_npcs.size();
+        bool isPaused = aiManager.isGloballyPaused();
+
+        if (currentFPS != m_lastDisplayedFPS ||
+            npcCount != m_lastDisplayedNPCCount ||
+            isPaused != m_lastDisplayedPauseState) {
+
+            m_statusBuffer.clear();
+            std::format_to(std::back_inserter(m_statusBuffer),
+                           "FPS: {} | NPCs: {} | AI: {} | Combat: ON",
+                           currentFPS, npcCount, isPaused ? "PAUSED" : "RUNNING");
+            mp_uiMgr->setText("advanced_ai_status", m_statusBuffer);
+
+            m_lastDisplayedFPS = currentFPS;
+            m_lastDisplayedNPCCount = npcCount;
+            m_lastDisplayedPauseState = isPaused;
+        }
     }
     mp_uiMgr->render(renderer);
 }

@@ -23,8 +23,7 @@
 #include "world/WorldData.hpp"
 #include <memory>
 #include <random>
-#include <sstream>
-#include <iomanip>
+#include <format>
 #include <ctime>
 
 
@@ -334,6 +333,9 @@ bool AIDemoState::enter() {
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
+    // Pre-allocate status buffer to avoid per-frame allocations
+    m_statusBuffer.reserve(64);
+
     // NPCs can be spawned using keyboard triggers (N for standard, M for random behaviors)
     m_npcsSpawned = 0;
 
@@ -579,14 +581,26 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   if (!mp_uiMgr->isShutdown()) {
     mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
 
-    // Update status display
+    // Update status only when values change (C++20 type-safe, zero allocations)
     auto &aiManager = AIManager::Instance();
-    std::stringstream status;
-    status << "FPS: " << std::fixed << std::setprecision(1)
-           << gameEngine.getCurrentFPS() << " | Entities: " << m_npcs.size()
-           << " | AI: "
-           << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
-    mp_uiMgr->setText("ai_status", status.str());
+    int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+    size_t entityCount = m_npcs.size();
+    bool isPaused = aiManager.isGloballyPaused();
+
+    if (currentFPS != m_lastDisplayedFPS ||
+        entityCount != m_lastDisplayedEntityCount ||
+        isPaused != m_lastDisplayedPauseState) {
+
+        m_statusBuffer.clear();  // Keeps reserved capacity
+        std::format_to(std::back_inserter(m_statusBuffer),
+                       "FPS: {} | Entities: {} | AI: {}",
+                       currentFPS, entityCount, isPaused ? "PAUSED" : "RUNNING");
+        mp_uiMgr->setText("ai_status", m_statusBuffer);
+
+        m_lastDisplayedFPS = currentFPS;
+        m_lastDisplayedEntityCount = entityCount;
+        m_lastDisplayedPauseState = isPaused;
+    }
   }
   mp_uiMgr->render(renderer);
 }

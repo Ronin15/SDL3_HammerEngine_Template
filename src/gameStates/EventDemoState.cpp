@@ -31,7 +31,7 @@
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <ctime>
-#include <iomanip>
+#include <format>
 
 
 EventDemoState::EventDemoState() {
@@ -260,6 +260,10 @@ bool EventDemoState::enter() {
 
     // Subscribe to time events for event log display
     TimeController::Instance().subscribe("event_log");
+
+    // Pre-allocate status buffers to avoid per-frame allocations
+    m_phaseBuffer.reserve(32);
+    m_statusBuffer2.reserve(64);
 
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
@@ -727,17 +731,33 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   if (!mp_uiMgr->isShutdown()) {
     mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
 
-    // Update UI displays
-    std::stringstream phaseText;
-    phaseText << "Phase: " << getCurrentPhaseString();
-    mp_uiMgr->setText("event_phase", phaseText.str());
+    // Update UI displays only when values change (C++20 type-safe, zero allocations)
+    std::string currentPhase = getCurrentPhaseString();
+    if (currentPhase != m_lastDisplayedPhase) {
+        m_phaseBuffer.clear();
+        std::format_to(std::back_inserter(m_phaseBuffer), "Phase: {}", currentPhase);
+        mp_uiMgr->setText("event_phase", m_phaseBuffer);
+        m_lastDisplayedPhase = currentPhase;
+    }
 
-    std::stringstream statusText;
-    statusText << "FPS: " << std::fixed << std::setprecision(1)
-               << gameEngine.getCurrentFPS()
-               << " | Weather: " << getCurrentWeatherString()
-               << " | NPCs: " << m_spawnedNPCs.size();
-    mp_uiMgr->setText("event_status", statusText.str());
+    int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+    std::string currentWeather = getCurrentWeatherString();
+    size_t npcCount = m_spawnedNPCs.size();
+
+    if (currentFPS != m_lastDisplayedFPS ||
+        currentWeather != m_lastDisplayedWeather ||
+        npcCount != m_lastDisplayedNPCCount) {
+
+        m_statusBuffer2.clear();
+        std::format_to(std::back_inserter(m_statusBuffer2),
+                       "FPS: {} | Weather: {} | NPCs: {}",
+                       currentFPS, currentWeather, npcCount);
+        mp_uiMgr->setText("event_status", m_statusBuffer2);
+
+        m_lastDisplayedFPS = currentFPS;
+        m_lastDisplayedWeather = currentWeather;
+        m_lastDisplayedNPCCount = npcCount;
+    }
 
     // Update inventory display
     // updateInventoryUI(); // Now handled by data binding

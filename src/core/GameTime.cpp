@@ -7,7 +7,7 @@
 #include "events/TimeEvent.hpp"
 #include "managers/EventManager.hpp"
 #include <cmath>
-#include <cstdio>
+#include <format>
 #include <random>
 
 // ============================================================================
@@ -460,11 +460,17 @@ std::string_view GameTime::formatCurrentTime(bool use24Hour)
     int hours = static_cast<int>(m_currentHour);
     int minutes = static_cast<int>((m_currentHour - hours) * 60.0f);
 
+    // Ensure capacity on first call (C++20 type-safe, zero allocations after first use)
+    if (m_timeFormatBuffer.capacity() < 16) {
+        m_timeFormatBuffer.reserve(16);
+    }
+    m_timeFormatBuffer.clear();
+
     if (use24Hour)
     {
         // 24-hour format (e.g., "14:30")
-        snprintf(m_timeFormatBuffer, sizeof(m_timeFormatBuffer),
-                 "%02d:%02d", hours, minutes);
+        std::format_to(std::back_inserter(m_timeFormatBuffer),
+                       "{:02d}:{:02d}", hours, minutes);
     }
     else
     {
@@ -473,8 +479,8 @@ std::string_view GameTime::formatCurrentTime(bool use24Hour)
         if (displayHour == 0)
             displayHour = 12;
 
-        snprintf(m_timeFormatBuffer, sizeof(m_timeFormatBuffer),
-                 "%d:%02d %s", displayHour, minutes, hours >= 12 ? "PM" : "AM");
+        std::format_to(std::back_inserter(m_timeFormatBuffer),
+                       "{}:{:02d} {}", displayHour, minutes, hours >= 12 ? "PM" : "AM");
     }
 
     return m_timeFormatBuffer;
