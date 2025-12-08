@@ -63,6 +63,9 @@ private:
   WorldManager* mp_worldMgr{nullptr};
   UIManager* mp_uiMgr{nullptr};
 
+  // Render scale caching - avoid GPU state changes when zoom unchanged
+  float m_lastRenderedZoom{1.0f};
+
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();

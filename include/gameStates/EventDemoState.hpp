@@ -252,6 +252,9 @@ private:
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
   std::string m_lastDisplayedPhase{};
+
+  // Render scale caching - avoid GPU state changes when zoom unchanged
+  float m_lastRenderedZoom{1.0f};
 };
 
 #endif // EVENT_DEMO_STATE_HPP
