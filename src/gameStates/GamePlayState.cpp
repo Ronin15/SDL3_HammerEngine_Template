@@ -76,11 +76,13 @@ bool GamePlayState::enter() {
     // Enable automatic weather changes
     GameTime::Instance().enableAutoWeather(true);
 #ifdef NDEBUG
-    // Release: normal pacing (4 game hours between weather checks)
+    // Release: normal pacing
     GameTime::Instance().setWeatherCheckInterval(4.0f);
+    GameTime::Instance().setTimeScale(60.0f);
 #else
-    // Debug: faster weather changes for testing (1 game hour)
+    // Debug: faster changes for testing seasons/weather
     GameTime::Instance().setWeatherCheckInterval(1.0f);
+    GameTime::Instance().setTimeScale(3600.0f);
 #endif
 
     // Create event log for time/weather messages

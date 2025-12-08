@@ -9,6 +9,7 @@
 #include "world/WorldData.hpp"
 #include "world/WorldGenerator.hpp"
 #include "utils/ResourceHandle.hpp"
+#include "core/GameTime.hpp"
 #include <memory>
 #include <string>
 #include <atomic>
@@ -29,30 +30,54 @@ class TileRenderer {
 private:
     static constexpr float TILE_SIZE = 32.0f;  // Use float for smooth movement
     static constexpr int VIEWPORT_PADDING = 2;
-    
+
     // Chunk-based rendering for scalability to massive maps
     static constexpr int CHUNK_SIZE = 32;  // 32x32 tiles per chunk
-    
+
 public:
-    void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer, 
+    TileRenderer();
+    ~TileRenderer();
+
+    // Disable copy/move for event handler safety
+    TileRenderer(const TileRenderer&) = delete;
+    TileRenderer& operator=(const TileRenderer&) = delete;
+
+    void renderVisibleTiles(const WorldData& world, SDL_Renderer* renderer,
                            float cameraX, float cameraY, int viewportWidth, int viewportHeight);
     void renderTile(const Tile& tile, SDL_Renderer* renderer, float screenX, float screenY) const;
-    
+
     // Chunk texture management
     void invalidateChunk(int chunkX, int chunkY);  // Mark chunk for re-rendering
     void clearChunkCache();  // Clean up all chunk textures
-    
+
+    // Season management
+    void subscribeToSeasonEvents();
+    void unsubscribeFromSeasonEvents();
+    Season getCurrentSeason() const { return m_currentSeason; }
+    void setCurrentSeason(Season season) { m_currentSeason = season; }
+
 private:
+    // Season change handler
+    void onSeasonChange(const EventData& data);
+
+    // Seasonal texture ID helper
+    std::string getSeasonalTextureID(const std::string& baseID) const;
+
     // Chunk-based rendering helpers
     struct ChunkBounds {
         int startChunkX, endChunkX;
         int startChunkY, endChunkY;
     };
-    
+
     ChunkBounds calculateVisibleChunks(float cameraX, float cameraY, int viewportWidth, int viewportHeight) const;
-    
+
     std::string getBiomeTexture(HammerEngine::Biome biome) const;
     std::string getObstacleTexture(HammerEngine::ObstacleType obstacle) const;
+
+    // Season tracking
+    Season m_currentSeason{Season::Spring};
+    EventManager::HandlerToken m_seasonToken{};
+    bool m_subscribedToSeasons{false};
 };
 
 }
