@@ -54,9 +54,32 @@ public:
     void subscribeToSeasonEvents();
     void unsubscribeFromSeasonEvents();
     Season getCurrentSeason() const { return m_currentSeason; }
-    void setCurrentSeason(Season season) { m_currentSeason = season; }
+    void setCurrentSeason(Season season);
 
 private:
+    // Update cached texture IDs when season changes (eliminates per-frame string allocations)
+    void updateCachedTextureIDs();
+
+    // Cached seasonal texture IDs - pre-computed to avoid heap allocations in render loop
+    struct SeasonalTextureIDs {
+        std::string biome_default;
+        std::string biome_desert;
+        std::string biome_forest;
+        std::string biome_mountain;
+        std::string biome_swamp;
+        std::string biome_haunted;
+        std::string biome_celestial;
+        std::string biome_ocean;
+        std::string obstacle_water;
+        std::string obstacle_tree;
+        std::string obstacle_rock;
+        std::string building_hut;
+        std::string building_house;
+        std::string building_large;
+        std::string building_cityhall;
+    } m_cachedTextureIDs;
+
+
     // Season change handler
     void onSeasonChange(const EventData& data);
 
