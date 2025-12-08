@@ -64,14 +64,16 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void update(float deltaTime) = 0;
 
   /**
-   * @brief Render the entity.
+   * @brief Render the entity with interpolation support.
    *
    * This method is called once per frame for each entity. It should
-   * draw the entity on the screen using the given camera.
+   * use getInterpolatedPosition(interpolationAlpha) for smooth rendering
+   * between fixed timestep updates.
    *
    * @param camera A pointer to the camera used for rendering.
+   * @param interpolationAlpha Blend factor between previous and current position (0.0-1.0)
    */
-  virtual void render(const HammerEngine::Camera* camera) = 0;  // Camera-aware rendering
+  virtual void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) = 0;
 
   /**
    * @brief Clean up the entity's resources before destruction
@@ -111,8 +113,40 @@ class Entity : public std::enable_shared_from_this<Entity> {
   // Accessor methods
   EntityID getID() const { return m_id; }
   Vector2D getPosition() const { return m_position; }
+  Vector2D getPreviousPosition() const { return m_previousPosition; }
   Vector2D getVelocity() const { return m_velocity; }
   Vector2D getAcceleration() const { return m_acceleration; }
+
+  /**
+   * @brief Get interpolated position for smooth rendering.
+   *
+   * Uses linear interpolation between previous and current position
+   * based on the interpolation alpha from the game loop.
+   *
+   * @param alpha Interpolation factor (0.0 = previous position, 1.0 = current position)
+   * @return Interpolated position for rendering
+   */
+  Vector2D getInterpolatedPosition(float alpha) const {
+    return m_previousPosition + (m_position - m_previousPosition) * alpha;
+  }
+
+  /**
+   * @brief Store current position for interpolation before updating.
+   *
+   * Call this at the START of update() before modifying m_position.
+   * This enables smooth rendering interpolation between fixed timestep updates.
+   */
+  void storePositionForInterpolation() { m_previousPosition = m_position; }
+
+  /**
+   * @brief Update position from movement (preserves interpolation state).
+   *
+   * Use this for smooth movement updates (physics integration, AI movement).
+   * Unlike setPosition(), this does NOT reset m_previousPosition.
+   * Call storePositionForInterpolation() before this each frame.
+   */
+  void updatePositionFromMovement(const Vector2D& position) { m_position = position; }
+
   int getWidth() const { return m_width; }
   int getHeight() const { return m_height; }
   const std::string& getTextureID() const { return m_textureID; }
@@ -122,7 +156,17 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int getAnimSpeed() const { return m_animSpeed; }
 
   // Setter methods
-  virtual void setPosition(const Vector2D& position) { m_position = position; }
+
+  /**
+   * @brief Set entity position directly (teleport).
+   *
+   * This resets both current and previous position to prevent
+   * interpolation artifacts when teleporting/spawning.
+   */
+  virtual void setPosition(const Vector2D& position) {
+    m_position = position;
+    m_previousPosition = position;  // Prevents interpolation sliding
+  }
   virtual void setVelocity(const Vector2D& velocity) { m_velocity = velocity; }
   virtual void setAcceleration(const Vector2D& acceleration) { m_acceleration = acceleration; }
   virtual void setWidth(int width) { m_width = width; }
@@ -142,6 +186,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   Vector2D m_acceleration{0, 0};
   Vector2D m_velocity{0, 0};
   Vector2D m_position{0, 0};
+  Vector2D m_previousPosition{0, 0};  // For render interpolation
   int m_width{0};
   int m_height{0};
   std::string m_textureID{};

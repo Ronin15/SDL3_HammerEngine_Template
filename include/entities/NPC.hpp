@@ -39,7 +39,7 @@ public:
   }
 
   void update(float) override;
-  void render(const HammerEngine::Camera *camera) override;
+  void render(const HammerEngine::Camera *camera, float interpolationAlpha = 1.0f) override;
   void clean() override;
   // No state management - handled by AI Manager
 

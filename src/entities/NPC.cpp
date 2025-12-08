@@ -186,19 +186,22 @@ void NPC::update(float) {
   }
 }
 
-void NPC::render(const HammerEngine::Camera *camera) {
+void NPC::render(const HammerEngine::Camera *camera, float interpolationAlpha) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
+  // Get interpolated position for smooth rendering between fixed timestep updates
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
+
   // Determine render position based on camera
   Vector2D renderPosition;
   if (camera) {
-    // Transform world position to screen coordinates using camera
-    renderPosition = camera->worldToScreen(m_position);
+    // Transform interpolated world position to screen coordinates using camera
+    renderPosition = camera->worldToScreen(interpPos);
   } else {
-    // No camera transformation - render at world coordinates directly
-    renderPosition = m_position;
+    // No camera transformation - render at interpolated world coordinates directly
+    renderPosition = interpPos;
   }
 
   // Calculate centered position for rendering (preserve float precision)

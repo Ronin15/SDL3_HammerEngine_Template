@@ -571,14 +571,14 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
                        gameEngine.getLogicalHeight());
   }
 
-  // Render all NPCs using camera-aware rendering
+  // Render all NPCs using camera-aware rendering with interpolation
   for (auto &npc : m_npcs) {
-    npc->render(m_camera.get());
+    npc->render(m_camera.get(), interpolationAlpha);
   }
 
-  // Render player using camera-aware rendering
+  // Render player using camera-aware rendering with interpolation
   if (m_player) {
-    m_player->render(m_camera.get());
+    m_player->render(m_camera.get(), interpolationAlpha);
   }
 
   // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
