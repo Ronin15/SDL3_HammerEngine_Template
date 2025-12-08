@@ -542,8 +542,10 @@ void GamePlayState::initializeInventoryUI() {
   ui.createPanel("gameplay_inventory_panel",
                  {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
   ui.setComponentVisible("gameplay_inventory_panel", false);
-  // Set auto-repositioning: right-aligned with fixed offsetY from top
-  ui.setComponentPositioning("gameplay_inventory_panel", {UIPositionMode::RIGHT_ALIGNED, 20, inventoryY - (ui.getLogicalHeight() - inventoryHeight) / 2, inventoryWidth, inventoryHeight});
+  // Use TOP_ALIGNED - actual positioning handled by onWindowResize
+  ui.setComponentPositioning("gameplay_inventory_panel",
+                             {UIPositionMode::TOP_ALIGNED, inventoryX, inventoryY,
+                              inventoryWidth, inventoryHeight});
 
   ui.createTitle("gameplay_inventory_title",
                  {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},
@@ -611,17 +613,19 @@ void GamePlayState::initializeInventoryUI() {
 
 void GamePlayState::onWindowResize(int newLogicalWidth,
                                     int newLogicalHeight) {
-  // Panel auto-repositions via UIManager, but children need manual updates (they're relative to panel)
   auto &ui = UIManager::Instance();
 
   const int inventoryWidth = 280;
+  const int inventoryHeight = 400;
+  // Calculate position directly (matches EventDemoState pattern)
+  const int inventoryX = newLogicalWidth - inventoryWidth - 20;
+  const int inventoryY = 170;  // Fixed Y from top
 
-  // Get the panel's new position (auto-repositioned by UIManager)
-  UIRect panelBounds = ui.getBounds("gameplay_inventory_panel");
-  const int inventoryX = panelBounds.x;
-  const int inventoryY = panelBounds.y;
+  // Update panel bounds
+  ui.setComponentBounds("gameplay_inventory_panel",
+                        {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
 
-  // Reposition children relative to panel's new position
+  // Reposition children relative to panel
   ui.setComponentBounds("gameplay_inventory_title",
                         {inventoryX + 10, inventoryY + 25,
                          inventoryWidth - 20, 35});
@@ -636,7 +640,7 @@ void GamePlayState::onWindowResize(int newLogicalWidth,
 
   GAMEPLAY_DEBUG("Repositioned inventory UI for new window size: " +
                  std::to_string(newLogicalWidth) + "x" +
-                 std::to_string(newLogicalHeight) + " (panel auto-positioned)");
+                 std::to_string(newLogicalHeight));
 }
 
 void GamePlayState::toggleInventoryDisplay() {
