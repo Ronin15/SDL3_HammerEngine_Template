@@ -226,8 +226,11 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     zoom = m_camera->getZoom();
   }
 
-  // Set render scale for zoom (scales all world/entity rendering automatically)
-  SDL_SetRenderScale(renderer, zoom, zoom);
+  // Set render scale for zoom only when changed (avoids GPU state change overhead)
+  if (zoom != m_lastRenderedZoom) {
+    SDL_SetRenderScale(renderer, zoom, zoom);
+    m_lastRenderedZoom = zoom;
+  }
 
   // Render background particles (rain, snow) BEFORE world - use cached pointer
   // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
@@ -259,8 +262,11 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   renderDayNightOverlay(renderer,
       gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
 
-  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
-  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+  // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+  if (m_lastRenderedZoom != 1.0f) {
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+    m_lastRenderedZoom = 1.0f;
+  }
 
   // Render UI components (no camera transformation) - use cached pointer
   // mp_uiMgr guaranteed valid between enter() and exit()

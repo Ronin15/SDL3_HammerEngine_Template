@@ -101,6 +101,9 @@ private:
     int m_lastDisplayedFPS{-1};
     size_t m_lastDisplayedEntityCount{0};
     bool m_lastDisplayedPauseState{false};
+
+    // Render scale caching - avoid GPU state changes when zoom unchanged
+    float m_lastRenderedZoom{1.0f};
 };
 
 #endif // AI_DEMO_STATE_HPP

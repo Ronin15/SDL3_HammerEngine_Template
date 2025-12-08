@@ -663,7 +663,10 @@ void EventDemoState::update(float deltaTime) {
   // Update instructions
   updateInstructions();
 
-  // Game logic only - UI updates moved to render() for thread safety
+  // Update UI (moved from render path for consistent frame timing)
+  if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
+    mp_uiMgr->update(deltaTime);
+  }
 
   // Note: EventManager is updated globally by GameEngine in the main update
   // loop for optimal performance and consistency with other global systems (AI,
@@ -684,9 +687,12 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);  // Interpolated offset
   }
 
-  // Set render scale for zoom (scales all world/entity rendering automatically)
+  // Set render scale for zoom only when changed (avoids GPU state change overhead)
   float zoom = m_camera ? m_camera->getZoom() : 1.0f;
-  SDL_SetRenderScale(renderer, zoom, zoom);
+  if (zoom != m_lastRenderedZoom) {
+    SDL_SetRenderScale(renderer, zoom, zoom);
+    m_lastRenderedZoom = zoom;
+  }
 
   // Render world first (background layer) using pixel-snapped camera - use cached pointer
   // mp_worldMgr guaranteed valid between enter() and exit()
@@ -723,14 +729,15 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
   }
 
-  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
-  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+  // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+  if (m_lastRenderedZoom != 1.0f) {
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+    m_lastRenderedZoom = 1.0f;
+  }
 
-  // Update and render UI components through cached pointer
+  // Render UI components through cached pointer (update moved to update() for consistent frame timing)
   // mp_uiMgr guaranteed valid between enter() and exit()
   if (!mp_uiMgr->isShutdown()) {
-    mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
-
     // Update UI displays only when values change (C++20 type-safe, zero allocations)
     std::string currentPhase = getCurrentPhaseString();
     if (currentPhase != m_lastDisplayedPhase) {

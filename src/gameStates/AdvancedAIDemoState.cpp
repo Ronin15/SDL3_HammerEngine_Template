@@ -469,6 +469,11 @@ void AdvancedAIDemoState::update(float deltaTime) {
         // AI Manager is updated globally by GameEngine for optimal performance
         // Entity updates are handled by AIManager::update() in GameEngine
 
+        // Update UI (moved from render path for consistent frame timing)
+        if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
+            mp_uiMgr->update(deltaTime);
+        }
+
     } catch (const std::exception& e) {
         GAMESTATE_ERROR("Exception in AdvancedAIDemoState::update(): " + std::string(e.what()));
     } catch (...) {
@@ -490,9 +495,12 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);  // Interpolated offset
     }
 
-    // Set render scale for zoom (scales all world/entity rendering automatically)
+    // Set render scale for zoom only when changed (avoids GPU state change overhead)
     float zoom = m_camera ? m_camera->getZoom() : 1.0f;
-    SDL_SetRenderScale(renderer, zoom, zoom);
+    if (zoom != m_lastRenderedZoom) {
+        SDL_SetRenderScale(renderer, zoom, zoom);
+        m_lastRenderedZoom = zoom;
+    }
 
     // Render world first (background layer) using pixel-snapped camera - use cached pointer
     // mp_worldMgr guaranteed valid between enter() and exit()
@@ -531,11 +539,15 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         }
     }
 
-    // Update and render UI components through cached pointer
+    // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+    if (m_lastRenderedZoom != 1.0f) {
+        SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+        m_lastRenderedZoom = 1.0f;
+    }
+
+    // Render UI components through cached pointer (update moved to update() for consistent frame timing)
     // mp_uiMgr guaranteed valid between enter() and exit()
     if (!mp_uiMgr->isShutdown()) {
-        mp_uiMgr->update(0.0); // UI updates are not time-dependent in this state
-
         // Update status only when values change (C++20 type-safe, zero allocations)
         auto& aiManager = AIManager::Instance();
         int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
