@@ -7,7 +7,6 @@
 #define TEXTURE_MANAGER_HPP
 
 #include <SDL3/SDL.h>
-#include <SDL3_image/SDL_image.h>
 #include <unordered_map>
 #include <memory>
 #include <string>

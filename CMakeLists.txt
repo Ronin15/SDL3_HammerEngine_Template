@@ -140,9 +140,8 @@ message(STATUS
     "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
-# SDL3 must use main to provide SDL_ALIGNED macro needed by SDL3_mixer
-set(SDL3_GIT_TAG "main")                   # Use main to get SDL_ALIGNED macro needed by SDL3_mixer
-set(SDL3_IMAGE_GIT_TAG "release-3.2.4")    # Latest stable SDL3_image release  
+# SDL3 3.3.4 includes native PNG loading (SDL_LoadPNG) - no SDL3_image needed
+set(SDL3_GIT_TAG "prerelease-3.3.4")       # SDL3 3.3.4 prerelease with native PNG support
 set(SDL3_TTF_GIT_TAG "release-3.2.2")      # Latest stable SDL3_ttf release
 set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
 
@@ -157,20 +156,6 @@ FetchContent_Declare(
 set(SDL_SHARED TRUE CACHE BOOL "Build a SDL shared library")
 set(SDL_STATIC FALSE CACHE BOOL "Build a SDL static library")
 set(SDL_TEST FALSE CACHE BOOL "Build the SDL test framework")
-
-# Download and configure SDL3_image
-FetchContent_Declare(
-    SDL3_image
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
-    GIT_TAG ${SDL3_IMAGE_GIT_TAG}
-)
-
-# Build options for SDL3_image
-set(SDL3IMAGE_SAMPLES FALSE CACHE BOOL 
-    "Build the SDL3_image sample programs")
-set(SDL3IMAGE_VENDORED FALSE CACHE BOOL 
-    "Use vendored third-party libraries")
-set(SDL3IMAGE_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
 # Download and configure SDL3_ttf
 FetchContent_Declare(
@@ -199,7 +184,7 @@ set(SDL3MIXER_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
 
 # Make the SDL3 packages available
-FetchContent_MakeAvailable(SDL3 SDL3_image SDL3_ttf SDL3_mixer)
+FetchContent_MakeAvailable(SDL3 SDL3_ttf SDL3_mixer)
 
 # Find all source files
 file(GLOB_RECURSE SOURCES
@@ -237,7 +222,6 @@ target_include_directories(HammerEngineObjects PRIVATE
 )
 target_link_libraries(HammerEngineObjects PUBLIC
     SDL3::SDL3
-    SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
@@ -411,7 +395,6 @@ if(WIN32)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL3::SDL3>
-            $<TARGET_FILE:SDL3_image::SDL3_image>
             $<TARGET_FILE:SDL3_ttf::SDL3_ttf>
             $<TARGET_FILE:SDL3_mixer::SDL3_mixer>
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
@@ -422,7 +405,6 @@ endif()
 if(WIN32)
     install(FILES
         $<TARGET_FILE:SDL3::SDL3>
-        $<TARGET_FILE:SDL3_image::SDL3_image>
         $<TARGET_FILE:SDL3_ttf::SDL3_ttf>
         $<TARGET_FILE:SDL3_mixer::SDL3_mixer>
         DESTINATION bin
@@ -434,8 +416,8 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS 
-    "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been configured successfully")
+message(STATUS
+    "SDL3, SDL3_ttf, and SDL3_mixer have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
 

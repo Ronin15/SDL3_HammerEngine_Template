@@ -7,7 +7,7 @@
 #define GAME_ENGINE_HPP
 
 #include "managers/GameStateManager.hpp"
-#include <SDL3_image/SDL_image.h>
+#include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
 #include <chrono>

@@ -54,7 +54,7 @@ bool TextureManager::load(const std::string& fileName,
 
           // Load the individual file as a texture with immediate RAII
           auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-              IMG_Load(fullPath.c_str()), SDL_DestroySurface);
+              SDL_LoadPNG(fullPath.c_str()), SDL_DestroySurface);
 
           TEXTURE_INFO("Loading texture: " + fullPath);
 
@@ -94,7 +94,7 @@ bool TextureManager::load(const std::string& fileName,
 
   // Standard single file loading with immediate RAII
   auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-      IMG_Load(fileName.c_str()), SDL_DestroySurface);
+      SDL_LoadPNG(fileName.c_str()), SDL_DestroySurface);
 
   TEXTURE_INFO("Loaded texture: " + textureID);
 

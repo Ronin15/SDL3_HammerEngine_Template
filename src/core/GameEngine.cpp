@@ -186,8 +186,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Set window icon
   GAMEENGINE_INFO("Setting window icon");
 
-  // Use SDL_image to directly load the icon
-  constexpr std::string_view iconPath = "res/img/icon.ico";
+  // Use native SDL3 PNG loading for the icon
+  constexpr std::string_view iconPath = "res/img/icon.png";
 
   // Use a separate thread to load the icon
   auto iconFuture =
@@ -195,7 +195,7 @@ bool GameEngine::init(const std::string_view title, const int width,
           [iconPath]()
               -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> {
             return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-                IMG_Load(iconPath.data()), SDL_DestroySurface);
+                SDL_LoadPNG(iconPath.data()), SDL_DestroySurface);
           });
 
   // Continue with initialization while icon loads
