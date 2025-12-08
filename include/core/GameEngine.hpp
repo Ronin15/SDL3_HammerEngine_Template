@@ -423,6 +423,21 @@ private:
    *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
    */
   bool verifyVSyncState(bool requested);
+
+  /**
+   * @brief Handles window resize events from SDL
+   * @param event The SDL window resize event
+   * @details Updates window dimensions, renderer logical presentation,
+   *          reloads fonts, and notifies UIManager for repositioning.
+   */
+  void onWindowResize(const SDL_Event& event);
+
+  /**
+   * @brief Handles display change events from SDL
+   * @param event The SDL display event (orientation, added, removed, moved, scale)
+   * @details Normalizes UI scale, reloads fonts, and triggers UI repositioning.
+   */
+  void onDisplayChange(const SDL_Event& event);
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};
