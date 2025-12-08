@@ -13,6 +13,15 @@
 #include <atomic>
 #include <mutex>
 
+/**
+ * @brief Holds texture data with cached dimensions to avoid per-frame SDL_GetTextureSize() calls
+ */
+struct TextureData {
+    std::shared_ptr<SDL_Texture> texture;
+    float width{0.0f};
+    float height{0.0f};
+};
+
 class TextureManager {
  public:
  ~TextureManager() {
@@ -194,7 +203,7 @@ class TextureManager {
 
  private:
   std::string m_textureID{""};
-  std::unordered_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
+  std::unordered_map<std::string, TextureData> m_textureMap{};  // Stores texture + cached dimensions
   std::atomic<bool> m_texturesLoaded{false};
   std::mutex m_textureLoadMutex{};
   bool m_isShutdown{false};

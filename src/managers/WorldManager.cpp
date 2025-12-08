@@ -611,7 +611,39 @@ void WorldManager::initializeWorldResources() {
 HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false)
 {
-    // Constructor - season subscription will be done separately
+    // Initialize cached texture IDs for current season
+    updateCachedTextureIDs();
+}
+
+void HammerEngine::TileRenderer::updateCachedTextureIDs()
+{
+    static const char* seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
+    const char* prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
+
+    // Pre-compute all seasonal texture IDs once (eliminates ~24,000 heap allocations/frame at 4K)
+    m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
+    m_cachedTextureIDs.biome_desert = std::string(prefix) + "biome_desert";
+    m_cachedTextureIDs.biome_forest = std::string(prefix) + "biome_forest";
+    m_cachedTextureIDs.biome_mountain = std::string(prefix) + "biome_mountain";
+    m_cachedTextureIDs.biome_swamp = std::string(prefix) + "biome_swamp";
+    m_cachedTextureIDs.biome_haunted = std::string(prefix) + "biome_haunted";
+    m_cachedTextureIDs.biome_celestial = std::string(prefix) + "biome_celestial";
+    m_cachedTextureIDs.biome_ocean = std::string(prefix) + "biome_ocean";
+    m_cachedTextureIDs.obstacle_water = std::string(prefix) + "obstacle_water";
+    m_cachedTextureIDs.obstacle_tree = std::string(prefix) + "obstacle_tree";
+    m_cachedTextureIDs.obstacle_rock = std::string(prefix) + "obstacle_rock";
+    m_cachedTextureIDs.building_hut = std::string(prefix) + "building_hut";
+    m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
+    m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
+    m_cachedTextureIDs.building_cityhall = std::string(prefix) + "building_cityhall";
+}
+
+void HammerEngine::TileRenderer::setCurrentSeason(Season season)
+{
+    if (m_currentSeason != season) {
+        m_currentSeason = season;
+        updateCachedTextureIDs();
+    }
 }
 
 HammerEngine::TileRenderer::~TileRenderer()
@@ -666,7 +698,7 @@ void HammerEngine::TileRenderer::onSeasonChange(const EventData& data)
     Season newSeason = seasonEvent->getSeason();
     if (newSeason != m_currentSeason) {
         WORLD_MANAGER_INFO("TileRenderer: Season changed to " + seasonEvent->getSeasonName());
-        m_currentSeason = newSeason;
+        setCurrentSeason(newSeason);  // This updates m_currentSeason AND refreshes cached texture IDs
     }
 }
 
@@ -716,23 +748,24 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
             }
 
             // LAYER 1: Render biome texture (base layer) - skip if part of building to avoid overdraw
+            // Uses pre-cached texture IDs to avoid heap allocations in hot render loop
             if (!isPartOfBuilding) {
-                std::string biomeTextureID;
+                const std::string* biomeTextureID = &m_cachedTextureIDs.biome_default;
                 if (tile.isWater) {
-                    biomeTextureID = getSeasonalTextureID("obstacle_water");
+                    biomeTextureID = &m_cachedTextureIDs.obstacle_water;
                 } else {
                     switch (tile.biome) {
-                        case HammerEngine::Biome::DESERT:     biomeTextureID = getSeasonalTextureID("biome_desert"); break;
-                        case HammerEngine::Biome::FOREST:     biomeTextureID = getSeasonalTextureID("biome_forest"); break;
-                        case HammerEngine::Biome::MOUNTAIN:   biomeTextureID = getSeasonalTextureID("biome_mountain"); break;
-                        case HammerEngine::Biome::SWAMP:      biomeTextureID = getSeasonalTextureID("biome_swamp"); break;
-                        case HammerEngine::Biome::HAUNTED:    biomeTextureID = getSeasonalTextureID("biome_haunted"); break;
-                        case HammerEngine::Biome::CELESTIAL:  biomeTextureID = getSeasonalTextureID("biome_celestial"); break;
-                        case HammerEngine::Biome::OCEAN:      biomeTextureID = getSeasonalTextureID("biome_ocean"); break;
-                        default:                biomeTextureID = getSeasonalTextureID("biome_default"); break;
+                        case HammerEngine::Biome::DESERT:     biomeTextureID = &m_cachedTextureIDs.biome_desert; break;
+                        case HammerEngine::Biome::FOREST:     biomeTextureID = &m_cachedTextureIDs.biome_forest; break;
+                        case HammerEngine::Biome::MOUNTAIN:   biomeTextureID = &m_cachedTextureIDs.biome_mountain; break;
+                        case HammerEngine::Biome::SWAMP:      biomeTextureID = &m_cachedTextureIDs.biome_swamp; break;
+                        case HammerEngine::Biome::HAUNTED:    biomeTextureID = &m_cachedTextureIDs.biome_haunted; break;
+                        case HammerEngine::Biome::CELESTIAL:  biomeTextureID = &m_cachedTextureIDs.biome_celestial; break;
+                        case HammerEngine::Biome::OCEAN:      biomeTextureID = &m_cachedTextureIDs.biome_ocean; break;
+                        default:                              biomeTextureID = &m_cachedTextureIDs.biome_default; break;
                     }
                 }
-                TextureManager::Instance().drawTileF(biomeTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+                TextureManager::Instance().drawTileF(*biomeTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
             }
 
             // LAYER 2: Render non-building obstacles (trees, rocks, water) if present
@@ -740,28 +773,28 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 tile.obstacleType != HammerEngine::ObstacleType::NONE &&
                 tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
 
-                std::string obstacleTextureID;
+                const std::string* obstacleTextureID = &m_cachedTextureIDs.biome_default;
                 switch (tile.obstacleType) {
-                    case HammerEngine::ObstacleType::TREE:    obstacleTextureID = getSeasonalTextureID("obstacle_tree"); break;
-                    case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = getSeasonalTextureID("obstacle_rock"); break;
-                    case HammerEngine::ObstacleType::WATER:   obstacleTextureID = getSeasonalTextureID("obstacle_water"); break;
-                    default:                    obstacleTextureID = getSeasonalTextureID("biome_default"); break;
+                    case HammerEngine::ObstacleType::TREE:    obstacleTextureID = &m_cachedTextureIDs.obstacle_tree; break;
+                    case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = &m_cachedTextureIDs.obstacle_rock; break;
+                    case HammerEngine::ObstacleType::WATER:   obstacleTextureID = &m_cachedTextureIDs.obstacle_water; break;
+                    default:                                  obstacleTextureID = &m_cachedTextureIDs.biome_default; break;
                 }
-                TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+                TextureManager::Instance().drawTileF(*obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
             }
 
             // LAYER 3: Render buildings (64x64, 2x2 tiles) only from top-left tile
             if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && !isPartOfBuilding) {
                 // This is the top-left tile - render the full 2x2 building
-                std::string buildingTextureID;
+                const std::string* buildingTextureID = &m_cachedTextureIDs.building_hut;
                 switch (tile.buildingSize) {
-                    case 1: buildingTextureID = getSeasonalTextureID("building_hut"); break;
-                    case 2: buildingTextureID = getSeasonalTextureID("building_house"); break;
-                    case 3: buildingTextureID = getSeasonalTextureID("building_large"); break;
-                    case 4: buildingTextureID = getSeasonalTextureID("building_cityhall"); break;
-                    default: buildingTextureID = getSeasonalTextureID("building_hut"); break;
+                    case 1: buildingTextureID = &m_cachedTextureIDs.building_hut; break;
+                    case 2: buildingTextureID = &m_cachedTextureIDs.building_house; break;
+                    case 3: buildingTextureID = &m_cachedTextureIDs.building_large; break;
+                    case 4: buildingTextureID = &m_cachedTextureIDs.building_cityhall; break;
+                    default: buildingTextureID = &m_cachedTextureIDs.building_hut; break;
                 }
-                TextureManager::Instance().drawTileF(buildingTextureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
+                TextureManager::Instance().drawTileF(*buildingTextureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
             }
         }
     }
