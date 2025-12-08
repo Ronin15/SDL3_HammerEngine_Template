@@ -101,6 +101,23 @@ class TextureManager {
                  SDL_FlipMode flip = SDL_FLIP_NONE);
 
   /**
+   * @brief Draws a tile using a direct texture pointer (no hash lookup)
+   * @param texture Direct SDL_Texture pointer (caller must ensure validity)
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
+   * @param p_renderer SDL renderer to draw to
+   * @note Uses SDL_RenderTexture for optimal performance (no rotation overhead)
+   */
+  static void drawTileDirect(SDL_Texture* texture,
+                             float x,
+                             float y,
+                             int width,
+                             int height,
+                             SDL_Renderer* p_renderer);
+
+  /**
    * @brief Draws a specific frame from a sprite sheet texture
    * @param textureID Unique identifier of the sprite sheet texture
    * @param x X coordinate for drawing position
