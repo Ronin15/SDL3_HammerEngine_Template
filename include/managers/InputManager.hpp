@@ -57,6 +57,16 @@ class InputManager {
     bool getMouseButtonState(int buttonNumber) const;
     const Vector2D& getMousePosition() const; // Returns const reference for safety
 
+    // Input event handlers (called by GameEngine during SDL event polling)
+    void onKeyDown(const SDL_Event& event);
+    void onKeyUp(const SDL_Event& event);
+    void onMouseMove(const SDL_Event& event);
+    void onMouseButtonDown(const SDL_Event& event);
+    void onMouseButtonUp(const SDL_Event& event);
+    void onGamepadAxisMove(const SDL_Event& event);
+    void onGamepadButtonDown(const SDL_Event& event);
+    void onGamepadButtonUp(const SDL_Event& event);
+
  private:
     // Keyboard specific
     const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
@@ -75,26 +85,6 @@ class InputManager {
     
     // Shutdown state
     bool m_isShutdown{false};
-
-    // Handle keyboard events
-    void onKeyDown(const SDL_Event& event);
-    void onKeyUp(const SDL_Event& event);
-
-    // Handle mouse events
-    void onMouseMove(const SDL_Event& event);
-    void onMouseButtonDown(const SDL_Event& event);
-    void onMouseButtonUp(const SDL_Event& event);
-
-    // Handle gamepad events
-    void onGamepadAxisMove(const SDL_Event& event);
-    void onGamepadButtonDown(const SDL_Event& event);
-    void onGamepadButtonUp(const SDL_Event& event);
-
-    // Handle window events
-    void onWindowResize(const SDL_Event& event);
-    
-    // Handle display events
-    void onDisplayChange(const SDL_Event& event);
 
     // Delete copy constructor and assignment operator
     InputManager(const InputManager&) = delete; // Prevent copying

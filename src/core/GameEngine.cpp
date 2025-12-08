@@ -823,10 +823,66 @@ bool GameEngine::init(const std::string_view title, const int width,
 }
 
 void GameEngine::handleEvents() {
-  // Handle input events - InputManager stays here for SDL event polling
-  // architecture
+  // SDL event polling - GameEngine owns the event loop as it owns the window/renderer
+  // InputManager receives input events and maintains input state
   InputManager &inputMgr = InputManager::Instance();
-  inputMgr.update();
+
+  // Clear previous frame's pressed keys before processing new events
+  inputMgr.clearFrameInput();
+
+  SDL_Event event;
+  while (SDL_PollEvent(&event)) {
+    // Convert window coordinates to logical coordinates for mouse events
+    SDL_ConvertEventToRenderCoordinates(mp_renderer.get(), &event);
+
+    switch (event.type) {
+      case SDL_EVENT_QUIT:
+        GAMEENGINE_INFO("Shutting down! {}===]>");
+        setRunning(false);
+        break;
+
+      // Input events -> route to InputManager
+      case SDL_EVENT_KEY_DOWN:
+        inputMgr.onKeyDown(event);
+        break;
+      case SDL_EVENT_KEY_UP:
+        inputMgr.onKeyUp(event);
+        break;
+      case SDL_EVENT_MOUSE_MOTION:
+        inputMgr.onMouseMove(event);
+        break;
+      case SDL_EVENT_MOUSE_BUTTON_DOWN:
+        inputMgr.onMouseButtonDown(event);
+        break;
+      case SDL_EVENT_MOUSE_BUTTON_UP:
+        inputMgr.onMouseButtonUp(event);
+        break;
+      case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+        inputMgr.onGamepadAxisMove(event);
+        break;
+      case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        inputMgr.onGamepadButtonDown(event);
+        break;
+      case SDL_EVENT_GAMEPAD_BUTTON_UP:
+        inputMgr.onGamepadButtonUp(event);
+        break;
+
+      // Window/Display events -> handle directly in GameEngine
+      case SDL_EVENT_WINDOW_RESIZED:
+        onWindowResize(event);
+        break;
+      case SDL_EVENT_DISPLAY_ORIENTATION:
+      case SDL_EVENT_DISPLAY_ADDED:
+      case SDL_EVENT_DISPLAY_REMOVED:
+      case SDL_EVENT_DISPLAY_MOVED:
+      case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+        onDisplayChange(event);
+        break;
+
+      default:
+        break;
+    }
+  }
 
   // Global fullscreen toggle (F1 key) - processed before state input
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F1)) {
@@ -1528,4 +1584,110 @@ bool GameEngine::verifyVSyncState(bool requested) {
   m_usingSoftwareFrameLimiting = requested ? !vsyncVerified : true;
 
   return vsyncVerified;
+}
+
+void GameEngine::onWindowResize(const SDL_Event& event) {
+  // Centralized resize pipeline:
+  // 1) Update GameEngine window size (authoritative source)
+  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others: native)
+  // 3) Reload fonts via FontManager for new display characteristics
+  // 4) UI scales from logical size; UIManager layout recalculates on next render
+
+  // Update GameEngine with new window dimensions
+  int newWidth = event.window.data1;
+  int newHeight = event.window.data2;
+
+  GAMEENGINE_INFO("Window resized to: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
+
+  // Update GameEngine window dimensions
+  setWindowSize(newWidth, newHeight);
+
+  // Use native resolution rendering (all platforms) for crisp, sharp text
+  // This matches the initialization approach in GameEngine and ensures
+  // consistent rendering whether in windowed or fullscreen mode
+  int actualWidth, actualHeight;
+  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight)) {
+    GAMEENGINE_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
+    actualWidth = newWidth;
+    actualHeight = newHeight;
+  }
+
+  // Update renderer to native resolution (no scaling)
+  SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
+
+  // Update GameEngine's cached logical dimensions
+  setLogicalSize(actualWidth, actualHeight);
+
+  GAMEENGINE_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+
+  // Reload fonts for new display configuration
+  GAMEENGINE_INFO("Reloading fonts for display configuration change...");
+  FontManager& fontManager = FontManager::Instance();
+  if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
+    GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
+  } else {
+    GAMEENGINE_INFO("Font system reinitialized successfully after window resize");
+  }
+
+  // UIManager owns all UI positioning - directly call its resize handler
+  UIManager::Instance().onWindowResize(getLogicalWidth(), getLogicalHeight());
+  GAMEENGINE_INFO("UIManager notified for UI component repositioning");
+}
+
+void GameEngine::onDisplayChange(const SDL_Event& event) {
+  // Centralized display-change pipeline:
+  // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
+  // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
+  // - Force UI layout refresh and reload fonts using GameEngine logical size
+
+  const char* eventName = "Unknown";
+  switch (event.type) {
+    case SDL_EVENT_DISPLAY_ORIENTATION:
+      eventName = "Orientation Change";
+      break;
+    case SDL_EVENT_DISPLAY_ADDED:
+      eventName = "Display Added";
+      break;
+    case SDL_EVENT_DISPLAY_REMOVED:
+      eventName = "Display Removed";
+      break;
+    case SDL_EVENT_DISPLAY_MOVED:
+      eventName = "Display Moved";
+      break;
+    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+      eventName = "Content Scale Changed";
+      break;
+  }
+
+  GAMEENGINE_INFO("Display event detected: " + std::string(eventName));
+
+  // On Apple platforms, display changes often invalidate font textures
+  // due to different DPI scaling or context changes
+  #ifdef __APPLE__
+  GAMEENGINE_INFO("Apple platform: Reinitializing font system due to display change...");
+  #else
+  GAMEENGINE_INFO("Non-Apple platform: Display change handled by existing window resize logic");
+  #endif
+
+  // Update UI systems with consistent scaling and reload fonts ONCE using logical dimensions
+  try {
+    UIManager& uiManager = UIManager::Instance();
+    uiManager.setGlobalScale(1.0f);
+    GAMEENGINE_INFO("Updated UIManager with consistent 1.0 scale");
+
+    uiManager.cleanupForStateTransition();
+
+    FontManager& fontManager = FontManager::Instance();
+    if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
+      GAMEENGINE_WARN("Failed to reload fonts for new display size");
+    } else {
+      GAMEENGINE_INFO("Successfully reloaded fonts for new display size");
+    }
+
+    // UIManager owns all UI positioning - trigger repositioning for display change
+    uiManager.onWindowResize(getLogicalWidth(), getLogicalHeight());
+    GAMEENGINE_INFO("UIManager notified for display change repositioning");
+  } catch (const std::exception& e) {
+    GAMEENGINE_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
+  }
 }
