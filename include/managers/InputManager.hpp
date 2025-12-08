@@ -57,9 +57,6 @@ class InputManager {
     bool getMouseButtonState(int buttonNumber) const;
     const Vector2D& getMousePosition() const; // Returns const reference for safety
 
-    // Window resize callback registration
-    void setWindowResizeCallback(std::function<void(int, int)> callback);
-
  private:
     // Keyboard specific
     const bool* m_keystates{nullptr}; // Owned by SDL, don't delete
@@ -78,9 +75,6 @@ class InputManager {
     
     // Shutdown state
     bool m_isShutdown{false};
-
-    // Window resize callback
-    std::function<void(int, int)> m_onWindowResizeCallback;
 
     // Handle keyboard events
     void onKeyDown(const SDL_Event& event);

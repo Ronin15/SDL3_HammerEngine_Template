@@ -44,7 +44,6 @@ public:
   bool exit() override;
 
   std::string getName() const override { return "EventDemo"; }
-  void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
 private:
   // Demo management methods
