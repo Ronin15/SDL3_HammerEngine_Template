@@ -79,6 +79,24 @@ private:
         std::string building_cityhall;
     } m_cachedTextureIDs;
 
+    // Cached texture pointers - eliminates hash map lookups in hot render loop
+    struct CachedTileTextures {
+        SDL_Texture* biome_default{nullptr};
+        SDL_Texture* biome_desert{nullptr};
+        SDL_Texture* biome_forest{nullptr};
+        SDL_Texture* biome_mountain{nullptr};
+        SDL_Texture* biome_swamp{nullptr};
+        SDL_Texture* biome_haunted{nullptr};
+        SDL_Texture* biome_celestial{nullptr};
+        SDL_Texture* biome_ocean{nullptr};
+        SDL_Texture* obstacle_water{nullptr};
+        SDL_Texture* obstacle_tree{nullptr};
+        SDL_Texture* obstacle_rock{nullptr};
+        SDL_Texture* building_hut{nullptr};
+        SDL_Texture* building_house{nullptr};
+        SDL_Texture* building_large{nullptr};
+        SDL_Texture* building_cityhall{nullptr};
+    } m_cachedTextures;
 
     // Season change handler
     void onSeasonChange(const EventData& data);

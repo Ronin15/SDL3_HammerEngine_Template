@@ -74,9 +74,9 @@ void UIManager::update(float deltaTime) {
 
   // Note: Window resize is now event-driven via onWindowResize(), not polled every frame
 
-  // Process data bindings
+  // Process data bindings - ONLY for visible components to avoid unnecessary work
   for (auto const& [id, component] : m_components) {
-      if (component) {
+      if (component && component->m_visible) {
           // Handle text bindings
           if (component->m_textBinding) {
               setText(id, component->m_textBinding());
@@ -84,7 +84,7 @@ void UIManager::update(float deltaTime) {
           // Handle list bindings
           if (component->m_listBinding) {
               auto newListItems = component->m_listBinding();
-              if (component->m_listItems.size() != newListItems.size() || 
+              if (component->m_listItems.size() != newListItems.size() ||
                   !std::equal(component->m_listItems.begin(), component->m_listItems.end(), newListItems.begin())) {
                   component->m_listItems = newListItems;
                   component->m_listItemsDirty = true; // Mark as dirty when changed by binding

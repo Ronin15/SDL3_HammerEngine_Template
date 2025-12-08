@@ -242,6 +242,24 @@ void TextureManager::drawTileF(const std::string& textureID,
   SDL_RenderTextureRotated(p_renderer, it->second.texture.get(), &srcRect, &destRect, angle, &center, flip);
 }
 
+void TextureManager::drawTileDirect(SDL_Texture* texture,
+                                    float x,
+                                    float y,
+                                    int width,
+                                    int height,
+                                    SDL_Renderer* p_renderer) {
+  if (!texture) {
+    return;  // Silent fail - caller should ensure valid texture
+  }
+
+  // Perfect pixel source rectangle - no inset for seamless tiling
+  SDL_FRect srcRect = {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)};
+  SDL_FRect destRect = {x, y, static_cast<float>(width), static_cast<float>(height)};
+
+  // Use SDL_RenderTexture - no rotation overhead for tiles
+  SDL_RenderTexture(p_renderer, texture, &srcRect, &destRect);
+}
+
 void TextureManager::drawFrame(const std::string& textureID,
                                int x,
                                int y,

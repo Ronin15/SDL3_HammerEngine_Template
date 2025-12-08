@@ -496,6 +496,7 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
       tile.obstacleType = ObstacleType::BUILDING;
       tile.buildingId = buildingId;
       tile.buildingSize = 1; // Start as size 1 (hut)
+      tile.isTopLeftOfBuilding = (dx == 0 && dy == 0);  // Only top-left renders the building
       tilesMarked++;
     }
   }

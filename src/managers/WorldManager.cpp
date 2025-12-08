@@ -636,6 +636,29 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs()
     m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
     m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
     m_cachedTextureIDs.building_cityhall = std::string(prefix) + "building_cityhall";
+
+    // Cache raw texture pointers for direct rendering (eliminates ~8,000 hash lookups/frame at 4K)
+    auto& texMgr = TextureManager::Instance();
+    auto getPtr = [&texMgr](const std::string& id) -> SDL_Texture* {
+        auto tex = texMgr.getTexture(id);
+        return tex ? tex.get() : nullptr;
+    };
+
+    m_cachedTextures.biome_default = getPtr(m_cachedTextureIDs.biome_default);
+    m_cachedTextures.biome_desert = getPtr(m_cachedTextureIDs.biome_desert);
+    m_cachedTextures.biome_forest = getPtr(m_cachedTextureIDs.biome_forest);
+    m_cachedTextures.biome_mountain = getPtr(m_cachedTextureIDs.biome_mountain);
+    m_cachedTextures.biome_swamp = getPtr(m_cachedTextureIDs.biome_swamp);
+    m_cachedTextures.biome_haunted = getPtr(m_cachedTextureIDs.biome_haunted);
+    m_cachedTextures.biome_celestial = getPtr(m_cachedTextureIDs.biome_celestial);
+    m_cachedTextures.biome_ocean = getPtr(m_cachedTextureIDs.biome_ocean);
+    m_cachedTextures.obstacle_water = getPtr(m_cachedTextureIDs.obstacle_water);
+    m_cachedTextures.obstacle_tree = getPtr(m_cachedTextureIDs.obstacle_tree);
+    m_cachedTextures.obstacle_rock = getPtr(m_cachedTextureIDs.obstacle_rock);
+    m_cachedTextures.building_hut = getPtr(m_cachedTextureIDs.building_hut);
+    m_cachedTextures.building_house = getPtr(m_cachedTextureIDs.building_house);
+    m_cachedTextures.building_large = getPtr(m_cachedTextureIDs.building_large);
+    m_cachedTextures.building_cityhall = getPtr(m_cachedTextureIDs.building_cityhall);
 }
 
 void HammerEngine::TileRenderer::setCurrentSeason(Season season)
@@ -729,7 +752,9 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                            static_cast<int>((cameraY + viewportHeight) / TILE_SIZE) + 2);
 
     // SINGLE-PASS RENDERING: Render all layers per tile for better cache locality
-    // Reduces loop iterations by 66% while maintaining proper z-order
+    // Uses cached texture pointers + SDL_RenderTexture for optimal performance
+    constexpr int tileSize = static_cast<int>(TILE_SIZE);
+
     for (int y = startTileY; y < endTileY; ++y) {
         for (int x = startTileX; x < endTileX; ++x) {
             const HammerEngine::Tile& tile = world.grid[y][x];
@@ -737,35 +762,29 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
             float screenY = (y * TILE_SIZE) - cameraY;
 
             // Check if this tile is part of a building (but not the top-left)
-            // If so, skip biome/obstacle rendering to avoid overwriting the building texture
-            bool isPartOfBuilding = false;
-            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
-                // Check if this is NOT the top-left tile
-                if ((x > 0 && world.grid[y][x - 1].buildingId == tile.buildingId) ||
-                    (y > 0 && world.grid[y - 1][x].buildingId == tile.buildingId)) {
-                    isPartOfBuilding = true;
-                }
-            }
+            // Uses pre-computed flag to avoid grid lookups (eliminates 16K+ accesses/frame at 4K)
+            bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
+                                     !tile.isTopLeftOfBuilding);
 
             // LAYER 1: Render biome texture (base layer) - skip if part of building to avoid overdraw
-            // Uses pre-cached texture IDs to avoid heap allocations in hot render loop
+            // Uses cached texture pointers for direct rendering (no hash lookup, no rotation overhead)
             if (!isPartOfBuilding) {
-                const std::string* biomeTextureID = &m_cachedTextureIDs.biome_default;
+                SDL_Texture* biomeTexture = m_cachedTextures.biome_default;
                 if (tile.isWater) {
-                    biomeTextureID = &m_cachedTextureIDs.obstacle_water;
+                    biomeTexture = m_cachedTextures.obstacle_water;
                 } else {
                     switch (tile.biome) {
-                        case HammerEngine::Biome::DESERT:     biomeTextureID = &m_cachedTextureIDs.biome_desert; break;
-                        case HammerEngine::Biome::FOREST:     biomeTextureID = &m_cachedTextureIDs.biome_forest; break;
-                        case HammerEngine::Biome::MOUNTAIN:   biomeTextureID = &m_cachedTextureIDs.biome_mountain; break;
-                        case HammerEngine::Biome::SWAMP:      biomeTextureID = &m_cachedTextureIDs.biome_swamp; break;
-                        case HammerEngine::Biome::HAUNTED:    biomeTextureID = &m_cachedTextureIDs.biome_haunted; break;
-                        case HammerEngine::Biome::CELESTIAL:  biomeTextureID = &m_cachedTextureIDs.biome_celestial; break;
-                        case HammerEngine::Biome::OCEAN:      biomeTextureID = &m_cachedTextureIDs.biome_ocean; break;
-                        default:                              biomeTextureID = &m_cachedTextureIDs.biome_default; break;
+                        case HammerEngine::Biome::DESERT:     biomeTexture = m_cachedTextures.biome_desert; break;
+                        case HammerEngine::Biome::FOREST:     biomeTexture = m_cachedTextures.biome_forest; break;
+                        case HammerEngine::Biome::MOUNTAIN:   biomeTexture = m_cachedTextures.biome_mountain; break;
+                        case HammerEngine::Biome::SWAMP:      biomeTexture = m_cachedTextures.biome_swamp; break;
+                        case HammerEngine::Biome::HAUNTED:    biomeTexture = m_cachedTextures.biome_haunted; break;
+                        case HammerEngine::Biome::CELESTIAL:  biomeTexture = m_cachedTextures.biome_celestial; break;
+                        case HammerEngine::Biome::OCEAN:      biomeTexture = m_cachedTextures.biome_ocean; break;
+                        default:                              biomeTexture = m_cachedTextures.biome_default; break;
                     }
                 }
-                TextureManager::Instance().drawTileF(*biomeTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+                TextureManager::drawTileDirect(biomeTexture, screenX, screenY, tileSize, tileSize, renderer);
             }
 
             // LAYER 2: Render non-building obstacles (trees, rocks, water) if present
@@ -773,28 +792,28 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 tile.obstacleType != HammerEngine::ObstacleType::NONE &&
                 tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
 
-                const std::string* obstacleTextureID = &m_cachedTextureIDs.biome_default;
+                SDL_Texture* obstacleTexture = m_cachedTextures.biome_default;
                 switch (tile.obstacleType) {
-                    case HammerEngine::ObstacleType::TREE:    obstacleTextureID = &m_cachedTextureIDs.obstacle_tree; break;
-                    case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = &m_cachedTextureIDs.obstacle_rock; break;
-                    case HammerEngine::ObstacleType::WATER:   obstacleTextureID = &m_cachedTextureIDs.obstacle_water; break;
-                    default:                                  obstacleTextureID = &m_cachedTextureIDs.biome_default; break;
+                    case HammerEngine::ObstacleType::TREE:    obstacleTexture = m_cachedTextures.obstacle_tree; break;
+                    case HammerEngine::ObstacleType::ROCK:    obstacleTexture = m_cachedTextures.obstacle_rock; break;
+                    case HammerEngine::ObstacleType::WATER:   obstacleTexture = m_cachedTextures.obstacle_water; break;
+                    default:                                  obstacleTexture = m_cachedTextures.biome_default; break;
                 }
-                TextureManager::Instance().drawTileF(*obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
+                TextureManager::drawTileDirect(obstacleTexture, screenX, screenY, tileSize, tileSize, renderer);
             }
 
             // LAYER 3: Render buildings (64x64, 2x2 tiles) only from top-left tile
             if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && !isPartOfBuilding) {
                 // This is the top-left tile - render the full 2x2 building
-                const std::string* buildingTextureID = &m_cachedTextureIDs.building_hut;
+                SDL_Texture* buildingTexture = m_cachedTextures.building_hut;
                 switch (tile.buildingSize) {
-                    case 1: buildingTextureID = &m_cachedTextureIDs.building_hut; break;
-                    case 2: buildingTextureID = &m_cachedTextureIDs.building_house; break;
-                    case 3: buildingTextureID = &m_cachedTextureIDs.building_large; break;
-                    case 4: buildingTextureID = &m_cachedTextureIDs.building_cityhall; break;
-                    default: buildingTextureID = &m_cachedTextureIDs.building_hut; break;
+                    case 1: buildingTexture = m_cachedTextures.building_hut; break;
+                    case 2: buildingTexture = m_cachedTextures.building_house; break;
+                    case 3: buildingTexture = m_cachedTextures.building_large; break;
+                    case 4: buildingTexture = m_cachedTextures.building_cityhall; break;
+                    default: buildingTexture = m_cachedTextures.building_hut; break;
                 }
-                TextureManager::Instance().drawTileF(*buildingTextureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
+                TextureManager::drawTileDirect(buildingTexture, screenX, screenY, tileSize * 2, tileSize * 2, renderer);
             }
         }
     }
