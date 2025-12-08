@@ -534,34 +534,50 @@ void GamePlayState::initializeInventoryUI() {
   int windowWidth = gameEngine.getLogicalWidth();
 
   // Create inventory panel (initially hidden) matching EventDemoState layout
-  int inventoryWidth = 280;  // Match EventDemoState width
-  int inventoryHeight = 400; // Match EventDemoState height
-  int inventoryX = windowWidth - inventoryWidth - 20;
-  int inventoryY = 170;  // Match EventDemoState Y position
+  // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
+  constexpr int inventoryWidth = 280;
+  constexpr int inventoryHeight = 400;
+  constexpr int panelMarginRight = 20;  // 20px from right edge
+  constexpr int panelMarginTop = 170;   // 170px from top
+  constexpr int childInset = 10;        // Children are 10px inside panel
+  constexpr int childWidth = inventoryWidth - (childInset * 2);  // 260px
+
+  // Initial position (will be auto-repositioned by UIManager)
+  int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
+  int inventoryY = panelMarginTop;
 
   ui.createPanel("gameplay_inventory_panel",
                  {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
   ui.setComponentVisible("gameplay_inventory_panel", false);
-  // Use TOP_ALIGNED - actual positioning handled by onWindowResize
   ui.setComponentPositioning("gameplay_inventory_panel",
-                             {UIPositionMode::TOP_ALIGNED, inventoryX, inventoryY,
+                             {UIPositionMode::TOP_RIGHT, panelMarginRight, panelMarginTop,
                               inventoryWidth, inventoryHeight});
 
+  // Title: 25px below panel top, inset by 10px
   ui.createTitle("gameplay_inventory_title",
-                 {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},
+                 {inventoryX + childInset, inventoryY + 25, childWidth, 35},
                  "Player Inventory");
   ui.setComponentVisible("gameplay_inventory_title", false);
-  // Children will be repositioned in onWindowResize based on panel position
+  ui.setComponentPositioning("gameplay_inventory_title",
+                             {UIPositionMode::TOP_RIGHT, panelMarginRight + childInset, panelMarginTop + 25,
+                              childWidth, 35});
 
+  // Status label: 75px below panel top
   ui.createLabel("gameplay_inventory_status",
-                 {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},
+                 {inventoryX + childInset, inventoryY + 75, childWidth, 25},
                  "Capacity: 0/50");
   ui.setComponentVisible("gameplay_inventory_status", false);
+  ui.setComponentPositioning("gameplay_inventory_status",
+                             {UIPositionMode::TOP_RIGHT, panelMarginRight + childInset, panelMarginTop + 75,
+                              childWidth, 25});
 
-  // Create inventory list for displaying items matching EventDemoState
+  // Inventory list: 110px below panel top
   ui.createList("gameplay_inventory_list",
-                {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});
+                {inventoryX + childInset, inventoryY + 110, childWidth, 270});
   ui.setComponentVisible("gameplay_inventory_list", false);
+  ui.setComponentPositioning("gameplay_inventory_list",
+                             {UIPositionMode::TOP_RIGHT, panelMarginRight + childInset, panelMarginTop + 110,
+                              childWidth, 270});
 
   // --- DATA BINDING SETUP ---
   // Bind the inventory capacity label to a function that gets the data
@@ -609,38 +625,6 @@ void GamePlayState::initializeInventoryUI() {
 
       return items;
   });
-}
-
-void GamePlayState::onWindowResize(int newLogicalWidth,
-                                    int newLogicalHeight) {
-  auto &ui = UIManager::Instance();
-
-  const int inventoryWidth = 280;
-  const int inventoryHeight = 400;
-  // Calculate position directly (matches EventDemoState pattern)
-  const int inventoryX = newLogicalWidth - inventoryWidth - 20;
-  const int inventoryY = 170;  // Fixed Y from top
-
-  // Update panel bounds
-  ui.setComponentBounds("gameplay_inventory_panel",
-                        {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
-
-  // Reposition children relative to panel
-  ui.setComponentBounds("gameplay_inventory_title",
-                        {inventoryX + 10, inventoryY + 25,
-                         inventoryWidth - 20, 35});
-
-  ui.setComponentBounds("gameplay_inventory_status",
-                        {inventoryX + 10, inventoryY + 75,
-                         inventoryWidth - 20, 25});
-
-  ui.setComponentBounds("gameplay_inventory_list",
-                        {inventoryX + 10, inventoryY + 110,
-                         inventoryWidth - 20, 270});
-
-  GAMEPLAY_DEBUG("Repositioned inventory UI for new window size: " +
-                 std::to_string(newLogicalWidth) + "x" +
-                 std::to_string(newLogicalHeight));
 }
 
 void GamePlayState::toggleInventoryDisplay() {

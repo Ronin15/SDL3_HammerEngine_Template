@@ -180,10 +180,3 @@ std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
 
-void MainMenuState::onWindowResize(int newLogicalWidth,
-                                    int newLogicalHeight) {
-  // Auto-repositioning now handled by UIManager - no manual updates needed!
-  GAMESTATE_DEBUG("MainMenuState: Window resized to " +
-                  std::to_string(newLogicalWidth) + "x" +
-                  std::to_string(newLogicalHeight) + " (auto-repositioning active)");
-}

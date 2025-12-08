@@ -407,14 +407,6 @@ bool AdvancedAIDemoState::exit() {
     return true;
 }
 
-void AdvancedAIDemoState::onWindowResize(int newLogicalWidth,
-                                          int newLogicalHeight) {
-    // Auto-repositioning now handled by UIManager - no manual updates needed!
-    GAMESTATE_DEBUG("AdvancedAIDemoState: Window resized to " +
-                    std::to_string(newLogicalWidth) + "x" +
-                    std::to_string(newLogicalHeight) + " (auto-repositioning active)");
-}
-
 void AdvancedAIDemoState::update(float deltaTime) {
     try {
         // Check if we need to transition to loading screen (do this in update, not enter)

@@ -107,14 +107,6 @@ void GameStateManager::handleInput() {
   }
 }
 
-void GameStateManager::notifyResize(int newLogicalWidth,
-                                    int newLogicalHeight) {
-  // Notify the top state about window resize
-  if (!m_activeStates.empty()) {
-    m_activeStates.back()->onWindowResize(newLogicalWidth, newLogicalHeight);
-  }
-}
-
 bool GameStateManager::hasState(const std::string &stateName) const {
   return m_registeredStates.find(stateName) != m_registeredStates.end();
 }

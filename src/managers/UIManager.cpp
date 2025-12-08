@@ -60,12 +60,7 @@ bool UIManager::init() {
           " for resolution " + std::to_string(m_currentLogicalWidth) + "x" +
           std::to_string(m_currentLogicalHeight));
 
-  // Register callback with InputManager for window resize events
-  InputManager::Instance().setWindowResizeCallback(
-      [this](int width, int height) {
-        this->onWindowResize(width, height);
-      });
-  UI_INFO("Registered window resize callback with InputManager");
+  // Note: UIManager::onWindowResize() is called directly by InputManager when window resizes
 
   return true;
 }
@@ -3207,8 +3202,14 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
     break;
 
   case UIPositionMode::TOP_ALIGNED:
-    // Top edge + offsetY, left aligned at offsetX
+    // Top-left: x = offsetX, y = offsetY
     bounds.x = scaledOffsetX;
+    bounds.y = scaledOffsetY;
+    break;
+
+  case UIPositionMode::TOP_RIGHT:
+    // Top-right: x = right - width - offsetX, y = offsetY
+    bounds.x = width - bounds.width - scaledOffsetX;
     bounds.y = scaledOffsetY;
     break;
 

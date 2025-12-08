@@ -102,11 +102,6 @@ void InputManager::reset() {
   m_mouseButtonStates[MIDDLE] = false;
 }
 
-void InputManager::setWindowResizeCallback(std::function<void(int, int)> callback) {
-  m_onWindowResizeCallback = std::move(callback);
-  INPUT_INFO("Window resize callback registered");
-}
-
 bool InputManager::isKeyDown(SDL_Scancode key) const {
   if (m_keystates != nullptr) {
     return m_keystates[key] == 1;
@@ -514,18 +509,9 @@ void InputManager::onWindowResize(const SDL_Event& event) {
      INPUT_INFO("Font system reinitialized successfully after window resize");
    }
 
-   // Notify registered callback (typically UIManager) for UI component repositioning
-   if (m_onWindowResizeCallback) {
-     m_onWindowResizeCallback(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
-     INPUT_INFO("Window resize callback invoked for new window size");
-   }
-
-   // Notify active game state about resize for UI layout recalculation
-   if (gameEngine.getGameStateManager()) {
-     gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),
-                                                     gameEngine.getLogicalHeight());
-     INPUT_INFO("Notified game state about window resize");
-   }
+   // UIManager owns all UI positioning - directly call its resize handler
+   UIManager::Instance().onWindowResize(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+   INPUT_INFO("UIManager notified for UI component repositioning");
 }
 
 void InputManager::onDisplayChange(const SDL_Event& event) {
@@ -581,12 +567,9 @@ void InputManager::onDisplayChange(const SDL_Event& event) {
       INPUT_INFO("Successfully reloaded fonts for new display size");
     }
 
-    // Notify active game state about display change for UI layout recalculation
-    if (gameEngine.getGameStateManager()) {
-      gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),
-                                                      gameEngine.getLogicalHeight());
-      INPUT_INFO("Notified game state about display change");
-    }
+    // UIManager owns all UI positioning - trigger repositioning for display change
+    uiManager.onWindowResize(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+    INPUT_INFO("UIManager notified for display change repositioning");
   } catch (const std::exception& e) {
     INPUT_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
   }
