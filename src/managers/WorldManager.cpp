@@ -12,6 +12,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "events/ResourceChangeEvent.hpp"
+#include "events/TimeEvent.hpp"
 
 #include "events/HarvestResourceEvent.hpp"
 #include "SDL3/SDL_render.h"
@@ -51,6 +52,12 @@ void WorldManager::setupEventHandlers() {
 
     try {
         registerEventHandlers();
+
+        // Subscribe TileRenderer to season events for seasonal texture switching
+        if (m_tileRenderer) {
+            m_tileRenderer->subscribeToSeasonEvents();
+        }
+
         WORLD_MANAGER_DEBUG("WorldManager event handlers setup complete");
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("WorldManager::setupEventHandlers - Exception: " + std::string(ex.what()));
@@ -65,6 +72,12 @@ void WorldManager::clean() {
     std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
     unregisterEventHandlers();
+
+    // Unsubscribe TileRenderer from season events before cleanup
+    if (m_tileRenderer) {
+        m_tileRenderer->unsubscribeFromSeasonEvents();
+    }
+
     unloadWorldUnsafe();  // Use unsafe version to avoid double-locking
     m_tileRenderer.reset();
 
@@ -595,6 +608,74 @@ void WorldManager::initializeWorldResources() {
 
 // TileRenderer Implementation
 
+HammerEngine::TileRenderer::TileRenderer()
+    : m_currentSeason(Season::Spring), m_subscribedToSeasons(false)
+{
+    // Constructor - season subscription will be done separately
+}
+
+HammerEngine::TileRenderer::~TileRenderer()
+{
+    unsubscribeFromSeasonEvents();
+}
+
+void HammerEngine::TileRenderer::subscribeToSeasonEvents()
+{
+    if (m_subscribedToSeasons) {
+        return;
+    }
+
+    auto& eventMgr = EventManager::Instance();
+    m_seasonToken = eventMgr.registerHandlerWithToken(
+        EventTypeId::Time,
+        [this](const EventData& data) { onSeasonChange(data); }
+    );
+    m_subscribedToSeasons = true;
+
+    // Initialize with current season from GameTime
+    m_currentSeason = GameTime::Instance().getSeason();
+    WORLD_MANAGER_INFO("TileRenderer subscribed to season events, current season: " +
+                       std::string(GameTime::Instance().getSeasonName()));
+}
+
+void HammerEngine::TileRenderer::unsubscribeFromSeasonEvents()
+{
+    if (!m_subscribedToSeasons) {
+        return;
+    }
+
+    auto& eventMgr = EventManager::Instance();
+    eventMgr.removeHandler(m_seasonToken);
+    m_subscribedToSeasons = false;
+    WORLD_MANAGER_DEBUG("TileRenderer unsubscribed from season events");
+}
+
+void HammerEngine::TileRenderer::onSeasonChange(const EventData& data)
+{
+    if (!data.event) {
+        return;
+    }
+
+    // Match TimeController pattern - use static_pointer_cast + getTimeEventType()
+    auto timeEvent = std::static_pointer_cast<TimeEvent>(data.event);
+    if (timeEvent->getTimeEventType() != TimeEventType::SeasonChanged) {
+        return;
+    }
+
+    auto seasonEvent = std::static_pointer_cast<SeasonChangedEvent>(data.event);
+    Season newSeason = seasonEvent->getSeason();
+    if (newSeason != m_currentSeason) {
+        WORLD_MANAGER_INFO("TileRenderer: Season changed to " + seasonEvent->getSeasonName());
+        m_currentSeason = newSeason;
+    }
+}
+
+std::string HammerEngine::TileRenderer::getSeasonalTextureID(const std::string& baseID) const
+{
+    static const char* seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
+    return seasonPrefixes[static_cast<int>(m_currentSeason)] + baseID;
+}
+
 void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
                                      float cameraX, float cameraY, int viewportWidth, int viewportHeight) {
     if (world.grid.empty()) {
@@ -636,19 +717,19 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
 
             // LAYER 1: Render biome texture (base layer) - skip if part of building to avoid overdraw
             if (!isPartOfBuilding) {
-                const char* biomeTextureID;
+                std::string biomeTextureID;
                 if (tile.isWater) {
-                    biomeTextureID = "obstacle_water";
+                    biomeTextureID = getSeasonalTextureID("obstacle_water");
                 } else {
                     switch (tile.biome) {
-                        case HammerEngine::Biome::DESERT:     biomeTextureID = "biome_desert"; break;
-                        case HammerEngine::Biome::FOREST:     biomeTextureID = "biome_forest"; break;
-                        case HammerEngine::Biome::MOUNTAIN:   biomeTextureID = "biome_mountain"; break;
-                        case HammerEngine::Biome::SWAMP:      biomeTextureID = "biome_swamp"; break;
-                        case HammerEngine::Biome::HAUNTED:    biomeTextureID = "biome_haunted"; break;
-                        case HammerEngine::Biome::CELESTIAL:  biomeTextureID = "biome_celestial"; break;
-                        case HammerEngine::Biome::OCEAN:      biomeTextureID = "biome_ocean"; break;
-                        default:                biomeTextureID = "biome_default"; break;
+                        case HammerEngine::Biome::DESERT:     biomeTextureID = getSeasonalTextureID("biome_desert"); break;
+                        case HammerEngine::Biome::FOREST:     biomeTextureID = getSeasonalTextureID("biome_forest"); break;
+                        case HammerEngine::Biome::MOUNTAIN:   biomeTextureID = getSeasonalTextureID("biome_mountain"); break;
+                        case HammerEngine::Biome::SWAMP:      biomeTextureID = getSeasonalTextureID("biome_swamp"); break;
+                        case HammerEngine::Biome::HAUNTED:    biomeTextureID = getSeasonalTextureID("biome_haunted"); break;
+                        case HammerEngine::Biome::CELESTIAL:  biomeTextureID = getSeasonalTextureID("biome_celestial"); break;
+                        case HammerEngine::Biome::OCEAN:      biomeTextureID = getSeasonalTextureID("biome_ocean"); break;
+                        default:                biomeTextureID = getSeasonalTextureID("biome_default"); break;
                     }
                 }
                 TextureManager::Instance().drawTileF(biomeTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
@@ -659,12 +740,12 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 tile.obstacleType != HammerEngine::ObstacleType::NONE &&
                 tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
 
-                const char* obstacleTextureID;
+                std::string obstacleTextureID;
                 switch (tile.obstacleType) {
-                    case HammerEngine::ObstacleType::TREE:    obstacleTextureID = "obstacle_tree"; break;
-                    case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = "obstacle_rock"; break;
-                    case HammerEngine::ObstacleType::WATER:   obstacleTextureID = "obstacle_water"; break;
-                    default:                    obstacleTextureID = "biome_default"; break;
+                    case HammerEngine::ObstacleType::TREE:    obstacleTextureID = getSeasonalTextureID("obstacle_tree"); break;
+                    case HammerEngine::ObstacleType::ROCK:    obstacleTextureID = getSeasonalTextureID("obstacle_rock"); break;
+                    case HammerEngine::ObstacleType::WATER:   obstacleTextureID = getSeasonalTextureID("obstacle_water"); break;
+                    default:                    obstacleTextureID = getSeasonalTextureID("biome_default"); break;
                 }
                 TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
             }
@@ -672,13 +753,13 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
             // LAYER 3: Render buildings (64x64, 2x2 tiles) only from top-left tile
             if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && !isPartOfBuilding) {
                 // This is the top-left tile - render the full 2x2 building
-                const char* buildingTextureID;
+                std::string buildingTextureID;
                 switch (tile.buildingSize) {
-                    case 1: buildingTextureID = "building_hut"; break;
-                    case 2: buildingTextureID = "building_house"; break;
-                    case 3: buildingTextureID = "building_large"; break;
-                    case 4: buildingTextureID = "building_cityhall"; break;
-                    default: buildingTextureID = "building_hut"; break;
+                    case 1: buildingTextureID = getSeasonalTextureID("building_hut"); break;
+                    case 2: buildingTextureID = getSeasonalTextureID("building_house"); break;
+                    case 3: buildingTextureID = getSeasonalTextureID("building_large"); break;
+                    case 4: buildingTextureID = getSeasonalTextureID("building_cityhall"); break;
+                    default: buildingTextureID = getSeasonalTextureID("building_hut"); break;
                 }
                 TextureManager::Instance().drawTileF(buildingTextureID, screenX, screenY, TILE_SIZE * 2, TILE_SIZE * 2, renderer);
             }
@@ -715,20 +796,20 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_
         return;
     }
 
-    // LAYER 1: Always render biome texture as the base layer
+    // LAYER 1: Always render biome texture as the base layer (with seasonal variant)
     std::string biomeTextureID;
     if (tile.isWater) {
-        biomeTextureID = "obstacle_water";
+        biomeTextureID = getSeasonalTextureID("obstacle_water");
     } else {
-        biomeTextureID = getBiomeTexture(tile.biome);
+        biomeTextureID = getSeasonalTextureID(getBiomeTexture(tile.biome));
     }
 
     // Render base biome layer
     TextureManager::Instance().drawTileF(biomeTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
 
-    // LAYER 2: Render obstacles on top of biome (if present)
+    // LAYER 2: Render obstacles on top of biome (if present) with seasonal variant
     if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
-        std::string obstacleTextureID = getObstacleTexture(tile.obstacleType);
+        std::string obstacleTextureID = getSeasonalTextureID(getObstacleTexture(tile.obstacleType));
 
         // Render obstacle layer on top of biome
         TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
