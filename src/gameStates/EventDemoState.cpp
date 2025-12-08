@@ -695,15 +695,15 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
   }
 
-  // Render player using camera-aware rendering (smooth camera via worldToScreen)
+  // Render player using camera-aware rendering with interpolation
   if (m_player) {
-    m_player->render(m_camera.get());
+    m_player->render(m_camera.get(), interpolationAlpha);
   }
 
-  // Render spawned NPCs using camera-aware rendering (smooth camera via worldToScreen)
+  // Render spawned NPCs using camera-aware rendering with interpolation
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
-      npc->render(m_camera.get());
+      npc->render(m_camera.get(), interpolationAlpha);
     }
   }
 

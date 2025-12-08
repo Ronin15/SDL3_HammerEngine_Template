@@ -63,7 +63,7 @@ void DroppedItem::update(float deltaTime) {
   }
 }
 
-void DroppedItem::render(const HammerEngine::Camera *camera) {
+void DroppedItem::render(const HammerEngine::Camera *camera, float interpolationAlpha) {
   if (m_quantity <= 0) {
     return; // Don't render empty stacks
   }
@@ -77,9 +77,11 @@ void DroppedItem::render(const HammerEngine::Camera *camera) {
   // 2. Calculating screen position from world position using camera
   // 3. Rendering the sprite with current animation frame
   // 4. Optionally rendering quantity text for stacks > 1
+  // Note: Use getInterpolatedPosition(interpolationAlpha) for smooth rendering
 
   // For now, just suppress unused parameter warning
   (void)camera;
+  (void)interpolationAlpha;
 }
 
 void DroppedItem::clean() {

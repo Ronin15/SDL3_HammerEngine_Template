@@ -67,9 +67,10 @@ public:
         (void)deltaTime; // Suppress unused parameter warning
     }
     
-    void render(const HammerEngine::Camera* camera) override {
+    void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) override {
         // Mock render with camera - do nothing
         (void)camera; // Suppress unused parameter warning
+        (void)interpolationAlpha;
     }
     
     void clean() override {

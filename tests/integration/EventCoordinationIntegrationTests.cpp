@@ -59,8 +59,9 @@ public:
         (void)deltaTime;
     }
 
-    void render(const HammerEngine::Camera* camera) override {
+    void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) override {
         (void)camera;
+        (void)interpolationAlpha;
     }
 
     void clean() override {}

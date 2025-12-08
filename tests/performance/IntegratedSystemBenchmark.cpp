@@ -39,7 +39,7 @@ public:
     }
 
     void update(float deltaTime) override { (void)deltaTime; }
-    void render(const HammerEngine::Camera* camera) override { (void)camera; }
+    void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) override { (void)camera; (void)interpolationAlpha; }
     void clean() override {}
 
     int getId() const { return m_id; }

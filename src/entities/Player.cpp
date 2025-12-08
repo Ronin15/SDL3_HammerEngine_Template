@@ -135,6 +135,9 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
+  // Store position for render interpolation (must be first!)
+  storePositionForInterpolation();
+
   // State machine handles input and sets velocity
   m_stateManager.update(deltaTime);
 
@@ -180,19 +183,22 @@ void Player::update(float deltaTime) {
   }
 }
 
-void Player::render(const HammerEngine::Camera* camera) {
+void Player::render(const HammerEngine::Camera* camera, float interpolationAlpha) {
   // Cache manager references for better performance
   TextureManager &texMgr = TextureManager::Instance();
   SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
 
+  // Get interpolated position for smooth rendering between fixed timestep updates
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
+
   // Determine render position based on camera
   Vector2D renderPosition;
   if (camera) {
-    // Transform world position to screen coordinates using camera
-    renderPosition = camera->worldToScreen(m_position);
+    // Transform interpolated world position to screen coordinates using camera
+    renderPosition = camera->worldToScreen(interpPos);
   } else {
-    // No camera transformation - render at world coordinates directly
-    renderPosition = m_position;
+    // No camera transformation - render at interpolated world coordinates directly
+    renderPosition = interpPos;
   }
 
   // Calculate centered position for rendering (preserve float precision)
@@ -252,6 +258,7 @@ void Player::setVelocity(const Vector2D& velocity) {
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
+  m_previousPosition = position;  // Prevents interpolation sliding on teleport
   auto &cm = CollisionManager::Instance();
   cm.updateCollisionBodyPositionSOA(getID(), position);
 }

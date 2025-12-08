@@ -1473,6 +1473,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
+        // INTERPOLATION: Store current position before any movement updates
+        // This enables smooth rendering between fixed timestep updates
+        entity->storePositionForInterpolation();
+
         // PERFORMANCE: Use shared_ptr only for executeLogic (required by interface)
         // This is the only place we need shared ownership semantics
         behavior->executeLogic(storage.entities[i], deltaTime);
@@ -1510,8 +1514,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
             std::clamp(pos.getY(), minY, maxY)
         );
 
-        // Update entity position directly - AIManager owns entity movement
-        entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
+        // Update entity position (preserves previous position for interpolation)
+        entity->updatePositionFromMovement(clamped);
 
         // Handle boundary collisions: stop velocity at world edges
         if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
