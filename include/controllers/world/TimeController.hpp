@@ -113,7 +113,7 @@ private:
 
     // Status label for time display
     std::string m_statusLabelId;
-    char m_statusBuffer[256]{};
+    std::string m_statusBuffer{};  // C++20 type-safe, zero per-frame allocations
     StatusFormatMode m_formatMode{StatusFormatMode::Default};
 };
 

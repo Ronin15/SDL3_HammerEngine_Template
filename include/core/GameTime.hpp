@@ -382,8 +382,8 @@ private:
     // Pause state
     bool m_isPaused{false};
 
-    // Format buffer for formatCurrentTime()
-    char m_timeFormatBuffer[16]{};
+    // Format buffer for formatCurrentTime() - C++20 type-safe, zero allocations after init
+    std::string m_timeFormatBuffer{};
 
     // Helper methods
     void advanceTime(float deltaGameSeconds);

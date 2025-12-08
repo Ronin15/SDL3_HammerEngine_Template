@@ -106,6 +106,12 @@ private:
     WorldManager* mp_worldMgr{nullptr};
     UIManager* mp_uiMgr{nullptr};
     ParticleManager* mp_particleMgr{nullptr};
+
+    // Status display optimization - zero per-frame allocations (C++20 type-safe)
+    std::string m_statusBuffer{};
+    int m_lastDisplayedFPS{-1};
+    size_t m_lastDisplayedNPCCount{0};
+    bool m_lastDisplayedPauseState{false};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP

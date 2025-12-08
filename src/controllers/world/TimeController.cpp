@@ -65,6 +65,7 @@ void TimeController::unsubscribe() {
 void TimeController::setStatusLabel(std::string_view labelId) {
     m_statusLabelId = labelId;
     if (!labelId.empty()) {
+        m_statusBuffer.reserve(256);  // Pre-allocate for zero per-frame allocations
         updateStatusText();  // Initial update
     }
 }
@@ -86,28 +87,23 @@ void TimeController::updateStatusText() {
     auto monthName = gt.getCurrentMonthName();
     auto timeStr = gt.formatCurrentTime();
 
+    m_statusBuffer.clear();  // Keeps reserved capacity
     if (m_formatMode == StatusFormatMode::Extended) {
         // Extended format: Day X Month, Year Y | HH:MM TimeOfDay | Season | TempF | Weather
         auto& wc = WeatherController::Instance();
-        snprintf(m_statusBuffer, sizeof(m_statusBuffer),
-                 "Day %d %.*s, Year %d | %.*s %s | %s | %dF | %s",
-                 gt.getDayOfMonth(),
-                 static_cast<int>(monthName.size()), monthName.data(),
-                 gt.getGameYear(),
-                 static_cast<int>(timeStr.size()), timeStr.data(),
-                 gt.getTimeOfDayName(),
-                 gt.getSeasonName(),
-                 static_cast<int>(gt.getCurrentTemperature()),
-                 wc.getCurrentWeatherString());
+        std::format_to(std::back_inserter(m_statusBuffer),
+                       "Day {} {}, Year {} | {} {} | {} | {}F | {}",
+                       gt.getDayOfMonth(), monthName, gt.getGameYear(),
+                       timeStr, gt.getTimeOfDayName(),
+                       gt.getSeasonName(),
+                       static_cast<int>(gt.getCurrentTemperature()),
+                       wc.getCurrentWeatherString());
     } else {
         // Default format: Day X Month, Year Y | HH:MM | TimeOfDay
-        snprintf(m_statusBuffer, sizeof(m_statusBuffer),
-                 "Day %d %.*s, Year %d | %.*s | %s",
-                 gt.getDayOfMonth(),
-                 static_cast<int>(monthName.size()), monthName.data(),
-                 gt.getGameYear(),
-                 static_cast<int>(timeStr.size()), timeStr.data(),
-                 gt.getTimeOfDayName());
+        std::format_to(std::back_inserter(m_statusBuffer),
+                       "Day {} {}, Year {} | {} | {}",
+                       gt.getDayOfMonth(), monthName, gt.getGameYear(),
+                       timeStr, gt.getTimeOfDayName());
     }
 
     UIManager::Instance().setText(m_statusLabelId, m_statusBuffer);
