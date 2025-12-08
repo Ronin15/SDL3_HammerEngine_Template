@@ -98,6 +98,20 @@ private:
         SDL_Texture* building_cityhall{nullptr};
     } m_cachedTextures;
 
+    // Chunk texture cache - pre-rendered tile chunks to reduce draw calls
+    struct ChunkCache {
+        std::shared_ptr<SDL_Texture> texture;
+        bool dirty{true};  // Needs re-render
+    };
+    std::unordered_map<uint64_t, ChunkCache> m_chunkCache;  // Key: (chunkY << 32) | chunkX
+
+    // Chunk cache helpers
+    static uint64_t makeChunkKey(int chunkX, int chunkY) {
+        return (static_cast<uint64_t>(chunkY) << 32) | static_cast<uint32_t>(chunkX);
+    }
+    void renderChunkToTexture(const WorldData& world, SDL_Renderer* renderer,
+                              int chunkX, int chunkY, SDL_Texture* target);
+
     // Season change handler
     void onSeasonChange(const EventData& data);
 

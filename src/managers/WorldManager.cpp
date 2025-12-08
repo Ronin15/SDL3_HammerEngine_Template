@@ -666,7 +666,23 @@ void HammerEngine::TileRenderer::setCurrentSeason(Season season)
     if (m_currentSeason != season) {
         m_currentSeason = season;
         updateCachedTextureIDs();
+        clearChunkCache();  // Season change requires re-rendering all chunks with new textures
     }
+}
+
+void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY)
+{
+    uint64_t key = makeChunkKey(chunkX, chunkY);
+    auto it = m_chunkCache.find(key);
+    if (it != m_chunkCache.end()) {
+        it->second.dirty = true;
+    }
+}
+
+void HammerEngine::TileRenderer::clearChunkCache()
+{
+    m_chunkCache.clear();
+    WORLD_MANAGER_DEBUG("TileRenderer: Chunk cache cleared");
 }
 
 HammerEngine::TileRenderer::~TileRenderer()
@@ -731,44 +747,34 @@ std::string HammerEngine::TileRenderer::getSeasonalTextureID(const std::string& 
     return seasonPrefixes[static_cast<int>(m_currentSeason)] + baseID;
 }
 
-void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
-                                     float cameraX, float cameraY, int viewportWidth, int viewportHeight) {
-    if (world.grid.empty()) {
-        WORLD_MANAGER_WARN("TileRenderer: Cannot render tiles - world grid is empty");
-        return;
-    }
+void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
+                                                       int chunkX, int chunkY, SDL_Texture* target) {
+    // Set render target to chunk texture
+    SDL_SetRenderTarget(renderer, target);
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
+    SDL_RenderClear(renderer);
 
-    if (!renderer) {
-        WORLD_MANAGER_ERROR("TileRenderer: Cannot render tiles - renderer is null");
-        return;
-    }
+    // Calculate tile range for this chunk
+    int startTileX = chunkX * CHUNK_SIZE;
+    int startTileY = chunkY * CHUNK_SIZE;
+    int endTileX = std::min(startTileX + CHUNK_SIZE, static_cast<int>(world.grid[0].size()));
+    int endTileY = std::min(startTileY + CHUNK_SIZE, static_cast<int>(world.grid.size()));
 
-    // Calculate visible tile range directly (no chunking during render)
-    int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - 1);
-    int endTileX = std::min(static_cast<int>(world.grid[0].size()),
-                           static_cast<int>((cameraX + viewportWidth) / TILE_SIZE) + 2);
-    int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - 1);
-    int endTileY = std::min(static_cast<int>(world.grid.size()),
-                           static_cast<int>((cameraY + viewportHeight) / TILE_SIZE) + 2);
-
-    // SINGLE-PASS RENDERING: Render all layers per tile for better cache locality
-    // Uses cached texture pointers + SDL_RenderTexture for optimal performance
     constexpr int tileSize = static_cast<int>(TILE_SIZE);
 
+    // Render tiles within this chunk to the texture
     for (int y = startTileY; y < endTileY; ++y) {
         for (int x = startTileX; x < endTileX; ++x) {
             const HammerEngine::Tile& tile = world.grid[y][x];
-            float screenX = (x * TILE_SIZE) - cameraX;
-            float screenY = (y * TILE_SIZE) - cameraY;
+            // Position within chunk texture (0 to CHUNK_SIZE * TILE_SIZE)
+            float localX = static_cast<float>((x - startTileX) * tileSize);
+            float localY = static_cast<float>((y - startTileY) * tileSize);
 
-            // Check if this tile is part of a building (but not the top-left)
-            // Uses pre-computed flag to avoid grid lookups (eliminates 16K+ accesses/frame at 4K)
             bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
                                      !tile.isTopLeftOfBuilding);
 
-            // LAYER 1: Render biome texture (base layer) - skip if part of building to avoid overdraw
-            // Uses cached texture pointers for direct rendering (no hash lookup, no rotation overhead)
-            if (!isPartOfBuilding) {
+            // LAYER 1: Biome (always render - buildings overlay on top, needed for chunk boundary cases)
+            {
                 SDL_Texture* biomeTexture = m_cachedTextures.biome_default;
                 if (tile.isWater) {
                     biomeTexture = m_cachedTextures.obstacle_water;
@@ -784,14 +790,13 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                         default:                              biomeTexture = m_cachedTextures.biome_default; break;
                     }
                 }
-                TextureManager::drawTileDirect(biomeTexture, screenX, screenY, tileSize, tileSize, renderer);
+                TextureManager::drawTileDirect(biomeTexture, localX, localY, tileSize, tileSize, renderer);
             }
 
-            // LAYER 2: Render non-building obstacles (trees, rocks, water) if present
+            // LAYER 2: Obstacles
             if (!isPartOfBuilding &&
                 tile.obstacleType != HammerEngine::ObstacleType::NONE &&
                 tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-
                 SDL_Texture* obstacleTexture = m_cachedTextures.biome_default;
                 switch (tile.obstacleType) {
                     case HammerEngine::ObstacleType::TREE:    obstacleTexture = m_cachedTextures.obstacle_tree; break;
@@ -799,12 +804,12 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     case HammerEngine::ObstacleType::WATER:   obstacleTexture = m_cachedTextures.obstacle_water; break;
                     default:                                  obstacleTexture = m_cachedTextures.biome_default; break;
                 }
-                TextureManager::drawTileDirect(obstacleTexture, screenX, screenY, tileSize, tileSize, renderer);
+                TextureManager::drawTileDirect(obstacleTexture, localX, localY, tileSize, tileSize, renderer);
             }
 
-            // LAYER 3: Render buildings (64x64, 2x2 tiles) only from top-left tile
-            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && !isPartOfBuilding) {
-                // This is the top-left tile - render the full 2x2 building
+            // LAYER 3: Buildings (2x2 tiles)
+            // Render building from ALL tiles it occupies (with offset) so chunk boundaries don't clip it
+            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
                 SDL_Texture* buildingTexture = m_cachedTextures.building_hut;
                 switch (tile.buildingSize) {
                     case 1: buildingTexture = m_cachedTextures.building_hut; break;
@@ -813,7 +818,104 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     case 4: buildingTexture = m_cachedTextures.building_cityhall; break;
                     default: buildingTexture = m_cachedTextures.building_hut; break;
                 }
-                TextureManager::drawTileDirect(buildingTexture, screenX, screenY, tileSize * 2, tileSize * 2, renderer);
+
+                // Calculate render offset based on tile's position within the 2x2 building
+                float offsetX = 0.0f;
+                float offsetY = 0.0f;
+                if (tile.isTopLeftOfBuilding) {
+                    // Top-left: render at current position
+                } else {
+                    // Determine quadrant by checking neighbors for top-left
+                    bool leftIsTopLeft = (x > 0 && world.grid[y][x-1].isTopLeftOfBuilding &&
+                                          world.grid[y][x-1].buildingId == tile.buildingId);
+                    bool aboveIsTopLeft = (y > 0 && world.grid[y-1][x].isTopLeftOfBuilding &&
+                                           world.grid[y-1][x].buildingId == tile.buildingId);
+                    bool diagIsTopLeft = (x > 0 && y > 0 && world.grid[y-1][x-1].isTopLeftOfBuilding &&
+                                          world.grid[y-1][x-1].buildingId == tile.buildingId);
+
+                    if (leftIsTopLeft) {
+                        offsetX = -static_cast<float>(tileSize);  // Top-right tile
+                    } else if (aboveIsTopLeft) {
+                        offsetY = -static_cast<float>(tileSize);  // Bottom-left tile
+                    } else if (diagIsTopLeft) {
+                        offsetX = -static_cast<float>(tileSize);  // Bottom-right tile
+                        offsetY = -static_cast<float>(tileSize);
+                    }
+                }
+                TextureManager::drawTileDirect(buildingTexture, localX + offsetX, localY + offsetY,
+                                               tileSize * 2, tileSize * 2, renderer);
+            }
+        }
+    }
+
+    // Reset render target to default (screen)
+    SDL_SetRenderTarget(renderer, nullptr);
+}
+
+void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldData& world, SDL_Renderer* renderer,
+                                     float cameraX, float cameraY, int viewportWidth, int viewportHeight) {
+    if (world.grid.empty()) {
+        WORLD_MANAGER_WARN("TileRenderer: Cannot render tiles - world grid is empty");
+        return;
+    }
+
+    if (!renderer) {
+        WORLD_MANAGER_ERROR("TileRenderer: Cannot render tiles - renderer is null");
+        return;
+    }
+
+    // Calculate visible chunk range
+    int worldWidth = static_cast<int>(world.grid[0].size());
+    int worldHeight = static_cast<int>(world.grid.size());
+    int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+    int startChunkX = std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
+    int startChunkY = std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
+    int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1);
+    int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1);
+
+    constexpr int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+
+    // Render visible chunks (typically 4-16 chunks vs 8000 individual tiles)
+    for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
+        for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
+            uint64_t key = makeChunkKey(chunkX, chunkY);
+
+            // Get or create chunk cache entry
+            auto it = m_chunkCache.find(key);
+            if (it == m_chunkCache.end()) {
+                // Create new chunk texture
+                SDL_Texture* tex = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA8888,
+                                                     SDL_TEXTUREACCESS_TARGET, chunkPixelSize, chunkPixelSize);
+                if (!tex) {
+                    WORLD_MANAGER_ERROR("Failed to create chunk texture");
+                    continue;
+                }
+                SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
+
+                ChunkCache cache;
+                cache.texture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
+                cache.dirty = true;
+                it = m_chunkCache.emplace(key, std::move(cache)).first;
+            }
+
+            ChunkCache& chunk = it->second;
+
+            // Re-render chunk if dirty
+            if (chunk.dirty && chunk.texture) {
+                renderChunkToTexture(world, renderer, chunkX, chunkY, chunk.texture.get());
+                chunk.dirty = false;
+            }
+
+            // Render chunk texture to screen
+            if (chunk.texture) {
+                float screenX = (chunkX * chunkPixelSize) - cameraX;
+                float screenY = (chunkY * chunkPixelSize) - cameraY;
+                SDL_FRect destRect = {screenX, screenY,
+                                      static_cast<float>(chunkPixelSize),
+                                      static_cast<float>(chunkPixelSize)};
+                SDL_RenderTexture(renderer, chunk.texture.get(), nullptr, &destRect);
             }
         }
     }
