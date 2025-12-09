@@ -780,15 +780,15 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
 
     constexpr int tileSize = static_cast<int>(TILE_SIZE);
 
-    // LAYER 1: Biomes - render only for core tiles (not extended)
-    // Padding areas stay transparent so adjacent chunk sprites aren't overwritten
-    // when chunks overlap during compositing
+    // LAYER 1: Biomes - render at (0,0) to fill texture edge-to-edge
+    // No padding offset needed since sprites are rendered separately (Pass 2)
+    // This prevents transparent pixel bleed at chunk boundaries
     for (int y = startTileY; y < endTileY; ++y) {
         for (int x = startTileX; x < endTileX; ++x) {
             const HammerEngine::Tile& tile = world.grid[y][x];
-            // Biomes render without SPRITE_OVERHANG offset for padding fill
-            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+            // Render biomes from (0,0) - no padding offset
+            float localX = static_cast<float>((x - startTileX) * tileSize);
+            float localY = static_cast<float>((y - startTileY) * tileSize);
 
             const CachedTexture* tex = &m_cachedTextures.biome_default;
             if (tile.isWater) {
@@ -883,19 +883,26 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 chunk.dirty = false;
             }
 
-            // Render chunk texture to screen with source rect to prevent overlap/double-blend
+            // Render chunk texture to screen - biomes fill from (0,0)
             if (chunk.texture) {
                 constexpr int chunkWorldSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
 
-                // Calculate chunk's screen position (including padding offset)
-                float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX - SPRITE_OVERHANG;
-                float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY - SPRITE_OVERHANG;
+                // Source rect: biomes are rendered from (0,0) in the texture
+                SDL_FRect srcRect = {
+                    0.0f,
+                    0.0f,
+                    static_cast<float>(chunkWorldSize),
+                    static_cast<float>(chunkWorldSize)
+                };
 
-                // Draw chunk texture (biomes only - sprites rendered in pass 2)
+                // Dest position: chunks tile seamlessly
+                float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX;
+                float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY;
+
                 SDL_FRect destRect = {screenX, screenY,
-                                      static_cast<float>(chunkPixelSize),
-                                      static_cast<float>(chunkPixelSize)};
-                SDL_RenderTexture(renderer, chunk.texture.get(), nullptr, &destRect);
+                                      static_cast<float>(chunkWorldSize),
+                                      static_cast<float>(chunkWorldSize)};
+                SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
             }
         }
     }
