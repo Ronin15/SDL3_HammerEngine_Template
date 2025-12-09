@@ -809,128 +809,9 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
         }
     }
 
-    // LAYER 2 & 3: Obstacles and Buildings - only for this chunk's tiles
-    for (int y = startTileY; y < endTileY; ++y) {
-        for (int x = startTileX; x < endTileX; ++x) {
-            const HammerEngine::Tile& tile = world.grid[y][x];
-            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
-
-            bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
-                                     !tile.isTopLeftOfBuilding);
-
-            // LAYER 2: Obstacles (bottom-center positioned on tile)
-            if (!isPartOfBuilding &&
-                tile.obstacleType != HammerEngine::ObstacleType::NONE &&
-                tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-                const CachedTexture* tex = &m_cachedTextures.biome_default;
-                switch (tile.obstacleType) {
-                    case HammerEngine::ObstacleType::TREE:  tex = &m_cachedTextures.obstacle_tree; break;
-                    case HammerEngine::ObstacleType::ROCK:  tex = &m_cachedTextures.obstacle_rock; break;
-                    case HammerEngine::ObstacleType::WATER: tex = &m_cachedTextures.obstacle_water; break;
-                    default: break;
-                }
-                // Bottom-center: center horizontally, align bottom edge with tile bottom
-                float offsetX = (tileSize - tex->w) / 2.0f;
-                float offsetY = tileSize - tex->h;
-                TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
-                                               static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-            }
-
-            // LAYER 3: Buildings (2x2 tiles)
-            // Render building from ALL tiles it occupies (with offset) so chunk boundaries don't clip it
-            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING) {
-                const CachedTexture* tex = &m_cachedTextures.building_hut;
-                switch (tile.buildingSize) {
-                    case 1:  tex = &m_cachedTextures.building_hut; break;
-                    case 2:  tex = &m_cachedTextures.building_house; break;
-                    case 3:  tex = &m_cachedTextures.building_large; break;
-                    case 4:  tex = &m_cachedTextures.building_cityhall; break;
-                    default: break;
-                }
-
-                // Calculate render offset based on tile's position within the 2x2 building
-                float offsetX = 0.0f;
-                float offsetY = 0.0f;
-                if (!tile.isTopLeftOfBuilding) {
-                    // Determine quadrant by checking neighbors for top-left
-                    bool leftIsTopLeft = (x > 0 && world.grid[y][x-1].isTopLeftOfBuilding &&
-                                          world.grid[y][x-1].buildingId == tile.buildingId);
-                    bool aboveIsTopLeft = (y > 0 && world.grid[y-1][x].isTopLeftOfBuilding &&
-                                           world.grid[y-1][x].buildingId == tile.buildingId);
-                    bool diagIsTopLeft = (x > 0 && y > 0 && world.grid[y-1][x-1].isTopLeftOfBuilding &&
-                                          world.grid[y-1][x-1].buildingId == tile.buildingId);
-
-                    if (leftIsTopLeft) {
-                        offsetX = -static_cast<float>(tileSize);  // Top-right tile
-                    } else if (aboveIsTopLeft) {
-                        offsetY = -static_cast<float>(tileSize);  // Bottom-left tile
-                    } else if (diagIsTopLeft) {
-                        offsetX = -static_cast<float>(tileSize);  // Bottom-right tile
-                        offsetY = -static_cast<float>(tileSize);
-                    }
-                }
-                TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
-                                               static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-            }
-        }
-    }
-
-    // LAYER 4: Spillover - render trees from adjacent chunks that extend into our padding
-    // Trees extend UPWARD, so we need trees from the chunk BELOW us (they extend up into our bottom area)
-
-    // Bottom neighbor spillover: trees from top row of chunk below
-    int belowChunkY = chunkY + 1;
-    int belowStartTileY = belowChunkY * CHUNK_SIZE;
-    if (belowStartTileY < worldHeight) {
-        int belowEndTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
-        for (int x = startTileX; x < belowEndTileX; ++x) {
-            const HammerEngine::Tile& tile = world.grid[belowStartTileY][x];
-            if (tile.obstacleType == HammerEngine::ObstacleType::TREE) {
-                const CachedTexture* tex = &m_cachedTextures.obstacle_tree;
-                // Position: same X as our tiles, Y is just below our last row
-                float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-                float localY = static_cast<float>(CHUNK_SIZE * tileSize + SPRITE_OVERHANG);
-                float offsetX = (tileSize - tex->w) / 2.0f;
-                float offsetY = tileSize - tex->h;  // Extends UP from bottom of tile
-                TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
-                                               static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-            }
-        }
-    }
-
-    // Right neighbor spillover: trees from left column of chunk to the right
-    int rightChunkX = chunkX + 1;
-    int rightStartTileX = rightChunkX * CHUNK_SIZE;
-    if (rightStartTileX < worldWidth) {
-        for (int y = startTileY; y < endTileY; ++y) {
-            const HammerEngine::Tile& tile = world.grid[y][rightStartTileX];
-            if (tile.obstacleType == HammerEngine::ObstacleType::TREE) {
-                const CachedTexture* tex = &m_cachedTextures.obstacle_tree;
-                // Position: X is just right of our last column
-                float localX = static_cast<float>(CHUNK_SIZE * tileSize + SPRITE_OVERHANG);
-                float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
-                float offsetX = (tileSize - tex->w) / 2.0f;
-                float offsetY = tileSize - tex->h;
-                TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
-                                               static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-            }
-        }
-    }
-
-    // Bottom-right corner spillover: tree from top-left tile of diagonal chunk
-    if (belowStartTileY < worldHeight && rightStartTileX < worldWidth) {
-        const HammerEngine::Tile& tile = world.grid[belowStartTileY][rightStartTileX];
-        if (tile.obstacleType == HammerEngine::ObstacleType::TREE) {
-            const CachedTexture* tex = &m_cachedTextures.obstacle_tree;
-            float localX = static_cast<float>(CHUNK_SIZE * tileSize + SPRITE_OVERHANG);
-            float localY = static_cast<float>(CHUNK_SIZE * tileSize + SPRITE_OVERHANG);
-            float offsetX = (tileSize - tex->w) / 2.0f;
-            float offsetY = tileSize - tex->h;
-            TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
-                                           static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-        }
-    }
+    // NOTE: Obstacles and buildings are rendered in a separate pass directly to screen
+    // (after all chunk biomes are composited) to avoid chunk boundary clipping issues.
+    // See renderVisibleTiles() PASS 2 for sprite rendering.
 
     // Reset render target to default (screen)
     SDL_SetRenderTarget(renderer, nullptr);
@@ -985,7 +866,6 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     continue;
                 }
                 SDL_SetTextureBlendMode(tex, SDL_BLENDMODE_BLEND);
-                SDL_SetTextureScaleMode(tex, SDL_SCALEMODE_NEAREST);
 
                 ChunkCache cache;
                 cache.texture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
@@ -1011,13 +891,63 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 float screenX = static_cast<float>(chunkX * chunkWorldSize) - cameraX - SPRITE_OVERHANG;
                 float screenY = static_cast<float>(chunkY * chunkWorldSize) - cameraY - SPRITE_OVERHANG;
 
-                // Draw full chunk texture including all padding.
-                // Chunks have spillover rendering - trees from adjacent chunks are rendered
-                // in padding areas so they appear correctly at chunk boundaries.
+                // Draw chunk texture (biomes only - sprites rendered in pass 2)
                 SDL_FRect destRect = {screenX, screenY,
                                       static_cast<float>(chunkPixelSize),
                                       static_cast<float>(chunkPixelSize)};
                 SDL_RenderTexture(renderer, chunk.texture.get(), nullptr, &destRect);
+            }
+        }
+    }
+
+    // PASS 2: Render all visible sprites directly to screen
+    // This ensures sprites are never covered by adjacent chunk biomes
+    constexpr int tileSize = static_cast<int>(TILE_SIZE);
+    int startTileX = std::max(0, static_cast<int>(cameraX / TILE_SIZE) - 1);
+    int startTileY = std::max(0, static_cast<int>(cameraY / TILE_SIZE) - 1);
+    int endTileX = std::min(worldWidth, static_cast<int>((cameraX + viewportWidth) / TILE_SIZE) + 2);
+    int endTileY = std::min(worldHeight, static_cast<int>((cameraY + viewportHeight) / TILE_SIZE) + 2);
+
+    for (int y = startTileY; y < endTileY; ++y) {
+        for (int x = startTileX; x < endTileX; ++x) {
+            const HammerEngine::Tile& tile = world.grid[y][x];
+
+            // Skip if no obstacle
+            if (tile.obstacleType == HammerEngine::ObstacleType::NONE) {
+                continue;
+            }
+
+            // Calculate screen position
+            float screenX = static_cast<float>(x * tileSize) - cameraX;
+            float screenY = static_cast<float>(y * tileSize) - cameraY;
+
+            // Render obstacles (trees, rocks) - bottom-center positioned
+            if (tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+                const CachedTexture* tex = &m_cachedTextures.obstacle_tree;
+                switch (tile.obstacleType) {
+                    case HammerEngine::ObstacleType::TREE:  tex = &m_cachedTextures.obstacle_tree; break;
+                    case HammerEngine::ObstacleType::ROCK:  tex = &m_cachedTextures.obstacle_rock; break;
+                    case HammerEngine::ObstacleType::WATER: tex = &m_cachedTextures.obstacle_water; break;
+                    default: break;
+                }
+                float offsetX = (tileSize - tex->w) / 2.0f;
+                float offsetY = tileSize - tex->h;
+                TextureManager::drawTileDirect(tex->ptr, screenX + offsetX, screenY + offsetY,
+                                               static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
+            }
+
+            // Render buildings (from top-left tile only to avoid duplicates)
+            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && tile.isTopLeftOfBuilding) {
+                const CachedTexture* tex = &m_cachedTextures.building_hut;
+                switch (tile.buildingSize) {
+                    case 1:  tex = &m_cachedTextures.building_hut; break;
+                    case 2:  tex = &m_cachedTextures.building_house; break;
+                    case 3:  tex = &m_cachedTextures.building_large; break;
+                    case 4:  tex = &m_cachedTextures.building_cityhall; break;
+                    default: break;
+                }
+                TextureManager::drawTileDirect(tex->ptr, screenX, screenY,
+                                               static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
             }
         }
     }
