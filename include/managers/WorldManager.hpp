@@ -30,6 +30,7 @@ class TileRenderer {
 private:
     static constexpr float TILE_SIZE = 32.0f;  // Use float for smooth movement
     static constexpr int VIEWPORT_PADDING = 2;
+    static constexpr int SPRITE_OVERHANG = 32;  // Padding for sprites extending beyond tile bounds
 
     // Chunk-based rendering for scalability to massive maps
     static constexpr int CHUNK_SIZE = 32;  // 32x32 tiles per chunk
@@ -79,23 +80,29 @@ private:
         std::string building_cityhall;
     } m_cachedTextureIDs;
 
-    // Cached texture pointers - eliminates hash map lookups in hot render loop
+    // Cached texture with dimensions - keeps pointer and size together
+    struct CachedTexture {
+        SDL_Texture* ptr{nullptr};
+        float w{0}, h{0};
+    };
+
+    // Cached texture pointers and dimensions - eliminates hash map lookups in hot render loop
     struct CachedTileTextures {
-        SDL_Texture* biome_default{nullptr};
-        SDL_Texture* biome_desert{nullptr};
-        SDL_Texture* biome_forest{nullptr};
-        SDL_Texture* biome_mountain{nullptr};
-        SDL_Texture* biome_swamp{nullptr};
-        SDL_Texture* biome_haunted{nullptr};
-        SDL_Texture* biome_celestial{nullptr};
-        SDL_Texture* biome_ocean{nullptr};
-        SDL_Texture* obstacle_water{nullptr};
-        SDL_Texture* obstacle_tree{nullptr};
-        SDL_Texture* obstacle_rock{nullptr};
-        SDL_Texture* building_hut{nullptr};
-        SDL_Texture* building_house{nullptr};
-        SDL_Texture* building_large{nullptr};
-        SDL_Texture* building_cityhall{nullptr};
+        CachedTexture biome_default;
+        CachedTexture biome_desert;
+        CachedTexture biome_forest;
+        CachedTexture biome_mountain;
+        CachedTexture biome_swamp;
+        CachedTexture biome_haunted;
+        CachedTexture biome_celestial;
+        CachedTexture biome_ocean;
+        CachedTexture obstacle_water;
+        CachedTexture obstacle_tree;
+        CachedTexture obstacle_rock;
+        CachedTexture building_hut;
+        CachedTexture building_house;
+        CachedTexture building_large;
+        CachedTexture building_cityhall;
     } m_cachedTextures;
 
     // Chunk texture cache - pre-rendered tile chunks to reduce draw calls

@@ -276,11 +276,28 @@ void WorldGenerator::createWaterBodies(
 
 void WorldGenerator::distributeObstacles(WorldData &world,
                                          const WorldGenerationConfig &config) {
-  int height = world.grid.size();
-  int width = world.grid[0].size();
+  int height = static_cast<int>(world.grid.size());
+  int width = static_cast<int>(world.grid[0].size());
 
   std::default_random_engine rng(config.seed + 10000);
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Count nearby obstacles (for density-aware spacing)
+  auto countNearbyObstacles = [&](int cx, int cy) -> int {
+    int count = 0;
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if (dx == 0 && dy == 0) continue;
+        int nx = cx + dx, ny = cy + dy;
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          if (world.grid[ny][nx].obstacleType != ObstacleType::NONE) {
+            ++count;
+          }
+        }
+      }
+    }
+    return count;
+  };
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
@@ -324,8 +341,24 @@ void WorldGenerator::distributeObstacles(WorldData &world,
         break;
       }
 
+      // Smart density: organic cluster growth with natural variation
       if (dist(rng) < obstacleChance) {
-        tile.obstacleType = obstacleType;
+        int nearbyCount = countNearbyObstacles(x, y);
+        bool canPlace = false;
+
+        if (nearbyCount == 0) {
+          // No neighbors - always allow (start new cluster or isolated tree)
+          canPlace = true;
+        } else if (nearbyCount <= 2) {
+          // 1-2 neighbors - chance to extend cluster (organic growth)
+          float clusterChance = (tile.biome == Biome::FOREST) ? 0.5f : 0.2f;
+          canPlace = dist(rng) < clusterChance;
+        }
+        // 3+ neighbors - too dense, skip (prevents blob formations)
+
+        if (canPlace) {
+          tile.obstacleType = obstacleType;
+        }
       }
     }
   }
