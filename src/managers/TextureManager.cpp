@@ -174,42 +174,6 @@ void TextureManager::draw(const std::string& textureID,
   SDL_RenderTextureRotated(p_renderer, data.texture.get(), &srcRect, &destRect, angle, &center, flip);
 }
 
-void TextureManager::drawF(const std::string& textureID,
-                           float x,
-                           float y,
-                           int width,
-                           int height,
-                           SDL_Renderer* p_renderer,
-                           SDL_FlipMode flip) {
-  // Single map lookup - use cached dimensions instead of SDL_GetTextureSize()
-  auto it = m_textureMap.find(textureID);
-  if (it == m_textureMap.end()) {
-    TEXTURE_ERROR("Texture not found: '" + textureID + "'");
-    return;
-  }
-  const TextureData& data = it->second;
-
-  SDL_FRect srcRect;
-  SDL_FRect destRect;
-  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};
-  double angle = 0.0;
-
-  // Inset source rectangle by a small amount to prevent texture bleeding
-  // Use cached texture dimensions, not destination dimensions
-  srcRect.x = 0.1f;
-  srcRect.y = 0.1f;
-  srcRect.w = data.width - 0.2f;
-  srcRect.h = data.height - 0.2f;
-
-  // Destination rectangle uses requested width/height for scaling
-  destRect.w = static_cast<float>(width);
-  destRect.h = static_cast<float>(height);
-  destRect.x = x;  // Use float precision directly
-  destRect.y = y;  // Use float precision directly
-
-  SDL_RenderTextureRotated(p_renderer, data.texture.get(), &srcRect, &destRect, angle, &center, flip);
-}
-
 void TextureManager::drawTileF(const std::string& textureID,
                                float x,
                                float y,
@@ -261,48 +225,14 @@ void TextureManager::drawTileDirect(SDL_Texture* texture,
 }
 
 void TextureManager::drawFrame(const std::string& textureID,
-                               int x,
-                               int y,
+                               float x,
+                               float y,
                                int width,
                                int height,
                                int currentRow,
                                int currentFrame,
                                SDL_Renderer* p_renderer,
                                SDL_FlipMode flip) {
-  // Single map lookup
-  auto it = m_textureMap.find(textureID);
-  if (it == m_textureMap.end()) {
-    return;
-  }
-
-  SDL_FRect srcRect;
-  SDL_FRect destRect;
-  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};
-  double angle = 0.0;
-
-  // Inset source rectangle to prevent texture bleeding
-  srcRect.x = static_cast<float>(width * currentFrame) + 0.1f;
-  srcRect.y = static_cast<float>(height * (currentRow - 1)) + 0.1f;
-  srcRect.w = static_cast<float>(width) - 0.2f;
-  srcRect.h = static_cast<float>(height) - 0.2f;
-
-  destRect.w = static_cast<float>(width);
-  destRect.h = static_cast<float>(height);
-  destRect.x = static_cast<float>(x);
-  destRect.y = static_cast<float>(y);
-
-  SDL_RenderTextureRotated(p_renderer, it->second.texture.get(), &srcRect, &destRect, angle, &center, flip);
-}
-
-void TextureManager::drawFrameF(const std::string& textureID,
-                                float x,
-                                float y,
-                                int width,
-                                int height,
-                                int currentRow,
-                                int currentFrame,
-                                SDL_Renderer* p_renderer,
-                                SDL_FlipMode flip) {
   // Single map lookup
   auto it = m_textureMap.find(textureID);
   if (it == m_textureMap.end()) {

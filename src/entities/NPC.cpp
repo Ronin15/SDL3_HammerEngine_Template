@@ -209,7 +209,7 @@ void NPC::render(const HammerEngine::Camera *camera, float interpolationAlpha) {
   float renderY = renderPosition.getY() - (m_height / 2.0f);
 
   // Render the NPC with the current animation frame using float precision
-  texMgr.drawFrameF(m_textureID,
+  texMgr.drawFrame(m_textureID,
                     renderX, // Keep float precision for smooth camera movement
                     renderY, // Keep float precision for smooth camera movement
                     m_frameWidth, m_height, m_currentRow, m_currentFrame,
