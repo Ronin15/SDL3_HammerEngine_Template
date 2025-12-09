@@ -68,8 +68,16 @@ void DroppedItem::render(const HammerEngine::Camera *camera, float interpolation
     return; // Don't render empty stacks
   }
 
-  // Apply bobbing effect before rendering
-  applyBobbingEffect();
+  if (!camera) {
+    return;
+  }
+
+  // Get interpolated position for smooth rendering between physics updates
+  Vector2D renderPos = getInterpolatedPosition(interpolationAlpha);
+
+  // Apply bobbing effect to the interpolated Y position
+  float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
+  renderPos.setY(renderPos.getY() + bobOffset);
 
   // TODO: Implement actual rendering logic here
   // This would typically involve:
@@ -77,11 +85,9 @@ void DroppedItem::render(const HammerEngine::Camera *camera, float interpolation
   // 2. Calculating screen position from world position using camera
   // 3. Rendering the sprite with current animation frame
   // 4. Optionally rendering quantity text for stacks > 1
-  // Note: Use getInterpolatedPosition(interpolationAlpha) for smooth rendering
 
-  // For now, just suppress unused parameter warning
-  (void)camera;
-  (void)interpolationAlpha;
+  // For now, suppress unused parameter warning until full rendering is implemented
+  (void)renderPos;
 }
 
 void DroppedItem::clean() {
@@ -144,16 +150,4 @@ void DroppedItem::updateVisualEffects(float deltaTime) {
   if (m_bobTimer > 2.0f * M_PI) {
     m_bobTimer -= 2.0f * M_PI;
   }
-}
-
-void DroppedItem::applyBobbingEffect() {
-  // Create a gentle bobbing motion
-  float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
-
-  // Temporarily modify the position for rendering using accessor methods
-  float originalY = m_position.getY();
-  m_position.setY(originalY + bobOffset);
-
-  // Note: This modifies the actual position temporarily for rendering
-  // In a more complex system you might use separate render coordinates
 }

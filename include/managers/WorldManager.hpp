@@ -99,11 +99,17 @@ private:
     } m_cachedTextures;
 
     // Chunk texture cache - pre-rendered tile chunks to reduce draw calls
+    // Thread safety: Main thread only. Per CLAUDE.md, all rendering occurs on main thread.
+    // Season events (onSeasonChange) are dispatched via EventManager on the same thread
+    // that calls render, so no mutex needed.
     struct ChunkCache {
         std::shared_ptr<SDL_Texture> texture;
         bool dirty{true};  // Needs re-render
+        uint64_t lastUsedFrame{0};  // For LRU eviction
     };
     std::unordered_map<uint64_t, ChunkCache> m_chunkCache;  // Key: (chunkY << 32) | chunkX
+    uint64_t m_frameCounter{0};  // For LRU tracking
+    static constexpr size_t MAX_CACHED_CHUNKS = 64;  // ~256MB max VRAM (4MB per 1024x1024 chunk)
 
     // Chunk cache helpers
     static uint64_t makeChunkKey(int chunkX, int chunkY) {

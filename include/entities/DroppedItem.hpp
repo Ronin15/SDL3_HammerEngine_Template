@@ -63,7 +63,6 @@ protected:
     
     // Visual effects
     void updateVisualEffects(float deltaTime);
-    void applyBobbingEffect();
 };
 
 #endif // DROPPED_ITEM_HPP
