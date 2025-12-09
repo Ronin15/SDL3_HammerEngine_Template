@@ -659,6 +659,16 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs()
     m_cachedTextures.building_house = getPtr(m_cachedTextureIDs.building_house);
     m_cachedTextures.building_large = getPtr(m_cachedTextureIDs.building_large);
     m_cachedTextures.building_cityhall = getPtr(m_cachedTextureIDs.building_cityhall);
+
+    // Validate critical textures to catch missing seasonal assets early
+    if (!m_cachedTextures.biome_default) {
+        WORLD_MANAGER_ERROR("TileRenderer: Missing biome_default texture for season " +
+                           std::to_string(static_cast<int>(m_currentSeason)));
+    }
+    if (!m_cachedTextures.obstacle_water) {
+        WORLD_MANAGER_ERROR("TileRenderer: Missing obstacle_water texture for season " +
+                           std::to_string(static_cast<int>(m_currentSeason)));
+    }
 }
 
 void HammerEngine::TileRenderer::setCurrentSeason(Season season)
@@ -864,6 +874,9 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
         return;
     }
 
+    // Increment frame counter for LRU tracking
+    ++m_frameCounter;
+
     // Calculate visible chunk range
     int worldWidth = static_cast<int>(world.grid[0].size());
     int worldHeight = static_cast<int>(world.grid.size());
@@ -877,10 +890,14 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
 
     constexpr int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
 
+    // Track currently visible chunk keys for LRU eviction
+    std::vector<uint64_t> visibleKeys;
+
     // Render visible chunks (typically 4-16 chunks vs 8000 individual tiles)
     for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
         for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
             uint64_t key = makeChunkKey(chunkX, chunkY);
+            visibleKeys.push_back(key);
 
             // Get or create chunk cache entry
             auto it = m_chunkCache.find(key);
@@ -897,10 +914,12 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 ChunkCache cache;
                 cache.texture = std::shared_ptr<SDL_Texture>(tex, SDL_DestroyTexture);
                 cache.dirty = true;
+                cache.lastUsedFrame = m_frameCounter;
                 it = m_chunkCache.emplace(key, std::move(cache)).first;
             }
 
             ChunkCache& chunk = it->second;
+            chunk.lastUsedFrame = m_frameCounter;  // Update LRU timestamp
 
             // Re-render chunk if dirty
             if (chunk.dirty && chunk.texture) {
@@ -917,6 +936,33 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                                       static_cast<float>(chunkPixelSize)};
                 SDL_RenderTexture(renderer, chunk.texture.get(), nullptr, &destRect);
             }
+        }
+    }
+
+    // LRU eviction: Remove oldest chunks when cache exceeds limit
+    if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
+        // Find chunks not currently visible and sort by last used frame
+        std::vector<std::pair<uint64_t, uint64_t>> evictionCandidates;  // key, lastUsedFrame
+        for (const auto& [key, cache] : m_chunkCache) {
+            // Don't evict currently visible chunks
+            if (std::find(visibleKeys.begin(), visibleKeys.end(), key) == visibleKeys.end()) {
+                evictionCandidates.emplace_back(key, cache.lastUsedFrame);
+            }
+        }
+
+        // Sort by oldest first (lowest frame number)
+        std::sort(evictionCandidates.begin(), evictionCandidates.end(),
+                  [](const auto& a, const auto& b) { return a.second < b.second; });
+
+        // Evict oldest chunks until we're under the limit
+        size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
+        for (size_t i = 0; i < std::min(toEvict, evictionCandidates.size()); ++i) {
+            m_chunkCache.erase(evictionCandidates[i].first);
+        }
+
+        if (toEvict > 0) {
+            WORLD_MANAGER_DEBUG("TileRenderer: Evicted " + std::to_string(std::min(toEvict, evictionCandidates.size())) +
+                               " chunks from cache (cache size: " + std::to_string(m_chunkCache.size()) + ")");
         }
     }
 }

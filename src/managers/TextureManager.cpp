@@ -252,12 +252,12 @@ void TextureManager::drawTileDirect(SDL_Texture* texture,
     return;  // Silent fail - caller should ensure valid texture
   }
 
-  // Perfect pixel source rectangle - no inset for seamless tiling
-  SDL_FRect srcRect = {0.0f, 0.0f, static_cast<float>(width), static_cast<float>(height)};
+  // Destination rectangle with requested dimensions
   SDL_FRect destRect = {x, y, static_cast<float>(width), static_cast<float>(height)};
 
-  // Use SDL_RenderTexture - no rotation overhead for tiles
-  SDL_RenderTexture(p_renderer, texture, &srcRect, &destRect);
+  // Use nullptr for srcRect to sample entire texture - handles any texture size correctly
+  // SDL will scale the entire texture to fit destRect dimensions
+  SDL_RenderTexture(p_renderer, texture, nullptr, &destRect);
 }
 
 void TextureManager::drawFrame(const std::string& textureID,
