@@ -129,11 +129,11 @@ public:
      */
     ~Camera() = default;
     
-    // Copy and move semantics
-    Camera(const Camera&) = default;
-    Camera& operator=(const Camera&) = default;
-    Camera(Camera&&) = default;
-    Camera& operator=(Camera&&) = default;
+    // Non-copyable/movable (has std::atomic, RNG state, weak_ptr targets)
+    Camera(const Camera&) = delete;
+    Camera& operator=(const Camera&) = delete;
+    Camera(Camera&&) = delete;
+    Camera& operator=(Camera&&) = delete;
 
     /**
      * @brief Updates the camera position based on mode and target
