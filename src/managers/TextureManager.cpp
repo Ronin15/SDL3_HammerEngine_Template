@@ -31,7 +31,7 @@ bool TextureManager::load(const std::string& fileName,
 
     try {
       // Iterate through all files in the directory
-      for (const auto& entry : std::filesystem::directory_iterator(fileName)) {
+      for (const auto& entry : std::filesystem::recursive_directory_iterator(fileName)) {
         if (!entry.is_regular_file()) {
           continue; // Skip directories and special files
         }
