@@ -106,9 +106,8 @@ private:
     } m_cachedTextures;
 
     // Chunk texture cache - pre-rendered tile chunks to reduce draw calls
-    // Thread safety: Main thread only. Per CLAUDE.md, all rendering occurs on main thread.
-    // Season events (onSeasonChange) are dispatched via EventManager on the same thread
-    // that calls render, so no mutex needed.
+    // Thread safety: Season events (onSeasonChange) dispatch from update thread while
+    // render runs on main thread. Deferred cache clear pattern ensures safe texture destruction.
     struct ChunkCache {
         std::shared_ptr<SDL_Texture> texture;
         bool dirty{true};  // Needs re-render
@@ -146,6 +145,10 @@ private:
     Season m_currentSeason{Season::Spring};
     EventManager::HandlerToken m_seasonToken{};
     bool m_subscribedToSeasons{false};
+
+    // Deferred cache invalidation - set by update thread, cleared by render thread
+    // Ensures textures are only destroyed when not in use by Metal command encoder
+    std::atomic<bool> m_cachePendingClear{false};
 };
 
 }
