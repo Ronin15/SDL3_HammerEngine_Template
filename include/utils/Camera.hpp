@@ -283,16 +283,29 @@ public:
     ViewRect getViewRect() const;
 
     /**
-     * @brief Gets the pixel-snapped render offset for this frame
+     * @brief Gets the pixel-snapped render offset from a pre-computed entity position
      *
-     * Returns the authoritative camera offset that ALL rendering operations
-     * should use (tiles, entities, particles). Using this single cached value
-     * prevents 1-pixel drift between different rendered elements.
+     * Use this in Follow mode to ensure camera offset is computed from the EXACT
+     * same interpolated position that the entity will use for rendering. This
+     * eliminates any divergence between camera and entity interpolation.
      *
-     * The offset is computed once per frame (on first call) and cached.
+     * @param entityInterpX Pre-computed interpolated entity X position
+     * @param entityInterpY Pre-computed interpolated entity Y position
+     * @param offsetX Output: pixel-snapped camera X offset (top-left)
+     * @param offsetY Output: pixel-snapped camera Y offset (top-left)
+     */
+    void getRenderOffset(float entityInterpX, float entityInterpY,
+                         float& offsetX, float& offsetY) const;
+
+    /**
+     * @brief Gets the pixel-snapped render offset using camera's own interpolation
+     *
+     * Use this for non-follow modes (Free, Fixed) where the camera uses its
+     * own position interpolation rather than tracking an entity.
      *
      * @param offsetX Output: pixel-snapped camera X offset (top-left)
      * @param offsetY Output: pixel-snapped camera Y offset (top-left)
+     * @param interpolationAlpha Blend factor for camera position interpolation
      */
     void getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
 
@@ -463,14 +476,6 @@ private:
     };
     std::atomic<InterpolationState> m_interpState{};
 
-    // Target interpolation state for synchronized camera-target rendering
-    // Stores target's prev/current position for computing render offset relative
-    // to where target will actually render (not its physics position)
-    struct alignas(16) TargetInterpolationState {
-        float currX{0.0f}, currY{0.0f};
-        float prevX{0.0f}, prevY{0.0f};
-    };
-    std::atomic<TargetInterpolationState> m_targetInterpState{};
 
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead

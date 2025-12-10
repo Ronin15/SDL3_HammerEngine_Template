@@ -544,25 +544,38 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // Get camera view rect and INTERPOLATED render offset for this frame
-  // Interpolation enables smooth camera at any refresh rate with fixed 60Hz updates
+  // UNIFIED INTERPOLATION: Compute player position ONCE, use for camera AND player
   HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
+  float zoom = 1.0f;
+  Vector2D playerInterpPos;
+
   if (m_camera) {
     cameraView = m_camera->getViewRect();
-    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+    zoom = m_camera->getZoom();
+
+    if (m_player && m_camera->getMode() == HammerEngine::Camera::Mode::Follow) {
+      // UNIFIED: Compute player position ONCE, use for camera AND player
+      playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
+      m_camera->getRenderOffset(playerInterpPos.getX(), playerInterpPos.getY(),
+                                renderCamX, renderCamY);
+    } else {
+      // Non-follow mode: camera uses its own interpolation
+      m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+      if (m_player) {
+        playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
+      }
+    }
   }
 
   // Set render scale for zoom only when changed (avoids GPU state change overhead)
-  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
   if (zoom != m_lastRenderedZoom) {
     SDL_SetRenderScale(renderer, zoom, zoom);
     m_lastRenderedZoom = zoom;
   }
 
   // Render world first (background layer) using pixel-snapped camera - use cached pointer
-  // mp_worldMgr guaranteed valid between enter() and exit()
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
     mp_worldMgr->render(renderer,
                        renderCamX,
@@ -576,9 +589,9 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
-  // Render player using same camera offset as world (ensures sync)
+  // Render player using SAME interpolated position as camera offset calculation
   if (m_player) {
-    m_player->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
   // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
