@@ -173,7 +173,8 @@ struct UIComponent {
   std::vector<std::string> m_listItems{};
   std::vector<std::shared_ptr<SDL_Texture>> m_listItemTextures{}; // Texture cache
   bool m_listItemsDirty{true}; // Flag to regenerate textures
-  std::function<std::vector<std::string>()> m_listBinding{}; // For data-bound lists
+  std::function<void(std::vector<std::string>&)> m_listBinding{}; // Zero-allocation: populates reusable buffer
+  mutable std::vector<std::string> m_listBindingBuffer{}; // Reusable buffer for list binding
   int m_selectedIndex{-1};
   std::string m_placeholder{};
   int m_maxLength{UIConstants::DEFAULT_INPUT_MAX_LENGTH};
@@ -319,7 +320,7 @@ public:
   // Data binding methods
   void bindText(const std::string &id, std::function<std::string()> binding);
   void bindList(const std::string &id,
-                std::function<std::vector<std::string>()> binding);
+                std::function<void(std::vector<std::string>&)> binding);
 
   // Component property getters
   std::string getText(const std::string &id) const;

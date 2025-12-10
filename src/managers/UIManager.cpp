@@ -81,13 +81,16 @@ void UIManager::update(float deltaTime) {
           if (component->m_textBinding) {
               setText(id, component->m_textBinding());
           }
-          // Handle list bindings
+          // Handle list bindings (zero-allocation: uses reusable buffer)
           if (component->m_listBinding) {
-              auto newListItems = component->m_listBinding();
-              if (component->m_listItems.size() != newListItems.size() ||
-                  !std::equal(component->m_listItems.begin(), component->m_listItems.end(), newListItems.begin())) {
-                  component->m_listItems = newListItems;
-                  component->m_listItemsDirty = true; // Mark as dirty when changed by binding
+              component->m_listBindingBuffer.clear();  // Reuse capacity, no deallocation
+              component->m_listBinding(component->m_listBindingBuffer);
+              if (component->m_listItems.size() != component->m_listBindingBuffer.size() ||
+                  !std::equal(component->m_listItems.begin(), component->m_listItems.end(),
+                              component->m_listBindingBuffer.begin())) {
+                  component->m_listItems = std::move(component->m_listBindingBuffer);
+                  component->m_listBindingBuffer.clear();  // Reset for next use
+                  component->m_listItemsDirty = true;
               }
           }
       }
@@ -610,7 +613,7 @@ void UIManager::bindText(const std::string &id,
 
 void UIManager::bindList(
     const std::string &id,
-    std::function<std::vector<std::string>()> binding) {
+    std::function<void(std::vector<std::string>&)> binding) {
   auto component = getComponent(id);
   if (component) {
     component->m_listBinding = binding;
