@@ -238,35 +238,41 @@ bool EventDemoState::enter() {
         return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
     });
 
-    // Bind the inventory list to a function that gets the items, sorts them, and returns them
-    ui.bindList("inventory_list", [this]() -> std::vector<std::string> {
+    // Bind the inventory list - populates provided buffer (zero-allocation pattern)
+    ui.bindList("inventory_list", [this](std::vector<std::string>& items) {
         if (!m_player || !m_player->getInventory()) {
-            return {"(Empty)"};
+            items.push_back("(Empty)");
+            return;
         }
 
         const auto* inventory = m_player->getInventory();
         auto allResources = inventory->getAllResources();
 
         if (allResources.empty()) {
-            return {"(Empty)"};
+            items.push_back("(Empty)");
+            return;
         }
 
-        std::vector<std::string> items;
+        // Build sorted list
         std::vector<std::pair<std::string, int>> sortedResources;
+        sortedResources.reserve(allResources.size());
         for (const auto& [resourceHandle, quantity] : allResources) {
             if (quantity > 0) {
                 auto resourceTemplate = ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
                 std::string resourceName = resourceTemplate ? resourceTemplate->getName() : "Unknown";
-                sortedResources.emplace_back(resourceName, quantity);
+                sortedResources.emplace_back(std::move(resourceName), quantity);
             }
         }
         std::sort(sortedResources.begin(), sortedResources.end());
 
+        items.reserve(sortedResources.size());
         for (const auto& [resourceId, quantity] : sortedResources) {
             items.push_back(resourceId + " x" + std::to_string(quantity));
         }
 
-        return items;
+        if (items.empty()) {
+            items.push_back("(Empty)");
+        }
     });
 
     // Initialize camera for world navigation (world is already loaded by LoadingState)
