@@ -90,17 +90,6 @@ void Camera::update(float deltaTime) {
 
     // Smooth follow mode - camera smoothly tracks target position
     if (m_mode == Mode::Follow && hasTarget()) {
-        // Store target's interpolation state for synchronized rendering
-        // This allows getRenderOffset() to compute offset relative to where
-        // the target will actually render, not its physics position
-        if (auto targetPtr = m_target.lock()) {
-            Vector2D targetPrev = targetPtr->getPreviousPosition();
-            Vector2D targetCurr = targetPtr->getPosition();
-            m_targetInterpState.store({targetCurr.getX(), targetCurr.getY(),
-                                       targetPrev.getX(), targetPrev.getY()},
-                                      std::memory_order_release);
-        }
-
         Vector2D targetPos = getTargetPosition();
 
         // Ideal camera position is the target's position (camera centers on target)
@@ -330,36 +319,46 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
-void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
-    // Load target interpolation state for synchronized camera-target rendering
-    auto targetState = m_targetInterpState.load(std::memory_order_acquire);
-
-    // Check if we have valid target state (non-zero indicates target is being tracked)
-    bool hasValidTarget = (targetState.currX != 0.0f || targetState.currY != 0.0f ||
-                           targetState.prevX != 0.0f || targetState.prevY != 0.0f);
-
+void Camera::getRenderOffset(float entityInterpX, float entityInterpY,
+                             float& offsetX, float& offsetY) const {
+    // UNIFIED INTERPOLATION: Compute camera offset from pre-computed entity position
+    // This ensures camera and entity use the EXACT same position, eliminating wobble
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    if (hasValidTarget && m_mode == Mode::Follow) {
-        // SYNCHRONIZED APPROACH: Compute camera offset directly from target's
-        // interpolated position. This ensures perfect camera-player sync because
-        // both player rendering and camera offset use the same interpolated position.
-        float targetInterpX = targetState.prevX + (targetState.currX - targetState.prevX) * interpolationAlpha;
-        float targetInterpY = targetState.prevY + (targetState.currY - targetState.prevY) * interpolationAlpha;
+    // Center camera on entity's interpolated position, pixel-snap for tile alignment
+    offsetX = std::floor(entityInterpX - (worldViewWidth * 0.5f));
+    offsetY = std::floor(entityInterpY - (worldViewHeight * 0.5f));
 
-        // Camera offset centers on target's interpolated position (where it will render)
-        offsetX = std::floor(targetInterpX - (worldViewWidth * 0.5f));
-        offsetY = std::floor(targetInterpY - (worldViewHeight * 0.5f));
-    } else {
-        // No target or not in follow mode - use camera's own interpolation
-        auto camState = m_interpState.load(std::memory_order_acquire);
-        float camInterpX = camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha;
-        float camInterpY = camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha;
+    // Apply world bounds clamping if enabled
+    if (m_config.clampToWorldBounds) {
+        float maxOffsetX = m_worldBounds.maxX - worldViewWidth;
+        float maxOffsetY = m_worldBounds.maxY - worldViewHeight;
 
-        offsetX = std::floor(camInterpX - (worldViewWidth * 0.5f));
-        offsetY = std::floor(camInterpY - (worldViewHeight * 0.5f));
+        if (maxOffsetX > m_worldBounds.minX) {
+            offsetX = std::clamp(offsetX, m_worldBounds.minX, maxOffsetX);
+        } else {
+            // World smaller than viewport - center it
+            offsetX = std::floor((m_worldBounds.minX + m_worldBounds.maxX - worldViewWidth) * 0.5f);
+        }
+
+        if (maxOffsetY > m_worldBounds.minY) {
+            offsetY = std::clamp(offsetY, m_worldBounds.minY, maxOffsetY);
+        } else {
+            // World smaller than viewport - center it
+            offsetY = std::floor((m_worldBounds.minY + m_worldBounds.maxY - worldViewHeight) * 0.5f);
+        }
     }
+}
+
+void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+    // Non-follow mode: use camera's own interpolation
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    float camInterpX = camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha;
+    float camInterpY = camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha;
+
+    // Delegate to primary implementation
+    getRenderOffset(camInterpX, camInterpY, offsetX, offsetY);
 }
 
 bool Camera::isPointVisible(float x, float y) const {
@@ -381,9 +380,19 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // Use cached render offset - ensures entities use SAME offset as tiles
-    float offsetX, offsetY;
-    getRenderOffset(offsetX, offsetY);
+    // For coordinate transforms, use raw camera position without world bounds clamping
+    // World bounds clamping is for rendering, not for abstract coordinate math
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
+
+    // Get camera's interpolated position
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    float camX = camState.posX;
+    float camY = camState.posY;
+
+    // Camera offset: centers camera on its position
+    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
+    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
 
     // Transform world position to screen position
     screenX = worldX - offsetX;
@@ -396,9 +405,18 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     float logicalX = screenX / m_zoom;
     float logicalY = screenY / m_zoom;
 
-    // Use cached render offset - consistent with worldToScreen
-    float offsetX, offsetY;
-    getRenderOffset(offsetX, offsetY);
+    // For coordinate transforms, use raw camera position without world bounds clamping
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
+
+    // Get camera's interpolated position
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    float camX = camState.posX;
+    float camY = camState.posY;
+
+    // Camera offset: centers camera on its position
+    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
+    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
 
     // Inverse of worldToScreen: worldPos = screenPos + cameraOffset
     worldX = logicalX + offsetX;

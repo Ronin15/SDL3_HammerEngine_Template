@@ -215,17 +215,30 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // Get camera view rect and INTERPOLATED render offset for this frame
-  // All rendering (tiles, entities, particles) uses the SAME offset
-  // Interpolation enables smooth camera at any refresh rate with fixed 60Hz updates
+  // UNIFIED INTERPOLATION: Compute player position ONCE, use for camera AND player
+  // This eliminates any divergence between camera and entity interpolation
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
+  Vector2D playerInterpPos;
+
   if (m_camera) {
     viewRect = m_camera->getViewRect();
-    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
     zoom = m_camera->getZoom();
+
+    if (mp_Player && m_camera->getMode() == HammerEngine::Camera::Mode::Follow) {
+      // UNIFIED: Compute player position ONCE, use for camera AND player
+      playerInterpPos = mp_Player->getInterpolatedPosition(interpolationAlpha);
+      m_camera->getRenderOffset(playerInterpPos.getX(), playerInterpPos.getY(),
+                                renderCamX, renderCamY);
+    } else {
+      // Non-follow mode: camera uses its own interpolation
+      m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+      if (mp_Player) {
+        playerInterpPos = mp_Player->getInterpolatedPosition(interpolationAlpha);
+      }
+    }
   }
 
   // Set render scale for zoom only when changed (avoids GPU state change overhead)
@@ -235,26 +248,23 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   }
 
   // Render background particles (rain, snow) BEFORE world - use cached pointer
-  // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
     mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
   }
 
   // Render world using pixel-snapped camera coordinates - use cached pointer
-  // mp_worldMgr guaranteed valid between enter() and exit()
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
     mp_worldMgr->render(renderer,
-                       renderCamX, renderCamY,  // Pixel-snapped camera
+                       renderCamX, renderCamY,
                        viewRect.width, viewRect.height);
   }
 
-  // Render player using same camera offset as world (ensures sync)
+  // Render player using SAME interpolated position as camera offset calculation
   if (mp_Player) {
-    mp_Player->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    mp_Player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
   // Render world-space and foreground particles (after player) - use cached pointer
-  // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
     mp_particleMgr->render(renderer, renderCamX, renderCamY);
     mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
@@ -271,7 +281,6 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
       gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
 
   // Render UI components (no camera transformation) - use cached pointer
-  // mp_uiMgr guaranteed valid between enter() and exit()
   mp_uiMgr->render(renderer);
 }
 bool GamePlayState::exit() {

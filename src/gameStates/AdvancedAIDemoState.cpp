@@ -477,14 +477,28 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     // Get GameEngine for logical dimensions (renderer now passed as parameter)
     auto& gameEngine = GameEngine::Instance();
 
-    // Get camera view rect and INTERPOLATED render offset for this frame
-    // Interpolation enables smooth camera at any refresh rate with fixed 60Hz updates
+    // Get camera view rect for this frame
     HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
     float renderCamX = 0.0f;
     float renderCamY = 0.0f;
+    Vector2D playerInterpPos;
+
     if (m_camera) {
         cameraView = m_camera->getViewRect();
-        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+
+        // UNIFIED INTERPOLATION: Compute player position ONCE, use for both camera and player
+        // This eliminates divergence between camera offset and player rendering
+        if (m_player && m_camera->getMode() == HammerEngine::Camera::Mode::Follow) {
+            playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
+            m_camera->getRenderOffset(playerInterpPos.getX(), playerInterpPos.getY(),
+                                      renderCamX, renderCamY);
+        } else {
+            // Non-follow mode: use camera's own interpolation
+            m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+            if (m_player) {
+                playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
+            }
+        }
     }
 
     // Set render scale for zoom only when changed (avoids GPU state change overhead)
@@ -519,9 +533,9 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         }
     }
 
-    // Render player using camera-aware rendering with interpolation
+    // Render player at unified interpolated position
     if (m_player) {
-        m_player->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+        m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
 
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);

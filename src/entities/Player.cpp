@@ -187,7 +187,11 @@ void Player::update(float deltaTime) {
 void Player::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
   // Get interpolated position for smooth rendering between fixed timestep updates
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
+  renderAtPosition(renderer, interpPos, cameraX, cameraY);
+}
 
+void Player::renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
+                              float cameraX, float cameraY) {
   // Convert world coords to screen coords using passed camera offset
   // Use std::floor() for pixel-snapping to match Camera::getRenderOffset() pattern
   // This eliminates 0-1 pixel wobble between camera and player positions
