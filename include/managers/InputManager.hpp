@@ -39,7 +39,10 @@ class InputManager {
 
     // Clean up
     void clean();
-    
+
+    // Close gamepad handles - call right before SDL_Quit
+    void closeGamepads();
+
     // Check if InputManager has been shut down
     bool isShutdown() const { return m_isShutdown; }
 
