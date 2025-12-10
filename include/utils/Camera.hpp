@@ -45,9 +45,10 @@ public:
      * @brief Camera configuration structure
      */
     struct Config {
-        float smoothTime{0.15f};        // Time to reach target (seconds) - lower = snappier
-        float deadZoneRadius{0.0f};     // Dead zone around target (no movement if target within this)
-        float maxSpeed{1000.0f};        // Maximum camera speed (pixels/second)
+        float followSpeed{5.0f};        // Speed of camera interpolation when following
+        float deadZoneRadius{32.0f};    // Dead zone around target (no movement if target within this)
+        float maxFollowDistance{200.0f}; // Maximum distance camera can be from target
+        float smoothingFactor{0.85f};   // Smoothing factor for interpolation (0-1)
         bool clampToWorldBounds{true};  // Whether to clamp camera to world bounds
 
         // Zoom configuration
@@ -56,7 +57,10 @@ public:
 
         // Validation
         bool isValid() const {
-            if (smoothTime <= 0.0f || deadZoneRadius < 0.0f || maxSpeed <= 0.0f) {
+            if (followSpeed <= 0.0f || deadZoneRadius < 0.0f || maxFollowDistance <= 0.0f) {
+                return false;
+            }
+            if (smoothingFactor < 0.0f || smoothingFactor > 1.0f) {
                 return false;
             }
             if (zoomLevels.empty()) {
@@ -461,9 +465,6 @@ private:
     // Zoom state
     float m_zoom{1.0f};              // Current zoom level (1.0 = native)
     int m_currentZoomIndex{0};       // Index into ZOOM_LEVELS array
-
-    // Smooth follow velocity (for critically damped spring algorithm)
-    Vector2D m_velocity{0.0f, 0.0f}; // Current camera velocity for smooth damping
 
     // Previous position for render interpolation (smooth camera at any refresh rate)
     Vector2D m_previousPosition{960.0f, 540.0f};

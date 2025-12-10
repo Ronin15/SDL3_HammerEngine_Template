@@ -488,9 +488,9 @@ BOOST_AUTO_TEST_SUITE(ConfigValidationTests)
 
 BOOST_AUTO_TEST_CASE(TestValidConfigAccepted) {
     Camera::Config config;
-    config.smoothTime = 0.15f;
+    config.followSpeed = 5.0f;
     config.deadZoneRadius = 32.0f;
-    config.maxSpeed = 1000.0f;
+    config.smoothingFactor = 0.85f;
     config.clampToWorldBounds = true;
     config.zoomLevels = {1.0f, 1.5f, 2.0f};
     config.defaultZoomLevel = 0;
@@ -499,22 +499,22 @@ BOOST_AUTO_TEST_CASE(TestValidConfigAccepted) {
 
     Camera camera(config);
     auto retrievedConfig = camera.getConfig();
-    BOOST_CHECK(approxEqual(retrievedConfig.smoothTime, 0.15f));
+    BOOST_CHECK(approxEqual(retrievedConfig.followSpeed, 5.0f));
     BOOST_CHECK(approxEqual(retrievedConfig.deadZoneRadius, 32.0f));
 }
 
 BOOST_AUTO_TEST_CASE(TestInvalidConfigRejected) {
     Camera camera;
 
-    // Negative smooth time
+    // Negative follow speed
     Camera::Config config1;
-    config1.smoothTime = -1.0f;
+    config1.followSpeed = -1.0f;
     BOOST_CHECK(!config1.isValid());
     BOOST_CHECK(!camera.setConfig(config1));
 
-    // Negative max speed
+    // Invalid smoothing factor (out of 0-1 range)
     Camera::Config config2;
-    config2.maxSpeed = -100.0f;
+    config2.smoothingFactor = 1.5f;
     BOOST_CHECK(!config2.isValid());
     BOOST_CHECK(!camera.setConfig(config2));
 

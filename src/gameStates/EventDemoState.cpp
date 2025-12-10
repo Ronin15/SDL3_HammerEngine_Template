@@ -668,29 +668,17 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   auto &gameEngine = GameEngine::Instance();
 
-  // UNIFIED INTERPOLATION: Compute player position ONCE, use for camera AND player
+  // Camera offset uses SmoothDamp-filtered interpolation (eliminates world jitter)
   HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
-  Vector2D playerInterpPos;
 
   if (m_camera) {
     cameraView = m_camera->getViewRect();
     zoom = m_camera->getZoom();
-
-    if (m_player && m_camera->getMode() == HammerEngine::Camera::Mode::Follow) {
-      // UNIFIED: Compute player position ONCE, use for camera AND player
-      playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
-      m_camera->getRenderOffset(playerInterpPos.getX(), playerInterpPos.getY(),
-                                renderCamX, renderCamY);
-    } else {
-      // Non-follow mode: camera uses its own interpolation
-      m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
-      if (m_player) {
-        playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
-      }
-    }
+    // Camera's smoothed interpolation - handles all modes internally
+    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
   }
 
   // Set render scale for zoom only when changed (avoids GPU state change overhead)
@@ -713,8 +701,9 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
   }
 
-  // Render player using SAME interpolated position as camera offset calculation
+  // Render player at its own interpolated position
   if (m_player) {
+    Vector2D playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
     m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
@@ -2023,11 +2012,11 @@ void EventDemoState::initializeCamera() {
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following (match GamePlayState)
-    // Using critically damped spring (SmoothDamp) for smooth, non-oscillating follow
+    // Using exponential smoothing for smooth, responsive follow
     HammerEngine::Camera::Config config;
-    config.smoothTime = 0.12f;         // Time to reach target (lower = snappier)
+    config.followSpeed = 5.0f;         // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.maxSpeed = 800.0f;          // Max camera speed in pixels/second
+    config.smoothingFactor = 0.85f;    // Smoothing factor (0-1, higher = smoother)
     config.clampToWorldBounds = true;  // Keep camera within world
     m_camera->setConfig(config);
 

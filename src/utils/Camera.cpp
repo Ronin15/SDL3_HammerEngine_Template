@@ -119,40 +119,36 @@ void Camera::update(float deltaTime) {
             }
         }
 
-        // Critically-damped spring (SmoothDamp) - industry standard camera follow
-        // Uses velocity tracking for consistent lag regardless of target movement
-        const float smoothTime = std::max(0.0001f, m_config.smoothTime);
-        const float maxSpeed = m_config.maxSpeed;
+        // Offset from current to ideal
+        const float dx = idealPosition.getX() - m_position.getX();
+        const float dy = idealPosition.getY() - m_position.getY();
+        const float distance = std::sqrt(dx * dx + dy * dy);
 
-        // Calculate spring constants for critical damping (no oscillation)
-        // omega = 2/smoothTime gives critical damping behavior
-        const float omega = 2.0f / smoothTime;
-        const float x = omega * deltaTime;
-        const float exp_term = 1.0f / (1.0f + x + 0.48f * x * x + 0.235f * x * x * x);
+        // Dead zone from config to avoid micro-oscillations
+        const float deadZone = std::max(0.0f, m_config.deadZoneRadius);
+        if (distance > deadZone) {
+            // Exponential smoothing with configurable responsiveness
+            // alpha = 1 - smoothingFactor^(dt * followSpeed)
+            float alpha = 1.0f - std::pow(std::clamp(m_config.smoothingFactor, 0.0f, 1.0f),
+                                          std::max(0.0f, deltaTime * std::max(0.0f, m_config.followSpeed)));
+            alpha = std::clamp(alpha, 0.0f, 1.0f);
 
-        // X axis
-        float deltaX = m_position.getX() - idealPosition.getX();
-        float tempX = (m_velocity.getX() + omega * deltaX) * deltaTime;
-        m_velocity.setX((m_velocity.getX() - omega * tempX) * exp_term);
-        float newX = idealPosition.getX() + (deltaX + tempX) * exp_term;
+            float newX = m_position.getX() + dx * alpha;
+            float newY = m_position.getY() + dy * alpha;
 
-        // Y axis
-        float deltaY = m_position.getY() - idealPosition.getY();
-        float tempY = (m_velocity.getY() + omega * deltaY) * deltaTime;
-        m_velocity.setY((m_velocity.getY() - omega * tempY) * exp_term);
-        float newY = idealPosition.getY() + (deltaY + tempY) * exp_term;
+            // If we would end up inside the dead zone, stop at its edge
+            const float ndx = idealPosition.getX() - newX;
+            const float ndy = idealPosition.getY() - newY;
+            const float newDistance = std::sqrt(ndx * ndx + ndy * ndy);
+            if (newDistance < deadZone && distance > 0.0f) {
+                const float ratio = (distance - deadZone) / distance;
+                newX = m_position.getX() + dx * ratio;
+                newY = m_position.getY() + dy * ratio;
+            }
 
-        // Clamp velocity to maxSpeed to prevent overshooting on sudden target jumps
-        float velMagnitude = std::sqrt(m_velocity.getX() * m_velocity.getX() +
-                                        m_velocity.getY() * m_velocity.getY());
-        if (velMagnitude > maxSpeed) {
-            float scale = maxSpeed / velMagnitude;
-            m_velocity.setX(m_velocity.getX() * scale);
-            m_velocity.setY(m_velocity.getY() * scale);
+            m_position.setX(newX);
+            m_position.setY(newY);
         }
-
-        m_position.setX(newX);
-        m_position.setY(newY);
     }
 
     // Ensure final camera position respects world bounds across all modes
@@ -294,8 +290,8 @@ bool Camera::hasTarget() const {
 bool Camera::setConfig(const Config& config) {
     if (config.isValid()) {
         m_config = config;
-        CAMERA_INFO("Camera configuration updated (smoothTime=" +
-                    std::to_string(m_config.smoothTime) + "s)");
+        CAMERA_INFO("Camera configuration updated (followSpeed=" +
+                    std::to_string(m_config.followSpeed) + ")");
         return true;
     } else {
         CAMERA_WARN("Invalid camera configuration provided");
