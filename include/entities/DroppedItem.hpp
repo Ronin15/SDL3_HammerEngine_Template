@@ -36,7 +36,7 @@ public:
 
     // Entity interface implementation
     void update(float deltaTime) override;
-    void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) override;
+    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
     void clean() override;
 
     // DroppedItem specific methods

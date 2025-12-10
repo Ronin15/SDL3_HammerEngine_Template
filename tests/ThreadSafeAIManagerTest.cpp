@@ -52,7 +52,7 @@ public:
     (void)deltaTime; // Suppress unused parameter warning
   }
 
-  void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) override { (void)camera; (void)interpolationAlpha; }
+  void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
   void clean() override {}
 
   void updatePosition(const Vector2D &velocity) {

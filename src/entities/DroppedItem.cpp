@@ -63,31 +63,27 @@ void DroppedItem::update(float deltaTime) {
   }
 }
 
-void DroppedItem::render(const HammerEngine::Camera *camera, float interpolationAlpha) {
+void DroppedItem::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
   if (m_quantity <= 0) {
     return; // Don't render empty stacks
   }
 
-  if (!camera) {
-    return;
-  }
-
   // Get interpolated position for smooth rendering between physics updates
-  Vector2D renderPos = getInterpolatedPosition(interpolationAlpha);
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
   // Apply bobbing effect to the interpolated Y position
   float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
-  renderPos.setY(renderPos.getY() + bobOffset);
 
-  // TODO: Implement actual rendering logic here
-  // This would typically involve:
-  // 1. Getting the texture from TextureManager using m_textureID
-  // 2. Calculating screen position from world position using camera
-  // 3. Rendering the sprite with current animation frame
-  // 4. Optionally rendering quantity text for stacks > 1
+  // Convert world coords to screen coords using passed camera offset
+  // Same formula as WorldManager: screenX = worldX - cameraX
+  float renderX = interpPos.getX() - cameraX;
+  float renderY = interpPos.getY() - cameraY + bobOffset;
 
+  // TODO: Implement actual rendering logic here using renderer and renderX/renderY
   // For now, suppress unused parameter warning until full rendering is implemented
-  (void)renderPos;
+  (void)renderer;
+  (void)renderX;
+  (void)renderY;
 }
 
 void DroppedItem::clean() {

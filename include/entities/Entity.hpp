@@ -70,10 +70,12 @@ class Entity : public std::enable_shared_from_this<Entity> {
    * use getInterpolatedPosition(interpolationAlpha) for smooth rendering
    * between fixed timestep updates.
    *
-   * @param camera A pointer to the camera used for rendering.
+   * @param renderer SDL renderer from GameState render flow
+   * @param cameraX Interpolated camera X offset (from GameState render)
+   * @param cameraY Interpolated camera Y offset (from GameState render)
    * @param interpolationAlpha Blend factor between previous and current position (0.0-1.0)
    */
-  virtual void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) = 0;
+  virtual void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) = 0;
 
   /**
    * @brief Clean up the entity's resources before destruction

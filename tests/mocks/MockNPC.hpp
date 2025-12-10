@@ -67,9 +67,11 @@ public:
         (void)deltaTime; // Suppress unused parameter warning
     }
     
-    void render(const HammerEngine::Camera* camera, float interpolationAlpha = 1.0f) override {
-        // Mock render with camera - do nothing
-        (void)camera; // Suppress unused parameter warning
+    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override {
+        // Mock render - do nothing
+        (void)renderer;
+        (void)cameraX;
+        (void)cameraY;
         (void)interpolationAlpha;
     }
     

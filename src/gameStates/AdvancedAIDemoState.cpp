@@ -506,7 +506,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
 
     // Render all NPCs using camera-aware rendering with interpolation
     for (auto& npc : m_npcs) {
-        npc->render(m_camera.get(), interpolationAlpha);
+        npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
 
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
@@ -521,7 +521,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
 
     // Render player using camera-aware rendering with interpolation
     if (m_player) {
-        m_player->render(m_camera.get(), interpolationAlpha);
+        m_player->render(renderer, renderCamX, renderCamY, interpolationAlpha);
 
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);

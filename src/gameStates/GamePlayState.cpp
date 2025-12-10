@@ -248,9 +248,9 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
                        viewRect.width, viewRect.height);
   }
 
-  // Render player using smooth camera coordinates (allows sub-pixel motion)
-  if (mp_Player && m_camera) {
-    mp_Player->render(m_camera.get(), interpolationAlpha);
+  // Render player using same camera offset as world (ensures sync)
+  if (mp_Player) {
+    mp_Player->render(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
   // Render world-space and foreground particles (after player) - use cached pointer
