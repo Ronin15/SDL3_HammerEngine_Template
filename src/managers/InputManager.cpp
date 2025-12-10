@@ -39,13 +39,8 @@ void InputManager::initializeGamePad() {
     return;
   }
 
-  // Initialize gamepad subsystem
-  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
-    INPUT_CRITICAL("Unable to initialize gamepad subsystem: " + std::string(SDL_GetError()));
-    return;
-  }
-  
-  // Mark that we successfully initialized the gamepad subsystem
+  // Gamepad subsystem is initialized by GameEngine::init() with SDL_INIT_GAMEPAD
+  // Just detect and open available gamepads here
 
   // Get all available gamepads with RAII management
   int numGamepads = 0;
@@ -85,9 +80,8 @@ void InputManager::initializeGamePad() {
     }
   } else {
     INPUT_INFO("No gamepads found");
-    // Still need to quit the subsystem we initialized
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    return; //return without setting m_gamePadInitialized to true.
+    // Subsystem stays initialized - SDL_Quit() will clean up all subsystems
+    return;
   }
 
   m_gamePadInitialized = true;
@@ -403,31 +397,44 @@ void InputManager::clean() {
     return;
   }
 
+  // Don't close gamepads here - closeGamepads() must be called
+  // right before SDL_Quit() for proper cleanup ordering
   if(m_gamePadInitialized) {
-    int gamepadCount{0};
-    // Close all gamepads if detected
-    for (auto& gamepad : m_joysticks) {
-      if (gamepad) {
-        SDL_CloseGamepad(gamepad);
-        gamepadCount++;
-      }
-    }
-
-    m_joysticks.clear();
+    // Just clear our data, not the gamepad handles
     m_joystickValues.clear();
+    m_buttonStates.clear();
     m_gamePadInitialized = false;
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
-
+    INPUT_INFO("Gamepad data cleared (handles preserved for later cleanup)");
   } else {
     INPUT_INFO("No gamepads to free");
   }
 
-  // Clear all button states and mouse states
-  m_buttonStates.clear();
+  // Clear mouse states
   m_mouseButtonStates.clear();
 
   // Set shutdown flag
   m_isShutdown = true;
   INPUT_INFO("InputManager resources cleaned");
+}
+
+void InputManager::closeGamepads() {
+  // Close gamepad handles - must be called before SDL_Quit
+  // Pump events first to ensure SDL's internal gamepad state is synchronized
+  SDL_PumpEvents();
+
+  size_t count = m_joysticks.size();
+  for (auto& gamepad : m_joysticks) {
+    if (gamepad) {
+      SDL_CloseGamepad(gamepad);
+      gamepad = nullptr;
+    }
+  }
+  m_joysticks.clear();
+
+  // Don't call SDL_QuitSubSystem - SDL_Quit() handles subsystem cleanup
+  // Gamepad was initialized with SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)
+
+  if (count > 0) {
+    INPUT_INFO("Closed " + std::to_string(count) + " gamepad handles");
+  }
 }

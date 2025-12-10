@@ -49,10 +49,11 @@
 
 bool GameEngine::init(const std::string_view title, const int width,
                       const int height, bool fullscreen) {
-  GAMEENGINE_INFO("Initializing SDL Video");
+  GAMEENGINE_INFO("Initializing SDL Video and Gamepad");
 
-  if (!SDL_Init(SDL_INIT_VIDEO)) {
-    GAMEENGINE_CRITICAL("SDL Video initialization failed: " +
+  // Initialize video and gamepad together to ensure proper IOKit setup on macOS
+  if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
+    GAMEENGINE_CRITICAL("SDL initialization failed: " +
                         std::string(SDL_GetError()));
     return false;
   }
@@ -1389,6 +1390,10 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Destroying window...");
   window_to_destroy.reset();
   GAMEENGINE_INFO("Window destroyed successfully");
+
+  // Close gamepad handles right before SDL_Quit to ensure proper cleanup order
+  GAMEENGINE_INFO("Closing gamepad handles...");
+  InputManager::Instance().closeGamepads();
 
   GAMEENGINE_INFO("Calling SDL_Quit...");
   SDL_Quit();
