@@ -860,14 +860,14 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     // Chunk texture size includes padding for sprites extending beyond tile bounds
     constexpr int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
 
-    // Track currently visible chunk keys for LRU eviction
-    std::vector<uint64_t> visibleKeys;
+    // Track currently visible chunk keys for LRU eviction (uses member buffer to avoid per-frame allocs)
+    m_visibleKeysBuffer.clear();
 
     // Render visible chunks (typically 4-16 chunks vs 8000 individual tiles)
     for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
         for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
             uint64_t key = makeChunkKey(chunkX, chunkY);
-            visibleKeys.push_back(key);
+            m_visibleKeysBuffer.push_back(key);
 
             // Get or create chunk cache entry
             auto it = m_chunkCache.find(key);
@@ -990,27 +990,27 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
 
     // LRU eviction: Remove oldest chunks when cache exceeds limit
     if (m_chunkCache.size() > MAX_CACHED_CHUNKS) {
-        // Find chunks not currently visible and sort by last used frame
-        std::vector<std::pair<uint64_t, uint64_t>> evictionCandidates;  // key, lastUsedFrame
+        // Find chunks not currently visible and sort by last used frame (uses member buffer)
+        m_evictionBuffer.clear();
         for (const auto& [key, cache] : m_chunkCache) {
             // Don't evict currently visible chunks
-            if (std::find(visibleKeys.begin(), visibleKeys.end(), key) == visibleKeys.end()) {
-                evictionCandidates.emplace_back(key, cache.lastUsedFrame);
+            if (std::find(m_visibleKeysBuffer.begin(), m_visibleKeysBuffer.end(), key) == m_visibleKeysBuffer.end()) {
+                m_evictionBuffer.emplace_back(key, cache.lastUsedFrame);
             }
         }
 
         // Sort by oldest first (lowest frame number)
-        std::sort(evictionCandidates.begin(), evictionCandidates.end(),
+        std::sort(m_evictionBuffer.begin(), m_evictionBuffer.end(),
                   [](const auto& a, const auto& b) { return a.second < b.second; });
 
         // Evict oldest chunks until we're under the limit
         size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
-        for (size_t i = 0; i < std::min(toEvict, evictionCandidates.size()); ++i) {
-            m_chunkCache.erase(evictionCandidates[i].first);
+        for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
+            m_chunkCache.erase(m_evictionBuffer[i].first);
         }
 
         if (toEvict > 0) {
-            WORLD_MANAGER_DEBUG("TileRenderer: Evicted " + std::to_string(std::min(toEvict, evictionCandidates.size())) +
+            WORLD_MANAGER_DEBUG("TileRenderer: Evicted " + std::to_string(std::min(toEvict, m_evictionBuffer.size())) +
                                " chunks from cache (cache size: " + std::to_string(m_chunkCache.size()) + ")");
         }
     }

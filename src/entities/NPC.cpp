@@ -16,8 +16,8 @@
 #include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
 
+#include <cmath>
 #include <random>
-#include <set>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight, NPCType type)
@@ -191,9 +191,9 @@ void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float int
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
   // Convert world coords to screen coords using passed camera offset
-  // Same formula as WorldManager: screenX = worldX - cameraX
-  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
-  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
+  // Use std::floor() for pixel-snapping to match Player pattern and eliminate wobble
+  float renderX = std::floor(interpPos.getX() - cameraX - (m_frameWidth / 2.0f));
+  float renderY = std::floor(interpPos.getY() - cameraY - (m_height / 2.0f));
 
   // Render the NPC with the current animation frame using float precision
   TextureManager::Instance().drawFrame(m_textureID,
@@ -204,18 +204,11 @@ void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float int
 }
 
 void NPC::clean() {
-  // This method is called before the object is destroyed,
-  // but we need to be very careful about double-cleanup
-
-  static thread_local std::set<void *> cleanedNPCs;
-
-  // Check if this NPC has already been cleaned
-  if (cleanedNPCs.find(this) != cleanedNPCs.end()) {
-    return; // Already cleaned, avoid double-free
+  // Prevent double-cleanup (uses member flag instead of thread_local set that leaked memory)
+  if (m_cleaned) {
+    return;
   }
-
-  // Mark this NPC as cleaned
-  cleanedNPCs.insert(this);
+  m_cleaned = true;
 
   // Note: AIManager cleanup (unregisterEntityFromUpdates,
   // unassignBehaviorFromEntity) should be handled externally before calling
@@ -387,16 +380,12 @@ void NPC::dropLoot() {
     return;
   }
 
-  // Random number generator
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-
+  // Use member RNG (avoids static vars in threaded code per CLAUDE.md)
   NPC_DEBUG("NPC dropping loot...");
 
   // Check each potential drop
   for (const auto &[itemHandle, dropRate] : m_dropRates) {
-    if (dis(gen) <= dropRate) {
+    if (m_lootDist(m_lootRng) <= dropRate) {
       // Determine quantity (simple random 1-3 for most items)
       int quantity = 1;
 
