@@ -224,7 +224,7 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   float zoom = 1.0f;
   if (m_camera) {
     viewRect = m_camera->getViewRect();
-    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);  // Interpolated offset
+    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
     zoom = m_camera->getZoom();
   }
 
