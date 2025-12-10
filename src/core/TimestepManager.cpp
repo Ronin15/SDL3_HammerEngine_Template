@@ -52,7 +52,8 @@ void TimestepManager::startFrame() {
     deltaTime = std::min(deltaTime, static_cast<double>(MAX_ACCUMULATOR));
     
     // Add to accumulator for fixed timestep updates (atomic for thread safety)
-    m_accumulator.fetch_add(deltaTime, std::memory_order_relaxed);
+    // Use release ordering so update thread sees this write before reading
+    m_accumulator.fetch_add(deltaTime, std::memory_order_release);
     
     // Always render once per frame
     m_shouldRender = true;
@@ -63,11 +64,11 @@ void TimestepManager::startFrame() {
 
 bool TimestepManager::shouldUpdate() {
     // Use a proper accumulator to allow for multiple updates per frame if needed
-    // Atomic load to check if update is needed
-    double current = m_accumulator.load(std::memory_order_relaxed);
+    // Use acquire ordering to synchronize with release from startFrame()
+    double current = m_accumulator.load(std::memory_order_acquire);
     if (current >= m_fixedTimestep) {
-        // Atomically subtract the timestep
-        m_accumulator.fetch_sub(m_fixedTimestep, std::memory_order_relaxed);
+        // Use acq_rel to synchronize both read and write with other threads
+        m_accumulator.fetch_sub(m_fixedTimestep, std::memory_order_acq_rel);
         return true;
     }
     return false;
@@ -84,7 +85,8 @@ float TimestepManager::getUpdateDeltaTime() const {
 
 double TimestepManager::getInterpolationAlpha() const {
     if (m_fixedTimestep > 0.0f) {
-        double alpha = m_accumulator.load(std::memory_order_relaxed) / m_fixedTimestep;
+        // Use acquire ordering to get consistent accumulator value from update thread
+        double alpha = m_accumulator.load(std::memory_order_acquire) / m_fixedTimestep;
         return std::clamp(alpha, 0.0, 1.0);  // Prevent extrapolation during frame drops
     }
     return 1.0; // Default to 1.0 to avoid division by zero
