@@ -117,6 +117,10 @@ private:
     uint64_t m_frameCounter{0};  // For LRU tracking
     static constexpr size_t MAX_CACHED_CHUNKS = 64;  // ~256MB max VRAM (4MB per 1024x1024 chunk)
 
+    // Reusable buffers for render loop (avoids per-frame allocations per CLAUDE.md)
+    mutable std::vector<uint64_t> m_visibleKeysBuffer;
+    mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
+
     // Chunk cache helpers
     static uint64_t makeChunkKey(int chunkX, int chunkY) {
         return (static_cast<uint64_t>(chunkY) << 32) | static_cast<uint32_t>(chunkX);
