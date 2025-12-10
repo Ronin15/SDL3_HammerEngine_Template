@@ -697,8 +697,10 @@ void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY)
 
 void HammerEngine::TileRenderer::clearChunkCache()
 {
-    m_chunkCache.clear();
-    WORLD_MANAGER_DEBUG("TileRenderer: Chunk cache cleared");
+    // Defer cache clear to render thread to prevent Metal command encoder crash
+    // Update thread calls this during season change events while render may be using textures
+    m_cachePendingClear.store(true, std::memory_order_release);
+    WORLD_MANAGER_DEBUG("TileRenderer: Chunk cache invalidated (deferred clear pending)");
 }
 
 HammerEngine::TileRenderer::~TileRenderer()
@@ -832,6 +834,13 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     if (!renderer) {
         WORLD_MANAGER_ERROR("TileRenderer: Cannot render tiles - renderer is null");
         return;
+    }
+
+    // Process deferred cache clear safely on render thread (before any texture access)
+    // This prevents Metal command encoder crash when season change clears cache during render
+    if (m_cachePendingClear.exchange(false, std::memory_order_acq_rel)) {
+        m_chunkCache.clear();
+        WORLD_MANAGER_DEBUG("TileRenderer: Chunk cache cleared (deferred)");
     }
 
     // Increment frame counter for LRU tracking
