@@ -193,10 +193,9 @@ void Player::render(SDL_Renderer* renderer, float cameraX, float cameraY, float 
 void Player::renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
                               float cameraX, float cameraY) {
   // Convert world coords to screen coords using passed camera offset
-  // Use std::floor() for pixel-snapping to match Camera::getRenderOffset() pattern
-  // This eliminates 0-1 pixel wobble between camera and player positions
-  float renderX = std::floor(interpPos.getX() - cameraX - (m_frameWidth / 2.0f));
-  float renderY = std::floor(interpPos.getY() - cameraY - (m_height / 2.0f));
+  // Using floating-point for smooth sub-pixel rendering (no pixel-snapping)
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
   // Render the Player with the current animation frame
   TextureManager::Instance().drawFrame(m_textureID,

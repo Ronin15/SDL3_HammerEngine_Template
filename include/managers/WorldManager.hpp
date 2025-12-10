@@ -30,7 +30,7 @@ class TileRenderer {
 private:
     static constexpr float TILE_SIZE = 32.0f;  // Use float for smooth movement
     static constexpr int VIEWPORT_PADDING = 2;
-    static constexpr int SPRITE_OVERHANG = 32;  // Padding for sprites extending beyond tile bounds
+    static constexpr int SPRITE_OVERHANG = 64;  // Padding for sprites extending beyond tile bounds (increased for tall trees/buildings)
 
     // Chunk-based rendering for scalability to massive maps
     static constexpr int CHUNK_SIZE = 32;  // 32x32 tiles per chunk
@@ -86,6 +86,17 @@ private:
         float w{0}, h{0};
     };
 
+    // Y-sorted sprite data for unified chunk rendering (obstacles rendered into chunks)
+    struct YSortedSprite {
+        float y;           // Y position for sorting (bottom of sprite)
+        float renderX;     // Local X in chunk texture
+        float renderY;     // Local Y in chunk texture
+        const CachedTexture* tex;
+        bool isBuilding;
+        int buildingWidth;
+        int buildingHeight;
+    };
+
     // Cached texture pointers and dimensions - eliminates hash map lookups in hot render loop
     struct CachedTileTextures {
         CachedTexture biome_default;
@@ -120,6 +131,7 @@ private:
     // Reusable buffers for render loop (avoids per-frame allocations per CLAUDE.md)
     mutable std::vector<uint64_t> m_visibleKeysBuffer;
     mutable std::vector<std::pair<uint64_t, uint64_t>> m_evictionBuffer;
+    mutable std::vector<YSortedSprite> m_ySortBuffer;  // For Y-sorted obstacle rendering in chunks
 
     // Chunk cache helpers
     static uint64_t makeChunkKey(int chunkX, int chunkY) {

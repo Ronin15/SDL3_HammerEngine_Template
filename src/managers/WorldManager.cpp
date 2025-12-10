@@ -292,6 +292,28 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile& newTile) {
     }
 
     m_currentWorld->grid[y][x] = newTile;
+
+    // Invalidate chunk containing this tile AND adjacent chunks (for sprite overhang)
+    // Sprites can extend from adjacent tiles into neighboring chunks
+    if (m_tileRenderer) {
+        constexpr int chunkSize = 32;  // TileRenderer::CHUNK_SIZE
+        int chunkX = x / chunkSize;
+        int chunkY = y / chunkSize;
+
+        // Invalidate primary chunk
+        m_tileRenderer->invalidateChunk(chunkX, chunkY);
+
+        // Invalidate adjacent chunks that might render this tile's sprites
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY);      // Left
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY);      // Right
+        m_tileRenderer->invalidateChunk(chunkX, chunkY - 1);      // Top
+        m_tileRenderer->invalidateChunk(chunkX, chunkY + 1);      // Bottom
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY - 1);  // Top-left
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY - 1);  // Top-right
+        m_tileRenderer->invalidateChunk(chunkX - 1, chunkY + 1);  // Bottom-left
+        m_tileRenderer->invalidateChunk(chunkX + 1, chunkY + 1);  // Bottom-right
+    }
+
     fireTileChangedEvent(x, y, newTile);
 
     return true;
@@ -817,8 +839,79 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
         }
     }
 
-    // PASS 1 COMPLETE: Biomes only in chunk textures
-    // Obstacles and buildings are rendered in PASS 2 directly to screen (see renderVisibleTiles)
+    // LAYER 2: Collect obstacles and buildings for Y-sorted rendering
+    // Extended range to capture sprites that overhang into this chunk from adjacent tiles
+    int spriteStartX = std::max(0, startTileX - 2);  // 2 tiles for building overhang
+    int spriteStartY = std::max(0, startTileY - 4);  // 4 tiles for tall sprites above
+    int spriteEndX = std::min(worldWidth, endTileX + 2);
+    int spriteEndY = std::min(worldHeight, endTileY + 1);
+
+    m_ySortBuffer.clear();
+
+    for (int y = spriteStartY; y < spriteEndY; ++y) {
+        for (int x = spriteStartX; x < spriteEndX; ++x) {
+            const HammerEngine::Tile& tile = world.grid[y][x];
+
+            // Calculate local position in chunk texture
+            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
+            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+
+            bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
+                                     !tile.isTopLeftOfBuilding);
+
+            // Obstacles (trees, rocks) - bottom-center positioned
+            if (!isPartOfBuilding &&
+                tile.obstacleType != HammerEngine::ObstacleType::NONE &&
+                tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+
+                const CachedTexture* tex = &m_cachedTextures.biome_default;
+                switch (tile.obstacleType) {
+                    case HammerEngine::ObstacleType::TREE:  tex = &m_cachedTextures.obstacle_tree; break;
+                    case HammerEngine::ObstacleType::ROCK:  tex = &m_cachedTextures.obstacle_rock; break;
+                    case HammerEngine::ObstacleType::WATER: continue;  // Water is biome layer
+                    default: break;
+                }
+
+                float offsetX = (TILE_SIZE - tex->w) / 2.0f;
+                float offsetY = TILE_SIZE - tex->h;
+
+                // Y-sort key is bottom of sprite (tile Y + 1 tile = bottom)
+                float sortY = localY + TILE_SIZE;
+
+                m_ySortBuffer.push_back({sortY, localX + offsetX, localY + offsetY, tex, false, 0, 0});
+            }
+
+            // Buildings - from top-left tile only
+            if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && tile.isTopLeftOfBuilding) {
+                const CachedTexture* tex = &m_cachedTextures.building_hut;
+                switch (tile.buildingSize) {
+                    case 1:  tex = &m_cachedTextures.building_hut; break;
+                    case 2:  tex = &m_cachedTextures.building_house; break;
+                    case 3:  tex = &m_cachedTextures.building_large; break;
+                    case 4:  tex = &m_cachedTextures.building_cityhall; break;
+                    default: break;
+                }
+
+                // Y-sort key is bottom of building footprint
+                float sortY = localY + (tile.buildingSize * TILE_SIZE);
+
+                m_ySortBuffer.push_back({sortY, localX, localY, tex, true,
+                                         static_cast<int>(tex->w), static_cast<int>(tex->h)});
+            }
+        }
+    }
+
+    // Sort by Y (bottom of sprite) for proper layering
+    std::sort(m_ySortBuffer.begin(), m_ySortBuffer.end(),
+              [](const YSortedSprite& a, const YSortedSprite& b) { return a.y < b.y; });
+
+    // Render sorted sprites into chunk texture
+    for (const auto& sprite : m_ySortBuffer) {
+        int spriteW = sprite.isBuilding ? sprite.buildingWidth : static_cast<int>(sprite.tex->w);
+        int spriteH = sprite.isBuilding ? sprite.buildingHeight : static_cast<int>(sprite.tex->h);
+        TextureManager::drawTileDirect(sprite.tex->ptr, sprite.renderX, sprite.renderY,
+                                       spriteW, spriteH, renderer);
+    }
 
     // Reset render target to default (screen)
     SDL_SetRenderTarget(renderer, nullptr);
@@ -931,59 +1024,6 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                 SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
                 SDL_FRect destRect = {screenX, screenY, destW, destH};
                 SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
-            }
-        }
-    }
-
-    // PASS 2: Sprites direct to screen (never in chunks = never clipped by adjacent biomes)
-    // This ensures trees/buildings extending beyond their tile are ALWAYS visible
-    for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
-        for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-            int tileStartX = chunkX * CHUNK_SIZE;
-            int tileStartY = chunkY * CHUNK_SIZE;
-            int tileEndX = std::min(tileStartX + CHUNK_SIZE, worldWidth);
-            int tileEndY = std::min(tileStartY + CHUNK_SIZE, worldHeight);
-
-            for (int y = tileStartY; y < tileEndY; ++y) {
-                for (int x = tileStartX; x < tileEndX; ++x) {
-                    const HammerEngine::Tile& tile = world.grid[y][x];
-                    float screenX = x * TILE_SIZE - cameraX;
-                    float screenY = y * TILE_SIZE - cameraY;
-
-                    bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
-                                             !tile.isTopLeftOfBuilding);
-
-                    // Obstacles (trees, rocks) - bottom-center positioned
-                    if (!isPartOfBuilding &&
-                        tile.obstacleType != HammerEngine::ObstacleType::NONE &&
-                        tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
-                        const CachedTexture* tex = &m_cachedTextures.biome_default;
-                        switch (tile.obstacleType) {
-                            case HammerEngine::ObstacleType::TREE:  tex = &m_cachedTextures.obstacle_tree; break;
-                            case HammerEngine::ObstacleType::ROCK:  tex = &m_cachedTextures.obstacle_rock; break;
-                            case HammerEngine::ObstacleType::WATER: tex = &m_cachedTextures.obstacle_water; break;
-                            default: break;
-                        }
-                        float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-                        float offsetY = TILE_SIZE - tex->h;
-                        TextureManager::drawTileDirect(tex->ptr, screenX + offsetX, screenY + offsetY,
-                                                       static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-                    }
-
-                    // Buildings - from top-left tile only
-                    if (tile.obstacleType == HammerEngine::ObstacleType::BUILDING && tile.isTopLeftOfBuilding) {
-                        const CachedTexture* tex = &m_cachedTextures.building_hut;
-                        switch (tile.buildingSize) {
-                            case 1:  tex = &m_cachedTextures.building_hut; break;
-                            case 2:  tex = &m_cachedTextures.building_house; break;
-                            case 3:  tex = &m_cachedTextures.building_large; break;
-                            case 4:  tex = &m_cachedTextures.building_cityhall; break;
-                            default: break;
-                        }
-                        TextureManager::drawTileDirect(tex->ptr, screenX, screenY,
-                                                       static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
-                    }
-                }
             }
         }
     }
