@@ -186,30 +186,17 @@ void NPC::update(float) {
   }
 }
 
-void NPC::render(const HammerEngine::Camera *camera, float interpolationAlpha) {
-  // Cache manager references for better performance
-  TextureManager &texMgr = TextureManager::Instance();
-  SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
-
+void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
   // Get interpolated position for smooth rendering between fixed timestep updates
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
-  // Determine render position based on camera
-  Vector2D renderPosition;
-  if (camera) {
-    // Transform interpolated world position to screen coordinates using camera
-    renderPosition = camera->worldToScreen(interpPos);
-  } else {
-    // No camera transformation - render at interpolated world coordinates directly
-    renderPosition = interpPos;
-  }
-
-  // Calculate centered position for rendering (preserve float precision)
-  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
-  float renderY = renderPosition.getY() - (m_height / 2.0f);
+  // Convert world coords to screen coords using passed camera offset
+  // Same formula as WorldManager: screenX = worldX - cameraX
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
   // Render the NPC with the current animation frame using float precision
-  texMgr.drawFrame(m_textureID,
+  TextureManager::Instance().drawFrame(m_textureID,
                     renderX, // Keep float precision for smooth camera movement
                     renderY, // Keep float precision for smooth camera movement
                     m_frameWidth, m_height, m_currentRow, m_currentFrame,
