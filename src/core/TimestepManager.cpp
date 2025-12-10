@@ -156,8 +156,9 @@ void TimestepManager::updateFPS() {
     auto timeSinceLastUpdateNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_fpsLastUpdate);
     double timeSinceLastUpdate = static_cast<double>(timeSinceLastUpdateNs.count()) / 1000000000.0; // Convert to seconds
     
-    // Update FPS calculation every second
-    if (timeSinceLastUpdate >= 1.0) {
+    // Update FPS calculation every 0.5 seconds for more responsive/accurate display
+    // (Shorter window reduces boundary artifacts that could show false dips)
+    if (timeSinceLastUpdate >= 0.5) {
         m_currentFPS = static_cast<float>(m_frameCount) / static_cast<float>(timeSinceLastUpdate);
         m_frameCount = 0;
         m_fpsLastUpdate = currentTime;
