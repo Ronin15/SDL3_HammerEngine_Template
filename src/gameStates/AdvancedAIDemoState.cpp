@@ -484,7 +484,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     float renderCamY = 0.0f;
     if (m_camera) {
         cameraView = m_camera->getViewRect();
-        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);  // Interpolated offset
+        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
     }
 
     // Set render scale for zoom only when changed (avoids GPU state change overhead)

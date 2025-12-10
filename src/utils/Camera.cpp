@@ -310,7 +310,7 @@ Camera::ViewRect Camera::getViewRect() const {
     float worldViewHeight = m_viewport.height / m_zoom;
 
     // Use full floating-point precision for smooth sub-pixel camera movement
-    // Tile pixel-snapping is handled in TextureManager::drawTileF() to prevent shimmer
+    // Callers snap to pixels at render time if tile-aligned rendering is needed
     return ViewRect{
         m_position.getX() - (worldViewWidth * 0.5f),
         m_position.getY() - (worldViewHeight * 0.5f),
@@ -333,8 +333,10 @@ void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolation
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    offsetX = interpX - (worldViewWidth * 0.5f);
-    offsetY = interpY - (worldViewHeight * 0.5f);
+    // Pixel-snap camera offset for all world-space rendering
+    // Eliminates tile seam shimmer while interpolation maintains smooth motion tracking
+    offsetX = std::floor(interpX - (worldViewWidth * 0.5f));
+    offsetY = std::floor(interpY - (worldViewHeight * 0.5f));
 }
 
 bool Camera::isPointVisible(float x, float y) const {
