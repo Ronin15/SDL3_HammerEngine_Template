@@ -302,31 +302,31 @@ void AIManager::update(float deltaTime) {
   // The critical sync happens in GameEngine before CollisionManager to ensure collision data is ready
   // This allows better frame pipelining on low-core systems
 
-  auto startTime = std::chrono::high_resolution_clock::now();
-
   try {
     // Do not carry over AI update futures across frames to avoid races with
     // render. Any previous frame's update work must be completed within its
     // frame.
 
-    // Process pending assignments first so new entities are picked up this
-    // frame
+    // Process pending assignments first so new entities are picked up this frame
     processPendingBehaviorAssignments();
 
     // Use atomic active count - no iteration needed
     size_t activeCount = m_activeEntityCount.load(std::memory_order_relaxed);
+
+    // Early exit if no active entities - skip ALL work including timing and cache
+    // Messages for non-existent entities are useless, so skip processMessageQueue() too
+    if (activeCount == 0) {
+      m_lastWasThreaded.store(false, std::memory_order_relaxed);
+      return;
+    }
+
+    // Start timing AFTER we know we have work to do
+    auto startTime = std::chrono::high_resolution_clock::now();
     uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
 
     // PERFORMANCE: Invalidate spatial query cache for new frame
     // This ensures thread-local caches are fresh and don't use stale collision data
     AIInternal::InvalidateSpatialCache(currentFrame);
-
-    // Early exit if no active entities
-    if (activeCount == 0) {
-      processMessageQueue();
-      m_lastWasThreaded.store(false, std::memory_order_relaxed);
-      return;
-    }
 
     // Get total entity count (used for buffer sizing)
     size_t entityCount;
