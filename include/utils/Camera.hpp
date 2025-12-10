@@ -463,6 +463,15 @@ private:
     };
     std::atomic<InterpolationState> m_interpState{};
 
+    // Target interpolation state for synchronized camera-target rendering
+    // Stores target's prev/current position for computing render offset relative
+    // to where target will actually render (not its physics position)
+    struct alignas(16) TargetInterpolationState {
+        float currX{0.0f}, currY{0.0f};
+        float prevX{0.0f}, prevY{0.0f};
+    };
+    std::atomic<TargetInterpolationState> m_targetInterpState{};
+
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead
     mutable std::mt19937 m_shakeRng{std::random_device{}()};

@@ -90,6 +90,17 @@ void Camera::update(float deltaTime) {
 
     // Smooth follow mode - camera smoothly tracks target position
     if (m_mode == Mode::Follow && hasTarget()) {
+        // Store target's interpolation state for synchronized rendering
+        // This allows getRenderOffset() to compute offset relative to where
+        // the target will actually render, not its physics position
+        if (auto targetPtr = m_target.lock()) {
+            Vector2D targetPrev = targetPtr->getPreviousPosition();
+            Vector2D targetCurr = targetPtr->getPosition();
+            m_targetInterpState.store({targetCurr.getX(), targetCurr.getY(),
+                                       targetPrev.getX(), targetPrev.getY()},
+                                      std::memory_order_release);
+        }
+
         Vector2D targetPos = getTargetPosition();
 
         // Ideal camera position is the target's position (camera centers on target)
@@ -320,23 +331,35 @@ Camera::ViewRect Camera::getViewRect() const {
 }
 
 void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
-    // Atomically load consistent position pair from update thread
-    // This ensures render thread always sees a coherent (previous, current) snapshot
-    auto state = m_interpState.load(std::memory_order_acquire);
+    // Load target interpolation state for synchronized camera-target rendering
+    auto targetState = m_targetInterpState.load(std::memory_order_acquire);
 
-    // Interpolate between previous and current position for smooth rendering
-    // at any refresh rate with fixed 60Hz game updates.
-    // interpolationAlpha: 0.0 = at previous position, 1.0 = at current position
-    float interpX = state.prevPosX + (state.posX - state.prevPosX) * interpolationAlpha;
-    float interpY = state.prevPosY + (state.posY - state.prevPosY) * interpolationAlpha;
+    // Check if we have valid target state (non-zero indicates target is being tracked)
+    bool hasValidTarget = (targetState.currX != 0.0f || targetState.currY != 0.0f ||
+                           targetState.prevX != 0.0f || targetState.prevY != 0.0f);
 
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    // Pixel-snap camera offset for all world-space rendering
-    // Eliminates tile seam shimmer while interpolation maintains smooth motion tracking
-    offsetX = std::floor(interpX - (worldViewWidth * 0.5f));
-    offsetY = std::floor(interpY - (worldViewHeight * 0.5f));
+    if (hasValidTarget && m_mode == Mode::Follow) {
+        // SYNCHRONIZED APPROACH: Compute camera offset directly from target's
+        // interpolated position. This ensures perfect camera-player sync because
+        // both player rendering and camera offset use the same interpolated position.
+        float targetInterpX = targetState.prevX + (targetState.currX - targetState.prevX) * interpolationAlpha;
+        float targetInterpY = targetState.prevY + (targetState.currY - targetState.prevY) * interpolationAlpha;
+
+        // Camera offset centers on target's interpolated position (where it will render)
+        offsetX = std::floor(targetInterpX - (worldViewWidth * 0.5f));
+        offsetY = std::floor(targetInterpY - (worldViewHeight * 0.5f));
+    } else {
+        // No target or not in follow mode - use camera's own interpolation
+        auto camState = m_interpState.load(std::memory_order_acquire);
+        float camInterpX = camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha;
+        float camInterpY = camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha;
+
+        offsetX = std::floor(camInterpX - (worldViewWidth * 0.5f));
+        offsetY = std::floor(camInterpY - (worldViewHeight * 0.5f));
+    }
 }
 
 bool Camera::isPointVisible(float x, float y) const {
