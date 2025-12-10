@@ -326,9 +326,10 @@ void Camera::getRenderOffset(float entityInterpX, float entityInterpY,
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    // Center camera on entity's interpolated position, pixel-snap for tile alignment
-    offsetX = std::floor(entityInterpX - (worldViewWidth * 0.5f));
-    offsetY = std::floor(entityInterpY - (worldViewHeight * 0.5f));
+    // Center camera on entity's interpolated position
+    // Sub-pixel camera position - unified chunk rendering (biomes + obstacles together) eliminates wobble
+    offsetX = entityInterpX - (worldViewWidth * 0.5f);
+    offsetY = entityInterpY - (worldViewHeight * 0.5f);
 
     // Apply world bounds clamping if enabled
     if (m_config.clampToWorldBounds) {
@@ -339,14 +340,14 @@ void Camera::getRenderOffset(float entityInterpX, float entityInterpY,
             offsetX = std::clamp(offsetX, m_worldBounds.minX, maxOffsetX);
         } else {
             // World smaller than viewport - center it
-            offsetX = std::floor((m_worldBounds.minX + m_worldBounds.maxX - worldViewWidth) * 0.5f);
+            offsetX = (m_worldBounds.minX + m_worldBounds.maxX - worldViewWidth) * 0.5f;
         }
 
         if (maxOffsetY > m_worldBounds.minY) {
             offsetY = std::clamp(offsetY, m_worldBounds.minY, maxOffsetY);
         } else {
             // World smaller than viewport - center it
-            offsetY = std::floor((m_worldBounds.minY + m_worldBounds.maxY - worldViewHeight) * 0.5f);
+            offsetY = (m_worldBounds.minY + m_worldBounds.maxY - worldViewHeight) * 0.5f;
         }
     }
 }
