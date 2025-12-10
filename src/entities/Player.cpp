@@ -17,6 +17,7 @@
 #include "utils/Camera.hpp"
 
 #include <algorithm>
+#include <cmath>
 
 Player::Player() : Entity() {
   // Initialize player properties
@@ -188,14 +189,15 @@ void Player::render(SDL_Renderer* renderer, float cameraX, float cameraY, float 
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
   // Convert world coords to screen coords using passed camera offset
-  // Same formula as WorldManager: screenX = worldX - cameraX
-  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
-  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
+  // Use std::floor() for pixel-snapping to match Camera::getRenderOffset() pattern
+  // This eliminates 0-1 pixel wobble between camera and player positions
+  float renderX = std::floor(interpPos.getX() - cameraX - (m_frameWidth / 2.0f));
+  float renderY = std::floor(interpPos.getY() - cameraY - (m_height / 2.0f));
 
-  // Render the Player with the current animation frame using float precision
+  // Render the Player with the current animation frame
   TextureManager::Instance().drawFrame(m_textureID,
-                    renderX,        // Keep float precision for smooth camera movement
-                    renderY,        // Keep float precision for smooth camera movement
+                    renderX,
+                    renderY,
                     m_frameWidth,   // Use the calculated frame width
                     m_height,       // Height stays the same
                     m_currentRow,   // Current animation row

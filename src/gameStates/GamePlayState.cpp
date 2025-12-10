@@ -260,15 +260,15 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
   }
 
-  // Render day/night overlay tint (after particles, before UI)
-  renderDayNightOverlay(renderer,
-      gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
-
-  // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+  // Reset render scale to 1.0 BEFORE overlay and UI (neither should be zoomed)
   if (m_lastRenderedZoom != 1.0f) {
     SDL_SetRenderScale(renderer, 1.0f, 1.0f);
     m_lastRenderedZoom = 1.0f;
   }
+
+  // Render day/night overlay tint (now at 1.0 scale, after zoom reset)
+  renderDayNightOverlay(renderer,
+      gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
 
   // Render UI components (no camera transformation) - use cached pointer
   // mp_uiMgr guaranteed valid between enter() and exit()
