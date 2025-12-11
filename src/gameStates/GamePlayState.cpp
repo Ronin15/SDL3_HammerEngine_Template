@@ -590,8 +590,9 @@ void GamePlayState::initializeInventoryUI() {
       return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
   });
 
-  // Bind the inventory list - populates provided buffer (zero-allocation pattern)
-  ui.bindList("gameplay_inventory_list", [this](std::vector<std::string>& items) {
+  // Bind the inventory list - populates provided buffers (zero-allocation pattern)
+  ui.bindList("gameplay_inventory_list", [this](std::vector<std::string>& items,
+                                                std::vector<std::pair<std::string, int>>& sortedResources) {
       if (!mp_Player || !mp_Player->getInventory()) {
           items.push_back("(Empty)");
           return;
@@ -605,8 +606,7 @@ void GamePlayState::initializeInventoryUI() {
           return;
       }
 
-      // Build sorted list using reusable member buffer pattern
-      std::vector<std::pair<std::string, int>> sortedResources;
+      // Build sorted list using reusable buffer provided by UIManager
       sortedResources.reserve(allResources.size());
       for (const auto& [resourceHandle, quantity] : allResources) {
           if (quantity > 0) {
