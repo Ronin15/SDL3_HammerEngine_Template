@@ -28,7 +28,7 @@ void WeatherController::subscribe() {
     m_handlerTokens.push_back(token);
 
     m_subscribed = true;
-    HAMMER_INFO("WeatherController", "Subscribed to time events for automatic weather");
+    WEATHER_INFO("Subscribed to time events for automatic weather");
 }
 
 void WeatherController::unsubscribe() {
@@ -43,7 +43,7 @@ void WeatherController::unsubscribe() {
     m_handlerTokens.clear();
 
     m_subscribed = false;
-    HAMMER_INFO("WeatherController", "Unsubscribed from time events");
+    WEATHER_INFO("Unsubscribed from time events");
 }
 
 void WeatherController::onTimeEvent(const EventData& data) {
@@ -83,7 +83,7 @@ void WeatherController::onTimeEvent(const EventData& data) {
     EventManager::Instance().changeWeather(weatherName, 2.0f,
         EventManager::DispatchMode::Deferred);
 
-    HAMMER_DEBUG("WeatherController", "Season-based weather change to " + std::string(weatherName));
+    WEATHER_DEBUG(weatherName);
 }
 
 const char* WeatherController::getCurrentWeatherString() const {

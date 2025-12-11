@@ -117,6 +117,7 @@ private:
   EventManager::HandlerToken m_weatherEventToken;
   bool m_weatherSubscribed{false};
   TimePeriod m_currentTimePeriod{TimePeriod::Day};  // Track current period for weather changes
+  WeatherType m_lastWeatherType{WeatherType::Clear};  // Track to avoid redundant weather processing
 };
 
 #endif // GAME_PLAY_STATE_HPP

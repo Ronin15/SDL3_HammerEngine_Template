@@ -909,12 +909,17 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
     return;
   }
 
-  // When weather changes, update ambient particles (they only show during clear weather)
   auto weatherEvent = std::static_pointer_cast<WeatherEvent>(data.event);
+  WeatherType newWeather = weatherEvent->getWeatherType();
+
+  // OPTIMIZATION: Skip if weather hasn't actually changed (deduplication)
+  if (newWeather == m_lastWeatherType) {
+    return;
+  }
+  m_lastWeatherType = newWeather;
 
   // Re-evaluate ambient particles based on current time period and new weather
   updateAmbientParticles(m_currentTimePeriod);
 
-  GAMEPLAY_DEBUG("Weather changed to: " + weatherEvent->getWeatherTypeString() +
-                 " - updating ambient particles");
+  GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
