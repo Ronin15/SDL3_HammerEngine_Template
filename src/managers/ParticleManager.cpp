@@ -229,6 +229,8 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::resize(size_t newSiz
     // Resize SIMD-friendly SoA float lanes
     posX.resize(newSize);
     posY.resize(newSize);
+    prevPosX.resize(newSize);
+    prevPosY.resize(newSize);
     velX.resize(newSize);
     velY.resize(newSize);
     accX.resize(newSize);
@@ -249,6 +251,8 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::reserve(size_t newCa
     // Reserve SIMD-friendly SoA float lanes
     posX.reserve(newCapacity);
     posY.reserve(newCapacity);
+    prevPosX.reserve(newCapacity);
+    prevPosY.reserve(newCapacity);
     velX.reserve(newCapacity);
     velY.reserve(newCapacity);
     accX.reserve(newCapacity);
@@ -269,6 +273,10 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::push_back(const Unif
     // Add to SIMD arrays (authoritative storage)
     posX.push_back(p.position.getX());
     posY.push_back(p.position.getY());
+    // Initialize previous position to current position for new particles
+    // This prevents interpolation artifacts on first frame
+    prevPosX.push_back(p.position.getX());
+    prevPosY.push_back(p.position.getY());
     velX.push_back(p.velocity.getX());
     velY.push_back(p.velocity.getY());
     accX.push_back(p.acceleration.getX());
@@ -289,6 +297,8 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::clear() {
     // Clear all arrays
     posX.clear();
     posY.clear();
+    prevPosX.clear();
+    prevPosY.clear();
     velX.clear();
     velY.clear();
     accX.clear();
@@ -310,6 +320,7 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
     const size_t baseSize = flags.size();
     if (baseSize == 0) return 0;
     if (posX.size() != baseSize || posY.size() != baseSize ||
+        prevPosX.size() != baseSize || prevPosY.size() != baseSize ||
         velX.size() != baseSize || velY.size() != baseSize ||
         accX.size() != baseSize || accY.size() != baseSize ||
         lives.size() != baseSize || maxLives.size() != baseSize ||
@@ -319,7 +330,7 @@ size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::size() const {
         effectTypes.size() != baseSize || layers.size() != baseSize) {
         return 0; // Return 0 if ANY array is inconsistent
     }
-    
+
     return baseSize;
 }
 
@@ -331,6 +342,7 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::empty() const {
 bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() const {
     const size_t baseSize = flags.size();
     return (posX.size() == baseSize && posY.size() == baseSize &&
+            prevPosX.size() == baseSize && prevPosY.size() == baseSize &&
             velX.size() == baseSize && velY.size() == baseSize &&
             accX.size() == baseSize && accY.size() == baseSize &&
             lives.size() == baseSize && maxLives.size() == baseSize &&
@@ -344,7 +356,8 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isFullyConsistent() 
 size_t ParticleManager::LockFreeParticleStorage::ParticleSoA::getSafeAccessCount() const {
     // Return minimum size of ALL arrays to prevent any out-of-bounds access
     return std::min({
-        flags.size(), posX.size(), posY.size(), velX.size(), velY.size(), accX.size(), accY.size(),
+        flags.size(), posX.size(), posY.size(), prevPosX.size(), prevPosY.size(),
+        velX.size(), velY.size(), accX.size(), accY.size(),
         lives.size(), maxLives.size(), sizes.size(), rotations.size(),
         angularVelocities.size(), colors.size(), generationIds.size(), effectTypes.size(), layers.size()
     });
@@ -358,16 +371,18 @@ bool ParticleManager::LockFreeParticleStorage::ParticleSoA::isValidIndex(size_t 
 // NEW: Safe erase single particle (swap-and-pop pattern)
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t index) {
     if (!isValidIndex(index)) return;
-    
+
     const size_t lastIndex = flags.size() - 1;
     if (index != lastIndex) {
         // Swap with last element (all arrays must stay synchronized)
         swapParticles(index, lastIndex);
     }
-    
+
     // Remove last element from ALL arrays atomically
     posX.pop_back();
     posY.pop_back();
+    prevPosX.pop_back();
+    prevPosY.pop_back();
     velX.pop_back();
     velY.pop_back();
     accX.pop_back();
@@ -387,10 +402,12 @@ void ParticleManager::LockFreeParticleStorage::ParticleSoA::eraseParticle(size_t
 // NEW: Safe swap operation for all SOA arrays
 void ParticleManager::LockFreeParticleStorage::ParticleSoA::swapParticles(size_t indexA, size_t indexB) {
     if (!isValidIndex(indexA) || !isValidIndex(indexB) || indexA == indexB) return;
-    
+
     // Swap all particle data atomically
     std::swap(posX[indexA], posX[indexB]);
     std::swap(posY[indexA], posY[indexB]);
+    std::swap(prevPosX[indexA], prevPosX[indexB]);
+    std::swap(prevPosY[indexA], prevPosY[indexB]);
     std::swap(velX[indexA], velX[indexB]);
     std::swap(velY[indexA], velY[indexB]);
     std::swap(accX[indexA], accX[indexB]);
@@ -483,6 +500,10 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
                         // Write into SIMD lanes and attribute arrays
                         activeParticles.posX[idx] = particle.position.getX();
                         activeParticles.posY[idx] = particle.position.getY();
+                        // Initialize previous position to current for new particles
+                        // This prevents interpolation artifacts on first frame
+                        activeParticles.prevPosX[idx] = particle.position.getX();
+                        activeParticles.prevPosY[idx] = particle.position.getY();
                         activeParticles.velX[idx] = particle.velocity.getX();
                         activeParticles.velY[idx] = particle.velocity.getY();
                         activeParticles.accX[idx] = particle.acceleration.getX();
@@ -910,7 +931,7 @@ void ParticleManager::update(float deltaTime) {
 }
 
 void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
-                              float cameraY) {
+                              float cameraY, float interpolationAlpha) {
   // Store camera position for weather particle spawning
   m_viewport.x = cameraX;
   m_viewport.y = cameraY;
@@ -955,8 +976,10 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     const float a = a8 / 255.0f;
 
     const float size = particles.sizes[i];
-    const float cx = particles.posX[i] - cameraX;
-    const float cy = particles.posY[i] - cameraY;
+    // INTERPOLATION: Smooth position between previous and current for frame-rate independent rendering
+    // Formula: interpPos = prevPos + (currentPos - prevPos) * alpha
+    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
+    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
     const float hx = size * 0.5f;
     const float hy = size * 0.5f;
 
@@ -985,7 +1008,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 }
 
 void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
-                                       float cameraY) {
+                                       float cameraY, float interpolationAlpha) {
   // Store camera position for weather particle spawning
   m_viewport.x = cameraX;
   m_viewport.y = cameraY;
@@ -1025,8 +1048,9 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     const float b = ((c >> 8) & 0xFF) / 255.0f;
     const float a = a8 / 255.0f;
     const float size = particles.sizes[i];
-    const float cx = particles.posX[i] - cameraX;
-    const float cy = particles.posY[i] - cameraY;
+    // INTERPOLATION: Smooth position between previous and current for frame-rate independent rendering
+    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
+    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
     const float hx = size * 0.5f, hy = size * 0.5f;
     const float x0 = cx - hx, y0 = cy - hy;
     const float x1 = cx + hx, y1 = cy - hy;
@@ -1043,7 +1067,7 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
 }
 
 void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
-                                       float cameraY) {
+                                       float cameraY, float interpolationAlpha) {
   // Store camera position for weather particle spawning
   m_viewport.x = cameraX;
   m_viewport.y = cameraY;
@@ -1083,8 +1107,9 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     const float b = ((c >> 8) & 0xFF) / 255.0f;
     const float a = a8 / 255.0f;
     const float size = particles.sizes[i];
-    const float cx = particles.posX[i] - cameraX;
-    const float cy = particles.posY[i] - cameraY;
+    // INTERPOLATION: Smooth position between previous and current for frame-rate independent rendering
+    const float cx = (particles.prevPosX[i] + (particles.posX[i] - particles.prevPosX[i]) * interpolationAlpha) - cameraX;
+    const float cy = (particles.prevPosY[i] + (particles.posY[i] - particles.prevPosY[i]) * interpolationAlpha) - cameraY;
     const float hx = size * 0.5f, hy = size * 0.5f;
     const float x0 = cx - hx, y0 = cy - hy;
     const float x1 = cx + hx, y1 = cy - hy;
@@ -2827,6 +2852,31 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // SIMD arrays are primary storage; operate directly on them
 
+  // INTERPOLATION: Store previous positions before physics update using SIMD
+  // This enables smooth rendering between fixed timestep updates
+  {
+    size_t i = startIdx;
+    // Scalar pre-loop to align to 4-float boundary
+    while (i < endIdx && (i & 0x3) != 0) {
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+      ++i;
+    }
+    // SIMD main loop - copy 4 floats at a time
+    const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+    for (; i < simdEnd; i += 4) {
+      Float4 posXv = load4(&particles.posX[i]);
+      Float4 posYv = load4(&particles.posY[i]);
+      store4(&particles.prevPosX[i], posXv);
+      store4(&particles.prevPosY[i], posYv);
+    }
+    // Scalar tail
+    for (; i < endIdx; ++i) {
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+    }
+  }
+
   // Scalar pre-loop to align to 4-float boundary for aligned loads
   size_t i = startIdx;
   while (i < endIdx && (i & 0x3) != 0) {
@@ -2912,6 +2962,31 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // SIMD arrays are primary storage; operate directly on them
 
+  // INTERPOLATION: Store previous positions before physics update using SIMD
+  // This enables smooth rendering between fixed timestep updates
+  {
+    size_t i = startIdx;
+    // Scalar pre-loop to align to 4-float boundary
+    while (i < endIdx && (i & 0x3) != 0) {
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+      ++i;
+    }
+    // SIMD main loop - copy 4 floats at a time
+    const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
+    for (; i < simdEnd; i += 4) {
+      Float4 posXv = load4(&particles.posX[i]);
+      Float4 posYv = load4(&particles.posY[i]);
+      store4(&particles.prevPosX[i], posXv);
+      store4(&particles.prevPosY[i], posYv);
+    }
+    // Scalar tail
+    for (; i < endIdx; ++i) {
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+    }
+  }
+
   // Scalar pre-loop to align to 4-float boundary for aligned loads
   size_t i = startIdx;
   while (i < endIdx && (i & 0x3) != 0) {
@@ -2987,6 +3062,14 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
 #else
   // Fallback to scalar implementation for platforms without SIMD
+
+  // INTERPOLATION: Store previous positions before physics update
+  // This enables smooth rendering between fixed timestep updates
+  for (size_t i = startIdx; i < endIdx; ++i) {
+    particles.prevPosX[i] = particles.posX[i];
+    particles.prevPosY[i] = particles.posY[i];
+  }
+
   for (size_t i = startIdx; i < endIdx; ++i) {
     if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
     particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;

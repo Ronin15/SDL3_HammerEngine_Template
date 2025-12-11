@@ -236,7 +236,7 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
   // Render background particles (rain, snow) BEFORE world - use cached pointer
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
+    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
   // Render world using pixel-snapped camera coordinates - use cached pointer
@@ -254,8 +254,8 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
   // Render world-space and foreground particles (after player) - use cached pointer
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->render(renderer, renderCamX, renderCamY);
-    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
+    mp_particleMgr->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
   // Reset render scale to 1.0 BEFORE overlay and UI (neither should be zoomed)
