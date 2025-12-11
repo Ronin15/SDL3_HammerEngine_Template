@@ -30,6 +30,7 @@
 #include "controllers/world/TimeController.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
+#include <cmath>
 #include <ctime>
 #include <format>
 
@@ -739,17 +740,18 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
         m_lastDisplayedPhase = currentPhase;
     }
 
-    int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+    float currentFPS = gameEngine.getCurrentFPS();
     std::string currentWeather = getCurrentWeatherString();
     size_t npcCount = m_spawnedNPCs.size();
 
-    if (currentFPS != m_lastDisplayedFPS ||
+    // Update if FPS changed by more than 0.05 (avoids flicker) or other values changed
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
         currentWeather != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
         m_statusBuffer2.clear();
         std::format_to(std::back_inserter(m_statusBuffer2),
-                       "FPS: {} | Weather: {} | NPCs: {}",
+                       "FPS: {:.1f} | Weather: {} | NPCs: {}",
                        currentFPS, currentWeather, npcCount);
         mp_uiMgr->setText("event_status", m_statusBuffer2);
 
