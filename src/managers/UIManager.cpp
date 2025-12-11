@@ -81,10 +81,11 @@ void UIManager::update(float deltaTime) {
           if (component->m_textBinding) {
               setText(id, component->m_textBinding());
           }
-          // Handle list bindings (zero-allocation: uses reusable buffer)
+          // Handle list bindings (zero-allocation: uses reusable buffers)
           if (component->m_listBinding) {
               component->m_listBindingBuffer.clear();  // Reuse capacity, no deallocation
-              component->m_listBinding(component->m_listBindingBuffer);
+              component->m_listSortBuffer.clear();     // Reuse sort buffer capacity
+              component->m_listBinding(component->m_listBindingBuffer, component->m_listSortBuffer);
               if (component->m_listItems.size() != component->m_listBindingBuffer.size() ||
                   !std::equal(component->m_listItems.begin(), component->m_listItems.end(),
                               component->m_listBindingBuffer.begin())) {
@@ -613,7 +614,7 @@ void UIManager::bindText(const std::string &id,
 
 void UIManager::bindList(
     const std::string &id,
-    std::function<void(std::vector<std::string>&)> binding) {
+    std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> binding) {
   auto component = getComponent(id);
   if (component) {
     component->m_listBinding = binding;
