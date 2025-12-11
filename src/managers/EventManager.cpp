@@ -153,6 +153,20 @@ bool EventManager::init() {
   m_sceneChangePool.setCreator([](){ return std::make_shared<SceneChangeEvent>("trigger_scene_change", ""); });
   m_npcSpawnPool.setCreator([](){ return std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", SpawnParameters{}); });
 
+  // Hot-path event pools (triggered frequently during gameplay)
+  m_collisionPool.setCreator([](){
+    HammerEngine::CollisionInfo emptyInfo{};
+    return std::make_shared<CollisionEvent>(emptyInfo);
+  });
+  m_particleEffectPool.setCreator([](){
+    return std::make_shared<ParticleEffectEvent>(
+        "pool_particle", ParticleEffectType::Fire, 0.0f, 0.0f, 1.0f, -1.0f, "", "");
+  });
+  m_collisionObstacleChangedPool.setCreator([](){
+    return std::make_shared<CollisionObstacleChangedEvent>(
+        CollisionObstacleChangedEvent::ChangeType::MODIFIED, Vector2D(0, 0), 64.0f, "");
+  });
+
   // Reset performance stats
   resetPerformanceStats();
 
@@ -1175,8 +1189,20 @@ bool EventManager::triggerParticleEffect(const std::string &effectName, float x,
                                          const std::string &groupTag,
                                          DispatchMode mode) const {
   ParticleEffectType effectType = ParticleEffectEvent::stringToEffectType(effectName);
-  auto pe = std::make_shared<ParticleEffectEvent>("trigger_particle_effect", effectType,
-                                                  x, y, intensity, duration, groupTag, "");
+
+  // OPTIMIZATION: Use pool to avoid per-trigger allocation
+  auto pe = m_particleEffectPool.acquire();
+  if (pe) {
+    pe->setEffectType(effectType);
+    pe->setPosition(x, y);
+    pe->setIntensity(intensity);
+    pe->setDuration(duration);
+    pe->setGroupTag(groupTag);
+  } else {
+    pe = std::make_shared<ParticleEffectEvent>("trigger_particle_effect", effectType,
+                                                x, y, intensity, duration, groupTag, "");
+  }
+
   EventData data;
   data.typeId = EventTypeId::ParticleEffect;
   data.setActive(true);
@@ -1228,11 +1254,20 @@ bool EventManager::createWeatherEvent(const std::string &name,
 
 bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
                                     DispatchMode mode) const {
+  // OPTIMIZATION: Use pool to avoid per-trigger allocation
+  auto collisionEvent = m_collisionPool.acquire();
+  if (collisionEvent) {
+    collisionEvent->setInfo(info);
+    collisionEvent->setConsumed(false);
+  } else {
+    collisionEvent = std::make_shared<CollisionEvent>(info);
+  }
+
   EventData eventData;
   eventData.typeId = EventTypeId::Collision;
   eventData.setActive(true);
   eventData.priority = EventPriority::CRITICAL;
-  eventData.event = std::make_shared<CollisionEvent>(info);
+  eventData.event = collisionEvent;
 
   return dispatchEvent(EventTypeId::Collision, eventData, mode, "triggerCollision");
 }
@@ -1251,12 +1286,21 @@ bool EventManager::triggerCollisionObstacleChanged(const Vector2D& position,
                                                   float radius,
                                                   const std::string& description,
                                                   DispatchMode mode) const {
+  // OPTIMIZATION: Use pool to avoid per-trigger allocation
+  auto obstacleEvent = m_collisionObstacleChangedPool.acquire();
+  if (obstacleEvent) {
+    obstacleEvent->configure(CollisionObstacleChangedEvent::ChangeType::MODIFIED,
+                             position, radius, description);
+  } else {
+    obstacleEvent = std::make_shared<CollisionObstacleChangedEvent>(
+        CollisionObstacleChangedEvent::ChangeType::MODIFIED, position, radius, description);
+  }
+
   EventData eventData;
   eventData.typeId = EventTypeId::CollisionObstacleChanged;
   eventData.setActive(true);
   eventData.priority = EventPriority::CRITICAL;
-  eventData.event = std::make_shared<CollisionObstacleChangedEvent>(
-    CollisionObstacleChangedEvent::ChangeType::MODIFIED, position, radius, description);
+  eventData.event = obstacleEvent;
 
   return dispatchEvent(EventTypeId::CollisionObstacleChanged, eventData, mode, "triggerCollisionObstacleChanged");
 }
@@ -1614,8 +1658,11 @@ void EventManager::drainDispatchQueueWithBudget() {
 
   // Removed timing budget - process all events for reliability
 
-  std::vector<PendingDispatch> local;
-  local.reserve(maxToProcess);
+  // OPTIMIZATION: Reuse member buffer to avoid per-frame allocation
+  m_localDispatchBuffer.clear();  // Keeps capacity, no deallocation
+  if (m_localDispatchBuffer.capacity() < maxToProcess) {
+    m_localDispatchBuffer.reserve(maxToProcess);  // Only grows if needed
+  }
   {
     std::lock_guard<std::mutex> lock(m_dispatchMutex);
     const size_t backlog = m_pendingDispatch.size();
@@ -1624,13 +1671,14 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
     size_t toTake = std::min(maxToProcess, m_pendingDispatch.size());
     for (size_t i = 0; i < toTake; ++i) {
-      local.push_back(std::move(m_pendingDispatch.front()));
+      m_localDispatchBuffer.push_back(std::move(m_pendingDispatch.front()));
       m_pendingDispatch.pop_front();
     }
   }
 
   // OPTIMIZATION: Sort events by priority (higher priority = processed first)
-  std::sort(local.begin(), local.end(), [](const PendingDispatch& a, const PendingDispatch& b) {
+  std::sort(m_localDispatchBuffer.begin(), m_localDispatchBuffer.end(),
+            [](const PendingDispatch& a, const PendingDispatch& b) {
     return a.data.priority > b.data.priority; // Higher priority first
   });
 
@@ -1638,7 +1686,7 @@ void EventManager::drainDispatchQueueWithBudget() {
   std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
 
   // Process each event with direct handler access (shared lock allows concurrent reads)
-  for (const auto &pd : local) {
+  for (const auto &pd : m_localDispatchBuffer) {
     const EventData &eventData = pd.data;
 
     // Invoke type handlers directly

@@ -835,8 +835,16 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
   // Only spawn ambient particles during clear weather
   if (WeatherController::Instance().getCurrentWeather() != WeatherType::Clear) {
-    stopAmbientParticles();
+    if (m_ambientParticlesActive) {
+      stopAmbientParticles();
+    }
     return;
+  }
+
+  // OPTIMIZATION: Only stop/start particles if the period actually changed
+  // This avoids particle thrashing when called repeatedly with the same period
+  if (m_ambientParticlesActive && period == m_lastAmbientPeriod) {
+    return;  // No change, particles already running for this period
   }
 
   auto& pm = ParticleManager::Instance();
@@ -844,8 +852,10 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
   Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0f,
                         gameEngine.getLogicalHeight() / 2.0f);
 
-  // Stop existing ambient particles with fade-out transition
-  stopAmbientParticles();
+  // Stop existing ambient particles only when period changed
+  if (m_ambientParticlesActive) {
+    stopAmbientParticles();
+  }
 
   // Start appropriate particles for the new period
   switch (period) {
@@ -873,6 +883,9 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
           ParticleEffectType::AmbientFirefly, screenCenter, 1.0f, -1.0f, "ambient");
       break;
   }
+
+  m_lastAmbientPeriod = period;
+  m_ambientParticlesActive = true;
 }
 
 void GamePlayState::stopAmbientParticles() {
@@ -887,6 +900,8 @@ void GamePlayState::stopAmbientParticles() {
     pm.stopIndependentEffect(m_ambientFireflyEffectId);
     m_ambientFireflyEffectId = 0;
   }
+
+  m_ambientParticlesActive = false;
 }
 
 void GamePlayState::onWeatherChanged(const EventData& data) {

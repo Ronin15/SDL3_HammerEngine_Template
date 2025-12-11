@@ -65,6 +65,22 @@ public:
      */
     const std::string& getDescription() const { return m_description; }
 
+    // Setters for pool reuse
+    void setChangeType(ChangeType type) { m_changeType = type; }
+    void setPosition(const Vector2D& pos) { m_position = pos; }
+    void setRadius(float r) { m_radius = r; }
+    void setDescription(const std::string& desc) { m_description = desc; }
+
+    /**
+     * @brief Configure all fields at once for pool reuse
+     */
+    void configure(ChangeType type, const Vector2D& pos, float radius, const std::string& desc) {
+        m_changeType = type;
+        m_position = pos;
+        m_radius = radius;
+        m_description = desc;
+    }
+
     /**
      * @brief Converts change type to string for logging
      * @param changeType The change type to convert

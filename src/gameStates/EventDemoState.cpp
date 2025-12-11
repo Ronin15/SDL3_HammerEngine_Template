@@ -1754,6 +1754,13 @@ std::string EventDemoState::getCurrentWeatherString() const {
 }
 
 void EventDemoState::updateInstructions() {
+  // OPTIMIZATION: Only update instructions when phase changes
+  // Avoids ~20 string allocations per frame
+  if (m_currentPhase == m_lastInstructionsPhase) {
+    return;  // Phase unchanged, skip string allocations
+  }
+  m_lastInstructionsPhase = m_currentPhase;
+
   m_instructions.clear();
 
   switch (m_currentPhase) {

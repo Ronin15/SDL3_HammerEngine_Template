@@ -47,10 +47,15 @@ class NPCSpawnEvent;
 class ResourceChangeEvent;
 class WorldEvent;
 class CameraEvent;
+class CameraMovedEvent;
+class CameraZoomChangedEvent;
+class CameraShakeStartedEvent;
+class CameraShakeEndedEvent;
 class CollisionEvent;
 class WorldTriggerEvent;
 class HarvestResourceEvent;
 class CollisionObstacleChangedEvent;
+class ParticleEffectEvent;
 class TimeEvent;
 class EventFactory;
 class Entity;
@@ -596,6 +601,11 @@ private:
   mutable EventPool<WorldEvent> m_worldPool;
   mutable EventPool<CameraEvent> m_cameraPool;
 
+  // Hot-path event pools (triggered frequently during gameplay - avoids per-trigger allocations)
+  mutable EventPool<CollisionEvent> m_collisionPool;
+  mutable EventPool<ParticleEffectEvent> m_particleEffectPool;
+  mutable EventPool<CollisionObstacleChangedEvent> m_collisionObstacleChangedPool;
+
   // Handler storage (type-indexed with consolidated HandlerEntry)
   // OPTIMIZATION: Eliminates parallel ID vectors, improves cache locality
   std::array<std::vector<HandlerEntry>, static_cast<size_t>(EventTypeId::COUNT)>
@@ -653,6 +663,9 @@ private:
   std::mutex m_batchFuturesMutex;  // Protect futures vector
   mutable std::deque<PendingDispatch> m_pendingDispatch;
   size_t m_maxDispatchQueue{8192};
+
+  // OPTIMIZATION: Reusable buffer for drainDispatchQueueWithBudget (avoids per-frame allocation)
+  mutable std::vector<PendingDispatch> m_localDispatchBuffer;
 
   // Helper methods
   EventTypeId getEventTypeId(const EventPtr &event) const;
