@@ -167,6 +167,12 @@ void WorldManager::unloadWorldUnsafe() {
         // Fire world unloaded event before clearing the world
         fireWorldUnloadedEvent(worldId);
 
+        // Clear chunk cache to prevent stale textures when new world loads
+        // Uses deferred clearing (thread-safe) - actual clear happens on render thread
+        if (m_tileRenderer) {
+            m_tileRenderer->clearChunkCache();
+        }
+
         m_currentWorld.reset();
     }
 }
