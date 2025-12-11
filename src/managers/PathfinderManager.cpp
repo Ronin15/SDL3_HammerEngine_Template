@@ -91,7 +91,7 @@ bool PathfinderManager::isInitialized() const {
 }
 
 void PathfinderManager::update() {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -108,6 +108,13 @@ void PathfinderManager::update() {
     }
 }
 
+void PathfinderManager::setGlobalPause(bool paused) {
+    m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool PathfinderManager::isGloballyPaused() const {
+    return m_globallyPaused.load(std::memory_order_acquire);
+}
 
 void PathfinderManager::clean() {
     if (m_isShutdown) {

@@ -14,6 +14,9 @@ bool PauseState::enter() {
   // Pause game time while in pause state
   GameTime::Instance().pause();
 
+  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles)
+  GameEngine::Instance().setGlobalPause(true);
+
   // Create pause state UI
   auto& gameEngine = GameEngine::Instance();
   auto& ui = UIManager::Instance();
@@ -69,6 +72,9 @@ void PauseState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpola
 bool PauseState::exit() {
   // Resume game time when leaving pause state
   GameTime::Instance().resume();
+
+  // Resume all game managers via GameEngine (collision, pathfinding, AI, particles)
+  GameEngine::Instance().setGlobalPause(false);
 
   // Only clean up PauseState-specific UI components
   // Do NOT use prepareForStateTransition() as it would clear GamePlayState's preserved UI

@@ -414,6 +414,22 @@ public:
    */
   bool isFullscreen() const noexcept { return m_isFullscreen; }
 
+  /**
+   * @brief Sets global pause state for all game managers
+   * @param paused true to pause all managers, false to resume
+   * @details Coordinates pause state across AIManager, ParticleManager,
+   *          CollisionManager, and PathfinderManager. When paused, managers
+   *          early-exit their update() methods, reducing CPU usage and
+   *          allowing ThreadSystem to go idle.
+   */
+  void setGlobalPause(bool paused);
+
+  /**
+   * @brief Gets the current global pause state
+   * @return true if game managers are globally paused
+   */
+  bool isGloballyPaused() const;
+
 private:
   /**
    * @brief Verifies VSync state matches the requested setting
@@ -475,6 +491,9 @@ private:
   bool m_isWayland{false};
   bool m_usingSoftwareFrameLimiting{false};
   bool m_isFullscreen{false};
+
+  // Global pause state for coordinating all managers
+  std::atomic<bool> m_globallyPaused{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};
