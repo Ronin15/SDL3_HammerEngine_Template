@@ -26,6 +26,7 @@
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include <random>
 
 
@@ -123,6 +124,17 @@ bool GamePlayState::enter() {
     auto& timeController = TimeController::Instance();
     timeController.setStatusLabel("gameplay_time_label");
     timeController.setStatusFormatMode(TimeController::StatusFormatMode::Extended);
+
+    // Create FPS counter label (top-left, initially hidden, toggled with F2)
+    ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12}, "FPS: --");
+    ui.setComponentVisible("gameplay_fps", false);
+    UIPositioning fpsPos;
+    fpsPos.mode = UIPositionMode::TOP_ALIGNED;
+    fpsPos.offsetX = labelPadding;
+    fpsPos.offsetY = 6;
+    fpsPos.fixedWidth = 120;
+    fpsPos.fixedHeight = barHeight - 12;
+    ui.setComponentPositioning("gameplay_fps", fpsPos);
 
     // Subscribe to day/night visual effects (controller dispatches events)
     DayNightController::Instance().subscribe();
@@ -268,6 +280,18 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   renderDayNightOverlay(renderer,
       gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
 
+  // Update FPS display if visible (zero-allocation, only when changed)
+  if (m_fpsVisible) {
+    float currentFPS = gameEngine.getCurrentFPS();
+    // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
+      m_fpsBuffer.clear();
+      std::format_to(std::back_inserter(m_fpsBuffer), "FPS: {:.1f}", currentFPS);
+      mp_uiMgr->setText("gameplay_fps", m_fpsBuffer);
+      m_lastDisplayedFPS = currentFPS;
+    }
+  }
+
   // Render UI components (no camera transformation) - use cached pointer
   mp_uiMgr->render(renderer);
 }
@@ -410,6 +434,7 @@ void GamePlayState::pause() {
   auto& ui = UIManager::Instance();
   ui.setComponentVisible("gameplay_event_log", false);
   ui.setComponentVisible("gameplay_time_label", false);
+  ui.setComponentVisible("gameplay_fps", false);
 
   // Also hide inventory components if visible
   if (m_inventoryVisible) {
@@ -432,6 +457,11 @@ void GamePlayState::resume() {
   auto& ui = UIManager::Instance();
   ui.setComponentVisible("gameplay_event_log", true);
   ui.setComponentVisible("gameplay_time_label", true);
+
+  // Restore FPS counter visibility if it was enabled
+  if (m_fpsVisible) {
+    ui.setComponentVisible("gameplay_fps", true);
+  }
 
   // Restore inventory visibility state
   if (m_inventoryVisible) {
@@ -472,6 +502,13 @@ void GamePlayState::handleInput() {
   // Inventory toggle
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_I)) {
     toggleInventoryDisplay();
+  }
+
+  // FPS counter toggle
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F2)) {
+    m_fpsVisible = !m_fpsVisible;
+    auto& ui = UIManager::Instance();
+    ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
   // Camera zoom controls

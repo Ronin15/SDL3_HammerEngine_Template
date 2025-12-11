@@ -65,6 +65,11 @@ private:
   // Render scale caching - avoid GPU state changes when zoom unchanged
   float m_lastRenderedZoom{1.0f};
 
+  // FPS counter (toggled with F2)
+  bool m_fpsVisible{false};
+  std::string m_fpsBuffer{};
+  float m_lastDisplayedFPS{-1.0f};
+
   // Inventory UI methods
   void initializeInventoryUI();
   void toggleInventoryDisplay();

@@ -247,7 +247,7 @@ private:
   // Status display optimization - zero per-frame allocations (C++20 type-safe)
   std::string m_phaseBuffer{};
   std::string m_statusBuffer2{};  // Named to avoid conflict with existing m_statusText
-  int m_lastDisplayedFPS{-1};
+  float m_lastDisplayedFPS{-1.0f};  // Float for decimal precision
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
   std::string m_lastDisplayedPhase{};
