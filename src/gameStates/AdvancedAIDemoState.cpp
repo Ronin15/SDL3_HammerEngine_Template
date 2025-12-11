@@ -475,15 +475,13 @@ void AdvancedAIDemoState::update(float deltaTime) {
 
 void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     // Get GameEngine for logical dimensions (renderer now passed as parameter)
-    auto& gameEngine = GameEngine::Instance();
+    const auto& gameEngine = GameEngine::Instance();
 
     // Camera offset uses SmoothDamp-filtered interpolation (eliminates world jitter)
-    HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
     float renderCamX = 0.0f;
     float renderCamY = 0.0f;
 
     if (m_camera) {
-        cameraView = m_camera->getViewRect();
         // Camera's smoothed interpolation - handles all modes internally
         m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
     }
@@ -543,7 +541,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     // mp_uiMgr guaranteed valid between enter() and exit()
     if (!mp_uiMgr->isShutdown()) {
         // Update status only when values change (C++20 type-safe, zero allocations)
-        auto& aiManager = AIManager::Instance();
+        const auto& aiManager = AIManager::Instance();
         int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
         size_t npcCount = m_npcs.size();
         bool isPaused = aiManager.isGloballyPaused();

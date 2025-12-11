@@ -667,16 +667,14 @@ void EventDemoState::update(float deltaTime) {
 
 void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
-  auto &gameEngine = GameEngine::Instance();
+  const auto &gameEngine = GameEngine::Instance();
 
   // Camera offset uses SmoothDamp-filtered interpolation (eliminates world jitter)
-  HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
 
   if (m_camera) {
-    cameraView = m_camera->getViewRect();
     zoom = m_camera->getZoom();
     // Camera's smoothed interpolation - handles all modes internally
     m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
@@ -1185,7 +1183,6 @@ void EventDemoState::triggerResourceDemo() {
 
   // Realistic resource discovery: Query system for different categories/types
   ResourcePtr selectedResource = nullptr;
-  std::string discoveryMethod;
   int quantity = 1;
 
   switch (m_resourceDemonstrationStep % 6) {
@@ -1196,7 +1193,6 @@ void EventDemoState::triggerResourceDemo() {
     if (!currencyResources.empty()) {
       // Real game logic: pick the first currency resource found
       selectedResource = currencyResources[0];
-      discoveryMethod = "Currency category query";
       quantity = 50;
     }
     break;
@@ -1214,7 +1210,6 @@ void EventDemoState::triggerResourceDemo() {
       if (it != consumables.end()) {
         selectedResource = *it;
       }
-      discoveryMethod = "Consumable type query (filtered by value)";
       quantity = 3;
     }
     break;
@@ -1232,7 +1227,6 @@ void EventDemoState::triggerResourceDemo() {
       if (it != materials.end()) {
         selectedResource = *it;
       }
-      discoveryMethod = "RawResource type query (stackable, high capacity)";
       quantity = 15;
     }
     break;
@@ -1243,7 +1237,6 @@ void EventDemoState::triggerResourceDemo() {
         templateManager.getResourcesByType(ResourceType::BuildingMaterial);
     if (!gameResources.empty()) {
       selectedResource = gameResources[0];
-      discoveryMethod = "BuildingMaterial type query";
       quantity = 8;
     }
     break;
@@ -1254,7 +1247,6 @@ void EventDemoState::triggerResourceDemo() {
         templateManager.getResourcesByType(ResourceType::Equipment);
     if (!equipment.empty()) {
       selectedResource = equipment[0];
-      discoveryMethod = "Equipment type query";
       quantity = 1;
     }
     break;
@@ -1274,7 +1266,6 @@ void EventDemoState::triggerResourceDemo() {
       if (!selectedResource) {
         selectedResource = gems[0]; // fallback
       }
-      discoveryMethod = "Gem type query (high value preferred)";
       quantity = 2;
     }
     break;

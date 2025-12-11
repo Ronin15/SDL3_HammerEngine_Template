@@ -8,6 +8,7 @@
 #include "managers/EventManager.hpp"
 #include <cmath>
 #include <format>
+#include <numeric>
 #include <random>
 
 // ============================================================================
@@ -98,12 +99,14 @@ CalendarConfig CalendarConfig::createDefault()
 
 int CalendarConfig::getTotalDaysInYear() const
 {
-    int total = 0;
-    for (const auto& month : months)
-    {
-        total += month.dayCount;
-    }
-    return total;
+    return std::accumulate(
+        months.begin(),
+        months.end(),
+        0,
+        [](int sum, const CalendarMonth& month) {
+            return sum + month.dayCount;
+        }
+    );
 }
 
 // ============================================================================
