@@ -90,7 +90,7 @@ void TimeController::updateStatusText() {
     m_statusBuffer.clear();  // Keeps reserved capacity
     if (m_formatMode == StatusFormatMode::Extended) {
         // Extended format: Day X Month, Year Y | HH:MM TimeOfDay | Season | TempF | Weather
-        auto& wc = WeatherController::Instance();
+        const auto& wc = WeatherController::Instance();
         std::format_to(std::back_inserter(m_statusBuffer),
                        "Day {} {}, Year {} | {} {} | {} | {}F | {}",
                        gt.getDayOfMonth(), monthName, gt.getGameYear(),

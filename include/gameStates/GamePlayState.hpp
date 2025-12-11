@@ -24,7 +24,8 @@ class GamePlayState : public GameState {
 public:
   GamePlayState()
       : m_transitioningToLoading{false},
-        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false} {}
+        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
+        m_dayNightEventToken{}, m_weatherEventToken{} {}
   bool enter() override;
   void update(float deltaTime) override;
   void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;

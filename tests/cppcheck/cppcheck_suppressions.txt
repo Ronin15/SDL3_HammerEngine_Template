@@ -441,3 +441,96 @@ unreadVariable:*/managers/EventManager.cpp:288
 unreadVariable:*/managers/EventManager.cpp:289
 unreadVariable:*/managers/EventManager.cpp:290
 unreadVariable:*/managers/ParticleManager.cpp:804
+
+# ============================================================================
+# Confirmed False Positives (2025-12-11 Quality Gate Review)
+# ============================================================================
+
+# --- Defensive programming: Always-true/false conditions by design ---
+# These guards protect against edge cases and future code changes
+knownConditionTrueFalse:*/include/core/WorkerBudget.hpp:465
+knownConditionTrueFalse:*/src/ai/behaviors/GuardBehavior.cpp:430
+knownConditionTrueFalse:*/src/ai/behaviors/PatrolBehavior.cpp:249
+knownConditionTrueFalse:*/src/ai/pathfinding/PathfindingGrid.cpp:304
+knownConditionTrueFalse:*/src/managers/AIManager.cpp:587
+knownConditionTrueFalse:*/src/managers/ParticleManager.cpp:482
+knownConditionTrueFalse:*/src/managers/WorldManager.cpp:1052
+
+# --- SIMD variables: Used in SIMD calculations (cppcheck doesn't trace SIMD ops) ---
+unreadVariable:*/src/managers/AIManager.cpp:1331
+unreadVariable:*/src/managers/AIManager.cpp:1332
+
+# --- Same expression: Intentional bounding box initialization from single point ---
+duplicateAssignExpression:*/src/managers/CollisionManager.cpp:394
+duplicateAssignExpression:*/src/managers/CollisionManager.cpp:396
+
+# --- Logging variables: Used in LOG macros compiled out in Release ---
+
+# WorkerBudget - breakdown used in THREADSYSTEM_WARN
+unreadVariable:*/include/core/WorkerBudget.hpp:551
+
+# SpatialPriority - sizeBeforeCleanup/sizeAfterCleanup used in GAMEENGINE_INFO
+unreadVariable:*/src/ai/internal/SpatialPriority.cpp:274
+unreadVariable:*/src/ai/internal/SpatialPriority.cpp:351
+
+# NPC - resourceId/layerName used in NPC_DEBUG
+unreadVariable:*/src/entities/NPC.cpp:248
+unreadVariable:*/src/entities/NPC.cpp:477
+
+# AIDemoState - actualSpawned used in GAMESTATE_INFO
+unreadVariable:*/src/gameStates/AIDemoState.cpp:224
+
+# CollisionManager - various debug/logging variables
+unreadVariable:*/src/managers/CollisionManager.cpp:203
+unreadVariable:*/src/managers/CollisionManager.cpp:631
+unreadVariable:*/src/managers/CollisionManager.cpp:632
+unreadVariable:*/src/managers/CollisionManager.cpp:633
+unreadVariable:*/src/managers/CollisionManager.cpp:658
+unreadVariable:*/src/managers/CollisionManager.cpp:661
+unreadVariable:*/src/managers/CollisionManager.cpp:664
+unreadVariable:*/src/managers/CollisionManager.cpp:667
+unreadVariable:*/src/managers/CollisionManager.cpp:670
+unreadVariable:*/src/managers/CollisionManager.cpp:673
+unreadVariable:*/src/managers/CollisionManager.cpp:676
+unreadVariable:*/src/managers/CollisionManager.cpp:721
+unreadVariable:*/src/managers/CollisionManager.cpp:742
+unreadVariable:*/src/managers/CollisionManager.cpp:743
+unreadVariable:*/src/managers/CollisionManager.cpp:785
+unreadVariable:*/src/managers/CollisionManager.cpp:822
+unreadVariable:*/src/managers/CollisionManager.cpp:2790
+unreadVariable:*/src/managers/CollisionManager.cpp:2792
+unreadVariable:*/src/managers/CollisionManager.cpp:2795
+unreadVariable:*/src/managers/CollisionManager.cpp:2798
+unreadVariable:*/src/managers/CollisionManager.cpp:2800
+unreadVariable:*/src/managers/CollisionManager.cpp:2806
+unreadVariable:*/src/managers/CollisionManager.cpp:2813
+unreadVariable:*/src/managers/CollisionManager.cpp:2816
+
+# InputManager - axisName/buttonName used in INPUT_DEBUG
+unreadVariable:*/src/managers/InputManager.cpp:250
+unreadVariable:*/src/managers/InputManager.cpp:251
+unreadVariable:*/src/managers/InputManager.cpp:252
+unreadVariable:*/src/managers/InputManager.cpp:253
+unreadVariable:*/src/managers/InputManager.cpp:254
+unreadVariable:*/src/managers/InputManager.cpp:255
+unreadVariable:*/src/managers/InputManager.cpp:256
+unreadVariable:*/src/managers/InputManager.cpp:350
+unreadVariable:*/src/managers/InputManager.cpp:351
+unreadVariable:*/src/managers/InputManager.cpp:352
+unreadVariable:*/src/managers/InputManager.cpp:353
+unreadVariable:*/src/managers/InputManager.cpp:354
+unreadVariable:*/src/managers/InputManager.cpp:355
+unreadVariable:*/src/managers/InputManager.cpp:356
+unreadVariable:*/src/managers/InputManager.cpp:357
+unreadVariable:*/src/managers/InputManager.cpp:358
+unreadVariable:*/src/managers/InputManager.cpp:359
+unreadVariable:*/src/managers/InputManager.cpp:360
+unreadVariable:*/src/managers/InputManager.cpp:361
+unreadVariable:*/src/managers/InputManager.cpp:362
+unreadVariable:*/src/managers/InputManager.cpp:363
+unreadVariable:*/src/managers/InputManager.cpp:364
+unreadVariable:*/src/managers/InputManager.cpp:365
+
+# PathfinderManager - clearedCount/cacheEfficiency used in PATHFIND_INFO
+unreadVariable:*/src/managers/PathfinderManager.cpp:1035
+unreadVariable:*/src/managers/PathfinderManager.cpp:1092

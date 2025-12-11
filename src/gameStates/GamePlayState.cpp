@@ -225,7 +225,7 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 
 void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
-  auto &gameEngine = GameEngine::Instance();
+  const auto &gameEngine = GameEngine::Instance();
 
   // Camera offset uses SmoothDamp-filtered interpolation (eliminates world jitter)
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
