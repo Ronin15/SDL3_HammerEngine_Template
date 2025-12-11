@@ -315,6 +315,13 @@ inline std::mutex Logger::s_logMutex{};
 #define SETTINGS_INFO(msg) HAMMER_INFO("SettingsManager", msg)
 #define SETTINGS_DEBUG(msg) HAMMER_DEBUG("SettingsManager", msg)
 
+// WeatherController logging
+#define WEATHER_CRITICAL(msg) HAMMER_CRITICAL("WeatherController", msg)
+#define WEATHER_ERROR(msg) HAMMER_ERROR("WeatherController", msg)
+#define WEATHER_WARNING(msg) HAMMER_WARN("WeatherController", msg)
+#define WEATHER_INFO(msg) HAMMER_INFO("WeatherController", msg)
+#define WEATHER_DEBUG(msg) HAMMER_DEBUG("WeatherController", msg)
+
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \
   HammerEngine::Logger::SetBenchmarkMode(true)
