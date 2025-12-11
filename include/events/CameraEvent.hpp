@@ -87,6 +87,14 @@ public:
         m_oldPosition = Vector2D{0, 0};
     }
 
+    // Setters for pool reuse
+    void setNewPosition(const Vector2D& pos) { m_newPosition = pos; }
+    void setOldPosition(const Vector2D& pos) { m_oldPosition = pos; }
+    void configure(const Vector2D& newPos, const Vector2D& oldPos) {
+        m_newPosition = newPos;
+        m_oldPosition = oldPos;
+    }
+
 private:
     Vector2D m_newPosition;
     Vector2D m_oldPosition;
@@ -178,6 +186,14 @@ public:
         CameraEvent::reset();
         m_duration = 0.0f;
         m_intensity = 0.0f;
+    }
+
+    // Setters for pool reuse
+    void setDuration(float d) { m_duration = d; }
+    void setIntensity(float i) { m_intensity = i; }
+    void configure(float duration, float intensity) {
+        m_duration = duration;
+        m_intensity = intensity;
     }
 
 private:

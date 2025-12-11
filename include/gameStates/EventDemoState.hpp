@@ -91,6 +91,7 @@ private:
   };
 
   DemoPhase m_currentPhase{DemoPhase::Initialization};
+  DemoPhase m_lastInstructionsPhase{DemoPhase::Complete};  // Track to avoid per-frame string allocations
   float m_phaseTimer{0.0f};
   float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
   bool m_autoMode{true}; // Auto-advance through demos - enabled by default

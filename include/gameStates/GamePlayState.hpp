@@ -112,6 +112,8 @@ private:
   void onWeatherChanged(const EventData& data);
   uint32_t m_ambientDustEffectId{0};
   uint32_t m_ambientFireflyEffectId{0};
+  TimePeriod m_lastAmbientPeriod{TimePeriod::Day};  // Track to avoid particle thrashing
+  bool m_ambientParticlesActive{false};  // Whether ambient particles are currently running
   EventManager::HandlerToken m_weatherEventToken;
   bool m_weatherSubscribed{false};
   TimePeriod m_currentTimePeriod{TimePeriod::Day};  // Track current period for weather changes
