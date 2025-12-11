@@ -1601,6 +1601,14 @@ void ParticleManager::pauseIndependentEffectsByGroup(
                 std::to_string(affectedCount) + " effects)");
 }
 
+void ParticleManager::setGlobalPause(bool paused) {
+  m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool ParticleManager::isGloballyPaused() const {
+  return m_globallyPaused.load(std::memory_order_acquire);
+}
+
 bool ParticleManager::isIndependentEffect(uint32_t effectId) const {
   // PERFORMANCE: No locks needed for lock-free particle system
 
@@ -2601,14 +2609,6 @@ void ParticleManager::createParticleForEffect(
 }
 
 // getTextureIndex removed: particles render as rects
-
-bool ParticleManager::isGloballyPaused() const {
-  return m_globallyPaused.load(std::memory_order_acquire);
-}
-
-void ParticleManager::setGlobalPause(bool paused) {
-  m_globallyPaused.store(paused, std::memory_order_release);
-}
 
 size_t ParticleManager::getMaxParticleCapacity() const {
   return m_storage.capacity.load(std::memory_order_acquire);

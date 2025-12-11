@@ -499,6 +499,18 @@ public:
   void pauseIndependentEffectsByGroup(const std::string &groupTag, bool paused);
 
   /**
+   * @brief Sets global pause state for all particle updates
+   * @param paused true to pause all particle updates, false to resume
+   */
+  void setGlobalPause(bool paused);
+
+  /**
+   * @brief Gets the current global pause state
+   * @return true if particle updates are globally paused
+   */
+  bool isGloballyPaused() const;
+
+  /**
    * @brief Checks if an effect is an independent effect
    * @param effectId Effect ID to check
    * @return true if effect is independent, false otherwise
@@ -566,19 +578,6 @@ public:
    * @param fadeTime Time to fade out particles before removal
    */
   void clearWeatherGeneration(uint8_t generationId = 0, float fadeTime = 0.5f);
-
-  // Global Controls
-  /**
-   * @brief Sets global pause state for all particles
-   * @param paused Whether to pause particle updates
-   */
-  void setGlobalPause(bool paused);
-
-  /**
-   * @brief Gets global pause state
-   * @return true if globally paused, false otherwise
-   */
-  bool isGloballyPaused() const;
 
   /**
    * @brief Sets global particle visibility

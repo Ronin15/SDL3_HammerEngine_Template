@@ -1543,6 +1543,40 @@ void GameEngine::setFullscreen(bool enabled) {
   toggleFullscreen();
 }
 
+void GameEngine::setGlobalPause(bool paused) {
+  m_globallyPaused.store(paused, std::memory_order_release);
+
+  // Pause AI Manager (already has setGlobalPause support)
+  if (mp_aiManager) {
+    mp_aiManager->setGlobalPause(paused);
+  }
+
+  // Pause Particle Manager
+  if (mp_particleManager) {
+    mp_particleManager->setGlobalPause(paused);
+  }
+
+  // Pause Collision Manager
+  if (mp_collisionManager) {
+    mp_collisionManager->setGlobalPause(paused);
+  }
+
+  // Pause Pathfinder Manager
+  if (mp_pathfinderManager) {
+    mp_pathfinderManager->setGlobalPause(paused);
+  }
+
+  if (paused) {
+    GAMEENGINE_INFO("Game globally paused - all managers idle");
+  } else {
+    GAMEENGINE_INFO("Game globally resumed");
+  }
+}
+
+bool GameEngine::isGloballyPaused() const {
+  return m_globallyPaused.load(std::memory_order_acquire);
+}
+
 int GameEngine::getOptimalDisplayIndex() const {
 #ifdef __APPLE__
   // On macOS, prioritize the primary display (0) for MacBook built-in screens

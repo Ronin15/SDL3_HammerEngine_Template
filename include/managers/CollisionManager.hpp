@@ -83,6 +83,18 @@ public:
     bool isInitialized() const { return m_initialized; }
     bool isShutdown() const { return m_isShutdown; }
 
+    /**
+     * @brief Sets global pause state for collision detection
+     * @param paused true to pause collision updates, false to resume
+     */
+    void setGlobalPause(bool paused);
+
+    /**
+     * @brief Gets the current global pause state
+     * @return true if collision updates are globally paused
+     */
+    bool isGloballyPaused() const;
+
     // Tick: run collision detection/resolution only (no movement integration)
     void update(float dt);
 
@@ -317,6 +329,7 @@ private:
 
     bool m_initialized{false};
     bool m_isShutdown{false};
+    std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance

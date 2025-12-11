@@ -606,7 +606,7 @@ bool CollisionManager::isTrigger(EntityID id) const {
 
 void CollisionManager::update(float dt) {
   (void)dt;
-  if (!m_initialized || m_isShutdown)
+  if (!m_initialized || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire))
     return;
 
   // SOA collision system only
@@ -615,6 +615,13 @@ void CollisionManager::update(float dt) {
 
 }
 
+void CollisionManager::setGlobalPause(bool paused) {
+  m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool CollisionManager::isGloballyPaused() const {
+  return m_globallyPaused.load(std::memory_order_acquire);
+}
 
 void CollisionManager::addCollisionCallback(CollisionCB cb) {
   m_callbacks.push_back(std::move(cb));
