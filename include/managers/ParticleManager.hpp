@@ -376,9 +376,10 @@ public:
    * @param renderer SDL renderer for drawing
    * @param cameraX Camera X offset for world-space rendering
    * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
   void render(SDL_Renderer *renderer, float cameraX = 0.0f,
-              float cameraY = 0.0f);
+              float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
   /**
    * @brief Renders only background particles (rain, snow) - call before
@@ -386,18 +387,20 @@ public:
    * @param renderer SDL renderer for drawing
    * @param cameraX Camera X offset for world-space rendering
    * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
   void renderBackground(SDL_Renderer *renderer, float cameraX = 0.0f,
-                        float cameraY = 0.0f);
+                        float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
   /**
    * @brief Renders only foreground particles (fog) - call after player/NPCs
    * @param renderer SDL renderer for drawing
    * @param cameraX Camera X offset for world-space rendering
    * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
   void renderForeground(SDL_Renderer *renderer, float cameraX = 0.0f,
-                        float cameraY = 0.0f);
+                        float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
   /**
    * @brief Checks if ParticleManager has been shut down
@@ -758,6 +761,8 @@ private:
       // SIMD-friendly SoA float lanes (authoritative storage)
       std::vector<F32, AlignedAllocator<F32, 16>> posX;
       std::vector<F32, AlignedAllocator<F32, 16>> posY;
+      std::vector<F32, AlignedAllocator<F32, 16>> prevPosX;  // Previous position for interpolation
+      std::vector<F32, AlignedAllocator<F32, 16>> prevPosY;  // Previous position for interpolation
       std::vector<F32, AlignedAllocator<F32, 16>> velX;
       std::vector<F32, AlignedAllocator<F32, 16>> velY;
       std::vector<F32, AlignedAllocator<F32, 16>> accX;

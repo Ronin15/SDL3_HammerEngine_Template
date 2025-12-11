@@ -698,7 +698,7 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
   // Render background particles first (rain, snow) - behind player/NPCs - use cached pointer
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY);
+    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
   // Render player at its own interpolated position
@@ -717,8 +717,8 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Render world-space and foreground particles - use cached pointer
   // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->render(renderer, renderCamX, renderCamY);
-    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY);
+    mp_particleMgr->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
   // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
