@@ -477,13 +477,14 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     // Get GameEngine for logical dimensions (renderer now passed as parameter)
     const auto& gameEngine = GameEngine::Instance();
 
-    // Camera offset uses SmoothDamp-filtered interpolation (eliminates world jitter)
+    // Camera offset with unified interpolation (single atomic read for sync)
     float renderCamX = 0.0f;
     float renderCamY = 0.0f;
+    Vector2D playerInterpPos;  // Position synced with camera
 
     if (m_camera) {
-        // Camera's smoothed interpolation - handles all modes internally
-        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+        // Returns the position used for offset - use it for player rendering
+        playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
     }
 
     // Set render scale for zoom only when changed (avoids GPU state change overhead)
@@ -518,9 +519,9 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         }
     }
 
-    // Render player at its own interpolated position
+    // Render player at the position camera used for offset calculation
     if (m_player) {
-        Vector2D playerInterpPos = m_player->getInterpolatedPosition(interpolationAlpha);
+        // Use position camera returned - no separate atomic read
         m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
 
         // Render player health bar
