@@ -52,7 +52,12 @@ private:
         WorldData& world,
         const WorldGenerationConfig& config
     );
-    
+
+    static void distributeDecorations(
+        WorldData& world,
+        const WorldGenerationConfig& config
+    );
+
     static void calculateInitialResources(
         const WorldData& world
     );
