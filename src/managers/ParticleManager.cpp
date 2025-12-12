@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <format>
 #include <thread>
 
 // Use SIMD abstraction layer
@@ -620,9 +621,8 @@ bool ParticleManager::init() {
         auto we = std::dynamic_pointer_cast<WeatherEvent>(data.event);
         if (we) {
           const auto &wp = we->getWeatherParams();
-          PARTICLE_INFO(std::string("Weather handler: ") + we->getWeatherTypeString() +
-                       ", intensity=" + std::to_string(wp.intensity) +
-                       ", transition=" + std::to_string(wp.transitionTime) + "s");
+          PARTICLE_INFO(std::format("Weather handler: {}, intensity={:.2f}, transition={:.2f}s",
+                                    we->getWeatherTypeString(), wp.intensity, wp.transitionTime));
           we->execute();
         }
       });
@@ -632,8 +632,7 @@ bool ParticleManager::init() {
     return true;
 
   } catch (const std::exception &e) {
-    PARTICLE_ERROR("Failed to initialize ParticleManager: " +
-                   std::string(e.what()));
+    PARTICLE_ERROR(std::format("Failed to initialize ParticleManager: {}", e.what()));
     return false;
   }
 }
@@ -690,24 +689,25 @@ void ParticleManager::prepareForStateTransition() {
   // Pause system to prevent new emissions during cleanup
   m_globallyPaused.store(true, std::memory_order_release);
 
-  // 1. Stop ALL weather effects
+  // 1. Stop ALL weather effects - O(n) using erase-remove idiom
   int weatherEffectsStopped = 0;
   int independentEffectsStopped = 0;
   int regularEffectsStopped = 0;
 
-  auto it = m_effectInstances.begin();
-  while (it != m_effectInstances.end()) {
-    if (it->isWeatherEffect) {
-      PARTICLE_INFO(
-          "Removing weather effect: " + effectTypeToString(it->effectType) +
-          " (ID: " + std::to_string(it->id) + ")");
-      m_effectIdToIndex.erase(it->id);
-      it = m_effectInstances.erase(it);
+  // First pass: count and log weather effects being removed
+  for (const auto &effect : m_effectInstances) {
+    if (effect.isWeatherEffect) {
+      PARTICLE_INFO(std::format("Removing weather effect: {} (ID: {})",
+                                effectTypeToString(effect.effectType), effect.id));
       weatherEffectsStopped++;
-    } else {
-      ++it;
     }
   }
+
+  // Single O(n) removal using erase-remove idiom
+  auto weatherEnd = std::remove_if(
+      m_effectInstances.begin(), m_effectInstances.end(),
+      [](const EffectInstance &e) { return e.isWeatherEffect; });
+  m_effectInstances.erase(weatherEnd, m_effectInstances.end());
 
   // First pass: count and deactivate
   for (auto &effect : m_effectInstances) {
@@ -761,9 +761,8 @@ void ParticleManager::prepareForStateTransition() {
   m_storage.freeIndices.clear();
   m_storage.particleCount.store(0, std::memory_order_release);
 
-  PARTICLE_INFO("Complete particle cleanup: cleared " +
-                std::to_string(particlesCleared) +
-                " active particles from storage");
+  PARTICLE_INFO(std::format("Complete particle cleanup: cleared {} active particles from storage",
+                            particlesCleared));
 
   // 4. Rebuild effect index mapping for any remaining effects
   m_effectIdToIndex.clear();
@@ -925,8 +924,7 @@ void ParticleManager::update(float deltaTime) {
     m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
 
   } catch (const std::exception &e) {
-    PARTICLE_ERROR("Exception in ParticleManager::update: " +
-                   std::string(e.what()));
+    PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
   }
 }
 
@@ -1128,10 +1126,8 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
 uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
                                      const Vector2D &position,
                                      float intensity) {
-  PARTICLE_INFO("*** PLAY EFFECT CALLED: " + effectTypeToString(effectType) +
-                " at (" + std::to_string(position.getX()) + ", " +
-                std::to_string(position.getY()) +
-                ") intensity=" + std::to_string(intensity));
+  PARTICLE_INFO(std::format("*** PLAY EFFECT CALLED: {} at ({:.0f}, {:.0f}) intensity={:.2f}",
+                            effectTypeToString(effectType), position.getX(), position.getY(), intensity));
 
   // PERFORMANCE: Exclusive lock needed for adding effect instances
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
@@ -1139,12 +1135,10 @@ uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
   // Check if effect definition exists
   auto it = m_effectDefinitions.find(effectType);
   if (it == m_effectDefinitions.end()) {
-    PARTICLE_ERROR("ERROR: Effect not registered: " +
-                   effectTypeToString(effectType));
-    PARTICLE_INFO("Available effects: " +
-                  std::to_string(m_effectDefinitions.size()));
+    PARTICLE_ERROR(std::format("ERROR: Effect not registered: {}", effectTypeToString(effectType)));
+    PARTICLE_INFO(std::format("Available effects: {}", m_effectDefinitions.size()));
     for (const auto &pair : m_effectDefinitions) {
-      PARTICLE_INFO("  - " + effectTypeToString(pair.first));
+      PARTICLE_INFO(std::format("  - {}", effectTypeToString(pair.first)));
     }
     return 0;
   }
@@ -1162,10 +1156,8 @@ uint32_t ParticleManager::playEffect(ParticleEffectType effectType,
   m_effectInstances.push_back(instance);
   m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
 
-  PARTICLE_INFO(
-      "Effect successfully started: " + effectTypeToString(effectType) +
-      " (ID: " + std::to_string(instance.id) +
-      ") - Total active effects: " + std::to_string(m_effectInstances.size()));
+  PARTICLE_INFO(std::format("Effect successfully started: {} (ID: {}) - Total active effects: {}",
+                            effectTypeToString(effectType), instance.id, m_effectInstances.size()));
 
   return instance.id;
 }
@@ -1177,12 +1169,11 @@ void ParticleManager::stopEffect(uint32_t effectId) {
   auto it = m_effectIdToIndex.find(effectId);
   if (it != m_effectIdToIndex.end() && it->second < m_effectInstances.size()) {
     m_effectInstances[it->second].active = false;
-    PARTICLE_INFO("Effect stopped: ID " + std::to_string(effectId));
+    PARTICLE_INFO(std::format("Effect stopped: ID {}", effectId));
   }
 }
 void ParticleManager::stopWeatherEffects(float transitionTime) {
-  PARTICLE_INFO("*** STOPPING ALL WEATHER EFFECTS (transition: " +
-                std::to_string(transitionTime) + "s)");
+  PARTICLE_INFO(std::format("*** STOPPING ALL WEATHER EFFECTS (transition: {:.2f}s)", transitionTime));
 
   // PERFORMANCE: Lock-free weather effect stopping
   // No synchronization needed for effect state changes
@@ -1190,24 +1181,21 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
 
   int stoppedCount = 0;
 
-  // Clean approach: Remove ALL weather effects to prevent accumulation
-  auto it = m_effectInstances.begin();
-  while (it != m_effectInstances.end()) {
-    if (it->isWeatherEffect) {
-      PARTICLE_DEBUG("DEBUG: Removing weather effect: " +
-                     effectTypeToString(it->effectType) +
-                     " (ID: " + std::to_string(it->id) + ")");
-
-      // Remove from ID mapping
-      m_effectIdToIndex.erase(it->id);
-
-      // Remove the effect entirely
-      it = m_effectInstances.erase(it);
+  // Clean approach: Remove ALL weather effects - O(n) using erase-remove idiom
+  // First pass: count and log weather effects being removed
+  for (const auto &effect : m_effectInstances) {
+    if (effect.isWeatherEffect) {
+      PARTICLE_DEBUG(std::format("DEBUG: Removing weather effect: {} (ID: {})",
+                                 effectTypeToString(effect.effectType), effect.id));
       stoppedCount++;
-    } else {
-      ++it;
     }
   }
+
+  // Single O(n) removal using erase-remove idiom
+  auto weatherEnd = std::remove_if(
+      m_effectInstances.begin(), m_effectInstances.end(),
+      [](const EffectInstance &e) { return e.isWeatherEffect; });
+  m_effectInstances.erase(weatherEnd, m_effectInstances.end());
 
   // Rebuild index mapping for remaining effects
   m_effectIdToIndex.clear();
@@ -1231,8 +1219,7 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
       }
     }
 
-    PARTICLE_INFO("Cleared " + std::to_string(affectedCount) +
-                  " weather particles immediately");
+    PARTICLE_INFO(std::format("Cleared {} weather particles immediately", affectedCount));
   } else {
     // Set fade-out for particles with transition time
     int affectedCount = 0;
@@ -1247,13 +1234,10 @@ void ParticleManager::stopWeatherEffects(float transitionTime) {
         affectedCount++;
       }
     }
-    PARTICLE_INFO("Cleared " + std::to_string(affectedCount) +
-                  " weather particles with fade time: " +
-                  std::to_string(transitionTime) + "s");
+    PARTICLE_INFO(std::format("Cleared {} weather particles with fade time: {:.2f}s", affectedCount, transitionTime));
   }
 
-  PARTICLE_INFO("Stopped and removed " + std::to_string(stoppedCount) +
-                " weather effects");
+  PARTICLE_INFO(std::format("Stopped and removed {} weather effects", stoppedCount));
 }
 
 void ParticleManager::clearWeatherGeneration(uint8_t generationId,
@@ -1315,9 +1299,8 @@ void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
 void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
                                            float intensity,
                                            float transitionTime) {
-  PARTICLE_INFO(
-      "*** WEATHER EFFECT TRIGGERED: " + effectTypeToString(effectType) +
-      " intensity=" + std::to_string(intensity));
+  PARTICLE_INFO(std::format("*** WEATHER EFFECT TRIGGERED: {} intensity={:.2f}",
+                            effectTypeToString(effectType), intensity));
 
   // Use smooth transitions for better visual quality
   float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
@@ -1326,27 +1309,31 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
   std::unique_lock<std::mutex> lock(m_weatherMutex);
   std::unique_lock<std::shared_mutex> effectsLock(m_effectsMutex);
 
-  // Clear existing weather effects first
+  // Clear existing weather effects first - O(n) using erase-remove idiom
   int stoppedCount = 0;
-  auto it = m_effectInstances.begin();
-  while (it != m_effectInstances.end()) {
-    if (it->isWeatherEffect) {
-      PARTICLE_DEBUG("DEBUG: Removing weather effect: " +
-                     effectTypeToString(it->effectType) +
-                     " (ID: " + std::to_string(it->id) + ")");
-      m_effectIdToIndex.erase(it->id);
-      it = m_effectInstances.erase(it);
+
+  // First pass: count and log weather effects being removed
+  for (const auto &effect : m_effectInstances) {
+    if (effect.isWeatherEffect) {
+      PARTICLE_DEBUG(std::format("DEBUG: Removing weather effect: {} (ID: {})",
+                                 effectTypeToString(effect.effectType), effect.id));
       stoppedCount++;
-    } else {
-      ++it;
     }
   }
 
-  // Only rebuild index mapping if weather effects were removed AND non-weather effects remain
-  if (stoppedCount > 0 && !m_effectInstances.empty()) {
-    m_effectIdToIndex.clear();
-    for (size_t i = 0; i < m_effectInstances.size(); ++i) {
-      m_effectIdToIndex[m_effectInstances[i].id] = i;
+  // Single O(n) removal using erase-remove idiom
+  if (stoppedCount > 0) {
+    auto weatherEnd = std::remove_if(
+        m_effectInstances.begin(), m_effectInstances.end(),
+        [](const EffectInstance &e) { return e.isWeatherEffect; });
+    m_effectInstances.erase(weatherEnd, m_effectInstances.end());
+
+    // Rebuild index mapping for remaining effects
+    if (!m_effectInstances.empty()) {
+      m_effectIdToIndex.clear();
+      for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+        m_effectIdToIndex[m_effectInstances[i].id] = i;
+      }
     }
   }
 
@@ -1365,32 +1352,28 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
         affectedCount++;
       }
     }
-    PARTICLE_INFO("Cleared " + std::to_string(affectedCount) +
-                  " weather particles immediately");
+    PARTICLE_INFO(std::format("Cleared {} weather particles immediately", affectedCount));
   }
 
-  PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) + " weather effects");
+  PARTICLE_INFO(std::format("Stopped {} weather effects", stoppedCount));
 
   // Validate effect type
   if (effectType >= ParticleEffectType::COUNT) {
-    PARTICLE_ERROR("ERROR: Invalid effect type: " +
-                   std::to_string(static_cast<int>(effectType)));
+    PARTICLE_ERROR(std::format("ERROR: Invalid effect type: {}", static_cast<int>(effectType)));
     return;
   }
 
   // Check if effect definition exists
   auto defIt = m_effectDefinitions.find(effectType);
   if (defIt == m_effectDefinitions.end()) {
-    PARTICLE_ERROR("ERROR: Effect not registered: " +
-                   effectTypeToString(effectType));
+    PARTICLE_ERROR(std::format("ERROR: Effect not registered: {}", effectTypeToString(effectType)));
     return;
   }
 
   // Check if effect definition exists
   const auto &definition = m_effectDefinitions[effectType];
   if (definition.name.empty()) {
-    PARTICLE_ERROR("ERROR: Effect not registered: " +
-                   effectTypeToString(effectType));
+    PARTICLE_ERROR(std::format("ERROR: Effect not registered: {}", effectTypeToString(effectType)));
     return;
   }
 
@@ -1427,10 +1410,9 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
   m_effectInstances.emplace_back(std::move(instance));
   m_effectIdToIndex[effectId] = m_effectInstances.size() - 1;
 
-  PARTICLE_INFO("Weather effect created: " + effectTypeToString(effectType) +
-                " (ID: " + std::to_string(effectId) + ") at position (" +
-                std::to_string(weatherPosition.getX()) + ", " +
-                std::to_string(weatherPosition.getY()) + ")");
+  PARTICLE_INFO(std::format("Weather effect created: {} (ID: {}) at position ({:.0f}, {:.0f})",
+                            effectTypeToString(effectType), effectId,
+                            weatherPosition.getX(), weatherPosition.getY()));
 }
 
 void ParticleManager::recordPerformance(bool isRender, double timeMs,
@@ -1495,18 +1477,17 @@ uint32_t ParticleManager::playIndependentEffect(
     ParticleEffectType effectType, const Vector2D &position, float intensity,
     float duration, const std::string &groupTag,
     const std::string &soundEffect) {
-  PARTICLE_INFO(
-      "Playing independent effect: " + effectTypeToString(effectType) +
-      " at (" + std::to_string(position.getX()) + ", " +
-      std::to_string(position.getY()) + ")");
+  PARTICLE_INFO(std::format("Playing independent effect: {} at ({}, {})",
+                            effectTypeToString(effectType),
+                            position.getX(), position.getY()));
 
   // PERFORMANCE: No locks needed for lock-free particle system
 
   // Check if effect definition exists
   auto it = m_effectDefinitions.find(effectType);
   if (it == m_effectDefinitions.end()) {
-    PARTICLE_ERROR("ERROR: Independent effect not registered: " +
-                   effectTypeToString(effectType));
+    PARTICLE_ERROR(std::format("ERROR: Independent effect not registered: {}",
+                               effectTypeToString(effectType)));
     return 0;
   }
 
@@ -1528,9 +1509,8 @@ uint32_t ParticleManager::playIndependentEffect(
   m_effectInstances.push_back(instance);
   m_effectIdToIndex[instance.id] = m_effectInstances.size() - 1;
 
-  PARTICLE_INFO(
-      "Independent effect started: " + effectTypeToString(effectType) +
-      " (ID: " + std::to_string(instance.id) + ")");
+  PARTICLE_INFO(std::format("Independent effect started: {} (ID: {})",
+                            effectTypeToString(effectType), instance.id));
   return instance.id;
 }
 
@@ -1559,8 +1539,7 @@ void ParticleManager::stopAllIndependentEffects() {
     }
   }
 
-  PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) +
-                " independent effects");
+  PARTICLE_INFO(std::format("Stopped {} independent effects", stoppedCount));
 }
 
 void ParticleManager::stopIndependentEffectsByGroup(
@@ -1576,8 +1555,8 @@ void ParticleManager::stopIndependentEffectsByGroup(
     }
   }
 
-  PARTICLE_INFO("Stopped " + std::to_string(stoppedCount) +
-                " independent effects in group: " + groupTag);
+  PARTICLE_INFO(std::format("Stopped {} independent effects in group: {}",
+                            stoppedCount, groupTag));
 }
 
 void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
@@ -1588,8 +1567,8 @@ void ParticleManager::pauseIndependentEffect(uint32_t effectId, bool paused) {
     auto &effect = m_effectInstances[it->second];
     if (effect.isIndependentEffect) {
       effect.paused = paused;
-      PARTICLE_INFO("Independent effect " + std::to_string(effectId) +
-                    (paused ? " paused" : " unpaused"));
+      PARTICLE_INFO(std::format("Independent effect {} {}",
+                                effectId, paused ? "paused" : "unpaused"));
     }
   }
 }
@@ -1623,9 +1602,8 @@ void ParticleManager::pauseIndependentEffectsByGroup(
     }
   }
 
-  PARTICLE_INFO("Independent effects in group " + groupTag + " " +
-                std::string(paused ? "paused" : "unpaused") + " (" +
-                std::to_string(affectedCount) + " effects)");
+  PARTICLE_INFO(std::format("Independent effects in group {} {} ({} effects)",
+                            groupTag, paused ? "paused" : "unpaused", affectedCount));
 }
 
 void ParticleManager::setGlobalPause(bool paused) {
@@ -1701,11 +1679,11 @@ void ParticleManager::registerBuiltInEffects() {
   m_effectDefinitions[ParticleEffectType::AmbientDust] = createAmbientDustEffect();
   m_effectDefinitions[ParticleEffectType::AmbientFirefly] = createAmbientFireflyEffect();
 
-  PARTICLE_INFO("Built-in effects registered: " +
-                std::to_string(m_effectDefinitions.size()));
+  PARTICLE_INFO(std::format("Built-in effects registered: {}",
+                            m_effectDefinitions.size()));
 
   for (const auto &pair : m_effectDefinitions) {
-    PARTICLE_INFO("  - Effect: " + effectTypeToString(pair.first));
+    PARTICLE_INFO(std::format("  - Effect: {}", effectTypeToString(pair.first)));
   }
 
   // More effects can be added as needed
@@ -2724,8 +2702,7 @@ void ParticleManager::configureThreading(bool useThreading,
 
 void ParticleManager::setThreadingThreshold(size_t threshold) {
   m_threadingThreshold = threshold;
-  PARTICLE_INFO("Threading threshold set to " + std::to_string(threshold) +
-                " particles");
+  PARTICLE_INFO(std::format("Threading threshold set to {} particles", threshold));
 }
 
 size_t ParticleManager::getThreadingThreshold() const {
@@ -2739,8 +2716,9 @@ ParticleManager::weatherStringToEnum(const std::string &weatherType,
   if (weatherType == "Rainy") {
     ParticleEffectType result = (intensity > 0.9f) ? ParticleEffectType::HeavyRain
                               : ParticleEffectType::Rain;
-    PARTICLE_INFO("Weather mapping: \"" + weatherType + "\" intensity=" + std::to_string(intensity) + 
-                  " -> " + (result == ParticleEffectType::Rain ? "Rain" : "HeavyRain"));
+    PARTICLE_INFO(std::format("Weather mapping: \"{}\" intensity={} -> {}",
+                              weatherType, intensity,
+                              result == ParticleEffectType::Rain ? "Rain" : "HeavyRain"));
     return result;
   } else if (weatherType == "Snowy") {
     return (intensity > 0.7f) ? ParticleEffectType::HeavySnow
@@ -2770,7 +2748,7 @@ ParticleManager::weatherStringToEnum(const std::string &weatherType,
   return ParticleEffectType::Custom;
 }
 
-std::string ParticleManager::effectTypeToString(ParticleEffectType type) const {
+std::string_view ParticleManager::effectTypeToString(ParticleEffectType type) const {
   switch (type) {
   case ParticleEffectType::Rain:
     return "Rain";
