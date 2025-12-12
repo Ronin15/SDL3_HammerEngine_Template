@@ -23,6 +23,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <future>
 #include <numeric>
 #include <unordered_set>
@@ -381,12 +382,13 @@ void EventManager::update() {
                                             });
 
     // Build event summary string with counts per type
-    std::string eventSummary = "";
+    std::string eventSummary;
     for (size_t i = 0; i < eventCountsByType.size(); ++i) {
       if (eventCountsByType[i] > 0) {
         if (!eventSummary.empty()) eventSummary += ", ";
-        eventSummary += getEventTypeName(static_cast<EventTypeId>(i)) +
-                       "=" + std::to_string(eventCountsByType[i]);
+        std::format_to(std::back_inserter(eventSummary), "{}={}",
+                       getEventTypeName(static_cast<EventTypeId>(i)),
+                       eventCountsByType[i]);
       }
     }
     if (eventSummary.empty()) eventSummary = "none";
@@ -398,17 +400,14 @@ void EventManager::update() {
       size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
       size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
 
-      EVENT_DEBUG("Event Summary - Active: " + std::to_string(totalEventCount) +
-                  ", Handlers: " + std::to_string(totalHandlers) +
-                  ", Avg Update: " + std::to_string(m_avgUpdateTimeMs) + "ms" +
-                  " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                  std::to_string(availableWorkers) + " workers, Budget: " +
-                  std::to_string(eventBudget) + "] [Types: " + eventSummary + "]");
+      EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
+                              "[Threaded: {}/{} workers, Budget: {}] [Types: {}]",
+                              totalEventCount, totalHandlers, m_avgUpdateTimeMs,
+                              optimalWorkers, availableWorkers, eventBudget, eventSummary));
     } else {
-      EVENT_DEBUG("Event Summary - Active: " + std::to_string(totalEventCount) +
-                  ", Handlers: " + std::to_string(totalHandlers) +
-                  ", Avg Update: " + std::to_string(m_avgUpdateTimeMs) + "ms" +
-                  " [Single-threaded] [Types: " + eventSummary + "]");
+      EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
+                              "[Single-threaded] [Types: {}]",
+                              totalEventCount, totalHandlers, m_avgUpdateTimeMs, eventSummary));
     }
   }
 
@@ -420,13 +419,12 @@ void EventManager::update() {
       size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
       size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
 
-      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
-                  "ms (slow frame) [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                  std::to_string(availableWorkers) + " workers, Budget: " +
-                  std::to_string(eventBudget) + "]");
+      EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) "
+                              "[Threaded: {}/{} workers, Budget: {}]",
+                              totalTimeMs, optimalWorkers, availableWorkers, eventBudget));
     } else {
-      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
-                  "ms (slow frame) [Single-threaded]");
+      EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) [Single-threaded]",
+                              totalTimeMs));
     }
   }
   m_lastUpdateTime.store(endTime);
@@ -748,10 +746,9 @@ bool EventManager::executeEvent(const std::string &eventName) const {
       try {
         entry.callable(eventData);
       } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in executeEvent '" + eventName + "': " +
-                    std::string(e.what()));
+        EVENT_ERROR(std::format("Handler exception in executeEvent '{}': {}", eventName, e.what()));
       } catch (...) {
-        EVENT_ERROR("Unknown handler exception in executeEvent '" + eventName + "'");
+        EVENT_ERROR(std::format("Unknown handler exception in executeEvent '{}'", eventName));
       }
     }
   }
@@ -761,7 +758,7 @@ bool EventManager::executeEvent(const std::string &eventName) const {
     for (const auto &entry : nameIt->second) {
       if (entry) {
         try { entry.callable(eventData); }
-        catch (const std::exception &e) { EVENT_ERROR("Name-handler exception in executeEvent: " + std::string(e.what())); }
+        catch (const std::exception &e) { EVENT_ERROR(std::format("Name-handler exception in executeEvent: {}", e.what())); }
         catch (...) { EVENT_ERROR("Unknown name-handler exception in executeEvent"); }
       }
     }
@@ -927,9 +924,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
 
   // Only log significant performance issues (>5ms) to reduce noise
   if (timeMs > 5.0) {
-    EVENT_DEBUG("Updated " + std::to_string(localEvents.size()) +
-                " events of type " + std::string(getEventTypeName(typeId)) +
-                " in " + std::to_string(timeMs) + "ms (slow)");
+    EVENT_DEBUG(std::format("Updated {} events of type {} in {:.2f}ms (slow)",
+                            localEvents.size(), getEventTypeName(typeId), timeMs));
   }
 }
 
@@ -982,9 +978,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   if (queueSize > pressureThreshold) {
     // Graceful degradation: fallback to single-threaded processing
-    EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
-                std::to_string(queueCapacity) +
-                "), using single-threaded processing");
+    EVENT_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
+                            queueSize, queueCapacity));
     m_lastWasThreaded.store(false, std::memory_order_relaxed);
     for (auto &evt : *localEvents) { evt->update(); }
 
@@ -1025,9 +1020,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   // Debug logging for high queue pressure
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    EVENT_DEBUG("High queue pressure (" +
-                std::to_string(static_cast<int>(queuePressure * 100)) +
-                "%), using larger batches");
+    EVENT_DEBUG(std::format("High queue pressure ({}%), using larger batches",
+                            static_cast<int>(queuePressure * 100)));
   }
 
   // Simple batch processing without complex spin-wait
@@ -1035,11 +1029,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     // Debug thread allocation info periodically
     static thread_local uint64_t debugFrameCounter = 0;
     if (++debugFrameCounter % 300 == 0 && !localEvents->empty()) {
-      EVENT_DEBUG("Event Thread Allocation - Workers: " +
-                  std::to_string(optimalWorkerCount) + "/" +
-                  std::to_string(availableWorkers) +
-                  ", Event Budget: " + std::to_string(eventWorkerBudget) +
-                  ", Batches: " + std::to_string(batchCount));
+      EVENT_DEBUG(std::format("Event Thread Allocation - Workers: {}/{}, Event Budget: {}, Batches: {}",
+                              optimalWorkerCount, availableWorkers, eventWorkerBudget, batchCount));
     }
 
     size_t batchSize = localEvents->size() / batchCount;
@@ -1696,7 +1687,7 @@ void EventManager::drainDispatchQueueWithBudget() {
         try {
           entry.callable(eventData);
         } catch (const std::exception &e) {
-          EVENT_ERROR("Handler exception in deferred dispatch: " + std::string(e.what()));
+          EVENT_ERROR(std::format("Handler exception in deferred dispatch: {}", e.what()));
         } catch (...) {
           EVENT_ERROR("Unknown handler exception in deferred dispatch");
         }
