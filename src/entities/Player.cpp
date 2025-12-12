@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 Player::Player() : Entity() {
   // Initialize player properties
@@ -73,8 +74,7 @@ void Player::loadDimensionsFromTexture() {
       // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns
       // a bool
       if (SDL_GetTextureSize(texture.get(), &width, &height)) {
-        PLAYER_DEBUG("Original texture dimensions: " + std::to_string(width) +
-                     "x" + std::to_string(height));
+        PLAYER_DEBUG(std::format("Original texture dimensions: {}x{}", width, height));
 
         // Store original dimensions for full sprite sheet
         m_width = static_cast<int>(width);
@@ -91,13 +91,9 @@ void Player::loadDimensionsFromTexture() {
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
         CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
 
-        PLAYER_DEBUG("Loaded texture dimensions: " + std::to_string(m_width) +
-                     "x" + std::to_string(height));
-        PLAYER_DEBUG("Frame dimensions: " + std::to_string(m_frameWidth) + "x" +
-                     std::to_string(frameHeight));
-        PLAYER_DEBUG("Sprite layout: " + std::to_string(m_numFrames) +
-                     " columns x " + std::to_string(m_spriteSheetRows) +
-                     " rows");
+        PLAYER_DEBUG(std::format("Loaded texture dimensions: {}x{}", m_width, height));
+        PLAYER_DEBUG(std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
+        PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows", m_numFrames, m_spriteSheetRows));
       } else {
         PLAYER_ERROR("Failed to query texture dimensions: " +
                      std::string(SDL_GetError()));
@@ -292,8 +288,7 @@ void Player::initializeInventory() {
   // Note: mana_potion doesn't exist in default resources
 
   if (m_inventory) {
-    PLAYER_DEBUG("Player inventory initialized with " +
-                 std::to_string(m_inventory->getMaxSlots()) + " slots");
+    PLAYER_DEBUG(std::format("Player inventory initialized with {} slots", m_inventory->getMaxSlots()));
   }
 }
 
@@ -305,10 +300,8 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
       shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",
       EventManager::DispatchMode::Deferred);
 
-  PLAYER_DEBUG("Resource changed: " + resourceId + " from " +
-               std::to_string(oldQuantity) + " to " +
-               std::to_string(newQuantity) +
-               " - event dispatched to EventManager");
+  PLAYER_DEBUG(std::format("Resource changed: {} from {} to {} - event dispatched to EventManager",
+                            resourceId, oldQuantity, newQuantity));
 }
 
 // Resource management methods - removed, use getInventory() directly with
@@ -360,8 +353,7 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   // Remove item from inventory and equip it
   if (m_inventory->removeResource(itemHandle, 1)) {
     m_equippedItems[slotName] = itemHandle;
-    PLAYER_DEBUG("Equipped item (handle: " + itemHandle.toString() +
-                 ") in slot: " + slotName);
+    PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}", itemHandle.toString(), slotName));
     return true;
   }
 
@@ -385,8 +377,7 @@ bool Player::unequipItem(const std::string &slotName) {
   // Try to add back to inventory
   if (m_inventory->addResource(itemHandle, 1)) {
     it->second = HammerEngine::ResourceHandle{}; // Set to invalid handle
-    PLAYER_DEBUG("Unequipped item (handle: " + itemHandle.toString() +
-                 ") from slot: " + slotName);
+    PLAYER_DEBUG(std::format("Unequipped item (handle: {}) from slot: {}", itemHandle.toString(), slotName));
     return true;
   }
 
@@ -449,7 +440,7 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
 
   // Remove the item and apply its effects
   if (m_inventory->removeResource(itemHandle, 1)) {
-    PLAYER_DEBUG("Consumed item (handle: " + itemHandle.toString() + ")");
+    PLAYER_DEBUG(std::format("Consumed item (handle: {})", itemHandle.toString()));
     // Here you would apply the item's effects (healing, buffs, etc.)
     return true;
   }

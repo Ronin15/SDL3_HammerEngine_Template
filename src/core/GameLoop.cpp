@@ -9,6 +9,7 @@
 #include "core/WorkerBudget.hpp"
 #include <chrono>
 #include <exception>
+#include <format>
 
 GameLoop::GameLoop(float targetFPS, float fixedTimestep, bool threaded)
     : m_timestepManager(std::make_unique<TimestepManager>(targetFPS, fixedTimestep))
@@ -239,14 +240,15 @@ void GameLoop::runUpdateWorker() {
                 float newTargetFPS = m_timestepManager->getTargetFPS();
                 if (std::abs(newTargetFPS - targetFPS) > 0.1f) {
                     targetFPS = newTargetFPS;
-                    GAMELOOP_DEBUG("Target FPS changed to: " + std::to_string(targetFPS));
+                    GAMELOOP_DEBUG(std::format("Target FPS changed to: {}", targetFPS));
                 }
 
                 // Log performance metrics (only if logging is enabled and not in benchmark mode)
                 #ifdef DEBUG
                 if (avgUpdateTime.count() > 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
-                    GAMELOOP_DEBUG("Update performance: " + std::to_string(avgUpdateTime.count() / 1000.0f) +
-                                 "ms avg (" + std::to_string((avgUpdateTime.count() / 1000.0f) / (1000.0f / targetFPS) * 100.0f) + "% frame budget)");
+                    GAMELOOP_DEBUG(std::format("Update performance: {}ms avg ({}% frame budget)",
+                                             avgUpdateTime.count() / 1000.0f,
+                                             (avgUpdateTime.count() / 1000.0f) / (1000.0f / targetFPS) * 100.0f));
                 }
                 #endif
             }

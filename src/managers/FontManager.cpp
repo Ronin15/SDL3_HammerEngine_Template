@@ -10,6 +10,7 @@
 #include <vector>
 #include <cmath>
 #include <sstream>
+#include <format>
 
 // Font sizing configuration constants
 namespace {
@@ -84,9 +85,8 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
     int titleFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * TITLE_FONT_RATIO)), MIN_TITLE_FONT_SIZE, MAX_FONT_SIZE);
     int tooltipFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * TOOLTIP_FONT_RATIO)), MIN_TOOLTIP_FONT_SIZE, MAX_FONT_SIZE);
 
-    FONT_INFO("Calculated font sizes: base=" + std::to_string(baseFontSize) +
-              ", UI=" + std::to_string(uiFontSize) + ", title=" + std::to_string(titleFontSize) +
-              ", tooltip=" + std::to_string(tooltipFontSize));
+    FONT_INFO(std::format("Calculated font sizes: base={}, UI={}, title={}, tooltip={}",
+              baseFontSize, uiFontSize, titleFontSize, tooltipFontSize));
 
     bool success = true;
     for (const auto& filePath : m_fontFilePaths) {
@@ -112,7 +112,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     auto font = std::shared_ptr<TTF_Font>(TTF_OpenFont(fontFile.c_str(), fontSize), TTF_CloseFont);
 
     if (!font) {
-        FONT_ERROR("Failed to load font '" + fontFile + "' with size " + std::to_string(fontSize) + ": " + std::string(SDL_GetError()));
+        FONT_ERROR(std::format("Failed to load font '{}' with size {}: {}", fontFile, fontSize, SDL_GetError()));
         return false;
     }
 

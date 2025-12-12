@@ -9,6 +9,7 @@
 #include <numeric>
 #include <cmath>
 #include <cassert>
+#include <format>
 
 namespace HammerEngine {
 
@@ -319,10 +320,10 @@ void HierarchicalSpatialHash::logStatistics() const {
     [[maybe_unused]] size_t totalFineCells = getTotalFineCells();
 
     COLLISION_INFO("HierarchicalSpatialHash Statistics:");
-    COLLISION_INFO("  Total Bodies: " + std::to_string(totalBodies));
-    COLLISION_INFO("  Total Regions: " + std::to_string(m_regions.size()));
-    COLLISION_INFO("  Active Regions: " + std::to_string(activeRegions));
-    COLLISION_INFO("  Total Fine Cells: " + std::to_string(totalFineCells));
+    COLLISION_INFO(std::format("  Total Bodies: {}", totalBodies));
+    COLLISION_INFO(std::format("  Total Regions: {}", m_regions.size()));
+    COLLISION_INFO(std::format("  Active Regions: {}", activeRegions));
+    COLLISION_INFO(std::format("  Total Fine Cells: {}", totalFineCells));
 }
 
 // ========== Private Helper Methods ==========

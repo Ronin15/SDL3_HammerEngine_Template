@@ -68,7 +68,7 @@ void AIDemoState::handleInput() {
     aiMgr.broadcastMessage(message, true);
 
     // Simple feedback
-    GAMESTATE_INFO("AI " + std::string(m_aiPaused ? "PAUSED" : "RESUMED"));
+    GAMESTATE_INFO(std::format("AI {}", m_aiPaused ? "PAUSED" : "RESUMED"));
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -89,8 +89,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    GAMESTATE_INFO("Switching " + std::to_string(m_npcs.size()) +
-                   " NPCs to PATROL behavior (batched processing)...");
+    GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcs.size()));
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -190,19 +189,17 @@ void AIDemoState::handleInput() {
         CollisionManager &collisionMgr = CollisionManager::Instance();
         if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
           collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-          GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
-                         " x " + std::to_string(m_worldHeight));
+          GAMESTATE_INFO(std::format("CollisionManager bounds set to: {} x {}", m_worldWidth, m_worldHeight));
         }
       }
 
       int npcsToSpawn = m_npcCount - m_npcsSpawned;
-      GAMESTATE_INFO("Spawning " + std::to_string(npcsToSpawn) + " NPCs with Wander behavior...");
+      GAMESTATE_INFO(std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
       createNPCBatch(npcsToSpawn);
       m_npcsSpawned += npcsToSpawn;
-      GAMESTATE_INFO("Spawned " + std::to_string(m_npcsSpawned) + " / " +
-                     std::to_string(m_npcCount) + " NPCs (Standard behavior)");
+      GAMESTATE_INFO(std::format("Spawned {} / {} NPCs (Standard behavior)", m_npcsSpawned, m_npcCount));
     } else {
-      GAMESTATE_INFO("Already spawned " + std::to_string(m_npcCount) + " NPCs (max reached)");
+      GAMESTATE_INFO(std::format("Already spawned {} NPCs (max reached)", m_npcCount));
     }
   }
 
@@ -213,8 +210,7 @@ void AIDemoState::handleInput() {
       CollisionManager &collisionMgr = CollisionManager::Instance();
       if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
         collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-        GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
-                       " x " + std::to_string(m_worldHeight));
+        GAMESTATE_INFO(std::format("CollisionManager bounds set to: {} x {}", m_worldWidth, m_worldHeight));
       }
     }
 
@@ -222,8 +218,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
     int actualSpawned = m_npcs.size() - previousCount;
-    GAMESTATE_INFO("Spawned " + std::to_string(actualSpawned) + " NPCs with random behaviors (Total: " +
-                   std::to_string(m_npcs.size()) + ")");
+    GAMESTATE_INFO(std::format("Spawned {} NPCs with random behaviors (Total: {})", actualSpawned, m_npcs.size()));
   }
 }
 
@@ -265,7 +260,7 @@ bool AIDemoState::enter() {
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
       m_worldWidth = std::max(0.0f, maxX - minX);
       m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+      GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
     } else {
       // Fallback to screen dimensions if world bounds unavailable
       m_worldWidth = gameEngine.getLogicalWidth();
@@ -747,9 +742,7 @@ void AIDemoState::createNPCBatch(int count) {
     }
 
     if (created < count) {
-      GAMESTATE_WARN("Only created " + std::to_string(created) + " of " +
-                     std::to_string(count) + " requested NPCs after " +
-                     std::to_string(attempts) + " attempts");
+      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
     }
 
   } catch (const std::exception &e) {
@@ -835,9 +828,7 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
     }
 
     if (created < count) {
-      GAMESTATE_WARN("Only created " + std::to_string(created) + " of " +
-                     std::to_string(count) + " requested NPCs with random behaviors after " +
-                     std::to_string(attempts) + " attempts");
+      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
     }
 
   } catch (const std::exception &e) {

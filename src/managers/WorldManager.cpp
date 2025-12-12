@@ -17,6 +17,7 @@
 #include "events/HarvestResourceEvent.hpp"
 #include "SDL3/SDL_render.h"
 #include <algorithm>
+#include <format>
 
 bool WorldManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
@@ -255,14 +256,14 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY)
     std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
     if (!isValidPosition(targetX, targetY)) {
-        WORLD_MANAGER_ERROR("Invalid harvest position: (" + std::to_string(targetX) + ", " + std::to_string(targetY) + ")");
+        WORLD_MANAGER_ERROR(std::format("Invalid harvest position: ({}, {})", targetX, targetY));
         return false;
     }
 
     HammerEngine::Tile& tile = m_currentWorld->grid[targetY][targetX];
 
     if (tile.obstacleType == HammerEngine::ObstacleType::NONE) {
-        WORLD_MANAGER_WARN("No harvestable resource at position: (" + std::to_string(targetX) + ", " + std::to_string(targetY) + ")");
+        WORLD_MANAGER_WARN(std::format("No harvestable resource at position: ({}, {})", targetX, targetY));
         return false;
     }
 
@@ -280,7 +281,7 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY)
     // Notify WorldResourceManager about resource depletion
     // This is a placeholder - actual resource tracking would need proper resource handles
 
-    WORLD_MANAGER_INFO("Resource harvested at (" + std::to_string(targetX) + ", " + std::to_string(targetY) + ") by entity " + std::to_string(entityId));
+    WORLD_MANAGER_INFO(std::format("Resource harvested at ({}, {}) by entity {}", targetX, targetY, entityId));
     return true;
 }
 
@@ -293,7 +294,7 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile& newTile) {
     std::lock_guard<std::shared_mutex> lock(m_worldMutex);
 
     if (!isValidPosition(x, y)) {
-        WORLD_MANAGER_ERROR("Invalid tile position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+        WORLD_MANAGER_ERROR(std::format("Invalid tile position: ({}, {})", x, y));
         return false;
     }
 
@@ -344,7 +345,7 @@ void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& 
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerTileChanged(x, y, changeType, EventManager::DispatchMode::Deferred);
 
-        WORLD_MANAGER_DEBUG("TileChangedEvent fired for tile at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+        WORLD_MANAGER_DEBUG(std::format("TileChangedEvent fired for tile at ({}, {})", x, y));
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("Failed to fire TileChangedEvent: " + std::string(ex.what()));
     }
@@ -366,7 +367,7 @@ void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerWorldLoaded(worldId, width, height, EventManager::DispatchMode::Deferred);
 
-        WORLD_MANAGER_INFO("WorldLoadedEvent registered and executed for world: " + worldId + " (" + std::to_string(width) + "x" + std::to_string(height) + ")");
+        WORLD_MANAGER_INFO(std::format("WorldLoadedEvent registered and executed for world: {} ({}x{})", worldId, width, height));
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("Failed to fire WorldLoadedEvent: " + std::string(ex.what()));
     }
@@ -411,9 +412,9 @@ void WorldManager::registerEventHandlers() {
                 // Handle resource changes that may affect world generation or state
                 auto resourceEvent = std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
                 if (resourceEvent) {
-                    WORLD_MANAGER_DEBUG("WorldManager received resource change: " +
-                                       resourceEvent->getResourceHandle().toString() +
-                                       " changed by " + std::to_string(resourceEvent->getQuantityChange()));
+                    WORLD_MANAGER_DEBUG(std::format("WorldManager received resource change: {} changed by {}",
+                                       resourceEvent->getResourceHandle().toString(),
+                                       resourceEvent->getQuantityChange()));
                 }
             }
         }));
@@ -423,10 +424,10 @@ void WorldManager::registerEventHandlers() {
             if (data.isActive() && data.event) {
                 auto harvestEvent = std::dynamic_pointer_cast<HarvestResourceEvent>(data.event);
                 if (harvestEvent) {
-                    WORLD_MANAGER_DEBUG("WorldManager received harvest request from entity " +
-                                       std::to_string(harvestEvent->getEntityId()) +
-                                       " at (" + std::to_string(harvestEvent->getTargetX()) +
-                                       ", " + std::to_string(harvestEvent->getTargetY()) + ")");
+                    WORLD_MANAGER_DEBUG(std::format("WorldManager received harvest request from entity {} at ({}, {})",
+                                       harvestEvent->getEntityId(),
+                                       harvestEvent->getTargetX(),
+                                       harvestEvent->getTargetY()));
 
                     // Handle the harvest request
                     handleHarvestResource(harvestEvent->getEntityId(),
@@ -556,19 +557,19 @@ void WorldManager::initializeWorldResources() {
         if (woodHandle.isValid()) {
             int woodAmount = baseAmount + forestTiles * 2; // More wood in forests
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, woodHandle, woodAmount);
-            WORLD_MANAGER_DEBUG("Added " + std::to_string(woodAmount) + " wood to world");
+            WORLD_MANAGER_DEBUG(std::format("Added {} wood to world", woodAmount));
         }
 
         if (ironHandle.isValid()) {
             int ironAmount = baseAmount + mountainTiles; // More iron in mountains
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, ironHandle, ironAmount);
-            WORLD_MANAGER_DEBUG("Added " + std::to_string(ironAmount) + " iron ore to world");
+            WORLD_MANAGER_DEBUG(std::format("Added {} iron ore to world", ironAmount));
         }
 
         if (goldHandle.isValid()) {
             int goldAmount = baseAmount * 3; // Basic starting gold
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, goldHandle, goldAmount);
-            WORLD_MANAGER_DEBUG("Added " + std::to_string(goldAmount) + " gold to world");
+            WORLD_MANAGER_DEBUG(std::format("Added {} gold to world", goldAmount));
         }
 
         // Rare resources based on specific biomes and elevation
@@ -577,7 +578,7 @@ void WorldManager::initializeWorldResources() {
             if (mithrilHandle.isValid()) {
                 int mithrilAmount = std::max(1, mountainTiles / 10); // Rare resource
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, mithrilHandle, mithrilAmount);
-                WORLD_MANAGER_DEBUG("Added " + std::to_string(mithrilAmount) + " mithril ore to world");
+                WORLD_MANAGER_DEBUG(std::format("Added {} mithril ore to world", mithrilAmount));
             }
         }
 
@@ -586,7 +587,7 @@ void WorldManager::initializeWorldResources() {
             if (enchantedWoodHandle.isValid()) {
                 int enchantedAmount = std::max(1, forestTiles / 15); // Rare forest resource
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, enchantedWoodHandle, enchantedAmount);
-                WORLD_MANAGER_DEBUG("Added " + std::to_string(enchantedAmount) + " enchanted wood to world");
+                WORLD_MANAGER_DEBUG(std::format("Added {} enchanted wood to world", enchantedAmount));
             }
         }
 
@@ -595,7 +596,7 @@ void WorldManager::initializeWorldResources() {
             if (crystalHandle.isValid()) {
                 int crystalAmount = std::max(1, celestialTiles / 8); // Celestial biome exclusive
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, crystalHandle, crystalAmount);
-                WORLD_MANAGER_DEBUG("Added " + std::to_string(crystalAmount) + " crystal essence to world");
+                WORLD_MANAGER_DEBUG(std::format("Added {} crystal essence to world", crystalAmount));
             }
         }
 
@@ -604,7 +605,7 @@ void WorldManager::initializeWorldResources() {
             if (voidSilkHandle.isValid()) {
                 int voidSilkAmount = std::max(1, swampTiles / 20); // Very rare swamp resource
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, voidSilkHandle, voidSilkAmount);
-                WORLD_MANAGER_DEBUG("Added " + std::to_string(voidSilkAmount) + " void silk to world");
+                WORLD_MANAGER_DEBUG(std::format("Added {} void silk to world", voidSilkAmount));
             }
         }
 
@@ -614,7 +615,7 @@ void WorldManager::initializeWorldResources() {
             if (stoneHandle.isValid()) {
                 int stoneAmount = highElevationTiles / 5; // Building materials from high areas
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, stoneHandle, stoneAmount);
-                WORLD_MANAGER_DEBUG("Added " + std::to_string(stoneAmount) + " enchanted stone to world");
+                WORLD_MANAGER_DEBUG(std::format("Added {} enchanted stone to world", stoneAmount));
             }
         }
 
@@ -623,11 +624,11 @@ void WorldManager::initializeWorldResources() {
         if (arcaneEnergyHandle.isValid()) {
             int energyAmount = totalTiles * 2; // Abundant energy resource
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, arcaneEnergyHandle, energyAmount);
-            WORLD_MANAGER_DEBUG("Added " + std::to_string(energyAmount) + " arcane energy to world");
+            WORLD_MANAGER_DEBUG(std::format("Added {} arcane energy to world", energyAmount));
         }
 
-        WORLD_MANAGER_INFO("World resource initialization completed for " + m_currentWorld->worldId +
-                          " (" + std::to_string(totalTiles) + " tiles processed)");
+        WORLD_MANAGER_INFO(std::format("World resource initialization completed for {} ({} tiles processed)",
+                          m_currentWorld->worldId, totalTiles));
 
     } catch (const std::exception& ex) {
         WORLD_MANAGER_ERROR("Error during world resource initialization: " + std::string(ex.what()));
@@ -748,12 +749,12 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs()
 
     // Validate critical textures to catch missing seasonal assets early
     if (!m_cachedTextures.biome_default.ptr) {
-        WORLD_MANAGER_ERROR("TileRenderer: Missing biome_default texture for season " +
-                           std::to_string(static_cast<int>(m_currentSeason)));
+        WORLD_MANAGER_ERROR(std::format("TileRenderer: Missing biome_default texture for season {}",
+                           static_cast<int>(m_currentSeason)));
     }
     if (!m_cachedTextures.obstacle_water.ptr) {
-        WORLD_MANAGER_ERROR("TileRenderer: Missing obstacle_water texture for season " +
-                           std::to_string(static_cast<int>(m_currentSeason)));
+        WORLD_MANAGER_ERROR(std::format("TileRenderer: Missing obstacle_water texture for season {}",
+                           static_cast<int>(m_currentSeason)));
     }
 }
 
@@ -1164,8 +1165,8 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
         }
 
         if (toEvict > 0) {
-            WORLD_MANAGER_DEBUG("TileRenderer: Evicted " + std::to_string(std::min(toEvict, m_evictionBuffer.size())) +
-                               " chunks from cache (cache size: " + std::to_string(m_chunkCache.size()) + ")");
+            WORLD_MANAGER_DEBUG(std::format("TileRenderer: Evicted {} chunks from cache (cache size: {})",
+                               std::min(toEvict, m_evictionBuffer.size()), m_chunkCache.size()));
         }
     }
 }
@@ -1221,7 +1222,8 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_
     // Debug logging for texture issues (only in debug builds)
     #ifdef DEBUG
     if (biomeTextureID.empty()) {
-        WORLD_MANAGER_WARN("TileRenderer: Empty biome texture ID for tile at screen position (" + std::to_string(screenX) + ", " + std::to_string(screenY) + ")");
+        WORLD_MANAGER_WARN(std::format("TileRenderer: Empty biome texture ID for tile at screen position ({}, {})",
+                           screenX, screenY));
     }
     #endif
 }

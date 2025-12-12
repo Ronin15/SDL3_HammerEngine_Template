@@ -14,6 +14,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <format>
 
 // File signature constant
 constexpr char HAMMER_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E',
@@ -129,7 +130,7 @@ bool SaveGameManager::save(const std::string &saveFileName,
 
 bool SaveGameManager::saveToSlot(int slotNumber, const Player &player) {
   if (slotNumber < 1) {
-    SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
+    SAVEGAME_ERROR(std::format("Invalid slot number: {}", slotNumber));
     return false;
   }
 
@@ -219,7 +220,7 @@ bool SaveGameManager::load(const std::string &saveFileName,
 
 bool SaveGameManager::loadFromSlot(int slotNumber, Player &player) const {
   if (slotNumber < 1) {
-    SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
+    SAVEGAME_ERROR(std::format("Invalid slot number: {}", slotNumber));
     return false;
   }
 
@@ -246,7 +247,7 @@ bool SaveGameManager::deleteSave(const std::string &saveFileName) const {
 
 bool SaveGameManager::deleteSlot(int slotNumber) const {
   if (slotNumber < 1) {
-    SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
+    SAVEGAME_ERROR(std::format("Invalid slot number: {}", slotNumber));
     return false;
   }
 

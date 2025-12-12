@@ -12,6 +12,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <cmath>
+#include <format>
 #include "managers/WorldManager.hpp"
 
 // Static member initialization
@@ -97,7 +98,7 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
   if (!target) {
     // No target, stop following
-    AI_ERROR("FollowBehavior: No target found for entity " + std::to_string(entity->getID()));
+    AI_ERROR(std::format("FollowBehavior: No target found for entity {}", entity->getID()));
     state.isFollowing = false;
     return;
   }

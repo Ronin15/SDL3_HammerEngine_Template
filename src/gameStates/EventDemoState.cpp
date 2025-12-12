@@ -96,7 +96,7 @@ bool EventDemoState::enter() {
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
       m_worldWidth = std::max(0.0f, maxX - minX);
       m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+      GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
     } else {
       // Fallback to screen dimensions if world bounds unavailable
       m_worldWidth = gameEngine.getLogicalWidth();

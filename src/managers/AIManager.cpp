@@ -15,6 +15,7 @@
 #include "utils/SIMDMath.hpp"
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <iostream>
 
 // Use SIMD abstraction layer
@@ -233,7 +234,7 @@ void AIManager::prepareForStateTransition() {
     }
 
     if (cleanedCount > 0) {
-      AI_INFO("Cleaned " + std::to_string(cleanedCount) + " AI behaviors");
+      AI_INFO(std::format("Cleaned {} AI behaviors", cleanedCount));
     }
 
     // Clear all storage completely
@@ -375,9 +376,8 @@ void AIManager::update(float deltaTime) {
 
       if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
-        AI_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
-                 std::to_string(queueCapacity) +
-                 "), using single-threaded processing");
+        AI_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
+                             queueSize, queueCapacity));
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
         m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
@@ -603,20 +603,14 @@ void AIManager::update(float deltaTime) {
               static_cast<size_t>(1),
               m_lastThreadBatchCount.load(std::memory_order_relaxed));
 
-          AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                   ", Entities/sec: " +
-                   std::to_string(m_globalStats.entitiesPerSecond) +
-                   " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                   std::to_string(availableWorkers) +
-                   " workers, Budget: " + std::to_string(aiBudget) +
-                   ", Batches: " + std::to_string(batchCountLogged) + "]");
+          AI_DEBUG(std::format("AI Summary - Entities: {}, Avg Update: {}ms, Entities/sec: {} "
+                               "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+                               entityCount, avgDuration, m_globalStats.entitiesPerSecond,
+                               optimalWorkers, availableWorkers, aiBudget, batchCountLogged));
         } else {
-          AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                   ", Entities/sec: " +
-                   std::to_string(m_globalStats.entitiesPerSecond) +
-                   " [Single-threaded]");
+          AI_DEBUG(std::format("AI Summary - Entities: {}, Avg Update: {}ms, Entities/sec: {} "
+                               "[Single-threaded]",
+                               entityCount, avgDuration, m_globalStats.entitiesPerSecond));
         }
 
         // Pathfinding statistics now handled by PathfinderManager
@@ -1159,8 +1153,7 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
 void AIManager::setThreadingThreshold(size_t threshold) {
   threshold = std::max(static_cast<size_t>(1), threshold);
   m_threadingThreshold.store(threshold, std::memory_order_release);
-  AI_INFO("AI threading threshold set to " + std::to_string(threshold) +
-          " entities");
+  AI_INFO(std::format("AI threading threshold set to {} entities", threshold));
 }
 
 size_t AIManager::getThreadingThreshold() const {
@@ -1169,8 +1162,8 @@ size_t AIManager::getThreadingThreshold() const {
 
 void AIManager::setWaitForBatchCompletion(bool wait) {
   m_waitForBatchCompletion.store(wait, std::memory_order_release);
-  AI_INFO("AI batch completion wait " + std::string(wait ? "enabled" : "disabled") +
-          " (smooth frames: " + std::string(wait ? "no" : "yes") + ")");
+  AI_INFO(std::format("AI batch completion wait {} (smooth frames: {})",
+                      wait ? "enabled" : "disabled", wait ? "no" : "yes"));
 }
 
 bool AIManager::getWaitForBatchCompletion() const {
@@ -1798,8 +1791,7 @@ void AIManager::cleanupInactiveEntities() {
     }
   }
 
-  AI_DEBUG("Cleaned up " + std::to_string(toRemove.size()) +
-           " inactive entities");
+  AI_DEBUG(std::format("Cleaned up {} inactive entities", toRemove.size()));
 }
 
 void AIManager::cleanupAllEntities() {

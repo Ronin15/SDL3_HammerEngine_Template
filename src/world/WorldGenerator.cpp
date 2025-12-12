@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <format>
 
 namespace HammerEngine {
 
@@ -63,9 +64,8 @@ float WorldGenerator::PerlinNoise::noise(float x, float y) const {
 std::unique_ptr<WorldData>
 WorldGenerator::generateWorld(const WorldGenerationConfig &config,
                               const WorldGenerationProgressCallback& progressCallback) {
-  WORLD_MANAGER_INFO("Generating world: " + std::to_string(config.width) + "x" +
-                     std::to_string(config.height) + " with seed " +
-                     std::to_string(config.seed));
+  WORLD_MANAGER_INFO(std::format("Generating world: {}x{} with seed {}",
+                                 config.width, config.height, config.seed));
 
   // Report initial progress
   if (progressCallback) {
@@ -477,7 +477,7 @@ void WorldGenerator::distributeDecorations(WorldData& world,
 }
 
 void WorldGenerator::calculateInitialResources(const WorldData &world) {
-  WORLD_MANAGER_INFO("Calculating initial resources for world: " + world.worldId);
+  WORLD_MANAGER_INFO(std::format("Calculating initial resources for world: {}", world.worldId));
 
   int treeCount = 0;
   int rockCount = 0;
@@ -501,9 +501,8 @@ void WorldGenerator::calculateInitialResources(const WorldData &world) {
     }
   }
 
-  WORLD_MANAGER_INFO("Initial resources - Trees: " + std::to_string(treeCount) +
-                     ", Rocks: " + std::to_string(rockCount) +
-                     ", Water: " + std::to_string(waterCount));
+  WORLD_MANAGER_INFO(std::format("Initial resources - Trees: {}, Rocks: {}, Water: {}",
+                                 treeCount, rockCount, waterCount));
 }
 
 void WorldGenerator::generateBuildings(WorldData& world, std::default_random_engine& rng) {
@@ -605,8 +604,7 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
   // Validate bounds before creating building
   if (x < 0 || y < 0 || x >= width - 1 || y >= height - 1) {
-    WORLD_MANAGER_ERROR("createBuilding: Invalid position (" + std::to_string(x) +
-                        ", " + std::to_string(y) + ") - out of bounds");
+    WORLD_MANAGER_ERROR(std::format("createBuilding: Invalid position ({}, {}) - out of bounds", x, y));
     return 0;
   }
 
@@ -621,8 +619,8 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
       // Double-check bounds for safety
       if (tileX < 0 || tileY < 0 || tileX >= width || tileY >= height) {
-        WORLD_MANAGER_ERROR("createBuilding: Tile (" + std::to_string(tileX) +
-                            ", " + std::to_string(tileY) + ") out of bounds during building creation");
+        WORLD_MANAGER_ERROR(std::format("createBuilding: Tile ({}, {}) out of bounds during building creation",
+                                        tileX, tileY));
         continue;
       }
 
@@ -630,8 +628,7 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
       // Verify tile is available before marking
       if (tile.obstacleType != ObstacleType::NONE || tile.buildingId > 0) {
-        WORLD_MANAGER_WARN("createBuilding: Tile (" + std::to_string(tileX) +
-                           ", " + std::to_string(tileY) + ") already occupied");
+        WORLD_MANAGER_WARN(std::format("createBuilding: Tile ({}, {}) already occupied", tileX, tileY));
         continue;
       }
 
@@ -645,14 +642,11 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
   // Validate that all 4 tiles were successfully marked
   if (tilesMarked != 4) {
-    WORLD_MANAGER_ERROR("createBuilding: Building " + std::to_string(buildingId) +
-                        " at (" + std::to_string(x) + ", " + std::to_string(y) +
-                        ") only marked " + std::to_string(tilesMarked) + "/4 tiles");
+    WORLD_MANAGER_ERROR(std::format("createBuilding: Building {} at ({}, {}) only marked {}/4 tiles",
+                                    buildingId, x, y, tilesMarked));
   } else {
-    WORLD_MANAGER_DEBUG("createBuilding: Building " + std::to_string(buildingId) +
-                        " created at (" + std::to_string(x) + ", " + std::to_string(y) +
-                        ") covering tiles (" + std::to_string(x) + "-" + std::to_string(x+1) +
-                        ", " + std::to_string(y) + "-" + std::to_string(y+1) + ")");
+    WORLD_MANAGER_DEBUG(std::format("createBuilding: Building {} created at ({}, {}) covering tiles ({}-{}, {}-{})",
+                                    buildingId, x, y, x, x+1, y, y+1));
   }
 
   return buildingId;

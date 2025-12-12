@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <format>
 #include "managers/WorldManager.hpp"
 
 namespace HammerEngine {
@@ -69,7 +70,7 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
-    CAMERA_INFO("Camera created at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    CAMERA_INFO(std::format("Camera created at position ({}, {})", x, y));
 }
 
 void Camera::update(float deltaTime) {
@@ -183,18 +184,18 @@ void Camera::setViewport(float width, float height) {
     if (width > 0.0f && height > 0.0f) {
         m_viewport.width = width;
         m_viewport.height = height;
-        CAMERA_DEBUG("Viewport updated to: " + std::to_string(static_cast<int>(width)) + "x" +
-                        std::to_string(static_cast<int>(height)));
+        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
+                                 static_cast<int>(width), static_cast<int>(height)));
     } else {
-        CAMERA_WARN("Invalid viewport dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+        CAMERA_WARN(std::format("Invalid viewport dimensions: {}x{}", width, height));
     }
 }
 
 void Camera::setViewport(const Viewport& viewport) {
     if (viewport.isValid()) {
         m_viewport = viewport;
-        CAMERA_DEBUG("Viewport updated to: " + std::to_string(static_cast<int>(viewport.width)) + "x" +
-                        std::to_string(static_cast<int>(viewport.height)));
+        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
+                                 static_cast<int>(viewport.width), static_cast<int>(viewport.height)));
     } else {
         CAMERA_WARN("Invalid viewport provided");
     }
@@ -207,8 +208,8 @@ void Camera::setWorldBounds(float minX, float minY, float maxX, float maxY) {
         m_worldBounds.maxX = maxX;
         m_worldBounds.maxY = maxY;
     } else {
-        CAMERA_WARN("Invalid world bounds: (" + std::to_string(minX) + ", " + std::to_string(minY) +
-                        ") to (" + std::to_string(maxX) + ", " + std::to_string(maxY) + ")");
+        CAMERA_WARN(std::format("Invalid world bounds: ({}, {}) to ({}, {})",
+                                minX, minY, maxX, maxY));
     }
 }
 
@@ -235,9 +236,9 @@ void Camera::setMode(Mode mode) {
         if (m_eventFiringEnabled) {
             fireModeChangedEvent(oldMode, mode);
         }
-        
-        CAMERA_INFO("Camera mode changed from " + std::to_string(static_cast<int>(oldMode)) +
-                       " to " + std::to_string(static_cast<int>(mode)));
+
+        CAMERA_INFO(std::format("Camera mode changed from {} to {}",
+                                static_cast<int>(oldMode), static_cast<int>(mode)));
     }
 }
 
@@ -290,8 +291,7 @@ bool Camera::hasTarget() const {
 bool Camera::setConfig(const Config& config) {
     if (config.isValid()) {
         m_config = config;
-        CAMERA_INFO("Camera configuration updated (followSpeed=" +
-                    std::to_string(m_config.followSpeed) + ")");
+        CAMERA_INFO(std::format("Camera configuration updated (followSpeed={})", m_config.followSpeed));
         return true;
     } else {
         CAMERA_WARN("Invalid camera configuration provided");
@@ -453,8 +453,7 @@ void Camera::shake(float duration, float intensity) {
             fireShakeStartedEvent(duration, intensity);
         }
 
-        CAMERA_INFO("Camera shake started: duration=" + std::to_string(duration) +
-                       "s, intensity=" + std::to_string(intensity));
+        CAMERA_INFO(std::format("Camera shake started: duration={}s, intensity={}", duration, intensity));
     }
 }
 
@@ -601,8 +600,7 @@ void Camera::zoomIn() {
             fireZoomChangedEvent(oldZoom, m_zoom);
         }
 
-        CAMERA_INFO("Camera zoomed in to level " + std::to_string(m_currentZoomIndex) +
-                       " (zoom: " + std::to_string(m_zoom) + "x)");
+        CAMERA_INFO(std::format("Camera zoomed in to level {} (zoom: {}x)", m_currentZoomIndex, m_zoom));
     } else {
         CAMERA_DEBUG("Camera already at maximum zoom level");
     }
@@ -619,8 +617,7 @@ void Camera::zoomOut() {
             fireZoomChangedEvent(oldZoom, m_zoom);
         }
 
-        CAMERA_INFO("Camera zoomed out to level " + std::to_string(m_currentZoomIndex) +
-                       " (zoom: " + std::to_string(m_zoom) + "x)");
+        CAMERA_INFO(std::format("Camera zoomed out to level {} (zoom: {}x)", m_currentZoomIndex, m_zoom));
     } else {
         CAMERA_DEBUG("Camera already at minimum zoom level");
     }
@@ -629,8 +626,8 @@ void Camera::zoomOut() {
 bool Camera::setZoomLevel(int levelIndex) {
     const int maxZoomIndex = static_cast<int>(m_config.zoomLevels.size()) - 1;
     if (levelIndex < 0 || levelIndex > maxZoomIndex) {
-        CAMERA_WARN("Invalid zoom level index: " + std::to_string(levelIndex) +
-                       " (valid range: 0-" + std::to_string(maxZoomIndex) + ")");
+        CAMERA_WARN(std::format("Invalid zoom level index: {} (valid range: 0-{})",
+                                levelIndex, maxZoomIndex));
         return false;
     }
 
@@ -644,8 +641,7 @@ bool Camera::setZoomLevel(int levelIndex) {
             fireZoomChangedEvent(oldZoom, m_zoom);
         }
 
-        CAMERA_INFO("Camera zoom set to level " + std::to_string(m_currentZoomIndex) +
-                       " (zoom: " + std::to_string(m_zoom) + "x)");
+        CAMERA_INFO(std::format("Camera zoom set to level {} (zoom: {}x)", m_currentZoomIndex, m_zoom));
     }
 
     return true;
@@ -659,11 +655,9 @@ void Camera::syncViewportWithEngine() {
 
     // Only update if dimensions actually changed (avoid unnecessary updates)
     if (m_viewport.width != logicalWidth || m_viewport.height != logicalHeight) {
-        CAMERA_INFO("Syncing camera viewport: " +
-                       std::to_string(static_cast<int>(m_viewport.width)) + "x" +
-                       std::to_string(static_cast<int>(m_viewport.height)) + " -> " +
-                       std::to_string(static_cast<int>(logicalWidth)) + "x" +
-                       std::to_string(static_cast<int>(logicalHeight)));
+        CAMERA_INFO(std::format("Syncing camera viewport: {}x{} -> {}x{}",
+                                static_cast<int>(m_viewport.width), static_cast<int>(m_viewport.height),
+                                static_cast<int>(logicalWidth), static_cast<int>(logicalHeight)));
 
         setViewport(logicalWidth, logicalHeight);
     }
