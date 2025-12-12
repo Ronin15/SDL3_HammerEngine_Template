@@ -1342,10 +1342,12 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
     }
   }
 
-  // Rebuild index mapping for remaining effects
-  m_effectIdToIndex.clear();
-  for (size_t i = 0; i < m_effectInstances.size(); ++i) {
-    m_effectIdToIndex[m_effectInstances[i].id] = i;
+  // Only rebuild index mapping if weather effects were removed AND non-weather effects remain
+  if (stoppedCount > 0 && !m_effectInstances.empty()) {
+    m_effectIdToIndex.clear();
+    for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+      m_effectIdToIndex[m_effectInstances[i].id] = i;
+    }
   }
 
   // Clear weather particles
