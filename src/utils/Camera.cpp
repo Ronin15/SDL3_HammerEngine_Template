@@ -283,17 +283,15 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
-void Camera::getRenderOffset(float entityInterpX, float entityInterpY,
-                             float& offsetX, float& offsetY) const {
-    // UNIFIED INTERPOLATION: Compute camera offset from pre-computed entity position
-    // This ensures camera and entity use the EXACT same position, eliminating wobble
+void Camera::computeOffsetFromCenter(float centerX, float centerY,
+                                     float& offsetX, float& offsetY) const {
+    // Compute camera offset (top-left corner) from a given center position
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    // Center camera on entity's interpolated position
-    // Sub-pixel camera position - unified chunk rendering (biomes + obstacles together) eliminates wobble
-    offsetX = entityInterpX - (worldViewWidth * 0.5f);
-    offsetY = entityInterpY - (worldViewHeight * 0.5f);
+    // Convert center position to top-left offset
+    offsetX = centerX - (worldViewWidth * 0.5f);
+    offsetY = centerY - (worldViewHeight * 0.5f);
 
     // Apply world bounds clamping if enabled
     if (m_config.clampToWorldBounds) {
@@ -339,7 +337,7 @@ Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpola
     }
 
     // Compute screen offset from the center position we determined
-    getRenderOffset(center.getX(), center.getY(), offsetX, offsetY);
+    computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
 
     // Return the center position we used - caller should render followed entity here
     return center;

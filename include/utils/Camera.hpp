@@ -287,21 +287,6 @@ public:
     ViewRect getViewRect() const;
 
     /**
-     * @brief Gets the pixel-snapped render offset from a pre-computed entity position
-     *
-     * Use this in Follow mode to ensure camera offset is computed from the EXACT
-     * same interpolated position that the entity will use for rendering. This
-     * eliminates any divergence between camera and entity interpolation.
-     *
-     * @param entityInterpX Pre-computed interpolated entity X position
-     * @param entityInterpY Pre-computed interpolated entity Y position
-     * @param offsetX Output: pixel-snapped camera X offset (top-left)
-     * @param offsetY Output: pixel-snapped camera Y offset (top-left)
-     */
-    void getRenderOffset(float entityInterpX, float entityInterpY,
-                         float& offsetX, float& offsetY) const;
-
-    /**
      * @brief Gets render offset and returns the center position used for sync
      *
      * In Follow mode, reads target's interpolated position (ONE atomic read)
@@ -492,6 +477,9 @@ private:
     void clampToWorldBounds();
     Vector2D getTargetPosition() const;
     Vector2D generateShakeOffset() const;
+
+    // Internal: compute offset from a given center position (used by public getRenderOffset)
+    void computeOffsetFromCenter(float centerX, float centerY, float& offsetX, float& offsetY) const;
     
     // Event firing helpers
     void firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition);
