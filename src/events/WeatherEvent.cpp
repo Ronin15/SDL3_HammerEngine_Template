@@ -182,8 +182,7 @@ void WeatherEvent::execute() {
   try {
     if (ParticleManager::Instance().isInitialized()) {
       // For Clear weather, we just clear effects
-      if (m_weatherType == WeatherType::Clear ||
-          getWeatherTypeString() == "Clear") {
+      if (m_weatherType == WeatherType::Clear) {
         EVENT_INFO("Clearing weather effects");
       } else if (!m_params.particleEffect.empty()) {
         EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
@@ -266,9 +265,37 @@ void WeatherEvent::setWeatherType(WeatherType type) {
   m_customType.clear(); // Clear custom type when setting a standard type
 }
 
-void WeatherEvent::setWeatherType(const std::string &customType) {
-  m_weatherType = WeatherType::Custom;
-  m_customType = customType;
+void WeatherEvent::setWeatherType(const std::string &weatherTypeStr) {
+  if (weatherTypeStr.empty()) {
+    m_weatherType = WeatherType::Custom;
+    m_customType = weatherTypeStr;
+    return;
+  }
+
+  switch (weatherTypeStr[0]) {
+    case 'C':
+      if (weatherTypeStr == "Clear")  { m_weatherType = WeatherType::Clear;  break; }
+      if (weatherTypeStr == "Cloudy") { m_weatherType = WeatherType::Cloudy; break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'R':
+      if (weatherTypeStr == "Rainy")  { m_weatherType = WeatherType::Rainy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'S':
+      if (weatherTypeStr == "Stormy") { m_weatherType = WeatherType::Stormy; break; }
+      if (weatherTypeStr == "Snowy")  { m_weatherType = WeatherType::Snowy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'F':
+      if (weatherTypeStr == "Foggy")  { m_weatherType = WeatherType::Foggy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'W':
+      if (weatherTypeStr == "Windy")  { m_weatherType = WeatherType::Windy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    default:
+      m_weatherType = WeatherType::Custom;
+      m_customType = weatherTypeStr;
+      return;
+  }
+  m_customType.clear();
 }
 
 bool WeatherEvent::checkConditions() {
