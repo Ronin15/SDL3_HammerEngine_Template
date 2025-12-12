@@ -694,6 +694,58 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs()
     cacheTexture(m_cachedTextures.building_large, m_cachedTextureIDs.building_large);
     cacheTexture(m_cachedTextures.building_cityhall, m_cachedTextureIDs.building_cityhall);
 
+    // Decoration textures - handle seasonal variants
+    // Flowers only appear in Spring/Summer (empty string = won't render)
+    bool hasFlowers = (m_currentSeason == Season::Spring || m_currentSeason == Season::Summer);
+    m_cachedTextureIDs.decoration_flower_blue = hasFlowers ? "flower_blue" : "";
+    m_cachedTextureIDs.decoration_flower_pink = hasFlowers ? "flower_pink" : "";
+    m_cachedTextureIDs.decoration_flower_white = hasFlowers ? "flower_white" : "";
+    m_cachedTextureIDs.decoration_flower_yellow = hasFlowers ? "flower_yellow" : "";
+
+    // Mushrooms - no seasonal variants
+    m_cachedTextureIDs.decoration_mushroom_purple = "mushroom_purple";
+    m_cachedTextureIDs.decoration_mushroom_tan = "mushroom_tan";
+
+    // Grass - seasonal variants (use dead grass in fall/winter)
+    if (m_currentSeason == Season::Spring) {
+        m_cachedTextureIDs.decoration_grass_small = "spring_obstacle_grass";
+        m_cachedTextureIDs.decoration_grass_large = "spring_obstacle_grass";
+    } else if (m_currentSeason == Season::Summer) {
+        m_cachedTextureIDs.decoration_grass_small = "summer_obstacle_grass";
+        m_cachedTextureIDs.decoration_grass_large = "summer_obstacle_grass";
+    } else {
+        m_cachedTextureIDs.decoration_grass_small = "dead_grass_obstacle_small";
+        m_cachedTextureIDs.decoration_grass_large = "dead_grass_obstacle_large";
+    }
+
+    // Bushes - seasonal variants
+    if (m_currentSeason == Season::Fall) {
+        m_cachedTextureIDs.decoration_bush = "bush_fall";
+    } else if (m_currentSeason == Season::Winter) {
+        m_cachedTextureIDs.decoration_bush = "bush_winter";
+    } else {
+        m_cachedTextureIDs.decoration_bush = "bush_spring";
+    }
+
+    // Stumps and rocks - no seasonal variants
+    m_cachedTextureIDs.decoration_stump_small = "stump_obstacle_small";
+    m_cachedTextureIDs.decoration_stump_medium = "stump_obstacle_medium";
+    m_cachedTextureIDs.decoration_rock_small = "obstacle_rock";
+
+    // Cache decoration texture pointers
+    cacheTexture(m_cachedTextures.decoration_flower_blue, m_cachedTextureIDs.decoration_flower_blue);
+    cacheTexture(m_cachedTextures.decoration_flower_pink, m_cachedTextureIDs.decoration_flower_pink);
+    cacheTexture(m_cachedTextures.decoration_flower_white, m_cachedTextureIDs.decoration_flower_white);
+    cacheTexture(m_cachedTextures.decoration_flower_yellow, m_cachedTextureIDs.decoration_flower_yellow);
+    cacheTexture(m_cachedTextures.decoration_mushroom_purple, m_cachedTextureIDs.decoration_mushroom_purple);
+    cacheTexture(m_cachedTextures.decoration_mushroom_tan, m_cachedTextureIDs.decoration_mushroom_tan);
+    cacheTexture(m_cachedTextures.decoration_grass_small, m_cachedTextureIDs.decoration_grass_small);
+    cacheTexture(m_cachedTextures.decoration_grass_large, m_cachedTextureIDs.decoration_grass_large);
+    cacheTexture(m_cachedTextures.decoration_bush, m_cachedTextureIDs.decoration_bush);
+    cacheTexture(m_cachedTextures.decoration_stump_small, m_cachedTextureIDs.decoration_stump_small);
+    cacheTexture(m_cachedTextures.decoration_stump_medium, m_cachedTextureIDs.decoration_stump_medium);
+    cacheTexture(m_cachedTextures.decoration_rock_small, m_cachedTextureIDs.decoration_rock_small);
+
     // Validate critical textures to catch missing seasonal assets early
     if (!m_cachedTextures.biome_default.ptr) {
         WORLD_MANAGER_ERROR("TileRenderer: Missing biome_default texture for season " +
@@ -845,7 +897,63 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
         }
     }
 
-    // LAYER 2: Collect obstacles and buildings for Y-sorted rendering
+    // LAYER 2: Decorations (ground-level, rendered before Y-sorted obstacles)
+    for (int y = startTileY; y < endTileY; ++y) {
+        for (int x = startTileX; x < endTileX; ++x) {
+            const HammerEngine::Tile& tile = world.grid[y][x];
+
+            if (tile.decorationType == HammerEngine::DecorationType::NONE) {
+                continue;
+            }
+
+            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
+            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+
+            const CachedTexture* tex = nullptr;
+            switch (tile.decorationType) {
+                case HammerEngine::DecorationType::FLOWER_BLUE:
+                    tex = &m_cachedTextures.decoration_flower_blue; break;
+                case HammerEngine::DecorationType::FLOWER_PINK:
+                    tex = &m_cachedTextures.decoration_flower_pink; break;
+                case HammerEngine::DecorationType::FLOWER_WHITE:
+                    tex = &m_cachedTextures.decoration_flower_white; break;
+                case HammerEngine::DecorationType::FLOWER_YELLOW:
+                    tex = &m_cachedTextures.decoration_flower_yellow; break;
+                case HammerEngine::DecorationType::MUSHROOM_PURPLE:
+                    tex = &m_cachedTextures.decoration_mushroom_purple; break;
+                case HammerEngine::DecorationType::MUSHROOM_TAN:
+                    tex = &m_cachedTextures.decoration_mushroom_tan; break;
+                case HammerEngine::DecorationType::GRASS_SMALL:
+                    tex = &m_cachedTextures.decoration_grass_small; break;
+                case HammerEngine::DecorationType::GRASS_LARGE:
+                    tex = &m_cachedTextures.decoration_grass_large; break;
+                case HammerEngine::DecorationType::BUSH:
+                    tex = &m_cachedTextures.decoration_bush; break;
+                case HammerEngine::DecorationType::STUMP_SMALL:
+                    tex = &m_cachedTextures.decoration_stump_small; break;
+                case HammerEngine::DecorationType::STUMP_MEDIUM:
+                    tex = &m_cachedTextures.decoration_stump_medium; break;
+                case HammerEngine::DecorationType::ROCK_SMALL:
+                    tex = &m_cachedTextures.decoration_rock_small; break;
+                default:
+                    continue;
+            }
+
+            // Skip if texture not loaded (e.g., flowers in winter have empty texture ID)
+            if (!tex || !tex->ptr) {
+                continue;
+            }
+
+            // Center decoration horizontally, align bottom to tile bottom
+            float offsetX = (TILE_SIZE - tex->w) / 2.0f;
+            float offsetY = TILE_SIZE - tex->h;
+
+            TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
+                                           static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
+        }
+    }
+
+    // LAYER 3: Collect obstacles and buildings for Y-sorted rendering
     // Extended range to capture sprites that overhang into this chunk from adjacent tiles
     int spriteStartX = std::max(0, startTileX - 2);  // 2 tiles for building overhang
     int spriteStartY = std::max(0, startTileY - 4);  // 4 tiles for tall sprites above

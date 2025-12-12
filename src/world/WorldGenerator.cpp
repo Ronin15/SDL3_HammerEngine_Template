@@ -101,9 +101,16 @@ WorldGenerator::generateWorld(const WorldGenerationConfig &config,
 
   distributeObstacles(*world, config);
 
-  // Progress: Obstacles distributed (90%)
+  // Progress: Obstacles distributed (80%)
   if (progressCallback) {
-    progressCallback(90.0f, "Distributing obstacles...");
+    progressCallback(80.0f, "Distributing obstacles...");
+  }
+
+  distributeDecorations(*world, config);
+
+  // Progress: Decorations distributed (90%)
+  if (progressCallback) {
+    progressCallback(90.0f, "Adding decorations...");
   }
 
   calculateInitialResources(*world);
@@ -365,6 +372,108 @@ void WorldGenerator::distributeObstacles(WorldData &world,
 
   // Second pass: Generate multi-tile buildings with connection logic
   generateBuildings(world, rng);
+}
+
+void WorldGenerator::distributeDecorations(WorldData& world,
+                                           const WorldGenerationConfig& config) {
+  int height = static_cast<int>(world.grid.size());
+  int width = static_cast<int>(world.grid[0].size());
+
+  std::default_random_engine rng(config.seed + 20000);  // Different seed offset
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Pre-allocated vector for possible decorations (avoids per-tile allocations)
+  std::vector<DecorationType> possibleDecorations;
+  possibleDecorations.reserve(12);  // Max decoration types per biome
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      Tile& tile = world.grid[y][x];
+
+      // Skip tiles with water, obstacles, or buildings
+      if (tile.isWater ||
+          tile.obstacleType != ObstacleType::NONE ||
+          tile.buildingId > 0) {
+        continue;
+      }
+
+      float decorationChance = 0.0f;
+      possibleDecorations.clear();
+
+      switch (tile.biome) {
+        case Biome::FOREST:
+          decorationChance = 0.25f;
+          possibleDecorations = {
+              DecorationType::FLOWER_BLUE,
+              DecorationType::FLOWER_PINK,
+              DecorationType::FLOWER_WHITE,
+              DecorationType::FLOWER_YELLOW,
+              DecorationType::GRASS_SMALL,
+              DecorationType::GRASS_LARGE,
+              DecorationType::BUSH,
+              DecorationType::STUMP_SMALL,
+              DecorationType::STUMP_MEDIUM
+          };
+          break;
+
+        case Biome::CELESTIAL:
+          decorationChance = 0.20f;
+          possibleDecorations = {
+              DecorationType::FLOWER_BLUE,
+              DecorationType::FLOWER_WHITE,
+              DecorationType::GRASS_SMALL
+          };
+          break;
+
+        case Biome::SWAMP:
+          decorationChance = 0.30f;
+          possibleDecorations = {
+              DecorationType::MUSHROOM_PURPLE,
+              DecorationType::MUSHROOM_TAN,
+              DecorationType::GRASS_LARGE,
+              DecorationType::STUMP_SMALL
+          };
+          break;
+
+        case Biome::HAUNTED:
+          decorationChance = 0.25f;
+          possibleDecorations = {
+              DecorationType::MUSHROOM_PURPLE,
+              DecorationType::MUSHROOM_TAN,
+              DecorationType::STUMP_SMALL,
+              DecorationType::STUMP_MEDIUM
+          };
+          break;
+
+        case Biome::MOUNTAIN:
+          decorationChance = 0.15f;
+          possibleDecorations = {
+              DecorationType::GRASS_SMALL,
+              DecorationType::FLOWER_WHITE,
+              DecorationType::ROCK_SMALL
+          };
+          break;
+
+        case Biome::DESERT:
+        case Biome::OCEAN:
+          // No decorations in desert or ocean
+          continue;
+
+        default:
+          decorationChance = 0.15f;
+          possibleDecorations = {
+              DecorationType::GRASS_SMALL,
+              DecorationType::GRASS_LARGE
+          };
+          break;
+      }
+
+      if (!possibleDecorations.empty() && dist(rng) < decorationChance) {
+        std::uniform_int_distribution<size_t> typeDist(0, possibleDecorations.size() - 1);
+        tile.decorationType = possibleDecorations[typeDist(rng)];
+      }
+    }
+  }
 }
 
 void WorldGenerator::calculateInitialResources(const WorldData &world) {

@@ -78,6 +78,19 @@ private:
         std::string building_house;
         std::string building_large;
         std::string building_cityhall;
+        // Decoration textures (seasonal where applicable)
+        std::string decoration_flower_blue;
+        std::string decoration_flower_pink;
+        std::string decoration_flower_white;
+        std::string decoration_flower_yellow;
+        std::string decoration_mushroom_purple;
+        std::string decoration_mushroom_tan;
+        std::string decoration_grass_small;
+        std::string decoration_grass_large;
+        std::string decoration_bush;
+        std::string decoration_stump_small;
+        std::string decoration_stump_medium;
+        std::string decoration_rock_small;
     } m_cachedTextureIDs;
 
     // Cached texture with dimensions - keeps pointer and size together
@@ -114,6 +127,19 @@ private:
         CachedTexture building_house;
         CachedTexture building_large;
         CachedTexture building_cityhall;
+        // Decoration textures
+        CachedTexture decoration_flower_blue;
+        CachedTexture decoration_flower_pink;
+        CachedTexture decoration_flower_white;
+        CachedTexture decoration_flower_yellow;
+        CachedTexture decoration_mushroom_purple;
+        CachedTexture decoration_mushroom_tan;
+        CachedTexture decoration_grass_small;
+        CachedTexture decoration_grass_large;
+        CachedTexture decoration_bush;
+        CachedTexture decoration_stump_small;
+        CachedTexture decoration_stump_medium;
+        CachedTexture decoration_rock_small;
     } m_cachedTextures;
 
     // Chunk texture cache - pre-rendered tile chunks to reduce draw calls
