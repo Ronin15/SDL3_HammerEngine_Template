@@ -115,6 +115,15 @@ ui.setComponentPositioning("my_btn", {UIPositionMode::TOP_ALIGNED, 100, 200, 120
 
 **Threading**: Update (mutex-locked, fixed timestep) | Render (main thread only, double-buffered) | Background (ThreadSystem + WorkerBudget) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
 
+**Logging**: Always use `std::format()` for logging with dynamic values. Never use string concatenation (`+` operator) with `std::to_string()` - it creates multiple heap allocations per log call.
+```cpp
+// BAD: Creates 5-9 heap allocations per call
+LOG_INFO("Value: " + std::to_string(x) + " at pos (" + std::to_string(y) + ")");
+
+// GOOD: Single allocation with std::format
+LOG_INFO(std::format("Value: {} at pos ({})", x, y));
+```
+
 **Copyright** (all files):
 ```cpp
 /* Copyright (c) 2025 Hammer Forged Games

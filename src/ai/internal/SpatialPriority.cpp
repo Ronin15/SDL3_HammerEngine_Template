@@ -8,6 +8,7 @@
 #include <cmath>
 #include <vector>
 #include <iomanip>
+#include <format>
 #include "core/Logger.hpp"
 #include "ai/internal/SpatialPriority.hpp"
 
@@ -94,15 +95,15 @@ void SpatialPriority::updateFrameSkipping(uint64_t currentFrame)
         // Emergency cleanup - we're at capacity
         performEntityCleanup(currentFrame, true);
         m_emergencyCleanupCount.fetch_add(1, std::memory_order_relaxed);
-        GAMEENGINE_WARN("SpatialPriority: Emergency cleanup triggered - at max capacity (" 
-                       + std::to_string(MAX_TRACKED_ENTITIES) + " entities)");
+        GAMEENGINE_WARN(std::format("SpatialPriority: Emergency cleanup triggered - at max capacity ({} entities)",
+                       MAX_TRACKED_ENTITIES));
     }
     else if (currentEntityCount >= AGGRESSIVE_CLEANUP_THRESHOLD) {
         // Aggressive cleanup - approaching capacity
         if (currentFrame % AGGRESSIVE_CLEANUP_INTERVAL == 0) {
             performEntityCleanup(currentFrame, true);
             m_aggressiveCleanupCount.fetch_add(1, std::memory_order_relaxed);
-            GAMEENGINE_INFO("SpatialPriority: Aggressive cleanup at " + std::to_string(currentEntityCount) + " entities");
+            GAMEENGINE_INFO(std::format("SpatialPriority: Aggressive cleanup at {} entities", currentEntityCount));
         }
     }
     else if (currentFrame % ENTITY_CLEANUP_FRAME_INTERVAL == 0) {
@@ -264,8 +265,8 @@ void SpatialPriority::updateEntityFrameState(EntityID entityId, PathPriority pri
     
     // Detect entities that are being skipped too frequently (debugging aid)
     if (state.consecutiveSkips > 60 && priority != PathPriority::Low) {
-        GAMEENGINE_WARN("Entity " + std::to_string(entityId) + " has been skipped " + 
-                       std::to_string(state.consecutiveSkips) + " frames consecutively");
+        GAMEENGINE_WARN(std::format("Entity {} has been skipped {} frames consecutively",
+                       entityId, state.consecutiveSkips));
     }
 }
 
@@ -349,11 +350,10 @@ void SpatialPriority::performEntityCleanup(uint64_t currentFrame, bool forceAggr
     }
     
     const size_t sizeAfterCleanup = m_entityFrameStates.size();
-    
+
     if (entitiesRemoved > 0) {
-        GAMEENGINE_INFO("SpatialPriority cleanup: " + std::to_string(entitiesRemoved) + 
-                       " entities removed (" + std::to_string(sizeBeforeCleanup) + 
-                       " -> " + std::to_string(sizeAfterCleanup) + ")");
+        GAMEENGINE_INFO(std::format("SpatialPriority cleanup: {} entities removed ({} -> {})",
+                       entitiesRemoved, sizeBeforeCleanup, sizeAfterCleanup));
     }
 }
 

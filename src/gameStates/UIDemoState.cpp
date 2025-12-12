@@ -177,7 +177,7 @@ bool UIExampleState::exit() {
 void UIExampleState::handleSliderChange(float value) {
     m_sliderValue = value;
     updateSliderLabel(value);
-    GAMESTATE_DEBUG("Slider value changed: " + std::to_string(value));
+    GAMESTATE_DEBUG(std::format("Slider value changed: {}", value));
 }
 
 void UIExampleState::handleCheckboxToggle() {
@@ -194,7 +194,7 @@ void UIExampleState::handleInputChange(const std::string& text) {
 void UIExampleState::handleListSelection() {
     const auto& ui = UIManager::Instance();
     m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
-    GAMESTATE_DEBUG("List item selected: " + std::to_string(m_selectedListItem));
+    GAMESTATE_DEBUG(std::format("List item selected: {}", m_selectedListItem));
 }
 
 void UIExampleState::handleAnimation() {

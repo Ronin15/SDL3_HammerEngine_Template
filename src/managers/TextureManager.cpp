@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <filesystem>
+#include <format>
 
 
 
@@ -93,7 +94,7 @@ bool TextureManager::load(const std::string& fileName,
       TEXTURE_ERROR("Error while loading textures: " + std::string(e.what()));
     }
 
-    TEXTURE_INFO("Loaded " + std::to_string(texturesLoaded) + " textures from directory: " + fileName);
+    TEXTURE_INFO(std::format("Loaded {} textures from directory: {}", texturesLoaded, fileName));
 
     // Suppress unused variable warning in release builds
     (void)texturesLoaded;

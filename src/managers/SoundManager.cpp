@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <filesystem>
+#include <format>
 
 SoundManager::SoundManager() {
   // Member variables are already initialized in the header with brace
@@ -125,8 +126,7 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
       }
 
       if (loadedAny) {
-        SOUND_INFO("Loaded " + std::to_string(fileCount) +
-                   " files from directory: " + filePath);
+        SOUND_INFO(std::format("Loaded {} files from directory: {}", fileCount, filePath));
       } else {
         SOUND_WARN("No supported audio files found in directory: " + filePath);
       }

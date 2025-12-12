@@ -73,7 +73,7 @@ void AdvancedAIDemoState::handleInput() {
         aiMgr.broadcastMessage(message, true);
 
         // Simple feedback
-        GAMESTATE_INFO("Advanced AI " + std::string(m_aiPaused ? "PAUSED" : "RESUMED"));
+        GAMESTATE_INFO(std::format("Advanced AI {}", m_aiPaused ? "PAUSED" : "RESUMED"));
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -174,7 +174,7 @@ bool AdvancedAIDemoState::enter() {
         if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
             m_worldWidth = worldMaxX;
             m_worldHeight = worldMaxY;
-            GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+            GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
         } else {
             // Fallback to screen dimensions if world bounds unavailable
             m_worldWidth = gameEngine.getLogicalWidth();
@@ -259,7 +259,7 @@ bool AdvancedAIDemoState::enter() {
         ui.setComponentPositioning("advanced_ai_status", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT});
 
         // Log status
-        GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
+        GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors", m_npcs.size()));
         GAMESTATE_INFO("Combat system initialized with health/damage attributes");
 
         // Pre-allocate status buffer to avoid per-frame allocations
@@ -674,7 +674,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
             }
         }
 
-        GAMESTATE_INFO("AdvancedAIDemoState: Created " + std::to_string(m_npcs.size()) + " NPCs with combat attributes");
+        GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs with combat attributes", m_npcs.size()));
     } catch (const std::exception& e) {
         GAMESTATE_ERROR("Exception in createAdvancedNPCs(): " + std::string(e.what()));
     } catch (...) {

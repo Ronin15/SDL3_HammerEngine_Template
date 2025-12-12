@@ -8,8 +8,9 @@
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
-#include <memory>
 #include <algorithm>
+#include <format>
+#include <memory>
 
 // Removed global pointer - now managed as member variable
 
@@ -53,7 +54,7 @@ void InputManager::initializeGamePad() {
   }
 
   if (numGamepads > 0) {
-    INPUT_INFO("Number of Game Pads detected: " + std::to_string(numGamepads));
+    INPUT_INFO(std::format("Number of Game Pads detected: {}", numGamepads));
     // Open all available gamepads
     for (int i = 0; i < numGamepads; i++) {
       if (SDL_IsGamepad(gamepadIDs[i])) {
@@ -260,10 +261,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 0) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving RIGHT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving RIGHT!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving LEFT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving LEFT!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].first->setX(0);
     }
@@ -273,10 +274,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 1) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving DOWN!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving DOWN!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving UP!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving UP!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].first->setY(0);
     }
@@ -286,10 +287,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 2) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving RIGHT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving RIGHT!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving LEFT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving LEFT!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].second->setX(0);
     }
@@ -299,10 +300,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 3) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving DOWN!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving DOWN!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving UP!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving UP!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].second->setY(0);
     }
@@ -311,14 +312,14 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   // Process left trigger (L2/LT)
   if (event.gaxis.axis == 4) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " pressed: " + std::to_string(event.gaxis.value));
+      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
     }
   }
 
   // Process right trigger (R2/RT)
   if (event.gaxis.axis == 5) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " pressed: " + std::to_string(event.gaxis.value));
+      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
     }
   }
 }
@@ -366,8 +367,8 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
   }
 
   // Debug message for button press with button name
-  INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " Button '" + buttonName + "' (" +
-              std::to_string(static_cast<int>(event.gbutton.button)) + ") pressed!");
+  INPUT_DEBUG(std::format("Gamepad {} Button '{}' ({}) pressed!",
+                          whichOne, buttonName, static_cast<int>(event.gbutton.button)));
 }
 
 void InputManager::onGamepadButtonUp(const SDL_Event& event) {
@@ -435,6 +436,6 @@ void InputManager::closeGamepads() {
   // Gamepad was initialized with SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)
 
   if (count > 0) {
-    INPUT_INFO("Closed " + std::to_string(count) + " gamepad handles");
+    INPUT_INFO(std::format("Closed {} gamepad handles", count));
   }
 }

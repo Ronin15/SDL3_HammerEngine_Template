@@ -34,6 +34,7 @@
 #include "world/WorldData.hpp"
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <map>
 #include <numeric>
 #include <queue>
@@ -201,7 +202,7 @@ void CollisionManager::prepareForStateTransition() {
   m_verboseLogs = false;
 
   size_t finalBodyCount = m_storage.size();
-  COLLISION_INFO("CollisionManager state transition complete - " + std::to_string(finalBodyCount) + " bodies remaining");
+  COLLISION_INFO(std::format("CollisionManager state transition complete - {} bodies remaining", finalBodyCount));
 }
 
 void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
@@ -229,15 +230,13 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
   if (estimatedCoarseCells > currentCapacity) {
     size_t reserveSize = std::max<size_t>(256, estimatedCoarseCells);
     m_coarseRegionStaticCache.reserve(reserveSize);
-    COLLISION_INFO("Resized coarse region cache from " + std::to_string(currentCapacity) +
-                   " to " + std::to_string(reserveSize) + " buckets for world size " +
-                   std::to_string(static_cast<int>(worldWidth)) + "x" +
-                   std::to_string(static_cast<int>(worldHeight)));
+    COLLISION_INFO(std::format("Resized coarse region cache from {} to {} buckets for world size {}x{}",
+                               currentCapacity, reserveSize,
+                               static_cast<int>(worldWidth), static_cast<int>(worldHeight)));
   }
 
-  COLLISION_DEBUG("World bounds set: [" + std::to_string(minX) + "," +
-                  std::to_string(minY) + "] - [" + std::to_string(maxX) + "," +
-                  std::to_string(maxY) + "]");
+  COLLISION_DEBUG(std::format("World bounds set: [{},{}] - [{},{}]",
+                              minX, minY, maxX, maxY));
 }
 
 
@@ -408,12 +407,9 @@ size_t CollisionManager::createStaticObstacleBodies() {
       bool isRectangle = (static_cast<int>(buildingTiles.size()) == expectedTiles);
 
       // DEBUG: Log rectangle detection for troubleshooting
-      COLLISION_DEBUG("Building " + std::to_string(tile.buildingId) +
-                     ": bounds (" + std::to_string(minX) + "," + std::to_string(minY) +
-                     ") to (" + std::to_string(maxX) + "," + std::to_string(maxY) +
-                     "), tiles=" + std::to_string(buildingTiles.size()) +
-                     ", expected=" + std::to_string(expectedTiles) +
-                     ", isRectangle=" + (isRectangle ? "YES" : "NO"));
+      COLLISION_DEBUG(std::format("Building {}: bounds ({},{}) to ({},{}), tiles={}, expected={}, isRectangle={}",
+                                  tile.buildingId, minX, minY, maxX, maxY,
+                                  buildingTiles.size(), expectedTiles, isRectangle ? "YES" : "NO"));
 
       if (isRectangle) {
         // SIMPLE CASE: Single collision body for entire rectangular building
@@ -439,13 +435,11 @@ size_t CollisionManager::createStaticObstacleBodies() {
                              CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
           ++created;
 
-          COLLISION_INFO("Building " + std::to_string(tile.buildingId) +
-                        ": created 1 collision body (rectangle " +
-                        std::to_string(maxX - minX + 1) + "x" + std::to_string(maxY - minY + 1) +
-                        " tiles) at center(" + std::to_string(cx) + "," + std::to_string(cy) +
-                        ") halfSize(" + std::to_string(halfWidth) + "," + std::to_string(halfHeight) +
-                        ") AABB[" + std::to_string(worldMinX) + "," + std::to_string(worldMinY) +
-                        " to " + std::to_string(worldMaxX) + "," + std::to_string(worldMaxY) + "]");
+          COLLISION_INFO(std::format("Building {}: created 1 collision body (rectangle {}x{} tiles) "
+                                     "at center({},{}) halfSize({},{}) AABB[{},{} to {},{}]",
+                                     tile.buildingId, maxX - minX + 1, maxY - minY + 1,
+                                     cx, cy, halfWidth, halfHeight,
+                                     worldMinX, worldMinY, worldMaxX, worldMaxY));
         }
       } else {
         // COMPLEX CASE: Non-rectangular building - use row decomposition
@@ -498,9 +492,8 @@ size_t CollisionManager::createStaticObstacleBodies() {
           }
         }
 
-        COLLISION_INFO("Building " + std::to_string(tile.buildingId) +
-                      ": created " + std::to_string(subBodyIndex) +
-                      " collision bodies (non-rectangular)");
+        COLLISION_INFO(std::format("Building {}: created {} collision bodies (non-rectangular)",
+                                   tile.buildingId, subBodyIndex));
       }
     }
   }
@@ -633,13 +626,10 @@ void CollisionManager::logCollisionStatistics() const {
   size_t dynamicBodies = getDynamicBodyCount();
 
   COLLISION_INFO("Collision Statistics:");
-  COLLISION_INFO("  Total Bodies: " + std::to_string(getBodyCount()));
-  COLLISION_INFO("  Static Bodies: " + std::to_string(staticBodies) +
-                 " (obstacles + triggers)");
-  COLLISION_INFO("  Kinematic Bodies: " + std::to_string(kinematicBodies) +
-                 " (NPCs)");
-  COLLISION_INFO("  Dynamic Bodies: " + std::to_string(dynamicBodies) +
-                 " (player, projectiles)");
+  COLLISION_INFO(std::format("  Total Bodies: {}", getBodyCount()));
+  COLLISION_INFO(std::format("  Static Bodies: {} (obstacles + triggers)", staticBodies));
+  COLLISION_INFO(std::format("  Kinematic Bodies: {} (NPCs)", kinematicBodies));
+  COLLISION_INFO(std::format("  Dynamic Bodies: {} (player, projectiles)", dynamicBodies));
 
   // Count bodies by layer using SOA storage
   std::map<uint32_t, size_t> layerCounts;
@@ -741,11 +731,11 @@ void CollisionManager::rebuildStaticFromWorld() {
         buildingBodyCount++;
         uint32_t buildingId = (id >> 16) & 0xFFFF;
         uint16_t subBodyIndex = id & 0xFFFF;
-        COLLISION_DEBUG("Building collision body found: buildingId=" + std::to_string(buildingId) +
-                       ", subBodyIndex=" + std::to_string(subBodyIndex));
+        COLLISION_DEBUG(std::format("Building collision body found: buildingId={}, subBodyIndex={}",
+                                    buildingId, subBodyIndex));
       }
     }
-    COLLISION_INFO("Total building collision bodies in storage: " + std::to_string(buildingBodyCount));
+    COLLISION_INFO(std::format("Total building collision bodies in storage: {}", buildingBodyCount));
 
 
     // Log detailed statistics for debugging
@@ -826,8 +816,8 @@ void CollisionManager::populateStaticCache() {
     }
   }
 
-  COLLISION_INFO("Static cache populated: " + std::to_string(cachedCells) +
-                " cells, " + std::to_string(totalStaticBodies) + " total static body references");
+  COLLISION_INFO(std::format("Static cache populated: {} cells, {} total static body references",
+                             cachedCells, totalStaticBodies));
 }
 
 void CollisionManager::onTileChanged(int x, int y) {
@@ -2323,9 +2313,8 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
 
   // Log cache maintenance activity if any changes occurred
   if (evictedCount > 0 || invalidatedCount > 0) {
-    COLLISION_DEBUG("Cache maintenance: evicted=" + std::to_string(evictedCount) +
-                    ", invalidated=" + std::to_string(invalidatedCount) +
-                    ", active=" + std::to_string(m_perf.cacheEntriesActive));
+    COLLISION_DEBUG(std::format("Cache maintenance: evicted={}, invalidated={}, active={}",
+                                evictedCount, invalidatedCount, m_perf.cacheEntriesActive));
   }
 }
 
@@ -2675,10 +2664,9 @@ void CollisionManager::processTriggerEventsSOA() {
         WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerHot->position, TriggerPhase::Enter);
         EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-        COLLISION_DEBUG("Player " + std::to_string(playerId) + " ENTERED trigger " +
-                       std::to_string(triggerId) + " (tag: " + std::to_string(static_cast<int>(triggerTag)) +
-                       ") at position (" + std::to_string(playerHot->position.getX()) + ", " +
-                       std::to_string(playerHot->position.getY()) + ")");
+        COLLISION_DEBUG(std::format("Player {} ENTERED trigger {} (tag: {}) at position ({}, {})",
+                                    playerId, triggerId, static_cast<int>(triggerTag),
+                                    playerHot->position.getX(), playerHot->position.getY()));
 
         if (m_defaultTriggerCooldownSec > 0.0f) {
           m_triggerCooldownUntil[triggerId] = now +
@@ -2713,10 +2701,9 @@ void CollisionManager::processTriggerEventsSOA() {
       WorldTriggerEvent evt(playerId, triggerId, triggerTag, triggerPos, TriggerPhase::Exit);
       EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-      COLLISION_DEBUG("Player " + std::to_string(playerId) + " EXITED trigger " +
-                     std::to_string(triggerId) + " (tag: " + std::to_string(static_cast<int>(triggerTag)) +
-                     ") at position (" + std::to_string(triggerPos.getX()) + ", " +
-                     std::to_string(triggerPos.getY()) + ")");
+      COLLISION_DEBUG(std::format("Player {} EXITED trigger {} (tag: {}) at position ({}, {})",
+                                  playerId, triggerId, static_cast<int>(triggerTag),
+                                  triggerPos.getX(), triggerPos.getY()));
 
       it = m_activeTriggerPairs.erase(it);
     } else {
@@ -2815,15 +2802,12 @@ void CollisionManager::updatePerformanceMetricsSOA(
     }
     cacheStatsStr += "]";
 
-    COLLISION_DEBUG("SOA Collision Summary - Bodies: " + std::to_string(bodyCount) +
-                    " (" + std::to_string(activeMovableBodies) + " movable)" +
-                    ", Avg Total: " + std::to_string(m_perf.avgTotalMs) + "ms" +
-                    ", Avg Broadphase: " + std::to_string(m_perf.avgBroadphaseMs) + "ms" +
-                    ", Current Broadphase: " + std::to_string(d12) + "ms" +
-                    ", Narrowphase: " + std::to_string(d23) + "ms" +
-                    ", Last Pairs: " + std::to_string(pairCount) +
-                    ", Last Collisions: " + std::to_string(collisionCount) +
-                    optimizationStats + cacheStatsStr);
+    COLLISION_DEBUG(std::format("SOA Collision Summary - Bodies: {} ({} movable), "
+                                "Avg Total: {}ms, Avg Broadphase: {}ms, Current Broadphase: {}ms, "
+                                "Narrowphase: {}ms, Last Pairs: {}, Last Collisions: {}{}{}",
+                                bodyCount, activeMovableBodies,
+                                m_perf.avgTotalMs, m_perf.avgBroadphaseMs, d12, d23,
+                                pairCount, collisionCount, optimizationStats, cacheStatsStr));
 
     // Reset cache counters for next reporting window (every 300 frames)
     m_cacheHits = 0;

@@ -11,6 +11,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <algorithm>
+#include <format>
 
 bool UIManager::init() {
   if (m_isShutdown) {
@@ -51,14 +52,13 @@ bool UIManager::init() {
   const auto& gameEngine = GameEngine::Instance();
   m_currentLogicalWidth = gameEngine.getLogicalWidth();
   m_currentLogicalHeight = gameEngine.getLogicalHeight();
-  UI_INFO("Initialized logical dimensions: " + std::to_string(m_currentLogicalWidth) +
-          "x" + std::to_string(m_currentLogicalHeight));
+  UI_INFO(std::format("Initialized logical dimensions: {}x{}",
+                      m_currentLogicalWidth, m_currentLogicalHeight));
 
   // Calculate and set resolution-aware UI scale (1920x1080 baseline, capped at 1.0)
   m_globalScale = calculateOptimalScale(m_currentLogicalWidth, m_currentLogicalHeight);
-  UI_INFO("UI scale set to " + std::to_string(m_globalScale) +
-          " for resolution " + std::to_string(m_currentLogicalWidth) + "x" +
-          std::to_string(m_currentLogicalHeight));
+  UI_INFO(std::format("UI scale set to {} for resolution {}x{}",
+                      m_globalScale, m_currentLogicalWidth, m_currentLogicalHeight));
 
   // Note: UIManager::onWindowResize() is called directly by InputManager when window resizes
 
@@ -3121,14 +3121,13 @@ void UIManager::createCenteredButton(const std::string &id, int offsetY,
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
-  UI_DEBUG("Window resized: " + std::to_string(newLogicalWidth) + "x" +
-           std::to_string(newLogicalHeight) + " - auto-repositioning UI components");
+  UI_DEBUG(std::format("Window resized: {}x{} - auto-repositioning UI components",
+                       newLogicalWidth, newLogicalHeight));
 
   // Recalculate UI scale for new resolution (1920x1080 baseline, capped at 1.0)
   m_globalScale = calculateOptimalScale(newLogicalWidth, newLogicalHeight);
-  UI_INFO("UI scale updated to " + std::to_string(m_globalScale) +
-          " for new resolution " + std::to_string(newLogicalWidth) + "x" +
-          std::to_string(newLogicalHeight));
+  UI_INFO(std::format("UI scale updated to {} for new resolution {}x{}",
+                      m_globalScale, newLogicalWidth, newLogicalHeight));
 
   repositionAllComponents(newLogicalWidth, newLogicalHeight);
   m_currentLogicalWidth = newLogicalWidth;

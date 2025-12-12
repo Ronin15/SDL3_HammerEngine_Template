@@ -40,6 +40,7 @@
 #include <atomic>
 #include <chrono>
 #include <cstdlib>
+#include <format>
 #include <future>
 #include <string>
 #include <string_view>
@@ -363,8 +364,8 @@ bool GameEngine::init(const std::string_view title, const int width,
     // On macOS, use the native display content scale for proper text rendering
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
     dpiScale = (displayScale > 0.0f) ? displayScale : 1.0f;
-    GAMEENGINE_INFO("macOS display content scale: " + std::to_string(dpiScale) +
-                    (displayScale > 0.0f ? " (detected)" : " (fallback)"));
+    GAMEENGINE_INFO(std::format("macOS display content scale: {} {}",
+                                dpiScale, displayScale > 0.0f ? "(detected)" : "(fallback)"));
 #else
     // On other platforms, don't apply additional DPI scaling - SDL3 logical
     // presentation handles it
@@ -380,9 +381,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO("Using display-aware font sizing - SDL3 handles DPI scaling "
                   "automatically");
 
-  GAMEENGINE_INFO("DPI scale: " + std::to_string(dpiScale) +
-                  ", window: " + std::to_string(m_windowWidth) + "x" +
-                  std::to_string(m_windowHeight));
+  GAMEENGINE_INFO(std::format("DPI scale: {}, window: {}x{}",
+                              dpiScale, m_windowWidth, m_windowHeight));
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
@@ -1050,19 +1050,17 @@ void GameEngine::update(float deltaTime) {
     GAMEENGINE_DEBUG("  Buffer Mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
     GAMEENGINE_DEBUG("  Swap Success Rate: " +
                      std::to_string(m_bufferTelemetry.getSwapSuccessRate()) + "%");
-    GAMEENGINE_DEBUG("  Swap Stats: " +
-                     std::to_string(m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed)) + " success / " +
-                     std::to_string(m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed)) + " blocked / " +
-                     std::to_string(m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)) + " CAS failures");
-    GAMEENGINE_DEBUG("  Render Stalls: " + std::to_string(m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG("  Frames Skipped: " + std::to_string(m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG("  Avg Mutex Wait: " +
-                     std::to_string(m_bufferTelemetry.avgMutexWaitMs.load(std::memory_order_relaxed)) + "ms");
-    GAMEENGINE_DEBUG("  Avg Buffer Ready Delay: " +
-                     std::to_string(m_bufferTelemetry.avgBufferReadyMs.load(std::memory_order_relaxed)) + "ms");
-    GAMEENGINE_DEBUG("  Current Buffers: [Write:" +
-                     std::to_string(m_currentBufferIndex.load(std::memory_order_relaxed)) +
-                     " Read:" + std::to_string(m_renderBufferIndex.load(std::memory_order_relaxed)) + "]");
+    GAMEENGINE_DEBUG(std::format("  Swap Stats: {} success / {} blocked / {} CAS failures",
+                                 m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed),
+                                 m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed),
+                                 m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG(std::format("  Render Stalls: {}", m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG(std::format("  Frames Skipped: {}", m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG(std::format("  Avg Mutex Wait: {}ms", m_bufferTelemetry.avgMutexWaitMs.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG(std::format("  Avg Buffer Ready Delay: {}ms", m_bufferTelemetry.avgBufferReadyMs.load(std::memory_order_relaxed)));
+    GAMEENGINE_DEBUG(std::format("  Current Buffers: [Write:{} Read:{}]",
+                                 m_currentBufferIndex.load(std::memory_order_relaxed),
+                                 m_renderBufferIndex.load(std::memory_order_relaxed)));
 
     // Reset counters for next interval
     m_bufferTelemetry.reset();
@@ -1496,8 +1494,7 @@ void GameEngine::toggleFullscreen() {
     if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
       GAMEENGINE_ERROR("Failed to restore window size: " + std::string(SDL_GetError()));
     } else {
-      GAMEENGINE_INFO("macOS: Restored window size to " + std::to_string(m_windowedWidth) + "x" +
-                      std::to_string(m_windowedHeight));
+      GAMEENGINE_INFO(std::format("macOS: Restored window size to {}x{}", m_windowedWidth, m_windowedHeight));
     }
   }
 #else
@@ -1514,8 +1511,7 @@ void GameEngine::toggleFullscreen() {
     if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
       GAMEENGINE_ERROR("Failed to restore window size: " + std::string(SDL_GetError()));
     } else {
-      GAMEENGINE_INFO("Restored window size to " + std::to_string(m_windowedWidth) + "x" +
-                      std::to_string(m_windowedHeight));
+      GAMEENGINE_INFO(std::format("Restored window size to {}x{}", m_windowedWidth, m_windowedHeight));
     }
   }
 
@@ -1600,9 +1596,9 @@ bool GameEngine::verifyVSyncState(bool requested) {
       // When enabling, verify it's actually on
       vsyncVerified = (vsyncState > 0);
       if (vsyncVerified) {
-        GAMEENGINE_INFO("VSync enabled and verified (mode: " + std::to_string(vsyncState) + ")");
+        GAMEENGINE_INFO(std::format("VSync enabled and verified (mode: {})", vsyncState));
       } else {
-        GAMEENGINE_WARN("VSync set but verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+        GAMEENGINE_WARN(std::format("VSync set but verification failed (reported mode: {})", vsyncState));
       }
     } else {
       // When disabling, verify it's actually off
@@ -1610,7 +1606,7 @@ bool GameEngine::verifyVSyncState(bool requested) {
       if (vsyncVerified) {
         GAMEENGINE_INFO("VSync disabled and verified");
       } else {
-        GAMEENGINE_WARN("VSync disable verification failed (reported mode: " + std::to_string(vsyncState) + ")");
+        GAMEENGINE_WARN(std::format("VSync disable verification failed (reported mode: {})", vsyncState));
       }
     }
   } else {
@@ -1636,7 +1632,7 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   int newWidth = event.window.data1;
   int newHeight = event.window.data2;
 
-  GAMEENGINE_INFO("Window resized to: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
+  GAMEENGINE_INFO(std::format("Window resized to: {}x{}", newWidth, newHeight));
 
   // Update GameEngine window dimensions
   setWindowSize(newWidth, newHeight);
@@ -1657,7 +1653,7 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   // Update GameEngine's cached logical dimensions
   setLogicalSize(actualWidth, actualHeight);
 
-  GAMEENGINE_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
+  GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}", actualWidth, actualHeight));
 
   // Reload fonts for new display configuration
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");
