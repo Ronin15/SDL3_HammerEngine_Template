@@ -1175,33 +1175,44 @@ void ParticleManager::stopEffect(uint32_t effectId) {
 void ParticleManager::stopWeatherEffects(float transitionTime) {
   PARTICLE_INFO(std::format("*** STOPPING ALL WEATHER EFFECTS (transition: {:.2f}s)", transitionTime));
 
-  // PERFORMANCE: Lock-free weather effect stopping
-  // No synchronization needed for effect state changes
-  std::unique_lock<std::mutex> lock(m_weatherMutex);
-
   int stoppedCount = 0;
 
-  // Clean approach: Remove ALL weather effects - O(n) using erase-remove idiom
-  // First pass: count and log weather effects being removed
-  for (const auto &effect : m_effectInstances) {
-    if (effect.isWeatherEffect) {
-      PARTICLE_DEBUG(std::format("DEBUG: Removing weather effect: {} (ID: {})",
-                                 effectTypeToString(effect.effectType), effect.id));
-      stoppedCount++;
+  // THREADING FIX: Use m_effectsMutex for consistent locking of effect instances
+  {
+    std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
+
+    // Early exit if no effects to process
+    if (m_effectInstances.empty()) {
+      PARTICLE_INFO("No effects to stop");
+      return;
     }
-  }
 
-  // Single O(n) removal using erase-remove idiom
-  auto weatherEnd = std::remove_if(
-      m_effectInstances.begin(), m_effectInstances.end(),
-      [](const EffectInstance &e) { return e.isWeatherEffect; });
-  m_effectInstances.erase(weatherEnd, m_effectInstances.end());
+    // Single-pass: count and remove weather effects using erase-remove idiom
+    for (const auto &effect : m_effectInstances) {
+      if (effect.isWeatherEffect) {
+        PARTICLE_DEBUG(std::format("DEBUG: Removing weather effect: {} (ID: {})",
+                                   effectTypeToString(effect.effectType), effect.id));
+        stoppedCount++;
+      }
+    }
 
-  // Rebuild index mapping for remaining effects
-  m_effectIdToIndex.clear();
-  for (size_t i = 0; i < m_effectInstances.size(); ++i) {
-    m_effectIdToIndex[m_effectInstances[i].id] = i;
-  }
+    // Skip removal work if no weather effects found
+    if (stoppedCount == 0) {
+      PARTICLE_INFO("No weather effects to stop");
+      return;
+    }
+
+    auto weatherEnd = std::remove_if(
+        m_effectInstances.begin(), m_effectInstances.end(),
+        [](const EffectInstance &e) { return e.isWeatherEffect; });
+    m_effectInstances.erase(weatherEnd, m_effectInstances.end());
+
+    // Rebuild index mapping for remaining effects
+    m_effectIdToIndex.clear();
+    for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+      m_effectIdToIndex[m_effectInstances[i].id] = i;
+    }
+  } // Release lock before particle operations
 
   // Clear weather particles directly here
   if (transitionTime <= 0.0f) {
@@ -1305,79 +1316,26 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
   // Use smooth transitions for better visual quality
   float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
 
-  // THREADING FIX: Effect management requires synchronization
-  std::unique_lock<std::mutex> lock(m_weatherMutex);
-  std::unique_lock<std::shared_mutex> effectsLock(m_effectsMutex);
-
-  // Clear existing weather effects first - O(n) using erase-remove idiom
-  int stoppedCount = 0;
-
-  // First pass: count and log weather effects being removed
-  for (const auto &effect : m_effectInstances) {
-    if (effect.isWeatherEffect) {
-      PARTICLE_DEBUG(std::format("DEBUG: Removing weather effect: {} (ID: {})",
-                                 effectTypeToString(effect.effectType), effect.id));
-      stoppedCount++;
-    }
-  }
-
-  // Single O(n) removal using erase-remove idiom
-  if (stoppedCount > 0) {
-    auto weatherEnd = std::remove_if(
-        m_effectInstances.begin(), m_effectInstances.end(),
-        [](const EffectInstance &e) { return e.isWeatherEffect; });
-    m_effectInstances.erase(weatherEnd, m_effectInstances.end());
-
-    // Rebuild index mapping for remaining effects
-    if (!m_effectInstances.empty()) {
-      m_effectIdToIndex.clear();
-      for (size_t i = 0; i < m_effectInstances.size(); ++i) {
-        m_effectIdToIndex[m_effectInstances[i].id] = i;
-      }
-    }
-  }
-
-  // Clear weather particles
-  if (actualTransitionTime <= 0.0f) {
-    // Clear immediately using lock-free access
-    int affectedCount = 0;
-    size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
-    auto &particles = m_storage.particles[activeIdx];
-    const size_t particleCount = particles.size();
-
-    for (size_t i = 0; i < particleCount; ++i) {
-      if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
-        particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
-        particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
-        affectedCount++;
-      }
-    }
-    PARTICLE_INFO(std::format("Cleared {} weather particles immediately", affectedCount));
-  }
-
-  PARTICLE_INFO(std::format("Stopped {} weather effects", stoppedCount));
-
-  // Validate effect type
+  // PERFORMANCE: Validate effect type BEFORE acquiring any locks
   if (effectType >= ParticleEffectType::COUNT) {
     PARTICLE_ERROR(std::format("ERROR: Invalid effect type: {}", static_cast<int>(effectType)));
     return;
   }
 
-  // Check if effect definition exists
+  // Check if effect definition exists (read-only, no lock needed)
   auto defIt = m_effectDefinitions.find(effectType);
   if (defIt == m_effectDefinitions.end()) {
     PARTICLE_ERROR(std::format("ERROR: Effect not registered: {}", effectTypeToString(effectType)));
     return;
   }
 
-  // Check if effect definition exists
-  const auto &definition = m_effectDefinitions[effectType];
+  const auto &definition = defIt->second;
   if (definition.name.empty()) {
     PARTICLE_ERROR(std::format("ERROR: Effect not registered: {}", effectTypeToString(effectType)));
     return;
   }
 
-  // Calculate optimal weather position based on effect type
+  // Calculate optimal weather position BEFORE locking (pure computation)
   Vector2D weatherPosition;
   if (effectType == ParticleEffectType::Rain ||
       effectType == ParticleEffectType::HeavyRain ||
@@ -1394,21 +1352,74 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
     weatherPosition = Vector2D(960, -50); // Default top spawn
   }
 
-  // Create new weather effect
+  // Prepare new effect instance BEFORE locking
   EffectInstance instance;
-  instance.id = generateEffectId();
+  instance.id = generateEffectId();  // Atomic operation, no lock needed
   instance.effectType = effectType;
   instance.position = weatherPosition;
   instance.intensity = intensity;
   instance.currentIntensity = intensity;
   instance.targetIntensity = intensity;
   instance.active = true;
-  instance.isWeatherEffect = true; // Mark as weather effect immediately
-
-  // Register effect (save ID before move)
+  instance.isWeatherEffect = true;
   const uint32_t effectId = instance.id;
-  m_effectInstances.emplace_back(std::move(instance));
-  m_effectIdToIndex[effectId] = m_effectInstances.size() - 1;
+
+  int stoppedCount = 0;
+
+  // THREADING FIX: Single lock for effect instance mutations
+  {
+    std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
+
+    // Count and remove existing weather effects
+    for (const auto &effect : m_effectInstances) {
+      if (effect.isWeatherEffect) {
+        PARTICLE_DEBUG(std::format("DEBUG: Removing weather effect: {} (ID: {})",
+                                   effectTypeToString(effect.effectType), effect.id));
+        stoppedCount++;
+      }
+    }
+
+    // Only do removal work if there are weather effects
+    if (stoppedCount > 0) {
+      auto weatherEnd = std::remove_if(
+          m_effectInstances.begin(), m_effectInstances.end(),
+          [](const EffectInstance &e) { return e.isWeatherEffect; });
+      m_effectInstances.erase(weatherEnd, m_effectInstances.end());
+
+      // Rebuild index mapping for remaining effects
+      if (!m_effectInstances.empty()) {
+        m_effectIdToIndex.clear();
+        for (size_t i = 0; i < m_effectInstances.size(); ++i) {
+          m_effectIdToIndex[m_effectInstances[i].id] = i;
+        }
+      } else {
+        m_effectIdToIndex.clear();
+      }
+    }
+
+    // Register new effect
+    m_effectInstances.emplace_back(std::move(instance));
+    m_effectIdToIndex[effectId] = m_effectInstances.size() - 1;
+  } // Release lock before particle operations
+
+  PARTICLE_INFO(std::format("Stopped {} weather effects", stoppedCount));
+
+  // Clear weather particles (lock-free operation on atomic buffer)
+  if (actualTransitionTime <= 0.0f) {
+    int affectedCount = 0;
+    size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
+    auto &particles = m_storage.particles[activeIdx];
+    const size_t particleCount = particles.size();
+
+    for (size_t i = 0; i < particleCount; ++i) {
+      if ((particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) && (particles.flags[i] & UnifiedParticle::FLAG_WEATHER)) {
+        particles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
+        particles.flags[i] |= UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
+        affectedCount++;
+      }
+    }
+    PARTICLE_INFO(std::format("Cleared {} weather particles immediately", affectedCount));
+  }
 
   PARTICLE_INFO(std::format("Weather effect created: {} (ID: {}) at position ({:.0f}, {:.0f})",
                             effectTypeToString(effectType), effectId,
