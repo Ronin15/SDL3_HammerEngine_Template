@@ -219,7 +219,7 @@ struct ParticleEffectDefinition;
 // Helper methods for enum-based classification system
 ParticleEffectType weatherStringToEnum(const std::string &weatherType,
                                        float intensity);
-std::string effectTypeToString(ParticleEffectType type);
+std::string_view effectTypeToString(ParticleEffectType type);
 
 // Built-in effect creation helpers
 ParticleEffectDefinition createRainEffect();
@@ -1051,7 +1051,7 @@ private:
   // Weather type conversion helpers
   ParticleEffectType weatherStringToEnum(const std::string &weatherType,
                                          float intensity) const;
-  std::string effectTypeToString(ParticleEffectType type) const;
+  std::string_view effectTypeToString(ParticleEffectType type) const;
 
   // Built-in effect creation helpers
   ParticleEffectDefinition createRainEffect();
