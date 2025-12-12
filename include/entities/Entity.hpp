@@ -9,6 +9,7 @@
 #include "utils/UniqueID.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#include <atomic>
 #include <memory>
 #include <string>
 
@@ -120,16 +121,20 @@ class Entity : public std::enable_shared_from_this<Entity> {
   Vector2D getAcceleration() const { return m_acceleration; }
 
   /**
-   * @brief Get interpolated position for smooth rendering.
+   * @brief Get interpolated position for smooth rendering (thread-safe).
    *
    * Uses linear interpolation between previous and current position
    * based on the interpolation alpha from the game loop.
+   * Reads from atomic state for thread-safe access from render thread.
    *
    * @param alpha Interpolation factor (0.0 = previous position, 1.0 = current position)
    * @return Interpolated position for rendering
    */
   Vector2D getInterpolatedPosition(float alpha) const {
-    return m_previousPosition + (m_position - m_previousPosition) * alpha;
+    auto state = m_interpState.load(std::memory_order_acquire);
+    return Vector2D(
+      state.prevPosX + (state.posX - state.prevPosX) * alpha,
+      state.prevPosY + (state.posY - state.prevPosY) * alpha);
   }
 
   /**
@@ -139,6 +144,18 @@ class Entity : public std::enable_shared_from_this<Entity> {
    * This enables smooth rendering interpolation between fixed timestep updates.
    */
   void storePositionForInterpolation() { m_previousPosition = m_position; }
+
+  /**
+   * @brief Publish thread-safe interpolation state for render thread.
+   *
+   * Call this at the END of update() after all position modifications.
+   * Enables lock-free reads in getInterpolatedPosition() from render thread.
+   */
+  void publishInterpolationState() {
+    m_interpState.store({m_position.getX(), m_position.getY(),
+                         m_previousPosition.getX(), m_previousPosition.getY()},
+                         std::memory_order_release);
+  }
 
   /**
    * @brief Update position from movement (preserves interpolation state).
@@ -168,6 +185,9 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setPosition(const Vector2D& position) {
     m_position = position;
     m_previousPosition = position;  // Prevents interpolation sliding
+    m_interpState.store({position.getX(), position.getY(),
+                         position.getX(), position.getY()},
+                         std::memory_order_release);
   }
   virtual void setVelocity(const Vector2D& velocity) { m_velocity = velocity; }
   virtual void setAcceleration(const Vector2D& acceleration) { m_acceleration = acceleration; }
@@ -189,6 +209,14 @@ class Entity : public std::enable_shared_from_this<Entity> {
   Vector2D m_velocity{0, 0};
   Vector2D m_position{0, 0};
   Vector2D m_previousPosition{0, 0};  // For render interpolation
+
+  // Thread-safe interpolation state for render thread access
+  // 16-byte atomic is lock-free on x86-64 (CMPXCHG16B) and ARM64 (LDXP/STXP)
+  struct alignas(16) EntityInterpState {
+    float posX{0.0f}, posY{0.0f};
+    float prevPosX{0.0f}, prevPosY{0.0f};
+  };
+  std::atomic<EntityInterpState> m_interpState{};
   int m_width{0};
   int m_height{0};
   std::string m_textureID{};

@@ -178,6 +178,9 @@ void Player::update(float deltaTime) {
       TextureManager::Instance().isTextureInMap(m_textureID)) {
     loadDimensionsFromTexture();
   }
+
+  // Publish thread-safe interpolation state for render thread
+  publishInterpolationState();
 }
 
 void Player::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
