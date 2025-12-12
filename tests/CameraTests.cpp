@@ -694,3 +694,219 @@ BOOST_AUTO_TEST_CASE(TestFreeModeBehavior) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// INTERPOLATION TESTS
+// Tests for smooth camera movement between frames (atomic double-buffering)
+// ============================================================================
+
+BOOST_AUTO_TEST_SUITE(InterpolationTests)
+
+BOOST_AUTO_TEST_CASE(TestInterpolationFactorZero) {
+    // At alpha=0, position should return valid coordinates
+    // Use position within valid bounds (accounting for half-viewport offset from world bounds)
+    // With 800x600 viewport and default 1920x1080 world, valid center range is (400,300)-(1520,780)
+    Camera camera(500.0f, 400.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Update to establish interpolation state
+    camera.update(0.016f);
+
+    // Get interpolated position at alpha=0
+    float offsetX, offsetY;
+    Vector2D center = camera.getRenderOffset(offsetX, offsetY, 0.0f);
+
+    // Should return valid finite values at current position
+    BOOST_CHECK(isFinite(center.getX()));
+    BOOST_CHECK(isFinite(center.getY()));
+    BOOST_CHECK(approxEqual(center.getX(), 500.0f, 1.0f));
+    BOOST_CHECK(approxEqual(center.getY(), 400.0f, 1.0f));
+}
+
+BOOST_AUTO_TEST_CASE(TestInterpolationFactorOne) {
+    // At alpha=1, position should be current position
+    // Use position within valid bounds (400,300)-(1520,780)
+    Camera camera(500.0f, 400.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Update to establish interpolation state
+    camera.update(0.016f);
+
+    // Get interpolated position at alpha=1
+    float offsetX, offsetY;
+    Vector2D center = camera.getRenderOffset(offsetX, offsetY, 1.0f);
+
+    // At alpha=1, should be at current position (500, 400)
+    BOOST_CHECK(isFinite(center.getX()));
+    BOOST_CHECK(isFinite(center.getY()));
+    BOOST_CHECK(approxEqual(center.getX(), 500.0f, 1.0f));
+    BOOST_CHECK(approxEqual(center.getY(), 400.0f, 1.0f));
+}
+
+BOOST_AUTO_TEST_CASE(TestInterpolationFactorHalf) {
+    // At alpha=0.5, should return valid interpolated position
+    // Use position within valid bounds (400,300)-(1520,780)
+    Camera camera(500.0f, 400.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Update to establish interpolation state
+    camera.update(0.016f);
+
+    // Get interpolated position at alpha=0.5
+    float offsetX, offsetY;
+    Vector2D center = camera.getRenderOffset(offsetX, offsetY, 0.5f);
+
+    // Should return valid finite values at current position (no movement = no interpolation)
+    BOOST_CHECK(isFinite(center.getX()));
+    BOOST_CHECK(isFinite(center.getY()));
+    BOOST_CHECK(approxEqual(center.getX(), 500.0f, 1.0f));
+    BOOST_CHECK(approxEqual(center.getY(), 400.0f, 1.0f));
+}
+
+BOOST_AUTO_TEST_CASE(TestInterpolatedPositionIsFinite) {
+    // Verify interpolation always produces finite values
+    Camera camera(500.0f, 500.0f, 1920.0f, 1080.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Test various alpha values
+    float alphas[] = {0.0f, 0.25f, 0.5f, 0.75f, 1.0f};
+
+    for (float alpha : alphas) {
+        float offsetX, offsetY;
+        Vector2D center = camera.getRenderOffset(offsetX, offsetY, alpha);
+
+        BOOST_CHECK(isFinite(center.getX()));
+        BOOST_CHECK(isFinite(center.getY()));
+        BOOST_CHECK(isFinite(offsetX));
+        BOOST_CHECK(isFinite(offsetY));
+    }
+}
+
+BOOST_AUTO_TEST_CASE(TestInterpolationWithLargeMovement) {
+    // Test that large position changes don't cause numerical issues
+    Camera camera(500.0f, 400.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Expand world bounds to allow large positions
+    camera.setWorldBounds(0.0f, 0.0f, 20000.0f, 20000.0f);
+
+    // Update to establish interpolation state
+    camera.update(0.016f);
+
+    // Large teleport (simulates teleportation)
+    // Note: setPosition() is a teleport that sets position directly.
+    // After update(), both prev and current will be at teleport destination.
+    camera.setPosition(10000.0f, 10000.0f);
+    camera.update(0.016f);
+
+    // Get interpolated positions - should be valid finite values
+    float offsetX, offsetY;
+
+    Vector2D centerAt0 = camera.getRenderOffset(offsetX, offsetY, 0.0f);
+    BOOST_CHECK(isFinite(centerAt0.getX()));
+    BOOST_CHECK(isFinite(centerAt0.getY()));
+
+    Vector2D centerAt1 = camera.getRenderOffset(offsetX, offsetY, 1.0f);
+    BOOST_CHECK(isFinite(centerAt1.getX()));
+    BOOST_CHECK(isFinite(centerAt1.getY()));
+
+    // Both alpha values should return the teleport destination (no interpolation range)
+    BOOST_CHECK(approxEqual(centerAt0.getX(), 10000.0f, 1.0f));
+    BOOST_CHECK(approxEqual(centerAt0.getY(), 10000.0f, 1.0f));
+    BOOST_CHECK(approxEqual(centerAt1.getX(), 10000.0f, 1.0f));
+    BOOST_CHECK(approxEqual(centerAt1.getY(), 10000.0f, 1.0f));
+}
+
+BOOST_AUTO_TEST_CASE(TestInterpolationWithZoom) {
+    // Interpolation should work correctly with different zoom levels
+    Camera camera(100.0f, 100.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Set zoom to 2x
+    camera.setZoomLevel(2);
+
+    // Update to establish previous position
+    camera.update(0.016f);
+
+    // Move camera
+    camera.setPosition(200.0f, 200.0f);
+    camera.update(0.016f);
+
+    // Get interpolated position
+    float offsetX, offsetY;
+    Vector2D center = camera.getRenderOffset(offsetX, offsetY, 0.5f);
+
+    // Should still interpolate correctly
+    BOOST_CHECK(isFinite(center.getX()));
+    BOOST_CHECK(isFinite(center.getY()));
+    BOOST_CHECK(isFinite(offsetX));
+    BOOST_CHECK(isFinite(offsetY));
+}
+
+BOOST_AUTO_TEST_CASE(TestInterpolationConsistency) {
+    // Multiple calls with same alpha should return same result
+    Camera camera(100.0f, 100.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Establish state
+    camera.update(0.016f);
+    camera.setPosition(200.0f, 200.0f);
+    camera.update(0.016f);
+
+    // Get interpolated position multiple times
+    float offsetX1, offsetY1;
+    Vector2D center1 = camera.getRenderOffset(offsetX1, offsetY1, 0.5f);
+
+    float offsetX2, offsetY2;
+    Vector2D center2 = camera.getRenderOffset(offsetX2, offsetY2, 0.5f);
+
+    // Should be identical
+    BOOST_CHECK(approxEqual(center1.getX(), center2.getX()));
+    BOOST_CHECK(approxEqual(center1.getY(), center2.getY()));
+    BOOST_CHECK(approxEqual(offsetX1, offsetX2));
+    BOOST_CHECK(approxEqual(offsetY1, offsetY2));
+}
+
+BOOST_AUTO_TEST_CASE(TestRenderOffsetWithWorldBounds) {
+    // Test that render offset respects world bounds
+    Camera camera(0.0f, 0.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+    camera.setWorldBounds(0.0f, 0.0f, 1000.0f, 1000.0f);
+
+    // Update camera
+    camera.update(0.016f);
+
+    // Get render offset
+    float offsetX, offsetY;
+    Vector2D center = camera.getRenderOffset(offsetX, offsetY, 1.0f);
+
+    // Values should be finite
+    BOOST_CHECK(isFinite(center.getX()));
+    BOOST_CHECK(isFinite(center.getY()));
+    BOOST_CHECK(isFinite(offsetX));
+    BOOST_CHECK(isFinite(offsetY));
+}
+
+BOOST_AUTO_TEST_CASE(TestSnapToPositionNoInterpolation) {
+    // snapToPosition should immediately update both current and previous
+    Camera camera(0.0f, 0.0f, 800.0f, 600.0f);
+    camera.setMode(Camera::Mode::Free);
+
+    // Establish initial state
+    camera.setPosition(100.0f, 100.0f);
+    camera.update(0.016f);
+
+    // Move to new position (setPosition updates both current and previous for immediate effect)
+    camera.setPosition(500.0f, 500.0f);
+    camera.update(0.016f);
+
+    // After update, both previous and current should converge
+    float offsetX, offsetY;
+    Vector2D centerAt1 = camera.getRenderOffset(offsetX, offsetY, 1.0f);
+
+    // At alpha=1, should be at new position
+    BOOST_CHECK(approxEqual(centerAt1.getX(), 500.0f, 10.0f));
+    BOOST_CHECK(approxEqual(centerAt1.getY(), 500.0f, 10.0f));
+}
+
+BOOST_AUTO_TEST_SUITE_END()

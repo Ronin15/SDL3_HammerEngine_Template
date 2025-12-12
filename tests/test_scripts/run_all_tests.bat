@@ -68,9 +68,9 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,
-    echo                     GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,
-    echo                     AI-Collision Integration, Event Coordination Integration
+    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, WeatherEvent, GameTime, Controllers,
+    echo                     ParticleManager, Collision, Pathfinding, GameEngine, Camera, InputManager, SIMD, BufferReuse,
+    echo                     Rendering, LoadingState, UIManager, AI-Collision Integration, Event Coordination Integration
     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, Pathfinder, and SIMD performance benchmarks
     echo.
     echo Execution Time:
@@ -93,7 +93,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=33
+set CORE_TEST_COUNT=35
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=7
 
@@ -157,6 +157,8 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_game_state_manager_tests.bat" false
     call :run_single_test "run_event_tests.bat" false
     call :run_single_test "run_weather_event_tests.bat" false
+    call :run_single_test "run_game_time_tests.bat" false
+    call :run_single_test "run_controller_tests.bat" false
     call :run_single_test "run_particle_manager_tests.bat" false
     call :run_single_test "run_json_reader_tests.bat" false
     call :run_single_test "run_resource_tests.bat" false

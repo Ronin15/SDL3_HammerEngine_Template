@@ -231,6 +231,16 @@ public:
     
     void enableRendering(bool enable) { m_renderingEnabled = enable; }
     bool isRenderingEnabled() const { return m_renderingEnabled; }
+
+    // Chunk cache management (delegates to TileRenderer)
+    void invalidateChunk(int chunkX, int chunkY);
+    void clearChunkCache();
+
+    // Season management (delegates to TileRenderer)
+    void subscribeToSeasonEvents();
+    void unsubscribeFromSeasonEvents();
+    Season getCurrentSeason() const;
+    void setCurrentSeason(Season season);
     
     void setCamera(int x, int y) { m_cameraX = x; m_cameraY = y; }
     void setCameraViewport(int width, int height) { 
