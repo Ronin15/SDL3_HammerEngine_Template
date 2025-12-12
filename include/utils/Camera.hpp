@@ -302,16 +302,22 @@ public:
                          float& offsetX, float& offsetY) const;
 
     /**
-     * @brief Gets the pixel-snapped render offset using camera's own interpolation
+     * @brief Gets render offset and returns the center position used for sync
      *
-     * Use this for non-follow modes (Free, Fixed) where the camera uses its
-     * own position interpolation rather than tracking an entity.
+     * In Follow mode, reads target's interpolated position (ONE atomic read)
+     * and derives camera offset from it. Returns the position so caller can
+     * render the followed entity at EXACTLY the same spot - eliminating jitter
+     * from separate atomic reads.
      *
-     * @param offsetX Output: pixel-snapped camera X offset (top-left)
-     * @param offsetY Output: pixel-snapped camera Y offset (top-left)
-     * @param interpolationAlpha Blend factor for camera position interpolation
+     * In Free/Fixed modes, uses camera's own interpolation and returns the
+     * camera's interpolated center position.
+     *
+     * @param offsetX Output: camera X offset (top-left of view)
+     * @param offsetY Output: camera Y offset (top-left of view)
+     * @param interpolationAlpha Blend factor for position interpolation
+     * @return The center position used for offset calculation (for synced rendering)
      */
-    void getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
+    Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
 
 
     /**
@@ -476,7 +482,6 @@ private:
         float prevPosX{0.0f}, prevPosY{0.0f};
     };
     std::atomic<InterpolationState> m_interpState{};
-
 
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead

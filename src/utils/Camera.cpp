@@ -89,16 +89,12 @@ void Camera::update(float deltaTime) {
         }
     }
 
-    // Smooth follow mode - camera smoothly tracks target position
+    // Follow mode - lock camera to target position (no lag = no jitter)
     if (m_mode == Mode::Follow && hasTarget()) {
         Vector2D targetPos = getTargetPosition();
 
-        // Ideal camera position is the target's position (camera centers on target)
-        Vector2D idealPosition = targetPos;
-
-        // Clamp ideal position to world bounds, accounting for viewport size
+        // Clamp target to world bounds, accounting for viewport size
         if (m_config.clampToWorldBounds) {
-            // Use zoom-adjusted viewport - at higher zoom, you see less world space
             const float halfW = m_viewport.halfWidth() / m_zoom;
             const float halfH = m_viewport.halfHeight() / m_zoom;
 
@@ -108,48 +104,20 @@ void Camera::update(float deltaTime) {
             const float maxY = m_worldBounds.maxY - halfH;
 
             if (maxX > minX) {
-                idealPosition.setX(std::clamp(idealPosition.getX(), minX, maxX));
+                targetPos.setX(std::clamp(targetPos.getX(), minX, maxX));
             } else {
-                idealPosition.setX((m_worldBounds.minX + m_worldBounds.maxX) * 0.5f);
+                targetPos.setX((m_worldBounds.minX + m_worldBounds.maxX) * 0.5f);
             }
 
             if (maxY > minY) {
-                idealPosition.setY(std::clamp(idealPosition.getY(), minY, maxY));
+                targetPos.setY(std::clamp(targetPos.getY(), minY, maxY));
             } else {
-                idealPosition.setY((m_worldBounds.minY + m_worldBounds.maxY) * 0.5f);
+                targetPos.setY((m_worldBounds.minY + m_worldBounds.maxY) * 0.5f);
             }
         }
 
-        // Offset from current to ideal
-        const float dx = idealPosition.getX() - m_position.getX();
-        const float dy = idealPosition.getY() - m_position.getY();
-        const float distance = std::sqrt(dx * dx + dy * dy);
-
-        // Dead zone from config to avoid micro-oscillations
-        const float deadZone = std::max(0.0f, m_config.deadZoneRadius);
-        if (distance > deadZone) {
-            // Exponential smoothing with configurable responsiveness
-            // alpha = 1 - smoothingFactor^(dt * followSpeed)
-            float alpha = 1.0f - std::pow(std::clamp(m_config.smoothingFactor, 0.0f, 1.0f),
-                                          std::max(0.0f, deltaTime * std::max(0.0f, m_config.followSpeed)));
-            alpha = std::clamp(alpha, 0.0f, 1.0f);
-
-            float newX = m_position.getX() + dx * alpha;
-            float newY = m_position.getY() + dy * alpha;
-
-            // If we would end up inside the dead zone, stop at its edge
-            const float ndx = idealPosition.getX() - newX;
-            const float ndy = idealPosition.getY() - newY;
-            const float newDistance = std::sqrt(ndx * ndx + ndy * ndy);
-            if (newDistance < deadZone && distance > 0.0f) {
-                const float ratio = (distance - deadZone) / distance;
-                newX = m_position.getX() + dx * ratio;
-                newY = m_position.getY() + dy * ratio;
-            }
-
-            m_position.setX(newX);
-            m_position.setY(newY);
-        }
+        // Lock to target - camera position equals player position
+        m_position = targetPos;
     }
 
     // Ensure final camera position respects world bounds across all modes
@@ -348,14 +316,33 @@ void Camera::getRenderOffset(float entityInterpX, float entityInterpY,
     }
 }
 
-void Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
-    // Non-follow mode: use camera's own interpolation
-    auto camState = m_interpState.load(std::memory_order_acquire);
-    float camInterpX = camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha;
-    float camInterpY = camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha;
+Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+    Vector2D center;
 
-    // Delegate to primary implementation
-    getRenderOffset(camInterpX, camInterpY, offsetX, offsetY);
+    // Follow mode: derive offset from TARGET's interpolated position (single atomic read)
+    // This ensures camera and followed entity use the EXACT same position - no jitter
+    if (m_mode == Mode::Follow) {
+        if (auto targetPtr = m_target.lock()) {
+            // ONE atomic read - this is the source of truth for this frame
+            center = targetPtr->getInterpolatedPosition(interpolationAlpha);
+        } else {
+            // No valid target, fall back to camera's own interpolation
+            auto camState = m_interpState.load(std::memory_order_acquire);
+            center.setX(camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha);
+            center.setY(camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
+        }
+    } else {
+        // Free/Fixed mode: use camera's own interpolation
+        auto camState = m_interpState.load(std::memory_order_acquire);
+        center.setX(camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha);
+        center.setY(camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
+    }
+
+    // Compute screen offset from the center position we determined
+    getRenderOffset(center.getX(), center.getY(), offsetX, offsetY);
+
+    // Return the center position we used - caller should render followed entity here
+    return center;
 }
 
 bool Camera::isPointVisible(float x, float y) const {
