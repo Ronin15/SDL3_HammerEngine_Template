@@ -227,17 +227,29 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Get GameEngine for logical dimensions (renderer now passed as parameter)
   const auto &gameEngine = GameEngine::Instance();
 
-  // Camera offset uses SmoothDamp-filtered interpolation (eliminates world jitter)
+  // UNIFIED INTERPOLATION: Player position is single source of truth
+  // Camera offset is derived from player position to eliminate phase drift
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
 
+  // Compute player interpolated position first (used for both camera and player render)
+  Vector2D playerInterpPos;
+  if (mp_Player) {
+    playerInterpPos = mp_Player->getInterpolatedPosition(interpolationAlpha);
+  }
+
   if (m_camera) {
     viewRect = m_camera->getViewRect();
     zoom = m_camera->getZoom();
-    // Camera's smoothed interpolation - handles all modes internally
-    m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+    // Camera offset derived from player's interpolated position (unified path)
+    if (mp_Player) {
+      m_camera->getRenderOffset(playerInterpPos.getX(), playerInterpPos.getY(),
+                                renderCamX, renderCamY);
+    } else {
+      m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+    }
   }
 
   // Set render scale for zoom only when changed (avoids GPU state change overhead)
@@ -258,9 +270,8 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
                        viewRect.width, viewRect.height);
   }
 
-  // Render player at its own interpolated position
+  // Render player using same interpolated position as camera offset
   if (mp_Player) {
-    Vector2D playerInterpPos = mp_Player->getInterpolatedPosition(interpolationAlpha);
     mp_Player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
