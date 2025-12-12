@@ -214,8 +214,9 @@ public:
     /**
      * @brief Set the current game day
      * @param day Day to set (must be >= 1)
+     * @note Updates calendar state (month, year, season) based on the new day
      */
-    void setGameDay(int day) { m_currentDay = (day >= 1) ? day : 1; }
+    void setGameDay(int day);
 
     /**
      * @brief Set sunrise and sunset hours

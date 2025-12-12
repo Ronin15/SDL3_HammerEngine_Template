@@ -635,6 +635,51 @@ void WorldManager::initializeWorldResources() {
     }
 }
 
+// ============================================================================
+// Chunk Cache Management (WorldManager delegates to TileRenderer)
+// ============================================================================
+
+void WorldManager::invalidateChunk(int chunkX, int chunkY) {
+    if (m_tileRenderer) {
+        m_tileRenderer->invalidateChunk(chunkX, chunkY);
+    }
+}
+
+void WorldManager::clearChunkCache() {
+    if (m_tileRenderer) {
+        m_tileRenderer->clearChunkCache();
+    }
+}
+
+// ============================================================================
+// Season Management (WorldManager delegates to TileRenderer)
+// ============================================================================
+
+void WorldManager::subscribeToSeasonEvents() {
+    if (m_tileRenderer) {
+        m_tileRenderer->subscribeToSeasonEvents();
+    }
+}
+
+void WorldManager::unsubscribeFromSeasonEvents() {
+    if (m_tileRenderer) {
+        m_tileRenderer->unsubscribeFromSeasonEvents();
+    }
+}
+
+Season WorldManager::getCurrentSeason() const {
+    if (m_tileRenderer) {
+        return m_tileRenderer->getCurrentSeason();
+    }
+    return Season::Spring;  // Default if no renderer
+}
+
+void WorldManager::setCurrentSeason(Season season) {
+    if (m_tileRenderer) {
+        m_tileRenderer->setCurrentSeason(season);
+    }
+}
+
 // TileRenderer Implementation
 
 HammerEngine::TileRenderer::TileRenderer()

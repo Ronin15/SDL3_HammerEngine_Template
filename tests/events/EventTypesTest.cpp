@@ -527,3 +527,209 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectEventEdgeCases, EventTypesFixture) {
   BOOST_CHECK(!extremeEvent.isEffectActive()); // Effect won't be active due to
                                                // no ParticleManager
 }
+
+// ============================================================================
+// TIME EVENT TESTS
+// ============================================================================
+
+#include "events/TimeEvent.hpp"
+#include "core/GameTime.hpp"
+
+// Test HourChangedEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(HourChangedEventBasics, EventTypesFixture) {
+  HourChangedEvent event(14, false);
+
+  BOOST_CHECK_EQUAL(event.getHour(), 14);
+  BOOST_CHECK(!event.isNight());
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::HourChanged);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "HourChangedEvent");
+  BOOST_CHECK_EQUAL(event.getName(), "HourChangedEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Test night flag
+  HourChangedEvent nightEvent(2, true);
+  BOOST_CHECK_EQUAL(nightEvent.getHour(), 2);
+  BOOST_CHECK(nightEvent.isNight());
+
+  // Test reset
+  HourChangedEvent resetEvent(10, true);
+  resetEvent.reset();
+  BOOST_CHECK_EQUAL(resetEvent.getHour(), 0);
+  BOOST_CHECK(!resetEvent.isNight());
+}
+
+// Test DayChangedEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(DayChangedEventBasics, EventTypesFixture) {
+  DayChangedEvent event(15, 15, 0, "Bloomtide");
+
+  BOOST_CHECK_EQUAL(event.getDay(), 15);
+  BOOST_CHECK_EQUAL(event.getDayOfMonth(), 15);
+  BOOST_CHECK_EQUAL(event.getMonth(), 0);
+  BOOST_CHECK_EQUAL(event.getMonthName(), "Bloomtide");
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::DayChanged);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "DayChangedEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Test reset
+  DayChangedEvent resetEvent(5, 5, 1, "Sunpeak");
+  resetEvent.reset();
+  BOOST_CHECK_EQUAL(resetEvent.getDay(), 0);
+  BOOST_CHECK_EQUAL(resetEvent.getDayOfMonth(), 0);
+  BOOST_CHECK_EQUAL(resetEvent.getMonth(), 0);
+  BOOST_CHECK(resetEvent.getMonthName().empty());
+}
+
+// Test MonthChangedEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(MonthChangedEventBasics, EventTypesFixture) {
+  MonthChangedEvent event(1, "Sunpeak", Season::Summer);
+
+  BOOST_CHECK_EQUAL(event.getMonth(), 1);
+  BOOST_CHECK_EQUAL(event.getMonthName(), "Sunpeak");
+  BOOST_CHECK(event.getSeason() == Season::Summer);
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::MonthChanged);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "MonthChangedEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Test reset
+  MonthChangedEvent resetEvent(2, "Harvestmoon", Season::Fall);
+  resetEvent.reset();
+  BOOST_CHECK_EQUAL(resetEvent.getMonth(), 0);
+  BOOST_CHECK(resetEvent.getMonthName().empty());
+  BOOST_CHECK(resetEvent.getSeason() == Season::Spring);
+}
+
+// Test SeasonChangedEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(SeasonChangedEventBasics, EventTypesFixture) {
+  SeasonChangedEvent event(Season::Winter, Season::Fall, "Winter");
+
+  BOOST_CHECK(event.getSeason() == Season::Winter);
+  BOOST_CHECK(event.getPreviousSeason() == Season::Fall);
+  BOOST_CHECK_EQUAL(event.getSeasonName(), "Winter");
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::SeasonChanged);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "SeasonChangedEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Test reset
+  SeasonChangedEvent resetEvent(Season::Summer, Season::Spring, "Summer");
+  resetEvent.reset();
+  BOOST_CHECK(resetEvent.getSeason() == Season::Spring);
+  BOOST_CHECK(resetEvent.getPreviousSeason() == Season::Spring);
+  BOOST_CHECK(resetEvent.getSeasonName().empty());
+}
+
+// Test YearChangedEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(YearChangedEventBasics, EventTypesFixture) {
+  YearChangedEvent event(5);
+
+  BOOST_CHECK_EQUAL(event.getYear(), 5);
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::YearChanged);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "YearChangedEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Test reset
+  YearChangedEvent resetEvent(10);
+  resetEvent.reset();
+  BOOST_CHECK_EQUAL(resetEvent.getYear(), 0);
+}
+
+// Test WeatherCheckEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(WeatherCheckEventBasics, EventTypesFixture) {
+  WeatherCheckEvent event(Season::Winter, WeatherType::Snowy);
+
+  BOOST_CHECK(event.getSeason() == Season::Winter);
+  BOOST_CHECK(event.getRecommendedWeather() == WeatherType::Snowy);
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::WeatherCheck);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "WeatherCheckEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Test reset
+  WeatherCheckEvent resetEvent(Season::Summer, WeatherType::Clear);
+  resetEvent.reset();
+  BOOST_CHECK(resetEvent.getSeason() == Season::Spring);
+}
+
+// Test TimePeriodChangedEvent creation and properties
+BOOST_FIXTURE_TEST_CASE(TimePeriodChangedEventBasics, EventTypesFixture) {
+  TimePeriodVisuals visuals = TimePeriodVisuals::getNight();
+  TimePeriodChangedEvent event(TimePeriod::Night, TimePeriod::Evening, visuals);
+
+  BOOST_CHECK(event.getPeriod() == TimePeriod::Night);
+  BOOST_CHECK(event.getPreviousPeriod() == TimePeriod::Evening);
+  BOOST_CHECK_EQUAL(std::string(event.getPeriodName()), "Night");
+  BOOST_CHECK(event.getTimeEventType() == TimeEventType::TimePeriodChanged);
+  BOOST_CHECK_EQUAL(event.getTypeName(), "TimePeriodChangedEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Time);
+
+  // Check visuals
+  const auto& v = event.getVisuals();
+  BOOST_CHECK_EQUAL(v.overlayR, 20);
+  BOOST_CHECK_EQUAL(v.overlayG, 20);
+  BOOST_CHECK_EQUAL(v.overlayB, 60);
+  BOOST_CHECK_EQUAL(v.overlayA, 90);
+
+  // Test reset
+  TimePeriodChangedEvent resetEvent(TimePeriod::Morning, TimePeriod::Night,
+                                    TimePeriodVisuals::getMorning());
+  resetEvent.reset();
+  BOOST_CHECK(resetEvent.getPeriod() == TimePeriod::Day);
+  BOOST_CHECK(resetEvent.getPreviousPeriod() == TimePeriod::Day);
+}
+
+// Test TimePeriodVisuals factory methods
+BOOST_FIXTURE_TEST_CASE(TimePeriodVisualsFactoryMethods, EventTypesFixture) {
+  // Morning - red-orange dawn
+  auto morning = TimePeriodVisuals::getMorning();
+  BOOST_CHECK_EQUAL(morning.overlayR, 255);
+  BOOST_CHECK_EQUAL(morning.overlayG, 140);
+  BOOST_CHECK_EQUAL(morning.overlayB, 80);
+  BOOST_CHECK_EQUAL(morning.overlayA, 30);
+
+  // Day - slight yellow
+  auto day = TimePeriodVisuals::getDay();
+  BOOST_CHECK_EQUAL(day.overlayR, 255);
+  BOOST_CHECK_EQUAL(day.overlayG, 255);
+  BOOST_CHECK_EQUAL(day.overlayB, 200);
+  BOOST_CHECK_EQUAL(day.overlayA, 8);
+
+  // Evening - orange-red sunset
+  auto evening = TimePeriodVisuals::getEvening();
+  BOOST_CHECK_EQUAL(evening.overlayR, 255);
+  BOOST_CHECK_EQUAL(evening.overlayG, 80);
+  BOOST_CHECK_EQUAL(evening.overlayB, 40);
+  BOOST_CHECK_EQUAL(evening.overlayA, 40);
+
+  // Night - darker blue/purple
+  auto night = TimePeriodVisuals::getNight();
+  BOOST_CHECK_EQUAL(night.overlayR, 20);
+  BOOST_CHECK_EQUAL(night.overlayG, 20);
+  BOOST_CHECK_EQUAL(night.overlayB, 60);
+  BOOST_CHECK_EQUAL(night.overlayA, 90);
+
+  // Test getForPeriod
+  auto forMorning = TimePeriodVisuals::getForPeriod(TimePeriod::Morning);
+  BOOST_CHECK_EQUAL(forMorning.overlayA, morning.overlayA);
+
+  auto forDay = TimePeriodVisuals::getForPeriod(TimePeriod::Day);
+  BOOST_CHECK_EQUAL(forDay.overlayA, day.overlayA);
+
+  auto forEvening = TimePeriodVisuals::getForPeriod(TimePeriod::Evening);
+  BOOST_CHECK_EQUAL(forEvening.overlayA, evening.overlayA);
+
+  auto forNight = TimePeriodVisuals::getForPeriod(TimePeriod::Night);
+  BOOST_CHECK_EQUAL(forNight.overlayA, night.overlayA);
+}
+
+// Test TimeEvent base class
+BOOST_FIXTURE_TEST_CASE(TimeEventBaseClass, EventTypesFixture) {
+  HourChangedEvent event(12, false);
+
+  // Test Event interface methods
+  BOOST_CHECK(event.checkConditions());  // Always true for TimeEvent
+  BOOST_CHECK_EQUAL(event.getType(), "HourChangedEvent");
+  BOOST_CHECK_EQUAL(event.getName(), "HourChangedEvent");
+
+  // Test update/execute/clean don't crash
+  event.update();
+  event.execute();
+  event.clean();
+}

@@ -164,6 +164,12 @@ bool GameTime::init(float startHour, float timeScale)
     // Initialize last update time
     m_lastUpdateTime = std::chrono::steady_clock::now();
 
+    // Initialize calendar with default config if not already set
+    if (m_calendarConfig.months.empty())
+    {
+        m_calendarConfig = CalendarConfig::createDefault();
+    }
+
     // Initialize calendar state
     m_currentMonth = 0;
     m_dayOfMonth = 1;
@@ -411,6 +417,15 @@ void GameTime::setDaylightHours(float sunrise, float sunset)
         m_sunriseHour = sunrise;
         m_sunsetHour = sunset;
     }
+}
+
+void GameTime::setGameDay(int day)
+{
+    m_currentDay = (day >= 1) ? day : 1;
+    // Update totalGameSeconds to match the new day (preserving current hour)
+    // This ensures advanceTime() doesn't overwrite the day on next update()
+    m_totalGameSeconds = (static_cast<float>(m_currentDay - 1) * 24.0f + m_currentHour) * 3600.0f;
+    updateCalendarState();
 }
 
 bool GameTime::isDaytime() const
