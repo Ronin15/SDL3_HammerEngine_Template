@@ -1690,9 +1690,9 @@ void EventDemoState::addLogEntry(const std::string &entry) {
     ui.addEventLogEntry("event_log", entry);
 
     // Also log to console for debugging with timestamp
-    GAMESTATE_DEBUG("EventDemo [" + std::to_string((int)m_totalDemoTime) + "s]: " + entry);
+    GAMESTATE_DEBUG(std::format("EventDemo [{}s]: {}", static_cast<int>(m_totalDemoTime), entry));
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Error adding log entry: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Error adding log entry: {}", e.what()));
   }
 }
 

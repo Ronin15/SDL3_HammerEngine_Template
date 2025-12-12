@@ -159,7 +159,7 @@ bool GamePlayState::enter() {
 
     GAMEPLAY_INFO("GamePlayState initialization complete");
   } catch (const std::exception& e) {
-    GAMEPLAY_ERROR("Exception during GamePlayState initialization: " + std::string(e.what()));
+    GAMEPLAY_ERROR(std::format("Exception during GamePlayState initialization: {}", e.what()));
     return false;
   }
 
@@ -551,13 +551,10 @@ void GamePlayState::handleInput() {
                 const auto* tile = worldMgr.getTileAt(tileX, tileY);
                 if (tile) {
                     // Log tile information for debugging
-                    GAMEPLAY_DEBUG("Clicked tile (" + std::to_string(tileX) +
-                                   ", " + std::to_string(tileY) +
-                                   ") - Biome: " +
-                                   std::to_string(static_cast<int>(tile->biome)) +
-                                   ", Obstacle: " +
-                                   std::to_string(
-                                       static_cast<int>(tile->obstacleType)));
+                    GAMEPLAY_DEBUG(std::format("Clicked tile ({}, {}) - Biome: {}, Obstacle: {}",
+                                               tileX, tileY,
+                                               static_cast<int>(tile->biome),
+                                               static_cast<int>(tile->obstacleType)));
                 }
             }
         }
@@ -624,7 +621,7 @@ void GamePlayState::initializeInventoryUI() {
       const auto* inventory = mp_Player->getInventory();
       int used = inventory->getUsedSlots();
       int max = inventory->getMaxSlots();
-      return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
+      return std::format("Capacity: {}/{}", used, max);
   });
 
   // Bind the inventory list - populates provided buffers (zero-allocation pattern)
@@ -656,7 +653,7 @@ void GamePlayState::initializeInventoryUI() {
 
       items.reserve(sortedResources.size());
       for (const auto& [resourceId, quantity] : sortedResources) {
-          items.push_back(resourceId + " x" + std::to_string(quantity));
+          items.push_back(std::format("{} x{}", resourceId, quantity));
       }
 
       if (items.empty()) {
