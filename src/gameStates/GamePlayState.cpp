@@ -224,54 +224,41 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 }
 
 void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
-  // Get GameEngine for logical dimensions (renderer now passed as parameter)
   const auto &gameEngine = GameEngine::Instance();
 
-  // UNIFIED INTERPOLATION: Player position is single source of truth
-  // Camera offset is derived from player position to eliminate phase drift
   HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
-
-  // Compute player interpolated position first (used for both camera and player render)
-  Vector2D playerInterpPos;
-  if (mp_Player) {
-    playerInterpPos = mp_Player->getInterpolatedPosition(interpolationAlpha);
-  }
+  Vector2D playerInterpPos;  // Position to render player at (synced with camera)
 
   if (m_camera) {
     viewRect = m_camera->getViewRect();
     zoom = m_camera->getZoom();
-    // Camera offset derived from player's interpolated position (unified path)
-    if (mp_Player) {
-      m_camera->getRenderOffset(playerInterpPos.getX(), playerInterpPos.getY(),
-                                renderCamX, renderCamY);
-    } else {
-      m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
-    }
+    // Camera returns the position it used for offset calculation
+    // In Follow mode: ONE atomic read from player's interpolation state
+    // This is the single source of truth - both world and player sync to it
+    playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
   }
 
-  // Set render scale for zoom only when changed (avoids GPU state change overhead)
   if (zoom != m_lastRenderedZoom) {
     SDL_SetRenderScale(renderer, zoom, zoom);
     m_lastRenderedZoom = zoom;
   }
 
-  // Render background particles (rain, snow) BEFORE world - use cached pointer
   if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
     mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
-  // Render world using pixel-snapped camera coordinates - use cached pointer
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
     mp_worldMgr->render(renderer,
                        renderCamX, renderCamY,
                        viewRect.width, viewRect.height);
   }
 
-  // Render player using same interpolated position as camera offset
   if (mp_Player) {
+    // Render player at the EXACT position camera used for offset calculation
+    // No separate atomic read - eliminates race condition jitter
     mp_Player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
