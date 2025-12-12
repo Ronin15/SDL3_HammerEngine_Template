@@ -918,9 +918,8 @@ private:
 
   // Lock-free synchronization - no mutexes needed for particles
   mutable std::shared_mutex
-      m_effectsMutex;              // Only for effect definitions (rare writes)
+      m_effectsMutex;              // For effect instances and definitions
   mutable std::mutex m_statsMutex; // Only for performance stats
-  mutable std::mutex m_weatherMutex; // For weather effect changes
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
