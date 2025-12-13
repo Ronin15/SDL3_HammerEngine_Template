@@ -124,10 +124,10 @@ private:
     static constexpr double MAX_ACCUMULATOR = 0.25; // Unused (kept for compatibility)
     
     // Frame statistics
-    uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds
-    float m_currentFPS;                 // Current measured FPS
-    uint32_t m_frameCount;              // Frame counter for FPS calculation
-    std::chrono::high_resolution_clock::time_point m_fpsLastUpdate;             // Last FPS update time
+    uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds (for getFrameTimeMs())
+    double m_lastDeltaSeconds;          // Last frame duration in seconds (high precision for FPS)
+    float m_currentFPS;                 // Current measured FPS (EMA smoothed)
+    float m_smoothingAlpha;             // EMA smoothing factor (0.05 = stable, 0.1 = responsive)
     
     // State flags
     bool m_shouldRender;                // True when render should happen this frame
