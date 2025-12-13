@@ -41,7 +41,7 @@ void DayNightController::subscribe()
     eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
     m_subscribed = true;
-    HAMMER_INFO("DayNightController", std::format("Subscribed to time events, period: {}",
+    DAYNIGHT_INFO(std::format("Subscribed to time events, period: {}",
                 getCurrentPeriodString()));
 }
 
@@ -58,7 +58,7 @@ void DayNightController::unsubscribe()
     m_handlerTokens.clear();
 
     m_subscribed = false;
-    HAMMER_INFO("DayNightController", "Unsubscribed from time events");
+    DAYNIGHT_INFO("Unsubscribed from time events");
 }
 
 void DayNightController::onTimeEvent(const EventData& data)
@@ -99,7 +99,7 @@ void DayNightController::transitionToPeriod(TimePeriod newPeriod)
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
-    HAMMER_INFO("DayNightController", std::format("Transitioned to {}", getCurrentPeriodString()));
+    DAYNIGHT_INFO(std::format("Transitioned to {}", getCurrentPeriodString()));
 }
 
 const char* DayNightController::getCurrentPeriodString() const
