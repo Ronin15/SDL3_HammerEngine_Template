@@ -611,9 +611,8 @@ WeatherType GameTime::rollWeatherForSeason(Season season) const
     SeasonConfig config = SeasonConfig::getDefault(season);
     const auto& probs = config.weatherProbs;
 
-    // Generate random number
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
+    // Generate random number - use thread_local for thread safety
+    static thread_local std::mt19937 gen{std::random_device{}()};
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
     float roll = dist(gen);
 
