@@ -102,10 +102,6 @@ private:
   
   // Camera for world navigation
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
-  
-  // Camera transformation state (calculated in update, used in render)
-  float m_cameraOffsetX{0.0f};
-  float m_cameraOffsetY{0.0f};
 
   // Event tracking
   std::unordered_map<std::string, bool> m_eventStates{};
@@ -217,7 +213,7 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
-  void applyCameraTransformation();
+  // Camera render offset computed in render() via unified single-read pattern
   
   // Thread-safe replacements for static variables
   size_t m_manualWeatherIndex{0};

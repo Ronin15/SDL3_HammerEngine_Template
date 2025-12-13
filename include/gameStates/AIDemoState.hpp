@@ -77,10 +77,6 @@ private:
     // Camera for world navigation
     std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
-    // Camera transformation state (calculated in update, used in render)
-    float m_cameraOffsetX{0.0f};
-    float m_cameraOffsetY{0.0f};
-
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit

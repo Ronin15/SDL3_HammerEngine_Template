@@ -281,7 +281,7 @@ public:
     };
 
     /**
-     * @brief Gets the current view rectangle
+     * @brief Gets the current view rectangle (uses update-thread position)
      * @return View rectangle for culling and rendering
      */
     ViewRect getViewRect() const;
