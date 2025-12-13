@@ -89,12 +89,16 @@ void Camera::update(float deltaTime) {
         }
     }
 
-    // ALWAYS sync world bounds - needed for computeOffsetFromCenter() in ALL modes
-    // This ensures m_worldBounds is current for offset clamping during render
-    syncWorldBounds();
-
     // Follow mode - track target position for entity rendering
     if (m_mode == Mode::Follow && hasTarget()) {
+        // Sync world bounds only when version changes (avoids per-frame overhead)
+        // This is needed for computeOffsetFromCenter() to clamp correctly
+        if (m_autoSyncWorldBounds) {
+            uint64_t currentVersion = WorldManager::Instance().getWorldVersion();
+            if (currentVersion != m_lastWorldVersion) {
+                syncWorldBounds();
+            }
+        }
         Vector2D targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
         // CRITICAL: Store UNCLAMPED target position in interpState for entity rendering
