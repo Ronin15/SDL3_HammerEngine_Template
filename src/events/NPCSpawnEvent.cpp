@@ -26,9 +26,8 @@ static Vector2D getPlayerPosition() {
                    GameEngine::Instance().getLogicalHeight() / 2.0f);
 }
 
-// Random number generation
-static std::random_device rd;
-static std::mt19937 gen(rd());
+// Random number generation - use thread_local for thread safety
+static thread_local std::mt19937 gen{std::random_device{}()};
 
 // Helper removed: use PathfinderManager::adjustSpawnToNavigable
 

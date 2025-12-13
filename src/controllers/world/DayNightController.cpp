@@ -6,6 +6,7 @@
 #include "controllers/world/DayNightController.hpp"
 #include "core/GameTime.hpp"
 #include "core/Logger.hpp"
+#include <format>
 
 DayNightController& DayNightController::Instance()
 {
@@ -40,8 +41,8 @@ void DayNightController::subscribe()
     eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
     m_subscribed = true;
-    HAMMER_INFO("DayNightController", "Subscribed to time events, period: " +
-                std::string(getCurrentPeriodString()));
+    HAMMER_INFO("DayNightController", std::format("Subscribed to time events, period: {}",
+                getCurrentPeriodString()));
 }
 
 void DayNightController::unsubscribe()
@@ -98,7 +99,7 @@ void DayNightController::transitionToPeriod(TimePeriod newPeriod)
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
-    HAMMER_INFO("DayNightController", "Transitioned to " + std::string(getCurrentPeriodString()));
+    HAMMER_INFO("DayNightController", std::format("Transitioned to {}", getCurrentPeriodString()));
 }
 
 const char* DayNightController::getCurrentPeriodString() const
