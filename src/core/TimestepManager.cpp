@@ -13,16 +13,16 @@ TimestepManager::TimestepManager(float targetFPS, float fixedTimestep)
     , m_targetFrameTime(1.0f / targetFPS)
     , m_accumulator(0.0)
     , m_lastFrameTimeMs(0)
+    , m_lastDeltaSeconds(0.0)
     , m_currentFPS(0.0f)
-    , m_frameCount(0)
+    , m_smoothingAlpha(0.03f)
     , m_shouldRender(true)
     , m_firstFrame(true)
 {
     auto currentTime = std::chrono::high_resolution_clock::now();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
-    m_fpsLastUpdate = currentTime;
-    
+
     // Initialize fixed timestep state
     m_usingSoftwareFrameLimiting = false;
     m_explicitlySet = false;
@@ -44,11 +44,12 @@ void TimestepManager::startFrame() {
     m_lastFrameTime = currentTime;
     m_frameStart = currentTime;
     
-    // Update frame time in milliseconds
+    // Update frame time in milliseconds (for getFrameTimeMs() API)
     m_lastFrameTimeMs = static_cast<uint32_t>(deltaTimeMs);
-    
+
     // Convert to seconds and clamp to prevent spiral of death
     double deltaTime = deltaTimeMs / 1000.0;
+    m_lastDeltaSeconds = deltaTime;  // Store high precision for FPS calculation
     deltaTime = std::min(deltaTime, static_cast<double>(MAX_ACCUMULATOR));
     
     // Add to accumulator for fixed timestep updates (atomic for thread safety)
@@ -95,11 +96,9 @@ double TimestepManager::getInterpolationAlpha() const {
 void TimestepManager::endFrame() {
     // Mark render as completed for this frame
     m_shouldRender = false;
-    
+
     // Limit frame rate
     limitFrameRate();
-    
-    m_frameCount++;
 }
 
 float TimestepManager::getCurrentFPS() const {
@@ -134,16 +133,15 @@ void TimestepManager::setFixedTimestep(float timestep) {
 
 void TimestepManager::reset() {
     m_accumulator.store(0.0, std::memory_order_relaxed);
-    m_frameCount = 0;
     m_firstFrame = true;
     m_shouldRender = true;
     m_currentFPS = 0.0f;
-    
+    m_lastDeltaSeconds = 0.0;
+
     auto currentTime = std::chrono::high_resolution_clock::now();
     m_frameStart = currentTime;
     m_lastFrameTime = currentTime;
-    m_fpsLastUpdate = currentTime;
-    
+
     // Preserve explicit software frame limiting settings during reset
     // Only reset if not explicitly configured by GameEngine
     if (!m_explicitlySet) {
@@ -152,16 +150,16 @@ void TimestepManager::reset() {
 }
 
 void TimestepManager::updateFPS() {
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    auto timeSinceLastUpdateNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_fpsLastUpdate);
-    double timeSinceLastUpdate = static_cast<double>(timeSinceLastUpdateNs.count()) / 1000000000.0; // Convert to seconds
-    
-    // Update FPS calculation every 0.5 seconds for more responsive/accurate display
-    // (Shorter window reduces boundary artifacts that could show false dips)
-    if (timeSinceLastUpdate >= 0.5) {
-        m_currentFPS = static_cast<float>(m_frameCount) / static_cast<float>(timeSinceLastUpdate);
-        m_frameCount = 0;
-        m_fpsLastUpdate = currentTime;
+    // EMA-based FPS calculation using high-precision delta time
+    if (m_lastDeltaSeconds > 0.0) {
+        float instantFPS = static_cast<float>(1.0 / m_lastDeltaSeconds);
+        instantFPS = std::clamp(instantFPS, 0.1f, 1000.0f);
+
+        if (m_currentFPS <= 0.0f) {
+            m_currentFPS = instantFPS;
+        } else {
+            m_currentFPS = m_smoothingAlpha * instantFPS + (1.0f - m_smoothingAlpha) * m_currentFPS;
+        }
     }
 }
 
