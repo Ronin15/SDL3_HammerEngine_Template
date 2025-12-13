@@ -89,6 +89,10 @@ void Camera::update(float deltaTime) {
         }
     }
 
+    // ALWAYS sync world bounds - needed for computeOffsetFromCenter() in ALL modes
+    // This ensures m_worldBounds is current for offset clamping during render
+    syncWorldBounds();
+
     // Follow mode - track target position for entity rendering
     if (m_mode == Mode::Follow && hasTarget()) {
         Vector2D targetPos = getTargetPosition();  // Target's UNCLAMPED position
@@ -415,8 +419,9 @@ void Camera::shake(float duration, float intensity) {
     }
 }
 
-void Camera::clampToWorldBounds() {
+void Camera::syncWorldBounds() {
     // Auto-sync world bounds with WorldManager if enabled
+    // This is needed for computeOffsetFromCenter() to work correctly in ALL modes
     if (m_autoSyncWorldBounds) {
         try {
             const auto &wm = WorldManager::Instance();
@@ -437,6 +442,11 @@ void Camera::clampToWorldBounds() {
             // If WorldManager is unavailable, keep current bounds
         }
     }
+}
+
+void Camera::clampToWorldBounds() {
+    // Ensure world bounds are current before clamping
+    syncWorldBounds();
 
     // Calculate effective bounds using zoom-adjusted viewport dimensions
     // At higher zoom, you see less world space, so bounds are tighter
