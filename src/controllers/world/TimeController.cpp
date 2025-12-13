@@ -40,7 +40,7 @@ void TimeController::subscribe(const std::string& eventLogId) {
     m_handlerTokens.push_back(weatherToken);
 
     m_subscribed = true;
-    HAMMER_INFO("TimeController", "Subscribed to time and weather events");
+    TIME_INFO("Subscribed to time and weather events");
 }
 
 void TimeController::unsubscribe() {
@@ -59,7 +59,7 @@ void TimeController::unsubscribe() {
     m_wasNight = false;
     m_statusLabelId.clear();
     m_formatMode = StatusFormatMode::Default;
-    HAMMER_INFO("TimeController", "Unsubscribed from time events");
+    TIME_INFO("Unsubscribed from time events");
 }
 
 void TimeController::setStatusLabel(std::string_view labelId) {
