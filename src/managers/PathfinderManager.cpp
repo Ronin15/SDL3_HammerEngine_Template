@@ -82,7 +82,7 @@ bool PathfinderManager::init() {
         return true;
     }
     catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to initialize PathfinderManager: " + std::string(e.what()));
+        PATHFIND_ERROR(std::format("Failed to initialize PathfinderManager: {}", e.what()));
         return false;
     }
 }
@@ -478,7 +478,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                         PATHFIND_INFO("Grid rebuilt successfully (sequential)");
                     }
                 } catch (const std::exception& e) {
-                    PATHFIND_ERROR("Sequential grid rebuild failed: " + std::string(e.what()));
+                    PATHFIND_ERROR(std::format("Sequential grid rebuild failed: {}", e.what()));
                 }
             },
             HammerEngine::TaskPriority::Low,
@@ -534,7 +534,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                             newGrid->rebuildFromWorld(rowStart, rowEnd);
                         },
                         HammerEngine::TaskPriority::Low,
-                        "PathfindingGridBatch_" + std::to_string(i)
+                        std::format("PathfindingGridBatch_{}", i)
                     );
                     batchFutures.push_back(std::move(batchFuture));
                 }
@@ -559,7 +559,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     PATHFIND_INFO(std::format("Grid rebuilt successfully (parallel, {} batches)", batchCount));
                 }
             } catch (const std::exception& e) {
-                PATHFIND_ERROR("Parallel grid rebuild failed: " + std::string(e.what()));
+                PATHFIND_ERROR(std::format("Parallel grid rebuild failed: {}", e.what()));
             }
         },
         HammerEngine::TaskPriority::Low,
@@ -1225,7 +1225,7 @@ void PathfinderManager::subscribeToEvents() {
         PATHFIND_DEBUG("PathfinderManager subscribed to World events (WorldLoaded, WorldUnloaded, TileChanged)");
 
     } catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to subscribe to events: " + std::string(e.what()));
+        PATHFIND_ERROR(std::format("Failed to subscribe to events: {}", e.what()));
     }
 }
 
@@ -1243,7 +1243,7 @@ void PathfinderManager::unsubscribeFromEvents() {
         PATHFIND_DEBUG("PathfinderManager unsubscribed from all events");
         
     } catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to unsubscribe from events: " + std::string(e.what()));
+        PATHFIND_ERROR(std::format("Failed to unsubscribe from events: {}", e.what()));
     }
 }
 
@@ -1396,7 +1396,7 @@ void PathfinderManager::waitForGridRebuildCompletion() {
                     future.wait(); // Block until task completes
                     PATHFIND_DEBUG("Grid rebuild task completed");
                 } catch (const std::exception& e) {
-                    PATHFIND_ERROR("Exception waiting for grid rebuild: " + std::string(e.what()));
+                    PATHFIND_ERROR(std::format("Exception waiting for grid rebuild: {}", e.what()));
                 }
             }
         }
@@ -1561,7 +1561,7 @@ void PathfinderManager::processPendingRequests() {
 
             const auto taskPri = mapEnumToTaskPriority(req.priority);
             const auto priLabel = priorityLabel(req.priority);
-            std::string taskDesc = "PathfindingComputation/" + std::string(priLabel);
+            std::string taskDesc = std::format("PathfindingComputation/{}", priLabel);
 
             threadSystem.enqueueTask(work, taskPri, taskDesc);
         }
@@ -1671,7 +1671,7 @@ void PathfinderManager::processPendingRequests() {
         m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
             batchWork,
             HammerEngine::TaskPriority::High,
-            "Pathfinding_Batch_" + std::to_string(i)
+            std::format("Pathfinding_Batch_{}", i)
         ));
     }
 
@@ -1692,7 +1692,7 @@ void PathfinderManager::waitForBatchCompletion() {
             try {
                 future.wait();
             } catch (const std::exception& e) {
-                PATHFIND_ERROR("Exception waiting for batch completion: " + std::string(e.what()));
+                PATHFIND_ERROR(std::format("Exception waiting for batch completion: {}", e.what()));
             }
         }
     }

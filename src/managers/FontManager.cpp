@@ -34,7 +34,7 @@ namespace {
 
 bool FontManager::init() {
   if (!TTF_Init()) {
-    FONT_CRITICAL("Font system initialization failed: " + std::string(SDL_GetError()));
+    FONT_CRITICAL(std::format("Font system initialization failed: {}", SDL_GetError()));
       return false;
   } else {
     // Reset shutdown flag when reinitializing
@@ -71,7 +71,7 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
             // Sort to ensure consistent loading order (e.g., Arial first)
             std::sort(m_fontFilePaths.begin(), m_fontFilePaths.end());
         } catch (const std::filesystem::filesystem_error& e) {
-            FONT_ERROR("Filesystem error while scanning for fonts: " + std::string(e.what()));
+            FONT_ERROR(std::format("Filesystem error while scanning for fonts: {}", e.what()));
             return false;
         }
     }
@@ -91,10 +91,10 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
     bool success = true;
     for (const auto& filePath : m_fontFilePaths) {
         std::string filename = std::filesystem::path(filePath).stem().string();
-        success &= loadFont(filePath, "fonts_" + filename, baseFontSize);
-        success &= loadFont(filePath, "fonts_UI_" + filename, uiFontSize);
-        success &= loadFont(filePath, "fonts_title_" + filename, titleFontSize);
-        success &= loadFont(filePath, "fonts_tooltip_" + filename, tooltipFontSize);
+        success &= loadFont(filePath, std::format("fonts_{}", filename), baseFontSize);
+        success &= loadFont(filePath, std::format("fonts_UI_{}", filename), uiFontSize);
+        success &= loadFont(filePath, std::format("fonts_title_{}", filename), titleFontSize);
+        success &= loadFont(filePath, std::format("fonts_tooltip_{}", filename), tooltipFontSize);
     }
 
     if (success) {
@@ -121,7 +121,7 @@ bool FontManager::loadFont(const std::string& fontFile, const std::string& fontI
     TTF_SetFontStyle(font.get(), TTF_STYLE_NORMAL);
 
     m_fontMap[fontID] = std::move(font);
-    FONT_INFO("Loaded font '" + fontID + "' from '" + fontFile + "'");
+    FONT_INFO(std::format("Loaded font '{}' from '{}'", fontID, fontFile));
     return true;
 }
 
@@ -143,7 +143,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found");
+    FONT_ERROR(std::format("Font '{}' not found", fontID));
     return nullptr;
   }
 
@@ -156,7 +156,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
   auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
       TTF_RenderText_Blended(fontIt->second.get(), text.c_str(), 0, color), SDL_DestroySurface);
   if (!surface) {
-    FONT_ERROR("Failed to render text: " + std::string(SDL_GetError()));
+    FONT_ERROR(std::format("Failed to render text: {}", SDL_GetError()));
     return nullptr;
   }
 
@@ -165,7 +165,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderText(
       SDL_CreateTextureFromSurface(renderer, surface.get()), SDL_DestroyTexture);
 
   if (!texture) {
-    FONT_ERROR("Failed to create texture from rendered text: " + std::string(SDL_GetError()));
+    FONT_ERROR(std::format("Failed to create texture from rendered text: {}", SDL_GetError()));
     return nullptr;
   }
 
@@ -186,13 +186,13 @@ SDL_Texture* FontManager::renderText(const std::string& text, const std::string&
 
     auto it = m_fontMap.find(fontID);
     if (it == m_fontMap.end()) {
-        FONT_ERROR("Font not found: " + fontID);
+        FONT_ERROR(std::format("Font not found: {}", fontID));
         return nullptr;
     }
 
     SDL_Surface* surface = TTF_RenderText_Blended(it->second.get(), text.c_str(), 0, color);
     if (!surface) {
-        FONT_ERROR("Failed to render text surface: " + std::string(SDL_GetError()));
+        FONT_ERROR(std::format("Failed to render text surface: {}", SDL_GetError()));
         return nullptr;
     }
 
@@ -200,7 +200,7 @@ SDL_Texture* FontManager::renderText(const std::string& text, const std::string&
     SDL_DestroySurface(surface);
 
     if (!texture) {
-        FONT_ERROR("Failed to create text texture: " + std::string(SDL_GetError()));
+        FONT_ERROR(std::format("Failed to create text texture: {}", SDL_GetError()));
     }
 
     return texture;
@@ -249,7 +249,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
       SDL_CreateSurface(maxWidth, totalHeight, SDL_PIXELFORMAT_RGBA8888), SDL_DestroySurface);
 
   if (!combinedSurface) {
-    FONT_ERROR("Failed to create combined surface: " + std::string(SDL_GetError()));
+    FONT_ERROR(std::format("Failed to create combined surface: {}", SDL_GetError()));
     return nullptr;
   }
 
@@ -281,7 +281,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
       SDL_CreateTextureFromSurface(renderer, combinedSurface.get()), SDL_DestroyTexture);
 
   if (!texture) {
-    FONT_ERROR("Failed to create texture from multi-line text: " + std::string(SDL_GetError()));
+    FONT_ERROR(std::format("Failed to create texture from multi-line text: {}", SDL_GetError()));
     return nullptr;
   }
 
@@ -400,7 +400,7 @@ std::vector<std::string> FontManager::wrapTextToLines(const std::string& text,
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found for text wrapping");
+    FONT_ERROR(std::format("Font '{}' not found for text wrapping", fontID));
     wrappedLines.push_back(text);
     return wrappedLines;
   }
@@ -470,7 +470,7 @@ bool FontManager::measureTextWithWrapping(const std::string& text, const std::st
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found for wrapped measurement");
+    FONT_ERROR(std::format("Font '{}' not found for wrapped measurement", fontID));
     return false;
   }
 
@@ -510,7 +510,7 @@ void FontManager::drawTextWithWrapping(const std::string& text, const std::strin
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found for wrapped drawing");
+    FONT_ERROR(std::format("Font '{}' not found for wrapped drawing", fontID));
     return;
   }
 
@@ -547,7 +547,7 @@ bool FontManager::isFontLoaded(const std::string& fontID) const {
 void FontManager::clearFont(const std::string& fontID) {
   // No need to manually call TTF_CloseFont as the unique_ptr will handle it
   if (m_fontMap.erase(fontID) > 0) {
-    FONT_INFO("Cleared font: " + fontID);
+    FONT_INFO(std::format("Cleared font: {}", fontID));
   }
 }
 
@@ -580,7 +580,7 @@ bool FontManager::measureText(const std::string& text, const std::string& fontID
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found for measurement");
+    FONT_ERROR(std::format("Font '{}' not found for measurement", fontID));
     return false;
   }
 
@@ -595,7 +595,7 @@ bool FontManager::getFontMetrics(const std::string& fontID, int* lineHeight, int
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found for metrics");
+    FONT_ERROR(std::format("Font '{}' not found for metrics", fontID));
     return false;
   }
 
@@ -615,7 +615,7 @@ bool FontManager::measureMultilineText(const std::string& text, const std::strin
 
   auto fontIt = m_fontMap.find(fontID);
   if (fontIt == m_fontMap.end()) {
-    FONT_ERROR("Font '" + fontID + "' not found for multiline measurement");
+    FONT_ERROR(std::format("Font '{}' not found for multiline measurement", fontID));
     return false;
   }
 
@@ -649,7 +649,7 @@ bool FontManager::measureMultilineText(const std::string& text, const std::strin
     int lineWidth = 0;
     if (!line.empty()) {
       if (!TTF_GetStringSize(font, line.c_str(), 0, &lineWidth, nullptr)) {
-        FONT_ERROR("Failed to measure line: " + line);
+        FONT_ERROR(std::format("Failed to measure line: {}", line));
         return false;
       }
     }
@@ -686,6 +686,6 @@ void FontManager::clean() {
   m_lastWindowHeight = 0;
   m_lastFontPath.clear();
 
-  FONT_INFO(std::to_string(fontsFreed) + " fonts freed");
+  FONT_INFO(std::format("{} fonts freed", fontsFreed));
   FONT_INFO("FontManager resources cleaned - TTF will be cleaned by SDL_Quit()");
 }

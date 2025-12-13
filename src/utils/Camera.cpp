@@ -507,7 +507,7 @@ void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2
         (void)eventMgr.triggerCameraMoved(newPosition, oldPosition,
                                           EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraMovedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraMovedEvent: {}", ex.what()));
     }
 }
 
@@ -517,7 +517,7 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
         (void)eventMgr.triggerCameraModeChanged(static_cast<int>(newMode), static_cast<int>(oldMode),
                                                 EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraModeChangedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraModeChangedEvent: {}", ex.what()));
     }
 }
 
@@ -527,7 +527,7 @@ void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_p
         (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
                                                   EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraTargetChangedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraTargetChangedEvent: {}", ex.what()));
     }
 }
 
@@ -537,7 +537,7 @@ void Camera::fireShakeStartedEvent(float duration, float intensity) {
         (void)eventMgr.triggerCameraShakeStarted(duration, intensity,
                                                  EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraShakeStartedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraShakeStartedEvent: {}", ex.what()));
     }
 }
 
@@ -546,7 +546,7 @@ void Camera::fireShakeEndedEvent() {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraShakeEnded(EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraShakeEndedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraShakeEndedEvent: {}", ex.what()));
     }
 }
 
@@ -555,7 +555,7 @@ void Camera::fireZoomChangedEvent(float oldZoom, float newZoom) {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraZoomChanged(newZoom, oldZoom, EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraZoomChangedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraZoomChangedEvent: {}", ex.what()));
     }
 }
 

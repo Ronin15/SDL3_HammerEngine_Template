@@ -182,13 +182,13 @@ void UIExampleState::handleSliderChange(float value) {
 
 void UIExampleState::handleCheckboxToggle() {
     m_checkboxValue = !m_checkboxValue;
-    GAMESTATE_DEBUG("Checkbox toggled: " + std::string(m_checkboxValue ? "checked" : "unchecked"));
+    GAMESTATE_DEBUG(std::format("Checkbox toggled: {}", m_checkboxValue ? "checked" : "unchecked"));
 }
 
 void UIExampleState::handleInputChange(const std::string& text) {
     m_inputText = text;
     updateInputLabel(text);
-    GAMESTATE_DEBUG("Input text changed: " + text);
+    GAMESTATE_DEBUG(std::format("Input text changed: {}", text));
 }
 
 void UIExampleState::handleListSelection() {
@@ -216,7 +216,7 @@ void UIExampleState::handleAnimation() {
 void UIExampleState::handleThemeChange() {
     m_darkTheme = !m_darkTheme;
     applyDarkTheme(m_darkTheme);
-    GAMESTATE_DEBUG("Theme changed to: " + std::string(m_darkTheme ? "dark" : "light"));
+    GAMESTATE_DEBUG(std::format("Theme changed to: {}", m_darkTheme ? "dark" : "light"));
 }
 
 void UIExampleState::handleInput() {

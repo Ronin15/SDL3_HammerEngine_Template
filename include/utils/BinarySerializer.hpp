@@ -10,6 +10,7 @@
 #include "utils/Vector2D.hpp"
 #include <cstring>
 #include <fstream>
+#include <format>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
@@ -47,10 +48,10 @@ public:
   static std::unique_ptr<Writer> createFileWriter(const std::string &filename) {
     auto stream = std::make_shared<std::ofstream>(filename, std::ios::binary);
     if (!stream->is_open()) {
-      SAVEGAME_ERROR("Failed to create writer for file: " + filename);
+      SAVEGAME_ERROR(std::format("Failed to create writer for file: {}", filename));
       return nullptr;
     }
-    SAVEGAME_DEBUG("Created binary writer for file: " + filename);
+    SAVEGAME_DEBUG(std::format("Created binary writer for file: {}", filename));
     return std::make_unique<Writer>(stream);
   }
 
@@ -121,10 +122,10 @@ public:
   static std::unique_ptr<Reader> createFileReader(const std::string &filename) {
     auto stream = std::make_shared<std::ifstream>(filename, std::ios::binary);
     if (!stream->is_open()) {
-      SAVEGAME_ERROR("Failed to create reader for file: " + filename);
+      SAVEGAME_ERROR(std::format("Failed to create reader for file: {}", filename));
       return nullptr;
     }
-    SAVEGAME_DEBUG("Created binary reader for file: " + filename);
+    SAVEGAME_DEBUG(std::format("Created binary reader for file: {}", filename));
     return std::make_unique<Reader>(stream);
   }
 
@@ -150,8 +151,7 @@ public:
 
     // Safety check for reasonable string length
     if (length > 1024 * 1024) { // 1MB limit
-      SAVEGAME_ERROR("String length too large: " + std::to_string(length) +
-                     " bytes");
+      SAVEGAME_ERROR(std::format("String length too large: {} bytes", length));
       return false;
     }
 
@@ -177,8 +177,7 @@ public:
 
     // Safety check for reasonable vector size
     if (size > 1024 * 1024) { // 1M elements limit
-      SAVEGAME_ERROR("Vector size too large: " + std::to_string(size) +
-                     " elements");
+      SAVEGAME_ERROR(std::format("Vector size too large: {} elements", size));
       return false;
     }
 
@@ -201,7 +200,7 @@ public:
  */
 template <typename T>
 bool saveToFile(const std::string &filename, const T &object) {
-  SAVEGAME_DEBUG("Saving object to file: " + filename);
+  SAVEGAME_DEBUG(std::format("Saving object to file: {}", filename));
   auto writer = Writer::createFileWriter(filename);
   if (!writer) {
     return false;
@@ -211,9 +210,9 @@ bool saveToFile(const std::string &filename, const T &object) {
   writer->flush();
 
   if (result && writer->good()) {
-    SAVEGAME_INFO("Successfully saved object to file: " + filename);
+    SAVEGAME_INFO(std::format("Successfully saved object to file: {}", filename));
   } else {
-    SAVEGAME_ERROR("Failed to save object to file: " + filename);
+    SAVEGAME_ERROR(std::format("Failed to save object to file: {}", filename));
   }
 
   return result && writer->good();
@@ -221,7 +220,7 @@ bool saveToFile(const std::string &filename, const T &object) {
 
 template <typename T>
 bool loadFromFile(const std::string &filename, T &object) {
-  SAVEGAME_DEBUG("Loading object from file: " + filename);
+  SAVEGAME_DEBUG(std::format("Loading object from file: {}", filename));
   auto reader = Reader::createFileReader(filename);
   if (!reader) {
     return false;
@@ -230,9 +229,9 @@ bool loadFromFile(const std::string &filename, T &object) {
   bool result = reader->readSerializable(object) && reader->good();
 
   if (result) {
-    SAVEGAME_INFO("Successfully loaded object from file: " + filename);
+    SAVEGAME_INFO(std::format("Successfully loaded object from file: {}", filename));
   } else {
-    SAVEGAME_ERROR("Failed to load object from file: " + filename);
+    SAVEGAME_ERROR(std::format("Failed to load object from file: {}", filename));
   }
 
   return result;

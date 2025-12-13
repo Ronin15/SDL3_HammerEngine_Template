@@ -8,9 +8,10 @@
 #include "core/GameLoop.hpp"
 #include "core/Logger.hpp"
 #include "managers/SettingsManager.hpp"
+#include <cstdlib>
+#include <format>
 #include <string>
 #include <string_view>
-#include <cstdlib>
 
 const int WINDOW_WIDTH{1280};
 const int WINDOW_HEIGHT{720};
@@ -22,7 +23,7 @@ const std::string GAME_NAME{"Game Template"};
 // maybe_unused is just a hint to the compiler that the variable is not used.
 // with -Wall -Wextra flags
 int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
-  GAMEENGINE_INFO("Initializing " + GAME_NAME);
+  GAMEENGINE_INFO(std::format("Initializing {}", GAME_NAME));
   THREADSYSTEM_INFO("Initializing Thread System");
 
   // Initialize the thread system with default capacity
@@ -36,15 +37,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
       return -1;
     }
   } catch (const std::exception& e) {
-    THREADSYSTEM_CRITICAL("Exception during thread system init: " + std::string(e.what()));
+    THREADSYSTEM_CRITICAL(std::format("Exception during thread system init: {}", e.what()));
     return -1;
   }
 
-  THREADSYSTEM_INFO("Thread system initialized with " +
-                    std::to_string(threadSystem.getThreadCount()) +
-                    " worker threads and capacity for " +
-                    std::to_string(threadSystem.getQueueCapacity()) +
-                    " parallel tasks");
+  THREADSYSTEM_INFO(std::format("Thread system initialized with {} worker threads and capacity for {} parallel tasks",
+                                threadSystem.getThreadCount(), threadSystem.getQueueCapacity()));
 
   // Load settings from disk before GameEngine initialization
   // This ensures VSync and other settings are loaded before they're applied
@@ -62,13 +60,13 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
   // Initialize GameEngine
   if (!GameEngine::Instance().init(GAME_NAME, windowWidth, windowHeight, fullscreen)) {
-    GAMEENGINE_CRITICAL("Init " + GAME_NAME + " Failed: " + std::string(SDL_GetError()));
-    
+    GAMEENGINE_CRITICAL(std::format("Init {} Failed: {}", GAME_NAME, SDL_GetError()));
+
     // CRITICAL: Always clean up on init failure to prevent memory corruption
     // during static destruction of partially initialized managers
     GAMEENGINE_INFO("Cleaning up after initialization failure");
     GameEngine::Instance().clean();
-    
+
     return -1;
   }
 
@@ -86,8 +84,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   gameLoop->getTimestepManager().setSoftwareFrameLimiting(
       GameEngine::Instance().isUsingSoftwareFrameLimiting());
 
-  GAMELOOP_INFO("Frame timing configured: " +
-                std::string(GameEngine::Instance().isUsingSoftwareFrameLimiting()
+  GAMELOOP_INFO(std::format("Frame timing configured: {}",
+                            GameEngine::Instance().isUsingSoftwareFrameLimiting()
                             ? "software frame limiting"
                             : "hardware VSync"));
 
@@ -131,7 +129,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     return -1;
   }
 
-  GAMEENGINE_INFO("Game " + GAME_NAME + " shutting down");
+  GAMEENGINE_INFO(std::format("Game {} shutting down", GAME_NAME));
 
   gameEngine.clean();
 

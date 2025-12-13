@@ -15,6 +15,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <cctype>
+#include <format>
 
 EventFactory::EventFactory() {
     // Register built-in event creators
@@ -194,7 +195,7 @@ EventPtr EventFactory::createEvent(const EventDefinition& def) {
         return event;
     }
 
-    EVENT_ERROR("Unknown event type '" + def.type + "'");
+    EVENT_ERROR(std::format("Unknown event type '{}'", def.type));
     return nullptr;
 }
 

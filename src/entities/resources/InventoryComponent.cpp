@@ -55,8 +55,8 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
         ResourceTemplateManager::Instance().getResourceTemplate(handle);
     if (!resourceTemplate) {
       INVENTORY_ERROR(
-          "addResource - Invalid resource handle: " + handle.toString() +
-          " - template not found in ResourceTemplateManager");
+          std::format("addResource - Invalid resource handle: {} - template not found in ResourceTemplateManager",
+                      handle.toString()));
       return false;
     }
 
@@ -527,8 +527,8 @@ void InventoryComponent::updateWorldResourceManager(
   }
 
   if (!handle.isValid()) {
-    INVENTORY_WARN("updateWorldResourceManager - Invalid resource handle: " +
-                   handle.toString());
+    INVENTORY_WARN(std::format("updateWorldResourceManager - Invalid resource handle: {}",
+                   handle.toString()));
     return;
   }
 
@@ -761,14 +761,14 @@ void InventoryComponent::reportInventoryState() const {
   std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
   INVENTORY_INFO("=== Inventory State Report ===");
-  INVENTORY_INFO("Owner: " + std::string(m_owner ? "Present" : "No Owner"));
-  INVENTORY_INFO("World ID: " + m_worldId);
+  INVENTORY_INFO(std::format("Owner: {}", (m_owner ? "Present" : "No Owner")));
+  INVENTORY_INFO(std::format("World ID: {}", m_worldId));
   INVENTORY_INFO(std::format("Max Slots: {}", m_maxSlots));
   INVENTORY_INFO(std::format("Used Slots: {}", getUsedSlots()));
-  INVENTORY_INFO("World Resource Tracking: " +
-                 std::string(m_trackWorldResources ? "enabled" : "disabled"));
-  INVENTORY_INFO("Cache Needs Rebuild: " +
-                 std::string(m_cacheNeedsRebuild ? "yes" : "no"));
+  INVENTORY_INFO(std::format("World Resource Tracking: {}",
+                 (m_trackWorldResources ? "enabled" : "disabled")));
+  INVENTORY_INFO(std::format("Cache Needs Rebuild: {}",
+                 (m_cacheNeedsRebuild ? "yes" : "no")));
 
   // Report non-empty slots
   size_t nonEmptySlots = 0;

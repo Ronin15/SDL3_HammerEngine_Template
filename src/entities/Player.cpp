@@ -95,12 +95,11 @@ void Player::loadDimensionsFromTexture() {
         PLAYER_DEBUG(std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
         PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows", m_numFrames, m_spriteSheetRows));
       } else {
-        PLAYER_ERROR("Failed to query texture dimensions: " +
-                     std::string(SDL_GetError()));
+        PLAYER_ERROR(std::format("Failed to query texture dimensions: {}", SDL_GetError()));
       }
     }
   } else {
-    PLAYER_ERROR("Texture '" + m_textureID + "' not found in TextureManager");
+    PLAYER_ERROR(std::format("Texture '{}' not found in TextureManager", m_textureID));
   }
 }
 
@@ -123,7 +122,7 @@ void Player::changeState(const std::string &stateName) {
   if (m_stateManager.hasState(stateName)) {
     m_stateManager.setState(stateName);
   } else {
-    PLAYER_ERROR("Player state not found: " + stateName);
+    PLAYER_ERROR(std::format("Player state not found: {}", stateName));
   }
 }
 
@@ -374,7 +373,7 @@ bool Player::unequipItem(const std::string &slotName) {
 
   auto it = m_equippedItems.find(slotName);
   if (it == m_equippedItems.end() || !it->second.isValid()) {
-    PLAYER_WARN("Player::unequipItem - No item equipped in slot: " + slotName);
+    PLAYER_WARN(std::format("Player::unequipItem - No item equipped in slot: {}", slotName));
     return false; // Nothing equipped in this slot
   }
 

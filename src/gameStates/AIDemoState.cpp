@@ -44,8 +44,7 @@ AIDemoState::~AIDemoState() {
 
     GAMESTATE_INFO("Exiting AIDemoState in destructor...");
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in AIDemoState destructor: " +
-                    std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in AIDemoState destructor: {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState destructor");
   }
@@ -339,7 +338,7 @@ bool AIDemoState::enter() {
 
     return true;
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in AIDemoState::enter(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in AIDemoState::enter(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::enter()");
@@ -529,7 +528,7 @@ void AIDemoState::update(float deltaTime) {
     }
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in AIDemoState::update(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in AIDemoState::update(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::update()");
   }
@@ -736,7 +735,7 @@ void AIDemoState::createNPCBatch(int count) {
             m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
-            GAMESTATE_ERROR("Exception creating NPC: " + std::string(e.what()));
+            GAMESTATE_ERROR(std::format("Exception creating NPC: {}", e.what()));
           }
         }
       }
@@ -747,7 +746,7 @@ void AIDemoState::createNPCBatch(int count) {
     }
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in createNPCBatch(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in createNPCBatch(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatch()");
   }
@@ -822,7 +821,7 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
-            GAMESTATE_ERROR("Exception creating NPC with random behavior: " + std::string(e.what()));
+            GAMESTATE_ERROR(std::format("Exception creating NPC with random behavior: {}", e.what()));
           }
         }
       }
@@ -833,7 +832,7 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
     }
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in createNPCBatchWithRandomBehaviors(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatchWithRandomBehaviors()");
   }

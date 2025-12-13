@@ -151,7 +151,7 @@ void NPCSpawnEvent::clean() {
 
 void NPCSpawnEvent::onMessage(const std::string& message) {
     // NPCSpawnEvent now serves as event coordination demonstration
-    EVENT_INFO("NPCSpawnEvent received message: " + message);
+    EVENT_INFO(std::format("NPCSpawnEvent received message: {}", message));
     EVENT_INFO("  - Event demonstrates messaging system coordination");
     EVENT_INFO("  - Actual entity management handled by GameStates");
 
@@ -315,7 +315,7 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
         return std::static_pointer_cast<Entity>(npc);
 
     } catch (const std::exception& e) {
-        EVENT_ERROR("Exception while force-spawning NPC: " + std::string(e.what()));
+        EVENT_ERROR(std::format("Exception while force-spawning NPC: {}", e.what()));
         return nullptr;
     }
 }
@@ -358,7 +358,7 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
         }
 
     } catch (const std::exception& e) {
-        EVENT_ERROR("Exception while force-spawning NPCs: " + std::string(e.what()));
+        EVENT_ERROR(std::format("Exception while force-spawning NPCs: {}", e.what()));
     }
 
     return spawnedNPCs;

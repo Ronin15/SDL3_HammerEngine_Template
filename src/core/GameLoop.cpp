@@ -63,9 +63,8 @@ bool GameLoop::run() {
                 size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
                 size_t remainingForManagers = (availableWorkers > 1) ? (availableWorkers - 1) : 0;
 
-                GAMELOOP_INFO("GameLoop using 1 worker (" +
-                             std::to_string(remainingForManagers) + " remaining for managers, " +
-                             std::to_string(availableWorkers) + " total)");
+                GAMELOOP_INFO(std::format("GameLoop using 1 worker ({} remaining for managers, {} total)",
+                                         remainingForManagers, availableWorkers));
 
                 m_updateTaskRunning.store(true, std::memory_order_relaxed);
                 m_updateTaskFuture = HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
@@ -93,7 +92,7 @@ bool GameLoop::run() {
         return true;
 
     } catch (const std::exception& e) {
-        GAMELOOP_CRITICAL("Exception in main loop: " + std::string(e.what()));
+        GAMELOOP_CRITICAL(std::format("Exception in main loop: {}", e.what()));
         m_running.store(false, std::memory_order_relaxed);
         cleanup();
         return false;
@@ -153,7 +152,7 @@ void GameLoop::runMainThread() {
             m_timestepManager->endFrame();
 
         } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in main thread: " + std::string(e.what()));
+            GAMELOOP_ERROR(std::format("Exception in main thread: {}", e.what()));
             // Continue running, but log the error
         }
     }
@@ -254,7 +253,7 @@ void GameLoop::runUpdateWorker() {
             }
 
         } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in update worker: " + std::string(e.what()));
+            GAMELOOP_ERROR(std::format("Exception in update worker: {}", e.what()));
             // Continue running - don't let exceptions kill the update worker
         }
     }
@@ -289,7 +288,7 @@ void GameLoop::invokeEventHandler() {
         try {
             handlerCopy();
         } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in event handler: " + std::string(e.what()));
+            GAMELOOP_ERROR(std::format("Exception in event handler: {}", e.what()));
         }
     }
 }
@@ -304,7 +303,7 @@ void GameLoop::invokeUpdateHandler(float deltaTime) {
         try {
             handlerCopy(deltaTime);
         } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in update handler: " + std::string(e.what()));
+            GAMELOOP_ERROR(std::format("Exception in update handler: {}", e.what()));
         }
     }
 }
@@ -319,7 +318,7 @@ void GameLoop::invokeRenderHandler() {
         try {
             handlerCopy();
         } catch (const std::exception& e) {
-            GAMELOOP_ERROR("Exception in render handler: " + std::string(e.what()));
+            GAMELOOP_ERROR(std::format("Exception in render handler: {}", e.what()));
         }
     }
 }

@@ -25,7 +25,7 @@ bool TextureManager::load(const std::string& fileName,
 
   // Check if the fileName is a directory
   if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
-    TEXTURE_INFO("Loading textures from directory: " + fileName);
+    TEXTURE_INFO(std::format("Loading textures from directory: {}", fileName));
 
     bool loadedAny = false;
     int texturesLoaded{0};
@@ -51,16 +51,16 @@ bool TextureManager::load(const std::string& fileName,
           std::string filename = filePath.stem().string(); // Get filename without extension
 
           // Create texture ID by combining the provided prefix and filename
-          std::string combinedID = textureID.empty() ? filename : textureID + "_" + filename;
+          std::string combinedID = textureID.empty() ? filename : std::format("{}_{}", textureID, filename);
 
           // Load the individual file as a texture with immediate RAII
           auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
               SDL_LoadPNG(fullPath.c_str()), SDL_DestroySurface);
 
-          TEXTURE_INFO("Loading texture: " + fullPath);
+          TEXTURE_INFO(std::format("Loading texture: {}", fullPath));
 
           if (!surface) {
-            TEXTURE_ERROR("Could not load image: " + std::string(SDL_GetError()));
+            TEXTURE_ERROR(std::format("Could not load image: {}", SDL_GetError()));
             continue;
           }
 
@@ -84,14 +84,14 @@ bool TextureManager::load(const std::string& fileName,
             loadedAny = true;
             texturesLoaded++;
           } else {
-            TEXTURE_ERROR("Could not create texture: " + std::string(SDL_GetError()));
+            TEXTURE_ERROR(std::format("Could not create texture: {}", SDL_GetError()));
           }
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      TEXTURE_ERROR("Filesystem error: " + std::string(e.what()));
+      TEXTURE_ERROR(std::format("Filesystem error: {}", e.what()));
     } catch (const std::exception& e) {
-      TEXTURE_ERROR("Error while loading textures: " + std::string(e.what()));
+      TEXTURE_ERROR(std::format("Error while loading textures: {}", e.what()));
     }
 
     TEXTURE_INFO(std::format("Loaded {} textures from directory: {}", texturesLoaded, fileName));
@@ -106,10 +106,10 @@ bool TextureManager::load(const std::string& fileName,
   auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
       SDL_LoadPNG(fileName.c_str()), SDL_DestroySurface);
 
-  TEXTURE_INFO("Loaded texture: " + textureID);
+  TEXTURE_INFO(std::format("Loaded texture: {}", textureID));
 
   if (!surface) {
-    TEXTURE_ERROR("Could not load image: " + std::string(SDL_GetError()));
+    TEXTURE_ERROR(std::format("Could not load image: {}", SDL_GetError()));
       return false;
   }
 
@@ -134,7 +134,7 @@ bool TextureManager::load(const std::string& fileName,
     return true;
   }
 
-  TEXTURE_ERROR("Could not create texture: " + std::string(SDL_GetError()));
+  TEXTURE_ERROR(std::format("Could not create texture: {}", SDL_GetError()));
 
   return false;
 }
@@ -149,7 +149,7 @@ void TextureManager::draw(const std::string& textureID,
   // Single map lookup - use cached dimensions instead of SDL_GetTextureSize()
   auto it = m_textureMap.find(textureID);
   if (it == m_textureMap.end()) {
-    TEXTURE_ERROR("Texture not found: '" + textureID + "'");
+    TEXTURE_ERROR(std::format("Texture not found: '{}'", textureID));
     return;
   }
   const TextureData& data = it->second;
@@ -269,7 +269,7 @@ void TextureManager::drawParallax(const std::string& textureID,
   // Verify the texture exists - single lookup
   auto it = m_textureMap.find(textureID);
   if (it == m_textureMap.end()) {
-    TEXTURE_WARN("Texture not found: " + textureID);
+    TEXTURE_WARN(std::format("Texture not found: {}", textureID));
     return;
   }
   const TextureData& data = it->second;
@@ -314,7 +314,7 @@ void TextureManager::drawParallax(const std::string& textureID,
 }
 
 void TextureManager::clearFromTexMap(const std::string& textureID) {
-    TEXTURE_INFO("Cleared : " + textureID + " texture");
+    TEXTURE_INFO(std::format("Cleared : {} texture", textureID));
   m_textureMap.erase(textureID);
 }
 
@@ -356,7 +356,7 @@ std::shared_ptr<SDL_Texture> TextureManager::getOrCreateDynamicTexture(const std
   SDL_Texture* rawTexture = SDL_CreateTexture(p_renderer, SDL_PIXELFORMAT_RGBA8888,
                                              SDL_TEXTUREACCESS_TARGET, width, height);
   if (!rawTexture) {
-    TEXTURE_ERROR("Failed to create dynamic texture: " + textureID);
+    TEXTURE_ERROR(std::format("Failed to create dynamic texture: {}", textureID));
     return nullptr;
   }
 

@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/SoundManager.hpp"
+#include <format>
 
 ParticleEffectEvent::ParticleEffectEvent(const std::string &name,
                                          ParticleEffectType effectType,
@@ -67,9 +68,8 @@ void ParticleEffectEvent::execute() {
 
   // Check if ParticleManager is available
   if (!particleMgr.isInitialized() || particleMgr.isShutdown()) {
-    EVENT_ERROR("ParticleEffectEvent::execute() - ParticleManager not "
-                "available for effect: " +
-                getEffectName());
+    EVENT_ERROR(std::format("ParticleEffectEvent::execute() - ParticleManager not "
+                "available for effect: {}", getEffectName()));
     return;
   }
 
@@ -93,19 +93,15 @@ void ParticleEffectEvent::execute() {
         // Use SoundManager's playSFX method with proper volume range (0-128)
         soundMgr.playSFX(m_soundEffect, 0, 100); // loops=0, volume=100
       } catch (const std::exception &e) {
-        EVENT_ERROR("ParticleEffectEvent::execute() - Sound effect failed: " +
-                    std::string(e.what()));
+        EVENT_ERROR(std::format("ParticleEffectEvent::execute() - Sound effect failed: {}",
+                    e.what()));
         // Continue execution even if sound fails
       }
     }
 
     if (m_effectId != 0) {
-      EVENT_INFO("ParticleEffectEvent '" + m_name + "' triggered effect '" +
-                 getEffectName() + "' at (" +
-                 std::to_string(m_position.getX()) + ", " +
-                 std::to_string(m_position.getY()) + ") with intensity " +
-                 std::to_string(m_intensity) +
-                 " -> Effect ID: " + std::to_string(m_effectId));
+      EVENT_INFO(std::format("ParticleEffectEvent '{}' triggered effect '{}' at ({}, {}) with intensity {} -> Effect ID: {}",
+                 m_name, getEffectName(), m_position.getX(), m_position.getY(), m_intensity, m_effectId));
 
       m_hasExecuted = true;
 
@@ -114,16 +110,14 @@ void ParticleEffectEvent::execute() {
         startCooldown();
       }
     } else {
-      EVENT_ERROR(
-          "ParticleEffectEvent::execute() - Failed to trigger effect: " +
-          getEffectName() + " at position (" +
-          std::to_string(m_position.getX()) + ", " +
-          std::to_string(m_position.getY()) + ")");
+      EVENT_ERROR(std::format(
+          "ParticleEffectEvent::execute() - Failed to trigger effect: {} at position ({}, {})",
+          getEffectName(), m_position.getX(), m_position.getY()));
     }
 
   } catch (const std::exception &e) {
-    EVENT_ERROR("ParticleEffectEvent::execute() - Exception: " +
-                std::string(e.what()));
+    EVENT_ERROR(std::format("ParticleEffectEvent::execute() - Exception: {}",
+                e.what()));
   } catch (...) {
     EVENT_ERROR("ParticleEffectEvent::execute() - Unknown exception occurred");
   }
@@ -140,7 +134,7 @@ void ParticleEffectEvent::reset() {
   // Reset cooldown
   resetCooldown();
 
-  EVENT_INFO("ParticleEffectEvent '" + m_name + "' reset");
+  EVENT_INFO(std::format("ParticleEffectEvent '{}' reset", m_name));
 }
 
 void ParticleEffectEvent::clean() {
@@ -151,7 +145,7 @@ void ParticleEffectEvent::clean() {
   m_hasExecuted = false;
   m_effectId = 0;
 
-  EVENT_INFO("ParticleEffectEvent '" + m_name + "' cleaned up");
+  EVENT_INFO(std::format("ParticleEffectEvent '{}' cleaned up", m_name));
 }
 
 bool ParticleEffectEvent::checkConditions() {
@@ -184,18 +178,18 @@ void ParticleEffectEvent::stopEffect() {
         // Try stopping as independent effect first
         if (particleMgr.isIndependentEffect(m_effectId)) {
           particleMgr.stopIndependentEffect(m_effectId);
-          EVENT_INFO("Stopped independent particle effect ID: " +
-                     std::to_string(m_effectId));
+          EVENT_INFO(std::format("Stopped independent particle effect ID: {}",
+                     m_effectId));
         } else {
           // Stop as regular effect
           particleMgr.stopEffect(m_effectId);
-          EVENT_INFO("Stopped particle effect ID: " +
-                     std::to_string(m_effectId));
+          EVENT_INFO(std::format("Stopped particle effect ID: {}",
+                     m_effectId));
         }
       }
     } catch (const std::exception &e) {
-      EVENT_ERROR("ParticleEffectEvent::stopEffect() - Exception: " +
-                  std::string(e.what()));
+      EVENT_ERROR(std::format("ParticleEffectEvent::stopEffect() - Exception: {}",
+                  e.what()));
     } catch (...) {
       EVENT_ERROR("ParticleEffectEvent::stopEffect() - Unknown exception");
     }

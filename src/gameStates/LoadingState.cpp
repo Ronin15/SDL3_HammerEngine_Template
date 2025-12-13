@@ -11,6 +11,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include <format>
 #include <random>
 
 void LoadingState::configure(const std::string& targetStateName,
@@ -39,7 +40,7 @@ bool LoadingState::enter() {
         return false;
     }
 
-    GAMESTATE_INFO("Entering LoadingState - Target: " + m_targetStateName);
+    GAMESTATE_INFO(std::format("Entering LoadingState - Target: {}", m_targetStateName));
 
     // Initialize loading screen UI
     initializeUI();
@@ -83,7 +84,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
                 }
                 // Continue to target state even on failure (matches current behavior)
             } else {
-                GAMESTATE_INFO("World and pathfinding ready - transitioning to " + m_targetStateName);
+                GAMESTATE_INFO(std::format("World and pathfinding ready - transitioning to {}", m_targetStateName));
             }
 
             // Transition to target state
@@ -92,7 +93,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
             if (gameStateManager && gameStateManager->hasState(m_targetStateName)) {
                 gameStateManager->changeState(m_targetStateName);
             } else {
-                std::string errorMsg = "Target state not found: " + m_targetStateName;
+                std::string errorMsg = std::format("Target state not found: {}", m_targetStateName);
                 GAMESTATE_ERROR(errorMsg);
 
                 // Store error for diagnostic purposes
@@ -137,7 +138,7 @@ bool LoadingState::exit() {
         try {
             m_loadTask.wait();
         } catch (const std::exception& e) {
-            std::string errorMsg = "Exception while waiting for load task: " + std::string(e.what());
+            std::string errorMsg = std::format("Exception while waiting for load task: {}", e.what());
             GAMESTATE_ERROR(errorMsg);
 
             // Store error for diagnostic purposes
