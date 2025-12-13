@@ -40,7 +40,7 @@ bool WorldManager::init() {
         WORLD_MANAGER_INFO("WorldManager initialized successfully (event handlers will be registered later)");
         return true;
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("WorldManager::init - Exception: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("WorldManager::init - Exception: {}", ex.what()));
         return false;
     }
 }
@@ -61,7 +61,7 @@ void WorldManager::setupEventHandlers() {
 
         WORLD_MANAGER_DEBUG("WorldManager event handlers setup complete");
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("WorldManager::setupEventHandlers - Exception: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("WorldManager::setupEventHandlers - Exception: {}", ex.what()));
     }
 }
 
@@ -106,7 +106,7 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
 
         // Unload current world if it exists
         if (m_currentWorld) {
-            WORLD_MANAGER_INFO("Unloading current world: " + m_currentWorld->worldId);
+            WORLD_MANAGER_INFO(std::format("Unloading current world: {}", m_currentWorld->worldId));
         }
 
         // Set new world
@@ -118,22 +118,22 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
         // Initialize world resources based on world data
         initializeWorldResources();
 
-        WORLD_MANAGER_INFO("Successfully loaded new world: " + m_currentWorld->worldId);
+        WORLD_MANAGER_INFO(std::format("Successfully loaded new world: {}", m_currentWorld->worldId));
 
         // Schedule world loaded event for next frame using ThreadSystem
         // Don't fire event while holding world mutex - use low priority to avoid blocking critical tasks
         std::string worldIdCopy = m_currentWorld->worldId;
         // Schedule world loaded event for next frame using ThreadSystem to avoid deadlocks
         // Use high priority to ensure it executes quickly for tests
-        WORLD_MANAGER_INFO("Enqueuing WorldLoadedEvent task for world: " + worldIdCopy);
+        WORLD_MANAGER_INFO(std::format("Enqueuing WorldLoadedEvent task for world: {}", worldIdCopy));
         HammerEngine::ThreadSystem::Instance().enqueueTask([worldIdCopy, this]() {
-            WORLD_MANAGER_INFO("Executing WorldLoadedEvent task for world: " + worldIdCopy);
+            WORLD_MANAGER_INFO(std::format("Executing WorldLoadedEvent task for world: {}", worldIdCopy));
             fireWorldLoadedEvent(worldIdCopy);
-        }, HammerEngine::TaskPriority::High, "WorldLoadedEvent_" + worldIdCopy);
+        }, HammerEngine::TaskPriority::High, std::format("WorldLoadedEvent_{}", worldIdCopy));
 
         return true;
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("WorldManager::loadNewWorld - Exception: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("WorldManager::loadNewWorld - Exception: {}", ex.what()));
         return false;
     }
 }
@@ -163,7 +163,7 @@ void WorldManager::unloadWorldUnsafe() {
     // Internal method - assumes caller already holds the lock
     if (m_currentWorld) {
         std::string worldId = m_currentWorld->worldId;
-        WORLD_MANAGER_INFO("Unloading world: " + worldId);
+        WORLD_MANAGER_INFO(std::format("Unloading world: {}", worldId));
 
         // Fire world unloaded event before clearing the world
         fireWorldUnloadedEvent(worldId);
@@ -347,7 +347,7 @@ void WorldManager::fireTileChangedEvent(int x, int y, const HammerEngine::Tile& 
 
         WORLD_MANAGER_DEBUG(std::format("TileChangedEvent fired for tile at ({}, {})", x, y));
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("Failed to fire TileChangedEvent: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("Failed to fire TileChangedEvent: {}", ex.what()));
     }
 }
 
@@ -369,7 +369,7 @@ void WorldManager::fireWorldLoadedEvent(const std::string& worldId) {
 
         WORLD_MANAGER_INFO(std::format("WorldLoadedEvent registered and executed for world: {} ({}x{})", worldId, width, height));
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("Failed to fire WorldLoadedEvent: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("Failed to fire WorldLoadedEvent: {}", ex.what()));
     }
 }
 
@@ -379,9 +379,9 @@ void WorldManager::fireWorldUnloadedEvent(const std::string& worldId) {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerWorldUnloaded(worldId, EventManager::DispatchMode::Deferred);
 
-        WORLD_MANAGER_INFO("WorldUnloadedEvent fired for world: " + worldId);
+        WORLD_MANAGER_INFO(std::format("WorldUnloadedEvent fired for world: {}", worldId));
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("Failed to fire WorldUnloadedEvent: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("Failed to fire WorldUnloadedEvent: {}", ex.what()));
     }
 }
 
@@ -394,7 +394,7 @@ void WorldManager::registerEventHandlers() {
         m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(EventTypeId::World, [](const EventData& data) {
             if (data.isActive() && data.event) {
                 // Handle world-related events from other systems
-                WORLD_MANAGER_DEBUG("WorldManager received world event: " + data.event->getName());
+                WORLD_MANAGER_DEBUG(std::format("WorldManager received world event: {}", data.event->getName()));
             }
         }));
 
@@ -402,7 +402,7 @@ void WorldManager::registerEventHandlers() {
         m_handlerTokens.push_back(eventMgr.registerHandlerWithToken(EventTypeId::Camera, [](const EventData& data) {
             if (data.isActive() && data.event) {
                 // Handle camera events that may require world data updates
-                WORLD_MANAGER_DEBUG("WorldManager received camera event: " + data.event->getName());
+                WORLD_MANAGER_DEBUG(std::format("WorldManager received camera event: {}", data.event->getName()));
             }
         }));
 
@@ -439,7 +439,7 @@ void WorldManager::registerEventHandlers() {
 
         WORLD_MANAGER_DEBUG("WorldManager event handlers registered");
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("Failed to register event handlers: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("Failed to register event handlers: {}", ex.what()));
     }
 }
 
@@ -452,7 +452,7 @@ void WorldManager::unregisterEventHandlers() {
         m_handlerTokens.clear();
         WORLD_MANAGER_DEBUG("WorldManager event handlers unregistered (tokens cleared)");
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("Failed to unregister event handlers: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("Failed to unregister event handlers: {}", ex.what()));
     }
 }
 
@@ -497,7 +497,7 @@ void WorldManager::initializeWorldResources() {
         return;
     }
 
-    WORLD_MANAGER_INFO("Initializing world resources for world: " + m_currentWorld->worldId);
+    WORLD_MANAGER_INFO(std::format("Initializing world resources for world: {}", m_currentWorld->worldId));
 
     // Get ResourceTemplateManager to access available resources
     const auto& resourceMgr = ResourceTemplateManager::Instance();
@@ -631,7 +631,7 @@ void WorldManager::initializeWorldResources() {
                           m_currentWorld->worldId, totalTiles));
 
     } catch (const std::exception& ex) {
-        WORLD_MANAGER_ERROR("Error during world resource initialization: " + std::string(ex.what()));
+        WORLD_MANAGER_ERROR(std::format("Error during world resource initialization: {}", ex.what()));
     }
 }
 
@@ -849,8 +849,8 @@ void HammerEngine::TileRenderer::subscribeToSeasonEvents()
 
     // Initialize with current season from GameTime
     m_currentSeason = GameTime::Instance().getSeason();
-    WORLD_MANAGER_INFO("TileRenderer subscribed to season events, current season: " +
-                       std::string(GameTime::Instance().getSeasonName()));
+    WORLD_MANAGER_INFO(std::format("TileRenderer subscribed to season events, current season: {}",
+                       GameTime::Instance().getSeasonName()));
 }
 
 void HammerEngine::TileRenderer::unsubscribeFromSeasonEvents()
@@ -880,7 +880,7 @@ void HammerEngine::TileRenderer::onSeasonChange(const EventData& data)
     auto seasonEvent = std::static_pointer_cast<SeasonChangedEvent>(data.event);
     Season newSeason = seasonEvent->getSeason();
     if (newSeason != m_currentSeason) {
-        WORLD_MANAGER_INFO("TileRenderer: Season changed to " + seasonEvent->getSeasonName());
+        WORLD_MANAGER_INFO(std::format("TileRenderer: Season changed to {}", seasonEvent->getSeasonName()));
         setCurrentSeason(newSeason);  // This updates m_currentSeason AND refreshes cached texture IDs
     }
 }

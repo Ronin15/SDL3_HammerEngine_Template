@@ -90,7 +90,7 @@ void SceneChangeEvent::update() {
             m_transitionProgress = 0.0f;
 
             // Transition complete, scene should be fully changed now
-            EVENT_INFO("Scene transition to " + m_targetSceneID + " complete");
+            EVENT_INFO(std::format("Scene transition to {} complete", m_targetSceneID));
         }
     }
 

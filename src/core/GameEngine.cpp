@@ -54,8 +54,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Initialize video and gamepad together to ensure proper IOKit setup on macOS
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
-    GAMEENGINE_CRITICAL("SDL initialization failed: " +
-                        std::string(SDL_GetError()));
+    GAMEENGINE_CRITICAL(std::format("SDL initialization failed: {}", SDL_GetError()));
     return false;
   }
 
@@ -95,16 +94,12 @@ bool GameEngine::init(const std::string_view title, const int width,
     // Default to reasonable size if not specified
     m_windowWidth = 1280;
     m_windowHeight = 720;
-    GAMEENGINE_INFO(
-        "Using default window size: " + std::to_string(m_windowWidth) + "x" +
-        std::to_string(m_windowHeight));
+    GAMEENGINE_INFO(std::format("Using default window size: {}x{}", m_windowWidth, m_windowHeight));
   } else {
     // Use the provided dimensions
     m_windowWidth = width;
     m_windowHeight = height;
-    GAMEENGINE_INFO(
-        "Using requested window size: " + std::to_string(m_windowWidth) + "x" +
-        std::to_string(m_windowHeight));
+    GAMEENGINE_INFO(std::format("Using requested window size: {}x{}", m_windowWidth, m_windowHeight));
   }
 
   // Save windowed dimensions before fullscreen might override them
@@ -120,10 +115,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   if (displays && displayCount > 0) {
     displayMode = SDL_GetDesktopDisplayMode(displays[0]);
     if (displayMode) {
-      GAMEENGINE_INFO(
-          "Primary display: " + std::to_string(displayMode->w) + "x" +
-          std::to_string(displayMode->h) + " @ " +
-          std::to_string(displayMode->refresh_rate) + "Hz");
+      GAMEENGINE_INFO(std::format("Primary display: {}x{} @ {}Hz",
+                                  displayMode->w, displayMode->h, displayMode->refresh_rate));
 
       // If requested window size is larger than 90% of display, use fullscreen
       // This prevents awkward oversized windows on smaller displays (handhelds, laptops)
@@ -131,11 +124,8 @@ bool GameEngine::init(const std::string_view title, const int width,
       if (!fullscreen &&
           (m_windowWidth > static_cast<int>(displayMode->w * displayUsageThreshold) ||
            m_windowHeight > static_cast<int>(displayMode->h * displayUsageThreshold))) {
-        GAMEENGINE_INFO(
-            "Requested window size (" + std::to_string(m_windowWidth) + "x" +
-            std::to_string(m_windowHeight) + ") is larger than " +
-            std::to_string(static_cast<int>(displayUsageThreshold * 100)) +
-            "% of display - enabling fullscreen for better UX");
+        GAMEENGINE_INFO(std::format("Requested window size ({}x{}) is larger than {}% of display - enabling fullscreen for better UX",
+                                    m_windowWidth, m_windowHeight, static_cast<int>(displayUsageThreshold * 100)));
         fullscreen = true;
       }
     }
@@ -156,9 +146,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     if (displayMode) {
       m_windowWidth = displayMode->w;
       m_windowHeight = displayMode->h;
-      GAMEENGINE_INFO(
-          "Window size set to Full Screen: " + std::to_string(m_windowWidth) +
-          "x" + std::to_string(m_windowHeight));
+      GAMEENGINE_INFO(std::format("Window size set to Full Screen: {}x{}", m_windowWidth, m_windowHeight));
     }
 #endif
   }
@@ -170,7 +158,7 @@ bool GameEngine::init(const std::string_view title, const int width,
       SDL_CreateWindow(title.data(), m_windowWidth, m_windowHeight, flags));
 
   if (!mp_window) {
-    GAMEENGINE_ERROR("Failed to create window: " + std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to create window: {}", SDL_GetError()));
     return false;
   }
 
@@ -208,28 +196,24 @@ bool GameEngine::init(const std::string_view title, const int width,
   int logicalHeight = m_windowHeight;
 
   if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
-    GAMEENGINE_ERROR("Failed to get window pixel size: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to get window pixel size: {}", SDL_GetError()));
   }
   if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
-    GAMEENGINE_ERROR("Failed to get window logical size: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to get window logical size: {}", SDL_GetError()));
   }
 
   // Create renderer (let SDL3 choose the best available backend)
   mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
   if (!mp_renderer) {
-    GAMEENGINE_ERROR("Failed to create renderer: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to create renderer: {}", SDL_GetError()));
     return false;
   }
 
   // Log which renderer backend SDL3 actually selected
   auto rendererName = SDL_GetRendererName(mp_renderer.get());
   if (rendererName) {
-    GAMEENGINE_INFO("SDL3 selected renderer backend: " +
-                    std::string(rendererName));
+    GAMEENGINE_INFO(std::format("SDL3 selected renderer backend: {}", rendererName));
   } else {
     GAMEENGINE_WARN("Could not determine selected renderer backend");
   }
@@ -260,20 +244,20 @@ bool GameEngine::init(const std::string_view title, const int width,
   if (m_isWayland) {
     GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
-    GAMEENGINE_INFO("Platform detected: " + std::string(videoDriver.empty() ? "Unknown" : videoDriver));
+    GAMEENGINE_INFO(std::format("Platform detected: {}", videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
   }
 
   // Load VSync preference from SettingsManager (defaults to enabled)
   auto& settings = HammerEngine::SettingsManager::Instance();
   bool vsyncRequested = settings.get<bool>("graphics", "vsync", true);
-  GAMEENGINE_INFO("VSync setting from SettingsManager: " + std::string(vsyncRequested ? "enabled" : "disabled"));
+  GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}", vsyncRequested ? "enabled" : "disabled"));
 
   // Attempt to set VSync based on user preference
   bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
 
   if (!vsyncSetSuccessfully) {
-    GAMEENGINE_WARN("Failed to " + std::string(vsyncRequested ? "enable" : "disable") +
-                    " VSync: " + std::string(SDL_GetError()));
+    GAMEENGINE_WARN(std::format("Failed to {} VSync: {}",
+                                vsyncRequested ? "enable" : "disable", SDL_GetError()));
   }
 
   // Verify VSync state and update software frame limiting flag
@@ -298,8 +282,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Clamp to valid range [2, 3]
   if (m_bufferCount < 2) m_bufferCount = 2;
   if (m_bufferCount > 3) m_bufferCount = 3;
-  GAMEENGINE_INFO("Buffer mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)") +
-                  " buffering configured");
+  GAMEENGINE_INFO(std::format("Buffer mode: {} buffering configured",
+                              m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
 
 #ifdef DEBUG
   // Buffer telemetry is disabled by default, press F3 to enable console logging
@@ -309,8 +293,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
           HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-    GAMEENGINE_ERROR("Failed to set initial render draw color: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}", SDL_GetError()));
   }
   // Use native resolution rendering on all platforms for crisp, sharp text
   // This eliminates GPU scaling blur and provides consistent cross-platform behavior
@@ -326,13 +309,11 @@ bool GameEngine::init(const std::string_view title, const int width,
       SDL_LOGICAL_PRESENTATION_DISABLED;
   if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
                                         actualHeight, presentationMode)) {
-    GAMEENGINE_ERROR("Failed to set render logical presentation: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to set render logical presentation: {}", SDL_GetError()));
   }
 
-  GAMEENGINE_INFO("Using native resolution for crisp rendering: " +
-                  std::to_string(actualWidth) + "x" +
-                  std::to_string(actualHeight));
+  GAMEENGINE_INFO(std::format("Using native resolution for crisp rendering: {}x{}",
+                              actualWidth, actualHeight));
   // Render Mode.
   SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
 
@@ -347,7 +328,7 @@ bool GameEngine::init(const std::string_view title, const int width,
       GAMEENGINE_WARN("Failed to load window icon");
     }
   } catch (const std::exception &e) {
-    GAMEENGINE_WARN("Error loading window icon: " + std::string(e.what()));
+    GAMEENGINE_WARN(std::format("Error loading window icon: {}", e.what()));
   }
 
   // INITIALIZING GAME RESOURCE LOADING AND
@@ -528,7 +509,7 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
   } catch (const std::exception &e) {
-    GAMEENGINE_CRITICAL("AIManager dependency initialization threw exception: " + std::string(e.what()));
+    GAMEENGINE_CRITICAL(std::format("AIManager dependency initialization threw exception: {}", e.what()));
     return false;
   }
   GAMEENGINE_INFO("AIManager dependencies initialized successfully");
@@ -647,7 +628,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     try {
       allTasksSucceeded &= task.get();
     } catch (const std::exception &e) {
-      GAMEENGINE_ERROR("Initialization task failed: " + std::string(e.what()));
+      GAMEENGINE_ERROR(std::format("Initialization task failed: {}", e.what()));
       allTasksSucceeded = false;
     }
   }
@@ -752,26 +733,22 @@ bool GameEngine::init(const std::string_view title, const int width,
     try {
       // Test AI Manager responsiveness
       size_t entityCount = mp_aiManager->getManagedEntityCount();
-      GAMEENGINE_DEBUG("AIManager cached successfully, managing " +
-                       std::to_string(entityCount) + " entities");
+      GAMEENGINE_DEBUG(std::format("AIManager cached successfully, managing {} entities", entityCount));
 
       // Test Event Manager responsiveness (just verify it's initialized)
       GAMEENGINE_DEBUG("EventManager cached successfully and initialized");
 
       // Test Particle Manager responsiveness
       size_t activeParticles = mp_particleManager->getActiveParticleCount();
-      GAMEENGINE_DEBUG("ParticleManager cached successfully, " +
-                       std::to_string(activeParticles) + " active particles");
+      GAMEENGINE_DEBUG(std::format("ParticleManager cached successfully, {} active particles", activeParticles));
     } catch (const std::exception &e) {
-      GAMEENGINE_CRITICAL("Manager validation failed after caching: " +
-                          std::string(e.what()));
+      GAMEENGINE_CRITICAL(std::format("Manager validation failed after caching: {}", e.what()));
       return false;
     }
 
     GAMEENGINE_INFO("Manager references cached and validated successfully");
   } catch (const std::exception &e) {
-    GAMEENGINE_ERROR("Error caching manager references: " +
-                     std::string(e.what()));
+    GAMEENGINE_ERROR(std::format("Error caching manager references: {}", e.what()));
     return false;
   }
   //_______________________________________________________________________________________________________________END
@@ -793,13 +770,12 @@ bool GameEngine::init(const std::string_view title, const int width,
 
     GAMEENGINE_INFO("Manager cross-dependencies setup complete");
   } catch (const std::exception &e) {
-    GAMEENGINE_ERROR("Error setting up manager cross-dependencies: " +
-                     std::string(e.what()));
+    GAMEENGINE_ERROR(std::format("Error setting up manager cross-dependencies: {}", e.what()));
     return false;
   }
 
-  GAMEENGINE_INFO("Game " + std::string(title) + " initialized successfully!");
-  GAMEENGINE_INFO("Running " + std::string(title) + " <]==={}");
+  GAMEENGINE_INFO(std::format("Game {} initialized successfully!", title));
+  GAMEENGINE_INFO(std::format("Running {} <]==={{}}", title));
 
   // Initialize buffer system for first frame
   m_currentBufferIndex.store(0, std::memory_order_release);
@@ -895,9 +871,8 @@ void GameEngine::handleEvents() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
     bool currentState = m_showBufferTelemetry.load(std::memory_order_relaxed);
     m_showBufferTelemetry.store(!currentState, std::memory_order_relaxed);
-    GAMEENGINE_INFO("Buffer telemetry console logging " +
-                    std::string(!currentState ? "ENABLED (every 5s)" : "DISABLED") +
-                    " (F3 to toggle)");
+    GAMEENGINE_INFO(std::format("Buffer telemetry console logging {} (F3 to toggle)",
+                                !currentState ? "ENABLED (every 5s)" : "DISABLED"));
   }
 #endif
 
@@ -1045,11 +1020,9 @@ void GameEngine::update(float deltaTime) {
       currentFrame - m_telemetryLogFrame >= TELEMETRY_LOG_INTERVAL) {
     m_telemetryLogFrame = currentFrame;
 
-    GAMEENGINE_DEBUG("=== Buffer Telemetry Report (last " +
-                     std::to_string(TELEMETRY_LOG_INTERVAL) + " frames) ===");
-    GAMEENGINE_DEBUG("  Buffer Mode: " + std::string(m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
-    GAMEENGINE_DEBUG("  Swap Success Rate: " +
-                     std::to_string(m_bufferTelemetry.getSwapSuccessRate()) + "%");
+    GAMEENGINE_DEBUG(std::format("=== Buffer Telemetry Report (last {} frames) ===", TELEMETRY_LOG_INTERVAL));
+    GAMEENGINE_DEBUG(std::format("  Buffer Mode: {}", m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
+    GAMEENGINE_DEBUG(std::format("  Swap Success Rate: {}%", m_bufferTelemetry.getSwapSuccessRate()));
     GAMEENGINE_DEBUG(std::format("  Swap Stats: {} success / {} blocked / {} CAS failures",
                                  m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed),
                                  m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed),
@@ -1095,20 +1068,17 @@ void GameEngine::render() {
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
           HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-    GAMEENGINE_ERROR("Failed to set render draw color: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to set render draw color: {}", SDL_GetError()));
   }
   if (!SDL_RenderClear(mp_renderer.get())) {
-    GAMEENGINE_ERROR("Failed to clear renderer: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to clear renderer: {}", SDL_GetError()));
   }
 
   // Pass renderer and interpolation alpha to GameStateManager for state rendering
   mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
 
   if (!SDL_RenderPresent(mp_renderer.get())) {
-    GAMEENGINE_ERROR("Failed to present renderer: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to present renderer: {}", SDL_GetError()));
   }
 
   // After presenting, mark the render buffer as consumed to avoid stale
@@ -1245,7 +1215,7 @@ void GameEngine::processBackgroundTasks() {
     // Background processing tasks can be added here
     // Currently a placeholder - extend as needed for specific use cases
   } catch (const std::exception &e) {
-    GAMEENGINE_ERROR("Exception in background tasks: " + std::string(e.what()));
+    GAMEENGINE_ERROR(std::format("Exception in background tasks: {}", e.what()));
   } catch (...) {
     GAMEENGINE_ERROR("Unknown exception in background tasks");
   }
@@ -1260,13 +1230,11 @@ void GameEngine::setLogicalPresentationMode(
     if (SDL_GetWindowSize(mp_window.get(), &width, &height)) {
       // width/height updated
     } else {
-      GAMEENGINE_ERROR("Failed to get window size for logical presentation: " +
-                       std::string(SDL_GetError()));
+      GAMEENGINE_ERROR(std::format("Failed to get window size for logical presentation: {}", SDL_GetError()));
     }
     if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height,
                                           mode)) {
-      GAMEENGINE_ERROR("Failed to set render logical presentation: " +
-                       std::string(SDL_GetError()));
+      GAMEENGINE_ERROR(std::format("Failed to set render logical presentation: {}", SDL_GetError()));
     }
   }
 }
@@ -1406,14 +1374,13 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     return false;
   }
 
-  GAMEENGINE_INFO(std::string(enable ? "Enabling" : "Disabling") + " VSync...");
+  GAMEENGINE_INFO(std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
   // Attempt to set VSync
   bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
 
   if (!vsyncSetSuccessfully) {
-    GAMEENGINE_ERROR("Failed to " + std::string(enable ? "enable" : "disable") +
-                     " VSync: " + std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to {} VSync: {}", enable ? "enable" : "disable", SDL_GetError()));
     // Ensure software frame limiting is enabled if VSync enable failed
     if (enable) {
       m_usingSoftwareFrameLimiting = true;
@@ -1433,8 +1400,8 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   // Update TimestepManager
   if (auto gameLoop = m_gameLoop.lock()) {
     gameLoop->getTimestepManager().setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
-    GAMEENGINE_DEBUG("TimestepManager updated: software frame limiting " +
-                     std::string(m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
+    GAMEENGINE_DEBUG(std::format("TimestepManager updated: software frame limiting {}",
+                                 m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
   }
 
   // Log frame timing mode
@@ -1463,36 +1430,31 @@ void GameEngine::toggleFullscreen() {
   // Toggle fullscreen state
   m_isFullscreen = !m_isFullscreen;
 
-  GAMEENGINE_INFO("Toggling fullscreen mode: " +
-                  std::string(m_isFullscreen ? "ON" : "OFF") +
-                  " (windowed size: " + std::to_string(m_windowedWidth) + "x" +
-                  std::to_string(m_windowedHeight) + ")");
+  GAMEENGINE_INFO(std::format("Toggling fullscreen mode: {} (windowed size: {}x{})",
+                              m_isFullscreen ? "ON" : "OFF", m_windowedWidth, m_windowedHeight));
 
 #ifdef __APPLE__
   // macOS: Use borderless fullscreen desktop mode for better compatibility
   if (m_isFullscreen) {
     if (!SDL_SetWindowFullscreen(mp_window.get(), true)) {
-      GAMEENGINE_ERROR("Failed to enable fullscreen: " +
-                       std::string(SDL_GetError()));
+      GAMEENGINE_ERROR(std::format("Failed to enable fullscreen: {}", SDL_GetError()));
       m_isFullscreen = false; // Revert state on failure
       return;
     }
     // Set to borderless fullscreen desktop mode (nullptr = use desktop mode)
     if (!SDL_SetWindowFullscreenMode(mp_window.get(), nullptr)) {
-      GAMEENGINE_WARN("Failed to set borderless fullscreen mode: " +
-                      std::string(SDL_GetError()));
+      GAMEENGINE_WARN(std::format("Failed to set borderless fullscreen mode: {}", SDL_GetError()));
     }
     GAMEENGINE_INFO("macOS: Enabled borderless fullscreen desktop mode");
   } else {
     if (!SDL_SetWindowFullscreen(mp_window.get(), false)) {
-      GAMEENGINE_ERROR("Failed to disable fullscreen: " +
-                       std::string(SDL_GetError()));
+      GAMEENGINE_ERROR(std::format("Failed to disable fullscreen: {}", SDL_GetError()));
       m_isFullscreen = true; // Revert state on failure
       return;
     }
     // Restore windowed size
     if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
-      GAMEENGINE_ERROR("Failed to restore window size: " + std::string(SDL_GetError()));
+      GAMEENGINE_ERROR(std::format("Failed to restore window size: {}", SDL_GetError()));
     } else {
       GAMEENGINE_INFO(std::format("macOS: Restored window size to {}x{}", m_windowedWidth, m_windowedHeight));
     }
@@ -1500,8 +1462,7 @@ void GameEngine::toggleFullscreen() {
 #else
   // Other platforms: Use standard fullscreen toggle
   if (!SDL_SetWindowFullscreen(mp_window.get(), m_isFullscreen)) {
-    GAMEENGINE_ERROR("Failed to toggle fullscreen: " +
-                     std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to toggle fullscreen: {}", SDL_GetError()));
     m_isFullscreen = !m_isFullscreen; // Revert state on failure
     return;
   }
@@ -1509,14 +1470,13 @@ void GameEngine::toggleFullscreen() {
   // Restore windowed size when exiting fullscreen
   if (!m_isFullscreen) {
     if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
-      GAMEENGINE_ERROR("Failed to restore window size: " + std::string(SDL_GetError()));
+      GAMEENGINE_ERROR(std::format("Failed to restore window size: {}", SDL_GetError()));
     } else {
       GAMEENGINE_INFO(std::format("Restored window size to {}x{}", m_windowedWidth, m_windowedHeight));
     }
   }
 
-  GAMEENGINE_INFO("Fullscreen mode " +
-                  std::string(m_isFullscreen ? "enabled" : "disabled"));
+  GAMEENGINE_INFO(std::format("Fullscreen mode {}", m_isFullscreen ? "enabled" : "disabled"));
 #endif
 
   // Note: SDL will automatically trigger SDL_EVENT_WINDOW_RESIZED
@@ -1610,7 +1570,7 @@ bool GameEngine::verifyVSyncState(bool requested) {
       }
     }
   } else {
-    GAMEENGINE_WARN("Could not verify VSync state: " + std::string(SDL_GetError()));
+    GAMEENGINE_WARN(std::format("Could not verify VSync state: {}", SDL_GetError()));
     vsyncVerified = false;
   }
 
@@ -1642,7 +1602,7 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   // consistent rendering whether in windowed or fullscreen mode
   int actualWidth, actualHeight;
   if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight)) {
-    GAMEENGINE_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}", SDL_GetError()));
     actualWidth = newWidth;
     actualHeight = newHeight;
   }
@@ -1694,7 +1654,7 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
       break;
   }
 
-  GAMEENGINE_INFO("Display event detected: " + std::string(eventName));
+  GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
 
   // On Apple platforms, display changes often invalidate font textures
   // due to different DPI scaling or context changes
@@ -1723,6 +1683,6 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
     uiManager.onWindowResize(getLogicalWidth(), getLogicalHeight());
     GAMEENGINE_INFO("UIManager notified for display change repositioning");
   } catch (const std::exception& e) {
-    GAMEENGINE_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
+    GAMEENGINE_ERROR(std::format("Error updating UI scaling after window resize: {}", e.what()));
   }
 }

@@ -167,8 +167,8 @@ void SettingsMenuState::applySettings() {
     settings.saveToFile("res/settings.json");
 
     GAMESTATE_INFO("Settings saved successfully");
-    GAMESTATE_INFO("Buffer mode changed to " + std::string(m_tempSettings.bufferCount == 2 ? "Double(2)" : "Triple(3)") +
-                   " - restart required for changes to take effect");
+    GAMESTATE_INFO(std::format("Buffer mode changed to {} - restart required for changes to take effect",
+                   m_tempSettings.bufferCount == 2 ? "Double(2)" : "Triple(3)"));
 }
 
 

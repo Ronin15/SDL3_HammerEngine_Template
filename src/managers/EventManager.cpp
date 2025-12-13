@@ -457,7 +457,7 @@ void EventManager::drainAllDeferredEvents() {
 
 bool EventManager::registerEvent(const std::string &name, EventPtr event) {
   if (!event) {
-    EVENT_ERROR("Cannot register null event with name: " + name);
+    EVENT_ERROR(std::format("Cannot register null event with name: {}", name));
     return false;
   }
 
@@ -511,7 +511,7 @@ bool EventManager::registerEventInternal(const std::string &name,
 
   // Check if event already exists
   if (m_nameToIndex.find(name) != m_nameToIndex.end()) {
-    EVENT_WARN("Event '" + name + "' already exists, replacing");
+    EVENT_WARN(std::format("Event '{}' already exists, replacing", name));
   }
 
   // Create event data
@@ -530,8 +530,8 @@ bool EventManager::registerEventInternal(const std::string &name,
   m_nameToIndex[name] = index;
   m_nameToType[name] = typeId;
 
-  EVENT_INFO("Registered event '" + name + "' of type " +
-             std::string(getEventTypeName(typeId)));
+  EVENT_INFO(std::format("Registered event '{}' of type {}",
+             name, getEventTypeName(typeId)));
   return true;
 }
 
@@ -729,7 +729,7 @@ bool EventManager::executeEvent(const std::string &eventName) const {
   if (typeHandlers.empty() && (nameIt == m_nameHandlers.end() || nameIt->second.empty())) {
     // No handlers registered: execute directly
     try { event->execute(); }
-    catch (const std::exception &e) { EVENT_ERROR(std::string("Exception in executeEvent direct exec: ") + e.what()); }
+    catch (const std::exception &e) { EVENT_ERROR(std::format("Exception in executeEvent direct exec: {}", e.what())); }
     catch (...) { EVENT_ERROR("Unknown exception in executeEvent direct exec"); }
     return true;
   }
@@ -1070,7 +1070,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
               }
             }
           } catch (const std::exception &e) {
-            EVENT_ERROR(std::string("Exception in event batch: ") + e.what());
+            EVENT_ERROR(std::format("Exception in event batch: {}", e.what()));
           } catch (...) {
             EVENT_ERROR("Unknown exception in event batch");
           }
@@ -1365,11 +1365,11 @@ bool EventManager::createParticleEffectEvent(const std::string &name,
     return registerEventInternal(name, event, EventTypeId::ParticleEffect);
 
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating ParticleEffectEvent '" + name +
-                "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating ParticleEffectEvent '{}': {}",
+                name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating ParticleEffectEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating ParticleEffectEvent: {}", name));
     return false;
   }
 }
@@ -1391,10 +1391,10 @@ bool EventManager::createWorldLoadedEvent(const std::string &name, const std::st
     auto event = std::make_shared<WorldLoadedEvent>(worldId, width, height);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating WorldLoadedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating WorldLoadedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating WorldLoadedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating WorldLoadedEvent: {}", name));
     return false;
   }
 }
@@ -1404,10 +1404,10 @@ bool EventManager::createWorldUnloadedEvent(const std::string &name, const std::
     auto event = std::make_shared<WorldUnloadedEvent>(worldId);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating WorldUnloadedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating WorldUnloadedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating WorldUnloadedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating WorldUnloadedEvent: {}", name));
     return false;
   }
 }
@@ -1418,10 +1418,10 @@ bool EventManager::createTileChangedEvent(const std::string &name, int x, int y,
     auto event = std::make_shared<TileChangedEvent>(x, y, changeType);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating TileChangedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating TileChangedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating TileChangedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating TileChangedEvent: {}", name));
     return false;
   }
 }
@@ -1432,10 +1432,10 @@ bool EventManager::createWorldGeneratedEvent(const std::string &name, const std:
     auto event = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating WorldGeneratedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating WorldGeneratedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating WorldGeneratedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating WorldGeneratedEvent: {}", name));
     return false;
   }
 }
@@ -1719,9 +1719,9 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData& eventData, Dispa
         try {
           entry.callable(eventData);
         } catch (const std::exception &e) {
-          EVENT_ERROR(std::string("Handler exception in ") + errorContext + ": " + e.what());
+          EVENT_ERROR(std::format("Handler exception in {}: {}", errorContext, e.what()));
         } catch (...) {
-          EVENT_ERROR(std::string("Unknown handler exception in ") + errorContext);
+          EVENT_ERROR(std::format("Unknown handler exception in {}", errorContext));
         }
       }
     }
@@ -1742,10 +1742,10 @@ bool EventManager::createCameraMovedEvent(const std::string &name, const Vector2
     auto event = std::make_shared<CameraMovedEvent>(newPos, oldPos);
     return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating CameraMovedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating CameraMovedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating CameraMovedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating CameraMovedEvent: {}", name));
     return false;
   }
 }
@@ -1757,10 +1757,10 @@ bool EventManager::createCameraModeChangedEvent(const std::string &name, int new
         static_cast<CameraModeChangedEvent::Mode>(oldMode));
     return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating CameraModeChangedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating CameraModeChangedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating CameraModeChangedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating CameraModeChangedEvent: {}", name));
     return false;
   }
 }
@@ -1770,10 +1770,10 @@ bool EventManager::createCameraShakeEvent(const std::string &name, float duratio
     auto event = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
     return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating CameraShakeEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating CameraShakeEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating CameraShakeEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating CameraShakeEvent: {}", name));
     return false;
   }
 }

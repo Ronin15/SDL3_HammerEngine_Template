@@ -372,7 +372,7 @@ std::string OverlayDemoState::getModeDescription() const {
 
 void OverlayDemoState::handleModeSwitch() {
     switchToNextMode();
-    GAMESTATE_DEBUG("Switched to: " + getModeDescription());
+    GAMESTATE_DEBUG(std::format("Switched to: {}", getModeDescription()));
 }
 
 void OverlayDemoState::handleInput() {

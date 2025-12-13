@@ -814,7 +814,7 @@ void PathfindingGrid::initializeCoarseGrid() {
                      coarseWidth, coarseHeight, coarseCellSize));
     }
     catch (const std::exception& e) {
-        PATHFIND_WARN("Failed to initialize coarse grid: " + std::string(e.what()));
+        PATHFIND_WARN(std::format("Failed to initialize coarse grid: {}", e.what()));
         m_coarseGrid = nullptr;
     }
 }

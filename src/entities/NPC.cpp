@@ -120,12 +120,11 @@ void NPC::loadDimensionsFromTexture() {
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
         CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
       } else {
-        NPC_ERROR("Failed to query NPC texture dimensions: " +
-                  std::string(SDL_GetError()));
+        NPC_ERROR(std::format("Failed to query NPC texture dimensions: {}", SDL_GetError()));
       }
     }
   } else {
-    NPC_ERROR("NPC texture '" + m_textureID + "' not found in TextureManager");
+    NPC_ERROR(std::format("NPC texture '{}' not found in TextureManager", m_textureID));
   }
 }
 
@@ -466,7 +465,7 @@ void NPC::ensurePhysicsBodyRegistered() {
   cm.attachEntity(getID(), shared_this());
 
   std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
-  NPC_DEBUG("Collision body registered successfully - KINEMATIC type with " + layerName);
+  NPC_DEBUG(std::format("Collision body registered successfully - KINEMATIC type with {}", layerName));
 }
 
 void NPC::setFaction(Faction f) {

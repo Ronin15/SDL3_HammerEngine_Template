@@ -51,8 +51,7 @@ EventDemoState::~EventDemoState() {
 
     GAMESTATE_INFO("Exiting EventDemoState in destructor...");
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in EventDemoState destructor: " +
-                    std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in EventDemoState destructor: {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in EventDemoState destructor");
   }
@@ -236,7 +235,7 @@ bool EventDemoState::enter() {
         const auto* inventory = m_player->getInventory();
         int used = inventory->getUsedSlots();
         int max = inventory->getMaxSlots();
-        return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
+        return std::format("Capacity: {}/{}", used, max);
     });
 
     // Bind the inventory list - populates provided buffers (zero-allocation pattern)
@@ -296,7 +295,7 @@ bool EventDemoState::enter() {
     return true;
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in EventDemoState::enter(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in EventDemoState::enter(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in EventDemoState::enter()");
@@ -460,7 +459,7 @@ bool EventDemoState::exit() {
     return true;
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in EventDemoState::exit(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in EventDemoState::exit(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in EventDemoState::exit()");
@@ -840,7 +839,7 @@ void EventDemoState::createTestEvents() {
   if (successCount == 11) {
     addLogEntry("Created 11 demo events");
   } else {
-    addLogEntry("Created " + std::to_string(successCount) + "/11 events");
+    addLogEntry(std::format("Created {}/11 events", successCount));
   }
 }
 
@@ -1068,7 +1067,7 @@ void EventDemoState::triggerWeatherDemoAuto() {
   m_currentWeather = newWeather;
   std::string weatherName =
       customType.empty() ? getCurrentWeatherString() : customType;
-  addLogEntry("Weather: " + weatherName + " (auto)");
+  addLogEntry(std::format("Weather: {} (auto)", weatherName));
 }
 
 void EventDemoState::triggerWeatherDemoManual() {
@@ -1102,7 +1101,7 @@ void EventDemoState::triggerWeatherDemoManual() {
   m_currentWeather = newWeather;
   std::string weatherName =
       customType.empty() ? getCurrentWeatherString() : customType;
-  addLogEntry("Weather: " + weatherName + " (manual)");
+  addLogEntry(std::format("Weather: {} (manual)", weatherName));
 }
 
 void EventDemoState::triggerNPCSpawnDemo() {
@@ -1124,7 +1123,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
   // Use EventManager to spawn NPC via the unified event hub
   const EventManager &eventMgr = EventManager::Instance();
   eventMgr.spawnNPC(npcType, spawnX, spawnY);
-  addLogEntry("Spawned: " + npcType);
+  addLogEntry(std::format("Spawned: {}", npcType));
 }
 
 void EventDemoState::triggerSceneTransitionDemo() {
@@ -1506,7 +1505,7 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
 
     addLogEntry("Spawned: " + npcType + " x" + std::to_string(spawned));
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("NPC spawn handler: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("NPC spawn handler: {}", e.what()));
   }
 }
 
@@ -1541,7 +1540,7 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     checkResourceWarnings(handle, newQty);
     logResourceAnalytics(handle, oldQty, newQty, source);
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Error in resource change handler: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Error in resource change handler: {}", e.what()));
   }
 }
 
@@ -1643,7 +1642,7 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
 
     return npc;
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("EXCEPTION in createNPCAtPositionWithoutBehavior: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPositionWithoutBehavior: {}", e.what()));
     return nullptr;
   } catch (...) {
     GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior");
@@ -1851,10 +1850,9 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
 
     m_spawnedNPCs.push_back(npc);
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("EXCEPTION in createNPCAtPosition: " + std::string(e.what()) +
-                    ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPosition: {}, NPC type: {}, position: ({}, {})", e.what(), npcType, x, y));
   } catch (...) {
-    GAMESTATE_ERROR(std::string("UNKNOWN EXCEPTION in createNPCAtPosition") + ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    GAMESTATE_ERROR(std::format("UNKNOWN EXCEPTION in createNPCAtPosition, NPC type: {}, position: ({}, {})", npcType, x, y));
   }
 }
 
@@ -2047,5 +2045,5 @@ void EventDemoState::toggleInventoryDisplay() {
   ui.setComponentVisible("inventory_status", m_showInventory);
   ui.setComponentVisible("inventory_list", m_showInventory);
 
-  GAMESTATE_DEBUG("Inventory " + std::string(m_showInventory ? "shown" : "hidden"));
+  GAMESTATE_DEBUG(std::format("Inventory {}", m_showInventory ? "shown" : "hidden"));
 }

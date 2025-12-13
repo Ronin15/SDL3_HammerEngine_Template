@@ -96,7 +96,7 @@ bool AIManager::init() {
     return true;
 
   } catch (const std::exception &e) {
-    AI_ERROR("Failed to initialize AIManager: " + std::string(e.what()));
+    AI_ERROR(std::format("Failed to initialize AIManager: {}", e.what()));
     return false;
   }
 }
@@ -228,7 +228,7 @@ void AIManager::prepareForStateTransition() {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
           cleanedCount++;
         } catch (const std::exception &e) {
-          AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
+          AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
         }
       }
     }
@@ -619,7 +619,7 @@ void AIManager::update(float deltaTime) {
     }
 
   } catch (const std::exception &e) {
-    AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
+    AI_ERROR(std::format("Exception in AIManager::update: {}", e.what()));
   }
 }
 
@@ -683,7 +683,7 @@ void AIManager::waitForAssignmentCompletion() {
 void AIManager::registerBehavior(const std::string &name,
                                  std::shared_ptr<AIBehavior> behavior) {
   if (!behavior) {
-    AI_ERROR("Attempted to register null behavior with name: " + name);
+    AI_ERROR(std::format("Attempted to register null behavior with name: {}", name));
     return;
   }
 
@@ -701,7 +701,7 @@ void AIManager::registerBehavior(const std::string &name,
 
   m_behaviorTemplates[name] = behavior;
 
-  AI_INFO("Registered behavior: " + name);
+  AI_INFO(std::format("Registered behavior: {}", name));
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {
@@ -749,7 +749,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
   // Get behavior template (use cache for performance)
   std::shared_ptr<AIBehavior> behaviorTemplate = getBehavior(behaviorName);
   if (!behaviorTemplate) {
-    AI_ERROR("Behavior not found: " + behaviorName);
+    AI_ERROR(std::format("Behavior not found: {}", behaviorName));
     return;
   }
 
@@ -789,7 +789,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
         m_storage.halfHeights[index] = halfH;
       }
 
-      AI_INFO("Updated behavior for existing entity to: " + behaviorName);
+      AI_INFO(std::format("Updated behavior for existing entity to: {}", behaviorName));
     }
   } else {
     // Add new entity
@@ -820,7 +820,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     // Update index map
     m_entityToIndex[entity] = newIndex;
 
-    AI_INFO("Added new entity with behavior: " + behaviorName);
+    AI_INFO(std::format("Added new entity with behavior: {}", behaviorName));
   }
 
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
@@ -1147,7 +1147,7 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
 
   AI_INFO("Threading configured: " +
          std::string(useThreading ? "enabled" : "disabled") +
-         " with max threads: " + std::to_string(m_maxThreads));
+         std::format(" with max threads: {}", m_maxThreads));
 }
 
 void AIManager::setThreadingThreshold(size_t threshold) {
@@ -1533,7 +1533,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         collisionUpdates.emplace_back(entity->getID(), hotData.position, Vector2D(0, 0));
       }
     } catch (const std::exception &e) {
-      AI_ERROR("Error in batch processing entity: " + std::string(e.what()));
+      AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
       // NOTE: Don't decrement active counter here - entity is still active, just had an error
       // The entity will be properly cleaned up in the next cleanup cycle
       // Decrementing here could cause count drift and make the counter unreliable
@@ -1803,7 +1803,7 @@ void AIManager::cleanupAllEntities() {
       try {
         m_storage.behaviors[i]->clean(m_storage.entities[i]);
       } catch (const std::exception &e) {
-        AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
+        AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
       }
     }
   }

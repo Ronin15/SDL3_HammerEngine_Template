@@ -5,6 +5,7 @@
 
 #include "entities/Resource.hpp"
 #include "core/Logger.hpp"
+#include <format>
 #include <unordered_map>
 
 Resource::Resource(HammerEngine::ResourceHandle handle, const std::string &id,
@@ -52,8 +53,7 @@ Resource::Resource(HammerEngine::ResourceHandle handle, const std::string &id,
     break;
   }
 
-  RESOURCE_INFO("Created resource: " + m_name +
-                " (Handle: " + m_handle.toString() + ")");
+  RESOURCE_INFO(std::format("Created resource: {} (Handle: {})", m_name, m_handle.toString()));
 }
 
 std::string Resource::categoryToString(ResourceCategory category) {

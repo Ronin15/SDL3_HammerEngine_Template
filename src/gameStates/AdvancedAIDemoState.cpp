@@ -50,7 +50,7 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
 
         GAMESTATE_INFO("Exiting AdvancedAIDemoState in destructor...");
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in AdvancedAIDemoState destructor: " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in AdvancedAIDemoState destructor: {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState destructor");
     }
@@ -270,7 +270,7 @@ bool AdvancedAIDemoState::enter() {
 
         return true;
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in AdvancedAIDemoState::enter(): " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in AdvancedAIDemoState::enter(): {}", e.what()));
         return false;
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState::enter()");
@@ -467,7 +467,7 @@ void AdvancedAIDemoState::update(float deltaTime) {
         }
 
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in AdvancedAIDemoState::update(): " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in AdvancedAIDemoState::update(): {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState::update()");
     }
@@ -670,14 +670,14 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 // Add to collection
                 m_npcs.push_back(npc);
             } catch (const std::exception& e) {
-                GAMESTATE_ERROR("Exception creating advanced NPC " + std::to_string(i) + ": " + std::string(e.what()));
+                GAMESTATE_ERROR(std::format("Exception creating advanced NPC {}: {}", i, e.what()));
                 continue;
             }
         }
 
         GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs with combat attributes", m_npcs.size()));
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in createAdvancedNPCs(): " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in createAdvancedNPCs(): {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
     }

@@ -49,7 +49,7 @@ void InputManager::initializeGamePad() {
       SDL_GetGamepads(&numGamepads), SDL_free);
 
   if (!gamepadIDs) {
-    INPUT_ERROR("Failed to get gamepad IDs: " + std::string(SDL_GetError()));
+    INPUT_ERROR(std::format("Failed to get gamepad IDs: {}", SDL_GetError()));
     return;
   }
 
@@ -61,7 +61,7 @@ void InputManager::initializeGamePad() {
         SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
-          INPUT_INFO("Gamepad connected: " + std::string(SDL_GetGamepadName(gamepad)));
+          INPUT_INFO(std::format("Gamepad connected: {}", SDL_GetGamepadName(gamepad)));
 
           // Add default joystick values
           m_joystickValues.push_back(std::make_pair(std::make_unique<Vector2D>(0, 0), std::make_unique<Vector2D>(0, 0)));
@@ -74,7 +74,7 @@ void InputManager::initializeGamePad() {
           }
           m_buttonStates.push_back(tempButtons);
         } else {
-          INPUT_ERROR("Could not open gamepad: " + std::string(SDL_GetError()));
+          INPUT_ERROR(std::format("Could not open gamepad: {}", SDL_GetError()));
           return;
         }
       }

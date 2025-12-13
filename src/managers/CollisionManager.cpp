@@ -93,8 +93,8 @@ void CollisionManager::clean() {
     return;
   m_isShutdown = true;
 
-  COLLISION_INFO("STORAGE LIFECYCLE: clean() clearing " +
-                 std::to_string(m_storage.size()) + " SOA bodies");
+  COLLISION_INFO(std::format("STORAGE LIFECYCLE: clean() clearing {} SOA bodies",
+                             m_storage.size()));
 
 
   // Clean SOA storage
@@ -130,8 +130,8 @@ void CollisionManager::prepareForStateTransition() {
    * when it loads its world.
    */
   size_t soaBodyCount = m_storage.size();
-  COLLISION_INFO("STORAGE LIFECYCLE: prepareForStateTransition() clearing " +
-                 std::to_string(soaBodyCount) + " SOA bodies (dynamic + static)");
+  COLLISION_INFO(std::format("STORAGE LIFECYCLE: prepareForStateTransition() clearing {} SOA bodies (dynamic + static)",
+                             soaBodyCount));
 
   // Acquire exclusive write lock before clearing storage
   // Prevents AI threads from reading during modifications
@@ -666,8 +666,7 @@ void CollisionManager::logCollisionStatistics() const {
       layerName = "Unknown";
       break;
     }
-    COLLISION_INFO("    " + layerName + ": " +
-                   std::to_string(layerCount.second));
+    COLLISION_INFO(std::format("    {}: {}", layerName, layerCount.second));
   }
 }
 
@@ -713,10 +712,9 @@ void CollisionManager::rebuildStaticFromWorld() {
                                     // handled by pathfinding
 
   if (solidBodies > 0 || waterTriggers > 0) {
-    COLLISION_INFO(
-        "World colliders built: solid=" + std::to_string(solidBodies) +
-        ", water triggers=" + std::to_string(waterTriggers) +
-        ", obstacle triggers=" + std::to_string(obstacleTriggers));
+    COLLISION_INFO(std::format(
+        "World colliders built: solid={}, water triggers={}, obstacle triggers={}",
+        solidBodies, waterTriggers, obstacleTriggers));
 
     // CRITICAL: Process pending commands BEFORE rebuilding spatial hash
     // The createStatic*() functions above add bodies via command queue,
@@ -1173,9 +1171,8 @@ void CollisionManager::processPendingCommands() {
         // Fire collision obstacle changed event for static bodies
         if (cmd.bodyType == BodyType::STATIC) {
           float radius = std::max(cmd.halfSize.getX(), cmd.halfSize.getY()) + 16.0f;
-          std::string description = "Static obstacle added at (" +
-                                    std::to_string(cmd.position.getX()) + ", " +
-                                    std::to_string(cmd.position.getY()) + ")";
+          std::string description = std::format("Static obstacle added at ({}, {})",
+                                                cmd.position.getX(), cmd.position.getY());
           EventManager::Instance().triggerCollisionObstacleChanged(cmd.position, radius, description,
                                                                   EventManager::DispatchMode::Deferred);
           m_staticHashDirty = true;
@@ -1198,9 +1195,8 @@ void CollisionManager::processPendingCommands() {
           const auto& hot = m_storage.hotData[indexToRemove];
           if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
             float radius = std::max(hot.halfSize.getX(), hot.halfSize.getY()) + 16.0f;
-            std::string description = "Static obstacle removed from (" +
-                                      std::to_string(hot.position.getX()) + ", " +
-                                      std::to_string(hot.position.getY()) + ")";
+            std::string description = std::format("Static obstacle removed from ({}, {})",
+                                                  hot.position.getX(), hot.position.getY());
             EventManager::Instance().triggerCollisionObstacleChanged(hot.position, radius, description,
                                                                     EventManager::DispatchMode::Deferred);
             m_staticHashDirty = true;
@@ -2763,12 +2759,8 @@ void CollisionManager::updatePerformanceMetricsSOA(
 
   // Performance warnings (throttled to reduce spam during benchmarks)
   if (m_perf.lastTotalMs > 5.0 && m_perf.frames % 60 == 0) { // Only log every 60 frames for slow performance
-    COLLISION_WARN("SOA Slow frame: totalMs=" + std::to_string(m_perf.lastTotalMs) +
-                   ", syncMs=" + std::to_string(d01) +
-                   ", broadphaseMs=" + std::to_string(d12) +
-                   ", narrowphaseMs=" + std::to_string(d23) +
-                   ", pairs=" + std::to_string(pairCount) +
-                   ", collisions=" + std::to_string(collisionCount));
+    COLLISION_WARN(std::format("SOA Slow frame: totalMs={}, syncMs={}, broadphaseMs={}, narrowphaseMs={}, pairs={}, collisions={}",
+                   m_perf.lastTotalMs, d01, d12, d23, pairCount, collisionCount));
   }
 
   // Periodic statistics (every 300 frames like AIManager)
