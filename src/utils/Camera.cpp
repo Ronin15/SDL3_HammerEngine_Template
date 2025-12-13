@@ -89,47 +89,30 @@ void Camera::update(float deltaTime) {
         }
     }
 
-    // Follow mode - lock camera to target position (no lag = no jitter)
+    // Follow mode - track target position for entity rendering
     if (m_mode == Mode::Follow && hasTarget()) {
-        Vector2D targetPos = getTargetPosition();
+        Vector2D targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
-        // Clamp target to world bounds, accounting for viewport size
+        // CRITICAL: Store UNCLAMPED target position in interpState for entity rendering
+        // The offset clamping happens in computeOffsetFromCenter(), NOT here
+        // This ensures entity renders at correct position when camera hits world bounds
+        m_interpState.store({targetPos.getX(), targetPos.getY(),
+                             m_previousPosition.getX(), m_previousPosition.getY()},
+                            std::memory_order_release);
+
+        // Set m_position to unclamped target (so next frame's m_previousPosition is also unclamped)
+        // This maintains consistent unclamped position history for smooth interpolation
+        m_position = targetPos;
+    } else {
+        // Non-Follow modes: clamp camera position, then store
         if (m_config.clampToWorldBounds) {
-            const float halfW = m_viewport.halfWidth() / m_zoom;
-            const float halfH = m_viewport.halfHeight() / m_zoom;
-
-            const float minX = m_worldBounds.minX + halfW;
-            const float maxX = m_worldBounds.maxX - halfW;
-            const float minY = m_worldBounds.minY + halfH;
-            const float maxY = m_worldBounds.maxY - halfH;
-
-            if (maxX > minX) {
-                targetPos.setX(std::clamp(targetPos.getX(), minX, maxX));
-            } else {
-                targetPos.setX((m_worldBounds.minX + m_worldBounds.maxX) * 0.5f);
-            }
-
-            if (maxY > minY) {
-                targetPos.setY(std::clamp(targetPos.getY(), minY, maxY));
-            } else {
-                targetPos.setY((m_worldBounds.minY + m_worldBounds.maxY) * 0.5f);
-            }
+            clampToWorldBounds();
         }
 
-        // Lock to target - camera position equals player position
-        m_position = targetPos;
+        m_interpState.store({m_position.getX(), m_position.getY(),
+                             m_previousPosition.getX(), m_previousPosition.getY()},
+                            std::memory_order_release);
     }
-
-    // Ensure final camera position respects world bounds across all modes
-    if (m_config.clampToWorldBounds) {
-        clampToWorldBounds();
-    }
-
-    // Atomically publish interpolation state for render thread (industry-standard pattern)
-    // Render thread reads this via getRenderOffset() for smooth camera interpolation
-    m_interpState.store({m_position.getX(), m_position.getY(),
-                         m_previousPosition.getX(), m_previousPosition.getY()},
-                        std::memory_order_release);
 }
 
 void Camera::setPosition(float x, float y) {
@@ -283,6 +266,9 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
+// Removed getInterpolatedViewRect(): Use getRenderOffset() + viewport/zoom instead
+// This ensures single atomic read pattern across all game states
+
 void Camera::computeOffsetFromCenter(float centerX, float centerY,
                                      float& offsetX, float& offsetY) const {
     // Compute camera offset (top-left corner) from a given center position
@@ -315,28 +301,15 @@ void Camera::computeOffsetFromCenter(float centerX, float centerY,
 }
 
 Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
-    Vector2D center;
+    // SELF-CONTAINED: Always use camera's own interpolation state
+    // Camera publishes its state in update() (mirrors target position in Follow mode)
+    // This eliminates cross-entity atomic reads and ensures consistent render state
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    Vector2D center(
+        camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha,
+        camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
 
-    // Follow mode: derive offset from TARGET's interpolated position (single atomic read)
-    // This ensures camera and followed entity use the EXACT same position - no jitter
-    if (m_mode == Mode::Follow) {
-        if (auto targetPtr = m_target.lock()) {
-            // ONE atomic read - this is the source of truth for this frame
-            center = targetPtr->getInterpolatedPosition(interpolationAlpha);
-        } else {
-            // No valid target, fall back to camera's own interpolation
-            auto camState = m_interpState.load(std::memory_order_acquire);
-            center.setX(camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha);
-            center.setY(camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
-        }
-    } else {
-        // Free/Fixed mode: use camera's own interpolation
-        auto camState = m_interpState.load(std::memory_order_acquire);
-        center.setX(camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha);
-        center.setY(camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
-    }
-
-    // Compute screen offset from the center position we determined
+    // Compute screen offset from the interpolated center position
     computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
 
     // Return the center position we used - caller should render followed entity here

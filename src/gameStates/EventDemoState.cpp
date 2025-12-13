@@ -2036,17 +2036,7 @@ void EventDemoState::updateCamera(float deltaTime) {
 }
 
 // Removed setupCameraForWorld(): camera manages world bounds itself
-
-void EventDemoState::applyCameraTransformation() {
-  if (!m_camera) {
-    return;
-  }
-
-  // Calculate camera offset for later use in rendering
-  auto viewRect = m_camera->getViewRect();
-  m_cameraOffsetX = viewRect.x;
-  m_cameraOffsetY = viewRect.y;
-}
+// Removed applyCameraTransformation(): unified single-read pattern used in render()
 
 void EventDemoState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();

@@ -226,19 +226,23 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   const auto &gameEngine = GameEngine::Instance();
 
-  HammerEngine::Camera::ViewRect viewRect{0.0f, 0.0f, 0.0f, 0.0f};
+  // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
-  Vector2D playerInterpPos;  // Position to render player at (synced with camera)
+  float viewWidth = 0.0f;
+  float viewHeight = 0.0f;
+  Vector2D playerInterpPos;  // Position synced with camera
 
   if (m_camera) {
-    viewRect = m_camera->getViewRect();
     zoom = m_camera->getZoom();
-    // Camera returns the position it used for offset calculation
-    // In Follow mode: ONE atomic read from player's interpolation state
-    // This is the single source of truth - both world and player sync to it
+    // ONE atomic read - returns center position for entity rendering
+    // All camera state reads use camera's own atomic interpState (self-contained)
     playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+
+    // Derive view dimensions from viewport/zoom (no second atomic read)
+    viewWidth = m_camera->getViewport().width / zoom;
+    viewHeight = m_camera->getViewport().height / zoom;
   }
 
   if (zoom != m_lastRenderedZoom) {
@@ -253,7 +257,7 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
     mp_worldMgr->render(renderer,
                        renderCamX, renderCamY,
-                       viewRect.width, viewRect.height);
+                       viewWidth, viewHeight);
   }
 
   if (mp_Player) {
