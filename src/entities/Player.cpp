@@ -143,8 +143,11 @@ void Player::update(float deltaTime) {
   m_position = m_position + (m_velocity * deltaTime);
 
   // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world boundaries
-  float worldMinX, worldMinY, worldMaxX, worldMaxY;
-  if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+  float worldMinX = 0.0f, worldMinY = 0.0f, worldMaxX = 0.0f, worldMaxY = 0.0f;
+  WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY);
+
+  // Always clamp if bounds are valid (maxX > minX)
+  if (worldMaxX > worldMinX && worldMaxY > worldMinY) {
     // Account for player half-size to prevent center from going out of bounds
     const float halfWidth = m_frameWidth * 0.5f;
     const float halfHeight = m_height * 0.5f;

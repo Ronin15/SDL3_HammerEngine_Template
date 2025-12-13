@@ -474,7 +474,8 @@ private:
     mutable std::uniform_real_distribution<float> m_shakeDist{-1.0f, 1.0f};
 
     // Internal helper methods
-    void clampToWorldBounds();
+    void syncWorldBounds();       // Sync m_worldBounds from WorldManager (called every update)
+    void clampToWorldBounds();    // Clamp camera position to world bounds
     Vector2D getTargetPosition() const;
     Vector2D generateShakeOffset() const;
 
