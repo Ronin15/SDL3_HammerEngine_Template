@@ -200,7 +200,10 @@ file(GLOB_RECURSE SOURCES
     "src/controllers/*.cpp"
 )
 
-# Create object library for shared compilation
+# Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
+list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
+
+# Create object library for shared compilation (without main())
 add_library(HammerEngineObjects OBJECT ${SOURCES})
 target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -251,7 +254,11 @@ else()
 endif()
 
 # Set the output name with proper extension
-add_executable(${PROJECT_NAME} $<TARGET_OBJECTS:HammerEngineObjects>)
+# Include HammerMain.cpp (contains main()) only in the executable, not the library
+add_executable(${PROJECT_NAME}
+    $<TARGET_OBJECTS:HammerEngineObjects>
+    src/core/HammerMain.cpp
+)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}${EXE_EXTENSION}"
 )
