@@ -44,35 +44,38 @@ else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -DDEBUG")
 endif()
 
-# Release build settings
+# Release build settings - keep minimal safe flags for dependencies (SDL3 etc.)
+# Aggressive optimizations like -ffast-math are applied only to our targets below
 if(APPLE)
-    # macOS-specific release flags
-    set(CMAKE_C_FLAGS_RELEASE 
-        "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
-        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops")
-    set(CMAKE_CXX_FLAGS_RELEASE 
-        "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
-        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops")
-    
+    # macOS-specific release flags (safe for all targets including SDL3)
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+
     # Add Apple Silicon specific optimizations if on Apple Silicon
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
         set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=apple-m1")
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
     endif()
+
+    # Store aggressive flags for our project targets only
+    set(HAMMER_AGGRESSIVE_C_FLAGS
+        "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
+    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+        "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
 else()
-    # x86-64 specific flags for other platforms
+    # x86-64 specific flags (safe for all targets)
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
-        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-        -msse4.2 -mavx -mavx2 -mfma")
+        -fno-strict-aliasing -fomit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
-        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-        -msse4.2 -mavx -mavx2 -mfma")
+        -fno-strict-aliasing -fomit-frame-pointer")
+
+    # Store aggressive flags for our project targets only
+    set(HAMMER_AGGRESSIVE_C_FLAGS
+        "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
+    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+        "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
 endif()
 
 # Set C++ standard
@@ -235,6 +238,13 @@ if(NOT MSVC AND NOT APPLE)
     target_link_libraries(HammerEngineObjects PUBLIC atomic)
 endif()
 
+# Apply aggressive optimization flags to our project targets only (not SDL3)
+# These flags like -ffast-math conflict with SDL3's audio code
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    separate_arguments(HAMMER_AGGRESSIVE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_AGGRESSIVE_CXX_FLAGS}")
+    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_AGGRESSIVE_CXX_FLAGS_LIST})
+endif()
+
 # Create shared library for tests
 add_library(HammerEngineLib STATIC $<TARGET_OBJECTS:HammerEngineObjects>)
 target_include_directories(HammerEngineLib PUBLIC
@@ -383,6 +393,26 @@ if(APPLE)
             BUILD_WITH_INSTALL_RPATH TRUE
             BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
             INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
+        )
+
+        # Copy SDL3 dylibs to app bundle Frameworks directory for release
+        # Use TARGET_SONAME_FILE to get the versioned symlink name (e.g., libSDL3_ttf.0.dylib)
+        # which is what the binary actually links against
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks"
+            # Copy SDL3 (already has correct soname)
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_SONAME_FILE:SDL3::SDL3>
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
+            # Copy SDL3_ttf with soname
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_SONAME_FILE:SDL3_ttf::SDL3_ttf>
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
+            # Copy SDL3_mixer with soname
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_SONAME_FILE:SDL3_mixer::SDL3_mixer>
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
         )
     endif()
 endif()
