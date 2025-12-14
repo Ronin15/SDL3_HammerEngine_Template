@@ -2766,15 +2766,15 @@ void CollisionManager::updatePerformanceMetricsSOA(
   // Periodic statistics (every 300 frames like AIManager)
   if (m_perf.frames % 300 == 0 && bodyCount > 0) {
     // PERFORMANCE OPTIMIZATION REPORTING: Show optimization effectiveness
-    std::string optimizationStats = " [Optimizations: Active=" + std::to_string(m_perf.getActiveBodiesRate()) + "%";
+    std::string optimizationStats = std::format(" [Optimizations: Active={}%", m_perf.getActiveBodiesRate());
     if (dynamicBodiesCulled > 0) {
-      optimizationStats += ", DynCulled=" + std::to_string(m_perf.getDynamicCullingRate()) + "%";
+      optimizationStats += std::format(", DynCulled={}%", m_perf.getDynamicCullingRate());
     }
     if (staticBodiesCulled > 0) {
-      optimizationStats += ", StaticCulled=" + std::to_string(m_perf.getStaticCullingRate()) + "%";
+      optimizationStats += std::format(", StaticCulled={}%", m_perf.getStaticCullingRate());
     }
     if (cullingMs > 0.0) {
-      optimizationStats += ", CullingMs=" + std::to_string(cullingMs);
+      optimizationStats += std::format(", CullingMs={}", cullingMs);
     }
     optimizationStats += "]";
 
@@ -2782,15 +2782,13 @@ void CollisionManager::updatePerformanceMetricsSOA(
     size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
     float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
     size_t activeRegions = m_coarseRegionStaticCache.size();
-    std::string cacheStatsStr = " [RegionCache: Active=" + std::to_string(activeRegions) +
-                                ", Hits=" + std::to_string(m_cacheHits) +
-                                ", Misses=" + std::to_string(m_cacheMisses) +
-                                ", HitRate=" + std::to_string(static_cast<int>(cacheHitRate)) + "%";
+    std::string cacheStatsStr = std::format(" [RegionCache: Active={}, Hits={}, Misses={}, HitRate={}%",
+                                activeRegions, m_cacheHits, m_cacheMisses, static_cast<int>(cacheHitRate));
 
     // Add eviction statistics if available
     if (m_perf.cacheEntriesEvicted > 0 || m_perf.totalCacheEvictions > 0) {
-      cacheStatsStr += ", Evicted=" + std::to_string(m_perf.cacheEntriesEvicted) +
-                       ", TotalEvictions=" + std::to_string(m_perf.totalCacheEvictions);
+      cacheStatsStr += std::format(", Evicted={}, TotalEvictions={}",
+                       m_perf.cacheEntriesEvicted, m_perf.totalCacheEvictions);
     }
     cacheStatsStr += "]";
 

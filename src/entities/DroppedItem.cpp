@@ -8,6 +8,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "utils/Camera.hpp"
 #include <cmath>
+#include <format>
 
 DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
                          const Vector2D &position, int quantity)
@@ -29,9 +30,9 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
     setWidth(32);
     setHeight(32);
 
-    ENTITY_INFO(
-        "Created DroppedItem for resource: " + resourceTemplate->getName() +
-        " (Quantity: " + std::to_string(quantity) + ")");
+    ENTITY_INFO(std::format(
+        "Created DroppedItem for resource: {} (Quantity: {})",
+        resourceTemplate->getName(), quantity));
   } else {
     ENTITY_ERROR("Failed to create DroppedItem: Invalid resource handle");
   }

@@ -429,9 +429,8 @@ void AIManager::update(float deltaTime) {
 
       // Debug logging for high queue pressure
       if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-        AI_DEBUG("High queue pressure (" +
-                 std::to_string(static_cast<int>(queuePressure * 100)) +
-                 "%), using larger batches");
+        AI_DEBUG(std::format("High queue pressure ({}%), using larger batches",
+                 static_cast<int>(queuePressure * 100)));
       }
 
       // Debug thread allocation info periodically
@@ -928,9 +927,8 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
   // Safety check: If queue is too full, process synchronously
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    AI_DEBUG("ThreadSystem queue pressure high (" +
-             std::to_string(static_cast<int>(queuePressure * 100)) +
-             "%) - processing assignments synchronously");
+    AI_DEBUG(std::format("ThreadSystem queue pressure high ({}%) - processing assignments synchronously",
+             static_cast<int>(queuePressure * 100)));
     for (const auto &assignment : toProcess) {
       if (assignment.entity) {
         assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
@@ -965,8 +963,8 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
   // If WorkerBudget recommends single-threaded execution, process synchronously
   if (batchCount <= 1) {
-    AI_DEBUG("WorkerBudget recommends single-threaded processing for " +
-             std::to_string(assignmentCount) + " assignments");
+    AI_DEBUG(std::format("WorkerBudget recommends single-threaded processing for {} assignments",
+             assignmentCount));
     for (const auto &assignment : toProcess) {
       if (assignment.entity) {
         assignBehaviorToEntity(assignment.entity, assignment.behaviorName);

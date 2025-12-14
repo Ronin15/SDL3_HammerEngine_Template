@@ -388,7 +388,7 @@ std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,
 
         // If no name is provided in the definition, generate one based on sequence
         if (def.name.empty()) {
-            def.name = name + "_" + std::to_string(i + 1);
+            def.name = std::format("{}_{}", name, i + 1);
         }
 
         // Create the event

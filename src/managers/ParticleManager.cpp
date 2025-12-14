@@ -778,12 +778,11 @@ void ParticleManager::prepareForStateTransition() {
   // Resume system (no lock to release with lock-free design)
   m_globallyPaused.store(false, std::memory_order_release);
 
-  PARTICLE_INFO(
-      "ParticleManager state transition complete - stopped " +
-      std::to_string(weatherEffectsStopped) + " weather effects, " +
-      std::to_string(independentEffectsStopped) + " independent effects, " +
-      std::to_string(regularEffectsStopped) + " regular effects, cleared " +
-      std::to_string(particlesCleared) + " particles");
+  PARTICLE_INFO(std::format(
+      "ParticleManager state transition complete - stopped {} weather effects, "
+      "{} independent effects, {} regular effects, cleared {} particles",
+      weatherEffectsStopped, independentEffectsStopped, regularEffectsStopped,
+      particlesCleared));
 }
 
 void ParticleManager::update(float deltaTime) {
@@ -900,20 +899,15 @@ void ParticleManager::update(float deltaTime) {
           [[maybe_unused]] size_t batchCount = std::max<size_t>(
               1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
 
-          PARTICLE_DEBUG(
-              "Particle Summary - Count: " + std::to_string(activeCount) +
-              ", Update: " + std::to_string(timeMs) + "ms" +
-              ", Effects: " + std::to_string(m_effectInstances.size()) +
-              " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-              std::to_string(availableWorkers) + " workers, Budget: " +
-              std::to_string(particleBudget) + ", Batches: " +
-              std::to_string(batchCount) + "]");
+          PARTICLE_DEBUG(std::format(
+              "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} "
+              "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+              activeCount, timeMs, m_effectInstances.size(),
+              optimalWorkers, availableWorkers, particleBudget, batchCount));
         } else {
-          PARTICLE_DEBUG(
-              "Particle Summary - Count: " + std::to_string(activeCount) +
-              ", Update: " + std::to_string(timeMs) + "ms" +
-              ", Effects: " + std::to_string(m_effectInstances.size()) +
-              " [Single-threaded]");
+          PARTICLE_DEBUG(std::format(
+              "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} [Single-threaded]",
+              activeCount, timeMs, m_effectInstances.size()));
         }
       }
     }
@@ -1284,11 +1278,11 @@ void ParticleManager::clearWeatherGeneration(uint8_t generationId,
     }
   }
 
-  PARTICLE_INFO(
-      "Cleared " + std::to_string(affectedCount) + " weather particles" +
-      (generationId > 0 ? " (generation " + std::to_string(generationId) + ")"
-                        : "") +
-      " with fade time: " + std::to_string(fadeTime) + "s");
+  PARTICLE_INFO(std::format(
+      "Cleared {} weather particles{} with fade time: {}s",
+      affectedCount,
+      generationId > 0 ? std::format(" (generation {})", generationId) : "",
+      fadeTime));
 }
 
 void ParticleManager::triggerWeatherEffect(const std::string &weatherType,
@@ -1595,9 +1589,8 @@ void ParticleManager::pauseAllIndependentEffects(bool paused) {
     }
   }
 
-  PARTICLE_INFO("All independent effects " +
-                std::string(paused ? "paused" : "unpaused") + " (" +
-                std::to_string(affectedCount) + " effects)");
+  PARTICLE_INFO(std::format("All independent effects {} ({} effects)",
+                paused ? "paused" : "unpaused", affectedCount));
 }
 
 void ParticleManager::pauseIndependentEffectsByGroup(
@@ -2705,10 +2698,9 @@ void ParticleManager::configureThreading(bool useThreading,
   m_useThreading.store(useThreading, std::memory_order_release);
   m_maxThreads = maxThreads;
 
-  PARTICLE_INFO("Threading configured: " +
-                std::string(useThreading ? "enabled" : "disabled") +
-                (maxThreads > 0 ? " (max: " + std::to_string(maxThreads) + ")"
-                                : " (auto)"));
+  PARTICLE_INFO(std::format("Threading configured: {}{}",
+                useThreading ? "enabled" : "disabled",
+                maxThreads > 0 ? std::format(" (max: {})", maxThreads) : " (auto)"));
 }
 
 void ParticleManager::setThreadingThreshold(size_t threshold) {

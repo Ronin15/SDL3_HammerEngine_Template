@@ -267,7 +267,7 @@ bool EventDemoState::enter() {
 
         items.reserve(sortedResources.size());
         for (const auto& [resourceId, quantity] : sortedResources) {
-            items.push_back(resourceId + " x" + std::to_string(quantity));
+            items.push_back(std::format("{} x{}", resourceId, quantity));
         }
 
         if (items.empty()) {
@@ -1288,8 +1288,7 @@ void EventDemoState::triggerResourceDemo() {
     bool success = inventory->addResource(handle, quantity);
     if (success) {
       int newQuantity = inventory->getResourceQuantity(handle);
-      addLogEntry("+" + std::to_string(quantity) + " " + resourceName +
-                  " (" + std::to_string(newQuantity) + " total)");
+      addLogEntry(std::format("+{} {} ({} total)", quantity, resourceName, newQuantity));
 
       // Trigger resource change via EventManager (deferred by default)
       const EventManager &eventMgr = EventManager::Instance();
@@ -1306,8 +1305,7 @@ void EventDemoState::triggerResourceDemo() {
       bool success = inventory->removeResource(handle, removeQuantity);
       if (success) {
         int newQuantity = inventory->getResourceQuantity(handle);
-        addLogEntry("-" + std::to_string(removeQuantity) + " " + resourceName +
-                    " (" + std::to_string(newQuantity) + " left)");
+        addLogEntry(std::format("-{} {} ({} left)", removeQuantity, resourceName, newQuantity));
 
         // Trigger resource change via EventManager (deferred by default)
         const EventManager &eventMgr = EventManager::Instance();
@@ -1382,8 +1380,7 @@ void EventDemoState::triggerCustomEventDemo() {
     addLogEntry(npcType2 + ": " + behaviorName2 + " queued");
   }
 
-  addLogEntry("Spawned: " + npcType1 + ", " + npcType2 +
-              " (" + std::to_string(m_spawnedNPCs.size()) + " total)");
+  addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2, m_spawnedNPCs.size()));
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
@@ -1419,7 +1416,7 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
     m_currentWeather = WeatherType::Foggy;
     addLogEntry("Weather: Foggy (demo)");
   } else {
-    addLogEntry("Created " + std::to_string(successCount) + "/6 events");
+    addLogEntry(std::format("Created {}/6 events", successCount));
   }
 }
 
@@ -1503,7 +1500,7 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
       }
     }
 
-    addLogEntry("Spawned: " + npcType + " x" + std::to_string(spawned));
+    addLogEntry(std::format("Spawned: {} x{}", npcType, spawned));
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("NPC spawn handler: {}", e.what()));
   }
@@ -1888,9 +1885,8 @@ void EventDemoState::setupResourceAchievements() {
     m_achievementThresholds[resource->getHandle()] = 10; // First 10 consumables
   }
 
-  GAMESTATE_DEBUG("Achievement thresholds set for " +
-              std::to_string(m_achievementThresholds.size()) +
-              " resource types");
+  GAMESTATE_DEBUG(std::format("Achievement thresholds set for {} resource types",
+              m_achievementThresholds.size()));
 }
 
 void EventDemoState::processResourceAchievements(
@@ -1913,7 +1909,7 @@ void EventDemoState::processResourceAchievements(
     std::string resourceName =
         resourceTemplate ? resourceTemplate->getName() : "Unknown";
 
-    addLogEntry("Achievement: " + std::to_string(threshold) + " " + resourceName);
+    addLogEntry(std::format("Achievement: {} {}", threshold, resourceName));
 
     // In a real game, this could trigger UI popups, sound effects, save to
     // profile, etc.
@@ -1933,12 +1929,12 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
   // Warning for low quantities of important resources (player-facing)
   if (resourceTemplate->getType() == ResourceType::Consumable && newQty <= 2 &&
       newQty > 0) {
-    addLogEntry("Low: " + resourceName + " (" + std::to_string(newQty) + ")");
+    addLogEntry(std::format("Low: {} ({})", resourceName, newQty));
   }
 
   // Warning when resources are completely depleted (player-facing)
   if (newQty == 0) {
-    addLogEntry("Out of " + resourceName);
+    addLogEntry(std::format("Out of {}", resourceName));
   }
 
   // Warning for high-value resources reaching storage limits (player-facing)
@@ -1946,8 +1942,7 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
       resourceTemplate->getMaxStackSize() > 0) {
     int maxStack = resourceTemplate->getMaxStackSize();
     if (newQty >= maxStack * 0.9f) { // 90% of stack limit
-      addLogEntry(resourceName + " nearly full (" +
-                  std::to_string(newQty) + "/" + std::to_string(maxStack) + ")");
+      addLogEntry(std::format("{} nearly full ({}/{})", resourceName, newQty, maxStack));
     }
   }
 }
@@ -1966,11 +1961,9 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   int change = newQty - oldQty;
 
   // Create detailed analytics entry (console only)
-  std::string analyticsEntry =
-      "ANALYTICS: [" + source + "] " + resourceName + " changed by " +
-      std::to_string(change) +
-      " (value: " + std::to_string(resourceTemplate->getValue() * change) +
-      " coins)";
+  std::string analyticsEntry = std::format(
+      "ANALYTICS: [{}] {} changed by {} (value: {} coins)",
+      source, resourceName, change, resourceTemplate->getValue() * change);
 
   m_resourceLog.push_back(analyticsEntry);
   GAMESTATE_DEBUG(analyticsEntry);

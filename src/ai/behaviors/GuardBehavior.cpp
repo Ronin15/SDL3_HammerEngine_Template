@@ -795,7 +795,6 @@ void GuardBehavior::callForHelp(EntityPtr entity,
     return;
 
   // Broadcast alert to other guards in the same group
-  std::string alertMessage =
-      "guard_alert_" + std::to_string(static_cast<int>(level));
+  std::string alertMessage = std::format("guard_alert_{}", static_cast<int>(level));
   AIManager::Instance().broadcastMessage(alertMessage, false);
 }
