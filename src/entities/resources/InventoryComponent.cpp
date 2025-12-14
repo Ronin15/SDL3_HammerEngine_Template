@@ -731,12 +731,11 @@ bool InventoryComponent::validateInventoryIntegrity() const {
   // Validate cache consistency
   if (!m_cacheNeedsRebuild) {
     for (const auto &[handle, cachedQuantity] : m_resourceQuantityCache) {
-      int actualQuantity = 0;
-      for (const auto &slot : m_slots) {
-        if (slot.resourceHandle == handle) {
-          actualQuantity += slot.quantity;
-        }
-      }
+      const int actualQuantity = std::accumulate(
+          m_slots.begin(), m_slots.end(), 0,
+          [&handle](int sum, const InventorySlot &slot) {
+            return slot.resourceHandle == handle ? sum + slot.quantity : sum;
+          });
 
       if (actualQuantity != cachedQuantity) {
         INVENTORY_ERROR(
