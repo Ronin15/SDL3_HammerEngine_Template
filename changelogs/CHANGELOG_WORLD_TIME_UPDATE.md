@@ -95,10 +95,10 @@ struct SeasonConfig {
 
 ### 2. Controller Architecture
 
-**Problem:**
-Game logic was scattered across GameStates, making it hard to reuse and test.
+**Motivation:**
+Proper separation of concerns. Controllers compartmentalize state-specific logic so it can be reasoned about in one place, keeping Managers focused on core data management rather than complex game logic.
 
-**Solution:**
+**Implementation:**
 Introduced Controller pattern for state-scoped helpers:
 
 ```cpp
@@ -246,18 +246,15 @@ LOG_INFO(std::format("Value: {} at pos ({})", x, y));
 
 ---
 
-### 6. ParticleManager Weather Integration
+### 6. ParticleManager Enhancements
 
-**Problem:**
-No integration between weather system and particle effects.
+**Motivation:**
+ParticleManager already supported weather effects. This update improves code structure and adds additional ambient effects.
 
-**Solution:**
-Enhanced ParticleManager with weather particle support:
-
-- Rain particles with proper screen-space spawning
-- Snow particles with drift behavior
-- Firefly ambient particles (night-only via DayNightController)
-- thread_local RNG for thread-safe particle generation:
+**Enhancements:**
+- Improved code organization and structure
+- Added firefly ambient particles (night-only via DayNightController)
+- Converted static RNG to thread_local for thread safety:
 
 ```cpp
 inline int fast_rand() {
@@ -602,45 +599,6 @@ tests/world/WorldManagerTests.cpp         (+664 lines) NEW
 
 1. One minor issue fixed (extra semicolon in InputManager.hpp)
 2. AIBehavior static reference pattern documented as valid optimization
-
----
-
-## Commit History
-
-```bash
-# Suggested merge commit:
-
-git checkout main
-git merge world_time -m "$(cat <<'EOF'
-feat(core): Add GameTime system with calendar, seasons, and weather
-
-World Time Update - Major feature addition:
-
-- Add GameTime singleton with real-time to game-time conversion
-- Add fantasy calendar (Bloomtide, Sunpeak, Harvestmoon, Frosthold)
-- Add Season system with environmental configs
-- Add TimeEvent hierarchy (Hour, Day, Month, Season, Year, Weather, TimePeriod)
-- Add Controller architecture (TimeController, DayNightController, WeatherController)
-- Add 16-byte aligned atomic interpolation for entities and camera
-- Add seasonal texture support to WorldManager with chunk caching
-- Convert string concatenation to std::format() throughout codebase
-- Convert static RNG to thread_local in ParticleManager
-- Refactor SDL event handling from InputManager to GameEngine
-- Add 2,943 lines of new tests across 7 test files
-
-Performance:
-- Zero per-frame allocations in render hot paths
-- Lock-free entity/camera interpolation
-- Pre-computed seasonal texture IDs
-
-Refs: World Time Update
-
-Generated with [Claude Code](https://claude.com/claude-code)
-
-Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>
-EOF
-)"
-```
 
 ---
 
