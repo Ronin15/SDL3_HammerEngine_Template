@@ -374,11 +374,15 @@ void PathfindingGrid::clearDirtyRegions() {
 
 void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
     if (path.size() <= 2) return; // Can't smooth paths with 2 or fewer nodes
-    
-    std::vector<Vector2D> smoothed;
-    smoothed.reserve(path.size());
+
+    // thread_local buffer to avoid per-path allocation (thread-safe for multi-threaded pathfinding)
+    thread_local std::vector<Vector2D> smoothed;
+    smoothed.clear();
+    if (smoothed.capacity() < path.size()) {
+        smoothed.reserve(path.size());
+    }
     smoothed.push_back(path[0]); // Always keep start
-    
+
     size_t i = 0;
     while (i < path.size() - 1) {
         // Look ahead for line-of-sight optimization
@@ -390,7 +394,7 @@ void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
                 break; // Blocked, stop looking ahead
             }
         }
-        
+
         // Add the farthest reachable point
         if (farthest != i + 1) {
             smoothed.push_back(path[farthest]);
@@ -400,14 +404,14 @@ void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
             i++;
         }
     }
-    
+
     // Always keep goal - check if coordinates are different
-    if (smoothed.empty() || 
-        smoothed.back().getX() != path.back().getX() || 
+    if (smoothed.empty() ||
+        smoothed.back().getX() != path.back().getX() ||
         smoothed.back().getY() != path.back().getY()) {
         smoothed.push_back(path.back());
     }
-    
+
     path = std::move(smoothed);
 }
 

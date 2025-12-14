@@ -520,6 +520,11 @@ private:
   std::vector<std::future<void>> m_assignmentFutures;
   std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
 
+  // Reusable futures buffers to avoid per-frame allocations in sync paths
+  // These are cleared and reused each frame instead of creating local vectors
+  mutable std::vector<std::future<void>> m_reusableBatchFutures;
+  mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
+
   // Per-batch collision update buffers (zero contention approach)
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
 

@@ -78,6 +78,11 @@ bool CollisionManager::init() {
   }
   m_nextPoolIndex.store(0, std::memory_order_relaxed);
 
+  // Pre-reserve reusable containers to avoid per-frame allocations
+  m_collidedEntitiesBuffer.reserve(2000);       // Typical collision count
+  m_currentTriggerPairsBuffer.reserve(1000);    // Typical trigger count
+  // Note: pools.staticIndices is reserved by CollisionPool::ensureCapacity()
+
   // Forward collision notifications to EventManager
   addCollisionCallback([](const HammerEngine::CollisionInfo &info) {
     EventManager::Instance().triggerCollision(
@@ -1431,11 +1436,11 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   }
 
   // OPTIMIZATION: Query spatial grid for statics in culling area (avoids iterating all 28K statics)
-  std::vector<size_t> visibleStaticIndices;
-  queryStaticGridCells(cullingArea, visibleStaticIndices);
+  // Populate pools.staticIndices directly (it's already a reusable buffer via CollisionPool::resetFrame())
+  queryStaticGridCells(cullingArea, pools.staticIndices);
 
   // Filter by active status and exact culling bounds (grid is coarse 512×512, refine here)
-  auto it = std::remove_if(visibleStaticIndices.begin(), visibleStaticIndices.end(),
+  auto it = std::remove_if(pools.staticIndices.begin(), pools.staticIndices.end(),
     [this, &cullingArea](size_t i) {
       if (i >= m_storage.hotData.size()) return true;
       const auto& hot = m_storage.hotData[i];
@@ -1449,11 +1454,10 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
       }
       return false;
     });
-  visibleStaticIndices.erase(it, visibleStaticIndices.end());
+  pools.staticIndices.erase(it, pools.staticIndices.end());
 
   // Use filtered static indices from spatial grid query
-  totalStatic = visibleStaticIndices.size();
-  pools.staticIndices = std::move(visibleStaticIndices);
+  totalStatic = pools.staticIndices.size();
 
   // Process movable bodies (DYNAMIC + KINEMATIC) - these change every frame
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
@@ -2566,11 +2570,12 @@ void CollisionManager::syncEntitiesToSOA() {
   std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
   // Build set of entity IDs that were involved in collisions this frame
-  std::unordered_set<EntityID> collidedEntities;
+  // Reuse member buffer to avoid per-frame hash table allocation
+  m_collidedEntitiesBuffer.clear();
   for (const auto& collision : m_collisionPool.collisionBuffer) {
     if (!collision.trigger) {  // Triggers don't resolve positions
-      collidedEntities.insert(collision.a);
-      collidedEntities.insert(collision.b);
+      m_collidedEntitiesBuffer.insert(collision.a);
+      m_collidedEntitiesBuffer.insert(collision.b);
     }
   }
 
@@ -2584,7 +2589,7 @@ void CollisionManager::syncEntitiesToSOA() {
     if (!hot.active) continue;
 
     // ONLY update entities that were involved in collisions
-    if (collidedEntities.find(m_storage.entityIds[idx]) == collidedEntities.end()) {
+    if (m_collidedEntitiesBuffer.find(m_storage.entityIds[idx]) == m_collidedEntitiesBuffer.end()) {
       continue;  // Skip entities that didn't collide - AIManager already updated their positions
     }
 
@@ -2610,8 +2615,8 @@ void CollisionManager::processTriggerEventsSOA() {
   };
 
   auto now = std::chrono::steady_clock::now();
-  std::unordered_set<uint64_t> currentPairs;
-  currentPairs.reserve(m_collisionPool.collisionBuffer.size());
+  // Reuse member buffer to avoid per-frame hash table allocation
+  m_currentTriggerPairsBuffer.clear();
 
   for (const auto& collision : m_collisionPool.collisionBuffer) {
     // Use stored indices - NO MORE LINEAR LOOKUP!
@@ -2648,7 +2653,7 @@ void CollisionManager::processTriggerEventsSOA() {
     }
 
     uint64_t key = makeKey(playerId, triggerId);
-    currentPairs.insert(key);
+    m_currentTriggerPairsBuffer.insert(key);
 
     if (!m_activeTriggerPairs.count(key)) {
       // Check cooldown
@@ -2677,7 +2682,7 @@ void CollisionManager::processTriggerEventsSOA() {
 
   // Remove stale pairs (trigger exits)
   for (auto it = m_activeTriggerPairs.begin(); it != m_activeTriggerPairs.end();) {
-    if (!currentPairs.count(it->first)) {
+    if (!m_currentTriggerPairsBuffer.count(it->first)) {
       EntityID playerId = it->second.first;
       EntityID triggerId = it->second.second;
 
