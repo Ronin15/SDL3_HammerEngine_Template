@@ -234,15 +234,13 @@ ResourceTransactionResult WorldResourceManager::addResource(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
   if (quantity < 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::addResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::addResource - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
@@ -304,15 +302,13 @@ ResourceTransactionResult WorldResourceManager::removeResource(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
   if (quantity < 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::removeResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::removeResource - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
@@ -380,15 +376,13 @@ ResourceTransactionResult WorldResourceManager::setResource(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
   if (quantity < 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::setResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::setResource - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
@@ -518,9 +512,8 @@ bool WorldResourceManager::transferResource(
   }
 
   if (quantity <= 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::transferResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::transferResource - Invalid quantity: {}", quantity));
     return false;
   }
 
@@ -693,8 +686,7 @@ bool WorldResourceManager::validateParameters(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return false;
   }
 
