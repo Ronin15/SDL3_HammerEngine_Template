@@ -94,6 +94,6 @@ class InputManager {
     InputManager& operator=(const InputManager&) = delete; // Prevent assignment
 
     InputManager();
-};;
+};
 
 #endif  // INPUT_MANAGER_HPP
