@@ -1387,22 +1387,21 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
   addLogEntry("Convenience methods demo");
 
   m_convenienceDemoCounter++;
-  std::string suffix = std::to_string(m_convenienceDemoCounter);
 
   // Cache EventManager reference for better performance
   EventManager &eventMgr = EventManager::Instance();
 
   bool success1 =
-      eventMgr.createWeatherEvent("conv_fog_" + suffix, "Foggy", 0.7f, 2.5f);
+      eventMgr.createWeatherEvent(std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f, 2.5f);
   bool success2 =
-      eventMgr.createWeatherEvent("conv_storm_" + suffix, "Stormy", 0.9f, 1.5f);
+      eventMgr.createWeatherEvent(std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f, 1.5f);
   bool success3 = eventMgr.createSceneChangeEvent(
-      "conv_dungeon_" + suffix, "DungeonDemo", "dissolve", 2.0f);
-  bool success4 = eventMgr.createSceneChangeEvent("conv_town_" + suffix,
+      std::format("conv_dungeon_{}", m_convenienceDemoCounter), "DungeonDemo", "dissolve", 2.0f);
+  bool success4 = eventMgr.createSceneChangeEvent(std::format("conv_town_{}", m_convenienceDemoCounter),
                                                   "TownDemo", "slide", 1.0f);
   bool success5 =
-      eventMgr.createNPCSpawnEvent("conv_guards_" + suffix, "Guard", 2, 30.0f);
-  bool success6 = eventMgr.createNPCSpawnEvent("conv_merchants_" + suffix,
+      eventMgr.createNPCSpawnEvent(std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2, 30.0f);
+  bool success6 = eventMgr.createNPCSpawnEvent(std::format("conv_merchants_{}", m_convenienceDemoCounter),
                                                "Merchant", 1, 15.0f);
 
   int successCount =

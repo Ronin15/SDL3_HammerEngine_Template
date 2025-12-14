@@ -1527,8 +1527,7 @@ void ParticleManager::stopIndependentEffect(uint32_t effectId) {
     auto &effect = m_effectInstances[it->second];
     if (effect.isIndependentEffect) {
       effect.active = false;
-      PARTICLE_INFO("Independent effect stopped: ID " +
-                    std::to_string(effectId));
+      PARTICLE_INFO(std::format("Independent effect stopped: ID {}", effectId));
     }
   }
 }
