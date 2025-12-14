@@ -521,6 +521,22 @@ void GamePlayState::handleInput() {
     m_camera->zoomOut();  // ] key = zoom out (objects smaller)
   }
 
+#ifndef NDEBUG
+  // Debug time speed controls: < (comma) = normal speed, > (period) = max speed
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_COMMA)) {
+    GameTime::Instance().setTimeScale(60.0f);
+    GAMEPLAY_INFO("Time scale set to NORMAL (60x)");
+    auto& ui = UIManager::Instance();
+    ui.addEventLogEntry("gameplay_event_log", "Time: NORMAL speed (60x)");
+  }
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_PERIOD)) {
+    GameTime::Instance().setTimeScale(3600.0f);
+    GAMEPLAY_INFO("Time scale set to MAX (3600x)");
+    auto& ui = UIManager::Instance();
+    ui.addEventLogEntry("gameplay_event_log", "Time: MAX speed (3600x)");
+  }
+#endif
+
   // Resource addition demo keys
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     addDemoResource(m_goldHandle, 10);
