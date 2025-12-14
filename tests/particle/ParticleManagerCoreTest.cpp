@@ -603,8 +603,6 @@ BOOST_FIXTURE_TEST_CASE(TestParticleUpdateWithVaryingDeltaTime, ParticleManagerC
     manager->update(0.016f);  // 60 FPS
   }
 
-  size_t countAfter60fps = manager->getActiveParticleCount();
-
   // Update with different delta times (simulating frame rate variation)
   manager->update(0.033f);  // 30 FPS
   manager->update(0.008f);  // 120 FPS
