@@ -1522,6 +1522,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         pos = clamped; // Update pos for batch accumulation
 
+        // Publish thread-safe interpolation state for render thread
+        entity->publishInterpolationState();
+
         // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
         collisionUpdates.emplace_back(entity->getID(), pos, vel);
 

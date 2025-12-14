@@ -14,7 +14,6 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "utils/Camera.hpp"
 
 #include <algorithm>
 #include <cmath>
