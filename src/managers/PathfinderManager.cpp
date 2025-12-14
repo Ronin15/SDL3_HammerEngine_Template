@@ -1544,18 +1544,16 @@ void PathfinderManager::processPendingRequests() {
 
                 m_processedCount.fetch_add(1, std::memory_order_relaxed);
 
-                // Fire callbacks
-                std::vector<PathCallback> callbacks;
+                // Fire callbacks (inline to avoid per-completion vector allocation)
                 {
                     std::lock_guard<std::mutex> lock(m_pendingMutex);
                     auto it = m_pending.find(cacheKey);
                     if (it != m_pending.end()) {
-                        callbacks.swap(it->second.callbacks);
+                        for (const auto &cb : it->second.callbacks) {
+                            if (cb) cb(req.entityId, path);
+                        }
                         m_pending.erase(it);
                     }
-                }
-                for (const auto &cb : callbacks) {
-                    if (cb) cb(req.entityId, path);
                 }
             };
 
@@ -1651,18 +1649,16 @@ void PathfinderManager::processPendingRequests() {
 
                 m_processedCount.fetch_add(1, std::memory_order_relaxed);
 
-                // Fire callbacks
-                std::vector<PathCallback> callbacks;
+                // Fire callbacks (inline to avoid per-completion vector allocation)
                 {
                     std::lock_guard<std::mutex> lock(m_pendingMutex);
                     auto it = m_pending.find(cacheKey);
                     if (it != m_pending.end()) {
-                        callbacks.swap(it->second.callbacks);
+                        for (const auto &cb : it->second.callbacks) {
+                            if (cb) cb(req.entityId, path);
+                        }
                         m_pending.erase(it);
                     }
-                }
-                for (const auto &cb : callbacks) {
-                    if (cb) cb(req.entityId, path);
                 }
             }
         };

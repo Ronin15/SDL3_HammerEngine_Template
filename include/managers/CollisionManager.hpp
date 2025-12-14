@@ -597,6 +597,12 @@ private:
     mutable std::vector<std::vector<size_t>> m_vectorPool;
     mutable std::atomic<size_t> m_nextPoolIndex{0};
 
+    // PERFORMANCE: Reusable containers to avoid per-frame allocations
+    // These are cleared each frame but capacity is retained to eliminate heap churn
+    mutable std::unordered_set<EntityID> m_collidedEntitiesBuffer;      // For syncEntitiesToSOA()
+    mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
+    // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
+
     // Performance metrics
     struct PerfStats {
         double lastBroadphaseMs{0.0};
