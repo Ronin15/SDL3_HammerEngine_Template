@@ -850,13 +850,10 @@ void WorldResourceManager::logCacheStatus() const {
 
   WORLD_RESOURCE_INFO("=== WorldResourceManager Cache Status ===");
   WORLD_RESOURCE_INFO("Configuration:");
-  WORLD_RESOURCE_INFO("  Per-world cache size: " +
-                      std::to_string(config.perWorldCacheSize));
-  WORLD_RESOURCE_INFO("  Cache expiry time: " +
-                      std::to_string(config.cacheExpiryTime.count()) + "ms");
-  WORLD_RESOURCE_INFO(
-      "  Performance monitoring: " +
-      std::string(config.enablePerformanceMonitoring ? "enabled" : "disabled"));
+  WORLD_RESOURCE_INFO(std::format("  Per-world cache size: {}", config.perWorldCacheSize));
+  WORLD_RESOURCE_INFO(std::format("  Cache expiry time: {}ms", config.cacheExpiryTime.count()));
+  WORLD_RESOURCE_INFO(std::format("  Performance monitoring: {}",
+      config.enablePerformanceMonitoring ? "enabled" : "disabled"));
 
   if (config.enablePerformanceMonitoring) {
     WORLD_RESOURCE_INFO("Performance Stats:");

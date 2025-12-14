@@ -129,7 +129,7 @@ std::unique_ptr<WorldData> WorldGenerator::generateNoiseMaps(
     std::vector<std::vector<float>> &elevationMap,
     std::vector<std::vector<float>> &humidityMap) {
   auto world = std::make_unique<WorldData>();
-  world->worldId = "generated_" + std::to_string(config.seed);
+  world->worldId = std::format("generated_{}", config.seed);
   world->grid.resize(config.height, std::vector<Tile>(config.width));
 
   elevationMap.resize(config.height, std::vector<float>(config.width));

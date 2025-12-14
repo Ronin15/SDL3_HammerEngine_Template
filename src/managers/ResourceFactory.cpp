@@ -106,8 +106,8 @@ void ResourceFactory::initialize() {
   // Check if already initialized to avoid duplicate registrations
   const auto &creators = getCreators();
   if (!creators.empty()) {
-    RESOURCE_DEBUG("ResourceFactory::initialize - Already initialized with " +
-                   std::to_string(creators.size()) + " resource creators");
+    RESOURCE_DEBUG(std::format("ResourceFactory::initialize - Already initialized with {} resource creators",
+                   creators.size()));
     return;
   }
 
@@ -165,8 +165,8 @@ void ResourceFactory::initialize() {
         ResourceTemplateManager::Instance().generateHandle(), json);
   });
 
-  RESOURCE_INFO("ResourceFactory::initialize - Registered " +
-                std::to_string(getCreators().size()) + " resource creators");
+  RESOURCE_INFO(std::format("ResourceFactory::initialize - Registered {} resource creators",
+                getCreators().size()));
 }
 
 void ResourceFactory::clear() {

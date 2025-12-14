@@ -392,7 +392,7 @@ void SaveGameManager::clean() {
 
 // Private helper methods
 std::string SaveGameManager::getSlotFileName(int slotNumber) const {
-  return "save_slot_" + std::to_string(slotNumber) + ".dat";
+  return std::format("save_slot_{}.dat", slotNumber);
 }
 
 std::string
