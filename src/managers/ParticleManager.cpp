@@ -20,60 +20,8 @@
 // Use SIMD abstraction layer
 using namespace HammerEngine::SIMD;
 
-// Helper struct for batch rendering buffers - pre-sized for zero allocations
-struct BatchRenderBuffers {
-    static constexpr std::size_t MAX_RECTS_PER_BATCH = 2048;
-    static constexpr std::size_t VERTS_PER_QUAD = 6;      // 2 triangles × 3 verts
-    static constexpr std::size_t FLOATS_PER_VERT = 2;     // x, y
-    static constexpr std::size_t XY_STRIDE = VERTS_PER_QUAD * FLOATS_PER_VERT;
-    static constexpr std::size_t COL_STRIDE = VERTS_PER_QUAD;
-
-    std::vector<float> xy;
-    std::vector<SDL_FColor> cols;
-    std::size_t vertexCount{0};
-
-    BatchRenderBuffers() {
-        // Pre-size vectors to avoid any allocations during rendering
-        xy.resize(MAX_RECTS_PER_BATCH * XY_STRIDE);
-        cols.resize(MAX_RECTS_PER_BATCH * COL_STRIDE);
-    }
-
-    // Reset for new batch (no allocation, just counter reset)
-    constexpr void reset() noexcept {
-        vertexCount = 0;
-    }
-
-    // Get vertex count for SDL_RenderGeometryRaw
-    [[nodiscard]] constexpr int getVertexCount() const noexcept {
-        return static_cast<int>(vertexCount);
-    }
-
-    // Safe and fast quad append - uses pre-sized buffer with bounds guarantee
-    // quadCount must be < MAX_RECTS_PER_BATCH (enforced by caller's flush logic)
-    void appendQuad(const float x0, const float y0, const float x1, const float y1,
-                    const float x2, const float y2, const float x3, const float y3,
-                    const SDL_FColor& col) noexcept {
-        // Calculate base indices - safe because quadCount < MAX_RECTS_PER_BATCH
-        const std::size_t xyBase = vertexCount * FLOATS_PER_VERT;
-        const std::size_t colBase = vertexCount;
-
-        // Triangle 1: v0, v1, v2
-        xy[xyBase]      = x0; xy[xyBase + 1]  = y0;
-        xy[xyBase + 2]  = x1; xy[xyBase + 3]  = y1;
-        xy[xyBase + 4]  = x2; xy[xyBase + 5]  = y2;
-        // Triangle 2: v2, v3, v0
-        xy[xyBase + 6]  = x2; xy[xyBase + 7]  = y2;
-        xy[xyBase + 8]  = x3; xy[xyBase + 9]  = y3;
-        xy[xyBase + 10] = x0; xy[xyBase + 11] = y0;
-
-        // All 6 vertices share same color
-        cols[colBase]     = col; cols[colBase + 1] = col;
-        cols[colBase + 2] = col; cols[colBase + 3] = col;
-        cols[colBase + 4] = col; cols[colBase + 5] = col;
-
-        vertexCount += VERTS_PER_QUAD;
-    }
-};
+// BatchRenderBuffers is now defined in ParticleManager.hpp as a member struct
+// to allow the buffer to persist across frames (eliminating per-frame std::fill overhead)
 
 // A simple and fast pseudo-random number generator
 inline int fast_rand() {
@@ -940,20 +888,19 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
 
-  // Batch geometry rendering using pre-sized buffers with direct indexing
-  // This eliminates all per-particle allocations and function call overhead
-  BatchRenderBuffers buffers;
+  // OPTIMIZATION: Use pre-allocated member buffer to eliminate per-frame std::fill
+  m_renderBuffer.reset();  // Just resets counter, no memory operations
   size_t quadCount = 0;
 
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          buffers.xy.data(), sizeof(float) * 2,
-                          buffers.cols.data(), sizeof(SDL_FColor),
+                          m_renderBuffer.xy.data(), sizeof(float) * 2,
+                          m_renderBuffer.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
-                          buffers.getVertexCount(),
+                          m_renderBuffer.getVertexCount(),
                           nullptr, 0, 0);
-    buffers.reset();
+    m_renderBuffer.reset();
     quadCount = 0;
   };
 
@@ -982,7 +929,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
     SDL_FColor col{r, g, b, a};
-    buffers.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
+    m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     ++quadCount;
     if (quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
@@ -1015,17 +962,18 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
 
-  BatchRenderBuffers buffers;
+  // OPTIMIZATION: Use pre-allocated member buffer to eliminate per-frame std::fill
+  m_renderBuffer.reset();
   size_t quadCount = 0;
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          buffers.xy.data(), sizeof(float) * 2,
-                          buffers.cols.data(), sizeof(SDL_FColor),
+                          m_renderBuffer.xy.data(), sizeof(float) * 2,
+                          m_renderBuffer.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
-                          buffers.getVertexCount(),
+                          m_renderBuffer.getVertexCount(),
                           nullptr, 0, 0);
-    buffers.reset();
+    m_renderBuffer.reset();
     quadCount = 0;
   };
 
@@ -1051,7 +999,7 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
     SDL_FColor col{r, g, b, a};
-    buffers.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
+    m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
@@ -1074,17 +1022,18 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
   const size_t n = particles.getSafeAccessCount();
   if (n == 0) return;
 
-  BatchRenderBuffers buffers;
+  // OPTIMIZATION: Use pre-allocated member buffer to eliminate per-frame std::fill
+  m_renderBuffer.reset();
   size_t quadCount = 0;
   auto flush = [&]() {
     if (quadCount == 0) return;
     SDL_RenderGeometryRaw(renderer, nullptr,
-                          buffers.xy.data(), sizeof(float) * 2,
-                          buffers.cols.data(), sizeof(SDL_FColor),
+                          m_renderBuffer.xy.data(), sizeof(float) * 2,
+                          m_renderBuffer.cols.data(), sizeof(SDL_FColor),
                           nullptr, 0,
-                          buffers.getVertexCount(),
+                          m_renderBuffer.getVertexCount(),
                           nullptr, 0, 0);
-    buffers.reset();
+    m_renderBuffer.reset();
     quadCount = 0;
   };
 
@@ -1110,7 +1059,7 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
     SDL_FColor col{r, g, b, a};
-    buffers.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
+    m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
   }
