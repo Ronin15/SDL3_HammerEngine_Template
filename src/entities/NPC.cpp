@@ -14,7 +14,6 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "utils/Camera.hpp"
 
 #include <cmath>
 #include <format>
@@ -191,14 +190,14 @@ void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float int
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
   // Convert world coords to screen coords using passed camera offset
-  // Use std::floor() for pixel-snapping to match Player pattern and eliminate wobble
-  float renderX = std::floor(interpPos.getX() - cameraX - (m_frameWidth / 2.0f));
-  float renderY = std::floor(interpPos.getY() - cameraY - (m_height / 2.0f));
+  // Using floating-point for smooth sub-pixel rendering (no pixel-snapping)
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
-  // Render the NPC with the current animation frame using float precision
+  // Render the NPC with the current animation frame
   TextureManager::Instance().drawFrame(m_textureID,
-                    renderX, // Keep float precision for smooth camera movement
-                    renderY, // Keep float precision for smooth camera movement
+                    renderX,
+                    renderY,
                     m_frameWidth, m_height, m_currentRow, m_currentFrame,
                     renderer, m_flip);
 }
