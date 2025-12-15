@@ -40,6 +40,9 @@ bool AIManager::init() {
       return false;
     }
 
+    // Cache manager references for hot path usage (avoid singleton lookups)
+    mp_pathfinderManager = &PathfinderManager::Instance();
+
     // Initialize behavior type mappings
     m_behaviorTypeMap["Wander"] = BehaviorType::Wander;
     m_behaviorTypeMap["Guard"] = BehaviorType::Guard;
@@ -134,8 +137,7 @@ void AIManager::clean() {
         try {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
         } catch (const std::exception &e) {
-          AI_ERROR("Exception cleaning behavior during shutdown: " +
-                   std::string(e.what()));
+          AI_ERROR(std::format("Exception cleaning behavior during shutdown: {}", e.what()));
         } catch (...) {
           AI_ERROR("Unknown exception cleaning behavior during shutdown");
         }
@@ -156,6 +158,9 @@ void AIManager::clean() {
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
   }
+
+  // Clear cached manager references
+  mp_pathfinderManager = nullptr;
 
   // NOTE: PathfinderManager and CollisionManager are now cleaned up by GameEngine
   // AIManager no longer manages their lifecycle
@@ -510,7 +515,7 @@ void AIManager::update(float deltaTime) {
                   processBatch(start, end, deltaTime, playerPos,
                               distanceUpdateSlice, m_storage, (*batchCollisionUpdatesPtr)[i], i);
                 } catch (const std::exception &e) {
-                  AI_ERROR(std::string("Exception in AI batch: ") + e.what());
+                  AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
                   AI_ERROR("Unknown exception in AI batch");
                 }
@@ -1008,8 +1013,7 @@ size_t AIManager::processPendingBehaviorAssignments() {
                 try {
                   assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
                 } catch (const std::exception &e) {
-                  AI_ERROR("Exception during async behavior assignment: " +
-                           std::string(e.what()));
+                  AI_ERROR(std::format("Exception during async behavior assignment: {}", e.what()));
                 } catch (...) {
                   AI_ERROR("Unknown exception during async behavior assignment");
                 }
@@ -1145,9 +1149,8 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     m_maxThreads = maxThreads;
   }
 
-  AI_INFO("Threading configured: " +
-         std::string(useThreading ? "enabled" : "disabled") +
-         std::format(" with max threads: {}", m_maxThreads));
+  AI_INFO(std::format("Threading configured: {} with max threads: {}",
+         useThreading ? "enabled" : "disabled", m_maxThreads));
 }
 
 void AIManager::setThreadingThreshold(size_t threshold) {
@@ -1280,19 +1283,25 @@ void AIManager::processMessageQueue() {
 
 BehaviorType
 AIManager::inferBehaviorType(const std::string &behaviorName) const {
-  // Check cache first for O(1) lookup
-  auto cacheIt = m_behaviorTypeCache.find(behaviorName);
-  if (cacheIt != m_behaviorTypeCache.end()) {
-    return cacheIt->second;
+  // Check cache first with shared lock (multiple readers allowed)
+  {
+    std::shared_lock lock(m_behaviorCacheMutex);
+    auto cacheIt = m_behaviorTypeCache.find(behaviorName);
+    if (cacheIt != m_behaviorTypeCache.end()) {
+      return cacheIt->second;
+    }
   }
 
-  // Cache miss - lookup and cache result
+  // Cache miss - lookup result (m_behaviorTypeMap is read-only after init)
   auto it = m_behaviorTypeMap.find(behaviorName);
   BehaviorType result =
       (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
 
-  // Cache the result
-  m_behaviorTypeCache[behaviorName] = result;
+  // Cache the result with exclusive lock
+  {
+    std::unique_lock lock(m_behaviorCacheMutex);
+    m_behaviorTypeCache[behaviorName] = result;
+  }
   return result;
 }
 
@@ -1405,7 +1414,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
   // Eliminates 418+ atomic loads per frame → single atomic load per batch
-  const auto &pf = PathfinderManager::Instance();
+  // Uses cached pointer (mp_pathfinderManager) to avoid singleton lookup
+  const auto &pf = *mp_pathfinderManager;
   float worldWidth, worldHeight;
   if (!pf.getCachedWorldBounds(worldWidth, worldHeight) || worldWidth <= 0 || worldHeight <= 0) {
     // Fallback: Use large default if PathfinderManager grid isn't ready yet
