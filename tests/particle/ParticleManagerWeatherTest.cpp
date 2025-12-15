@@ -245,7 +245,7 @@ BOOST_FIXTURE_TEST_CASE(TestWeatherIntensityEffects,
 BOOST_FIXTURE_TEST_CASE(TestDifferentWeatherTypes,
                         ParticleManagerWeatherFixture) {
   std::vector<std::string> weatherTypes = {"Rainy",  "Snowy",  "Foggy",
-                                           "Cloudy", "Stormy", "Clear"};
+                                           "Cloudy", "Stormy", "Windy", "Clear"};
 
   for (const auto &weatherType : weatherTypes) {
     // Clear previous weather
@@ -295,10 +295,78 @@ BOOST_FIXTURE_TEST_CASE(TestDifferentWeatherTypes,
                        1); // Cloudy should have at least some particles
       } else if (weatherType == "Foggy") {
         BOOST_CHECK_GE(particleCount, 5); // Fog should have moderate particles
+      } else if (weatherType == "Windy") {
+        BOOST_CHECK_GE(particleCount, 5); // Windy should have moderate particles
       } else {
         BOOST_CHECK_GE(particleCount,
                        10); // Rain/Snow should have more particles
       }
     }
+  }
+}
+
+// Test Windy weather intensity variants
+BOOST_FIXTURE_TEST_CASE(TestWindyIntensityVariants,
+                        ParticleManagerWeatherFixture) {
+  // Test low intensity (wind streaks)
+  manager->triggerWeatherEffect("Windy", 0.3f);
+  for (int i = 0; i < 20; ++i) {
+    manager->update(0.016f);
+  }
+  size_t lowIntensityCount = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(lowIntensityCount, 0);
+
+  // Clear and test medium intensity (dust)
+  manager->stopWeatherEffects(0.0f);
+  for (int i = 0; i < 30; ++i) {
+    manager->update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  manager->triggerWeatherEffect("Windy", 0.6f);  // Should trigger WindyDust
+  for (int i = 0; i < 20; ++i) {
+    manager->update(0.016f);
+  }
+  size_t mediumIntensityCount = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(mediumIntensityCount, 0);
+
+  // Clear and test high intensity (storm leaves)
+  manager->stopWeatherEffects(0.0f);
+  for (int i = 0; i < 30; ++i) {
+    manager->update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  manager->triggerWeatherEffect("Windy", 0.9f);  // Should trigger WindyStorm
+  for (int i = 0; i < 20; ++i) {
+    manager->update(0.016f);
+  }
+  size_t highIntensityCount = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(highIntensityCount, 0);
+}
+
+// Test direct Windy variant string triggering
+BOOST_FIXTURE_TEST_CASE(TestWindyVariantStrings,
+                        ParticleManagerWeatherFixture) {
+  std::vector<std::string> windyVariants = {"Windy", "WindyDust", "WindyStorm"};
+
+  for (const auto &variant : windyVariants) {
+    // Clear previous weather
+    manager->stopWeatherEffects(0.0f);
+    for (int i = 0; i < 30; ++i) {
+      manager->update(0.016f);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+
+    // Trigger windy variant directly by string
+    manager->triggerWeatherEffect(variant, 0.5f);
+
+    // Update to allow particle emission
+    for (int i = 0; i < 30; ++i) {
+      manager->update(0.016f);
+    }
+
+    size_t particleCount = manager->getActiveParticleCount();
+    BOOST_CHECK_GT(particleCount, 0);
   }
 }

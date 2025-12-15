@@ -39,12 +39,11 @@ void LogoState::update(float deltaTime) {
     }
   }
 }
-void LogoState::render() {
+void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
   // Cache manager references for better performance
   TextureManager& texMgr = TextureManager::Instance();
   GameEngine& gameEngine = GameEngine::Instance();
   FontManager& fontMgr = FontManager::Instance();
-  SDL_Renderer* renderer = gameEngine.getRenderer();
   // Use logical rendering dimensions for proper UI positioning in all display modes
   int windowWidth = gameEngine.getLogicalWidth();
   int windowHeight = gameEngine.getLogicalHeight();
@@ -104,7 +103,7 @@ void LogoState::render() {
 
   // Draw version text (scaled position)
   fontMgr.drawText(
-      "v0.4.5",
+      "v0.8.5", //was 4.5
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + static_cast<int>(260 * scale),  // Scaled vertical position

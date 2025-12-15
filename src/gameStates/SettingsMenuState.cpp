@@ -55,12 +55,12 @@ void SettingsMenuState::update([[maybe_unused]] float deltaTime) {
     // UI updates handled in render() for thread safety
 }
 
-void SettingsMenuState::render() {
+void SettingsMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.update(0.0);
     }
-    ui.render();
+    ui.render(renderer);
 }
 
 bool SettingsMenuState::exit() {
@@ -167,8 +167,8 @@ void SettingsMenuState::applySettings() {
     settings.saveToFile("res/settings.json");
 
     GAMESTATE_INFO("Settings saved successfully");
-    GAMESTATE_INFO("Buffer mode changed to " + std::string(m_tempSettings.bufferCount == 2 ? "Double(2)" : "Triple(3)") +
-                   " - restart required for changes to take effect");
+    GAMESTATE_INFO(std::format("Buffer mode changed to {} - restart required for changes to take effect",
+                   m_tempSettings.bufferCount == 2 ? "Double(2)" : "Triple(3)"));
 }
 
 
@@ -243,8 +243,7 @@ void SettingsMenuState::createGraphicsUI() {
 
     // Resolution label (informational)
     ui.createLabel("settings_resolution_label", {leftColumnX, startY + 3 * rowHeight, labelWidth + controlWidth, 40},
-                   "Resolution: " + std::to_string(m_tempSettings.resolutionWidth) + "x" +
-                   std::to_string(m_tempSettings.resolutionHeight));
+                   std::format("Resolution: {}x{}", m_tempSettings.resolutionWidth, m_tempSettings.resolutionHeight));
 
     // Buffer Mode toggle (Double vs Triple buffering)
     ui.createLabel("settings_buffer_label", {leftColumnX, startY + 4 * rowHeight, labelWidth, 40}, "Buffer Mode:");
@@ -279,10 +278,10 @@ void SettingsMenuState::createAudioUI() {
     ui.setOnValueChanged("settings_master_volume_slider", [this](float value) {
         m_tempSettings.masterVolume = value;
         auto& ui = UIManager::Instance();
-        ui.setText("settings_master_volume_value", std::to_string(static_cast<int>(value * 100)) + "%");
+        ui.setText("settings_master_volume_value", std::format("{}%", static_cast<int>(value * 100)));
     });
     ui.createLabel("settings_master_volume_value", {sliderX + sliderWidth + 10, startY, 80, 40},
-                   std::to_string(static_cast<int>(m_tempSettings.masterVolume * 100)) + "%");
+                   std::format("{}%", static_cast<int>(m_tempSettings.masterVolume * 100)));
 
     // Music Volume slider
     ui.createLabel("settings_music_volume_label", {leftColumnX, startY + rowHeight, labelWidth, 40}, "Music Volume:");
@@ -291,10 +290,10 @@ void SettingsMenuState::createAudioUI() {
     ui.setOnValueChanged("settings_music_volume_slider", [this](float value) {
         m_tempSettings.musicVolume = value;
         auto& ui = UIManager::Instance();
-        ui.setText("settings_music_volume_value", std::to_string(static_cast<int>(value * 100)) + "%");
+        ui.setText("settings_music_volume_value", std::format("{}%", static_cast<int>(value * 100)));
     });
     ui.createLabel("settings_music_volume_value", {sliderX + sliderWidth + 10, startY + rowHeight, 80, 40},
-                   std::to_string(static_cast<int>(m_tempSettings.musicVolume * 100)) + "%");
+                   std::format("{}%", static_cast<int>(m_tempSettings.musicVolume * 100)));
 
     // SFX Volume slider
     ui.createLabel("settings_sfx_volume_label", {leftColumnX, startY + 2 * rowHeight, labelWidth, 40}, "SFX Volume:");
@@ -303,10 +302,10 @@ void SettingsMenuState::createAudioUI() {
     ui.setOnValueChanged("settings_sfx_volume_slider", [this](float value) {
         m_tempSettings.sfxVolume = value;
         auto& ui = UIManager::Instance();
-        ui.setText("settings_sfx_volume_value", std::to_string(static_cast<int>(value * 100)) + "%");
+        ui.setText("settings_sfx_volume_value", std::format("{}%", static_cast<int>(value * 100)));
     });
     ui.createLabel("settings_sfx_volume_value", {sliderX + sliderWidth + 10, startY + 2 * rowHeight, 80, 40},
-                   std::to_string(static_cast<int>(m_tempSettings.sfxVolume * 100)) + "%");
+                   std::format("{}%", static_cast<int>(m_tempSettings.sfxVolume * 100)));
 
     // Mute checkbox
     ui.createLabel("settings_mute_label", {leftColumnX, startY + 3 * rowHeight, labelWidth, 40}, "Mute All:");
@@ -355,7 +354,7 @@ void SettingsMenuState::createGameplayUI() {
 
     // Autosave interval label
     ui.createLabel("settings_autosave_interval_label", {leftColumnX, startY + 2 * rowHeight, labelWidth + 200, 40},
-                   "Autosave Interval: " + std::to_string(m_tempSettings.autosaveInterval) + " seconds");
+                   std::format("Autosave Interval: {} seconds", m_tempSettings.autosaveInterval));
 
     // Hide gameplay UI by default
     ui.setComponentVisible("settings_difficulty_label", false);

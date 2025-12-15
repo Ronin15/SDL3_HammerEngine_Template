@@ -61,13 +61,13 @@ void OverlayDemoState::update(float deltaTime) {
     m_transitionTimer += deltaTime;
 }
 
-void OverlayDemoState::render() {
+void OverlayDemoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     auto& ui = UIManager::Instance();
     if (!ui.isShutdown()) {
         ui.update(0.0); // UI updates are not time-dependent in this state
     }
-    ui.render();
+    ui.render(renderer);
 }
 
 bool OverlayDemoState::exit() {
@@ -372,7 +372,7 @@ std::string OverlayDemoState::getModeDescription() const {
 
 void OverlayDemoState::handleModeSwitch() {
     switchToNextMode();
-    GAMESTATE_DEBUG("Switched to: " + getModeDescription());
+    GAMESTATE_DEBUG(std::format("Switched to: {}", getModeDescription()));
 }
 
 void OverlayDemoState::handleInput() {

@@ -12,6 +12,7 @@
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL_render.h>
 #include <memory>
+#include <random>
 #include <string>
 #include <unordered_map>
 
@@ -39,7 +40,7 @@ public:
   }
 
   void update(float) override;
-  void render(const HammerEngine::Camera *camera) override;
+  void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
   void clean() override;
   // No state management - handled by AI Manager
 
@@ -117,8 +118,12 @@ private:
   int m_lastFlipSign{1};
   Uint64 m_lastFlipTime{0};
 
-  // Diagnostic throttling
-  Uint64 m_lastStuckLogTime{0};
+  // Loot drop RNG (member vars to avoid static in threaded code per CLAUDE.md)
+  mutable std::mt19937 m_lootRng{std::random_device{}()};
+  mutable std::uniform_real_distribution<float> m_lootDist{0.0f, 1.0f};
+
+  // Double-cleanup prevention (replaces thread_local set that leaked memory)
+  bool m_cleaned{false};
 };
 
 #endif // NPC_HPP

@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "utils/JsonReader.hpp"
 #include <algorithm>
+#include <format>
 #include <fstream>
 #include <sstream>
 
@@ -15,13 +16,13 @@ namespace HammerEngine {
 bool SettingsManager::loadFromFile(const std::string& filepath) {
     JsonReader reader;
     if (!reader.loadFromFile(filepath)) {
-        SETTINGS_ERROR("Failed to load settings from file: " + filepath + " - " + reader.getLastError());
+        SETTINGS_ERROR(std::format("Failed to load settings from file: {} - {}", filepath, reader.getLastError()));
         return false;
     }
 
     const JsonValue& root = reader.getRoot();
     if (!root.isObject()) {
-        SETTINGS_ERROR("Settings file root is not a JSON object: " + filepath);
+        SETTINGS_ERROR(std::format("Settings file root is not a JSON object: {}", filepath));
         return false;
     }
 
@@ -31,7 +32,7 @@ bool SettingsManager::loadFromFile(const std::string& filepath) {
     const JsonObject& rootObj = root.asObject();
     for (const auto& [categoryName, categoryValue] : rootObj) {
         if (!categoryValue.isObject()) {
-            SETTINGS_WARNING("Category '" + categoryName + "' is not an object, skipping");
+            SETTINGS_WARNING(std::format("Category '{}' is not an object, skipping", categoryName));
             continue;
         }
 
@@ -53,7 +54,7 @@ bool SettingsManager::loadFromFile(const std::string& filepath) {
             } else if (value.isString()) {
                 settingValue = value.asString();
             } else {
-                SETTINGS_WARNING("Unsupported value type for setting '" + categoryName + "." + key + "', skipping");
+                SETTINGS_WARNING(std::format("Unsupported value type for setting '{}.{}', skipping", categoryName, key));
                 continue;
             }
 
@@ -61,7 +62,7 @@ bool SettingsManager::loadFromFile(const std::string& filepath) {
         }
     }
 
-    SETTINGS_INFO("Loaded settings from file: " + filepath);
+    SETTINGS_INFO(std::format("Loaded settings from file: {}", filepath));
     return true;
 }
 
@@ -70,7 +71,7 @@ bool SettingsManager::saveToFile(const std::string& filepath) {
 
     std::ofstream file(filepath);
     if (!file.is_open()) {
-        SETTINGS_ERROR("Failed to open settings file for writing: " + filepath);
+        SETTINGS_ERROR(std::format("Failed to open settings file for writing: {}", filepath));
         return false;
     }
 
@@ -117,7 +118,7 @@ bool SettingsManager::saveToFile(const std::string& filepath) {
     file << "}\n";
     file.close();
 
-    SETTINGS_INFO("Saved settings to file: " + filepath);
+    SETTINGS_INFO(std::format("Saved settings to file: {}", filepath));
     return true;
 }
 

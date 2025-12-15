@@ -6,8 +6,9 @@
 #include "managers/EntityStateManager.hpp"
 #include "entities/EntityState.hpp"
 #include "core/Logger.hpp"
-#include <stdexcept>
 #include <algorithm>
+#include <format>
+#include <stdexcept>
 
 EntityStateManager::EntityStateManager() : currentState() {}
 
@@ -17,8 +18,8 @@ EntityStateManager::~EntityStateManager() {
 
 void EntityStateManager::addState(const std::string& stateName, std::unique_ptr<EntityState> state) {
   if (states.find(stateName) != states.end()) {
-    ENTITYSTATE_ERROR("State already exists: " + stateName);
-    throw std::invalid_argument("Hammer Game Engine - State already exists" + stateName);
+    ENTITYSTATE_ERROR(std::format("State already exists: {}", stateName));
+    throw std::invalid_argument(std::format("Hammer Game Engine - State already exists: {}", stateName));
   }
   // Convert unique_ptr to shared_ptr and add to container
   states[stateName] = std::shared_ptr<EntityState>(state.release());
@@ -38,18 +39,18 @@ void EntityStateManager::setState(const std::string& stateName) {
     }
   } else {
     // state not found, reset weak_ptr
-    ENTITYSTATE_ERROR("State not found: " + stateName);
+    ENTITYSTATE_ERROR(std::format("State not found: {}", stateName));
     currentState.reset();
   }
 }
 
 std::string EntityStateManager::getCurrentStateName() const {
   if (auto current = currentState.lock()) {
-    // Iterate through the map to find the key for the current state pointer
-    for (const auto& pair : states) {
-      if (pair.second == current) {
-        return pair.first;
-      }
+    // Find the key for the current state pointer using std::find_if
+    auto it = std::find_if(states.begin(), states.end(),
+        [&current](const auto& pair) { return pair.second == current; });
+    if (it != states.end()) {
+      return it->first;
     }
   }
   return "";

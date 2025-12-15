@@ -19,7 +19,7 @@ class SettingsMenuState : public GameState {
 public:
     bool enter() override;
     void update(float deltaTime) override;
-    void render() override;
+    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
     bool exit() override;
     std::string getName() const override;

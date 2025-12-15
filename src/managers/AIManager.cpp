@@ -15,6 +15,7 @@
 #include "utils/SIMDMath.hpp"
 #include <algorithm>
 #include <cstring>
+#include <format>
 #include <iostream>
 
 // Use SIMD abstraction layer
@@ -38,6 +39,9 @@ bool AIManager::init() {
       AI_ERROR("CollisionManager must be initialized before AIManager");
       return false;
     }
+
+    // Cache manager references for hot path usage (avoid singleton lookups)
+    mp_pathfinderManager = &PathfinderManager::Instance();
 
     // Initialize behavior type mappings
     m_behaviorTypeMap["Wander"] = BehaviorType::Wander;
@@ -95,7 +99,7 @@ bool AIManager::init() {
     return true;
 
   } catch (const std::exception &e) {
-    AI_ERROR("Failed to initialize AIManager: " + std::string(e.what()));
+    AI_ERROR(std::format("Failed to initialize AIManager: {}", e.what()));
     return false;
   }
 }
@@ -133,8 +137,7 @@ void AIManager::clean() {
         try {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
         } catch (const std::exception &e) {
-          AI_ERROR("Exception cleaning behavior during shutdown: " +
-                   std::string(e.what()));
+          AI_ERROR(std::format("Exception cleaning behavior during shutdown: {}", e.what()));
         } catch (...) {
           AI_ERROR("Unknown exception cleaning behavior during shutdown");
         }
@@ -155,6 +158,9 @@ void AIManager::clean() {
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
   }
+
+  // Clear cached manager references
+  mp_pathfinderManager = nullptr;
 
   // NOTE: PathfinderManager and CollisionManager are now cleaned up by GameEngine
   // AIManager no longer manages their lifecycle
@@ -227,13 +233,13 @@ void AIManager::prepareForStateTransition() {
           m_storage.behaviors[i]->clean(m_storage.entities[i]);
           cleanedCount++;
         } catch (const std::exception &e) {
-          AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
+          AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
         }
       }
     }
 
     if (cleanedCount > 0) {
-      AI_INFO("Cleaned " + std::to_string(cleanedCount) + " AI behaviors");
+      AI_INFO(std::format("Cleaned {} AI behaviors", cleanedCount));
     }
 
     // Clear all storage completely
@@ -302,31 +308,31 @@ void AIManager::update(float deltaTime) {
   // The critical sync happens in GameEngine before CollisionManager to ensure collision data is ready
   // This allows better frame pipelining on low-core systems
 
-  auto startTime = std::chrono::high_resolution_clock::now();
-
   try {
     // Do not carry over AI update futures across frames to avoid races with
     // render. Any previous frame's update work must be completed within its
     // frame.
 
-    // Process pending assignments first so new entities are picked up this
-    // frame
+    // Process pending assignments first so new entities are picked up this frame
     processPendingBehaviorAssignments();
 
     // Use atomic active count - no iteration needed
     size_t activeCount = m_activeEntityCount.load(std::memory_order_relaxed);
+
+    // Early exit if no active entities - skip ALL work including timing and cache
+    // Messages for non-existent entities are useless, so skip processMessageQueue() too
+    if (activeCount == 0) {
+      m_lastWasThreaded.store(false, std::memory_order_relaxed);
+      return;
+    }
+
+    // Start timing AFTER we know we have work to do
+    auto startTime = std::chrono::high_resolution_clock::now();
     uint64_t currentFrame = m_frameCounter.load(std::memory_order_relaxed);
 
     // PERFORMANCE: Invalidate spatial query cache for new frame
     // This ensures thread-local caches are fresh and don't use stale collision data
     AIInternal::InvalidateSpatialCache(currentFrame);
-
-    // Early exit if no active entities
-    if (activeCount == 0) {
-      processMessageQueue();
-      m_lastWasThreaded.store(false, std::memory_order_relaxed);
-      return;
-    }
 
     // Get total entity count (used for buffer sizing)
     size_t entityCount;
@@ -375,9 +381,8 @@ void AIManager::update(float deltaTime) {
 
       if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
-        AI_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
-                 std::to_string(queueCapacity) +
-                 "), using single-threaded processing");
+        AI_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
+                             queueSize, queueCapacity));
         m_lastWasThreaded.store(false, std::memory_order_relaxed);
         m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
@@ -429,9 +434,8 @@ void AIManager::update(float deltaTime) {
 
       // Debug logging for high queue pressure
       if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-        AI_DEBUG("High queue pressure (" +
-                 std::to_string(static_cast<int>(queuePressure * 100)) +
-                 "%), using larger batches");
+        AI_DEBUG(std::format("High queue pressure ({}%), using larger batches",
+                 static_cast<int>(queuePressure * 100)));
       }
 
       // Debug thread allocation info periodically
@@ -511,7 +515,7 @@ void AIManager::update(float deltaTime) {
                   processBatch(start, end, deltaTime, playerPos,
                               distanceUpdateSlice, m_storage, (*batchCollisionUpdatesPtr)[i], i);
                 } catch (const std::exception &e) {
-                  AI_ERROR(std::string("Exception in AI batch: ") + e.what());
+                  AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
                   AI_ERROR("Unknown exception in AI batch");
                 }
@@ -603,20 +607,14 @@ void AIManager::update(float deltaTime) {
               static_cast<size_t>(1),
               m_lastThreadBatchCount.load(std::memory_order_relaxed));
 
-          AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                   ", Entities/sec: " +
-                   std::to_string(m_globalStats.entitiesPerSecond) +
-                   " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                   std::to_string(availableWorkers) +
-                   " workers, Budget: " + std::to_string(aiBudget) +
-                   ", Batches: " + std::to_string(batchCountLogged) + "]");
+          AI_DEBUG(std::format("AI Summary - Entities: {}, Avg Update: {}ms, Entities/sec: {} "
+                               "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+                               entityCount, avgDuration, m_globalStats.entitiesPerSecond,
+                               optimalWorkers, availableWorkers, aiBudget, batchCountLogged));
         } else {
-          AI_DEBUG("AI Summary - Entities: " + std::to_string(entityCount) +
-                   ", Avg Update: " + std::to_string(avgDuration) + "ms" +
-                   ", Entities/sec: " +
-                   std::to_string(m_globalStats.entitiesPerSecond) +
-                   " [Single-threaded]");
+          AI_DEBUG(std::format("AI Summary - Entities: {}, Avg Update: {}ms, Entities/sec: {} "
+                               "[Single-threaded]",
+                               entityCount, avgDuration, m_globalStats.entitiesPerSecond));
         }
 
         // Pathfinding statistics now handled by PathfinderManager
@@ -625,7 +623,7 @@ void AIManager::update(float deltaTime) {
     }
 
   } catch (const std::exception &e) {
-    AI_ERROR("Exception in AIManager::update: " + std::string(e.what()));
+    AI_ERROR(std::format("Exception in AIManager::update: {}", e.what()));
   }
 }
 
@@ -638,18 +636,19 @@ void AIManager::waitForAsyncBatchCompletion() {
   //   - New approach: Each batch writes to its own buffer (zero contention!)
   //   - Result: Consistent batch completion times → smooth frames
 
-  std::vector<std::future<void>> localFutures;
+  // Reuse member buffer instead of creating local vector (eliminates ~120 alloc/sec)
+  m_reusableBatchFutures.clear();
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> collisionBuffers;
 
   {
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-    localFutures = std::move(m_batchFutures);
+    m_reusableBatchFutures = std::move(m_batchFutures);
     collisionBuffers = m_batchCollisionUpdates;
     m_batchCollisionUpdates.reset();  // Clear for next frame
   }
 
   // Wait for all batch futures to complete
-  for (auto& future : localFutures) {
+  for (auto& future : m_reusableBatchFutures) {
     if (future.valid()) {
       future.wait();  // Block until batch completes
     }
@@ -671,15 +670,16 @@ void AIManager::waitForAssignmentCompletion() {
   //   - New approach: Block on futures until all assignments complete
   //   - Result: Deterministic completion, scalable to any entity count
 
-  std::vector<std::future<void>> localFutures;
+  // Reuse member buffer instead of creating local vector (eliminates ~60 alloc/sec)
+  m_reusableAssignmentFutures.clear();
 
   {
     std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
-    localFutures = std::move(m_assignmentFutures);
+    m_reusableAssignmentFutures = std::move(m_assignmentFutures);
   }
 
   // Wait for all assignment futures to complete
-  for (auto& future : localFutures) {
+  for (auto& future : m_reusableAssignmentFutures) {
     if (future.valid()) {
       future.wait();  // Block until assignment batch completes
     }
@@ -689,7 +689,7 @@ void AIManager::waitForAssignmentCompletion() {
 void AIManager::registerBehavior(const std::string &name,
                                  std::shared_ptr<AIBehavior> behavior) {
   if (!behavior) {
-    AI_ERROR("Attempted to register null behavior with name: " + name);
+    AI_ERROR(std::format("Attempted to register null behavior with name: {}", name));
     return;
   }
 
@@ -707,7 +707,7 @@ void AIManager::registerBehavior(const std::string &name,
 
   m_behaviorTemplates[name] = behavior;
 
-  AI_INFO("Registered behavior: " + name);
+  AI_INFO(std::format("Registered behavior: {}", name));
 }
 
 bool AIManager::hasBehavior(const std::string &name) const {
@@ -755,7 +755,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
   // Get behavior template (use cache for performance)
   std::shared_ptr<AIBehavior> behaviorTemplate = getBehavior(behaviorName);
   if (!behaviorTemplate) {
-    AI_ERROR("Behavior not found: " + behaviorName);
+    AI_ERROR(std::format("Behavior not found: {}", behaviorName));
     return;
   }
 
@@ -795,7 +795,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
         m_storage.halfHeights[index] = halfH;
       }
 
-      AI_INFO("Updated behavior for existing entity to: " + behaviorName);
+      AI_INFO(std::format("Updated behavior for existing entity to: {}", behaviorName));
     }
   } else {
     // Add new entity
@@ -826,7 +826,7 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     // Update index map
     m_entityToIndex[entity] = newIndex;
 
-    AI_INFO("Added new entity with behavior: " + behaviorName);
+    AI_INFO(std::format("Added new entity with behavior: {}", behaviorName));
   }
 
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
@@ -934,9 +934,8 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
   // Safety check: If queue is too full, process synchronously
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    AI_DEBUG("ThreadSystem queue pressure high (" +
-             std::to_string(static_cast<int>(queuePressure * 100)) +
-             "%) - processing assignments synchronously");
+    AI_DEBUG(std::format("ThreadSystem queue pressure high ({}%) - processing assignments synchronously",
+             static_cast<int>(queuePressure * 100)));
     for (const auto &assignment : toProcess) {
       if (assignment.entity) {
         assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
@@ -971,8 +970,8 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
   // If WorkerBudget recommends single-threaded execution, process synchronously
   if (batchCount <= 1) {
-    AI_DEBUG("WorkerBudget recommends single-threaded processing for " +
-             std::to_string(assignmentCount) + " assignments");
+    AI_DEBUG(std::format("WorkerBudget recommends single-threaded processing for {} assignments",
+             assignmentCount));
     for (const auto &assignment : toProcess) {
       if (assignment.entity) {
         assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
@@ -1014,8 +1013,7 @@ size_t AIManager::processPendingBehaviorAssignments() {
                 try {
                   assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
                 } catch (const std::exception &e) {
-                  AI_ERROR("Exception during async behavior assignment: " +
-                           std::string(e.what()));
+                  AI_ERROR(std::format("Exception during async behavior assignment: {}", e.what()));
                 } catch (...) {
                   AI_ERROR("Unknown exception during async behavior assignment");
                 }
@@ -1151,16 +1149,14 @@ void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
     m_maxThreads = maxThreads;
   }
 
-  AI_INFO("Threading configured: " +
-         std::string(useThreading ? "enabled" : "disabled") +
-         " with max threads: " + std::to_string(m_maxThreads));
+  AI_INFO(std::format("Threading configured: {} with max threads: {}",
+         useThreading ? "enabled" : "disabled", m_maxThreads));
 }
 
 void AIManager::setThreadingThreshold(size_t threshold) {
   threshold = std::max(static_cast<size_t>(1), threshold);
   m_threadingThreshold.store(threshold, std::memory_order_release);
-  AI_INFO("AI threading threshold set to " + std::to_string(threshold) +
-          " entities");
+  AI_INFO(std::format("AI threading threshold set to {} entities", threshold));
 }
 
 size_t AIManager::getThreadingThreshold() const {
@@ -1169,8 +1165,8 @@ size_t AIManager::getThreadingThreshold() const {
 
 void AIManager::setWaitForBatchCompletion(bool wait) {
   m_waitForBatchCompletion.store(wait, std::memory_order_release);
-  AI_INFO("AI batch completion wait " + std::string(wait ? "enabled" : "disabled") +
-          " (smooth frames: " + std::string(wait ? "no" : "yes") + ")");
+  AI_INFO(std::format("AI batch completion wait {} (smooth frames: {})",
+                      wait ? "enabled" : "disabled", wait ? "no" : "yes"));
 }
 
 bool AIManager::getWaitForBatchCompletion() const {
@@ -1287,19 +1283,25 @@ void AIManager::processMessageQueue() {
 
 BehaviorType
 AIManager::inferBehaviorType(const std::string &behaviorName) const {
-  // Check cache first for O(1) lookup
-  auto cacheIt = m_behaviorTypeCache.find(behaviorName);
-  if (cacheIt != m_behaviorTypeCache.end()) {
-    return cacheIt->second;
+  // Check cache first with shared lock (multiple readers allowed)
+  {
+    std::shared_lock lock(m_behaviorCacheMutex);
+    auto cacheIt = m_behaviorTypeCache.find(behaviorName);
+    if (cacheIt != m_behaviorTypeCache.end()) {
+      return cacheIt->second;
+    }
   }
 
-  // Cache miss - lookup and cache result
+  // Cache miss - lookup result (m_behaviorTypeMap is read-only after init)
   auto it = m_behaviorTypeMap.find(behaviorName);
   BehaviorType result =
       (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
 
-  // Cache the result
-  m_behaviorTypeCache[behaviorName] = result;
+  // Cache the result with exclusive lock
+  {
+    std::unique_lock lock(m_behaviorCacheMutex);
+    m_behaviorTypeCache[behaviorName] = result;
+  }
   return result;
 }
 
@@ -1412,7 +1414,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
   // Eliminates 418+ atomic loads per frame → single atomic load per batch
-  const auto &pf = PathfinderManager::Instance();
+  // Uses cached pointer (mp_pathfinderManager) to avoid singleton lookup
+  const auto &pf = *mp_pathfinderManager;
   float worldWidth, worldHeight;
   if (!pf.getCachedWorldBounds(worldWidth, worldHeight) || worldWidth <= 0 || worldHeight <= 0) {
     // Fallback: Use large default if PathfinderManager grid isn't ready yet
@@ -1473,6 +1476,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       if (shouldUpdate) {
+        // INTERPOLATION: Store current position before any movement updates
+        // This enables smooth rendering between fixed timestep updates
+        entity->storePositionForInterpolation();
+
         // PERFORMANCE: Use shared_ptr only for executeLogic (required by interface)
         // This is the only place we need shared ownership semantics
         behavior->executeLogic(storage.entities[i], deltaTime);
@@ -1510,8 +1517,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
             std::clamp(pos.getY(), minY, maxY)
         );
 
-        // Update entity position directly - AIManager owns entity movement
-        entity->Entity::setPosition(clamped); // Use base Entity::setPosition to avoid collision sync
+        // Update entity position (preserves previous position for interpolation)
+        entity->updatePositionFromMovement(clamped);
 
         // Handle boundary collisions: stop velocity at world edges
         if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
@@ -1525,6 +1532,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         pos = clamped; // Update pos for batch accumulation
 
+        // Publish thread-safe interpolation state for render thread
+        entity->publishInterpolationState();
+
         // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
         collisionUpdates.emplace_back(entity->getID(), pos, vel);
 
@@ -1536,7 +1546,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         collisionUpdates.emplace_back(entity->getID(), hotData.position, Vector2D(0, 0));
       }
     } catch (const std::exception &e) {
-      AI_ERROR("Error in batch processing entity: " + std::string(e.what()));
+      AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
       // NOTE: Don't decrement active counter here - entity is still active, just had an error
       // The entity will be properly cleaned up in the next cleanup cycle
       // Decrementing here could cause count drift and make the counter unreliable
@@ -1794,8 +1804,7 @@ void AIManager::cleanupInactiveEntities() {
     }
   }
 
-  AI_DEBUG("Cleaned up " + std::to_string(toRemove.size()) +
-           " inactive entities");
+  AI_DEBUG(std::format("Cleaned up {} inactive entities", toRemove.size()));
 }
 
 void AIManager::cleanupAllEntities() {
@@ -1807,7 +1816,7 @@ void AIManager::cleanupAllEntities() {
       try {
         m_storage.behaviors[i]->clean(m_storage.entities[i]);
       } catch (const std::exception &e) {
-        AI_ERROR("Exception cleaning behavior: " + std::string(e.what()));
+        AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
       }
     }
   }

@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <filesystem>
+#include <format>
 
 SoundManager::SoundManager() {
   // Member variables are already initialized in the header with brace
@@ -102,13 +103,13 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
         if (std::find(supportedExts.begin(), supportedExts.end(), extension) !=
             supportedExts.end()) {
           const std::string fileName = entry.path().stem().string();
-          const std::string fullSoundID = idPrefix + "_" + fileName;
+          const std::string fullSoundID = std::format("{}_{}", idPrefix, fileName);
 
           MIX_Audio *audio =
               MIX_LoadAudio(m_mixer, entry.path().string().c_str(), false);
           if (!audio) {
-            SOUND_WARN("Failed to load audio from " + entry.path().string() +
-                      " - SDL Error: " + std::string(SDL_GetError()));
+            SOUND_WARN(std::format("Failed to load audio from {} - SDL Error: {}",
+                                   entry.path().string(), SDL_GetError()));
             continue;
           }
 
@@ -125,10 +126,9 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
       }
 
       if (loadedAny) {
-        SOUND_INFO("Loaded " + std::to_string(fileCount) +
-                   " files from directory: " + filePath);
+        SOUND_INFO(std::format("Loaded {} files from directory: {}", fileCount, filePath));
       } else {
-        SOUND_WARN("No supported audio files found in directory: " + filePath);
+        SOUND_WARN(std::format("No supported audio files found in directory: {}", filePath));
       }
 
       return loadedAny;
@@ -136,8 +136,8 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
       // Load single file
       MIX_Audio *audio = MIX_LoadAudio(m_mixer, filePath.c_str(), false);
       if (!audio) {
-        SOUND_ERROR("Failed to load audio: " + filePath +
-                   " - SDL Error: " + std::string(SDL_GetError()));
+        SOUND_ERROR(std::format("Failed to load audio: {} - SDL Error: {}",
+                                filePath, SDL_GetError()));
         return false;
       }
 
@@ -148,11 +148,11 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
       }
 
       m_audioMap[idPrefix] = audio;
-      SOUND_INFO("Loaded audio file: " + idPrefix);
+      SOUND_INFO(std::format("Loaded audio file: {}", idPrefix));
       return true;
     }
   } catch (const fs::filesystem_error &e) {
-    SOUND_ERROR("Filesystem error loading audio: " + filePath);
+    SOUND_ERROR(std::format("Filesystem error loading audio: {}", filePath));
     return false;
   }
 }
@@ -184,7 +184,7 @@ bool SoundManager::loadMusic(const std::string &filePath,
     return true;
   }
 
-  bool result = loadAudio(filePath, "music_" + musicID);
+  bool result = loadAudio(filePath, std::format("music_{}", musicID));
   if(result) {
     m_musicLoaded.store(true, std::memory_order_release);
   }
@@ -262,20 +262,20 @@ void SoundManager::playSFX(const std::string &soundID, int loops,
 
   auto it = m_audioMap.find(soundID);
   if (it == m_audioMap.end()) {
-    SOUND_WARN("Sound effect not found: " + soundID);
+    SOUND_WARN(std::format("Sound effect not found: {}", soundID));
     return;
   }
 
   // Create a new track for this SFX
   MIX_Track *track = createAndConfigureTrack(m_sfxGroup, "sfx");
   if (!track) {
-    SOUND_ERROR("Failed to create track for SFX: " + soundID);
+    SOUND_ERROR(std::format("Failed to create track for SFX: {}", soundID));
     return;
   }
 
   // Set track audio
   if (!MIX_SetTrackAudio(track, it->second)) {
-    SOUND_ERROR("Failed to set track audio for SFX: " + soundID);
+    SOUND_ERROR(std::format("Failed to set track audio for SFX: {}", soundID));
     MIX_UntagTrack(track, "sfx");
     MIX_DestroyTrack(track);
     return;
@@ -284,7 +284,7 @@ void SoundManager::playSFX(const std::string &soundID, int loops,
   // Set track volume (combine with global SFX volume)
   float finalVolume = std::clamp(volume * m_sfxVolume, 0.0f, 10.0f);
   if (!MIX_SetTrackGain(track, finalVolume)) {
-    SOUND_WARN("Failed to set track volume for SFX: " + soundID);
+    SOUND_WARN(std::format("Failed to set track volume for SFX: {}", soundID));
   }
 
   // Configure playback properties
@@ -295,7 +295,7 @@ void SoundManager::playSFX(const std::string &soundID, int loops,
 
   // Start playback
   if (!MIX_PlayTrack(track, props)) {
-    SOUND_ERROR("Failed to play SFX: " + soundID);
+    SOUND_ERROR(std::format("Failed to play SFX: {}", soundID));
     MIX_UntagTrack(track, "sfx");
     MIX_DestroyTrack(track);
     SDL_DestroyProperties(props);
@@ -318,10 +318,10 @@ void SoundManager::playMusic(const std::string &musicID, int loops,
 
   cleanupStoppedTracks();
 
-  const std::string fullMusicID = "music_" + musicID;
+  const std::string fullMusicID = std::format("music_{}", musicID);
   auto it = m_audioMap.find(fullMusicID);
   if (it == m_audioMap.end()) {
-    SOUND_WARN("Music track not found: " + musicID);
+    SOUND_WARN(std::format("Music track not found: {}", musicID));
     return;
   }
 
@@ -331,13 +331,13 @@ void SoundManager::playMusic(const std::string &musicID, int loops,
   // Create a new track for this music
   MIX_Track *track = createAndConfigureTrack(m_musicGroup, "music");
   if (!track) {
-    SOUND_ERROR("Failed to create track for music: " + musicID);
+    SOUND_ERROR(std::format("Failed to create track for music: {}", musicID));
     return;
   }
 
   // Set track audio
   if (!MIX_SetTrackAudio(track, it->second)) {
-    SOUND_ERROR("Failed to set track audio for music: " + musicID);
+    SOUND_ERROR(std::format("Failed to set track audio for music: {}", musicID));
     MIX_UntagTrack(track, "music");
     MIX_DestroyTrack(track);
     return;
@@ -346,7 +346,7 @@ void SoundManager::playMusic(const std::string &musicID, int loops,
   // Set track volume (combine with global music volume)
   float finalVolume = std::clamp(volume * m_musicVolume, 0.0f, 10.0f);
   if (!MIX_SetTrackGain(track, finalVolume)) {
-    SOUND_WARN("Failed to set track volume for music: " + musicID);
+    SOUND_WARN(std::format("Failed to set track volume for music: {}", musicID));
   }
 
   // Configure playback properties
@@ -357,7 +357,7 @@ void SoundManager::playMusic(const std::string &musicID, int loops,
 
   // Start playback
   if (!MIX_PlayTrack(track, props)) {
-    SOUND_ERROR("Failed to play music: " + musicID);
+    SOUND_ERROR(std::format("Failed to play music: {}", musicID));
     MIX_UntagTrack(track, "music");
     MIX_DestroyTrack(track);
     SDL_DestroyProperties(props);
@@ -370,7 +370,7 @@ void SoundManager::playMusic(const std::string &musicID, int loops,
   m_activeMusicTracks.push_back(track);
   m_trackToAudioMap[track] = fullMusicID;
 
-  SOUND_INFO("Started playing music: " + musicID);
+  SOUND_INFO(std::format("Started playing music: {}", musicID));
 }
 
 void SoundManager::pauseMusic() {
@@ -550,12 +550,12 @@ void SoundManager::clearSFX(const std::string &soundID) {
   if (audioIt != m_audioMap.end()) {
     MIX_DestroyAudio(audioIt->second);
     m_audioMap.erase(audioIt);
-    SOUND_INFO("Cleared sound effect: " + soundID);
+    SOUND_INFO(std::format("Cleared sound effect: {}", soundID));
   }
 }
 
 void SoundManager::clearMusic(const std::string &musicID) {
-  const std::string fullMusicID = "music_" + musicID;
+  const std::string fullMusicID = std::format("music_{}", musicID);
 
   // Stop any playing instances of this music
   auto newEnd = std::remove_if(
@@ -580,7 +580,7 @@ void SoundManager::clearMusic(const std::string &musicID) {
   if (audioIt != m_audioMap.end()) {
     MIX_DestroyAudio(audioIt->second);
     m_audioMap.erase(audioIt);
-    SOUND_INFO("Cleared music track: " + musicID);
+    SOUND_INFO(std::format("Cleared music track: {}", musicID));
   }
 }
 
@@ -589,5 +589,5 @@ bool SoundManager::isSFXLoaded(const std::string &soundID) const {
 }
 
 bool SoundManager::isMusicLoaded(const std::string &musicID) const {
-  return m_audioMap.find("music_" + musicID) != m_audioMap.end();
+  return m_audioMap.find(std::format("music_{}", musicID)) != m_audioMap.end();
 }

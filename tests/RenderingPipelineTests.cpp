@@ -255,8 +255,8 @@ BOOST_AUTO_TEST_CASE(TestGameEngineCallsGameStateManager) {
     const std::string gameEngineFile = "src/core/GameEngine.cpp";
 
     // Verify GameEngine::render() delegates to GameStateManager
-    bool callsGSM = fileContainsPattern(gameEngineFile, "mp_gameStateManager->render()") ||
-                    fileContainsPattern(gameEngineFile, "gameStateManager->render()");
+    bool callsGSM = fileContainsPattern(gameEngineFile, "mp_gameStateManager->render(") ||
+                    fileContainsPattern(gameEngineFile, "gameStateManager->render(");
 
     BOOST_CHECK_MESSAGE(callsGSM, "GameEngine::render() must call GameStateManager::render()");
 }
@@ -269,7 +269,7 @@ BOOST_AUTO_TEST_CASE(TestGameStateManagerCallsGameState) {
     const std::string gsmFile = "src/managers/GameStateManager.cpp";
 
     // Verify GameStateManager::render() delegates to active state
-    bool callsState = fileContainsPattern(gsmFile, "->render()");
+    bool callsState = fileContainsPattern(gsmFile, "->render(");
 
     BOOST_CHECK_MESSAGE(callsState, "GameStateManager::render() must call GameState::render()");
 }
@@ -287,7 +287,7 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
 
     // Step 2: GameStateManager::render() exists
     const std::string gsmFile = "src/managers/GameStateManager.cpp";
-    bool hasGSMRender = fileContainsPattern(gsmFile, "void GameStateManager::render()");
+    bool hasGSMRender = fileContainsPattern(gsmFile, "void GameStateManager::render(SDL_Renderer*");
     BOOST_CHECK(hasGSMRender);
 
     // Step 3: At least one GameState implements render()
@@ -299,7 +299,7 @@ BOOST_AUTO_TEST_CASE(TestCompleteRenderingFlow) {
 
     bool foundStateRender = false;
     for (const auto& file : gameStateFiles) {
-        if (fileContainsPattern(file, "::render()")) {
+        if (fileContainsPattern(file, "::render(SDL_Renderer*")) {
             foundStateRender = true;
             break;
         }

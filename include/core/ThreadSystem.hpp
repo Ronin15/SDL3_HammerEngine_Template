@@ -17,6 +17,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <deque>
+#include <format>
 #include <functional>
 #include <future>
 #include <memory>
@@ -133,8 +134,8 @@ public:
       // If profiling is enabled and this is a high priority task, log it
       if (m_enableProfiling && priority <= TaskPriority::High &&
           !description.empty()) {
-        THREADSYSTEM_INFO("High priority task enqueued: " + description +
-                          " (Priority: " + std::to_string(priorityIndex) + ")");
+        THREADSYSTEM_INFO(std::format("High priority task enqueued: {} (Priority: {})",
+                                      description, priorityIndex));
       }
     }
 
@@ -191,8 +192,8 @@ public:
 
       // Log batch submission if profiling is enabled
       if (m_enableProfiling && !description.empty()) {
-        THREADSYSTEM_INFO("Batch enqueued " + std::to_string(batchSize) + " tasks: " +
-                          description + " (Priority: " + std::to_string(priorityIndex) + ")");
+        THREADSYSTEM_INFO(std::format("Batch enqueued {} tasks: {} (Priority: {})",
+                                      batchSize, description, priorityIndex));
       }
     }
 
@@ -428,9 +429,8 @@ private:
           // Log long wait times for high priority tasks
           if (priorityIndex <= static_cast<int>(TaskPriority::High) &&
               waitTime > 100 && !prioritizedTask.description.empty()) {
-            THREADSYSTEM_WARN(
-                "High priority task delayed: " + prioritizedTask.description +
-                " waited " + std::to_string(waitTime) + "ms");
+            THREADSYSTEM_WARN(std::format("High priority task delayed: {} waited {}ms",
+                                          prioritizedTask.description, waitTime));
           }
         }
 
@@ -479,11 +479,11 @@ public:
 // Set thread name for debugging (no CPU affinity - let OS scheduler optimize)
 #if defined(__linux__) || defined(_GNU_SOURCE)
         // Linux: Set thread name
-        std::string threadName = "Worker-" + std::to_string(i);
+        std::string threadName = std::format("Worker-{}", i);
         pthread_setname_np(pthread_self(), threadName.c_str());
 #elif defined(__APPLE__)
         // macOS: Set thread name
-        std::string threadName = "Worker-" + std::to_string(i);
+        std::string threadName = std::format("Worker-{}", i);
         pthread_setname_np(threadName.c_str());
 #endif
         // Note: CPU affinity removed for better OS-level load balancing and efficiency
@@ -494,9 +494,8 @@ public:
     }
 
     if (enableProfiling) {
-      THREADSYSTEM_INFO(
-          "Thread pool created with " + std::to_string(numThreads) +
-          " threads, simple queue-based threading, and profiling enabled");
+      THREADSYSTEM_INFO(std::format("Thread pool created with {} threads, simple queue-based threading, and profiling enabled",
+                                    numThreads));
     }
   }
 
@@ -670,9 +669,8 @@ private:
           if (isIdle) {
             auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - lastTaskTime).count();
-            THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
-                              " exiting idle mode (was idle for " +
-                              std::to_string(idleTime) + "ms)");
+            THREADSYSTEM_INFO(std::format("Worker {} exiting idle mode (was idle for {}ms)",
+                                          threadIndex, idleTime));
             isIdle = false;
           }
 
@@ -712,10 +710,9 @@ private:
 
           // Log slow tasks if they exceed 100ms (truly problematic tasks)
           if (taskDuration > 100) {
-            THREADSYSTEM_WARN(
-                "Worker " + std::to_string(threadIndex) +
-                " - Slow task: " + std::to_string(taskDuration) + "ms" +
-                (highPriorityTasks > 0 ? " (HIGH PRIORITY)" : ""));
+            THREADSYSTEM_WARN(std::format("Worker {} - Slow task: {}ms{}",
+                                          threadIndex, taskDuration,
+                                          (highPriorityTasks > 0 ? " (HIGH PRIORITY)" : "")));
           }
 
           // Clear task after execution to free resources
@@ -731,9 +728,8 @@ private:
 
             // Only consider it "idle" if we've been without tasks for at least MIN_IDLE_TIME_MS
             if (timeSinceLastTask >= MIN_IDLE_TIME_MS) {
-              THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
-                                " entering idle mode (no tasks for " +
-                                std::to_string(timeSinceLastTask) + "ms)");
+              THREADSYSTEM_INFO(std::format("Worker {} entering idle mode (no tasks for {}ms)",
+                                            threadIndex, timeSinceLastTask));
               isIdle = true;
             }
           }
@@ -741,12 +737,11 @@ private:
         }
       }
     } catch (const std::exception &e) {
-      THREADSYSTEM_ERROR(
-          "Worker thread " + std::to_string(threadIndex) +
-          " terminated with exception: " + std::string(e.what()));
+      THREADSYSTEM_ERROR(std::format("Worker thread {} terminated with exception: {}",
+                                     threadIndex, e.what()));
     } catch (...) {
-      THREADSYSTEM_ERROR("Worker thread " + std::to_string(threadIndex) +
-                         " terminated with unknown exception");
+      THREADSYSTEM_ERROR(std::format("Worker thread {} terminated with unknown exception",
+                                     threadIndex));
     }
 
     // Log worker thread statistics on exit
@@ -755,10 +750,8 @@ private:
                              endTime - startTime)
                              .count();
 
-    THREADSYSTEM_INFO("Worker " + std::to_string(threadIndex) +
-                      " exiting after processing " +
-                      std::to_string(tasksProcessed) + " tasks over " +
-                      std::to_string(totalDuration) + "ms");
+    THREADSYSTEM_INFO(std::format("Worker {} exiting after processing {} tasks over {}ms",
+                                  threadIndex, tasksProcessed, totalDuration));
 
     // Suppress unused variable warnings in release builds
     (void)tasksProcessed;
@@ -810,8 +803,8 @@ public:
       // Log the number of pending tasks
       size_t pendingTasks = m_threadPool->getTaskQueue().size();
       if (pendingTasks > 0) {
-        THREADSYSTEM_INFO("Canceling " + std::to_string(pendingTasks) +
-                          " pending tasks during shutdown...");
+        THREADSYSTEM_INFO(std::format("Canceling {} pending tasks during shutdown...",
+                                      pendingTasks));
       }
 
       // Reset the thread pool - this will trigger its destructor
@@ -897,14 +890,14 @@ public:
       m_threadPool = std::make_unique<ThreadPool>(m_numThreads, m_queueCapacity,
                                                   m_enableProfiling);
 
-      THREADSYSTEM_INFO("ThreadSystem initialized with " +
-                        std::to_string(m_numThreads) + " worker threads" +
-                        (m_enableProfiling ? " (profiling enabled)" : ""));
+      THREADSYSTEM_INFO(std::format("ThreadSystem initialized with {} worker threads{}",
+                                    m_numThreads,
+                                    (m_enableProfiling ? " (profiling enabled)" : "")));
 
       return m_threadPool != nullptr;
     } catch (const std::exception &e) {
-      THREADSYSTEM_ERROR("Failed to initialize ThreadSystem: " +
-                         std::string(e.what()));
+      THREADSYSTEM_ERROR(std::format("Failed to initialize ThreadSystem: {}",
+                                     e.what()));
       return false;
     }
   }
@@ -936,7 +929,7 @@ public:
 
     // If debug logging is enabled and we have a description, log it
     if (!description.empty() && m_enableDebugLogging) {
-      THREADSYSTEM_DEBUG("Enqueuing task: " + description);
+      THREADSYSTEM_DEBUG(std::format("Enqueuing task: {}", description));
     }
 
     m_threadPool->enqueue(std::move(task), priority, description);
@@ -966,9 +959,9 @@ public:
     // If shutdown or no thread pool, silently reject the tasks
     if (m_isShutdown.load(std::memory_order_acquire) || !m_threadPool) {
       if (m_enableDebugLogging) {
-        THREADSYSTEM_DEBUG(
-            "Ignoring batch of " + std::to_string(tasks.size()) + " tasks after shutdown" +
-            (description.empty() ? "" : " (" + description + ")"));
+        THREADSYSTEM_DEBUG(std::format("Ignoring batch of {} tasks after shutdown{}",
+                                       tasks.size(),
+                                       (description.empty() ? "" : " (" + description + ")")));
       }
       return;
     }
@@ -979,8 +972,8 @@ public:
 
     // If debug logging is enabled, log the batch submission
     if (m_enableDebugLogging && !description.empty()) {
-      THREADSYSTEM_DEBUG("Batch enqueuing " + std::to_string(tasks.size()) +
-                         " tasks: " + description);
+      THREADSYSTEM_DEBUG(std::format("Batch enqueuing {} tasks: {}",
+                                     tasks.size(), description));
     }
 
     m_threadPool->batchEnqueue(tasks, priority, description);
@@ -1044,7 +1037,7 @@ public:
                                              description,
                                              std::forward<Args>(args)...);
     } catch (const std::exception &e) {
-      THREADSYSTEM_ERROR("Error enqueueing task: " + std::string(e.what()));
+      THREADSYSTEM_ERROR(std::format("Error enqueueing task: {}", e.what()));
       throw;
     }
   }

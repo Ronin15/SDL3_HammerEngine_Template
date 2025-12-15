@@ -8,26 +8,34 @@
 
 #include "entities/Player.hpp"
 #include "gameStates/GameState.hpp"
+#include "managers/ParticleManager.hpp"
+#include "managers/EventManager.hpp"
+#include "events/TimeEvent.hpp"
+#include "events/WeatherEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
 #include <memory>
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+
 class GamePlayState : public GameState {
 public:
   GamePlayState()
-      : m_transitioningToPause{false}, m_transitioningToLoading{false},
-        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false} {}
+      : m_transitioningToLoading{false},
+        mp_Player{nullptr}, m_inventoryVisible{false}, m_initialized{false},
+        m_dayNightEventToken{}, m_weatherEventToken{} {}
   bool enter() override;
   void update(float deltaTime) override;
-  void render() override;
+  void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
   void handleInput() override;
   bool exit() override;
+  void pause() override;
+  void resume() override;
   std::string getName() const override;
-  void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
 private:
-  bool m_transitioningToPause{
-      false}; // Flag to indicate we're transitioning to pause state
   bool m_transitioningToLoading{
       false}; // Flag to indicate we're transitioning to loading state
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
@@ -36,10 +44,6 @@ private:
   
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
-  
-  // Camera transformation state (calculated in update, used in render)
-  float m_cameraOffsetX{0.0f};
-  float m_cameraOffsetY{0.0f};
 
   // Resource handles resolved at initialization (resource handle system
   // compliance)
@@ -53,6 +57,19 @@ private:
 
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
+
+  // Cached manager pointers for render hot path (resolved in enter())
+  ParticleManager* mp_particleMgr{nullptr};
+  WorldManager* mp_worldMgr{nullptr};
+  UIManager* mp_uiMgr{nullptr};
+
+  // Render scale caching - avoid GPU state changes when zoom unchanged
+  float m_lastRenderedZoom{1.0f};
+
+  // FPS counter (toggled with F2)
+  bool m_fpsVisible{false};
+  std::string m_fpsBuffer{};
+  float m_lastDisplayedFPS{-1.0f};
 
   // Inventory UI methods
   void initializeInventoryUI();
@@ -68,6 +85,40 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
+
+  // Day/night visual overlay state (updated via TimePeriodChangedEvent)
+  // Current interpolated values (what's actually rendered)
+  float m_dayNightOverlayR{0.0f};
+  float m_dayNightOverlayG{0.0f};
+  float m_dayNightOverlayB{0.0f};
+  float m_dayNightOverlayA{0.0f};
+  // Target values (from event, what we're interpolating toward)
+  float m_dayNightTargetR{0.0f};
+  float m_dayNightTargetG{0.0f};
+  float m_dayNightTargetB{0.0f};
+  float m_dayNightTargetA{0.0f};
+  // Transition timing
+  static constexpr float DAY_NIGHT_TRANSITION_DURATION{30.0f};  // seconds
+  EventManager::HandlerToken m_dayNightEventToken;
+  bool m_dayNightSubscribed{false};
+
+  // Day/night event handlers and update
+  void onTimePeriodChanged(const EventData& data);
+  void updateDayNightOverlay(float deltaTime);
+  void renderDayNightOverlay(SDL_Renderer* renderer, int width, int height);
+
+  // Ambient particle effects (dust motes, fireflies) - managed per time period
+  void updateAmbientParticles(TimePeriod period);
+  void stopAmbientParticles();
+  void onWeatherChanged(const EventData& data);
+  uint32_t m_ambientDustEffectId{0};
+  uint32_t m_ambientFireflyEffectId{0};
+  TimePeriod m_lastAmbientPeriod{TimePeriod::Day};  // Track to avoid particle thrashing
+  bool m_ambientParticlesActive{false};  // Whether ambient particles are currently running
+  EventManager::HandlerToken m_weatherEventToken;
+  bool m_weatherSubscribed{false};
+  TimePeriod m_currentTimePeriod{TimePeriod::Day};  // Track current period for weather changes
+  WeatherType m_lastWeatherType{WeatherType::Clear};  // Track to avoid redundant weather processing
 };
 
 #endif // GAME_PLAY_STATE_HPP

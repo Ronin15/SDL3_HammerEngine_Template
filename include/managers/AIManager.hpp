@@ -413,6 +413,7 @@ private:
   mutable std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
       m_behaviorCache;
   mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
+  mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
 
   // Performance stats per behavior type
   std::array<AIPerformanceStats, static_cast<size_t>(BehaviorType::COUNT)>
@@ -512,6 +513,9 @@ private:
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
 
+  // Cached manager references (avoid singleton lookups in hot paths)
+  PathfinderManager* mp_pathfinderManager{nullptr};
+
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
   std::mutex m_batchFuturesMutex;  // Protect futures vector
@@ -519,6 +523,11 @@ private:
   // Async assignment tracking for deterministic synchronization (replaces m_assignmentInProgress)
   std::vector<std::future<void>> m_assignmentFutures;
   std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
+
+  // Reusable futures buffers to avoid per-frame allocations in sync paths
+  // These are cleared and reused each frame instead of creating local vectors
+  mutable std::vector<std::future<void>> m_reusableBatchFutures;
+  mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
 
   // Per-batch collision update buffers (zero contention approach)
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;

@@ -8,6 +8,7 @@
 #include "managers/ResourceFactory.hpp"
 #include "utils/JsonReader.hpp"
 #include <algorithm>
+#include <format>
 
 using HammerEngine::JsonReader;
 using HammerEngine::JsonValue;
@@ -71,9 +72,8 @@ bool ResourceTemplateManager::init() {
     m_initialized.store(true, std::memory_order_release);
     m_isShutdown = false; // Reset shutdown flag on successful init
     m_stats.reset();
-    RESOURCE_INFO("ResourceTemplateManager initialized with " +
-                  std::to_string(m_resourceTemplates.size()) +
-                  " resource templates");
+    RESOURCE_INFO(std::format("ResourceTemplateManager initialized with {} resource templates",
+                  m_resourceTemplates.size()));
 
     return true;
   } catch (const std::exception &ex) {
@@ -499,9 +499,9 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
   size_t loadedCount = 0;
   size_t failedCount = 0;
 
-  RESOURCE_INFO(
-      "ResourceTemplateManager::loadResourcesFromJsonString - Loading " +
-      std::to_string(resourcesArray.size()) + " resources from JSON");
+  RESOURCE_INFO(std::format(
+      "ResourceTemplateManager::loadResourcesFromJsonString - Loading {} resources from JSON",
+      resourcesArray.size()));
 
   // Process each resource in the array
   for (size_t i = 0; i < resourcesArray.size(); ++i) {
@@ -525,10 +525,9 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
                 "- Loaded resource: " +
                 resourceId + " -> " + resource->getHandle().toString());
           } else {
-            RESOURCE_WARN(
+            RESOURCE_WARN(std::format(
                 "ResourceTemplateManager::loadResourcesFromJsonString - "
-                "Resource at index " +
-                std::to_string(i) + " missing or invalid 'id' field");
+                "Resource at index {} missing or invalid 'id' field", i));
           }
 
           RESOURCE_DEBUG("ResourceTemplateManager::loadResourcesFromJsonString "
@@ -542,22 +541,19 @@ bool ResourceTemplateManager::loadResourcesFromJsonString(
         }
       } else {
         failedCount++;
-        RESOURCE_WARN("ResourceTemplateManager::loadResourcesFromJsonString - "
-                      "Failed to create resource from JSON at index " +
-                      std::to_string(i));
+        RESOURCE_WARN(std::format("ResourceTemplateManager::loadResourcesFromJsonString - "
+                      "Failed to create resource from JSON at index {}", i));
       }
     } catch (const std::exception &ex) {
       failedCount++;
-      RESOURCE_ERROR("ResourceTemplateManager::loadResourcesFromJsonString - "
-                     "Exception processing resource at index " +
-                     std::to_string(i) + ": " + std::string(ex.what()));
+      RESOURCE_ERROR(std::format("ResourceTemplateManager::loadResourcesFromJsonString - "
+                     "Exception processing resource at index {}: {}", i, ex.what()));
     }
   }
 
-  RESOURCE_INFO(
-      "ResourceTemplateManager::loadResourcesFromJsonString - Completed: " +
-      std::to_string(loadedCount) + " loaded, " + std::to_string(failedCount) +
-      " failed");
+  RESOURCE_INFO(std::format(
+      "ResourceTemplateManager::loadResourcesFromJsonString - Completed: {} loaded, {} failed",
+      loadedCount, failedCount));
 
   return failedCount ==
          0; // Return true only if all resources were loaded successfully

@@ -21,13 +21,18 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+class ParticleManager;
+
 class AIDemoState : public GameState {
 public:
 
     ~AIDemoState() override;
 
     void update(float deltaTime) override;
-    void render() override;
+    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
 
     bool enter() override;
@@ -72,10 +77,6 @@ private:
     // Camera for world navigation
     std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
-    // Camera transformation state (calculated in update, used in render)
-    float m_cameraOffsetX{0.0f};
-    float m_cameraOffsetY{0.0f};
-
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
@@ -85,6 +86,20 @@ private:
     int m_npcsPerBatch{30};        // Spawn 30 NPCs per batch
     int m_spawnInterval{10};       // Spawn every 10 frames
     int m_framesSinceLastSpawn{0}; // Frame counter for spawn timing
+
+    // Cached manager pointers for render hot path (resolved in enter())
+    WorldManager* mp_worldMgr{nullptr};
+    UIManager* mp_uiMgr{nullptr};
+    ParticleManager* mp_particleMgr{nullptr};
+
+    // Status display optimization - zero per-frame allocations (C++20 type-safe)
+    std::string m_statusBuffer{};
+    int m_lastDisplayedFPS{-1};
+    size_t m_lastDisplayedEntityCount{0};
+    bool m_lastDisplayedPauseState{false};
+
+    // Render scale caching - avoid GPU state changes when zoom unchanged
+    float m_lastRenderedZoom{1.0f};
 };
 
 #endif // AI_DEMO_STATE_HPP

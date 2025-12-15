@@ -15,6 +15,7 @@
 #include "managers/CollisionManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -22,8 +23,7 @@
 #include "world/WorldData.hpp"
 #include <memory>
 #include <random>
-#include <sstream>
-#include <iomanip>
+#include <format>
 #include <ctime>
 
 
@@ -44,8 +44,7 @@ AIDemoState::~AIDemoState() {
 
     GAMESTATE_INFO("Exiting AIDemoState in destructor...");
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in AIDemoState destructor: " +
-                    std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in AIDemoState destructor: {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState destructor");
   }
@@ -68,7 +67,7 @@ void AIDemoState::handleInput() {
     aiMgr.broadcastMessage(message, true);
 
     // Simple feedback
-    GAMESTATE_INFO("AI " + std::string(m_aiPaused ? "PAUSED" : "RESUMED"));
+    GAMESTATE_INFO(std::format("AI {}", m_aiPaused ? "PAUSED" : "RESUMED"));
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -89,8 +88,7 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    GAMESTATE_INFO("Switching " + std::to_string(m_npcs.size()) +
-                   " NPCs to PATROL behavior (batched processing)...");
+    GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcs.size()));
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing
@@ -190,19 +188,17 @@ void AIDemoState::handleInput() {
         CollisionManager &collisionMgr = CollisionManager::Instance();
         if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
           collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-          GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
-                         " x " + std::to_string(m_worldHeight));
+          GAMESTATE_INFO(std::format("CollisionManager bounds set to: {} x {}", m_worldWidth, m_worldHeight));
         }
       }
 
       int npcsToSpawn = m_npcCount - m_npcsSpawned;
-      GAMESTATE_INFO("Spawning " + std::to_string(npcsToSpawn) + " NPCs with Wander behavior...");
+      GAMESTATE_INFO(std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
       createNPCBatch(npcsToSpawn);
       m_npcsSpawned += npcsToSpawn;
-      GAMESTATE_INFO("Spawned " + std::to_string(m_npcsSpawned) + " / " +
-                     std::to_string(m_npcCount) + " NPCs (Standard behavior)");
+      GAMESTATE_INFO(std::format("Spawned {} / {} NPCs (Standard behavior)", m_npcsSpawned, m_npcCount));
     } else {
-      GAMESTATE_INFO("Already spawned " + std::to_string(m_npcCount) + " NPCs (max reached)");
+      GAMESTATE_INFO(std::format("Already spawned {} NPCs (max reached)", m_npcCount));
     }
   }
 
@@ -213,8 +209,7 @@ void AIDemoState::handleInput() {
       CollisionManager &collisionMgr = CollisionManager::Instance();
       if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
         collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-        GAMESTATE_INFO("CollisionManager bounds set to: " + std::to_string(m_worldWidth) +
-                       " x " + std::to_string(m_worldHeight));
+        GAMESTATE_INFO(std::format("CollisionManager bounds set to: {} x {}", m_worldWidth, m_worldHeight));
       }
     }
 
@@ -222,12 +217,16 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
     int actualSpawned = m_npcs.size() - previousCount;
-    GAMESTATE_INFO("Spawned " + std::to_string(actualSpawned) + " NPCs with random behaviors (Total: " +
-                   std::to_string(m_npcs.size()) + ")");
+    GAMESTATE_INFO(std::format("Spawned {} NPCs with random behaviors (Total: {})", actualSpawned, m_npcs.size()));
   }
 }
 
 bool AIDemoState::enter() {
+  // Cache manager pointers for render hot path (always valid after GameEngine init)
+  mp_particleMgr = &ParticleManager::Instance();
+  mp_worldMgr = &WorldManager::Instance();
+  mp_uiMgr = &UIManager::Instance();
+
   GAMESTATE_INFO("Entering AIDemoState...");
 
   // Reset transition flag when entering state
@@ -260,7 +259,7 @@ bool AIDemoState::enter() {
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
       m_worldWidth = std::max(0.0f, maxX - minX);
       m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+      GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
     } else {
       // Fallback to screen dimensions if world bounds unavailable
       m_worldWidth = gameEngine.getLogicalWidth();
@@ -328,6 +327,9 @@ bool AIDemoState::enter() {
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
 
+    // Pre-allocate status buffer to avoid per-frame allocations
+    m_statusBuffer.reserve(64);
+
     // NPCs can be spawned using keyboard triggers (N for standard, M for random behaviors)
     m_npcsSpawned = 0;
 
@@ -336,7 +338,7 @@ bool AIDemoState::enter() {
 
     return true;
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in AIDemoState::enter(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in AIDemoState::enter(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::enter()");
@@ -397,6 +399,11 @@ bool AIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
+    // Clear cached manager pointers
+    mp_worldMgr = nullptr;
+    mp_uiMgr = nullptr;
+    mp_particleMgr = nullptr;
+
     // Reset initialized flag so state re-initializes after loading
     m_initialized = false;
 
@@ -450,6 +457,11 @@ bool AIDemoState::exit() {
   // This prevents the global pause from affecting other states
   aiMgr.setGlobalPause(false);
   m_aiPaused = false;
+
+  // Clear cached manager pointers
+  mp_worldMgr = nullptr;
+  mp_uiMgr = nullptr;
+  mp_particleMgr = nullptr;
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
@@ -510,70 +522,91 @@ void AIDemoState::update(float deltaTime) {
     // Entity updates are handled by AIManager::update() in GameEngine
     // No need to manually update NPCs or AIManager here
 
+    // Update UI (moved from render path for consistent frame timing)
+    if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
+      mp_uiMgr->update(deltaTime);
+    }
+
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in AIDemoState::update(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in AIDemoState::update(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::update()");
   }
 }
 
-void AIDemoState::render() {
-  // Get renderer using the standard pattern (consistent with other states)
-  auto &gameEngine = GameEngine::Instance();
-  SDL_Renderer *renderer = gameEngine.getRenderer();
+void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
+  // Get GameEngine for logical dimensions (renderer now passed as parameter)
+  const auto &gameEngine = GameEngine::Instance();
 
-  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
-  HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+  // Camera offset with unified interpolation (single atomic read for sync)
+  float renderCamX = 0.0f;
+  float renderCamY = 0.0f;
+  float zoom = 1.0f;
+  Vector2D playerInterpPos;  // Position synced with camera
+
   if (m_camera) {
-    cameraView = m_camera->getViewRect();
+    zoom = m_camera->getZoom();
+    // Returns the position used for offset - use it for player rendering
+    playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
   }
 
-  // Set render scale for zoom (scales all world/entity rendering automatically)
-  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
-  SDL_SetRenderScale(renderer, zoom, zoom);
+  // Set render scale for zoom only when changed (avoids GPU state change overhead)
+  if (zoom != m_lastRenderedZoom) {
+    SDL_SetRenderScale(renderer, zoom, zoom);
+    m_lastRenderedZoom = zoom;
+  }
 
-  // Render world first (background layer) using unified camera position
-  if (m_camera) {
-    auto &worldMgr = WorldManager::Instance();
-    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      // Use the camera view for world rendering
-      worldMgr.render(renderer,
-                     cameraView.x,
-                     cameraView.y,
-                     gameEngine.getLogicalWidth(),
-                     gameEngine.getLogicalHeight());
+  // Render world first (background layer) using pixel-snapped camera - use cached pointer
+  if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
+    mp_worldMgr->render(renderer,
+                       renderCamX,
+                       renderCamY,
+                       gameEngine.getLogicalWidth(),
+                       gameEngine.getLogicalHeight());
+  }
+
+  // Render all NPCs using same camera offset as world (ensures sync)
+  for (auto &npc : m_npcs) {
+    npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+  }
+
+  // Render player at the position camera used for offset calculation
+  if (m_player) {
+    // Use position camera returned - no separate atomic read
+    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
+  }
+
+  // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+  if (m_lastRenderedZoom != 1.0f) {
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+    m_lastRenderedZoom = 1.0f;
+  }
+
+  // Render UI components through cached pointer (update moved to update() for consistent frame timing)
+  // mp_uiMgr guaranteed valid between enter() and exit()
+  if (!mp_uiMgr->isShutdown()) {
+    // Update status only when values change (C++20 type-safe, zero allocations)
+    const auto &aiManager = AIManager::Instance();
+    int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+    size_t entityCount = m_npcs.size();
+    bool isPaused = aiManager.isGloballyPaused();
+
+    if (currentFPS != m_lastDisplayedFPS ||
+        entityCount != m_lastDisplayedEntityCount ||
+        isPaused != m_lastDisplayedPauseState) {
+
+        m_statusBuffer.clear();  // Keeps reserved capacity
+        std::format_to(std::back_inserter(m_statusBuffer),
+                       "FPS: {} | Entities: {} | AI: {}",
+                       currentFPS, entityCount, isPaused ? "PAUSED" : "RUNNING");
+        mp_uiMgr->setText("ai_status", m_statusBuffer);
+
+        m_lastDisplayedFPS = currentFPS;
+        m_lastDisplayedEntityCount = entityCount;
+        m_lastDisplayedPauseState = isPaused;
     }
   }
-
-  // Render all NPCs using camera-aware rendering
-  for (auto &npc : m_npcs) {
-    npc->render(m_camera.get());
-  }
-
-  // Render player using camera-aware rendering
-  if (m_player) {
-    m_player->render(m_camera.get());
-  }
-
-  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
-  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
-
-  // Update and render UI components through UIManager using cached renderer for
-  // cleaner API
-  auto &ui = UIManager::Instance();
-  if (!ui.isShutdown()) {
-    ui.update(0.0); // UI updates are not time-dependent in this state
-
-    // Update status display
-    auto &aiManager = AIManager::Instance();
-    std::stringstream status;
-    status << "FPS: " << std::fixed << std::setprecision(1)
-           << gameEngine.getCurrentFPS() << " | Entities: " << m_npcs.size()
-           << " | AI: "
-           << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING");
-    ui.setText("ai_status", status.str());
-  }
-  ui.render(); // Uses cached renderer from GameEngine
+  mp_uiMgr->render(renderer);
 }
 
 void AIDemoState::setupAIBehaviors() {
@@ -702,20 +735,18 @@ void AIDemoState::createNPCBatch(int count) {
             m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
-            GAMESTATE_ERROR("Exception creating NPC: " + std::string(e.what()));
+            GAMESTATE_ERROR(std::format("Exception creating NPC: {}", e.what()));
           }
         }
       }
     }
 
     if (created < count) {
-      GAMESTATE_WARN("Only created " + std::to_string(created) + " of " +
-                     std::to_string(count) + " requested NPCs after " +
-                     std::to_string(attempts) + " attempts");
+      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
     }
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in createNPCBatch(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in createNPCBatch(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatch()");
   }
@@ -790,20 +821,18 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
-            GAMESTATE_ERROR("Exception creating NPC with random behavior: " + std::string(e.what()));
+            GAMESTATE_ERROR(std::format("Exception creating NPC with random behavior: {}", e.what()));
           }
         }
       }
     }
 
     if (created < count) {
-      GAMESTATE_WARN("Only created " + std::to_string(created) + " of " +
-                     std::to_string(count) + " requested NPCs with random behaviors after " +
-                     std::to_string(attempts) + " attempts");
+      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
     }
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in createNPCBatchWithRandomBehaviors(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatchWithRandomBehaviors()");
   }
@@ -833,12 +862,12 @@ void AIDemoState::initializeCamera() {
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following
+    // Using exponential smoothing for smooth, responsive follow
     HammerEngine::Camera::Config config;
-    config.followSpeed = 8.0f;         // Faster follow for action gameplay
+    config.followSpeed = 5.0f;         // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.80f;    // Quicker response smoothing
-    config.maxFollowDistance = 9999.0f; // No distance limit
-    config.clampToWorldBounds = true; // Keep camera within world
+    config.smoothingFactor = 0.85f;    // Smoothing factor (0-1, higher = smoother)
+    config.clampToWorldBounds = true;  // Keep camera within world
     m_camera->setConfig(config);
 
     // Camera auto-synchronizes world bounds on update

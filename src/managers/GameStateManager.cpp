@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "gameStates/GameState.hpp"
 #include <algorithm>
+#include <format>
 #include <stdexcept>
 
 // Forward declaration for SDL renderer access
@@ -25,9 +26,8 @@ GameStateManager::GameStateManager() {
 void GameStateManager::addState(std::unique_ptr<GameState> state) {
   const std::string name = state->getName();
   if (hasState(name)) {
-    GAMESTATE_ERROR("State with name " + name + " already exists");
-    throw std::runtime_error("Hammer Game Engine - State with name " + name +
-                             " already exists");
+    GAMESTATE_ERROR(std::format("State with name {} already exists", name));
+    throw std::runtime_error(std::format("Hammer Game Engine - State with name {} already exists", name));
   }
   // Move the state into the map as shared_ptr
   m_registeredStates[name] = std::shared_ptr<GameState>(state.release());
@@ -44,15 +44,15 @@ void GameStateManager::pushState(const std::string &stateName) {
     // CRITICAL: Enter the state BEFORE adding to active stack to prevent rendering before initialization
     auto newState = it->second;
     if (!newState->enter()) {
-      GAMESTATE_ERROR("Failed to enter state: " + stateName);
+      GAMESTATE_ERROR(std::format("Failed to enter state: {}", stateName));
       return;
     }
 
     // Now push the fully initialized state onto the stack
     m_activeStates.push_back(newState);
-    GAMESTATE_INFO("Pushed state: " + stateName);
+    GAMESTATE_INFO(std::format("Pushed state: {}", stateName));
   } else {
-    GAMESTATE_ERROR("State not found: " + stateName);
+    GAMESTATE_ERROR(std::format("State not found: {}", stateName));
   }
 }
 
@@ -92,11 +92,11 @@ void GameStateManager::update(float deltaTime) {
   }
 }
 
-void GameStateManager::render() {
+void GameStateManager::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Only render the current active state (top of stack)
   // Pause functionality preserves the previous state but doesn't render it
   if (!m_activeStates.empty()) {
-    m_activeStates.back()->render();
+    m_activeStates.back()->render(renderer, interpolationAlpha);
   }
 }
 
@@ -104,14 +104,6 @@ void GameStateManager::handleInput() {
   // Only the top state handles input
   if (!m_activeStates.empty()) {
     m_activeStates.back()->handleInput();
-  }
-}
-
-void GameStateManager::notifyResize(int newLogicalWidth,
-                                    int newLogicalHeight) {
-  // Notify the top state about window resize
-  if (!m_activeStates.empty()) {
-    m_activeStates.back()->onWindowResize(newLogicalWidth, newLogicalHeight);
   }
 }
 

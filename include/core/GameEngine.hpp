@@ -7,7 +7,7 @@
 #define GAME_ENGINE_HPP
 
 #include "managers/GameStateManager.hpp"
-#include <SDL3_image/SDL_image.h>
+#include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
 #include <chrono>
@@ -414,6 +414,22 @@ public:
    */
   bool isFullscreen() const noexcept { return m_isFullscreen; }
 
+  /**
+   * @brief Sets global pause state for all game managers
+   * @param paused true to pause all managers, false to resume
+   * @details Coordinates pause state across AIManager, ParticleManager,
+   *          CollisionManager, and PathfinderManager. When paused, managers
+   *          early-exit their update() methods, reducing CPU usage and
+   *          allowing ThreadSystem to go idle.
+   */
+  void setGlobalPause(bool paused);
+
+  /**
+   * @brief Gets the current global pause state
+   * @return true if game managers are globally paused
+   */
+  bool isGloballyPaused() const;
+
 private:
   /**
    * @brief Verifies VSync state matches the requested setting
@@ -423,6 +439,21 @@ private:
    *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
    */
   bool verifyVSyncState(bool requested);
+
+  /**
+   * @brief Handles window resize events from SDL
+   * @param event The SDL window resize event
+   * @details Updates window dimensions, renderer logical presentation,
+   *          reloads fonts, and notifies UIManager for repositioning.
+   */
+  void onWindowResize(const SDL_Event& event);
+
+  /**
+   * @brief Handles display change events from SDL
+   * @param event The SDL display event (orientation, added, removed, moved, scale)
+   * @details Normalizes UI scale, reloads fonts, and triggers UI repositioning.
+   */
+  void onDisplayChange(const SDL_Event& event);
   std::unique_ptr<GameStateManager> mp_gameStateManager{nullptr};
   std::unique_ptr<SDL_Window, decltype(&SDL_DestroyWindow)> mp_window{
       nullptr, SDL_DestroyWindow};
@@ -460,6 +491,9 @@ private:
   bool m_isWayland{false};
   bool m_usingSoftwareFrameLimiting{false};
   bool m_isFullscreen{false};
+
+  // Global pause state for coordinating all managers
+  std::atomic<bool> m_globallyPaused{false};
 
   // Multithreading synchronization
   std::mutex m_updateMutex{};

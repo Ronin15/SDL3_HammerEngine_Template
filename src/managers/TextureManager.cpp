@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <filesystem>
+#include <format>
 
 
 
@@ -24,14 +25,14 @@ bool TextureManager::load(const std::string& fileName,
 
   // Check if the fileName is a directory
   if (std::filesystem::exists(fileName) && std::filesystem::is_directory(fileName)) {
-    TEXTURE_INFO("Loading textures from directory: " + fileName);
+    TEXTURE_INFO(std::format("Loading textures from directory: {}", fileName));
 
     bool loadedAny = false;
     int texturesLoaded{0};
 
     try {
       // Iterate through all files in the directory
-      for (const auto& entry : std::filesystem::directory_iterator(fileName)) {
+      for (const auto& entry : std::filesystem::recursive_directory_iterator(fileName)) {
         if (!entry.is_regular_file()) {
           continue; // Skip directories and special files
         }
@@ -50,16 +51,16 @@ bool TextureManager::load(const std::string& fileName,
           std::string filename = filePath.stem().string(); // Get filename without extension
 
           // Create texture ID by combining the provided prefix and filename
-          std::string combinedID = textureID.empty() ? filename : textureID + "_" + filename;
+          std::string combinedID = textureID.empty() ? filename : std::format("{}_{}", textureID, filename);
 
           // Load the individual file as a texture with immediate RAII
           auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-              IMG_Load(fullPath.c_str()), SDL_DestroySurface);
+              SDL_LoadPNG(fullPath.c_str()), SDL_DestroySurface);
 
-          TEXTURE_INFO("Loading texture: " + fullPath);
+          TEXTURE_INFO(std::format("Loading texture: {}", fullPath));
 
           if (!surface) {
-            TEXTURE_ERROR("Could not load image: " + std::string(SDL_GetError()));
+            TEXTURE_ERROR(std::format("Could not load image: {}", SDL_GetError()));
             continue;
           }
 
@@ -69,22 +70,31 @@ bool TextureManager::load(const std::string& fileName,
           if (texture) {
             // Fix for tile rendering artifacts on macOS (Metal backend) by forcing nearest-pixel sampling.
             SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
-            //SDL_SetTextureBlendMode(texture.get(), SDL_BLENDMODE_ADD); //for lighting // this puts light on by default
-            m_textureMap[combinedID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
+
+            // Cache texture dimensions at load time to avoid per-frame SDL_GetTextureSize() calls
+            float texWidth{0.0f}, texHeight{0.0f};
+            SDL_GetTextureSize(texture.get(), &texWidth, &texHeight);
+
+            TextureData data;
+            data.texture = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
+            data.width = texWidth;
+            data.height = texHeight;
+            m_textureMap[combinedID] = std::move(data);
+
             loadedAny = true;
             texturesLoaded++;
           } else {
-            TEXTURE_ERROR("Could not create texture: " + std::string(SDL_GetError()));
+            TEXTURE_ERROR(std::format("Could not create texture: {}", SDL_GetError()));
           }
         }
       }
     } catch (const std::filesystem::filesystem_error& e) {
-      TEXTURE_ERROR("Filesystem error: " + std::string(e.what()));
+      TEXTURE_ERROR(std::format("Filesystem error: {}", e.what()));
     } catch (const std::exception& e) {
-      TEXTURE_ERROR("Error while loading textures: " + std::string(e.what()));
+      TEXTURE_ERROR(std::format("Error while loading textures: {}", e.what()));
     }
 
-    TEXTURE_INFO("Loaded " + std::to_string(texturesLoaded) + " textures from directory: " + fileName);
+    TEXTURE_INFO(std::format("Loaded {} textures from directory: {}", texturesLoaded, fileName));
 
     // Suppress unused variable warning in release builds
     (void)texturesLoaded;
@@ -94,12 +104,12 @@ bool TextureManager::load(const std::string& fileName,
 
   // Standard single file loading with immediate RAII
   auto surface = std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-      IMG_Load(fileName.c_str()), SDL_DestroySurface);
+      SDL_LoadPNG(fileName.c_str()), SDL_DestroySurface);
 
-  TEXTURE_INFO("Loaded texture: " + textureID);
+  TEXTURE_INFO(std::format("Loaded texture: {}", textureID));
 
   if (!surface) {
-    TEXTURE_ERROR("Could not load image: " + std::string(SDL_GetError()));
+    TEXTURE_ERROR(std::format("Could not load image: {}", SDL_GetError()));
       return false;
   }
 
@@ -109,12 +119,22 @@ bool TextureManager::load(const std::string& fileName,
   if (texture) {
     // Fix for tile rendering artifacts on macOS (Metal backend) by forcing nearest-pixel sampling.
     SDL_SetTextureScaleMode(texture.get(), SDL_SCALEMODE_NEAREST);
-    m_textureMap[textureID] = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
+
+    // Cache texture dimensions at load time to avoid per-frame SDL_GetTextureSize() calls
+    float texWidth{0.0f}, texHeight{0.0f};
+    SDL_GetTextureSize(texture.get(), &texWidth, &texHeight);
+
+    TextureData data;
+    data.texture = std::shared_ptr<SDL_Texture>(texture.release(), SDL_DestroyTexture);
+    data.width = texWidth;
+    data.height = texHeight;
+    m_textureMap[textureID] = std::move(data);
+
     m_texturesLoaded.store(true, std::memory_order_release);
     return true;
   }
 
-  TEXTURE_ERROR("Could not create texture: " + std::string(SDL_GetError()));
+  TEXTURE_ERROR(std::format("Could not create texture: {}", SDL_GetError()));
 
   return false;
 }
@@ -126,24 +146,25 @@ void TextureManager::draw(const std::string& textureID,
                           int height,
                           SDL_Renderer* p_renderer,
                           SDL_FlipMode flip) {
-  // Get actual texture dimensions for source rectangle
-  float texWidth, texHeight;
-  if (!SDL_GetTextureSize(m_textureMap[textureID].get(), &texWidth, &texHeight)) {
-    TEXTURE_ERROR("Failed to get texture size for '" + textureID + "': " + std::string(SDL_GetError()));
+  // Single map lookup - use cached dimensions instead of SDL_GetTextureSize()
+  auto it = m_textureMap.find(textureID);
+  if (it == m_textureMap.end()) {
+    TEXTURE_ERROR(std::format("Texture not found: '{}'", textureID));
     return;
   }
+  const TextureData& data = it->second;
 
   SDL_FRect srcRect;
   SDL_FRect destRect;
-  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};
   double angle = 0.0;
 
   // Inset source rectangle by a small amount to prevent texture bleeding
-  // Use actual texture dimensions, not destination dimensions
+  // Use cached texture dimensions, not destination dimensions
   srcRect.x = 0.1f;
   srcRect.y = 0.1f;
-  srcRect.w = texWidth - 0.2f;
-  srcRect.h = texHeight - 0.2f;
+  srcRect.w = data.width - 0.2f;
+  srcRect.h = data.height - 0.2f;
 
   // Destination rectangle uses requested width/height for scaling
   destRect.w = static_cast<float>(width);
@@ -151,42 +172,7 @@ void TextureManager::draw(const std::string& textureID,
   destRect.x = static_cast<float>(x);
   destRect.y = static_cast<float>(y);
 
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
-}
-
-void TextureManager::drawF(const std::string& textureID,
-                           float x,
-                           float y,
-                           int width,
-                           int height,
-                           SDL_Renderer* p_renderer,
-                           SDL_FlipMode flip) {
-  // Get actual texture dimensions for source rectangle
-  float texWidth, texHeight;
-  if (!SDL_GetTextureSize(m_textureMap[textureID].get(), &texWidth, &texHeight)) {
-    TEXTURE_ERROR("Failed to get texture size for '" + textureID + "': " + std::string(SDL_GetError()));
-    return;
-  }
-
-  SDL_FRect srcRect;
-  SDL_FRect destRect;
-  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
-  double angle = 0.0;
-
-  // Inset source rectangle by a small amount to prevent texture bleeding
-  // Use actual texture dimensions, not destination dimensions
-  srcRect.x = 0.1f;
-  srcRect.y = 0.1f;
-  srcRect.w = texWidth - 0.2f;
-  srcRect.h = texHeight - 0.2f;
-
-  // Destination rectangle uses requested width/height for scaling
-  destRect.w = static_cast<float>(width);
-  destRect.h = static_cast<float>(height);
-  destRect.x = x;  // Use float precision directly
-  destRect.y = y;  // Use float precision directly
-
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
+  SDL_RenderTextureRotated(p_renderer, data.texture.get(), &srcRect, &destRect, angle, &center, flip);
 }
 
 void TextureManager::drawTileF(const std::string& textureID,
@@ -196,6 +182,12 @@ void TextureManager::drawTileF(const std::string& textureID,
                                int height,
                                SDL_Renderer* p_renderer,
                                SDL_FlipMode flip) {
+  // Single map lookup
+  auto it = m_textureMap.find(textureID);
+  if (it == m_textureMap.end()) {
+    return;  // Silent fail for tiles - avoid log spam
+  }
+
   SDL_FRect srcRect;
   SDL_FRect destRect;
   SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};
@@ -209,52 +201,48 @@ void TextureManager::drawTileF(const std::string& textureID,
 
   destRect.w = static_cast<float>(width);
   destRect.h = static_cast<float>(height);
-  destRect.x = x;  // Use float precision directly
-  destRect.y = y;  // Use float precision directly
+  destRect.x = x;  // Use sub-pixel precision - SDL3/GPU handles smooth rendering
+  destRect.y = y;  // Use sub-pixel precision - SDL3/GPU handles smooth rendering
 
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
+  SDL_RenderTextureRotated(p_renderer, it->second.texture.get(), &srcRect, &destRect, angle, &center, flip);
+}
+
+void TextureManager::drawTileDirect(SDL_Texture* texture,
+                                    float x,
+                                    float y,
+                                    int width,
+                                    int height,
+                                    SDL_Renderer* p_renderer) {
+  if (!texture) {
+    return;  // Silent fail - caller should ensure valid texture
+  }
+
+  // Destination rectangle with requested dimensions
+  SDL_FRect destRect = {x, y, static_cast<float>(width), static_cast<float>(height)};
+
+  // Use nullptr for srcRect to sample entire texture - handles any texture size correctly
+  // SDL will scale the entire texture to fit destRect dimensions
+  SDL_RenderTexture(p_renderer, texture, nullptr, &destRect);
 }
 
 void TextureManager::drawFrame(const std::string& textureID,
-                               int x,
-                               int y,
+                               float x,
+                               float y,
                                int width,
                                int height,
                                int currentRow,
                                int currentFrame,
                                SDL_Renderer* p_renderer,
                                SDL_FlipMode flip) {
+  // Single map lookup
+  auto it = m_textureMap.find(textureID);
+  if (it == m_textureMap.end()) {
+    return;
+  }
+
   SDL_FRect srcRect;
   SDL_FRect destRect;
-  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
-  double angle = 0.0;
-
-  // Inset source rectangle to prevent texture bleeding
-  srcRect.x = static_cast<float>(width * currentFrame) + 0.1f;
-  srcRect.y = static_cast<float>(height * (currentRow - 1)) + 0.1f;
-  srcRect.w = static_cast<float>(width) - 0.2f;
-  srcRect.h = static_cast<float>(height) - 0.2f;
-
-  destRect.w = static_cast<float>(width);
-  destRect.h = static_cast<float>(height);
-  destRect.x = static_cast<float>(x);
-  destRect.y = static_cast<float>(y);
-
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
-}
-
-void TextureManager::drawFrameF(const std::string& textureID,
-                                float x,
-                                float y,
-                                int width,
-                                int height,
-                                int currentRow,
-                                int currentFrame,
-                                SDL_Renderer* p_renderer,
-                                SDL_FlipMode flip) {
-  SDL_FRect srcRect;
-  SDL_FRect destRect;
-  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};  // Center point in the middle of the image
+  SDL_FPoint center = {static_cast<float>(width) / 2.0f, static_cast<float>(height) / 2.0f};
   double angle = 0.0;
 
   // Use exact source pixel bounds for sprite frames to avoid subpixel sampling jitter
@@ -270,7 +258,7 @@ void TextureManager::drawFrameF(const std::string& textureID,
   destRect.x = x;  // Direct float assignment
   destRect.y = y;  // Direct float assignment
 
-  SDL_RenderTextureRotated(p_renderer, m_textureMap[textureID].get(), &srcRect, &destRect, angle, &center, flip);
+  SDL_RenderTextureRotated(p_renderer, it->second.texture.get(), &srcRect, &destRect, angle, &center, flip);
 }
 
 void TextureManager::drawParallax(const std::string& textureID,
@@ -278,19 +266,17 @@ void TextureManager::drawParallax(const std::string& textureID,
                     int y,
                     int scroll,
                     SDL_Renderer* p_renderer) {
-  // Verify the texture exists
+  // Verify the texture exists - single lookup
   auto it = m_textureMap.find(textureID);
   if (it == m_textureMap.end()) {
-    TEXTURE_WARN("Texture not found: " + textureID);
+    TEXTURE_WARN(std::format("Texture not found: {}", textureID));
     return;
   }
+  const TextureData& data = it->second;
 
-  // Get the texture dimensions
-  float width, height;
-  if (!SDL_GetTextureSize(it->second.get(), &width, &height)) {
-    TEXTURE_ERROR("Failed to get texture size: " + std::string(SDL_GetError()));
-    return;
-  }
+  // Use cached dimensions instead of SDL_GetTextureSize()
+  float width = data.width;
+  float height = data.height;
 
   // Calculate scroll offset (make sure it wraps around)
   scroll = scroll % static_cast<int>(width);
@@ -323,12 +309,12 @@ void TextureManager::drawParallax(const std::string& textureID,
   destRect2.h = height;
 
   // Draw the two parts of the parallax background without rotation
-  SDL_RenderTexture(p_renderer, it->second.get(), &srcRect1, &destRect1);
-  SDL_RenderTexture(p_renderer, it->second.get(), &srcRect2, &destRect2);
+  SDL_RenderTexture(p_renderer, data.texture.get(), &srcRect1, &destRect1);
+  SDL_RenderTexture(p_renderer, data.texture.get(), &srcRect2, &destRect2);
 }
 
 void TextureManager::clearFromTexMap(const std::string& textureID) {
-    TEXTURE_INFO("Cleared : " + textureID + " texture");
+    TEXTURE_INFO(std::format("Cleared : {} texture", textureID));
   m_textureMap.erase(textureID);
 }
 
@@ -340,7 +326,7 @@ std::shared_ptr<SDL_Texture> TextureManager::getTexture(const std::string& textu
   // Check if the texture exists in the map
   auto it = m_textureMap.find(textureID);
   if (it != m_textureMap.end()) {
-    return it->second;
+    return it->second.texture;
   }
 
   // Return nullptr if the texture is not found
@@ -358,7 +344,7 @@ std::shared_ptr<SDL_Texture> TextureManager::getOrCreateDynamicTexture(const std
   // Check if texture already exists in cache
   auto it = m_textureMap.find(textureID);
   if (it != m_textureMap.end() && !forceRecreate) {
-    return it->second;
+    return it->second.texture;
   }
 
   // Remove old texture if recreating
@@ -367,18 +353,21 @@ std::shared_ptr<SDL_Texture> TextureManager::getOrCreateDynamicTexture(const std
   }
 
   // Create new dynamic texture
-  SDL_Texture* rawTexture = SDL_CreateTexture(p_renderer, SDL_PIXELFORMAT_RGBA8888, 
+  SDL_Texture* rawTexture = SDL_CreateTexture(p_renderer, SDL_PIXELFORMAT_RGBA8888,
                                              SDL_TEXTUREACCESS_TARGET, width, height);
   if (!rawTexture) {
-    TEXTURE_ERROR("Failed to create dynamic texture: " + textureID);
+    TEXTURE_ERROR(std::format("Failed to create dynamic texture: {}", textureID));
     return nullptr;
   }
 
-  // Wrap in shared_ptr and add to cache
-  std::shared_ptr<SDL_Texture> texture(rawTexture, SDL_DestroyTexture);
-  m_textureMap[textureID] = texture;
+  // Wrap in shared_ptr and add to cache with dimensions
+  TextureData data;
+  data.texture = std::shared_ptr<SDL_Texture>(rawTexture, SDL_DestroyTexture);
+  data.width = static_cast<float>(width);
+  data.height = static_cast<float>(height);
+  m_textureMap[textureID] = std::move(data);
 
-  return texture;
+  return m_textureMap[textureID].texture;
 }
 
 void TextureManager::clean() {

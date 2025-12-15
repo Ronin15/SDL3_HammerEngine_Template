@@ -5,14 +5,12 @@
 
 #include "managers/InputManager.hpp"
 #include "core/Logger.hpp"
-#include "core/GameEngine.hpp"
-#include "managers/UIManager.hpp"
-#include "managers/FontManager.hpp"
 #include "SDL3/SDL_gamepad.h"
 #include "SDL3/SDL_joystick.h"
 #include "utils/Vector2D.hpp"
-#include <memory>
 #include <algorithm>
+#include <format>
+#include <memory>
 
 // Removed global pointer - now managed as member variable
 
@@ -42,13 +40,8 @@ void InputManager::initializeGamePad() {
     return;
   }
 
-  // Initialize gamepad subsystem
-  if (!SDL_InitSubSystem(SDL_INIT_GAMEPAD)) {
-    INPUT_CRITICAL("Unable to initialize gamepad subsystem: " + std::string(SDL_GetError()));
-    return;
-  }
-  
-  // Mark that we successfully initialized the gamepad subsystem
+  // Gamepad subsystem is initialized by GameEngine::init() with SDL_INIT_GAMEPAD
+  // Just detect and open available gamepads here
 
   // Get all available gamepads with RAII management
   int numGamepads = 0;
@@ -56,19 +49,19 @@ void InputManager::initializeGamePad() {
       SDL_GetGamepads(&numGamepads), SDL_free);
 
   if (!gamepadIDs) {
-    INPUT_ERROR("Failed to get gamepad IDs: " + std::string(SDL_GetError()));
+    INPUT_ERROR(std::format("Failed to get gamepad IDs: {}", SDL_GetError()));
     return;
   }
 
   if (numGamepads > 0) {
-    INPUT_INFO("Number of Game Pads detected: " + std::to_string(numGamepads));
+    INPUT_INFO(std::format("Number of Game Pads detected: {}", numGamepads));
     // Open all available gamepads
     for (int i = 0; i < numGamepads; i++) {
       if (SDL_IsGamepad(gamepadIDs[i])) {
         SDL_Gamepad* gamepad = SDL_OpenGamepad(gamepadIDs[i]);
         if (gamepad) {
           m_joysticks.push_back(gamepad);
-          INPUT_INFO("Gamepad connected: " + std::string(SDL_GetGamepadName(gamepad)));
+          INPUT_INFO(std::format("Gamepad connected: {}", SDL_GetGamepadName(gamepad)));
 
           // Add default joystick values
           m_joystickValues.push_back(std::make_pair(std::make_unique<Vector2D>(0, 0), std::make_unique<Vector2D>(0, 0)));
@@ -81,16 +74,15 @@ void InputManager::initializeGamePad() {
           }
           m_buttonStates.push_back(tempButtons);
         } else {
-          INPUT_ERROR("Could not open gamepad: " + std::string(SDL_GetError()));
+          INPUT_ERROR(std::format("Could not open gamepad: {}", SDL_GetError()));
           return;
         }
       }
     }
   } else {
     INPUT_INFO("No gamepads found");
-    // Still need to quit the subsystem we initialized
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    return; //return without setting m_gamePadInitialized to true.
+    // Subsystem stays initialized - SDL_Quit() will clean up all subsystems
+    return;
   }
 
   m_gamePadInitialized = true;
@@ -100,11 +92,6 @@ void InputManager::reset() {
   m_mouseButtonStates[LEFT] = false;
   m_mouseButtonStates[RIGHT] = false;
   m_mouseButtonStates[MIDDLE] = false;
-}
-
-void InputManager::setWindowResizeCallback(std::function<void(int, int)> callback) {
-  m_onWindowResizeCallback = std::move(callback);
-  INPUT_INFO("Window resize callback registered");
 }
 
 bool InputManager::isKeyDown(SDL_Scancode key) const {
@@ -180,71 +167,9 @@ void InputManager::clearFrameInput() {
 
 
 void InputManager::update() {
-  // Clear previous frame's pressed keys
-  m_pressedThisFrame.clear();
-
-  // Cache GameEngine reference for better performance
-  GameEngine& gameEngine = GameEngine::Instance();
-
-  SDL_Event event;
-  while (SDL_PollEvent(&event)) {
-    // Convert window coordinates to logical coordinates for all mouse events
-    SDL_ConvertEventToRenderCoordinates(gameEngine.getRenderer(), &event);
-
-    switch (event.type) {
-      case SDL_EVENT_QUIT:
-        INPUT_INFO("Shutting down! {}===]>");
-        gameEngine.setRunning(false);
-        break;
-
-      case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-        onGamepadAxisMove(event);
-        break;
-
-      case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-        onGamepadButtonDown(event);
-        break;
-
-      case SDL_EVENT_GAMEPAD_BUTTON_UP:
-        onGamepadButtonUp(event);
-        break;
-
-      case SDL_EVENT_MOUSE_MOTION:
-        onMouseMove(event);
-        break;
-
-      case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        onMouseButtonDown(event);
-        break;
-
-      case SDL_EVENT_MOUSE_BUTTON_UP:
-        onMouseButtonUp(event);
-        break;
-
-      case SDL_EVENT_KEY_DOWN:
-        onKeyDown(event);
-        break;
-
-      case SDL_EVENT_KEY_UP:
-        onKeyUp(event);
-        break;
-
-      case SDL_EVENT_WINDOW_RESIZED:
-        onWindowResize(event);
-        break;
-
-      case SDL_EVENT_DISPLAY_ORIENTATION:
-      case SDL_EVENT_DISPLAY_ADDED:
-      case SDL_EVENT_DISPLAY_REMOVED:
-      case SDL_EVENT_DISPLAY_MOVED:
-      case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
-        onDisplayChange(event);
-        break;
-
-      default:
-        break;
-    }
-  }
+  // SDL event polling moved to GameEngine::handleEvents()
+  // Keep this method for API consistency with other managers
+  clearFrameInput();
 }
 
 void InputManager::onKeyDown(const SDL_Event& event) {
@@ -336,10 +261,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 0) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving RIGHT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving RIGHT!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setX(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving LEFT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving LEFT!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].first->setX(0);
     }
@@ -349,10 +274,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 1) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving DOWN!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving DOWN!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].first->setY(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving UP!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving UP!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].first->setY(0);
     }
@@ -362,10 +287,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 2) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving RIGHT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving RIGHT!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setX(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving LEFT!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving LEFT!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].second->setX(0);
     }
@@ -375,10 +300,10 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   if (event.gaxis.axis == 3) {
     if (event.gaxis.value > m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving DOWN!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving DOWN!", whichOne, axisName));
     } else if (event.gaxis.value < -m_joystickDeadZone) {
       m_joystickValues[whichOne].second->setY(-1);
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " moving UP!");
+      INPUT_DEBUG(std::format("Gamepad {} - {} moving UP!", whichOne, axisName));
     } else {
       m_joystickValues[whichOne].second->setY(0);
     }
@@ -387,14 +312,14 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
   // Process left trigger (L2/LT)
   if (event.gaxis.axis == 4) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " pressed: " + std::to_string(event.gaxis.value));
+      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
     }
   }
 
   // Process right trigger (R2/RT)
   if (event.gaxis.axis == 5) {
     if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " - " + axisName + " pressed: " + std::to_string(event.gaxis.value));
+      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
     }
   }
 }
@@ -442,8 +367,8 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
   }
 
   // Debug message for button press with button name
-  INPUT_DEBUG("Gamepad " + std::to_string(whichOne) + " Button '" + buttonName + "' (" +
-              std::to_string(static_cast<int>(event.gbutton.button)) + ") pressed!");
+  INPUT_DEBUG(std::format("Gamepad {} Button '{}' ({}) pressed!",
+                          whichOne, buttonName, static_cast<int>(event.gbutton.button)));
 }
 
 void InputManager::onGamepadButtonUp(const SDL_Event& event) {
@@ -468,160 +393,49 @@ void InputManager::onGamepadButtonUp(const SDL_Event& event) {
   m_buttonStates[whichOne][event.gbutton.button] = false;
 }
 
-void InputManager::onWindowResize(const SDL_Event& event) {
-  // Centralized resize pipeline:
-  // 1) Update GameEngine window size (authoritative source)
-  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others: native)
-  // 3) Reload fonts via FontManager for new display characteristics
-  // 4) UI scales from logical size; UIManager layout recalculates on next render
-
-  // Cache GameEngine reference for better performance
-  GameEngine& gameEngine = GameEngine::Instance();
-  
-  // Update GameEngine with new window dimensions
-  int newWidth = event.window.data1;
-  int newHeight = event.window.data2;
-  
-  INPUT_INFO("Window resized to: " + std::to_string(newWidth) + "x" + std::to_string(newHeight));
-  
-  // Update GameEngine window dimensions
-  gameEngine.setWindowSize(newWidth, newHeight);
-  
-  // Use native resolution rendering (all platforms) for crisp, sharp text
-  // This matches the initialization approach in GameEngine and ensures
-  // consistent rendering whether in windowed or fullscreen mode
-  int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(gameEngine.getWindow(), &actualWidth, &actualHeight)) {
-    INPUT_ERROR("Failed to get actual window pixel size: " + std::string(SDL_GetError()));
-    actualWidth = newWidth;
-    actualHeight = newHeight;
-  }
-
-  // Update renderer to native resolution (no scaling)
-  SDL_SetRenderLogicalPresentation(gameEngine.getRenderer(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
-
-  // Update GameEngine's cached logical dimensions
-  gameEngine.setLogicalSize(actualWidth, actualHeight);
-
-  INPUT_INFO("Updated to native resolution: " + std::to_string(actualWidth) + "x" + std::to_string(actualHeight));
-   
-   // Reload fonts for new display configuration
-   INPUT_INFO("Reloading fonts for display configuration change...");
-   FontManager& fontManager = FontManager::Instance();
-   if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
-     INPUT_ERROR("Failed to reinitialize font system after window resize");
-   } else {
-     INPUT_INFO("Font system reinitialized successfully after window resize");
-   }
-
-   // Notify registered callback (typically UIManager) for UI component repositioning
-   if (m_onWindowResizeCallback) {
-     m_onWindowResizeCallback(gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
-     INPUT_INFO("Window resize callback invoked for new window size");
-   }
-
-   // Notify active game state about resize for UI layout recalculation
-   if (gameEngine.getGameStateManager()) {
-     gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),
-                                                     gameEngine.getLogicalHeight());
-     INPUT_INFO("Notified game state about window resize");
-   }
-}
-
-void InputManager::onDisplayChange(const SDL_Event& event) {
-  // Centralized display-change pipeline:
-  // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
-  // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
-  // - Force UI layout refresh and reload fonts using GameEngine logical size
-
-  // Cache GameEngine reference for better performance
-  GameEngine& gameEngine = GameEngine::Instance();
-  
-  const char* eventName = "Unknown";
-  switch (event.type) {
-    case SDL_EVENT_DISPLAY_ORIENTATION:
-      eventName = "Orientation Change";
-      break;
-    case SDL_EVENT_DISPLAY_ADDED:
-      eventName = "Display Added";
-      break;
-    case SDL_EVENT_DISPLAY_REMOVED:
-      eventName = "Display Removed";
-      break;
-    case SDL_EVENT_DISPLAY_MOVED:
-      eventName = "Display Moved";
-      break;
-    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
-      eventName = "Content Scale Changed";
-      break;
-  }
-  
-  INPUT_INFO("Display event detected: " + std::string(eventName));
-  
-  // On Apple platforms, display changes often invalidate font textures
-  // due to different DPI scaling or context changes
-  #ifdef __APPLE__
-  INPUT_INFO("Apple platform: Reinitializing font system due to display change...");
-  #else
-  INPUT_INFO("Non-Apple platform: Display change handled by existing window resize logic");
-  #endif
-
-  // Update UI systems with consistent scaling and reload fonts ONCE using logical dimensions
-  try {
-    UIManager& uiManager = UIManager::Instance();
-    uiManager.setGlobalScale(1.0f);
-    INPUT_INFO("Updated UIManager with consistent 1.0 scale");
-
-    uiManager.cleanupForStateTransition();
-
-    FontManager& fontManager = FontManager::Instance();
-    if (!fontManager.reloadFontsForDisplay("res/fonts", gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight())) {
-      INPUT_WARN("Failed to reload fonts for new display size");
-    } else {
-      INPUT_INFO("Successfully reloaded fonts for new display size");
-    }
-
-    // Notify active game state about display change for UI layout recalculation
-    if (gameEngine.getGameStateManager()) {
-      gameEngine.getGameStateManager()->notifyResize(gameEngine.getLogicalWidth(),
-                                                      gameEngine.getLogicalHeight());
-      INPUT_INFO("Notified game state about display change");
-    }
-  } catch (const std::exception& e) {
-    INPUT_ERROR("Error updating UI scaling after window resize: " + std::string(e.what()));
-  }
-}
-
 void InputManager::clean() {
   if (m_isShutdown) {
     return;
   }
 
+  // Don't close gamepads here - closeGamepads() must be called
+  // right before SDL_Quit() for proper cleanup ordering
   if(m_gamePadInitialized) {
-    int gamepadCount{0};
-    // Close all gamepads if detected
-    for (auto& gamepad : m_joysticks) {
-      if (gamepad) {
-        SDL_CloseGamepad(gamepad);
-        gamepadCount++;
-      }
-    }
-
-    m_joysticks.clear();
+    // Just clear our data, not the gamepad handles
     m_joystickValues.clear();
+    m_buttonStates.clear();
     m_gamePadInitialized = false;
-    SDL_QuitSubSystem(SDL_INIT_GAMEPAD);
-    INPUT_INFO(std::to_string(gamepadCount) + " gamepads freed");
-
+    INPUT_INFO("Gamepad data cleared (handles preserved for later cleanup)");
   } else {
     INPUT_INFO("No gamepads to free");
   }
 
-  // Clear all button states and mouse states
-  m_buttonStates.clear();
+  // Clear mouse states
   m_mouseButtonStates.clear();
 
   // Set shutdown flag
   m_isShutdown = true;
   INPUT_INFO("InputManager resources cleaned");
+}
+
+void InputManager::closeGamepads() {
+  // Close gamepad handles - must be called before SDL_Quit
+  // Pump events first to ensure SDL's internal gamepad state is synchronized
+  SDL_PumpEvents();
+
+  size_t count = m_joysticks.size();
+  for (auto& gamepad : m_joysticks) {
+    if (gamepad) {
+      SDL_CloseGamepad(gamepad);
+      gamepad = nullptr;
+    }
+  }
+  m_joysticks.clear();
+
+  // Don't call SDL_QuitSubSystem - SDL_Quit() handles subsystem cleanup
+  // Gamepad was initialized with SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)
+
+  if (count > 0) {
+    INPUT_INFO(std::format("Closed {} gamepad handles", count));
+  }
 }

@@ -11,6 +11,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/TextureManager.hpp"
 #include <algorithm>
+#include <format>
 
 bool UIManager::init() {
   if (m_isShutdown) {
@@ -51,21 +52,15 @@ bool UIManager::init() {
   const auto& gameEngine = GameEngine::Instance();
   m_currentLogicalWidth = gameEngine.getLogicalWidth();
   m_currentLogicalHeight = gameEngine.getLogicalHeight();
-  UI_INFO("Initialized logical dimensions: " + std::to_string(m_currentLogicalWidth) +
-          "x" + std::to_string(m_currentLogicalHeight));
+  UI_INFO(std::format("Initialized logical dimensions: {}x{}",
+                      m_currentLogicalWidth, m_currentLogicalHeight));
 
   // Calculate and set resolution-aware UI scale (1920x1080 baseline, capped at 1.0)
   m_globalScale = calculateOptimalScale(m_currentLogicalWidth, m_currentLogicalHeight);
-  UI_INFO("UI scale set to " + std::to_string(m_globalScale) +
-          " for resolution " + std::to_string(m_currentLogicalWidth) + "x" +
-          std::to_string(m_currentLogicalHeight));
+  UI_INFO(std::format("UI scale set to {} for resolution {}x{}",
+                      m_globalScale, m_currentLogicalWidth, m_currentLogicalHeight));
 
-  // Register callback with InputManager for window resize events
-  InputManager::Instance().setWindowResizeCallback(
-      [this](int width, int height) {
-        this->onWindowResize(width, height);
-      });
-  UI_INFO("Registered window resize callback with InputManager");
+  // Note: UIManager::onWindowResize() is called directly by InputManager when window resizes
 
   return true;
 }
@@ -79,23 +74,31 @@ void UIManager::update(float deltaTime) {
 
   // Note: Window resize is now event-driven via onWindowResize(), not polled every frame
 
-  // Process data bindings
-  for (auto const& [id, component] : m_components) {
-      if (component) {
-          // Handle text bindings
-          if (component->m_textBinding) {
-              setText(id, component->m_textBinding());
-          }
-          // Handle list bindings
-          if (component->m_listBinding) {
-              auto newListItems = component->m_listBinding();
-              if (component->m_listItems.size() != newListItems.size() || 
-                  !std::equal(component->m_listItems.begin(), component->m_listItems.end(), newListItems.begin())) {
-                  component->m_listItems = newListItems;
-                  component->m_listItemsDirty = true; // Mark as dirty when changed by binding
-              }
-          }
-      }
+  // PERFORMANCE: Only iterate components if there are active bindings
+  // This skips the O(n) loop entirely when no bindings exist
+  if (m_activeBindingCount > 0) {
+    // Process data bindings - ONLY for visible components to avoid unnecessary work
+    for (auto const& [id, component] : m_components) {
+        if (component && component->m_visible) {
+            // Handle text bindings
+            if (component->m_textBinding) {
+                setText(id, component->m_textBinding());
+            }
+            // Handle list bindings (zero-allocation: uses reusable buffers)
+            if (component->m_listBinding) {
+                component->m_listBindingBuffer.clear();  // Reuse capacity, no deallocation
+                component->m_listSortBuffer.clear();     // Reuse sort buffer capacity
+                component->m_listBinding(component->m_listBindingBuffer, component->m_listSortBuffer);
+                if (component->m_listItems.size() != component->m_listBindingBuffer.size() ||
+                    !std::equal(component->m_listItems.begin(), component->m_listItems.end(),
+                                component->m_listBindingBuffer.begin())) {
+                    component->m_listItems = std::move(component->m_listBindingBuffer);
+                    component->m_listBindingBuffer.clear();  // Reset for next use
+                    component->m_listItemsDirty = true;
+                }
+            }
+        }
+    }
   }
 
   // Clear frame-specific state
@@ -105,17 +108,23 @@ void UIManager::update(float deltaTime) {
   // Handle input (may need component access)
   handleInput();
 
-  // Update animations (has its own locking)
-  updateAnimations(deltaTime);
+  // PERFORMANCE: Skip animation update if no animations exist
+  if (!m_animations.empty()) {
+    updateAnimations(deltaTime);
+  }
 
   // Update tooltips
   updateTooltips(deltaTime);
 
-  // Update event logs
-  updateEventLogs(deltaTime);
+  // PERFORMANCE: Skip event log update if no event logs exist
+  if (!m_eventLogStates.empty()) {
+    updateEventLogs(deltaTime);
+  }
 
-  // Execute any deferred callbacks now that the main update/input loop is complete
-  executeDeferredCallbacks();
+  // PERFORMANCE: Skip callback execution if no callbacks queued
+  if (!m_deferredCallbacks.empty()) {
+    executeDeferredCallbacks();
+  }
 }
 
 void UIManager::executeDeferredCallbacks() {
@@ -142,8 +151,8 @@ void UIManager::render(SDL_Renderer *renderer) {
     return;
   }
 
-  // Render components in z-order
-  auto sortedComponents = getSortedComponents();
+  // Render components in z-order (use const ref to avoid copy)
+  const auto& sortedComponents = getSortedComponents();
   for (const auto &component : sortedComponents) {
     if (component && component->m_visible) {
       renderComponent(renderer, component);
@@ -165,12 +174,6 @@ void UIManager::render(SDL_Renderer *renderer) {
   }
 }
 
-void UIManager::render() {
-  if (m_cachedRenderer) {
-    render(m_cachedRenderer);
-  }
-}
-
 void UIManager::clean() {
   if (m_isShutdown) {
     return;
@@ -183,7 +186,7 @@ void UIManager::clean() {
   m_isShutdown = true;
 }
 
-std::vector<std::shared_ptr<UIComponent>> UIManager::getSortedComponents() const {
+const std::vector<std::shared_ptr<UIComponent>>& UIManager::getSortedComponents() const {
   // Performance optimization: Only rebuild sorted list when components added/removed/z-order changed
   if (m_sortedComponentsDirty) {
     m_sortedComponentsCache.clear();
@@ -489,6 +492,18 @@ void UIManager::refreshAllComponentThemes() const {
 void UIManager::removeComponent(const std::string &id) {
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
+  // BUGFIX: Decrement binding count if component has active bindings
+  // This prevents m_activeBindingCount from drifting when bound components are removed
+  auto it = m_components.find(id);
+  if (it != m_components.end() && it->second) {
+    if (it->second->m_textBinding) {
+      --m_activeBindingCount;
+    }
+    if (it->second->m_listBinding) {
+      --m_activeBindingCount;
+    }
+  }
+
   m_components.erase(id);
   invalidateComponentCache();
 
@@ -615,15 +630,27 @@ void UIManager::bindText(const std::string &id,
                          std::function<std::string()> binding) {
   auto component = getComponent(id);
   if (component) {
+    // PERFORMANCE: Track binding count for early exit optimization in update()
+    if (!component->m_textBinding && binding) {
+      ++m_activeBindingCount;
+    } else if (component->m_textBinding && !binding) {
+      --m_activeBindingCount;
+    }
     component->m_textBinding = binding;
   }
 }
 
 void UIManager::bindList(
     const std::string &id,
-    std::function<std::vector<std::string>()> binding) {
+    std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> binding) {
   auto component = getComponent(id);
   if (component) {
+    // PERFORMANCE: Track binding count for early exit optimization in update()
+    if (!component->m_listBinding && binding) {
+      ++m_activeBindingCount;
+    } else if (component->m_listBinding && !binding) {
+      --m_activeBindingCount;
+    }
     component->m_listBinding = binding;
   }
 }
@@ -1050,6 +1077,14 @@ void UIManager::centerTitleInContainer(const std::string &titleID,
     // Center the auto-sized title within the container
     int titleWidth = component->m_bounds.width;
     component->m_bounds.x = containerX + (containerWidth - titleWidth) / 2;
+  }
+}
+
+void UIManager::setLabelAlignment(const std::string &labelID,
+                                  UIAlignment alignment) {
+  auto component = getComponent(labelID);
+  if (component && component->m_type == UIComponentType::LABEL) {
+    component->m_style.textAlign = alignment;
   }
 }
 
@@ -1650,8 +1685,9 @@ void UIManager::resetToDefaultTheme() {
 void UIManager::cleanupForStateTransition() {
   // Comprehensive cleanup for safe state transitions
 
-  // Clear all UI components
+  // Clear all UI components (reset binding count since we're clearing everything)
   m_components.clear();
+  m_activeBindingCount = 0;
   invalidateComponentCache();
 
   // Clear value/text caches
@@ -1767,9 +1803,9 @@ void UIManager::handleInput() {
   // Clear previous hover state
   m_hoveredComponents.clear();
 
-  // Process components in reverse z-order (top to bottom)
+  // Process components in reverse z-order (top to bottom, const ref avoids copy)
   bool mouseHandled = false;
-  auto sortedComponents = getSortedComponents();
+  const auto& sortedComponents = getSortedComponents();
   for (auto it = sortedComponents.rbegin(); it != sortedComponents.rend(); ++it) {
     auto& component = *it;
     if (!component || !component->m_visible || !component->m_enabled) {
@@ -2825,8 +2861,6 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
 
   // Apply content padding (scaled for resolution-aware sizing)
   int scaledContentPadding = static_cast<int>(component->m_contentPadding * m_globalScale);
-  int totalWidth = contentWidth + (scaledContentPadding * 2);
-  int totalHeight = contentHeight + (scaledContentPadding * 2);
 
   // Implement grow-only behavior for lists to prevent shrinking
   if (component->m_type == UIComponentType::LIST) {
@@ -2839,6 +2873,7 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
 
   // Apply size constraints - ONLY modify width/height, preserve x/y position
   if (component->m_autoWidth) {
+    int totalWidth = contentWidth + (scaledContentPadding * 2);
     int oldWidth = component->m_bounds.width;
     component->m_bounds.width =
         std::max(component->m_minBounds.width,
@@ -2858,6 +2893,7 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
   }
 
   if (component->m_autoHeight) {
+    int totalHeight = contentHeight + (scaledContentPadding * 2);
     component->m_bounds.height =
         std::max(component->m_minBounds.height,
                  std::min(totalHeight, component->m_maxBounds.height));
@@ -3120,14 +3156,13 @@ void UIManager::createCenteredButton(const std::string &id, int offsetY,
 void UIManager::onWindowResize(int newLogicalWidth, int newLogicalHeight) {
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
-  UI_DEBUG("Window resized: " + std::to_string(newLogicalWidth) + "x" +
-           std::to_string(newLogicalHeight) + " - auto-repositioning UI components");
+  UI_DEBUG(std::format("Window resized: {}x{} - auto-repositioning UI components",
+                       newLogicalWidth, newLogicalHeight));
 
   // Recalculate UI scale for new resolution (1920x1080 baseline, capped at 1.0)
   m_globalScale = calculateOptimalScale(newLogicalWidth, newLogicalHeight);
-  UI_INFO("UI scale updated to " + std::to_string(m_globalScale) +
-          " for new resolution " + std::to_string(newLogicalWidth) + "x" +
-          std::to_string(newLogicalHeight));
+  UI_INFO(std::format("UI scale updated to {} for new resolution {}x{}",
+                      m_globalScale, newLogicalWidth, newLogicalHeight));
 
   repositionAllComponents(newLogicalWidth, newLogicalHeight);
   m_currentLogicalWidth = newLogicalWidth;
@@ -3154,9 +3189,12 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
 
   // Update dimensions if fixed sizes specified, applying global scale for resolution adaptation
   // Special cases:
+  //   widthPercent/heightPercent > 0 = percentage of window dimension (takes precedence)
   //   -1 = use full window dimension
   //   < -1 = use full window dimension minus the absolute value (for margins)
-  if (pos.fixedWidth == -1) {
+  if (pos.widthPercent > 0.0f && pos.widthPercent <= 1.0f) {
+    bounds.width = static_cast<int>(width * pos.widthPercent);  // Percentage-based width
+  } else if (pos.fixedWidth == -1) {
     bounds.width = width;
   } else if (pos.fixedWidth < -1) {
     bounds.width = width + static_cast<int>(pos.fixedWidth * m_globalScale);  // Scale negative margin
@@ -3164,7 +3202,9 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
     bounds.width = static_cast<int>(pos.fixedWidth * m_globalScale);  // Scale fixed width
   }
 
-  if (pos.fixedHeight == -1) {
+  if (pos.heightPercent > 0.0f && pos.heightPercent <= 1.0f) {
+    bounds.height = static_cast<int>(height * pos.heightPercent);  // Percentage-based height
+  } else if (pos.fixedHeight == -1) {
     bounds.height = height;
   } else if (pos.fixedHeight < -1) {
     bounds.height = height + static_cast<int>(pos.fixedHeight * m_globalScale);  // Scale negative margin
@@ -3200,8 +3240,14 @@ void UIManager::applyPositioning(std::shared_ptr<UIComponent> component,
     break;
 
   case UIPositionMode::TOP_ALIGNED:
-    // Top edge + offsetY, left aligned at offsetX
+    // Top-left: x = offsetX, y = offsetY
     bounds.x = scaledOffsetX;
+    bounds.y = scaledOffsetY;
+    break;
+
+  case UIPositionMode::TOP_RIGHT:
+    // Top-right: x = right - width - offsetX, y = offsetY
+    bounds.x = width - bounds.width - scaledOffsetX;
     bounds.y = scaledOffsetY;
     break;
 

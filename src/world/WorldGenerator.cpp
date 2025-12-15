@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cmath>
 #include <numeric>
+#include <format>
 
 namespace HammerEngine {
 
@@ -63,9 +64,8 @@ float WorldGenerator::PerlinNoise::noise(float x, float y) const {
 std::unique_ptr<WorldData>
 WorldGenerator::generateWorld(const WorldGenerationConfig &config,
                               const WorldGenerationProgressCallback& progressCallback) {
-  WORLD_MANAGER_INFO("Generating world: " + std::to_string(config.width) + "x" +
-                     std::to_string(config.height) + " with seed " +
-                     std::to_string(config.seed));
+  WORLD_MANAGER_INFO(std::format("Generating world: {}x{} with seed {}",
+                                 config.width, config.height, config.seed));
 
   // Report initial progress
   if (progressCallback) {
@@ -101,9 +101,16 @@ WorldGenerator::generateWorld(const WorldGenerationConfig &config,
 
   distributeObstacles(*world, config);
 
-  // Progress: Obstacles distributed (90%)
+  // Progress: Obstacles distributed (80%)
   if (progressCallback) {
-    progressCallback(90.0f, "Distributing obstacles...");
+    progressCallback(80.0f, "Distributing obstacles...");
+  }
+
+  distributeDecorations(*world, config);
+
+  // Progress: Decorations distributed (90%)
+  if (progressCallback) {
+    progressCallback(90.0f, "Adding decorations...");
   }
 
   calculateInitialResources(*world);
@@ -122,7 +129,7 @@ std::unique_ptr<WorldData> WorldGenerator::generateNoiseMaps(
     std::vector<std::vector<float>> &elevationMap,
     std::vector<std::vector<float>> &humidityMap) {
   auto world = std::make_unique<WorldData>();
-  world->worldId = "generated_" + std::to_string(config.seed);
+  world->worldId = std::format("generated_{}", config.seed);
   world->grid.resize(config.height, std::vector<Tile>(config.width));
 
   elevationMap.resize(config.height, std::vector<float>(config.width));
@@ -276,11 +283,28 @@ void WorldGenerator::createWaterBodies(
 
 void WorldGenerator::distributeObstacles(WorldData &world,
                                          const WorldGenerationConfig &config) {
-  int height = world.grid.size();
-  int width = world.grid[0].size();
+  int height = static_cast<int>(world.grid.size());
+  int width = static_cast<int>(world.grid[0].size());
 
   std::default_random_engine rng(config.seed + 10000);
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Count nearby obstacles (for density-aware spacing)
+  auto countNearbyObstacles = [&](int cx, int cy) -> int {
+    int count = 0;
+    for (int dy = -1; dy <= 1; ++dy) {
+      for (int dx = -1; dx <= 1; ++dx) {
+        if (dx == 0 && dy == 0) continue;
+        int nx = cx + dx, ny = cy + dy;
+        if (nx >= 0 && nx < width && ny >= 0 && ny < height) {
+          if (world.grid[ny][nx].obstacleType != ObstacleType::NONE) {
+            ++count;
+          }
+        }
+      }
+    }
+    return count;
+  };
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
@@ -324,8 +348,24 @@ void WorldGenerator::distributeObstacles(WorldData &world,
         break;
       }
 
+      // Smart density: organic cluster growth with natural variation
       if (dist(rng) < obstacleChance) {
-        tile.obstacleType = obstacleType;
+        int nearbyCount = countNearbyObstacles(x, y);
+        bool canPlace = false;
+
+        if (nearbyCount == 0) {
+          // No neighbors - always allow (start new cluster or isolated tree)
+          canPlace = true;
+        } else if (nearbyCount <= 2) {
+          // 1-2 neighbors - chance to extend cluster (organic growth)
+          float clusterChance = (tile.biome == Biome::FOREST) ? 0.5f : 0.2f;
+          canPlace = dist(rng) < clusterChance;
+        }
+        // 3+ neighbors - too dense, skip (prevents blob formations)
+
+        if (canPlace) {
+          tile.obstacleType = obstacleType;
+        }
       }
     }
   }
@@ -334,8 +374,110 @@ void WorldGenerator::distributeObstacles(WorldData &world,
   generateBuildings(world, rng);
 }
 
+void WorldGenerator::distributeDecorations(WorldData& world,
+                                           const WorldGenerationConfig& config) {
+  int height = static_cast<int>(world.grid.size());
+  int width = static_cast<int>(world.grid[0].size());
+
+  std::default_random_engine rng(config.seed + 20000);  // Different seed offset
+  std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+  // Pre-allocated vector for possible decorations (avoids per-tile allocations)
+  std::vector<DecorationType> possibleDecorations;
+  possibleDecorations.reserve(12);  // Max decoration types per biome
+
+  for (int y = 0; y < height; ++y) {
+    for (int x = 0; x < width; ++x) {
+      Tile& tile = world.grid[y][x];
+
+      // Skip tiles with water, obstacles, or buildings
+      if (tile.isWater ||
+          tile.obstacleType != ObstacleType::NONE ||
+          tile.buildingId > 0) {
+        continue;
+      }
+
+      float decorationChance = 0.0f;
+      possibleDecorations.clear();
+
+      switch (tile.biome) {
+        case Biome::FOREST:
+          decorationChance = 0.25f;
+          possibleDecorations = {
+              DecorationType::FLOWER_BLUE,
+              DecorationType::FLOWER_PINK,
+              DecorationType::FLOWER_WHITE,
+              DecorationType::FLOWER_YELLOW,
+              DecorationType::GRASS_SMALL,
+              DecorationType::GRASS_LARGE,
+              DecorationType::BUSH,
+              DecorationType::STUMP_SMALL,
+              DecorationType::STUMP_MEDIUM
+          };
+          break;
+
+        case Biome::CELESTIAL:
+          decorationChance = 0.20f;
+          possibleDecorations = {
+              DecorationType::FLOWER_BLUE,
+              DecorationType::FLOWER_WHITE,
+              DecorationType::GRASS_SMALL
+          };
+          break;
+
+        case Biome::SWAMP:
+          decorationChance = 0.30f;
+          possibleDecorations = {
+              DecorationType::MUSHROOM_PURPLE,
+              DecorationType::MUSHROOM_TAN,
+              DecorationType::GRASS_LARGE,
+              DecorationType::STUMP_SMALL
+          };
+          break;
+
+        case Biome::HAUNTED:
+          decorationChance = 0.25f;
+          possibleDecorations = {
+              DecorationType::MUSHROOM_PURPLE,
+              DecorationType::MUSHROOM_TAN,
+              DecorationType::STUMP_SMALL,
+              DecorationType::STUMP_MEDIUM
+          };
+          break;
+
+        case Biome::MOUNTAIN:
+          decorationChance = 0.15f;
+          possibleDecorations = {
+              DecorationType::GRASS_SMALL,
+              DecorationType::FLOWER_WHITE,
+              DecorationType::ROCK_SMALL
+          };
+          break;
+
+        case Biome::DESERT:
+        case Biome::OCEAN:
+          // No decorations in desert or ocean
+          continue;
+
+        default:
+          decorationChance = 0.15f;
+          possibleDecorations = {
+              DecorationType::GRASS_SMALL,
+              DecorationType::GRASS_LARGE
+          };
+          break;
+      }
+
+      if (!possibleDecorations.empty() && dist(rng) < decorationChance) {
+        std::uniform_int_distribution<size_t> typeDist(0, possibleDecorations.size() - 1);
+        tile.decorationType = possibleDecorations[typeDist(rng)];
+      }
+    }
+  }
+}
+
 void WorldGenerator::calculateInitialResources(const WorldData &world) {
-  WORLD_MANAGER_INFO("Calculating initial resources for world: " + world.worldId);
+  WORLD_MANAGER_INFO(std::format("Calculating initial resources for world: {}", world.worldId));
 
   int treeCount = 0;
   int rockCount = 0;
@@ -359,9 +501,8 @@ void WorldGenerator::calculateInitialResources(const WorldData &world) {
     }
   }
 
-  WORLD_MANAGER_INFO("Initial resources - Trees: " + std::to_string(treeCount) +
-                     ", Rocks: " + std::to_string(rockCount) +
-                     ", Water: " + std::to_string(waterCount));
+  WORLD_MANAGER_INFO(std::format("Initial resources - Trees: {}, Rocks: {}, Water: {}",
+                                 treeCount, rockCount, waterCount));
 }
 
 void WorldGenerator::generateBuildings(WorldData& world, std::default_random_engine& rng) {
@@ -463,8 +604,7 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
   // Validate bounds before creating building
   if (x < 0 || y < 0 || x >= width - 1 || y >= height - 1) {
-    WORLD_MANAGER_ERROR("createBuilding: Invalid position (" + std::to_string(x) +
-                        ", " + std::to_string(y) + ") - out of bounds");
+    WORLD_MANAGER_ERROR(std::format("createBuilding: Invalid position ({}, {}) - out of bounds", x, y));
     return 0;
   }
 
@@ -479,8 +619,8 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
       // Double-check bounds for safety
       if (tileX < 0 || tileY < 0 || tileX >= width || tileY >= height) {
-        WORLD_MANAGER_ERROR("createBuilding: Tile (" + std::to_string(tileX) +
-                            ", " + std::to_string(tileY) + ") out of bounds during building creation");
+        WORLD_MANAGER_ERROR(std::format("createBuilding: Tile ({}, {}) out of bounds during building creation",
+                                        tileX, tileY));
         continue;
       }
 
@@ -488,28 +628,25 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 
       // Verify tile is available before marking
       if (tile.obstacleType != ObstacleType::NONE || tile.buildingId > 0) {
-        WORLD_MANAGER_WARN("createBuilding: Tile (" + std::to_string(tileX) +
-                           ", " + std::to_string(tileY) + ") already occupied");
+        WORLD_MANAGER_WARN(std::format("createBuilding: Tile ({}, {}) already occupied", tileX, tileY));
         continue;
       }
 
       tile.obstacleType = ObstacleType::BUILDING;
       tile.buildingId = buildingId;
       tile.buildingSize = 1; // Start as size 1 (hut)
+      tile.isTopLeftOfBuilding = (dx == 0 && dy == 0);  // Only top-left renders the building
       tilesMarked++;
     }
   }
 
   // Validate that all 4 tiles were successfully marked
   if (tilesMarked != 4) {
-    WORLD_MANAGER_ERROR("createBuilding: Building " + std::to_string(buildingId) +
-                        " at (" + std::to_string(x) + ", " + std::to_string(y) +
-                        ") only marked " + std::to_string(tilesMarked) + "/4 tiles");
+    WORLD_MANAGER_ERROR(std::format("createBuilding: Building {} at ({}, {}) only marked {}/4 tiles",
+                                    buildingId, x, y, tilesMarked));
   } else {
-    WORLD_MANAGER_DEBUG("createBuilding: Building " + std::to_string(buildingId) +
-                        " created at (" + std::to_string(x) + ", " + std::to_string(y) +
-                        ") covering tiles (" + std::to_string(x) + "-" + std::to_string(x+1) +
-                        ", " + std::to_string(y) + "-" + std::to_string(y+1) + ")");
+    WORLD_MANAGER_DEBUG(std::format("createBuilding: Building {} created at ({}, {}) covering tiles ({}-{}, {}-{})",
+                                    buildingId, x, y, x, x+1, y, y+1));
   }
 
   return buildingId;

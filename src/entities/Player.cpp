@@ -14,9 +14,10 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "utils/Camera.hpp"
 
 #include <algorithm>
+#include <cmath>
+#include <format>
 
 Player::Player() : Entity() {
   // Initialize player properties
@@ -72,8 +73,7 @@ void Player::loadDimensionsFromTexture() {
       // SDL3 uses SDL_GetTextureSize which returns float dimensions and returns
       // a bool
       if (SDL_GetTextureSize(texture.get(), &width, &height)) {
-        PLAYER_DEBUG("Original texture dimensions: " + std::to_string(width) +
-                     "x" + std::to_string(height));
+        PLAYER_DEBUG(std::format("Original texture dimensions: {}x{}", width, height));
 
         // Store original dimensions for full sprite sheet
         m_width = static_cast<int>(width);
@@ -90,20 +90,15 @@ void Player::loadDimensionsFromTexture() {
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
         CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
 
-        PLAYER_DEBUG("Loaded texture dimensions: " + std::to_string(m_width) +
-                     "x" + std::to_string(height));
-        PLAYER_DEBUG("Frame dimensions: " + std::to_string(m_frameWidth) + "x" +
-                     std::to_string(frameHeight));
-        PLAYER_DEBUG("Sprite layout: " + std::to_string(m_numFrames) +
-                     " columns x " + std::to_string(m_spriteSheetRows) +
-                     " rows");
+        PLAYER_DEBUG(std::format("Loaded texture dimensions: {}x{}", m_width, height));
+        PLAYER_DEBUG(std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
+        PLAYER_DEBUG(std::format("Sprite layout: {} columns x {} rows", m_numFrames, m_spriteSheetRows));
       } else {
-        PLAYER_ERROR("Failed to query texture dimensions: " +
-                     std::string(SDL_GetError()));
+        PLAYER_ERROR(std::format("Failed to query texture dimensions: {}", SDL_GetError()));
       }
     }
   } else {
-    PLAYER_ERROR("Texture '" + m_textureID + "' not found in TextureManager");
+    PLAYER_ERROR(std::format("Texture '{}' not found in TextureManager", m_textureID));
   }
 }
 
@@ -126,7 +121,7 @@ void Player::changeState(const std::string &stateName) {
   if (m_stateManager.hasState(stateName)) {
     m_stateManager.setState(stateName);
   } else {
-    PLAYER_ERROR("Player state not found: " + stateName);
+    PLAYER_ERROR(std::format("Player state not found: {}", stateName));
   }
 }
 
@@ -135,6 +130,9 @@ std::string Player::getCurrentStateName() const {
 }
 
 void Player::update(float deltaTime) {
+  // Store position for render interpolation (must be first!)
+  storePositionForInterpolation();
+
   // State machine handles input and sets velocity
   m_stateManager.update(deltaTime);
 
@@ -143,8 +141,15 @@ void Player::update(float deltaTime) {
   m_position = m_position + (m_velocity * deltaTime);
 
   // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world boundaries
-  float worldMinX, worldMinY, worldMaxX, worldMaxY;
-  if (WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
+  // PERFORMANCE: Use cached bounds instead of calling WorldManager::Instance() every frame
+  // Auto-invalidate cache when world version changes (new world loaded/generated)
+  const uint64_t currentWorldVersion = WorldManager::Instance().getWorldVersion();
+  if (!m_worldBoundsCached || m_cachedWorldVersion != currentWorldVersion) {
+    refreshWorldBoundsCache();
+  }
+
+  // Always clamp if bounds are valid (maxX > minX)
+  if (m_cachedWorldMaxX > m_cachedWorldMinX && m_cachedWorldMaxY > m_cachedWorldMinY) {
     // Account for player half-size to prevent center from going out of bounds
     const float halfWidth = m_frameWidth * 0.5f;
     const float halfHeight = m_height * 0.5f;
@@ -154,8 +159,8 @@ void Player::update(float deltaTime) {
     const float originalY = m_position.getY();
 
     // Clamp position to world bounds (with player size offset)
-    const float clampedX = std::clamp(originalX, worldMinX + halfWidth, worldMaxX - halfWidth);
-    const float clampedY = std::clamp(originalY, worldMinY + halfHeight, worldMaxY - halfHeight);
+    const float clampedX = std::clamp(originalX, m_cachedWorldMinX + halfWidth, m_cachedWorldMaxX - halfWidth);
+    const float clampedY = std::clamp(originalY, m_cachedWorldMinY + halfHeight, m_cachedWorldMaxY - halfHeight);
 
     // Update position and stop velocity if we hit a boundary
     if (clampedX != originalX) {
@@ -178,31 +183,28 @@ void Player::update(float deltaTime) {
       TextureManager::Instance().isTextureInMap(m_textureID)) {
     loadDimensionsFromTexture();
   }
+
+  // Publish thread-safe interpolation state for render thread
+  publishInterpolationState();
 }
 
-void Player::render(const HammerEngine::Camera* camera) {
-  // Cache manager references for better performance
-  TextureManager &texMgr = TextureManager::Instance();
-  SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
+void Player::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
+  // Get interpolated position for smooth rendering between fixed timestep updates
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
+  renderAtPosition(renderer, interpPos, cameraX, cameraY);
+}
 
-  // Determine render position based on camera
-  Vector2D renderPosition;
-  if (camera) {
-    // Transform world position to screen coordinates using camera
-    renderPosition = camera->worldToScreen(m_position);
-  } else {
-    // No camera transformation - render at world coordinates directly
-    renderPosition = m_position;
-  }
+void Player::renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
+                              float cameraX, float cameraY) {
+  // Convert world coords to screen coords using passed camera offset
+  // Using floating-point for smooth sub-pixel rendering (no pixel-snapping)
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
-  // Calculate centered position for rendering (preserve float precision)
-  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
-  float renderY = renderPosition.getY() - (m_height / 2.0f);
-
-  // Render the Player with the current animation frame using float precision
-  texMgr.drawFrameF(m_textureID,
-                    renderX,        // Keep float precision for smooth camera movement
-                    renderY,        // Keep float precision for smooth camera movement
+  // Render the Player with the current animation frame
+  TextureManager::Instance().drawFrame(m_textureID,
+                    renderX,
+                    renderY,
                     m_frameWidth,   // Use the calculated frame width
                     m_height,       // Height stays the same
                     m_currentRow,   // Current animation row
@@ -246,13 +248,14 @@ void Player::ensurePhysicsBodyRegistered() {
 
 void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
-  auto &cm = CollisionManager::Instance();
+  auto& cm = CollisionManager::Instance();
   cm.updateCollisionBodyVelocitySOA(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
-  auto &cm = CollisionManager::Instance();
+  m_previousPosition = position;  // Prevents interpolation sliding on teleport
+  auto& cm = CollisionManager::Instance();
   cm.updateCollisionBodyPositionSOA(getID(), position);
 }
 
@@ -293,8 +296,7 @@ void Player::initializeInventory() {
   // Note: mana_potion doesn't exist in default resources
 
   if (m_inventory) {
-    PLAYER_DEBUG("Player inventory initialized with " +
-                 std::to_string(m_inventory->getMaxSlots()) + " slots");
+    PLAYER_DEBUG(std::format("Player inventory initialized with {} slots", m_inventory->getMaxSlots()));
   }
 }
 
@@ -306,10 +308,8 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
       shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",
       EventManager::DispatchMode::Deferred);
 
-  PLAYER_DEBUG("Resource changed: " + resourceId + " from " +
-               std::to_string(oldQuantity) + " to " +
-               std::to_string(newQuantity) +
-               " - event dispatched to EventManager");
+  PLAYER_DEBUG(std::format("Resource changed: {} from {} to {} - event dispatched to EventManager",
+                            resourceId, oldQuantity, newQuantity));
 }
 
 // Resource management methods - removed, use getInventory() directly with
@@ -361,8 +361,7 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   // Remove item from inventory and equip it
   if (m_inventory->removeResource(itemHandle, 1)) {
     m_equippedItems[slotName] = itemHandle;
-    PLAYER_DEBUG("Equipped item (handle: " + itemHandle.toString() +
-                 ") in slot: " + slotName);
+    PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}", itemHandle.toString(), slotName));
     return true;
   }
 
@@ -377,7 +376,7 @@ bool Player::unequipItem(const std::string &slotName) {
 
   auto it = m_equippedItems.find(slotName);
   if (it == m_equippedItems.end() || !it->second.isValid()) {
-    PLAYER_WARN("Player::unequipItem - No item equipped in slot: " + slotName);
+    PLAYER_WARN(std::format("Player::unequipItem - No item equipped in slot: {}", slotName));
     return false; // Nothing equipped in this slot
   }
 
@@ -386,8 +385,7 @@ bool Player::unequipItem(const std::string &slotName) {
   // Try to add back to inventory
   if (m_inventory->addResource(itemHandle, 1)) {
     it->second = HammerEngine::ResourceHandle{}; // Set to invalid handle
-    PLAYER_DEBUG("Unequipped item (handle: " + itemHandle.toString() +
-                 ") from slot: " + slotName);
+    PLAYER_DEBUG(std::format("Unequipped item (handle: {}) from slot: {}", itemHandle.toString(), slotName));
     return true;
   }
 
@@ -450,10 +448,22 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
 
   // Remove the item and apply its effects
   if (m_inventory->removeResource(itemHandle, 1)) {
-    PLAYER_DEBUG("Consumed item (handle: " + itemHandle.toString() + ")");
+    PLAYER_DEBUG(std::format("Consumed item (handle: {})", itemHandle.toString()));
     // Here you would apply the item's effects (healing, buffs, etc.)
     return true;
   }
 
   return false;
+}
+
+void Player::refreshWorldBoundsCache() {
+  auto& worldMgr = WorldManager::Instance();
+  worldMgr.getWorldBounds(
+      m_cachedWorldMinX, m_cachedWorldMinY,
+      m_cachedWorldMaxX, m_cachedWorldMaxY);
+  m_cachedWorldVersion = worldMgr.getWorldVersion();
+  m_worldBoundsCached = true;
+  PLAYER_DEBUG(std::format("World bounds cached: ({}, {}) to ({}, {}), version: {}",
+               m_cachedWorldMinX, m_cachedWorldMinY,
+               m_cachedWorldMaxX, m_cachedWorldMaxY, m_cachedWorldVersion));
 }

@@ -12,6 +12,7 @@
 #include "core/GameTime.hpp"
 #include <random>
 #include <algorithm>
+#include <format>
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
 
@@ -25,9 +26,8 @@ static Vector2D getPlayerPosition() {
                    GameEngine::Instance().getLogicalHeight() / 2.0f);
 }
 
-// Random number generation
-static std::random_device rd;
-static std::mt19937 gen(rd());
+// Random number generation - use thread_local for thread safety
+static thread_local std::mt19937 gen{std::random_device{}()};
 
 // Helper removed: use PathfinderManager::adjustSpawnToNavigable
 
@@ -73,7 +73,7 @@ void NPCSpawnEvent::update() {
 void NPCSpawnEvent::execute() {
     // Check spawn count limits
     if (m_maxSpawnCount >= 0 && m_currentSpawnCount >= m_maxSpawnCount) {
-        EVENT_INFO("NPCSpawnEvent: " + m_name + " - Max spawn count reached (" + std::to_string(m_maxSpawnCount) + ")");
+        EVENT_INFO(std::format("NPCSpawnEvent: {} - Max spawn count reached ({})", m_name, m_maxSpawnCount));
         return;
     }
 
@@ -86,18 +86,17 @@ void NPCSpawnEvent::execute() {
         m_cooldownTimer = 0.0f;
     }
 
-    EVENT_INFO("NPCSpawnEvent triggered: " + m_name + " (" + m_spawnParams.npcType + ")");
-    
+    EVENT_INFO(std::format("NPCSpawnEvent triggered: {} ({})", m_name, m_spawnParams.npcType));
+
     // Display area constraint information if configured
     if (m_constrainToArea) {
-        EVENT_INFO("  - Area constraints: (" + std::to_string(m_constraintMinX) + "," + 
-                   std::to_string(m_constraintMinY) + ") to (" + std::to_string(m_constraintMaxX) + 
-                   "," + std::to_string(m_constraintMaxY) + ")");
+        EVENT_INFO(std::format("  - Area constraints: ({},{}) to ({},{})",
+                   m_constraintMinX, m_constraintMinY, m_constraintMaxX, m_constraintMaxY));
         EVENT_INFO("  - NPCs will be constrained to this area using intelligent redirection");
     } else {
         EVENT_INFO("  - No area constraints - NPCs can wander freely across the world");
     }
-    
+
     EVENT_INFO("  - Event serves as coordination/messaging demonstration");
     EVENT_INFO("  - GameStates handle actual entity creation and ownership");
 
@@ -152,7 +151,7 @@ void NPCSpawnEvent::clean() {
 
 void NPCSpawnEvent::onMessage(const std::string& message) {
     // NPCSpawnEvent now serves as event coordination demonstration
-    EVENT_INFO("NPCSpawnEvent received message: " + message);
+    EVENT_INFO(std::format("NPCSpawnEvent received message: {}", message));
     EVENT_INFO("  - Event demonstrates messaging system coordination");
     EVENT_INFO("  - Actual entity management handled by GameStates");
 
@@ -299,7 +298,7 @@ std::string NPCSpawnEvent::getTextureForNPCType(const std::string& npcType) {
 }
 
 EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, float y) {
-    EVENT_INFO("Forcing spawn of NPC type: " + npcType + " at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    EVENT_INFO(std::format("Forcing spawn of NPC type: {} at position ({}, {})", npcType, x, y));
 
     try {
         // Get the texture ID for this NPC type
@@ -312,17 +311,17 @@ EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string& npcType, float x, floa
 
         // Bounds are enforced centrally by AIManager/PathfinderManager
 
-        EVENT_INFO("Force-spawned " + npcType + " at (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+        EVENT_INFO(std::format("Force-spawned {} at ({}, {})", npcType, x, y));
         return std::static_pointer_cast<Entity>(npc);
 
     } catch (const std::exception& e) {
-        EVENT_ERROR("Exception while force-spawning NPC: " + std::string(e.what()));
+        EVENT_ERROR(std::format("Exception while force-spawning NPC: {}", e.what()));
         return nullptr;
     }
 }
 
 std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& params, float x, float y) {
-    EVENT_INFO("Forcing spawn of " + std::to_string(params.count) + " NPCs of type: " + params.npcType + " at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    EVENT_INFO(std::format("Forcing spawn of {} NPCs of type: {} at position ({}, {})", params.count, params.npcType, x, y));
 
     std::vector<EntityPtr> spawnedNPCs;
 
@@ -355,11 +354,11 @@ std::vector<EntityPtr> NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters& para
             // with setAreaConstraints() and let the GameState handle the actual spawning
 
             spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
-            EVENT_INFO("  - NPC " + std::to_string(i+1) + " spawned successfully");
+            EVENT_INFO(std::format("  - NPC {} spawned successfully", i+1));
         }
 
     } catch (const std::exception& e) {
-        EVENT_ERROR("Exception while force-spawning NPCs: " + std::string(e.what()));
+        EVENT_ERROR(std::format("Exception while force-spawning NPCs: {}", e.what()));
     }
 
     return spawnedNPCs;

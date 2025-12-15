@@ -11,9 +11,10 @@
 #include "world/WorldData.hpp"
 #include "utils/Vector2D.hpp"
 #include <algorithm>
-#include <random>
 #include <cctype>
+#include <format>
 #include <ostream>
+#include <random>
 
 // Stream operator for WeatherType (moved from header)
 std::ostream& operator<<(std::ostream& os, const WeatherType& type) {
@@ -173,39 +174,36 @@ void WeatherEvent::execute() {
 
   // Apply this weather type to the game world
   // In a real implementation, this would interact with rendering systems
-  EVENT_INFO("Weather changing to: " + getWeatherTypeString() +
-             " (Intensity: " + std::to_string(m_params.intensity) +
-             ", Visibility: " + std::to_string(m_params.visibility) + ")");
+  EVENT_INFO(std::format("Weather changing to: {} (Intensity: {:.2f}, Visibility: {:.2f})",
+                         getWeatherTypeString(), m_params.intensity, m_params.visibility));
 
   // Always trigger ParticleManager for weather changes (including Clear
   // weather)
   try {
     if (ParticleManager::Instance().isInitialized()) {
       // For Clear weather, we just clear effects
-      if (m_weatherType == WeatherType::Clear ||
-          getWeatherTypeString() == "Clear") {
+      if (m_weatherType == WeatherType::Clear) {
         EVENT_INFO("Clearing weather effects");
       } else if (!m_params.particleEffect.empty()) {
-        EVENT_INFO("Starting particle effect: " + m_params.particleEffect);
+        EVENT_INFO(std::format("Starting particle effect: {}", m_params.particleEffect));
       }
 
       // Always call ParticleManager - it handles Clear weather internally
       ParticleManager::Instance().triggerWeatherEffect(
           getWeatherTypeString(), m_params.intensity, m_params.transitionTime);
-      EVENT_INFO("ParticleManager triggered for weather: " +
-                 getWeatherTypeString());
+      EVENT_INFO(std::format("ParticleManager triggered for weather: {}", getWeatherTypeString()));
     } else {
       EVENT_WARN("ParticleManager not initialized - particle effects disabled");
     }
   } catch (const std::exception& e) {
-    EVENT_ERROR("Exception in ParticleManager::triggerWeatherEffect: " + std::string(e.what()));
+    EVENT_ERROR(std::format("Exception in ParticleManager::triggerWeatherEffect: {}", e.what()));
   } catch (...) {
     EVENT_ERROR("Unknown exception in ParticleManager::triggerWeatherEffect");
   }
 
   // Play sound effects if specified
   if (!m_params.soundEffect.empty()) {
-    EVENT_INFO("Playing sound effect: " + m_params.soundEffect);
+    EVENT_INFO(std::format("Playing sound effect: {}", m_params.soundEffect));
   }
 }
 
@@ -266,9 +264,37 @@ void WeatherEvent::setWeatherType(WeatherType type) {
   m_customType.clear(); // Clear custom type when setting a standard type
 }
 
-void WeatherEvent::setWeatherType(const std::string &customType) {
-  m_weatherType = WeatherType::Custom;
-  m_customType = customType;
+void WeatherEvent::setWeatherType(const std::string &weatherTypeStr) {
+  if (weatherTypeStr.empty()) {
+    m_weatherType = WeatherType::Custom;
+    m_customType = weatherTypeStr;
+    return;
+  }
+
+  switch (weatherTypeStr[0]) {
+    case 'C':
+      if (weatherTypeStr == "Clear")  { m_weatherType = WeatherType::Clear;  break; }
+      if (weatherTypeStr == "Cloudy") { m_weatherType = WeatherType::Cloudy; break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'R':
+      if (weatherTypeStr == "Rainy")  { m_weatherType = WeatherType::Rainy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'S':
+      if (weatherTypeStr == "Stormy") { m_weatherType = WeatherType::Stormy; break; }
+      if (weatherTypeStr == "Snowy")  { m_weatherType = WeatherType::Snowy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'F':
+      if (weatherTypeStr == "Foggy")  { m_weatherType = WeatherType::Foggy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    case 'W':
+      if (weatherTypeStr == "Windy")  { m_weatherType = WeatherType::Windy;  break; }
+      m_weatherType = WeatherType::Custom; m_customType = weatherTypeStr; return;
+    default:
+      m_weatherType = WeatherType::Custom;
+      m_customType = weatherTypeStr;
+      return;
+  }
+  m_customType.clear();
 }
 
 bool WeatherEvent::checkConditions() {
@@ -361,9 +387,8 @@ void WeatherEvent::setBoundingArea(float x1, float y1, float x2, float y2) {
 
 void WeatherEvent::forceWeatherChange(WeatherType type, float transitionTime) {
   // Static method that would interact with a central weather system
-  EVENT_INFO(
-      "Forcing weather change to: " + std::to_string(static_cast<int>(type)) +
-      " with transition time: " + std::to_string(transitionTime) + "s");
+  EVENT_INFO(std::format("Forcing weather change to: {} with transition time: {:.1f}s",
+                         static_cast<int>(type), transitionTime));
 
   // Suppress unused parameter warnings in release builds
   (void)type;
@@ -375,8 +400,8 @@ void WeatherEvent::forceWeatherChange(WeatherType type, float transitionTime) {
 void WeatherEvent::forceWeatherChange(const std::string &customType,
                                       float transitionTime) {
   // Static method that would interact with a central weather system
-  EVENT_INFO("Forcing weather change to custom type: " + customType +
-             " with transition time: " + std::to_string(transitionTime) + "s");
+  EVENT_INFO(std::format("Forcing weather change to custom type: {} with transition time: {:.1f}s",
+                         customType, transitionTime));
 
   // Suppress unused parameter warnings in release builds
   (void)customType;

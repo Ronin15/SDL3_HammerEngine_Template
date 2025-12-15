@@ -10,6 +10,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include <algorithm>
 #include <cassert>
+#include <format>
 
 WorldResourceManager &WorldResourceManager::Instance() {
   static WorldResourceManager instance;
@@ -117,11 +118,9 @@ bool WorldResourceManager::configure(const WorldResourceManagerConfig &config) {
     m_aggregateCache.valid = false;
   }
 
-  WORLD_RESOURCE_INFO(
-      "WorldResourceManager configuration updated - "
-      "CacheSize: " +
-      std::to_string(config.perWorldCacheSize) +
-      ", ExpiryTime: " + std::to_string(config.cacheExpiryTime.count()) + "ms");
+  WORLD_RESOURCE_INFO(std::format(
+      "WorldResourceManager configuration updated - CacheSize: {}, ExpiryTime: {}ms",
+      config.perWorldCacheSize, config.cacheExpiryTime.count()));
   return true;
 }
 
@@ -132,16 +131,16 @@ WorldResourceManagerConfig WorldResourceManager::getConfig() const {
 
 bool WorldResourceManager::createWorld(const WorldId &worldId) {
   if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR(
-        "WorldResourceManager::createWorld - Invalid world ID: " + worldId);
+    WORLD_RESOURCE_ERROR(std::format(
+        "WorldResourceManager::createWorld - Invalid world ID: {}", worldId));
     return false;
   }
 
   std::lock_guard<std::shared_mutex> lock(m_resourceMutex);
 
   if (m_worldResources.find(worldId) != m_worldResources.end()) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::createWorld - World already exists: " + worldId);
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::createWorld - World already exists: {}", worldId));
     return false;
   }
 
@@ -152,17 +151,16 @@ bool WorldResourceManager::createWorld(const WorldId &worldId) {
 
     // Check for performance warning
     if (m_stats.worldsTracked.load() > m_config.maxWorldsBeforeWarning) {
-      WORLD_RESOURCE_WARN(
-          "WorldResourceManager::createWorld - High world count (" +
-          std::to_string(m_stats.worldsTracked.load()) +
-          ") may impact performance");
+      WORLD_RESOURCE_WARN(std::format(
+          "WorldResourceManager::createWorld - High world count ({}) may impact performance",
+          m_stats.worldsTracked.load()));
     }
 
-    WORLD_RESOURCE_INFO("Created world: " + worldId);
+    WORLD_RESOURCE_INFO(std::format("Created world: {}", worldId));
     return true;
   } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager::createWorld - Exception: " +
-                         std::string(ex.what()));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager::createWorld - Exception: {}",
+                                     ex.what()));
     return false;
   }
 }
@@ -170,7 +168,7 @@ bool WorldResourceManager::createWorld(const WorldId &worldId) {
 bool WorldResourceManager::removeWorld(const WorldId &worldId) {
   if (!isValidWorldId(worldId)) {
     WORLD_RESOURCE_ERROR(
-        "WorldResourceManager::removeWorld - Invalid world ID: " + worldId);
+        std::format("WorldResourceManager::removeWorld - Invalid world ID: {}", worldId));
     return false;
   }
 
@@ -185,7 +183,7 @@ bool WorldResourceManager::removeWorld(const WorldId &worldId) {
   auto it = m_worldResources.find(worldId);
   if (it == m_worldResources.end()) {
     WORLD_RESOURCE_WARN(
-        "WorldResourceManager::removeWorld - World not found: " + worldId);
+        std::format("WorldResourceManager::removeWorld - World not found: {}", worldId));
     return false;
   }
 
@@ -193,7 +191,7 @@ bool WorldResourceManager::removeWorld(const WorldId &worldId) {
     m_worldResources.erase(it);
     m_stats.worldsTracked.fetch_sub(1, std::memory_order_relaxed);
 
-    WORLD_RESOURCE_INFO("Removed world: " + worldId);
+    WORLD_RESOURCE_INFO(std::format("Removed world: {}", worldId));
     return true;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR("WorldResourceManager::removeWorld - Exception: " +
@@ -225,7 +223,7 @@ ResourceTransactionResult WorldResourceManager::addResource(
     Quantity quantity) {
   // Validate parameters individually to return appropriate error codes
   if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
     return ResourceTransactionResult::InvalidWorldId;
   }
 
@@ -236,15 +234,13 @@ ResourceTransactionResult WorldResourceManager::addResource(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
   if (quantity < 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::addResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::addResource - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
@@ -280,8 +276,8 @@ ResourceTransactionResult WorldResourceManager::addResource(
 
     updateStats(true, quantity);
 
-    WORLD_RESOURCE_DEBUG("Added " + std::to_string(quantity) + " " +
-                         resourceHandle.toString() + " to world " + worldId);
+    WORLD_RESOURCE_DEBUG(std::format("Added {} {} to world {}",
+                         quantity, resourceHandle.toString(), worldId));
     return ResourceTransactionResult::Success;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR("WorldResourceManager::addResource - Exception: " +
@@ -295,7 +291,7 @@ ResourceTransactionResult WorldResourceManager::removeResource(
     Quantity quantity) {
   // Validate parameters individually to return appropriate error codes
   if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
     return ResourceTransactionResult::InvalidWorldId;
   }
 
@@ -306,15 +302,13 @@ ResourceTransactionResult WorldResourceManager::removeResource(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
   if (quantity < 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::removeResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::removeResource - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
@@ -330,17 +324,16 @@ ResourceTransactionResult WorldResourceManager::removeResource(
 
     // If quantity is 0, we do nothing but still consider it successful
     if (quantity == 0) {
-      WORLD_RESOURCE_DEBUG("Removed " + std::to_string(quantity) + " " +
-                           resourceHandle.toString() + " from world " +
-                           worldId);
+      WORLD_RESOURCE_DEBUG(std::format("Removed {} {} from world {}",
+                           quantity, resourceHandle.toString(), worldId));
       return ResourceTransactionResult::Success;
     }
 
     if (currentQuantity < quantity) {
       WORLD_RESOURCE_WARN(std::string("WorldResourceManager::removeResource - "
                                       "Insufficient resources. ") +
-                          "Current: " + std::to_string(currentQuantity) +
-                          ", Requested: " + std::to_string(quantity));
+                          std::format("Current: {}", currentQuantity) +
+                          std::format(", Requested: {}", quantity));
       return ResourceTransactionResult::InsufficientResources;
     }
 
@@ -357,8 +350,8 @@ ResourceTransactionResult WorldResourceManager::removeResource(
     invalidateAggregateCache();
     updateResourceCache(worldId, resourceHandle, newQuantity);
 
-    WORLD_RESOURCE_DEBUG("Removed " + std::to_string(quantity) + " " +
-                         resourceHandle.toString() + " from world " + worldId);
+    WORLD_RESOURCE_DEBUG(std::format("Removed {} {} from world {}",
+                         quantity, resourceHandle.toString(), worldId));
     return ResourceTransactionResult::Success;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR("WorldResourceManager::removeResource - Exception: " +
@@ -372,7 +365,7 @@ ResourceTransactionResult WorldResourceManager::setResource(
     Quantity quantity) {
   // Validate parameters individually to return appropriate error codes
   if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
     return ResourceTransactionResult::InvalidWorldId;
   }
 
@@ -383,15 +376,13 @@ ResourceTransactionResult WorldResourceManager::setResource(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
   if (quantity < 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::setResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::setResource - Invalid quantity: {}", quantity));
     return ResourceTransactionResult::InvalidQuantity;
   }
 
@@ -416,8 +407,8 @@ ResourceTransactionResult WorldResourceManager::setResource(
       updateResourceCache(worldId, resourceHandle, quantity);
     }
 
-    WORLD_RESOURCE_DEBUG("Set " + resourceHandle.toString() + " to " +
-                         std::to_string(quantity) + " in world " + worldId);
+    WORLD_RESOURCE_DEBUG(std::format("Set {} to {} in world {}",
+                                     resourceHandle.toString(), quantity, worldId));
     return ResourceTransactionResult::Success;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR("WorldResourceManager::setResource - Exception: " +
@@ -521,9 +512,8 @@ bool WorldResourceManager::transferResource(
   }
 
   if (quantity <= 0) {
-    WORLD_RESOURCE_WARN(
-        "WorldResourceManager::transferResource - Invalid quantity: " +
-        std::to_string(quantity));
+    WORLD_RESOURCE_WARN(std::format(
+        "WorldResourceManager::transferResource - Invalid quantity: {}", quantity));
     return false;
   }
 
@@ -563,9 +553,8 @@ bool WorldResourceManager::transferResource(
     updateResourceCache(fromWorldId, resourceHandle, fromQuantity - quantity);
     updateResourceCache(toWorldId, resourceHandle, toQuantity + quantity);
 
-    WORLD_RESOURCE_DEBUG("Transferred " + std::to_string(quantity) + " " +
-                         resourceHandle.toString() + " from " + fromWorldId +
-                         " to " + toWorldId);
+    WORLD_RESOURCE_DEBUG(std::format("Transferred {} {} from {} to {}",
+                         quantity, resourceHandle.toString(), fromWorldId, toWorldId));
     return true;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR(
@@ -610,8 +599,8 @@ bool WorldResourceManager::transferAllResources(const WorldId &fromWorldId,
     // Invalidate all caches when doing bulk transfer
     invalidateAggregateCache();
 
-    WORLD_RESOURCE_INFO("Transferred all resources from " + fromWorldId +
-                        " to " + toWorldId);
+    WORLD_RESOURCE_INFO(std::format("Transferred all resources from {} to {}",
+                                    fromWorldId, toWorldId));
     return true;
   } catch (const std::exception &ex) {
     WORLD_RESOURCE_ERROR(
@@ -686,7 +675,7 @@ bool WorldResourceManager::validateParameters(
     const WorldId &worldId, const HammerEngine::ResourceHandle &resourceHandle,
     Quantity quantity) const {
   if (!isValidWorldId(worldId)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid world ID: " + worldId);
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid world ID: {}", worldId));
     return false;
   }
 
@@ -697,8 +686,7 @@ bool WorldResourceManager::validateParameters(
   }
 
   if (!isValidQuantity(quantity)) {
-    WORLD_RESOURCE_ERROR("WorldResourceManager - Invalid quantity: " +
-                         std::to_string(quantity));
+    WORLD_RESOURCE_ERROR(std::format("WorldResourceManager - Invalid quantity: {}", quantity));
     return false;
   }
 
@@ -854,48 +842,43 @@ void WorldResourceManager::logCacheStatus() const {
 
   WORLD_RESOURCE_INFO("=== WorldResourceManager Cache Status ===");
   WORLD_RESOURCE_INFO("Configuration:");
-  WORLD_RESOURCE_INFO("  Per-world cache size: " +
-                      std::to_string(config.perWorldCacheSize));
-  WORLD_RESOURCE_INFO("  Cache expiry time: " +
-                      std::to_string(config.cacheExpiryTime.count()) + "ms");
-  WORLD_RESOURCE_INFO(
-      "  Performance monitoring: " +
-      std::string(config.enablePerformanceMonitoring ? "enabled" : "disabled"));
+  WORLD_RESOURCE_INFO(std::format("  Per-world cache size: {}", config.perWorldCacheSize));
+  WORLD_RESOURCE_INFO(std::format("  Cache expiry time: {}ms", config.cacheExpiryTime.count()));
+  WORLD_RESOURCE_INFO(std::format("  Performance monitoring: {}",
+      config.enablePerformanceMonitoring ? "enabled" : "disabled"));
 
   if (config.enablePerformanceMonitoring) {
     WORLD_RESOURCE_INFO("Performance Stats:");
-    WORLD_RESOURCE_INFO("  Cache hit ratio: " +
-                        std::to_string(stats.getCacheHitRatio() * 100.0) + "%");
-    WORLD_RESOURCE_INFO("  Cache hits: " +
-                        std::to_string(stats.cacheHits.load()));
-    WORLD_RESOURCE_INFO("  Cache misses: " +
-                        std::to_string(stats.cacheMisses.load()));
-    WORLD_RESOURCE_INFO("  Cache evictions: " +
-                        std::to_string(stats.cacheEvictions.load()));
-    WORLD_RESOURCE_INFO("  Aggregate cache rebuilds: " +
-                        std::to_string(stats.aggregateCacheRebuilds.load()));
+    WORLD_RESOURCE_INFO(std::format("  Cache hit ratio: {}%",
+                        stats.getCacheHitRatio() * 100.0));
+    WORLD_RESOURCE_INFO(std::format("  Cache hits: {}",
+                        stats.cacheHits.load()));
+    WORLD_RESOURCE_INFO(std::format("  Cache misses: {}",
+                        stats.cacheMisses.load()));
+    WORLD_RESOURCE_INFO(std::format("  Cache evictions: {}",
+                        stats.cacheEvictions.load()));
+    WORLD_RESOURCE_INFO(std::format("  Aggregate cache rebuilds: {}",
+                        stats.aggregateCacheRebuilds.load()));
   }
 
   WORLD_RESOURCE_INFO("Current Usage:");
-  WORLD_RESOURCE_INFO("  Total cache entries: " +
-                      std::to_string(getTotalCacheSize()));
-  WORLD_RESOURCE_INFO("  Worlds tracked: " +
-                      std::to_string(stats.worldsTracked.load()));
-  WORLD_RESOURCE_INFO("  Memory usage: " + std::to_string(getMemoryUsage()) +
-                      " bytes");
+  WORLD_RESOURCE_INFO(std::format("  Total cache entries: {}",
+                      getTotalCacheSize()));
+  WORLD_RESOURCE_INFO(std::format("  Worlds tracked: {}",
+                      stats.worldsTracked.load()));
+  WORLD_RESOURCE_INFO(std::format("  Memory usage: {} bytes", getMemoryUsage()));
 
   // Warn if performance is sub-optimal
   if (stats.worldsTracked.load() > config.maxWorldsBeforeWarning) {
-    WORLD_RESOURCE_WARN("High world count (" +
-                        std::to_string(stats.worldsTracked.load()) +
-                        ") may impact performance. Consider optimizing world "
-                        "lifecycle management.");
+    WORLD_RESOURCE_WARN(std::format("High world count ({}) may impact performance. "
+                        "Consider optimizing world lifecycle management.",
+                        stats.worldsTracked.load()));
   }
 
   if (config.enablePerformanceMonitoring && stats.getCacheHitRatio() < 0.7) {
-    WORLD_RESOURCE_WARN("Low cache hit ratio (" +
-                        std::to_string(stats.getCacheHitRatio() * 100.0) +
-                        "%). Consider increasing per-world cache size.");
+    WORLD_RESOURCE_WARN(std::format("Low cache hit ratio ({}%). "
+                        "Consider increasing per-world cache size.",
+                        stats.getCacheHitRatio() * 100.0));
   }
 }
 
@@ -955,7 +938,7 @@ void WorldResourceManager::handleWorldEvent(
           std::dynamic_pointer_cast<WorldLoadedEvent>(worldEvent);
       if (loadedEvent) {
         const std::string &worldId = loadedEvent->getWorldId();
-        WORLD_RESOURCE_INFO("Received WorldLoadedEvent for: " + worldId);
+        WORLD_RESOURCE_INFO(std::format("Received WorldLoadedEvent for: {}", worldId));
 
         // Check if world exists in resource tracking
         bool worldExists = false;
@@ -970,11 +953,11 @@ void WorldResourceManager::handleWorldEvent(
           // Verify the world actually exists in the WorldManager before
           // creating tracking NOTE: Removed auto-creation to prevent spurious
           // world creation from events
-          WORLD_RESOURCE_WARN(
-              "Received WorldLoadedEvent for non-existent world: " + worldId +
-              " - skipping resource tracking creation");
+          WORLD_RESOURCE_WARN(std::format(
+              "Received WorldLoadedEvent for non-existent world: {} - skipping resource tracking creation",
+              worldId));
         } else {
-          WORLD_RESOURCE_INFO("World already tracked: " + worldId);
+          WORLD_RESOURCE_INFO(std::format("World already tracked: {}", worldId));
         }
       }
       break;
@@ -985,7 +968,7 @@ void WorldResourceManager::handleWorldEvent(
           std::dynamic_pointer_cast<WorldUnloadedEvent>(worldEvent);
       if (unloadedEvent) {
         const std::string &worldId = unloadedEvent->getWorldId();
-        WORLD_RESOURCE_INFO("Received WorldUnloadedEvent for: " + worldId);
+        WORLD_RESOURCE_INFO(std::format("Received WorldUnloadedEvent for: {}", worldId));
 
         // Optional: Remove world resources when unloaded
         // For now, keep the data in case world is reloaded
@@ -998,17 +981,16 @@ void WorldResourceManager::handleWorldEvent(
       auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(worldEvent);
       if (tileEvent) {
         // Handle tile changes - could affect resource distributions
-        WORLD_RESOURCE_DEBUG("Tile changed at (" +
-                             std::to_string(tileEvent->getX()) + ", " +
-                             std::to_string(tileEvent->getY()) + ") - " +
-                             tileEvent->getChangeType());
+        WORLD_RESOURCE_DEBUG(std::format("Tile changed at ({}, {}) - {}",
+                             tileEvent->getX(), tileEvent->getY(),
+                             tileEvent->getChangeType()));
       }
       break;
     }
 
     default:
       // Handle other world event types as needed
-      WORLD_RESOURCE_DEBUG("Received world event: " + worldEvent->getName());
+      WORLD_RESOURCE_DEBUG(std::format("Received world event: {}", worldEvent->getName()));
       break;
     }
   } catch (const std::exception &ex) {
@@ -1031,15 +1013,14 @@ void WorldResourceManager::fireResourceChangeEvent(
     eventMgr.triggerResourceChange(
         nullptr, // world-level (no specific owner)
         resourceHandle, static_cast<int>(oldQuantity),
-        static_cast<int>(newQuantity), reason + "_world_" + worldId,
+        static_cast<int>(newQuantity), std::format("{}_world_", reason) + worldId,
         EventManager::DispatchMode::Deferred);
 
-    WORLD_RESOURCE_DEBUG("ResourceChangeEvent fired for " +
-                         resourceHandle.toString() + " in world " + worldId +
-                         ": " + std::to_string(oldQuantity) + " -> " +
-                         std::to_string(newQuantity));
+    WORLD_RESOURCE_DEBUG(std::format("ResourceChangeEvent fired for {} in world {}: {} -> {}",
+                         resourceHandle.toString(), worldId,
+                         oldQuantity, newQuantity));
   } catch (const std::exception &ex) {
-    WORLD_RESOURCE_ERROR("Failed to fire ResourceChangeEvent: " +
-                         std::string(ex.what()));
+    WORLD_RESOURCE_ERROR(std::format("Failed to fire ResourceChangeEvent: {}",
+                                     ex.what()));
   }
 }

@@ -19,9 +19,11 @@
 #include "events/CollisionEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/TimeEvent.hpp"
 
 #include <algorithm>
 #include <chrono>
+#include <format>
 #include <future>
 #include <numeric>
 #include <unordered_set>
@@ -151,6 +153,20 @@ bool EventManager::init() {
   m_weatherPool.setCreator([](){ return std::make_shared<WeatherEvent>("trigger_weather", WeatherType::Clear); });
   m_sceneChangePool.setCreator([](){ return std::make_shared<SceneChangeEvent>("trigger_scene_change", ""); });
   m_npcSpawnPool.setCreator([](){ return std::make_shared<NPCSpawnEvent>("trigger_npc_spawn", SpawnParameters{}); });
+
+  // Hot-path event pools (triggered frequently during gameplay)
+  m_collisionPool.setCreator([](){
+    HammerEngine::CollisionInfo emptyInfo{};
+    return std::make_shared<CollisionEvent>(emptyInfo);
+  });
+  m_particleEffectPool.setCreator([](){
+    return std::make_shared<ParticleEffectEvent>(
+        "pool_particle", ParticleEffectType::Fire, 0.0f, 0.0f, 1.0f, -1.0f, "", "");
+  });
+  m_collisionObstacleChangedPool.setCreator([](){
+    return std::make_shared<CollisionObstacleChangedEvent>(
+        CollisionObstacleChangedEvent::ChangeType::MODIFIED, Vector2D(0, 0), 64.0f, "");
+  });
 
   // Reset performance stats
   resetPerformanceStats();
@@ -366,12 +382,13 @@ void EventManager::update() {
                                             });
 
     // Build event summary string with counts per type
-    std::string eventSummary = "";
+    std::string eventSummary;
     for (size_t i = 0; i < eventCountsByType.size(); ++i) {
       if (eventCountsByType[i] > 0) {
         if (!eventSummary.empty()) eventSummary += ", ";
-        eventSummary += getEventTypeName(static_cast<EventTypeId>(i)) +
-                       "=" + std::to_string(eventCountsByType[i]);
+        std::format_to(std::back_inserter(eventSummary), "{}={}",
+                       getEventTypeName(static_cast<EventTypeId>(i)),
+                       eventCountsByType[i]);
       }
     }
     if (eventSummary.empty()) eventSummary = "none";
@@ -383,17 +400,14 @@ void EventManager::update() {
       size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
       size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
 
-      EVENT_DEBUG("Event Summary - Active: " + std::to_string(totalEventCount) +
-                  ", Handlers: " + std::to_string(totalHandlers) +
-                  ", Avg Update: " + std::to_string(m_avgUpdateTimeMs) + "ms" +
-                  " [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                  std::to_string(availableWorkers) + " workers, Budget: " +
-                  std::to_string(eventBudget) + "] [Types: " + eventSummary + "]");
+      EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
+                              "[Threaded: {}/{} workers, Budget: {}] [Types: {}]",
+                              totalEventCount, totalHandlers, m_avgUpdateTimeMs,
+                              optimalWorkers, availableWorkers, eventBudget, eventSummary));
     } else {
-      EVENT_DEBUG("Event Summary - Active: " + std::to_string(totalEventCount) +
-                  ", Handlers: " + std::to_string(totalHandlers) +
-                  ", Avg Update: " + std::to_string(m_avgUpdateTimeMs) + "ms" +
-                  " [Single-threaded] [Types: " + eventSummary + "]");
+      EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
+                              "[Single-threaded] [Types: {}]",
+                              totalEventCount, totalHandlers, m_avgUpdateTimeMs, eventSummary));
     }
   }
 
@@ -405,13 +419,12 @@ void EventManager::update() {
       size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
       size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
 
-      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
-                  "ms (slow frame) [Threaded: " + std::to_string(optimalWorkers) + "/" +
-                  std::to_string(availableWorkers) + " workers, Budget: " +
-                  std::to_string(eventBudget) + "]");
+      EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) "
+                              "[Threaded: {}/{} workers, Budget: {}]",
+                              totalTimeMs, optimalWorkers, availableWorkers, eventBudget));
     } else {
-      EVENT_DEBUG("EventManager update took " + std::to_string(totalTimeMs) +
-                  "ms (slow frame) [Single-threaded]");
+      EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) [Single-threaded]",
+                              totalTimeMs));
     }
   }
   m_lastUpdateTime.store(endTime);
@@ -444,7 +457,7 @@ void EventManager::drainAllDeferredEvents() {
 
 bool EventManager::registerEvent(const std::string &name, EventPtr event) {
   if (!event) {
-    EVENT_ERROR("Cannot register null event with name: " + name);
+    EVENT_ERROR(std::format("Cannot register null event with name: {}", name));
     return false;
   }
 
@@ -498,7 +511,7 @@ bool EventManager::registerEventInternal(const std::string &name,
 
   // Check if event already exists
   if (m_nameToIndex.find(name) != m_nameToIndex.end()) {
-    EVENT_WARN("Event '" + name + "' already exists, replacing");
+    EVENT_WARN(std::format("Event '{}' already exists, replacing", name));
   }
 
   // Create event data
@@ -517,8 +530,8 @@ bool EventManager::registerEventInternal(const std::string &name,
   m_nameToIndex[name] = index;
   m_nameToType[name] = typeId;
 
-  EVENT_INFO("Registered event '" + name + "' of type " +
-             std::string(getEventTypeName(typeId)));
+  EVENT_INFO(std::format("Registered event '{}' of type {}",
+             name, getEventTypeName(typeId)));
   return true;
 }
 
@@ -716,7 +729,7 @@ bool EventManager::executeEvent(const std::string &eventName) const {
   if (typeHandlers.empty() && (nameIt == m_nameHandlers.end() || nameIt->second.empty())) {
     // No handlers registered: execute directly
     try { event->execute(); }
-    catch (const std::exception &e) { EVENT_ERROR(std::string("Exception in executeEvent direct exec: ") + e.what()); }
+    catch (const std::exception &e) { EVENT_ERROR(std::format("Exception in executeEvent direct exec: {}", e.what())); }
     catch (...) { EVENT_ERROR("Unknown exception in executeEvent direct exec"); }
     return true;
   }
@@ -733,10 +746,9 @@ bool EventManager::executeEvent(const std::string &eventName) const {
       try {
         entry.callable(eventData);
       } catch (const std::exception &e) {
-        EVENT_ERROR("Handler exception in executeEvent '" + eventName + "': " +
-                    std::string(e.what()));
+        EVENT_ERROR(std::format("Handler exception in executeEvent '{}': {}", eventName, e.what()));
       } catch (...) {
-        EVENT_ERROR("Unknown handler exception in executeEvent '" + eventName + "'");
+        EVENT_ERROR(std::format("Unknown handler exception in executeEvent '{}'", eventName));
       }
     }
   }
@@ -746,7 +758,7 @@ bool EventManager::executeEvent(const std::string &eventName) const {
     for (const auto &entry : nameIt->second) {
       if (entry) {
         try { entry.callable(eventData); }
-        catch (const std::exception &e) { EVENT_ERROR("Name-handler exception in executeEvent: " + std::string(e.what())); }
+        catch (const std::exception &e) { EVENT_ERROR(std::format("Name-handler exception in executeEvent: {}", e.what())); }
         catch (...) { EVENT_ERROR("Unknown name-handler exception in executeEvent"); }
       }
     }
@@ -912,9 +924,8 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
 
   // Only log significant performance issues (>5ms) to reduce noise
   if (timeMs > 5.0) {
-    EVENT_DEBUG("Updated " + std::to_string(localEvents.size()) +
-                " events of type " + std::string(getEventTypeName(typeId)) +
-                " in " + std::to_string(timeMs) + "ms (slow)");
+    EVENT_DEBUG(std::format("Updated {} events of type {} in {:.2f}ms (slow)",
+                            localEvents.size(), getEventTypeName(typeId), timeMs));
   }
 }
 
@@ -967,9 +978,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   if (queueSize > pressureThreshold) {
     // Graceful degradation: fallback to single-threaded processing
-    EVENT_DEBUG("Queue pressure detected (" + std::to_string(queueSize) + "/" +
-                std::to_string(queueCapacity) +
-                "), using single-threaded processing");
+    EVENT_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
+                            queueSize, queueCapacity));
     m_lastWasThreaded.store(false, std::memory_order_relaxed);
     for (auto &evt : *localEvents) { evt->update(); }
 
@@ -1010,9 +1020,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
   // Debug logging for high queue pressure
   if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    EVENT_DEBUG("High queue pressure (" +
-                std::to_string(static_cast<int>(queuePressure * 100)) +
-                "%), using larger batches");
+    EVENT_DEBUG(std::format("High queue pressure ({}%), using larger batches",
+                            static_cast<int>(queuePressure * 100)));
   }
 
   // Simple batch processing without complex spin-wait
@@ -1020,11 +1029,8 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     // Debug thread allocation info periodically
     static thread_local uint64_t debugFrameCounter = 0;
     if (++debugFrameCounter % 300 == 0 && !localEvents->empty()) {
-      EVENT_DEBUG("Event Thread Allocation - Workers: " +
-                  std::to_string(optimalWorkerCount) + "/" +
-                  std::to_string(availableWorkers) +
-                  ", Event Budget: " + std::to_string(eventWorkerBudget) +
-                  ", Batches: " + std::to_string(batchCount));
+      EVENT_DEBUG(std::format("Event Thread Allocation - Workers: {}/{}, Event Budget: {}, Batches: {}",
+                              optimalWorkerCount, availableWorkers, eventWorkerBudget, batchCount));
     }
 
     size_t batchSize = localEvents->size() / batchCount;
@@ -1064,7 +1070,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
               }
             }
           } catch (const std::exception &e) {
-            EVENT_ERROR(std::string("Exception in event batch: ") + e.what());
+            EVENT_ERROR(std::format("Exception in event batch: {}", e.what()));
           } catch (...) {
             EVENT_ERROR("Unknown exception in event batch");
           }
@@ -1174,8 +1180,20 @@ bool EventManager::triggerParticleEffect(const std::string &effectName, float x,
                                          const std::string &groupTag,
                                          DispatchMode mode) const {
   ParticleEffectType effectType = ParticleEffectEvent::stringToEffectType(effectName);
-  auto pe = std::make_shared<ParticleEffectEvent>("trigger_particle_effect", effectType,
-                                                  x, y, intensity, duration, groupTag, "");
+
+  // OPTIMIZATION: Use pool to avoid per-trigger allocation
+  auto pe = m_particleEffectPool.acquire();
+  if (pe) {
+    pe->setEffectType(effectType);
+    pe->setPosition(x, y);
+    pe->setIntensity(intensity);
+    pe->setDuration(duration);
+    pe->setGroupTag(groupTag);
+  } else {
+    pe = std::make_shared<ParticleEffectEvent>("trigger_particle_effect", effectType,
+                                                x, y, intensity, duration, groupTag, "");
+  }
+
   EventData data;
   data.typeId = EventTypeId::ParticleEffect;
   data.setActive(true);
@@ -1227,11 +1245,20 @@ bool EventManager::createWeatherEvent(const std::string &name,
 
 bool EventManager::triggerCollision(const HammerEngine::CollisionInfo &info,
                                     DispatchMode mode) const {
+  // OPTIMIZATION: Use pool to avoid per-trigger allocation
+  auto collisionEvent = m_collisionPool.acquire();
+  if (collisionEvent) {
+    collisionEvent->setInfo(info);
+    collisionEvent->setConsumed(false);
+  } else {
+    collisionEvent = std::make_shared<CollisionEvent>(info);
+  }
+
   EventData eventData;
   eventData.typeId = EventTypeId::Collision;
   eventData.setActive(true);
   eventData.priority = EventPriority::CRITICAL;
-  eventData.event = std::make_shared<CollisionEvent>(info);
+  eventData.event = collisionEvent;
 
   return dispatchEvent(EventTypeId::Collision, eventData, mode, "triggerCollision");
 }
@@ -1250,12 +1277,21 @@ bool EventManager::triggerCollisionObstacleChanged(const Vector2D& position,
                                                   float radius,
                                                   const std::string& description,
                                                   DispatchMode mode) const {
+  // OPTIMIZATION: Use pool to avoid per-trigger allocation
+  auto obstacleEvent = m_collisionObstacleChangedPool.acquire();
+  if (obstacleEvent) {
+    obstacleEvent->configure(CollisionObstacleChangedEvent::ChangeType::MODIFIED,
+                             position, radius, description);
+  } else {
+    obstacleEvent = std::make_shared<CollisionObstacleChangedEvent>(
+        CollisionObstacleChangedEvent::ChangeType::MODIFIED, position, radius, description);
+  }
+
   EventData eventData;
   eventData.typeId = EventTypeId::CollisionObstacleChanged;
   eventData.setActive(true);
   eventData.priority = EventPriority::CRITICAL;
-  eventData.event = std::make_shared<CollisionObstacleChangedEvent>(
-    CollisionObstacleChangedEvent::ChangeType::MODIFIED, position, radius, description);
+  eventData.event = obstacleEvent;
 
   return dispatchEvent(EventTypeId::CollisionObstacleChanged, eventData, mode, "triggerCollisionObstacleChanged");
 }
@@ -1329,11 +1365,11 @@ bool EventManager::createParticleEffectEvent(const std::string &name,
     return registerEventInternal(name, event, EventTypeId::ParticleEffect);
 
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating ParticleEffectEvent '" + name +
-                "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating ParticleEffectEvent '{}': {}",
+                name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating ParticleEffectEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating ParticleEffectEvent: {}", name));
     return false;
   }
 }
@@ -1355,10 +1391,10 @@ bool EventManager::createWorldLoadedEvent(const std::string &name, const std::st
     auto event = std::make_shared<WorldLoadedEvent>(worldId, width, height);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating WorldLoadedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating WorldLoadedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating WorldLoadedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating WorldLoadedEvent: {}", name));
     return false;
   }
 }
@@ -1368,10 +1404,10 @@ bool EventManager::createWorldUnloadedEvent(const std::string &name, const std::
     auto event = std::make_shared<WorldUnloadedEvent>(worldId);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating WorldUnloadedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating WorldUnloadedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating WorldUnloadedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating WorldUnloadedEvent: {}", name));
     return false;
   }
 }
@@ -1382,10 +1418,10 @@ bool EventManager::createTileChangedEvent(const std::string &name, int x, int y,
     auto event = std::make_shared<TileChangedEvent>(x, y, changeType);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating TileChangedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating TileChangedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating TileChangedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating TileChangedEvent: {}", name));
     return false;
   }
 }
@@ -1396,10 +1432,10 @@ bool EventManager::createWorldGeneratedEvent(const std::string &name, const std:
     auto event = std::make_shared<WorldGeneratedEvent>(worldId, width, height, generationTime);
     return registerWorldEvent(name, event);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating WorldGeneratedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating WorldGeneratedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating WorldGeneratedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating WorldGeneratedEvent: {}", name));
     return false;
   }
 }
@@ -1530,6 +1566,8 @@ std::string EventManager::getEventTypeName(EventTypeId typeId) const {
     return "CollisionObstacleChanged";
   case EventTypeId::Custom:
     return "Custom";
+  case EventTypeId::Time:
+    return "Time";
   default:
     return "Unknown";
   }
@@ -1611,8 +1649,11 @@ void EventManager::drainDispatchQueueWithBudget() {
 
   // Removed timing budget - process all events for reliability
 
-  std::vector<PendingDispatch> local;
-  local.reserve(maxToProcess);
+  // OPTIMIZATION: Reuse member buffer to avoid per-frame allocation
+  m_localDispatchBuffer.clear();  // Keeps capacity, no deallocation
+  if (m_localDispatchBuffer.capacity() < maxToProcess) {
+    m_localDispatchBuffer.reserve(maxToProcess);  // Only grows if needed
+  }
   {
     std::lock_guard<std::mutex> lock(m_dispatchMutex);
     const size_t backlog = m_pendingDispatch.size();
@@ -1621,13 +1662,14 @@ void EventManager::drainDispatchQueueWithBudget() {
     }
     size_t toTake = std::min(maxToProcess, m_pendingDispatch.size());
     for (size_t i = 0; i < toTake; ++i) {
-      local.push_back(std::move(m_pendingDispatch.front()));
+      m_localDispatchBuffer.push_back(std::move(m_pendingDispatch.front()));
       m_pendingDispatch.pop_front();
     }
   }
 
   // OPTIMIZATION: Sort events by priority (higher priority = processed first)
-  std::sort(local.begin(), local.end(), [](const PendingDispatch& a, const PendingDispatch& b) {
+  std::sort(m_localDispatchBuffer.begin(), m_localDispatchBuffer.end(),
+            [](const PendingDispatch& a, const PendingDispatch& b) {
     return a.data.priority > b.data.priority; // Higher priority first
   });
 
@@ -1635,7 +1677,7 @@ void EventManager::drainDispatchQueueWithBudget() {
   std::shared_lock<std::shared_mutex> lock(m_handlersMutex);
 
   // Process each event with direct handler access (shared lock allows concurrent reads)
-  for (const auto &pd : local) {
+  for (const auto &pd : m_localDispatchBuffer) {
     const EventData &eventData = pd.data;
 
     // Invoke type handlers directly
@@ -1645,7 +1687,7 @@ void EventManager::drainDispatchQueueWithBudget() {
         try {
           entry.callable(eventData);
         } catch (const std::exception &e) {
-          EVENT_ERROR("Handler exception in deferred dispatch: " + std::string(e.what()));
+          EVENT_ERROR(std::format("Handler exception in deferred dispatch: {}", e.what()));
         } catch (...) {
           EVENT_ERROR("Unknown handler exception in deferred dispatch");
         }
@@ -1677,9 +1719,9 @@ bool EventManager::dispatchEvent(EventTypeId typeId, EventData& eventData, Dispa
         try {
           entry.callable(eventData);
         } catch (const std::exception &e) {
-          EVENT_ERROR(std::string("Handler exception in ") + errorContext + ": " + e.what());
+          EVENT_ERROR(std::format("Handler exception in {}: {}", errorContext, e.what()));
         } catch (...) {
-          EVENT_ERROR(std::string("Unknown handler exception in ") + errorContext);
+          EVENT_ERROR(std::format("Unknown handler exception in {}", errorContext));
         }
       }
     }
@@ -1700,10 +1742,10 @@ bool EventManager::createCameraMovedEvent(const std::string &name, const Vector2
     auto event = std::make_shared<CameraMovedEvent>(newPos, oldPos);
     return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating CameraMovedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating CameraMovedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating CameraMovedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating CameraMovedEvent: {}", name));
     return false;
   }
 }
@@ -1715,10 +1757,10 @@ bool EventManager::createCameraModeChangedEvent(const std::string &name, int new
         static_cast<CameraModeChangedEvent::Mode>(oldMode));
     return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating CameraModeChangedEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating CameraModeChangedEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating CameraModeChangedEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating CameraModeChangedEvent: {}", name));
     return false;
   }
 }
@@ -1728,10 +1770,10 @@ bool EventManager::createCameraShakeEvent(const std::string &name, float duratio
     auto event = std::make_shared<CameraShakeStartedEvent>(duration, intensity);
     return registerEventInternal(name, std::static_pointer_cast<Event>(event), EventTypeId::Camera);
   } catch (const std::exception &e) {
-    EVENT_ERROR("Exception creating CameraShakeEvent '" + name + "': " + e.what());
+    EVENT_ERROR(std::format("Exception creating CameraShakeEvent '{}': {}", name, e.what()));
     return false;
   } catch (...) {
-    EVENT_ERROR("Unknown exception creating CameraShakeEvent: " + name);
+    EVENT_ERROR(std::format("Unknown exception creating CameraShakeEvent: {}", name));
     return false;
   }
 }
@@ -1788,4 +1830,20 @@ bool EventManager::triggerCameraZoomChanged(float newZoom, float oldZoom, Dispat
   data.setActive(true);
   data.event = std::make_shared<CameraZoomChangedEvent>(newZoom, oldZoom);
   return dispatchEvent(EventTypeId::Camera, data, mode, "triggerCameraZoomChanged");
+}
+
+// Public dispatch method for EventPtr (used by GameTime for TimeEvents)
+bool EventManager::dispatchEvent(EventPtr event, DispatchMode mode) const {
+  if (!event) {
+    EVENT_ERROR("dispatchEvent called with null event");
+    return false;
+  }
+
+  EventTypeId typeId = event->getTypeId();
+  EventData data;
+  data.typeId = typeId;
+  data.setActive(true);
+  data.event = event;
+
+  return dispatchEvent(typeId, data, mode, "dispatchEvent(EventPtr)");
 }

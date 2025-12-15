@@ -15,6 +15,7 @@
 #include <chrono>
 #include <algorithm>
 #include <cmath>
+#include <format>
 
 PathfinderManager& PathfinderManager::Instance() {
     static PathfinderManager instance;
@@ -81,7 +82,7 @@ bool PathfinderManager::init() {
         return true;
     }
     catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to initialize PathfinderManager: " + std::string(e.what()));
+        PATHFIND_ERROR(std::format("Failed to initialize PathfinderManager: {}", e.what()));
         return false;
     }
 }
@@ -91,7 +92,7 @@ bool PathfinderManager::isInitialized() const {
 }
 
 void PathfinderManager::update() {
-    if (!m_initialized.load() || m_isShutdown) {
+    if (!m_initialized.load() || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire)) {
         return;
     }
 
@@ -108,6 +109,13 @@ void PathfinderManager::update() {
     }
 }
 
+void PathfinderManager::setGlobalPause(bool paused) {
+    m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool PathfinderManager::isGloballyPaused() const {
+    return m_globallyPaused.load(std::memory_order_acquire);
+}
 
 void PathfinderManager::clean() {
     if (m_isShutdown) {
@@ -168,7 +176,7 @@ void PathfinderManager::prepareForStateTransition() {
         size_t bufferSize = m_requestBuffer.size();
         m_requestBuffer.clear();
         if (bufferSize > 0) {
-            PATHFIND_DEBUG("Cleared " + std::to_string(bufferSize) + " buffered requests");
+            PATHFIND_DEBUG(std::format("Cleared {} buffered requests", bufferSize));
         }
     }
 
@@ -178,7 +186,7 @@ void PathfinderManager::prepareForStateTransition() {
         size_t cacheSize = m_pathCache.size();
         m_pathCache.clear();
         if (cacheSize > 0) {
-            PATHFIND_INFO("Cleared " + std::to_string(cacheSize) + " cached paths for state transition");
+            PATHFIND_INFO(std::format("Cleared {} cached paths for state transition", cacheSize));
         }
     }
 
@@ -188,7 +196,7 @@ void PathfinderManager::prepareForStateTransition() {
         size_t pendingSize = m_pending.size();
         m_pending.clear();
         if (pendingSize > 0) {
-            PATHFIND_DEBUG("Cleared " + std::to_string(pendingSize) + " pending requests");
+            PATHFIND_DEBUG(std::format("Cleared {} pending requests", pendingSize));
         }
     }
     
@@ -376,8 +384,8 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
 
         if (dirtyPercent <= DIRTY_THRESHOLD_PERCENT * 100.0f) {
             // Incremental update is beneficial (small change)
-            PATHFIND_DEBUG("Incremental rebuild: " + std::to_string(dirtyPercent) +
-                          "% dirty (threshold: " + std::to_string(DIRTY_THRESHOLD_PERCENT * 100.0f) + "%)");
+            PATHFIND_DEBUG(std::format("Incremental rebuild: {}% dirty (threshold: {}%)",
+                          dirtyPercent, DIRTY_THRESHOLD_PERCENT * 100.0f));
 
             // Submit incremental rebuild to ThreadSystem (non-blocking)
             auto& threadSystem = HammerEngine::ThreadSystem::Instance();
@@ -397,8 +405,8 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             return; // Early return - incremental rebuild submitted
         } else {
             // Too much dirty (>25%) - full rebuild is faster
-            PATHFIND_DEBUG("Full rebuild: " + std::to_string(dirtyPercent) +
-                          "% dirty exceeds threshold (" + std::to_string(DIRTY_THRESHOLD_PERCENT * 100.0f) + "%)");
+            PATHFIND_DEBUG(std::format("Full rebuild: {}% dirty exceeds threshold ({}%)",
+                          dirtyPercent, DIRTY_THRESHOLD_PERCENT * 100.0f));
             m_grid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
         }
     }
@@ -470,7 +478,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                         PATHFIND_INFO("Grid rebuilt successfully (sequential)");
                     }
                 } catch (const std::exception& e) {
-                    PATHFIND_ERROR("Sequential grid rebuild failed: " + std::string(e.what()));
+                    PATHFIND_ERROR(std::format("Sequential grid rebuild failed: {}", e.what()));
                 }
             },
             HammerEngine::TaskPriority::Low,
@@ -493,9 +501,8 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         queuePressure
     );
 
-    PATHFIND_DEBUG("Parallel grid rebuild: " + std::to_string(gridHeight) + " rows in " +
-                  std::to_string(batchCount) + " batches (size: " + std::to_string(batchSize) +
-                  "), workers: " + std::to_string(optimalWorkerCount));
+    PATHFIND_DEBUG(std::format("Parallel grid rebuild: {} rows in {} batches (size: {}), workers: {}",
+                  gridHeight, batchCount, batchSize, optimalWorkerCount));
 
     // Submit coordinated rebuild task that manages batches
     auto rebuildFuture = threadSystem.enqueueTaskWithResult(
@@ -527,7 +534,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                             newGrid->rebuildFromWorld(rowStart, rowEnd);
                         },
                         HammerEngine::TaskPriority::Low,
-                        "PathfindingGridBatch_" + std::to_string(i)
+                        std::format("PathfindingGridBatch_{}", i)
                     );
                     batchFutures.push_back(std::move(batchFuture));
                 }
@@ -549,10 +556,10 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     clearOldestCacheEntries(0.5f);
                     calculateOptimalCacheSettings();
                     prewarmPathCache();
-                    PATHFIND_INFO("Grid rebuilt successfully (parallel, " + std::to_string(batchCount) + " batches)");
+                    PATHFIND_INFO(std::format("Grid rebuilt successfully (parallel, {} batches)", batchCount));
                 }
             } catch (const std::exception& e) {
-                PATHFIND_ERROR("Parallel grid rebuild failed: " + std::string(e.what()));
+                PATHFIND_ERROR(std::format("Parallel grid rebuild failed: {}", e.what()));
             }
         },
         HammerEngine::TaskPriority::Low,
@@ -938,17 +945,13 @@ void PathfinderManager::reportStatistics() const {
     auto stats = getStats();
 
     if (stats.totalRequests > 0) {
-        PATHFIND_INFO("PathfinderManager Status - Total Requests: " + std::to_string(stats.totalRequests) +
-                     ", Completed: " + std::to_string(stats.completedRequests) +
-                     ", Failed: " + std::to_string(stats.failedRequests) +
-                     ", Cache Hits: " + std::to_string(stats.cacheHits) +
-                     ", Cache Misses: " + std::to_string(stats.cacheMisses) +
-                     ", Hit Rate: " + std::to_string(static_cast<int>(stats.cacheHitRate * 100)) + "%" +
-                     ", Cache Size: " + std::to_string(stats.cacheSize) +
-                     ", Avg Time: " + std::to_string(stats.averageProcessingTimeMs) + "ms" +
-                     ", RPS: " + std::to_string(static_cast<int>(stats.requestsPerSecond)) +
-                     ", Memory: " + std::to_string(stats.memoryUsageKB) + " KB" +
-                     ", ThreadSystem: " + (stats.processorActive ? "Active" : "Inactive"));
+        PATHFIND_INFO(std::format("PathfinderManager Status - Total Requests: {}, Completed: {}, Failed: {}, "
+                     "Cache Hits: {}, Cache Misses: {}, Hit Rate: {}%, Cache Size: {}, Avg Time: {}ms, "
+                     "RPS: {}, Memory: {} KB, ThreadSystem: {}",
+                     stats.totalRequests, stats.completedRequests, stats.failedRequests,
+                     stats.cacheHits, stats.cacheMisses, static_cast<int>(stats.cacheHitRate * 100),
+                     stats.cacheSize, stats.averageProcessingTimeMs, static_cast<int>(stats.requestsPerSecond),
+                     stats.memoryUsageKB, (stats.processorActive ? "Active" : "Inactive")));
     }
 
     // Reset per-cycle counters for next reporting window (every 600 frames / 10 seconds)
@@ -1019,15 +1022,15 @@ void PathfinderManager::clearOldestCacheEntries(float percentage) {
         m_pathCache.erase(entries[i].first);
     }
 
-    PATHFIND_DEBUG("Cleared " + std::to_string(numToRemove) + " oldest cache entries (" +
-                   std::to_string(static_cast<int>(percentage * 100)) + "%)");
+    PATHFIND_DEBUG(std::format("Cleared {} oldest cache entries ({}%)",
+                   numToRemove, static_cast<int>(percentage * 100)));
 }
 
 void PathfinderManager::clearAllCache() {
     std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
     size_t clearedCount = m_pathCache.size();
     m_pathCache.clear();
-    PATHFIND_INFO("Cleared all cache entries: " + std::to_string(clearedCount) + " paths removed");
+    PATHFIND_INFO(std::format("Cleared all cache entries: {} paths removed", clearedCount));
 }
 
 void PathfinderManager::calculateOptimalCacheSettings() {
@@ -1084,25 +1087,21 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     int totalBuckets = bucketsX * bucketsY;
     float cacheEfficiency = (static_cast<float>(MAX_CACHE_ENTRIES) / static_cast<float>(totalBuckets)) * 100.0f;
 
-    PATHFIND_INFO("Auto-tuned cache settings for " +
-                  std::to_string(static_cast<int>(worldW)) + "×" +
-                  std::to_string(static_cast<int>(worldH)) + "px world:");
-    PATHFIND_INFO("  Endpoint quantization: " +
-                  std::to_string(static_cast<int>(m_endpointQuantization)) + "px (" +
-                  std::to_string(static_cast<int>((m_endpointQuantization / worldW) * 100.0f * 10.0f) / 10.0f) + "% world)");
-    PATHFIND_INFO("  Cache key quantization: " +
-                  std::to_string(static_cast<int>(m_cacheKeyQuantization)) + "px");
-    PATHFIND_INFO("  Expected cache buckets: " +
-                  std::to_string(bucketsX) + "×" + std::to_string(bucketsY) +
-                  " = " + std::to_string(totalBuckets) + " total");
-    PATHFIND_INFO("  Cache efficiency: " +
-                  std::to_string(static_cast<int>(cacheEfficiency)) + "% coverage");
-    PATHFIND_INFO("  Hierarchical threshold: " +
-                  std::to_string(static_cast<int>(m_hierarchicalThreshold)) + "px");
-    PATHFIND_INFO("  Pre-warm sectors: " +
-                  std::to_string(m_prewarmSectorCount) + "×" +
-                  std::to_string(m_prewarmSectorCount) +
-                  " = " + std::to_string(m_prewarmPathCount) + " paths");
+    PATHFIND_INFO(std::format("Auto-tuned cache settings for {}×{}px world:",
+                  static_cast<int>(worldW), static_cast<int>(worldH)));
+    PATHFIND_INFO(std::format("  Endpoint quantization: {}px ({}% world)",
+                  static_cast<int>(m_endpointQuantization),
+                  static_cast<int>((m_endpointQuantization / worldW) * 100.0f * 10.0f) / 10.0f));
+    PATHFIND_INFO(std::format("  Cache key quantization: {}px",
+                  static_cast<int>(m_cacheKeyQuantization)));
+    PATHFIND_INFO(std::format("  Expected cache buckets: {}×{} = {} total",
+                  bucketsX, bucketsY, totalBuckets));
+    PATHFIND_INFO(std::format("  Cache efficiency: {}% coverage",
+                  static_cast<int>(cacheEfficiency)));
+    PATHFIND_INFO(std::format("  Hierarchical threshold: {}px",
+                  static_cast<int>(m_hierarchicalThreshold)));
+    PATHFIND_INFO(std::format("  Pre-warm sectors: {}×{} = {} paths",
+                  m_prewarmSectorCount, m_prewarmSectorCount, m_prewarmPathCount));
 }
 
 void PathfinderManager::prewarmPathCache() {
@@ -1118,11 +1117,9 @@ void PathfinderManager::prewarmPathCache() {
     float sectorW = worldW / static_cast<float>(sectors);
     float sectorH = worldH / static_cast<float>(sectors);
 
-    PATHFIND_INFO("Pre-warming cache with " +
-                  std::to_string(m_prewarmPathCount) + " sector-based paths (world: " +
-                  std::to_string(static_cast<int>(worldW)) + "×" +
-                  std::to_string(static_cast<int>(worldH)) + "px, sectors: " +
-                  std::to_string(sectors) + "×" + std::to_string(sectors) + ")...");
+    PATHFIND_INFO(std::format("Pre-warming cache with {} sector-based paths (world: {}×{}px, sectors: {}×{})...",
+                  m_prewarmPathCount, static_cast<int>(worldW), static_cast<int>(worldH),
+                  sectors, sectors));
 
     // Generate paths between sector centers
     std::vector<std::pair<Vector2D, Vector2D>> seedPaths;
@@ -1168,8 +1165,7 @@ void PathfinderManager::prewarmPathCache() {
         pathCount++;
     }
 
-    PATHFIND_INFO("Submitted " + std::to_string(pathCount) +
-                  " pre-warming paths to background ThreadSystem");
+    PATHFIND_INFO(std::format("Submitted {} pre-warming paths to background ThreadSystem", pathCount));
 
     m_prewarming.store(false);
 }
@@ -1229,7 +1225,7 @@ void PathfinderManager::subscribeToEvents() {
         PATHFIND_DEBUG("PathfinderManager subscribed to World events (WorldLoaded, WorldUnloaded, TileChanged)");
 
     } catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to subscribe to events: " + std::string(e.what()));
+        PATHFIND_ERROR(std::format("Failed to subscribe to events: {}", e.what()));
     }
 }
 
@@ -1247,7 +1243,7 @@ void PathfinderManager::unsubscribeFromEvents() {
         PATHFIND_DEBUG("PathfinderManager unsubscribed from all events");
         
     } catch (const std::exception& e) {
-        PATHFIND_ERROR("Failed to unsubscribe from events: " + std::string(e.what()));
+        PATHFIND_ERROR(std::format("Failed to unsubscribe from events: {}", e.what()));
     }
 }
 
@@ -1281,8 +1277,8 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
         }
         
         if (removedCount > 0) {
-            PATHFIND_DEBUG("Invalidated " + std::to_string(removedCount) +
-                          " cached paths due to obstacle change: " + description);
+            PATHFIND_DEBUG(std::format("Invalidated {} cached paths due to obstacle change: {}",
+                          removedCount, description));
         }
     }
 
@@ -1302,15 +1298,14 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
                 }
             }
         }
-        PATHFIND_DEBUG("Marked dirty region for obstacle change at grid (" +
-                      std::to_string(gridX) + "," + std::to_string(gridY) +
-                      ") radius " + std::to_string(gridRadius));
+        PATHFIND_DEBUG(std::format("Marked dirty region for obstacle change at grid ({},{}) radius {}",
+                      gridX, gridY, gridRadius));
     }
 }
 
 void PathfinderManager::onWorldLoaded(int worldWidth, int worldHeight) {
-    PATHFIND_INFO("World loaded (" + std::to_string(worldWidth) + "x" + std::to_string(worldHeight) +
-                  ") - rebuilding pathfinding grid and clearing cache");
+    PATHFIND_INFO(std::format("World loaded ({}x{}) - rebuilding pathfinding grid and clearing cache",
+                  worldWidth, worldHeight));
 
     // Clear all cached paths - old world paths are completely invalid
     clearAllCache();
@@ -1363,8 +1358,8 @@ void PathfinderManager::onTileChanged(int x, int y) {
     }
 
     if (removedCount > 0) {
-        PATHFIND_DEBUG("Tile changed at (" + std::to_string(x) + ", " + std::to_string(y) +
-                      "), invalidated " + std::to_string(removedCount) + " cached paths");
+        PATHFIND_DEBUG(std::format("Tile changed at ({}, {}), invalidated {} cached paths",
+                      x, y, removedCount));
     }
 
     // Mark dirty region on pathfinding grid for incremental update
@@ -1376,8 +1371,8 @@ void PathfinderManager::onTileChanged(int x, int y) {
 
         // Mark single cell dirty (tile changes typically affect one cell)
         m_grid->markDirtyRegion(gridX, gridY, 1, 1);
-        PATHFIND_DEBUG("Marked dirty region for tile change at grid (" +
-                      std::to_string(gridX) + "," + std::to_string(gridY) + ")");
+        PATHFIND_DEBUG(std::format("Marked dirty region for tile change at grid ({},{})",
+                      gridX, gridY));
     }
 }
 
@@ -1392,8 +1387,8 @@ void PathfinderManager::waitForGridRebuildCompletion() {
     }
 
     if (!localFutures.empty()) {
-        PATHFIND_INFO("Waiting for " + std::to_string(localFutures.size()) +
-                      " grid rebuild task(s) to complete before state transition...");
+        PATHFIND_INFO(std::format("Waiting for {} grid rebuild task(s) to complete before state transition...",
+                      localFutures.size()));
 
         for (auto& future : localFutures) {
             if (future.valid()) {
@@ -1401,7 +1396,7 @@ void PathfinderManager::waitForGridRebuildCompletion() {
                     future.wait(); // Block until task completes
                     PATHFIND_DEBUG("Grid rebuild task completed");
                 } catch (const std::exception& e) {
-                    PATHFIND_ERROR("Exception waiting for grid rebuild: " + std::string(e.what()));
+                    PATHFIND_ERROR(std::format("Exception waiting for grid rebuild: {}", e.what()));
                 }
             }
         }
@@ -1440,8 +1435,8 @@ void PathfinderManager::processPendingRequests() {
     // CRITICAL: Queue pressure monitoring - graceful degradation
     if (queuePressure > HammerEngine::QUEUE_PRESSURE_CRITICAL) {
         // Queue critically full - defer requests to next frame
-        PATHFIND_WARN("Queue pressure critical (" + std::to_string(queuePressure * 100.0) +
-                      "%), deferring " + std::to_string(requestCount) + " path requests to next frame");
+        PATHFIND_WARN(std::format("Queue pressure critical ({}%), deferring {} path requests to next frame",
+                      queuePressure * 100.0, requestCount));
 
         std::lock_guard<std::mutex> lock(m_requestBufferMutex);
         // Re-insert requests at the front for next frame processing
@@ -1452,8 +1447,8 @@ void PathfinderManager::processPendingRequests() {
     // Rate limiting - cap requests per frame to prevent queue flooding
     size_t requestsToProcess = std::min(requestCount, MAX_REQUESTS_PER_FRAME);
     if (requestsToProcess < requestCount) {
-        PATHFIND_DEBUG("Rate limiting: Processing " + std::to_string(requestsToProcess) +
-                      " of " + std::to_string(requestCount) + " requests this frame");
+        PATHFIND_DEBUG(std::format("Rate limiting: Processing {} of {} requests this frame",
+                      requestsToProcess, requestCount));
 
         // Re-buffer excess requests for next frame
         std::lock_guard<std::mutex> lock(m_requestBufferMutex);
@@ -1549,24 +1544,22 @@ void PathfinderManager::processPendingRequests() {
 
                 m_processedCount.fetch_add(1, std::memory_order_relaxed);
 
-                // Fire callbacks
-                std::vector<PathCallback> callbacks;
+                // Fire callbacks (inline to avoid per-completion vector allocation)
                 {
                     std::lock_guard<std::mutex> lock(m_pendingMutex);
                     auto it = m_pending.find(cacheKey);
                     if (it != m_pending.end()) {
-                        callbacks.swap(it->second.callbacks);
+                        for (const auto &cb : it->second.callbacks) {
+                            if (cb) cb(req.entityId, path);
+                        }
                         m_pending.erase(it);
                     }
-                }
-                for (const auto &cb : callbacks) {
-                    if (cb) cb(req.entityId, path);
                 }
             };
 
             const auto taskPri = mapEnumToTaskPriority(req.priority);
             const auto priLabel = priorityLabel(req.priority);
-            std::string taskDesc = "PathfindingComputation/" + std::string(priLabel);
+            std::string taskDesc = std::format("PathfindingComputation/{}", priLabel);
 
             threadSystem.enqueueTask(work, taskPri, taskDesc);
         }
@@ -1588,9 +1581,8 @@ void PathfinderManager::processPendingRequests() {
         m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire)
     );
 
-    PATHFIND_DEBUG("Processing " + std::to_string(requestsToProcess) + " requests in " +
-                  std::to_string(batchCount) + " batches (size: " + std::to_string(batchSize) +
-                  "), workers: " + std::to_string(optimalWorkerCount));
+    PATHFIND_DEBUG(std::format("Processing {} requests in {} batches (size: {}), workers: {}",
+                  requestsToProcess, batchCount, batchSize, optimalWorkerCount));
 
     // Submit batches
     for (size_t i = 0; i < batchCount; ++i) {
@@ -1657,18 +1649,16 @@ void PathfinderManager::processPendingRequests() {
 
                 m_processedCount.fetch_add(1, std::memory_order_relaxed);
 
-                // Fire callbacks
-                std::vector<PathCallback> callbacks;
+                // Fire callbacks (inline to avoid per-completion vector allocation)
                 {
                     std::lock_guard<std::mutex> lock(m_pendingMutex);
                     auto it = m_pending.find(cacheKey);
                     if (it != m_pending.end()) {
-                        callbacks.swap(it->second.callbacks);
+                        for (const auto &cb : it->second.callbacks) {
+                            if (cb) cb(req.entityId, path);
+                        }
                         m_pending.erase(it);
                     }
-                }
-                for (const auto &cb : callbacks) {
-                    if (cb) cb(req.entityId, path);
                 }
             }
         };
@@ -1677,7 +1667,7 @@ void PathfinderManager::processPendingRequests() {
         m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
             batchWork,
             HammerEngine::TaskPriority::High,
-            "Pathfinding_Batch_" + std::to_string(i)
+            std::format("Pathfinding_Batch_{}", i)
         ));
     }
 
@@ -1698,7 +1688,7 @@ void PathfinderManager::waitForBatchCompletion() {
             try {
                 future.wait();
             } catch (const std::exception& e) {
-                PATHFIND_ERROR("Exception waiting for batch completion: " + std::string(e.what()));
+                PATHFIND_ERROR(std::format("Exception waiting for batch completion: {}", e.what()));
             }
         }
     }

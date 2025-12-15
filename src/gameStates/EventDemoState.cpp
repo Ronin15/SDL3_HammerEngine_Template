@@ -10,6 +10,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
+#include "core/GameTime.hpp"
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -25,10 +26,13 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "controllers/world/WeatherController.hpp"
+#include "controllers/world/TimeController.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
+#include <cmath>
 #include <ctime>
-#include <iomanip>
+#include <format>
 
 
 EventDemoState::EventDemoState() {
@@ -47,14 +51,18 @@ EventDemoState::~EventDemoState() {
 
     GAMESTATE_INFO("Exiting EventDemoState in destructor...");
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in EventDemoState destructor: " +
-                    std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in EventDemoState destructor: {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in EventDemoState destructor");
   }
 }
 
 bool EventDemoState::enter() {
+  // Cache manager pointers for render hot path (always valid after GameEngine init)
+  mp_particleMgr = &ParticleManager::Instance();
+  mp_worldMgr = &WorldManager::Instance();
+  mp_uiMgr = &UIManager::Instance();
+
   GAMESTATE_INFO("Entering EventDemoState...");
 
   // Reset transition flag when entering state
@@ -87,7 +95,7 @@ bool EventDemoState::enter() {
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
       m_worldWidth = std::max(0.0f, maxX - minX);
       m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+      GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
     } else {
       // Fallback to screen dimensions if world bounds unavailable
       m_worldWidth = gameEngine.getLogicalWidth();
@@ -161,39 +169,62 @@ bool EventDemoState::enter() {
     // Create event log component using auto-detected dimensions
     ui.createEventLog("event_log", {10, ui.getLogicalHeight() - 200, 730, 180},
                       7);
-    // Set auto-repositioning: anchored to bottom with fixed offset
-    ui.setComponentPositioning("event_log", {UIPositionMode::BOTTOM_ALIGNED, 10, 20, 730, 180});
+    // Set auto-repositioning: anchored to bottom with percentage-based width for responsiveness
+    UIPositioning eventLogPos;
+    eventLogPos.mode = UIPositionMode::BOTTOM_ALIGNED;
+    eventLogPos.offsetX = 10;
+    eventLogPos.offsetY = 20;
+    eventLogPos.fixedHeight = 180;
+    eventLogPos.widthPercent = UIConstants::EVENT_LOG_WIDTH_PERCENT;
+    ui.setComponentPositioning("event_log", eventLogPos);
 
     ui.addEventLogEntry("event_log", "Event Demo System Initialized");
 
-    // Create right-aligned inventory panel for resource demo visualization with dramatic spacing
+    // Create right-aligned inventory panel for resource demo visualization
+    // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
+    constexpr int inventoryWidth = 280;
+    constexpr int inventoryHeight = 400;
+    constexpr int panelMarginRight = 20;  // 20px from right edge
+    constexpr int panelMarginTop = 170;   // 170px from top
+    constexpr int childInset = 10;        // Children are 10px inside panel
+    constexpr int childWidth = inventoryWidth - (childInset * 2);  // 260px
+
     int windowWidth = ui.getLogicalWidth();
-    int inventoryWidth = 280;
-    int inventoryHeight = 400;  // Increased height dramatically
-    int inventoryX = windowWidth - inventoryWidth - 20; // Right-aligned with 20px margin
-    int inventoryY = 170;  // Moved down dramatically to avoid overlap
+    int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
+    int inventoryY = panelMarginTop;
 
     ui.createPanel("inventory_panel",
                    {inventoryX, inventoryY, inventoryWidth, inventoryHeight});
     ui.setComponentVisible("inventory_panel", false);
-    // Set auto-repositioning: right-aligned with fixed offsetY
-    ui.setComponentPositioning("inventory_panel", {UIPositionMode::RIGHT_ALIGNED, 20, inventoryY - (ui.getLogicalHeight() - inventoryHeight) / 2, inventoryWidth, inventoryHeight});
+    ui.setComponentPositioning("inventory_panel",
+                               {UIPositionMode::TOP_RIGHT, panelMarginRight, panelMarginTop,
+                                inventoryWidth, inventoryHeight});
 
+    // Title: 25px below panel top, inset by 10px
     ui.createTitle("inventory_title",
-                   {inventoryX + 10, inventoryY + 25, inventoryWidth - 20, 35},  // Increased height from 30 to 35
+                   {inventoryX + childInset, inventoryY + 25, childWidth, 35},
                    "Player Inventory");
     ui.setComponentVisible("inventory_title", false);
-    // Children will be repositioned in onWindowResize based on panel position
+    ui.setComponentPositioning("inventory_title",
+                               {UIPositionMode::TOP_RIGHT, panelMarginRight + childInset, panelMarginTop + 25,
+                                childWidth, 35});
 
+    // Status label: 75px below panel top
     ui.createLabel("inventory_status",
-                   {inventoryX + 10, inventoryY + 75, inventoryWidth - 20, 25},  // Increased height from 20 to 25
+                   {inventoryX + childInset, inventoryY + 75, childWidth, 25},
                    "Capacity: 0/50");
     ui.setComponentVisible("inventory_status", false);
+    ui.setComponentPositioning("inventory_status",
+                               {UIPositionMode::TOP_RIGHT, panelMarginRight + childInset, panelMarginTop + 75,
+                                childWidth, 25});
 
-    // Create inventory list for smooth updates like GamePlayState
+    // Inventory list: 110px below panel top
     ui.createList("inventory_list",
-                  {inventoryX + 10, inventoryY + 110, inventoryWidth - 20, 270});  // Moved down from 95 to 110, increased height
+                  {inventoryX + childInset, inventoryY + 110, childWidth, 270});
     ui.setComponentVisible("inventory_list", false);
+    ui.setComponentPositioning("inventory_list",
+                               {UIPositionMode::TOP_RIGHT, panelMarginRight + childInset, panelMarginTop + 110,
+                                childWidth, 270});
 
     // --- DATA BINDING SETUP ---
     // Bind the inventory capacity label to a function that gets the data
@@ -204,42 +235,58 @@ bool EventDemoState::enter() {
         const auto* inventory = m_player->getInventory();
         int used = inventory->getUsedSlots();
         int max = inventory->getMaxSlots();
-        return "Capacity: " + std::to_string(used) + "/" + std::to_string(max);
+        return std::format("Capacity: {}/{}", used, max);
     });
 
-    // Bind the inventory list to a function that gets the items, sorts them, and returns them
-    ui.bindList("inventory_list", [this]() -> std::vector<std::string> {
+    // Bind the inventory list - populates provided buffers (zero-allocation pattern)
+    ui.bindList("inventory_list", [this](std::vector<std::string>& items,
+                                         std::vector<std::pair<std::string, int>>& sortedResources) {
         if (!m_player || !m_player->getInventory()) {
-            return {"(Empty)"};
+            items.push_back("(Empty)");
+            return;
         }
 
         const auto* inventory = m_player->getInventory();
         auto allResources = inventory->getAllResources();
 
         if (allResources.empty()) {
-            return {"(Empty)"};
+            items.push_back("(Empty)");
+            return;
         }
 
-        std::vector<std::string> items;
-        std::vector<std::pair<std::string, int>> sortedResources;
+        // Build sorted list using reusable buffer provided by UIManager
+        sortedResources.reserve(allResources.size());
         for (const auto& [resourceHandle, quantity] : allResources) {
             if (quantity > 0) {
                 auto resourceTemplate = ResourceTemplateManager::Instance().getResourceTemplate(resourceHandle);
                 std::string resourceName = resourceTemplate ? resourceTemplate->getName() : "Unknown";
-                sortedResources.emplace_back(resourceName, quantity);
+                sortedResources.emplace_back(std::move(resourceName), quantity);
             }
         }
         std::sort(sortedResources.begin(), sortedResources.end());
 
+        items.reserve(sortedResources.size());
         for (const auto& [resourceId, quantity] : sortedResources) {
-            items.push_back(resourceId + " x" + std::to_string(quantity));
+            items.push_back(std::format("{} x{}", resourceId, quantity));
         }
 
-        return items;
+        if (items.empty()) {
+            items.push_back("(Empty)");
+        }
     });
 
     // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
+
+    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
+    WeatherController::Instance().subscribe();
+
+    // Subscribe to time events for event log display
+    TimeController::Instance().subscribe("event_log");
+
+    // Pre-allocate status buffers to avoid per-frame allocations
+    m_phaseBuffer.reserve(32);
+    m_statusBuffer2.reserve(64);
 
     // Mark as fully initialized to prevent re-entering loading logic
     m_initialized = true;
@@ -248,7 +295,7 @@ bool EventDemoState::enter() {
     return true;
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in EventDemoState::enter(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in EventDemoState::enter(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in EventDemoState::enter()");
@@ -394,6 +441,17 @@ bool EventDemoState::exit() {
       m_worldLoaded = false;
     }
 
+    // Unsubscribe from automatic weather events
+    WeatherController::Instance().unsubscribe();
+
+    // Unsubscribe from time event logging
+    TimeController::Instance().unsubscribe();
+
+    // Clear cached manager pointers
+    mp_particleMgr = nullptr;
+    mp_worldMgr = nullptr;
+    mp_uiMgr = nullptr;
+
     // Reset initialization flag for next fresh start
     m_initialized = false;
 
@@ -401,44 +459,12 @@ bool EventDemoState::exit() {
     return true;
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Exception in EventDemoState::exit(): " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Exception in EventDemoState::exit(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in EventDemoState::exit()");
     return false;
   }
-}
-
-void EventDemoState::onWindowResize(int newLogicalWidth,
-                                     int newLogicalHeight) {
-  // Recalculate UI positions based on new window dimensions
-  auto &ui = UIManager::Instance();
-
-  // Reposition inventory panel (matches initializeWorld pattern)
-  const int inventoryWidth = 280;
-  const int inventoryHeight = 400;
-  const int inventoryX = newLogicalWidth - inventoryWidth - 20;
-  const int inventoryY = 170;
-
-  ui.setComponentBounds("inventory_panel",
-                        {inventoryX, inventoryY, inventoryWidth,
-                         inventoryHeight});
-
-  ui.setComponentBounds("inventory_title",
-                        {inventoryX + 10, inventoryY + 25,
-                         inventoryWidth - 20, 35});
-
-  ui.setComponentBounds("inventory_status",
-                        {inventoryX + 10, inventoryY + 75,
-                         inventoryWidth - 20, 25});
-
-  ui.setComponentBounds("inventory_list",
-                        {inventoryX + 10, inventoryY + 110,
-                         inventoryWidth - 20, 270});
-
-  GAMESTATE_DEBUG("EventDemoState: Repositioned UI for new window size: " +
-                  std::to_string(newLogicalWidth) + "x" +
-                  std::to_string(newLogicalHeight));
 }
 
 void EventDemoState::unregisterEventHandlers() {
@@ -489,6 +515,9 @@ void EventDemoState::update(float deltaTime) {
     return;  // Don't continue with rest of update
   }
 
+  // Update game time (advances calendar, dispatches time events)
+  GameTime::Instance().update(deltaTime);
+
   // Update timing
   updateDemoTimer(deltaTime);
 
@@ -518,8 +547,7 @@ void EventDemoState::update(float deltaTime) {
         triggerWeatherDemoAuto();
         m_lastEventTriggerTime = m_totalDemoTime;
         m_weatherChangesShown = 1;
-        addLogEntry("Starting weather demo - changes shown: 1/" +
-                    std::to_string(m_weatherSequence.size()));
+        addLogEntry("Weather demo started");
       }
       break;
 
@@ -533,23 +561,18 @@ void EventDemoState::update(float deltaTime) {
           m_weatherChangesShown++;
           m_phaseTimer = 0.0f;
 
-          addLogEntry("Weather changes shown: " +
-                      std::to_string(m_weatherChangesShown) + "/" +
-                      std::to_string(m_weatherSequence.size()));
-
           if (m_weatherChangesShown >= m_weatherSequence.size()) {
             m_weatherDemoComplete = true;
-            addLogEntry("Weather demo complete - All weather types shown!");
+            addLogEntry("Weather demo complete");
           }
         } else {
           m_weatherDemoComplete = true;
-          addLogEntry("Weather demo force completed - counter exceeded limit");
         }
       }
       if (m_weatherDemoComplete && m_phaseTimer >= 2.0f) {
         m_currentPhase = DemoPhase::NPCSpawnDemo;
         m_phaseTimer = 0.0f;
-        addLogEntry("Advancing to NPC Spawn Demo Phase");
+        addLogEntry("NPC spawn demo");
       }
       break;
 
@@ -562,8 +585,7 @@ void EventDemoState::update(float deltaTime) {
       if (m_phaseTimer >= m_phaseDuration) {
         m_currentPhase = DemoPhase::SceneTransitionDemo;
         m_phaseTimer = 0.0f;
-        addLogEntry(
-            "NPC spawn demo complete - Starting Scene Transition Demo Phase");
+        addLogEntry("Scene transition demo");
       }
       break;
 
@@ -576,7 +598,7 @@ void EventDemoState::update(float deltaTime) {
       if (m_phaseTimer >= m_phaseDuration) {
         m_currentPhase = DemoPhase::ParticleEffectDemo;
         m_phaseTimer = 0.0f;
-        addLogEntry("Starting Particle Effect Demo Phase");
+        addLogEntry("Particle effect demo");
       }
       break;
 
@@ -589,7 +611,7 @@ void EventDemoState::update(float deltaTime) {
       if (m_phaseTimer >= m_phaseDuration) {
         m_currentPhase = DemoPhase::ResourceDemo;
         m_phaseTimer = 0.0f;
-        addLogEntry("Starting Resource Demo Phase");
+        addLogEntry("Resource demo");
       }
       break;
 
@@ -602,7 +624,7 @@ void EventDemoState::update(float deltaTime) {
       if (m_phaseTimer >= m_phaseDuration) {
         m_currentPhase = DemoPhase::CustomEventDemo;
         m_phaseTimer = 0.0f;
-        addLogEntry("Advancing to Custom Event Demo Phase");
+        addLogEntry("Custom event demo");
       }
       break;
 
@@ -616,7 +638,7 @@ void EventDemoState::update(float deltaTime) {
       if (m_phaseTimer >= m_phaseDuration) {
         m_currentPhase = DemoPhase::InteractiveMode;
         m_phaseTimer = 0.0f;
-        addLogEntry("Entering Interactive Mode - Use keys 1-5 to test events");
+        addLogEntry("Interactive mode (1-5 for events)");
       }
       break;
 
@@ -632,107 +654,124 @@ void EventDemoState::update(float deltaTime) {
   // Update instructions
   updateInstructions();
 
-  // Game logic only - UI updates moved to render() for thread safety
+  // Update UI (moved from render path for consistent frame timing)
+  if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
+    mp_uiMgr->update(deltaTime);
+  }
 
   // Note: EventManager is updated globally by GameEngine in the main update
   // loop for optimal performance and consistency with other global systems (AI,
   // Input)
 }
 
-void EventDemoState::render() {
-  // Get renderer using the standard pattern (consistent with other states)
-  auto &gameEngine = GameEngine::Instance();
-  SDL_Renderer *renderer = gameEngine.getRenderer();
+void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
+  // Get GameEngine for logical dimensions (renderer now passed as parameter)
+  const auto &gameEngine = GameEngine::Instance();
 
-  // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
-  HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+  // Camera offset with unified interpolation (single atomic read for sync)
+  float renderCamX = 0.0f;
+  float renderCamY = 0.0f;
+  float zoom = 1.0f;
+  Vector2D playerInterpPos;  // Position synced with camera
+
   if (m_camera) {
-    cameraView = m_camera->getViewRect();
+    zoom = m_camera->getZoom();
+    // Returns the position used for offset - use it for player rendering
+    playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
   }
 
-  // Set render scale for zoom (scales all world/entity rendering automatically)
-  float zoom = m_camera ? m_camera->getZoom() : 1.0f;
-  SDL_SetRenderScale(renderer, zoom, zoom);
-
-  // Render world first (background layer) using unified camera position
-  if (m_camera) {
-    auto &worldMgr = WorldManager::Instance();
-    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-      // Use the SAME cameraView calculated above for consistency
-      worldMgr.render(renderer,
-                     cameraView.x,
-                     cameraView.y,
-                     gameEngine.getLogicalWidth(),
-                     gameEngine.getLogicalHeight());
-    }
+  // Set render scale for zoom only when changed (avoids GPU state change overhead)
+  if (zoom != m_lastRenderedZoom) {
+    SDL_SetRenderScale(renderer, zoom, zoom);
+    m_lastRenderedZoom = zoom;
   }
 
-  // Render background particles first (rain, snow) - behind player/NPCs
-  ParticleManager &particleMgr = ParticleManager::Instance();
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    // Use unified camera position for perfect sync with tiles
-    particleMgr.renderBackground(renderer, cameraView.x, cameraView.y);
+  // Render world first (background layer) using pixel-snapped camera - use cached pointer
+  if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
+    mp_worldMgr->render(renderer,
+                       renderCamX,
+                       renderCamY,
+                       gameEngine.getLogicalWidth(),
+                       gameEngine.getLogicalHeight());
   }
 
-  // Render player using camera-aware rendering
+  // Render background particles first (rain, snow) - behind player/NPCs - use cached pointer
+  if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY, interpolationAlpha);
+  }
+
+  // Render player at the position camera used for offset calculation
   if (m_player) {
-    m_player->render(m_camera.get());
+    // Use position camera returned - no separate atomic read
+    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
-  // Render spawned NPCs using camera-aware rendering
+  // Render spawned NPCs using same camera offset as world (ensures sync)
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
-      npc->render(m_camera.get());
+      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
     }
   }
 
-  // Render world-space particles using unified camera position
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.render(renderer, cameraView.x, cameraView.y);
+  // Render world-space and foreground particles - use cached pointer
+  // mp_particleMgr guaranteed valid between enter() and exit(), but check shutdown state
+  if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
+    mp_particleMgr->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
-  // Render foreground particles last (fog) - in front of player/NPCs
-  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
-    particleMgr.renderForeground(renderer, cameraView.x, cameraView.y);
+  // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+  if (m_lastRenderedZoom != 1.0f) {
+    SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+    m_lastRenderedZoom = 1.0f;
   }
 
-  // Reset render scale to 1.0 for UI rendering (UI should not be zoomed)
-  SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+  // Render UI components through cached pointer (update moved to update() for consistent frame timing)
+  // mp_uiMgr guaranteed valid between enter() and exit()
+  if (!mp_uiMgr->isShutdown()) {
+    // Update UI displays only when values change (C++20 type-safe, zero allocations)
+    std::string currentPhase = getCurrentPhaseString();
+    if (currentPhase != m_lastDisplayedPhase) {
+        m_phaseBuffer.clear();
+        std::format_to(std::back_inserter(m_phaseBuffer), "Phase: {}", currentPhase);
+        mp_uiMgr->setText("event_phase", m_phaseBuffer);
+        m_lastDisplayedPhase = currentPhase;
+    }
 
-  // Update and render UI components through UIManager using cached renderer for
-  // cleaner API
-  auto &ui = UIManager::Instance();
-  if (!ui.isShutdown()) {
-    ui.update(0.0); // UI updates are not time-dependent in this state
+    float currentFPS = gameEngine.getCurrentFPS();
+    std::string currentWeather = getCurrentWeatherString();
+    size_t npcCount = m_spawnedNPCs.size();
 
-    // Update UI displays
-    std::stringstream phaseText;
-    phaseText << "Phase: " << getCurrentPhaseString();
-    ui.setText("event_phase", phaseText.str());
+    // Update if FPS changed by more than 0.05 (avoids flicker) or other values changed
+    if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
+        currentWeather != m_lastDisplayedWeather ||
+        npcCount != m_lastDisplayedNPCCount) {
 
-    std::stringstream statusText;
-    statusText << "FPS: " << std::fixed << std::setprecision(1)
-               << gameEngine.getCurrentFPS()
-               << " | Weather: " << getCurrentWeatherString()
-               << " | NPCs: " << m_spawnedNPCs.size();
-    ui.setText("event_status", statusText.str());
+        m_statusBuffer2.clear();
+        std::format_to(std::back_inserter(m_statusBuffer2),
+                       "FPS: {:.1f} | Weather: {} | NPCs: {}",
+                       currentFPS, currentWeather, npcCount);
+        mp_uiMgr->setText("event_status", m_statusBuffer2);
+
+        m_lastDisplayedFPS = currentFPS;
+        m_lastDisplayedWeather = currentWeather;
+        m_lastDisplayedNPCCount = npcCount;
+    }
 
     // Update inventory display
     // updateInventoryUI(); // Now handled by data binding
   }
-  ui.render();
+  mp_uiMgr->render(renderer);
 }
 
 void EventDemoState::setupEventSystem() {
   GAMESTATE_INFO("EventDemoState: EventManager instance obtained");
-  addLogEntry("EventManager singleton obtained");
 
   // Cache EventManager reference for better performance
   // Note: EventManager is already initialized by GameEngine
   EventManager &eventMgr = EventManager::Instance();
 
   GAMESTATE_INFO("EventDemoState: Using pre-initialized EventManager");
-  addLogEntry("EventManager ready for use");
 
   // Register event handlers using token-based API for easy removal
   m_handlerTokens.push_back(
@@ -756,11 +795,10 @@ void EventDemoState::setupEventSystem() {
       }));
 
   GAMESTATE_INFO("EventDemoState: Event handlers registered");
-  addLogEntry("Event System Setup Complete - All handlers registered");
+  addLogEntry("Event system ready");
 }
 
 void EventDemoState::createTestEvents() {
-  addLogEntry("=== Using New Convenience Methods ===");
 
   // Cache EventManager reference for better performance
   EventManager &eventMgr = EventManager::Instance();
@@ -797,26 +835,12 @@ void EventDemoState::createTestEvents() {
   int successCount = success1 + success2 + success3 + success4 + success5 +
                      success6 + success7 + success8 + success9 + success10 +
                      success11;
-  addLogEntry("Created " + std::to_string(successCount) +
-              "/11 events using convenience methods");
 
   if (successCount == 11) {
-    addLogEntry("All demo events created successfully");
+    addLogEntry("Created 11 demo events");
   } else {
-    addLogEntry("Some events failed to create - check logs");
+    addLogEntry(std::format("Created {}/11 events", successCount));
   }
-
-  // Name-based handlers removed - EventManager now uses type-based dispatch only
-  // The type-based handlers registered in setupEventSystem() handle all events
-
-  // Show current event counts by type for monitoring
-  size_t weatherCount = eventMgr.getEventCount(EventTypeId::Weather);
-  size_t npcCount = eventMgr.getEventCount(EventTypeId::NPCSpawn);
-  size_t sceneCount = eventMgr.getEventCount(EventTypeId::SceneChange);
-
-  addLogEntry("Event counts - Weather: " + std::to_string(weatherCount) +
-              ", NPC: " + std::to_string(npcCount) +
-              ", Scene: " + std::to_string(sceneCount));
 }
 
 void EventDemoState::handleInput() {
@@ -867,7 +891,6 @@ void EventDemoState::handleInput() {
       m_phaseTimer = 0.0f;
     }
     triggerWeatherDemoManual();
-    addLogEntry("Manual weather event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
@@ -878,7 +901,6 @@ void EventDemoState::handleInput() {
       m_phaseTimer = 0.0f;
     }
     triggerNPCSpawnDemo();
-    addLogEntry("Manual NPC spawn event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
@@ -888,7 +910,6 @@ void EventDemoState::handleInput() {
       m_phaseTimer = 0.0f;
     }
     triggerSceneTransitionDemo();
-    addLogEntry("Manual scene transition event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
@@ -899,20 +920,18 @@ void EventDemoState::handleInput() {
       m_phaseTimer = 0.0f;
     }
     triggerCustomEventDemo();
-    addLogEntry("Manual custom event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
   // Provide feedback when NPC cap reached
   else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
            (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
            m_spawnedNPCs.size() >= 5000) {
-    addLogEntry(
-        "NPC limit reached (5000) - press 'R' to reset or '5' to clear NPCs");
+    addLogEntry("NPC limit (R to reset)");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     resetAllEvents();
-    addLogEntry("All events reset");
+    addLogEntry("Events reset");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6) &&
@@ -921,7 +940,6 @@ void EventDemoState::handleInput() {
       m_phaseTimer = 0.0f;
     }
     triggerResourceDemo();
-    addLogEntry("Manual resource event triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
@@ -934,19 +952,18 @@ void EventDemoState::handleInput() {
     m_limitMessageShown = false;
     m_weatherChangesShown = 0;
     m_weatherDemoComplete = false;
-    addLogEntry("Demo reset to beginning");
+    addLogEntry("Demo reset");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_C) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f) {
     triggerConvenienceMethodsDemo();
-    addLogEntry("Convenience methods demo triggered");
     m_lastEventTriggerTime = m_totalDemoTime;
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_A)) {
     m_autoMode = !m_autoMode;
-    addLogEntry(m_autoMode ? "Auto mode enabled" : "Auto mode disabled");
+    addLogEntry(m_autoMode ? "Auto mode ON" : "Auto mode OFF");
   }
 
   // Cache ParticleManager reference for better performance
@@ -955,19 +972,19 @@ void EventDemoState::handleInput() {
   // Fire effect toggle (F key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F)) {
     particleMgr.toggleFireEffect();
-    addLogEntry("Fire effect toggled");
+    addLogEntry("Fire toggled");
   }
 
   // Smoke effect toggle (S key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_S)) {
     particleMgr.toggleSmokeEffect();
-    addLogEntry("Smoke effect toggled");
+    addLogEntry("Smoke toggled");
   }
 
   // Sparks effect toggle (K key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_K)) {
     particleMgr.toggleSparksEffect();
-    addLogEntry("Sparks effect toggled");
+    addLogEntry("Sparks toggled");
   }
 
   // Inventory toggle (I key)
@@ -993,10 +1010,9 @@ void EventDemoState::handleInput() {
         const auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
-            Vector2D worldPos = m_camera->screenToWorld(mousePos);
-            // TODO: Implement world interaction at worldPos
-            // For now, we just log the coordinates
-            addLogEntry("World click at: (" + std::to_string(worldPos.getX()) + ", " + std::to_string(worldPos.getY()) + ")");
+            // World interaction at mouse position
+            // Currently unused - world click coordinates available via m_camera->screenToWorld(mousePos)
+            (void)m_camera->screenToWorld(mousePos);
         }
     }
 }
@@ -1023,7 +1039,6 @@ void EventDemoState::renderControls() {
 void EventDemoState::triggerWeatherDemo() { triggerWeatherDemoManual(); }
 
 void EventDemoState::triggerWeatherDemoAuto() {
-  size_t currentIndex = m_currentWeatherIndex;
   WeatherType newWeather = m_weatherSequence[m_currentWeatherIndex];
   std::string customType = m_customWeatherTypes[m_currentWeatherIndex];
   m_currentWeatherIndex =
@@ -1052,8 +1067,7 @@ void EventDemoState::triggerWeatherDemoAuto() {
   m_currentWeather = newWeather;
   std::string weatherName =
       customType.empty() ? getCurrentWeatherString() : customType;
-  addLogEntry("Weather changed to: " + weatherName +
-              " (Auto - Index: " + std::to_string(currentIndex) + ")");
+  addLogEntry(std::format("Weather: {} (auto)", weatherName));
 }
 
 void EventDemoState::triggerWeatherDemoManual() {
@@ -1061,12 +1075,8 @@ void EventDemoState::triggerWeatherDemoManual() {
   WeatherType newWeather = m_weatherSequence[m_manualWeatherIndex];
   std::string customType = m_customWeatherTypes[m_manualWeatherIndex];
 
-  // Debug output
-  addLogEntry("Manual weather index: " + std::to_string(currentIndex) + " of " +
-              std::to_string(m_weatherSequence.size()));
-  if (!customType.empty()) {
-    addLogEntry("Using custom weather type: " + customType);
-  }
+  // Suppress unused variable warning - currentIndex used for internal tracking
+  (void)currentIndex;
 
   m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
@@ -1091,8 +1101,7 @@ void EventDemoState::triggerWeatherDemoManual() {
   m_currentWeather = newWeather;
   std::string weatherName =
       customType.empty() ? getCurrentWeatherString() : customType;
-  addLogEntry("Weather changed to: " + weatherName +
-              " (Manual - Index: " + std::to_string(currentIndex) + ")");
+  addLogEntry(std::format("Weather: {} (manual)", weatherName));
 }
 
 void EventDemoState::triggerNPCSpawnDemo() {
@@ -1114,9 +1123,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
   // Use EventManager to spawn NPC via the unified event hub
   const EventManager &eventMgr = EventManager::Instance();
   eventMgr.spawnNPC(npcType, spawnX, spawnY);
-  addLogEntry("Spawned NPC: " + npcType + " at (" +
-              std::to_string((int)spawnX) + ", " + std::to_string((int)spawnY) +
-              ")");
+  addLogEntry(std::format("Spawned: {}", npcType));
 }
 
 void EventDemoState::triggerSceneTransitionDemo() {
@@ -1137,8 +1144,7 @@ void EventDemoState::triggerSceneTransitionDemo() {
   eventMgr3.changeScene(sceneName, transitionName, 2.0f,
                         EventManager::DispatchMode::Deferred);
 
-  addLogEntry("Scene transition to: " + sceneName + " (" + std::string(transitionName) +
-              ") via EventManager");
+  addLogEntry("Scene: " + sceneName + " (" + std::string(transitionName) + ")");
 }
 
 void EventDemoState::triggerParticleEffectDemo() {
@@ -1151,11 +1157,9 @@ void EventDemoState::triggerParticleEffectDemo() {
   bool queued = eventMgr.triggerParticleEffect(effectName, position,
                                                1.2f, 5.0f, "demo_effects");
   if (queued) {
-    addLogEntry("Particle effect queued: " + effectName + " at (" +
-                std::to_string((int)position.getX()) + ", " +
-                std::to_string((int)position.getY()) + ")");
+    addLogEntry("Particle: " + effectName);
   } else {
-    addLogEntry("No particle handlers registered; effect not queued");
+    addLogEntry("Particle: no handler");
   }
 
   // Advance to next effect and position
@@ -1165,7 +1169,7 @@ void EventDemoState::triggerParticleEffectDemo() {
 
 void EventDemoState::triggerResourceDemo() {
   if (!m_player || !m_player->getInventory()) {
-    addLogEntry("Resource demo failed: Player inventory not available");
+    addLogEntry("Resource: no inventory");
     return;
   }
 
@@ -1173,14 +1177,12 @@ void EventDemoState::triggerResourceDemo() {
   const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
-    addLogEntry(
-        "Resource demo failed: ResourceTemplateManager not initialized");
+    addLogEntry("Resource: not initialized");
     return;
   }
 
   // Realistic resource discovery: Query system for different categories/types
   ResourcePtr selectedResource = nullptr;
-  std::string discoveryMethod;
   int quantity = 1;
 
   switch (m_resourceDemonstrationStep % 6) {
@@ -1191,7 +1193,6 @@ void EventDemoState::triggerResourceDemo() {
     if (!currencyResources.empty()) {
       // Real game logic: pick the first currency resource found
       selectedResource = currencyResources[0];
-      discoveryMethod = "Currency category query";
       quantity = 50;
     }
     break;
@@ -1209,7 +1210,6 @@ void EventDemoState::triggerResourceDemo() {
       if (it != consumables.end()) {
         selectedResource = *it;
       }
-      discoveryMethod = "Consumable type query (filtered by value)";
       quantity = 3;
     }
     break;
@@ -1227,7 +1227,6 @@ void EventDemoState::triggerResourceDemo() {
       if (it != materials.end()) {
         selectedResource = *it;
       }
-      discoveryMethod = "RawResource type query (stackable, high capacity)";
       quantity = 15;
     }
     break;
@@ -1238,7 +1237,6 @@ void EventDemoState::triggerResourceDemo() {
         templateManager.getResourcesByType(ResourceType::BuildingMaterial);
     if (!gameResources.empty()) {
       selectedResource = gameResources[0];
-      discoveryMethod = "BuildingMaterial type query";
       quantity = 8;
     }
     break;
@@ -1249,7 +1247,6 @@ void EventDemoState::triggerResourceDemo() {
         templateManager.getResourcesByType(ResourceType::Equipment);
     if (!equipment.empty()) {
       selectedResource = equipment[0];
-      discoveryMethod = "Equipment type query";
       quantity = 1;
     }
     break;
@@ -1269,7 +1266,6 @@ void EventDemoState::triggerResourceDemo() {
       if (!selectedResource) {
         selectedResource = gems[0]; // fallback
       }
-      discoveryMethod = "Gem type query (high value preferred)";
       quantity = 2;
     }
     break;
@@ -1277,8 +1273,7 @@ void EventDemoState::triggerResourceDemo() {
   }
 
   if (!selectedResource) {
-    addLogEntry("Resource discovery failed: No resources found for step " +
-                std::to_string(m_resourceDemonstrationStep));
+    addLogEntry("Resource: not found");
     m_resourceDemonstrationStep++;
     return;
   }
@@ -1290,51 +1285,37 @@ void EventDemoState::triggerResourceDemo() {
 
   if (m_resourceIsAdding) {
     // Add resources to player inventory
-    addLogEntry("BEFORE ADD (" + discoveryMethod + "): " + resourceName +
-                " = " + std::to_string(currentQuantity));
-
     bool success = inventory->addResource(handle, quantity);
     if (success) {
       int newQuantity = inventory->getResourceQuantity(handle);
-      addLogEntry("AFTER ADD: " + resourceName + " = " +
-                  std::to_string(newQuantity) + " (+" +
-                  std::to_string(quantity) + ")");
+      addLogEntry(std::format("+{} {} ({} total)", quantity, resourceName, newQuantity));
 
       // Trigger resource change via EventManager (deferred by default)
       const EventManager &eventMgr = EventManager::Instance();
       eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
                                      newQuantity, "event_demo");
-
-      addLogEntry("ResourceChangeEvent queued for ADD operation");
     } else {
-      addLogEntry("FAILED to add " + resourceName + " - inventory may be full");
+      addLogEntry("Failed: " + resourceName + " (full)");
     }
   } else {
     // Remove resources from player inventory
     int removeQuantity = std::min(quantity, currentQuantity);
 
     if (removeQuantity > 0) {
-      addLogEntry("BEFORE REMOVE (" + discoveryMethod + "): " + resourceName +
-                  " = " + std::to_string(currentQuantity));
-
       bool success = inventory->removeResource(handle, removeQuantity);
       if (success) {
         int newQuantity = inventory->getResourceQuantity(handle);
-        addLogEntry("AFTER REMOVE: " + resourceName + " = " +
-                    std::to_string(newQuantity) + " (-" +
-                    std::to_string(removeQuantity) + ")");
+        addLogEntry(std::format("-{} {} ({} left)", removeQuantity, resourceName, newQuantity));
 
         // Trigger resource change via EventManager (deferred by default)
         const EventManager &eventMgr = EventManager::Instance();
         eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
                                        newQuantity, "event_demo");
-
-        addLogEntry("ResourceChangeEvent queued for REMOVE operation");
       } else {
-        addLogEntry("FAILED to remove " + resourceName + " from inventory");
+        addLogEntry("Failed: remove " + resourceName);
       }
     } else {
-      addLogEntry("No " + resourceName + " to remove from inventory");
+      addLogEntry("No " + resourceName + " to remove");
     }
   }
 
@@ -1343,43 +1324,18 @@ void EventDemoState::triggerResourceDemo() {
   m_resourceDemonstrationStep++;
   if (m_resourceDemonstrationStep % 6 == 0) {
     m_resourceIsAdding = !m_resourceIsAdding; // Switch between adding and removing after full cycle
-    std::string mode = m_resourceIsAdding ? "ADDING" : "REMOVING";
-    addLogEntry("--- Switched to " + mode + " mode (completed " +
-                std::to_string(m_resourceDemonstrationStep / 6) + " cycles) ---");
+    std::string mode = m_resourceIsAdding ? "Adding" : "Removing";
+    addLogEntry("Mode: " + mode);
   }
-
-  // Log current inventory summary
-  auto allResources = inventory->getAllResources();
-  std::string inventoryStatus = "Inventory Summary: ";
-  bool hasItems = false;
-  for (const auto &[resourceHandle, qty] : allResources) {
-    if (qty > 0) {
-      if (hasItems)
-        inventoryStatus += ", ";
-
-      auto resourceTemplate =
-          ResourceTemplateManager::Instance().getResourceTemplate(
-              resourceHandle);
-      std::string resName =
-          resourceTemplate ? resourceTemplate->getName() : "Unknown";
-
-      inventoryStatus += resName + "(" + std::to_string(qty) + ")";
-      hasItems = true;
-    }
-  }
-  if (!hasItems) {
-    inventoryStatus += "Empty";
-  }
-  addLogEntry(inventoryStatus);
 }
 
 void EventDemoState::triggerCustomEventDemo() {
-  addLogEntry("Custom event demo - showing event system flexibility");
+  addLogEntry("Custom event demo");
 
   triggerWeatherDemoManual();
 
   if (m_spawnedNPCs.size() >= 5000) {
-    addLogEntry("NPC limit reached (5000) - skipping spawn in custom demo");
+    addLogEntry("NPC limit reached (5000)");
     return;
   }
 
@@ -1415,72 +1371,52 @@ void EventDemoState::triggerCustomEventDemo() {
   if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
     aiMgr.registerEntityForUpdates(npc1, rand() % 9 + 1, behaviorName1);
-    addLogEntry("Registered " + npcType1 + " for updates and queued " +
-                behaviorName1 + " behavior (global batch)");
+    addLogEntry(npcType1 + ": " + behaviorName1 + " queued");
   }
 
   if (npc2) {
     std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
     aiMgr.registerEntityForUpdates(npc2, rand() % 9 + 1, behaviorName2);
-    addLogEntry("Registered " + npcType2 + " for updates and queued " +
-                behaviorName2 + " behavior (global batch)");
+    addLogEntry(npcType2 + ": " + behaviorName2 + " queued");
   }
 
-  addLogEntry("Multiple NPCs spawned: " + npcType1 + " and " + npcType2 +
-              " (Total NPCs: " + std::to_string(m_spawnedNPCs.size()) + ")");
+  addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2, m_spawnedNPCs.size()));
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
-  addLogEntry("=== CONVENIENCE METHODS DEMO ===");
-  addLogEntry("Creating events with new one-line convenience methods");
+  addLogEntry("Convenience methods demo");
 
   m_convenienceDemoCounter++;
-  std::string suffix = std::to_string(m_convenienceDemoCounter);
 
   // Cache EventManager reference for better performance
   EventManager &eventMgr = EventManager::Instance();
 
   bool success1 =
-      eventMgr.createWeatherEvent("conv_fog_" + suffix, "Foggy", 0.7f, 2.5f);
+      eventMgr.createWeatherEvent(std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f, 2.5f);
   bool success2 =
-      eventMgr.createWeatherEvent("conv_storm_" + suffix, "Stormy", 0.9f, 1.5f);
+      eventMgr.createWeatherEvent(std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f, 1.5f);
   bool success3 = eventMgr.createSceneChangeEvent(
-      "conv_dungeon_" + suffix, "DungeonDemo", "dissolve", 2.0f);
-  bool success4 = eventMgr.createSceneChangeEvent("conv_town_" + suffix,
+      std::format("conv_dungeon_{}", m_convenienceDemoCounter), "DungeonDemo", "dissolve", 2.0f);
+  bool success4 = eventMgr.createSceneChangeEvent(std::format("conv_town_{}", m_convenienceDemoCounter),
                                                   "TownDemo", "slide", 1.0f);
   bool success5 =
-      eventMgr.createNPCSpawnEvent("conv_guards_" + suffix, "Guard", 2, 30.0f);
-  bool success6 = eventMgr.createNPCSpawnEvent("conv_merchants_" + suffix,
+      eventMgr.createNPCSpawnEvent(std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2, 30.0f);
+  bool success6 = eventMgr.createNPCSpawnEvent(std::format("conv_merchants_{}", m_convenienceDemoCounter),
                                                "Merchant", 1, 15.0f);
 
   int successCount =
       success1 + success2 + success3 + success4 + success5 + success6;
   if (successCount == 6) {
-    addLogEntry(
-        "[OK] All 6 events created successfully with convenience methods");
-    addLogEntry("  - Fog weather (intensity: 0.7, transition: 2.5s)");
-    addLogEntry("  - Storm weather (intensity: 0.9, transition: 1.5s)");
-    addLogEntry("  - Dungeon scene (dissolve transition, 2.0s)");
-    addLogEntry("  - Town scene (slide transition, 1.0s)");
-    addLogEntry("  - Guard spawn (2 NPCs, radius: 30.0f)");
-    addLogEntry("  - Merchant spawn (1 NPC, radius: 15.0f)");
-
-    size_t totalEvents = eventMgr.getEventCount();
-    size_t weatherEvents = eventMgr.getEventCount(EventTypeId::Weather);
-    addLogEntry("Total events: " + std::to_string(totalEvents) +
-                " (Weather: " + std::to_string(weatherEvents) + ")");
+    addLogEntry("Created 6 events successfully");
 
     // Trigger via EventManager for demonstration
     eventMgr.changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
 
     m_currentWeather = WeatherType::Foggy;
-    addLogEntry("Triggered fog weather to demonstrate functionality");
+    addLogEntry("Weather: Foggy (demo)");
   } else {
-    addLogEntry("[FAIL] Created " + std::to_string(successCount) +
-                "/6 events - some failed");
+    addLogEntry(std::format("Created {}/6 events", successCount));
   }
-
-  addLogEntry("=== CONVENIENCE DEMO COMPLETE ===");
 }
 
 void EventDemoState::resetAllEvents() {
@@ -1488,8 +1424,7 @@ void EventDemoState::resetAllEvents() {
 
   // Remove all events from EventManager
   EventManager &eventMgr = EventManager::Instance();
-  size_t removedCount = eventMgr.clearAllEvents();
-  addLogEntry("Removed " + std::to_string(removedCount) + " events from EventManager");
+  eventMgr.clearAllEvents();
 
   // Trigger clear weather via EventManager
   eventMgr.changeWeather("Clear", 1.0f,
@@ -1504,23 +1439,24 @@ void EventDemoState::resetAllEvents() {
   m_lastEventTriggerTime = 0.0f;
   m_limitMessageShown = false;
 
-  addLogEntry("All events reset");
+  addLogEntry("Events cleared");
 }
 
 void EventDemoState::onWeatherChanged(const std::string &message) {
-  addLogEntry("Weather Event Handler: " + message);
+  // Weather handler triggered - message logged via GAMESTATE_DEBUG
+  (void)message;
 }
 
 void EventDemoState::onNPCSpawned(const EventData &data) {
   try {
     if (!data.event) {
-      addLogEntry("Error: NPCSpawnEvent data is null");
+      GAMESTATE_ERROR("NPCSpawnEvent data is null");
       return;
     }
 
     auto npcEvent = std::dynamic_pointer_cast<NPCSpawnEvent>(data.event);
     if (!npcEvent) {
-      addLogEntry("Error: Event is not an NPCSpawnEvent");
+      GAMESTATE_ERROR("Event is not an NPCSpawnEvent");
       return;
     }
 
@@ -1563,21 +1499,21 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
       }
     }
 
-    addLogEntry("NPCSpawn handled: " + npcType + " x" + std::to_string(spawned));
+    addLogEntry(std::format("Spawned: {} x{}", npcType, spawned));
   } catch (const std::exception &e) {
-    addLogEntry(std::string("Error in NPC spawn handler: ") + e.what());
+    GAMESTATE_ERROR(std::format("NPC spawn handler: {}", e.what()));
   }
 }
 
 void EventDemoState::onSceneChanged(const std::string &message) {
-  addLogEntry("Scene Event Handler: " + message);
+  addLogEntry("Scene: " + message);
 }
 
 void EventDemoState::onResourceChanged(const EventData &data) {
   // Extract ResourceChangeEvent from EventData
   try {
     if (!data.event) {
-      addLogEntry("Error: ResourceChangeEvent data is null");
+      GAMESTATE_ERROR("ResourceChangeEvent data is null");
       return;
     }
 
@@ -1585,11 +1521,9 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     auto resourceEvent =
         std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
     if (!resourceEvent) {
-      addLogEntry("Error: Event is not a ResourceChangeEvent");
+      GAMESTATE_ERROR("Event is not a ResourceChangeEvent");
       return;
     }
-
-    addLogEntry("=== RESOURCE CHANGE EVENT HANDLER ACTIVATED ===");
 
     // Get the resource change data
     HammerEngine::ResourceHandle handle = resourceEvent->getResourceHandle();
@@ -1600,12 +1534,9 @@ void EventDemoState::onResourceChanged(const EventData &data) {
     // Process different aspects of resource changes
     processResourceAchievements(handle, oldQty, newQty);
     checkResourceWarnings(handle, newQty);
-    // updateResourceUI(handle, oldQty, newQty); // No longer needed, UI is data-bound
     logResourceAnalytics(handle, oldQty, newQty, source);
-
-    addLogEntry("Resource change handler completed");
   } catch (const std::exception &e) {
-    addLogEntry("Error in resource change handler: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Error in resource change handler: {}", e.what()));
   }
 }
 
@@ -1677,7 +1608,7 @@ void EventDemoState::setupAIBehaviors() {
     GAMESTATE_INFO("EventDemoState: Chase behavior registered (will use AIManager::getPlayerReference())");
   }
 
-  addLogEntry("AI Behaviors configured for NPC integration");
+  GAMESTATE_DEBUG("AI Behaviors configured for NPC integration");
 }
 
 std::shared_ptr<NPC>
@@ -1707,7 +1638,7 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
 
     return npc;
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("EXCEPTION in createNPCAtPositionWithoutBehavior: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPositionWithoutBehavior: {}", e.what()));
     return nullptr;
   } catch (...) {
     GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior");
@@ -1750,16 +1681,14 @@ void EventDemoState::addLogEntry(const std::string &entry) {
     return;
 
   try {
-    // Add timestamp and send to UI event log component
-    std::string timestampedEntry =
-        "[" + std::to_string((int)m_totalDemoTime) + "s] " + entry;
+    // Send to UI event log component (no timestamp - keeps messages concise)
     auto &ui = UIManager::Instance();
-    ui.addEventLogEntry("event_log", timestampedEntry);
+    ui.addEventLogEntry("event_log", entry);
 
-    // Also log to console for debugging (avoid flushing)
-    GAMESTATE_DEBUG("EventDemo: " + timestampedEntry);
+    // Also log to console for debugging with timestamp
+    GAMESTATE_DEBUG(std::format("EventDemo [{}s]: {}", static_cast<int>(m_totalDemoTime), entry));
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("Error adding log entry: " + std::string(e.what()));
+    GAMESTATE_ERROR(std::format("Error adding log entry: {}", e.what()));
   }
 }
 
@@ -1812,6 +1741,13 @@ std::string EventDemoState::getCurrentWeatherString() const {
 }
 
 void EventDemoState::updateInstructions() {
+  // OPTIMIZATION: Only update instructions when phase changes
+  // Avoids ~20 string allocations per frame
+  if (m_currentPhase == m_lastInstructionsPhase) {
+    return;  // Phase unchanged, skip string allocations
+  }
+  m_lastInstructionsPhase = m_currentPhase;
+
   m_instructions.clear();
 
   switch (m_currentPhase) {
@@ -1906,15 +1842,13 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
     AIManager &aiMgr = AIManager::Instance();
     aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, behaviorName);
 
-    addLogEntry("Registered entity for updates and queued " + behaviorName +
-                " behavior assignment (random priority)");
+    addLogEntry(npcType + ": " + behaviorName + " queued");
 
     m_spawnedNPCs.push_back(npc);
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR("EXCEPTION in createNPCAtPosition: " + std::string(e.what()) +
-                    ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPosition: {}, NPC type: {}, position: ({}, {})", e.what(), npcType, x, y));
   } catch (...) {
-    GAMESTATE_ERROR(std::string("UNKNOWN EXCEPTION in createNPCAtPosition") + ", NPC type: " + npcType + ", position: (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    GAMESTATE_ERROR(std::format("UNKNOWN EXCEPTION in createNPCAtPosition, NPC type: {}, position: ({}, {})", npcType, x, y));
   }
 }
 
@@ -1924,8 +1858,7 @@ void EventDemoState::setupResourceAchievements() {
   const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
-    addLogEntry(
-        "Cannot setup achievements: ResourceTemplateManager not initialized");
+    GAMESTATE_WARN("Cannot setup achievements: ResourceTemplateManager not initialized");
     return;
   }
 
@@ -1951,9 +1884,8 @@ void EventDemoState::setupResourceAchievements() {
     m_achievementThresholds[resource->getHandle()] = 10; // First 10 consumables
   }
 
-  addLogEntry("Achievement thresholds set for " +
-              std::to_string(m_achievementThresholds.size()) +
-              " resource types");
+  GAMESTATE_DEBUG(std::format("Achievement thresholds set for {} resource types",
+              m_achievementThresholds.size()));
 }
 
 void EventDemoState::processResourceAchievements(
@@ -1976,8 +1908,7 @@ void EventDemoState::processResourceAchievements(
     std::string resourceName =
         resourceTemplate ? resourceTemplate->getName() : "Unknown";
 
-    addLogEntry("🏆 ACHIEVEMENT UNLOCKED: First " + std::to_string(threshold) +
-                " " + resourceName + "!");
+    addLogEntry(std::format("Achievement: {} {}", threshold, resourceName));
 
     // In a real game, this could trigger UI popups, sound effects, save to
     // profile, etc.
@@ -1994,26 +1925,23 @@ void EventDemoState::checkResourceWarnings(HammerEngine::ResourceHandle handle,
 
   const std::string& resourceName = resourceTemplate->getName();
 
-  // Warning for low quantities of important resources
+  // Warning for low quantities of important resources (player-facing)
   if (resourceTemplate->getType() == ResourceType::Consumable && newQty <= 2 &&
       newQty > 0) {
-    addLogEntry("⚠️ LOW SUPPLY WARNING: Only " + std::to_string(newQty) + " " +
-                resourceName + " remaining!");
+    addLogEntry(std::format("Low: {} ({})", resourceName, newQty));
   }
 
-  // Warning when resources are completely depleted
+  // Warning when resources are completely depleted (player-facing)
   if (newQty == 0) {
-    addLogEntry("❌ DEPLETED: " + resourceName + " is now empty!");
+    addLogEntry(std::format("Out of {}", resourceName));
   }
 
-  // Warning for high-value resources reaching storage limits
+  // Warning for high-value resources reaching storage limits (player-facing)
   if (resourceTemplate->isStackable() &&
       resourceTemplate->getMaxStackSize() > 0) {
     int maxStack = resourceTemplate->getMaxStackSize();
     if (newQty >= maxStack * 0.9f) { // 90% of stack limit
-      addLogEntry("📦 STORAGE WARNING: " + resourceName +
-                  " approaching stack limit (" + std::to_string(newQty) + "/" +
-                  std::to_string(maxStack) + ")");
+      addLogEntry(std::format("{} nearly full ({}/{})", resourceName, newQty, maxStack));
     }
   }
 }
@@ -2031,15 +1959,13 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
   const std::string& resourceName = resourceTemplate->getName();
   int change = newQty - oldQty;
 
-  // Create detailed analytics entry
-  std::string analyticsEntry =
-      "📈 ANALYTICS: [" + source + "] " + resourceName + " changed by " +
-      std::to_string(change) +
-      " (value: " + std::to_string(resourceTemplate->getValue() * change) +
-      " coins)";
+  // Create detailed analytics entry (console only)
+  std::string analyticsEntry = std::format(
+      "ANALYTICS: [{}] {} changed by {} (value: {} coins)",
+      source, resourceName, change, resourceTemplate->getValue() * change);
 
   m_resourceLog.push_back(analyticsEntry);
-  addLogEntry(analyticsEntry);
+  GAMESTATE_DEBUG(analyticsEntry);
 
   // Keep log size manageable
   if (m_resourceLog.size() > 50) {
@@ -2077,12 +2003,12 @@ void EventDemoState::initializeCamera() {
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following (match GamePlayState)
+    // Using exponential smoothing for smooth, responsive follow
     HammerEngine::Camera::Config config;
-    config.followSpeed = 8.0f;         // Faster follow for action gameplay
+    config.followSpeed = 5.0f;         // Speed of camera interpolation
     config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.80f;    // Quicker response smoothing
-    config.maxFollowDistance = 9999.0f; // No distance limit
-    config.clampToWorldBounds = true; // Keep camera within world
+    config.smoothingFactor = 0.85f;    // Smoothing factor (0-1, higher = smoother)
+    config.clampToWorldBounds = true;  // Keep camera within world
     m_camera->setConfig(config);
 
     // Camera auto-synchronizes world bounds on update
@@ -2100,17 +2026,7 @@ void EventDemoState::updateCamera(float deltaTime) {
 }
 
 // Removed setupCameraForWorld(): camera manages world bounds itself
-
-void EventDemoState::applyCameraTransformation() {
-  if (!m_camera) {
-    return;
-  }
-
-  // Calculate camera offset for later use in rendering
-  auto viewRect = m_camera->getViewRect();
-  m_cameraOffsetX = viewRect.x;
-  m_cameraOffsetY = viewRect.y;
-}
+// Removed applyCameraTransformation(): unified single-read pattern used in render()
 
 void EventDemoState::toggleInventoryDisplay() {
   auto &ui = UIManager::Instance();
@@ -2121,5 +2037,5 @@ void EventDemoState::toggleInventoryDisplay() {
   ui.setComponentVisible("inventory_status", m_showInventory);
   ui.setComponentVisible("inventory_list", m_showInventory);
 
-  addLogEntry("Inventory " + std::string(m_showInventory ? "shown" : "hidden"));
+  GAMESTATE_DEBUG(std::format("Inventory {}", m_showInventory ? "shown" : "hidden"));
 }

@@ -21,20 +21,24 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+class ParticleManager;
+
 class AdvancedAIDemoState : public GameState {
 public:
 
     ~AdvancedAIDemoState() override;
 
     void update(float deltaTime) override;
-    void render() override;
+    void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
     void handleInput() override;
 
     bool enter() override;
     bool exit() override;
 
     std::string getName() const override { return "AdvancedAIDemoState"; }
-    void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
     // Get the player entity for AI behaviors to access
     EntityPtr getPlayer() const { return m_player; }
@@ -96,6 +100,20 @@ private:
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
+
+    // Cached manager pointers for render hot path (resolved in enter())
+    WorldManager* mp_worldMgr{nullptr};
+    UIManager* mp_uiMgr{nullptr};
+    ParticleManager* mp_particleMgr{nullptr};
+
+    // Status display optimization - zero per-frame allocations (C++20 type-safe)
+    std::string m_statusBuffer{};
+    int m_lastDisplayedFPS{-1};
+    size_t m_lastDisplayedNPCCount{0};
+    bool m_lastDisplayedPauseState{false};
+
+    // Render scale caching - avoid GPU state changes when zoom unchanged
+    float m_lastRenderedZoom{1.0f};
 };
 
 #endif // ADVANCED_AI_DEMO_STATE_HPP

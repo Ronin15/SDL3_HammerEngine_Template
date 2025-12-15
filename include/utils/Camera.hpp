@@ -11,6 +11,8 @@
 #include <memory>
 #include <functional>
 #include <cstdint>
+#include <random>
+#include <atomic>
 
 // Forward declarations
 class Entity;
@@ -131,11 +133,11 @@ public:
      */
     ~Camera() = default;
     
-    // Copy and move semantics
-    Camera(const Camera&) = default;
-    Camera& operator=(const Camera&) = default;
-    Camera(Camera&&) = default;
-    Camera& operator=(Camera&&) = default;
+    // Non-copyable/movable (has std::atomic, RNG state, weak_ptr targets)
+    Camera(const Camera&) = delete;
+    Camera& operator=(const Camera&) = delete;
+    Camera(Camera&&) = delete;
+    Camera& operator=(Camera&&) = delete;
 
     /**
      * @brief Updates the camera position based on mode and target
@@ -163,17 +165,17 @@ public:
     const Vector2D& getPosition() const { return m_position; }
     
     /**
-     * @brief Gets camera X position
+     * @brief Gets camera X position (float precision for smooth entity positioning)
      * @return X coordinate
      */
     float getX() const { return m_position.getX(); }
-    
+
     /**
-     * @brief Gets camera Y position  
+     * @brief Gets camera Y position (float precision for smooth entity positioning)
      * @return Y coordinate
      */
     float getY() const { return m_position.getY(); }
-    
+
     /**
      * @brief Sets the viewport size
      * @param width Viewport width
@@ -268,7 +270,7 @@ public:
      */
     struct ViewRect {
         float x, y, width, height;
-        
+
         // Convenience methods
         float left() const { return x; }
         float right() const { return x + width; }
@@ -277,13 +279,32 @@ public:
         float centerX() const { return x + width * 0.5f; }
         float centerY() const { return y + height * 0.5f; }
     };
-    
+
     /**
-     * @brief Gets the current view rectangle
+     * @brief Gets the current view rectangle (uses update-thread position)
      * @return View rectangle for culling and rendering
      */
     ViewRect getViewRect() const;
-    
+
+    /**
+     * @brief Gets render offset and returns the center position used for sync
+     *
+     * In Follow mode, reads target's interpolated position (ONE atomic read)
+     * and derives camera offset from it. Returns the position so caller can
+     * render the followed entity at EXACTLY the same spot - eliminating jitter
+     * from separate atomic reads.
+     *
+     * In Free/Fixed modes, uses camera's own interpolation and returns the
+     * camera's interpolated center position.
+     *
+     * @param offsetX Output: camera X offset (top-left of view)
+     * @param offsetY Output: camera Y offset (top-left of view)
+     * @param interpolationAlpha Blend factor for position interpolation
+     * @return The center position used for offset calculation (for synced rendering)
+     */
+    Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha = 1.0f) const;
+
+
     /**
      * @brief Checks if a point is visible in the camera view
      * @param x Point X coordinate
@@ -427,7 +448,6 @@ private:
     
     // Event firing
     bool m_eventFiringEnabled{false};      // Whether to fire events on state changes
-    Vector2D m_lastPosition{960.0f, 540.0f}; // Last position for movement events
     
     // World sync (auto-correct camera bounds when world changes)
     bool m_autoSyncWorldBounds{true};
@@ -437,14 +457,30 @@ private:
     float m_zoom{1.0f};              // Current zoom level (1.0 = native)
     int m_currentZoomIndex{0};       // Index into ZOOM_LEVELS array
 
+    // Previous position for render interpolation (smooth camera at any refresh rate)
+    Vector2D m_previousPosition{960.0f, 540.0f};
+
+    // Thread-safe interpolation state for render thread access
+    // 16-byte atomic is lock-free on x86-64 (CMPXCHG16B) and ARM64 (LDXP/STXP)
+    struct alignas(16) InterpolationState {
+        float posX{0.0f}, posY{0.0f};
+        float prevPosX{0.0f}, prevPosY{0.0f};
+    };
+    std::atomic<InterpolationState> m_interpState{};
+
+    // Shake random number generation (mutable for const generateShakeOffset)
+    // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead
+    mutable std::mt19937 m_shakeRng{std::random_device{}()};
+    mutable std::uniform_real_distribution<float> m_shakeDist{-1.0f, 1.0f};
+
     // Internal helper methods
-    void updateFollowMode(float deltaTime);
-    void updateCameraShake(float deltaTime);
-    void clampToWorldBounds();
+    void syncWorldBounds();       // Sync m_worldBounds from WorldManager (called every update)
+    void clampToWorldBounds();    // Clamp camera position to world bounds
     Vector2D getTargetPosition() const;
-    float calculateDistance(const Vector2D& a, const Vector2D& b) const;
-    Vector2D lerp(const Vector2D& a, const Vector2D& b, float t) const;
     Vector2D generateShakeOffset() const;
+
+    // Internal: compute offset from a given center position (used by public getRenderOffset)
+    void computeOffsetFromCenter(float centerX, float centerY, float& offsetX, float& offsetY) const;
     
     // Event firing helpers
     void firePositionChangedEvent(const Vector2D& oldPosition, const Vector2D& newPosition);
