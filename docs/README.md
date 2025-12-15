@@ -128,7 +128,7 @@ See the [Utility Documentation Index](utils/README.md) for additional utility do
 - **[ResourceHandle System](utils/ResourceHandle_System.md)** - Lightweight, type-safe handle indirection for resource lookups across modules
 - **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
 - **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
-- **[Performance Notes](../../hammer_engine_performance.md)** - Detailed performance optimization history and benchmarks (project root)
+- **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
 
 ## Resource System Integration
 
