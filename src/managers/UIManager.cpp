@@ -151,8 +151,8 @@ void UIManager::render(SDL_Renderer *renderer) {
     return;
   }
 
-  // Render components in z-order
-  auto sortedComponents = getSortedComponents();
+  // Render components in z-order (use const ref to avoid copy)
+  const auto& sortedComponents = getSortedComponents();
   for (const auto &component : sortedComponents) {
     if (component && component->m_visible) {
       renderComponent(renderer, component);
@@ -1790,9 +1790,9 @@ void UIManager::handleInput() {
   // Clear previous hover state
   m_hoveredComponents.clear();
 
-  // Process components in reverse z-order (top to bottom)
+  // Process components in reverse z-order (top to bottom, const ref avoids copy)
   bool mouseHandled = false;
-  auto sortedComponents = getSortedComponents();
+  const auto& sortedComponents = getSortedComponents();
   for (auto it = sortedComponents.rbegin(); it != sortedComponents.rend(); ++it) {
     auto& component = *it;
     if (!component || !component->m_visible || !component->m_enabled) {
