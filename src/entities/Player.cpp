@@ -142,7 +142,9 @@ void Player::update(float deltaTime) {
 
   // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world boundaries
   // PERFORMANCE: Use cached bounds instead of calling WorldManager::Instance() every frame
-  if (!m_worldBoundsCached) {
+  // Auto-invalidate cache when world version changes (new world loaded/generated)
+  const uint64_t currentWorldVersion = WorldManager::Instance().getWorldVersion();
+  if (!m_worldBoundsCached || m_cachedWorldVersion != currentWorldVersion) {
     refreshWorldBoundsCache();
   }
 
@@ -246,13 +248,15 @@ void Player::ensurePhysicsBodyRegistered() {
 
 void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
-  CollisionManager::Instance().updateCollisionBodyVelocitySOA(getID(), velocity);
+  auto& cm = CollisionManager::Instance();
+  cm.updateCollisionBodyVelocitySOA(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
   m_previousPosition = position;  // Prevents interpolation sliding on teleport
-  CollisionManager::Instance().updateCollisionBodyPositionSOA(getID(), position);
+  auto& cm = CollisionManager::Instance();
+  cm.updateCollisionBodyPositionSOA(getID(), position);
 }
 
 void Player::initializeInventory() {
@@ -453,11 +457,13 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
 }
 
 void Player::refreshWorldBoundsCache() {
-  WorldManager::Instance().getWorldBounds(
+  auto& worldMgr = WorldManager::Instance();
+  worldMgr.getWorldBounds(
       m_cachedWorldMinX, m_cachedWorldMinY,
       m_cachedWorldMaxX, m_cachedWorldMaxY);
+  m_cachedWorldVersion = worldMgr.getWorldVersion();
   m_worldBoundsCached = true;
-  PLAYER_DEBUG(std::format("World bounds cached: ({}, {}) to ({}, {})",
+  PLAYER_DEBUG(std::format("World bounds cached: ({}, {}) to ({}, {}), version: {}",
                m_cachedWorldMinX, m_cachedWorldMinY,
-               m_cachedWorldMaxX, m_cachedWorldMaxY));
+               m_cachedWorldMaxX, m_cachedWorldMaxY, m_cachedWorldVersion));
 }

@@ -492,6 +492,18 @@ void UIManager::refreshAllComponentThemes() const {
 void UIManager::removeComponent(const std::string &id) {
   std::lock_guard<std::recursive_mutex> lock(m_componentsMutex);
 
+  // BUGFIX: Decrement binding count if component has active bindings
+  // This prevents m_activeBindingCount from drifting when bound components are removed
+  auto it = m_components.find(id);
+  if (it != m_components.end() && it->second) {
+    if (it->second->m_textBinding) {
+      --m_activeBindingCount;
+    }
+    if (it->second->m_listBinding) {
+      --m_activeBindingCount;
+    }
+  }
+
   m_components.erase(id);
   invalidateComponentCache();
 
@@ -1673,8 +1685,9 @@ void UIManager::resetToDefaultTheme() {
 void UIManager::cleanupForStateTransition() {
   // Comprehensive cleanup for safe state transitions
 
-  // Clear all UI components
+  // Clear all UI components (reset binding count since we're clearing everything)
   m_components.clear();
+  m_activeBindingCount = 0;
   invalidateComponentCache();
 
   // Clear value/text caches
