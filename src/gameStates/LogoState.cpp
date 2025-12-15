@@ -103,7 +103,7 @@ void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolat
 
   // Draw version text (scaled position)
   fontMgr.drawText(
-      "v0.4.5",
+      "v0.8.5", //was 4.5
       "fonts_Arial",
       windowWidth / 2,  // Center horizontally
       (windowHeight / 2) + static_cast<int>(260 * scale),  // Scaled vertical position
