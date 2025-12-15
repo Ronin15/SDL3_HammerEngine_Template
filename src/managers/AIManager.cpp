@@ -637,12 +637,13 @@ void AIManager::waitForAsyncBatchCompletion() {
   //   - Result: Consistent batch completion times → smooth frames
 
   // Reuse member buffer instead of creating local vector (eliminates ~120 alloc/sec)
-  m_reusableBatchFutures.clear();
+  // Use swap() to preserve capacity on both vectors (avoids reallocation)
   std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> collisionBuffers;
 
   {
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-    m_reusableBatchFutures = std::move(m_batchFutures);
+    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
+    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
     collisionBuffers = m_batchCollisionUpdates;
     m_batchCollisionUpdates.reset();  // Clear for next frame
   }
