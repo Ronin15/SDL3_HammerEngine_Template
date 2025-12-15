@@ -37,8 +37,16 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
     83+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
 
 - **Cross-Platform Optimizations**
-    
+
     Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
+
+- **GameTime & World Simulation**
+
+    Fantasy calendar system with day/night cycles, four seasons, dynamic weather, and temperature simulation. Event-driven controllers for time-based gameplay.
+
+- **Smooth Rendering Pipeline**
+
+    Lock-free atomic interpolation for entities and camera. Eliminates jitter at any refresh rate with 16-byte aligned atomics (x86-64/ARM64 lock-free).
 
 - **Extensive Documentation**  
     
@@ -106,13 +114,15 @@ ninja -C build
 
 **📚 [Documentation Hub](docs/README.md)** – Full guides, API references, and best practices.
 
+- **Core:** [GameEngine](docs/core/GameEngine.md), [GameLoop](docs/core/GameLoop.md), [GameTime](docs/core/GameTime.md), [ThreadSystem](docs/core/ThreadSystem.md)
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
 - **Collision & Physics:** [Collision System](docs/collisions/CollisionSystem.md)
-- **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [Examples](docs/events/EventManager_Examples.cpp), [EventFactory](docs/events/EventFactory.md)
-- **Threading:** [ThreadSystem](docs/core/ThreadSystem.md)
+- **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [TimeEvents](docs/events/TimeEvents.md), [EventFactory](docs/events/EventFactory.md)
+- **Controllers:** [Overview](docs/controllers/README.md), [TimeController](docs/controllers/TimeController.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md)
 - **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md), [CollisionManager](docs/managers/CollisionManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
-- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Performance Notes](hammer_engine_performance.md)
+- **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Camera](docs/utils/Camera.md)
+- **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
 - **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
 - **Engine Plans & Issues:** [Camera Refactor Plan](docs/Camera_Refactor_Plan.md), [SDL3 macOS Cleanup Issue](docs/issues/SDL3_MACOS_CLEANUP_ISSUE.md)
 

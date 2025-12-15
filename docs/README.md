@@ -7,6 +7,7 @@
   - [AI System](#ai-system)
   - [Collision System](#collision-system)
   - [Event System](#event-system)
+  - [Controller System](#controller-system)
   - [UI System](#ui-system)
   - [Threading System](#threading-system)
   - [Manager Systems](#manager-systems)
@@ -29,6 +30,7 @@ Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
 - **[GameLoop](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
+- **[GameTime](core/GameTime.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
 - **[TimestepManager](managers/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
 
 ### AI System
@@ -53,6 +55,15 @@ Comprehensive event management system with EventManager as the single source of 
 - **[EventManager Advanced](events/EventManager_Advanced.md)** - Advanced topics like threading, performance optimization, and complex event patterns
 - **[EventManager Examples](events/EventManager_Examples.cpp)** - Comprehensive C++ code examples and best practices (code file)
 - **[EventFactory](events/EventFactory.md)** - Definition-driven creation, custom creators, and event sequences
+- **[TimeEvents](events/TimeEvents.md)** - Time-related event types (HourChanged, SeasonChanged, TimePeriodChanged, etc.)
+
+### Controller System
+State-scoped event handlers that control specific behaviors without owning data. Subscribe/unsubscribe lifecycle per GameState.
+
+- **[Controllers Overview](controllers/README.md)** - Controller pattern, lifecycle, vs. Managers comparison
+- **[TimeController](controllers/TimeController.md)** - Time event logging and status UI
+- **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
+- **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
 
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.

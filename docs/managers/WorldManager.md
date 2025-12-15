@@ -131,9 +131,113 @@ It also listens for `HarvestResourceEvent` to handle resource harvesting by enti
 - `void setCamera(int x, int y)`
 - `void setCameraViewport(int width, int height)`
 
+## Seasonal Texture System
+
+The WorldManager supports seasonal texture variations that automatically swap based on the current game season. This system is tightly integrated with the GameTime system.
+
+### How It Works
+
+1. **Event Subscription**: WorldManager subscribes to `SeasonChangedEvent` from EventManager
+2. **Texture ID Caching**: Pre-computed seasonal texture IDs eliminate per-frame string allocations
+3. **Chunk Invalidation**: When season changes, chunk cache is invalidated (deferred for thread safety)
+4. **Automatic Rendering**: Next render pass uses new seasonal textures
+
+### Seasonal Texture Naming Convention
+
+Textures follow this naming pattern:
+- **Base textures**: `biome_forest`, `obstacle_tree`, `building_house`
+- **Seasonal variants**: `spring_biome_forest`, `summer_obstacle_tree`, `winter_building_house`
+
+If a seasonal variant doesn't exist, the base texture is used as fallback.
+
+### Texture Categories with Season Support
+
+| Category | Examples |
+|----------|----------|
+| Biomes | `biome_default`, `biome_forest`, `biome_desert`, `biome_mountain`, etc. |
+| Obstacles | `obstacle_tree`, `obstacle_rock`, `obstacle_water` |
+| Buildings | `building_hut`, `building_house`, `building_large`, `building_cityhall` |
+| Decorations | `decoration_flower_*`, `decoration_bush`, `decoration_grass_*` |
+
+### Usage
+
+```cpp
+// In GameState::enter() - subscribe to season events
+WorldManager::Instance().subscribeToSeasonEvents();
+
+// In GameState::exit() - unsubscribe
+WorldManager::Instance().unsubscribeFromSeasonEvents();
+
+// Query current season
+Season season = WorldManager::Instance().getCurrentSeason();
+
+// Manual season change (usually handled automatically by GameTime)
+WorldManager::Instance().setCurrentSeason(Season::Winter);
+```
+
+### API Reference
+
+```cpp
+void subscribeToSeasonEvents();     // Subscribe to SeasonChangedEvent
+void unsubscribeFromSeasonEvents(); // Unsubscribe from season events
+Season getCurrentSeason() const;    // Get current season
+void setCurrentSeason(Season s);    // Manually set season (invalidates cache)
+```
+
+### Thread Safety
+
+The seasonal texture system uses a deferred invalidation pattern for thread safety:
+
+1. **Update Thread**: Season event sets atomic flag `m_seasonTexturesDirty`
+2. **Render Thread**: Checks flag before rendering, clears cache if dirty
+3. **No Race Conditions**: Texture destruction happens on render thread only
+
+```cpp
+// Internal flow (handled automatically)
+// Update thread:
+m_seasonTexturesDirty.store(true, std::memory_order_release);
+
+// Render thread (before rendering):
+if (m_seasonTexturesDirty.exchange(false, std::memory_order_acq_rel)) {
+    clearChunkCache();  // Safe - on render thread
+    updateCachedTextureIDs();
+    refreshCachedTextures();
+}
+```
+
+### Performance Characteristics
+
+- **Per-frame cost**: Zero (texture IDs pre-cached)
+- **Season change cost**: O(chunks) - all chunks invalidated
+- **Memory**: Cached texture pointers + dimensions per texture type
+- **Hash lookups**: Eliminated via CachedTexture pointers
+
+### CachedTexture Pattern
+
+The `CachedTexture` struct holds texture pointer with dimensions to avoid repeated lookups:
+
+```cpp
+struct CachedTexture {
+    SDL_Texture* ptr{nullptr};
+    float w{0}, h{0};  // Cached dimensions
+};
+```
+
+This eliminates:
+- Hash map lookups in render loop
+- `SDL_QueryTexture()` calls per tile
+- String allocations for texture ID lookups
+
 ## Best Practices
 
 - **Initialize Early**: Initialize the `WorldManager` during your game's startup sequence.
 - **Unload Worlds**: Always unload the current world before loading a new one or changing game states to prevent memory leaks.
 - **Use `isValidPosition`**: Before accessing tiles, check if the position is valid to avoid errors.
 - **Cache World Data**: For performance-critical sections, get a pointer to the `WorldData` and access it directly, but be mindful of thread safety.
+- **Subscribe to Seasons**: Call `subscribeToSeasonEvents()` in states that render the world to get automatic seasonal texture updates.
+
+## Related Documentation
+
+- **GameTime**: `docs/core/GameTime.md` - Time system that triggers season changes
+- **TextureManager**: `docs/managers/TextureManager.md` - Texture loading and caching
+- **SeasonChangedEvent**: `docs/events/TimeEvents.md` - Season change event details
