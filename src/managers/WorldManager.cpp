@@ -1209,10 +1209,9 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
             m_chunkCache.erase(m_evictionBuffer[i].first);
         }
 
-        if (toEvict > 0) {
-            WORLD_MANAGER_DEBUG(std::format("TileRenderer: Evicted {} chunks from cache (cache size: {})",
-                               std::min(toEvict, m_evictionBuffer.size()), m_chunkCache.size()));
-        }
+        // Note: toEvict is always > 0 here since we're inside the size() > MAX block
+        WORLD_MANAGER_DEBUG(std::format("TileRenderer: Evicted {} chunks from cache (cache size: {})",
+                           std::min(toEvict, m_evictionBuffer.size()), m_chunkCache.size()));
     }
 }
 

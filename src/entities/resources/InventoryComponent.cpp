@@ -466,21 +466,17 @@ void InventoryComponent::compactInventory() {
 // Helper methods implementation
 int InventoryComponent::findSlotWithResource(
     HammerEngine::ResourceHandle handle) const {
-  for (size_t i = 0; i < m_slots.size(); ++i) {
-    if (m_slots[i].resourceHandle == handle) {
-      return static_cast<int>(i);
-    }
-  }
-  return -1;
+  auto it = std::find_if(m_slots.begin(), m_slots.end(),
+      [handle](const InventorySlot& slot) {
+        return slot.resourceHandle == handle;
+      });
+  return (it != m_slots.end()) ? static_cast<int>(std::distance(m_slots.begin(), it)) : -1;
 }
 
 int InventoryComponent::findEmptySlot() const {
-  for (size_t i = 0; i < m_slots.size(); ++i) {
-    if (m_slots[i].isEmpty()) {
-      return static_cast<int>(i);
-    }
-  }
-  return -1;
+  auto it = std::find_if(m_slots.begin(), m_slots.end(),
+      [](const InventorySlot& slot) { return slot.isEmpty(); });
+  return (it != m_slots.end()) ? static_cast<int>(std::distance(m_slots.begin(), it)) : -1;
 }
 
 void InventoryComponent::notifyResourceChange(
