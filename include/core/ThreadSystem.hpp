@@ -626,6 +626,7 @@ private:
     try {
       // For idle tracking and logging (scoped to try block)
       auto lastTaskTime = std::chrono::steady_clock::now();
+      std::chrono::steady_clock::time_point idleStartTime;
       bool isIdle = false;
       // Minimum idle time before logging (20 seconds) - only log truly idle states
       constexpr int64_t MIN_IDLE_TIME_MS = 20000;
@@ -668,7 +669,7 @@ private:
           // Exiting idle mode - log if we were previously idle
           if (isIdle) {
             auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - lastTaskTime).count();
+                std::chrono::steady_clock::now() - idleStartTime).count();
             THREADSYSTEM_INFO(std::format("Worker {} exiting idle mode (was idle for {}ms)",
                                           threadIndex, idleTime));
             isIdle = false;
@@ -731,6 +732,7 @@ private:
               THREADSYSTEM_INFO(std::format("Worker {} entering idle mode (no tasks for {}ms)",
                                             threadIndex, timeSinceLastTask));
               isIdle = true;
+              idleStartTime = std::chrono::steady_clock::now();
             }
           }
           // Worker will loop back and block in pop() until a task arrives
