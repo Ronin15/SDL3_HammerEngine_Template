@@ -630,6 +630,7 @@ private:
       bool isIdle = false;
       // Minimum idle time before logging (20 seconds) - only log truly idle states
       constexpr int64_t MIN_IDLE_TIME_MS = 20000;
+      constexpr int64_t MIN_IDLE_EXIT_LOG_MS = 100;
 
       // Main worker loop
       while (isRunning.load(std::memory_order_acquire)) {
@@ -648,7 +649,6 @@ private:
           if (taskQueue.pop(task)) {
             gotTask = true;
             highPriorityTasks++;
-            // Reset idle tracking when we get a task
             lastTaskTime = std::chrono::steady_clock::now();
           }
           // All tasks go through single global queue - simple and reliable
@@ -666,12 +666,14 @@ private:
         }
 
         if (gotTask) {
-          // Exiting idle mode - log if we were previously idle
+          // Exiting idle mode - log if we were previously idle for a meaningful duration
           if (isIdle) {
             auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - idleStartTime).count();
-            THREADSYSTEM_INFO(std::format("Worker {} exiting idle mode (was idle for {}ms)",
-                                          threadIndex, idleTime));
+            if (idleTime >= MIN_IDLE_EXIT_LOG_MS) {
+              THREADSYSTEM_INFO(std::format("Worker {} exiting idle mode (was idle for {}ms)",
+                                            threadIndex, idleTime));
+            }
             isIdle = false;
           }
 
