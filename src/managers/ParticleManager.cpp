@@ -2781,36 +2781,17 @@ void ParticleManager::updateParticlePhysicsSIMD(
   endIdx = std::min(endIdx, particleCount);
 
   // SIMD arrays are primary storage; operate directly on them
-
-  // INTERPOLATION: Store previous positions before physics update using SIMD
-  // This enables smooth rendering between fixed timestep updates
-  {
-    size_t i = startIdx;
-    // Scalar pre-loop to align to 4-float boundary
-    while (i < endIdx && (i & 0x3) != 0) {
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      ++i;
-    }
-    // SIMD main loop - copy 4 floats at a time
-    const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
-    for (; i < simdEnd; i += 4) {
-      Float4 posXv = load4(&particles.posX[i]);
-      Float4 posYv = load4(&particles.posY[i]);
-      store4(&particles.prevPosX[i], posXv);
-      store4(&particles.prevPosY[i], posYv);
-    }
-    // Scalar tail
-    for (; i < endIdx; ++i) {
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-    }
-  }
+  // NOTE: Previous positions for interpolation are stored inline during physics update
+  // to avoid a separate array pass (fused for better cache utilization)
 
   // Scalar pre-loop to align to 4-float boundary for aligned loads
   size_t i = startIdx;
   while (i < endIdx && (i & 0x3) != 0) {
     if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      // Store previous position for interpolation before physics update
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+      // Physics update
       particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
       particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
       particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
@@ -2848,6 +2829,11 @@ void ParticleManager::updateParticlePhysicsSIMD(
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
     Float4 posXv = load4(&particles.posX[i]);
     Float4 posYv = load4(&particles.posY[i]);
+
+    // Store previous positions for interpolation BEFORE physics update (fused optimization)
+    store4(&particles.prevPosX[i], posXv);
+    store4(&particles.prevPosY[i], posYv);
+
     Float4 velXv = load4(&particles.velX[i]);
     Float4 velYv = load4(&particles.velY[i]);
     const Float4 accXv = load4(&particles.accX[i]);
@@ -2871,6 +2857,10 @@ void ParticleManager::updateParticlePhysicsSIMD(
   // Scalar tail
   for (; i < endIdx; ++i) {
     if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      // Store previous position for interpolation before physics update
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+      // Physics update
       particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
       particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
       particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
@@ -2891,36 +2881,17 @@ void ParticleManager::updateParticlePhysicsSIMD(
   endIdx = std::min(endIdx, particleCount);
 
   // SIMD arrays are primary storage; operate directly on them
-
-  // INTERPOLATION: Store previous positions before physics update using SIMD
-  // This enables smooth rendering between fixed timestep updates
-  {
-    size_t i = startIdx;
-    // Scalar pre-loop to align to 4-float boundary
-    while (i < endIdx && (i & 0x3) != 0) {
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      ++i;
-    }
-    // SIMD main loop - copy 4 floats at a time
-    const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
-    for (; i < simdEnd; i += 4) {
-      Float4 posXv = load4(&particles.posX[i]);
-      Float4 posYv = load4(&particles.posY[i]);
-      store4(&particles.prevPosX[i], posXv);
-      store4(&particles.prevPosY[i], posYv);
-    }
-    // Scalar tail
-    for (; i < endIdx; ++i) {
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-    }
-  }
+  // NOTE: Previous positions for interpolation are stored inline during physics update
+  // to avoid a separate array pass (fused for better cache utilization)
 
   // Scalar pre-loop to align to 4-float boundary for aligned loads
   size_t i = startIdx;
   while (i < endIdx && (i & 0x3) != 0) {
     if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      // Store previous position for interpolation before physics update
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+      // Physics update
       particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
       particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
       particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
@@ -2958,6 +2929,11 @@ void ParticleManager::updateParticlePhysicsSIMD(
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
     Float4 posXv = load4(&particles.posX[i]);
     Float4 posYv = load4(&particles.posY[i]);
+
+    // Store previous positions for interpolation BEFORE physics update (fused optimization)
+    store4(&particles.prevPosX[i], posXv);
+    store4(&particles.prevPosY[i], posYv);
+
     Float4 velXv = load4(&particles.velX[i]);
     Float4 velYv = load4(&particles.velY[i]);
     const Float4 accXv = load4(&particles.accX[i]);
@@ -2981,6 +2957,10 @@ void ParticleManager::updateParticlePhysicsSIMD(
   // Scalar tail
   for (; i < endIdx; ++i) {
     if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+      // Store previous position for interpolation before physics update
+      particles.prevPosX[i] = particles.posX[i];
+      particles.prevPosY[i] = particles.posY[i];
+      // Physics update
       particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
       particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
       particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
