@@ -246,15 +246,13 @@ void Player::ensurePhysicsBodyRegistered() {
 
 void Player::setVelocity(const Vector2D& velocity) {
   m_velocity = velocity;
-  auto &cm = CollisionManager::Instance();
-  cm.updateCollisionBodyVelocitySOA(getID(), velocity);
+  CollisionManager::Instance().updateCollisionBodyVelocitySOA(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
   m_position = position;
   m_previousPosition = position;  // Prevents interpolation sliding on teleport
-  auto &cm = CollisionManager::Instance();
-  cm.updateCollisionBodyPositionSOA(getID(), position);
+  CollisionManager::Instance().updateCollisionBodyPositionSOA(getID(), position);
 }
 
 void Player::initializeInventory() {
