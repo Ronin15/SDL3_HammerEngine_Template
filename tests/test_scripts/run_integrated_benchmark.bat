@@ -80,32 +80,33 @@ echo   TestSustainedPerformance
 exit /b 0
 
 :run_benchmark
-REM Build command
-set "CMD=%BENCHMARK_EXECUTABLE%"
+REM Build command options
+set "TEST_OPTS="
 
 if defined SPECIFIC_TEST (
     echo Running specific test: %SPECIFIC_TEST%
-    set "CMD=!CMD! --run_test=IntegratedSystemBenchmarkSuite/%SPECIFIC_TEST%"
+    set "TEST_OPTS=--run_test=IntegratedSystemBenchmarkSuite/%SPECIFIC_TEST%"
 ) else (
     echo Running all integrated system benchmarks
-    set "CMD=!CMD! --run_test=IntegratedSystemBenchmarkSuite"
+    set "TEST_OPTS=--run_test=IntegratedSystemBenchmarkSuite"
 )
 
 if "%VERBOSE%"=="true" (
-    set "CMD=!CMD! --log_level=all"
+    set "TEST_OPTS=!TEST_OPTS! --log_level=all"
 ) else (
-    set "CMD=!CMD! --log_level=test_suite"
+    set "TEST_OPTS=!TEST_OPTS! --log_level=test_suite"
 )
 
 echo.
-echo Command: !CMD!
+echo Command: "%BENCHMARK_EXECUTABLE%" !TEST_OPTS!
 echo.
 
 REM Run the benchmark
 cd /d "%PROJECT_ROOT%"
-!CMD!
+"%BENCHMARK_EXECUTABLE%" !TEST_OPTS!
+set BENCHMARK_RESULT=!ERRORLEVEL!
 
-if %ERRORLEVEL% EQU 0 (
+if !BENCHMARK_RESULT! EQU 0 (
     echo.
     echo ============================================
     echo   Benchmark completed successfully
@@ -114,7 +115,7 @@ if %ERRORLEVEL% EQU 0 (
 ) else (
     echo.
     echo ============================================
-    echo   Benchmark failed with exit code %ERRORLEVEL%
+    echo   Benchmark failed with exit code !BENCHMARK_RESULT!
     echo ============================================
-    exit /b %ERRORLEVEL%
+    exit /b !BENCHMARK_RESULT!
 )
