@@ -413,6 +413,7 @@ private:
   mutable std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
       m_behaviorCache;
   mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
+  mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
 
   // Performance stats per behavior type
   std::array<AIPerformanceStats, static_cast<size_t>(BehaviorType::COUNT)>
@@ -511,6 +512,9 @@ private:
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
   mutable std::mutex m_statsMutex;
+
+  // Cached manager references (avoid singleton lookups in hot paths)
+  PathfinderManager* mp_pathfinderManager{nullptr};
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
