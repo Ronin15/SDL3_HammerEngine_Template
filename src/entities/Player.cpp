@@ -141,11 +141,13 @@ void Player::update(float deltaTime) {
   m_position = m_position + (m_velocity * deltaTime);
 
   // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world boundaries
-  float worldMinX = 0.0f, worldMinY = 0.0f, worldMaxX = 0.0f, worldMaxY = 0.0f;
-  WorldManager::Instance().getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY);
+  // PERFORMANCE: Use cached bounds instead of calling WorldManager::Instance() every frame
+  if (!m_worldBoundsCached) {
+    refreshWorldBoundsCache();
+  }
 
   // Always clamp if bounds are valid (maxX > minX)
-  if (worldMaxX > worldMinX && worldMaxY > worldMinY) {
+  if (m_cachedWorldMaxX > m_cachedWorldMinX && m_cachedWorldMaxY > m_cachedWorldMinY) {
     // Account for player half-size to prevent center from going out of bounds
     const float halfWidth = m_frameWidth * 0.5f;
     const float halfHeight = m_height * 0.5f;
@@ -155,8 +157,8 @@ void Player::update(float deltaTime) {
     const float originalY = m_position.getY();
 
     // Clamp position to world bounds (with player size offset)
-    const float clampedX = std::clamp(originalX, worldMinX + halfWidth, worldMaxX - halfWidth);
-    const float clampedY = std::clamp(originalY, worldMinY + halfHeight, worldMaxY - halfHeight);
+    const float clampedX = std::clamp(originalX, m_cachedWorldMinX + halfWidth, m_cachedWorldMaxX - halfWidth);
+    const float clampedY = std::clamp(originalY, m_cachedWorldMinY + halfHeight, m_cachedWorldMaxY - halfHeight);
 
     // Update position and stop velocity if we hit a boundary
     if (clampedX != originalX) {
@@ -450,4 +452,14 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
   }
 
   return false;
+}
+
+void Player::refreshWorldBoundsCache() {
+  WorldManager::Instance().getWorldBounds(
+      m_cachedWorldMinX, m_cachedWorldMinY,
+      m_cachedWorldMaxX, m_cachedWorldMaxY);
+  m_worldBoundsCached = true;
+  PLAYER_DEBUG(std::format("World bounds cached: ({}, {}) to ({}, {})",
+               m_cachedWorldMinX, m_cachedWorldMinY,
+               m_cachedWorldMaxX, m_cachedWorldMaxY));
 }

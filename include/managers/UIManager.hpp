@@ -564,7 +564,8 @@ private:
   void renderComponent(SDL_Renderer *renderer,
                        const std::shared_ptr<UIComponent> &component);
   void renderTooltip(SDL_Renderer *renderer);
-  std::vector<std::shared_ptr<UIComponent>> getSortedComponents() const;
+  // PERFORMANCE: Return const reference to avoid vector copy every frame
+  const std::vector<std::shared_ptr<UIComponent>>& getSortedComponents() const;
 
   // Performance optimization helper
   void invalidateComponentCache();
@@ -615,6 +616,9 @@ private:
 
   // Deferred execution queue to prevent iterator invalidation
   std::vector<std::function<void()>> m_deferredCallbacks{};
+
+  // PERFORMANCE: Track active bindings to skip iteration when none exist
+  size_t m_activeBindingCount{0};
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;

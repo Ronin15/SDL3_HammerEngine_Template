@@ -74,27 +74,31 @@ void UIManager::update(float deltaTime) {
 
   // Note: Window resize is now event-driven via onWindowResize(), not polled every frame
 
-  // Process data bindings - ONLY for visible components to avoid unnecessary work
-  for (auto const& [id, component] : m_components) {
-      if (component && component->m_visible) {
-          // Handle text bindings
-          if (component->m_textBinding) {
-              setText(id, component->m_textBinding());
-          }
-          // Handle list bindings (zero-allocation: uses reusable buffers)
-          if (component->m_listBinding) {
-              component->m_listBindingBuffer.clear();  // Reuse capacity, no deallocation
-              component->m_listSortBuffer.clear();     // Reuse sort buffer capacity
-              component->m_listBinding(component->m_listBindingBuffer, component->m_listSortBuffer);
-              if (component->m_listItems.size() != component->m_listBindingBuffer.size() ||
-                  !std::equal(component->m_listItems.begin(), component->m_listItems.end(),
-                              component->m_listBindingBuffer.begin())) {
-                  component->m_listItems = std::move(component->m_listBindingBuffer);
-                  component->m_listBindingBuffer.clear();  // Reset for next use
-                  component->m_listItemsDirty = true;
-              }
-          }
-      }
+  // PERFORMANCE: Only iterate components if there are active bindings
+  // This skips the O(n) loop entirely when no bindings exist
+  if (m_activeBindingCount > 0) {
+    // Process data bindings - ONLY for visible components to avoid unnecessary work
+    for (auto const& [id, component] : m_components) {
+        if (component && component->m_visible) {
+            // Handle text bindings
+            if (component->m_textBinding) {
+                setText(id, component->m_textBinding());
+            }
+            // Handle list bindings (zero-allocation: uses reusable buffers)
+            if (component->m_listBinding) {
+                component->m_listBindingBuffer.clear();  // Reuse capacity, no deallocation
+                component->m_listSortBuffer.clear();     // Reuse sort buffer capacity
+                component->m_listBinding(component->m_listBindingBuffer, component->m_listSortBuffer);
+                if (component->m_listItems.size() != component->m_listBindingBuffer.size() ||
+                    !std::equal(component->m_listItems.begin(), component->m_listItems.end(),
+                                component->m_listBindingBuffer.begin())) {
+                    component->m_listItems = std::move(component->m_listBindingBuffer);
+                    component->m_listBindingBuffer.clear();  // Reset for next use
+                    component->m_listItemsDirty = true;
+                }
+            }
+        }
+    }
   }
 
   // Clear frame-specific state
@@ -104,17 +108,23 @@ void UIManager::update(float deltaTime) {
   // Handle input (may need component access)
   handleInput();
 
-  // Update animations (has its own locking)
-  updateAnimations(deltaTime);
+  // PERFORMANCE: Skip animation update if no animations exist
+  if (!m_animations.empty()) {
+    updateAnimations(deltaTime);
+  }
 
   // Update tooltips
   updateTooltips(deltaTime);
 
-  // Update event logs
-  updateEventLogs(deltaTime);
+  // PERFORMANCE: Skip event log update if no event logs exist
+  if (!m_eventLogStates.empty()) {
+    updateEventLogs(deltaTime);
+  }
 
-  // Execute any deferred callbacks now that the main update/input loop is complete
-  executeDeferredCallbacks();
+  // PERFORMANCE: Skip callback execution if no callbacks queued
+  if (!m_deferredCallbacks.empty()) {
+    executeDeferredCallbacks();
+  }
 }
 
 void UIManager::executeDeferredCallbacks() {
@@ -176,7 +186,7 @@ void UIManager::clean() {
   m_isShutdown = true;
 }
 
-std::vector<std::shared_ptr<UIComponent>> UIManager::getSortedComponents() const {
+const std::vector<std::shared_ptr<UIComponent>>& UIManager::getSortedComponents() const {
   // Performance optimization: Only rebuild sorted list when components added/removed/z-order changed
   if (m_sortedComponentsDirty) {
     m_sortedComponentsCache.clear();
@@ -608,6 +618,12 @@ void UIManager::bindText(const std::string &id,
                          std::function<std::string()> binding) {
   auto component = getComponent(id);
   if (component) {
+    // PERFORMANCE: Track binding count for early exit optimization in update()
+    if (!component->m_textBinding && binding) {
+      ++m_activeBindingCount;
+    } else if (component->m_textBinding && !binding) {
+      --m_activeBindingCount;
+    }
     component->m_textBinding = binding;
   }
 }
@@ -617,6 +633,12 @@ void UIManager::bindList(
     std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> binding) {
   auto component = getComponent(id);
   if (component) {
+    // PERFORMANCE: Track binding count for early exit optimization in update()
+    if (!component->m_listBinding && binding) {
+      ++m_activeBindingCount;
+    } else if (component->m_listBinding && !binding) {
+      --m_activeBindingCount;
+    }
     component->m_listBinding = binding;
   }
 }
