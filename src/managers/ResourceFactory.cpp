@@ -9,6 +9,7 @@
 #include "entities/resources/ItemResources.hpp"
 #include "entities/resources/MaterialResources.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include <format>
 
 namespace HammerEngine {
 
@@ -48,20 +49,19 @@ ResourcePtr ResourceFactory::createFromJson(const JsonValue &json) {
     try {
       ResourcePtr resource = creatorIt->second(json);
       if (resource) {
-        RESOURCE_DEBUG("ResourceFactory::createFromJson - Created " + typeStr +
-                       " resource: " + id);
+        RESOURCE_DEBUG(std::format("ResourceFactory::createFromJson - Created {} resource: {}", typeStr, id));
         return resource;
       }
     } catch (const std::exception &ex) {
-      RESOURCE_ERROR("ResourceFactory::createFromJson - Exception creating " +
-                     typeStr + ": " + std::string(ex.what()));
+      RESOURCE_ERROR(std::format("ResourceFactory::createFromJson - Exception creating {}: {}",
+                                 typeStr, ex.what()));
     }
   }
 
   // Fallback to base Resource creation using handles
-  RESOURCE_WARN(
-      "ResourceFactory::createFromJson - No specialized creator for type '" +
-      typeStr + "', creating base Resource with category " + categoryStr);
+  RESOURCE_WARN(std::format(
+      "ResourceFactory::createFromJson - No specialized creator for type '{}', creating base Resource with category {}",
+      typeStr, categoryStr));
 
   // Generate a handle for the new resource
   auto handle = ResourceTemplateManager::Instance().generateHandle();
@@ -74,15 +74,14 @@ bool ResourceFactory::registerCreator(const std::string &typeName,
                                       ResourceCreator creator) {
   auto &creators = getCreators();
   if (creators.find(typeName) != creators.end()) {
-    RESOURCE_DEBUG("ResourceFactory::registerCreator - Type '" + typeName +
-                   "' already registered, skipping");
+    RESOURCE_DEBUG(std::format("ResourceFactory::registerCreator - Type '{}' already registered, skipping",
+                               typeName));
     return false;
   }
 
   creators[typeName] = creator;
-  RESOURCE_DEBUG(
-      "ResourceFactory::registerCreator - Registered creator for type: " +
-      typeName);
+  RESOURCE_DEBUG(std::format("ResourceFactory::registerCreator - Registered creator for type: {}",
+                             typeName));
   return true;
 }
 
@@ -107,8 +106,8 @@ void ResourceFactory::initialize() {
   // Check if already initialized to avoid duplicate registrations
   const auto &creators = getCreators();
   if (!creators.empty()) {
-    RESOURCE_DEBUG("ResourceFactory::initialize - Already initialized with " +
-                   std::to_string(creators.size()) + " resource creators");
+    RESOURCE_DEBUG(std::format("ResourceFactory::initialize - Already initialized with {} resource creators",
+                   creators.size()));
     return;
   }
 
@@ -166,8 +165,8 @@ void ResourceFactory::initialize() {
         ResourceTemplateManager::Instance().generateHandle(), json);
   });
 
-  RESOURCE_INFO("ResourceFactory::initialize - Registered " +
-                std::to_string(getCreators().size()) + " resource creators");
+  RESOURCE_INFO(std::format("ResourceFactory::initialize - Registered {} resource creators",
+                getCreators().size()));
 }
 
 void ResourceFactory::clear() {

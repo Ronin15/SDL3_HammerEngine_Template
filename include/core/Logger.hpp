@@ -312,8 +312,31 @@ inline std::mutex Logger::s_logMutex{};
 #define SETTINGS_CRITICAL(msg) HAMMER_CRITICAL("SettingsManager", msg)
 #define SETTINGS_ERROR(msg) HAMMER_ERROR("SettingsManager", msg)
 #define SETTINGS_WARNING(msg) HAMMER_WARN("SettingsManager", msg)
+#define SETTINGS_WARN(msg) SETTINGS_WARNING(msg)
 #define SETTINGS_INFO(msg) HAMMER_INFO("SettingsManager", msg)
 #define SETTINGS_DEBUG(msg) HAMMER_DEBUG("SettingsManager", msg)
+
+// WeatherController logging
+#define WEATHER_CRITICAL(msg) HAMMER_CRITICAL("WeatherController", msg)
+#define WEATHER_ERROR(msg) HAMMER_ERROR("WeatherController", msg)
+#define WEATHER_WARNING(msg) HAMMER_WARN("WeatherController", msg)
+#define WEATHER_WARN(msg) WEATHER_WARNING(msg)
+#define WEATHER_INFO(msg) HAMMER_INFO("WeatherController", msg)
+#define WEATHER_DEBUG(msg) HAMMER_DEBUG("WeatherController", msg)
+
+// DayNightController logging
+#define DAYNIGHT_CRITICAL(msg) HAMMER_CRITICAL("DayNightController", msg)
+#define DAYNIGHT_ERROR(msg) HAMMER_ERROR("DayNightController", msg)
+#define DAYNIGHT_WARN(msg) HAMMER_WARN("DayNightController", msg)
+#define DAYNIGHT_INFO(msg) HAMMER_INFO("DayNightController", msg)
+#define DAYNIGHT_DEBUG(msg) HAMMER_DEBUG("DayNightController", msg)
+
+// TimeController logging
+#define TIME_CRITICAL(msg) HAMMER_CRITICAL("TimeController", msg)
+#define TIME_ERROR(msg) HAMMER_ERROR("TimeController", msg)
+#define TIME_WARN(msg) HAMMER_WARN("TimeController", msg)
+#define TIME_INFO(msg) HAMMER_INFO("TimeController", msg)
+#define TIME_DEBUG(msg) HAMMER_DEBUG("TimeController", msg)
 
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \

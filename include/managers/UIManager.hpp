@@ -13,6 +13,7 @@
 #include <mutex>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "managers/UIConstants.hpp" // Added for font constants
@@ -51,10 +52,11 @@ enum class UIPositionMode {
   CENTERED_H,      // Horizontal center + offsetX, fixed offsetY
   CENTERED_V,      // Vertical center + offsetY, fixed offsetX
   CENTERED_BOTH,   // Center both axes + offsets
-  TOP_ALIGNED,     // Top edge + offsetY, horizontally centered
-  BOTTOM_ALIGNED,  // Bottom edge - height - offsetY, fixed offsetX
-  BOTTOM_CENTERED, // Bottom edge - height - offsetY, horizontally centered
-  BOTTOM_RIGHT,    // Bottom-right corner: bottom - height - offsetY, right - width - offsetX
+  TOP_ALIGNED,     // Top-left: x = offsetX, y = offsetY
+  TOP_RIGHT,       // Top-right: x = right - width - offsetX, y = offsetY
+  BOTTOM_ALIGNED,  // Bottom-left: x = offsetX, y = bottom - height - offsetY
+  BOTTOM_CENTERED, // Bottom center: horizontally centered, y = bottom - height - offsetY
+  BOTTOM_RIGHT,    // Bottom-right: x = right - width - offsetX, y = bottom - height - offsetY
   LEFT_ALIGNED,    // Left edge + offsetX, vertically centered
   RIGHT_ALIGNED    // Right edge - width - offsetX, vertically centered
 };
@@ -66,6 +68,8 @@ struct UIPositioning {
   int offsetY{0};      // Offset from positioning anchor
   int fixedWidth{0};   // Fixed width (0 = use current width)
   int fixedHeight{0};  // Fixed height (0 = use current height)
+  float widthPercent{0.0f};   // Width as fraction of window (e.g., 0.57 = 57%), takes precedence over fixedWidth
+  float heightPercent{0.0f};  // Height as fraction of window, takes precedence over fixedHeight
 };
 
 // UI States
@@ -170,7 +174,9 @@ struct UIComponent {
   std::vector<std::string> m_listItems{};
   std::vector<std::shared_ptr<SDL_Texture>> m_listItemTextures{}; // Texture cache
   bool m_listItemsDirty{true}; // Flag to regenerate textures
-  std::function<std::vector<std::string>()> m_listBinding{}; // For data-bound lists
+  std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> m_listBinding{}; // Zero-allocation: populates reusable buffers
+  mutable std::vector<std::string> m_listBindingBuffer{}; // Reusable buffer for list binding output
+  mutable std::vector<std::pair<std::string, int>> m_listSortBuffer{}; // Reusable buffer for inventory-style sorting
   int m_selectedIndex{-1};
   std::string m_placeholder{};
   int m_maxLength{UIConstants::DEFAULT_INPUT_MAX_LENGTH};
@@ -253,13 +259,8 @@ public:
   bool init();
   void update(float deltaTime);
   void render(SDL_Renderer *renderer);
-  void render(); // Overloaded version using cached renderer
   void clean();
   bool isShutdown() const { return m_isShutdown; }
-
-  // Renderer management
-  void setRenderer(SDL_Renderer *renderer) { m_cachedRenderer = renderer; }
-  SDL_Renderer *getRenderer() const { return m_cachedRenderer; }
 
   // Window resize notification (called by InputManager on SDL_EVENT_WINDOW_RESIZED)
   void onWindowResize(int newLogicalWidth, int newLogicalHeight);
@@ -321,7 +322,7 @@ public:
   // Data binding methods
   void bindText(const std::string &id, std::function<std::string()> binding);
   void bindList(const std::string &id,
-                std::function<std::vector<std::string>()> binding);
+                std::function<void(std::vector<std::string>&, std::vector<std::pair<std::string, int>>&)> binding);
 
   // Component property getters
   std::string getText(const std::string &id) const;
@@ -389,6 +390,9 @@ public:
   void
   centerTitleInContainer(const std::string &titleID, int containerX,
                          int containerWidth); // Center title after auto-sizing
+
+  // Label specific methods
+  void setLabelAlignment(const std::string &labelID, UIAlignment alignment);
 
   // Input field specific methods
   void setInputFieldPlaceholder(const std::string &id,
@@ -560,7 +564,8 @@ private:
   void renderComponent(SDL_Renderer *renderer,
                        const std::shared_ptr<UIComponent> &component);
   void renderTooltip(SDL_Renderer *renderer);
-  std::vector<std::shared_ptr<UIComponent>> getSortedComponents() const;
+  // PERFORMANCE: Return const reference to avoid vector copy every frame
+  const std::vector<std::shared_ptr<UIComponent>>& getSortedComponents() const;
 
   // Performance optimization helper
   void invalidateComponentCache();
@@ -609,11 +614,11 @@ private:
   UIRect interpolateRect(const UIRect &start, const UIRect &end, float t);
   void executeDeferredCallbacks();
 
-  // Cached renderer for performance
-  SDL_Renderer *m_cachedRenderer{nullptr};
-
   // Deferred execution queue to prevent iterator invalidation
   std::vector<std::function<void()>> m_deferredCallbacks{};
+
+  // PERFORMANCE: Track active bindings to skip iteration when none exist
+  size_t m_activeBindingCount{0};
 
   // Delete copy constructor and assignment operator
   UIManager(const UIManager &) = delete;

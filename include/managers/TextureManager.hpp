@@ -7,12 +7,20 @@
 #define TEXTURE_MANAGER_HPP
 
 #include <SDL3/SDL.h>
-#include <SDL3_image/SDL_image.h>
 #include <unordered_map>
 #include <memory>
 #include <string>
 #include <atomic>
 #include <mutex>
+
+/**
+ * @brief Holds texture data with cached dimensions to avoid per-frame SDL_GetTextureSize() calls
+ */
+struct TextureData {
+    std::shared_ptr<SDL_Texture> texture;
+    float width{0.0f};
+    float height{0.0f};
+};
 
 class TextureManager {
  public:
@@ -57,24 +65,6 @@ class TextureManager {
             SDL_FlipMode flip = SDL_FLIP_NONE);
 
   /**
-   * @brief Draws a texture with float precision for smooth camera movement
-   * @param textureID Unique identifier of the texture to draw
-   * @param x X coordinate for drawing position (float precision)
-   * @param y Y coordinate for drawing position (float precision)
-   * @param width Width to draw the texture
-   * @param height Height to draw the texture
-   * @param p_renderer SDL renderer to draw to
-   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
-   */
-  void drawF(const std::string& textureID,
-             float x,
-             float y,
-             int width,
-             int height,
-             SDL_Renderer* p_renderer,
-             SDL_FlipMode flip = SDL_FLIP_NONE);
-
-  /**
    * @brief Draws a tile texture with perfect pixel alignment for tiled rendering
    * @param textureID Unique identifier of the texture to draw
    * @param x X coordinate for drawing position (float precision)
@@ -93,26 +83,21 @@ class TextureManager {
                  SDL_FlipMode flip = SDL_FLIP_NONE);
 
   /**
-   * @brief Draws a specific frame from a sprite sheet texture
-   * @param textureID Unique identifier of the sprite sheet texture
-   * @param x X coordinate for drawing position
-   * @param y Y coordinate for drawing position
-   * @param width Width of individual frame
-   * @param height Height of individual frame
-   * @param currentRow Row index in the sprite sheet
-   * @param currentFrame Frame index in the current row
+   * @brief Draws a tile using a direct texture pointer (no hash lookup)
+   * @param texture Direct SDL_Texture pointer (caller must ensure validity)
+   * @param x X coordinate for drawing position (float precision)
+   * @param y Y coordinate for drawing position (float precision)
+   * @param width Width to draw the texture
+   * @param height Height to draw the texture
    * @param p_renderer SDL renderer to draw to
-   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
+   * @note Uses SDL_RenderTexture for optimal performance (no rotation overhead)
    */
-  void drawFrame(const std::string& textureID,
-                 int x,
-                 int y,
-                 int width,
-                 int height,
-                 int currentRow,
-                 int currentFrame,
-                 SDL_Renderer* p_renderer,
-                 SDL_FlipMode flip = SDL_FLIP_NONE);
+  static void drawTileDirect(SDL_Texture* texture,
+                             float x,
+                             float y,
+                             int width,
+                             int height,
+                             SDL_Renderer* p_renderer);
 
   /**
    * @brief Draws a sprite frame with float precision for smooth camera movement
@@ -124,17 +109,17 @@ class TextureManager {
    * @param currentRow Current animation row
    * @param currentFrame Current animation frame
    * @param p_renderer SDL renderer to draw to
-   * @param flip Flip mode for the texture
+   * @param flip Flip mode for the texture (default: SDL_FLIP_NONE)
    */
-  void drawFrameF(const std::string& textureID,
-                  float x,
-                  float y,
-                  int width,
-                  int height,
-                  int currentRow,
-                  int currentFrame,
-                  SDL_Renderer* p_renderer,
-                  SDL_FlipMode flip = SDL_FLIP_NONE);
+  void drawFrame(const std::string& textureID,
+                 float x,
+                 float y,
+                 int width,
+                 int height,
+                 int currentRow,
+                 int currentFrame,
+                 SDL_Renderer* p_renderer,
+                 SDL_FlipMode flip = SDL_FLIP_NONE);
 
   /**
    * @brief Draws a texture with parallax scrolling effect
@@ -195,7 +180,7 @@ class TextureManager {
 
  private:
   std::string m_textureID{""};
-  std::unordered_map<std::string, std::shared_ptr<SDL_Texture>> m_textureMap{};
+  std::unordered_map<std::string, TextureData> m_textureMap{};  // Stores texture + cached dimensions
   std::atomic<bool> m_texturesLoaded{false};
   std::mutex m_textureLoadMutex{};
   bool m_isShutdown{false};

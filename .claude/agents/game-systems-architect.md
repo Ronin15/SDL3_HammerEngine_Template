@@ -2,7 +2,7 @@
 name: game-systems-architect
 description: Use this agent when you need comprehensive code review for game systems integration, performance optimization, and architectural coherence. This agent should be invoked proactively after implementing or modifying core game systems, managers, or performance-critical code paths. Examples:\n\n<example>\nContext: User has just implemented a new particle effects manager.\nuser: "I've finished implementing the new particle effects system with pooling and batching"\nassistant: "Let me use the Task tool to launch the game-systems-architect agent to review the implementation for performance bottlenecks, integration with existing managers, and per-frame allocation patterns."\n</example>\n\n<example>\nContext: User is refactoring the AI system to work with the collision manager.\nuser: "I've updated AIManager to use CollisionManager's spatial hash for pathfinding"\nassistant: "I'm going to invoke the game-systems-architect agent to verify the integration is cohesive, thread-safe, and doesn't introduce redundant spatial queries or allocation issues."\n</example>\n\n<example>\nContext: User has modified update loop timing.\nuser: "Modified the fixed timestep update to process entities in batches"\nassistant: "Let me use the game-systems-architect agent to analyze the changes for timing coherency, thread safety with the render loop, and any potential frame rate impacts from the batching strategy."\n</example>
 tools: Glob, Grep, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillShell, Bash, AskUserQuestion, Skill, SlashCommand
-model: sonnet
+model: opus
 color: blue
 ---
 

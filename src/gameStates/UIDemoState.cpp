@@ -155,13 +155,13 @@ void UIExampleState::update(float deltaTime) {
     updateProgressBar(deltaTime);
 }
 
-void UIExampleState::render() {
+void UIExampleState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     // Update and render UI components through UIManager using cached renderer for cleaner API
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
     auto& ui = UIManager::Instance();
     ui.update(m_lastDeltaTime);
-    ui.render();
+    ui.render(renderer);
 }
 
 bool UIExampleState::exit() {
@@ -177,24 +177,24 @@ bool UIExampleState::exit() {
 void UIExampleState::handleSliderChange(float value) {
     m_sliderValue = value;
     updateSliderLabel(value);
-    GAMESTATE_DEBUG("Slider value changed: " + std::to_string(value));
+    GAMESTATE_DEBUG(std::format("Slider value changed: {}", value));
 }
 
 void UIExampleState::handleCheckboxToggle() {
     m_checkboxValue = !m_checkboxValue;
-    GAMESTATE_DEBUG("Checkbox toggled: " + std::string(m_checkboxValue ? "checked" : "unchecked"));
+    GAMESTATE_DEBUG(std::format("Checkbox toggled: {}", m_checkboxValue ? "checked" : "unchecked"));
 }
 
 void UIExampleState::handleInputChange(const std::string& text) {
     m_inputText = text;
     updateInputLabel(text);
-    GAMESTATE_DEBUG("Input text changed: " + text);
+    GAMESTATE_DEBUG(std::format("Input text changed: {}", text));
 }
 
 void UIExampleState::handleListSelection() {
     const auto& ui = UIManager::Instance();
     m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
-    GAMESTATE_DEBUG("List item selected: " + std::to_string(m_selectedListItem));
+    GAMESTATE_DEBUG(std::format("List item selected: {}", m_selectedListItem));
 }
 
 void UIExampleState::handleAnimation() {
@@ -216,7 +216,7 @@ void UIExampleState::handleAnimation() {
 void UIExampleState::handleThemeChange() {
     m_darkTheme = !m_darkTheme;
     applyDarkTheme(m_darkTheme);
-    GAMESTATE_DEBUG("Theme changed to: " + std::string(m_darkTheme ? "dark" : "light"));
+    GAMESTATE_DEBUG(std::format("Theme changed to: {}", m_darkTheme ? "dark" : "light"));
 }
 
 void UIExampleState::handleInput() {

@@ -462,11 +462,11 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
     // Record initial collision query count
     size_t initialQueries = CollisionManager::Instance().getPerfStats().lastPairs;
 
-    // Run simulation for 250 frames (4.0 seconds)
+    // Run simulation for 300 frames (5.0 seconds)
     // Extended duration ensures all entities trigger separation 2+ times
     // given the 2-4 second staggered decimation interval
-    std::cout << "Running simulation for 250 frames..." << std::endl;
-    updateSimulation(250, 0.016f);
+    std::cout << "Running simulation for 300 frames..." << std::endl;
+    updateSimulation(300, 0.016f);
 
     // Get final collision query count
     size_t finalQueries = CollisionManager::Instance().getPerfStats().lastPairs;

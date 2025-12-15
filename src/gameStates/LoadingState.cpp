@@ -11,6 +11,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include <format>
 #include <random>
 
 void LoadingState::configure(const std::string& targetStateName,
@@ -39,7 +40,7 @@ bool LoadingState::enter() {
         return false;
     }
 
-    GAMESTATE_INFO("Entering LoadingState - Target: " + m_targetStateName);
+    GAMESTATE_INFO(std::format("Entering LoadingState - Target: {}", m_targetStateName));
 
     // Initialize loading screen UI
     initializeUI();
@@ -83,7 +84,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
                 }
                 // Continue to target state even on failure (matches current behavior)
             } else {
-                GAMESTATE_INFO("World and pathfinding ready - transitioning to " + m_targetStateName);
+                GAMESTATE_INFO(std::format("World and pathfinding ready - transitioning to {}", m_targetStateName));
             }
 
             // Transition to target state
@@ -92,7 +93,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
             if (gameStateManager && gameStateManager->hasState(m_targetStateName)) {
                 gameStateManager->changeState(m_targetStateName);
             } else {
-                std::string errorMsg = "Target state not found: " + m_targetStateName;
+                std::string errorMsg = std::format("Target state not found: {}", m_targetStateName);
                 GAMESTATE_ERROR(errorMsg);
 
                 // Store error for diagnostic purposes
@@ -105,7 +106,7 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
     }
 }
 
-void LoadingState::render() {
+void LoadingState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
     // All rendering happens through GameEngine::render() -> this method
     // No manual SDL_RenderClear() or SDL_RenderPresent() calls needed!
 
@@ -119,7 +120,7 @@ void LoadingState::render() {
     ui.setText("loading_status", getStatusText());
 
     // Actually render the UI to the screen!
-    ui.render();
+    ui.render(renderer);
 }
 
 void LoadingState::handleInput() {
@@ -137,7 +138,7 @@ bool LoadingState::exit() {
         try {
             m_loadTask.wait();
         } catch (const std::exception& e) {
-            std::string errorMsg = "Exception while waiting for load task: " + std::string(e.what());
+            std::string errorMsg = std::format("Exception while waiting for load task: {}", e.what());
             GAMESTATE_ERROR(errorMsg);
 
             // Store error for diagnostic purposes
@@ -149,16 +150,6 @@ bool LoadingState::exit() {
     }
 
     return true;
-}
-
-void LoadingState::onWindowResize([[maybe_unused]] int newLogicalWidth, [[maybe_unused]] int newLogicalHeight) {
-    if (!m_uiInitialized) {
-        return;
-    }
-
-    // Recreate UI components with new dimensions
-    cleanupUI();
-    initializeUI();
 }
 
 std::string LoadingState::getName() const {
@@ -245,27 +236,36 @@ void LoadingState::initializeUI() {
     // Create loading overlay
     ui.createOverlay();
 
-    // Create title
+    // Create title - centered both, 60px above center (accounts for 40px height)
+    // Using CENTERED_BOTH: y = (height - 40) / 2 + offsetY, we want y = height/2 - 80
+    // So offsetY = -80 + 20 = -60
     ui.createTitle("loading_title",
                    {0, windowHeight / 2 - 80, windowWidth, 40},
                    "Loading World...");
     ui.setTitleAlignment("loading_title", UIAlignment::CENTER_CENTER);
+    ui.setComponentPositioning("loading_title",
+                              {UIPositionMode::CENTERED_BOTH, 0, -60, windowWidth, 40});
 
-    // Create progress bar in center of screen using centered positioning
-    int progressBarWidth = 400;
-    int progressBarHeight = 30;
-    int progressBarY = windowHeight / 2;
+    // Create progress bar - centered both, at vertical center
+    // Using CENTERED_BOTH: y = (height - 30) / 2 + offsetY, we want y = height/2
+    // So offsetY = 15
+    constexpr int progressBarWidth = 400;
+    constexpr int progressBarHeight = 30;
     ui.createProgressBar("loading_progress",
-                        {0, progressBarY, progressBarWidth, progressBarHeight},
+                        {0, windowHeight / 2, progressBarWidth, progressBarHeight},
                         0.0f, 100.0f);
     ui.setComponentPositioning("loading_progress",
-                              {UIPositionMode::CENTERED_H, 0, progressBarY, progressBarWidth, progressBarHeight});
+                              {UIPositionMode::CENTERED_BOTH, 0, 15, progressBarWidth, progressBarHeight});
 
-    // Create status text below progress bar
+    // Create status text - centered both, 50px below progress bar center
+    // Using CENTERED_BOTH: y = (height - 30) / 2 + offsetY, we want y = height/2 + 50
+    // So offsetY = 50 + 15 = 65
     ui.createTitle("loading_status",
-                   {0, progressBarY + 50, windowWidth, 30},
+                   {0, windowHeight / 2 + 50, windowWidth, 30},
                    "Initializing...");
     ui.setTitleAlignment("loading_status", UIAlignment::CENTER_CENTER);
+    ui.setComponentPositioning("loading_status",
+                              {UIPositionMode::CENTERED_BOTH, 0, 65, windowWidth, 30});
 
     m_uiInitialized = true;
 

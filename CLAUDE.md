@@ -55,8 +55,10 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 **Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 
+**Controllers**: State-scoped helpers that control specific system behaviors. Unlike Managers (global lifecycle, own data), Controllers subscribe per-GameState and contain game logic without owning data. Organized by system: `controllers/world/` (TimeController, WeatherController), future: `controllers/ai/`, `controllers/combat/`, etc.
+
 ```
-src/{core, managers, gameStates, entities, events, ai, collisions, utils, world}
+src/{core, managers, controllers, gameStates, entities, events, ai, collisions, utils, world}
 include/  # Headers mirror src/
 tests/    # Boost.Test scripts
 res/      # Assets
@@ -112,6 +114,15 @@ ui.setComponentPositioning("my_btn", {UIPositionMode::TOP_ALIGNED, 100, 200, 120
 **Headers**: `.hpp` for C++, `.h` for C | Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
 
 **Threading**: Update (mutex-locked, fixed timestep) | Render (main thread only, double-buffered) | Background (ThreadSystem + WorkerBudget) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
+
+**Logging**: Always use `std::format()` for logging with dynamic values. Never use string concatenation (`+` operator) with `std::to_string()` - it creates multiple heap allocations per log call.
+```cpp
+// BAD: Creates 5-9 heap allocations per call
+LOG_INFO("Value: " + std::to_string(x) + " at pos (" + std::to_string(y) + ")");
+
+// GOOD: Single allocation with std::format
+LOG_INFO(std::format("Value: {} at pos ({})", x, y));
+```
 
 **Copyright** (all files):
 ```cpp

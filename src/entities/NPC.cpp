@@ -14,10 +14,10 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "utils/Camera.hpp"
 
+#include <cmath>
+#include <format>
 #include <random>
-#include <set>
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight, NPCType type)
@@ -119,12 +119,11 @@ void NPC::loadDimensionsFromTexture() {
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
         CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
       } else {
-        NPC_ERROR("Failed to query NPC texture dimensions: " +
-                  std::string(SDL_GetError()));
+        NPC_ERROR(std::format("Failed to query NPC texture dimensions: {}", SDL_GetError()));
       }
     }
   } else {
-    NPC_ERROR("NPC texture '" + m_textureID + "' not found in TextureManager");
+    NPC_ERROR(std::format("NPC texture '{}' not found in TextureManager", m_textureID));
   }
 }
 
@@ -186,46 +185,29 @@ void NPC::update(float) {
   }
 }
 
-void NPC::render(const HammerEngine::Camera *camera) {
-  // Cache manager references for better performance
-  TextureManager &texMgr = TextureManager::Instance();
-  SDL_Renderer *renderer = GameEngine::Instance().getRenderer();
+void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
+  // Get interpolated position for smooth rendering between fixed timestep updates
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
-  // Determine render position based on camera
-  Vector2D renderPosition;
-  if (camera) {
-    // Transform world position to screen coordinates using camera
-    renderPosition = camera->worldToScreen(m_position);
-  } else {
-    // No camera transformation - render at world coordinates directly
-    renderPosition = m_position;
-  }
+  // Convert world coords to screen coords using passed camera offset
+  // Using floating-point for smooth sub-pixel rendering (no pixel-snapping)
+  float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
-  // Calculate centered position for rendering (preserve float precision)
-  float renderX = renderPosition.getX() - (m_frameWidth / 2.0f);
-  float renderY = renderPosition.getY() - (m_height / 2.0f);
-
-  // Render the NPC with the current animation frame using float precision
-  texMgr.drawFrameF(m_textureID,
-                    renderX, // Keep float precision for smooth camera movement
-                    renderY, // Keep float precision for smooth camera movement
+  // Render the NPC with the current animation frame
+  TextureManager::Instance().drawFrame(m_textureID,
+                    renderX,
+                    renderY,
                     m_frameWidth, m_height, m_currentRow, m_currentFrame,
                     renderer, m_flip);
 }
 
 void NPC::clean() {
-  // This method is called before the object is destroyed,
-  // but we need to be very careful about double-cleanup
-
-  static thread_local std::set<void *> cleanedNPCs;
-
-  // Check if this NPC has already been cleaned
-  if (cleanedNPCs.find(this) != cleanedNPCs.end()) {
-    return; // Already cleaned, avoid double-free
+  // Prevent double-cleanup (uses member flag instead of thread_local set that leaked memory)
+  if (m_cleaned) {
+    return;
   }
-
-  // Mark this NPC as cleaned
-  cleanedNPCs.insert(this);
+  m_cleaned = true;
 
   // Note: AIManager cleanup (unregisterEntityFromUpdates,
   // unassignBehaviorFromEntity) should be handled externally before calling
@@ -256,8 +238,7 @@ void NPC::initializeInventory() {
         onResourceChanged(resourceHandle, oldQuantity, newQuantity);
       });
 
-  NPC_DEBUG("NPC inventory initialized with " +
-            std::to_string(m_inventory->getMaxSlots()) + " slots");
+  NPC_DEBUG(std::format("NPC inventory initialized with {} slots", m_inventory->getMaxSlots()));
 }
 
 void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
@@ -267,9 +248,8 @@ void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
   EventManager::Instance().triggerResourceChange(
       shared_this(), resourceHandle, oldQuantity, newQuantity, "npc_action",
       EventManager::DispatchMode::Deferred);
-  NPC_DEBUG("Resource changed: " + resourceId + " from " +
-            std::to_string(oldQuantity) + " to " + std::to_string(newQuantity) +
-            " - change triggered via EventManager");
+  NPC_DEBUG(std::format("Resource changed: {} from {} to {} - change triggered via EventManager",
+                         resourceId, oldQuantity, newQuantity));
 }
 
 // Resource management methods - removed, use getInventory() directly with
@@ -307,17 +287,15 @@ bool NPC::tradeWithPlayer(HammerEngine::ResourceHandle resourceHandle,
   }
 
   if (quantity <= 0) {
-    NPC_ERROR("NPC::tradeWithPlayer - Invalid quantity: " +
-              std::to_string(quantity));
+    NPC_ERROR(std::format("NPC::tradeWithPlayer - Invalid quantity: {}", quantity));
     return false;
   }
 
   // Simple trade: NPC gives item to player for free (could be enhanced with
   // currency exchange)
   if (m_inventory->transferTo(playerInventory, resourceHandle, quantity)) {
-    NPC_DEBUG("NPC traded " + std::to_string(quantity) +
-              " resources (handle: " + resourceHandle.toString() +
-              ") to player");
+    NPC_DEBUG(std::format("NPC traded {} resources (handle: {}) to player",
+                           quantity, resourceHandle.toString()));
     return true;
   }
 
@@ -388,8 +366,7 @@ void NPC::initializeLootDrops() {
         0.15f; // 15% chance to drop oak wood
   }
 
-  NPC_DEBUG("NPC loot drops initialized with " +
-            std::to_string(m_dropRates.size()) + " possible drops");
+  NPC_DEBUG(std::format("NPC loot drops initialized with {} possible drops", m_dropRates.size()));
 }
 
 void NPC::dropLoot() {
@@ -397,16 +374,12 @@ void NPC::dropLoot() {
     return;
   }
 
-  // Random number generator
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_real_distribution<float> dis(0.0f, 1.0f);
-
+  // Use member RNG (avoids static vars in threaded code per CLAUDE.md)
   NPC_DEBUG("NPC dropping loot...");
 
   // Check each potential drop
   for (const auto &[itemHandle, dropRate] : m_dropRates) {
-    if (dis(gen) <= dropRate) {
+    if (m_lootDist(m_lootRng) <= dropRate) {
       // Determine quantity (simple random 1-3 for most items)
       int quantity = 1;
 
@@ -427,8 +400,7 @@ void NPC::dropSpecificItem(HammerEngine::ResourceHandle itemHandle,
                            int quantity) {
   // In a real implementation, you would create a physical item drop in the
   // world For now, we'll just log the drop
-  NPC_DEBUG("NPC dropped " + std::to_string(quantity) +
-            " items (handle: " + itemHandle.toString() + ")");
+  NPC_DEBUG(std::format("NPC dropped {} items (handle: {})", quantity, itemHandle.toString()));
 
   // You could add the items to a world container, create pickup entities, etc.
   // This would integrate with your game's item pickup system
@@ -443,15 +415,13 @@ void NPC::setLootDropRate(HammerEngine::ResourceHandle itemHandle,
 
   if (dropRate < 0.0f || dropRate > 1.0f) {
     NPC_ERROR(
-        "NPC::setLootDropRate - Drop rate must be between 0.0 and 1.0, got: " +
-        std::to_string(dropRate));
+        std::format("NPC::setLootDropRate - Drop rate must be between 0.0 and 1.0, got: {}", dropRate));
     return;
   }
 
   m_dropRates[itemHandle] = dropRate;
   m_hasLootDrops = !m_dropRates.empty();
-  NPC_DEBUG("Set drop rate for item (handle: " + itemHandle.toString() +
-            ") to " + std::to_string(dropRate));
+  NPC_DEBUG(std::format("Set drop rate for item (handle: {}) to {}", itemHandle.toString(), dropRate));
 }
 // Animation handling removed - TextureManager handles this functionality
 
@@ -468,10 +438,8 @@ void NPC::ensurePhysicsBodyRegistered() {
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
   HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
 
-  NPC_DEBUG("Registering collision body - ID: " + std::to_string(getID()) +
-            ", Position: (" + std::to_string(m_position.getX()) + "," +
-            std::to_string(m_position.getY()) + ")" + ", Size: " +
-            std::to_string(halfW * 2) + "x" + std::to_string(halfH * 2));
+  NPC_DEBUG(std::format("Registering collision body - ID: {}, Position: ({},{}), Size: {}x{}",
+                         getID(), m_position.getX(), m_position.getY(), halfW * 2, halfH * 2));
 
   // Configure collision layers based on NPC type
   uint32_t layer, mask;
@@ -496,7 +464,7 @@ void NPC::ensurePhysicsBodyRegistered() {
   cm.attachEntity(getID(), shared_this());
 
   std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
-  NPC_DEBUG("Collision body registered successfully - KINEMATIC type with " + layerName);
+  NPC_DEBUG(std::format("Collision body registered successfully - KINEMATIC type with {}", layerName));
 }
 
 void NPC::setFaction(Faction f) {

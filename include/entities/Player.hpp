@@ -20,7 +20,23 @@ public:
   ~Player() override;
 
   void update(float deltaTime) override;
-  void render(const HammerEngine::Camera *camera) override;
+  void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
+
+  /**
+   * @brief Render player at a pre-computed interpolated position
+   *
+   * Use this for unified interpolation where the calling code computes the
+   * interpolated position once and uses it for both camera offset and player
+   * rendering, eliminating any potential divergence.
+   *
+   * @param renderer SDL renderer
+   * @param interpPos Pre-computed interpolated position
+   * @param cameraX Camera X offset
+   * @param cameraY Camera Y offset
+   */
+  void renderAtPosition(SDL_Renderer* renderer, const Vector2D& interpPos,
+                        float cameraX, float cameraY);
+
   void clean() override;
 
   // Sync movement with CollisionManager (player moves itself)
@@ -69,6 +85,9 @@ public:
   // Physics body registration - call after construction
   void ensurePhysicsBodyRegistered();
 
+  // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
+  void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();
@@ -83,10 +102,21 @@ private:
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
-  float m_movementSpeed{112.5f};      // Movement speed in pixels per second
+  float m_movementSpeed{120.0f};      // Movement speed in pixels per second (2 px/frame at 60 FPS)
 
   // Equipment slots - store handles instead of item IDs
   std::unordered_map<std::string, HammerEngine::ResourceHandle>
       m_equippedItems; // slot -> itemHandle
+
+  // PERFORMANCE: Cached world bounds to avoid WorldManager::Instance() call every frame
+  // Refreshed automatically when bounds are invalid or world version changes
+  float m_cachedWorldMinX{0.0f};
+  float m_cachedWorldMinY{0.0f};
+  float m_cachedWorldMaxX{0.0f};
+  float m_cachedWorldMaxY{0.0f};
+  bool m_worldBoundsCached{false};
+  uint64_t m_cachedWorldVersion{0};  // Track world version for auto-invalidation
+
+  void refreshWorldBoundsCache();
 };
 #endif // PLAYER_HPP

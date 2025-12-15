@@ -123,6 +123,18 @@ public:
     bool isShutdown() const;
 
     /**
+     * @brief Sets global pause state for pathfinding updates
+     * @param paused true to pause pathfinding updates, false to resume
+     */
+    void setGlobalPause(bool paused);
+
+    /**
+     * @brief Gets the current global pause state
+     * @return true if pathfinding updates are globally paused
+     */
+    bool isGloballyPaused() const;
+
+    /**
      * @brief Checks if the pathfinding grid is ready for use
      * @return true if grid exists and no pending rebuilds, false otherwise
      */
@@ -361,6 +373,7 @@ private:
     std::atomic<bool> m_initialized{false};
     std::once_flag m_initFlag; // Thread-safe initialization guard
     bool m_isShutdown{false};
+    std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
     std::atomic<bool> m_prewarming{false}; // Track if cache pre-warming is in progress
     
     // Statistics tracking 

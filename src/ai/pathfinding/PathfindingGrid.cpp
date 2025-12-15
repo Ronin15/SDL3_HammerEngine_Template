@@ -17,6 +17,7 @@
 #include <stdexcept>
 #include <algorithm>
 #include <numeric>
+#include <format>
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 
@@ -29,13 +30,13 @@ PathfindingGrid::PathfindingGrid(int width, int height, float cellSize, const Ve
     
     // Validate grid dimensions to prevent 0x0 grids
     if (m_w <= 0 || m_h <= 0) {
-        throw std::invalid_argument("PathfindingGrid dimensions must be positive: " + 
-                                    std::to_string(width) + "x" + std::to_string(height));
+        throw std::invalid_argument(std::format("PathfindingGrid dimensions must be positive: {}x{}",
+                                    width, height));
     }
-    
+
     if (cellSize <= 0.0f) {
-        throw std::invalid_argument("PathfindingGrid cell size must be positive: " + 
-                                    std::to_string(cellSize));
+        throw std::invalid_argument(std::format("PathfindingGrid cell size must be positive: {}",
+                                    cellSize));
     }
     
     m_blocked.assign(static_cast<size_t>(m_w * m_h), 0);
@@ -230,10 +231,9 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
 
     // Only log and update coarse grid on full rebuild
     if (isFullRebuild) {
-        PATHFIND_INFO("Grid rebuilt (sampled): " + std::to_string(cellsW) + "x" + std::to_string(cellsH) +
-                      ", blocked=" + std::to_string(blockedCount) + "/" + std::to_string(cellsW * cellsH) +
-                      " (" + std::to_string((100.0f * blockedCount) / (cellsW * cellsH)) + "% blocked)" +
-                      ", collision-blocked=" + std::to_string(collisionBlockedCount) + " cells");
+        PATHFIND_INFO(std::format("Grid rebuilt (sampled): {}x{}, blocked={}/{} ({}% blocked), collision-blocked={} cells",
+                      cellsW, cellsH, blockedCount, cellsW * cellsH,
+                      (100.0f * blockedCount) / (cellsW * cellsH), collisionBlockedCount));
 
         // Update coarse grid for hierarchical pathfinding
         if (m_coarseGrid) {
@@ -250,12 +250,11 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
                 }
             }
         }
-        float coarseBlockedPercent = (coarseW * coarseH > 0) ? 
+        float coarseBlockedPercent = (coarseW * coarseH > 0) ?
             (100.0f * coarseBlockedCount) / (coarseW * coarseH) : 0.0f;
-        
-        PATHFIND_DEBUG("Coarse grid updated: " + std::to_string(coarseW) + "x" + std::to_string(coarseH) +
-                     ", blocked=" + std::to_string(coarseBlockedCount) + "/" + std::to_string(coarseW * coarseH) +
-                     " (" + std::to_string(coarseBlockedPercent) + "% blocked)");
+
+        PATHFIND_DEBUG(std::format("Coarse grid updated: {}x{}, blocked={}/{} ({}% blocked)",
+                     coarseW, coarseH, coarseBlockedCount, coarseW * coarseH, coarseBlockedPercent));
         }
     }
 }
@@ -301,23 +300,22 @@ void PathfindingGrid::markDirtyRegion(int cellX, int cellY, int width, int heigh
     if (m_dirtyRegions.size() > MAX_DIRTY_REGIONS) {
         // Find two closest regions and merge them
         // Simple heuristic: merge first two regions (could be improved)
-        if (m_dirtyRegions.size() >= 2) {
-            auto& r1 = m_dirtyRegions[0];
-            auto& r2 = m_dirtyRegions[1];
+        // Note: size() > 32 guarantees size() >= 2, so no additional check needed
+        auto& r1 = m_dirtyRegions[0];
+        auto& r2 = m_dirtyRegions[1];
 
-            int mergedX1 = std::min(r1.x, r2.x);
-            int mergedY1 = std::min(r1.y, r2.y);
-            int mergedX2 = std::max(r1.x + r1.width, r2.x + r2.width);
-            int mergedY2 = std::max(r1.y + r1.height, r2.y + r2.height);
+        int mergedX1 = std::min(r1.x, r2.x);
+        int mergedY1 = std::min(r1.y, r2.y);
+        int mergedX2 = std::max(r1.x + r1.width, r2.x + r2.width);
+        int mergedY2 = std::max(r1.y + r1.height, r2.y + r2.height);
 
-            r1.x = mergedX1;
-            r1.y = mergedY1;
-            r1.width = mergedX2 - mergedX1;
-            r1.height = mergedY2 - mergedY1;
+        r1.x = mergedX1;
+        r1.y = mergedY1;
+        r1.width = mergedX2 - mergedX1;
+        r1.height = mergedY2 - mergedY1;
 
-            // Remove second region
-            m_dirtyRegions.erase(m_dirtyRegions.begin() + 1);
-        }
+        // Remove second region
+        m_dirtyRegions.erase(m_dirtyRegions.begin() + 1);
     }
 }
 
@@ -345,7 +343,7 @@ void PathfindingGrid::rebuildDirtyRegions() {
         updateCoarseGrid();
     }
 
-    PATHFIND_DEBUG("Incremental rebuild complete: " + std::to_string(regions.size()) + " dirty regions processed");
+    PATHFIND_DEBUG(std::format("Incremental rebuild complete: {} dirty regions processed", regions.size()));
 }
 
 bool PathfindingGrid::hasDirtyRegions() const {
@@ -375,11 +373,15 @@ void PathfindingGrid::clearDirtyRegions() {
 
 void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
     if (path.size() <= 2) return; // Can't smooth paths with 2 or fewer nodes
-    
-    std::vector<Vector2D> smoothed;
-    smoothed.reserve(path.size());
+
+    // thread_local buffer to avoid per-path allocation (thread-safe for multi-threaded pathfinding)
+    thread_local std::vector<Vector2D> smoothed;
+    smoothed.clear();
+    if (smoothed.capacity() < path.size()) {
+        smoothed.reserve(path.size());
+    }
     smoothed.push_back(path[0]); // Always keep start
-    
+
     size_t i = 0;
     while (i < path.size() - 1) {
         // Look ahead for line-of-sight optimization
@@ -391,7 +393,7 @@ void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
                 break; // Blocked, stop looking ahead
             }
         }
-        
+
         // Add the farthest reachable point
         if (farthest != i + 1) {
             smoothed.push_back(path[farthest]);
@@ -401,14 +403,14 @@ void PathfindingGrid::smoothPath(std::vector<Vector2D>& path) {
             i++;
         }
     }
-    
+
     // Always keep goal - check if coordinates are different
-    if (smoothed.empty() || 
-        smoothed.back().getX() != path.back().getX() || 
+    if (smoothed.empty() ||
+        smoothed.back().getX() != path.back().getX() ||
         smoothed.back().getY() != path.back().getY()) {
         smoothed.push_back(path.back());
     }
-    
+
     path = std::move(smoothed);
 }
 
@@ -451,16 +453,16 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
 
     // Validate original grid indices before any clamping
     if (!inBounds(sx_raw, sy_raw)) {
-        PATHFIND_ERROR("findPath: INVALID_START - grid coords (" + std::to_string(sx_raw) + "," + std::to_string(sy_raw) +
-                       ") out of bounds (0,0) to (" + std::to_string(m_w-1) + "," + std::to_string(m_h-1) + ")");
+        PATHFIND_ERROR(std::format("findPath: INVALID_START - grid coords ({},{}) out of bounds (0,0) to ({},{})",
+                       sx_raw, sy_raw, m_w-1, m_h-1));
         m_stats.totalRequests++;
         m_stats.invalidStarts++;
         // Invalid start warnings removed - covered in PathfinderManager status reporting
         return PathfindingResult::INVALID_START;
     }
     if (!inBounds(gx_raw, gy_raw)) {
-        PATHFIND_ERROR("findPath: INVALID_GOAL - grid coords (" + std::to_string(gx_raw) + "," + std::to_string(gy_raw) +
-                       ") out of bounds (0,0) to (" + std::to_string(m_w-1) + "," + std::to_string(m_h-1) + ")");
+        PATHFIND_ERROR(std::format("findPath: INVALID_GOAL - grid coords ({},{}) out of bounds (0,0) to ({},{})",
+                       gx_raw, gy_raw, m_w-1, m_h-1));
         m_stats.totalRequests++;
         m_stats.invalidGoals++;
         // Invalid goal warnings removed - covered in PathfinderManager status reporting
@@ -626,8 +628,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
 
     size_t sIdx = static_cast<size_t>(idx(sx, sy));
     if (sIdx >= gScore.size()) {
-        PATHFIND_ERROR("Buffer size mismatch: index " + std::to_string(sIdx) + 
-                       " >= buffer size " + std::to_string(gScore.size()));
+        PATHFIND_ERROR(std::format("Buffer size mismatch: index {} >= buffer size {}",
+                       sIdx, gScore.size()));
         return PathfindingResult::INVALID_START;
     }
     gScore[sIdx] = 0.0f;
@@ -653,8 +655,8 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     while (!open.empty() && iterations++ < dynamicMaxIters) {
         // Only terminate on truly excessive memory usage, not normal pathfinding complexity
         if (open.size() > maxAbsoluteQueueSize) {
-            PATHFIND_DEBUG("Emergency termination: queue size " + std::to_string(open.size()) + 
-                          " exceeded emergency limit (max: " + std::to_string(maxAbsoluteQueueSize) + ")");
+            PATHFIND_DEBUG(std::format("Emergency termination: queue size {} exceeded emergency limit (max: {})",
+                          open.size(), maxAbsoluteQueueSize));
             break;
         }
         
@@ -784,8 +786,8 @@ void PathfindingGrid::addWeightCircle(const Vector2D& worldCenter, float worldRa
 void PathfindingGrid::initializeCoarseGrid() {
     // Skip coarse grid initialization if main grid is too small
     if (m_w < static_cast<int>(COARSE_GRID_MULTIPLIER) || m_h < static_cast<int>(COARSE_GRID_MULTIPLIER)) {
-        PATHFIND_INFO("Grid too small for hierarchical pathfinding (" + std::to_string(m_w) + 
-                     "x" + std::to_string(m_h) + "), skipping coarse grid");
+        PATHFIND_INFO(std::format("Grid too small for hierarchical pathfinding ({}x{}), skipping coarse grid",
+                     m_w, m_h));
         m_coarseGrid = nullptr;
         return;
     }
@@ -797,8 +799,8 @@ void PathfindingGrid::initializeCoarseGrid() {
     
     // Validate coarse grid dimensions
     if (coarseWidth <= 0 || coarseHeight <= 0) {
-        PATHFIND_WARN("Invalid coarse grid dimensions: " + std::to_string(coarseWidth) + 
-                     "x" + std::to_string(coarseHeight));
+        PATHFIND_WARN(std::format("Invalid coarse grid dimensions: {}x{}",
+                     coarseWidth, coarseHeight));
         m_coarseGrid = nullptr;
         return;
     }
@@ -811,11 +813,11 @@ void PathfindingGrid::initializeCoarseGrid() {
         m_coarseGrid->setMaxIterations(std::max(1000, m_maxIterations / 2));
         m_coarseGrid->setAllowDiagonal(true); // Always allow diagonal for speed
         
-        PATHFIND_INFO("Hierarchical coarse grid initialized: " + std::to_string(coarseWidth) + 
-                     "x" + std::to_string(coarseHeight) + ", cell size: " + std::to_string(coarseCellSize));
+        PATHFIND_INFO(std::format("Hierarchical coarse grid initialized: {}x{}, cell size: {}",
+                     coarseWidth, coarseHeight, coarseCellSize));
     }
     catch (const std::exception& e) {
-        PATHFIND_WARN("Failed to initialize coarse grid: " + std::string(e.what()));
+        PATHFIND_WARN(std::format("Failed to initialize coarse grid: {}", e.what()));
         m_coarseGrid = nullptr;
     }
 }
@@ -946,8 +948,8 @@ PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, c
     
     if (coarseResult != PathfindingResult::SUCCESS) {
         // Coarse pathfinding failed, try direct pathfinding as fallback
-        PATHFIND_DEBUG("Coarse pathfinding result: " + std::to_string(static_cast<int>(coarseResult)) +
-                       ", attempting direct pathfinding");
+        PATHFIND_DEBUG(std::format("Coarse pathfinding result: {}, attempting direct pathfinding",
+                       static_cast<int>(coarseResult)));
         return findPath(start, goal, outPath);
     }
     

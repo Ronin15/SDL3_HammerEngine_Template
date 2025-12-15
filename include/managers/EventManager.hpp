@@ -47,10 +47,16 @@ class NPCSpawnEvent;
 class ResourceChangeEvent;
 class WorldEvent;
 class CameraEvent;
+class CameraMovedEvent;
+class CameraZoomChangedEvent;
+class CameraShakeStartedEvent;
+class CameraShakeEndedEvent;
 class CollisionEvent;
 class WorldTriggerEvent;
 class HarvestResourceEvent;
 class CollisionObstacleChangedEvent;
+class ParticleEffectEvent;
+class TimeEvent;
 class EventFactory;
 class Entity;
 
@@ -546,10 +552,18 @@ public:
                            DispatchMode mode = DispatchMode::Deferred) const;
 
   // Collision obstacle change notification for PathfinderManager
-  bool triggerCollisionObstacleChanged(const Vector2D& position, 
+  bool triggerCollisionObstacleChanged(const Vector2D& position,
                                       float radius = 64.0f,
                                       const std::string& description = "",
                                       DispatchMode mode = DispatchMode::Deferred) const;
+
+  /**
+   * @brief Dispatches an event directly without registration
+   * @param event Shared pointer to the event to dispatch
+   * @param mode Deferred (processed in update()) or Immediate
+   * @return true if dispatch successful, false otherwise
+   */
+  bool dispatchEvent(EventPtr event, DispatchMode mode = DispatchMode::Deferred) const;
 
   // Performance monitoring
   PerformanceStats getPerformanceStats(EventTypeId typeId) const;
@@ -586,6 +600,11 @@ private:
   mutable EventPool<ResourceChangeEvent> m_resourceChangePool;
   mutable EventPool<WorldEvent> m_worldPool;
   mutable EventPool<CameraEvent> m_cameraPool;
+
+  // Hot-path event pools (triggered frequently during gameplay - avoids per-trigger allocations)
+  mutable EventPool<CollisionEvent> m_collisionPool;
+  mutable EventPool<ParticleEffectEvent> m_particleEffectPool;
+  mutable EventPool<CollisionObstacleChangedEvent> m_collisionObstacleChangedPool;
 
   // Handler storage (type-indexed with consolidated HandlerEntry)
   // OPTIMIZATION: Eliminates parallel ID vectors, improves cache locality
@@ -644,6 +663,9 @@ private:
   std::mutex m_batchFuturesMutex;  // Protect futures vector
   mutable std::deque<PendingDispatch> m_pendingDispatch;
   size_t m_maxDispatchQueue{8192};
+
+  // OPTIMIZATION: Reusable buffer for drainDispatchQueueWithBudget (avoids per-frame allocation)
+  mutable std::vector<PendingDispatch> m_localDispatchBuffer;
 
   // Helper methods
   EventTypeId getEventTypeId(const EventPtr &event) const;

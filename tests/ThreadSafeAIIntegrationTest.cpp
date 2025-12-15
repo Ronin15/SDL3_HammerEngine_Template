@@ -42,7 +42,7 @@ public:
         m_updateCount++;
         (void)deltaTime; // Suppress unused parameter warning
     }
-    void render(const HammerEngine::Camera* camera) override { (void)camera; }
+    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
     void clean() override {
         // Proper cleanup to avoid bad_weak_ptr exceptions
         // Never call shared_from_this() in the destructor!

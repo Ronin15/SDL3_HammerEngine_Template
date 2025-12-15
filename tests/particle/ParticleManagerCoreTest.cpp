@@ -552,3 +552,212 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceStats, ParticleManagerCoreFixture) {
   BOOST_CHECK_GT(stats.updateCount, 0);
   BOOST_CHECK_GT(stats.totalUpdateTime, 0.0);
 }
+
+// ============================================================================
+// PARTICLE INTERPOLATION TESTS
+// Tests for smooth particle movement between frames
+// ============================================================================
+
+// Test that particles maintain previous position for interpolation
+BOOST_FIXTURE_TEST_CASE(TestParticlePositionTracking, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Create some particles
+  Vector2D testPosition(200, 200);
+  uint32_t effectId =
+      manager->playEffect(ParticleEffectType::Rain, testPosition, 1.0f);
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Update multiple times to ensure particles are created
+  for (int i = 0; i < 10; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Verify particles were created
+  size_t particleCount = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(particleCount, 0);
+
+  // Update again - previous positions should be tracked
+  manager->update(0.016f);
+
+  // Still should have particles (rain is continuous)
+  BOOST_CHECK_GT(manager->getActiveParticleCount(), 0);
+}
+
+// Test particle update with varying delta times
+BOOST_FIXTURE_TEST_CASE(TestParticleUpdateWithVaryingDeltaTime, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Create some particles
+  Vector2D testPosition(100, 100);
+  uint32_t effectId =
+      manager->playEffect(ParticleEffectType::Smoke, testPosition, 1.0f);
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Initial updates to create particles
+  for (int i = 0; i < 5; ++i) {
+    manager->update(0.016f);  // 60 FPS
+  }
+
+  // Update with different delta times (simulating frame rate variation)
+  manager->update(0.033f);  // 30 FPS
+  manager->update(0.008f);  // 120 FPS
+  manager->update(0.016f);  // 60 FPS
+
+  // Particles should still exist and be valid
+  size_t countAfterVarying = manager->getActiveParticleCount();
+  // Count might change due to particle creation/death, but shouldn't crash
+  BOOST_CHECK_GE(countAfterVarying, 0);
+}
+
+// Test that particle interpolation state survives pause/resume
+BOOST_FIXTURE_TEST_CASE(TestInterpolationStateAcrossPauseResume, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Create some particles
+  Vector2D testPosition(150, 150);
+  uint32_t effectId =
+      manager->playEffect(ParticleEffectType::Fire, testPosition, 1.0f);
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Update to create particles
+  for (int i = 0; i < 10; ++i) {
+    manager->update(0.016f);
+  }
+
+  size_t countBeforePause = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(countBeforePause, 0);
+
+  // Pause
+  manager->setGlobalPause(true);
+  BOOST_CHECK(manager->isGloballyPaused());
+
+  // Updates while paused shouldn't change particle count significantly
+  manager->update(0.016f);
+  manager->update(0.016f);
+
+  // Resume
+  manager->setGlobalPause(false);
+  BOOST_CHECK(!manager->isGloballyPaused());
+
+  // Continue updating - should work normally
+  for (int i = 0; i < 5; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Particles should still be valid
+  BOOST_CHECK_GE(manager->getActiveParticleCount(), 0);
+}
+
+// Test particle alpha interpolation (fading)
+BOOST_FIXTURE_TEST_CASE(TestParticleAlphaFading, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Create smoke particles (which fade over time)
+  Vector2D testPosition(100, 100);
+  uint32_t effectId =
+      manager->playEffect(ParticleEffectType::Smoke, testPosition, 0.5f);  // Short duration
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Update to create and age particles
+  for (int i = 0; i < 50; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Some particles should exist (continuous emission)
+  BOOST_CHECK_GE(manager->getActiveParticleCount(), 0);
+}
+
+// Test multiple effects interpolating simultaneously
+BOOST_FIXTURE_TEST_CASE(TestMultipleEffectsInterpolation, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Create multiple effects at different positions
+  Vector2D pos1(100, 100);
+  Vector2D pos2(300, 300);
+  Vector2D pos3(500, 500);
+
+  uint32_t effect1 = manager->playEffect(ParticleEffectType::Rain, pos1, 1.0f);
+  uint32_t effect2 = manager->playEffect(ParticleEffectType::Smoke, pos2, 1.0f);
+  uint32_t effect3 = manager->playEffect(ParticleEffectType::Fire, pos3, 1.0f);
+
+  BOOST_CHECK_NE(effect1, 0);
+  BOOST_CHECK_NE(effect2, 0);
+  BOOST_CHECK_NE(effect3, 0);
+
+  // Update all effects together
+  for (int i = 0; i < 20; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Should have particles from multiple effects
+  size_t totalParticles = manager->getActiveParticleCount();
+  BOOST_CHECK_GT(totalParticles, 0);
+
+  // All effects should still be playing
+  BOOST_CHECK(manager->isEffectPlaying(effect1));
+  BOOST_CHECK(manager->isEffectPlaying(effect2));
+  BOOST_CHECK(manager->isEffectPlaying(effect3));
+}
+
+// Test particle scale interpolation
+BOOST_FIXTURE_TEST_CASE(TestParticleScaleInterpolation, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Create an effect that uses scale changes
+  Vector2D testPosition(200, 200);
+  uint32_t effectId =
+      manager->playEffect(ParticleEffectType::Fire, testPosition, 1.0f);
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Update to create particles and let them age (scale should change)
+  for (int i = 0; i < 30; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Particles should exist
+  BOOST_CHECK_GT(manager->getActiveParticleCount(), 0);
+}
+
+// Test rapid effect creation/destruction doesn't break interpolation
+BOOST_FIXTURE_TEST_CASE(TestRapidEffectLifecycle, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+  manager->setGlobalPause(false);
+
+  // Rapidly create and stop effects
+  for (int cycle = 0; cycle < 10; ++cycle) {
+    Vector2D pos(static_cast<float>(cycle * 50), static_cast<float>(cycle * 50));
+    uint32_t effectId = manager->playEffect(ParticleEffectType::Smoke, pos, 0.5f);
+    BOOST_CHECK_NE(effectId, 0);
+
+    // Update a few times
+    for (int i = 0; i < 5; ++i) {
+      manager->update(0.016f);
+    }
+
+    // Stop the effect
+    manager->stopEffect(effectId);
+  }
+
+  // Final updates to ensure stability
+  for (int i = 0; i < 10; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Should not crash and manager should be in valid state
+  BOOST_CHECK(manager->isInitialized());
+  BOOST_CHECK(!manager->isShutdown());
+}

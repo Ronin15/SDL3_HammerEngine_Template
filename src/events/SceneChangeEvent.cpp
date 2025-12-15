@@ -8,6 +8,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <ostream>
+#include <format>
 
 // Stream operator for TransitionType (moved from header)
 std::ostream& operator<<(std::ostream& os, const TransitionType& type) {
@@ -89,7 +90,7 @@ void SceneChangeEvent::update() {
             m_transitionProgress = 0.0f;
 
             // Transition complete, scene should be fully changed now
-            EVENT_INFO("Scene transition to " + m_targetSceneID + " complete");
+            EVENT_INFO(std::format("Scene transition to {} complete", m_targetSceneID));
         }
     }
 
@@ -125,11 +126,11 @@ void SceneChangeEvent::execute() {
     m_transitionProgress = 0.0f;
 
     // Log the scene change
-    EVENT_INFO("Changing scene to: " + m_targetSceneID + " using transition: " + std::to_string(static_cast<int>(m_transitionType)) + " (duration: " + std::to_string(m_transitionParams.duration) + "s)");
+    EVENT_INFO(std::format("Changing scene to: {} using transition: {} (duration: {}s)", m_targetSceneID, static_cast<int>(m_transitionType), m_transitionParams.duration));
 
     // Play transition sound if enabled
     if (m_transitionParams.playSound && !m_transitionParams.soundEffect.empty()) {
-        EVENT_INFO("Playing transition sound: " + m_transitionParams.soundEffect + " at volume: " + std::to_string(m_transitionParams.soundVolume));
+        EVENT_INFO(std::format("Playing transition sound: {} at volume: {}", m_transitionParams.soundEffect, m_transitionParams.soundVolume));
     }
 
     // In a real implementation, this would trigger the actual scene change
@@ -271,7 +272,7 @@ bool SceneChangeEvent::isTimerComplete() const {
 
 void SceneChangeEvent::forceSceneChange(const std::string& sceneID, TransitionType type, float duration) {
     // Static method that would interact with a central scene management system
-    EVENT_INFO("Forcing scene change to: " + sceneID + " with transition type: " + std::to_string(static_cast<int>(type)) + " and duration: " + std::to_string(duration) + "s");
+    EVENT_INFO(std::format("Forcing scene change to: {} with transition type: {} and duration: {}s", sceneID, static_cast<int>(type), duration));
 
     // Suppress unused parameter warnings in release builds
     (void)sceneID;

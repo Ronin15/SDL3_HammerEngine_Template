@@ -15,6 +15,7 @@
 #include "core/Logger.hpp"
 #include <algorithm>
 #include <cctype>
+#include <format>
 
 EventFactory::EventFactory() {
     // Register built-in event creators
@@ -194,7 +195,7 @@ EventPtr EventFactory::createEvent(const EventDefinition& def) {
         return event;
     }
 
-    EVENT_ERROR("Unknown event type '" + def.type + "'");
+    EVENT_ERROR(std::format("Unknown event type '{}'", def.type));
     return nullptr;
 }
 
@@ -387,7 +388,7 @@ std::vector<EventPtr> EventFactory::createEventSequence(const std::string& name,
 
         // If no name is provided in the definition, generate one based on sequence
         if (def.name.empty()) {
-            def.name = name + "_" + std::to_string(i + 1);
+            def.name = std::format("{}_{}", name, i + 1);
         }
 
         // Create the event

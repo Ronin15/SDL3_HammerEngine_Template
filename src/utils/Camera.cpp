@@ -12,6 +12,7 @@
 #include <algorithm>
 #include <cmath>
 #include <random>
+#include <format>
 #include "managers/WorldManager.hpp"
 
 namespace HammerEngine {
@@ -22,6 +23,10 @@ Camera::Camera() {
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
+    // Initialize atomic interpolation state with default position
+    float x = m_position.getX();
+    float y = m_position.getY();
+    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
     CAMERA_INFO("Camera created with default configuration");
 }
 
@@ -36,6 +41,10 @@ Camera::Camera(const Config& config) : m_config(config) {
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
+    // Initialize atomic interpolation state with default position
+    float x = m_position.getX();
+    float y = m_position.getY();
+    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
     CAMERA_INFO("Camera created with custom configuration");
 }
 
@@ -45,6 +54,11 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
     m_position.setY(y);
     m_targetPosition.setX(x);
     m_targetPosition.setY(y);
+    m_previousPosition.setX(x);
+    m_previousPosition.setY(y);
+
+    // Initialize atomic interpolation state with starting position
+    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
 
     if (!m_viewport.isValid()) {
         CAMERA_WARN("Invalid viewport dimensions provided, using defaults");
@@ -56,10 +70,14 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
-    CAMERA_INFO("Camera created at position (" + std::to_string(x) + ", " + std::to_string(y) + ")");
+    CAMERA_INFO(std::format("Camera created at position ({}, {})", x, y));
 }
 
 void Camera::update(float deltaTime) {
+    // Store previous position BEFORE updating for render interpolation
+    // This enables smooth camera at any refresh rate with fixed 60Hz updates
+    m_previousPosition = m_position;
+
     // Update camera shake first (no-ops if inactive)
     if (m_shakeTimeRemaining > 0.0f) {
         m_shakeTimeRemaining -= deltaTime;
@@ -71,72 +89,37 @@ void Camera::update(float deltaTime) {
         }
     }
 
-    // Smooth follow mode using configured parameters
+    // Follow mode - track target position for entity rendering
     if (m_mode == Mode::Follow && hasTarget()) {
-        Vector2D targetPos = getTargetPosition();
-
-        // Ideal camera position is the target's position (camera centers on target)
-        Vector2D idealPosition = targetPos;
-
-        // Clamp ideal position to world bounds, accounting for viewport size
-        if (m_config.clampToWorldBounds) {
-            // Use zoom-adjusted viewport - at higher zoom, you see less world space
-            const float halfW = m_viewport.halfWidth() / m_zoom;
-            const float halfH = m_viewport.halfHeight() / m_zoom;
-
-            const float minX = m_worldBounds.minX + halfW;
-            const float maxX = m_worldBounds.maxX - halfW;
-            const float minY = m_worldBounds.minY + halfH;
-            const float maxY = m_worldBounds.maxY - halfH;
-
-            if (maxX > minX) {
-                idealPosition.setX(std::clamp(idealPosition.getX(), minX, maxX));
-            } else {
-                idealPosition.setX((m_worldBounds.minX + m_worldBounds.maxX) * 0.5f);
-            }
-
-            if (maxY > minY) {
-                idealPosition.setY(std::clamp(idealPosition.getY(), minY, maxY));
-            } else {
-                idealPosition.setY((m_worldBounds.minY + m_worldBounds.maxY) * 0.5f);
+        // Sync world bounds only when version changes (avoids per-frame overhead)
+        // This is needed for computeOffsetFromCenter() to clamp correctly
+        if (m_autoSyncWorldBounds) {
+            uint64_t currentVersion = WorldManager::Instance().getWorldVersion();
+            if (currentVersion != m_lastWorldVersion) {
+                syncWorldBounds();
             }
         }
+        Vector2D targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
-        // Offset from current to ideal
-        const float dx = idealPosition.getX() - m_position.getX();
-        const float dy = idealPosition.getY() - m_position.getY();
-        const float distance = std::sqrt(dx * dx + dy * dy);
+        // CRITICAL: Store UNCLAMPED target position in interpState for entity rendering
+        // The offset clamping happens in computeOffsetFromCenter(), NOT here
+        // This ensures entity renders at correct position when camera hits world bounds
+        m_interpState.store({targetPos.getX(), targetPos.getY(),
+                             m_previousPosition.getX(), m_previousPosition.getY()},
+                            std::memory_order_release);
 
-        // Dead zone from config to avoid micro-oscillations
-        const float deadZone = std::max(0.0f, m_config.deadZoneRadius);
-        if (distance > deadZone) {
-            // Exponential smoothing with configurable responsiveness
-            // alpha = 1 - smoothingFactor^(dt * followSpeed)
-            float alpha = 1.0f - std::pow(std::clamp(m_config.smoothingFactor, 0.0f, 1.0f),
-                                          std::max(0.0f, deltaTime * std::max(0.0f, m_config.followSpeed)));
-            alpha = std::clamp(alpha, 0.0f, 1.0f);
+        // Set m_position to unclamped target (so next frame's m_previousPosition is also unclamped)
+        // This maintains consistent unclamped position history for smooth interpolation
+        m_position = targetPos;
+    } else {
+        // Non-Follow modes: clamp camera position, then store
+        if (m_config.clampToWorldBounds) {
+            clampToWorldBounds();
+        }
 
-            float newX = m_position.getX() + dx * alpha;
-            float newY = m_position.getY() + dy * alpha;
-
-            // If we would end up inside the dead zone, stop at its edge
-            const float ndx = idealPosition.getX() - newX;
-            const float ndy = idealPosition.getY() - newY;
-            const float newDistance = std::sqrt(ndx * ndx + ndy * ndy);
-            if (newDistance < deadZone && distance > 0.0f) {
-                const float ratio = (distance - deadZone) / distance;
-                newX = m_position.getX() + dx * ratio;
-                newY = m_position.getY() + dy * ratio;
-            }
-
-            m_position.setX(newX);
-            m_position.setY(newY);
-    }
-}
-
-    // Ensure final camera position respects world bounds across all modes
-    if (m_config.clampToWorldBounds) {
-        clampToWorldBounds();
+        m_interpState.store({m_position.getX(), m_position.getY(),
+                             m_previousPosition.getX(), m_previousPosition.getY()},
+                            std::memory_order_release);
     }
 }
 
@@ -160,18 +143,18 @@ void Camera::setViewport(float width, float height) {
     if (width > 0.0f && height > 0.0f) {
         m_viewport.width = width;
         m_viewport.height = height;
-        CAMERA_DEBUG("Viewport updated to: " + std::to_string(static_cast<int>(width)) + "x" +
-                        std::to_string(static_cast<int>(height)));
+        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
+                                 static_cast<int>(width), static_cast<int>(height)));
     } else {
-        CAMERA_WARN("Invalid viewport dimensions: " + std::to_string(width) + "x" + std::to_string(height));
+        CAMERA_WARN(std::format("Invalid viewport dimensions: {}x{}", width, height));
     }
 }
 
 void Camera::setViewport(const Viewport& viewport) {
     if (viewport.isValid()) {
         m_viewport = viewport;
-        CAMERA_DEBUG("Viewport updated to: " + std::to_string(static_cast<int>(viewport.width)) + "x" +
-                        std::to_string(static_cast<int>(viewport.height)));
+        CAMERA_DEBUG(std::format("Viewport updated to: {}x{}",
+                                 static_cast<int>(viewport.width), static_cast<int>(viewport.height)));
     } else {
         CAMERA_WARN("Invalid viewport provided");
     }
@@ -184,8 +167,8 @@ void Camera::setWorldBounds(float minX, float minY, float maxX, float maxY) {
         m_worldBounds.maxX = maxX;
         m_worldBounds.maxY = maxY;
     } else {
-        CAMERA_WARN("Invalid world bounds: (" + std::to_string(minX) + ", " + std::to_string(minY) +
-                        ") to (" + std::to_string(maxX) + ", " + std::to_string(maxY) + ")");
+        CAMERA_WARN(std::format("Invalid world bounds: ({}, {}) to ({}, {})",
+                                minX, minY, maxX, maxY));
     }
 }
 
@@ -212,9 +195,9 @@ void Camera::setMode(Mode mode) {
         if (m_eventFiringEnabled) {
             fireModeChangedEvent(oldMode, mode);
         }
-        
-        CAMERA_INFO("Camera mode changed from " + std::to_string(static_cast<int>(oldMode)) +
-                       " to " + std::to_string(static_cast<int>(mode)));
+
+        CAMERA_INFO(std::format("Camera mode changed from {} to {}",
+                                static_cast<int>(oldMode), static_cast<int>(mode)));
     }
 }
 
@@ -267,7 +250,7 @@ bool Camera::hasTarget() const {
 bool Camera::setConfig(const Config& config) {
     if (config.isValid()) {
         m_config = config;
-        CAMERA_INFO("Camera configuration updated");
+        CAMERA_INFO(std::format("Camera configuration updated (followSpeed={})", m_config.followSpeed));
         return true;
     } else {
         CAMERA_WARN("Invalid camera configuration provided");
@@ -281,6 +264,8 @@ Camera::ViewRect Camera::getViewRect() const {
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
+    // Use full floating-point precision for smooth sub-pixel camera movement
+    // Callers snap to pixels at render time if tile-aligned rendering is needed
     return ViewRect{
         m_position.getX() - (worldViewWidth * 0.5f),
         m_position.getY() - (worldViewHeight * 0.5f),
@@ -289,7 +274,55 @@ Camera::ViewRect Camera::getViewRect() const {
     };
 }
 
+// Removed getInterpolatedViewRect(): Use getRenderOffset() + viewport/zoom instead
+// This ensures single atomic read pattern across all game states
 
+void Camera::computeOffsetFromCenter(float centerX, float centerY,
+                                     float& offsetX, float& offsetY) const {
+    // Compute camera offset (top-left corner) from a given center position
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
+
+    // Convert center position to top-left offset
+    offsetX = centerX - (worldViewWidth * 0.5f);
+    offsetY = centerY - (worldViewHeight * 0.5f);
+
+    // Apply world bounds clamping if enabled
+    if (m_config.clampToWorldBounds) {
+        float maxOffsetX = m_worldBounds.maxX - worldViewWidth;
+        float maxOffsetY = m_worldBounds.maxY - worldViewHeight;
+
+        if (maxOffsetX > m_worldBounds.minX) {
+            offsetX = std::clamp(offsetX, m_worldBounds.minX, maxOffsetX);
+        } else {
+            // World smaller than viewport - center it
+            offsetX = (m_worldBounds.minX + m_worldBounds.maxX - worldViewWidth) * 0.5f;
+        }
+
+        if (maxOffsetY > m_worldBounds.minY) {
+            offsetY = std::clamp(offsetY, m_worldBounds.minY, maxOffsetY);
+        } else {
+            // World smaller than viewport - center it
+            offsetY = (m_worldBounds.minY + m_worldBounds.maxY - worldViewHeight) * 0.5f;
+        }
+    }
+}
+
+Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
+    // SELF-CONTAINED: Always use camera's own interpolation state
+    // Camera publishes its state in update() (mirrors target position in Follow mode)
+    // This eliminates cross-entity atomic reads and ensures consistent render state
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    Vector2D center(
+        camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha,
+        camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
+
+    // Compute screen offset from the interpolated center position
+    computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
+
+    // Return the center position we used - caller should render followed entity here
+    return center;
+}
 
 bool Camera::isPointVisible(float x, float y) const {
     ViewRect view = getViewRect();
@@ -310,33 +343,47 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // Calculate offset from camera center
-    float offsetX = worldX - m_position.getX();
-    float offsetY = worldY - m_position.getY();
+    // For coordinate transforms, use raw camera position without world bounds clamping
+    // World bounds clamping is for rendering, not for abstract coordinate math
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
 
-    // Translate to screen space (camera at viewport center)
-    // With SDL_SetRenderScale, the logical coordinate space is scaled
-    // So viewport dimensions must be divided by zoom to get logical center
-    screenX = offsetX + (m_viewport.halfWidth() / m_zoom);
-    screenY = offsetY + (m_viewport.halfHeight() / m_zoom);
+    // Get camera's interpolated position
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    float camX = camState.posX;
+    float camY = camState.posY;
+
+    // Camera offset: centers camera on its position
+    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
+    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
+
+    // Transform world position to screen position
+    screenX = worldX - offsetX;
+    screenY = worldY - offsetY;
 }
 
 void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& worldY) const {
     // Mouse coordinates are in PHYSICAL window space (NOT scaled by SDL_SetRenderScale)
-    // But worldToScreen returns LOGICAL coordinates that SDL scales
-    // So we need to: physical -> logical -> world
-
-    // Convert physical mouse coords to logical coords
+    // Convert physical mouse coords to logical coords first
     float logicalX = screenX / m_zoom;
     float logicalY = screenY / m_zoom;
 
-    // Now inverse of worldToScreen (which outputs logical coords)
-    // worldToScreen: screenX = offsetX + (viewport.halfWidth() / zoom)
-    float offsetX = logicalX - (m_viewport.halfWidth() / m_zoom);
-    float offsetY = logicalY - (m_viewport.halfHeight() / m_zoom);
+    // For coordinate transforms, use raw camera position without world bounds clamping
+    float worldViewWidth = m_viewport.width / m_zoom;
+    float worldViewHeight = m_viewport.height / m_zoom;
 
-    worldX = offsetX + m_position.getX();
-    worldY = offsetY + m_position.getY();
+    // Get camera's interpolated position
+    auto camState = m_interpState.load(std::memory_order_acquire);
+    float camX = camState.posX;
+    float camY = camState.posY;
+
+    // Camera offset: centers camera on its position
+    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
+    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
+
+    // Inverse of worldToScreen: worldPos = screenPos + cameraOffset
+    worldX = logicalX + offsetX;
+    worldY = logicalY + offsetY;
 }
 
 Vector2D Camera::screenToWorld(const Vector2D& screenCoords) const {
@@ -372,45 +419,13 @@ void Camera::shake(float duration, float intensity) {
             fireShakeStartedEvent(duration, intensity);
         }
 
-        CAMERA_INFO("Camera shake started: duration=" + std::to_string(duration) +
-                       "s, intensity=" + std::to_string(intensity));
+        CAMERA_INFO(std::format("Camera shake started: duration={}s, intensity={}", duration, intensity));
     }
 }
 
-void Camera::updateCameraShake(float deltaTime) {
-    if (m_shakeTimeRemaining > 0.0f) {
-        m_shakeTimeRemaining -= deltaTime;
-        
-        if (m_shakeTimeRemaining <= 0.0f) {
-            m_shakeTimeRemaining = 0.0f;
-            m_shakeOffset = Vector2D{0.0f, 0.0f};
-            
-            // Fire shake ended event if enabled (we were definitely shaking if we're here)
-            if (m_eventFiringEnabled) {
-                fireShakeEndedEvent();
-            }
-        } else {
-            // Generate random shake offset
-            m_shakeOffset = generateShakeOffset();
-        }
-    }
-}
-
-void Camera::updateFollowMode(float deltaTime) {
-    (void)deltaTime; // Suppress unused parameter warning
-    
-    if (!hasTarget()) {
-        return;
-    }
-    
-    Vector2D targetPos = getTargetPosition();
-    
-    // Direct follow - no smoothing lag for tight, responsive camera control
-    m_position = targetPos;
-}
-
-void Camera::clampToWorldBounds() {
+void Camera::syncWorldBounds() {
     // Auto-sync world bounds with WorldManager if enabled
+    // This is needed for computeOffsetFromCenter() to work correctly in ALL modes
     if (m_autoSyncWorldBounds) {
         try {
             const auto &wm = WorldManager::Instance();
@@ -431,6 +446,11 @@ void Camera::clampToWorldBounds() {
             // If WorldManager is unavailable, keep current bounds
         }
     }
+}
+
+void Camera::clampToWorldBounds() {
+    // Ensure world bounds are current before clamping
+    syncWorldBounds();
 
     // Calculate effective bounds using zoom-adjusted viewport dimensions
     // At higher zoom, you see less world space, so bounds are tighter
@@ -468,31 +488,15 @@ Vector2D Camera::getTargetPosition() const {
     return m_position; // Fallback to current position
 }
 
-float Camera::calculateDistance(const Vector2D& a, const Vector2D& b) const {
-    float dx = b.getX() - a.getX();
-    float dy = b.getY() - a.getY();
-    return std::sqrt(dx * dx + dy * dy);
-}
-
-Vector2D Camera::lerp(const Vector2D& a, const Vector2D& b, float t) const {
-    t = std::clamp(t, 0.0f, 1.0f);
-    return Vector2D{
-        a.getX() + (b.getX() - a.getX()) * t,
-        a.getY() + (b.getY() - a.getY()) * t
-    };
-}
-
 Vector2D Camera::generateShakeOffset() const {
-    static std::random_device rd;
-    static std::mt19937 gen(rd());
-    std::uniform_real_distribution<float> dis(-1.0f, 1.0f);
-    
-    float normalizedTime = 1.0f - (m_shakeTimeRemaining / std::max(m_shakeTimeRemaining + 0.1f, 0.1f));
-    float currentIntensity = m_shakeIntensity * (1.0f - normalizedTime); // Fade out over time
-    
+    // Per CLAUDE.md: Use member vars instead of static for thread safety
+    const float normalizedTime = 1.0f - (m_shakeTimeRemaining / std::max(m_shakeTimeRemaining + 0.1f, 0.1f));
+    const float currentIntensity = m_shakeIntensity * (1.0f - normalizedTime); // Fade out over time
+
+    // Use member RNG and distribution for thread safety and performance
     return Vector2D{
-        dis(gen) * currentIntensity,
-        dis(gen) * currentIntensity
+        m_shakeDist(m_shakeRng) * currentIntensity,
+        m_shakeDist(m_shakeRng) * currentIntensity
     };
 }
 
@@ -503,7 +507,7 @@ void Camera::firePositionChangedEvent(const Vector2D& oldPosition, const Vector2
         (void)eventMgr.triggerCameraMoved(newPosition, oldPosition,
                                           EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraMovedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraMovedEvent: {}", ex.what()));
     }
 }
 
@@ -513,7 +517,7 @@ void Camera::fireModeChangedEvent(Mode oldMode, Mode newMode) {
         (void)eventMgr.triggerCameraModeChanged(static_cast<int>(newMode), static_cast<int>(oldMode),
                                                 EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraModeChangedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraModeChangedEvent: {}", ex.what()));
     }
 }
 
@@ -523,7 +527,7 @@ void Camera::fireTargetChangedEvent(std::weak_ptr<Entity> oldTarget, std::weak_p
         (void)eventMgr.triggerCameraTargetChanged(newTarget, oldTarget,
                                                   EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraTargetChangedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraTargetChangedEvent: {}", ex.what()));
     }
 }
 
@@ -533,7 +537,7 @@ void Camera::fireShakeStartedEvent(float duration, float intensity) {
         (void)eventMgr.triggerCameraShakeStarted(duration, intensity,
                                                  EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraShakeStartedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraShakeStartedEvent: {}", ex.what()));
     }
 }
 
@@ -542,7 +546,7 @@ void Camera::fireShakeEndedEvent() {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraShakeEnded(EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraShakeEndedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraShakeEndedEvent: {}", ex.what()));
     }
 }
 
@@ -551,7 +555,7 @@ void Camera::fireZoomChangedEvent(float oldZoom, float newZoom) {
         const EventManager& eventMgr = EventManager::Instance();
         (void)eventMgr.triggerCameraZoomChanged(newZoom, oldZoom, EventManager::DispatchMode::Deferred);
     } catch (const std::exception& ex) {
-        CAMERA_ERROR("Failed to fire CameraZoomChangedEvent: " + std::string(ex.what()));
+        CAMERA_ERROR(std::format("Failed to fire CameraZoomChangedEvent: {}", ex.what()));
     }
 }
 
@@ -568,8 +572,7 @@ void Camera::zoomIn() {
             fireZoomChangedEvent(oldZoom, m_zoom);
         }
 
-        CAMERA_INFO("Camera zoomed in to level " + std::to_string(m_currentZoomIndex) +
-                       " (zoom: " + std::to_string(m_zoom) + "x)");
+        CAMERA_INFO(std::format("Camera zoomed in to level {} (zoom: {}x)", m_currentZoomIndex, m_zoom));
     } else {
         CAMERA_DEBUG("Camera already at maximum zoom level");
     }
@@ -586,8 +589,7 @@ void Camera::zoomOut() {
             fireZoomChangedEvent(oldZoom, m_zoom);
         }
 
-        CAMERA_INFO("Camera zoomed out to level " + std::to_string(m_currentZoomIndex) +
-                       " (zoom: " + std::to_string(m_zoom) + "x)");
+        CAMERA_INFO(std::format("Camera zoomed out to level {} (zoom: {}x)", m_currentZoomIndex, m_zoom));
     } else {
         CAMERA_DEBUG("Camera already at minimum zoom level");
     }
@@ -596,8 +598,8 @@ void Camera::zoomOut() {
 bool Camera::setZoomLevel(int levelIndex) {
     const int maxZoomIndex = static_cast<int>(m_config.zoomLevels.size()) - 1;
     if (levelIndex < 0 || levelIndex > maxZoomIndex) {
-        CAMERA_WARN("Invalid zoom level index: " + std::to_string(levelIndex) +
-                       " (valid range: 0-" + std::to_string(maxZoomIndex) + ")");
+        CAMERA_WARN(std::format("Invalid zoom level index: {} (valid range: 0-{})",
+                                levelIndex, maxZoomIndex));
         return false;
     }
 
@@ -611,8 +613,7 @@ bool Camera::setZoomLevel(int levelIndex) {
             fireZoomChangedEvent(oldZoom, m_zoom);
         }
 
-        CAMERA_INFO("Camera zoom set to level " + std::to_string(m_currentZoomIndex) +
-                       " (zoom: " + std::to_string(m_zoom) + "x)");
+        CAMERA_INFO(std::format("Camera zoom set to level {} (zoom: {}x)", m_currentZoomIndex, m_zoom));
     }
 
     return true;
@@ -626,11 +627,9 @@ void Camera::syncViewportWithEngine() {
 
     // Only update if dimensions actually changed (avoid unnecessary updates)
     if (m_viewport.width != logicalWidth || m_viewport.height != logicalHeight) {
-        CAMERA_INFO("Syncing camera viewport: " +
-                       std::to_string(static_cast<int>(m_viewport.width)) + "x" +
-                       std::to_string(static_cast<int>(m_viewport.height)) + " -> " +
-                       std::to_string(static_cast<int>(logicalWidth)) + "x" +
-                       std::to_string(static_cast<int>(logicalHeight)));
+        CAMERA_INFO(std::format("Syncing camera viewport: {}x{} -> {}x{}",
+                                static_cast<int>(m_viewport.width), static_cast<int>(m_viewport.height),
+                                static_cast<int>(logicalWidth), static_cast<int>(logicalHeight)));
 
         setViewport(logicalWidth, logicalHeight);
     }

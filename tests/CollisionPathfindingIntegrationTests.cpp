@@ -36,11 +36,11 @@ struct CollisionPathfindingFixture {
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
 
-        // Load a simple test world
+        // Load a test world - larger size with reduced blocking for navigable paths
         HammerEngine::WorldGenerationConfig cfg{};
-        cfg.width = 20; cfg.height = 20; cfg.seed = 1234;
+        cfg.width = 50; cfg.height = 50; cfg.seed = 1234;
         cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f;
-        cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
+        cfg.waterLevel = 0.1f; cfg.mountainLevel = 0.9f;
 
         if (!WorldManager::Instance().loadNewWorld(cfg)) {
             throw std::runtime_error("Failed to load test world");
@@ -55,9 +55,9 @@ struct CollisionPathfindingFixture {
         // Process the deferred WorldLoadedEvent (delivers to PathfinderManager)
         EventManager::Instance().update();
 
-        // Wait for async grid rebuild to complete (~100-200ms for test world)
-        // Mimics game startup where grid is ready before entities spawn
-        std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+        // Wait for async grid rebuild to complete
+        // Larger world (50x50) needs more time for grid construction
+        std::this_thread::sleep_for(std::chrono::milliseconds(2000));
 
         // Set up a test world with some static obstacles
         setupTestWorld();

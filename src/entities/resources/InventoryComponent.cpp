@@ -10,6 +10,7 @@
 #include "managers/WorldResourceManager.hpp"
 #include <algorithm>
 #include <cassert>
+#include <format>
 #include <numeric>
 #include <stdexcept>
 
@@ -25,8 +26,7 @@ InventoryComponent::InventoryComponent(Entity *owner, size_t maxSlots,
     slot.clear();
   }
 
-  RESOURCE_DEBUG("InventoryComponent initialized with " +
-                 std::to_string(maxSlots) + " slots");
+  RESOURCE_DEBUG(std::format("InventoryComponent initialized with {} slots", maxSlots));
 }
 
 bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
@@ -38,9 +38,8 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
   // Check for overflow before processing
   if (!isValidQuantity(quantity)) {
     INVENTORY_ERROR(
-        "addResource - Invalid quantity: " + std::to_string(quantity) +
-        " (max allowed: " + std::to_string(MAX_SAFE_QUANTITY) +
-        ") for handle: " + handle.toString());
+        std::format("addResource - Invalid quantity: {} (max allowed: {}) for handle: {}",
+                    quantity, MAX_SAFE_QUANTITY, handle.toString()));
     return false;
   }
 
@@ -56,8 +55,8 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
         ResourceTemplateManager::Instance().getResourceTemplate(handle);
     if (!resourceTemplate) {
       INVENTORY_ERROR(
-          "addResource - Invalid resource handle: " + handle.toString() +
-          " - template not found in ResourceTemplateManager");
+          std::format("addResource - Invalid resource handle: {} - template not found in ResourceTemplateManager",
+                      handle.toString()));
       return false;
     }
 
@@ -67,9 +66,8 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
     // Check for overflow in total quantity
     if (wouldOverflow(oldQuantity, quantity)) {
       INVENTORY_ERROR(
-          "addResource - Would cause overflow: " + std::to_string(oldQuantity) +
-          " + " + std::to_string(quantity) +
-          " exceeds maximum safe quantity for handle: " + handle.toString());
+          std::format("addResource - Would cause overflow: {} + {} exceeds maximum safe quantity for handle: {}",
+                      oldQuantity, quantity, handle.toString()));
       return false;
     }
 
@@ -110,7 +108,7 @@ bool InventoryComponent::addResource(HammerEngine::ResourceHandle handle,
         m_slots[sidx] = InventorySlot(handle, toAdd);
         remainingQuantity -= toAdd;
       } else {
-        INVENTORY_WARN("Empty slot index " + std::to_string(emptySlot) + " out of bounds (slots size: " + std::to_string(m_slots.size()) + ")");
+        INVENTORY_WARN(std::format("Empty slot index {} out of bounds (slots size: {})", emptySlot, m_slots.size()));
         break;
       }
     }
@@ -145,8 +143,8 @@ bool InventoryComponent::removeResource(HammerEngine::ResourceHandle handle,
   // Check for invalid quantity
   if (!isValidQuantity(quantity)) {
     INVENTORY_ERROR(
-        "removeResource - Invalid quantity: " + std::to_string(quantity) +
-        " for handle: " + handle.toString());
+        std::format("removeResource - Invalid quantity: {} for handle: {}",
+                    quantity, handle.toString()));
     return false;
   }
 
@@ -161,10 +159,8 @@ bool InventoryComponent::removeResource(HammerEngine::ResourceHandle handle,
 
     // Check for underflow
     if (wouldUnderflow(oldQuantity, quantity)) {
-      INVENTORY_WARN("removeResource - Would cause underflow: " +
-                     std::to_string(oldQuantity) + " - " +
-                     std::to_string(quantity) +
-                     " is less than minimum for handle: " + handle.toString());
+      INVENTORY_WARN(std::format("removeResource - Would cause underflow: {} - {} is less than minimum for handle: {}",
+                                  oldQuantity, quantity, handle.toString()));
       return false; // Not enough resources
     }
 
@@ -323,9 +319,8 @@ bool InventoryComponent::setSlot(size_t slotIndex,
   validateSlotIndex(slotIndex);
 
   if (quantity < 0 || !isValidQuantity(quantity)) {
-    INVENTORY_ERROR("setSlot - Invalid quantity: " + std::to_string(quantity) +
-                    " for slot " + std::to_string(slotIndex) +
-                    " with handle: " + handle.toString());
+    INVENTORY_ERROR(std::format("setSlot - Invalid quantity: {} for slot {} with handle: {}",
+                                 quantity, slotIndex, handle.toString()));
     return false;
   }
 
@@ -471,21 +466,17 @@ void InventoryComponent::compactInventory() {
 // Helper methods implementation
 int InventoryComponent::findSlotWithResource(
     HammerEngine::ResourceHandle handle) const {
-  for (size_t i = 0; i < m_slots.size(); ++i) {
-    if (m_slots[i].resourceHandle == handle) {
-      return static_cast<int>(i);
-    }
-  }
-  return -1;
+  auto it = std::find_if(m_slots.begin(), m_slots.end(),
+      [handle](const InventorySlot& slot) {
+        return slot.resourceHandle == handle;
+      });
+  return (it != m_slots.end()) ? static_cast<int>(std::distance(m_slots.begin(), it)) : -1;
 }
 
 int InventoryComponent::findEmptySlot() const {
-  for (size_t i = 0; i < m_slots.size(); ++i) {
-    if (m_slots[i].isEmpty()) {
-      return static_cast<int>(i);
-    }
-  }
-  return -1;
+  auto it = std::find_if(m_slots.begin(), m_slots.end(),
+      [](const InventorySlot& slot) { return slot.isEmpty(); });
+  return (it != m_slots.end()) ? static_cast<int>(std::distance(m_slots.begin(), it)) : -1;
 }
 
 void InventoryComponent::notifyResourceChange(
@@ -516,8 +507,7 @@ void InventoryComponent::notifyResourceChangeSafe(
 void InventoryComponent::validateSlotIndex(size_t slotIndex) const {
   if (slotIndex >= m_maxSlots) {
     throw std::out_of_range(
-        "Slot index " + std::to_string(slotIndex) +
-        " is out of range (max: " + std::to_string(m_maxSlots) + ")");
+        std::format("Slot index {} is out of range (max: {})", slotIndex, m_maxSlots));
   }
 }
 
@@ -533,8 +523,8 @@ void InventoryComponent::updateWorldResourceManager(
   }
 
   if (!handle.isValid()) {
-    INVENTORY_WARN("updateWorldResourceManager - Invalid resource handle: " +
-                   handle.toString());
+    INVENTORY_WARN(std::format("updateWorldResourceManager - Invalid resource handle: {}",
+                   handle.toString()));
     return;
   }
 
@@ -554,11 +544,8 @@ void InventoryComponent::updateWorldResourceManager(
     std::string resourceName =
         resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
     INVENTORY_WARN(
-        "updateWorldResourceManager - Failed to update world resources "
-        "for " +
-        resourceName + " (handle: " + handle.toString() + ") in world " +
-        m_worldId +
-        " - Transaction result: " + std::to_string(static_cast<int>(result)));
+        std::format("updateWorldResourceManager - Failed to update world resources for {} (handle: {}) in world {} - Transaction result: {}",
+                    resourceName, handle.toString(), m_worldId, static_cast<int>(result)));
   }
 }
 
@@ -699,18 +686,16 @@ bool InventoryComponent::validateInventoryIntegrity() const {
     // Check for invalid quantities
     if (!slot.isEmpty() && !isValidQuantity(slot.quantity)) {
       INVENTORY_ERROR(
-          "validateInventoryIntegrity - Slot " + std::to_string(i) +
-          " has invalid quantity: " + std::to_string(slot.quantity) +
-          " for handle: " + slot.resourceHandle.toString());
+          std::format("validateInventoryIntegrity - Slot {} has invalid quantity: {} for handle: {}",
+                      i, slot.quantity, slot.resourceHandle.toString()));
       isValid = false;
       issueCount++;
     }
 
     // Check for invalid handles with non-zero quantities
     if (!slot.isEmpty() && !slot.resourceHandle.isValid()) {
-      INVENTORY_ERROR("validateInventoryIntegrity - Slot " + std::to_string(i) +
-                      " has invalid handle but non-zero quantity: " +
-                      std::to_string(slot.quantity));
+      INVENTORY_ERROR(std::format("validateInventoryIntegrity - Slot {} has invalid handle but non-zero quantity: {}",
+                                   i, slot.quantity));
       isValid = false;
       issueCount++;
     }
@@ -722,21 +707,16 @@ bool InventoryComponent::validateInventoryIntegrity() const {
               slot.resourceHandle);
       if (!resourceTemplate) {
         INVENTORY_ERROR(
-            "validateInventoryIntegrity - Slot " + std::to_string(i) +
-            " references non-existent resource template for handle: " +
-            slot.resourceHandle.toString());
+            std::format("validateInventoryIntegrity - Slot {} references non-existent resource template for handle: {}",
+                        i, slot.resourceHandle.toString()));
         isValid = false;
         issueCount++;
       } else {
         // Check if quantity exceeds stack size for stackable resources
         if (resourceTemplate->isStackable() &&
             slot.quantity > resourceTemplate->getMaxStackSize()) {
-          INVENTORY_ERROR("validateInventoryIntegrity - Slot " +
-                          std::to_string(i) + " quantity " +
-                          std::to_string(slot.quantity) +
-                          " exceeds max stack size " +
-                          std::to_string(resourceTemplate->getMaxStackSize()) +
-                          " for handle: " + slot.resourceHandle.toString());
+          INVENTORY_ERROR(std::format("validateInventoryIntegrity - Slot {} quantity {} exceeds max stack size {} for handle: {}",
+                                       i, slot.quantity, resourceTemplate->getMaxStackSize(), slot.resourceHandle.toString()));
           isValid = false;
           issueCount++;
         }
@@ -747,18 +727,16 @@ bool InventoryComponent::validateInventoryIntegrity() const {
   // Validate cache consistency
   if (!m_cacheNeedsRebuild) {
     for (const auto &[handle, cachedQuantity] : m_resourceQuantityCache) {
-      int actualQuantity = 0;
-      for (const auto &slot : m_slots) {
-        if (slot.resourceHandle == handle) {
-          actualQuantity += slot.quantity;
-        }
-      }
+      const int actualQuantity = std::accumulate(
+          m_slots.begin(), m_slots.end(), 0,
+          [&handle](int sum, const InventorySlot &slot) {
+            return slot.resourceHandle == handle ? sum + slot.quantity : sum;
+          });
 
       if (actualQuantity != cachedQuantity) {
         INVENTORY_ERROR(
-            "validateInventoryIntegrity - Cache mismatch for handle " +
-            handle.toString() + ": cached=" + std::to_string(cachedQuantity) +
-            ", actual=" + std::to_string(actualQuantity));
+            std::format("validateInventoryIntegrity - Cache mismatch for handle {}: cached={}, actual={}",
+                        handle.toString(), cachedQuantity, actualQuantity));
         isValid = false;
         issueCount++;
       }
@@ -768,8 +746,7 @@ bool InventoryComponent::validateInventoryIntegrity() const {
   if (isValid) {
     INVENTORY_DEBUG("Inventory integrity validation passed");
   } else {
-    INVENTORY_ERROR("Inventory integrity validation failed with " +
-                    std::to_string(issueCount) + " issues");
+    INVENTORY_ERROR(std::format("Inventory integrity validation failed with {} issues", issueCount));
   }
 
   return isValid;
@@ -779,14 +756,14 @@ void InventoryComponent::reportInventoryState() const {
   std::lock_guard<std::mutex> lock(m_inventoryMutex);
 
   INVENTORY_INFO("=== Inventory State Report ===");
-  INVENTORY_INFO("Owner: " + std::string(m_owner ? "Present" : "No Owner"));
-  INVENTORY_INFO("World ID: " + m_worldId);
-  INVENTORY_INFO("Max Slots: " + std::to_string(m_maxSlots));
-  INVENTORY_INFO("Used Slots: " + std::to_string(getUsedSlots()));
-  INVENTORY_INFO("World Resource Tracking: " +
-                 std::string(m_trackWorldResources ? "enabled" : "disabled"));
-  INVENTORY_INFO("Cache Needs Rebuild: " +
-                 std::string(m_cacheNeedsRebuild ? "yes" : "no"));
+  INVENTORY_INFO(std::format("Owner: {}", (m_owner ? "Present" : "No Owner")));
+  INVENTORY_INFO(std::format("World ID: {}", m_worldId));
+  INVENTORY_INFO(std::format("Max Slots: {}", m_maxSlots));
+  INVENTORY_INFO(std::format("Used Slots: {}", getUsedSlots()));
+  INVENTORY_INFO(std::format("World Resource Tracking: {}",
+                 (m_trackWorldResources ? "enabled" : "disabled")));
+  INVENTORY_INFO(std::format("Cache Needs Rebuild: {}",
+                 (m_cacheNeedsRebuild ? "yes" : "no")));
 
   // Report non-empty slots
   size_t nonEmptySlots = 0;
@@ -799,9 +776,8 @@ void InventoryComponent::reportInventoryState() const {
       std::string resourceName =
           resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
 
-      INVENTORY_INFO("  Slot " + std::to_string(i) + ": " +
-                     std::to_string(slot.quantity) + "x " + resourceName +
-                     " (handle: " + slot.resourceHandle.toString() + ")");
+      INVENTORY_INFO(std::format("  Slot {}: {}x {} (handle: {})",
+                                  i, slot.quantity, resourceName, slot.resourceHandle.toString()));
       nonEmptySlots++;
     }
   }
@@ -812,15 +788,13 @@ void InventoryComponent::reportInventoryState() const {
 
   // Report cache state
   if (!m_cacheNeedsRebuild && !m_resourceQuantityCache.empty()) {
-    INVENTORY_INFO("Cache entries: " +
-                   std::to_string(m_resourceQuantityCache.size()));
+    INVENTORY_INFO(std::format("Cache entries: {}", m_resourceQuantityCache.size()));
     for (const auto &[handle, quantity] : m_resourceQuantityCache) {
       auto resourceTemplate =
           ResourceTemplateManager::Instance().getResourceTemplate(handle);
       std::string resourceName =
           resourceTemplate ? resourceTemplate->getName() : "Unknown Resource";
-      INVENTORY_INFO("  Cache: " + std::to_string(quantity) + "x " +
-                     resourceName);
+      INVENTORY_INFO(std::format("  Cache: {}x {}", quantity, resourceName));
     }
   }
 
@@ -839,9 +813,8 @@ size_t InventoryComponent::repairInventoryCorruption() {
     if (!slot.isEmpty()) {
       // Fix negative quantities
       if (slot.quantity < 0) {
-        INVENTORY_WARN("repairInventoryCorruption - Fixed negative quantity " +
-                       std::to_string(slot.quantity) +
-                       " to 0 for handle: " + slot.resourceHandle.toString());
+        INVENTORY_WARN(std::format("repairInventoryCorruption - Fixed negative quantity {} to 0 for handle: {}",
+                                    slot.quantity, slot.resourceHandle.toString()));
         slot.quantity = 0;
         repairCount++;
       }
@@ -849,9 +822,8 @@ size_t InventoryComponent::repairInventoryCorruption() {
       // Fix excessive quantities
       if (!isValidQuantity(slot.quantity)) {
         INVENTORY_WARN(
-            "repairInventoryCorruption - Fixed excessive quantity " +
-            std::to_string(slot.quantity) +
-            " to maximum for handle: " + slot.resourceHandle.toString());
+            std::format("repairInventoryCorruption - Fixed excessive quantity {} to maximum for handle: {}",
+                        slot.quantity, slot.resourceHandle.toString()));
         slot.quantity = MAX_SAFE_QUANTITY;
         repairCount++;
       }
@@ -876,8 +848,7 @@ size_t InventoryComponent::repairInventoryCorruption() {
     m_cacheNeedsRebuild = true;
     m_resourceQuantityCache.clear();
 
-    INVENTORY_INFO("repairInventoryCorruption - Repaired " +
-                   std::to_string(repairCount) + " corruption issues");
+    INVENTORY_INFO(std::format("repairInventoryCorruption - Repaired {} corruption issues", repairCount));
   } else {
     INVENTORY_INFO("repairInventoryCorruption - No corruption found");
   }

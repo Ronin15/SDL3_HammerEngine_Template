@@ -36,7 +36,7 @@ public:
 
     // Entity interface implementation
     void update(float deltaTime) override;
-    void render(const HammerEngine::Camera* camera) override;
+    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
     void clean() override;
 
     // DroppedItem specific methods
@@ -63,7 +63,6 @@ protected:
     
     // Visual effects
     void updateVisualEffects(float deltaTime);
-    void applyBobbingEffect();
 };
 
 #endif // DROPPED_ITEM_HPP

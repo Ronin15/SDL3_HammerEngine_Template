@@ -83,6 +83,18 @@ public:
     bool isInitialized() const { return m_initialized; }
     bool isShutdown() const { return m_isShutdown; }
 
+    /**
+     * @brief Sets global pause state for collision detection
+     * @param paused true to pause collision updates, false to resume
+     */
+    void setGlobalPause(bool paused);
+
+    /**
+     * @brief Gets the current global pause state
+     * @return true if collision updates are globally paused
+     */
+    bool isGloballyPaused() const;
+
     // Tick: run collision detection/resolution only (no movement integration)
     void update(float dt);
 
@@ -317,6 +329,7 @@ private:
 
     bool m_initialized{false};
     bool m_isShutdown{false};
+    std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
@@ -583,6 +596,12 @@ private:
     // PERFORMANCE: Vector pool for temporary allocations in hot paths
     mutable std::vector<std::vector<size_t>> m_vectorPool;
     mutable std::atomic<size_t> m_nextPoolIndex{0};
+
+    // PERFORMANCE: Reusable containers to avoid per-frame allocations
+    // These are cleared each frame but capacity is retained to eliminate heap churn
+    mutable std::unordered_set<EntityID> m_collidedEntitiesBuffer;      // For syncEntitiesToSOA()
+    mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
+    // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
 
     // Performance metrics
     struct PerfStats {

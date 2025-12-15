@@ -6,7 +6,7 @@
 #ifndef VECTOR_2D_HPP
 #define VECTOR_2D_HPP
 
-#include <math.h>
+#include <cmath>
 
 // A simple 2D vector class
 class Vector2D {

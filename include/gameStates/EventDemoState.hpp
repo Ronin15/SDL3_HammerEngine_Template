@@ -9,6 +9,7 @@
 #include "events/WeatherEvent.hpp"
 #include "gameStates/GameState.hpp"
 #include "managers/EventManager.hpp" // For EventData
+#include "managers/ParticleManager.hpp"
 
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
@@ -26,20 +27,23 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
+// Forward declarations for cached manager pointers
+class WorldManager;
+class UIManager;
+
 class EventDemoState : public GameState {
 public:
   EventDemoState();
   ~EventDemoState() override;
 
   void update(float deltaTime) override;
-  void render() override;
+  void render(SDL_Renderer* renderer, float interpolationAlpha = 1.0f) override;
   void handleInput() override;
 
   bool enter() override;
   bool exit() override;
 
   std::string getName() const override { return "EventDemo"; }
-  void onWindowResize(int newLogicalWidth, int newLogicalHeight) override;
 
 private:
   // Demo management methods
@@ -87,6 +91,7 @@ private:
   };
 
   DemoPhase m_currentPhase{DemoPhase::Initialization};
+  DemoPhase m_lastInstructionsPhase{DemoPhase::Complete};  // Track to avoid per-frame string allocations
   float m_phaseTimer{0.0f};
   float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
   bool m_autoMode{true}; // Auto-advance through demos - enabled by default
@@ -97,10 +102,6 @@ private:
   
   // Camera for world navigation
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
-  
-  // Camera transformation state (calculated in update, used in render)
-  float m_cameraOffsetX{0.0f};
-  float m_cameraOffsetY{0.0f};
 
   // Event tracking
   std::unordered_map<std::string, bool> m_eventStates{};
@@ -129,10 +130,11 @@ private:
   std::vector<WeatherType> m_weatherSequence{
       WeatherType::Clear,  WeatherType::Cloudy, WeatherType::Rainy,
       WeatherType::Stormy, WeatherType::Foggy,  WeatherType::Snowy,
-      WeatherType::Custom, WeatherType::Custom}; // Last two for HeavyRain and
-                                                 // HeavySnow
+      WeatherType::Windy,  WeatherType::Custom, WeatherType::Custom,
+      WeatherType::Custom, WeatherType::Custom}; // Custom for HeavyRain,
+                                                 // HeavySnow, WindyDust, WindyStorm
   std::vector<std::string> m_customWeatherTypes{
-      "", "", "", "", "", "", "HeavyRain", "HeavySnow"};
+      "", "", "", "", "", "", "", "HeavyRain", "HeavySnow", "WindyDust", "WindyStorm"};
   size_t m_currentWeatherIndex{0};
   float m_weatherChangeInterval{4.0f}; // Time between weather changes
   size_t m_weatherChangesShown{0};     // Track how many weather types shown
@@ -211,7 +213,7 @@ private:
   void initializeCamera();
   void updateCamera(float deltaTime);
   // Camera auto-manages world bounds; no state-level setup needed
-  void applyCameraTransformation();
+  // Camera render offset computed in render() via unified single-read pattern
   
   // Thread-safe replacements for static variables
   size_t m_manualWeatherIndex{0};
@@ -233,6 +235,22 @@ private:
 
   // Registered handler tokens for cleanup
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
+
+  // Cached manager pointers for render hot path (resolved in enter())
+  ParticleManager* mp_particleMgr{nullptr};
+  WorldManager* mp_worldMgr{nullptr};
+  UIManager* mp_uiMgr{nullptr};
+
+  // Status display optimization - zero per-frame allocations (C++20 type-safe)
+  std::string m_phaseBuffer{};
+  std::string m_statusBuffer2{};  // Named to avoid conflict with existing m_statusText
+  float m_lastDisplayedFPS{-1.0f};  // Float for decimal precision
+  size_t m_lastDisplayedNPCCount{0};
+  std::string m_lastDisplayedWeather{};
+  std::string m_lastDisplayedPhase{};
+
+  // Render scale caching - avoid GPU state changes when zoom unchanged
+  float m_lastRenderedZoom{1.0f};
 };
 
 #endif // EVENT_DEMO_STATE_HPP

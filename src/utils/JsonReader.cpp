@@ -5,6 +5,7 @@
 
 #include "utils/JsonReader.hpp"
 #include <cmath>
+#include <format>
 #include <fstream>
 #include <sstream>
 
@@ -204,8 +205,7 @@ bool JsonReader::parse(const std::string &jsonString) {
 }
 
 void JsonReader::setError(const std::string &message) {
-  m_lastError = "Line " + std::to_string(m_line) + ", Column " +
-                std::to_string(m_column) + ": " + message;
+  m_lastError = std::format("Line {}, Column {}: {}", m_line, m_column, message);
 }
 
 // Tokenizer implementation
@@ -696,8 +696,7 @@ bool JsonReader::Parser::isAtEnd() const {
 
 void JsonReader::Parser::setError(const std::string &message) {
   const JsonToken &token = peek();
-  m_error = "Line " + std::to_string(token.line) + ", Column " +
-            std::to_string(token.column) + ": " + message;
+  m_error = std::format("Line {}, Column {}: {}", token.line, token.column, message);
 }
 
 } // namespace HammerEngine

@@ -121,6 +121,45 @@ namespace TestHelpers {
             // Discard all events
         }
     }
+
+    // Process pending SDL events and route to InputManager handlers
+    // This simulates what GameEngine::handleEvents() does after the refactoring
+    void processEvents() {
+        InputManager& inputMgr = InputManager::Instance();
+        inputMgr.clearFrameInput();
+
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+                case SDL_EVENT_KEY_DOWN:
+                    inputMgr.onKeyDown(event);
+                    break;
+                case SDL_EVENT_KEY_UP:
+                    inputMgr.onKeyUp(event);
+                    break;
+                case SDL_EVENT_MOUSE_MOTION:
+                    inputMgr.onMouseMove(event);
+                    break;
+                case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                    inputMgr.onMouseButtonDown(event);
+                    break;
+                case SDL_EVENT_MOUSE_BUTTON_UP:
+                    inputMgr.onMouseButtonUp(event);
+                    break;
+                case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+                    inputMgr.onGamepadAxisMove(event);
+                    break;
+                case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+                    inputMgr.onGamepadButtonDown(event);
+                    break;
+                case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                    inputMgr.onGamepadButtonUp(event);
+                    break;
+                default:
+                    break;
+            }
+        }
+    }
 }
 
 // ============================================================================
@@ -140,7 +179,7 @@ BOOST_AUTO_TEST_CASE(TestKeyPressedDetection) {
 
     // Inject key down event
     TestHelpers::injectKeyEvent(SDL_SCANCODE_A, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Key should be detected as pressed this frame
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_A));
@@ -153,17 +192,17 @@ BOOST_AUTO_TEST_CASE(TestKeyPressedOnlyOncePerPress) {
 
     // Inject key down event
     TestHelpers::injectKeyEvent(SDL_SCANCODE_B, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Key should be detected as pressed this frame
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_B));
 
     // On next frame, wasKeyPressed should return false (only true on press frame)
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_B));
 
     // Still false on subsequent frames
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_B));
 
     TestHelpers::clearEventQueue();
@@ -174,17 +213,17 @@ BOOST_AUTO_TEST_CASE(TestKeyPressAfterRelease) {
 
     // Press key
     TestHelpers::injectKeyEvent(SDL_SCANCODE_C, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_C));
 
     // Release key and update
     TestHelpers::injectKeyEvent(SDL_SCANCODE_C, false);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_C));
 
     // Press again - should be detected as new press
     TestHelpers::injectKeyEvent(SDL_SCANCODE_C, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_C));
 
     TestHelpers::clearEventQueue();
@@ -197,7 +236,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleKeysSimultaneous) {
     TestHelpers::injectKeyEvent(SDL_SCANCODE_W, true);
     TestHelpers::injectKeyEvent(SDL_SCANCODE_A, true);
     TestHelpers::injectKeyEvent(SDL_SCANCODE_S, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // All keys should be detected as pressed this frame
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_W));
@@ -205,7 +244,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleKeysSimultaneous) {
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_S));
 
     // Next frame, none should be "pressed this frame"
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_W));
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_A));
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_S));
@@ -218,22 +257,22 @@ BOOST_AUTO_TEST_CASE(TestPressedClearedAcrossFrames) {
 
     // Press key
     TestHelpers::injectKeyEvent(SDL_SCANCODE_SPACE, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Key pressed this frame
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_SPACE));
 
     // Frame 2: Not "pressed this frame" anymore
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_SPACE));
 
     // Frame 3: Still not pressed this frame
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_SPACE));
 
     // Release
     TestHelpers::injectKeyEvent(SDL_SCANCODE_SPACE, false);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_SPACE));
 
     TestHelpers::clearEventQueue();
@@ -255,7 +294,7 @@ BOOST_AUTO_TEST_CASE(TestMouseButtonDown) {
 
     // Inject left mouse button down
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, true, 100.0f, 200.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Button should be detected as down
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
@@ -268,12 +307,12 @@ BOOST_AUTO_TEST_CASE(TestMouseButtonRelease) {
 
     // Press button
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, true, 100.0f, 200.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
 
     // Release button
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, false, 100.0f, 200.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Button should no longer be down
     BOOST_CHECK(!InputManager::Instance().getMouseButtonState(LEFT));
@@ -287,7 +326,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleMouseButtons) {
     // Press left and right buttons
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, true, 100.0f, 200.0f);
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_RIGHT, true, 100.0f, 200.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Both should be detected
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
@@ -304,7 +343,7 @@ BOOST_AUTO_TEST_CASE(TestMousePositionTracking) {
 
     // Inject mouse motion event
     TestHelpers::injectMouseMotionEvent(150.0f, 250.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Check position
     const Vector2D& pos = InputManager::Instance().getMousePosition();
@@ -313,7 +352,7 @@ BOOST_AUTO_TEST_CASE(TestMousePositionTracking) {
 
     // Move mouse again
     TestHelpers::injectMouseMotionEvent(300.0f, 400.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     const Vector2D& pos2 = InputManager::Instance().getMousePosition();
     BOOST_CHECK_EQUAL(pos2.getX(), 300.0f);
@@ -327,7 +366,7 @@ BOOST_AUTO_TEST_CASE(TestMouseButtonWithPosition) {
 
     // Press button at specific position
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, true, 123.0f, 456.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Verify button state
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
@@ -351,24 +390,24 @@ BOOST_AUTO_TEST_CASE(TestPressedHeldReleasedCycle) {
 
     // Frame 1: Press
     TestHelpers::injectKeyEvent(SDL_SCANCODE_E, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_E));
 
     // Frame 2: Held (not pressed this frame)
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_E));
 
     // Frame 3: Still held (still not pressed)
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_E));
 
     // Frame 4: Released (not pressed on release frame)
     TestHelpers::injectKeyEvent(SDL_SCANCODE_E, false);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_E));
 
     // Frame 5: Still released
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_E));
 
     TestHelpers::clearEventQueue();
@@ -380,13 +419,13 @@ BOOST_AUTO_TEST_CASE(TestRapidPressRelease) {
     // Press and release in same frame
     TestHelpers::injectKeyEvent(SDL_SCANCODE_F, true);
     TestHelpers::injectKeyEvent(SDL_SCANCODE_F, false);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // wasKeyPressed should still be true (detected the press)
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_F));
 
     // Next frame, should not be pressed
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_F));
 
     TestHelpers::clearEventQueue();
@@ -397,17 +436,17 @@ BOOST_AUTO_TEST_CASE(TestMultipleUpdatesEmptyQueue) {
 
     // Press key
     TestHelpers::injectKeyEvent(SDL_SCANCODE_G, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_G));
 
     // Multiple updates with no events should keep wasKeyPressed false
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_G));
 
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_G));
 
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_G));
 
     TestHelpers::clearEventQueue();
@@ -419,7 +458,7 @@ BOOST_AUTO_TEST_CASE(TestResetMouseButtons) {
     // Press mouse buttons
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_LEFT, true, 100.0f, 100.0f);
     TestHelpers::injectMouseButtonEvent(SDL_BUTTON_RIGHT, true, 100.0f, 100.0f);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(LEFT));
     BOOST_CHECK(InputManager::Instance().getMouseButtonState(RIGHT));
@@ -448,13 +487,13 @@ BOOST_AUTO_TEST_CASE(TestSameKeyPressedMultipleTimes) {
     TestHelpers::injectKeyEvent(SDL_SCANCODE_H, true);
     TestHelpers::injectKeyEvent(SDL_SCANCODE_H, true);
     TestHelpers::injectKeyEvent(SDL_SCANCODE_H, true);
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Should be detected as pressed this frame (deduplicated)
     BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_H));
 
     // Next frame should not be pressed
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_H));
 
     TestHelpers::clearEventQueue();
@@ -467,12 +506,12 @@ BOOST_AUTO_TEST_CASE(TestAlternatingKeyStates) {
     for (int i = 0; i < 5; ++i) {
         // Press
         TestHelpers::injectKeyEvent(SDL_SCANCODE_I, true);
-        InputManager::Instance().update();
+        TestHelpers::processEvents();
         BOOST_CHECK(InputManager::Instance().wasKeyPressed(SDL_SCANCODE_I));
 
         // Release
         TestHelpers::injectKeyEvent(SDL_SCANCODE_I, false);
-        InputManager::Instance().update();
+        TestHelpers::processEvents();
         BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_I));
     }
 
@@ -483,7 +522,7 @@ BOOST_AUTO_TEST_CASE(TestNoEventsProcessing) {
     TestHelpers::clearEventQueue();
 
     // Call update with no events
-    InputManager::Instance().update();
+    TestHelpers::processEvents();
 
     // Should not crash, no keys should be pressed this frame
     BOOST_CHECK(!InputManager::Instance().wasKeyPressed(SDL_SCANCODE_A));

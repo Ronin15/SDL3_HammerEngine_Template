@@ -8,6 +8,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "utils/Camera.hpp"
 #include <cmath>
+#include <format>
 
 DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
                          const Vector2D &position, int quantity)
@@ -29,9 +30,9 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
     setWidth(32);
     setHeight(32);
 
-    ENTITY_INFO(
-        "Created DroppedItem for resource: " + resourceTemplate->getName() +
-        " (Quantity: " + std::to_string(quantity) + ")");
+    ENTITY_INFO(std::format(
+        "Created DroppedItem for resource: {} (Quantity: {})",
+        resourceTemplate->getName(), quantity));
   } else {
     ENTITY_ERROR("Failed to create DroppedItem: Invalid resource handle");
   }
@@ -63,23 +64,27 @@ void DroppedItem::update(float deltaTime) {
   }
 }
 
-void DroppedItem::render(const HammerEngine::Camera *camera) {
+void DroppedItem::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
   if (m_quantity <= 0) {
     return; // Don't render empty stacks
   }
 
-  // Apply bobbing effect before rendering
-  applyBobbingEffect();
+  // Get interpolated position for smooth rendering between physics updates
+  Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
-  // TODO: Implement actual rendering logic here
-  // This would typically involve:
-  // 1. Getting the texture from TextureManager using m_textureID
-  // 2. Calculating screen position from world position using camera
-  // 3. Rendering the sprite with current animation frame
-  // 4. Optionally rendering quantity text for stacks > 1
+  // Apply bobbing effect to the interpolated Y position
+  float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
 
-  // For now, just suppress unused parameter warning
-  (void)camera;
+  // Convert world coords to screen coords using passed camera offset
+  // Same formula as WorldManager: screenX = worldX - cameraX
+  float renderX = interpPos.getX() - cameraX;
+  float renderY = interpPos.getY() - cameraY + bobOffset;
+
+  // TODO: Implement actual rendering logic here using renderer and renderX/renderY
+  // For now, suppress unused parameter warning until full rendering is implemented
+  (void)renderer;
+  (void)renderX;
+  (void)renderY;
 }
 
 void DroppedItem::clean() {
@@ -142,16 +147,4 @@ void DroppedItem::updateVisualEffects(float deltaTime) {
   if (m_bobTimer > 2.0f * M_PI) {
     m_bobTimer -= 2.0f * M_PI;
   }
-}
-
-void DroppedItem::applyBobbingEffect() {
-  // Create a gentle bobbing motion
-  float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
-
-  // Temporarily modify the position for rendering using accessor methods
-  float originalY = m_position.getY();
-  m_position.setY(originalY + bobOffset);
-
-  // Note: This modifies the actual position temporarily for rendering
-  // In a more complex system you might use separate render coordinates
 }

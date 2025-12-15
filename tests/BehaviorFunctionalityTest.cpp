@@ -55,7 +55,7 @@ public:
         (void)deltaTime; // Suppress unused parameter warning
         m_updateCount++; // Track that update was called
     }
-    void render(const HammerEngine::Camera* camera) override { (void)camera; }
+    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
     void clean() override {}
 
 private:

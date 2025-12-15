@@ -14,6 +14,7 @@
 #include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <format>
 
 // File signature constant
 constexpr char HAMMER_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E',
@@ -26,16 +27,16 @@ bool SaveGameManager::save(const std::string &saveFileName,
 
   // Make sure base directory exists
   if (!std::filesystem::exists(m_saveDirectory)) {
-    SAVEGAME_WARN("Base directory doesn't exist: '" + m_saveDirectory + "'");
+    SAVEGAME_WARN(std::format("Base directory doesn't exist: '{}'", m_saveDirectory));
     try {
       if (std::filesystem::create_directories(m_saveDirectory)) {
-        SAVEGAME_INFO("Created base directory: " + m_saveDirectory);
+        SAVEGAME_INFO(std::format("Created base directory: {}", m_saveDirectory));
       } else {
         SAVEGAME_ERROR("Failed to create base directory");
         return false;
       }
     } catch (const std::exception &e) {
-      SAVEGAME_ERROR("Error creating base directory: " + std::string(e.what()));
+      SAVEGAME_ERROR(std::format("Error creating base directory: {}", e.what()));
       return false;
     }
   }
@@ -61,12 +62,12 @@ bool SaveGameManager::save(const std::string &saveFileName,
     // Open binary file for writing
     std::ofstream file(fullPath, std::ios::binary | std::ios::out);
     if (!file.is_open()) {
-      SAVEGAME_ERROR("Could not open file " + fullPath + " for writing!");
-      SAVEGAME_DEBUG("Parent directory " + parentPath.string() + " exists: " +
-                     (std::filesystem::exists(parentPath) ? "yes" : "no"));
+      SAVEGAME_ERROR(std::format("Could not open file {} for writing!", fullPath));
+      SAVEGAME_DEBUG(std::format("Parent directory {} exists: {}",
+                     parentPath.string(), (std::filesystem::exists(parentPath) ? "yes" : "no")));
       return false;
     }
-    SAVEGAME_DEBUG("Opened file for writing: " + fullPath);
+    SAVEGAME_DEBUG(std::format("Opened file for writing: {}", fullPath));
 
     // We'll write the header at the end once we know the data size
     // For now, just skip past where the header will be
@@ -119,17 +120,17 @@ bool SaveGameManager::save(const std::string &saveFileName,
 
     file.close();
 
-    SAVEGAME_INFO("Save successful: " + saveFileName);
+    SAVEGAME_INFO(std::format("Save successful: {}", saveFileName));
     return true;
   } catch (const std::exception &e) {
-    SAVEGAME_ERROR("Error saving game: " + std::string(e.what()));
+    SAVEGAME_ERROR(std::format("Error saving game: {}", e.what()));
     return false;
   }
 }
 
 bool SaveGameManager::saveToSlot(int slotNumber, const Player &player) {
   if (slotNumber < 1) {
-    SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
+    SAVEGAME_ERROR(std::format("Invalid slot number: {}", slotNumber));
     return false;
   }
 
@@ -144,7 +145,7 @@ bool SaveGameManager::load(const std::string &saveFileName,
   // Check if the file exists
   std::string fullPath = getFullSavePath(saveFileName);
   if (!std::filesystem::exists(fullPath)) {
-    SAVEGAME_ERROR("Save file does not exist: " + saveFileName);
+    SAVEGAME_ERROR(std::format("Save file does not exist: {}", saveFileName));
     return false;
   }
 
@@ -152,7 +153,7 @@ bool SaveGameManager::load(const std::string &saveFileName,
     // Open binary file for reading
     std::ifstream file(fullPath, std::ios::binary | std::ios::in);
     if (!file.is_open()) {
-      SAVEGAME_ERROR("Could not open file for reading: " + fullPath);
+      SAVEGAME_ERROR(std::format("Could not open file for reading: {}", fullPath));
       return false;
     }
 
@@ -209,17 +210,17 @@ bool SaveGameManager::load(const std::string &saveFileName,
 
     file.close();
 
-    SAVEGAME_INFO("Game loaded: " + saveFileName);
+    SAVEGAME_INFO(std::format("Game loaded: {}", saveFileName));
     return true;
   } catch (const std::exception &e) {
-    SAVEGAME_ERROR("Error loading game: " + std::string(e.what()));
+    SAVEGAME_ERROR(std::format("Error loading game: {}", e.what()));
     return false;
   }
 }
 
 bool SaveGameManager::loadFromSlot(int slotNumber, Player &player) const {
   if (slotNumber < 1) {
-    SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
+    SAVEGAME_ERROR(std::format("Invalid slot number: {}", slotNumber));
     return false;
   }
 
@@ -232,21 +233,21 @@ bool SaveGameManager::deleteSave(const std::string &saveFileName) const {
     std::string fullPath = getFullSavePath(saveFileName);
     if (std::filesystem::exists(fullPath)) {
       std::filesystem::remove(fullPath);
-      SAVEGAME_INFO("Save successful: " + saveFileName);
+      SAVEGAME_INFO(std::format("Save successful: {}", saveFileName));
       return true;
     } else {
-      SAVEGAME_ERROR("Save file does not exist: " + fullPath);
+      SAVEGAME_ERROR(std::format("Save file does not exist: {}", fullPath));
       return false;
     }
   } catch (const std::filesystem::filesystem_error &e) {
-    SAVEGAME_ERROR("Error deleting save file: " + std::string(e.what()));
+    SAVEGAME_ERROR(std::format("Error deleting save file: {}", e.what()));
     return false;
   }
 }
 
 bool SaveGameManager::deleteSlot(int slotNumber) const {
   if (slotNumber < 1) {
-    SAVEGAME_ERROR("Invalid slot number: " + std::to_string(slotNumber));
+    SAVEGAME_ERROR(std::format("Invalid slot number: {}", slotNumber));
     return false;
   }
 
@@ -287,7 +288,7 @@ std::vector<std::string> SaveGameManager::getSaveFiles() const {
       }
     }
   } catch (const std::filesystem::filesystem_error &e) {
-    SAVEGAME_ERROR("Error listing save files: " + std::string(e.what()));
+    SAVEGAME_ERROR(std::format("Error listing save files: {}", e.what()));
   }
 
   return saveFiles;
@@ -365,10 +366,10 @@ void SaveGameManager::setSaveDirectory(const std::string &directory) {
     // Try to create it
     try {
       if (!std::filesystem::create_directories(directory)) {
-        SAVEGAME_ERROR("Failed to create directory: " + directory);
+        SAVEGAME_ERROR(std::format("Failed to create directory: {}", directory));
       }
     } catch (const std::exception &e) {
-      SAVEGAME_ERROR("Error creating directory: " + std::string(e.what()));
+      SAVEGAME_ERROR(std::format("Error creating directory: {}", e.what()));
     }
   }
 
@@ -391,7 +392,7 @@ void SaveGameManager::clean() {
 
 // Private helper methods
 std::string SaveGameManager::getSlotFileName(int slotNumber) const {
-  return "save_slot_" + std::to_string(slotNumber) + ".dat";
+  return std::format("save_slot_{}.dat", slotNumber);
 }
 
 std::string
@@ -447,7 +448,7 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
 
     return true;
   } catch (const std::exception &e) {
-    SAVEGAME_ERROR("Error creating save directory: " + std::string(e.what()));
+    SAVEGAME_ERROR(std::format("Error creating save directory: {}", e.what()));
     return false;
   }
 }
@@ -524,7 +525,7 @@ SaveGameManager::extractSaveInfo(const std::string &saveFileName) const {
 
     file.close();
   } catch (const std::exception &e) {
-    SAVEGAME_ERROR("Error extracting save info: " + std::string(e.what()));
+    SAVEGAME_ERROR(std::format("Error extracting save info: {}", e.what()));
   }
 
   return info;

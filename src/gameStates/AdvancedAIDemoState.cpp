@@ -9,6 +9,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/GameStateManager.hpp"
+#include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "SDL3/SDL_scancode.h"
@@ -22,8 +23,7 @@
 #include "managers/InputManager.hpp"
 #include <SDL3/SDL.h>
 
-#include <sstream>
-#include <iomanip>
+#include <format>
 #include <cmath>
 
 
@@ -50,7 +50,7 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
 
         GAMESTATE_INFO("Exiting AdvancedAIDemoState in destructor...");
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in AdvancedAIDemoState destructor: " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in AdvancedAIDemoState destructor: {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState destructor");
     }
@@ -73,7 +73,7 @@ void AdvancedAIDemoState::handleInput() {
         aiMgr.broadcastMessage(message, true);
 
         // Simple feedback
-        GAMESTATE_INFO("Advanced AI " + std::string(m_aiPaused ? "PAUSED" : "RESUMED"));
+        GAMESTATE_INFO(std::format("Advanced AI {}", m_aiPaused ? "PAUSED" : "RESUMED"));
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
@@ -137,6 +137,11 @@ void AdvancedAIDemoState::handleInput() {
 }
 
 bool AdvancedAIDemoState::enter() {
+    // Cache manager pointers for render hot path (always valid after GameEngine init)
+    mp_particleMgr = &ParticleManager::Instance();
+    mp_worldMgr = &WorldManager::Instance();
+    mp_uiMgr = &UIManager::Instance();
+
     GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
     // Reset transition flag when entering state
@@ -169,7 +174,7 @@ bool AdvancedAIDemoState::enter() {
         if (worldManager.getWorldBounds(worldMinX, worldMinY, worldMaxX, worldMaxY)) {
             m_worldWidth = worldMaxX;
             m_worldHeight = worldMaxY;
-            GAMESTATE_INFO("World dimensions: " + std::to_string(m_worldWidth) + " x " + std::to_string(m_worldHeight) + " pixels");
+            GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
         } else {
             // Fallback to screen dimensions if world bounds unavailable
             m_worldWidth = gameEngine.getLogicalWidth();
@@ -254,15 +259,18 @@ bool AdvancedAIDemoState::enter() {
         ui.setComponentPositioning("advanced_ai_status", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT});
 
         // Log status
-        GAMESTATE_INFO("Created " + std::to_string(m_npcs.size()) + " NPCs with advanced AI behaviors");
+        GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors", m_npcs.size()));
         GAMESTATE_INFO("Combat system initialized with health/damage attributes");
+
+        // Pre-allocate status buffer to avoid per-frame allocations
+        m_statusBuffer.reserve(64);
 
         // Mark as fully initialized to prevent re-entering loading logic
         m_initialized = true;
 
         return true;
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in AdvancedAIDemoState::enter(): " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in AdvancedAIDemoState::enter(): {}", e.what()));
         return false;
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState::enter()");
@@ -326,6 +334,11 @@ bool AdvancedAIDemoState::exit() {
         aiMgr.setGlobalPause(false);
         m_aiPaused = false;
 
+        // Clear cached manager pointers
+        mp_worldMgr = nullptr;
+        mp_uiMgr = nullptr;
+        mp_particleMgr = nullptr;
+
         // Reset initialized flag so state re-initializes after loading
         m_initialized = false;
 
@@ -382,19 +395,16 @@ bool AdvancedAIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
+    // Clear cached manager pointers
+    mp_worldMgr = nullptr;
+    mp_uiMgr = nullptr;
+    mp_particleMgr = nullptr;
+
     // Reset initialization flag for next fresh start
     m_initialized = false;
 
     GAMESTATE_INFO("AdvancedAIDemoState exit complete");
     return true;
-}
-
-void AdvancedAIDemoState::onWindowResize(int newLogicalWidth,
-                                          int newLogicalHeight) {
-    // Auto-repositioning now handled by UIManager - no manual updates needed!
-    GAMESTATE_DEBUG("AdvancedAIDemoState: Window resized to " +
-                    std::to_string(newLogicalWidth) + "x" +
-                    std::to_string(newLogicalHeight) + " (auto-repositioning active)");
 }
 
 void AdvancedAIDemoState::update(float deltaTime) {
@@ -451,44 +461,52 @@ void AdvancedAIDemoState::update(float deltaTime) {
         // AI Manager is updated globally by GameEngine for optimal performance
         // Entity updates are handled by AIManager::update() in GameEngine
 
+        // Update UI (moved from render path for consistent frame timing)
+        if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
+            mp_uiMgr->update(deltaTime);
+        }
+
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in AdvancedAIDemoState::update(): " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in AdvancedAIDemoState::update(): {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in AdvancedAIDemoState::update()");
     }
 }
 
-void AdvancedAIDemoState::render() {
-    // Get renderer using the standard pattern
-    auto& gameEngine = GameEngine::Instance();
-    SDL_Renderer* renderer = gameEngine.getRenderer();
+void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
+    // Get GameEngine for logical dimensions (renderer now passed as parameter)
+    const auto& gameEngine = GameEngine::Instance();
 
-    // Calculate camera view rect ONCE for all rendering to ensure perfect synchronization
-    HammerEngine::Camera::ViewRect cameraView{0.0f, 0.0f, 0.0f, 0.0f};
+    // Camera offset with unified interpolation (single atomic read for sync)
+    float renderCamX = 0.0f;
+    float renderCamY = 0.0f;
+    Vector2D playerInterpPos;  // Position synced with camera
+
     if (m_camera) {
-        cameraView = m_camera->getViewRect();
+        // Returns the position used for offset - use it for player rendering
+        playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
     }
 
-    // Set render scale for zoom (scales all world/entity rendering automatically)
+    // Set render scale for zoom only when changed (avoids GPU state change overhead)
     float zoom = m_camera ? m_camera->getZoom() : 1.0f;
-    SDL_SetRenderScale(renderer, zoom, zoom);
+    if (zoom != m_lastRenderedZoom) {
+        SDL_SetRenderScale(renderer, zoom, zoom);
+        m_lastRenderedZoom = zoom;
+    }
 
-    // Render world first (background layer) using unified camera position
-    if (m_camera) {
-        auto& worldMgr = WorldManager::Instance();
-        if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
-            // Use the camera view for world rendering
-            worldMgr.render(renderer,
-                           cameraView.x,
-                           cameraView.y,
+    // Render world first (background layer) using pixel-snapped camera - use cached pointer
+    // mp_worldMgr guaranteed valid between enter() and exit()
+    if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
+        mp_worldMgr->render(renderer,
+                           renderCamX,
+                           renderCamY,
                            gameEngine.getLogicalWidth(),
                            gameEngine.getLogicalHeight());
-        }
     }
 
-    // Render all NPCs using camera-aware rendering
+    // Render all NPCs using camera-aware rendering with interpolation
     for (auto& npc : m_npcs) {
-        npc->render(m_camera.get());
+        npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
 
         // Render health bars for NPCs with combat attributes
         auto it = m_combatAttributes.find(npc);
@@ -501,9 +519,10 @@ void AdvancedAIDemoState::render() {
         }
     }
 
-    // Render player using camera-aware rendering
+    // Render player at the position camera used for offset calculation
     if (m_player) {
-        m_player->render(m_camera.get());
+        // Use position camera returned - no separate atomic read
+        m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
 
         // Render player health bar
         auto it = m_combatAttributes.find(m_player);
@@ -513,21 +532,37 @@ void AdvancedAIDemoState::render() {
         }
     }
 
-    // Update and render UI components
-    auto& ui = UIManager::Instance();
-    if (!ui.isShutdown()) {
-        ui.update(0.0); // UI updates are not time-dependent in this state
-
-        // Update status display with combat information
-        auto& aiManager = AIManager::Instance();
-        std::stringstream status;
-        status << "FPS: " << std::fixed << std::setprecision(1) << gameEngine.getCurrentFPS()
-               << " | NPCs: " << m_npcs.size()
-               << " | AI: " << (aiManager.isGloballyPaused() ? "PAUSED" : "RUNNING")
-               << " | Combat: ON";
-        ui.setText("advanced_ai_status", status.str());
+    // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+    if (m_lastRenderedZoom != 1.0f) {
+        SDL_SetRenderScale(renderer, 1.0f, 1.0f);
+        m_lastRenderedZoom = 1.0f;
     }
-    ui.render();
+
+    // Render UI components through cached pointer (update moved to update() for consistent frame timing)
+    // mp_uiMgr guaranteed valid between enter() and exit()
+    if (!mp_uiMgr->isShutdown()) {
+        // Update status only when values change (C++20 type-safe, zero allocations)
+        const auto& aiManager = AIManager::Instance();
+        int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+        size_t npcCount = m_npcs.size();
+        bool isPaused = aiManager.isGloballyPaused();
+
+        if (currentFPS != m_lastDisplayedFPS ||
+            npcCount != m_lastDisplayedNPCCount ||
+            isPaused != m_lastDisplayedPauseState) {
+
+            m_statusBuffer.clear();
+            std::format_to(std::back_inserter(m_statusBuffer),
+                           "FPS: {} | NPCs: {} | AI: {} | Combat: ON",
+                           currentFPS, npcCount, isPaused ? "PAUSED" : "RUNNING");
+            mp_uiMgr->setText("advanced_ai_status", m_statusBuffer);
+
+            m_lastDisplayedFPS = currentFPS;
+            m_lastDisplayedNPCCount = npcCount;
+            m_lastDisplayedPauseState = isPaused;
+        }
+    }
+    mp_uiMgr->render(renderer);
 }
 
 void AdvancedAIDemoState::setupAdvancedAIBehaviors() {
@@ -635,14 +670,14 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 // Add to collection
                 m_npcs.push_back(npc);
             } catch (const std::exception& e) {
-                GAMESTATE_ERROR("Exception creating advanced NPC " + std::to_string(i) + ": " + std::string(e.what()));
+                GAMESTATE_ERROR(std::format("Exception creating advanced NPC {}: {}", i, e.what()));
                 continue;
             }
         }
 
-        GAMESTATE_INFO("AdvancedAIDemoState: Created " + std::to_string(m_npcs.size()) + " NPCs with combat attributes");
+        GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs with combat attributes", m_npcs.size()));
     } catch (const std::exception& e) {
-        GAMESTATE_ERROR("Exception in createAdvancedNPCs(): " + std::string(e.what()));
+        GAMESTATE_ERROR(std::format("Exception in createAdvancedNPCs(): {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
     }
@@ -722,12 +757,12 @@ void AdvancedAIDemoState::initializeCamera() {
         m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
         // Set up camera configuration for fast, smooth following
+        // Using exponential smoothing for smooth, responsive follow
         HammerEngine::Camera::Config config;
-        config.followSpeed = 8.0f;         // Faster follow for action gameplay
+        config.followSpeed = 5.0f;         // Speed of camera interpolation
         config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-        config.smoothingFactor = 0.80f;    // Quicker response smoothing
-        config.maxFollowDistance = 9999.0f; // No distance limit
-        config.clampToWorldBounds = true;   // Keep camera within world
+        config.smoothingFactor = 0.85f;    // Smoothing factor (0-1, higher = smoother)
+        config.clampToWorldBounds = true;  // Keep camera within world
         m_camera->setConfig(config);
 
         // Camera auto-synchronizes world bounds on update

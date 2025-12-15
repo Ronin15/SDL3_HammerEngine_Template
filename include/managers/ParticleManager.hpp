@@ -103,7 +103,12 @@ enum class ParticleEffectType : uint8_t {
   Sparks = 8,
   Magic = 9,
   Custom = 10,
-  COUNT = 11
+  Windy = 11,
+  WindyDust = 12,
+  WindyStorm = 13,
+  AmbientDust = 14,
+  AmbientFirefly = 15,
+  COUNT = 16
 };
 
 /**
@@ -202,6 +207,7 @@ struct ParticleEmitterConfig {
 
   // Advanced properties
   bool useWorldSpace{true};    // World space vs local space
+  bool fullScreenSpawn{false}; // If true, spawn particles randomly across full screen height
   float burstCount{0};         // Particles per burst
   float burstInterval{1.0f};   // Time between bursts
   bool enableCollision{false}; // Enable collision detection
@@ -213,7 +219,7 @@ struct ParticleEffectDefinition;
 // Helper methods for enum-based classification system
 ParticleEffectType weatherStringToEnum(const std::string &weatherType,
                                        float intensity);
-std::string effectTypeToString(ParticleEffectType type);
+std::string_view effectTypeToString(ParticleEffectType type);
 
 // Built-in effect creation helpers
 ParticleEffectDefinition createRainEffect();
@@ -226,6 +232,11 @@ ParticleEffectDefinition createFireEffect();
 ParticleEffectDefinition createSmokeEffect();
 ParticleEffectDefinition createSparksEffect();
 ParticleEffectDefinition createMagicEffect();
+ParticleEffectDefinition createWindyEffect();
+ParticleEffectDefinition createWindyDustEffect();
+ParticleEffectDefinition createWindyStormEffect();
+ParticleEffectDefinition createAmbientDustEffect();
+ParticleEffectDefinition createAmbientFireflyEffect();
 
 struct UnifiedParticle {
   // All particle data in one structure - no synchronization issues
@@ -365,9 +376,10 @@ public:
    * @param renderer SDL renderer for drawing
    * @param cameraX Camera X offset for world-space rendering
    * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
   void render(SDL_Renderer *renderer, float cameraX = 0.0f,
-              float cameraY = 0.0f);
+              float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
   /**
    * @brief Renders only background particles (rain, snow) - call before
@@ -375,18 +387,20 @@ public:
    * @param renderer SDL renderer for drawing
    * @param cameraX Camera X offset for world-space rendering
    * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
   void renderBackground(SDL_Renderer *renderer, float cameraX = 0.0f,
-                        float cameraY = 0.0f);
+                        float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
   /**
    * @brief Renders only foreground particles (fog) - call after player/NPCs
    * @param renderer SDL renderer for drawing
    * @param cameraX Camera X offset for world-space rendering
    * @param cameraY Camera Y offset for world-space rendering
+   * @param interpolationAlpha Interpolation factor (0.0-1.0) for smooth rendering
    */
   void renderForeground(SDL_Renderer *renderer, float cameraX = 0.0f,
-                        float cameraY = 0.0f);
+                        float cameraY = 0.0f, float interpolationAlpha = 1.0f);
 
   /**
    * @brief Checks if ParticleManager has been shut down
@@ -488,6 +502,18 @@ public:
   void pauseIndependentEffectsByGroup(const std::string &groupTag, bool paused);
 
   /**
+   * @brief Sets global pause state for all particle updates
+   * @param paused true to pause all particle updates, false to resume
+   */
+  void setGlobalPause(bool paused);
+
+  /**
+   * @brief Gets the current global pause state
+   * @return true if particle updates are globally paused
+   */
+  bool isGloballyPaused() const;
+
+  /**
    * @brief Checks if an effect is an independent effect
    * @param effectId Effect ID to check
    * @return true if effect is independent, false otherwise
@@ -555,19 +581,6 @@ public:
    * @param fadeTime Time to fade out particles before removal
    */
   void clearWeatherGeneration(uint8_t generationId = 0, float fadeTime = 0.5f);
-
-  // Global Controls
-  /**
-   * @brief Sets global pause state for all particles
-   * @param paused Whether to pause particle updates
-   */
-  void setGlobalPause(bool paused);
-
-  /**
-   * @brief Gets global pause state
-   * @return true if globally paused, false otherwise
-   */
-  bool isGloballyPaused() const;
 
   /**
    * @brief Sets global particle visibility
@@ -748,6 +761,8 @@ private:
       // SIMD-friendly SoA float lanes (authoritative storage)
       std::vector<F32, AlignedAllocator<F32, 16>> posX;
       std::vector<F32, AlignedAllocator<F32, 16>> posY;
+      std::vector<F32, AlignedAllocator<F32, 16>> prevPosX;  // Previous position for interpolation
+      std::vector<F32, AlignedAllocator<F32, 16>> prevPosY;  // Previous position for interpolation
       std::vector<F32, AlignedAllocator<F32, 16>> velX;
       std::vector<F32, AlignedAllocator<F32, 16>> velY;
       std::vector<F32, AlignedAllocator<F32, 16>> accX;
@@ -903,9 +918,8 @@ private:
 
   // Lock-free synchronization - no mutexes needed for particles
   mutable std::shared_mutex
-      m_effectsMutex;              // Only for effect definitions (rare writes)
+      m_effectsMutex;              // For effect instances and definitions
   mutable std::mutex m_statsMutex; // Only for performance stats
-  mutable std::mutex m_weatherMutex; // For weather effect changes
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
@@ -928,6 +942,60 @@ private:
     size_t endIndex;
     size_t processedCount;
   };
+
+  // OPTIMIZATION: Pre-allocated render buffer to eliminate per-frame std::fill
+  // Previously 33% of CPU time was spent on resize() value-initialization
+  // This buffer is allocated once and reused every frame
+  struct BatchRenderBuffers {
+    static constexpr std::size_t MAX_RECTS_PER_BATCH = 2048;
+    static constexpr std::size_t VERTS_PER_QUAD = 6;      // 2 triangles × 3 verts
+    static constexpr std::size_t FLOATS_PER_VERT = 2;     // x, y
+    static constexpr std::size_t XY_STRIDE = VERTS_PER_QUAD * FLOATS_PER_VERT;
+    static constexpr std::size_t COL_STRIDE = VERTS_PER_QUAD;
+
+    std::vector<float> xy;
+    std::vector<SDL_FColor> cols;
+    std::size_t vertexCount{0};
+
+    BatchRenderBuffers() {
+      // Pre-size vectors once - this is the only resize() call
+      xy.resize(MAX_RECTS_PER_BATCH * XY_STRIDE);
+      cols.resize(MAX_RECTS_PER_BATCH * COL_STRIDE);
+    }
+
+    // Reset for new batch (no allocation, just counter reset)
+    constexpr void reset() noexcept { vertexCount = 0; }
+
+    // Get vertex count for SDL_RenderGeometryRaw
+    [[nodiscard]] constexpr int getVertexCount() const noexcept {
+      return static_cast<int>(vertexCount);
+    }
+
+    // Safe and fast quad append - uses pre-sized buffer with bounds guarantee
+    void appendQuad(float x0, float y0, float x1, float y1,
+                    float x2, float y2, float x3, float y3,
+                    const SDL_FColor& col) noexcept {
+      const std::size_t xyBase = vertexCount * FLOATS_PER_VERT;
+      const std::size_t colBase = vertexCount;
+
+      // Triangle 1: v0, v1, v2
+      xy[xyBase]      = x0; xy[xyBase + 1]  = y0;
+      xy[xyBase + 2]  = x1; xy[xyBase + 3]  = y1;
+      xy[xyBase + 4]  = x2; xy[xyBase + 5]  = y2;
+      // Triangle 2: v2, v3, v0
+      xy[xyBase + 6]  = x2; xy[xyBase + 7]  = y2;
+      xy[xyBase + 8]  = x3; xy[xyBase + 9]  = y3;
+      xy[xyBase + 10] = x0; xy[xyBase + 11] = y0;
+
+      // All 6 vertices share same color
+      cols[colBase]     = col; cols[colBase + 1] = col;
+      cols[colBase + 2] = col; cols[colBase + 3] = col;
+      cols[colBase + 4] = col; cols[colBase + 5] = col;
+
+      vertexCount += VERTS_PER_QUAD;
+    }
+  };
+  mutable BatchRenderBuffers m_renderBuffer;  // Mutable for use in const render methods
 
   // Pre-calculated lookup tables for performance
   struct ParticleOptimizationData {
@@ -1036,7 +1104,7 @@ private:
   // Weather type conversion helpers
   ParticleEffectType weatherStringToEnum(const std::string &weatherType,
                                          float intensity) const;
-  std::string effectTypeToString(ParticleEffectType type) const;
+  std::string_view effectTypeToString(ParticleEffectType type) const;
 
   // Built-in effect creation helpers
   ParticleEffectDefinition createRainEffect();
@@ -1049,6 +1117,11 @@ private:
   ParticleEffectDefinition createSmokeEffect();
   ParticleEffectDefinition createSparksEffect();
   ParticleEffectDefinition createMagicEffect();
+  ParticleEffectDefinition createWindyEffect();
+  ParticleEffectDefinition createWindyDustEffect();
+  ParticleEffectDefinition createWindyStormEffect();
+  ParticleEffectDefinition createAmbientDustEffect();
+  ParticleEffectDefinition createAmbientFireflyEffect();
 };
 
 #endif // PARTICLE_MANAGER_HPP

@@ -44,35 +44,38 @@ else()
     set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -DDEBUG")
 endif()
 
-# Release build settings
+# Release build settings - keep minimal safe flags for dependencies (SDL3 etc.)
+# Aggressive optimizations like -ffast-math are applied only to our targets below
 if(APPLE)
-    # macOS-specific release flags
-    set(CMAKE_C_FLAGS_RELEASE 
-        "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
-        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops")
-    set(CMAKE_CXX_FLAGS_RELEASE 
-        "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer \
-        -ffunction-sections -fdata-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops")
-    
+    # macOS-specific release flags (safe for all targets including SDL3)
+    set(CMAKE_C_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+    set(CMAKE_CXX_FLAGS_RELEASE "-O3 -flto -fno-strict-aliasing -fomit-frame-pointer")
+
     # Add Apple Silicon specific optimizations if on Apple Silicon
     if(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")
         set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -mcpu=apple-m1")
         set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -mcpu=apple-m1")
     endif()
+
+    # Store aggressive flags for our project targets only
+    set(HAMMER_AGGRESSIVE_C_FLAGS
+        "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
+    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+        "-ffunction-sections -fdata-sections -ffast-math -ftree-vectorize -funroll-loops")
 else()
-    # x86-64 specific flags for other platforms
+    # x86-64 specific flags (safe for all targets)
     set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -O3 -flto \
-        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-        -msse4.2 -mavx -mavx2 -mfma")
+        -fno-strict-aliasing -fomit-frame-pointer")
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -flto \
-        -fno-strict-aliasing -fomit-frame-pointer -ffunction-sections \
-        -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
-        -fpeel-loops -funroll-loops -march=x86-64-v3 -mtune=generic \
-        -msse4.2 -mavx -mavx2 -mfma")
+        -fno-strict-aliasing -fomit-frame-pointer")
+
+    # Store aggressive flags for our project targets only
+    set(HAMMER_AGGRESSIVE_C_FLAGS
+        "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
+    set(HAMMER_AGGRESSIVE_CXX_FLAGS
+        "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
+        -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
 endif()
 
 # Set C++ standard
@@ -140,9 +143,8 @@ message(STATUS
     "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
-# SDL3 must use main to provide SDL_ALIGNED macro needed by SDL3_mixer
-set(SDL3_GIT_TAG "main")                   # Use main to get SDL_ALIGNED macro needed by SDL3_mixer
-set(SDL3_IMAGE_GIT_TAG "release-3.2.4")    # Latest stable SDL3_image release  
+# SDL3 3.3.4 includes native PNG loading (SDL_LoadPNG) - no SDL3_image needed
+set(SDL3_GIT_TAG "prerelease-3.3.4")       # SDL3 3.3.4 prerelease with native PNG support
 set(SDL3_TTF_GIT_TAG "release-3.2.2")      # Latest stable SDL3_ttf release
 set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
 
@@ -157,20 +159,6 @@ FetchContent_Declare(
 set(SDL_SHARED TRUE CACHE BOOL "Build a SDL shared library")
 set(SDL_STATIC FALSE CACHE BOOL "Build a SDL static library")
 set(SDL_TEST FALSE CACHE BOOL "Build the SDL test framework")
-
-# Download and configure SDL3_image
-FetchContent_Declare(
-    SDL3_image
-    GIT_REPOSITORY https://github.com/libsdl-org/SDL_image.git
-    GIT_TAG ${SDL3_IMAGE_GIT_TAG}
-)
-
-# Build options for SDL3_image
-set(SDL3IMAGE_SAMPLES FALSE CACHE BOOL 
-    "Build the SDL3_image sample programs")
-set(SDL3IMAGE_VENDORED FALSE CACHE BOOL 
-    "Use vendored third-party libraries")
-set(SDL3IMAGE_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
 # Download and configure SDL3_ttf
 FetchContent_Declare(
@@ -199,7 +187,7 @@ set(SDL3MIXER_DEPS_SHARED FALSE CACHE BOOL "Use shared dependencies")
 
 
 # Make the SDL3 packages available
-FetchContent_MakeAvailable(SDL3 SDL3_image SDL3_ttf SDL3_mixer)
+FetchContent_MakeAvailable(SDL3 SDL3_ttf SDL3_mixer)
 
 # Find all source files
 file(GLOB_RECURSE SOURCES
@@ -212,9 +200,13 @@ file(GLOB_RECURSE SOURCES
     "src/ai/*.cpp"
     "src/world/*.cpp"
     "src/utils/*.cpp"
+    "src/controllers/*.cpp"
 )
 
-# Create object library for shared compilation
+# Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)
+list(FILTER SOURCES EXCLUDE REGEX ".*HammerMain\\.cpp$")
+
+# Create object library for shared compilation (without main())
 add_library(HammerEngineObjects OBJECT ${SOURCES})
 target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
@@ -236,10 +228,22 @@ target_include_directories(HammerEngineObjects PRIVATE
 )
 target_link_libraries(HammerEngineObjects PUBLIC
     SDL3::SDL3
-    SDL3_image::SDL3_image
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
+
+# Link libatomic for 16-byte atomic operations (required on Linux with GCC/Clang)
+# Windows MSVC and macOS Apple Clang have built-in atomics, no external library needed
+if(NOT MSVC AND NOT APPLE)
+    target_link_libraries(HammerEngineObjects PUBLIC atomic)
+endif()
+
+# Apply aggressive optimization flags to our project targets only (not SDL3)
+# These flags like -ffast-math conflict with SDL3's audio code
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    separate_arguments(HAMMER_AGGRESSIVE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_AGGRESSIVE_CXX_FLAGS}")
+    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_AGGRESSIVE_CXX_FLAGS_LIST})
+endif()
 
 # Create shared library for tests
 add_library(HammerEngineLib STATIC $<TARGET_OBJECTS:HammerEngineObjects>)
@@ -260,7 +264,11 @@ else()
 endif()
 
 # Set the output name with proper extension
-add_executable(${PROJECT_NAME} $<TARGET_OBJECTS:HammerEngineObjects>)
+# Include HammerMain.cpp (contains main()) only in the executable, not the library
+add_executable(${PROJECT_NAME}
+    $<TARGET_OBJECTS:HammerEngineObjects>
+    src/core/HammerMain.cpp
+)
 set_target_properties(${PROJECT_NAME} PROPERTIES
     OUTPUT_NAME "${PROJECT_NAME}${EXE_EXTENSION}"
 )
@@ -386,6 +394,26 @@ if(APPLE)
             BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
             INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
         )
+
+        # Copy SDL3 dylibs to app bundle Frameworks directory for release
+        # Use TARGET_SONAME_FILE to get the versioned symlink name (e.g., libSDL3_ttf.0.dylib)
+        # which is what the binary actually links against
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks"
+            # Copy SDL3 (already has correct soname)
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_SONAME_FILE:SDL3::SDL3>
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
+            # Copy SDL3_ttf with soname
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_SONAME_FILE:SDL3_ttf::SDL3_ttf>
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
+            # Copy SDL3_mixer with soname
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_SONAME_FILE:SDL3_mixer::SDL3_mixer>
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
+        )
     endif()
 endif()
 
@@ -404,7 +432,6 @@ if(WIN32)
     add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:SDL3::SDL3>
-            $<TARGET_FILE:SDL3_image::SDL3_image>
             $<TARGET_FILE:SDL3_ttf::SDL3_ttf>
             $<TARGET_FILE:SDL3_mixer::SDL3_mixer>
             $<TARGET_FILE_DIR:${PROJECT_NAME}>
@@ -415,7 +442,6 @@ endif()
 if(WIN32)
     install(FILES
         $<TARGET_FILE:SDL3::SDL3>
-        $<TARGET_FILE:SDL3_image::SDL3_image>
         $<TARGET_FILE:SDL3_ttf::SDL3_ttf>
         $<TARGET_FILE:SDL3_mixer::SDL3_mixer>
         DESTINATION bin
@@ -427,8 +453,8 @@ file(MAKE_DIRECTORY ${OUTPUT_DEBUG_DIR})
 file(MAKE_DIRECTORY ${OUTPUT_RELEASE_DIR})
 
 # Display status message indicating successful configuration
-message(STATUS 
-    "SDL3, SDL3_image, SDL3_ttf, and SDL3_mixer have been configured successfully")
+message(STATUS
+    "SDL3, SDL3_ttf, and SDL3_mixer have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
 

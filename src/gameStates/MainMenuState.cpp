@@ -111,13 +111,13 @@ void MainMenuState::update([[maybe_unused]] float deltaTime) {
   // UI updates handled in render() for thread safety
 }
 
-void MainMenuState::render() {
+void MainMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
   // Update and render UI components through UIManager using cached renderer for cleaner API
   auto& ui = UIManager::Instance();
   if (!ui.isShutdown()) {
       ui.update(0.0); // UI updates are not time-dependent in this state
   }
-  ui.render(); // Uses cached renderer from GameEngine
+  ui.render(renderer);
 }
 
 bool MainMenuState::exit() {
@@ -180,10 +180,3 @@ std::string MainMenuState::getName() const {
   return "MainMenuState";
 }
 
-void MainMenuState::onWindowResize(int newLogicalWidth,
-                                    int newLogicalHeight) {
-  // Auto-repositioning now handled by UIManager - no manual updates needed!
-  GAMESTATE_DEBUG("MainMenuState: Window resized to " +
-                  std::to_string(newLogicalWidth) + "x" +
-                  std::to_string(newLogicalHeight) + " (auto-repositioning active)");
-}
