@@ -672,6 +672,101 @@ for (const auto& entity : m_entities) {
 }
 ```
 
+## Thread-Safe Interpolation
+
+The Camera implements lock-free atomic interpolation for smooth rendering at any display refresh rate, regardless of the fixed timestep update rate.
+
+### Why Interpolation?
+
+Without interpolation, the camera "stutters" because:
+- Game logic updates at fixed rate (e.g., 60 Hz)
+- Display may render at different rate (e.g., 144 Hz)
+- Camera jumps to discrete positions each update
+
+### Atomic Interpolation State
+
+The camera uses a 16-byte aligned atomic struct for thread-safe position sharing:
+
+```cpp
+struct alignas(16) InterpolationState {
+    float posX{0.0f}, posY{0.0f};
+    float prevPosX{0.0f}, prevPosY{0.0f};
+};
+std::atomic<InterpolationState> m_interpState{};
+```
+
+**Why 16 bytes?**
+- Lock-free on x86-64 (CMPXCHG16B instruction)
+- Lock-free on ARM64 (LDXP/STXP instruction pair)
+- All four floats read/written atomically as one unit
+
+### Using getRenderOffset()
+
+The `getRenderOffset()` method provides interpolated camera position for rendering:
+
+```cpp
+Vector2D getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const;
+```
+
+**Parameters:**
+- `offsetX`, `offsetY`: Output camera offset for rendering (top-left of view)
+- `interpolationAlpha`: Blend factor from GameLoop (0.0 = previous, 1.0 = current)
+
+**Returns:** Interpolated center position
+
+### Integration Pattern
+
+```cpp
+// In GameState::render()
+void GamePlayState::render(float interpolationAlpha) {
+    // Get interpolated camera offset (single atomic read internally)
+    float cameraX, cameraY;
+    m_camera->getRenderOffset(cameraX, cameraY, interpolationAlpha);
+
+    // Use for entity rendering
+    for (auto& entity : m_entities) {
+        entity->render(renderer, cameraX, cameraY, interpolationAlpha);
+    }
+
+    // Use for world rendering
+    WorldManager::Instance().render(renderer, cameraX, cameraY, viewW, viewH);
+}
+```
+
+### Thread Safety Guarantees
+
+| Operation | Thread | Guarantee |
+|-----------|--------|-----------|
+| `update()` | Update thread | Publishes new state atomically |
+| `getRenderOffset()` | Render thread | Lock-free atomic read |
+| `setPosition()` | Update thread | Resets interpolation state |
+
+### Avoiding Jitter
+
+**Problem:** Multiple atomic reads in render path cause inconsistent values:
+
+```cpp
+// WRONG: Two atomic reads may see different updates
+float x = camera.getX();  // Read 1
+float y = camera.getY();  // Read 2 - may be from different update!
+```
+
+**Solution:** Single atomic read through `getRenderOffset()`:
+
+```cpp
+// CORRECT: One atomic read, consistent values
+float cameraX, cameraY;
+camera.getRenderOffset(cameraX, cameraY, alpha);
+```
+
+### Performance
+
+- **Lock-free**: No mutex contention between threads
+- **Single atomic operation**: One load per frame in render path
+- **Cache friendly**: 16-byte aligned for optimal access
+
+For more details on the interpolation system, see `docs/architecture/InterpolationSystem.md`.
+
 ## Coordinate System
 
 ### World Space
