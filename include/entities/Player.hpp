@@ -104,5 +104,15 @@ private:
   // Equipment slots - store handles instead of item IDs
   std::unordered_map<std::string, HammerEngine::ResourceHandle>
       m_equippedItems; // slot -> itemHandle
+
+  // PERFORMANCE: Cached world bounds to avoid WorldManager::Instance() call every frame
+  // Refreshed automatically when bounds are invalid (all zeros)
+  float m_cachedWorldMinX{0.0f};
+  float m_cachedWorldMinY{0.0f};
+  float m_cachedWorldMaxX{0.0f};
+  float m_cachedWorldMaxY{0.0f};
+  bool m_worldBoundsCached{false};
+
+  void refreshWorldBoundsCache();
 };
 #endif // PLAYER_HPP

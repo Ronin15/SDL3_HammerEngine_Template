@@ -210,8 +210,12 @@ void GameTime::update(float deltaTime)
     // Advance game time
     advanceTime(deltaGameSeconds);
 
-    // Update calendar (month, year, season) based on new day
-    updateCalendarState();
+    // PERFORMANCE: Only recalculate calendar when day actually changes
+    // Calendar state (month, year, season) only needs updating on day transitions
+    if (m_currentDay != m_previousDay)
+    {
+        updateCalendarState();
+    }
 
     // Dispatch time change events
     dispatchTimeEvents();
