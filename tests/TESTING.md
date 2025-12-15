@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 83+ test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 58 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, GameTime simulation, controller systems, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -61,10 +61,20 @@ The Hammer Game Engine has the following test suites:
 7. **Utility System Tests**
    - JsonReader Tests: RFC 8259 compliant JSON parser validation with comprehensive error handling and type safety testing
 
+8. **GameTime System Tests**
+   - GameTime Tests: Validate core time advancement, tick system, and time configuration
+   - GameTime Calendar Tests: Test fantasy calendar (months, days, year cycles)
+   - GameTime Season Tests: Validate seasonal transitions and weather probability changes
+
+9. **Controller Tests**
+   - TimeController Tests: Time event logging and status formatting
+   - WeatherController Tests: Weather event coordination and particle integration
+   - DayNightController Tests: Time period tracking and visual transitions
+
 **Test Execution Categories:**
-- **Core Tests** (11 suites): Fast functional validation (~4-8 minutes total)
+- **Core Tests** (13 suites): Fast functional validation (~4-8 minutes total)
 - **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
-- **Total Coverage**: 25+ test executables with comprehensive automation scripts
+- **Total Coverage**: 58 test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -87,6 +97,8 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_collision_tests.sh             # Collision system and spatial hash tests
 ./tests/test_scripts/run_pathfinding_tests.sh           # Pathfinding algorithm and grid tests
 ./tests/test_scripts/run_pathfinder_ai_contention_tests.sh  # PathfinderManager & AIManager WorkerBudget coordination tests
+./tests/test_scripts/run_game_time_tests.sh               # GameTime system tests
+./tests/test_scripts/run_controller_tests.sh              # Controller tests (Time, Weather, DayNight)
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -139,6 +151,8 @@ tests/test_scripts/run_save_tests.bat                   # Save manager and Binar
 tests/test_scripts/run_event_tests.bat                  # Event manager tests
 tests/test_scripts/run_collision_tests.bat              # Collision system and spatial hash tests
 tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm and grid tests
+tests/test_scripts/run_game_time_tests.bat              # GameTime system tests
+tests/test_scripts/run_controller_tests.bat             # Controller tests (Time, Weather, DayNight)
 
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
@@ -905,6 +919,68 @@ struct ParticleManagerTestFixture {
 2. **Multiple update cycles:** Weather and effect tests need multiple `update()` calls
 3. **Timing considerations:** Performance tests should account for system variations
 4. **Resource cleanup:** Add delays between resource-intensive tests
+
+### GameTime System Tests
+
+Located in `tests/core/`, these tests validate the fantasy calendar and time simulation:
+
+#### Test Coverage
+
+1. **GameTime Core Tests** (`GameTimeTest.cpp`):
+   - Time advancement and tick system
+   - Configuration and initialization
+   - Time scale modifications
+
+2. **Calendar Tests** (`GameTimeCalendarTest.cpp`):
+   - Fantasy month system (Bloomtide, Sunpeak, Harvestmoon, Frosthold)
+   - Day advancement (30 days per month)
+   - Year cycle transitions
+
+3. **Season Tests** (`GameTimeSeasonTest.cpp`):
+   - Season transitions (Spring→Summer→Fall→Winter)
+   - Weather probability changes per season
+   - Event dispatching on season change
+
+#### Running GameTime Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_game_time_tests.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_game_time_tests.bat [--verbose]
+```
+
+### Controller Tests
+
+Located in `tests/controllers/`, these tests validate the state-scoped controller pattern:
+
+#### Test Coverage
+
+1. **TimeController Tests** (`TimeControllerTest.cpp`):
+   - Subscribe/unsubscribe lifecycle
+   - Time event logging
+   - Status format modes
+
+2. **WeatherController Tests** (`WeatherControllerTest.cpp`):
+   - Weather event coordination
+   - ParticleManager integration
+   - Weather state transitions
+
+3. **DayNightController Tests** (`DayNightControllerTest.cpp`):
+   - Time period tracking (Morning/Day/Evening/Night)
+   - Visual transition handling
+   - Period change event processing
+
+#### Running Controller Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_controller_tests.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_controller_tests.bat [--verbose]
+```
 
 ## Adding New Tests
 
