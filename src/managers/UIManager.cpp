@@ -2826,8 +2826,6 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
 
   // Apply content padding (scaled for resolution-aware sizing)
   int scaledContentPadding = static_cast<int>(component->m_contentPadding * m_globalScale);
-  int totalWidth = contentWidth + (scaledContentPadding * 2);
-  int totalHeight = contentHeight + (scaledContentPadding * 2);
 
   // Implement grow-only behavior for lists to prevent shrinking
   if (component->m_type == UIComponentType::LIST) {
@@ -2840,6 +2838,7 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
 
   // Apply size constraints - ONLY modify width/height, preserve x/y position
   if (component->m_autoWidth) {
+    int totalWidth = contentWidth + (scaledContentPadding * 2);
     int oldWidth = component->m_bounds.width;
     component->m_bounds.width =
         std::max(component->m_minBounds.width,
@@ -2859,6 +2858,7 @@ void UIManager::calculateOptimalSize(std::shared_ptr<UIComponent> component) {
   }
 
   if (component->m_autoHeight) {
+    int totalHeight = contentHeight + (scaledContentPadding * 2);
     component->m_bounds.height =
         std::max(component->m_minBounds.height,
                  std::min(totalHeight, component->m_maxBounds.height));

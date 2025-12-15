@@ -300,23 +300,22 @@ void PathfindingGrid::markDirtyRegion(int cellX, int cellY, int width, int heigh
     if (m_dirtyRegions.size() > MAX_DIRTY_REGIONS) {
         // Find two closest regions and merge them
         // Simple heuristic: merge first two regions (could be improved)
-        if (m_dirtyRegions.size() >= 2) {
-            auto& r1 = m_dirtyRegions[0];
-            auto& r2 = m_dirtyRegions[1];
+        // Note: size() > 32 guarantees size() >= 2, so no additional check needed
+        auto& r1 = m_dirtyRegions[0];
+        auto& r2 = m_dirtyRegions[1];
 
-            int mergedX1 = std::min(r1.x, r2.x);
-            int mergedY1 = std::min(r1.y, r2.y);
-            int mergedX2 = std::max(r1.x + r1.width, r2.x + r2.width);
-            int mergedY2 = std::max(r1.y + r1.height, r2.y + r2.height);
+        int mergedX1 = std::min(r1.x, r2.x);
+        int mergedY1 = std::min(r1.y, r2.y);
+        int mergedX2 = std::max(r1.x + r1.width, r2.x + r2.width);
+        int mergedY2 = std::max(r1.y + r1.height, r2.y + r2.height);
 
-            r1.x = mergedX1;
-            r1.y = mergedY1;
-            r1.width = mergedX2 - mergedX1;
-            r1.height = mergedY2 - mergedY1;
+        r1.x = mergedX1;
+        r1.y = mergedY1;
+        r1.width = mergedX2 - mergedX1;
+        r1.height = mergedY2 - mergedY1;
 
-            // Remove second region
-            m_dirtyRegions.erase(m_dirtyRegions.begin() + 1);
-        }
+        // Remove second region
+        m_dirtyRegions.erase(m_dirtyRegions.begin() + 1);
     }
 }
 

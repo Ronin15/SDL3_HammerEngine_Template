@@ -424,11 +424,12 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
 
             const size_t currentCapacity = capacity.load(std::memory_order_relaxed);
             const size_t currentSize = activeParticles.flags.size();
-            
+
             // CRITICAL FIX: Check buffer consistency before adding particles
+            // Note: flags.size() == currentSize is tautological (currentSize is flags.size())
+            // We keep posX.size() check as it validates cross-buffer consistency
             if (currentSize < currentCapacity &&
-                activeParticles.posX.size() == currentSize &&
-                activeParticles.flags.size() == currentSize) {
+                activeParticles.posX.size() == currentSize) {
                 UnifiedParticle particle;
                 particle.position = req.position;
                 particle.velocity = req.velocity;
