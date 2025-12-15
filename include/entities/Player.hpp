@@ -85,6 +85,9 @@ public:
   // Physics body registration - call after construction
   void ensurePhysicsBodyRegistered();
 
+  // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
+  void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();
@@ -106,12 +109,13 @@ private:
       m_equippedItems; // slot -> itemHandle
 
   // PERFORMANCE: Cached world bounds to avoid WorldManager::Instance() call every frame
-  // Refreshed automatically when bounds are invalid (all zeros)
+  // Refreshed automatically when bounds are invalid or world version changes
   float m_cachedWorldMinX{0.0f};
   float m_cachedWorldMinY{0.0f};
   float m_cachedWorldMaxX{0.0f};
   float m_cachedWorldMaxY{0.0f};
   bool m_worldBoundsCached{false};
+  uint64_t m_cachedWorldVersion{0};  // Track world version for auto-invalidation
 
   void refreshWorldBoundsCache();
 };
