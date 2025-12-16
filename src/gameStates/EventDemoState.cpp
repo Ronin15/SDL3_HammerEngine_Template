@@ -10,7 +10,6 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
-#include "core/GameTime.hpp"
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -500,9 +499,6 @@ void EventDemoState::update(float deltaTime) {
 
     return;  // Don't continue with rest of update
   }
-
-  // Update game time (advances calendar, dispatches time events)
-  GameTime::Instance().update(deltaTime);
 
   // Update timing
   updateDemoTimer(deltaTime);

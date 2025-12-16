@@ -4,7 +4,7 @@
  */
 
 #include "controllers/world/DayNightController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include <format>
 
@@ -24,7 +24,7 @@ void DayNightController::subscribe()
     addHandlerToken(timeToken);
 
     // Initialize to current time period
-    float currentHour = GameTime::Instance().getGameHour();
+    float currentHour = GameTimeManager::Instance().getGameHour();
     m_currentPeriod = hourToTimePeriod(currentHour);
     m_previousPeriod = m_currentPeriod;
 
@@ -98,7 +98,7 @@ TimePeriodVisuals DayNightController::getCurrentVisuals() const
 
 TimePeriod DayNightController::hourToTimePeriod(float hour)
 {
-    // Time periods matching GameTime::getTimeOfDayName() logic:
+    // Time periods matching GameTimeManager::getTimeOfDayName() logic:
     // Morning: 5:00 - 8:00
     // Day:     8:00 - 17:00
     // Evening: 17:00 - 21:00

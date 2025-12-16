@@ -58,7 +58,7 @@ for arg in "$@"; do
       echo -e "\nTest Categories:"
       echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,"
       echo -e "                    GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,"
-      echo -e "                    GameTime, Controllers (Time, Weather, DayNight),"
+      echo -e "                    GameTimeManager, Controllers (Time, Weather, DayNight),"
       echo -e "                    Integration tests (AI-Collision, Event Coordination)"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, Pathfinder,"
       echo -e "                    SIMD performance, and Integrated system benchmarks"

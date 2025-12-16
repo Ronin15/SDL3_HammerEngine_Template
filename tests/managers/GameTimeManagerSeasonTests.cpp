@@ -3,10 +3,10 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#define BOOST_TEST_MODULE GameTimeSeasonTests
+#define BOOST_TEST_MODULE GameTimeManagerSeasonTests
 #include <boost/test/unit_test.hpp>
 
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <cmath>
 #include <string>
 
@@ -21,20 +21,20 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 // Test Fixture
 // ============================================================================
 
-class GameTimeSeasonFixture {
+class GameTimeManagerSeasonFixture {
 public:
-    GameTimeSeasonFixture() {
-        gameTime = &GameTime::Instance();
+    GameTimeManagerSeasonFixture() {
+        gameTime = &GameTimeManager::Instance();
         gameTime->init(12.0f, 1.0f);
     }
 
-    ~GameTimeSeasonFixture() {
-        gameTime->resume();
+    ~GameTimeManagerSeasonFixture() {
+        gameTime->setGlobalPause(false);
         gameTime->init(12.0f, 1.0f);
     }
 
 protected:
-    GameTime* gameTime;
+    GameTimeManager* gameTime;
 };
 
 // ============================================================================
@@ -150,7 +150,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // SEASON NAME TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(SeasonNameTests, GameTimeSeasonFixture)
+BOOST_FIXTURE_TEST_SUITE(SeasonNameTests, GameTimeManagerSeasonFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetSeasonName) {
     // Spring (days 1-30)
@@ -176,7 +176,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // GET SEASON CONFIG TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(GetSeasonConfigTests, GameTimeSeasonFixture)
+BOOST_FIXTURE_TEST_SUITE(GetSeasonConfigTests, GameTimeManagerSeasonFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetSeasonConfig) {
     // Set to spring
@@ -212,7 +212,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // CURRENT TEMPERATURE TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(CurrentTemperatureTests, GameTimeSeasonFixture)
+BOOST_FIXTURE_TEST_SUITE(CurrentTemperatureTests, GameTimeManagerSeasonFixture)
 
 BOOST_AUTO_TEST_CASE(TestCurrentTemperatureRange) {
     // Set to spring
@@ -262,7 +262,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // SEASON TRANSITION TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(SeasonTransitionTests, GameTimeSeasonFixture)
+BOOST_FIXTURE_TEST_SUITE(SeasonTransitionTests, GameTimeManagerSeasonFixture)
 
 BOOST_AUTO_TEST_CASE(TestSeasonTransitions) {
     // Start in spring

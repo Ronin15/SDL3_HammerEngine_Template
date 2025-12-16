@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "events/TimeEvent.hpp"
 #include "managers/EventManager.hpp"
 #include <cmath>
@@ -110,10 +110,10 @@ int CalendarConfig::getTotalDaysInYear() const
 }
 
 // ============================================================================
-// GameTime Implementation
+// GameTimeManager Implementation
 // ============================================================================
 
-GameTime::GameTime() :
+GameTimeManager::GameTimeManager() :
     m_currentHour(12.0f),
     m_currentDay(1),
     m_totalGameSeconds(43200.0f), // 12 hours in seconds
@@ -140,7 +140,7 @@ GameTime::GameTime() :
     updateCalendarState();
 }
 
-bool GameTime::init(float startHour, float timeScale)
+bool GameTimeManager::init(float startHour, float timeScale)
 {
     // Validate input parameters
     if (startHour < 0.0f || startHour >= 24.0f)
@@ -189,10 +189,10 @@ bool GameTime::init(float startHour, float timeScale)
     return true;
 }
 
-void GameTime::update(float deltaTime)
+void GameTimeManager::update(float deltaTime)
 {
-    // Do nothing if paused
-    if (m_isPaused)
+    // Do nothing if globally paused
+    if (m_globallyPaused.load(std::memory_order_acquire))
     {
         return;
     }
@@ -224,19 +224,22 @@ void GameTime::update(float deltaTime)
     checkWeatherUpdate();
 }
 
-void GameTime::pause()
+void GameTimeManager::setGlobalPause(bool paused)
 {
-    m_isPaused = true;
+    m_globallyPaused.store(paused, std::memory_order_release);
+    if (!paused)
+    {
+        // Reset last update time to avoid time jump after resume
+        m_lastUpdateTime = std::chrono::steady_clock::now();
+    }
 }
 
-void GameTime::resume()
+bool GameTimeManager::isGloballyPaused() const
 {
-    m_isPaused = false;
-    // Reset last update time to avoid time jump after resume
-    m_lastUpdateTime = std::chrono::steady_clock::now();
+    return m_globallyPaused.load(std::memory_order_acquire);
 }
 
-void GameTime::advanceTime(float deltaGameSeconds)
+void GameTimeManager::advanceTime(float deltaGameSeconds)
 {
     // Increment total game seconds
     m_totalGameSeconds += deltaGameSeconds;
@@ -251,7 +254,7 @@ void GameTime::advanceTime(float deltaGameSeconds)
     m_currentDay = newDay;
 }
 
-void GameTime::updateCalendarState()
+void GameTimeManager::updateCalendarState()
 {
     if (m_calendarConfig.months.empty())
     {
@@ -291,7 +294,7 @@ void GameTime::updateCalendarState()
     updateSeasonFromCalendar();
 }
 
-void GameTime::updateSeasonFromCalendar()
+void GameTimeManager::updateSeasonFromCalendar()
 {
     if (m_calendarConfig.months.empty())
     {
@@ -315,7 +318,7 @@ void GameTime::updateSeasonFromCalendar()
     }
 }
 
-void GameTime::dispatchTimeEvents()
+void GameTimeManager::dispatchTimeEvents()
 {
     // Check for hour change
     int currentHourInt = static_cast<int>(m_currentHour);
@@ -359,7 +362,7 @@ void GameTime::dispatchTimeEvents()
     }
 }
 
-void GameTime::checkWeatherUpdate()
+void GameTimeManager::checkWeatherUpdate()
 {
     if (!m_autoWeatherEnabled)
     {
@@ -392,7 +395,7 @@ void GameTime::checkWeatherUpdate()
     }
 }
 
-void GameTime::setGameHour(float hour)
+void GameTimeManager::setGameHour(float hour)
 {
     // Validate and set hour
     if (hour >= 0.0f && hour < 24.0f)
@@ -411,7 +414,7 @@ void GameTime::setGameHour(float hour)
     }
 }
 
-void GameTime::setDaylightHours(float sunrise, float sunset)
+void GameTimeManager::setDaylightHours(float sunrise, float sunset)
 {
     // Validate input
     if (sunrise >= 0.0f && sunrise < 24.0f &&
@@ -423,7 +426,7 @@ void GameTime::setDaylightHours(float sunrise, float sunset)
     }
 }
 
-void GameTime::setGameDay(int day)
+void GameTimeManager::setGameDay(int day)
 {
     m_currentDay = (day >= 1) ? day : 1;
     // Update totalGameSeconds to match the new day (preserving current hour)
@@ -432,7 +435,7 @@ void GameTime::setGameDay(int day)
     updateCalendarState();
 }
 
-bool GameTime::isDaytime() const
+bool GameTimeManager::isDaytime() const
 {
     if (m_sunriseHour < m_sunsetHour)
     {
@@ -446,12 +449,12 @@ bool GameTime::isDaytime() const
     }
 }
 
-bool GameTime::isNighttime() const
+bool GameTimeManager::isNighttime() const
 {
     return !isDaytime();
 }
 
-std::string_view GameTime::getTimeOfDayName() const
+std::string_view GameTimeManager::getTimeOfDayName() const
 {
     if (m_currentHour >= 5.0f && m_currentHour < 8.0f)
         return "Morning";
@@ -463,7 +466,7 @@ std::string_view GameTime::getTimeOfDayName() const
         return "Night";
 }
 
-int GameTime::getCurrentSeason(int daysPerSeason) const
+int GameTimeManager::getCurrentSeason(int daysPerSeason) const
 {
     // Validate input
     if (daysPerSeason <= 0)
@@ -477,7 +480,7 @@ int GameTime::getCurrentSeason(int daysPerSeason) const
     return seasonIndex;
 }
 
-std::string_view GameTime::formatCurrentTime(bool use24Hour)
+std::string_view GameTimeManager::formatCurrentTime(bool use24Hour)
 {
     int hours = static_cast<int>(m_currentHour);
     int minutes = static_cast<int>((m_currentHour - hours) * 60.0f);
@@ -512,13 +515,13 @@ std::string_view GameTime::formatCurrentTime(bool use24Hour)
 // Calendar Methods
 // ============================================================================
 
-void GameTime::setCalendarConfig(const CalendarConfig& config)
+void GameTimeManager::setCalendarConfig(const CalendarConfig& config)
 {
     m_calendarConfig = config;
     updateCalendarState();
 }
 
-std::string_view GameTime::getCurrentMonthName() const
+std::string_view GameTimeManager::getCurrentMonthName() const
 {
     if (m_calendarConfig.months.empty())
         return "Unknown";
@@ -532,7 +535,7 @@ std::string_view GameTime::getCurrentMonthName() const
     return "Unknown";
 }
 
-int GameTime::getDaysInCurrentMonth() const
+int GameTimeManager::getDaysInCurrentMonth() const
 {
     if (m_calendarConfig.months.empty())
     {
@@ -552,7 +555,7 @@ int GameTime::getDaysInCurrentMonth() const
 // Season Methods
 // ============================================================================
 
-std::string_view GameTime::getSeasonName() const
+std::string_view GameTimeManager::getSeasonName() const
 {
     switch (m_currentSeason)
     {
@@ -564,12 +567,12 @@ std::string_view GameTime::getSeasonName() const
     }
 }
 
-const SeasonConfig& GameTime::getSeasonConfig() const
+const SeasonConfig& GameTimeManager::getSeasonConfig() const
 {
     return m_currentSeasonConfig;
 }
 
-float GameTime::getCurrentTemperature() const
+float GameTimeManager::getCurrentTemperature() const
 {
     const auto& config = m_currentSeasonConfig;
 
@@ -596,7 +599,7 @@ float GameTime::getCurrentTemperature() const
 // Weather Methods
 // ============================================================================
 
-void GameTime::setWeatherCheckInterval(float gameHours)
+void GameTimeManager::setWeatherCheckInterval(float gameHours)
 {
     if (gameHours > 0.0f)
     {
@@ -604,12 +607,12 @@ void GameTime::setWeatherCheckInterval(float gameHours)
     }
 }
 
-WeatherType GameTime::rollWeatherForSeason() const
+WeatherType GameTimeManager::rollWeatherForSeason() const
 {
     return rollWeatherForSeason(m_currentSeason);
 }
 
-WeatherType GameTime::rollWeatherForSeason(Season season) const
+WeatherType GameTimeManager::rollWeatherForSeason(Season season) const
 {
     // Get weather probabilities for the season
     SeasonConfig config = SeasonConfig::getDefault(season);

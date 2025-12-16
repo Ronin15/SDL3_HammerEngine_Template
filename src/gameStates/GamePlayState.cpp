@@ -5,7 +5,7 @@
 
 #include "gameStates/GamePlayState.hpp"
 #include "core/GameEngine.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
 #include "gameStates/LoadingState.hpp"
@@ -71,15 +71,15 @@ bool GamePlayState::enter() {
     m_weatherController.subscribe();
 
     // Enable automatic weather changes
-    GameTime::Instance().enableAutoWeather(true);
+    GameTimeManager::Instance().enableAutoWeather(true);
 #ifdef NDEBUG
     // Release: normal pacing
-    GameTime::Instance().setWeatherCheckInterval(4.0f);
-    GameTime::Instance().setTimeScale(60.0f);
+    GameTimeManager::Instance().setWeatherCheckInterval(4.0f);
+    GameTimeManager::Instance().setTimeScale(60.0f);
 #else
     // Debug: faster changes for testing seasons/weather
-    GameTime::Instance().setWeatherCheckInterval(1.0f);
-    GameTime::Instance().setTimeScale(3600.0f);
+    GameTimeManager::Instance().setWeatherCheckInterval(1.0f);
+    GameTimeManager::Instance().setTimeScale(3600.0f);
 #endif
 
     // Create event log for time/weather messages
@@ -193,7 +193,7 @@ void GamePlayState::update(float deltaTime) {
   }
 
   // Update game time (advances calendar, dispatches time events)
-  GameTime::Instance().update(deltaTime);
+  GameTimeManager::Instance().update(deltaTime);
 
   // Update player if it exists
   if (mp_Player) {
@@ -207,7 +207,7 @@ void GamePlayState::update(float deltaTime) {
   updateDayNightOverlay(deltaTime);
 
   // Update time status bar - direct query of GameTime (no event bridging)
-  auto& gt = GameTime::Instance();
+  auto& gt = GameTimeManager::Instance();
   m_statusBuffer.clear();
   std::format_to(std::back_inserter(m_statusBuffer),
                  "Day {} {}, Year {} | {} {} | {} | {}F | {}",
@@ -405,7 +405,7 @@ bool GamePlayState::exit() {
 
   // Unsubscribe weather controller and disable auto-weather
   m_weatherController.unsubscribe();
-  GameTime::Instance().enableAutoWeather(false);
+  GameTimeManager::Instance().enableAutoWeather(false);
 
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
@@ -526,13 +526,13 @@ void GamePlayState::handleInput() {
 #ifndef NDEBUG
   // Debug time speed controls: < (comma) = normal speed, > (period) = max speed
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_COMMA)) {
-    GameTime::Instance().setTimeScale(60.0f);
+    GameTimeManager::Instance().setTimeScale(60.0f);
     GAMEPLAY_INFO("Time scale set to NORMAL (60x)");
     auto& ui = UIManager::Instance();
     ui.addEventLogEntry("gameplay_event_log", "Time: NORMAL speed (60x)");
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_PERIOD)) {
-    GameTime::Instance().setTimeScale(3600.0f);
+    GameTimeManager::Instance().setTimeScale(3600.0f);
     GAMEPLAY_INFO("Time scale set to MAX (3600x)");
     auto& ui = UIManager::Instance();
     ui.addEventLogEntry("gameplay_event_log", "Time: MAX speed (3600x)");

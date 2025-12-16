@@ -73,7 +73,7 @@ Time status bar uses **direct query** (no controller bridging needed):
 ```cpp
 void GamePlayState::update(float deltaTime) {
     // Direct query of GameTime - simple and efficient
-    auto& gt = GameTime::Instance();
+    auto& gt = GameTimeManager::Instance();
     m_statusBuffer.clear();
     std::format_to(std::back_inserter(m_statusBuffer),
         "Day {} {} | {} | {}",
@@ -161,7 +161,7 @@ For data that updates every frame (status bars, counters), query the source dire
 
 ```cpp
 // GOOD: Direct query in update()
-auto& gt = GameTime::Instance();
+auto& gt = GameTimeManager::Instance();
 ui.setText("time", gt.formatCurrentTime());
 
 // AVOID: Event subscription for continuous display

@@ -3,14 +3,14 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#ifndef GAME_TIME_HPP
-#define GAME_TIME_HPP
+#ifndef GAME_TIME_MANAGER_HPP
+#define GAME_TIME_MANAGER_HPP
 
 /**
- * @file GameTime.hpp
+ * @file GameTimeManager.hpp
  * @brief Management of game time, including day/night cycles, calendar, and seasons
  *
- * The GameTime class provides functionality for:
+ * The GameTimeManager class provides functionality for:
  * - Tracking real-time vs. game time
  * - Day/night cycles with seasonal variations
  * - Fantasy calendar with custom months and years
@@ -19,6 +19,7 @@
  * - Time-based events and scheduling
  */
 
+#include <atomic>
 #include <chrono>
 #include <string>
 #include <string_view>
@@ -102,14 +103,14 @@ struct CalendarConfig
     int getTotalDaysInYear() const;
 };
 
-class GameTime {
+class GameTimeManager {
 public:
     /**
-     * @brief Get the singleton instance of GameTime
-     * @return Reference to the GameTime instance
+     * @brief Get the singleton instance of GameTimeManager
+     * @return Reference to the GameTimeManager instance
      */
-    static GameTime& Instance() {
-        static GameTime instance;
+    static GameTimeManager& Instance() {
+        static GameTimeManager instance;
         return instance;
     }
 
@@ -129,26 +130,22 @@ public:
     void update(float deltaTime);
 
     // ========================================================================
-    // Pause Control
+    // Global Pause Control (matching other managers)
     // ========================================================================
 
     /**
-     * @brief Pause time progression
-     * @note While paused, update() will not advance time or dispatch events
+     * @brief Set global pause state for time progression
+     * @param paused true to pause time updates, false to resume
+     * @note When paused, update() will not advance time or dispatch events
+     * @note Called by GameEngine::setGlobalPause() alongside other managers
      */
-    void pause();
+    void setGlobalPause(bool paused);
 
     /**
-     * @brief Resume time progression after pause
-     * @note Resets internal timing to avoid time jumps
+     * @brief Get current global pause state
+     * @return true if time updates are globally paused
      */
-    void resume();
-
-    /**
-     * @brief Check if time is currently paused
-     * @return True if paused, false if running
-     */
-    bool isPaused() const { return m_isPaused; }
+    bool isGloballyPaused() const;
 
     /**
      * @brief Get current game hour (0-23.999)
@@ -338,12 +335,12 @@ public:
 
 private:
     // Singleton constructor/destructor
-    GameTime();
-    ~GameTime() = default;
+    GameTimeManager();
+    ~GameTimeManager() = default;
 
     // Prevent copying
-    GameTime(const GameTime&) = delete;
-    GameTime& operator=(const GameTime&) = delete;
+    GameTimeManager(const GameTimeManager&) = delete;
+    GameTimeManager& operator=(const GameTimeManager&) = delete;
 
     // Time tracking
     float m_currentHour{12.0f};       // Current hour (0-23.999)
@@ -380,8 +377,8 @@ private:
     float m_lastWeatherCheckHour{0.0f};
     bool m_autoWeatherEnabled{false};
 
-    // Pause state
-    bool m_isPaused{false};
+    // Global pause state (atomic for thread safety, matching other managers)
+    std::atomic<bool> m_globallyPaused{false};
 
     // Format buffer for formatCurrentTime() - C++20 type-safe, zero allocations after init
     std::string m_timeFormatBuffer{};
@@ -394,4 +391,4 @@ private:
     void checkWeatherUpdate();
 };
 
-#endif // GAME_TIME_HPP
+#endif // GAME_TIME_MANAGER_HPP

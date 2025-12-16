@@ -14,7 +14,7 @@ WeatherController is a lightweight controller that bridges GameTime weather chec
 ## Event Flow
 
 ```
-GameTime::checkWeatherUpdate()
+GameTimeManager::checkWeatherUpdate()
   → WeatherCheckEvent (Deferred)
     → WeatherController handles it
       → EventManager::changeWeather() (Deferred)
@@ -26,10 +26,10 @@ GameTime::checkWeatherUpdate()
 
 ```cpp
 #include "controllers/world/WeatherController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 
 // In GameState::enter()
-GameTime::Instance().enableAutoWeather(true);  // Enable weather checks
+GameTimeManager::Instance().enableAutoWeather(true);  // Enable weather checks
 WeatherController::Instance().subscribe();
 
 // In GameState::exit()
@@ -105,12 +105,12 @@ enum class WeatherType {
 ```cpp
 // GamePlayState.cpp
 #include "controllers/world/WeatherController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 
 bool GamePlayState::enter() {
     // Enable automatic weather in GameTime
-    GameTime::Instance().enableAutoWeather(true);
-    GameTime::Instance().setWeatherCheckInterval(4.0f);  // Every 4 game hours
+    GameTimeManager::Instance().enableAutoWeather(true);
+    GameTimeManager::Instance().setWeatherCheckInterval(4.0f);  // Every 4 game hours
 
     // Subscribe WeatherController to handle weather checks
     WeatherController::Instance().subscribe();
@@ -151,7 +151,7 @@ If you want to override automatic weather:
 
 ```cpp
 // Disable auto weather
-GameTime::Instance().enableAutoWeather(false);
+GameTimeManager::Instance().enableAutoWeather(false);
 
 // Manually trigger weather change
 EventManager::Instance().changeWeather(WeatherType::Stormy);

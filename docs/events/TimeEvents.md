@@ -256,7 +256,7 @@ void onTimeEvent(const EventData& data) {
 
 All time events are dispatched with `EventManager::DispatchMode::Deferred`:
 
-- Events are queued during GameTime::update()
+- Events are queued during GameTimeManager::update()
 - Processed after update completes
 - Ensures consistent game state during handling
 - Prevents immediate side effects during time advancement
@@ -264,7 +264,7 @@ All time events are dispatched with `EventManager::DispatchMode::Deferred`:
 ## Event Flow
 
 ```
-GameTime::update(deltaTime)
+GameTimeManager::update(deltaTime)
   └── Time advances
         └── Change detected (hour/day/month/season/year)
               └── dispatchTimeEvents()

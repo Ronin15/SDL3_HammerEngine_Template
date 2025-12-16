@@ -3,10 +3,10 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#define BOOST_TEST_MODULE GameTimeTests
+#define BOOST_TEST_MODULE GameTimeManagerTests
 #include <boost/test/unit_test.hpp>
 
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <cmath>
 #include <string>
 
@@ -22,22 +22,22 @@ bool approxEqual(float a, float b, float epsilon = EPSILON) {
 // Test Fixture
 // ============================================================================
 
-class GameTimeTestFixture {
+class GameTimeManagerTestFixture {
 public:
-    GameTimeTestFixture() {
+    GameTimeManagerTestFixture() {
         // Get the singleton instance and initialize with default values
-        gameTime = &GameTime::Instance();
+        gameTime = &GameTimeManager::Instance();
         gameTime->init(12.0f, 1.0f);  // Start at noon, normal time scale
     }
 
-    ~GameTimeTestFixture() {
+    ~GameTimeManagerTestFixture() {
         // Reset to known state for next test
-        gameTime->resume();  // Ensure not paused
+        gameTime->setGlobalPause(false);  // Ensure not paused
         gameTime->init(12.0f, 1.0f);  // Reset to defaults
     }
 
 protected:
-    GameTime* gameTime;
+    GameTimeManager* gameTime;
 };
 
 // ============================================================================
@@ -47,8 +47,8 @@ protected:
 BOOST_AUTO_TEST_SUITE(SingletonTests)
 
 BOOST_AUTO_TEST_CASE(TestSingletonPattern) {
-    GameTime* instance1 = &GameTime::Instance();
-    GameTime* instance2 = &GameTime::Instance();
+    GameTimeManager* instance1 = &GameTimeManager::Instance();
+    GameTimeManager* instance2 = &GameTimeManager::Instance();
 
     BOOST_CHECK(instance1 == instance2);
     BOOST_CHECK(instance1 != nullptr);
@@ -60,7 +60,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // INITIALIZATION TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(InitializationTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(InitializationTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestInitializationWithDefaults) {
     // Re-init with defaults
@@ -110,7 +110,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // TIME PROGRESSION TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(TimeProgressionTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(TimeProgressionTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestTimeProgression) {
     // Init at midnight
@@ -182,21 +182,21 @@ BOOST_AUTO_TEST_SUITE_END()
 // PAUSE/RESUME TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(PauseResumeTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(PauseResumeTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestPauseResume) {
     gameTime->init(12.0f, 1.0f);
 
     // Initially not paused
-    BOOST_CHECK(!gameTime->isPaused());
+    BOOST_CHECK(!gameTime->isGloballyPaused());
 
     // Pause
-    gameTime->pause();
-    BOOST_CHECK(gameTime->isPaused());
+    gameTime->setGlobalPause(true);
+    BOOST_CHECK(gameTime->isGloballyPaused());
 
     // Resume
-    gameTime->resume();
-    BOOST_CHECK(!gameTime->isPaused());
+    gameTime->setGlobalPause(false);
+    BOOST_CHECK(!gameTime->isGloballyPaused());
 }
 
 BOOST_AUTO_TEST_CASE(TestUpdateWhilePaused) {
@@ -204,7 +204,7 @@ BOOST_AUTO_TEST_CASE(TestUpdateWhilePaused) {
     float initialHour = gameTime->getGameHour();
 
     // Pause and update
-    gameTime->pause();
+    gameTime->setGlobalPause(true);
     gameTime->update(3600.0f);
 
     // Time should not have advanced
@@ -216,8 +216,8 @@ BOOST_AUTO_TEST_CASE(TestResumeAfterPause) {
     gameTime->init(12.0f, 1.0f);
 
     // Pause, then resume
-    gameTime->pause();
-    gameTime->resume();
+    gameTime->setGlobalPause(true);
+    gameTime->setGlobalPause(false);
 
     float initialHour = gameTime->getGameHour();
 
@@ -234,7 +234,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // DAYTIME/NIGHTTIME TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(DaytimeNighttimeTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(DaytimeNighttimeTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestDaytimeDetection) {
     // Set to noon - should be daytime
@@ -290,7 +290,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // TIME OF DAY NAME TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(TimeOfDayNameTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(TimeOfDayNameTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestTimeOfDayName) {
     // Morning: 5:00 - 8:00
@@ -337,7 +337,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // SET GAME HOUR/DAY TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(SetGameHourDayTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(SetGameHourDayTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestSetGameHour) {
     gameTime->init(12.0f, 1.0f);
@@ -397,7 +397,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // FORMAT TIME TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(FormatTimeTests, GameTimeTestFixture)
+BOOST_FIXTURE_TEST_SUITE(FormatTimeTests, GameTimeManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestFormatCurrentTime24Hour) {
     gameTime->init(14.5f, 1.0f);  // 2:30 PM

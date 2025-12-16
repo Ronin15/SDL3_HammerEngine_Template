@@ -7,7 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "controllers/world/WeatherController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
@@ -25,7 +25,7 @@ public:
         EventManagerTestAccess::reset();
 
         // Initialize GameTime
-        GameTime::Instance().init(12.0f, 1.0f);
+        GameTimeManager::Instance().init(12.0f, 1.0f);
     }
 
     ~WeatherControllerTestFixture() {

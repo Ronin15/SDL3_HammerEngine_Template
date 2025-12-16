@@ -3,30 +3,30 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-#define BOOST_TEST_MODULE GameTimeCalendarTests
+#define BOOST_TEST_MODULE GameTimeManagerCalendarTests
 #include <boost/test/unit_test.hpp>
 
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <string>
 
 // ============================================================================
 // Test Fixture
 // ============================================================================
 
-class GameTimeCalendarFixture {
+class GameTimeManagerCalendarFixture {
 public:
-    GameTimeCalendarFixture() {
-        gameTime = &GameTime::Instance();
+    GameTimeManagerCalendarFixture() {
+        gameTime = &GameTimeManager::Instance();
         gameTime->init(12.0f, 1.0f);
     }
 
-    ~GameTimeCalendarFixture() {
-        gameTime->resume();
+    ~GameTimeManagerCalendarFixture() {
+        gameTime->setGlobalPause(false);
         gameTime->init(12.0f, 1.0f);
     }
 
 protected:
-    GameTime* gameTime;
+    GameTimeManager* gameTime;
 };
 
 // ============================================================================
@@ -92,7 +92,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // MONTH PROGRESSION TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(MonthProgressionTests, GameTimeCalendarFixture)
+BOOST_FIXTURE_TEST_SUITE(MonthProgressionTests, GameTimeManagerCalendarFixture)
 
 BOOST_AUTO_TEST_CASE(TestInitialCalendarState) {
     gameTime->init(12.0f, 1.0f);
@@ -176,7 +176,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // YEAR PROGRESSION TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(YearProgressionTests, GameTimeCalendarFixture)
+BOOST_FIXTURE_TEST_SUITE(YearProgressionTests, GameTimeManagerCalendarFixture)
 
 BOOST_AUTO_TEST_CASE(TestYearProgression) {
     gameTime->init(12.0f, 1.0f);
@@ -224,7 +224,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // SEASON FROM MONTH TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(SeasonFromMonthTests, GameTimeCalendarFixture)
+BOOST_FIXTURE_TEST_SUITE(SeasonFromMonthTests, GameTimeManagerCalendarFixture)
 
 BOOST_AUTO_TEST_CASE(TestSeasonFromMonth) {
     gameTime->init(12.0f, 1.0f);
@@ -266,7 +266,7 @@ BOOST_AUTO_TEST_SUITE_END()
 // CUSTOM CALENDAR TESTS
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(CustomCalendarTests, GameTimeCalendarFixture)
+BOOST_FIXTURE_TEST_SUITE(CustomCalendarTests, GameTimeManagerCalendarFixture)
 
 BOOST_AUTO_TEST_CASE(TestSetCustomCalendar) {
     CalendarConfig customConfig;

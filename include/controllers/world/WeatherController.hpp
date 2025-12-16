@@ -10,14 +10,14 @@
  * @file WeatherController.hpp
  * @brief Lightweight controller that bridges GameTime weather checks to actual weather changes
  *
- * WeatherController subscribes to WeatherCheckEvent (from GameTime) and triggers actual
+ * WeatherController subscribes to WeatherCheckEvent (from GameTimeManager) and triggers actual
  * weather changes via EventManager::changeWeather(). This is a controller, not a manager -
  * it's an event subscriber that reacts to time events, not a system initialized in GameEngine.
  *
  * Ownership: GameState owns the controller instance (not a singleton).
  *
  * Event flow:
- *   GameTime::checkWeatherUpdate() -> WeatherCheckEvent (Deferred)
+ *   GameTimeManager::checkWeatherUpdate() -> WeatherCheckEvent (Deferred)
  *     -> WeatherController handles it
  *     -> EventManager::changeWeather() (Deferred)
  *     -> WeatherEvent dispatched

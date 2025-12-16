@@ -8,7 +8,7 @@
 
 #include "events/Event.hpp"
 #include "events/WeatherEvent.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <string>
 
 /**

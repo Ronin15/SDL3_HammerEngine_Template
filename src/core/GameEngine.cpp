@@ -8,7 +8,7 @@
 #include "SDL3/SDL_surface.h"
 #include "SDL3/SDL_video.h"
 #include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "gameStates/AIDemoState.hpp"
@@ -641,7 +641,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Initialize GameTime (fast, no threading needed)
   // Time scale: 60.0 = 1 real second equals 1 game minute
   GAMEENGINE_INFO("Initializing GameTime system");
-  if (!GameTime::Instance().init(12.0f, 60.0f)) {
+  if (!GameTimeManager::Instance().init(12.0f, 60.0f)) {
     GAMEENGINE_ERROR("Failed to initialize GameTime");
     return false;
   }
@@ -1521,6 +1521,9 @@ void GameEngine::setGlobalPause(bool paused) {
   if (mp_pathfinderManager) {
     mp_pathfinderManager->setGlobalPause(paused);
   }
+
+  // Pause GameTime Manager
+  GameTimeManager::Instance().setGlobalPause(paused);
 
   if (paused) {
     GAMEENGINE_INFO("Game globally paused - all managers idle");
