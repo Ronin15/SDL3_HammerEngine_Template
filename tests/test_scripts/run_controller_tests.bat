@@ -1,5 +1,5 @@
 @echo off
-rem World Controller Test Runner (Time, Weather, DayNight)
+rem World Controller Test Runner (Weather, DayNight)
 rem Copyright 2025 Hammer Forged Games
 
 setlocal enabledelayedexpansion
@@ -14,7 +14,6 @@ set "NC=[0m"
 rem Process command line arguments
 set VERBOSE=false
 set RUN_ALL=true
-set RUN_TIME=false
 set RUN_WEATHER=false
 set RUN_DAYNIGHT=false
 
@@ -22,12 +21,6 @@ set RUN_DAYNIGHT=false
 if "%~1"=="" goto done_parsing
 if /i "%~1"=="--verbose" (
     set VERBOSE=true
-    shift
-    goto parse_args
-)
-if /i "%~1"=="--time" (
-    set RUN_ALL=false
-    set RUN_TIME=true
     shift
     goto parse_args
 )
@@ -49,7 +42,6 @@ if /i "%~1"=="--help" (
     echo.
     echo Options:
     echo   --verbose      Run tests with verbose output
-    echo   --time         Run only TimeController tests
     echo   --weather      Run only WeatherController tests
     echo   --daynight     Run only DayNightController tests
     echo   --help         Show this help message
@@ -67,11 +59,9 @@ set OVERALL_RESULT=0
 
 rem Run selected tests
 if "%RUN_ALL%"=="true" (
-    call :run_single_test time_controller_tests
     call :run_single_test weather_controller_tests
     call :run_single_test day_night_controller_tests
 ) else (
-    if "%RUN_TIME%"=="true" call :run_single_test time_controller_tests
     if "%RUN_WEATHER%"=="true" call :run_single_test weather_controller_tests
     if "%RUN_DAYNIGHT%"=="true" call :run_single_test day_night_controller_tests
 )
@@ -128,7 +118,6 @@ if !OVERALL_RESULT! neq 0 (
 ) else (
     echo.
     echo !GREEN!All controller tests completed successfully!!NC!
-    echo !GREEN!  TimeController tests!NC!
     echo !GREEN!  WeatherController tests!NC!
     echo !GREEN!  DayNightController tests!NC!
     exit /b 0

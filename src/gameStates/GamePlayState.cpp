@@ -19,15 +19,11 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
-#include "controllers/world/WeatherController.hpp"
-#include "controllers/world/TimeController.hpp"
-#include "controllers/world/DayNightController.hpp"
 #include "managers/UIConstants.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <random>
 
 
 bool GamePlayState::enter() {
@@ -71,8 +67,8 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
-    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
-    WeatherController::Instance().subscribe();
+    // Subscribe weather controller (owned by this state)
+    m_weatherController.subscribe();
 
     // Enable automatic weather changes
     GameTime::Instance().enableAutoWeather(true);
@@ -98,9 +94,6 @@ bool GamePlayState::enter() {
     eventLogPos.widthPercent = UIConstants::EVENT_LOG_WIDTH_PERCENT;
     ui.setComponentPositioning("gameplay_event_log", eventLogPos);
 
-    // Subscribe to time events for event log display
-    TimeController::Instance().subscribe("gameplay_event_log");
-
     // Create time status label at top-right of screen (no panel, just label)
     int barHeight = UIConstants::STATUS_BAR_HEIGHT;
     int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
@@ -120,10 +113,10 @@ bool GamePlayState::enter() {
     labelPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("gameplay_time_label", labelPos);
 
-    // Connect status label with extended format mode (zero allocation)
-    auto& timeController = TimeController::Instance();
-    timeController.setStatusLabel("gameplay_time_label");
-    timeController.setStatusFormatMode(TimeController::StatusFormatMode::Extended);
+    // Pre-allocate status buffer for zero per-frame allocations
+    m_statusBuffer.reserve(256);
+
+    auto& eventMgr = EventManager::Instance();
 
     // Create FPS counter label (top-left, initially hidden, toggled with F2)
     ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12}, "FPS: --");
@@ -136,11 +129,10 @@ bool GamePlayState::enter() {
     fpsPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("gameplay_fps", fpsPos);
 
-    // Subscribe to day/night visual effects (controller dispatches events)
-    DayNightController::Instance().subscribe();
+    // Subscribe day/night controller (owned by this state)
+    m_dayNightController.subscribe();
 
     // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
-    auto& eventMgr = EventManager::Instance();
     m_dayNightEventToken = eventMgr.registerHandlerWithToken(
         EventTypeId::Time,
         [this](const EventData& data) { onTimePeriodChanged(data); }
@@ -166,7 +158,7 @@ bool GamePlayState::enter() {
   return true;
 }
 
-void GamePlayState::update([[maybe_unused]] float deltaTime) {
+void GamePlayState::update(float deltaTime) {
   // Check if we need to transition to loading screen (do this in update, not enter)
   if (m_needsLoading) {
     m_needsLoading = false;  // Clear flag
@@ -214,6 +206,18 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   // Update day/night overlay interpolation
   updateDayNightOverlay(deltaTime);
 
+  // Update time status bar - direct query of GameTime (no event bridging)
+  auto& gt = GameTime::Instance();
+  m_statusBuffer.clear();
+  std::format_to(std::back_inserter(m_statusBuffer),
+                 "Day {} {}, Year {} | {} {} | {} | {}F | {}",
+                 gt.getDayOfMonth(), gt.getCurrentMonthName(), gt.getGameYear(),
+                 gt.formatCurrentTime(), gt.getTimeOfDayName(),
+                 gt.getSeasonName(),
+                 static_cast<int>(gt.getCurrentTemperature()),
+                 m_weatherController.getCurrentWeatherString());
+  UIManager::Instance().setText("gameplay_time_label", m_statusBuffer);
+
   // Update UI
   auto &ui = UIManager::Instance();
   if (!ui.isShutdown()) {
@@ -224,8 +228,6 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 }
 
 void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
-  const auto &gameEngine = GameEngine::Instance();
-
   // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
@@ -279,12 +281,16 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   }
 
   // Render day/night overlay tint (now at 1.0 scale, after zoom reset)
-  renderDayNightOverlay(renderer,
-      gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+  // Uses camera viewport (synced with engine) - avoids GameEngine access in hot path
+  if (m_camera) {
+    const auto& viewport = m_camera->getViewport();
+    renderDayNightOverlay(renderer,
+        static_cast<int>(viewport.width), static_cast<int>(viewport.height));
+  }
 
   // Update FPS display if visible (zero-allocation, only when changed)
   if (m_fpsVisible) {
-    float currentFPS = gameEngine.getCurrentFPS();
+    float currentFPS = GameEngine::Instance().getCurrentFPS();
     // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
       m_fpsBuffer.clear();
@@ -397,15 +403,15 @@ bool GamePlayState::exit() {
   mp_worldMgr = nullptr;
   mp_uiMgr = nullptr;
 
-  // Unsubscribe from automatic weather events and disable auto-weather
-  WeatherController::Instance().unsubscribe();
+  // Unsubscribe weather controller and disable auto-weather
+  m_weatherController.unsubscribe();
   GameTime::Instance().enableAutoWeather(false);
 
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
 
-  // Unsubscribe from day/night visual effects
-  DayNightController::Instance().unsubscribe();
+  // Unsubscribe day/night controller
+  m_dayNightController.unsubscribe();
 
   // Unsubscribe from TimePeriodChangedEvent
   if (m_dayNightSubscribed) {
@@ -418,10 +424,6 @@ bool GamePlayState::exit() {
     EventManager::Instance().removeHandler(m_weatherEventToken);
     m_weatherSubscribed = false;
   }
-
-  // Reset status format mode and unsubscribe from time events
-  TimeController::Instance().setStatusFormatMode(TimeController::StatusFormatMode::Default);
-  TimeController::Instance().unsubscribe();
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
@@ -849,7 +851,7 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
 
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
   // Only spawn ambient particles during clear weather
-  if (WeatherController::Instance().getCurrentWeather() != WeatherType::Clear) {
+  if (m_weatherController.getCurrentWeather() != WeatherType::Clear) {
     if (m_ambientParticlesActive) {
       stopAmbientParticles();
     }
@@ -938,3 +940,4 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
 
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
+

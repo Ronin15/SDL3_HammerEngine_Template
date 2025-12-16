@@ -8,13 +8,9 @@
 #include "events/WeatherEvent.hpp"
 #include "core/Logger.hpp"
 
-WeatherController& WeatherController::Instance() {
-    static WeatherController instance;
-    return instance;
-}
-
-void WeatherController::subscribe() {
-    if (m_subscribed) {
+void WeatherController::subscribe()
+{
+    if (checkAlreadySubscribed()) {
         return;
     }
 
@@ -25,28 +21,14 @@ void WeatherController::subscribe() {
         EventTypeId::Time,
         [this](const EventData& data) { onTimeEvent(data); }
     );
-    m_handlerTokens.push_back(token);
+    addHandlerToken(token);
 
-    m_subscribed = true;
+    setSubscribed(true);
     WEATHER_INFO("Subscribed to time events for automatic weather");
 }
 
-void WeatherController::unsubscribe() {
-    if (!m_subscribed) {
-        return;
-    }
-
-    auto& eventMgr = EventManager::Instance();
-    for (const auto& token : m_handlerTokens) {
-        eventMgr.removeHandler(token);
-    }
-    m_handlerTokens.clear();
-
-    m_subscribed = false;
-    WEATHER_INFO("Unsubscribed from time events");
-}
-
-void WeatherController::onTimeEvent(const EventData& data) {
+void WeatherController::onTimeEvent(const EventData& data)
+{
     if (!data.event) {
         return;
     }
@@ -86,7 +68,8 @@ void WeatherController::onTimeEvent(const EventData& data) {
     WEATHER_DEBUG(weatherName);
 }
 
-const char* WeatherController::getCurrentWeatherString() const {
+const char* WeatherController::getCurrentWeatherString() const
+{
     switch (m_currentWeather) {
         case WeatherType::Clear:  return "Clear";
         case WeatherType::Cloudy: return "Cloudy";
