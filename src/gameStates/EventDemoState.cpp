@@ -460,7 +460,7 @@ void EventDemoState::unregisterEventHandlers() {
     }
     m_handlerTokens.clear();
   } catch (...) {
-    // Swallow errors to avoid exit() failure
+      // Swallow errors during cleanup to avoid exit() failure
   }
 }
 

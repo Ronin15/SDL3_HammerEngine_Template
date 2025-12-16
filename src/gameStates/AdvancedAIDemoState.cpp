@@ -543,7 +543,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     if (!mp_uiMgr->isShutdown()) {
         // Update status only when values change (C++20 type-safe, zero allocations)
         const auto& aiManager = AIManager::Instance();
-        int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+        int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
         size_t npcCount = m_npcs.size();
         bool isPaused = aiManager.isGloballyPaused();
 

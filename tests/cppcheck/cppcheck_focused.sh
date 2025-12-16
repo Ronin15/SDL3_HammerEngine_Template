@@ -30,18 +30,37 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Run cppcheck and capture output for counting
 TEMP_OUTPUT=$(mktemp)
-cppcheck \
-    --enable=warning,style,performance,portability \
-    --library=std,posix \
-    --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
-    --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
-    -I"$PROJECT_ROOT/include" \
-    -I"$PROJECT_ROOT/src" \
-    --platform=unix64 \
-    --std=c++20 \
-    --quiet \
-    --template='{file}:{line}: [{severity}] {message}' \
-    "$PROJECT_ROOT/src/" "$PROJECT_ROOT/include/" 2>&1 | tee "$TEMP_OUTPUT"
+
+# Check compile_commands.json exists for proper cross-TU analysis
+if [ -f "$PROJECT_ROOT/compile_commands.json" ]; then
+    echo -e "${BLUE}Using compile_commands.json for improved analysis${NC}"
+    cppcheck \
+        --project="$PROJECT_ROOT/compile_commands.json" \
+        --enable=warning,style,performance,portability \
+        --library=std,posix \
+        --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
+        --std=c++20 \
+        --quiet \
+        --template='{file}:{line}: [{severity}] {message}' \
+        2>&1 | tee "$TEMP_OUTPUT"
+else
+    echo -e "${YELLOW}Warning: compile_commands.json not found, using manual include paths${NC}"
+    echo "Run cmake first for better analysis: cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug"
+    cppcheck \
+        -I"$PROJECT_ROOT/include" \
+        -I"$PROJECT_ROOT/src" \
+        --enable=warning,style,performance,portability \
+        --library=std,posix \
+        --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
+        --platform=unix64 \
+        --std=c++20 \
+        --quiet \
+        --template='{file}:{line}: [{severity}] {message}' \
+        "$PROJECT_ROOT/src/" "$PROJECT_ROOT/include/" \
+        2>&1 | tee "$TEMP_OUTPUT"
+fi
 
 # Count issues with simple grep and wc
 ERROR_COUNT=$(grep '\[error\]' "$TEMP_OUTPUT" | wc -l | tr -d ' ')

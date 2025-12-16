@@ -1655,6 +1655,8 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
     case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
       eventName = "Content Scale Changed";
       break;
+    default:
+      break;
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));

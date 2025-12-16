@@ -36,21 +36,35 @@ run_cppcheck() {
 
     echo -e "${YELLOW}Running $name analysis...${NC}"
 
-    # Run cppcheck
-    cppcheck \
-        --enable=warning,style,performance,portability,information \
-        --library=std,posix \
-        --library="$LIBRARY_CONFIG" \
-        --suppressions-list="$SUPPRESSIONS" \
-        -I../../include \
-        -I../../src \
-        --platform=unix64 \
-        --std=c++20 \
-        --verbose \
-        --xml \
-        $options \
-        ../../src/ ../../include/ \
-        2> "$output_file"
+    # Run cppcheck (prefer compile_commands.json for better cross-TU analysis)
+    if [ -f "$PROJECT_ROOT/compile_commands.json" ]; then
+        cppcheck \
+            --project="$PROJECT_ROOT/compile_commands.json" \
+            --enable=warning,style,performance,portability,information \
+            --library=std,posix \
+            --library="$LIBRARY_CONFIG" \
+            --suppressions-list="$SUPPRESSIONS" \
+            --std=c++20 \
+            --verbose \
+            --xml \
+            $options \
+            2> "$output_file"
+    else
+        cppcheck \
+            -I../../include \
+            -I../../src \
+            --enable=warning,style,performance,portability,information \
+            --library=std,posix \
+            --library="$LIBRARY_CONFIG" \
+            --suppressions-list="$SUPPRESSIONS" \
+            --platform=unix64 \
+            --std=c++20 \
+            --verbose \
+            --xml \
+            $options \
+            ../../src/ ../../include/ \
+            2> "$output_file"
+    fi
 
     # Generate summary
     if [ -f "$output_file" ]; then

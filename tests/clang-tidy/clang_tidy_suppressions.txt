@@ -1,0 +1,12 @@
+# clang-tidy suppressions for SDL3_HammerEngine
+# Format: file_pattern:check_name:reason
+#
+# These are false positives or intentional patterns that should be suppressed
+
+# False positive: readIndex is incremented inside the loop body (line 1279)
+AIManager.cpp:bugprone-infinite-loop:false positive - loop variable incremented in body
+
+# Intentional empty catches - fallback to default values when singletons unavailable
+PathfindingGrid.cpp:bugprone-empty-catch:intentional fallback to default threshold
+Camera.cpp:bugprone-empty-catch:intentional fallback to keep current bounds
+EventDemoState.cpp:bugprone-empty-catch:cleanup must not throw during exit
