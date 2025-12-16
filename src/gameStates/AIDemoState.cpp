@@ -24,6 +24,7 @@
 #include <memory>
 #include <random>
 #include <format>
+#include <cmath>
 #include <ctime>
 
 
@@ -587,7 +588,7 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   if (!mp_uiMgr->isShutdown()) {
     // Update status only when values change (C++20 type-safe, zero allocations)
     const auto &aiManager = AIManager::Instance();
-    int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+    int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
     size_t entityCount = m_npcs.size();
     bool isPaused = aiManager.isGloballyPaused();
 
