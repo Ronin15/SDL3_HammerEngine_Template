@@ -778,20 +778,22 @@ void ParticleManager::update(float deltaTime) {
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
+    // Track threading decision for interval logging (local vars, zero overhead in release)
+    ParticleThreadingInfo threadingInfo;
+
     if (useThreading) {
       // Use WorkerBudget system if enabled, otherwise fall back to legacy
       // threading
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
         // Limit range to the highest potentially-active index + 1
         const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-        updateWithWorkerBudget(deltaTime, rangeEnd);
+        updateWithWorkerBudget(deltaTime, rangeEnd, threadingInfo);
       } else {
         const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-        updateParticlesThreaded(deltaTime, rangeEnd);
+        updateParticlesThreaded(deltaTime, rangeEnd, threadingInfo);
       }
     } else {
-      m_lastWasThreaded.store(false, std::memory_order_relaxed);
-      m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+      // Single-threaded: threadingInfo stays at defaults (wasThreaded=false, batchCount=1)
       const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
       updateParticlesSingleThreaded(deltaTime, rangeEnd);
     }
@@ -822,37 +824,28 @@ void ParticleManager::update(float deltaTime) {
     m_storage.maxActiveIndex = newMax;
   }
 
-    // Phase 6: Frame counter and performance tracking (compaction disabled)
-    uint64_t currentFrame =
-        m_frameCounter.fetch_add(1, std::memory_order_relaxed);
-
-    // Phase 7: Performance tracking (reduced overhead)
+    // Phase 6: Performance tracking
     auto endTime = std::chrono::high_resolution_clock::now();
     double timeMs = std::chrono::duration_cast<std::chrono::microseconds>(
                         endTime - startTime)
                         .count() /
                     1000.0;
 
-    // Only track performance every 1200 frames (20 seconds) to minimize
-    // overhead
-    if (currentFrame % 1200 == 0) {
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
+    static thread_local uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 300 == 0) {
       size_t currentActiveCount = countActiveParticles();
       recordPerformance(false, timeMs, currentActiveCount);
 
       if (currentActiveCount > 0) {
-        bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
-        if (wasThreaded) {
-          [[maybe_unused]] size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-          [[maybe_unused]] size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
-          [[maybe_unused]] size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
-          [[maybe_unused]] size_t batchCount = std::max<size_t>(
-              1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
-
+        if (threadingInfo.wasThreaded) {
           PARTICLE_DEBUG(std::format(
               "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} "
               "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
               activeCount, timeMs, m_effectInstances.size(),
-              optimalWorkers, availableWorkers, particleBudget, batchCount));
+              threadingInfo.workerCount, threadingInfo.availableWorkers,
+              threadingInfo.budget, threadingInfo.batchCount));
         } else {
           PARTICLE_DEBUG(std::format(
               "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} [Single-threaded]",
@@ -860,6 +853,7 @@ void ParticleManager::update(float deltaTime) {
         }
       }
     }
+#endif
 
     // Measure total update time for adaptive batch tuning
     auto updateEndTime = std::chrono::high_resolution_clock::now();
@@ -2139,21 +2133,21 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
-                                              size_t activeParticleCount) {
+                                              size_t activeParticleCount,
+                                              ParticleThreadingInfo& outThreadingInfo) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
 
   // CRITICAL FIX: Validate buffer consistency before threading
   const size_t bufferSize = currentBuffer.flags.size();
-  
+
   // BOUNDS SAFETY: Ensure all vectors have consistent sizes
   if (bufferSize == 0 ||
       currentBuffer.posX.size() != bufferSize ||
       currentBuffer.velX.size() != bufferSize ||
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+    // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
     updateParticlesSingleThreaded(deltaTime, activeParticleCount);
     return;
   }
@@ -2177,12 +2171,6 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   size_t optimalWorkerCount = budget.getOptimalWorkerCount(
       budget.particleAllocated, activeParticleCount, m_threadingThreshold);
 
-  // Store thread allocation info for debug output
-  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
-  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-  m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
-  m_lastWasThreaded.store(true, std::memory_order_relaxed);
-
   // Use unified adaptive batch calculation for consistency across all managers
   const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
                                     static_cast<size_t>(1));
@@ -2202,12 +2190,23 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
       lastFrameTime          // Previous frame's completion time
   );
 
+  // Set threading info for interval logging (local struct, zero overhead in release)
+  outThreadingInfo.workerCount = optimalWorkerCount;
+  outThreadingInfo.availableWorkers = availableWorkers;
+  outThreadingInfo.budget = budget.particleAllocated;
+  outThreadingInfo.batchCount = batchCount;
+  outThreadingInfo.wasThreaded = true;
+
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // Submit batches using futures for native async result tracking
-  std::vector<std::future<void>> batchFutures;
-  batchFutures.reserve(batchCount);
+  // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
+  // Use swap() to preserve capacity on both vectors (avoids reallocation)
+  {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
+    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
+  }
 
   for (size_t i = 0; i < batchCount; ++i) {
     size_t startIdx = i * particlesPerBatch;
@@ -2224,7 +2223,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
     // Submit each batch with future for completion tracking
     // currentBuffer captured by reference is safe - it points to member storage
-    batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+    m_reusableBatchFutures.push_back(threadSystem.enqueueTaskWithResult(
       [this, &currentBuffer, startIdx, endIdx, deltaTime,
        windPhase = m_windPhase]() -> void {
         try {
@@ -2242,12 +2241,10 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
   // Store futures for shutdown synchronization (futures-based completion tracking)
   // NO BLOCKING WAIT: Particles are visual-only and don't need sync in update()
-  if (!batchFutures.empty()) {
+  {
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-    m_batchFutures = std::move(batchFutures);
+    std::swap(m_batchFutures, m_reusableBatchFutures);  // Swap back, preserves both capacities
   }
-
-  m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
@@ -2615,7 +2612,8 @@ void ParticleManager::enableWorkerBudgetThreading(bool enable) {
 }
 
 void ParticleManager::updateWithWorkerBudget(float deltaTime,
-                                             size_t particleCount) {
+                                             size_t particleCount,
+                                             ParticleThreadingInfo& outThreadingInfo) {
   /**
    * WorkerBudget-optimized particle update path.
    *
@@ -2625,19 +2623,19 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    *
    * @param deltaTime Time elapsed since last update
    * @param particleCount Current number of active particles
+   * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
   if (!m_useWorkerBudget.load(std::memory_order_acquire) ||
       particleCount < m_threadingThreshold ||
       !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to regular single-threaded update
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+    // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
     updateParticlesSingleThreaded(deltaTime, particleCount);
     return;
   }
 
   // Use WorkerBudget-aware threaded update
-  updateParticlesThreaded(deltaTime, particleCount);
+  updateParticlesThreaded(deltaTime, particleCount, outThreadingInfo);
 }
 
 void ParticleManager::configureThreading(bool useThreading,

@@ -265,24 +265,11 @@ void AIManager::prepareForStateTransition() {
   m_lastCleanupFrame.store(0, std::memory_order_relaxed);
   m_activeEntityCount.store(0, std::memory_order_relaxed);
 
-  // Reset performance tracking
-  {
-    std::lock_guard<std::mutex> lock(m_statsMutex);
-    m_globalStats = AIPerformanceStats{};
-    std::fill(m_behaviorStats.begin(), m_behaviorStats.end(), AIPerformanceStats{});
-  }
-
   // Clear player reference completely
   {
     std::lock_guard<std::shared_mutex> lock(m_entitiesMutex);
     m_playerEntity.reset();
   }
-
-  // Reset threading state
-  m_lastWasThreaded.store(false, std::memory_order_relaxed);
-  m_lastOptimalWorkerCount.store(0, std::memory_order_relaxed);
-  m_lastAvailableWorkers.store(0, std::memory_order_relaxed);
-  m_lastAIBudget.store(0, std::memory_order_relaxed);
 
   // Don't call resetBehaviors() as we've already done comprehensive cleanup
   // above Just clear the behavior caches
@@ -322,7 +309,6 @@ void AIManager::update(float deltaTime) {
     // Early exit if no active entities - skip ALL work including timing and cache
     // Messages for non-existent entities are useless, so skip processMessageQueue() too
     if (activeCount == 0) {
-      m_lastWasThreaded.store(false, std::memory_order_relaxed);
       return;
     }
 
@@ -364,6 +350,13 @@ void AIManager::update(float deltaTime) {
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
+    // Track threading decision for interval logging (local vars, no storage overhead)
+    size_t logWorkerCount = 0;
+    size_t logAvailableWorkers = 0;
+    size_t logBudget = 0;
+    size_t logBatchCount = 1;
+    bool logWasThreaded = false;
+
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
       size_t availableWorkers =
@@ -383,8 +376,6 @@ void AIManager::update(float deltaTime) {
         // Graceful degradation: fallback to single-threaded processing
         AI_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
                              queueSize, queueCapacity));
-        m_lastWasThreaded.store(false, std::memory_order_relaxed);
-        m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
 
         // OPTIMIZATION: Direct storage iteration - no copying overhead
         // Hold shared_lock during processing for thread-safe read access
@@ -408,13 +399,6 @@ void AIManager::update(float deltaTime) {
       size_t optimalWorkerCount = budget.getOptimalWorkerCount(
           budget.aiAllocated, entityCount, threadingThreshold);
 
-      // Store thread allocation info for debug output
-      m_lastOptimalWorkerCount.store(optimalWorkerCount,
-                                     std::memory_order_relaxed);
-      m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-      m_lastAIBudget.store(budget.aiAllocated, std::memory_order_relaxed);
-      m_lastWasThreaded.store(true, std::memory_order_relaxed);
-
       // Use unified adaptive batch calculation for consistency across all managers
       double queuePressure = static_cast<double>(queueSize) / queueCapacity;
 
@@ -432,18 +416,21 @@ void AIManager::update(float deltaTime) {
           lastFrameTime          // Previous frame's completion time
       );
 
+      // Track for interval logging at end of function
+      logWorkerCount = optimalWorkerCount;
+      logAvailableWorkers = availableWorkers;
+      logBudget = budget.aiAllocated;
+      logBatchCount = batchCount;
+      logWasThreaded = (batchCount > 1);
+
       // Debug logging for high queue pressure
       if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
         AI_DEBUG(std::format("High queue pressure ({}%), using larger batches",
                  static_cast<int>(queuePressure * 100)));
       }
 
-      // Debug thread allocation info periodically
+      // Single batch optimization: avoid thread overhead
       if (batchCount <= 1) {
-        // Avoid thread overhead when only one batch would run
-        m_lastWasThreaded.store(false, std::memory_order_relaxed);
-        m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
-
         // OPTIMIZATION: Direct storage iteration - no copying overhead
         // Hold shared_lock during processing for thread-safe read access
         m_reusableCollisionBuffer.clear();
@@ -535,12 +522,8 @@ void AIManager::update(float deltaTime) {
         // This provides deterministic updates with minimal performance impact
       }
 
-      m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
-
     } else {
       // Single-threaded processing (threading disabled in config)
-      m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
-
       // OPTIMIZATION: Direct storage iteration - no copying overhead
       // Hold shared_lock during processing for thread-safe read access
       m_reusableCollisionBuffer.clear();
@@ -576,51 +559,31 @@ void AIManager::update(float deltaTime) {
     // Store for adaptive batch tuning
     m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
 
-    // Periodic cleanup and stats (balanced frequency)
+    // Periodic cleanup tracking (balanced frequency)
     if (currentFrame % 300 == 0) {
       // cleanupInactiveEntities() moved to GameEngine background processing
-
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
+    }
 
-      // Note: Vector capacity trimming is available via AIBehaviorState::trimVectorCapacity()
-      // Behaviors can call this in their executeLogic() periodically if needed
-
-      std::lock_guard<std::mutex> statsLock(m_statsMutex);
-      m_globalStats.addSample(totalUpdateTime, entityCount);
-
-      if (entityCount > 0) {
-        const double avgDuration =
-            m_globalStats.updateCount > 0
-                ? (m_globalStats.totalUpdateTime / m_globalStats.updateCount)
-                : 0.0;
-
-        // All pathfinding now handled by PathfinderManager
-
-        bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
-        if (wasThreaded) {
-          size_t optimalWorkers =
-              m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-          size_t availableWorkers =
-              m_lastAvailableWorkers.load(std::memory_order_relaxed);
-          size_t aiBudget = m_lastAIBudget.load(std::memory_order_relaxed);
-          size_t batchCountLogged = std::max(
-              static_cast<size_t>(1),
-              m_lastThreadBatchCount.load(std::memory_order_relaxed));
-
-          AI_DEBUG(std::format("AI Summary - Entities: {}, Avg Update: {}ms, Entities/sec: {} "
-                               "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
-                               entityCount, avgDuration, m_globalStats.entitiesPerSecond,
-                               optimalWorkers, availableWorkers, aiBudget, batchCountLogged));
-        } else {
-          AI_DEBUG(std::format("AI Summary - Entities: {}, Avg Update: {}ms, Entities/sec: {} "
-                               "[Single-threaded]",
-                               entityCount, avgDuration, m_globalStats.entitiesPerSecond));
-        }
-
-        // Pathfinding statistics now handled by PathfinderManager
-        // No legacy pathfinding statistics in AIManager
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
+    static thread_local uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 300 == 0 && entityCount > 0) {
+      double entitiesPerSecond = totalUpdateTime > 0
+          ? (entityCount * 1000.0 / totalUpdateTime)
+          : 0.0;
+      if (logWasThreaded) {
+        AI_DEBUG(std::format("AI Summary - Entities: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+                             "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+                             entityCount, totalUpdateTime, entitiesPerSecond,
+                             logWorkerCount, logAvailableWorkers, logBudget, logBatchCount));
+      } else {
+        AI_DEBUG(std::format("AI Summary - Entities: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+                             "[Single-threaded]",
+                             entityCount, totalUpdateTime, entitiesPerSecond));
       }
     }
+#endif
 
   } catch (const std::exception &e) {
     AI_ERROR(std::format("Exception in AIManager::update: {}", e.what()));
@@ -1176,11 +1139,6 @@ bool AIManager::getWaitForBatchCompletion() const {
 
 void AIManager::configurePriorityMultiplier(float multiplier) {
   m_priorityMultiplier.store(multiplier, std::memory_order_release);
-}
-
-AIPerformanceStats AIManager::getPerformanceStats() const {
-  std::lock_guard<std::mutex> lock(m_statsMutex);
-  return m_globalStats;
 }
 
 size_t AIManager::getBehaviorCount() const {
@@ -1833,16 +1791,6 @@ void AIManager::cleanupAllEntities() {
   m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   AI_DEBUG("Cleaned up all entities for state transition");
-}
-
-void AIManager::recordPerformance(BehaviorType type, double timeMs,
-                                  uint64_t entities) {
-  std::lock_guard<std::mutex> lock(m_statsMutex);
-
-  size_t typeIndex = static_cast<size_t>(type);
-  if (typeIndex < m_behaviorStats.size()) {
-    m_behaviorStats[typeIndex].addSample(timeMs, entities);
-  }
 }
 
 uint64_t AIManager::getCurrentTimeNanos() {

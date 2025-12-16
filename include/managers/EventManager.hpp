@@ -105,6 +105,14 @@ struct EventPriority {
   static constexpr uint32_t DEFERRED = 0;     // Non-time-sensitive events (resource changes, UI updates)
 };
 
+// Threading info for debug logging (passed via local vars, not stored)
+struct EventThreadingInfo {
+  size_t workerCount{0};
+  size_t availableWorkers{0};
+  size_t budget{0};
+  bool wasThreaded{false};
+};
+
 /**
  * @brief Fast event handler function type
  */
@@ -634,19 +642,10 @@ private:
   mutable std::array<double, PERF_SAMPLE_SIZE> m_updateTimeSamples{};
   mutable size_t m_currentSampleIndex{0};
   mutable double m_avgUpdateTimeMs{0.0};
-  mutable uint64_t m_frameCounter{0};
-  mutable uint64_t m_lastDebugLogFrame{0};
   mutable uint64_t m_totalHandlerCalls{0};
-  static constexpr uint64_t DEBUG_LOG_INTERVAL = 300;  // Log every 300 frames (~5 seconds at 60fps)
 
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
-
-  // Thread allocation tracking for debug output
-  std::atomic<size_t> m_lastOptimalWorkerCount{0};
-  std::atomic<size_t> m_lastAvailableWorkers{0};
-  std::atomic<size_t> m_lastEventBudget{0};
-  std::atomic<bool> m_lastWasThreaded{false};
 
   // Adaptive batch state for performance-based tuning
   HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
@@ -660,6 +659,7 @@ private:
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
+  std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
   std::mutex m_batchFuturesMutex;  // Protect futures vector
   mutable std::deque<PendingDispatch> m_pendingDispatch;
   size_t m_maxDispatchQueue{8192};
@@ -671,7 +671,7 @@ private:
   EventTypeId getEventTypeId(const EventPtr &event) const;
   std::string getEventTypeName(EventTypeId typeId) const;
   void updateEventTypeBatch(EventTypeId typeId) const;
-  void updateEventTypeBatchThreaded(EventTypeId typeId);
+  void updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadingInfo& outThreadingInfo);
   void recordPerformance(EventTypeId typeId, double timeMs) const;
   uint64_t getCurrentTimeNanos() const;
   void enqueueDispatch(EventTypeId typeId, const EventData &data) const;

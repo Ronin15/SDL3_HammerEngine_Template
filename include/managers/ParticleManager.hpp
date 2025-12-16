@@ -321,6 +321,15 @@ struct ParticlePerformanceStats {
   void reset();
 };
 
+// Threading info for debug logging (passed via local vars, not stored)
+struct ParticleThreadingInfo {
+  size_t workerCount{0};
+  size_t availableWorkers{0};
+  size_t budget{0};
+  size_t batchCount{1};
+  bool wasThreaded{false};
+};
+
 /**
  * @brief Ultra-high-performance ParticleManager
  */
@@ -652,7 +661,8 @@ public:
    *
    * Called automatically by update() when WorkerBudget threading is enabled.
    */
-  void updateWithWorkerBudget(float deltaTime, size_t particleCount);
+  void updateWithWorkerBudget(float deltaTime, size_t particleCount,
+                              ParticleThreadingInfo& outThreadingInfo);
 
   /**
    * @brief Gets current performance statistics
@@ -896,15 +906,7 @@ private:
   std::atomic<size_t> m_threadingThreshold{750};
   unsigned int m_maxThreads{0};
 
-  // Frame counter for periodic maintenance (like AIManager)
-  std::atomic<uint64_t> m_frameCounter{0};
 
-  // Thread allocation tracking for debug output
-  std::atomic<size_t> m_lastOptimalWorkerCount{0};
-  std::atomic<size_t> m_lastAvailableWorkers{0};
-  std::atomic<size_t> m_lastParticleBudget{0};
-  std::atomic<size_t> m_lastThreadBatchCount{0};
-  std::atomic<bool> m_lastWasThreaded{false};
   std::atomic<size_t> m_activeCount{0};
 
   // Adaptive batch state for performance-based tuning
@@ -923,6 +925,7 @@ private:
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
+  std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
   std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // NOTE: No update mutex - GameEngine handles update/render synchronization
@@ -1044,7 +1047,8 @@ private:
   void swapBuffers();
   void cleanupInactiveParticles();
   void updateEffectInstances(float deltaTime);
-  void updateParticlesThreaded(float deltaTime, size_t activeParticleCount);
+  void updateParticlesThreaded(float deltaTime, size_t activeParticleCount,
+                               ParticleThreadingInfo& outThreadingInfo);
   void updateParticlesSingleThreaded(float deltaTime,
                                      size_t activeParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,
