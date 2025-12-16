@@ -589,7 +589,7 @@ void AIManager::update(float deltaTime) {
       m_globalStats.addSample(totalUpdateTime, entityCount);
 
       if (entityCount > 0) {
-        double avgDuration =
+        const double avgDuration =
             m_globalStats.updateCount > 0
                 ? (m_globalStats.totalUpdateTime / m_globalStats.updateCount)
                 : 0.0;
@@ -1356,15 +1356,15 @@ void AIManager::calculateDistancesSIMD(
             Vector2D pos3 = storage.entities[i + 3]->getPosition();
 
             // Load positions into SIMD registers
-            Float4 entityPosX = set(pos0.getX(), pos1.getX(), pos2.getX(), pos3.getX());
-            Float4 entityPosY = set(pos0.getY(), pos1.getY(), pos2.getY(), pos3.getY());
+            const Float4 entityPosX = set(pos0.getX(), pos1.getX(), pos2.getX(), pos3.getX());
+            const Float4 entityPosY = set(pos0.getY(), pos1.getY(), pos2.getY(), pos3.getY());
 
             // Calculate differences
-            Float4 diffX = sub(entityPosX, playerPosX);
-            Float4 diffY = sub(entityPosY, playerPosY);
+            const Float4 diffX = sub(entityPosX, playerPosX);
+            const Float4 diffY = sub(entityPosY, playerPosY);
 
             // Calculate squared distances: diffX * diffX + diffY * diffY
-            Float4 distSq = add(mul(diffX, diffX), mul(diffY, diffY));
+            const Float4 distSq = add(mul(diffX, diffX), mul(diffY, diffY));
 
             // Store results
             alignas(16) float distSquaredArray[4];
@@ -1388,8 +1388,8 @@ void AIManager::calculateDistancesSIMD(
     // Scalar fallback/tail loop for remaining entities
     for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
         if ((i % 16) == distanceUpdateSlice) {
-            Vector2D entityPos = storage.entities[i]->getPosition();
-            Vector2D diff = entityPos - playerPos;
+            const Vector2D entityPos = storage.entities[i]->getPosition();
+            const Vector2D diff = entityPos - playerPos;
             size_t idx = i - start;
             outDistances[idx] = diff.lengthSquared();
             outPositions[idx] = entityPos;
@@ -1409,9 +1409,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   collisionUpdates.reserve(collisionUpdates.size() + batchSize);
 
   // Pre-calculate common values once per batch to reduce per-entity overhead
-  float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
-  float maxDistSquared = maxDist * maxDist;
-  bool hasPlayer = (playerPos.getX() != 0 || playerPos.getY() != 0);
+  const float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
+  const float maxDistSquared = maxDist * maxDist;
+  const bool hasPlayer = (playerPos.getX() != 0 || playerPos.getY() != 0);
 
   // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
   // Eliminates 418+ atomic loads per frame → single atomic load per batch
@@ -1509,10 +1509,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         pos = pos + (vel * deltaTime);
 
         // Inline clamping - no function call, no atomic load
-        float minX = halfW;
-        float maxX = worldWidth - halfW;
-        float minY = halfH;
-        float maxY = worldHeight - halfH;
+        const float minX = halfW;
+        const float maxX = worldWidth - halfW;
+        const float minY = halfH;
+        const float maxY = worldHeight - halfH;
         Vector2D clamped(
             std::clamp(pos.getX(), minX, maxX),
             std::clamp(pos.getY(), minY, maxY)
@@ -1596,8 +1596,8 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
       for (size_t j = i; j < i + 4 && j < entityCount; ++j) {
         auto &hotData = m_storage.hotData[j];
         if (hotData.active && m_storage.entities[j]) {
-          Vector2D entityPos = m_storage.entities[j]->getPosition();
-          Vector2D diff = entityPos - playerPos;
+          const Vector2D entityPos = m_storage.entities[j]->getPosition();
+          const Vector2D diff = entityPos - playerPos;
           hotData.distanceSquared = diff.lengthSquared();
           hotData.position = entityPos;
           updatedCount++;
@@ -1648,8 +1648,8 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
   for (; i < entityCount; ++i) {
     auto &hotData = m_storage.hotData[i];
     if (hotData.active && m_storage.entities[i]) {
-      Vector2D entityPos = m_storage.entities[i]->getPosition();
-      Vector2D diff = entityPos - playerPos;
+      const Vector2D entityPos = m_storage.entities[i]->getPosition();
+      const Vector2D diff = entityPos - playerPos;
       hotData.distanceSquared = diff.lengthSquared();
       hotData.position = entityPos;
       updatedCount++;
@@ -1678,8 +1678,8 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
       for (size_t j = i; j < i + 4 && j < entityCount; ++j) {
         auto &hotData = m_storage.hotData[j];
         if (hotData.active && m_storage.entities[j]) {
-          Vector2D entityPos = m_storage.entities[j]->getPosition();
-          Vector2D diff = entityPos - playerPos;
+          const Vector2D entityPos = m_storage.entities[j]->getPosition();
+          const Vector2D diff = entityPos - playerPos;
           hotData.distanceSquared = diff.lengthSquared();
           hotData.position = entityPos;
           updatedCount++;
@@ -1703,11 +1703,11 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
     );
 
     // Calculate differences
-    Float4 diffX = sub(entityX, playerPosX);
-    Float4 diffY = sub(entityY, playerPosY);
+    const Float4 diffX = sub(entityX, playerPosX);
+    const Float4 diffY = sub(entityY, playerPosY);
 
     // Calculate squared distances: diffX² + diffY² using fused multiply-add
-    Float4 distSq = madd(diffY, diffY, mul(diffX, diffX));
+    const Float4 distSq = madd(diffY, diffY, mul(diffX, diffX));
 
     // Store results
     alignas(16) float distSquaredArray[4];
@@ -1726,8 +1726,8 @@ void AIManager::updateDistancesScalar(const Vector2D &playerPos) {
   for (; i < entityCount; ++i) {
     auto &hotData = m_storage.hotData[i];
     if (hotData.active && m_storage.entities[i]) {
-      Vector2D entityPos = m_storage.entities[i]->getPosition();
-      Vector2D diff = entityPos - playerPos;
+      const Vector2D entityPos = m_storage.entities[i]->getPosition();
+      const Vector2D diff = entityPos - playerPos;
       hotData.distanceSquared = diff.lengthSquared();
       hotData.position = entityPos;
       updatedCount++;

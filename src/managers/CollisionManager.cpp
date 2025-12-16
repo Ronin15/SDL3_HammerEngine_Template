@@ -212,17 +212,17 @@ void CollisionManager::prepareForStateTransition() {
 
 void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
                                       float maxY) {
-  float cx = (minX + maxX) * 0.5f;
-  float cy = (minY + maxY) * 0.5f;
-  float hw = (maxX - minX) * 0.5f;
-  float hh = (maxY - minY) * 0.5f;
+  const float cx = (minX + maxX) * 0.5f;
+  const float cy = (minY + maxY) * 0.5f;
+  const float hw = (maxX - minX) * 0.5f;
+  const float hh = (maxY - minY) * 0.5f;
   m_worldBounds = AABB(cx, cy, hw, hh);
 
   // PERFORMANCE FIX: Dynamic reserve sizing for coarse region static cache
   // Scale reserve size based on world dimensions to prevent expensive rehashing
   // in large worlds (e.g., EventDemoMode 32000x32000 needs ~62,500 coarse cells)
-  float worldWidth = maxX - minX;
-  float worldHeight = maxY - minY;
+  const float worldWidth = maxX - minX;
+  const float worldHeight = maxY - minY;
   constexpr float COARSE_SIZE = HammerEngine::HierarchicalSpatialHash::COARSE_CELL_SIZE;
 
   // Calculate number of coarse cells with 1.5x multiplier for hash map load factor
@@ -259,9 +259,9 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
                                              HammerEngine::TriggerTag tag,
                                              uint32_t layerMask,
                                              uint32_t collideMask) {
-  EntityID id = HammerEngine::UniqueID::generate();
-  Vector2D center(aabb.center.getX(), aabb.center.getY());
-  Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
+  const EntityID id = HammerEngine::UniqueID::generate();
+  const Vector2D center(aabb.center.getX(), aabb.center.getY());
+  const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
   // Pass trigger properties through deferred command queue (thread-safe)
   addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
                       layerMask, collideMask, true, static_cast<uint8_t>(tag));
@@ -300,9 +300,9 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       const auto &tile = world->grid[y][x];
       if (!tile.isWater)
         continue;
-      float cx = x * tileSize + tileSize * 0.5f;
-      float cy = y * tileSize + tileSize * 0.5f;
-      AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
+      const float cx = x * tileSize + tileSize * 0.5f;
+      const float cy = y * tileSize + tileSize * 0.5f;
+      const AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
       // Use a distinct prefix for triggers to avoid id collisions with static
       // colliders
       EntityID id = (static_cast<EntityID>(1ull) << 61) |
@@ -310,8 +310,8 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
                     static_cast<EntityID>(static_cast<uint32_t>(x));
       // Check if this water trigger already exists in SOA storage
       if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-        Vector2D center(aabb.center.getX(), aabb.center.getY());
-        Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
+        const Vector2D center(aabb.center.getX(), aabb.center.getY());
+        const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
         addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
                            true, static_cast<uint8_t>(tag));
@@ -408,8 +408,8 @@ size_t CollisionManager::createStaticObstacleBodies() {
       }
 
       // Check if building is a solid rectangle (all tiles present)
-      int expectedTiles = (maxX - minX + 1) * (maxY - minY + 1);
-      bool isRectangle = (static_cast<int>(buildingTiles.size()) == expectedTiles);
+      const int expectedTiles = (maxX - minX + 1) * (maxY - minY + 1);
+      const bool isRectangle = (static_cast<int>(buildingTiles.size()) == expectedTiles);
 
       // DEBUG: Log rectangle detection for troubleshooting
       COLLISION_DEBUG(std::format("Building {}: bounds ({},{}) to ({},{}), tiles={}, expected={}, isRectangle={}",
@@ -418,18 +418,18 @@ size_t CollisionManager::createStaticObstacleBodies() {
 
       if (isRectangle) {
         // SIMPLE CASE: Single collision body for entire rectangular building
-        float worldMinX = minX * tileSize;
-        float worldMinY = minY * tileSize;
-        float worldMaxX = (maxX + 1) * tileSize;
-        float worldMaxY = (maxY + 1) * tileSize;
+        const float worldMinX = minX * tileSize;
+        const float worldMinY = minY * tileSize;
+        const float worldMaxX = (maxX + 1) * tileSize;
+        const float worldMaxY = (maxY + 1) * tileSize;
 
-        float cx = (worldMinX + worldMaxX) * 0.5f;
-        float cy = (worldMinY + worldMaxY) * 0.5f;
-        float halfWidth = (worldMaxX - worldMinX) * 0.5f;
-        float halfHeight = (worldMaxY - worldMinY) * 0.5f;
+        const float cx = (worldMinX + worldMaxX) * 0.5f;
+        const float cy = (worldMinY + worldMaxY) * 0.5f;
+        const float halfWidth = (worldMaxX - worldMinX) * 0.5f;
+        const float halfHeight = (worldMaxY - worldMinY) * 0.5f;
 
-        Vector2D center(cx, cy);
-        Vector2D halfSize(halfWidth, halfHeight);
+        const Vector2D center(cx, cy);
+        const Vector2D halfSize(halfWidth, halfHeight);
 
         // Single body: subBodyIndex = 0
         EntityID id = (static_cast<EntityID>(3ull) << 61) |
@@ -764,10 +764,10 @@ void CollisionManager::populateStaticCache() {
   constexpr float COARSE_CELL_SIZE = 128.0f;
 
   // Calculate world bounds in coarse cell coordinates
-  float worldMinX = m_worldBounds.center.getX() - m_worldBounds.halfSize.getX();
-  float worldMinY = m_worldBounds.center.getY() - m_worldBounds.halfSize.getY();
-  float worldMaxX = m_worldBounds.center.getX() + m_worldBounds.halfSize.getX();
-  float worldMaxY = m_worldBounds.center.getY() + m_worldBounds.halfSize.getY();
+  const float worldMinX = m_worldBounds.center.getX() - m_worldBounds.halfSize.getX();
+  const float worldMinY = m_worldBounds.center.getY() - m_worldBounds.halfSize.getY();
+  const float worldMaxX = m_worldBounds.center.getX() + m_worldBounds.halfSize.getX();
+  const float worldMaxY = m_worldBounds.center.getY() + m_worldBounds.halfSize.getY();
 
   int minCoarseX = static_cast<int>(std::floor(worldMinX / COARSE_CELL_SIZE));
   int minCoarseY = static_cast<int>(std::floor(worldMinY / COARSE_CELL_SIZE));
@@ -781,9 +781,9 @@ void CollisionManager::populateStaticCache() {
   for (int cy = minCoarseY; cy <= maxCoarseY; ++cy) {
     for (int cx = minCoarseX; cx <= maxCoarseX; ++cx) {
       // Create AABB for this coarse cell
-      float cellCenterX = cx * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
-      float cellCenterY = cy * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
-      AABB cellAABB(cellCenterX, cellCenterY, COARSE_CELL_SIZE * 0.5f, COARSE_CELL_SIZE * 0.5f);
+      const float cellCenterX = cx * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
+      const float cellCenterY = cy * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
+      const AABB cellAABB(cellCenterX, cellCenterY, COARSE_CELL_SIZE * 0.5f, COARSE_CELL_SIZE * 0.5f);
 
       // Query static spatial hash for this region
       auto& candidates = getPooledVector();
