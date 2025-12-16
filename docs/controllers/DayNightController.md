@@ -14,7 +14,7 @@ DayNightController tracks time periods (Morning/Day/Evening/Night) and dispatche
 ## Event Flow
 
 ```
-GameTime::dispatchTimeEvents()
+GameTimeManager::dispatchTimeEvents()
   → HourChangedEvent (Deferred)
     → DayNightController detects period change
       → Dispatches TimePeriodChangedEvent with visual config

@@ -848,9 +848,9 @@ void HammerEngine::TileRenderer::subscribeToSeasonEvents()
     m_subscribedToSeasons = true;
 
     // Initialize with current season from GameTime
-    m_currentSeason = GameTime::Instance().getSeason();
+    m_currentSeason = GameTimeManager::Instance().getSeason();
     WORLD_MANAGER_INFO(std::format("TileRenderer subscribed to season events, current season: {}",
-                       GameTime::Instance().getSeasonName()));
+                       GameTimeManager::Instance().getSeasonName()));
 }
 
 void HammerEngine::TileRenderer::unsubscribeFromSeasonEvents()

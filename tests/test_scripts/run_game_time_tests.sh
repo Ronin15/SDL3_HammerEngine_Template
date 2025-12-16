@@ -23,11 +23,11 @@ for arg in "$@"; do
       shift
       ;;
     --help)
-      echo -e "${BLUE}GameTime System Test Runner${NC}"
+      echo -e "${BLUE}GameTimeManager System Test Runner${NC}"
       echo -e "Usage: ./run_game_time_tests.sh [options]"
       echo -e "\nOptions:"
       echo -e "  --verbose      Run tests with verbose output"
-      echo -e "  --core         Run only core GameTime tests"
+      echo -e "  --core         Run only core GameTimeManager tests"
       echo -e "  --calendar     Run only calendar tests"
       echo -e "  --season       Run only season tests"
       echo -e "  --help         Show this help message"
@@ -51,21 +51,21 @@ for arg in "$@"; do
   esac
 done
 
-echo -e "${BLUE}Running GameTime system tests...${NC}"
+echo -e "${BLUE}Running GameTimeManager system tests...${NC}"
 
 # Define the test executables to run
 EXECUTABLES=()
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_CORE" = true ]; then
-  EXECUTABLES+=("game_time_tests")
+  EXECUTABLES+=("game_time_manager_tests")
 fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_CALENDAR" = true ]; then
-  EXECUTABLES+=("game_time_calendar_tests")
+  EXECUTABLES+=("game_time_manager_calendar_tests")
 fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_SEASON" = true ]; then
-  EXECUTABLES+=("game_time_season_tests")
+  EXECUTABLES+=("game_time_manager_season_tests")
 fi
 
 # Get the directory where this script is located and find project root
@@ -196,12 +196,12 @@ for EXEC in "${EXECUTABLES[@]}"; do
 done
 
 if [ "$FINAL_RESULT" -ne 0 ]; then
-  echo -e "\n${RED}Some GameTime tests failed!${NC}"
+  echo -e "\n${RED}Some GameTimeManager tests failed!${NC}"
   exit $FINAL_RESULT
 else
-  echo -e "\n${GREEN}All GameTime tests completed successfully!${NC}"
-  echo -e "${GREEN}✓ GameTime core tests${NC}"
-  echo -e "${GREEN}✓ GameTime calendar tests${NC}"
-  echo -e "${GREEN}✓ GameTime season tests${NC}"
+  echo -e "\n${GREEN}All GameTimeManager tests completed successfully!${NC}"
+  echo -e "${GREEN}✓ GameTimeManager core tests${NC}"
+  echo -e "${GREEN}✓ GameTimeManager calendar tests${NC}"
+  echo -e "${GREEN}✓ GameTimeManager season tests${NC}"
   exit 0
 fi

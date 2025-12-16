@@ -65,9 +65,9 @@ set(SIMPLE_TESTS
     loading_state_tests
     ui_manager_functional_tests
     integrated_system_benchmark
-    game_time_tests
-    game_time_calendar_tests
-    game_time_season_tests
+    game_time_manager_tests
+    game_time_manager_calendar_tests
+    game_time_manager_season_tests
 )
 
 # Complex tests (need mocks)
@@ -172,12 +172,12 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "UIManagerFunctionalTests.cpp")
     elseif(${test_name} STREQUAL "integrated_system_benchmark")
         set(test_source "performance/IntegratedSystemBenchmark.cpp")
-    elseif(${test_name} STREQUAL "game_time_tests")
-        set(test_source "core/GameTimeTests.cpp")
-    elseif(${test_name} STREQUAL "game_time_calendar_tests")
-        set(test_source "core/GameTimeCalendarTests.cpp")
-    elseif(${test_name} STREQUAL "game_time_season_tests")
-        set(test_source "core/GameTimeSeasonTests.cpp")
+    elseif(${test_name} STREQUAL "game_time_manager_tests")
+        set(test_source "managers/GameTimeManagerTests.cpp")
+    elseif(${test_name} STREQUAL "game_time_manager_calendar_tests")
+        set(test_source "managers/GameTimeManagerCalendarTests.cpp")
+    elseif(${test_name} STREQUAL "game_time_manager_season_tests")
+        set(test_source "managers/GameTimeManagerSeasonTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})

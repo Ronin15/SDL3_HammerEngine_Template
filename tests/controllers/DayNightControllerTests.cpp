@@ -7,7 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "controllers/world/DayNightController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/TimeEvent.hpp"
 #include "../events/EventManagerTestAccess.hpp"
@@ -24,7 +24,7 @@ public:
         EventManagerTestAccess::reset();
 
         // Initialize GameTime to noon (Day period)
-        GameTime::Instance().init(12.0f, 1.0f);
+        GameTimeManager::Instance().init(12.0f, 1.0f);
     }
 
     ~DayNightControllerTestFixture() {
@@ -153,7 +153,7 @@ BOOST_FIXTURE_TEST_SUITE(CurrentPeriodTests, DayNightControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodAtNoon) {
     // Init GameTime at noon
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
 
     m_controller.subscribe();
 
@@ -162,7 +162,7 @@ BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodAtNoon) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodString) {
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
 
     m_controller.subscribe();
 
@@ -186,7 +186,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(CurrentVisualsTests, DayNightControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentVisuals) {
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
 
     m_controller.subscribe();
 
@@ -205,7 +205,7 @@ BOOST_AUTO_TEST_CASE(TestGetCurrentVisuals) {
 }
 
 BOOST_AUTO_TEST_CASE(TestVisualsMatchPeriodFactory) {
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
 
     m_controller.subscribe();
 
@@ -231,19 +231,19 @@ BOOST_AUTO_TEST_CASE(TestMorningPeriod) {
     // Morning: 5:00 - 8:00
 
     // Test at 6 AM
-    GameTime::Instance().init(6.0f, 1.0f);
+    GameTimeManager::Instance().init(6.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Morning);
     m_controller.unsubscribe();
 
     // Test at 5 AM (boundary)
-    GameTime::Instance().init(5.0f, 1.0f);
+    GameTimeManager::Instance().init(5.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Morning);
     m_controller.unsubscribe();
 
     // Test at 7:59 AM
-    GameTime::Instance().init(7.99f, 1.0f);
+    GameTimeManager::Instance().init(7.99f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Morning);
     m_controller.unsubscribe();
@@ -253,19 +253,19 @@ BOOST_AUTO_TEST_CASE(TestDayPeriod) {
     // Day: 8:00 - 17:00
 
     // Test at noon
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Day);
     m_controller.unsubscribe();
 
     // Test at 8 AM (boundary)
-    GameTime::Instance().init(8.0f, 1.0f);
+    GameTimeManager::Instance().init(8.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Day);
     m_controller.unsubscribe();
 
     // Test at 4:59 PM
-    GameTime::Instance().init(16.99f, 1.0f);
+    GameTimeManager::Instance().init(16.99f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Day);
     m_controller.unsubscribe();
@@ -275,19 +275,19 @@ BOOST_AUTO_TEST_CASE(TestEveningPeriod) {
     // Evening: 17:00 - 21:00
 
     // Test at 6 PM
-    GameTime::Instance().init(18.0f, 1.0f);
+    GameTimeManager::Instance().init(18.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Evening);
     m_controller.unsubscribe();
 
     // Test at 5 PM (boundary)
-    GameTime::Instance().init(17.0f, 1.0f);
+    GameTimeManager::Instance().init(17.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Evening);
     m_controller.unsubscribe();
 
     // Test at 8:59 PM
-    GameTime::Instance().init(20.99f, 1.0f);
+    GameTimeManager::Instance().init(20.99f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Evening);
     m_controller.unsubscribe();
@@ -297,25 +297,25 @@ BOOST_AUTO_TEST_CASE(TestNightPeriod) {
     // Night: 21:00 - 5:00
 
     // Test at midnight
-    GameTime::Instance().init(0.0f, 1.0f);
+    GameTimeManager::Instance().init(0.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Night);
     m_controller.unsubscribe();
 
     // Test at 9 PM (boundary)
-    GameTime::Instance().init(21.0f, 1.0f);
+    GameTimeManager::Instance().init(21.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Night);
     m_controller.unsubscribe();
 
     // Test at 3 AM
-    GameTime::Instance().init(3.0f, 1.0f);
+    GameTimeManager::Instance().init(3.0f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Night);
     m_controller.unsubscribe();
 
     // Test at 4:59 AM (before morning boundary)
-    GameTime::Instance().init(4.99f, 1.0f);
+    GameTimeManager::Instance().init(4.99f, 1.0f);
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Night);
     m_controller.unsubscribe();
@@ -331,7 +331,7 @@ BOOST_FIXTURE_TEST_SUITE(PeriodTransitionTests, DayNightControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestTransitionOnHourChangedEvent) {
     // Start at 7 AM (Morning)
-    GameTime::Instance().init(7.0f, 1.0f);
+    GameTimeManager::Instance().init(7.0f, 1.0f);
 
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Morning);
@@ -346,7 +346,7 @@ BOOST_AUTO_TEST_CASE(TestTransitionOnHourChangedEvent) {
 
 BOOST_AUTO_TEST_CASE(TestNoTransitionOnSamePeriod) {
     // Start at noon (Day)
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
 
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Day);
@@ -361,7 +361,7 @@ BOOST_AUTO_TEST_CASE(TestNoTransitionOnSamePeriod) {
 
 BOOST_AUTO_TEST_CASE(TestDayToEveningTransition) {
     // Start at 4 PM (Day)
-    GameTime::Instance().init(16.0f, 1.0f);
+    GameTimeManager::Instance().init(16.0f, 1.0f);
 
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Day);
@@ -376,7 +376,7 @@ BOOST_AUTO_TEST_CASE(TestDayToEveningTransition) {
 
 BOOST_AUTO_TEST_CASE(TestEveningToNightTransition) {
     // Start at 8 PM (Evening)
-    GameTime::Instance().init(20.0f, 1.0f);
+    GameTimeManager::Instance().init(20.0f, 1.0f);
 
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Evening);
@@ -391,7 +391,7 @@ BOOST_AUTO_TEST_CASE(TestEveningToNightTransition) {
 
 BOOST_AUTO_TEST_CASE(TestNightToMorningTransition) {
     // Start at 4 AM (Night)
-    GameTime::Instance().init(4.0f, 1.0f);
+    GameTimeManager::Instance().init(4.0f, 1.0f);
 
     m_controller.subscribe();
     BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Night);
@@ -406,7 +406,7 @@ BOOST_AUTO_TEST_CASE(TestNightToMorningTransition) {
 
 BOOST_AUTO_TEST_CASE(TestFullDayCycle) {
     // Start at midnight (Night)
-    GameTime::Instance().init(0.0f, 1.0f);
+    GameTimeManager::Instance().init(0.0f, 1.0f);
 
     m_controller.subscribe();
 
@@ -443,7 +443,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EventFilteringTests, DayNightControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestIgnoresNonHourChangedEvents) {
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
 
     m_controller.subscribe();
     TimePeriod initialPeriod = m_controller.getCurrentPeriod();
@@ -463,7 +463,7 @@ BOOST_AUTO_TEST_CASE(TestIgnoresNonHourChangedEvents) {
 }
 
 BOOST_AUTO_TEST_CASE(TestNoHandlingWhenUnsubscribed) {
-    GameTime::Instance().init(7.0f, 1.0f);
+    GameTimeManager::Instance().init(7.0f, 1.0f);
 
     // Subscribe to set initial period
     m_controller.subscribe();
@@ -484,7 +484,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherCheckEventIgnoredWhenUnsubscribed) {
     BOOST_CHECK(!m_controller.isSubscribed());
 
     // Get initial period
-    GameTime::Instance().init(12.0f, 1.0f);
+    GameTimeManager::Instance().init(12.0f, 1.0f);
     m_controller.subscribe();
     TimePeriod initialPeriod = m_controller.getCurrentPeriod();
     m_controller.unsubscribe();

@@ -11,7 +11,7 @@
 #include "managers/EventManager.hpp"
 #include "EventManagerTestAccess.hpp"
 #include "world/WorldData.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <memory>
 #include <string>
 #include <functional>
@@ -226,18 +226,18 @@ BOOST_FIXTURE_TEST_CASE(NoRegion_BoundsOnly, WeatherEventFixture) {
 // Fixture specifically for GameTime weather tests
 struct GameTimeWeatherFixture {
     GameTimeWeatherFixture() {
-        gameTime = &GameTime::Instance();
+        gameTime = &GameTimeManager::Instance();
         gameTime->init(12.0f, 1.0f);
     }
 
     ~GameTimeWeatherFixture() {
         gameTime->enableAutoWeather(false);
-        gameTime->resume();
+        gameTime->setGlobalPause(false);
         gameTime->init(12.0f, 1.0f);
     }
 
 protected:
-    GameTime* gameTime;
+    GameTimeManager* gameTime;
 };
 
 BOOST_FIXTURE_TEST_CASE(AutoWeatherToggle, GameTimeWeatherFixture) {

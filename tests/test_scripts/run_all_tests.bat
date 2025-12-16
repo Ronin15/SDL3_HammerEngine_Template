@@ -68,7 +68,7 @@ if /i "%~1"=="--help" (
     echo   --help            Show this help message
     echo.
     echo Test Categories:
-    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, WeatherEvent, GameTime, Controllers,
+    echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, WeatherEvent, GameTimeManager, Controllers,
     echo                     ParticleManager, Collision, Pathfinding, GameEngine, Camera, InputManager, SIMD, BufferReuse,
     echo                     Rendering, LoadingState, UIManager, AI-Collision Integration, Event Coordination Integration
     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, Pathfinder, SIMD, and Integrated system benchmarks

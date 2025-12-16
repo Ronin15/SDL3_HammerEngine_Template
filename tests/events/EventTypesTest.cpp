@@ -533,7 +533,7 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectEventEdgeCases, EventTypesFixture) {
 // ============================================================================
 
 #include "events/TimeEvent.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 
 // Test HourChangedEvent creation and properties
 BOOST_FIXTURE_TEST_CASE(HourChangedEventBasics, EventTypesFixture) {

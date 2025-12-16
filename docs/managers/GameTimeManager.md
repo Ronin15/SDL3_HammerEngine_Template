@@ -1,11 +1,11 @@
-# GameTime Documentation
+# GameTimeManager Documentation
 
 **Where to find the code:**
 - Implementation: `src/core/GameTime.cpp`
-- Header: `include/core/GameTime.hpp`
+- Header: `include/managers/GameTimeManager.hpp`
 - Events: `include/events/TimeEvent.hpp`
 
-**Singleton Access:** Use `GameTime::Instance()` to access the time system.
+**Singleton Access:** Use `GameTimeManager::Instance()` to access the time system.
 
 ## Overview
 
@@ -29,15 +29,15 @@ The `GameTime` class is a singleton that manages all time-related functionality 
 ### Basic Setup
 
 ```cpp
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 
 // Initialize in GameEngine (already done by default)
-GameTime& gameTime = GameTime::Instance();
+GameTime& gameTime = GameTimeManager::Instance();
 gameTime.init(12.0f, 60.0f);  // Start at noon, 60x time scale
 
 // Update in your game state
 void GamePlayState::update(float deltaTime) {
-    GameTime::Instance().update(deltaTime);
+    GameTimeManager::Instance().update(deltaTime);
 }
 
 // Query time information
@@ -105,7 +105,7 @@ GameTime tracks time using a configurable time scale that converts real-time to 
 ### Pause/Resume
 
 ```cpp
-GameTime& gameTime = GameTime::Instance();
+GameTime& gameTime = GameTimeManager::Instance();
 
 gameTime.pause();    // Stop time progression
 gameTime.resume();   // Resume time (resets internal timing to avoid jumps)
@@ -130,7 +130,7 @@ GameTime uses a 4-month fantasy calendar by default:
 ### Calendar Queries
 
 ```cpp
-GameTime& gameTime = GameTime::Instance();
+GameTime& gameTime = GameTimeManager::Instance();
 
 int month = gameTime.getCurrentMonth();            // 0-based index
 std::string_view monthName = gameTime.getCurrentMonthName();  // "Bloomtide"
@@ -154,7 +154,7 @@ customCalendar.months = {
     {"EighthMoon", 28, Season::Winter}
 };
 
-GameTime::Instance().setCalendarConfig(customCalendar);
+GameTimeManager::Instance().setCalendarConfig(customCalendar);
 // Total: 224 days per year
 ```
 
@@ -197,7 +197,7 @@ struct SeasonConfig {
 ### Season Queries
 
 ```cpp
-GameTime& gameTime = GameTime::Instance();
+GameTime& gameTime = GameTimeManager::Instance();
 
 Season season = gameTime.getSeason();              // Type-safe enum
 const char* name = gameTime.getSeasonName();       // "Spring", "Summer", etc.
@@ -247,7 +247,7 @@ enum class WeatherType {
 ### Automatic Weather System
 
 ```cpp
-GameTime& gameTime = GameTime::Instance();
+GameTime& gameTime = GameTimeManager::Instance();
 
 // Enable automatic weather changes
 gameTime.enableAutoWeather(true);
@@ -263,7 +263,7 @@ WeatherType winter = gameTime.rollWeatherForSeason(Season::Winter);  // Specific
 ### Weather Event Flow
 
 ```
-GameTime::update()
+GameTimeManager::update()
   → checkWeatherUpdate() (every N game hours)
     → rollWeatherForSeason()
       → WeatherCheckEvent dispatched (Deferred)
@@ -404,7 +404,7 @@ The recommended pattern uses Controllers for state-specific time handling:
 
 ```cpp
 // GamePlayState::enter()
-GameTime::Instance().enableAutoWeather(true);
+GameTimeManager::Instance().enableAutoWeather(true);
 WeatherController::Instance().subscribe();
 TimeController::Instance().subscribe("gameplay_event_log");
 DayNightController::Instance().subscribe();
@@ -450,7 +450,7 @@ void WeatherController::onTimeEvent(const EventData& data) {
 ```cpp
 // CORRECT: State controls when time updates
 void GamePlayState::update(float deltaTime) {
-    GameTime::Instance().update(deltaTime);
+    GameTimeManager::Instance().update(deltaTime);
 }
 
 // WRONG: Don't update from GameEngine directly
@@ -484,11 +484,11 @@ if (!hourEvent) { ... }
 
 ```cpp
 void PauseState::enter() {
-    GameTime::Instance().pause();
+    GameTimeManager::Instance().pause();
 }
 
 void PauseState::exit() {
-    GameTime::Instance().resume();
+    GameTimeManager::Instance().resume();
 }
 ```
 
@@ -498,7 +498,7 @@ void PauseState::exit() {
 
 ```cpp
 void updateTimeDisplay() {
-    GameTime& gameTime = GameTime::Instance();
+    GameTime& gameTime = GameTimeManager::Instance();
 
     // Format: "Day 15 Bloomtide, Year 1 | 14:30 | Day"
     std::string status = std::format(
@@ -518,7 +518,7 @@ void updateTimeDisplay() {
 
 ```cpp
 void updateSeasonalBehavior() {
-    Season season = GameTime::Instance().getSeason();
+    Season season = GameTimeManager::Instance().getSeason();
 
     switch (season) {
         case Season::Winter:
@@ -546,17 +546,17 @@ void updateSeasonalBehavior() {
 void setupDebugTimeControls() {
     // Fast-forward time for testing
     if (InputManager::Instance().isKeyPressed(SDL_SCANCODE_PERIOD)) {
-        GameTime::Instance().setTimeScale(600.0f);  // 10x faster
+        GameTimeManager::Instance().setTimeScale(600.0f);  // 10x faster
     }
 
     // Normal speed
     if (InputManager::Instance().isKeyPressed(SDL_SCANCODE_COMMA)) {
-        GameTime::Instance().setTimeScale(60.0f);   // Default
+        GameTimeManager::Instance().setTimeScale(60.0f);   // Default
     }
 
     // Pause
     if (InputManager::Instance().isKeyPressed(SDL_SCANCODE_P)) {
-        auto& gameTime = GameTime::Instance();
+        auto& gameTime = GameTimeManager::Instance();
         gameTime.isPaused() ? gameTime.resume() : gameTime.pause();
     }
 }

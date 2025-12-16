@@ -17,7 +17,7 @@
  * Ownership: GameState owns the controller instance (not a singleton).
  *
  * Event flow:
- *   GameTime::dispatchTimeEvents() -> HourChangedEvent (Deferred)
+ *   GameTimeManager::dispatchTimeEvents() -> HourChangedEvent (Deferred)
  *     -> DayNightController detects period change
  *     -> Dispatches TimePeriodChangedEvent with visual config
  *     -> GamePlayState (or other subscribers) handle rendering

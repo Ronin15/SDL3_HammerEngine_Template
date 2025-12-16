@@ -8,13 +8,9 @@
 #include "managers/UIManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "core/GameEngine.hpp"
-#include "core/GameTime.hpp"
 
 bool PauseState::enter() {
-  // Pause game time while in pause state
-  GameTime::Instance().pause();
-
-  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles)
+  // Pause all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
   GameEngine::Instance().setGlobalPause(true);
 
   // Create pause state UI
@@ -70,10 +66,7 @@ void PauseState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpola
     ui.render(renderer);
 }
 bool PauseState::exit() {
-  // Resume game time when leaving pause state
-  GameTime::Instance().resume();
-
-  // Resume all game managers via GameEngine (collision, pathfinding, AI, particles)
+  // Resume all game managers via GameEngine (collision, pathfinding, AI, particles, GameTime)
   GameEngine::Instance().setGlobalPause(false);
 
   // Only clean up PauseState-specific UI components
