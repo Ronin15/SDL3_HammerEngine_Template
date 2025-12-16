@@ -1467,17 +1467,24 @@ void PathfinderManager::processPendingRequests() {
         MIN_REQUESTS_FOR_BATCHING
     );
 
-    // Store metrics for debugging/profiling
-    m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
-    m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-    m_lastPathfindingBudget.store(budget.pathfindingAllocated, std::memory_order_relaxed);
-
     // Determine if threading is beneficial
     const bool useThreading = (requestsToProcess >= MIN_REQUESTS_FOR_BATCHING) &&
                              (optimalWorkerCount > 0) &&
                              (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
 
-    m_lastWasThreaded.store(useThreading, std::memory_order_relaxed);
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
+    static thread_local uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 300 == 0 && requestsToProcess > 0) {
+        if (useThreading) {
+            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {}, Workers: {}/{}, Budget: {} [Threaded]",
+                          requestsToProcess, optimalWorkerCount, availableWorkers, budget.pathfindingAllocated));
+        } else {
+            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} [Single-threaded]",
+                          requestsToProcess));
+        }
+    }
+#endif
 
     if (!useThreading) {
         // Process sequentially on main thread (low request count or high queue pressure)
@@ -1584,6 +1591,12 @@ void PathfinderManager::processPendingRequests() {
     PATHFIND_DEBUG(std::format("Processing {} requests in {} batches (size: {}), workers: {}",
                   requestsToProcess, batchCount, batchSize, optimalWorkerCount));
 
+    // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
+    // No lock needed: processPendingRequests runs on update thread only,
+    // waitForBatchCompletion only runs during state transitions when update is paused
+    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
+    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
+
     // Submit batches
     for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * batchSize;
@@ -1663,27 +1676,27 @@ void PathfinderManager::processPendingRequests() {
             }
         };
 
-        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-        m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+        m_reusableBatchFutures.push_back(threadSystem.enqueueTaskWithResult(
             batchWork,
             HammerEngine::TaskPriority::High,
             std::format("Pathfinding_Batch_{}", i)
         ));
     }
 
+    // Store futures for shutdown synchronization (swap back preserves both capacities)
+    std::swap(m_batchFutures, m_reusableBatchFutures);
+
     // Batches submitted asynchronously - callbacks will fire when paths complete
     // waitForBatchCompletion() is only called during cleanup/state transitions
 }
 
 void PathfinderManager::waitForBatchCompletion() {
-    std::vector<std::future<void>> localFutures;
+    // No lock needed: only called during state transitions when update is paused
+    // Use swap to preserve capacity for next use
+    m_reusableBatchFutures.clear();
+    std::swap(m_reusableBatchFutures, m_batchFutures);
 
-    {
-        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-        localFutures = std::move(m_batchFutures);
-    }
-
-    for (auto& future : localFutures) {
+    for (auto& future : m_reusableBatchFutures) {
         if (future.valid()) {
             try {
                 future.wait();

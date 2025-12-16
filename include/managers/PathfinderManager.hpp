@@ -419,18 +419,14 @@ private:
 
     // Async task synchronization (mirroring AIManager pattern)
     std::vector<std::future<void>> m_gridRebuildFutures;
+    std::vector<std::future<void>> m_reusableGridRebuildFutures;  // Swap target to preserve capacity
     std::mutex m_gridRebuildFuturesMutex;
 
     // WorkerBudget integration for coordinated batch processing
     HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
     std::vector<std::future<void>> m_batchFutures;
-    std::mutex m_batchFuturesMutex;
-
-    // Performance tracking (matching AIManager pattern)
-    std::atomic<size_t> m_lastOptimalWorkerCount{0};
-    std::atomic<size_t> m_lastAvailableWorkers{0};
-    std::atomic<size_t> m_lastPathfindingBudget{0};
-    std::atomic<bool> m_lastWasThreaded{false};
+    std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
+    // No mutex needed: update and state transitions never run concurrently
 
     // Request batching configuration
     static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)

@@ -2762,14 +2762,19 @@ void CollisionManager::updatePerformanceMetricsSOA(
   m_perf.updateBroadphaseAverage(d12);
   m_perf.frames += 1;
 
+#ifndef NDEBUG
+  // Interval stats logging - zero overhead in release (entire block compiles out)
+  static thread_local uint64_t logFrameCounter = 0;
+  ++logFrameCounter;
+
   // Performance warnings (throttled to reduce spam during benchmarks)
-  if (m_perf.lastTotalMs > 5.0 && m_perf.frames % 60 == 0) { // Only log every 60 frames for slow performance
+  if (m_perf.lastTotalMs > 5.0 && logFrameCounter % 60 == 0) {
     COLLISION_WARN(std::format("SOA Slow frame: totalMs={}, syncMs={}, broadphaseMs={}, narrowphaseMs={}, pairs={}, collisions={}",
                    m_perf.lastTotalMs, d01, d12, d23, pairCount, collisionCount));
   }
 
-  // Periodic statistics (every 300 frames like AIManager)
-  if (m_perf.frames % 300 == 0 && bodyCount > 0) {
+  // Periodic statistics (every 300 frames)
+  if (logFrameCounter % 300 == 0 && bodyCount > 0) {
     // PERFORMANCE OPTIMIZATION REPORTING: Show optimization effectiveness
     std::string optimizationStats = std::format(" [Optimizations: Active={}%", m_perf.getActiveBodiesRate());
     if (dynamicBodiesCulled > 0) {
@@ -2808,6 +2813,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
     m_cacheHits = 0;
     m_cacheMisses = 0;
   }
+#endif
 }
 
 void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates) {

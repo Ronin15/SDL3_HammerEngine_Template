@@ -91,35 +91,6 @@ struct AIEntityData {
 };
 
 /**
- * @brief AI Performance statistics
- */
-struct AIPerformanceStats {
-  double totalUpdateTime{0.0};
-  uint64_t updateCount{0};
-  uint64_t entitiesProcessed{0};
-  double entitiesPerSecond{0.0};
-
-  void addSample(double timeMs, uint64_t entities) {
-    totalUpdateTime += timeMs;
-    updateCount++;
-    entitiesProcessed += entities;
-    
-    // Use simple instantaneous rate calculation to avoid per-frame timing overhead
-    // This is much faster than time-windowed calculations
-    if (timeMs > 0) {
-      entitiesPerSecond = (entities * 1000.0) / timeMs; // entities processed per second in this frame
-    }
-  }
-
-  void reset() {
-    totalUpdateTime = 0.0;
-    updateCount = 0;
-    entitiesProcessed = 0;
-    entitiesPerSecond = 0.0;
-  }
-};
-
-/**
  * @brief Pre-fetched batch data for lock-free parallel processing
  *
  * This struct holds copies of all entity data needed for AI processing.
@@ -344,7 +315,6 @@ public:
   size_t getMaxBatchesPerUpdate() const;
 
   // Performance monitoring
-  AIPerformanceStats getPerformanceStats() const;
   size_t getBehaviorCount() const;
   size_t getManagedEntityCount() const;
   size_t getBehaviorUpdateCount() const;
@@ -415,18 +385,6 @@ private:
   mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
   mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
 
-  // Performance stats per behavior type
-  std::array<AIPerformanceStats, static_cast<size_t>(BehaviorType::COUNT)>
-      m_behaviorStats;
-  AIPerformanceStats m_globalStats;
-
-  // Thread allocation tracking for debug output
-  std::atomic<size_t> m_lastOptimalWorkerCount{0};
-  std::atomic<size_t> m_lastAvailableWorkers{0};
-  std::atomic<size_t> m_lastAIBudget{0};
-  std::atomic<size_t> m_lastThreadBatchCount{0};
-  std::atomic<bool> m_lastWasThreaded{false};
-
   // Adaptive batch state for performance-based tuning
   HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
 
@@ -488,7 +446,7 @@ private:
   // Thread-safe assignment tracking
   std::atomic<size_t> m_totalAssignmentCount{0};
 
-  // Frame counter for periodic logging (thread-safe)
+  // Frame counter for cache invalidation and distance staggering (operational)
   std::atomic<uint64_t> m_frameCounter{0};
 
   // Asynchronous assignment processing (replaced with futures for deterministic tracking)
@@ -511,7 +469,6 @@ private:
   mutable std::shared_mutex m_behaviorsMutex;
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
-  mutable std::mutex m_statsMutex;
 
   // Cached manager references (avoid singleton lookups in hot paths)
   PathfinderManager* mp_pathfinderManager{nullptr};
@@ -583,7 +540,6 @@ private:
   void cleanupInactiveEntities();
   void cleanupAllEntities();
   void updateDistancesScalar(const Vector2D &playerPos);
-  void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
   static uint64_t getCurrentTimeNanos();
 
   // Legacy pathfinding methods removed - use PathfinderManager instead
