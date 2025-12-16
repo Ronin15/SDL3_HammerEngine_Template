@@ -10,3 +10,17 @@ AIManager.cpp:bugprone-infinite-loop:false positive - loop variable incremented 
 PathfindingGrid.cpp:bugprone-empty-catch:intentional fallback to default threshold
 Camera.cpp:bugprone-empty-catch:intentional fallback to keep current bounds
 EventDemoState.cpp:bugprone-empty-catch:cleanup must not throw during exit
+
+# False positives: non-const method calls on reference require non-const
+WorldManager.cpp:misc-const-correctness:eventMgr calls non-const registerHandlerWithToken
+
+# False positives: counter variables incremented in loop body
+WorldManager.cpp:misc-const-correctness:totalTiles incremented in loop
+WorldManager.cpp:misc-const-correctness:forestTiles incremented in loop
+WorldManager.cpp:misc-const-correctness:mountainTiles incremented in loop
+WorldManager.cpp:misc-const-correctness:swampTiles incremented in loop
+WorldManager.cpp:misc-const-correctness:celestialTiles incremented in loop
+WorldManager.cpp:misc-const-correctness:highElevationTiles incremented in loop
+
+# False positive: subBodyIndex is incremented later in loop
+CollisionManager.cpp:misc-const-correctness:subBodyIndex incremented in loop
