@@ -14,6 +14,8 @@
  * time period changes (Morning/Day/Evening/Night). Does NOT render - rendering
  * is handled by subscribers to the TimePeriodChangedEvent.
  *
+ * Ownership: GameState owns the controller instance (not a singleton).
+ *
  * Event flow:
  *   GameTime::dispatchTimeEvents() -> HourChangedEvent (Deferred)
  *     -> DayNightController detects period change
@@ -21,18 +23,18 @@
  *     -> GamePlayState (or other subscribers) handle rendering
  */
 
-#include "managers/EventManager.hpp"
+#include "controllers/ControllerBase.hpp"
 #include "events/TimeEvent.hpp"
-#include <vector>
 
-class DayNightController
+class DayNightController : public ControllerBase
 {
 public:
-    /**
-     * @brief Get the singleton instance of DayNightController
-     * @return Reference to the DayNightController instance
-     */
-    static DayNightController& Instance();
+    DayNightController() = default;
+    ~DayNightController() override = default;
+
+    // Movable (inherited from base)
+    DayNightController(DayNightController&&) noexcept = default;
+    DayNightController& operator=(DayNightController&&) noexcept = default;
 
     /**
      * @brief Subscribe to time events and start tracking time periods
@@ -41,42 +43,24 @@ public:
     void subscribe();
 
     /**
-     * @brief Unsubscribe from time events
-     * @note Called when a world state exits
-     */
-    void unsubscribe();
-
-    /**
-     * @brief Check if currently subscribed to time events
-     * @return True if subscribed, false otherwise
-     */
-    bool isSubscribed() const { return m_subscribed; }
-
-    /**
      * @brief Get the current time period
      * @return Current TimePeriod enum value
      */
-    TimePeriod getCurrentPeriod() const { return m_currentPeriod; }
+    [[nodiscard]] TimePeriod getCurrentPeriod() const { return m_currentPeriod; }
 
     /**
      * @brief Get the current time period as string (zero allocation)
      * @return Static string pointer: "Morning", "Day", "Evening", or "Night"
      */
-    const char* getCurrentPeriodString() const;
+    [[nodiscard]] const char* getCurrentPeriodString() const;
 
     /**
      * @brief Get the visual configuration for the current period
      * @return TimePeriodVisuals with overlay color values
      */
-    TimePeriodVisuals getCurrentVisuals() const;
+    [[nodiscard]] TimePeriodVisuals getCurrentVisuals() const;
 
 private:
-    // Singleton pattern
-    DayNightController() = default;
-    ~DayNightController() = default;
-    DayNightController(const DayNightController&) = delete;
-    DayNightController& operator=(const DayNightController&) = delete;
-
     /**
      * @brief Handler for time events
      * @param data Event data containing the time event
@@ -95,10 +79,6 @@ private:
      * @return Corresponding TimePeriod
      */
     static TimePeriod hourToTimePeriod(float hour);
-
-    // Subscription state
-    bool m_subscribed{false};
-    std::vector<EventManager::HandlerToken> m_handlerTokens;
 
     // Current state
     TimePeriod m_currentPeriod{TimePeriod::Day};

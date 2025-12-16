@@ -8,15 +8,9 @@
 #include "core/Logger.hpp"
 #include <format>
 
-DayNightController& DayNightController::Instance()
-{
-    static DayNightController instance;
-    return instance;
-}
-
 void DayNightController::subscribe()
 {
-    if (m_subscribed) {
+    if (checkAlreadySubscribed()) {
         return;
     }
 
@@ -27,7 +21,7 @@ void DayNightController::subscribe()
         EventTypeId::Time,
         [this](const EventData& data) { onTimeEvent(data); }
     );
-    m_handlerTokens.push_back(timeToken);
+    addHandlerToken(timeToken);
 
     // Initialize to current time period
     float currentHour = GameTime::Instance().getGameHour();
@@ -40,25 +34,9 @@ void DayNightController::subscribe()
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
-    m_subscribed = true;
+    setSubscribed(true);
     DAYNIGHT_INFO(std::format("Subscribed to time events, period: {}",
                 getCurrentPeriodString()));
-}
-
-void DayNightController::unsubscribe()
-{
-    if (!m_subscribed) {
-        return;
-    }
-
-    auto& eventMgr = EventManager::Instance();
-    for (const auto& token : m_handlerTokens) {
-        eventMgr.removeHandler(token);
-    }
-    m_handlerTokens.clear();
-
-    m_subscribed = false;
-    DAYNIGHT_INFO("Unsubscribed from time events");
 }
 
 void DayNightController::onTimeEvent(const EventData& data)

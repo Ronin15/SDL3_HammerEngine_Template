@@ -91,7 +91,6 @@ set(MOCK_TESTS
     pathfinder_ai_contention_tests
     event_coordination_integration_tests
     ai_collision_integration_tests
-    time_controller_tests
     weather_controller_tests
     day_night_controller_tests
 )
@@ -231,8 +230,6 @@ foreach(test_name ${MOCK_TESTS})
         elseif(${suffix} STREQUAL "threading")
             set(test_source "particle/ParticleManagerThreadingTest.cpp")
         endif()
-    elseif(${test_name} STREQUAL "time_controller_tests")
-        set(test_source "controllers/TimeControllerTests.cpp")
     elseif(${test_name} STREQUAL "weather_controller_tests")
         set(test_source "controllers/WeatherControllerTests.cpp")
     elseif(${test_name} STREQUAL "day_night_controller_tests")

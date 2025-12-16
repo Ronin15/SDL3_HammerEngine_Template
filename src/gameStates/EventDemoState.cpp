@@ -26,8 +26,6 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "controllers/world/WeatherController.hpp"
-#include "controllers/world/TimeController.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <cmath>
@@ -278,12 +276,6 @@ bool EventDemoState::enter() {
     // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
 
-    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
-    WeatherController::Instance().subscribe();
-
-    // Subscribe to time events for event log display
-    TimeController::Instance().subscribe("event_log");
-
     // Pre-allocate status buffers to avoid per-frame allocations
     m_phaseBuffer.reserve(32);
     m_statusBuffer2.reserve(64);
@@ -440,12 +432,6 @@ bool EventDemoState::exit() {
       // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
       m_worldLoaded = false;
     }
-
-    // Unsubscribe from automatic weather events
-    WeatherController::Instance().unsubscribe();
-
-    // Unsubscribe from time event logging
-    TimeController::Instance().unsubscribe();
 
     // Clear cached manager pointers
     mp_particleMgr = nullptr;
