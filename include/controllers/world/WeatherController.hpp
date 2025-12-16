@@ -25,6 +25,7 @@
  */
 
 #include "controllers/ControllerBase.hpp"
+#include <string_view>
 
 // Forward declaration
 enum class WeatherType;
@@ -53,9 +54,15 @@ public:
 
     /**
      * @brief Get current weather as string (zero allocation)
-     * @return Static string pointer: "Clear", "Rainy", etc.
+     * @return String view: "Clear", "Rainy", etc.
      */
-    [[nodiscard]] const char* getCurrentWeatherString() const;
+    [[nodiscard]] std::string_view getCurrentWeatherString() const;
+
+    /**
+     * @brief Get descriptive weather message for event log (zero allocation)
+     * @return String view: "Fog rolls in", "Storm approaches", etc.
+     */
+    [[nodiscard]] std::string_view getCurrentWeatherDescription() const;
 
 private:
     /**

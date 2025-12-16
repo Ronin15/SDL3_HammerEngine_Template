@@ -347,7 +347,7 @@ void GameTime::dispatchTimeEvents()
     if (m_currentSeason != m_previousSeason)
     {
         auto event = std::make_shared<SeasonChangedEvent>(
-            m_currentSeason, m_previousSeason, getSeasonName());
+            m_currentSeason, m_previousSeason, std::string(getSeasonName()));
         EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
     }
 
@@ -451,7 +451,7 @@ bool GameTime::isNighttime() const
     return !isDaytime();
 }
 
-const char* GameTime::getTimeOfDayName() const
+std::string_view GameTime::getTimeOfDayName() const
 {
     if (m_currentHour >= 5.0f && m_currentHour < 8.0f)
         return "Morning";
@@ -552,7 +552,7 @@ int GameTime::getDaysInCurrentMonth() const
 // Season Methods
 // ============================================================================
 
-const char* GameTime::getSeasonName() const
+std::string_view GameTime::getSeasonName() const
 {
     switch (m_currentSeason)
     {

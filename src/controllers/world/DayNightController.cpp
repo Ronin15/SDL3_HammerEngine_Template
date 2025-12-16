@@ -80,7 +80,7 @@ void DayNightController::transitionToPeriod(TimePeriod newPeriod)
     DAYNIGHT_INFO(std::format("Transitioned to {}", getCurrentPeriodString()));
 }
 
-const char* DayNightController::getCurrentPeriodString() const
+std::string_view DayNightController::getCurrentPeriodString() const
 {
     switch (m_currentPeriod) {
         case TimePeriod::Morning: return "Morning";

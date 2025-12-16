@@ -166,16 +166,15 @@ BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodString) {
 
     m_controller.subscribe();
 
-    const char* periodStr = m_controller.getCurrentPeriodString();
-    BOOST_CHECK_EQUAL(std::string(periodStr), "Day");
+    std::string_view periodStr = m_controller.getCurrentPeriodString();
+    BOOST_CHECK_EQUAL(periodStr, "Day");
 }
 
 BOOST_AUTO_TEST_CASE(TestPeriodStringValidity) {
     m_controller.subscribe();
 
-    const char* periodStr = m_controller.getCurrentPeriodString();
-    BOOST_CHECK(periodStr != nullptr);
-    BOOST_CHECK(std::strlen(periodStr) > 0);
+    std::string_view periodStr = m_controller.getCurrentPeriodString();
+    BOOST_CHECK(!periodStr.empty());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

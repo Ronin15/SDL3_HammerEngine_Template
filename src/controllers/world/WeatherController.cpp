@@ -50,25 +50,16 @@ void WeatherController::onTimeEvent(const EventData& data)
     // Track current weather for status bar display
     m_currentWeather = recommended;
 
-    // Convert WeatherType enum to string for EventManager
-    const char* weatherName =
-        (recommended == WeatherType::Clear)  ? "Clear" :
-        (recommended == WeatherType::Cloudy) ? "Cloudy" :
-        (recommended == WeatherType::Rainy)  ? "Rainy" :
-        (recommended == WeatherType::Stormy) ? "Stormy" :
-        (recommended == WeatherType::Foggy)  ? "Foggy" :
-        (recommended == WeatherType::Snowy)  ? "Snowy" :
-        (recommended == WeatherType::Windy)  ? "Windy" : "Clear";
-
-    // Trigger weather change (non-blocking, deferred dispatch)
+    // Trigger weather change using the string getter (non-blocking, deferred dispatch)
     // This fires a WeatherEvent that ParticleManager subscribes to
+    std::string weatherName(getCurrentWeatherString());
     EventManager::Instance().changeWeather(weatherName, 2.0f,
         EventManager::DispatchMode::Deferred);
 
     WEATHER_DEBUG(weatherName);
 }
 
-const char* WeatherController::getCurrentWeatherString() const
+std::string_view WeatherController::getCurrentWeatherString() const
 {
     switch (m_currentWeather) {
         case WeatherType::Clear:  return "Clear";
@@ -79,5 +70,19 @@ const char* WeatherController::getCurrentWeatherString() const
         case WeatherType::Snowy:  return "Snowy";
         case WeatherType::Windy:  return "Windy";
         default: return "Clear";
+    }
+}
+
+std::string_view WeatherController::getCurrentWeatherDescription() const
+{
+    switch (m_currentWeather) {
+        case WeatherType::Clear:  return "Clear skies";
+        case WeatherType::Cloudy: return "Clouds gather";
+        case WeatherType::Rainy:  return "Rain begins";
+        case WeatherType::Stormy: return "Storm approaches";
+        case WeatherType::Foggy:  return "Fog rolls in";
+        case WeatherType::Snowy:  return "Snow falls";
+        case WeatherType::Windy:  return "Wind picks up";
+        default: return "Weather changes";
     }
 }

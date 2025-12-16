@@ -352,7 +352,53 @@ for (size_t i = start; i < end; ++i) {
 
 **Reference:** See commit a8aa267e for detailed fix example in AIManager::processBatch()
 
-#### 5.4 Logger Usage
+#### 5.4 String Parameter Regression (CRITICAL)
+
+**Background:**
+A refactoring attempt changed `const std::string&` parameters to `std::string_view` for "modernization", but then converted back to `std::string` for map lookups. This introduces allocations where there were none - a severe performance regression.
+
+**Check Commands:**
+```bash
+# Find string_view parameters that convert to std::string for lookups
+grep -rn "std::string \w\+Str\(" src/ --include="*.cpp"
+
+# Find string_view parameters in headers doing map operations
+grep -rn "string_view.*find\|string_view.*\[" src/ include/
+```
+
+**FORBIDDEN PATTERN:**
+```cpp
+// ✗ REGRESSION - Allocates on EVERY call
+bool hasEvent(std::string_view name) const {
+    std::string nameStr(name);  // ALLOCATION!
+    return m_map.find(nameStr) != m_map.end();
+}
+
+// ✓ CORRECT - Zero-copy when caller passes std::string
+bool hasEvent(const std::string& name) const {
+    return m_map.find(name) != m_map.end();  // No allocation
+}
+```
+
+**When string_view is SAFE:**
+- **Return types** returning string literals: `std::string_view getName() { return "literal"; }`
+- **Literal comparisons only**: `if (type == "Weather")` (no map lookup)
+- **constexpr constants**: `constexpr std::string_view NAME = "value";`
+
+**When to use const std::string&:**
+- Map lookups (`.find()`, `[]` operator)
+- Storing to member variables
+- Filesystem APIs (std::ofstream, std::filesystem)
+- Any function where caller typically has a `std::string`
+
+**Why This Matters:**
+- Each `std::string(view)` conversion allocates heap memory
+- Hot-path functions (lookups) called thousands of times per frame
+- Frame rate impact: 5-15% degradation on string-heavy systems
+
+**Quality Gate:** ✓ No string_view→string conversions for map lookups (BLOCKING)
+
+#### 5.5 Logger Usage
 
 **Check Command:**
 ```bash

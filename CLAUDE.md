@@ -109,6 +109,8 @@ ui.setComponentPositioning("my_btn", {UIPositionMode::TOP_ALIGNED, 100, 200, 120
 
 **Parameter Passing**: **ALWAYS prefer references over copies**. Use `const T&` for read-only access to non-trivial objects. Use `T&` for mutation. Pass by value only for primitives (int, float, bool) or intentional ownership transfer (move semantics). NEVER copy when a reference suffices.
 
+**String Parameters**: Use `const std::string&` for map lookups/storage (zero-copy). Use `string_view` only for return types of literals or `constexpr` constants. **NEVER** convert `string_view` → `std::string` for lookups.
+
 **Naming**: UpperCamelCase (classes/enums) | lowerCamelCase (functions/vars) | `m_` prefix (members), `mp_` (pointers) | ALL_CAPS (constants)
 
 **Headers**: `.hpp` for C++, `.h` for C | Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
