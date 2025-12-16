@@ -160,17 +160,14 @@ BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDefault) {
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherString) {
     // Default weather string should be "Clear"
-    const char* weatherStr = m_controller.getCurrentWeatherString();
-    BOOST_CHECK_EQUAL(std::string(weatherStr), "Clear");
+    std::string_view weatherStr = m_controller.getCurrentWeatherString();
+    BOOST_CHECK_EQUAL(weatherStr, "Clear");
 }
 
 BOOST_AUTO_TEST_CASE(TestWeatherStringValidity) {
-    // Weather string should not be null
-    const char* weatherStr = m_controller.getCurrentWeatherString();
-    BOOST_CHECK(weatherStr != nullptr);
-
-    // Should have some content
-    BOOST_CHECK(std::strlen(weatherStr) > 0);
+    // Weather string should not be empty
+    std::string_view weatherStr = m_controller.getCurrentWeatherString();
+    BOOST_CHECK(!weatherStr.empty());
 }
 
 BOOST_AUTO_TEST_SUITE_END()

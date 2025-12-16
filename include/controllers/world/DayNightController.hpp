@@ -25,6 +25,7 @@
 
 #include "controllers/ControllerBase.hpp"
 #include "events/TimeEvent.hpp"
+#include <string_view>
 
 class DayNightController : public ControllerBase
 {
@@ -50,9 +51,9 @@ public:
 
     /**
      * @brief Get the current time period as string (zero allocation)
-     * @return Static string pointer: "Morning", "Day", "Evening", or "Night"
+     * @return String view: "Morning", "Day", "Evening", or "Night"
      */
-    [[nodiscard]] const char* getCurrentPeriodString() const;
+    [[nodiscard]] std::string_view getCurrentPeriodString() const;
 
     /**
      * @brief Get the visual configuration for the current period

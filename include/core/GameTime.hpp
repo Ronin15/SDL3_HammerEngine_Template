@@ -189,9 +189,9 @@ public:
 
     /**
      * @brief Get current time of day as string (Morning, Day, Evening, Night)
-     * @return Static string pointer for time of day
+     * @return String view for time of day
      */
-    const char* getTimeOfDayName() const;
+    std::string_view getTimeOfDayName() const;
 
     /**
      * @brief Set the time scale factor
@@ -285,9 +285,9 @@ public:
 
     /**
      * @brief Get current season name as string
-     * @return Static string pointer: "Spring", "Summer", "Fall", or "Winter"
+     * @return String view: "Spring", "Summer", "Fall", or "Winter"
      */
-    const char* getSeasonName() const;
+    std::string_view getSeasonName() const;
 
     /**
      * @brief Get environmental configuration for current season
