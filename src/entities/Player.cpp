@@ -41,6 +41,9 @@ Player::Player() : Entity() {
   // Set width and height based on texture dimensions if the texture is loaded
   loadDimensionsFromTexture();
 
+  // Initialize animation system
+  initializeAnimationMap();
+
   // Setup state manager and add states
   setupStates();
 
@@ -466,4 +469,88 @@ void Player::refreshWorldBoundsCache() {
   PLAYER_DEBUG(std::format("World bounds cached: ({}, {}) to ({}, {}), version: {}",
                m_cachedWorldMinX, m_cachedWorldMinY,
                m_cachedWorldMaxX, m_cachedWorldMaxY, m_cachedWorldVersion));
+}
+
+// Animation abstraction methods
+
+void Player::initializeAnimationMap() {
+  // Default animation configuration mapping names to sprite sheet details
+  // Current player sprite sheet: 1 row, 2 frames (shared for idle/running)
+  // Can be extended when player sprite sheet is expanded with more rows
+  m_animationMap = {
+      {"idle",     {0, 2, 150, true}},   // Row 0, 2 frames, 150ms, looping
+      {"running",  {0, 2, 100, true}},   // Row 0, 2 frames, 100ms, looping (same row as idle)
+      {"attacking", {0, 2, 80, false}},  // Row 0, 2 frames, 80ms, play once (placeholder)
+      {"hurt",     {0, 2, 100, false}},  // Row 0, 2 frames, 100ms, play once (placeholder)
+      {"dying",    {0, 2, 120, false}}   // Row 0, 2 frames, 120ms, play once (placeholder)
+  };
+}
+
+void Player::playAnimation(const std::string& animName) {
+  auto it = m_animationMap.find(animName);
+  if (it != m_animationMap.end()) {
+    const auto& config = it->second;
+    m_currentRow = config.row + 1;  // TextureManager uses 1-based rows
+    m_numFrames = config.frameCount;
+    m_animSpeed = config.speed;
+    m_animationLoops = config.loop;
+    m_currentFrame = 0;
+    m_lastFrameTime = SDL_GetTicks();
+  } else {
+    PLAYER_WARN(std::format("Player animation not found: {}", animName));
+  }
+}
+
+// Combat system methods
+
+void Player::takeDamage(float damage, const Vector2D& knockback) {
+  if (m_currentHealth <= 0.0f) {
+    return;  // Already dead
+  }
+
+  m_currentHealth = std::max(0.0f, m_currentHealth - damage);
+
+  // Apply knockback
+  if (knockback.length() > 0.001f) {
+    setPosition(getPosition() + knockback);
+  }
+
+  // Handle death or hurt
+  if (m_currentHealth <= 0.0f) {
+    die();
+  } else {
+    changeState("hurt");
+  }
+
+  PLAYER_DEBUG(std::format("Player took {} damage, health: {}/{}", damage, m_currentHealth, m_maxHealth));
+}
+
+void Player::heal(float amount) {
+  if (m_currentHealth <= 0.0f) {
+    return;  // Can't heal dead player
+  }
+
+  float oldHealth = m_currentHealth;
+  m_currentHealth = std::min(m_maxHealth, m_currentHealth + amount);
+
+  PLAYER_DEBUG(std::format("Player healed {} HP: {}/{} -> {}/{}",
+               amount, oldHealth, m_maxHealth, m_currentHealth, m_maxHealth));
+}
+
+void Player::die() {
+  PLAYER_INFO(std::format("Player died at position ({}, {})", m_position.getX(), m_position.getY()));
+
+  changeState("dying");
+
+  // Note: Game over / respawn logic would be handled by GamePlayState or similar
+}
+
+void Player::setMaxHealth(float maxHealth) {
+  m_maxHealth = maxHealth;
+  m_currentHealth = std::min(m_currentHealth, m_maxHealth);
+}
+
+void Player::setMaxStamina(float maxStamina) {
+  m_maxStamina = maxStamina;
+  m_currentStamina = std::min(m_currentStamina, m_maxStamina);
 }

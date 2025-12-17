@@ -8,6 +8,14 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
+// NPC Animation States
+#include "entities/npcStates/NPCIdleState.hpp"
+#include "entities/npcStates/NPCWalkingState.hpp"
+#include "entities/npcStates/NPCAttackingState.hpp"
+#include "entities/npcStates/NPCRecoveringState.hpp"
+#include "entities/npcStates/NPCHurtState.hpp"
+#include "entities/npcStates/NPCDyingState.hpp"
+
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EventManager.hpp"
@@ -45,6 +53,13 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
     m_width = m_frameWidth;
     m_height = m_frameHeight;
   }
+
+  // Initialize animation system
+  initializeAnimationMap();
+  setupAnimationStates();
+
+  // Set default animation state
+  setAnimationState("Idle");
 
   // Set default wander area to world bounds (can be changed later via
   // setWanderArea)
@@ -129,7 +144,7 @@ void NPC::loadDimensionsFromTexture() {
 
 // State management removed - handled by AI Manager
 
-void NPC::update(float) {
+void NPC::update(float deltaTime) {
   // The AI drives velocity directly; sync to collision body
   // Let collision system handle movement integration to prevent micro-bouncing
 
@@ -138,6 +153,9 @@ void NPC::update(float) {
   // Collision updates are batched and submitted via submitPendingKinematicUpdates()
   m_acceleration = Vector2D(0, 0);
 
+  // Update animation state machine
+  m_stateManager.update(deltaTime);
+
   // Position sync is handled by setPosition() calls - no need for periodic
   // checks This prevents visual glitching from position corrections during
   // rendering
@@ -145,37 +163,37 @@ void NPC::update(float) {
   // Area constraints handling removed; behaviors and managers coordinate
   // movement
 
-  // --- Animation ---
+  // --- Animation Frame Updates ---
   Uint64 currentTime = SDL_GetTicks();
 
-  // Use velocity magnitude for animation instead of position delta
-  // This works because collision system integrates movement and syncs back to entity
-  float velocityMagnitude = m_velocity.length();
-
-  // Animation threshold: ~12 pixels/second at 60 FPS
-  const float ANIMATION_THRESHOLD = 12.0f;
-
-  if (velocityMagnitude > ANIMATION_THRESHOLD) {
-    if (currentTime > m_lastFrameTime + m_animSpeed) {
+  // Advance animation frames based on timing
+  if (currentTime > m_lastFrameTime + static_cast<Uint64>(m_animSpeed)) {
+    if (m_animationLoops) {
+      // Looping animation - cycle frames
       m_currentFrame = (m_currentFrame + 1) % m_numFrames;
-      m_lastFrameTime = currentTime;
-    }
-    // Smooth flip: require sufficient lateral speed and a minimum interval
-    const float flipSpeedThreshold = 15.0f; // px/s
-    if (std::abs(m_velocity.getX()) > flipSpeedThreshold) {
-      int newSign = (m_velocity.getX() < 0) ? -1 : 1;
-      if (newSign != m_lastFlipSign) {
-        if (currentTime - m_lastFlipTime >= 300) { // ms
-          m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-          m_lastFlipSign = newSign;
-          m_lastFlipTime = currentTime;
-        }
-      } else {
-        m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+    } else {
+      // Non-looping animation - stop at last frame
+      if (m_currentFrame < m_numFrames - 1) {
+        m_currentFrame++;
       }
     }
-  } else {
-    m_currentFrame = 0;
+    m_lastFrameTime = currentTime;
+  }
+
+  // --- Flip Direction based on Velocity ---
+  // Smooth flip: require sufficient lateral speed and a minimum interval
+  const float flipSpeedThreshold = 15.0f; // px/s
+  if (std::abs(m_velocity.getX()) > flipSpeedThreshold) {
+    int newSign = (m_velocity.getX() < 0) ? -1 : 1;
+    if (newSign != m_lastFlipSign) {
+      if (currentTime - m_lastFlipTime >= 300) { // ms
+        m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+        m_lastFlipSign = newSign;
+        m_lastFlipTime = currentTime;
+      }
+    } else {
+      m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+    }
   }
 
   // If the texture dimensions haven't been loaded yet, try loading them
@@ -470,4 +488,112 @@ void NPC::ensurePhysicsBodyRegistered() {
 void NPC::setFaction(Faction f) {
   m_faction = f;
   // Collision layers are now set atomically in ensurePhysicsBodyRegistered()
+}
+
+// Animation state management methods
+
+void NPC::initializeAnimationMap() {
+  // Default animation configuration mapping names to sprite sheet details
+  // Can be overridden for NPCs with different sprite sheet layouts
+  m_animationMap = {
+      {"idle",       {0, 2, 150, true}},   // Row 0, 2 frames, 150ms, looping
+      {"walking",    {1, 4, 100, true}},   // Row 1, 4 frames, 100ms, looping
+      {"attacking",  {2, 3, 80, false}},   // Row 2, 3 frames, 80ms, play once
+      {"recovering", {3, 2, 120, false}},  // Row 3, 2 frames, 120ms, play once
+      {"hurt",       {4, 2, 100, false}},  // Row 4, 2 frames, 100ms, play once
+      {"dying",      {5, 4, 120, false}}   // Row 5, 4 frames, 120ms, play once
+  };
+}
+
+void NPC::setupAnimationStates() {
+  // Create and add animation states to the state manager
+  m_stateManager.addState("Idle", std::make_unique<NPCIdleState>(*this));
+  m_stateManager.addState("Walking", std::make_unique<NPCWalkingState>(*this));
+  m_stateManager.addState("Attacking", std::make_unique<NPCAttackingState>(*this));
+  m_stateManager.addState("Recovering", std::make_unique<NPCRecoveringState>(*this));
+  m_stateManager.addState("Hurt", std::make_unique<NPCHurtState>(*this));
+  m_stateManager.addState("Dying", std::make_unique<NPCDyingState>(*this));
+}
+
+void NPC::setAnimationState(const std::string& stateName) {
+  if (m_stateManager.hasState(stateName)) {
+    m_stateManager.setState(stateName);
+  } else {
+    NPC_WARN(std::format("NPC animation state not found: {}", stateName));
+  }
+}
+
+void NPC::playAnimation(const std::string& animName) {
+  auto it = m_animationMap.find(animName);
+  if (it != m_animationMap.end()) {
+    const auto& config = it->second;
+    m_currentRow = config.row + 1;  // TextureManager uses 1-based rows
+    m_numFrames = config.frameCount;
+    m_animSpeed = config.speed;
+    m_animationLoops = config.loop;
+    m_currentFrame = 0;
+    m_lastFrameTime = SDL_GetTicks();
+  } else {
+    NPC_WARN(std::format("NPC animation not found: {}", animName));
+  }
+}
+
+std::string NPC::getCurrentAnimationState() const {
+  return m_stateManager.getCurrentStateName();
+}
+
+// Combat system methods
+
+void NPC::takeDamage(float damage, const Vector2D& knockback) {
+  if (m_currentHealth <= 0.0f) {
+    return;  // Already dead
+  }
+
+  m_currentHealth = std::max(0.0f, m_currentHealth - damage);
+
+  // Apply knockback
+  if (knockback.length() > 0.001f) {
+    setPosition(getPosition() + knockback);
+  }
+
+  // Handle death or hurt
+  if (m_currentHealth <= 0.0f) {
+    die();
+  } else {
+    setAnimationState("Hurt");
+  }
+
+  NPC_DEBUG(std::format("NPC took {} damage, health: {}/{}", damage, m_currentHealth, m_maxHealth));
+}
+
+void NPC::heal(float amount) {
+  if (m_currentHealth <= 0.0f) {
+    return;  // Can't heal dead NPC
+  }
+
+  float oldHealth = m_currentHealth;
+  m_currentHealth = std::min(m_maxHealth, m_currentHealth + amount);
+
+  NPC_DEBUG(std::format("NPC healed {} HP: {}/{} -> {}/{}",
+            amount, oldHealth, m_maxHealth, m_currentHealth, m_maxHealth));
+}
+
+void NPC::die() {
+  NPC_INFO(std::format("NPC died at position ({}, {})", m_position.getX(), m_position.getY()));
+
+  setAnimationState("Dying");
+  dropLoot();
+
+  // Note: Actual entity removal handled by AIManager when animation completes
+  // or via other cleanup mechanisms
+}
+
+void NPC::setMaxHealth(float maxHealth) {
+  m_maxHealth = maxHealth;
+  m_currentHealth = std::min(m_currentHealth, m_maxHealth);
+}
+
+void NPC::setMaxStamina(float maxStamina) {
+  m_maxStamina = maxStamina;
+  m_currentStamina = std::min(m_currentStamina, m_maxStamina);
 }
