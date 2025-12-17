@@ -58,6 +58,45 @@ GuardBehavior::GuardBehavior(GuardMode mode, const Vector2D &guardPosition,
   }
 }
 
+GuardBehavior::GuardBehavior(const HammerEngine::GuardBehaviorConfig& config,
+                             const Vector2D& guardPosition,
+                             GuardMode mode)
+    : m_config(config)
+    , m_guardMode(mode)
+    , m_guardPosition(guardPosition)
+    , m_guardRadius(config.guardRadius)
+    , m_alertRadius(config.guardRadius * 1.5f)
+    , m_movementSpeed(config.guardSpeed)
+    , m_alertSpeed(config.guardSpeed * 1.5f)
+    , m_areaCenter(guardPosition)
+    , m_areaRadius(config.guardRadius)
+{
+  // Mode-specific adjustments using config values
+  switch (mode) {
+  case GuardMode::STATIC_GUARD:
+    m_movementSpeed = 0.0f; // No movement unless investigating
+    break;
+  case GuardMode::PATROL_GUARD:
+    m_alertRadius = config.guardRadius * 1.8f;
+    break;
+  case GuardMode::AREA_GUARD:
+    m_movementSpeed = config.guardSpeed * 0.8f;
+    m_alertRadius = config.guardRadius * 2.0f;
+    break;
+  case GuardMode::ROAMING_GUARD:
+    m_movementSpeed = config.guardSpeed * 1.2f;
+    m_alertRadius = config.guardRadius * 1.6f;
+    m_roamInterval = 6.0f;
+    break;
+  case GuardMode::ALERT_GUARD:
+    m_movementSpeed = config.guardSpeed * 1.7f;
+    m_alertSpeed = config.guardSpeed * 2.0f;
+    m_alertRadius = config.guardRadius * 2.5f;
+    m_threatDetectionRange = config.guardRadius * 2.0f;
+    break;
+  }
+}
+
 void GuardBehavior::init(EntityPtr entity) {
   if (!entity)
     return;

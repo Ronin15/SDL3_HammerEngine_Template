@@ -7,6 +7,7 @@
 #define FLEE_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -27,6 +28,10 @@ public:
   // Constructor with mode
   explicit FleeBehavior(FleeMode mode, float fleeSpeed = 4.0f,
                         float detectionRange = 400.0f);
+
+  // Constructor with config
+  explicit FleeBehavior(const HammerEngine::FleeBehaviorConfig& config,
+                        FleeMode mode = FleeMode::PANIC_FLEE);
 
   void init(EntityPtr entity) override;
   void executeLogic(EntityPtr entity, float deltaTime) override;
@@ -113,6 +118,9 @@ private:
 
   // Map to store per-entity state
   std::unordered_map<EntityPtr, EntityState> m_entityStates;
+
+  // Configuration
+  HammerEngine::FleeBehaviorConfig m_config;
 
   // Behavior parameters
   FleeMode m_fleeMode{FleeMode::PANIC_FLEE};

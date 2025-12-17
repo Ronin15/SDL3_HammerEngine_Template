@@ -7,6 +7,7 @@
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "ai/internal/SpatialPriority.hpp"
+#include "core/Logger.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
@@ -598,7 +599,12 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   // Use world bounds instead of screen dimensions for true world-scale patrolling
   float minX, minY, maxX, maxY;
   if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-    // No world loaded - can't initialize patrol
+    // No world loaded - use fallback defaults and log warning
+    AI_WARN("PatrolBehavior: World bounds unavailable, using fallback waypoints");
+    m_waypoints.clear();
+    m_waypoints.reserve(2);
+    m_waypoints.emplace_back(100.0f, 100.0f);
+    m_waypoints.emplace_back(300.0f, 300.0f);
     return;
   }
 

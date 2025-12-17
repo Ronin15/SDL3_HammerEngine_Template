@@ -11,12 +11,22 @@
 #include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
 #include "core/Logger.hpp"
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <format>
 #include "managers/WorldManager.hpp"
 
-// Static member initialization
-int FollowBehavior::s_nextFormationSlot = 0;
+namespace {
+// Thread-safe RNG for stall recovery jitter
+std::mt19937& getThreadLocalRNG() {
+    static thread_local std::mt19937 rng(
+        static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    return rng;
+}
+} // namespace
+
+// Static member initialization (atomic for thread safety)
+std::atomic<int> FollowBehavior::s_nextFormationSlot{0};
 std::vector<Vector2D> FollowBehavior::s_escortFormationOffsets;
 
 FollowBehavior::FollowBehavior(float followSpeed, float followDistance,
@@ -56,6 +66,39 @@ FollowBehavior::FollowBehavior(FollowMode mode, float followSpeed)
     m_followDistance = 100.0f;
     m_maxDistance = 250.0f;
     m_formationRadius = 100.0f;
+    break;
+  }
+}
+
+FollowBehavior::FollowBehavior(const HammerEngine::FollowBehaviorConfig& config, FollowMode mode)
+    : m_config(config)
+    , m_followMode(mode)
+    , m_followSpeed(config.followSpeed)
+    , m_followDistance(config.followDistance)
+    , m_maxDistance(config.catchupRange)
+{
+  initializeFormationOffsets();
+
+  // Mode-specific adjustments using config values
+  switch (mode) {
+  case FollowMode::CLOSE_FOLLOW:
+    m_followDistance = config.followDistance * 0.5f;
+    m_maxDistance = config.catchupRange * 0.75f;
+    m_catchUpSpeedMultiplier = 2.0f;
+    break;
+  case FollowMode::LOOSE_FOLLOW:
+    m_followDistance = config.followDistance * 1.2f;
+    m_catchUpSpeedMultiplier = 1.5f;
+    break;
+  case FollowMode::FLANKING_FOLLOW:
+    m_formationOffset = Vector2D(config.followDistance * 0.8f, 0.0f);
+    break;
+  case FollowMode::REAR_GUARD:
+    m_followDistance = config.followDistance * 1.5f;
+    m_formationOffset = Vector2D(0.0f, -config.followDistance * 1.2f);
+    break;
+  case FollowMode::ESCORT_FORMATION:
+    m_formationRadius = config.followDistance;
     break;
   }
 }
@@ -158,7 +201,8 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
         state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f; // 250-650ms
         // Clear path and small micro-jitter to yield
         state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
-        float jitter = ((float)rand() / RAND_MAX - 0.5f) * 0.3f; // ~±17deg
+        std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
+        float jitter = jitterDist(getThreadLocalRNG()); // ~±17deg (thread-safe)
         Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
         float c = std::cos(jitter), s = std::sin(jitter);
         Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
@@ -728,8 +772,8 @@ void FollowBehavior::initializeFormationOffsets() {
 }
 
 int FollowBehavior::assignFormationSlot() {
-  int slot = s_nextFormationSlot;
-  s_nextFormationSlot = (s_nextFormationSlot + 1) % 8; // Cycle through 8 slots
+  // Thread-safe atomic increment with wrap-around (8 slots)
+  int slot = s_nextFormationSlot.fetch_add(1, std::memory_order_relaxed) % 8;
   return slot;
 }
 

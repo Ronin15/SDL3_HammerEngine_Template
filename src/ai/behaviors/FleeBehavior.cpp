@@ -45,6 +45,33 @@ FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
     }
 }
 
+FleeBehavior::FleeBehavior(const HammerEngine::FleeBehaviorConfig& config, FleeMode mode)
+    : m_config(config)
+    , m_fleeMode(mode)
+    , m_fleeSpeed(config.fleeSpeed)
+    , m_detectionRange(config.safeDistance) // Use safeDistance as detection trigger
+    , m_safeDistance(config.safeDistance)
+    , m_boundaryPadding(config.worldPadding)
+{
+    // Mode-specific adjustments using config values
+    switch (mode) {
+        case FleeMode::PANIC_FLEE:
+            m_fleeSpeed = config.fleeSpeed * 1.2f; // Faster in panic
+            m_panicDuration = 2.0f; // 2 seconds of panic
+            break;
+        case FleeMode::STRATEGIC_RETREAT:
+            m_fleeSpeed = config.fleeSpeed * 0.8f; // Slower, more calculated
+            m_safeDistance = config.safeDistance * 1.5f;
+            break;
+        case FleeMode::EVASIVE_MANEUVER:
+            m_zigzagInterval = 0.3f; // More frequent direction changes
+            break;
+        case FleeMode::SEEK_COVER:
+            m_safeDistance = config.safeDistance * 1.2f;
+            break;
+    }
+}
+
 void FleeBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
@@ -306,19 +333,19 @@ Vector2D FleeBehavior::calculateFleeDirection(EntityPtr entity, EntityPtr threat
 
 Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     if (m_safeZones.empty()) return Vector2D(0, 0);
-    
+
     const SafeZone* nearest = nullptr;
-    float minDistance = std::numeric_limits<float>::max();
-    
+    float minDistanceSquared = std::numeric_limits<float>::max();
+
     for (const auto& zone : m_safeZones) {
-        // PERFORMANCE: Use squared distance for comparison
+        // PERFORMANCE: Use squared distance throughout - avoid sqrt in loop
         float distanceSquared = (position - zone.center).lengthSquared();
-        if (distanceSquared < minDistance * minDistance) {
-            minDistance = std::sqrt(distanceSquared); // Only compute sqrt when updating minimum
+        if (distanceSquared < minDistanceSquared) {
+            minDistanceSquared = distanceSquared;
             nearest = &zone;
         }
     }
-    
+
     return nearest ? (nearest->center - position) : Vector2D(0, 0);
 }
 
