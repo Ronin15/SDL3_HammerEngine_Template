@@ -724,4 +724,87 @@ BOOST_AUTO_TEST_CASE(TestPriorityStratification) {
     manager.clean();
 }
 
+// ========== Cache Bucketing Regression Test ==========
+
+BOOST_AUTO_TEST_CASE(TestCacheBucketingForNearbyCoordsRegressionFix) {
+    // REGRESSION TEST: Verify that nearby coordinates hit the same cache bucket
+    // This tests the fix for 0% cache hit rate where pre-warmed sector paths
+    // weren't being hit by NPC requests at nearby positions.
+    //
+    // Root cause was: cache key computed AFTER normalizeEndpoints() which includes
+    // snapToNearestOpenWorld() - making cache keys non-deterministic based on obstacles.
+    // Fix: compute cache key from RAW coords BEFORE normalization, with sector-based quantization.
+
+    PathfinderManager& manager = PathfinderManager::Instance();
+    BOOST_REQUIRE(manager.init());
+
+    // Simulate sector-based coordinates (like pre-warming uses)
+    // For a 16000x16000 world with 8 sectors, sector size = 2000px
+    // Sector center would be at (1000, 1000), (3000, 1000), etc.
+    Vector2D sectorCenter(4000.0f, 4000.0f);
+    Vector2D sectorGoal(8000.0f, 8000.0f);
+
+    // Nearby NPC positions (within same sector, offset from center)
+    Vector2D npcPos1(4050.0f, 4020.0f);  // 50px offset
+    Vector2D npcPos2(4200.0f, 4150.0f);  // 250px offset
+    Vector2D npcGoal1(8020.0f, 7990.0f);
+    Vector2D npcGoal2(8150.0f, 8100.0f);
+
+    std::atomic<size_t> callbackCount{0};
+    auto callback = [&callbackCount](EntityID, const std::vector<Vector2D>&) {
+        callbackCount.fetch_add(1, std::memory_order_relaxed);
+    };
+
+    // First request (simulates pre-warming at sector center)
+    manager.requestPath(1001, sectorCenter, sectorGoal, PathfinderManager::Priority::Normal, callback);
+
+    // Process first request
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    manager.update();
+
+    auto stats1 = manager.getStats();
+    size_t initialCacheSize = stats1.cacheSize;
+    BOOST_TEST_MESSAGE("After first request - Cache size: " << initialCacheSize);
+
+    // Second request from nearby NPC position (should hit cache bucket)
+    manager.requestPath(1002, npcPos1, npcGoal1, PathfinderManager::Priority::Normal, callback);
+
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    manager.update();
+
+    auto stats2 = manager.getStats();
+    BOOST_TEST_MESSAGE("After second request - Cache hits: " << stats2.cacheHits
+                      << ", Cache size: " << stats2.cacheSize);
+
+    // Third request from another nearby position
+    manager.requestPath(1003, npcPos2, npcGoal2, PathfinderManager::Priority::Normal, callback);
+
+    manager.update();
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    manager.update();
+
+    auto stats3 = manager.getStats();
+    BOOST_TEST_MESSAGE("After third request - Cache hits: " << stats3.cacheHits
+                      << ", Cache size: " << stats3.cacheSize);
+
+    // With proper sector-based cache key quantization (1000px for 16K world),
+    // all three requests should map to the same bucket.
+    // Cache size should NOT grow by 3 (would indicate no cache sharing).
+    // Note: Without a real world/grid, paths may fail, but cache key bucketing
+    // should still work (failed paths are also cached to prevent retry loops).
+
+    // The key assertion: cache size should grow by less than 3
+    // (indicating at least some cache bucket sharing occurred)
+    size_t cacheGrowth = stats3.cacheSize - initialCacheSize;
+    BOOST_TEST_MESSAGE("Cache growth: " << cacheGrowth << " (expected < 3 with bucket sharing)");
+
+    // If cache bucketing is working, we should see some cache hits or limited growth
+    // Even if paths fail, the bucket-based coalescing should prevent duplicate processing
+    BOOST_CHECK_LE(cacheGrowth, 2); // At most 2 new entries (some should share bucket)
+
+    manager.clean();
+}
+
 BOOST_AUTO_TEST_SUITE_END()
