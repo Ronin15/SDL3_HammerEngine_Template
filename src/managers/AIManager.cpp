@@ -859,16 +859,18 @@ size_t AIManager::processPendingBehaviorAssignments() {
   // FUTURES-BASED: Deterministic completion tracking with m_assignmentFutures
   // Assignments use std::future<void> for safe state transition synchronization
 
-  std::vector<PendingAssignment> toProcess;
+  // OPTIMIZATION: Reuse buffer to avoid per-frame allocation during spawning
+  m_reusableToProcessBuffer.clear();
   {
     std::lock_guard<std::mutex> lock(m_assignmentsMutex);
     if (m_pendingAssignments.empty()) {
       return 0;
     }
-    // Move all pending assignments to local vector
-    toProcess = std::move(m_pendingAssignments);
+    // Swap to reusable buffer - moves content, preserves capacity
+    std::swap(m_reusableToProcessBuffer, m_pendingAssignments);
     m_pendingAssignmentIndex.clear();
   }
+  auto& toProcess = m_reusableToProcessBuffer;
 
   size_t assignmentCount = toProcess.size();
   if (assignmentCount == 0) {
@@ -955,8 +957,13 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
     m_assignmentFutures.reserve(tasksToSubmit);
 
-    // Convert toProcess to shared_ptr for safe async access (zero-copy, matches collision pattern)
-    auto toProcessShared = std::make_shared<std::vector<PendingAssignment>>(std::move(toProcess));
+    // OPTIMIZATION: Reuse shared_ptr to avoid allocation per batch
+    if (!m_reusableAssignmentBatch) {
+      m_reusableAssignmentBatch = std::make_shared<std::vector<PendingAssignment>>();
+    }
+    m_reusableAssignmentBatch->clear();
+    std::swap(*m_reusableAssignmentBatch, toProcess);
+    auto toProcessShared = m_reusableAssignmentBatch;
 
     // Submit tasks with index ranges (deterministic task count, no buffer pool needed)
     for (size_t i = 0; i < tasksToSubmit; ++i) {

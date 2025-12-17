@@ -506,6 +506,11 @@ private:
   std::vector<std::vector<float>> m_distanceBuffers;
   std::vector<std::vector<Vector2D>> m_positionBuffers;
 
+  // Reusable buffers for behavior assignment processing
+  // Eliminates per-frame allocations during entity spawning
+  mutable std::vector<PendingAssignment> m_reusableToProcessBuffer;
+  mutable std::shared_ptr<std::vector<PendingAssignment>> m_reusableAssignmentBatch;
+
   // Camera bounds cache for entity update culling
   // Only update animations/sprites for entities within camera view + buffer
   float m_cameraMinX{0.0f};

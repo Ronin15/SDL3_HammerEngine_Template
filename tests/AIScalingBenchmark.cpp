@@ -41,6 +41,31 @@ namespace {
     std::mutex g_setupMutex;
     std::atomic<bool> g_systemsInitialized{false};
     std::atomic<bool> g_shutdownInProgress{false};
+
+    /**
+     * Calculate scaled iteration count for reliable benchmark measurements.
+     *
+     * PROBLEM: Low entity count benchmarks (150-200 entities) with fixed iterations
+     * complete in ~3-5ms, which is dominated by system noise (scheduler jitter, cache
+     * effects). This causes 20-50% variance in measurements.
+     *
+     * SOLUTION: Scale iterations inversely with entity count to achieve a minimum
+     * measurement duration of ~100ms, reducing noise impact to <2%.
+     *
+     * @param numEntities Number of entities in the benchmark
+     * @param baseIterations Minimum iterations (default 20 for high entity counts)
+     * @return Scaled iteration count ensuring ~100ms minimum measurement duration
+     */
+    int calculateScaledIterations(int numEntities, int baseIterations = 20) {
+        // Target ~100,000 entity-updates per measurement for ~100ms duration
+        // At 150 entities: 100000/150 = 667 iterations
+        // At 200 entities: 100000/200 = 500 iterations
+        // At 1000 entities: 100000/1000 = 100 iterations
+        // At 5000+ entities: baseIterations (20) is sufficient
+        constexpr int TARGET_ENTITY_UPDATES = 100000;
+        int scaledIterations = TARGET_ENTITY_UPDATES / std::max(1, numEntities);
+        return std::max(baseIterations, scaledIterations);
+    }
 }
 
 // Simple test entity for benchmarking
@@ -430,9 +455,9 @@ struct AIScalingFixture {
      * @param numEntities Number of entities to create
      * @param numBehaviors Number of different behaviors to use
      * @param numUpdates Number of update cycles to measure
-     * @param numMeasurements Number of measurement runs to average
+     * @param numMeasurements Number of measurement runs to average (5 recommended for statistical robustness)
      */
-    void runSyntheticBenchmark(int numEntities, int numBehaviors, int numUpdates, int numMeasurements = 3) {
+    void runSyntheticBenchmark(int numEntities, int numBehaviors, int numUpdates, int numMeasurements = 5) {
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
@@ -716,9 +741,9 @@ struct AIScalingFixture {
      * @param numEntities Number of entities to create
      * @param numBehaviors Number of different behavior types to use (max 5)
      * @param numUpdates Number of update cycles to measure
-     * @param numMeasurements Number of measurement runs to average
+     * @param numMeasurements Number of measurement runs to average (5 recommended for statistical robustness)
      */
-    void runIntegratedBenchmark(int numEntities, int numBehaviors, int numUpdates, int numMeasurements = 3) {
+    void runIntegratedBenchmark(int numEntities, int numBehaviors, int numUpdates, int numMeasurements = 5) {
         // Skip if shutdown is in progress
         if (g_shutdownInProgress.load()) {
             return;
@@ -1096,10 +1121,12 @@ BOOST_AUTO_TEST_CASE(TestSyntheticPerformance) {
     }
 
     const int numBehaviors = 5;
-    const int numUpdates = 20;
+    // NOTE: numUpdates is now calculated per-entity-count using calculateScaledIterations()
+    // This ensures ~100ms measurement duration for statistical reliability at all entity counts
 
     std::cout << "\n===== SYNTHETIC PERFORMANCE TESTING (Isolated AIManager) =====" << std::endl;
     std::cout << "Testing WorkerBudget automatic threading behavior at various entity counts using BenchmarkBehavior" << std::endl;
+    std::cout << "NOTE: Iterations scaled inversely with entity count to ensure ~100ms measurement duration" << std::endl;
     unsigned int systemThreads = std::thread::hardware_concurrency();
     size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
     size_t aiWorkers = static_cast<size_t>(totalWorkers * 0.6);
@@ -1107,20 +1134,32 @@ BOOST_AUTO_TEST_CASE(TestSyntheticPerformance) {
               << totalWorkers << " workers (" << aiWorkers << " for AI)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
-    std::cout << "\n--- Test 1: Below Threshold (150 entities) ---" << std::endl;
-    runSyntheticBenchmark(150, numBehaviors, numUpdates);
+    // 150 entities × 667 iterations = ~100K entity-updates for reliable measurement
+    int entities150 = 150;
+    int updates150 = calculateScaledIterations(entities150);
+    std::cout << "\n--- Test 1: Below Threshold (" << entities150 << " entities, " << updates150 << " iterations) ---" << std::endl;
+    runSyntheticBenchmark(entities150, numBehaviors, updates150);
 
     // Test at threshold boundary (should use threading automatically)
-    std::cout << "\n--- Test 2: At Threshold (200 entities) ---" << std::endl;
-    runSyntheticBenchmark(200, numBehaviors, numUpdates);
+    // 200 entities × 500 iterations = ~100K entity-updates
+    int entities200 = 200;
+    int updates200 = calculateScaledIterations(entities200);
+    std::cout << "\n--- Test 2: At Threshold (" << entities200 << " entities, " << updates200 << " iterations) ---" << std::endl;
+    runSyntheticBenchmark(entities200, numBehaviors, updates200);
 
     // Test well above threshold (should use threading automatically)
-    std::cout << "\n--- Test 3: Above Threshold (1000 entities) ---" << std::endl;
-    runSyntheticBenchmark(1000, numBehaviors, numUpdates);
+    // 1000 entities × 100 iterations = ~100K entity-updates
+    int entities1000 = 1000;
+    int updates1000 = calculateScaledIterations(entities1000);
+    std::cout << "\n--- Test 3: Above Threshold (" << entities1000 << " entities, " << updates1000 << " iterations) ---" << std::endl;
+    runSyntheticBenchmark(entities1000, numBehaviors, updates1000);
 
     // Test target performance (should use threading automatically)
-    std::cout << "\n--- Test 4: Target Performance (5000 entities) ---" << std::endl;
-    runSyntheticBenchmark(5000, numBehaviors, numUpdates);
+    // 5000 entities × 20 iterations = 100K entity-updates (base iterations sufficient)
+    int entities5000 = 5000;
+    int updates5000 = calculateScaledIterations(entities5000);
+    std::cout << "\n--- Test 4: Target Performance (" << entities5000 << " entities, " << updates5000 << " iterations) ---" << std::endl;
+    runSyntheticBenchmark(entities5000, numBehaviors, updates5000);
 
     // Clean up after test
     cleanupEntitiesAndBehaviors();
@@ -1433,11 +1472,13 @@ BOOST_AUTO_TEST_CASE(TestIntegratedPerformance) {
     }
 
     const int numBehaviors = 5;
-    const int numUpdates = 20;
+    // NOTE: numUpdates is now calculated per-entity-count using calculateScaledIterations()
+    // This ensures ~100ms measurement duration for statistical reliability at all entity counts
 
     std::cout << "\n===== INTEGRATED PERFORMANCE TESTING (Production AI Behaviors) =====" << std::endl;
     std::cout << "Testing real production behaviors: WanderBehavior, ChaseBehavior, PatrolBehavior, GuardBehavior, FollowBehavior" << std::endl;
     std::cout << "These behaviors use PathfinderManager and CollisionManager for realistic AI processing" << std::endl;
+    std::cout << "NOTE: Iterations scaled inversely with entity count to ensure ~100ms measurement duration" << std::endl;
     unsigned int systemThreads = std::thread::hardware_concurrency();
     size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
     size_t aiWorkers = static_cast<size_t>(totalWorkers * 0.6);
@@ -1445,20 +1486,29 @@ BOOST_AUTO_TEST_CASE(TestIntegratedPerformance) {
               << totalWorkers << " workers (" << aiWorkers << " for AI)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
-    std::cout << "\n--- Test 1: Below Threshold (150 entities) ---" << std::endl;
-    runIntegratedBenchmark(150, numBehaviors, numUpdates);
+    // Scaled iterations ensure reliable measurement at low entity counts
+    int entities150 = 150;
+    int updates150 = calculateScaledIterations(entities150);
+    std::cout << "\n--- Test 1: Below Threshold (" << entities150 << " entities, " << updates150 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities150, numBehaviors, updates150);
 
     // Test at threshold boundary (should use threading automatically)
-    std::cout << "\n--- Test 2: At Threshold (200 entities) ---" << std::endl;
-    runIntegratedBenchmark(200, numBehaviors, numUpdates);
+    int entities200 = 200;
+    int updates200 = calculateScaledIterations(entities200);
+    std::cout << "\n--- Test 2: At Threshold (" << entities200 << " entities, " << updates200 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities200, numBehaviors, updates200);
 
     // Test well above threshold (should use threading automatically)
-    std::cout << "\n--- Test 3: Above Threshold (1000 entities) ---" << std::endl;
-    runIntegratedBenchmark(1000, numBehaviors, numUpdates);
+    int entities1000 = 1000;
+    int updates1000 = calculateScaledIterations(entities1000);
+    std::cout << "\n--- Test 3: Above Threshold (" << entities1000 << " entities, " << updates1000 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities1000, numBehaviors, updates1000);
 
     // Test target performance (should use threading automatically)
-    std::cout << "\n--- Test 4: Target Performance (2000 entities) ---" << std::endl;
-    runIntegratedBenchmark(2000, numBehaviors, numUpdates);
+    int entities2000 = 2000;
+    int updates2000 = calculateScaledIterations(entities2000);
+    std::cout << "\n--- Test 4: Target Performance (" << entities2000 << " entities, " << updates2000 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities2000, numBehaviors, updates2000);
 
     // Clean up after test
     cleanupEntitiesAndBehaviors();
@@ -1479,14 +1529,15 @@ BOOST_AUTO_TEST_CASE(TestIntegratedScalability) {
         std::cout << "\n===== INTEGRATED SCALABILITY TEST SUITE (Production Behaviors) =====" << std::endl;
         std::cout << "Testing automatic threading behavior with real production AI behaviors" << std::endl;
         std::cout << "Running with " << maxThreads << " threads available" << std::endl;
+        std::cout << "NOTE: Iterations scaled inversely with entity count to ensure ~100ms measurement duration" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // Enable threading and let system decide automatically
         AIManager::Instance().configureThreading(true);
 
         std::cout << "\nINTEGRATED SCALABILITY SUMMARY (Production Behaviors):" << std::endl;
-        std::cout << "Entity Count | Threading Mode | Updates Per Second | Performance Notes" << std::endl;
-        std::cout << "-------------|----------------|-------------------|------------------" << std::endl;
+        std::cout << "Entity Count | Iterations | Threading Mode | Updates Per Second | Performance Notes" << std::endl;
+        std::cout << "-------------|------------|----------------|-------------------|------------------" << std::endl;
 
         // Test across realistic entity counts with automatic behavior
         std::vector<int> entityCounts = {100, 200, 500, 1000, 2000};
@@ -1494,14 +1545,16 @@ BOOST_AUTO_TEST_CASE(TestIntegratedScalability) {
 
         for (size_t i = 0; i < entityCounts.size(); ++i) {
             int numEntities = entityCounts[i];
+            int numUpdates = calculateScaledIterations(numEntities);
             bool willUseThreading = (numEntities >= AI_THRESHOLD);
             std::string threadMode = willUseThreading ? "Multi-threaded" : "Single-threaded";
 
             std::cout << std::setw(12) << numEntities << " | "
+                      << std::setw(10) << numUpdates << " | "
                       << std::setw(14) << threadMode << " | ";
 
-            // Run integrated benchmark
-            runIntegratedBenchmark(numEntities, 5, 20, 1);
+            // Run integrated benchmark with scaled iterations
+            runIntegratedBenchmark(numEntities, 5, numUpdates, 1);
 
             std::cout << " | PathfinderManager + CollisionManager" << std::endl;
 
