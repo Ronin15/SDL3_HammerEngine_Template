@@ -735,8 +735,81 @@ void AttackBehavior::updateMeleeAttack(EntityPtr entity, EntityState &state, flo
 }
 
 void AttackBehavior::updateRangedAttack(EntityPtr entity, EntityState &state, float deltaTime) {
-  // Similar to melee but with different positioning logic
-  updateMeleeAttack(entity, state, deltaTime);
+  EntityPtr target = getTarget();
+  if (!target)
+    return;
+
+  Vector2D entityPos = entity->getPosition();
+  Vector2D targetPos = target->getPosition();
+  float distance = state.targetDistance;
+
+  // Ranged attackers need to maintain distance - back off if too close
+  bool tooClose = distance < m_minimumRange;
+  bool inOptimalRange = distance >= m_minimumRange && distance <= m_optimalRange * 1.2f;
+
+  switch (state.currentState) {
+  case AttackState::SEEKING:
+    updateSeeking(entity, state);
+    break;
+
+  case AttackState::APPROACHING:
+    // For ranged, approach but stop at optimal range
+    if (distance <= m_optimalRange) {
+      changeState(state, AttackState::POSITIONING);
+    } else {
+      moveToPosition(entity, targetPos, m_movementSpeed, deltaTime);
+    }
+    break;
+
+  case AttackState::POSITIONING:
+    if (tooClose) {
+      // Back off from target to maintain ranged distance
+      Vector2D awayFromTarget = (entityPos - targetPos).normalized();
+      Vector2D retreatPos = entityPos + awayFromTarget * (m_optimalRange * 0.5f);
+      moveToPosition(entity, retreatPos, m_movementSpeed * 1.2f, deltaTime);
+    } else if (inOptimalRange && state.canAttack) {
+      changeState(state, AttackState::ATTACKING);
+    } else if (distance > m_optimalRange * 1.3f) {
+      // Too far, approach slightly
+      changeState(state, AttackState::APPROACHING);
+    } else {
+      // Circle strafe at optimal range to avoid being an easy target
+      Vector2D toTarget = (targetPos - entityPos).normalized();
+      Vector2D perpendicular(-toTarget.getY(), toTarget.getX());
+      float strafeDir = (state.strafeDirectionInt > 0) ? 1.0f : -1.0f;
+      Vector2D strafePos = entityPos + perpendicular * (40.0f * strafeDir);
+      moveToPosition(entity, strafePos, m_movementSpeed * 0.6f, deltaTime);
+    }
+    break;
+
+  case AttackState::ATTACKING:
+    updateAttacking(entity, state);
+    break;
+
+  case AttackState::RECOVERING:
+    // After ranged attack, check if we need to reposition
+    if (tooClose) {
+      changeState(state, AttackState::RETREATING);
+    } else {
+      updateRecovering(entity, state);
+    }
+    break;
+
+  case AttackState::RETREATING:
+    // Ranged retreat: back off to optimal range
+    if (distance >= m_optimalRange) {
+      changeState(state, AttackState::POSITIONING);
+    } else {
+      Vector2D awayFromTarget = (entityPos - targetPos).normalized();
+      Vector2D retreatPos = entityPos + awayFromTarget * (m_minimumRange);
+      moveToPosition(entity, retreatPos, m_movementSpeed, deltaTime);
+    }
+    break;
+
+  case AttackState::COOLDOWN:
+    updateCooldown(entity, state);
+    break;
+  }
 }
 
 void AttackBehavior::updateChargeAttack(EntityPtr entity, EntityState &state, float deltaTime) {

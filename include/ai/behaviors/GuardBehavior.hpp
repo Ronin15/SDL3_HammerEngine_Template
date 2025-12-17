@@ -7,6 +7,7 @@
 #define GUARD_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -38,6 +39,11 @@ public:
   // Constructor with mode
   explicit GuardBehavior(GuardMode mode, const Vector2D &guardPosition,
                          float guardRadius = 200.0f);
+
+  // Constructor with config
+  explicit GuardBehavior(const HammerEngine::GuardBehaviorConfig& config,
+                         const Vector2D& guardPosition,
+                         GuardMode mode = GuardMode::STATIC_GUARD);
 
   void init(EntityPtr entity) override;
   void executeLogic(EntityPtr entity, float deltaTime) override;
@@ -132,6 +138,9 @@ private:
 
   // Map to store per-entity state
   std::unordered_map<EntityPtr, EntityState> m_entityStates;
+
+  // Configuration
+  HammerEngine::GuardBehaviorConfig m_config;
 
   // Guard parameters
   GuardMode m_guardMode{GuardMode::STATIC_GUARD};

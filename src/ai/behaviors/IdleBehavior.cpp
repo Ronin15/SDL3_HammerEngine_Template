@@ -156,7 +156,11 @@ IdleBehavior::IdleMode IdleBehavior::getIdleMode() const { return m_idleMode; }
 float IdleBehavior::getIdleRadius() const { return m_idleRadius; }
 
 std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
-  return std::make_shared<IdleBehavior>(m_idleMode, m_idleRadius);
+  auto cloned = std::make_shared<IdleBehavior>(m_idleMode, m_idleRadius);
+  cloned->m_movementFrequency = m_movementFrequency;
+  cloned->m_turnFrequency = m_turnFrequency;
+  cloned->setActive(m_active);
+  return cloned;
 }
 
 void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) const {
