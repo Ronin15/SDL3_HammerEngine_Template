@@ -816,6 +816,10 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
   // Update ambient particles for the new time period
   updateAmbientParticles(m_currentTimePeriod);
 
+  // Add event log entry for the time period change
+  UIManager::Instance().addEventLogEntry("gameplay_event_log",
+      std::format("{} has arrived", periodEvent->getPeriodName()));
+
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
 }
@@ -937,6 +941,10 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
 
   // Re-evaluate ambient particles based on current time period and new weather
   updateAmbientParticles(m_currentTimePeriod);
+
+  // Add event log entry for the weather change
+  UIManager::Instance().addEventLogEntry("gameplay_event_log",
+      std::string(m_weatherController.getCurrentWeatherDescription()));
 
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
