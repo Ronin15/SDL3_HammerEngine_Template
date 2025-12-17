@@ -91,6 +91,17 @@ std::string_view DayNightController::getCurrentPeriodString() const
     }
 }
 
+std::string_view DayNightController::getCurrentPeriodDescription() const
+{
+    switch (m_currentPeriod) {
+        case TimePeriod::Morning: return "Dawn approaches";
+        case TimePeriod::Day:     return "The sun rises high";
+        case TimePeriod::Evening: return "Dusk settles in";
+        case TimePeriod::Night:   return "Night falls";
+        default:                  return "Time passes";
+    }
+}
+
 TimePeriodVisuals DayNightController::getCurrentVisuals() const
 {
     return TimePeriodVisuals::getForPeriod(m_currentPeriod);

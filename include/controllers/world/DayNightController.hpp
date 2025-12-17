@@ -56,6 +56,12 @@ public:
     [[nodiscard]] std::string_view getCurrentPeriodString() const;
 
     /**
+     * @brief Get a descriptive message for the current time period
+     * @return String view: "Dawn approaches", "The sun rises high", etc.
+     */
+    [[nodiscard]] std::string_view getCurrentPeriodDescription() const;
+
+    /**
      * @brief Get the visual configuration for the current period
      * @return TimePeriodVisuals with overlay color values
      */
