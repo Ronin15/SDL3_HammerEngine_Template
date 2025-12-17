@@ -1490,14 +1490,23 @@ void CollisionManager::rebuildStaticSpatialGrid() {
 }
 
 // OPTIMIZATION: Query static grid cells that intersect with culling area
+// Performs inline bounds check to avoid second-pass filtering
 void CollisionManager::queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const {
   outIndices.clear();
 
   // Calculate grid cell range for culling area
-  int32_t minCellX = static_cast<int32_t>(std::floor(area.minX / STATIC_GRID_CELL_SIZE));
-  int32_t minCellY = static_cast<int32_t>(std::floor(area.minY / STATIC_GRID_CELL_SIZE));
-  int32_t maxCellX = static_cast<int32_t>(std::floor(area.maxX / STATIC_GRID_CELL_SIZE));
-  int32_t maxCellY = static_cast<int32_t>(std::floor(area.maxY / STATIC_GRID_CELL_SIZE));
+  const int32_t minCellX = static_cast<int32_t>(std::floor(area.minX / STATIC_GRID_CELL_SIZE));
+  const int32_t minCellY = static_cast<int32_t>(std::floor(area.minY / STATIC_GRID_CELL_SIZE));
+  const int32_t maxCellX = static_cast<int32_t>(std::floor(area.maxX / STATIC_GRID_CELL_SIZE));
+  const int32_t maxCellY = static_cast<int32_t>(std::floor(area.maxY / STATIC_GRID_CELL_SIZE));
+
+  // Pre-extract bounds for inline check (avoids repeated member access)
+  const float cullMinX = area.minX;
+  const float cullMinY = area.minY;
+  const float cullMaxX = area.maxX;
+  const float cullMaxY = area.maxY;
+  const bool hasCullingBounds = (cullMinX != cullMaxX || cullMinY != cullMaxY);
+  const size_t hotDataSize = m_storage.hotData.size();
 
   // Iterate over grid cells that intersect culling area
   for (int32_t cellY = minCellY; cellY <= maxCellY; ++cellY) {
@@ -1505,8 +1514,22 @@ void CollisionManager::queryStaticGridCells(const CullingArea& area, std::vector
       StaticGridCell cell{cellX, cellY};
       auto it = m_staticSpatialGrid.find(cell);
       if (it != m_staticSpatialGrid.end()) {
-        // Add all static indices from this cell
-        outIndices.insert(outIndices.end(), it->second.begin(), it->second.end());
+        // Inline filter: check active status and exact bounds
+        for (size_t idx : it->second) {
+          if (idx >= hotDataSize) continue;
+          const auto& hot = m_storage.hotData[idx];
+          if (!hot.active) continue;
+
+          // Inline bounds check (single-pass, no second iteration needed)
+          if (hasCullingBounds) {
+            const float px = hot.position.getX();
+            const float py = hot.position.getY();
+            if (px < cullMinX || px > cullMaxX || py < cullMinY || py > cullMaxY) {
+              continue;
+            }
+          }
+          outIndices.push_back(idx);
+        }
       }
     }
   }
@@ -1536,28 +1559,9 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
     const_cast<CollisionManager*>(this)->rebuildStaticSpatialGrid();
   }
 
-  // OPTIMIZATION: Query spatial grid for statics in culling area (avoids iterating all 28K statics)
-  // Populate pools.staticIndices directly (it's already a reusable buffer via CollisionPool::resetFrame())
+  // OPTIMIZATION: Query spatial grid for statics in culling area
+  // queryStaticGridCells performs inline bounds check (single-pass, no second iteration)
   queryStaticGridCells(cullingArea, pools.staticIndices);
-
-  // Filter by active status and exact culling bounds (grid is coarse 512×512, refine here)
-  auto it = std::remove_if(pools.staticIndices.begin(), pools.staticIndices.end(),
-    [this, &cullingArea](size_t i) {
-      if (i >= m_storage.hotData.size()) return true;
-      const auto& hot = m_storage.hotData[i];
-      if (!hot.active) return true;
-
-      // Exact culling check (grid is coarse, this refines it)
-      if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
-        if (!cullingArea.contains(hot.position.getX(), hot.position.getY())) {
-          return true;
-        }
-      }
-      return false;
-    });
-  pools.staticIndices.erase(it, pools.staticIndices.end());
-
-  // Use filtered static indices from spatial grid query
   totalStatic = pools.staticIndices.size();
 
   // OPTIMIZATION: Process only tracked movable bodies (O(3) instead of O(18K))
