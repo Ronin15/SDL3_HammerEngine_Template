@@ -216,6 +216,7 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities
     ${CMAKE_CURRENT_SOURCE_DIR}/include/events
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/playerStates
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/npcStates
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils

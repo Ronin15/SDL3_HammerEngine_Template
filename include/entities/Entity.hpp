@@ -12,6 +12,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 // Forward declarations
 class Entity; // Forward declare for smart pointers
@@ -26,6 +27,21 @@ using EntityWeakPtr = std::weak_ptr<Entity>;
 
 // Type alias for entity ID
 using EntityID = HammerEngine::UniqueID::IDType;
+
+/**
+ * @brief Animation configuration for sprite sheet handling
+ * Unified struct used by NPC and Player for named animations
+ */
+struct AnimationConfig {
+    int row;           // Sprite sheet row (0-based, converted to 1-based in playAnimation)
+    int frameCount;    // Number of frames in animation
+    int speed;         // Milliseconds per frame
+    bool loop;         // Whether animation loops or plays once
+
+    AnimationConfig() : row(0), frameCount(1), speed(100), loop(true) {}
+    AnimationConfig(int r, int fc, int s, bool l)
+        : row(r), frameCount(fc), speed(s), loop(l) {}
+};
 
 /**
  * @brief Pure virtual base class for all game objects.
@@ -203,6 +219,25 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
   virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
 
+  /**
+   * @brief Play a named animation from the animation map
+   *
+   * Looks up the animation config by name and sets the sprite sheet row,
+   * frame count, animation speed, and loop flag. Does nothing if animation
+   * name is not found in the map.
+   *
+   * @param animName The name of the animation (e.g., "idle", "walking", "attacking")
+   */
+  virtual void playAnimation(const std::string& animName);
+
+  /**
+   * @brief Initialize the animation map with named animations
+   *
+   * Override in derived classes to populate m_animationMap with
+   * animation configurations specific to that entity type.
+   */
+  virtual void initializeAnimationMap() {}
+
  protected:
   const EntityID m_id;
   Vector2D m_acceleration{0, 0};
@@ -224,5 +259,9 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int m_currentRow{0};
   int m_numFrames{0};
   int m_animSpeed{0};
+
+  // Animation abstraction - maps animation names to sprite sheet configurations
+  std::unordered_map<std::string, AnimationConfig> m_animationMap;
+  bool m_animationLoops{true};  // Whether current animation loops or plays once
 };
 #endif  // ENTITY_HPP

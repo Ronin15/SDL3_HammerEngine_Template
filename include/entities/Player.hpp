@@ -59,6 +59,9 @@ public:
   Uint64 getLastFrameTime() const { return m_lastFrameTime; }
   void setLastFrameTime(Uint64 time) { m_lastFrameTime = time; }
 
+  // Animation abstraction - allows states to use named animations (override for custom logic)
+  void playAnimation(const std::string& animName) override;
+
   // Movement speed accessor
   float getMovementSpeed() const { return m_movementSpeed; }
 
@@ -88,12 +91,29 @@ public:
   // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
   void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
 
+  // Combat system
+  void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
+  void heal(float amount);
+  void die();
+  bool isAlive() const { return m_currentHealth > 0.0f; }
+
+  // Combat stat accessors
+  float getHealth() const { return m_currentHealth; }
+  float getMaxHealth() const { return m_maxHealth; }
+  float getStamina() const { return m_currentStamina; }
+  float getMaxStamina() const { return m_maxStamina; }
+
+  // Combat stat setters
+  void setMaxHealth(float maxHealth);
+  void setMaxStamina(float maxStamina);
+
 private:
   void handleMovementInput(float deltaTime);
   void handleStateTransitions();
   void loadDimensionsFromTexture();
   void setupStates();
   void setupInventory();
+  void initializeAnimationMap() override;
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
@@ -103,6 +123,7 @@ private:
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
   float m_movementSpeed{120.0f};      // Movement speed in pixels per second (2 px/frame at 60 FPS)
+  // m_animationMap and m_animationLoops inherited from Entity
 
   // Equipment slots - store handles instead of item IDs
   std::unordered_map<std::string, HammerEngine::ResourceHandle>
@@ -118,5 +139,11 @@ private:
   uint64_t m_cachedWorldVersion{0};  // Track world version for auto-invalidation
 
   void refreshWorldBoundsCache();
+
+  // Combat stats
+  float m_currentHealth{100.0f};
+  float m_maxHealth{100.0f};
+  float m_currentStamina{100.0f};
+  float m_maxStamina{100.0f};
 };
 #endif // PLAYER_HPP

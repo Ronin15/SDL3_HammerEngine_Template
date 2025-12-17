@@ -4,6 +4,8 @@
  */
 
 #include "ai/behaviors/AttackBehavior.hpp"
+#include "entities/NPC.hpp"
+#include "entities/Player.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -111,6 +113,9 @@ void AttackBehavior::init(EntityPtr entity) {
   state.currentHealth = state.maxHealth;
   state.currentStamina = 100.0f;
   state.canAttack = true;
+
+  // Set initial animation state
+  notifyAnimationStateChange(entity, state.currentState);
 }
 
 void AttackBehavior::updateTimers(EntityState& state, float deltaTime) {
@@ -210,6 +215,9 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   EntityState &state = ensureEntityState(entity);
   EntityPtr target = getTarget();
 
+  // Track state for animation notification
+  AttackState previousState = state.currentState;
+
   // Update all timers
   updateTimers(state, deltaTime);
 
@@ -226,6 +234,11 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
   // Execute behavior based on attack mode
   dispatchModeUpdate(entity, state, deltaTime);
+
+  // Notify animation state change if state changed
+  if (state.currentState != previousState) {
+    notifyAnimationStateChange(entity, state.currentState);
+  }
 }
 
 void AttackBehavior::clean(EntityPtr entity) {
@@ -566,6 +579,34 @@ void AttackBehavior::changeState(EntityState &state, AttackState newState) {
   }
 }
 
+void AttackBehavior::notifyAnimationStateChange(EntityPtr entity, AttackState newState) {
+  // Try to cast to NPC to notify animation state change
+  auto npc = std::dynamic_pointer_cast<NPC>(entity);
+  if (!npc) {
+    return; // Not an NPC (could be Player or other entity type)
+  }
+
+  // Map AttackBehavior states to NPC animation states
+  switch (newState) {
+  case AttackState::ATTACKING:
+    npc->setAnimationState("Attacking");
+    break;
+  case AttackState::RECOVERING:
+    npc->setAnimationState("Recovering");
+    break;
+  case AttackState::COOLDOWN:
+    npc->setAnimationState("Idle");
+    break;
+  case AttackState::SEEKING:
+  case AttackState::APPROACHING:
+  case AttackState::POSITIONING:
+  case AttackState::RETREATING:
+  default:
+    npc->setAnimationState("Walking");
+    break;
+  }
+}
+
 void AttackBehavior::updateStateTimer(EntityState &state) {
 
   float timeInState = state.stateChangeTimer;
@@ -683,17 +724,26 @@ void AttackBehavior::executeComboAttack(EntityPtr entity, EntityPtr target,
   }
 }
 
-void AttackBehavior::applyDamage(EntityPtr target, float /*damage*/,
+void AttackBehavior::applyDamage(EntityPtr target, float damage,
                                  const Vector2D &knockback) {
-  // In a full implementation, this would interact with the target's health
-  // system For now, we just simulate the attack
+  if (!target) {
+    return;
+  }
 
-  // Apply knockback by slightly moving the target
-  if (knockback.length() > 0.001f) {
-    Vector2D currentPos = target->getPosition();
-    Vector2D newPos =
-        currentPos + knockback * 0.1f; // Reduced for visual effect
-    target->setPosition(newPos);
+  // Scale knockback for visual effect
+  Vector2D scaledKnockback = knockback * 0.1f;
+
+  // Try to apply damage to NPC
+  auto npc = std::dynamic_pointer_cast<NPC>(target);
+  if (npc) {
+    npc->takeDamage(damage, scaledKnockback);
+    return;
+  }
+
+  // Try to apply damage to Player
+  auto player = std::dynamic_pointer_cast<Player>(target);
+  if (player) {
+    player->takeDamage(damage, scaledKnockback);
   }
 }
 

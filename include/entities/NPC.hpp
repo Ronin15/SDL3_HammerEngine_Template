@@ -8,6 +8,7 @@
 
 #include "entities/Entity.hpp"
 #include "entities/resources/InventoryComponent.hpp"
+#include "managers/EntityStateManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL_render.h>
@@ -42,7 +43,11 @@ public:
   void update(float) override;
   void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
   void clean() override;
-  // No state management - handled by AI Manager
+
+  // Animation state management
+  void setAnimationState(const std::string& stateName);
+  void playAnimation(const std::string& animName) override;
+  std::string getCurrentAnimationState() const;
 
   // NPC-specific accessor methods
   SDL_FlipMode getFlip() const override { return m_flip; }
@@ -82,8 +87,26 @@ public:
   // Helper method to set up loot drops during initialization
   void setLootDropRate(HammerEngine::ResourceHandle itemHandle, float dropRate);
 
+  // Combat system
+  void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
+  void heal(float amount);
+  void die();
+  bool isAlive() const { return m_currentHealth > 0.0f; }
+
+  // Combat stat accessors
+  float getHealth() const { return m_currentHealth; }
+  float getMaxHealth() const { return m_maxHealth; }
+  float getStamina() const { return m_currentStamina; }
+  float getMaxStamina() const { return m_maxStamina; }
+
+  // Combat stat setters
+  void setMaxHealth(float maxHealth);
+  void setMaxStamina(float maxStamina);
+
 protected:
   int m_frameWidth{0};                // Width of a single animation frame
+  void setupAnimationStates();
+  void initializeAnimationMap() override;
 
 private:
   void loadDimensionsFromTexture();
@@ -98,6 +121,10 @@ private:
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
+
+  // Animation state management
+  EntityStateManager m_stateManager;
+  // m_animationMap and m_animationLoops inherited from Entity
 
   // Wander area bounds (still used for area-based behaviors if needed)
   float m_minX{0.0f};
@@ -124,6 +151,12 @@ private:
 
   // Double-cleanup prevention (replaces thread_local set that leaked memory)
   bool m_cleaned{false};
+
+  // Combat stats
+  float m_currentHealth{100.0f};
+  float m_maxHealth{100.0f};
+  float m_currentStamina{100.0f};
+  float m_maxStamina{100.0f};
 };
 
 #endif // NPC_HPP

@@ -93,6 +93,9 @@ public:
   float getLastAttackTime() const;
   int getCurrentCombo() const;
 
+  // Animation state notification - triggers NPC animation state changes
+  void notifyAnimationStateChange(EntityPtr entity, AttackState newState);
+
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
