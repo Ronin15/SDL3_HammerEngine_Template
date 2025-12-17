@@ -206,17 +206,20 @@ void GamePlayState::update(float deltaTime) {
   // Update day/night overlay interpolation
   updateDayNightOverlay(deltaTime);
 
-  // Update time status bar - direct query of GameTime (no event bridging)
-  auto& gt = GameTimeManager::Instance();
-  m_statusBuffer.clear();
-  std::format_to(std::back_inserter(m_statusBuffer),
-                 "Day {} {}, Year {} | {} {} | {} | {}F | {}",
-                 gt.getDayOfMonth(), gt.getCurrentMonthName(), gt.getGameYear(),
-                 gt.formatCurrentTime(), gt.getTimeOfDayName(),
-                 gt.getSeasonName(),
-                 static_cast<int>(gt.getCurrentTemperature()),
-                 m_weatherController.getCurrentWeatherString());
-  UIManager::Instance().setText("gameplay_time_label", m_statusBuffer);
+  // Update time status bar only when events fire (event-driven, not per-frame)
+  if (m_statusBarDirty) {
+    m_statusBarDirty = false;
+    auto& gt = GameTimeManager::Instance();
+    m_statusBuffer.clear();
+    std::format_to(std::back_inserter(m_statusBuffer),
+                   "Day {} {}, Year {} | {} {} | {} | {}F | {}",
+                   gt.getDayOfMonth(), gt.getCurrentMonthName(), gt.getGameYear(),
+                   gt.formatCurrentTime(), gt.getTimeOfDayName(),
+                   gt.getSeasonName(),
+                   static_cast<int>(gt.getCurrentTemperature()),
+                   m_weatherController.getCurrentWeatherString());
+    UIManager::Instance().setText("gameplay_time_label", m_statusBuffer);
+  }
 
   // Update UI
   auto &ui = UIManager::Instance();
@@ -795,9 +798,14 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
     return;
   }
 
-  // Check if this is a TimePeriodChangedEvent
   auto timeEvent = std::static_pointer_cast<TimeEvent>(data.event);
-  if (timeEvent->getTimeEventType() != TimeEventType::TimePeriodChanged) {
+  TimeEventType eventType = timeEvent->getTimeEventType();
+
+  // Mark status bar dirty on any time event (hour, day, season changes)
+  m_statusBarDirty = true;
+
+  // Only process visual changes for TimePeriodChangedEvent
+  if (eventType != TimeEventType::TimePeriodChanged) {
     return;
   }
 
@@ -818,7 +826,7 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
 
   // Add event log entry for the time period change
   UIManager::Instance().addEventLogEntry("gameplay_event_log",
-      std::format("{} has arrived", periodEvent->getPeriodName()));
+      std::string(m_dayNightController.getCurrentPeriodDescription()));
 
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
@@ -938,6 +946,9 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
     return;
   }
   m_lastWeatherType = newWeather;
+
+  // Mark status bar dirty for weather display update
+  m_statusBarDirty = true;
 
   // Re-evaluate ambient particles based on current time period and new weather
   updateAmbientParticles(m_currentTimePeriod);
