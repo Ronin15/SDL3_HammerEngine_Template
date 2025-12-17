@@ -507,9 +507,9 @@ private:
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
     // OPTIMIZATION: Static Spatial Grid for efficient culling queries
-    // Coarse grid (512×512 cells) to quickly filter static bodies by culling area
+    // Grid (128×128 cells) to quickly filter static bodies by culling area
     // Grid is rebuilt only on world events (statics added/removed), not every frame
-    static constexpr float STATIC_GRID_CELL_SIZE = 512.0f;
+    static constexpr float STATIC_GRID_CELL_SIZE = 128.0f;
     struct StaticGridCell {
         int32_t x;
         int32_t y;
