@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <chrono>
 #include <array>
+#include <optional>
 
 #include "entities/Entity.hpp" // EntityID
 #include "collisions/CollisionBody.hpp"
@@ -602,6 +603,12 @@ private:
     mutable std::unordered_set<EntityID> m_collidedEntitiesBuffer;      // For syncEntitiesToSOA()
     mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
     // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
+
+    // OPTIMIZATION: Persistent index tracking (avoids O(n) iteration per frame)
+    // Regression fix for commit 768ad87 - movable body iteration was O(18K) instead of O(3)
+    std::vector<size_t> m_movableBodyIndices;       // Indices of DYNAMIC + KINEMATIC bodies
+    std::unordered_set<size_t> m_movableIndexSet;   // For O(1) removal lookup
+    std::optional<size_t> m_playerBodyIndex;        // Cached player body index (Layer_Player)
 
     // Performance metrics
     struct PerfStats {
