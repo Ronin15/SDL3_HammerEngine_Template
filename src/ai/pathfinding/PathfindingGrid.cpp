@@ -959,7 +959,34 @@ PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, c
     }
     
     // Step 2: Refine coarse path segments on fine grid
-    return refineCoarsePath(coarsePath, start, goal, outPath);
+    auto refineResult = refineCoarsePath(coarsePath, start, goal, outPath);
+
+    // Step 3: Validate refined path has no disconnected segments
+    // When segment refinement fails, refineCoarsePath() inserts direct waypoints
+    // which can create large gaps. Detect and fallback to direct A* if needed.
+    if (refineResult == PathfindingResult::SUCCESS && outPath.size() >= 2) {
+        // Allow gaps up to 8x coarse cell size (accounts for diagonal + refinement skips)
+        // Larger tolerance prevents unnecessary fallbacks to direct A*
+        float maxAllowedGap = m_cell * COARSE_GRID_MULTIPLIER * 8.0f;
+        bool hasDisconnectedSegment = false;
+
+        for (size_t i = 1; i < outPath.size(); ++i) {
+            float gap = (outPath[i] - outPath[i - 1]).length();
+            if (gap > maxAllowedGap) {
+                hasDisconnectedSegment = true;
+                PATHFIND_DEBUG(std::format("Hierarchical path has disconnected segment: gap={:.1f} > max={:.1f}, falling back to direct A*",
+                               gap, maxAllowedGap));
+                break;
+            }
+        }
+
+        if (hasDisconnectedSegment) {
+            outPath.clear();
+            return findPath(start, goal, outPath);
+        }
+    }
+
+    return refineResult;
 }
 
 PathfindingResult PathfindingGrid::refineCoarsePath(const std::vector<Vector2D>& coarsePath,

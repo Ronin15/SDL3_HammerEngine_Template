@@ -446,6 +446,7 @@ private:
         Priority priority;
         PathCallback callback;
         uint64_t requestId;
+        uint64_t cacheKey;  // Pre-computed from RAW coords before normalization
         std::chrono::steady_clock::time_point enqueueTime;
     };
     std::vector<BufferedRequest> m_requestBuffer;
@@ -455,6 +456,7 @@ private:
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
     uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
+    uint64_t computeStableCacheKey(const Vector2D& start, const Vector2D& goal) const;
     void evictOldestCacheEntry();
     void clearOldestCacheEntries(float percentage); // Smart cache clearing (partial LRU eviction)
     void clearAllCache(); // Complete cache clear for world load/unload

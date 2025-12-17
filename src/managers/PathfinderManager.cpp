@@ -262,7 +262,11 @@ uint64_t PathfinderManager::requestPath(
         return 0;
     }
 
-    // Normalize endpoints (clamp/snap/quantize)
+    // Compute cache key from RAW coordinates BEFORE normalization
+    // This ensures pre-warmed sector paths can be hit by nearby NPC requests
+    const uint64_t cacheKey = computeStableCacheKey(start, goal);
+
+    // Normalize endpoints (clamp/snap/quantize) - modifies coords for pathfinding accuracy
     Vector2D nStart = start;
     Vector2D nGoal = goal;
     normalizeEndpoints(nStart, nGoal);
@@ -281,6 +285,7 @@ uint64_t PathfinderManager::requestPath(
             priority,
             callback,
             requestId,
+            cacheKey,
             std::chrono::steady_clock::now()
         });
     }
@@ -983,6 +988,35 @@ uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2
            static_cast<uint64_t>(gy & 0xFFFF);
 }
 
+uint64_t PathfinderManager::computeStableCacheKey(const Vector2D& start, const Vector2D& goal) const {
+    // OPTIMIZATION: Stable cache key that does NOT depend on obstacle layout
+    // This allows pre-warmed sector paths to be hit by nearby NPC requests
+    //
+    // Key insight: normalizeEndpoints() calls snapToNearestOpenWorld() which changes
+    // coordinates based on which cells are blocked. This made pre-warmed paths
+    // (from sector centers) unmatchable by runtime requests (from NPC positions).
+    //
+    // Solution: Quantize BEFORE any snapping, using only clamped raw coordinates.
+    // Two requests within the same quantization bucket will get the same cache key,
+    // even if they snap to different open cells during actual pathfinding.
+    constexpr float EDGE_MARGIN = 96.0f;
+
+    // Clamp to world bounds (same as normalizeEndpoints step 1)
+    Vector2D nStart = clampToWorldBounds(start, EDGE_MARGIN);
+    Vector2D nGoal = clampToWorldBounds(goal, EDGE_MARGIN);
+
+    // Quantize directly - NO snapping to open cells (makes key stable)
+    int sx = static_cast<int>(nStart.getX() / m_cacheKeyQuantization);
+    int sy = static_cast<int>(nStart.getY() / m_cacheKeyQuantization);
+    int gx = static_cast<int>(nGoal.getX() / m_cacheKeyQuantization);
+    int gy = static_cast<int>(nGoal.getY() / m_cacheKeyQuantization);
+
+    // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
+    return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
+           (static_cast<uint64_t>(sy & 0xFFFF) << 32) |
+           (static_cast<uint64_t>(gx & 0xFFFF) << 16) |
+           static_cast<uint64_t>(gy & 0xFFFF);
+}
 
 void PathfinderManager::evictOldestCacheEntry() {
     if (m_pathCache.empty()) return;
@@ -1050,17 +1084,6 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     // This prevents entities from snapping to blocked cells
     m_endpointQuantization = std::clamp(worldW / 200.0f, 128.0f, 256.0f);
 
-    // BUGFIX: Cache key quantization MUST match endpoint quantization to prevent
-    // coalescing requests with different normalized goals. Previously, cache key was
-    // 4-8x coarser than endpoint quantization, causing coalesced entities to receive
-    // paths to wrong destinations (off by 160-512px from their actual normalized goal).
-    // Example bug scenario with old values (endpoint=160px, cache=1280px):
-    //   Entity A requests path to (5920, 6720) [after endpoint quantization]
-    //   Entity B requests path to (6080, 6720) [after endpoint quantization]
-    //   Both get same cache key due to coarse cache quantization
-    //   Entity B receives path to (5920, 6720) instead of (6080, 6720) - 160px error!
-    m_cacheKeyQuantization = m_endpointQuantization;
-
     // ADAPTIVE THRESHOLDS
     m_hierarchicalThreshold = diagonal * 0.05f;      // 5% of world diagonal
     m_connectivityThreshold = worldW * 0.25f;        // 25% of world width
@@ -1080,6 +1103,13 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     // For N=8: 2×8×7 + 2×7² = 112 + 98 = 210 paths
     int N = m_prewarmSectorCount;
     m_prewarmPathCount = 2 * N * (N - 1) + 2 * (N - 1) * (N - 1);
+
+    // Cache key quantization based on sector size for pre-warming effectiveness
+    // With RAW coord cache key (computed before normalization), coarser quantization is safe
+    // because paths are stored/retrieved by bucket, and the actual path follows normalized coords.
+    // Set to half sector size so NPCs anywhere in a sector can hit pre-warmed paths.
+    float sectorSize = worldW / static_cast<float>(m_prewarmSectorCount);
+    m_cacheKeyQuantization = sectorSize / 2.0f;  // Half sector = 4 buckets per sector
 
     // Calculate expected cache bucket count for logging
     int bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
@@ -1490,7 +1520,8 @@ void PathfinderManager::processPendingRequests() {
         // Process sequentially on main thread (low request count or high queue pressure)
         for (size_t i = 0; i < requests.size(); ++i) {
             const auto& req = requests[i];
-            uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+            // Use pre-computed cache key from RAW coordinates (computed before normalization)
+            uint64_t cacheKey = req.cacheKey;
 
             // Coalesce with pending requests
             {
@@ -1605,7 +1636,8 @@ void PathfinderManager::processPendingRequests() {
         auto batchWork = [this, requests, start, end]() {
             for (size_t idx = start; idx < end; ++idx) {
                 const auto& req = requests[idx];
-                uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+                // Use pre-computed cache key from RAW coordinates (computed before normalization)
+                uint64_t cacheKey = req.cacheKey;
 
                 // Coalesce
                 {
