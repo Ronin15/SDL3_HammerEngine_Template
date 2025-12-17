@@ -1487,6 +1487,7 @@ void CollisionManager::rebuildStaticSpatialGrid() {
   }
 
   m_staticGridDirty = false;
+  m_staticIndexCacheValid = false;  // Invalidate cache when grid is rebuilt
 }
 
 // OPTIMIZATION: Query static grid cells that intersect with culling area
@@ -1559,9 +1560,26 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
     const_cast<CollisionManager*>(this)->rebuildStaticSpatialGrid();
   }
 
-  // OPTIMIZATION: Query spatial grid for statics in culling area
-  // queryStaticGridCells performs inline bounds check (single-pass, no second iteration)
-  queryStaticGridCells(cullingArea, pools.staticIndices);
+  // OPTIMIZATION: Tolerance-based static index cache
+  // Only requery when camera moves more than STATIC_CACHE_TOLERANCE (128px)
+  // This avoids ~256 hash lookups per frame when camera moves small distances
+  const bool cacheValid = m_staticIndexCacheValid && !m_staticGridDirty &&
+      std::abs(cullingArea.minX - m_cachedStaticCullingArea.minX) < STATIC_CACHE_TOLERANCE &&
+      std::abs(cullingArea.minY - m_cachedStaticCullingArea.minY) < STATIC_CACHE_TOLERANCE &&
+      std::abs(cullingArea.maxX - m_cachedStaticCullingArea.maxX) < STATIC_CACHE_TOLERANCE &&
+      std::abs(cullingArea.maxY - m_cachedStaticCullingArea.maxY) < STATIC_CACHE_TOLERANCE;
+
+  if (cacheValid) {
+    // Reuse cached indices - skip expensive grid query
+    pools.staticIndices = m_cachedStaticIndices;
+  } else {
+    // Query spatial grid for statics in culling area
+    queryStaticGridCells(cullingArea, pools.staticIndices);
+    // Cache results for subsequent frames
+    m_cachedStaticIndices = pools.staticIndices;
+    m_cachedStaticCullingArea = cullingArea;
+    m_staticIndexCacheValid = true;
+  }
   totalStatic = pools.staticIndices.size();
 
   // OPTIMIZATION: Process only tracked movable bodies (O(3) instead of O(18K))
