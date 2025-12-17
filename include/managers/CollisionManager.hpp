@@ -526,6 +526,12 @@ private:
     std::unordered_map<StaticGridCell, std::vector<size_t>, StaticGridCellHash> m_staticSpatialGrid;
     bool m_staticGridDirty{true};  // Rebuild grid when statics added/removed
 
+    // Tolerance-based static index cache - avoids requerying when camera moves small distances
+    static constexpr float STATIC_CACHE_TOLERANCE = STATIC_GRID_CELL_SIZE;  // 128px
+    mutable std::vector<size_t> m_cachedStaticIndices;
+    mutable CullingArea m_cachedStaticCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
+    mutable bool m_staticIndexCacheValid{false};
+
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
