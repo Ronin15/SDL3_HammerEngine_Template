@@ -164,6 +164,11 @@ void CollisionManager::prepareForStateTransition() {
   m_cacheHits = 0;                           // Reset cache statistics
   m_cacheMisses = 0;
 
+  // OPTIMIZATION: Clear persistent index tracking (regression fix for commit 768ad87)
+  m_movableBodyIndices.clear();
+  m_movableIndexSet.clear();
+  m_playerBodyIndex = std::nullopt;
+
   // Re-initialize vector pool (must not leave it empty to prevent divide-by-zero in getPooledVector)
   m_vectorPool.clear();
   m_vectorPool.reserve(32);
@@ -292,14 +297,37 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
   if (!world)
     return 0;
   size_t created = 0;
+  size_t skippedInterior = 0;
   constexpr float tileSize = HammerEngine::TILE_SIZE;
   const int h = static_cast<int>(world->grid.size());
+
+  // Helper lambda to check if a tile is water (with bounds checking)
+  auto isWaterTile = [&world, h](int tx, int ty) -> bool {
+    if (ty < 0 || ty >= h) return false;
+    const int rowWidth = static_cast<int>(world->grid[ty].size());
+    if (tx < 0 || tx >= rowWidth) return false;
+    return world->grid[ty][tx].isWater;
+  };
+
   for (int y = 0; y < h; ++y) {
     const int w = static_cast<int>(world->grid[y].size());
     for (int x = 0; x < w; ++x) {
       const auto &tile = world->grid[y][x];
       if (!tile.isWater)
         continue;
+
+      // OPTIMIZATION: Only create triggers for water tiles on the edge
+      // A tile is an "edge" if any of its 4 neighbors is NOT water
+      bool isEdge = !isWaterTile(x - 1, y) ||  // Left neighbor
+                    !isWaterTile(x + 1, y) ||  // Right neighbor
+                    !isWaterTile(x, y - 1) ||  // Top neighbor
+                    !isWaterTile(x, y + 1);    // Bottom neighbor
+
+      if (!isEdge) {
+        ++skippedInterior;
+        continue;  // Skip interior water tiles - player can't enter from here
+      }
+
       const float cx = x * tileSize + tileSize * 0.5f;
       const float cy = y * tileSize + tileSize * 0.5f;
       const AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
@@ -319,7 +347,11 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       }
     }
   }
-  // Log removed for performance
+
+  if (skippedInterior > 0) {
+    COLLISION_DEBUG(std::format("Water triggers: {} edge triggers created, {} interior tiles skipped",
+                                created, skippedInterior));
+  }
   return created;
 }
 
@@ -1120,6 +1152,9 @@ void CollisionManager::processPendingCommands() {
           size_t index = it->second;
           if (index < m_storage.hotData.size()) {
             auto& hot = m_storage.hotData[index];
+            BodyType oldBodyType = static_cast<BodyType>(hot.bodyType);
+            uint32_t oldLayers = hot.layers;
+
             hot.position = cmd.position;
             hot.halfSize = cmd.halfSize;
             hot.aabbDirty = 1;
@@ -1127,6 +1162,32 @@ void CollisionManager::processPendingCommands() {
             hot.collidesWith = cmd.collideMask;
             hot.bodyType = static_cast<uint8_t>(cmd.bodyType);
             hot.active = true;
+
+            // OPTIMIZATION: Update movable tracking if body type changed
+            bool wasMovable = (oldBodyType != BodyType::STATIC);
+            bool isMovable = (cmd.bodyType != BodyType::STATIC);
+            if (wasMovable && !isMovable) {
+              // Changed from movable to static: remove from tracking
+              m_movableIndexSet.erase(index);
+              auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), index);
+              if (movableIt != m_movableBodyIndices.end()) {
+                *movableIt = m_movableBodyIndices.back();
+                m_movableBodyIndices.pop_back();
+              }
+            } else if (!wasMovable && isMovable) {
+              // Changed from static to movable: add to tracking
+              m_movableBodyIndices.push_back(index);
+              m_movableIndexSet.insert(index);
+            }
+
+            // OPTIMIZATION: Update player index if layer changed
+            bool wasPlayer = (oldLayers & CollisionLayer::Layer_Player) != 0;
+            bool isPlayer = (cmd.layer & CollisionLayer::Layer_Player) != 0;
+            if (!wasPlayer && isPlayer) {
+              m_playerBodyIndex = index;
+            } else if (wasPlayer && !isPlayer && m_playerBodyIndex == index) {
+              m_playerBodyIndex = std::nullopt;
+            }
 
             // Update cold data
             if (index < m_storage.coldData.size()) {
@@ -1173,6 +1234,17 @@ void CollisionManager::processPendingCommands() {
         m_storage.entityIds.push_back(cmd.id);
         m_storage.entityToIndex[cmd.id] = newIndex;
 
+        // OPTIMIZATION: Track movable body indices (avoids O(n) iteration per frame)
+        if (cmd.bodyType != BodyType::STATIC) {
+          m_movableBodyIndices.push_back(newIndex);
+          m_movableIndexSet.insert(newIndex);
+        }
+
+        // OPTIMIZATION: Cache player index for O(1) culling area lookup
+        if (cmd.layer & CollisionLayer::Layer_Player) {
+          m_playerBodyIndex = newIndex;
+        }
+
         // Fire collision obstacle changed event for static bodies
         if (cmd.bodyType == BodyType::STATIC) {
           float radius = std::max(cmd.halfSize.getX(), cmd.halfSize.getY()) + 16.0f;
@@ -1209,6 +1281,21 @@ void CollisionManager::processPendingCommands() {
           }
         }
 
+        // OPTIMIZATION: Clear player index if removing player
+        if (m_playerBodyIndex && *m_playerBodyIndex == indexToRemove) {
+          m_playerBodyIndex = std::nullopt;
+        }
+
+        // OPTIMIZATION: Remove from movable tracking (swap-and-pop for O(1))
+        if (m_movableIndexSet.count(indexToRemove)) {
+          m_movableIndexSet.erase(indexToRemove);
+          auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), indexToRemove);
+          if (movableIt != m_movableBodyIndices.end()) {
+            *movableIt = m_movableBodyIndices.back();
+            m_movableBodyIndices.pop_back();
+          }
+        }
+
         if (indexToRemove != lastIndex) {
           // Swap with last element
           m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
@@ -1218,6 +1305,20 @@ void CollisionManager::processPendingCommands() {
           // Update map for swapped entity
           EntityID movedEntity = m_storage.entityIds[indexToRemove];
           m_storage.entityToIndex[movedEntity] = indexToRemove;
+
+          // OPTIMIZATION: Update tracking for moved element (lastIndex -> indexToRemove)
+          if (m_playerBodyIndex && *m_playerBodyIndex == lastIndex) {
+            m_playerBodyIndex = indexToRemove;
+          }
+          if (m_movableIndexSet.count(lastIndex)) {
+            m_movableIndexSet.erase(lastIndex);
+            m_movableIndexSet.insert(indexToRemove);
+            // Update vector: find lastIndex and replace with indexToRemove
+            auto movedIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), lastIndex);
+            if (movedIt != m_movableBodyIndices.end()) {
+              *movedIt = indexToRemove;
+            }
+          }
         }
 
         // Remove last element
@@ -1459,13 +1560,12 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   // Use filtered static indices from spatial grid query
   totalStatic = pools.staticIndices.size();
 
-  // Process movable bodies (DYNAMIC + KINEMATIC) - these change every frame
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+  // OPTIMIZATION: Process only tracked movable bodies (O(3) instead of O(18K))
+  // Regression fix for commit 768ad87 - was iterating ALL bodies to find 3 movables
+  for (size_t i : m_movableBodyIndices) {
+    if (i >= m_storage.hotData.size()) continue;
     const auto& hot = m_storage.hotData[i];
     if (!hot.active) continue;
-
-    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-    if (bodyType == BodyType::STATIC) continue;  // Skip statics (already cached)
 
     // Apply culling to movable bodies
     if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
@@ -1474,7 +1574,8 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
       }
     }
 
-    // Count movable bodies
+    // Count movable bodies by type
+    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
     if (bodyType == BodyType::DYNAMIC) {
       totalDynamic++;
     } else if (bodyType == BodyType::KINEMATIC) {
@@ -2926,16 +3027,16 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
   Vector2D playerPos(0.0f, 0.0f);
   bool playerFound = false;
 
-  // Search for player entity by collision layer instead of hardcoded EntityID
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto& hot = m_storage.hotData[i];
-    if (!hot.active) continue;
-
-    // Check if this entity has Player layer
-    if (hot.layers & CollisionLayer::Layer_Player) {
-      playerPos = hot.position;
-      playerFound = true;
-      break; // Found player, use this position
+  // OPTIMIZATION: O(1) lookup using cached player index (regression fix for commit 768ad87)
+  // Was: O(18K) iteration to find player entity
+  if (m_playerBodyIndex.has_value()) {
+    size_t playerIndex = *m_playerBodyIndex;
+    if (playerIndex < m_storage.hotData.size()) {
+      const auto& hot = m_storage.hotData[playerIndex];
+      if (hot.active && (hot.layers & CollisionLayer::Layer_Player)) {
+        playerPos = hot.position;
+        playerFound = true;
+      }
     }
   }
 
