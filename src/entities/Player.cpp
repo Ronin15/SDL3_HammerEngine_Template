@@ -6,6 +6,7 @@
 #include "entities/Player.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "entities/playerStates/PlayerAttackingState.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
 
@@ -110,6 +111,8 @@ void Player::setupStates() {
   m_stateManager.addState("idle", std::make_unique<PlayerIdleState>(*this));
   m_stateManager.addState("running",
                           std::make_unique<PlayerRunningState>(*this));
+  m_stateManager.addState("attacking",
+                          std::make_unique<PlayerAttackingState>(*this));
 }
 
 Player::~Player() {
@@ -553,4 +556,12 @@ void Player::setMaxHealth(float maxHealth) {
 void Player::setMaxStamina(float maxStamina) {
   m_maxStamina = maxStamina;
   m_currentStamina = std::min(m_currentStamina, m_maxStamina);
+}
+
+void Player::consumeStamina(float amount) {
+  m_currentStamina = std::max(0.0f, m_currentStamina - amount);
+}
+
+void Player::restoreStamina(float amount) {
+  m_currentStamina = std::min(m_maxStamina, m_currentStamina + amount);
 }

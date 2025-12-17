@@ -338,6 +338,13 @@ inline std::mutex Logger::s_logMutex{};
 #define TIME_INFO(msg) HAMMER_INFO("TimeController", msg)
 #define TIME_DEBUG(msg) HAMMER_DEBUG("TimeController", msg)
 
+// CombatController logging
+#define COMBAT_CRITICAL(msg) HAMMER_CRITICAL("CombatController", msg)
+#define COMBAT_ERROR(msg) HAMMER_ERROR("CombatController", msg)
+#define COMBAT_WARN(msg) HAMMER_WARN("CombatController", msg)
+#define COMBAT_INFO(msg) HAMMER_INFO("CombatController", msg)
+#define COMBAT_DEBUG(msg) HAMMER_DEBUG("CombatController", msg)
+
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \
   HammerEngine::Logger::SetBenchmarkMode(true)

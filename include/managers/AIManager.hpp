@@ -289,6 +289,18 @@ public:
                                 const std::string &behaviorName);
   void unregisterEntityFromUpdates(EntityPtr entity);
 
+  /**
+   * @brief Query entities within a radius of a position
+   * @param center Center point for the query
+   * @param radius Radius to search within
+   * @param outEntities Output vector of entities found (cleared before populating)
+   * @param excludePlayer If true, excludes the player entity from results
+   * @note Thread-safe. Useful for combat hit detection, area effects, etc.
+   */
+  void queryEntitiesInRadius(const Vector2D& center, float radius,
+                             std::vector<EntityPtr>& outEntities,
+                             bool excludePlayer = true) const;
+
   // Update extents for an entity if its sprite/physics size changes
   void updateEntityExtents(EntityPtr entity, float halfW, float halfH);
 

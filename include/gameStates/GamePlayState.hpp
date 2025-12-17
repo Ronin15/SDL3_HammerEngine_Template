@@ -16,6 +16,7 @@
 #include "utils/Camera.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "controllers/world/DayNightController.hpp"
+#include "controllers/combat/CombatController.hpp"
 #include <memory>
 #include <string>
 
@@ -77,10 +78,15 @@ private:
   // --- Controllers (owned by this state) ---
   WeatherController m_weatherController;
   DayNightController m_dayNightController;
+  CombatController m_combatController;
 
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)
   bool m_statusBarDirty{true};   // Flag to rebuild status bar only when events fire
+
+  // --- Combat HUD ---
+  void initializeCombatHUD();
+  void updateCombatHUD();
 
   // Inventory UI methods
   void initializeInventoryUI();

@@ -23,7 +23,8 @@ enum class EventTypeId : uint8_t {
   CollisionObstacleChanged = 10,
   Custom = 11,
   Time = 12,
-  COUNT = 13
+  Combat = 13,
+  COUNT = 14
 };
 
 #endif // EVENT_TYPE_ID_HPP
