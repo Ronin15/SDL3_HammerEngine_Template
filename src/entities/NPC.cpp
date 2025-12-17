@@ -542,6 +542,12 @@ std::string NPC::getCurrentAnimationState() const {
   return m_stateManager.getCurrentStateName();
 }
 
+std::string NPC::getName() const {
+  // Format: "TextureType #ID" (e.g., "skeleton #42")
+  // Uses last 4 digits of entity ID for readability
+  return std::format("{} #{}", m_textureID, getID() % 10000);
+}
+
 // Combat system methods
 
 void NPC::takeDamage(float damage, const Vector2D& knockback) {

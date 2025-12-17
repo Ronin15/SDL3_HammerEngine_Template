@@ -9,6 +9,7 @@
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
 #include "gameStates/LoadingState.hpp"
+#include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -132,6 +133,12 @@ bool GamePlayState::enter() {
     // Subscribe day/night controller (owned by this state)
     m_dayNightController.subscribe();
 
+    // Subscribe combat controller (owned by this state)
+    m_combatController.subscribe();
+
+    // Initialize combat HUD (health/stamina bars, target frame)
+    initializeCombatHUD();
+
     // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
     m_dayNightEventToken = eventMgr.registerHandlerWithToken(
         EventTypeId::Time,
@@ -198,6 +205,12 @@ void GamePlayState::update(float deltaTime) {
   // Update player if it exists
   if (mp_Player) {
     mp_Player->update(deltaTime);
+
+    // Update combat controller (cooldowns, stamina regen, target tracking)
+    m_combatController.update(deltaTime, *mp_Player);
+
+    // Update combat HUD (health/stamina bars, target frame)
+    updateCombatHUD();
   }
 
   // Update camera (follows player automatically)
@@ -443,6 +456,15 @@ void GamePlayState::pause() {
   ui.setComponentVisible("gameplay_time_label", false);
   ui.setComponentVisible("gameplay_fps", false);
 
+  // Hide combat HUD components
+  ui.setComponentVisible("hud_health_label", false);
+  ui.setComponentVisible("hud_health_bar", false);
+  ui.setComponentVisible("hud_stamina_label", false);
+  ui.setComponentVisible("hud_stamina_bar", false);
+  ui.setComponentVisible("hud_target_panel", false);
+  ui.setComponentVisible("hud_target_name", false);
+  ui.setComponentVisible("hud_target_health", false);
+
   // Also hide inventory components if visible
   if (m_inventoryVisible) {
     ui.setComponentVisible("gameplay_inventory_panel", false);
@@ -469,6 +491,13 @@ void GamePlayState::resume() {
   if (m_fpsVisible) {
     ui.setComponentVisible("gameplay_fps", true);
   }
+
+  // Show combat HUD components (always visible during gameplay)
+  ui.setComponentVisible("hud_health_label", true);
+  ui.setComponentVisible("hud_health_bar", true);
+  ui.setComponentVisible("hud_stamina_label", true);
+  ui.setComponentVisible("hud_stamina_bar", true);
+  // Target frame visibility controlled by updateCombatHUD() based on hasActiveTarget()
 
   // Restore inventory visibility state
   if (m_inventoryVisible) {
@@ -516,6 +545,11 @@ void GamePlayState::handleInput() {
     m_fpsVisible = !m_fpsVisible;
     auto& ui = UIManager::Instance();
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
+  }
+
+  // Combat - spacebar to attack
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
+    m_combatController.tryAttack(*mp_Player);
   }
 
   // Camera zoom controls
@@ -958,5 +992,165 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
       std::string(m_weatherController.getCurrentWeatherDescription()));
 
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
+}
+
+void GamePlayState::initializeCombatHUD() {
+  auto& ui = UIManager::Instance();
+
+  // Combat HUD layout constants (top-left positioning)
+  constexpr int hudMarginLeft = 20;
+  constexpr int hudMarginTop = 40;  // Below time label area
+  constexpr int labelWidth = 30;
+  constexpr int barWidth = 150;
+  constexpr int barHeight = 20;
+  constexpr int rowSpacing = 25;
+  constexpr int labelBarGap = 5;
+
+  // Row positions
+  int healthRowY = hudMarginTop;
+  int staminaRowY = hudMarginTop + rowSpacing;
+  int targetRowY = hudMarginTop + rowSpacing * 2 + 10;  // Extra spacing before target
+
+  // --- Player Health Bar ---
+  ui.createLabel("hud_health_label",
+      {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
+  UIPositioning healthLabelPos;
+  healthLabelPos.mode = UIPositionMode::TOP_ALIGNED;
+  healthLabelPos.offsetX = hudMarginLeft;
+  healthLabelPos.offsetY = healthRowY;
+  healthLabelPos.fixedWidth = labelWidth;
+  healthLabelPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_health_label", healthLabelPos);
+
+  ui.createProgressBar("hud_health_bar",
+      {hudMarginLeft + labelWidth + labelBarGap, healthRowY, barWidth, barHeight},
+      0.0f, 100.0f);
+  UIPositioning healthBarPos;
+  healthBarPos.mode = UIPositionMode::TOP_ALIGNED;
+  healthBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
+  healthBarPos.offsetY = healthRowY;
+  healthBarPos.fixedWidth = barWidth;
+  healthBarPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_health_bar", healthBarPos);
+
+  // Set green fill color for health bar
+  UIStyle healthStyle;
+  healthStyle.backgroundColor = {40, 40, 40, 255};
+  healthStyle.borderColor = {180, 180, 180, 255};
+  healthStyle.hoverColor = {50, 200, 50, 255};  // Green fill
+  healthStyle.borderWidth = 1;
+  ui.setStyle("hud_health_bar", healthStyle);
+
+  // --- Player Stamina Bar ---
+  ui.createLabel("hud_stamina_label",
+      {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
+  UIPositioning staminaLabelPos;
+  staminaLabelPos.mode = UIPositionMode::TOP_ALIGNED;
+  staminaLabelPos.offsetX = hudMarginLeft;
+  staminaLabelPos.offsetY = staminaRowY;
+  staminaLabelPos.fixedWidth = labelWidth;
+  staminaLabelPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_stamina_label", staminaLabelPos);
+
+  ui.createProgressBar("hud_stamina_bar",
+      {hudMarginLeft + labelWidth + labelBarGap, staminaRowY, barWidth, barHeight},
+      0.0f, 100.0f);
+  UIPositioning staminaBarPos;
+  staminaBarPos.mode = UIPositionMode::TOP_ALIGNED;
+  staminaBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
+  staminaBarPos.offsetY = staminaRowY;
+  staminaBarPos.fixedWidth = barWidth;
+  staminaBarPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_stamina_bar", staminaBarPos);
+
+  // Set yellow fill color for stamina bar
+  UIStyle staminaStyle;
+  staminaStyle.backgroundColor = {40, 40, 40, 255};
+  staminaStyle.borderColor = {180, 180, 180, 255};
+  staminaStyle.hoverColor = {255, 200, 50, 255};  // Yellow fill
+  staminaStyle.borderWidth = 1;
+  ui.setStyle("hud_stamina_bar", staminaStyle);
+
+  // --- Target Frame (NPC health when attacked) ---
+  constexpr int targetPanelWidth = 190;
+  constexpr int targetPanelHeight = 50;
+
+  ui.createPanel("hud_target_panel",
+      {hudMarginLeft, targetRowY, targetPanelWidth, targetPanelHeight});
+  UIPositioning targetPanelPos;
+  targetPanelPos.mode = UIPositionMode::TOP_ALIGNED;
+  targetPanelPos.offsetX = hudMarginLeft;
+  targetPanelPos.offsetY = targetRowY;
+  targetPanelPos.fixedWidth = targetPanelWidth;
+  targetPanelPos.fixedHeight = targetPanelHeight;
+  ui.setComponentPositioning("hud_target_panel", targetPanelPos);
+  ui.setComponentVisible("hud_target_panel", false);
+
+  ui.createLabel("hud_target_name",
+      {hudMarginLeft + 5, targetRowY + 5, targetPanelWidth - 10, 18}, "");
+  UIPositioning targetNamePos;
+  targetNamePos.mode = UIPositionMode::TOP_ALIGNED;
+  targetNamePos.offsetX = hudMarginLeft + 5;
+  targetNamePos.offsetY = targetRowY + 5;
+  targetNamePos.fixedWidth = targetPanelWidth - 10;
+  targetNamePos.fixedHeight = 18;
+  ui.setComponentPositioning("hud_target_name", targetNamePos);
+  ui.setComponentVisible("hud_target_name", false);
+
+  ui.createProgressBar("hud_target_health",
+      {hudMarginLeft + 5, targetRowY + 26, targetPanelWidth - 10, 18},
+      0.0f, 100.0f);
+  UIPositioning targetHealthPos;
+  targetHealthPos.mode = UIPositionMode::TOP_ALIGNED;
+  targetHealthPos.offsetX = hudMarginLeft + 5;
+  targetHealthPos.offsetY = targetRowY + 26;
+  targetHealthPos.fixedWidth = targetPanelWidth - 10;
+  targetHealthPos.fixedHeight = 18;
+  ui.setComponentPositioning("hud_target_health", targetHealthPos);
+  ui.setComponentVisible("hud_target_health", false);
+
+  // Set red fill color for target health bar
+  UIStyle targetHealthStyle;
+  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
+  targetHealthStyle.borderColor = {180, 180, 180, 255};
+  targetHealthStyle.hoverColor = {200, 50, 50, 255};  // Red fill
+  targetHealthStyle.borderWidth = 1;
+  ui.setStyle("hud_target_health", targetHealthStyle);
+
+  // Initialize bars with player stats
+  if (mp_Player) {
+    ui.setValue("hud_health_bar", mp_Player->getHealth());
+    ui.setValue("hud_stamina_bar", mp_Player->getStamina());
+  }
+
+  GAMEPLAY_INFO("Combat HUD initialized");
+}
+
+void GamePlayState::updateCombatHUD() {
+  if (!mp_Player) {
+    return;
+  }
+
+  auto& ui = UIManager::Instance();
+
+  // Update player health and stamina bars
+  ui.setValue("hud_health_bar", mp_Player->getHealth());
+  ui.setValue("hud_stamina_bar", mp_Player->getStamina());
+
+  // Update target frame visibility and content
+  if (m_combatController.hasActiveTarget()) {
+    NPC* target = m_combatController.getTargetedNPC();
+    if (target) {
+      ui.setComponentVisible("hud_target_panel", true);
+      ui.setComponentVisible("hud_target_name", true);
+      ui.setComponentVisible("hud_target_health", true);
+      ui.setText("hud_target_name", target->getName());
+      ui.setValue("hud_target_health", target->getHealth());
+    }
+  } else {
+    ui.setComponentVisible("hud_target_panel", false);
+    ui.setComponentVisible("hud_target_name", false);
+    ui.setComponentVisible("hud_target_health", false);
+  }
 }
 

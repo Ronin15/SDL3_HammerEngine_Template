@@ -52,6 +52,9 @@ public:
   // NPC-specific accessor methods
   SDL_FlipMode getFlip() const override { return m_flip; }
 
+  // Display name (texture type + unique ID suffix for identification)
+  std::string getName() const;
+
   // NPC-specific setter methods
   void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
 

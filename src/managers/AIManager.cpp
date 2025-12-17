@@ -1078,6 +1078,47 @@ void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
   }
 }
 
+void AIManager::queryEntitiesInRadius(const Vector2D& center, float radius,
+                                      std::vector<EntityPtr>& outEntities,
+                                      bool excludePlayer) const {
+  outEntities.clear();
+
+  // Get player reference for exclusion check
+  EntityPtr playerRef = excludePlayer ? m_playerEntity.lock() : nullptr;
+  const float radiusSq = radius * radius;
+
+  // Thread-safe read access to entity storage
+  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+
+  // Iterate through all active entities
+  for (size_t i = 0; i < m_storage.size(); ++i) {
+    // Skip inactive entities
+    if (!m_storage.hotData[i].active) {
+      continue;
+    }
+
+    EntityPtr entity = m_storage.entities[i];
+    if (!entity) {
+      continue;
+    }
+
+    // Skip player if requested
+    if (excludePlayer && entity == playerRef) {
+      continue;
+    }
+
+    // Check distance (squared to avoid sqrt)
+    const Vector2D& pos = m_storage.hotData[i].position;
+    const float dx = pos.getX() - center.getX();
+    const float dy = pos.getY() - center.getY();
+    const float distSq = dx * dx + dy * dy;
+
+    if (distSq <= radiusSq) {
+      outEntities.push_back(entity);
+    }
+  }
+}
+
 void AIManager::setGlobalPause(bool paused) {
   m_globallyPaused.store(paused, std::memory_order_release);
   AI_INFO((paused ? "AI processing paused" : "AI processing resumed"));

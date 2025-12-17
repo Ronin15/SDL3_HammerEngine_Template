@@ -102,10 +102,17 @@ public:
   float getMaxHealth() const { return m_maxHealth; }
   float getStamina() const { return m_currentStamina; }
   float getMaxStamina() const { return m_maxStamina; }
+  float getAttackDamage() const { return m_attackDamage; }
+  float getAttackRange() const { return m_attackRange; }
 
   // Combat stat setters
   void setMaxHealth(float maxHealth);
   void setMaxStamina(float maxStamina);
+
+  // Stamina management (for combat controller)
+  bool canAttack(float staminaCost) const { return m_currentStamina >= staminaCost; }
+  void consumeStamina(float amount);
+  void restoreStamina(float amount);
 
 private:
   void handleMovementInput(float deltaTime);
@@ -145,5 +152,7 @@ private:
   float m_maxHealth{100.0f};
   float m_currentStamina{100.0f};
   float m_maxStamina{100.0f};
+  float m_attackDamage{25.0f};
+  float m_attackRange{50.0f};
 };
 #endif // PLAYER_HPP
