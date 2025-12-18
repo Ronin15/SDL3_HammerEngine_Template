@@ -122,8 +122,8 @@ private:
       m_inventory;                    // NPC inventory for trading/loot
   int m_frameHeight{0};               // Height of a single animation frame
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
-  Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
+  // Note: Animation timing uses m_animationAccumulator inherited from Entity
 
   // Animation state management
   EntityStateManager m_stateManager;

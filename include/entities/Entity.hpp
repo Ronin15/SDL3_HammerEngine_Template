@@ -189,6 +189,8 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int getCurrentRow() const { return m_currentRow; }
   int getNumFrames() const { return m_numFrames; }
   int getAnimSpeed() const { return m_animSpeed; }
+  float getAnimationAccumulator() const { return m_animationAccumulator; }
+  const std::string& getCurrentAnimationName() const { return m_currentAnimationName; }
 
   // Setter methods
 
@@ -214,6 +216,7 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setCurrentRow(int row) { m_currentRow = row; }
   virtual void setNumFrames(int numFrames) { m_numFrames = numFrames; }
   virtual void setAnimSpeed(int speed) { m_animSpeed = speed; }
+  virtual void setAnimationAccumulator(float acc) { m_animationAccumulator = acc; }
 
   // Used for rendering flipping - to be implemented by derived classes
   virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
@@ -263,5 +266,9 @@ class Entity : public std::enable_shared_from_this<Entity> {
   // Animation abstraction - maps animation names to sprite sheet configurations
   std::unordered_map<std::string, AnimationConfig> m_animationMap;
   bool m_animationLoops{true};  // Whether current animation loops or plays once
+
+  // Animation timing - uses deltaTime accumulation for synchronized timing with physics
+  std::string m_currentAnimationName;      // Current animation name (for skip-if-same optimization)
+  float m_animationAccumulator{0.0f};      // Accumulates deltaTime for frame advancement
 };
 #endif  // ENTITY_HPP

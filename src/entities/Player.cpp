@@ -35,8 +35,7 @@ Player::Player() : Entity() {
   m_numFrames = 2;       // Number of frames in the animation
   m_animSpeed = 100;     // Animation speed in milliseconds
   m_spriteSheetRows = 1; // Number of rows in the sprite sheet
-  m_lastFrameTime =
-      SDL_GetTicks();     // Track when we last changed animation frame
+  m_animationAccumulator = 0.0f;  // deltaTime accumulator for animation timing
   m_flip = SDL_FLIP_NONE; // Default flip direction
 
   // Set width and height based on texture dimensions if the texture is loaded
@@ -490,6 +489,11 @@ void Player::initializeAnimationMap() {
 }
 
 void Player::playAnimation(const std::string& animName) {
+  // Skip if already playing this animation - prevents jitter on state re-entry
+  if (m_currentAnimationName == animName) {
+    return;
+  }
+
   auto it = m_animationMap.find(animName);
   if (it != m_animationMap.end()) {
     const auto& config = it->second;
@@ -498,7 +502,8 @@ void Player::playAnimation(const std::string& animName) {
     m_animSpeed = config.speed;
     m_animationLoops = config.loop;
     m_currentFrame = 0;
-    m_lastFrameTime = SDL_GetTicks();
+    m_animationAccumulator = 0.0f;  // Reset deltaTime accumulator
+    m_currentAnimationName = animName;  // Track current animation
   } else {
     PLAYER_WARN(std::format("Player animation not found: {}", animName));
   }

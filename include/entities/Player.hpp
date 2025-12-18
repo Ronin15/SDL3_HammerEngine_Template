@@ -55,10 +55,6 @@ public:
   // Player-specific setter methods
   void setFlip(SDL_FlipMode flip) override { m_flip = flip; }
 
-  // Animation timing methods (needed for state machine)
-  Uint64 getLastFrameTime() const { return m_lastFrameTime; }
-  void setLastFrameTime(Uint64 time) { m_lastFrameTime = time; }
-
   // Animation abstraction - allows states to use named animations (override for custom logic)
   void playAnimation(const std::string& animName) override;
 
@@ -127,8 +123,8 @@ private:
   std::unique_ptr<InventoryComponent> m_inventory; // Player inventory
   int m_frameWidth{0};                // Width of a single animation frame
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
-  Uint64 m_lastFrameTime{0};          // Time of last animation frame change
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
+  // Note: Animation timing uses m_animationAccumulator inherited from Entity
   float m_movementSpeed{120.0f};      // Movement speed in pixels per second (2 px/frame at 60 FPS)
   // m_animationMap and m_animationLoops inherited from Entity
 
