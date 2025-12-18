@@ -42,8 +42,7 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   m_numFrames = 2;       // Default to 2 frames for simple animation
   m_animSpeed = 100;     // Default animation speed in milliseconds
   m_spriteSheetRows = 1; // Default number of rows in the sprite sheet
-  m_lastFrameTime =
-      SDL_GetTicks();     // Track when we last changed animation frame
+  m_animationAccumulator = 0.0f;  // deltaTime accumulator for animation timing
   m_flip = SDL_FLIP_NONE; // Default flip direction
 
   // Load dimensions from texture if not provided
@@ -163,11 +162,12 @@ void NPC::update(float deltaTime) {
   // Area constraints handling removed; behaviors and managers coordinate
   // movement
 
-  // --- Animation Frame Updates ---
-  Uint64 currentTime = SDL_GetTicks();
+  // --- Animation Frame Updates using deltaTime accumulator ---
+  m_animationAccumulator += deltaTime;
+  float frameTime = m_animSpeed / 1000.0f;  // ms to seconds
 
-  // Advance animation frames based on timing
-  if (currentTime > m_lastFrameTime + static_cast<Uint64>(m_animSpeed)) {
+  // Advance animation frames based on accumulated time
+  if (m_animationAccumulator >= frameTime) {
     if (m_animationLoops) {
       // Looping animation - cycle frames
       m_currentFrame = (m_currentFrame + 1) % m_numFrames;
@@ -177,12 +177,13 @@ void NPC::update(float deltaTime) {
         m_currentFrame++;
       }
     }
-    m_lastFrameTime = currentTime;
+    m_animationAccumulator -= frameTime;  // Preserve excess time for smooth timing
   }
 
   // --- Flip Direction based on Velocity ---
   // Smooth flip: require sufficient lateral speed and a minimum interval
   const float flipSpeedThreshold = 15.0f; // px/s
+  Uint64 currentTime = SDL_GetTicks();  // Used only for flip timing
   if (std::abs(m_velocity.getX()) > flipSpeedThreshold) {
     int newSign = (m_velocity.getX() < 0) ? -1 : 1;
     if (newSign != m_lastFlipSign) {
@@ -524,6 +525,11 @@ void NPC::setAnimationState(const std::string& stateName) {
 }
 
 void NPC::playAnimation(const std::string& animName) {
+  // Skip if already playing this animation - prevents jitter on state re-entry
+  if (m_currentAnimationName == animName) {
+    return;
+  }
+
   auto it = m_animationMap.find(animName);
   if (it != m_animationMap.end()) {
     const auto& config = it->second;
@@ -532,7 +538,8 @@ void NPC::playAnimation(const std::string& animName) {
     m_animSpeed = config.speed;
     m_animationLoops = config.loop;
     m_currentFrame = 0;
-    m_lastFrameTime = SDL_GetTicks();
+    m_animationAccumulator = 0.0f;  // Reset deltaTime accumulator
+    m_currentAnimationName = animName;  // Track current animation
   } else {
     NPC_WARN(std::format("NPC animation not found: {}", animName));
   }
