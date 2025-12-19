@@ -20,7 +20,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
     
     Event-driven architecture with batch event processing, state machines for entities and game flow, and thread-safe manager updates.
 
-- **Professional UI System**
+- **Flexible UI System**
 
     Content-aware auto-sizing, professional theming (light/dark/custom), and rich component library (buttons, labels, input fields, lists, modals, etc.). Responsive layouts with DPI-aware rendering and animation support. Centralized UI constants with resolution-aware scaling (1920×1080 baseline) and event-driven resize handling. Optimized for PC handheld devices (Steam Deck, ROG Ally, OneXPlayer) with automatic baseline resolution scaling down to 1280×720.
 
@@ -72,8 +72,8 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - CMake 3.28+, Ninja, C++20 compiler (GCC/Clang/MSVC) - MSVC planned
 - Platforms: Windows, macOS (Apple Silicon only), Linux
-- [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (image, ttf, mixer)
-- Boost (for tests), cppcheck (static analysis), Valgrind (optional, for profiling and validation)
+- [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
+- Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, for profiling and memory validation)
 
 **Platform notes:**  
 See [Platform Notes](docs/README.md#platform-notes) for detailed Windows, Linux, and macOS setup instructions.
