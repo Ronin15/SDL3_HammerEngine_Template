@@ -30,22 +30,43 @@ The `GameEngine` class is the core singleton that manages all game systems, SDL 
 
 ```cpp
 int main() {
-    // Get singleton instance
+    // Initialize thread system first
+    HammerEngine::ThreadSystem& threadSystem = HammerEngine::ThreadSystem::Instance();
+    if (!threadSystem.init()) {
+        return -1;
+    }
+
+    // Get GameEngine singleton
     GameEngine& engine = GameEngine::Instance();
 
     // Initialize with window parameters
     if (!engine.init("My Game", 1280, 720, false)) {
+        engine.clean();
         return -1;
     }
 
-    // Create and set game loop
-    auto gameLoop = std::make_shared<GameLoop>();
-    engine.setGameLoop(gameLoop);
+    // Push initial state
+    engine.getGameStateManager()->pushState("MainMenuState");
 
-    // Start the main loop
-    gameLoop->run();
+    // Get TimestepManager for main loop
+    TimestepManager& ts = engine.getTimestepManager();
 
-    // Cleanup
+    // Main game loop - fixed timestep pattern
+    while (engine.isRunning()) {
+        ts.startFrame();
+        engine.handleEvents();
+
+        while (ts.shouldUpdate()) {
+            if (engine.hasNewFrameToRender()) {
+                engine.swapBuffers();
+            }
+            engine.update(ts.getUpdateDeltaTime());
+        }
+
+        engine.render();
+        ts.endFrame();
+    }
+
     engine.clean();
     return 0;
 }
@@ -178,20 +199,26 @@ bool GameEngine::init(std::string_view title, int width, int height, bool fullsc
 
 ## Main Loop Integration
 
-### GameLoop Delegation
+### Single-Threaded Main Loop
 
-The GameEngine delegates main loop control to a GameLoop instance:
+The main loop runs entirely on the main thread with a classic fixed timestep pattern. The loop is implemented in `HammerMain.cpp`:
 
 ```cpp
-class GameEngine {
-private:
-    std::weak_ptr<GameLoop> m_gameLoop;  // Non-owning reference
+// Main game loop - fixed timestep pattern
+while (engine.isRunning()) {
+    ts.startFrame();           // Start frame timing (adds delta to accumulator)
+    engine.handleEvents();      // Process SDL events (main thread only)
 
-public:
-    void setGameLoop(std::shared_ptr<GameLoop> gameLoop) {
-        m_gameLoop = gameLoop;
+    while (ts.shouldUpdate()) { // Fixed timestep updates - drain accumulator
+        if (engine.hasNewFrameToRender()) {
+            engine.swapBuffers();
+        }
+        engine.update(ts.getUpdateDeltaTime());
     }
-};
+
+    engine.render();           // Render with interpolation alpha
+    ts.endFrame();             // VSync or software frame limiting
+}
 ```
 
 ### Core Loop Methods
@@ -211,24 +238,12 @@ void GameEngine::handleEvents() {
 #### Game Logic Update
 ```cpp
 void GameEngine::update(float deltaTime) {
-    std::lock_guard<std::mutex> lock(m_updateMutex);
-
-    // Use WorkerBudget system for coordinated task submission
-    if (HammerEngine::ThreadSystem::Exists()) {
-        auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-        size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-        HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-
-        // Submit engine coordination tasks with high priority
-        threadSystem.enqueueTask([this, deltaTime]() {
-            processEngineCoordination(deltaTime);
-        }, HammerEngine::TaskPriority::High, "GameEngine_Coordination");
-    }
+    // Single-threaded main loop - no mutex needed
 
     // Hybrid Manager Update Architecture:
     // Global systems updated by GameEngine (cached references for performance)
     if (mp_aiManager) {
-        mp_aiManager->update(deltaTime);
+        mp_aiManager->update(deltaTime);  // Dispatches work to ThreadSystem
     }
     if (mp_eventManager) {
         mp_eventManager->update(deltaTime);
@@ -245,9 +260,9 @@ void GameEngine::update(float deltaTime) {
 
 #### Rendering
 ```cpp
-void GameEngine::render(float dt) {
+void GameEngine::render() {
     // Always on MAIN thread (SDL requirement)
-    std::lock_guard<std::mutex> lock(m_renderMutex);
+    // Single-threaded main loop - no mutex needed
 
     SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
     SDL_RenderClear(mp_renderer.get());
@@ -266,16 +281,16 @@ void GameEngine::render(float dt) {
 The GameEngine implements sophisticated threading with centralized resource management through the WorkerBudget system:
 
 **Engine Resource Allocation:**
-- Receives **1 worker** (Critical priority) from ThreadSystem's WorkerBudget system
 - Uses `HammerEngine::calculateWorkerBudget()` for centralized resource allocation
-- Coordinates with GameLoop to ensure optimal frame-rate performance
-- Submits tasks with appropriate priorities to prevent system overload
+- All workers allocated to managers (AI, Particles, Events, Pathfinding)
+- Main loop runs single-threaded on main thread
+- Submits background tasks with appropriate priorities to prevent system overload
 
 **Threading Architecture:**
-- **Engine Coordination**: Receives **1 worker** (Critical priority) from ThreadSystem's WorkerBudget system
-- **Manager Integration**: Coordinates AI and Event manager threading
+- **Single-Threaded Main Loop**: Update and render run sequentially on main thread
+- **Manager Integration**: Managers dispatch background work to ThreadSystem workers
 - **Queue Pressure Management**: Monitors ThreadSystem load to prevent bottlenecks
-- **Configurable Double/Triple Buffering**: Enables concurrent update and render without blocking. Toggle with F3 in debug mode
+- **Configurable Double/Triple Buffering**: Lock-free buffer coordination for render state. Toggle with F3 in debug mode
 
 #### Thread-Safe State Management
 ```cpp
@@ -310,17 +325,17 @@ private:
     std::atomic<size_t> m_currentBufferIndex{0};
     std::atomic<size_t> m_renderBufferIndex{0};
     std::atomic<bool> m_bufferReady[3]{false, false, false};  // Max 3 buffers
-    std::condition_variable m_bufferCondition{};
 
     // Frame tracking for synchronization
     std::atomic<uint64_t> m_lastUpdateFrame{0};
     std::atomic<uint64_t> m_lastRenderedFrame{0};
 
-    // DEBUG MODE ONLY: Buffer telemetry statistics
+    // DEBUG MODE ONLY: Buffer telemetry statistics (lock-free counters only)
     struct BufferTelemetryStats {
-        uint64_t swapAttempts{0};      // Total swap attempts
-        uint64_t renderStalls{0};      // Times renderer waited for update
-        uint64_t mutexWaitTime{0};     // Total mutex wait time (microseconds)
+        std::atomic<uint64_t> swapAttempts{0};   // Total swap attempts
+        std::atomic<uint64_t> swapSuccesses{0};  // Successful swaps
+        std::atomic<uint64_t> renderStalls{0};   // Times renderer stalled
+        std::atomic<uint64_t> framesSkipped{0};  // Skipped frames
     };
     #ifdef DEBUG
     BufferTelemetryStats m_bufferStats{};
@@ -551,12 +566,9 @@ bool GameEngine::setVSyncEnabled(bool enable) {
 
 **Debugging VSync:**
 ```cpp
-float GameEngine::getCurrentFPS() const {
-    if (auto gameLoop = m_gameLoop.lock()) {
-        return gameLoop->getCurrentFPS();
-    }
-    return 0.0f;
-}
+// TimestepManager provides frame timing information
+TimestepManager& ts = engine.getTimestepManager();
+float targetFPS = 1.0f / ts.getUpdateDeltaTime();  // Target FPS from fixed timestep
 ```
 
 ### Window Management Methods
@@ -660,12 +672,12 @@ float getDPIScale() const { return m_dpiScale; }
 ### Performance Monitoring Integration
 
 ```cpp
-float GameEngine::getCurrentFPS() const {
-    if (auto gameLoop = m_gameLoop.lock()) {
-        return gameLoop->getCurrentFPS();
-    }
-    return 0.0f;
-}
+// Performance monitoring in HammerMain.cpp (DEBUG builds)
+// Rolling average of update times logged every 1800 frames
+double avgMs = calculateRollingAverage(updateSamples);
+double frameBudgetMs = 1000.0 / 60.0;  // 16.67ms
+double utilizationPercent = (avgMs / frameBudgetMs) * 100.0;
+GAMEENGINE_DEBUG(std::format("Update performance: {:.2f}ms avg ({:.1f}% frame budget)", avgMs, utilizationPercent));
 ```
 
 ## API Reference
@@ -698,10 +710,10 @@ size_t getRenderBufferIndex() const noexcept;                  // Get render buf
 ### State Management
 
 ```cpp
-void setGameLoop(std::shared_ptr<GameLoop> gameLoop);          // Set GameLoop reference
 void setRunning(bool running);                                  // Set engine running state
 bool getRunning() const;                                        // Get engine running state
-float getCurrentFPS() const;                                    // Get current FPS from GameLoop
+bool isRunning() const;                                         // Check if engine is running
+TimestepManager& getTimestepManager();                          // Get TimestepManager for main loop
 ```
 
 ### Window and Rendering
@@ -735,20 +747,22 @@ SDL_Window* getWindow() const noexcept;                       // Get SDL window
 
 ```cpp
 bool initializeGame() {
+    // Initialize ThreadSystem first
+    HammerEngine::ThreadSystem& threadSystem = HammerEngine::ThreadSystem::Instance();
+    if (!threadSystem.init()) {
+        return false;
+    }
+
     GameEngine& engine = GameEngine::Instance();
 
-    // Initialize engine first
+    // Initialize engine
     if (!engine.init("My Game", 1280, 720, false)) {
         GAMEENGINE_ERROR("Failed to initialize GameEngine");
         return false;
     }
 
-    // Create and set GameLoop
-    auto gameLoop = std::make_shared<GameLoop>();
-    engine.setGameLoop(gameLoop);
-
-    // Additional game-specific initialization
-    // ...
+    // Push initial state
+    engine.getGameStateManager()->pushState("MainMenuState");
 
     return true;
 }
@@ -783,9 +797,7 @@ void setupRenderer() {
         GAMEENGINE_INFO("VSync enabled - using hardware timing");
     } else {
         GAMEENGINE_INFO("VSync disabled - using software timing");
-
-        // Implement software frame limiting if needed
-        // GameLoop handles this automatically
+        // TimestepManager handles software frame limiting automatically
     }
 }
 
@@ -883,13 +895,16 @@ void Entity::update(float dt) {
 
 ```cpp
 class MyGame {
-private:
-    std::shared_ptr<GameLoop> m_gameLoop;
-
 public:
     MyGame() = default;
 
     bool initialize() {
+        // Initialize ThreadSystem first
+        HammerEngine::ThreadSystem& threadSystem = HammerEngine::ThreadSystem::Instance();
+        if (!threadSystem.init()) {
+            return false;
+        }
+
         // Initialize engine
         GameEngine& engine = GameEngine::Instance();
         if (!engine.init("My Game", 1920, 1080, false)) {
@@ -897,29 +912,38 @@ public:
             return false;
         }
 
-        // Create GameLoop
-        m_gameLoop = std::make_shared<GameLoop>();
-        engine.setGameLoop(m_gameLoop);
-
         // Load game-specific resources
         if (!loadGameResources()) {
             GAMEENGINE_ERROR("Failed to load game resources");
             return false;
         }
 
+        // Push initial state
+        engine.getGameStateManager()->pushState("MainMenuState");
+
         GAMEENGINE_INFO("Game initialized successfully");
         return true;
     }
 
-    bool run() {
-        if (!m_gameLoop) {
-            GAMEENGINE_ERROR("GameLoop not initialized");
-            return false;
-        }
+    void run() {
+        GameEngine& engine = GameEngine::Instance();
+        TimestepManager& ts = engine.getTimestepManager();
 
-        // Start the main loop
-        m_gameLoop->run();
-        return true;
+        // Main game loop - fixed timestep pattern
+        while (engine.isRunning()) {
+            ts.startFrame();
+            engine.handleEvents();
+
+            while (ts.shouldUpdate()) {
+                if (engine.hasNewFrameToRender()) {
+                    engine.swapBuffers();
+                }
+                engine.update(ts.getUpdateDeltaTime());
+            }
+
+            engine.render();
+            ts.endFrame();
+        }
     }
 
     void shutdown() {

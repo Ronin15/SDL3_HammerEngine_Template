@@ -3,11 +3,11 @@
 **Where to find the code:**
 - Entity: `include/entities/Entity.hpp` (lines 123-219)
 - Camera: `include/utils/Camera.hpp` (lines 460-469)
-- GameLoop: `src/core/GameLoop.cpp`
+- Main Loop: `src/core/HammerMain.cpp`
 
 ## Overview
 
-The Interpolation System provides smooth rendering for entities and camera at any display refresh rate, regardless of the fixed timestep update rate. It uses 16-byte aligned atomic structs for lock-free, thread-safe access between the update and render threads.
+The Interpolation System provides smooth rendering for entities and camera at any display refresh rate, regardless of the fixed timestep update rate. It uses 16-byte aligned atomic structs for lock-free access.
 
 ## The Problem
 
@@ -194,30 +194,29 @@ void Entity::setPosition(const Vector2D& position) {
 }
 ```
 
-## Integration with GameLoop
+## Integration with Main Loop
 
-The interpolation alpha is calculated by GameLoop and passed through the render chain:
+The interpolation alpha is calculated by TimestepManager and passed through the render chain:
 
 ```cpp
-// GameLoop::run()
-float accumulator = 0.0f;
-const float fixedTimestep = 1.0f / 60.0f;  // 60 Hz updates
+// HammerMain.cpp - main loop
+TimestepManager& ts = engine.getTimestepManager();
 
-while (running) {
-    float deltaTime = getFrameTime();
-    accumulator += deltaTime;
+while (engine.isRunning()) {
+    ts.startFrame();  // Adds delta to internal accumulator
+    engine.handleEvents();
 
-    // Fixed timestep updates
-    while (accumulator >= fixedTimestep) {
-        gameEngine.update(fixedTimestep);
-        accumulator -= fixedTimestep;
+    // Fixed timestep updates - drain accumulator
+    while (ts.shouldUpdate()) {
+        if (engine.hasNewFrameToRender()) {
+            engine.swapBuffers();
+        }
+        engine.update(ts.getUpdateDeltaTime());
     }
 
-    // Calculate interpolation alpha (0.0 to 1.0)
-    float alpha = accumulator / fixedTimestep;
-
-    // Pass alpha to render
-    gameEngine.render(alpha);
+    // Render uses alpha from remaining accumulator
+    engine.render();  // TimestepManager provides interpolation alpha
+    ts.endFrame();
 }
 
 // GameState render uses alpha
@@ -333,7 +332,7 @@ void teleport(const Vector2D& pos) {
 
 - **Entity:** `include/entities/Entity.hpp`
 - **Camera:** `docs/utils/Camera.md`
-- **GameLoop:** `docs/core/GameLoop.md`
+- **TimestepManager:** `docs/managers/TimestepManager.md`
 - **ThreadSystem:** `docs/core/ThreadSystem.md`
 
 ---

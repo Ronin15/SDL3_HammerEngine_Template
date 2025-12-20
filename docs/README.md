@@ -29,9 +29,8 @@ The Hammer Game Engine is a high-performance game development framework built on
 Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameLoop](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
 - **[GameTime](core/GameTime.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
-- **[TimestepManager](managers/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
+- **[TimestepManager](managers/TimestepManager.md)** - Fixed timestep timing with accumulator-based updates
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -205,7 +204,7 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
 
 ### System Overview
 The Hammer Game Engine provides several core systems that work together:
-- **Core Engine**: GameEngine singleton, GameLoop, and TimestepManager timing systems
+- **Core Engine**: GameEngine singleton with fixed timestep timing via TimestepManager
 - **AI System**: Behavior management for NPCs with threading support and distance optimization
 - **Event System**: Global event handling for weather, spawning, and custom events
 - **UI System**: Professional interface components with theming, animations, and auto-sizing
@@ -214,7 +213,6 @@ The Hammer Game Engine provides several core systems that work together:
 
 ### Quick Links
 - **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
-- **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
 - **[TimestepManager Setup](managers/TimestepManager.md#quick-start)** - Timing system configuration
 
 - **[AI Quick Start](ai/BehaviorQuickReference.md)** - Set up AI behaviors in minutes
@@ -226,8 +224,8 @@ The Hammer Game Engine provides several core systems that work together:
 
 ### Modern Architecture
 - **Singleton Engine Management**: Centralized system coordination through GameEngine
-- **Fixed/Variable Timestep**: Deterministic updates with smooth rendering via GameLoop
-- **Simplified Timing System**: 1:1 frame-to-update mapping eliminates timing drift
+- **Fixed Timestep Architecture**: Deterministic updates with accumulator-based timing via TimestepManager
+- **Single-Threaded Main Loop**: Sequential update/render on main thread with background worker threads
 - **Zero-Overhead Utilities**: Debug logging and memory management without release impact
 - **Individual Behavior Instances**: Each NPC gets isolated behavior state via clone()
 - **Mode-Based Configuration**: Automatic setup for common AI and UI patterns
@@ -270,7 +268,6 @@ The Hammer Game Engine provides several core systems that work together:
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
 - Core engine issues: See [GameEngine Documentation](core/GameEngine.md)
-- Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
 - Timing issues: See [TimestepManager Best Practices](managers/TimestepManager.md#best-practices)
 - Logger issues: See [Logger Best Practices](utils/Logger.md#best-practices)
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)
