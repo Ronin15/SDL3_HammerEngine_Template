@@ -5,7 +5,7 @@
 
 #include "core/GameEngine.hpp"
 #include "core/ThreadSystem.hpp"
-#include "core/GameLoop.hpp"
+#include "core/TimestepManager.hpp"
 #include "core/Logger.hpp"
 #include "managers/SettingsManager.hpp"
 #include <cstdlib>
@@ -15,8 +15,6 @@
 
 const int WINDOW_WIDTH{1280};
 const int WINDOW_HEIGHT{720};
-const float TARGET_FPS{60.0f};
-const float FIXED_TIMESTEP{1.0f / 60.0f}; // 1:1 with frame rate for responsive input
 // Game Name goes here.
 const std::string GAME_NAME{"Game Template"};
 
@@ -58,75 +56,59 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   const int windowHeight = settingsManager.get<int>("graphics", "resolution_height", WINDOW_HEIGHT);
   const bool fullscreen = settingsManager.get<bool>("graphics", "fullscreen", false);
 
-  // Initialize GameEngine
-  if (!GameEngine::Instance().init(GAME_NAME, windowWidth, windowHeight, fullscreen)) {
+  // Cache GameEngine reference
+  GameEngine& gameEngine = GameEngine::Instance();
+
+  // Initialize GameEngine (creates TimestepManager internally)
+  if (!gameEngine.init(GAME_NAME, windowWidth, windowHeight, fullscreen)) {
     GAMEENGINE_CRITICAL(std::format("Init {} Failed: {}", GAME_NAME, SDL_GetError()));
 
     // CRITICAL: Always clean up on init failure to prevent memory corruption
     // during static destruction of partially initialized managers
     GAMEENGINE_INFO("Cleaning up after initialization failure");
-    GameEngine::Instance().clean();
+    gameEngine.clean();
 
     return -1;
   }
 
-  GAMELOOP_INFO("Initializing Game Loop");
+  GAMEENGINE_INFO(std::format("Frame timing configured: {}",
+                              gameEngine.isUsingSoftwareFrameLimiting()
+                              ? "software frame limiting"
+                              : "hardware VSync"));
 
-  // Create game loop with stable 60Hz timing
-  // Multi-threading enabled for better performance
-  auto gameLoop = std::make_shared<GameLoop>(TARGET_FPS, FIXED_TIMESTEP, true);
+  // Push initial state before starting main loop
+  gameEngine.getGameStateManager()->pushState("LogoState");
 
-  // Set GameLoop reference in GameEngine for delegation
-  GameEngine::Instance().setGameLoop(gameLoop);
+  GAMEENGINE_INFO("Starting Main Loop");
 
-  // Configure TimestepManager based on GameEngine's VSync detection
-  // GameEngine already detected platform and verified VSync during init()
-  gameLoop->getTimestepManager().setSoftwareFrameLimiting(
-      GameEngine::Instance().isUsingSoftwareFrameLimiting());
+  // Get TimestepManager reference for main loop
+  TimestepManager& ts = gameEngine.getTimestepManager();
 
-  GAMELOOP_INFO(std::format("Frame timing configured: {}",
-                            GameEngine::Instance().isUsingSoftwareFrameLimiting()
-                            ? "software frame limiting"
-                            : "hardware VSync"));
+  // Main game loop - classic fixed timestep pattern
+  // Updates drain accumulator, THEN render reads alpha - no race conditions
+  while (gameEngine.isRunning()) {
+    // Start frame timing (adds delta to accumulator)
+    ts.startFrame();
 
-  // Cache GameEngine reference for better performance in game loop
-  GameEngine& gameEngine = GameEngine::Instance();
-
-  // Register event handler (always on main thread - SDL requirement)
-  gameLoop->setEventHandler([&gameEngine]() {
+    // Process SDL events (must be on main thread)
     gameEngine.handleEvents();
-  });
 
-  // Register update handler (fixed timestep for consistent game logic)
-  gameLoop->setUpdateHandler([&gameEngine](float deltaTime) {
-    // Swap buffers if we have a new frame ready for rendering
-    if (gameEngine.hasNewFrameToRender()) {
-      gameEngine.swapBuffers();
+    // Fixed timestep updates - run until accumulator is drained
+    while (ts.shouldUpdate()) {
+      // Swap buffers if we have a new frame ready for rendering
+      if (gameEngine.hasNewFrameToRender()) {
+        gameEngine.swapBuffers();
+      }
+
+      // Update game logic with fixed timestep
+      gameEngine.update(ts.getUpdateDeltaTime());
     }
 
-    // Update game logic with fixed timestep
-    gameEngine.update(deltaTime);
+    // Render with interpolation alpha (calculated from remaining accumulator)
+    gameEngine.render();
 
-    // Note: Background tasks removed - processBackgroundTasks() is currently empty
-    // and was enqueuing 60 empty tasks/sec, preventing worker threads from going idle.
-    // Re-enable if/when actual background work is needed.
-  });
-
-  // Register render handler
-  gameLoop->setRenderHandler([]() {
-    GameEngine::Instance().render();
-  });
-
-  GAMELOOP_INFO("Starting Game Loop");
-
-  // Push initial state after GameLoop is fully configured but before starting
-  // This ensures the game loop is ready to handle state updates
-  GameEngine::Instance().getGameStateManager()->pushState("LogoState");
-
-  // Run the game loop - this blocks until the game ends
-  if (!gameLoop->run()) {
-    GAMELOOP_CRITICAL("Game loop failed");
-    return -1;
+    // End frame (VSync or software frame limiting)
+    ts.endFrame();
   }
 
   GAMEENGINE_INFO(std::format("Game {} shutting down", GAME_NAME));
