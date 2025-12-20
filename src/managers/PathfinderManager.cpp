@@ -148,7 +148,7 @@ void PathfinderManager::clean() {
     // No queue to clear - using direct ThreadSystem processing
 
     // Clear grid
-    m_grid.reset();
+    m_grid.store(nullptr);
 
     m_initialized.store(false);
     m_isShutdown = true;
@@ -219,7 +219,7 @@ void PathfinderManager::prepareForStateTransition() {
     
     // Keep grid instance but invalidate any cached data within it
     // Grid will be rebuilt when needed by new state
-    if (m_grid) {
+    if (m_grid.load()) {
         // Clear any temporary weight fields that might be state-specific
         clearWeightFields();
     }
@@ -238,7 +238,7 @@ bool PathfinderManager::isShutdown() const {
 
 bool PathfinderManager::isGridReady() const {
     // Grid is ready if it exists and all rebuild tasks are complete
-    if (!m_grid) {
+    if (!m_grid.load()) {
         return false;
     }
 
@@ -318,7 +318,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     }
 
     // Take a snapshot of the grid to avoid races with background rebuilds
-    auto gridSnapshot = std::atomic_load(&m_grid);
+    auto gridSnapshot = m_grid.load();
     if (!gridSnapshot) {
         // Record timing even for failed requests
         auto endTime = std::chrono::steady_clock::now();
@@ -384,8 +384,9 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     }
 
     // Smart rebuild decision: check if incremental update is beneficial
-    if (allowIncremental && m_grid && m_grid->hasDirtyRegions()) {
-        float dirtyPercent = m_grid->calculateDirtyPercent();
+    auto currentGrid = m_grid.load();
+    if (allowIncremental && currentGrid && currentGrid->hasDirtyRegions()) {
+        float dirtyPercent = currentGrid->calculateDirtyPercent();
 
         if (dirtyPercent <= DIRTY_THRESHOLD_PERCENT * 100.0f) {
             // Incremental update is beneficial (small change)
@@ -396,8 +397,8 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             auto& threadSystem = HammerEngine::ThreadSystem::Instance();
             auto rebuildFuture = threadSystem.enqueueTaskWithResult(
                 [this]() {
-                    if (m_grid) {
-                        m_grid->rebuildDirtyRegions();
+                    if (auto grid = m_grid.load()) {
+                        grid->rebuildDirtyRegions();
                         PATHFIND_INFO("Incremental grid rebuild complete");
                     }
                 },
@@ -412,7 +413,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             // Too much dirty (>25%) - full rebuild is faster
             PATHFIND_DEBUG(std::format("Full rebuild: {}% dirty exceeds threshold ({}%)",
                           dirtyPercent, DIRTY_THRESHOLD_PERCENT * 100.0f));
-            m_grid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
+            currentGrid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
         }
     }
 
@@ -473,7 +474,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     newGrid->setMaxIterations(maxIterations);
                     newGrid->rebuildFromWorld(); // Full sequential rebuild
 
-                    std::atomic_store(&m_grid, newGrid);
+                    m_grid.store(newGrid);
 
                     if (m_initialized.load(std::memory_order_acquire)) {
                         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
@@ -553,7 +554,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                 newGrid->updateCoarseGrid();
 
                 // Atomically swap the grid
-                std::atomic_store(&m_grid, newGrid);
+                m_grid.store(newGrid);
                 PATHFIND_DEBUG("Parallel grid rebuild: Grid stored atomically");
 
                 if (m_initialized.load(std::memory_order_acquire)) {
@@ -585,7 +586,7 @@ void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float ra
         return;
     }
 
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = m_grid.load()) {
         grid->addWeightCircle(center, radius, weight);
     }
 }
@@ -595,14 +596,14 @@ void PathfinderManager::clearWeightFields() {
         return;
     }
 
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = m_grid.load()) {
         grid->resetWeights(1.0f);
     }
 }
 
 void PathfinderManager::setAllowDiagonal(bool allow) {
     m_allowDiagonal = allow;
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = m_grid.load();
     if (grid) {
         grid->setAllowDiagonal(allow);
     }
@@ -610,7 +611,7 @@ void PathfinderManager::setAllowDiagonal(bool allow) {
 
 void PathfinderManager::setMaxIterations(int maxIterations) {
     m_maxIterations = std::max(100, maxIterations);
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = m_grid.load();
     if (grid) {
         grid->setMaxIterations(m_maxIterations);
     }
@@ -684,9 +685,10 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
 
     // Calculate approximate memory usage
     size_t gridMemory = 0;
-    if (m_grid) {
+    auto currentGrid = m_grid.load();
+    if (currentGrid) {
         // Approximate grid memory: width * height * sizeof(cell data)
-        gridMemory = m_grid->getWidth() * m_grid->getHeight() * 8; // ~8 bytes per cell
+        gridMemory = currentGrid->getWidth() * currentGrid->getHeight() * 8; // ~8 bytes per cell
     }
     
     // Cache memory usage (approximate)
@@ -733,11 +735,12 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
     // Cache the bounds during grid initialization and use fallback if not available
 
     // Use cached bounds from grid initialization if available
-    if (m_grid) {
+    auto currentGrid = m_grid.load();
+    if (currentGrid) {
         // Get bounds from the pathfinding grid which are cached
         const float gridCellSize = 64.0f; // Match m_cellSize
-        const float worldWidth = m_grid->getWidth() * gridCellSize;
-        const float worldHeight = m_grid->getHeight() * gridCellSize;
+        const float worldWidth = currentGrid->getWidth() * gridCellSize;
+        const float worldHeight = currentGrid->getHeight() * gridCellSize;
 
         Vector2D result(
             std::clamp(position.getX(), margin, worldWidth - margin),
@@ -752,7 +755,7 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
 }
 
 bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) const {
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = m_grid.load();
     if (grid) {
         const float gridCellSize = 64.0f;
         outWidth = grid->getWidth() * gridCellSize;
@@ -764,7 +767,7 @@ bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) 
 }
 
 Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float halfW, float halfH, float extraMargin) const {
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = m_grid.load();
     if (grid) {
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
@@ -784,7 +787,7 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
 
 Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, float halfW, float halfH, float interiorMargin) const {
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = m_grid.load();
     if (grid) {
         // Snap within ~2 cells
         Vector2D snapped = grid->snapToNearestOpenWorld(pos, grid->getCellSize() * 2.0f);
@@ -825,7 +828,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired
     pos.setX(std::clamp(pos.getX(), aminX, amaxX));
     pos.setY(std::clamp(pos.getY(), aminY, amaxY));
 
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = m_grid.load()) {
         // Try snap within area (rings of ~cell size)
         float cell = grid->getCellSize();
         for (int r = 0; r <= 2; ++r) {
@@ -857,7 +860,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desir
         to = to * (effectiveR / d);
         pos = center + to;
     }
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = m_grid.load()) {
         float cell = grid->getCellSize();
         for (int r = 0; r <= 2; ++r) {
             float rad = (r+1) * cell;
@@ -887,7 +890,7 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
     goal = clampToWorldBounds(goal, EDGE_MARGIN);
 
     // Snap to nearest open cells if grid available
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = m_grid.load()) {
         float r = grid->getCellSize() * 2.0f;
         start = grid->snapToNearestOpenWorld(start, r);
         goal = grid->snapToNearestOpenWorld(goal, r);
@@ -970,7 +973,7 @@ void PathfinderManager::reportStatistics() const {
 
 bool PathfinderManager::ensureGridInitialized() {
     // Check if grid exists - no fallback
-    return std::atomic_load(&m_grid) != nullptr;
+    return m_grid.load() != nullptr;
 }
 
 uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
@@ -1068,13 +1071,14 @@ void PathfinderManager::clearAllCache() {
 }
 
 void PathfinderManager::calculateOptimalCacheSettings() {
-    if (!m_grid) {
+    auto currentGrid = m_grid.load();
+    if (!currentGrid) {
         PATHFIND_WARN("Cannot calculate cache settings - no grid available");
         return;
     }
 
-    float worldW = m_grid->getWidth() * m_cellSize;
-    float worldH = m_grid->getHeight() * m_cellSize;
+    float worldW = currentGrid->getWidth() * m_cellSize;
+    float worldH = currentGrid->getHeight() * m_cellSize;
     float diagonal = std::sqrt(worldW * worldW + worldH * worldH);
 
     // ADAPTIVE QUANTIZATION: Single unified quantization for correctness
@@ -1137,12 +1141,13 @@ void PathfinderManager::calculateOptimalCacheSettings() {
 void PathfinderManager::prewarmPathCache() {
     // Use compare_exchange to ensure only one thread executes pre-warming
     bool expected = false;
-    if (!m_prewarming.compare_exchange_strong(expected, true) || !m_grid) {
+    auto currentGrid = m_grid.load();
+    if (!m_prewarming.compare_exchange_strong(expected, true) || !currentGrid) {
         return;
     }
 
-    float worldW = m_grid->getWidth() * m_cellSize;
-    float worldH = m_grid->getHeight() * m_cellSize;
+    float worldW = currentGrid->getWidth() * m_cellSize;
+    float worldH = currentGrid->getHeight() * m_cellSize;
     int sectors = m_prewarmSectorCount;
     float sectorW = worldW / static_cast<float>(sectors);
     float sectorH = worldH / static_cast<float>(sectors);
@@ -1313,7 +1318,8 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
     }
 
     // Mark dirty region on pathfinding grid for incremental update
-    if (m_grid) {
+    auto currentGrid = m_grid.load();
+    if (currentGrid) {
         // Convert world position to grid cell coordinates
         int gridX = static_cast<int>((position.getX()) / m_cellSize);
         int gridY = static_cast<int>((position.getY()) / m_cellSize);
@@ -1324,7 +1330,7 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
             for (int dx = -gridRadius; dx <= gridRadius; ++dx) {
                 float distSq = dx * dx + dy * dy;
                 if (distSq <= gridRadius * gridRadius) {
-                    m_grid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
+                    currentGrid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
                 }
             }
         }
@@ -1393,14 +1399,15 @@ void PathfinderManager::onTileChanged(int x, int y) {
     }
 
     // Mark dirty region on pathfinding grid for incremental update
-    if (m_grid) {
+    auto tileGrid = m_grid.load();
+    if (tileGrid) {
         // Convert tile coordinates to grid cell coordinates
         // Tile coordinates are in world tiles, grid cells may be different size
         int gridX = static_cast<int>((x * HammerEngine::TILE_SIZE) / m_cellSize);
         int gridY = static_cast<int>((y * HammerEngine::TILE_SIZE) / m_cellSize);
 
         // Mark single cell dirty (tile changes typically affect one cell)
-        m_grid->markDirtyRegion(gridX, gridY, 1, 1);
+        tileGrid->markDirtyRegion(gridX, gridY, 1, 1);
         PATHFIND_DEBUG(std::format("Marked dirty region for tile change at grid ({},{})",
                       gridX, gridY));
     }
