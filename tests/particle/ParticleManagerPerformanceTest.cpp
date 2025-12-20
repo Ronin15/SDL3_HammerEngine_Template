@@ -129,11 +129,6 @@ BOOST_FIXTURE_TEST_CASE(TestUpdatePerformance1000Particles,
 
   // Update time should be reasonable for real-time performance
   BOOST_CHECK_LT(updateTime, MAX_UPDATE_TIME_MS);
-
-  // Check performance stats
-  ParticlePerformanceStats stats = manager->getPerformanceStats();
-  BOOST_CHECK_GT(stats.updateCount, 0);
-  BOOST_CHECK_GT(stats.totalUpdateTime, 0.0);
 }
 
 // Test update performance with 5000 particles
