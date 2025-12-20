@@ -870,17 +870,15 @@ public:
     // CPU resources for real-time rendering at 60 FPS.
     //
     // Thread allocation breakdown (8-core example):
-    //   - Main thread: 1 (rendering/events, NOT in worker pool)
+    //   - Main thread: 1 (main loop/rendering/events, NOT in worker pool)
     //   - ThreadSystem workers: 7 (hardware_concurrency - 1)
-    //   - GameLoop update thread: 1 (from worker pool, see ENGINE_WORKERS in WorkerBudget.hpp)
-    //   - Manager workers: 6 (remaining workers shared via WorkerBudget)
+    //   - All 7 workers available for managers via WorkerBudget
     //
-    // Minimum worker count is 1 (not 0) even on single-core systems, maintaining
-    // the concurrent update/render pattern with main thread + 1 update worker.
+    // Minimum worker count is 1 (not 0) even on single-core systems.
     //
     // COORDINATION WITH WORKERBUDGET:
-    // WorkerBudget::calculateWorkerBudget() receives this worker count and subtracts
-    // ENGINE_WORKERS (1) to calculate manager allocations. See WorkerBudget.hpp:423+
+    // WorkerBudget::calculateWorkerBudget() receives this worker count and
+    // distributes all workers to managers. See WorkerBudget.hpp.
     if (customThreadCount > 0) {
       m_numThreads = customThreadCount;
     } else {

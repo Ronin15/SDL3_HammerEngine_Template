@@ -12,9 +12,7 @@
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <memory>
-#include <mutex>
 #include <string_view>
 
 // Forward declarations
@@ -508,10 +506,6 @@ private:
   // Global pause state for coordinating all managers
   std::atomic<bool> m_globallyPaused{false};
 
-  // Multithreading synchronization
-  std::mutex m_updateMutex{};
-  std::condition_variable m_updateCondition{};
-
   // Using memory_order for thread synchronization
   std::atomic<bool> m_updateCompleted{false};
   std::atomic<bool> m_updateRunning{false};
@@ -535,14 +529,8 @@ private:
   std::atomic<size_t> m_renderBufferIndex{0};
   std::atomic<bool> m_bufferReady[MAX_BUFFER_COUNT]{false, false, false};
 
-  // Buffer synchronization (lock-free atomic operations)
-  std::condition_variable m_bufferCondition{};
-
   // Protection for high entity counts
   std::atomic<size_t> m_entityProcessingCount{0};
-
-  // Render synchronization
-  std::mutex m_renderMutex{};
 
 #ifdef DEBUG
   // Buffer telemetry (debug-only, F3 to toggle overlay)

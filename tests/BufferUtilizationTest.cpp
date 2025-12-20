@@ -17,8 +17,7 @@ BOOST_AUTO_TEST_CASE(TestBufferUtilizationLogic) {
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(12);
 
     std::cout << "System: 12 workers total\n";
-    std::cout << "Base allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Base allocations - AI: " << budget.aiAllocated
               << ", Events: " << budget.eventAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
@@ -69,16 +68,13 @@ BOOST_AUTO_TEST_CASE(TestLowEndSystemBuffer) {
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(3);
 
     std::cout << "System: 3 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Events: " << budget.eventAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
-    // After removing CollisionManager allocation, low-end systems (3 workers) now have 1 buffer worker
-// Old: engine=1, ai=1, collision=1, buffer=0
-// New: engine=1, ai=1, buffer=1 (more efficient!)
-BOOST_CHECK_EQUAL(budget.remaining, 1);
-BOOST_CHECK(budget.hasBufferCapacity());
+    // Low-end systems (3 workers): ai=1, buffer=2 (all for managers now)
+    BOOST_CHECK_EQUAL(budget.remaining, 2);
+    BOOST_CHECK(budget.hasBufferCapacity());
 
     // Has buffer capacity, but with only 1 buffer worker, 75% usage rounds down to 0
     // So optimalWorkerCount still returns base allocation
@@ -98,8 +94,7 @@ BOOST_AUTO_TEST_CASE(TestVeryHighEndSystem) {
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(16);
 
     std::cout << "System: 16 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Events: " << budget.eventAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
@@ -126,15 +121,13 @@ BOOST_AUTO_TEST_CASE(TestZeroWorkersEdgeCase) {
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(0);
 
     std::cout << "System: 0 workers total (invalid configuration)\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Events: " << budget.eventAllocated
               << ", Pathfinding: " << budget.pathfindingAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
     // Should return all-zero budget
     BOOST_CHECK_EQUAL(budget.totalWorkers, 0);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 0);
     BOOST_CHECK_EQUAL(budget.aiAllocated, 0);
     BOOST_CHECK_EQUAL(budget.particleAllocated, 0);
     BOOST_CHECK_EQUAL(budget.eventAllocated, 0);
@@ -143,23 +136,21 @@ BOOST_AUTO_TEST_CASE(TestZeroWorkersEdgeCase) {
 }
 
 BOOST_AUTO_TEST_CASE(TestSingleWorkerSystem) {
-    std::cout << "\n=== Testing Single Worker System (Tier 1) ===\n";
+    std::cout << "\n=== Testing Single Worker System (Tier 2) ===\n";
 
-    // Test 1-core system: hardware_concurrency=1 → ThreadSystem=1 → GameLoop=1 → Managers=0
+    // Test 2-core system: hardware_concurrency=2 → ThreadSystem=1 → All to managers
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(1);
 
     std::cout << "System: 1 worker total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Particle: " << budget.particleAllocated
               << ", Events: " << budget.eventAllocated
               << ", Pathfinding: " << budget.pathfindingAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
-    // All 1 worker goes to GameLoop, managers use single-threaded fallback
+    // 1 worker goes to AI (highest priority in tier 2)
     BOOST_CHECK_EQUAL(budget.totalWorkers, 1);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
-    BOOST_CHECK_EQUAL(budget.aiAllocated, 0);
+    BOOST_CHECK_EQUAL(budget.aiAllocated, 1);
     BOOST_CHECK_EQUAL(budget.particleAllocated, 0);
     BOOST_CHECK_EQUAL(budget.eventAllocated, 0);
     BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0);
@@ -170,78 +161,68 @@ BOOST_AUTO_TEST_CASE(TestSingleWorkerSystem) {
 }
 
 BOOST_AUTO_TEST_CASE(TestDualWorkerSystem) {
-    std::cout << "\n=== Testing Dual Worker System (Tier 2, 1 Manager Worker) ===\n";
+    std::cout << "\n=== Testing Dual Worker System (Tier 2) ===\n";
 
-    // Test 3-core system: hardware_concurrency=3 → ThreadSystem=2 → GameLoop=1 → Managers=1
+    // Test 3-core system: hardware_concurrency=3 → ThreadSystem=2 → All to managers
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(2);
 
     std::cout << "System: 2 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Particle: " << budget.particleAllocated
               << ", Events: " << budget.eventAllocated
               << ", Pathfinding: " << budget.pathfindingAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
-    // Engine gets 1, AI gets 1 (actualManagerWorkers=1)
+    // AI gets 1, 1 buffer (tier 2: actualManagerWorkers=2, ai=1 if >=1, particle=0 if <3)
     BOOST_CHECK_EQUAL(budget.totalWorkers, 2);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
     BOOST_CHECK_EQUAL(budget.aiAllocated, 1);  // actualManagerWorkers >= 1
     BOOST_CHECK_EQUAL(budget.particleAllocated, 0); // Needs actualManagerWorkers >= 3
     BOOST_CHECK_EQUAL(budget.eventAllocated, 0);
     BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.remaining, 0);
+    BOOST_CHECK_EQUAL(budget.remaining, 1);  // Buffer gets the rest
 
     // Verify total allocation matches
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.pathfindingAllocated + budget.remaining;
+    size_t totalAllocated = budget.aiAllocated + budget.particleAllocated +
+                            budget.eventAllocated + budget.pathfindingAllocated + budget.remaining;
     BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
 }
 
 BOOST_AUTO_TEST_CASE(TestFourWorkerSystem) {
-    std::cout << "\n=== Testing Four Worker System (Tier 2, 3 Manager Workers) ===\n";
+    std::cout << "\n=== Testing Four Worker System (Tier 3) ===\n";
 
-    // Test 5-core system: hardware_concurrency=5 → ThreadSystem=4 → GameLoop=1 → Managers=3
+    // Test 5-core system: hardware_concurrency=5 → ThreadSystem=4 → All to managers
+    // 4 workers = Tier 3 (4+ workers triggers weighted distribution)
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(4);
 
     std::cout << "System: 4 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Particle: " << budget.particleAllocated
               << ", Events: " << budget.eventAllocated
               << ", Pathfinding: " << budget.pathfindingAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
-    // Tier 2 allocation with 3 manager workers
+    // Tier 3 allocation (4 workers): 30% buffer = 1, allocate 3 via weights
     BOOST_CHECK_EQUAL(budget.totalWorkers, 4);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
-    BOOST_CHECK_EQUAL(budget.aiAllocated, 1);      // actualManagerWorkers >= 1
-    BOOST_CHECK_EQUAL(budget.particleAllocated, 1); // actualManagerWorkers >= 3
-    BOOST_CHECK_EQUAL(budget.eventAllocated, 0);    // Tier 2 keeps events single-threaded
-    BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0); // Tier 2 keeps pathfinding single-threaded
-    BOOST_CHECK_EQUAL(budget.remaining, 1);         // 3 - 2 = 1 buffer
+    BOOST_CHECK_GT(budget.aiAllocated, 0);       // Should get allocation
+    BOOST_CHECK_GT(budget.remaining, 0);         // Should have buffer
 
     // Should have small buffer
     BOOST_CHECK(budget.hasBufferCapacity());
 
     // Verify total allocation matches
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.pathfindingAllocated + budget.remaining;
+    size_t totalAllocated = budget.aiAllocated + budget.particleAllocated +
+                            budget.eventAllocated + budget.pathfindingAllocated + budget.remaining;
     BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
 }
 
 BOOST_AUTO_TEST_CASE(TestFiveWorkerSystem) {
-    std::cout << "\n=== Testing Five Worker System (Tier 3 Boundary) ===\n";
+    std::cout << "\n=== Testing Five Worker System (Tier 3) ===\n";
 
-    // Test 6-core system: hardware_concurrency=6 → ThreadSystem=5 → GameLoop=1 → Managers=4
-    // This is the FIRST Tier 3 allocation (actualManagerWorkers=4)
+    // Test 6-core system: hardware_concurrency=6 → ThreadSystem=5 → All to managers
     HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(5);
 
     std::cout << "System: 5 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
+    std::cout << "Allocations - AI: " << budget.aiAllocated
               << ", Particle: " << budget.particleAllocated
               << ", Events: " << budget.eventAllocated
               << ", Pathfinding: " << budget.pathfindingAllocated
@@ -249,20 +230,18 @@ BOOST_AUTO_TEST_CASE(TestFiveWorkerSystem) {
 
     // Tier 3 allocation: weighted distribution + 30% buffer
     BOOST_CHECK_EQUAL(budget.totalWorkers, 5);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
 
-    // With 4 manager workers, buffer = max(1, 4*0.3) = 1
-    // Allocate remaining 3 workers via weights
+    // With 5 workers, buffer = max(1, 5*0.3) = 1
+    // Allocate remaining 4 workers via weights
     BOOST_CHECK_GT(budget.aiAllocated, 0);        // Should get allocation
     BOOST_CHECK_GT(budget.remaining, 0);          // Should have buffer
 
     // All subsystems should get something or buffer should compensate
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.pathfindingAllocated + budget.remaining;
+    size_t totalAllocated = budget.aiAllocated + budget.particleAllocated +
+                            budget.eventAllocated + budget.pathfindingAllocated + budget.remaining;
     BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
 
-    std::cout << "First Tier 3 allocation validated\n";
+    std::cout << "Tier 3 allocation validated\n";
 }
 
 BOOST_AUTO_TEST_SUITE_END()
