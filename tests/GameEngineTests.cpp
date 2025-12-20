@@ -7,7 +7,6 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/GameEngine.hpp"
-#include "core/GameLoop.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/Logger.hpp"
 #include <atomic>

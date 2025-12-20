@@ -7,6 +7,7 @@
 #define GAME_ENGINE_HPP
 
 #include "managers/GameStateManager.hpp"
+#include "core/TimestepManager.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
@@ -17,7 +18,6 @@
 #include <string_view>
 
 // Forward declarations
-class GameLoop;
 class AIManager;
 class EventManager;
 class InputManager;
@@ -245,12 +245,31 @@ public:
   }
 
   /**
-   * @brief Sets the game loop reference for delegation
-   * @param gameLoop Shared pointer to the GameLoop instance
+   * @brief Gets the timestep manager for frame timing
+   * @return Reference to the TimestepManager instance
    */
-  void setGameLoop(std::shared_ptr<GameLoop> gameLoop) {
-    m_gameLoop = gameLoop;
+  TimestepManager& getTimestepManager() {
+    return *m_timestepManager;
   }
+
+  /**
+   * @brief Gets the timestep manager for frame timing (const)
+   * @return Const reference to the TimestepManager instance
+   */
+  const TimestepManager& getTimestepManager() const {
+    return *m_timestepManager;
+  }
+
+  /**
+   * @brief Checks if the engine is currently running
+   * @return true if engine is running, false otherwise
+   */
+  bool isRunning() const { return m_running.load(std::memory_order_relaxed); }
+
+  /**
+   * @brief Stops the game engine
+   */
+  void stop() { m_running.store(false, std::memory_order_relaxed); }
 
   /**
    * @brief Sets the running state of the engine
@@ -264,13 +283,6 @@ public:
    */
   bool getRunning() const;
 
-  /**
-   * @brief Gets the GameLoop instance
-   * @return Shared pointer to GameLoop, null if not set
-   */
-  std::shared_ptr<GameLoop> getGameLoop() const {
-    return m_gameLoop.lock();
-  }
 
   /**
    * @brief Gets the SDL renderer instance
@@ -285,7 +297,7 @@ public:
   SDL_Window *getWindow() const noexcept { return mp_window.get(); }
 
   /**
-   * @brief Gets current FPS from GameLoop's TimestepManager
+   * @brief Gets current FPS from TimestepManager
    * @return Current frames per second
    */
   float getCurrentFPS() const;
@@ -459,7 +471,8 @@ private:
       nullptr, SDL_DestroyWindow};
   std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{
       nullptr, SDL_DestroyRenderer};
-  std::weak_ptr<GameLoop> m_gameLoop{}; // Non-owning weak reference to GameLoop
+  std::unique_ptr<TimestepManager> m_timestepManager{nullptr};
+  std::atomic<bool> m_running{false};
   int m_windowWidth{0};
   int m_windowHeight{0};
   int m_windowedWidth{1920};  // Windowed mode width (for restoring from fullscreen)

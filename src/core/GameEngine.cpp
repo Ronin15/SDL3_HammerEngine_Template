@@ -7,7 +7,6 @@
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_surface.h"
 #include "SDL3/SDL_video.h"
-#include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
 #include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
@@ -276,6 +275,16 @@ bool GameEngine::init(const std::string_view title, const int width,
   } else {
     GAMEENGINE_INFO("Using hardware VSync for frame timing");
   }
+
+  // Create TimestepManager with 60 FPS target and fixed timestep
+  constexpr float TARGET_FPS = 60.0f;
+  constexpr float FIXED_TIMESTEP = 1.0f / 60.0f;
+  m_timestepManager = std::make_unique<TimestepManager>(TARGET_FPS, FIXED_TIMESTEP);
+
+  // Configure software frame limiting if hardware VSync is unavailable
+  m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
+  GAMEENGINE_INFO(std::format("TimestepManager created: {} FPS, {} frame limiting",
+                              TARGET_FPS, m_usingSoftwareFrameLimiting ? "software" : "hardware"));
 
   // Load buffer configuration from SettingsManager (graphics settings)
   m_bufferCount = static_cast<size_t>(settings.get<int>("graphics", "buffer_count", 2));
@@ -792,9 +801,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_lastUpdateFrame.store(0, std::memory_order_release);
   m_lastRenderedFrame.store(0, std::memory_order_release);
 
-  // NOTE: Initial state will be pushed after GameLoop setup is complete
-  // This ensures the game loop is ready to handle state updates before any
-  // state enters
+  // Set running state - main loop will start after init returns
+  m_running.store(true, std::memory_order_release);
 
   return true;
 }
@@ -883,29 +891,16 @@ void GameEngine::handleEvents() {
 }
 
 void GameEngine::setRunning(bool running) {
-  if (auto gameLoop = m_gameLoop.lock()) {
-    if (running) {
-      // Can't restart GameLoop from GameEngine - this might be an error case
-      GAMEENGINE_WARN("Cannot start GameLoop from GameEngine - use "
-                      "GameLoop::run() instead");
-    } else {
-      gameLoop->stop();
-    }
-  } else {
-    GAMEENGINE_WARN("No GameLoop set - cannot change running state");
-  }
+  m_running.store(running, std::memory_order_relaxed);
 }
 
 bool GameEngine::getRunning() const {
-  if (auto gameLoop = m_gameLoop.lock()) {
-    return gameLoop->isRunning();
-  }
-  return false;
+  return m_running.load(std::memory_order_relaxed);
 }
 
 float GameEngine::getCurrentFPS() const {
-  if (auto gameLoop = m_gameLoop.lock()) {
-    return gameLoop->getCurrentFPS();
+  if (m_timestepManager) {
+    return m_timestepManager->getCurrentFPS();
   }
   return 0.0f;
 }
@@ -1055,12 +1050,11 @@ void GameEngine::render() {
   // Always on MAIN thread as its an - SDL REQUIREMENT
   std::lock_guard<std::mutex> lock(m_renderMutex);
 
-  // Calculate interpolation alpha from GameLoop's TimestepManager
+  // Calculate interpolation alpha from TimestepManager
   // This enables smooth rendering at any refresh rate with fixed 60Hz updates
   float interpolationAlpha = 1.0f;
-  if (auto gameLoop = m_gameLoop.lock()) {
-    interpolationAlpha = static_cast<float>(
-        gameLoop->getTimestepManager().getInterpolationAlpha());
+  if (m_timestepManager) {
+    interpolationAlpha = static_cast<float>(m_timestepManager->getInterpolationAlpha());
   }
 
   // Always render - optimized buffer management ensures render buffer is always
@@ -1387,8 +1381,8 @@ bool GameEngine::setVSyncEnabled(bool enable) {
       GAMEENGINE_INFO("Falling back to software frame limiting");
 
       // Update TimestepManager
-      if (auto gameLoop = m_gameLoop.lock()) {
-        gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
+      if (m_timestepManager) {
+        m_timestepManager->setSoftwareFrameLimiting(true);
       }
     }
     return false;
@@ -1398,8 +1392,8 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   bool vsyncVerified = verifyVSyncState(enable);
 
   // Update TimestepManager
-  if (auto gameLoop = m_gameLoop.lock()) {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
+  if (m_timestepManager) {
+    m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
     GAMEENGINE_DEBUG(std::format("TimestepManager updated: software frame limiting {}",
                                  m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
   }
