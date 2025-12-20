@@ -49,7 +49,7 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 ## Architecture
 
-**Core**: GameEngine (double-buffered, central coordinator) | GameLoop (fixed timestep, separate update/render threads) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
+**Core**: GameEngine (fixed timestep, central coordinator) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
 
 **Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed) | EventManager (thread-safe, batch processing) | CollisionManager (spatial hash, pathfinding integration) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
 
@@ -115,7 +115,7 @@ ui.setComponentPositioning("my_btn", {UIPositionMode::TOP_ALIGNED, 100, 200, 120
 
 **Headers**: `.hpp` for C++, `.h` for C | Minimal interface, forward declarations | Non-trivial logic in .cpp | Inline only for trivial 1-2 line accessors
 
-**Threading**: Update (mutex-locked, fixed timestep) | Render (main thread only, double-buffered) | Background (ThreadSystem + WorkerBudget) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
+**Threading**: Update/Render (sequential on main thread, fixed timestep) | Background (ThreadSystem + WorkerBudget for AI, Particle, Event, Pathfinding) | **NEVER static vars in threaded code** (use instance vars, thread_local, or atomics)
 
 **Logging**: Always use `std::format()` for logging with dynamic values. Never use string concatenation (`+` operator) with `std::to_string()` - it creates multiple heap allocations per log call.
 ```cpp
@@ -181,19 +181,9 @@ for (size_t i = 0; i < expectedCount; ++i) {
 
 ## GameEngine Update/Render Flow
 
-**Pattern**: VSync-based lock-free double-buffering. Update thread (mutex-locked) runs game logic concurrently with main thread rendering.
+**Pattern**: Single-threaded main loop with fixed timestep accumulator. Update and render sequential on main thread. VSync provides frame pacing. Background work (AI, particles, pathfinding) via ThreadSystem.
 
-**Core Loop** (HammerMain.cpp):
-```cpp
-if (gameEngine.hasNewFrameToRender()) gameEngine.swapBuffers();  // Atomic check + swap
-gameEngine.update(deltaTime);  // Concurrent with render
-```
-
-**Frame Pacing**: VSync blocks `SDL_RenderPresent()` (default) | Software fallback uses `SDL_Delay()` on Wayland (auto-configured via `setSoftwareFrameLimiting()`).
-
-**Coordination**: Atomic flags (`m_bufferReady[]`) + buffer indices (`m_currentBufferIndex`/`m_renderBufferIndex`) enable lock-free buffer swaps. No explicit wait/signal synchronization.
-
-**Rules**: Update/render concurrent | VSync provides timing | No background rendering | NEVER static vars in threaded code
+**DEBUG telemetry**: 10-sample rolling average update time, logged every 1800 frames.
 
 ## Rendering Rules
 
