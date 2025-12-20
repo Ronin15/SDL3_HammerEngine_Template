@@ -113,7 +113,7 @@ void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolat
   texMgr.draw(
       "sdl_logo",
       (windowWidth / 2) - (sdlSize / 2) + static_cast<int>(20 * scale),  // Center horizontally with offset
-      (windowHeight / 2) + static_cast<int>(290 * scale),  // Scaled vertical position
+      (windowHeight / 2) + static_cast<int>(260 * scale),  // Scaled vertical position
       sdlSize, sdlSize,
       renderer);
 }
