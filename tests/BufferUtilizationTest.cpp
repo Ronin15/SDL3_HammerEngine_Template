@@ -72,8 +72,8 @@ BOOST_AUTO_TEST_CASE(TestLowEndSystemBuffer) {
               << ", Events: " << budget.eventAllocated
               << ", Buffer: " << budget.remaining << "\n";
 
-    // Low-end systems (3 workers): ai=1, buffer=2 (all for managers now)
-    BOOST_CHECK_EQUAL(budget.remaining, 2);
+    // Low-end systems (3 workers): ai=1, particle=1 (>=3 triggers), buffer=1
+    BOOST_CHECK_EQUAL(budget.remaining, 1);
     BOOST_CHECK(budget.hasBufferCapacity());
 
     // Has buffer capacity, but with only 1 buffer worker, 75% usage rounds down to 0
