@@ -1535,7 +1535,7 @@ The ThreadSystem transforms complex concurrent programming into simple task subm
 
 **Core Systems:**
 - [GameEngine](GameEngine.md) - Central engine coordination and integration
-- [GameLoop](GameLoop.md) - Fixed timestep timing and update/render separation
+- [TimestepManager](../managers/TimestepManager.md) - Fixed timestep timing with accumulator
 - [WorkerBudget](../utils/WorkerBudget.md) - Resource allocation across engine subsystems
 
 **Manager Integration:**

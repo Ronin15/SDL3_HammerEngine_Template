@@ -114,7 +114,7 @@ ninja -C build
 
 **📚 [Documentation Hub](docs/README.md)** – Full guides, API references, and best practices.
 
-- **Core:** [GameEngine](docs/core/GameEngine.md), [GameLoop](docs/core/GameLoop.md), [GameTime](docs/core/GameTime.md), [ThreadSystem](docs/core/ThreadSystem.md)
+- **Core:** [GameEngine](docs/core/GameEngine.md), [GameTime](docs/core/GameTime.md), [ThreadSystem](docs/core/ThreadSystem.md), [TimestepManager](docs/managers/TimestepManager.md)
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
 - **Collision & Physics:** [Collision System](docs/collisions/CollisionSystem.md)
 - **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [TimeEvents](docs/events/TimeEvents.md), [EventFactory](docs/events/EventFactory.md)

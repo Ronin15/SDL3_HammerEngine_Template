@@ -1007,8 +1007,6 @@ void GameEngine::update(float deltaTime) {
                                  m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG(std::format("  Render Stalls: {}", m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG(std::format("  Frames Skipped: {}", m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Avg Mutex Wait: {}ms", m_bufferTelemetry.avgMutexWaitMs.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Avg Buffer Ready Delay: {}ms", m_bufferTelemetry.avgBufferReadyMs.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG(std::format("  Current Buffers: [Write:{} Read:{}]",
                                  m_currentBufferIndex.load(std::memory_order_relaxed),
                                  m_renderBufferIndex.load(std::memory_order_relaxed)));

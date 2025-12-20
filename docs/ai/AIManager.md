@@ -965,9 +965,9 @@ The AIManager integrates seamlessly with the engine's optimized threading archit
 - **Lock Contention**: Minimized through periodic stats updates (every 60 frames)
 
 **Resource Scaling Examples (Optimized):**
-- **4-core/8-thread system (7 workers)**: GameLoop=2, AI=2, Particles=1, Events=1, Buffer=1
-- **8-core/16-thread system (15 workers)**: GameLoop=2, AI=5, Particles=3, Events=2, Buffer=3
-- **16-core/32-thread system (31 workers)**: GameLoop=2, AI=13, Particles=7, Events=5, Buffer=4
+- **4-core/8-thread system (7 workers)**: AI=3, Particles=2, Events=1, Buffer=1
+- **8-core/16-thread system (15 workers)**: AI=7, Particles=4, Events=2, Buffer=2
+- **16-core/32-thread system (31 workers)**: AI=15, Particles=8, Events=5, Buffer=3
 - **High-end systems**: Automatic scaling with buffer utilization for workloads >1000 entities
 
 **Performance Guarantees:**
