@@ -233,12 +233,6 @@ target_link_libraries(HammerEngineObjects PUBLIC
     SDL3_mixer::SDL3_mixer
 )
 
-# Link libatomic for 16-byte atomic operations (required on Linux with GCC/Clang)
-# Windows MSVC and macOS Apple Clang have built-in atomics, no external library needed
-if(NOT MSVC AND NOT APPLE)
-    target_link_libraries(HammerEngineObjects PUBLIC atomic)
-endif()
-
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code
 if(CMAKE_BUILD_TYPE STREQUAL "Release")

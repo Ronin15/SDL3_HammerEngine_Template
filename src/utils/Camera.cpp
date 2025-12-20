@@ -23,10 +23,6 @@ Camera::Camera() {
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
-    // Initialize atomic interpolation state with default position
-    float x = m_position.getX();
-    float y = m_position.getY();
-    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
     CAMERA_INFO("Camera created with default configuration");
 }
 
@@ -41,10 +37,6 @@ Camera::Camera(const Config& config) : m_config(config) {
         m_currentZoomIndex = m_config.defaultZoomLevel;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
     }
-    // Initialize atomic interpolation state with default position
-    float x = m_position.getX();
-    float y = m_position.getY();
-    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
     CAMERA_INFO("Camera created with custom configuration");
 }
 
@@ -56,9 +48,6 @@ Camera::Camera(float x, float y, float viewportWidth, float viewportHeight)
     m_targetPosition.setY(y);
     m_previousPosition.setX(x);
     m_previousPosition.setY(y);
-
-    // Initialize atomic interpolation state with starting position
-    m_interpState.store({x, y, x, y}, std::memory_order_relaxed);
 
     if (!m_viewport.isValid()) {
         CAMERA_WARN("Invalid viewport dimensions provided, using defaults");
@@ -101,25 +90,15 @@ void Camera::update(float deltaTime) {
         }
         Vector2D targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
-        // CRITICAL: Store UNCLAMPED target position in interpState for entity rendering
+        // Set m_position to unclamped target for smooth interpolation
         // The offset clamping happens in computeOffsetFromCenter(), NOT here
         // This ensures entity renders at correct position when camera hits world bounds
-        m_interpState.store({targetPos.getX(), targetPos.getY(),
-                             m_previousPosition.getX(), m_previousPosition.getY()},
-                            std::memory_order_release);
-
-        // Set m_position to unclamped target (so next frame's m_previousPosition is also unclamped)
-        // This maintains consistent unclamped position history for smooth interpolation
         m_position = targetPos;
     } else {
-        // Non-Follow modes: clamp camera position, then store
+        // Non-Follow modes: clamp camera position
         if (m_config.clampToWorldBounds) {
             clampToWorldBounds();
         }
-
-        m_interpState.store({m_position.getX(), m_position.getY(),
-                             m_previousPosition.getX(), m_previousPosition.getY()},
-                            std::memory_order_release);
     }
 }
 
@@ -309,13 +288,10 @@ void Camera::computeOffsetFromCenter(float centerX, float centerY,
 }
 
 Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpolationAlpha) const {
-    // SELF-CONTAINED: Always use camera's own interpolation state
-    // Camera publishes its state in update() (mirrors target position in Follow mode)
-    // This eliminates cross-entity atomic reads and ensures consistent render state
-    auto camState = m_interpState.load(std::memory_order_acquire);
+    // Interpolate between previous and current position for smooth rendering
     Vector2D center(
-        camState.prevPosX + (camState.posX - camState.prevPosX) * interpolationAlpha,
-        camState.prevPosY + (camState.posY - camState.prevPosY) * interpolationAlpha);
+        m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+        m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
 
     // Compute screen offset from the interpolated center position
     computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
@@ -348,10 +324,9 @@ void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& sc
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    // Get camera's interpolated position
-    auto camState = m_interpState.load(std::memory_order_acquire);
-    float camX = camState.posX;
-    float camY = camState.posY;
+    // Use current camera position
+    float camX = m_position.getX();
+    float camY = m_position.getY();
 
     // Camera offset: centers camera on its position
     float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
@@ -372,10 +347,9 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     float worldViewWidth = m_viewport.width / m_zoom;
     float worldViewHeight = m_viewport.height / m_zoom;
 
-    // Get camera's interpolated position
-    auto camState = m_interpState.load(std::memory_order_acquire);
-    float camX = camState.posX;
-    float camY = camState.posY;
+    // Use current camera position
+    float camX = m_position.getX();
+    float camY = m_position.getY();
 
     // Camera offset: centers camera on its position
     float offsetX = std::floor(camX - (worldViewWidth * 0.5f));

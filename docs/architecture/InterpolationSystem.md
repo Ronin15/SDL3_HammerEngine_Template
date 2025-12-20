@@ -1,13 +1,15 @@
 # Interpolation System Documentation
 
 **Where to find the code:**
-- Entity: `include/entities/Entity.hpp` (lines 123-219)
-- Camera: `include/utils/Camera.hpp` (lines 460-469)
+- Entity: `include/entities/Entity.hpp`
+- Camera: `include/utils/Camera.hpp` and `src/utils/Camera.cpp`
 - Main Loop: `src/core/HammerMain.cpp`
 
 ## Overview
 
-The Interpolation System provides smooth rendering for entities and camera at any display refresh rate, regardless of the fixed timestep update rate. It uses 16-byte aligned atomic structs for lock-free access.
+The Interpolation System provides smooth rendering for entities and camera at any display refresh rate, regardless of the fixed timestep update rate.
+
+**Architecture Note:** With the single-threaded main loop (update completes before render), atomics are no longer needed. The interpolation now uses simple member variables (`m_position` and `m_previousPosition`).
 
 ## The Problem
 
@@ -16,7 +18,6 @@ Without interpolation, entities appear to "stutter" or "jitter" because:
 1. **Fixed Timestep Updates:** Game logic updates at a fixed rate (e.g., 60 Hz)
 2. **Variable Render Rate:** Rendering may occur at different rates (e.g., 144 Hz display)
 3. **Position Snapping:** Entities jump to discrete positions on each update
-4. **Competing Reads:** Multiple atomic reads in render path cause inconsistent values
 
 ### Before Interpolation
 
@@ -36,49 +37,42 @@ Update 2: Position = (110, 100), Previous = (100, 100)
 Render with alpha=0.5: Display position = (105, 100)  // Smooth!
 ```
 
-## The Solution: Lock-Free Atomic Interpolation
+## The Solution: Simple Linear Interpolation
 
-### 16-Byte Aligned Atomic Struct
+### Entity Interpolation
 
-Both Entity and Camera use a 16-byte aligned struct for atomic operations:
+Entity uses `m_position` and `m_previousPosition` for interpolation:
 
 ```cpp
 // Entity.hpp
-struct alignas(16) EntityInterpState {
-    float posX{0.0f}, posY{0.0f};
-    float prevPosX{0.0f}, prevPosY{0.0f};
-};
-std::atomic<EntityInterpState> m_interpState{};
+Vector2D m_position{0, 0};
+Vector2D m_previousPosition{0, 0};  // For render interpolation
 
-// Camera.hpp
-struct alignas(16) InterpolationState {
-    float posX{0.0f}, posY{0.0f};
-    float prevPosX{0.0f}, prevPosY{0.0f};
-};
-std::atomic<InterpolationState> m_interpState{};
+Vector2D getInterpolatedPosition(float alpha) const {
+    return Vector2D(
+        m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * alpha,
+        m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * alpha);
+}
 ```
 
-### Why 16 Bytes?
+### Camera Interpolation
 
-- **Lock-Free Guarantee:** 16-byte atomics are lock-free on modern hardware
-  - x86-64: Uses `CMPXCHG16B` instruction
-  - ARM64: Uses `LDXP/STXP` instruction pair
-- **Single Operation:** All four floats are read/written atomically as one unit
-- **No Tearing:** Prevents reading partial updates
-
-### Why Alignment?
+Camera uses the same pattern:
 
 ```cpp
-struct alignas(16) EntityInterpState { ... };
-```
+// Camera.hpp
+Vector2D m_position;
+Vector2D m_previousPosition;
 
-- **Performance:** Aligned access is faster on most architectures
-- **Correctness:** Some architectures require alignment for atomic operations
-- **Cache Efficiency:** Aligned data fits cleanly in cache lines
+// Camera.cpp - getRenderOffset()
+Vector2D center(
+    m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+    m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
+```
 
 ## Entity Interpolation Pattern
 
-### Update Thread (Fixed Timestep)
+### Update (Fixed Timestep)
 
 ```cpp
 void Player::update(float deltaTime) {
@@ -88,18 +82,15 @@ void Player::update(float deltaTime) {
     // Step 2: Update position normally
     m_velocity += m_acceleration * deltaTime;
     updatePositionFromMovement(m_position + m_velocity * deltaTime);
-
-    // Step 3: Publish state for render thread (at END of update)
-    publishInterpolationState();
 }
 ```
 
-### Render Thread (Variable Rate)
+### Render (After Update Completes)
 
 ```cpp
 void Player::render(SDL_Renderer* renderer, float cameraX, float cameraY,
                     float interpolationAlpha) {
-    // Get smooth interpolated position (single atomic read)
+    // Get smooth interpolated position
     Vector2D renderPos = getInterpolatedPosition(interpolationAlpha);
 
     // Use interpolated position for rendering
@@ -125,21 +116,11 @@ void updatePositionFromMovement(const Vector2D& position) {
     m_position = position;
 }
 
-// Publish to atomic state (call at END of update)
-void publishInterpolationState() {
-    m_interpState.store({
-        m_position.getX(), m_position.getY(),
-        m_previousPosition.getX(), m_previousPosition.getY()
-    }, std::memory_order_release);
-}
-
-// Thread-safe interpolated position read
+// Get interpolated position for rendering
 Vector2D getInterpolatedPosition(float alpha) const {
-    auto state = m_interpState.load(std::memory_order_acquire);
     return Vector2D(
-        state.prevPosX + (state.posX - state.prevPosX) * alpha,
-        state.prevPosY + (state.posY - state.prevPosY) * alpha
-    );
+        m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * alpha,
+        m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * alpha);
 }
 ```
 
@@ -148,32 +129,26 @@ Vector2D getInterpolatedPosition(float alpha) const {
 Camera uses the same pattern but exposes it through `getRenderOffset()`:
 
 ```cpp
-// In update() - publish interpolation state
+// In update() - store previous position
 void Camera::update(float deltaTime) {
     m_previousPosition = m_position;
 
     // ... camera movement logic ...
 
-    // Publish for render thread
-    m_interpState.store({
-        m_position.getX(), m_position.getY(),
-        m_previousPosition.getX(), m_previousPosition.getY()
-    }, std::memory_order_release);
+    m_position = targetPos;  // Update position
 }
 
 // In render path - get interpolated offset
 Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY,
                                   float interpolationAlpha) const {
-    // Single atomic read
-    auto state = m_interpState.load(std::memory_order_acquire);
-
     // Interpolate center position
-    float centerX = state.prevPosX + (state.posX - state.prevPosX) * interpolationAlpha;
-    float centerY = state.prevPosY + (state.posY - state.prevPosY) * interpolationAlpha;
+    Vector2D center(
+        m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * interpolationAlpha,
+        m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * interpolationAlpha);
 
     // Calculate offset from interpolated center
-    computeOffsetFromCenter(centerX, centerY, offsetX, offsetY);
-    return Vector2D(centerX, centerY);
+    computeOffsetFromCenter(center.getX(), center.getY(), offsetX, offsetY);
+    return center;
 }
 ```
 
@@ -185,12 +160,6 @@ When teleporting an entity, you must reset both positions to prevent "sliding":
 void Entity::setPosition(const Vector2D& position) {
     m_position = position;
     m_previousPosition = position;  // Prevents interpolation sliding
-
-    // Publish immediately
-    m_interpState.store({
-        position.getX(), position.getY(),
-        position.getX(), position.getY()  // Same values = no interpolation
-    }, std::memory_order_release);
 }
 ```
 
@@ -232,37 +201,28 @@ void GamePlayState::render(float interpolationAlpha) {
 }
 ```
 
-## Memory Ordering
+## Single-Threaded Architecture
 
-The system uses specific memory orderings for correctness:
+With the single-threaded main loop, update always completes before render:
 
 ```cpp
-// Writer (update thread) - release semantics
-m_interpState.store(newState, std::memory_order_release);
-
-// Reader (render thread) - acquire semantics
-auto state = m_interpState.load(std::memory_order_acquire);
+// HammerMain.cpp - sequential execution
+while (engine.isRunning()) {
+    while (ts.shouldUpdate()) {
+        engine.update(ts.getUpdateDeltaTime());  // All updates complete here
+    }
+    engine.render();  // Render runs after all updates
+}
 ```
 
-This ensures:
-1. All writes before the store are visible to readers
-2. Readers see a consistent snapshot of all related data
-
-## Thread Safety Guarantees
-
-| Operation | Thread Safety | Guarantee |
-|-----------|---------------|-----------|
-| `publishInterpolationState()` | Update thread only | Single writer |
-| `getInterpolatedPosition()` | Any thread | Lock-free read |
-| `setPosition()` | Update thread only | Atomic update |
-| `storePositionForInterpolation()` | Update thread only | Non-atomic (internal) |
+This eliminates the need for atomics since there's no concurrent access.
 
 ## Performance Characteristics
 
-- **Lock-Free:** No mutex contention between update and render threads
-- **Single Atomic Op:** One load in render path (not multiple competing reads)
-- **Cache Friendly:** 16-byte aligned for optimal cache line usage
+- **No Synchronization Overhead:** Direct member access, no atomics
+- **Cache Friendly:** Simple struct layout
 - **Zero Allocations:** No heap allocations in hot path
+- **Minimal Computation:** Simple linear interpolation
 
 ## When to Use This Pattern
 
@@ -285,35 +245,17 @@ This ensures:
 // WRONG: Missing storePositionForInterpolation()
 void Entity::update(float deltaTime) {
     m_position += m_velocity * deltaTime;
-    publishInterpolationState();  // Previous position is stale!
+    // Previous position is stale - interpolation will be wrong!
 }
 
 // CORRECT: Store at start of update
 void Entity::update(float deltaTime) {
     storePositionForInterpolation();  // Store current as previous
     m_position += m_velocity * deltaTime;
-    publishInterpolationState();
 }
 ```
 
-### 2. Multiple Atomic Reads in Render
-
-```cpp
-// WRONG: Multiple atomic reads cause inconsistency
-void render(float alpha) {
-    float x = m_interpState.load().posX;      // Read 1
-    float y = m_interpState.load().posY;      // Read 2 - may be different update!
-}
-
-// CORRECT: Single atomic read
-void render(float alpha) {
-    auto state = m_interpState.load();  // One read
-    float x = state.posX;
-    float y = state.posY;
-}
-```
-
-### 3. Not Resetting on Teleport
+### 2. Not Resetting on Teleport
 
 ```cpp
 // WRONG: Causes sliding effect
@@ -324,7 +266,7 @@ void teleport(const Vector2D& pos) {
 
 // CORRECT: Reset both
 void teleport(const Vector2D& pos) {
-    setPosition(pos);  // Handles both + atomic publish
+    setPosition(pos);  // Resets both current and previous
 }
 ```
 
@@ -333,8 +275,8 @@ void teleport(const Vector2D& pos) {
 - **Entity:** `include/entities/Entity.hpp`
 - **Camera:** `docs/utils/Camera.md`
 - **TimestepManager:** `docs/managers/TimestepManager.md`
-- **ThreadSystem:** `docs/core/ThreadSystem.md`
+- **GameEngine:** `docs/core/GameEngine.md`
 
 ---
 
-*This documentation reflects the lock-free interpolation system introduced in the world_time branch for smooth rendering at any refresh rate.*
+*This documentation reflects the simplified interpolation system using direct member access (no atomics) with the single-threaded main loop architecture.*
