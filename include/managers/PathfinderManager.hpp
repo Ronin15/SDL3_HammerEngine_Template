@@ -330,8 +330,8 @@ private:
     PathfinderManager& operator=(const PathfinderManager&) = delete;
 
     // Core components - Clean Architecture
-    // Shared grid allows atomic updates during processing
-    std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
+    // Atomic shared_ptr allows lock-free grid swaps during processing
+    std::atomic<std::shared_ptr<HammerEngine::PathfindingGrid>> m_grid;
     // Direct ThreadSystem processing - no queue needed
 
     // Pending request coalescing
