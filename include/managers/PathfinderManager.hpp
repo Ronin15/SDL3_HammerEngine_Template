@@ -55,6 +55,7 @@
 #include <vector>
 #include <unordered_map>
 #include <mutex>
+#include <shared_mutex>
 #include <cmath>
 
 // Forward declarations
@@ -330,9 +331,22 @@ private:
     PathfinderManager& operator=(const PathfinderManager&) = delete;
 
     // Core components - Clean Architecture
-    // Atomic shared_ptr allows lock-free grid swaps during processing
-    std::atomic<std::shared_ptr<HammerEngine::PathfindingGrid>> m_grid;
+    // Mutex-protected shared_ptr with snapshot semantics for thread-safe grid access
+    // Note: std::atomic<std::shared_ptr<T>> requires C++20 library support not available on all platforms
+    std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
+    mutable std::shared_mutex m_gridMutex;  // Read-write lock for concurrent read access
     // Direct ThreadSystem processing - no queue needed
+
+    // Thread-safe grid access helpers
+    std::shared_ptr<HammerEngine::PathfindingGrid> getGridSnapshot() const {
+        std::shared_lock<std::shared_mutex> lock(m_gridMutex);
+        return m_grid;  // Copy increments refcount, safe to use after lock release
+    }
+
+    void setGrid(std::shared_ptr<HammerEngine::PathfindingGrid> newGrid) {
+        std::unique_lock<std::shared_mutex> lock(m_gridMutex);
+        m_grid = std::move(newGrid);
+    }
 
     // Pending request coalescing
     mutable std::mutex m_pendingMutex;
