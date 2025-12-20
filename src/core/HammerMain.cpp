@@ -13,7 +13,6 @@
 #include <cstdlib>
 #include <format>
 #include <string>
-#include <string_view>
 
 const int WINDOW_WIDTH{1280};
 const int WINDOW_HEIGHT{720};
