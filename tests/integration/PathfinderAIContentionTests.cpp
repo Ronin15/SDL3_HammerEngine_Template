@@ -61,7 +61,6 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetAllocation) {
     WorkerBudget budget = calculateWorkerBudget(availableWorkers);
 
     BOOST_TEST_MESSAGE("Worker allocation:");
-    BOOST_TEST_MESSAGE("  Engine: " << budget.engineReserved);
     BOOST_TEST_MESSAGE("  AI: " << budget.aiAllocated << " (~44%)");
     BOOST_TEST_MESSAGE("  Particle: " << budget.particleAllocated << " (~25%)");
     BOOST_TEST_MESSAGE("  Pathfinding: " << budget.pathfindingAllocated << " (~19%)");
@@ -79,7 +78,7 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetAllocation) {
     }
 
     // Verify total doesn't exceed available
-    size_t total = budget.engineReserved + budget.aiAllocated + budget.particleAllocated +
+    size_t total = budget.aiAllocated + budget.particleAllocated +
                    budget.pathfindingAllocated + budget.eventAllocated + budget.remaining;
     BOOST_CHECK_EQUAL(total, availableWorkers);
 }

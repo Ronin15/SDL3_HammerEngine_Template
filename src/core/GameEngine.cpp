@@ -906,21 +906,7 @@ float GameEngine::getCurrentFPS() const {
 }
 
 void GameEngine::update(float deltaTime) {
-  // This method is now thread-safe and can be called from a worker thread
-#ifdef DEBUG
-  // TELEMETRY POINT 7: Start timing mutex wait
-  auto mutexWaitStart = std::chrono::high_resolution_clock::now();
-#endif
-
-  std::lock_guard<std::mutex> lock(m_updateMutex);
-
-#ifdef DEBUG
-  // TELEMETRY POINT 8: Mutex acquired - calculate wait time
-  auto mutexAcquired = std::chrono::high_resolution_clock::now();
-  double mutexWaitMs = std::chrono::duration<double, std::milli>(mutexAcquired - mutexWaitStart).count();
-#endif
-
-  // Mark update as running with relaxed ordering (protected by mutex)
+  // Main loop is single-threaded - update and render are sequential
   m_updateRunning.store(true, std::memory_order_relaxed);
 
   // Get the buffer for the current update
@@ -1002,10 +988,7 @@ void GameEngine::update(float deltaTime) {
   m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 
 #ifdef DEBUG
-  // TELEMETRY POINT 9: Buffer marked ready - record timing sample
-  auto bufferReadyTime = std::chrono::high_resolution_clock::now();
-  double bufferReadyDelayMs = std::chrono::duration<double, std::milli>(bufferReadyTime - mutexAcquired).count();
-  m_bufferTelemetry.addTimingSample(mutexWaitMs, bufferReadyDelayMs);
+  // Buffer telemetry - no mutex timing needed (single-threaded main loop)
 
   // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
   // Only logs when F3 toggle is enabled, otherwise silent
@@ -1035,20 +1018,14 @@ void GameEngine::update(float deltaTime) {
   }
 #endif
 
-  // Mark update as completed with relaxed ordering (protected by condition
-  // variable)
+  // Mark update as completed
   m_updateCompleted.store(true, std::memory_order_relaxed);
-
   m_updateRunning.store(false, std::memory_order_relaxed);
-
-  // Notify anyone waiting on this update
-  m_updateCondition.notify_all();
-  m_bufferCondition.notify_all();
 }
 
 void GameEngine::render() {
-  // Always on MAIN thread as its an - SDL REQUIREMENT
-  std::lock_guard<std::mutex> lock(m_renderMutex);
+  // Always on MAIN thread - SDL REQUIREMENT
+  // Main loop is single-threaded, no mutex needed
 
   // Calculate interpolation alpha from TimestepManager
   // This enables smooth rendering at any refresh rate with fixed 60Hz updates
@@ -1119,9 +1096,6 @@ void GameEngine::swapBuffers() {
 
       // Clear the next buffer's ready state for the next update cycle
       m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-
-      // Signal buffer swap completion
-      m_bufferCondition.notify_one();
 
 #ifdef DEBUG
       // TELEMETRY POINT 2: Successful swap
@@ -1255,10 +1229,8 @@ GameEngine::getLogicalPresentationMode() const noexcept {
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
 
-  // Signal all threads to stop
+  // Signal shutdown
   m_stopRequested.store(true, std::memory_order_release);
-  m_updateCondition.notify_all();
-  m_bufferCondition.notify_all();
 
   // Cache manager references for better performance
   HammerEngine::ThreadSystem &threadSystem =
