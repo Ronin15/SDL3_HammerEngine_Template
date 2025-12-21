@@ -323,8 +323,6 @@ public:
   void setWaitForBatchCompletion(bool wait);
   bool getWaitForBatchCompletion() const;
   void configurePriorityMultiplier(float multiplier = 1.0f);
-  void setMaxBatchesPerUpdate(size_t maxBatches);
-  size_t getMaxBatchesPerUpdate() const;
 
   // Performance monitoring
   size_t getBehaviorCount() const;

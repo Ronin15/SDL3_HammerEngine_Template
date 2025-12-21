@@ -43,9 +43,6 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     // Setup event handlers
     WorldManager::Instance().setupEventHandlers();
 
-    // Setup event handlers
-    WorldManager::Instance().setupEventHandlers();
-
     std::atomic<bool> gotLoaded{false};
     std::string capturedWorldId;
     int capturedW = -1, capturedH = -1;
