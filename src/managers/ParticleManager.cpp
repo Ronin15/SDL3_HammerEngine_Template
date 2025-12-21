@@ -443,9 +443,8 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
                 particle.effectType = req.effectType;
 
                 // Prefer slot reuse: use a free index if available
-                if (!freeIndices.empty()) {
-                    const size_t idx = freeIndices.back();
-                    freeIndices.pop_back();
+                if (hasFreeIndex()) {
+                    const size_t idx = popFreeIndex();
                     if (idx < activeParticles.flags.size()) {
                         // Write into SIMD lanes and attribute arrays
                         activeParticles.posX[idx] = particle.position.getX();
@@ -698,7 +697,6 @@ void ParticleManager::prepareForStateTransition() {
   for (size_t i = 0; i < particleCount; ++i) {
     if (activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
       activeParticles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
-      m_storage.freeIndices.push_back(i);
       activeParticles.lives[i] = 0.0f; // Ensure life is zero for double safety
       particlesCleared++;
     }
@@ -707,7 +705,8 @@ void ParticleManager::prepareForStateTransition() {
   // 3.5. IMMEDIATE COMPLETE CLEANUP - Remove ALL particles to ensure zero count
   activeParticles.clear(); // Complete clear to ensure zero particles
   m_storage.particles[1 - activeIdx].clear(); // Clear other buffer too
-  m_storage.freeIndices.clear();
+  m_storage.pendingIndices.clear();
+  m_storage.readyIndices.clear();
   m_storage.particleCount.store(0, std::memory_order_release);
 
   PARTICLE_INFO(std::format("Complete particle cleanup: cleared {} active particles from storage",
@@ -801,7 +800,7 @@ void ParticleManager::update(float deltaTime) {
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
 
-  // Phase 5.5: Collect recently deactivated particles into the free-index pool
+  // Phase 5.5: Collect recently deactivated particles into the pending pool
   {
     size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
     auto &p = m_storage.particles[activeIdx];
@@ -810,7 +809,7 @@ void ParticleManager::update(float deltaTime) {
     for (size_t i = 0; i < n; ++i) {
       if (!(p.flags[i] & UnifiedParticle::FLAG_ACTIVE) &&
           (p.flags[i] & UnifiedParticle::FLAG_RECENTLY_DEACTIVATED)) {
-        m_storage.freeIndices.push_back(i);
+        m_storage.pushFreeIndex(i);
         p.flags[i] &= ~UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
         if (i == newMax) {
           // We'll tighten upper bound after the loop
@@ -823,6 +822,10 @@ void ParticleManager::update(float deltaTime) {
     }
     m_storage.maxActiveIndex = newMax;
   }
+
+  // Phase 5.6: Promote aged indices from pending to ready pool
+  // Indices are safe to reuse after 2 frames (background threads have completed)
+  m_storage.promoteSafeIndices();
 
     // Phase 6: Performance tracking
     auto endTime = std::chrono::high_resolution_clock::now();

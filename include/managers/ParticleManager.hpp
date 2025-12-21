@@ -820,8 +820,15 @@ private:
     std::atomic<size_t> writeHead{0};     // Next write position
     std::atomic<size_t> capacity{0};      // Current capacity
 
-    // Object pool: free-index list for slot reuse (LIFO for cache locality)
-    std::vector<size_t> freeIndices;
+    // Object pool: epoch-based deferred recycling for thread safety
+    // Indices are held in pending for 2 frames before becoming available,
+    // ensuring background threads from previous frames have completed.
+    struct ReleasedIndex {
+      size_t index;
+      uint64_t releaseEpoch;
+    };
+    std::vector<ReleasedIndex> pendingIndices;  // Recently freed, not yet safe
+    std::vector<size_t> readyIndices;           // Safe to reuse (2+ frames old)
     // Upper bound of currently active indices (last index that may be active)
     size_t maxActiveIndex{0};
 
@@ -844,9 +851,8 @@ private:
     std::atomic<size_t> creationHead{0};
     std::atomic<size_t> creationTail{0};
 
-    // Memory reclamation using epochs
+    // Epoch counter for deferred index recycling
     std::atomic<uint64_t> currentEpoch{0};
-    std::atomic<uint64_t> safeEpoch{0};
 
     LockFreeParticleStorage();
 
@@ -873,14 +879,34 @@ private:
     // Swap buffers for lock-free updates
     void swapBuffers();
 
-    // Pool helpers
-    inline bool hasFreeIndex() const { return !freeIndices.empty(); }
+    // Pool helpers for epoch-based deferred recycling
+    inline bool hasFreeIndex() const { return !readyIndices.empty(); }
+
     inline size_t popFreeIndex() {
-      const size_t idx = freeIndices.back();
-      freeIndices.pop_back();
+      const size_t idx = readyIndices.back();
+      readyIndices.pop_back();
       return idx;
     }
-    inline void pushFreeIndex(size_t idx) { freeIndices.push_back(idx); }
+
+    inline void pushFreeIndex(size_t idx) {
+      pendingIndices.push_back({idx, currentEpoch.load(std::memory_order_relaxed)});
+    }
+
+    // Move aged indices from pending to ready (call once per frame after updates)
+    inline void promoteSafeIndices() {
+      const uint64_t currentEp = currentEpoch.load(std::memory_order_relaxed);
+      const uint64_t safeThreshold = (currentEp >= 2) ? (currentEp - 2) : 0;
+
+      size_t writePos = 0;
+      for (size_t i = 0; i < pendingIndices.size(); ++i) {
+        if (pendingIndices[i].releaseEpoch <= safeThreshold) {
+          readyIndices.push_back(pendingIndices[i].index);
+        } else {
+          pendingIndices[writePos++] = pendingIndices[i];
+        }
+      }
+      pendingIndices.resize(writePos);
+    }
   };
 
   // Core storage - now lock-free
