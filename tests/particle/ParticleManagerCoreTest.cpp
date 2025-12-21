@@ -631,8 +631,7 @@ BOOST_FIXTURE_TEST_CASE(TestInterpolationStateAcrossPauseResume, ParticleManager
     manager->update(0.016f);
   }
 
-  size_t countBeforePause = manager->getActiveParticleCount();
-  BOOST_CHECK_GT(countBeforePause, 0);
+  BOOST_CHECK_GT(manager->getActiveParticleCount(), 0);
 
   // Pause
   manager->setGlobalPause(true);
@@ -900,7 +899,7 @@ BOOST_FIXTURE_TEST_CASE(TestPauseIndependentEffect, ParticleManagerCoreFixture) 
     manager->update(0.016f);
   }
 
-  size_t countBeforePause = manager->getActiveParticleCount();
+
 
   // Pause the effect
   manager->pauseIndependentEffect(effectId, true);
@@ -1071,8 +1070,7 @@ BOOST_FIXTURE_TEST_CASE(TestGetActiveIndependentEffectsByGroup, ParticleManagerC
       ParticleEffectType::Smoke, {150.0f, 150.0f}, 1.0f, -1.0f, "combat");
   uint32_t effectB1 = manager->playIndependentEffect(
       ParticleEffectType::Sparks, {200.0f, 200.0f}, 1.0f, -1.0f, "ambient");
-  uint32_t effectC1 = manager->playIndependentEffect(
-      ParticleEffectType::Rain, {300.0f, 300.0f}, 1.0f, -1.0f, "weather");
+
 
   // Get combat group effects
   auto combatEffects = manager->getActiveIndependentEffectsByGroup("combat");

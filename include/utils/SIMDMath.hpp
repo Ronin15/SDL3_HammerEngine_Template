@@ -604,8 +604,11 @@ inline Byte16 bitwise_and_byte(Byte16 a, Byte16 b) {
 }
 
 /**
- * @brief Greater-than comparison (byte-level, signed)
- * Returns 0xFF for true, 0x00 for false per byte
+ * @brief Greater-than comparison (byte-level)
+ * Returns 0xFF for true, 0x00 for false per byte.
+ * NOTE: SSE version (`_mm_cmpgt_epi8`) is SIGNED,
+ * NEON version (`vcgtq_u8`) is UNSIGNED.
+ * This implementation is correct for ParticleManager which uses unsigned lifetime values.
  */
 inline Byte16 cmpgt_byte(Byte16 a, Byte16 b) {
 #if defined(HAMMER_SIMD_SSE2)
@@ -629,10 +632,36 @@ inline int movemask_byte(Byte16 v) {
 #if defined(HAMMER_SIMD_SSE2)
     return _mm_movemask_epi8(v);
 #elif defined(HAMMER_SIMD_NEON)
-    // NEON: Check first 4 bytes for particle flag checking
-    uint8x8_t narrow = vget_low_u8(v);
-    uint64_t maskBits = vget_lane_u64(vreinterpret_u64_u8(narrow), 0);
-    return static_cast<int>(maskBits & 0xFFFFFFFF);
+    // Correct NEON implementation for movemask_byte.
+    // NEON lacks a direct equivalent to SSE's _mm_movemask_epi8,
+    // so we use a sequence of shifts and horizontal adds (packed add).
+
+    // 1. Shift the high bit of each byte to the low bit. Result is 0x01 or 0x00.
+    uint8x16_t msbs = vshrq_n_u8(v, 7);
+
+    // 2. Create a vector of powers of 2 to scale the bits.
+    const uint8_t p[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+    uint8x8_t powers = vld1_u8(p);
+
+    // 3. Multiply the low and high 8 bytes of MSBs with the powers vector.
+    // This places each bit in its correct position within a byte.
+    uint8x8_t low_scaled = vmul_u8(vget_low_u8(msbs), powers);
+    uint8x8_t high_scaled = vmul_u8(vget_high_u8(msbs), powers);
+
+    // 4. Horizontally add the bytes in each 8-byte vector to get the final masks.
+    // We use a cascade of pairwise-add-and-widen operations.
+    uint16x4_t low_sum1 = vpaddl_u8(low_scaled);
+    uint32x2_t low_sum2 = vpaddl_u16(low_sum1);
+    uint64x1_t low_sum3 = vpaddl_u32(low_sum2);
+
+    uint16x4_t high_sum1 = vpaddl_u8(high_scaled);
+    uint32x2_t high_sum2 = vpaddl_u16(high_sum1);
+    uint64x1_t high_sum3 = vpaddl_u32(high_sum2);
+
+    uint8_t low_mask = vget_lane_u64(low_sum3, 0);
+    uint8_t high_mask = vget_lane_u64(high_sum3, 0);
+
+    return static_cast<int>(low_mask | (high_mask << 8));
 #else
     int result = 0;
     for (int i = 0; i < 16; ++i) {
