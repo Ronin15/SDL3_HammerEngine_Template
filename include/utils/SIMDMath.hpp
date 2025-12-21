@@ -604,15 +604,19 @@ inline Byte16 bitwise_and_byte(Byte16 a, Byte16 b) {
 }
 
 /**
- * @brief Greater-than comparison (byte-level)
+ * @brief Greater-than comparison (byte-level, UNSIGNED)
  * Returns 0xFF for true, 0x00 for false per byte.
- * NOTE: SSE version (`_mm_cmpgt_epi8`) is SIGNED,
- * NEON version (`vcgtq_u8`) is UNSIGNED.
- * This implementation is correct for ParticleManager which uses unsigned lifetime values.
+ * This performs UNSIGNED comparison on all platforms.
+ * Used by ParticleManager for unsigned lifetime values.
  */
 inline Byte16 cmpgt_byte(Byte16 a, Byte16 b) {
 #if defined(HAMMER_SIMD_SSE2)
-    return _mm_cmpgt_epi8(a, b);
+    // SSE only has signed byte comparison (_mm_cmpgt_epi8).
+    // To emulate unsigned comparison, XOR both operands with 0x80
+    // which flips the sign bit, converting unsigned [0,255] range
+    // to signed [-128,127] range while preserving comparison order.
+    __m128i sign_flip = _mm_set1_epi8(static_cast<char>(0x80));
+    return _mm_cmpgt_epi8(_mm_xor_si128(a, sign_flip), _mm_xor_si128(b, sign_flip));
 #elif defined(HAMMER_SIMD_NEON)
     return vcgtq_u8(a, b);
 #else
