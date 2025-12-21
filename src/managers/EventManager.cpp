@@ -359,8 +359,11 @@ void EventManager::update() {
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-  // Store total update time for adaptive batch tuning
-  m_adaptiveBatchState.lastUpdateTimeMs.store(totalTimeMs, std::memory_order_release);
+  // Report batch completion for adaptive tuning (only if threading was used)
+  if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
+    HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+        HammerEngine::SystemType::Event, threadingInfo.batchCount, totalTimeMs);
+  }
 
   // Update rolling average for DEBUG logging
   m_updateTimeSamples[m_currentSampleIndex] = totalTimeMs;
@@ -951,15 +954,14 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadi
     return;
   }
 
-  // Proper WorkerBudget calculation with architectural respect
+  // Use centralized WorkerBudgetManager for smart worker allocation
   size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t eventWorkerBudget = budget.eventAllocated;
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const auto& budget = budgetMgr.getBudget();
 
   // Set thread allocation info for debug output
   outThreadingInfo.availableWorkers = availableWorkers;
-  outThreadingInfo.budget = eventWorkerBudget;
+  outThreadingInfo.budget = budget.eventAllocated;
 
   // Check queue pressure before submitting tasks
   size_t queueSize = threadSystem.getQueueSize();
@@ -982,37 +984,21 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadi
     return;
   }
 
-  // Use buffer capacity for high workloads
-  size_t optimalWorkerCount =
-      budget.getOptimalWorkerCount(eventWorkerBudget, localEvents->size(), 100);
-
-  // Set optimal worker count and mark as threaded
-  outThreadingInfo.workerCount = optimalWorkerCount;
-  outThreadingInfo.wasThreaded = true;
-
-  // Use unified adaptive batch calculation for consistency across all managers
+  // Get threading threshold
   const size_t threshold = std::max(m_threadingThreshold, static_cast<size_t>(1));
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
 
-  // Get previous frame's completion time for adaptive feedback
-  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
+  // Get optimal workers (considers queue pressure internally)
+  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+      HammerEngine::SystemType::Event, localEvents->size(), threshold);
 
-  auto [batchCount, calculatedBatchSize] = HammerEngine::calculateBatchStrategy(
-      HammerEngine::EVENT_BATCH_CONFIG,
-      localEvents->size(),
-      threshold,
-      optimalWorkerCount,
-      eventWorkerBudget,     // Base allocation for buffer detection
-      queuePressure,
-      m_adaptiveBatchState,  // Adaptive state for performance tuning
-      lastFrameTime          // Previous frame's completion time
-  );
+  // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
+  auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
+      HammerEngine::SystemType::Event, localEvents->size(), optimalWorkerCount);
 
-  // Debug logging for high queue pressure
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    EVENT_DEBUG(std::format("High queue pressure ({}%), using larger batches",
-                            static_cast<int>(queuePressure * 100)));
-  }
+  // Set threading info
+  outThreadingInfo.workerCount = optimalWorkerCount;
+  outThreadingInfo.batchCount = batchCount;
+  outThreadingInfo.wasThreaded = true;
 
   // Simple batch processing without complex spin-wait
   if (batchCount > 1) {
@@ -1628,9 +1614,7 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Compute per-frame cap from worker budget
   size_t maxToProcess = 64; // base
   if (HammerEngine::ThreadSystem::Exists()) {
-    const auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-    size_t workers = static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(workers);
+    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     maxToProcess = 32 + (budget.eventAllocated * 32);
   }
 

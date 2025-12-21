@@ -392,29 +392,17 @@ void AIManager::update(float deltaTime) {
         }
       }
 
-      HammerEngine::WorkerBudget budget =
-          HammerEngine::calculateWorkerBudget(availableWorkers);
+      // Use centralized WorkerBudgetManager for smart worker allocation
+      auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+      const auto& budget = budgetMgr.getBudget();
 
-      // Use WorkerBudget system properly with threshold-based buffer allocation
-      size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-          budget.aiAllocated, entityCount, threadingThreshold);
+      // Get optimal workers (considers queue pressure internally)
+      size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+          HammerEngine::SystemType::AI, entityCount, threadingThreshold);
 
-      // Use unified adaptive batch calculation for consistency across all managers
-      double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-
-      // Get previous frame's completion time for adaptive feedback
-      double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
-
-      auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-          HammerEngine::AI_BATCH_CONFIG,
-          entityCount,
-          threadingThreshold,
-          optimalWorkerCount,
-          budget.aiAllocated,    // Base allocation for buffer detection
-          queuePressure,
-          m_adaptiveBatchState,  // Adaptive state for performance tuning
-          lastFrameTime          // Previous frame's completion time
-      );
+      // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
+      auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+          HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
       // Track for interval logging at end of function
       logWorkerCount = optimalWorkerCount;
@@ -422,12 +410,6 @@ void AIManager::update(float deltaTime) {
       logBudget = budget.aiAllocated;
       logBatchCount = batchCount;
       logWasThreaded = (batchCount > 1);
-
-      // Debug logging for high queue pressure
-      if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-        AI_DEBUG(std::format("High queue pressure ({}%), using larger batches",
-                 static_cast<int>(queuePressure * 100)));
-      }
 
       // Single batch optimization: avoid thread overhead
       if (batchCount <= 1) {
@@ -556,8 +538,11 @@ void AIManager::update(float deltaTime) {
     auto endTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
-    // Store for adaptive batch tuning
-    m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
+    // Report batch completion for adaptive tuning (only if threading was used)
+    if (logWasThreaded) {
+      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+          HammerEngine::SystemType::AI, logBatchCount, totalUpdateTime);
+    }
 
     // Periodic cleanup tracking (balanced frequency)
     if (currentFrame % 300 == 0) {
@@ -893,46 +878,20 @@ size_t AIManager::processPendingBehaviorAssignments() {
 
   // Async processing for large batches
   auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-  size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
 
-  // Safety check: If queue is too full, process synchronously
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    AI_DEBUG(std::format("ThreadSystem queue pressure high ({}%) - processing assignments synchronously",
-             static_cast<int>(queuePressure * 100)));
-    for (const auto &assignment : toProcess) {
-      if (assignment.entity) {
-        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
-      }
-    }
-    return assignmentCount;
-  }
-
-  // Calculate optimal batching using unified API
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
+  // Calculate optimal batching using centralized WorkerBudgetManager
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
   size_t assignmentThreadingThreshold =
       std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
 
-  size_t optimalWorkerCount =
-      budget.getOptimalWorkerCount(budget.aiAllocated, assignmentCount, assignmentThreadingThreshold);
+  // Get optimal workers (considers queue pressure internally)
+  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+      HammerEngine::SystemType::AI, assignmentCount, assignmentThreadingThreshold);
 
-  // Get previous frame's completion time for adaptive feedback
-  double lastUpdateTimeMs = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
-
-  auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-      HammerEngine::AI_BATCH_CONFIG,
-      assignmentCount,
-      assignmentThreadingThreshold,
-      optimalWorkerCount,
-      budget.aiAllocated,    // Base allocation for buffer detection
-      queuePressure,
-      m_adaptiveBatchState,
-      lastUpdateTimeMs
-  );
+  // Get adaptive batch strategy
+  auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+      HammerEngine::SystemType::AI, assignmentCount, optimalWorkerCount);
 
   // If WorkerBudget recommends single-threaded execution, process synchronously
   if (batchCount <= 1) {

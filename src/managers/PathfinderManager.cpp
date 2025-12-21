@@ -440,26 +440,19 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     // Get ThreadSystem reference
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    // Query ThreadSystem state for WorkerBudget coordination
-    size_t availableWorkers = threadSystem.getThreadCount();
-    size_t queueSize = threadSystem.getQueueSize();
-    size_t queueCapacity = threadSystem.getQueueCapacity();
-    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
+    // Use centralized WorkerBudgetManager for smart worker allocation
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    // Calculate WorkerBudget allocation
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-
-    // Calculate optimal worker count for grid rebuild
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-        budget.pathfindingAllocated,  // Base allocation (typically 1-2 workers)
+    // Calculate optimal worker count for grid rebuild (considers queue pressure internally)
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Pathfinding,
         static_cast<size_t>(gridHeight), // Workload = number of rows
-        MIN_GRID_ROWS_FOR_BATCHING    // Threshold (64 rows)
+        MIN_GRID_ROWS_FOR_BATCHING       // Threshold (64 rows)
     );
 
     // Determine if parallel batching is beneficial
     const bool useParallelBatching = (static_cast<size_t>(gridHeight) >= MIN_GRID_ROWS_FOR_BATCHING) &&
-                                     (optimalWorkerCount > 0) &&
-                                     (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
+                                     (optimalWorkerCount > 0);
 
     if (!useParallelBatching) {
         // Sequential fallback for small grids or high queue pressure
@@ -497,14 +490,11 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         return;
     }
 
-    // Parallel batching path: Use calculateBatchStrategy with PATHFINDING_BATCH_CONFIG
-    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-        HammerEngine::PATHFINDING_BATCH_CONFIG,
+    // Parallel batching path: Use WorkerBudgetManager for adaptive batch strategy
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Pathfinding,
         static_cast<size_t>(gridHeight),  // Total rows
-        MIN_GRID_ROWS_FOR_BATCHING,
-        optimalWorkerCount,
-        budget.pathfindingAllocated,
-        queuePressure
+        optimalWorkerCount
     );
 
     PATHFIND_DEBUG(std::format("Parallel grid rebuild: {} rows in {} batches (size: {}), workers: {}",
@@ -1495,11 +1485,13 @@ void PathfinderManager::processPendingRequests() {
         requests.resize(requestsToProcess);
     }
 
-    // WorkerBudget coordination
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    // Use centralized WorkerBudgetManager for smart worker allocation
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    const auto& budget = budgetMgr.getBudget();
 
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-        budget.pathfindingAllocated,
+    // Get optimal workers (considers queue pressure internally)
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Pathfinding,
         requestsToProcess,
         MIN_REQUESTS_FOR_BATCHING
     );
@@ -1507,7 +1499,7 @@ void PathfinderManager::processPendingRequests() {
     // Determine if threading is beneficial
     const bool useThreading = (requestsToProcess >= MIN_REQUESTS_FOR_BATCHING) &&
                              (optimalWorkerCount > 0) &&
-                             (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
+                             (queuePressure < HammerEngine::QUEUE_PRESSURE_WARNING);
 
 #ifndef NDEBUG
     // Interval stats logging - zero overhead in release (entire block compiles out)
@@ -1614,16 +1606,11 @@ void PathfinderManager::processPendingRequests() {
 
     // Batch processing with WorkerBudget coordination (non-blocking)
 
-    // Calculate batch strategy using WorkerBudget
-    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-        HammerEngine::PATHFINDING_BATCH_CONFIG,
+    // Get adaptive batch strategy
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Pathfinding,
         requestsToProcess,
-        MIN_REQUESTS_FOR_BATCHING,
-        optimalWorkerCount,
-        budget.pathfindingAllocated,
-        queuePressure,
-        m_adaptiveBatchState,
-        m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire)
+        optimalWorkerCount
     );
 
     PATHFIND_DEBUG(std::format("Processing {} requests in {} batches (size: {}), workers: {}",

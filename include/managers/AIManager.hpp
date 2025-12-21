@@ -397,9 +397,6 @@ private:
   mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
   mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
 
-  // Adaptive batch state for performance-based tuning
-  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
-
   // Player reference
   EntityWeakPtr m_playerEntity;
 

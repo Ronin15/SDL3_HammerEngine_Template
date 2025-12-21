@@ -861,7 +861,12 @@ void ParticleManager::update(float deltaTime) {
     // Measure total update time for adaptive batch tuning
     auto updateEndTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
-    m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
+
+    // Report batch completion for adaptive tuning (only if threaded with WorkerBudget)
+    if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
+      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+          HammerEngine::SystemType::Particle, threadingInfo.batchCount, totalUpdateTime);
+    }
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
@@ -2160,38 +2165,22 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // resource allocation across the engine's subsystems
   auto &threadSystem = HammerEngine::ThreadSystem::Instance();
   size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
 
-  // Calculate WorkerBudget allocation for particle system
-  // WorkerBudget ensures fair distribution of threads between AI, particles,
-  // events, etc.
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
+  // Use centralized WorkerBudgetManager for smart worker allocation
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const auto& budget = budgetMgr.getBudget();
 
-  // Use WorkerBudget system with threshold-based buffer allocation
-  // This allows particle system to use additional threads when workload is high
-  size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-      budget.particleAllocated, activeParticleCount, m_threadingThreshold);
-
-  // Use unified adaptive batch calculation for consistency across all managers
+  // Get threading threshold
   const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
                                     static_cast<size_t>(1));
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
 
-  // Get previous frame's completion time for adaptive feedback
-  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
+  // Get optimal workers (considers queue pressure internally)
+  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+      HammerEngine::SystemType::Particle, activeParticleCount, threshold);
 
-  auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-      HammerEngine::PARTICLE_BATCH_CONFIG,
-      activeParticleCount,
-      threshold,
-      optimalWorkerCount,
-      budget.particleAllocated,  // Base allocation for buffer detection
-      queuePressure,
-      m_adaptiveBatchState,  // Adaptive state for performance tuning
-      lastFrameTime          // Previous frame's completion time
-  );
+  // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
+  auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+      HammerEngine::SystemType::Particle, activeParticleCount, optimalWorkerCount);
 
   // Set threading info for interval logging (local struct, zero overhead in release)
   outThreadingInfo.workerCount = optimalWorkerCount;

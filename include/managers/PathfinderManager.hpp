@@ -437,7 +437,6 @@ private:
     std::mutex m_gridRebuildFuturesMutex;
 
     // WorkerBudget integration for coordinated batch processing
-    HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
     std::vector<std::future<void>> m_batchFutures;
     std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
     // No mutex needed: update and state transitions never run concurrently

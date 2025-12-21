@@ -110,6 +110,7 @@ struct EventThreadingInfo {
   size_t workerCount{0};
   size_t availableWorkers{0};
   size_t budget{0};
+  size_t batchCount{0};
   bool wasThreaded{false};
 };
 
@@ -646,9 +647,6 @@ private:
 
   // Timing
   std::atomic<uint64_t> m_lastUpdateTime{0};
-
-  // Adaptive batch state for performance-based tuning
-  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
 
   // Deferred dispatch queue (processed in update())
   struct PendingDispatch {

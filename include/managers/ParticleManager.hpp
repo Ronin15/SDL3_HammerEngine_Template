@@ -935,9 +935,6 @@ private:
 
   std::atomic<size_t> m_activeCount{0};
 
-  // Adaptive batch state for performance-based tuning
-  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
-
   // Camera and culling
   struct CameraViewport {
     float x{0}, y{0}, width{1920}, height{1080};
