@@ -18,15 +18,24 @@
 
 using namespace HammerEngine;
 
+// Global fixture: Initialize ThreadSystem once for the entire test module
+// This ensures worker threads are available for all tests that need async task execution
+struct GlobalThreadSystemFixture {
+    GlobalThreadSystemFixture() {
+        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+    }
+    ~GlobalThreadSystemFixture() {
+        HammerEngine::ThreadSystem::Instance().clean();
+    }
+};
+BOOST_GLOBAL_FIXTURE(GlobalThreadSystemFixture);
+
 BOOST_AUTO_TEST_SUITE(WorldManagerEventIntegrationTests)
 
 // New: Verify WorldLoadedEvent payload matches WorldManager dimensions
 BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
-    // Initialize ThreadSystem to ensure async tasks can execute (auto-detect threads)
-    if (!HammerEngine::ThreadSystem::Exists()) {
-        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
-    }
-    
+    // ThreadSystem is initialized by global fixture
+
     // Init managers
     BOOST_REQUIRE(WorldManager::Instance().init());
     BOOST_REQUIRE(EventManager::Instance().init());
@@ -56,13 +65,13 @@ BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
     cfg.width = 5; cfg.height = 5; cfg.seed = 4242; cfg.elevationFrequency = 0.1f; cfg.humidityFrequency = 0.1f; cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
     BOOST_REQUIRE(WorldManager::Instance().loadNewWorld(cfg));
 
-    // Wait for ThreadSystem task execution like working tests do
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    
-    // Process events 
-    for (int i = 0; i < 10 && !gotLoaded.load(); ++i) {
+    // Wait for ThreadSystem task execution - give workers time to process the task
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+
+    // Process events - more aggressive pumping to ensure deferred events are processed
+    for (int i = 0; i < 50 && !gotLoaded.load(); ++i) {
         EventManager::Instance().update();
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        std::this_thread::sleep_for(std::chrono::milliseconds(20));
     }
 
     // Validate
