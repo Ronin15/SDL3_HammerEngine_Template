@@ -452,8 +452,8 @@ BOOST_AUTO_TEST_SUITE_END()
 class GameTimeEventTestFixture {
 public:
     GameTimeEventTestFixture() {
-        gameTime = &HammerEngine::GameTimeManager::Instance();
-        eventManager = &HammerEngine::EventManager::Instance();
+        gameTime = &GameTimeManager::Instance();
+        eventManager = &EventManager::Instance();
 
         // Initialize EventManager for event handling
         eventManager->init();
@@ -472,8 +472,8 @@ public:
     }
 
 protected:
-    HammerEngine::GameTimeManager* gameTime;
-    HammerEngine::EventManager* eventManager;
+    GameTimeManager* gameTime;
+    EventManager* eventManager;
 };
 
 BOOST_FIXTURE_TEST_SUITE(EventEmissionTests, GameTimeEventTestFixture)
@@ -487,14 +487,14 @@ BOOST_AUTO_TEST_CASE(TestHourChangedEventEmission) {
     bool receivedIsNight = true;
 
     // Register handler for Time events (which includes HourChangedEvent)
-    eventManager->registerHandler(HammerEngine::EventTypeId::Time,
-        [&](const HammerEngine::EventData& data) {
+    eventManager->registerHandler(EventTypeId::Time,
+        [&](const EventData& data) {
             if (!data.event) return;
-            auto hourEvent = std::dynamic_pointer_cast<HammerEngine::HourChangedEvent>(data.event);
+            auto hourEvent = std::dynamic_pointer_cast<HourChangedEvent>(data.event);
             if (hourEvent) {
                 eventReceived.store(true);
-                receivedHour = hourEvent->getNewHour();
-                receivedIsNight = hourEvent->getIsNighttime();
+                receivedHour = hourEvent->getHour();
+                receivedIsNight = hourEvent->isNight();
             }
         });
 
@@ -520,13 +520,13 @@ BOOST_AUTO_TEST_CASE(TestDayChangedEventEmission) {
     int receivedDay = -1;
     int receivedDayOfMonth = -1;
 
-    eventManager->registerHandler(HammerEngine::EventTypeId::Time,
-        [&](const HammerEngine::EventData& data) {
+    eventManager->registerHandler(EventTypeId::Time,
+        [&](const EventData& data) {
             if (!data.event) return;
-            auto dayEvent = std::dynamic_pointer_cast<HammerEngine::DayChangedEvent>(data.event);
+            auto dayEvent = std::dynamic_pointer_cast<DayChangedEvent>(data.event);
             if (dayEvent) {
                 eventReceived.store(true);
-                receivedDay = dayEvent->getNewDay();
+                receivedDay = dayEvent->getDay();
                 receivedDayOfMonth = dayEvent->getDayOfMonth();
             }
         });
@@ -547,30 +547,23 @@ BOOST_AUTO_TEST_CASE(TestSeasonChangedEventEmission) {
     gameTime->init(12.0f, 1.0f);
 
     std::atomic<bool> eventReceived{false};
-    HammerEngine::Season receivedSeason = HammerEngine::Season::Spring;
-    HammerEngine::Season receivedPreviousSeason = HammerEngine::Season::Spring;
+    Season receivedSeason = Season::Spring;
+    Season receivedPreviousSeason = Season::Spring;
 
-    eventManager->registerHandler(HammerEngine::EventTypeId::Time,
-        [&](const HammerEngine::EventData& data) {
+    eventManager->registerHandler(EventTypeId::Time,
+        [&](const EventData& data) {
             if (!data.event) return;
-            auto seasonEvent = std::dynamic_pointer_cast<HammerEngine::SeasonChangedEvent>(data.event);
+            auto seasonEvent = std::dynamic_pointer_cast<SeasonChangedEvent>(data.event);
             if (seasonEvent) {
                 eventReceived.store(true);
-                receivedSeason = seasonEvent->getNewSeason();
+                receivedSeason = seasonEvent->getSeason();
                 receivedPreviousSeason = seasonEvent->getPreviousSeason();
             }
         });
 
-    // Force a season change by setting season directly if available
-    // Or advance many days to trigger natural season change
     // For testing, we can use setMonth which may trigger season change
-    int initialMonth = gameTime->getMonth();
-
-    // Advance by many game days (90 days = 1 season roughly)
-    // Each day is 24 game hours, timeScale=1 means 1 real second = 1 game minute
-    // 24 hours * 60 minutes = 1440 real seconds per game day
-    // 90 days = 129600 real seconds at scale 1
-    // This is too slow for a test, so we use setGameDay to fast-forward
+    // Or advance many days to trigger natural season change
+    // For testing, we can use setGameDay to fast-forward
 
     // Instead, advance month which should trigger season change
     for (int i = 0; i < 100; ++i) {
@@ -591,14 +584,14 @@ BOOST_AUTO_TEST_CASE(TestMultipleTimeEventsInSequence) {
     std::atomic<int> hourEventCount{0};
     std::atomic<int> dayEventCount{0};
 
-    eventManager->registerHandler(HammerEngine::EventTypeId::Time,
-        [&](const HammerEngine::EventData& data) {
+    eventManager->registerHandler(EventTypeId::Time,
+        [&](const EventData& data) {
             if (!data.event) return;
 
-            if (std::dynamic_pointer_cast<HammerEngine::HourChangedEvent>(data.event)) {
+            if (std::dynamic_pointer_cast<HourChangedEvent>(data.event)) {
                 hourEventCount.fetch_add(1);
             }
-            if (std::dynamic_pointer_cast<HammerEngine::DayChangedEvent>(data.event)) {
+            if (std::dynamic_pointer_cast<DayChangedEvent>(data.event)) {
                 dayEventCount.fetch_add(1);
             }
         });
@@ -619,8 +612,8 @@ BOOST_AUTO_TEST_CASE(TestNoEventWhenPaused) {
 
     std::atomic<bool> eventReceived{false};
 
-    eventManager->registerHandler(HammerEngine::EventTypeId::Time,
-        [&](const HammerEngine::EventData& data) {
+    eventManager->registerHandler(EventTypeId::Time,
+        [&](const EventData& data) {
             if (data.event) {
                 eventReceived.store(true);
             }
@@ -651,15 +644,15 @@ BOOST_AUTO_TEST_CASE(TestYearChangedEventEmission) {
     gameTime->init(12.0f, 1.0f);
 
     std::atomic<bool> eventReceived{false};
-    int receivedYear = -1;
+    [[maybe_unused]] int receivedYear = -1;
 
-    eventManager->registerHandler(HammerEngine::EventTypeId::Time,
-        [&](const HammerEngine::EventData& data) {
+    eventManager->registerHandler(EventTypeId::Time,
+        [&](const EventData& data) {
             if (!data.event) return;
-            auto yearEvent = std::dynamic_pointer_cast<HammerEngine::YearChangedEvent>(data.event);
+            auto yearEvent = std::dynamic_pointer_cast<YearChangedEvent>(data.event);
             if (yearEvent) {
                 eventReceived.store(true);
-                receivedYear = yearEvent->getNewYear();
+                receivedYear = yearEvent->getYear();
             }
         });
 
