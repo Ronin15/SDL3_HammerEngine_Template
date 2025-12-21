@@ -93,12 +93,12 @@ void CombatController::performAttack(Player& player) {
     AIManager::Instance().queryEntitiesInRadius(playerPos, attackRange, nearbyEntities, true);
 
     // Check all nearby entities for hits
-    NPC* closestHit = nullptr;
+    std::shared_ptr<NPC> closestHit = nullptr;
     float closestDist = attackRange + 1.0f;
 
     for (const auto& entityPtr : nearbyEntities) {
         // Try to cast to NPC (skip non-NPC entities)
-        NPC* npc = dynamic_cast<NPC*>(entityPtr.get());
+        auto npc = std::dynamic_pointer_cast<NPC>(entityPtr);
         if (!npc || !npc->isAlive()) {
             continue;
         }
@@ -133,7 +133,7 @@ void CombatController::performAttack(Player& player) {
 
         // Dispatch NPC damaged event
         auto damageEvent = std::make_shared<CombatEvent>(
-            CombatEventType::NPCDamaged, &player, npc, attackDamage);
+            CombatEventType::NPCDamaged, &player, npc.get(), attackDamage);
         damageEvent->setRemainingHealth(npc->getHealth());
         EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
 
@@ -142,7 +142,7 @@ void CombatController::performAttack(Player& player) {
             COMBAT_INFO(std::format("{} killed!", npc->getName()));
 
             auto killEvent = std::make_shared<CombatEvent>(
-                CombatEventType::NPCKilled, &player, npc, attackDamage);
+                CombatEventType::NPCKilled, &player, npc.get(), attackDamage);
             EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);
         }
     }
@@ -169,18 +169,19 @@ void CombatController::updateTargetTimer(float deltaTime) {
         m_targetDisplayTimer -= deltaTime;
         if (m_targetDisplayTimer <= 0.0f) {
             m_targetDisplayTimer = 0.0f;
-            m_targetedNPC = nullptr;
+            m_targetedNPC.reset();
             COMBAT_DEBUG("Target display timer expired");
         }
     }
 }
 
-NPC* CombatController::getTargetedNPC() const {
-    // Verify target is still valid (alive)
-    if (m_targetedNPC && !m_targetedNPC->isAlive()) {
+std::shared_ptr<NPC> CombatController::getTargetedNPC() const {
+    // Safely lock weak_ptr and verify target is still valid (alive)
+    auto target = m_targetedNPC.lock();
+    if (!target || !target->isAlive()) {
         return nullptr;
     }
-    return m_targetedNPC;
+    return target;
 }
 
 bool CombatController::hasActiveTarget() const {
