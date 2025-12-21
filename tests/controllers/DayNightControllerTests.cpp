@@ -500,3 +500,65 @@ BOOST_AUTO_TEST_CASE(TestWeatherCheckEventIgnoredWhenUnsubscribed) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// PERIOD DESCRIPTION TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(PeriodDescriptionTests, DayNightControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodDescriptionMorning) {
+    GameTimeManager::Instance().init(7.0f, 1.0f);  // 7 AM - Morning
+    m_controller.subscribe();
+
+    BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Morning);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "Dawn approaches");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodDescriptionDay) {
+    GameTimeManager::Instance().init(12.0f, 1.0f);  // Noon - Day
+    m_controller.subscribe();
+
+    BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Day);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "The sun rises high");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodDescriptionEvening) {
+    GameTimeManager::Instance().init(19.0f, 1.0f);  // 7 PM - Evening
+    m_controller.subscribe();
+
+    BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Evening);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "Dusk settles in");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodDescriptionNight) {
+    GameTimeManager::Instance().init(23.0f, 1.0f);  // 11 PM - Night
+    m_controller.subscribe();
+
+    BOOST_CHECK(m_controller.getCurrentPeriod() == TimePeriod::Night);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "Night falls");
+}
+
+BOOST_AUTO_TEST_CASE(TestPeriodDescriptionChangesWithTimeTransition) {
+    // Start in morning
+    GameTimeManager::Instance().init(7.0f, 1.0f);
+    m_controller.subscribe();
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "Dawn approaches");
+
+    // Transition to day
+    auto dayEvent = std::make_shared<HourChangedEvent>(12, false);
+    EventManager::Instance().dispatchEvent(dayEvent, EventManager::DispatchMode::Immediate);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "The sun rises high");
+
+    // Transition to evening
+    auto eveningEvent = std::make_shared<HourChangedEvent>(19, false);
+    EventManager::Instance().dispatchEvent(eveningEvent, EventManager::DispatchMode::Immediate);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "Dusk settles in");
+
+    // Transition to night
+    auto nightEvent = std::make_shared<HourChangedEvent>(23, true);
+    EventManager::Instance().dispatchEvent(nightEvent, EventManager::DispatchMode::Immediate);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentPeriodDescription()), "Night falls");
+}
+
+BOOST_AUTO_TEST_SUITE_END()

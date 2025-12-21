@@ -315,3 +315,109 @@ BOOST_AUTO_TEST_CASE(TestOnlyHandlesWeatherCheckEvent) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// WEATHER DESCRIPTION TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(WeatherDescriptionTests, WeatherControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionClear) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Clear);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Clear);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Clear skies");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionCloudy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, WeatherType::Cloudy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Cloudy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Clouds gather");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionRainy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Rainy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Rainy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Rain begins");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionStormy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Stormy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Stormy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Storm approaches");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionFoggy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Foggy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Foggy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Fog rolls in");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionSnowy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Winter, WeatherType::Snowy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Snowy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Snow falls");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionWindy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, WeatherType::Windy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Windy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Wind picks up");
+}
+
+BOOST_AUTO_TEST_CASE(TestAllWeatherDescriptions) {
+    m_controller.subscribe();
+
+    // Test all weather types have correct descriptions
+    struct WeatherDescTestCase {
+        WeatherType type;
+        const char* expectedDesc;
+    };
+
+    WeatherDescTestCase testCases[] = {
+        {WeatherType::Clear,  "Clear skies"},
+        {WeatherType::Cloudy, "Clouds gather"},
+        {WeatherType::Rainy,  "Rain begins"},
+        {WeatherType::Stormy, "Storm approaches"},
+        {WeatherType::Foggy,  "Fog rolls in"},
+        {WeatherType::Snowy,  "Snow falls"},
+        {WeatherType::Windy,  "Wind picks up"}
+    };
+
+    for (const auto& tc : testCases) {
+        auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, tc.type);
+        EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+        BOOST_CHECK(m_controller.getCurrentWeather() == tc.type);
+        BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), tc.expectedDesc);
+    }
+}
+
+BOOST_AUTO_TEST_SUITE_END()

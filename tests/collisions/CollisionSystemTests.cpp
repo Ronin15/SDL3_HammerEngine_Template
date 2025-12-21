@@ -1453,3 +1453,224 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// Tests for KinematicUpdate batch API - critical for AI entity movement optimization
+BOOST_AUTO_TEST_SUITE(KinematicBatchTests)
+
+BOOST_AUTO_TEST_CASE(TestUpdateKinematicBatchSOA)
+{
+    // Initialize collision manager
+    CollisionManager::Instance().init();
+
+    const int NUM_ENTITIES = 50;
+    std::vector<EntityID> entityIds;
+
+    // Create kinematic bodies
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        EntityID id = static_cast<EntityID>(1000 + i);
+        entityIds.push_back(id);
+        Vector2D pos(100.0f + i * 10.0f, 100.0f + i * 10.0f);
+        Vector2D halfSize(8.0f, 8.0f);
+
+        CollisionManager::Instance().addCollisionBodySOA(
+            id, pos, halfSize,
+            BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        );
+    }
+    CollisionManager::Instance().processPendingCommands();
+
+    // Build batch updates
+    std::vector<CollisionManager::KinematicUpdate> updates;
+    updates.reserve(NUM_ENTITIES);
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        Vector2D newPos(200.0f + i * 10.0f, 200.0f + i * 10.0f);
+        Vector2D velocity(1.0f, 0.5f);
+        updates.emplace_back(entityIds[i], newPos, velocity);
+    }
+
+    // Apply batch update
+    CollisionManager::Instance().updateKinematicBatchSOA(updates);
+    CollisionManager::Instance().processPendingCommands();
+
+    // Verify positions updated - query around new positions
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        Vector2D expectedPos(200.0f + i * 10.0f, 200.0f + i * 10.0f);
+        AABB queryArea(expectedPos.getX(), expectedPos.getY(), 20.0f, 20.0f);
+        std::vector<EntityID> results;
+        CollisionManager::Instance().queryArea(queryArea, results);
+        BOOST_CHECK(std::find(results.begin(), results.end(), entityIds[i]) != results.end());
+    }
+
+    // Cleanup
+    for (auto id : entityIds) {
+        CollisionManager::Instance().removeCollisionBodySOA(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestApplyBatchedKinematicUpdates)
+{
+    // Initialize collision manager
+    CollisionManager::Instance().init();
+
+    const int NUM_BATCHES = 4;
+    const int ENTITIES_PER_BATCH = 25;
+    std::vector<std::vector<EntityID>> batchEntityIds(NUM_BATCHES);
+
+    // Create kinematic bodies for each batch
+    for (int batch = 0; batch < NUM_BATCHES; ++batch) {
+        for (int i = 0; i < ENTITIES_PER_BATCH; ++i) {
+            EntityID id = static_cast<EntityID>(2000 + batch * 100 + i);
+            batchEntityIds[batch].push_back(id);
+            Vector2D pos(50.0f + batch * 200.0f + i * 5.0f, 50.0f + i * 5.0f);
+            Vector2D halfSize(6.0f, 6.0f);
+
+            CollisionManager::Instance().addCollisionBodySOA(
+                id, pos, halfSize,
+                BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+            );
+        }
+    }
+    CollisionManager::Instance().processPendingCommands();
+
+    // Build batched updates (like AIManager does per-thread)
+    std::vector<std::vector<CollisionManager::KinematicUpdate>> batchUpdates(NUM_BATCHES);
+    for (int batch = 0; batch < NUM_BATCHES; ++batch) {
+        batchUpdates[batch].reserve(ENTITIES_PER_BATCH);
+        for (int i = 0; i < ENTITIES_PER_BATCH; ++i) {
+            Vector2D newPos(100.0f + batch * 200.0f + i * 5.0f, 150.0f + i * 5.0f);
+            batchUpdates[batch].emplace_back(batchEntityIds[batch][i], newPos);
+        }
+    }
+
+    // Apply all batches at once (zero contention pattern)
+    CollisionManager::Instance().applyBatchedKinematicUpdates(batchUpdates);
+    CollisionManager::Instance().processPendingCommands();
+
+    // Verify all entities moved correctly
+    int entitiesFound = 0;
+    for (int batch = 0; batch < NUM_BATCHES; ++batch) {
+        for (int i = 0; i < ENTITIES_PER_BATCH; ++i) {
+            Vector2D expectedPos(100.0f + batch * 200.0f + i * 5.0f, 150.0f + i * 5.0f);
+            AABB queryArea(expectedPos.getX(), expectedPos.getY(), 15.0f, 15.0f);
+            std::vector<EntityID> results;
+            CollisionManager::Instance().queryArea(queryArea, results);
+            if (std::find(results.begin(), results.end(), batchEntityIds[batch][i]) != results.end()) {
+                entitiesFound++;
+            }
+        }
+    }
+    BOOST_CHECK_EQUAL(entitiesFound, NUM_BATCHES * ENTITIES_PER_BATCH);
+
+    // Cleanup
+    for (int batch = 0; batch < NUM_BATCHES; ++batch) {
+        for (auto id : batchEntityIds[batch]) {
+            CollisionManager::Instance().removeCollisionBodySOA(id);
+        }
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestApplyKinematicUpdatesSingleVector)
+{
+    // Initialize collision manager
+    CollisionManager::Instance().init();
+
+    const int NUM_ENTITIES = 30;
+    std::vector<EntityID> entityIds;
+
+    // Create kinematic bodies
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        EntityID id = static_cast<EntityID>(3000 + i);
+        entityIds.push_back(id);
+        Vector2D pos(300.0f + i * 8.0f, 300.0f);
+        Vector2D halfSize(5.0f, 5.0f);
+
+        CollisionManager::Instance().addCollisionBodySOA(
+            id, pos, halfSize,
+            BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu
+        );
+    }
+    CollisionManager::Instance().processPendingCommands();
+
+    // Build single vector of updates (convenience API)
+    std::vector<CollisionManager::KinematicUpdate> updates;
+    updates.reserve(NUM_ENTITIES);
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        Vector2D newPos(400.0f + i * 8.0f, 400.0f);
+        updates.emplace_back(entityIds[i], newPos);
+    }
+
+    // Apply updates using single-vector overload
+    CollisionManager::Instance().applyKinematicUpdates(updates);
+    CollisionManager::Instance().processPendingCommands();
+
+    // Verify positions updated
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        Vector2D expectedPos(400.0f + i * 8.0f, 400.0f);
+        AABB queryArea(expectedPos.getX(), expectedPos.getY(), 12.0f, 12.0f);
+        std::vector<EntityID> results;
+        CollisionManager::Instance().queryArea(queryArea, results);
+        BOOST_CHECK(std::find(results.begin(), results.end(), entityIds[i]) != results.end());
+    }
+
+    // Cleanup
+    for (auto id : entityIds) {
+        CollisionManager::Instance().removeCollisionBodySOA(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestKinematicBatchPerformance)
+{
+    // Initialize collision manager
+    CollisionManager::Instance().init();
+
+    const int NUM_ENTITIES = 500;
+    std::vector<EntityID> entityIds;
+
+    // Create many kinematic bodies
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        EntityID id = static_cast<EntityID>(4000 + i);
+        entityIds.push_back(id);
+        Vector2D pos(static_cast<float>(i % 50) * 20.0f, static_cast<float>(i / 50) * 20.0f);
+        Vector2D halfSize(8.0f, 8.0f);
+
+        CollisionManager::Instance().addCollisionBodySOA(
+            id, pos, halfSize,
+            BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        );
+    }
+    CollisionManager::Instance().processPendingCommands();
+
+    // Build batch updates
+    std::vector<CollisionManager::KinematicUpdate> updates;
+    updates.reserve(NUM_ENTITIES);
+    for (int i = 0; i < NUM_ENTITIES; ++i) {
+        Vector2D newPos(static_cast<float>(i % 50) * 20.0f + 5.0f, static_cast<float>(i / 50) * 20.0f + 5.0f);
+        updates.emplace_back(entityIds[i], newPos);
+    }
+
+    // Measure batch update performance
+    auto start = std::chrono::high_resolution_clock::now();
+    for (int iter = 0; iter < 100; ++iter) {
+        CollisionManager::Instance().updateKinematicBatchSOA(updates);
+    }
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    BOOST_TEST_MESSAGE("Batch update of " << NUM_ENTITIES << " entities x 100 iterations: "
+                      << duration.count() << " μs ("
+                      << (duration.count() / 100) << " μs per batch)");
+
+    // Performance requirement: batch update should be fast
+    BOOST_CHECK_LT(duration.count() / 100, 5000); // Less than 5ms per batch of 500 entities
+
+    // Cleanup
+    for (auto id : entityIds) {
+        CollisionManager::Instance().removeCollisionBodySOA(id);
+    }
+    CollisionManager::Instance().clean();
+}
+
+BOOST_AUTO_TEST_SUITE_END()
