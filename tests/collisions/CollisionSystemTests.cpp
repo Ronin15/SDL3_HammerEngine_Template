@@ -16,6 +16,7 @@
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
 #include <vector>
 #include <chrono>
@@ -1138,11 +1139,17 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     
     // The EventManager processes events in batches with a limit (base 32 + budget allocation).
+    // Formula: maxToProcess = 32 + (budget.eventAllocated * 32)
     // This is expected behavior for performance reasons - verify the batching works correctly.
+    size_t expectedBatchSize = 64; // base when ThreadSystem doesn't exist
+    if (HammerEngine::ThreadSystem::Exists()) {
+        const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+        expectedBatchSize = 32 + (budget.eventAllocated * 32);
+    }
     int actualEvents = eventCount.load();
-    const int expectedBatchSize = 32; // EventManager default batch limit
-    BOOST_CHECK_EQUAL(actualEvents, expectedBatchSize);
-    BOOST_TEST_MESSAGE("Event batching performance: " << actualEvents << "/" << numBodies << " events processed in first batch");
+    BOOST_CHECK_EQUAL(actualEvents, static_cast<int>(expectedBatchSize));
+    BOOST_TEST_MESSAGE("Event batching performance: " << actualEvents << "/" << numBodies
+                      << " events processed in first batch (expected: " << expectedBatchSize << ")");
     
     // Performance check: shouldn't take more than 20ms total (generous for test environment)
     BOOST_CHECK_LT(duration.count(), 20000); // 20ms = 20,000 microseconds
