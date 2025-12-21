@@ -34,6 +34,7 @@ GameTime (data source)
 |------------|---------|-------------------|----------------|
 | [WeatherController](WeatherController.md) | Track current weather | TimeEvent (WeatherCheck) | `getCurrentWeather()`, `getCurrentWeatherString()` |
 | [DayNightController](DayNightController.md) | Track time periods, provide visuals | TimeEvent (HourChanged) | `getCurrentPeriod()`, `getCurrentVisuals()` |
+| [CombatController](CombatController.md) | Handles all combat logic, including hit detection, damage, and status effects. | CombatEvent | `getCombatantState()`, `getCombatLog()` |
 
 ### ControllerBase
 

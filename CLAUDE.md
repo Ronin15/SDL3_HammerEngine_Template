@@ -51,11 +51,11 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 **Core**: GameEngine (fixed timestep, central coordinator) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
 
-**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed) | EventManager (thread-safe, batch processing) | CollisionManager (spatial hash, pathfinding integration) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
+**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed, with behaviors like Attack, Flee, Follow, Guard, Chase, Idle, Patrol) | GameTimeManager (coordinates with TimeController, DayNightController, and WeatherController for dynamic world conditions) | EventManager (thread-safe, batch processing) | CollisionManager (spatial hash, pathfinding integration) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
 
 **Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 
-**Controllers**: State-scoped helpers that control specific system behaviors. Unlike Managers (global lifecycle, own data), Controllers subscribe per-GameState and contain game logic without owning data. Organized by system: `controllers/world/` (TimeController, WeatherController), future: `controllers/ai/`, `controllers/combat/`, etc.
+**Controllers**: State-scoped helpers that control specific system behaviors. Unlike Managers (global lifecycle, own data), Controllers subscribe per-GameState and contain game logic without owning data. Organized by system: `controllers/world/` (TimeController, WeatherController), `controllers/combat/` (CombatController), etc.
 
 ```
 src/{core, managers, controllers, gameStates, entities, events, ai, collisions, utils, world}

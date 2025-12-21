@@ -22,10 +22,10 @@ The engine is built around a set of singleton managers that handle different asp
 
 *   **`GameEngine`:** The core of the engine, responsible for initializing the engine, running the game loop, and managing the other managers.
 *   **`ThreadSystem`:** A sophisticated, header-only thread management system that provides a thread pool, prioritized task queue, and batch enqueueing for performance.
-*   **`AIManager`:** A high-performance, data-oriented AI manager that uses a structure of arrays (SoA) for entity data, batch processing, and SIMD optimizations.
+*   **`AIManager`:** A high-performance, data-oriented AI manager that uses a structure of arrays (SoA) for entity data, batch processing, and SIMD optimizations, supporting various behaviors like Attack, Flee, Follow, Guard, Chase, Idle, and Patrol.
 *   **`EventManager`:** A robust and feature-rich event management system that uses type-indexed storage, event handlers, and a `WorkerBudget` system for multi-threaded event processing.
-*   **Controllers:** State-scoped helpers that control specific system behaviors. Unlike Managers (global lifecycle, own data), Controllers subscribe per-GameState and contain game logic without owning data.
-*   **Other Managers:** The engine also includes managers for input, textures, sounds, fonts, game states, UI, and more.
+*   **Controllers:** State-scoped helpers that control specific system behaviors. Unlike Managers (global lifecycle, own data), Controllers subscribe per-GameState and contain game logic without owning data, e.g., CombatController for handling in-game combat interactions.
+*   **Other Managers:** The engine also includes managers for input, textures, sounds, fonts, game states, UI, and a comprehensive `GameTimeManager` that works with `DayNightController` and `WeatherController` to simulate dynamic world conditions.
 
 ## Building and Running
 

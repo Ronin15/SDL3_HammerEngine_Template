@@ -44,6 +44,10 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
     Fantasy calendar system with day/night cycles, four seasons, dynamic weather, and temperature simulation. Event-driven controllers for time-based gameplay.
 
+- **Robust Combat System**
+
+    Dedicated `CombatController` handles all combat logic, including hit detection, damage calculation, and status effects. Integrated with entity state machines and event system for dynamic combat scenarios.
+
 - **Smooth Rendering Pipeline**
 
     Lock-free atomic interpolation for entities and camera. Eliminates jitter at any refresh rate with 16-byte aligned atomics (x86-64/ARM64 lock-free).
