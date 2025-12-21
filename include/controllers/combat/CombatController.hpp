@@ -61,9 +61,9 @@ public:
 
     /**
      * @brief Get the currently targeted NPC (for UI display)
-     * @return Raw pointer to targeted NPC, or nullptr if no target
+     * @return Shared pointer to targeted NPC, or nullptr if no target/expired
      */
-    [[nodiscard]] NPC* getTargetedNPC() const;
+    [[nodiscard]] std::shared_ptr<NPC> getTargetedNPC() const;
 
     /**
      * @brief Get remaining time for target display
@@ -104,7 +104,7 @@ private:
     void updateTargetTimer(float deltaTime);
 
     // Target tracking
-    NPC* m_targetedNPC{nullptr};  // Raw ptr, doesn't own
+    std::weak_ptr<NPC> m_targetedNPC;  // Safe weak reference, doesn't extend lifetime
     float m_targetDisplayTimer{0.0f};
 
     // Attack timing

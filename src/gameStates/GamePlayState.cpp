@@ -1139,7 +1139,7 @@ void GamePlayState::updateCombatHUD() {
 
   // Update target frame visibility and content
   if (m_combatController.hasActiveTarget()) {
-    NPC* target = m_combatController.getTargetedNPC();
+    auto target = m_combatController.getTargetedNPC();
     if (target) {
       ui.setComponentVisible("hud_target_panel", true);
       ui.setComponentVisible("hud_target_name", true);
