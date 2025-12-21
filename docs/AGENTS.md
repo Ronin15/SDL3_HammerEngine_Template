@@ -5,7 +5,7 @@ SDL3 HammerEngine development guide for AI agents.
 ## Project Structure
 
 ```
-src/{core, managers, gameStates, entities, events, ai, collisions, utils, world}
+src/{core, managers, controllers, gameStates, entities, events, ai, collisions, utils, world}
 include/       # Headers mirror src/
 tests/         # Boost.Test (68+ executables)
 bin/debug/     # Debug builds & test binaries
@@ -60,7 +60,7 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 **Core**: GameEngine (fixed timestep, single-threaded main loop) | TimestepManager (accumulator-based timing) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
 
-**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed) | EventManager (thread-safe, batch) | CollisionManager (spatial hash, pathfinding) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
+**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed, with dynamic behaviors like Attack, Flee, Follow, Guard, Chase, Idle, Patrol) | GameTimeManager (manages game time, day/night cycles, and weather in coordination with controllers) | EventManager (thread-safe, batch) | CombatController (handles combat logic and interactions) | CollisionManager (spatial hash, pathfinding) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
 
 **Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 

@@ -6,6 +6,7 @@
   - [GameEngine & Core Systems](#gameengine--core-systems)
   - [AI System](#ai-system)
   - [Collision System](#collision-system)
+  - [Combat System](#combat-system)
   - [Event System](#event-system)
   - [Controller System](#controller-system)
   - [UI System](#ui-system)
@@ -46,6 +47,11 @@ High-performance spatial hashing, broadphase queries, and pathfinding integratio
 - **[Collision System](collisions/CollisionSystem.md)** - Spatial hash design, broadphase/narrowphase processing, and debug visualization tooling
 - **[CollisionManager](managers/CollisionManager.md)** - Runtime collision component registration, query utilities, and integration hooks
 
+### Combat System
+Dedicated system for managing in-game combat logic, interactions, and events.
+
+- **[CombatController](controllers/CombatController.md)** - Manages hit detection, damage calculation, status effects, and integrates with entity state machines and the event system.
+
 ### Event System
 Comprehensive event management system with EventManager as the single source of truth for weather events, NPC spawning, scene transitions, and custom events.
 
@@ -63,6 +69,7 @@ State-scoped event handlers that control specific behaviors without owning data.
 - **[TimeController](controllers/TimeController.md)** - Time event logging and status UI
 - **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
 - **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
+- **[CombatController](controllers/CombatController.md)** - Handles combat logic, including hit detection, damage, and status effects.
 
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
