@@ -371,13 +371,9 @@ private:
   // Track last time a task was enqueued for low-activity detection
   std::atomic<std::chrono::steady_clock::time_point> m_lastEnqueueTime{std::chrono::steady_clock::now()};
 
-  // Lock-free check for any tasks using atomic counters
+  // Lock-free check for any tasks using bitmask (O(1) single atomic load)
   bool hasAnyTasksLockFree() const {
-    constexpr int maxPriority = static_cast<int>(TaskPriority::Idle);
-    return std::any_of(m_priorityCounts.begin(), m_priorityCounts.begin() + maxPriority + 1,
-                       [](const auto& counter) {
-                         return counter.count.load(std::memory_order_relaxed) > 0;
-                       });
+    return m_queueBitmask.load(std::memory_order_relaxed) != 0;
   }
 
   // Try to pop a task without blocking
