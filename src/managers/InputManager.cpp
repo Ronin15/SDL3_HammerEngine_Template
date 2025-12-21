@@ -420,9 +420,6 @@ void InputManager::clean() {
 
 void InputManager::closeGamepads() {
   // Close gamepad handles - must be called before SDL_Quit
-  // Pump events first to ensure SDL's internal gamepad state is synchronized
-  SDL_PumpEvents();
-
   size_t count = m_joysticks.size();
   for (auto& gamepad : m_joysticks) {
     if (gamepad) {
