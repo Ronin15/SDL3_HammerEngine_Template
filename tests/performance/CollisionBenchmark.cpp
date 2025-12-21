@@ -14,6 +14,7 @@
 #include "utils/Vector2D.hpp"
 #include "utils/Camera.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "world/WorldData.hpp"
 
 class CollisionBenchmark {
@@ -252,10 +253,14 @@ private:
     BenchmarkResult benchmarkCacheEffectiveness(const std::vector<TestBody>& testBodies) {
         auto& manager = CollisionManager::Instance();
 
-        // Initialize ThreadSystem
+        // Initialize ThreadSystem with auto-detected threads
         static bool threadSystemInitialized = false;
         if (!threadSystemInitialized) {
-            HammerEngine::ThreadSystem::Instance().init(8);
+            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+            // Log WorkerBudget allocations for production-matching verification
+            const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+            std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
+            std::cout << "WorkerBudget: " << budget.totalWorkers << " workers\n";
             threadSystemInitialized = true;
         }
 
@@ -322,7 +327,11 @@ private:
         // Initialize ThreadSystem for threading tests (like other benchmarks)
         static bool threadSystemInitialized = false;
         if (!threadSystemInitialized) {
-            HammerEngine::ThreadSystem::Instance().init(8); // 8 worker threads like PathfinderBenchmark
+            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+            // Log WorkerBudget allocations for production-matching verification
+            const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+            std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
+            std::cout << "WorkerBudget: " << budget.totalWorkers << " workers\n";
             threadSystemInitialized = true;
         }
 

@@ -74,7 +74,7 @@ struct BehaviorTestFixture {
     BehaviorTestFixture() {
         // Initialize ThreadSystem first (required for PathfinderManager)
         if (!HammerEngine::ThreadSystem::Exists()) {
-            HammerEngine::ThreadSystem::Instance().init(4);
+            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
         }
 
         // Initialize managers in proper order for pathfinding support

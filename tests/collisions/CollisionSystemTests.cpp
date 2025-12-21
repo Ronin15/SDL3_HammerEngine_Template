@@ -968,7 +968,7 @@ struct CollisionIntegrationFixture {
     CollisionIntegrationFixture() {
         // Initialize ThreadSystem first (following established pattern)
         if (!HammerEngine::ThreadSystem::Exists()) {
-            HammerEngine::ThreadSystem::Instance().init(4);
+            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
         }
         
         // Initialize EventManager for event testing
@@ -1330,7 +1330,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     // Test spatial partitioning edge cases that could cause problems
     // Initialize ThreadSystem first (following established pattern)
     if (!HammerEngine::ThreadSystem::Exists()) {
-        HammerEngine::ThreadSystem::Instance().init(4);
+        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
     }
 
     CollisionManager::Instance().init();

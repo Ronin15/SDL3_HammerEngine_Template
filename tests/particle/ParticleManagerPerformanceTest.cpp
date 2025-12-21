@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "managers/ParticleManager.hpp"
 #include "utils/Vector2D.hpp"
@@ -21,6 +22,11 @@ struct ParticleManagerPerformanceFixture {
     // Initialize ThreadSystem first (required for batch submissions)
     if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
       HammerEngine::ThreadSystem::Instance().init();
+      // Log WorkerBudget allocations for production-matching verification
+      const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+      std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
+      std::cout << "WorkerBudget: " << budget.totalWorkers << " workers ("
+                << budget.particleAllocated << " particle)\n";
     }
 
     manager = &ParticleManager::Instance();
