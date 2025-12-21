@@ -1321,10 +1321,6 @@ void GameEngine::clean() {
   window_to_destroy.reset();
   GAMEENGINE_INFO("Window destroyed successfully");
 
-  // Close gamepad handles right before SDL_Quit to ensure proper cleanup order
-  GAMEENGINE_INFO("Closing gamepad handles...");
-  InputManager::Instance().closeGamepads();
-
   GAMEENGINE_INFO("Calling SDL_Quit...");
   SDL_Quit();
 

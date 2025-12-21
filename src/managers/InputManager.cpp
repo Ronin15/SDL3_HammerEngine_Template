@@ -398,14 +398,23 @@ void InputManager::clean() {
     return;
   }
 
-  // Don't close gamepads here - closeGamepads() must be called
-  // right before SDL_Quit() for proper cleanup ordering
-  if(m_gamePadInitialized) {
-    // Just clear our data, not the gamepad handles
+  // Close gamepad handles
+  if (m_gamePadInitialized) {
+    size_t count = m_joysticks.size();
+    for (auto& gamepad : m_joysticks) {
+      if (gamepad) {
+        SDL_CloseGamepad(gamepad);
+        gamepad = nullptr;
+      }
+    }
+    m_joysticks.clear();
     m_joystickValues.clear();
     m_buttonStates.clear();
     m_gamePadInitialized = false;
-    INPUT_INFO("Gamepad data cleared (handles preserved for later cleanup)");
+
+    if (count > 0) {
+      INPUT_INFO(std::format("Closed {} gamepad handles", count));
+    }
   } else {
     INPUT_INFO("No gamepads to free");
   }
@@ -416,23 +425,4 @@ void InputManager::clean() {
   // Set shutdown flag
   m_isShutdown = true;
   INPUT_INFO("InputManager resources cleaned");
-}
-
-void InputManager::closeGamepads() {
-  // Close gamepad handles - must be called before SDL_Quit
-  size_t count = m_joysticks.size();
-  for (auto& gamepad : m_joysticks) {
-    if (gamepad) {
-      SDL_CloseGamepad(gamepad);
-      gamepad = nullptr;
-    }
-  }
-  m_joysticks.clear();
-
-  // Don't call SDL_QuitSubSystem - SDL_Quit() handles subsystem cleanup
-  // Gamepad was initialized with SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)
-
-  if (count > 0) {
-    INPUT_INFO(std::format("Closed {} gamepad handles", count));
-  }
 }
