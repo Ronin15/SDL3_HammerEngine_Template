@@ -455,16 +455,20 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     if (!inBounds(sx_raw, sy_raw)) {
         PATHFIND_ERROR(std::format("findPath: INVALID_START - grid coords ({},{}) out of bounds (0,0) to ({},{})",
                        sx_raw, sy_raw, m_w-1, m_h-1));
+#ifndef NDEBUG
         m_stats.totalRequests++;
         m_stats.invalidStarts++;
+#endif
         // Invalid start warnings removed - covered in PathfinderManager status reporting
         return PathfindingResult::INVALID_START;
     }
     if (!inBounds(gx_raw, gy_raw)) {
         PATHFIND_ERROR(std::format("findPath: INVALID_GOAL - grid coords ({},{}) out of bounds (0,0) to ({},{})",
                        gx_raw, gy_raw, m_w-1, m_h-1));
+#ifndef NDEBUG
         m_stats.totalRequests++;
         m_stats.invalidGoals++;
+#endif
         // Invalid goal warnings removed - covered in PathfinderManager status reporting
         return PathfindingResult::INVALID_GOAL;
     }
@@ -564,7 +568,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         // TIMEOUT means needs more exploration, so continue to fine-grid pathfinding
         if (coarseResult == PathfindingResult::NO_PATH_FOUND) {
             PATHFIND_DEBUG("Early detection: coarse grid indicates unreachable path (disconnected regions)");
+#ifndef NDEBUG
             m_stats.totalRequests++;
+#endif
             return PathfindingResult::NO_PATH_FOUND;
         }
     }
@@ -572,9 +578,11 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     // Early success: if start equals goal after nudging
     if (sx == gx && sy == gy) {
         outPath.push_back(gridToWorld(gx, gy));
+#ifndef NDEBUG
         m_stats.totalRequests++;
         m_stats.successfulPaths++;
         m_stats.totalIterations += 1; // Minimal iteration count
+#endif
         return PathfindingResult::SUCCESS;
     }
 
@@ -585,9 +593,11 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         // Direct path available - create simple 2-point path
         outPath.push_back(worldStart);
         outPath.push_back(worldGoal);
+#ifndef NDEBUG
         m_stats.totalRequests++;
         m_stats.successfulPaths++;
         m_stats.totalIterations += 2; // Minimal iteration count for line-of-sight
+#endif
         return PathfindingResult::SUCCESS;
     }
 
@@ -693,14 +703,16 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
             
             // Apply path smoothing to reduce unnecessary waypoints
             smoothPath(outPath);
-            
+
+#ifndef NDEBUG
             // Update statistics instead of individual logging
             m_stats.totalRequests++;
             m_stats.successfulPaths++;
             m_stats.totalIterations += iterations;
             uint64_t totalPathLength = m_stats.avgPathLength * (m_stats.successfulPaths - 1) + outPath.size();
             m_stats.avgPathLength = static_cast<uint32_t>(totalPathLength / m_stats.successfulPaths);
-            
+#endif
+
             return PathfindingResult::SUCCESS;
         }
         // Cache current node gScore for reuse across neighbors
@@ -745,10 +757,14 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     bool exhaustedQueue = open.empty();
     bool hitIterationCap = !exhaustedQueue; // loop ended due to iteration count
 
+#ifndef NDEBUG
     m_stats.totalRequests++;
     m_stats.totalIterations += iterations;
     if (hitIterationCap) {
         m_stats.timeouts++;
+    }
+#endif
+    if (hitIterationCap) {
         return PathfindingResult::TIMEOUT;
     }
     // No path found within explored region
