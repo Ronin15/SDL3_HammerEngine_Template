@@ -603,8 +603,8 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
 
     BOOST_TEST_MESSAGE("Available workers: " << availableWorkers);
 
-    // Calculate expected WorkerBudget allocation
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    // Get WorkerBudget from manager
+    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
 
     BOOST_TEST_MESSAGE("Pathfinding allocated workers: " << budget.pathfindingAllocated);
     BOOST_CHECK_GT(budget.pathfindingAllocated, 0); // Should have at least 1 worker allocated

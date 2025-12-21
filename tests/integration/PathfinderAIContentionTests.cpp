@@ -57,8 +57,8 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetAllocation) {
 
     BOOST_TEST_MESSAGE("Available workers: " << availableWorkers);
 
-    // Calculate WorkerBudget
-    WorkerBudget budget = calculateWorkerBudget(availableWorkers);
+    // Get WorkerBudget from manager
+    const auto& budget = WorkerBudgetManager::Instance().getBudget();
 
     BOOST_TEST_MESSAGE("Worker allocation:");
     BOOST_TEST_MESSAGE("  AI: " << budget.aiAllocated << " (~44%)");

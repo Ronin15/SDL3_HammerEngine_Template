@@ -480,13 +480,11 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
     }
 
     // Test concurrent event generation using WorkerBudget (production config)
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-    size_t eventWorkers = budget.eventAllocated;
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
     // Use the same logic as production: optimal workers for 4000 events
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkers, 4000, 100);
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Event, 4000, 100);
     int numThreads = static_cast<int>(std::max(static_cast<size_t>(1), optimalWorkerCount));
 
     // FIXED: Keep total at 4000 events, divide by thread count
