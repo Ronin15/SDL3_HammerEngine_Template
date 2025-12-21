@@ -355,12 +355,6 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
   return created;
 }
 
-size_t CollisionManager::createTriggersForObstacles() {
-  // ROCK and TREE movement penalties are now handled by pathfinding system
-  // This avoids creating thousands of trigger bodies that cause performance
-  // issues
-  return 0;
-}
 
 size_t CollisionManager::createStaticObstacleBodies() {
   const WorldManager &wm = WorldManager::Instance();
@@ -744,14 +738,11 @@ void CollisionManager::rebuildStaticFromWorld() {
   size_t solidBodies = createStaticObstacleBodies();
   size_t waterTriggers =
       createTriggersForWaterTiles(HammerEngine::TriggerTag::Water);
-  size_t obstacleTriggers =
-      createTriggersForObstacles(); // Always returns 0 - obstacle penalties
-                                    // handled by pathfinding
 
   if (solidBodies > 0 || waterTriggers > 0) {
     COLLISION_INFO(std::format(
-        "World colliders built: solid={}, water triggers={}, obstacle triggers={}",
-        solidBodies, waterTriggers, obstacleTriggers));
+        "World colliders built: solid={}, water triggers={}",
+        solidBodies, waterTriggers));
 
     // CRITICAL: Process pending commands BEFORE rebuilding spatial hash
     // The createStatic*() functions above add bodies via command queue,

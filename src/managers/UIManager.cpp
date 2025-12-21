@@ -2427,8 +2427,8 @@ void regenerateListTextures(const std::shared_ptr<UIComponent>& component, SDL_R
     if (needsFullRegeneration) {
         component->m_listItemTextures.clear();
         component->m_listItemTextures.resize(std::min(component->m_listItems.size(), MAX_CACHED_TEXTURES));
-    } else {
-        // Resize to match current list size
+    } else if (component->m_listItemTextures.size() != component->m_listItems.size()) {
+        // Resize only if the actual number of items changed
         component->m_listItemTextures.resize(component->m_listItems.size());
     }
 
