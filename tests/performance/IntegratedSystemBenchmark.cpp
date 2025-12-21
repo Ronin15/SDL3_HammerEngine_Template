@@ -275,7 +275,7 @@ namespace {
 
         void initializeAllManagers() {
             // Initialize in dependency order (matching GameEngine::init pattern)
-            HammerEngine::ThreadSystem::Instance().init(8);
+            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
             EventManager::Instance().init();
             PathfinderManager::Instance().init();

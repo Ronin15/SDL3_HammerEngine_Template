@@ -22,11 +22,10 @@ BOOST_AUTO_TEST_SUITE(WorldManagerEventIntegrationTests)
 
 // New: Verify WorldLoadedEvent payload matches WorldManager dimensions
 BOOST_AUTO_TEST_CASE(TestWorldLoadedEventPayload) {
-    // Initialize ThreadSystem to ensure async tasks can execute
+    // Initialize ThreadSystem to ensure async tasks can execute (auto-detect threads)
     if (!HammerEngine::ThreadSystem::Exists()) {
-        HammerEngine::ThreadSystem::Instance().init();
+        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
     }
-    HammerEngine::ThreadSystem::Instance().init(4); // Ensure we have enough threads
     
     // Init managers
     BOOST_REQUIRE(WorldManager::Instance().init());

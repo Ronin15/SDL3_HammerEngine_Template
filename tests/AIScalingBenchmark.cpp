@@ -23,6 +23,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 
 // Production AI behaviors for integrated testing
 #include "ai/behaviors/WanderBehavior.hpp"
@@ -484,11 +485,12 @@ struct AIScalingFixture {
                   << numUpdates << " updates" << std::endl;
         std::cout << "  System: " << systemThreads << " hardware threads available" << std::endl;
         if (willUseThreading) {
-            // Calculate WorkerBudget allocation (mimicking the actual calculation)
-            size_t workers = (systemThreads > 0) ? systemThreads - 1 : 0;
-            size_t aiWorkers = static_cast<size_t>(workers * 0.6); // 60% allocation
-            std::cout << "  WorkerBudget: " << workers << " total workers, "
-                      << aiWorkers << " allocated to AI (60%)" << std::endl;
+            // Use real WorkerBudgetManager for production-matching behavior
+            const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+            std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers, "
+                      << budget.aiAllocated << " allocated to AI ("
+                      << (budget.totalWorkers > 0 ? (budget.aiAllocated * 100 / budget.totalWorkers) : 0)
+                      << "%)" << std::endl;
         }
 
         // Create behaviors with varying complexity using valid behavior names
@@ -769,10 +771,12 @@ struct AIScalingFixture {
                   << numUpdates << " updates" << std::endl;
         std::cout << "  System: " << systemThreads << " hardware threads available" << std::endl;
         if (willUseThreading) {
-            size_t workers = (systemThreads > 0) ? systemThreads - 1 : 0;
-            size_t aiWorkers = static_cast<size_t>(workers * 0.6);
-            std::cout << "  WorkerBudget: " << workers << " total workers, "
-                      << aiWorkers << " allocated to AI (60%)" << std::endl;
+            // Use real WorkerBudgetManager for production-matching behavior
+            const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+            std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers, "
+                      << budget.aiAllocated << " allocated to AI ("
+                      << (budget.totalWorkers > 0 ? (budget.aiAllocated * 100 / budget.totalWorkers) : 0)
+                      << "%)" << std::endl;
         }
 
         // Create REAL production behaviors (limit to 5 available types)
@@ -1127,11 +1131,11 @@ BOOST_AUTO_TEST_CASE(TestSyntheticPerformance) {
     std::cout << "\n===== SYNTHETIC PERFORMANCE TESTING (Isolated AIManager) =====" << std::endl;
     std::cout << "Testing WorkerBudget automatic threading behavior at various entity counts using BenchmarkBehavior" << std::endl;
     std::cout << "NOTE: Iterations scaled inversely with entity count to ensure ~100ms measurement duration" << std::endl;
+    // Use real WorkerBudgetManager for production-matching behavior
+    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     unsigned int systemThreads = std::thread::hardware_concurrency();
-    size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-    size_t aiWorkers = static_cast<size_t>(totalWorkers * 0.6);
     std::cout << "System Configuration: " << systemThreads << " hardware threads, "
-              << totalWorkers << " workers (" << aiWorkers << " for AI)" << std::endl;
+              << budget.totalWorkers << " workers (" << budget.aiAllocated << " for AI)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
     // 150 entities × 667 iterations = ~100K entity-updates for reliable measurement
@@ -1479,11 +1483,11 @@ BOOST_AUTO_TEST_CASE(TestIntegratedPerformance) {
     std::cout << "Testing real production behaviors: WanderBehavior, ChaseBehavior, PatrolBehavior, GuardBehavior, FollowBehavior" << std::endl;
     std::cout << "These behaviors use PathfinderManager and CollisionManager for realistic AI processing" << std::endl;
     std::cout << "NOTE: Iterations scaled inversely with entity count to ensure ~100ms measurement duration" << std::endl;
+    // Use real WorkerBudgetManager for production-matching behavior
+    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     unsigned int systemThreads = std::thread::hardware_concurrency();
-    size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-    size_t aiWorkers = static_cast<size_t>(totalWorkers * 0.6);
     std::cout << "System Configuration: " << systemThreads << " hardware threads, "
-              << totalWorkers << " workers (" << aiWorkers << " for AI)" << std::endl;
+              << budget.totalWorkers << " workers (" << budget.aiAllocated << " for AI)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
     // Scaled iterations ensure reliable measurement at low entity counts
