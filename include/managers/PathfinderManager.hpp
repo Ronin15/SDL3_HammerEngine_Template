@@ -61,7 +61,7 @@
 // Forward declarations
 namespace HammerEngine {
     class PathfindingGrid;
-    enum class PathfindingResult;
+    enum class PathfindingResult : uint8_t;
 }
 
 // Do not include internal AI headers here; keep public API stable and minimal.

@@ -32,7 +32,7 @@ public:
                 const Vector2D& position, 
                 int quantity = 1);
     
-    virtual ~DroppedItem() override = default;
+    ~DroppedItem() override = default;
 
     // Entity interface implementation
     void update(float deltaTime) override;

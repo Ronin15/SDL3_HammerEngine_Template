@@ -18,7 +18,7 @@
 
 class WanderBehavior : public AIBehavior {
 public:
-  enum class WanderMode {
+  enum class WanderMode : uint8_t {
     SMALL_AREA,  // Small wander area (around current position)
     MEDIUM_AREA, // Medium wander area (room/building sized)
     LARGE_AREA,  // Large wander area (village/district sized)

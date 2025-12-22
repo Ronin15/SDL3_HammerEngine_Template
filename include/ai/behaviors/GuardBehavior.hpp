@@ -16,7 +16,7 @@
 
 class GuardBehavior : public AIBehavior {
 public:
-  enum class GuardMode {
+  enum class GuardMode : uint8_t {
     STATIC_GUARD,  // Stay at assigned position
     PATROL_GUARD,  // Patrol between waypoints
     AREA_GUARD,    // Guard a specific area
@@ -24,7 +24,7 @@ public:
     ALERT_GUARD    // High alert state (faster response)
   };
 
-  enum class AlertLevel {
+  enum class AlertLevel : uint8_t {
     CALM = 0,          // Normal state, not alert
     SUSPICIOUS = 1,    // Something might be wrong
     INVESTIGATING = 2, // Actively looking for threats

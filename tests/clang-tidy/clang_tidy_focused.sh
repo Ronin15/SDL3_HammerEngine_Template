@@ -80,58 +80,74 @@ if [ -f "$SUPPRESSIONS_FILE" ] && [ -n "$PROJECT_WARNINGS" ]; then
     done < "$SUPPRESSIONS_FILE"
 fi
 
-# Count by category (handle empty strings properly)
-if [ -z "$PROJECT_WARNINGS" ]; then
-    SAFETY_COUNT=0
-    NARROWING_COUNT=0
-    CONST_COUNT=0
-    UNUSED_COUNT=0
-    STYLE_COUNT=0
-    PERF_COUNT=0
-else
-    SAFETY_COUNT=$(echo "$PROJECT_WARNINGS" | grep -c 'bugprone-\|clang-analyzer-' || echo 0)
-    NARROWING_COUNT=$(echo "$PROJECT_WARNINGS" | grep -c 'narrowing-conversion' || echo 0)
-    CONST_COUNT=$(echo "$PROJECT_WARNINGS" | grep -c 'misc-const-correctness' || echo 0)
-    UNUSED_COUNT=$(echo "$PROJECT_WARNINGS" | grep -c 'misc-unused-parameters' || echo 0)
-    STYLE_COUNT=$(echo "$PROJECT_WARNINGS" | grep -c 'readability-' || echo 0)
-    PERF_COUNT=$(echo "$PROJECT_WARNINGS" | grep -c 'performance-' || true)
-    # Ensure counts are integers
-    SAFETY_COUNT=${SAFETY_COUNT:-0}
-    NARROWING_COUNT=${NARROWING_COUNT:-0}
-    CONST_COUNT=${CONST_COUNT:-0}
-    UNUSED_COUNT=${UNUSED_COUNT:-0}
-    STYLE_COUNT=${STYLE_COUNT:-0}
-    PERF_COUNT=${PERF_COUNT:-0}
+# Count suppressions applied
+SUPPRESSION_COUNT=0
+if [ -f "$SUPPRESSIONS_FILE" ]; then
+    SUPPRESSION_COUNT=$(grep -v '^#' "$SUPPRESSIONS_FILE" | grep -v '^$' | wc -l | tr -d ' ')
 fi
 
-# Get critical issues (safety-related)
-CRITICAL=$(echo "$PROJECT_WARNINGS" | grep -E 'bugprone-|clang-analyzer-' | grep -v 'narrowing-conversion' 2>/dev/null || true)
-NARROWING=$(echo "$PROJECT_WARNINGS" | grep 'narrowing-conversion' 2>/dev/null || true)
+# Count by severity category (handle empty strings properly)
+if [ -z "$PROJECT_WARNINGS" ]; then
+    CRITICAL_COUNT=0
+    HIGH_COUNT=0
+    MEDIUM_COUNT=0
+    LOW_COUNT=0
+else
+    # Critical: bugs that crash/corrupt (excluding narrowing which is common in games)
+    CRITICAL_COUNT=$(echo "$PROJECT_WARNINGS" | grep -cE 'bugprone-infinite-loop|bugprone-use-after-move|bugprone-null-dereference|clang-analyzer-' 2>/dev/null | tr -d '\n' || echo 0)
 
-echo -e "${BLUE}=== Summary ===${NC}"
+    # High: performance and safety (macro issues, override, perf)
+    HIGH_COUNT=$(echo "$PROJECT_WARNINGS" | grep -cE 'performance-|modernize-use-override|bugprone-macro' 2>/dev/null | tr -d '\n' || echo 0)
+
+    # Medium: code quality (const, unused, naming)
+    MEDIUM_COUNT=$(echo "$PROJECT_WARNINGS" | grep -cE 'misc-const-correctness|misc-unused-parameters|readability-make-member-function-const' 2>/dev/null | tr -d '\n' || echo 0)
+
+    # Low: style (narrowing, braces, identifiers)
+    LOW_COUNT=$(echo "$PROJECT_WARNINGS" | grep -cE 'narrowing-conversion|readability-braces|readability-identifier' 2>/dev/null | tr -d '\n' || echo 0)
+
+    # Ensure counts are integers (handle empty or non-numeric)
+    [[ "$CRITICAL_COUNT" =~ ^[0-9]+$ ]] || CRITICAL_COUNT=0
+    [[ "$HIGH_COUNT" =~ ^[0-9]+$ ]] || HIGH_COUNT=0
+    [[ "$MEDIUM_COUNT" =~ ^[0-9]+$ ]] || MEDIUM_COUNT=0
+    [[ "$LOW_COUNT" =~ ^[0-9]+$ ]] || LOW_COUNT=0
+fi
+
+# Get issues by severity
+CRITICAL_ISSUES=$(echo "$PROJECT_WARNINGS" | grep -E 'bugprone-infinite-loop|bugprone-use-after-move|bugprone-null-dereference|clang-analyzer-' 2>/dev/null || true)
+HIGH_ISSUES=$(echo "$PROJECT_WARNINGS" | grep -E 'performance-|modernize-use-override|bugprone-macro' 2>/dev/null || true)
+
+echo -e "${BLUE}=== Summary by Severity ===${NC}"
 echo ""
-echo -e "${RED}Safety Issues:${NC}"
-echo "  Bugprone/Analyzer: $SAFETY_COUNT"
-echo "  Narrowing conversions: $NARROWING_COUNT"
-echo ""
-echo -e "${YELLOW}Code Quality:${NC}"
-echo "  Const correctness: $CONST_COUNT"
-echo "  Unused parameters: $UNUSED_COUNT"
-echo "  Style issues: $STYLE_COUNT"
-echo "  Performance: $PERF_COUNT"
+echo -e "${RED}  CRITICAL (bugs):${NC}    $CRITICAL_COUNT"
+echo -e "${YELLOW}  HIGH (perf/safety):${NC} $HIGH_COUNT"
+echo -e "${CYAN}  MEDIUM (quality):${NC}   $MEDIUM_COUNT"
+echo -e "  LOW (style):        $LOW_COUNT"
 echo ""
 
-# Show critical safety issues (excluding narrowing which is usually intentional in game code)
-if [ -n "$CRITICAL" ]; then
-    echo -e "${RED}=== Critical Safety Issues ===${NC}"
-    echo "$CRITICAL" | head -50
+# Show suppressions applied
+if [ "$SUPPRESSION_COUNT" -gt 0 ]; then
+    echo -e "${GREEN}Suppressions applied: $SUPPRESSION_COUNT from clang_tidy_suppressions.txt${NC}"
     echo ""
 fi
 
-# Show narrowing conversions (common but worth reviewing)
-if [ "$NARROWING_COUNT" -gt 0 ]; then
-    echo -e "${YELLOW}=== Narrowing Conversions (top 20) ===${NC}"
-    echo "$NARROWING" | head -20
+# Show file-by-file breakdown
+if [ -n "$PROJECT_WARNINGS" ]; then
+    echo -e "${BLUE}=== Files with Most Issues (top 10) ===${NC}"
+    echo "$PROJECT_WARNINGS" | sed 's/:.*//;s|.*/||' | sort | uniq -c | sort -rn | head -10
+    echo ""
+fi
+
+# Show critical issues first
+if [ -n "$CRITICAL_ISSUES" ]; then
+    echo -e "${RED}=== CRITICAL Issues (action required) ===${NC}"
+    echo "$CRITICAL_ISSUES" | head -30
+    echo ""
+fi
+
+# Show high priority issues
+if [ -n "$HIGH_ISSUES" ]; then
+    echo -e "${YELLOW}=== HIGH Priority Issues (recommended fixes) ===${NC}"
+    echo "$HIGH_ISSUES" | head -30
     echo ""
 fi
 
@@ -139,11 +155,14 @@ fi
 rm -f "$TEMP_OUTPUT"
 
 # Final status
-TOTAL_SAFETY=$((SAFETY_COUNT))
-if [ "$TOTAL_SAFETY" -eq 0 ]; then
-    echo -e "${GREEN}✓ No critical safety issues found!${NC}"
+TOTAL_ACTIONABLE=$((CRITICAL_COUNT + HIGH_COUNT))
+if [ "$CRITICAL_COUNT" -eq 0 ] && [ "$HIGH_COUNT" -eq 0 ]; then
+    echo -e "${GREEN}✓ No critical or high-priority issues found!${NC}"
     exit 0
+elif [ "$CRITICAL_COUNT" -gt 0 ]; then
+    echo -e "${RED}✗ Found $CRITICAL_COUNT critical issues requiring action${NC}"
+    exit 1
 else
-    echo -e "${YELLOW}⚠ Found $TOTAL_SAFETY safety-related warnings to review${NC}"
+    echo -e "${YELLOW}⚠ Found $HIGH_COUNT high-priority warnings to review${NC}"
     exit 0
 fi

@@ -19,8 +19,8 @@
 
 class NPC : public Entity {
 public:
-  enum class Faction { Friendly, Enemy, Neutral };
-  enum class NPCType { Standard, Pet };
+  enum class Faction : uint8_t { Friendly, Enemy, Neutral };
+  enum class NPCType : uint8_t { Standard, Pet };
 
   NPC(const std::string &textureID, const Vector2D &startPosition,
       int frameWidth, int frameHeight, NPCType type = NPCType::Standard);

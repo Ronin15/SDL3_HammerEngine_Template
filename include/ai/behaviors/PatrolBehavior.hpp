@@ -15,7 +15,7 @@
 
 class PatrolBehavior : public AIBehavior {
 public:
-  enum class PatrolMode {
+  enum class PatrolMode : uint8_t {
     FIXED_WAYPOINTS, // Use predefined waypoints (default behavior)
     RANDOM_AREA,     // Generate random waypoints within a rectangular area
     CIRCULAR_AREA,   // Generate random waypoints within a circular area

@@ -16,7 +16,7 @@
 
 class AttackBehavior : public AIBehavior {
 public:
-  enum class AttackMode {
+  enum class AttackMode : uint8_t {
     MELEE_ATTACK,       // Close combat attacks
     RANGED_ATTACK,      // Projectile-based attacks
     CHARGE_ATTACK,      // Rush towards target
@@ -26,7 +26,7 @@ public:
     BERSERKER_ATTACK    // Aggressive continuous assault
   };
 
-  enum class AttackState {
+  enum class AttackState : uint8_t {
     SEEKING,     // Looking for target
     APPROACHING, // Moving towards target
     POSITIONING, // Getting into attack position

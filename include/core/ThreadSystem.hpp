@@ -34,7 +34,7 @@
 namespace HammerEngine {
 
 // Task priority levels
-enum class TaskPriority {
+enum class TaskPriority : uint8_t {
   Critical = 0, // Must execute ASAP (e.g., rendering, input handling)
   High = 1,     // Important tasks (e.g., physics, animation)
   Normal = 2,   // Default priority for most tasks
