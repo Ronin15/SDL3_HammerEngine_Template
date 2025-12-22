@@ -1494,11 +1494,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         pos = clamped; // Update pos for batch accumulation
 
-        // SYNC: Update cached position so queries always have current data
-        // Safe: each batch processes non-overlapping indices (no race condition)
-        m_storage.hotData[i].position = pos;
-        m_storage.hotData[i].distanceSquared = hotData.distanceSquared;
-
         // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
         collisionUpdates.emplace_back(entity->getID(), pos, vel);
 
