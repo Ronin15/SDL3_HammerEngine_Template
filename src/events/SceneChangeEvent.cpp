@@ -129,9 +129,8 @@ void SceneChangeEvent::execute() {
     EVENT_INFO(std::format("Changing scene to: {} using transition: {} (duration: {}s)", m_targetSceneID, static_cast<int>(m_transitionType), m_transitionParams.duration));
 
     // Play transition sound if enabled
-    if (m_transitionParams.playSound && !m_transitionParams.soundEffect.empty()) {
-        EVENT_INFO(std::format("Playing transition sound: {} at volume: {}", m_transitionParams.soundEffect, m_transitionParams.soundVolume));
-    }
+    EVENT_INFO_IF(m_transitionParams.playSound && !m_transitionParams.soundEffect.empty(),
+        std::format("Playing transition sound: {} at volume: {}", m_transitionParams.soundEffect, m_transitionParams.soundVolume));
 
     // In a real implementation, this would trigger the actual scene change
     // in the game engine, possibly via the GameStateManager

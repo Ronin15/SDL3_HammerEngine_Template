@@ -297,9 +297,8 @@ void Player::initializeInventory() {
   }
   // Note: mana_potion doesn't exist in default resources
 
-  if (m_inventory) {
-    PLAYER_DEBUG(std::format("Player inventory initialized with {} slots", m_inventory->getMaxSlots()));
-  }
+  PLAYER_DEBUG_IF(m_inventory,
+      std::format("Player inventory initialized with {} slots", m_inventory->getMaxSlots()));
 }
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,

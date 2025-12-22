@@ -238,9 +238,7 @@ void AIManager::prepareForStateTransition() {
       }
     }
 
-    if (cleanedCount > 0) {
-      AI_INFO(std::format("Cleaned {} AI behaviors", cleanedCount));
-    }
+    AI_INFO_IF(cleanedCount > 0, std::format("Cleaned {} AI behaviors", cleanedCount));
 
     // Clear all storage completely
     m_storage.hotData.clear();

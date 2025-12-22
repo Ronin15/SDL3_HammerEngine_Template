@@ -695,10 +695,9 @@ void ResourceTemplateManager::createDefaultResources() {
     bool materialsLoaded =
         loadResourcesFromJson("res/data/materials_and_currency.json");
 
-    if (!itemsLoaded || !materialsLoaded) {
-      RESOURCE_WARN("ResourceTemplateManager::createDefaultResources - Some "
-                    "resource files failed to load");
-    }
+    RESOURCE_WARN_IF(!itemsLoaded || !materialsLoaded,
+        "ResourceTemplateManager::createDefaultResources - Some "
+        "resource files failed to load");
 
     RESOURCE_INFO("ResourceTemplateManager::createDefaultResources - Default "
                   "resources loaded from JSON files");

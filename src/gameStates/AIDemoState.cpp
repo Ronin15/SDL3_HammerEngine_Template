@@ -742,9 +742,8 @@ void AIDemoState::createNPCBatch(int count) {
       }
     }
 
-    if (created < count) {
-      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
-    }
+    GAMESTATE_WARN_IF(created < count,
+        std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
 
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("Exception in createNPCBatch(): {}", e.what()));
@@ -828,9 +827,8 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
       }
     }
 
-    if (created < count) {
-      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
-    }
+    GAMESTATE_WARN_IF(created < count,
+        std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
 
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));

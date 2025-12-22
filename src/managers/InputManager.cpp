@@ -309,16 +309,14 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
 
   // Process left trigger (L2/LT)
   if (event.gaxis.axis == 4) {
-    if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
-    }
+    INPUT_DEBUG_IF(event.gaxis.value > m_joystickDeadZone,
+        std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
   }
 
   // Process right trigger (R2/RT)
   if (event.gaxis.axis == 5) {
-    if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
-    }
+    INPUT_DEBUG_IF(event.gaxis.value > m_joystickDeadZone,
+        std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
   }
 }
 
