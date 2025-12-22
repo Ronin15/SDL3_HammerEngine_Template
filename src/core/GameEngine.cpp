@@ -210,12 +210,14 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
 
   // Log which renderer backend SDL3 actually selected
+#ifdef DEBUG
   auto rendererName = SDL_GetRendererName(mp_renderer.get());
   if (rendererName) {
     GAMEENGINE_INFO(std::format("SDL3 selected renderer backend: {}", rendererName));
   } else {
     GAMEENGINE_WARN("Could not determine selected renderer backend");
   }
+#endif
 
   GAMEENGINE_DEBUG("Rendering system online");
 
@@ -239,12 +241,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
+#ifdef DEBUG
   // Log detected platform
   if (m_isWayland) {
     GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
     GAMEENGINE_INFO(std::format("Platform detected: {}", videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
   }
+#endif
 
   // Load VSync preference from SettingsManager (defaults to enabled)
   auto& settings = HammerEngine::SettingsManager::Instance();
@@ -254,10 +258,9 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Attempt to set VSync based on user preference
   bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
 
-  if (!vsyncSetSuccessfully) {
-    GAMEENGINE_WARN(std::format("Failed to {} VSync: {}",
-                                vsyncRequested ? "enable" : "disable", SDL_GetError()));
-  }
+  GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
+      std::format("Failed to {} VSync: {}",
+                  vsyncRequested ? "enable" : "disable", SDL_GetError()));
 
   // Verify VSync state and update software frame limiting flag
   // verifyVSyncState() updates m_usingSoftwareFrameLimiting as a side effect
@@ -265,6 +268,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     verifyVSyncState(vsyncRequested);
   }
 
+#ifdef DEBUG
   // Log frame timing mode
   if (m_usingSoftwareFrameLimiting) {
     if (vsyncRequested) {
@@ -275,6 +279,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   } else {
     GAMEENGINE_INFO("Using hardware VSync for frame timing");
   }
+#endif
 
   // Create TimestepManager with 60 FPS target and fixed timestep
   constexpr float TARGET_FPS = 60.0f;
@@ -1365,6 +1370,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   }
 
   // Log frame timing mode
+#ifdef DEBUG
   if (m_usingSoftwareFrameLimiting && enable) {
     GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
   } else if (!m_usingSoftwareFrameLimiting) {
@@ -1372,6 +1378,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   } else {
     GAMEENGINE_INFO("VSync disabled, using software frame limiting");
   }
+#endif
 
   // Save VSync setting to SettingsManager for persistence
   auto& settings = HammerEngine::SettingsManager::Instance();
@@ -1485,11 +1492,13 @@ void GameEngine::setGlobalPause(bool paused) {
   // Pause GameTime Manager
   GameTimeManager::Instance().setGlobalPause(paused);
 
+#ifdef DEBUG
   if (paused) {
     GAMEENGINE_INFO("Game globally paused - all managers idle");
   } else {
     GAMEENGINE_INFO("Game globally resumed");
   }
+#endif
 }
 
 bool GameEngine::isGloballyPaused() const {
@@ -1518,19 +1527,23 @@ bool GameEngine::verifyVSyncState(bool requested) {
     if (requested) {
       // When enabling, verify it's actually on
       vsyncVerified = (vsyncState > 0);
+#ifdef DEBUG
       if (vsyncVerified) {
         GAMEENGINE_INFO(std::format("VSync enabled and verified (mode: {})", vsyncState));
       } else {
         GAMEENGINE_WARN(std::format("VSync set but verification failed (reported mode: {})", vsyncState));
       }
+#endif
     } else {
       // When disabling, verify it's actually off
       vsyncVerified = (vsyncState == 0);
+#ifdef DEBUG
       if (vsyncVerified) {
         GAMEENGINE_INFO("VSync disabled and verified");
       } else {
         GAMEENGINE_WARN(std::format("VSync disable verification failed (reported mode: {})", vsyncState));
       }
+#endif
     }
   } else {
     GAMEENGINE_WARN(std::format("Could not verify VSync state: {}", SDL_GetError()));

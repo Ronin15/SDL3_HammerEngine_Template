@@ -782,9 +782,7 @@ void InventoryComponent::reportInventoryState() const {
     }
   }
 
-  if (nonEmptySlots == 0) {
-    INVENTORY_INFO("  No items in inventory");
-  }
+  INVENTORY_INFO_IF(nonEmptySlots == 0, "  No items in inventory");
 
   // Report cache state
   if (!m_cacheNeedsRebuild && !m_resourceQuantityCache.empty()) {

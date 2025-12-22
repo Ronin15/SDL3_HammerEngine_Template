@@ -204,9 +204,7 @@ void EventManager::clean() {
   }
 
   // Only log if not in shutdown to avoid static destruction order issues
-  if (!m_isShutdown) {
-    EVENT_INFO("Cleaning up EventManager");
-  }
+  EVENT_INFO_IF(!m_isShutdown, "Cleaning up EventManager");
 
   // Clear all events with proper cleanup
   {
@@ -408,6 +406,7 @@ void EventManager::update() {
   }
 #endif
 
+#ifdef DEBUG
   // Only log severe performance issues (>10ms) to reduce noise
   if (totalTimeMs > 10.0) {
     if (threadingInfo.wasThreaded) {
@@ -420,6 +419,7 @@ void EventManager::update() {
                               totalTimeMs));
     }
   }
+#endif
   m_lastUpdateTime.store(endTime);
 }
 
@@ -502,10 +502,12 @@ bool EventManager::registerEventInternal(const std::string &name,
 
   std::unique_lock<std::shared_mutex> lock(m_eventsMutex);
 
+#ifdef DEBUG
   // Check if event already exists
   if (m_nameToIndex.find(name) != m_nameToIndex.end()) {
     EVENT_WARN(std::format("Event '{}' already exists, replacing", name));
   }
+#endif
 
   // Create event data
   EventData eventData;
@@ -916,10 +918,9 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
   }
 
   // Only log significant performance issues (>5ms) to reduce noise
-  if (timeMs > 5.0) {
-    EVENT_DEBUG(std::format("Updated {} events of type {} in {:.2f}ms (slow)",
-                            localEvents.size(), getEventTypeName(typeId), timeMs));
-  }
+  EVENT_DEBUG_IF(timeMs > 5.0,
+      std::format("Updated {} events of type {} in {:.2f}ms (slow)",
+                  localEvents.size(), getEventTypeName(typeId), timeMs));
 }
 
 void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadingInfo& outThreadingInfo) {

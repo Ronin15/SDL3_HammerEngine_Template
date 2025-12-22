@@ -105,9 +105,8 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
         }
 
         // Unload current world if it exists
-        if (m_currentWorld) {
-            WORLD_MANAGER_INFO(std::format("Unloading current world: {}", m_currentWorld->worldId));
-        }
+        WORLD_MANAGER_INFO_IF(m_currentWorld,
+            std::format("Unloading current world: {}", m_currentWorld->worldId));
 
         // Set new world
         m_currentWorld = std::move(newWorld);
@@ -411,11 +410,10 @@ void WorldManager::registerEventHandlers() {
             if (data.isActive() && data.event) {
                 // Handle resource changes that may affect world generation or state
                 auto resourceEvent = std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
-                if (resourceEvent) {
-                    WORLD_MANAGER_DEBUG(std::format("WorldManager received resource change: {} changed by {}",
-                                       resourceEvent->getResourceHandle().toString(),
-                                       resourceEvent->getQuantityChange()));
-                }
+                WORLD_MANAGER_DEBUG_IF(resourceEvent,
+                    std::format("WorldManager received resource change: {} changed by {}",
+                                resourceEvent ? resourceEvent->getResourceHandle().toString() : "",
+                                resourceEvent ? resourceEvent->getQuantityChange() : 0));
             }
         }));
 
@@ -1264,12 +1262,9 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_
     }
 
     // Debug logging for texture issues (only in debug builds)
-    #ifdef DEBUG
-    if (biomeTextureID.empty()) {
-        WORLD_MANAGER_WARN(std::format("TileRenderer: Empty biome texture ID for tile at screen position ({}, {})",
-                           screenX, screenY));
-    }
-    #endif
+    WORLD_MANAGER_WARN_IF(biomeTextureID.empty(),
+        std::format("TileRenderer: Empty biome texture ID for tile at screen position ({}, {})",
+                    screenX, screenY));
 }
 
 std::string HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {

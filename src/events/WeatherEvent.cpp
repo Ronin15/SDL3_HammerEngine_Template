@@ -202,9 +202,8 @@ void WeatherEvent::execute() {
   }
 
   // Play sound effects if specified
-  if (!m_params.soundEffect.empty()) {
-    EVENT_INFO(std::format("Playing sound effect: {}", m_params.soundEffect));
-  }
+  EVENT_INFO_IF(!m_params.soundEffect.empty(),
+      std::format("Playing sound effect: {}", m_params.soundEffect));
 }
 
 void WeatherEvent::reset() {

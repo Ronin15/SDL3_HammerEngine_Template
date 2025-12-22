@@ -348,10 +348,9 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
     }
   }
 
-  if (skippedInterior > 0) {
-    COLLISION_DEBUG(std::format("Water triggers: {} edge triggers created, {} interior tiles skipped",
-                                created, skippedInterior));
-  }
+  COLLISION_DEBUG_IF(skippedInterior > 0,
+      std::format("Water triggers: {} edge triggers created, {} interior tiles skipped",
+                  created, skippedInterior));
   return created;
 }
 
@@ -2426,10 +2425,9 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   m_perf.cacheEntriesActive = m_coarseRegionStaticCache.size();
 
   // Log cache maintenance activity if any changes occurred
-  if (evictedCount > 0 || invalidatedCount > 0) {
-    COLLISION_DEBUG(std::format("Cache maintenance: evicted={}, invalidated={}, active={}",
-                                evictedCount, invalidatedCount, m_perf.cacheEntriesActive));
-  }
+  COLLISION_DEBUG_IF(evictedCount > 0 || invalidatedCount > 0,
+      std::format("Cache maintenance: evicted={}, invalidated={}, active={}",
+                  evictedCount, invalidatedCount, m_perf.cacheEntriesActive));
 }
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
@@ -2882,10 +2880,9 @@ void CollisionManager::updatePerformanceMetricsSOA(
   ++logFrameCounter;
 
   // Performance warnings (throttled to reduce spam during benchmarks)
-  if (m_perf.lastTotalMs > 5.0 && logFrameCounter % 60 == 0) {
-    COLLISION_WARN(std::format("SOA Slow frame: totalMs={}, syncMs={}, broadphaseMs={}, narrowphaseMs={}, pairs={}, collisions={}",
-                   m_perf.lastTotalMs, d01, d12, d23, pairCount, collisionCount));
-  }
+  COLLISION_WARN_IF(m_perf.lastTotalMs > 5.0 && logFrameCounter % 60 == 0,
+      std::format("SOA Slow frame: totalMs={}, syncMs={}, broadphaseMs={}, narrowphaseMs={}, pairs={}, collisions={}",
+                  m_perf.lastTotalMs, d01, d12, d23, pairCount, collisionCount));
 
   // Periodic statistics (every 300 frames)
   if (logFrameCounter % 300 == 0 && bodyCount > 0) {
@@ -3067,11 +3064,13 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
     area.maxX = 0.0f + COLLISION_CULLING_BUFFER;
     area.maxY = 0.0f + COLLISION_CULLING_BUFFER;
 
+#ifdef DEBUG
     // Log warning only once every 300 frames to avoid spam
     static thread_local uint64_t logFrameCounter = 0;
     if (++logFrameCounter % 300 == 1) {
       COLLISION_WARN("Player entity not found for culling area - using world center (logged every 300 frames)");
     }
+#endif
   }
 
   return area;

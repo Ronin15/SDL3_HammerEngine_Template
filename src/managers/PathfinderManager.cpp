@@ -175,9 +175,8 @@ void PathfinderManager::prepareForStateTransition() {
         std::lock_guard<std::mutex> lock(m_requestBufferMutex);
         size_t bufferSize = m_requestBuffer.size();
         m_requestBuffer.clear();
-        if (bufferSize > 0) {
-            PATHFIND_DEBUG(std::format("Cleared {} buffered requests", bufferSize));
-        }
+        PATHFIND_DEBUG_IF(bufferSize > 0,
+            std::format("Cleared {} buffered requests", bufferSize));
     }
 
     // Clear path cache completely for fresh state
@@ -185,9 +184,8 @@ void PathfinderManager::prepareForStateTransition() {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         size_t cacheSize = m_pathCache.size();
         m_pathCache.clear();
-        if (cacheSize > 0) {
-            PATHFIND_INFO(std::format("Cleared {} cached paths for state transition", cacheSize));
-        }
+        PATHFIND_INFO_IF(cacheSize > 0,
+            std::format("Cleared {} cached paths for state transition", cacheSize));
     }
 
     // Clear pending requests to avoid callbacks to old game state
@@ -195,9 +193,8 @@ void PathfinderManager::prepareForStateTransition() {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         size_t pendingSize = m_pending.size();
         m_pending.clear();
-        if (pendingSize > 0) {
-            PATHFIND_DEBUG(std::format("Cleared {} pending requests", pendingSize));
-        }
+        PATHFIND_DEBUG_IF(pendingSize > 0,
+            std::format("Cleared {} pending requests", pendingSize));
     }
     
     // Reset statistics for clean slate
@@ -942,15 +939,14 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
 void PathfinderManager::reportStatistics() const {
     auto stats = getStats();
 
-    if (stats.totalRequests > 0) {
-        PATHFIND_INFO(std::format("PathfinderManager Status - Total Requests: {}, Completed: {}, Failed: {}, "
-                     "Cache Hits: {}, Cache Misses: {}, Hit Rate: {}%, Cache Size: {}, Avg Time: {}ms, "
-                     "RPS: {}, Memory: {} KB, ThreadSystem: {}",
-                     stats.totalRequests, stats.completedRequests, stats.failedRequests,
-                     stats.cacheHits, stats.cacheMisses, static_cast<int>(stats.cacheHitRate * 100),
-                     stats.cacheSize, stats.averageProcessingTimeMs, static_cast<int>(stats.requestsPerSecond),
-                     stats.memoryUsageKB, (stats.processorActive ? "Active" : "Inactive")));
-    }
+    PATHFIND_INFO_IF(stats.totalRequests > 0,
+        std::format("PathfinderManager Status - Total Requests: {}, Completed: {}, Failed: {}, "
+                    "Cache Hits: {}, Cache Misses: {}, Hit Rate: {}%, Cache Size: {}, Avg Time: {}ms, "
+                    "RPS: {}, Memory: {} KB, ThreadSystem: {}",
+                    stats.totalRequests, stats.completedRequests, stats.failedRequests,
+                    stats.cacheHits, stats.cacheMisses, static_cast<int>(stats.cacheHitRate * 100),
+                    stats.cacheSize, stats.averageProcessingTimeMs, static_cast<int>(stats.requestsPerSecond),
+                    stats.memoryUsageKB, (stats.processorActive ? "Active" : "Inactive")));
 
     // Reset per-cycle counters for next reporting window (every 600 frames / 10 seconds)
     m_enqueuedRequests.store(0, std::memory_order_relaxed);
@@ -1286,10 +1282,9 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
             }
         }
         
-        if (removedCount > 0) {
-            PATHFIND_DEBUG(std::format("Invalidated {} cached paths due to obstacle change: {}",
-                          removedCount, description));
-        }
+        PATHFIND_DEBUG_IF(removedCount > 0,
+            std::format("Invalidated {} cached paths due to obstacle change: {}",
+                        removedCount, description));
     }
 
     // Mark dirty region on pathfinding grid for incremental update
@@ -1368,10 +1363,9 @@ void PathfinderManager::onTileChanged(int x, int y) {
         }
     }
 
-    if (removedCount > 0) {
-        PATHFIND_DEBUG(std::format("Tile changed at ({}, {}), invalidated {} cached paths",
-                      x, y, removedCount));
-    }
+    PATHFIND_DEBUG_IF(removedCount > 0,
+        std::format("Tile changed at ({}, {}), invalidated {} cached paths",
+                    x, y, removedCount));
 
     // Mark dirty region on pathfinding grid for incremental update
     auto tileGrid = getGridSnapshot();

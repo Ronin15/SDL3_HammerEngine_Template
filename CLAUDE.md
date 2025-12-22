@@ -126,6 +126,19 @@ LOG_INFO("Value: " + std::to_string(x) + " at pos (" + std::to_string(y) + ")");
 LOG_INFO(std::format("Value: {} at pos ({})", x, y));
 ```
 
+**Logging Conditionals**: When an if-block contains ONLY logging (INFO/DEBUG/WARN), use the `_IF` macro variants to eliminate condition evaluation overhead in release builds.
+```cpp
+// BAD: Condition still evaluates in release even though logging is compiled out
+if (cleanedCount > 0) {
+    AI_INFO(std::format("Cleaned {} behaviors", cleanedCount));
+}
+
+// GOOD: Use _IF macro - entire expression eliminated in release builds
+AI_INFO_IF(cleanedCount > 0, std::format("Cleaned {} behaviors", cleanedCount));
+```
+**Available _IF macros**: `AI_*_IF`, `COLLISION_*_IF`, `PATHFIND_*_IF`, `EVENT_*_IF`, `GAMEENGINE_*_IF`, `WORLD_MANAGER_*_IF`, `RESOURCE_*_IF`, `INPUT_*_IF`, `INVENTORY_*_IF`, `GAMESTATE_*_IF`, `PLAYER_*_IF`, `WORLD_RESOURCE_*_IF`, `GAMEPLAY_*_IF`. See `include/core/Logger.hpp` for full list.
+**When to use**: When the ONLY purpose of the condition is to gate logging. **Do NOT use** if the condition has other side effects or logic.
+
 **Copyright** (all files):
 ```cpp
 /* Copyright (c) 2025 Hammer Forged Games

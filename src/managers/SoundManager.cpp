@@ -125,11 +125,13 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
         }
       }
 
+#ifdef DEBUG
       if (loadedAny) {
         SOUND_INFO(std::format("Loaded {} files from directory: {}", fileCount, filePath));
       } else {
         SOUND_WARN(std::format("No supported audio files found in directory: {}", filePath));
       }
+#endif
 
       return loadedAny;
     } else {
