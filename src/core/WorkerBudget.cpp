@@ -165,7 +165,7 @@ double WorkerBudgetManager::getQueuePressure() const {
         return 0.0;
     }
 
-    auto& threadSystem = ThreadSystem::Instance();
+    const auto& threadSystem = ThreadSystem::Instance();
     size_t queueSize = threadSystem.getQueueSize();
     size_t queueCapacity = threadSystem.getQueueCapacity();
 

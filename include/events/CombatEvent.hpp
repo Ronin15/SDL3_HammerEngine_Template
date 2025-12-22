@@ -33,8 +33,8 @@ enum class CombatEventType {
 
 class CombatEvent : public Event {
 public:
-    CombatEvent(CombatEventType combatType, Entity* attacker = nullptr,
-                Entity* target = nullptr, float damage = 0.0f);
+    explicit CombatEvent(CombatEventType combatType, Entity* attacker = nullptr,
+                         Entity* target = nullptr, float damage = 0.0f);
     ~CombatEvent() override = default;
 
     // Core event methods implementation

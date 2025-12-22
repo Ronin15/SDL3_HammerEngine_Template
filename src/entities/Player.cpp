@@ -459,7 +459,7 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
 }
 
 void Player::refreshWorldBoundsCache() {
-  auto& worldMgr = WorldManager::Instance();
+  const auto& worldMgr = WorldManager::Instance();
   worldMgr.getWorldBounds(
       m_cachedWorldMinX, m_cachedWorldMinY,
       m_cachedWorldMaxX, m_cachedWorldMaxY);

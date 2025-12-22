@@ -12,6 +12,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <format>
+#include <numeric>
 #include <string>
 
 const int WINDOW_WIDTH{1280};
@@ -125,11 +126,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     ++frameCount;
 
     if (frameCount % PERF_LOG_INTERVAL == 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
-      double avgMs = 0.0;
-      for (double sample : updateSamples) {
-        avgMs += sample;
-      }
-      avgMs /= PERF_SAMPLE_COUNT;
+      double avgMs = std::accumulate(updateSamples.begin(), updateSamples.end(), 0.0) / PERF_SAMPLE_COUNT;
       double frameBudgetMs = 1000.0 / 60.0;  // 16.67ms
       double utilizationPercent = (avgMs / frameBudgetMs) * 100.0;
       GAMEENGINE_DEBUG(std::format("Update performance: {:.2f}ms avg ({:.1f}% frame budget)",

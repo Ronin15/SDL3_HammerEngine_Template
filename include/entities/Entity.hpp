@@ -218,13 +218,9 @@ class Entity : public std::enable_shared_from_this<Entity> {
    */
   virtual void playAnimation(const std::string& animName);
 
-  /**
-   * @brief Initialize the animation map with named animations
-   *
-   * Override in derived classes to populate m_animationMap with
-   * animation configurations specific to that entity type.
-   */
-  virtual void initializeAnimationMap() {}
+  // Note: initializeAnimationMap() is implemented separately in Player and NPC
+  // as a private non-virtual method called from their respective constructors.
+  // No base class virtual is needed since it's never called polymorphically.
 
  protected:
   const EntityID m_id;

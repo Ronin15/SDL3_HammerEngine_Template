@@ -966,21 +966,6 @@ bool PathfinderManager::ensureGridInitialized() {
     return getGridSnapshot() != nullptr;
 }
 
-uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
-    // Dynamic quantization scaled to world size for optimal cache coverage
-    // Automatically calculated to ensure cache buckets ≈ sqrt(MAX_CACHE_ENTRIES)
-    int sx = static_cast<int>(start.getX() / m_cacheKeyQuantization);
-    int sy = static_cast<int>(start.getY() / m_cacheKeyQuantization);
-    int gx = static_cast<int>(goal.getX() / m_cacheKeyQuantization);
-    int gy = static_cast<int>(goal.getY() / m_cacheKeyQuantization);
-
-    // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
-    return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
-           (static_cast<uint64_t>(sy & 0xFFFF) << 32) |
-           (static_cast<uint64_t>(gx & 0xFFFF) << 16) |
-           static_cast<uint64_t>(gy & 0xFFFF);
-}
-
 uint64_t PathfinderManager::computeStableCacheKey(const Vector2D& start, const Vector2D& goal) const {
     // OPTIMIZATION: Stable cache key that does NOT depend on obstacle layout
     // This allows pre-warmed sector paths to be hit by nearby NPC requests
