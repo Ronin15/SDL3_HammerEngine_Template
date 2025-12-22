@@ -252,7 +252,7 @@ float IdleBehavior::getRandomMovementInterval() const {
   if (m_movementFrequency <= 0.0f)
     return std::numeric_limits<float>::max();
 
-  float baseInterval = 1.0f / m_movementFrequency; // Convert to seconds
+  float const baseInterval = 1.0f / m_movementFrequency; // Convert to seconds
   float variation = m_frequencyVariation(m_rng);
 
   return baseInterval * variation;
@@ -262,7 +262,7 @@ float IdleBehavior::getRandomTurnInterval() const {
   if (m_turnFrequency <= 0.0f)
     return std::numeric_limits<float>::max();
 
-  float baseInterval = 1.0f / m_turnFrequency; // Convert to seconds
+  float const baseInterval = 1.0f / m_turnFrequency; // Convert to seconds
   float variation = m_frequencyVariation(m_rng);
 
   return baseInterval * variation;

@@ -109,7 +109,7 @@ public:
   void push(std::function<void()> task,
             TaskPriority priority = TaskPriority::Normal,
             const std::string &description = "") {
-    int priorityIndex = static_cast<int>(priority);
+    int const priorityIndex = static_cast<int>(priority);
 
     // Update last enqueue time for low-activity detection
     m_lastEnqueueTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
@@ -308,7 +308,7 @@ public:
 
   // Get statistics for a specific priority level
   TaskStats getTaskStats(TaskPriority priority) const {
-    int index = static_cast<int>(priority);
+    int const index = static_cast<int>(priority);
     if (index >= 0 && index <= static_cast<int>(TaskPriority::Idle)) {
       return m_taskStats[index];
     }

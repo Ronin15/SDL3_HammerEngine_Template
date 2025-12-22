@@ -132,7 +132,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_WARN("Could not query display capabilities - proceeding with requested dimensions");
   }
   // Window handling with platform-specific optimizations
-  SDL_WindowFlags flags =
+  SDL_WindowFlags const flags =
       fullscreen ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
 
   if (fullscreen) {
@@ -306,15 +306,15 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
   // Use native resolution rendering on all platforms for crisp, sharp text
   // This eliminates GPU scaling blur and provides consistent cross-platform behavior
-  int actualWidth = pixelWidth;
-  int actualHeight = pixelHeight;
+  int const actualWidth = pixelWidth;
+  int const actualHeight = pixelHeight;
 
   // Store actual dimensions for UI positioning (no scaling needed)
   m_logicalWidth = actualWidth;
   m_logicalHeight = actualHeight;
 
   // Disable logical presentation to render at native resolution
-  SDL_RendererLogicalPresentation presentationMode =
+  SDL_RendererLogicalPresentation const presentationMode =
       SDL_LOGICAL_PRESENTATION_DISABLED;
   if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
                                         actualHeight, presentationMode)) {
@@ -1355,7 +1355,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   }
 
   // Verify VSync state and update software frame limiting flag
-  bool vsyncVerified = verifyVSyncState(enable);
+  bool const vsyncVerified = verifyVSyncState(enable);
 
   // Update TimestepManager
   if (m_timestepManager) {
@@ -1552,8 +1552,8 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   // 4) UI scales from logical size; UIManager layout recalculates on next render
 
   // Update GameEngine with new window dimensions
-  int newWidth = event.window.data1;
-  int newHeight = event.window.data2;
+  int const newWidth = event.window.data1;
+  int const newHeight = event.window.data2;
 
   GAMEENGINE_INFO(std::format("Window resized to: {}x{}", newWidth, newHeight));
 
@@ -1580,7 +1580,7 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
 
   // Reload fonts for new display configuration
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");
-  FontManager& fontManager = FontManager::Instance();
+  FontManager & fontManager = FontManager::Instance();
   if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
     GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
   } else {
@@ -1637,7 +1637,7 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
 
     uiManager.cleanupForStateTransition();
 
-    FontManager& fontManager = FontManager::Instance();
+    FontManager & fontManager = FontManager::Instance();
     if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
       GAMEENGINE_WARN("Failed to reload fonts for new display size");
     } else {

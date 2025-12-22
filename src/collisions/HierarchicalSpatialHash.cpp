@@ -116,8 +116,8 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
         if (regionIt != m_regions.end()) {
             if (regionIt->second.hasFineSplit) {
                 // Handle fine-subdivided region
-                FineCoord oldFine = getFineCoord(oldAABB, regionCoord);
-                FineCoord newFine = getFineCoord(newAABB, regionCoord);
+                FineCoord const oldFine = getFineCoord(oldAABB, regionCoord);
+                FineCoord const newFine = getFineCoord(newAABB, regionCoord);
 
                 if (oldFine.x != newFine.x || oldFine.y != newFine.y) {
                     // Move between fine cells within same region
@@ -237,7 +237,7 @@ void HierarchicalSpatialHash::queryRegionBounds(float minX, float minY, float ma
     getCoarseCoordsForBounds(minX, minY, maxX, maxY, m_tempQueryRegions);
 
     // Construct AABB only if needed for fine cell queries (rare case)
-    AABB queryArea(
+    AABB const queryArea(
         (minX + maxX) * 0.5f, // centerX
         (minY + maxY) * 0.5f, // centerY
         (maxX - minX) * 0.5f, // halfWidth
@@ -356,10 +356,10 @@ void HierarchicalSpatialHash::getCoarseCoordsForBounds(float minX, float minY, f
 HierarchicalSpatialHash::FineCoord HierarchicalSpatialHash::getFineCoord(const AABB& aabb,
                                                                          const CoarseCoord& region) const {
     // Compute fine coordinates relative to the region's origin
-    float regionOriginX = region.x * COARSE_CELL_SIZE;
-    float regionOriginY = region.y * COARSE_CELL_SIZE;
-    float relativeX = aabb.center.getX() - regionOriginX;
-    float relativeY = aabb.center.getY() - regionOriginY;
+    float const regionOriginX = region.x * COARSE_CELL_SIZE;
+    float const regionOriginY = region.y * COARSE_CELL_SIZE;
+    float const relativeX = aabb.center.getX() - regionOriginX;
+    float const relativeY = aabb.center.getY() - regionOriginY;
 
     return {
         static_cast<int32_t>(std::floor(relativeX / FINE_CELL_SIZE)),
@@ -369,14 +369,14 @@ HierarchicalSpatialHash::FineCoord HierarchicalSpatialHash::getFineCoord(const A
 
 void HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoord& region, std::vector<FineCoord>& out) const {
     // Compute region's origin in world coordinates
-    float regionOriginX = region.x * COARSE_CELL_SIZE;
-    float regionOriginY = region.y * COARSE_CELL_SIZE;
+    float const regionOriginX = region.x * COARSE_CELL_SIZE;
+    float const regionOriginY = region.y * COARSE_CELL_SIZE;
 
     // Convert AABB bounds to region-relative coordinates
-    float relativeLeft = aabb.left() - regionOriginX;
-    float relativeRight = aabb.right() - regionOriginX;
-    float relativeTop = aabb.top() - regionOriginY;
-    float relativeBottom = aabb.bottom() - regionOriginY;
+    float const relativeLeft = aabb.left() - regionOriginX;
+    float const relativeRight = aabb.right() - regionOriginX;
+    float const relativeTop = aabb.top() - regionOriginY;
+    float const relativeBottom = aabb.bottom() - regionOriginY;
 
     // Find fine cell bounds
     int32_t minX = static_cast<int32_t>(std::floor(relativeLeft / FINE_CELL_SIZE));
@@ -385,7 +385,7 @@ void HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoo
     int32_t maxY = static_cast<int32_t>(std::floor(relativeBottom / FINE_CELL_SIZE));
 
     // Clamp to region bounds (fine cells per coarse cell = COARSE_CELL_SIZE / FINE_CELL_SIZE = 4)
-    int32_t maxCellIndex = static_cast<int32_t>(COARSE_CELL_SIZE / FINE_CELL_SIZE) - 1;
+    int32_t const maxCellIndex = static_cast<int32_t>(COARSE_CELL_SIZE / FINE_CELL_SIZE) - 1;
     minX = std::max(0, std::min(minX, maxCellIndex));
     maxX = std::max(0, std::min(maxX, maxCellIndex));
     minY = std::max(0, std::min(minY, maxCellIndex));
@@ -402,14 +402,14 @@ void HierarchicalSpatialHash::getFineCoordList(const AABB& aabb, const CoarseCoo
 HierarchicalSpatialHash::GridKey HierarchicalSpatialHash::computeGridKey(const FineCoord& coord) const {
     // Simple 2D grid hash - much faster than Morton encoding
     // Pack coordinates into 64-bit key: (x << 32) | y
-    uint32_t x = static_cast<uint32_t>(coord.x + 32768); // Offset for negative coords
-    uint32_t y = static_cast<uint32_t>(coord.y + 32768);
+    uint32_t const x = static_cast<uint32_t>(coord.x + 32768); // Offset for negative coords
+    uint32_t const y = static_cast<uint32_t>(coord.y + 32768);
     return (static_cast<uint64_t>(x) << 32) | y;
 }
 
 bool HierarchicalSpatialHash::hasMovedSignificantly(const AABB& oldAABB, const AABB& newAABB) const {
-    Vector2D centerDelta = newAABB.center - oldAABB.center;
-    float distanceSquared = centerDelta.lengthSquared();
+    Vector2D const centerDelta = newAABB.center - oldAABB.center;
+    float const distanceSquared = centerDelta.lengthSquared();
     return distanceSquared > (MOVEMENT_THRESHOLD * MOVEMENT_THRESHOLD);
 }
 
@@ -418,7 +418,7 @@ void HierarchicalSpatialHash::insertIntoRegion(Region& region, size_t bodyIndex,
 
     if (region.hasFineSplit) {
         // Insert into fine cell
-        FineCoord fineCoord = getFineCoord(aabb, region.coord);
+        FineCoord const fineCoord = getFineCoord(aabb, region.coord);
         GridKey key = computeGridKey(fineCoord);
         region.fineCells[key].push_back(bodyIndex);
     } else {
@@ -437,7 +437,7 @@ void HierarchicalSpatialHash::removeFromRegion(Region& region, size_t bodyIndex,
 
     if (region.hasFineSplit) {
         // Remove from fine cell
-        FineCoord fineCoord = getFineCoord(aabb, region.coord);
+        FineCoord const fineCoord = getFineCoord(aabb, region.coord);
         GridKey key = computeGridKey(fineCoord);
 
         auto fineCellIt = region.fineCells.find(key);

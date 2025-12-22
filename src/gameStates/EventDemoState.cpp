@@ -186,7 +186,7 @@ bool EventDemoState::enter() {
     constexpr int childInset = 10;        // Children are 10px inside panel
     constexpr int childWidth = inventoryWidth - (childInset * 2);  // 260px
 
-    int windowWidth = ui.getLogicalWidth();
+    int const windowWidth = ui.getLogicalWidth();
     int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
     int inventoryY = panelMarginTop;
 
@@ -720,7 +720,7 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
         m_lastDisplayedPhase = currentPhase;
     }
 
-    float currentFPS = gameEngine.getCurrentFPS();
+    float const currentFPS = gameEngine.getCurrentFPS();
     std::string currentWeather = getCurrentWeatherString();
     size_t npcCount = m_spawnedNPCs.size();
 
@@ -814,7 +814,7 @@ void EventDemoState::createTestEvents() {
                                                    "dissolve", 2.5f);
 
   // Report creation results
-  int successCount = success1 + success2 + success3 + success4 + success5 +
+  int const successCount = success1 + success2 + success3 + success4 + success5 +
                      success6 + success7 + success8 + success9 + success10 +
                      success11;
 
@@ -988,7 +988,7 @@ void EventDemoState::handleInput() {
 
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
-        Vector2D mousePos = inputMgr.getMousePosition();
+        Vector2D const mousePos = inputMgr.getMousePosition();
         const auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
@@ -1386,7 +1386,7 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
   bool success6 = eventMgr.createNPCSpawnEvent(std::format("conv_merchants_{}", m_convenienceDemoCounter),
                                                "Merchant", 1, 15.0f);
 
-  int successCount =
+  int const successCount =
       success1 + success2 + success3 + success4 + success5 + success6;
   if (successCount == 6) {
     addLogEntry("Created 6 events successfully");
@@ -1456,8 +1456,8 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
 
     // Deterministic offset pattern based on radius/count for visible spread
     float base = (params.spawnRadius > 0.0f) ? params.spawnRadius : 30.0f;
-    float stepX = 0.6f * base + 20.0f;
-    float stepY = 0.4f * base + 15.0f;
+    float const stepX = 0.6f * base + 20.0f;
+    float const stepY = 0.4f * base + 15.0f;
 
     int spawned = 0;
     AIManager &aiMgr = AIManager::Instance();
@@ -1939,7 +1939,7 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
     return;
 
   const std::string& resourceName = resourceTemplate->getName();
-  int change = newQty - oldQty;
+  int const change = newQty - oldQty;
 
   // Create detailed analytics entry (console only)
   std::string analyticsEntry = std::format(

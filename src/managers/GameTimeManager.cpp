@@ -205,7 +205,7 @@ void GameTimeManager::update(float deltaTime)
     m_previousSeason = m_currentSeason;
 
     // Convert delta time to game seconds based on time scale
-    float deltaGameSeconds = deltaTime * m_timeScale;
+    float const deltaGameSeconds = deltaTime * m_timeScale;
 
     // Advance game time
     advanceTime(deltaGameSeconds);
@@ -245,9 +245,9 @@ void GameTimeManager::advanceTime(float deltaGameSeconds)
     m_totalGameSeconds += deltaGameSeconds;
 
     // Calculate new hour and day
-    float totalHours = m_totalGameSeconds / 3600.0f;
+    float const totalHours = m_totalGameSeconds / 3600.0f;
     float newHour = std::fmod(totalHours, 24.0f);
-    int newDay = static_cast<int>(totalHours / 24.0f) + 1;
+    int const newDay = static_cast<int>(totalHours / 24.0f) + 1;
 
     // Update hour and day
     m_currentHour = newHour;
@@ -259,7 +259,7 @@ void GameTimeManager::updateCalendarState()
     if (m_calendarConfig.months.empty())
     {
         // Fallback: use simple season calculation
-        int seasonIndex = ((m_currentDay - 1) / 30) % 4;
+        int const seasonIndex = ((m_currentDay - 1) / 30) % 4;
         m_currentSeason = static_cast<Season>(seasonIndex);
         m_currentSeasonConfig = SeasonConfig::getDefault(m_currentSeason);
         return;
@@ -272,7 +272,7 @@ void GameTimeManager::updateCalendarState()
     }
 
     // Calculate year and day within year (0-based)
-    int daysSinceStart = m_currentDay - 1;  // Convert to 0-based
+    int const daysSinceStart = m_currentDay - 1;  // Convert to 0-based
     m_currentYear = (daysSinceStart / totalDaysInYear) + 1;
     int dayInYear = daysSinceStart % totalDaysInYear;
 
@@ -321,7 +321,7 @@ void GameTimeManager::updateSeasonFromCalendar()
 void GameTimeManager::dispatchTimeEvents()
 {
     // Check for hour change
-    int currentHourInt = static_cast<int>(m_currentHour);
+    int const currentHourInt = static_cast<int>(m_currentHour);
     if (currentHourInt != m_previousHour && m_previousHour >= 0)
     {
         auto event = std::make_shared<HourChangedEvent>(currentHourInt, isNighttime());
@@ -389,7 +389,7 @@ void GameTimeManager::checkWeatherUpdate()
         // Roll for recommended weather and dispatch WeatherCheckEvent
         // Subscribers (e.g., WeatherController) listen for this and call
         // EventManager::changeWeather() to actually change the weather
-        WeatherType newWeather = rollWeatherForSeason();
+        WeatherType const newWeather = rollWeatherForSeason();
         auto event = std::make_shared<WeatherCheckEvent>(m_currentSeason, newWeather);
         EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Deferred);
     }
@@ -400,7 +400,7 @@ void GameTimeManager::setGameHour(float hour)
     // Validate and set hour
     if (hour >= 0.0f && hour < 24.0f)
     {
-        float oldHour = m_currentHour;
+        float const oldHour = m_currentHour;
         m_currentHour = hour;
 
         // Adjust total game seconds to match new hour
@@ -476,14 +476,14 @@ int GameTimeManager::getCurrentSeason(int daysPerSeason) const
 
     // Calculate which season we're in based on current day
     // Seasons: 0=Spring, 1=Summer, 2=Fall, 3=Winter
-    int seasonIndex = ((m_currentDay - 1) / daysPerSeason) % 4;
+    int const seasonIndex = ((m_currentDay - 1) / daysPerSeason) % 4;
     return seasonIndex;
 }
 
 std::string_view GameTimeManager::formatCurrentTime(bool use24Hour)
 {
-    int hours = static_cast<int>(m_currentHour);
-    int minutes = static_cast<int>((m_currentHour - hours) * 60.0f);
+    int const hours = static_cast<int>(m_currentHour);
+    int const minutes = static_cast<int>((m_currentHour - hours) * 60.0f);
 
     // Ensure capacity on first call (C++20 type-safe, zero allocations after first use)
     if (m_timeFormatBuffer.capacity() < 16) {
@@ -581,7 +581,7 @@ float GameTimeManager::getCurrentTemperature() const
     // Create a temperature curve: min at 4AM, max at 2PM
     constexpr float coldestHour = 4.0f;
 
-    float tempRange = config.maxTemperature - config.minTemperature;
+    float const tempRange = config.maxTemperature - config.minTemperature;
     float hoursSinceColdest = m_currentHour - coldestHour;
     if (hoursSinceColdest < 0.0f)
     {
@@ -589,7 +589,7 @@ float GameTimeManager::getCurrentTemperature() const
     }
 
     // Use cosine for smooth temperature curve
-    float phase = (hoursSinceColdest / 24.0f) * 2.0f * 3.14159f;
+    float const phase = (hoursSinceColdest / 24.0f) * 2.0f * 3.14159f;
     float tempFactor = (1.0f - std::cos(phase)) / 2.0f;
 
     return config.minTemperature + (tempRange * tempFactor);
@@ -615,7 +615,7 @@ WeatherType GameTimeManager::rollWeatherForSeason() const
 WeatherType GameTimeManager::rollWeatherForSeason(Season season) const
 {
     // Get weather probabilities for the season
-    SeasonConfig config = SeasonConfig::getDefault(season);
+    SeasonConfig const config = SeasonConfig::getDefault(season);
     const auto& probs = config.weatherProbs;
 
     // Generate random number - use thread_local for thread safety

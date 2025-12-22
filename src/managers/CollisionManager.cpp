@@ -318,7 +318,7 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
 
       // OPTIMIZATION: Only create triggers for water tiles on the edge
       // A tile is an "edge" if any of its 4 neighbors is NOT water
-      bool isEdge = !isWaterTile(x - 1, y) ||  // Left neighbor
+      bool const isEdge = !isWaterTile(x - 1, y) ||  // Left neighbor
                     !isWaterTile(x + 1, y) ||  // Right neighbor
                     !isWaterTile(x, y - 1) ||  // Top neighbor
                     !isWaterTile(x, y + 1);    // Bottom neighbor
@@ -814,7 +814,7 @@ void CollisionManager::populateStaticCache() {
 
       // Only cache if there are static bodies in this region
       if (!candidates.empty()) {
-        HammerEngine::HierarchicalSpatialHash::CoarseCoord coord{cx, cy};
+        HammerEngine::HierarchicalSpatialHash::CoarseCoord const coord{cx, cy};
 
         // Filter to only static bodies and store in cache
         CoarseRegionStaticCache& cache = m_coarseRegionStaticCache[coord];
@@ -863,10 +863,10 @@ void CollisionManager::onTileChanged(int x, int y) {
                       static_cast<EntityID>(static_cast<uint32_t>(x));
     removeCollisionBodySOA(trigId);
     if (tile.isWater) {
-      float cx = x * tileSize + tileSize * 0.5f;
-      float cy = y * tileSize + tileSize * 0.5f;
-      Vector2D center(cx, cy);
-      Vector2D halfSize(tileSize * 0.5f, tileSize * 0.5f);
+      float const cx = x * tileSize + tileSize * 0.5f;
+      float const cy = y * tileSize + tileSize * 0.5f;
+      Vector2D const center(cx, cy);
+      Vector2D const halfSize(tileSize * 0.5f, tileSize * 0.5f);
       // Pass trigger properties through command queue (isTrigger=true, triggerTag=Water)
       addCollisionBodySOA(trigId, center, halfSize, BodyType::STATIC,
                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
@@ -1047,9 +1047,9 @@ void CollisionManager::onTileChanged(int x, int y) {
 
     // PERFORMANCE: Selectively invalidate only the coarse cell containing this tile
     // This prevents invalidating the entire cache when only one tile changes
-    float worldX = x * tileSize + tileSize * 0.5f;
-    float worldY = y * tileSize + tileSize * 0.5f;
-    AABB tileAABB(worldX, worldY, tileSize * 0.5f, tileSize * 0.5f);
+    float const worldX = x * tileSize + tileSize * 0.5f;
+    float const worldY = y * tileSize + tileSize * 0.5f;
+    AABB const tileAABB(worldX, worldY, tileSize * 0.5f, tileSize * 0.5f);
     auto changedCoarseCell = m_staticSpatialHash.getCoarseCoord(tileAABB);
 
     // Invalidate only this specific coarse region cache
@@ -1473,7 +1473,7 @@ void CollisionManager::rebuildStaticSpatialGrid() {
     int32_t cellX = static_cast<int32_t>(std::floor(hot.position.getX() / STATIC_GRID_CELL_SIZE));
     int32_t cellY = static_cast<int32_t>(std::floor(hot.position.getY() / STATIC_GRID_CELL_SIZE));
 
-    StaticGridCell cell{cellX, cellY};
+    StaticGridCell const cell{cellX, cellY};
     m_staticSpatialGrid[cell].push_back(i);
   }
 
@@ -1503,7 +1503,7 @@ void CollisionManager::queryStaticGridCells(const CullingArea& area, std::vector
   // Iterate over grid cells that intersect culling area
   for (int32_t cellY = minCellY; cellY <= maxCellY; ++cellY) {
     for (int32_t cellX = minCellX; cellX <= maxCellX; ++cellX) {
-      StaticGridCell cell{cellX, cellY};
+      StaticGridCell const cell{cellX, cellY};
       auto it = m_staticSpatialGrid.find(cell);
       if (it != m_staticSpatialGrid.end()) {
         // Inline filter: check active status and exact bounds
@@ -1916,13 +1916,13 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
         constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
         if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
           minPen = overlapX;
-          float centerXA = (minXA + maxXA) * 0.5f;
-          float centerXB = (minXB + maxXB) * 0.5f;
+          float const centerXA = (minXA + maxXA) * 0.5f;
+          float const centerXB = (minXB + maxXB) * 0.5f;
           normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
         } else {
           minPen = overlapY;
-          float centerYA = (minYA + maxYA) * 0.5f;
-          float centerYB = (minYB + maxYB) * 0.5f;
+          float const centerYA = (minYA + maxYA) * 0.5f;
+          float const centerYB = (minYB + maxYB) * 0.5f;
           normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
         }
         EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
@@ -1947,22 +1947,22 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     m_storage.getCachedAABBBounds(bIdx3, minXB[3], minYB[3], maxXB[3], maxYB[3]);
 
     // Unified SIMD intersection test for 4 pairs
-    Float4 maxXA_v = load4(maxXA);
-    Float4 minXB_v = load4(minXB);
-    Float4 maxXB_v = load4(maxXB);
-    Float4 minXA_v = load4(minXA);
-    Float4 maxYA_v = load4(maxYA);
-    Float4 minYB_v = load4(minYB);
-    Float4 maxYB_v = load4(maxYB);
-    Float4 minYA_v = load4(minYA);
+    Float4 const maxXA_v = load4(maxXA);
+    Float4 const minXB_v = load4(minXB);
+    Float4 const maxXB_v = load4(maxXB);
+    Float4 const minXA_v = load4(minXA);
+    Float4 const maxYA_v = load4(maxYA);
+    Float4 const minYB_v = load4(minYB);
+    Float4 const maxYB_v = load4(maxYB);
+    Float4 const minYA_v = load4(minYA);
 
     // Test: maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA
-    Float4 xFail1 = cmplt(maxXA_v, minXB_v);
-    Float4 xFail2 = cmplt(maxXB_v, minXA_v);
-    Float4 yFail1 = cmplt(maxYA_v, minYB_v);
-    Float4 yFail2 = cmplt(maxYB_v, minYA_v);
+    Float4 const xFail1 = cmplt(maxXA_v, minXB_v);
+    Float4 const xFail2 = cmplt(maxXB_v, minXA_v);
+    Float4 const yFail1 = cmplt(maxYA_v, minYB_v);
+    Float4 const yFail2 = cmplt(maxYB_v, minYA_v);
 
-    Float4 fail = bitwise_or(bitwise_or(xFail1, xFail2), bitwise_or(yFail1, yFail2));
+    Float4 const fail = bitwise_or(bitwise_or(xFail1, xFail2), bitwise_or(yFail1, yFail2));
     int failMask = movemask(fail);
 
     // If all 4 pairs failed intersection, skip
@@ -2057,8 +2057,8 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
         normal = (hotA.velocity.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
       } else {
         // Standard center comparison for shallow penetrations
-        float centerXA = (minXA + maxXA) * 0.5f;
-        float centerXB = (minXB + maxXB) * 0.5f;
+        float const centerXA = (minXA + maxXA) * 0.5f;
+        float const centerXB = (minXB + maxXB) * 0.5f;
         normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
       }
     } else {
@@ -2073,8 +2073,8 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
         normal = (hotA.velocity.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
       } else {
         // Standard center comparison for shallow penetrations
-        float centerYA = (minYA + maxYA) * 0.5f;
-        float centerYB = (minYB + maxYB) * 0.5f;
+        float const centerYA = (minYA + maxYA) * 0.5f;
+        float const centerYB = (minYB + maxYB) * 0.5f;
         normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
       }
     }
@@ -2121,7 +2121,7 @@ void CollisionManager::updateSOA(float dt) {
   prepareCollisionBuffers(bodyCount); // Prepare collision buffers
 
   // Count active dynamic bodies (with configurable culling)
-  CullingArea cullingArea = createDefaultCullingArea();
+  CullingArea const cullingArea = createDefaultCullingArea();
 
   // Rebuild static spatial hash if needed (batched from add/remove operations)
   if (m_staticHashDirty) {
@@ -2395,7 +2395,7 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
     float cellCenterY = (coord.y + 0.5f) * COARSE_CELL_SIZE;
 
     // Check if cell center is outside eviction bounds
-    bool outsideBounds = (cellCenterX < evictionMinX || cellCenterX > evictionMaxX ||
+    bool const outsideBounds = (cellCenterX < evictionMinX || cellCenterX > evictionMaxX ||
                          cellCenterY < evictionMinY || cellCenterY > evictionMaxY);
 
     if (outsideBounds) {
@@ -2453,9 +2453,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 #if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
   if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
     // Unified SIMD: Both dynamic/kinematic - split the correction
-    Float4 normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
-    Float4 pushVec = broadcast(push);
-    Float4 correction = mul(normal, pushVec);
+    Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
+    Float4 const pushVec = broadcast(push);
+    Float4 const correction = mul(normal, pushVec);
 
     Float4 posA = set(hotA.position.getX(), hotA.position.getY(), 0, 0);
     Float4 posB = set(hotB.position.getX(), hotB.position.getY(), 0, 0);
@@ -2473,9 +2473,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     hotB.position.setY(resultB[1]);
   } else if (typeA != BodyType::STATIC) {
     // Unified SIMD: Only A moves
-    Float4 normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
-    Float4 penVec = broadcast(collision.penetration);
-    Float4 correction = mul(normal, penVec);
+    Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
+    Float4 const penVec = broadcast(collision.penetration);
+    Float4 const correction = mul(normal, penVec);
 
     Float4 posA = set(hotA.position.getX(), hotA.position.getY(), 0, 0);
     posA = sub(posA, correction);
@@ -2487,9 +2487,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     hotA.position.setY(resultA[1]);
   } else if (typeB != BodyType::STATIC) {
     // Unified SIMD: Only B moves
-    Float4 normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
-    Float4 penVec = broadcast(collision.penetration);
-    Float4 correction = mul(normal, penVec);
+    Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
+    Float4 const penVec = broadcast(collision.penetration);
+    Float4 const correction = mul(normal, penVec);
 
     Float4 posB = set(hotB.position.getX(), hotB.position.getY(), 0, 0);
     posB = add(posB, correction);
@@ -2521,9 +2521,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   auto dampenVelocitySIMD = [](Vector2D& velocity, const Vector2D& collisionNormal, float restitution, bool isStatic) {
     // Unified SIMD dot product
     Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
-    Float4 norm = set(collisionNormal.getX(), collisionNormal.getY(), 0, 0);
-    Float4 dot_vec = mul(vel, norm);
-    float vdotn = horizontal_add(dot_vec);
+    Float4 const norm = set(collisionNormal.getX(), collisionNormal.getY(), 0, 0);
+    Float4 const dot_vec = mul(vel, norm);
+    float const vdotn = horizontal_add(dot_vec);
 
     // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
     // vdotn < 0 means moving AWAY from collision
@@ -2532,12 +2532,12 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     }
 
     // Unified SIMD velocity damping
-    Float4 vdotnVec = broadcast(vdotn);
-    Float4 normalVel = mul(norm, vdotnVec);
+    Float4 const vdotnVec = broadcast(vdotn);
+    Float4 const normalVel = mul(norm, vdotnVec);
 
     // For static collisions, zero velocity; for dynamic, use restitution
-    Float4 dampFactor = broadcast(isStatic ? 1.0f : (1.0f + restitution));
-    Float4 dampedVel = mul(normalVel, dampFactor);
+    Float4 const dampFactor = broadcast(isStatic ? 1.0f : (1.0f + restitution));
+    Float4 const dampedVel = mul(normalVel, dampFactor);
     vel = sub(vel, dampedVel);
 
     alignas(16) float result[4];
@@ -2548,13 +2548,13 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   };
 
   if (typeA == BodyType::DYNAMIC) {
-    bool staticCollision = (typeB == BodyType::STATIC);
+    bool const staticCollision = (typeB == BodyType::STATIC);
     dampenVelocitySIMD(hotA.velocity, collision.normal, m_storage.coldData[indexA].restitution, staticCollision);
   }
   if (typeB == BodyType::DYNAMIC) {
-    bool staticCollision = (typeA == BodyType::STATIC);
+    bool const staticCollision = (typeA == BodyType::STATIC);
     // For entity B, flip the normal (normal points A->B, but we need B->A)
-    Vector2D flippedNormal = collision.normal * -1.0f;
+    Vector2D const flippedNormal = collision.normal * -1.0f;
     dampenVelocitySIMD(hotB.velocity, flippedNormal, m_storage.coldData[indexB].restitution, staticCollision);
   }
 #else
@@ -2614,7 +2614,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     bool isPlayerB = (hotB.layers & CollisionLayer::Layer_Player) != 0;
 
     if (!isPlayerA && !isPlayerB) {
-      Vector2D tangent(-collision.normal.getY(), collision.normal.getX());
+      Vector2D const tangent(-collision.normal.getY(), collision.normal.getX());
       float slideBoost = std::min(5.0f, std::max(0.5f, collision.penetration * 5.0f));
 
       EntityID entityA = collision.a;  // Use already-known entity IDs
@@ -2637,13 +2637,13 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
     // Unified SIMD length calculation
     Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
-    Float4 sq = mul(vel, vel);
-    float lenSq = horizontal_add(sq);
+    Float4 const sq = mul(vel, vel);
+    float const lenSq = horizontal_add(sq);
     float speed = std::sqrt(lenSq);
 
     if (speed > maxSpeed && speed > 0.0f) {
       // Unified SIMD velocity scaling
-      Float4 scale = broadcast(maxSpeed / speed);
+      Float4 const scale = broadcast(maxSpeed / speed);
       vel = mul(vel, scale);
 
       alignas(16) float result[4];

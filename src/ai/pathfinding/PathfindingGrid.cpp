@@ -64,8 +64,8 @@ std::pair<int,int> PathfindingGrid::worldToGrid(const Vector2D& w) const {
 }
 
 Vector2D PathfindingGrid::gridToWorld(int gx, int gy) const {
-    float wx = m_offset.getX() + gx * m_cell + m_cell * 0.5f;
-    float wy = m_offset.getY() + gy * m_cell + m_cell * 0.5f;
+    float const wx = m_offset.getX() + gx * m_cell + m_cell * 0.5f;
+    float const wy = m_offset.getY() + gy * m_cell + m_cell * 0.5f;
     return Vector2D(wx, wy);
 }
 
@@ -73,16 +73,16 @@ bool PathfindingGrid::findNearestOpen(int gx, int gy, int maxRadius, int& outGX,
     if (inBounds(gx, gy) && !isBlocked(gx, gy)) { outGX = gx; outGY = gy; return true; }
     for (int r = 1; r <= maxRadius; ++r) {
         for (int dy = -r; dy <= r; ++dy) {
-            int y = gy + dy;
-            int x1 = gx - r;
-            int x2 = gx + r;
+            int const y = gy + dy;
+            int const x1 = gx - r;
+            int const x2 = gx + r;
             if (inBounds(x1, y) && !isBlocked(x1, y)) { outGX = x1; outGY = y; return true; }
             if (inBounds(x2, y) && !isBlocked(x2, y)) { outGX = x2; outGY = y; return true; }
         }
         for (int dx = -r + 1; dx <= r - 1; ++dx) {
-            int x = gx + dx;
-            int y1 = gy - r;
-            int y2 = gy + r;
+            int const x = gx + dx;
+            int const y1 = gy - r;
+            int const y2 = gy + r;
             if (inBounds(x, y1) && !isBlocked(x, y1)) { outGX = x; outGY = y1; return true; }
             if (inBounds(x, y2) && !isBlocked(x, y2)) { outGX = x; outGY = y2; return true; }
         }
@@ -161,10 +161,10 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
 
         for (int cx = 0; cx < cellsW; ++cx) {
             // Compute the world-space rect covered by this cell
-            float x0 = m_offset.getX() + cx * m_cell;
-            float y0 = m_offset.getY() + cy * m_cell;
-            float x1 = x0 + m_cell;
-            float y1 = y0 + m_cell;
+            float const x0 = m_offset.getX() + cx * m_cell;
+            float const y0 = m_offset.getY() + cy * m_cell;
+            float const x1 = x0 + m_cell;
+            float const y1 = y0 + m_cell;
 
             int tx0 = static_cast<int>(std::floor(x0 / tileSize));
             int ty0 = static_cast<int>(std::floor(y0 / tileSize));
@@ -200,14 +200,14 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
             }
 
             bool cellBlocked = (totalTiles > 0) && (static_cast<float>(blockedTiles) / static_cast<float>(totalTiles) > 0.50f);
-            float cellWeight = (totalTiles > 0) ? (weightSum / static_cast<float>(totalTiles)) : 1.0f;
+            float const cellWeight = (totalTiles > 0) ? (weightSum / static_cast<float>(totalTiles)) : 1.0f;
 
             // COLLISION INTEGRATION: Check for collision obstacles in this cell
             // Query collision bodies with entity clearance margin (1.75x typical entity radius)
             // This prevents paths from getting too close to obstacles, avoiding clipping
             if (!cellBlocked && CollisionManager::Instance().isInitialized()) {
                 const float ENTITY_CLEARANCE = 28.0f; // 1.75x entity radius for safe clearance
-                AABB cellAABB(x0 + m_cell * 0.5f, y0 + m_cell * 0.5f,
+                AABB const cellAABB(x0 + m_cell * 0.5f, y0 + m_cell * 0.5f,
                              m_cell * 0.5f + ENTITY_CLEARANCE,
                              m_cell * 0.5f + ENTITY_CLEARANCE);
                 std::vector<EntityID> bodiesInCell;
@@ -250,7 +250,7 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
                 }
             }
         }
-        float coarseBlockedPercent = (coarseW * coarseH > 0) ?
+        float const coarseBlockedPercent = (coarseW * coarseH > 0) ?
             (100.0f * coarseBlockedCount) / (coarseW * coarseH) : 0.0f;
 
         PATHFIND_DEBUG(std::format("Coarse grid updated: {}x{}, blocked={}/{} ({}% blocked)",
@@ -362,7 +362,7 @@ float PathfindingGrid::calculateDirtyPercent() const {
         [](int sum, const auto& region) { return sum + region.width * region.height; });
 
     // Simple approximation (may overcount overlaps, but conservative)
-    int totalCells = m_w * m_h;
+    int const totalCells = m_w * m_h;
     return std::min(100.0f, (static_cast<float>(totalDirtyCells) / totalCells) * 100.0f);
 }
 
@@ -517,9 +517,9 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         int blockedSamples = 0;
         
         for (int i = 1; i < samples; ++i) {
-            float t = static_cast<float>(i) / static_cast<float>(samples);
-            int mx = sx + static_cast<int>((gx - sx) * t);
-            int my = sy + static_cast<int>((gy - sy) * t);
+            float const t = static_cast<float>(i) / static_cast<float>(samples);
+            int const mx = sx + static_cast<int>((gx - sx) * t);
+            int const my = sy + static_cast<int>((gy - sy) * t);
             
             // Check if this sample point has any open neighbors (basic connectivity)
             bool hasOpenNeighbor = false;
@@ -545,11 +545,11 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     int nsx = sx, nsy = sy, ngx = gx, ngy = gy;
     // Adaptive nudge with increasing radii for large/congested worlds
     // Try progressively larger radii: 48 -> 96 -> 128 for start, 64 -> 96 -> 128 for goal
-    bool startOk = !isBlocked(sx, sy) ||
+    bool const startOk = !isBlocked(sx, sy) ||
                    findNearestOpen(sx, sy, 48, nsx, nsy) ||
                    findNearestOpen(sx, sy, 96, nsx, nsy) ||
                    findNearestOpen(sx, sy, 128, nsx, nsy);
-    bool goalOk  = !isBlocked(gx, gy) ||
+    bool const goalOk  = !isBlocked(gx, gy) ||
                    findNearestOpen(gx, gy, 64, ngx, ngy) ||
                    findNearestOpen(gx, gy, 96, ngx, ngy) ||
                    findNearestOpen(gx, gy, 128, ngx, ngy);
@@ -607,7 +607,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
         // OPTIMIZED HEURISTIC: More focused search with perfect admissible heuristic
         int dx = std::abs(x - gx); int dy = std::abs(y - gy);
         int dmin = std::min(dx, dy); int dmax = std::max(dx, dy);
-        float baseDistance = m_costDiagonal * dmin + m_costStraight * (dmax - dmin);
+        float const baseDistance = m_costDiagonal * dmin + m_costStraight * (dmax - dmin);
 
         // LARGE-WORLD OPTIMIZATION: Slightly weight heuristic for long distances
         // Increases goal-directedness for paths >500 cells while maintaining admissibility
@@ -619,13 +619,13 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     };
 
     // Keep baseDistance for iteration calculations  
-    int baseDistance = directDistance;
+    int const baseDistance = directDistance;
     
     // Allow full grid access for reliable pathfinding
 
     // A* pathfinding using thread-local object pooling for memory optimization
     thread_local NodePool nodePool;
-    int gridSize = m_w * m_h;
+    int const gridSize = m_w * m_h;
     nodePool.ensureCapacity(gridSize);
     nodePool.reset();
     
@@ -755,7 +755,7 @@ PathfindingResult PathfindingGrid::findPath(const Vector2D& start, const Vector2
     
     // Determine termination reason: exhausted search vs. iteration cap
     bool exhaustedQueue = open.empty();
-    bool hitIterationCap = !exhaustedQueue; // loop ended due to iteration count
+    bool const hitIterationCap = !exhaustedQueue; // loop ended due to iteration count
 
 #ifndef NDEBUG
     m_stats.totalRequests++;
@@ -783,8 +783,8 @@ void PathfindingGrid::addWeightCircle(const Vector2D& worldCenter, float worldRa
     int y0 = std::max(0, cy - rad);
     int x1 = std::min(m_w - 1, cx + rad);
     int y1 = std::min(m_h - 1, cy + rad);
-    float radCells = worldRadius / m_cell;
-    float r2 = radCells * radCells;
+    float const radCells = worldRadius / m_cell;
+    float const r2 = radCells * radCells;
     for (int y = y0; y <= y1; ++y) {
         for (int x = x0; x <= x1; ++x) {
             float dx = static_cast<float>(x - cx);
@@ -809,7 +809,7 @@ void PathfindingGrid::initializeCoarseGrid() {
     }
     
     // Create coarse grid with 4x larger cells for long-distance pathfinding
-    float coarseCellSize = m_cell * COARSE_GRID_MULTIPLIER;
+    float const coarseCellSize = m_cell * COARSE_GRID_MULTIPLIER;
     int coarseWidth = std::max(1, static_cast<int>(m_w / COARSE_GRID_MULTIPLIER));
     int coarseHeight = std::max(1, static_cast<int>(m_h / COARSE_GRID_MULTIPLIER));
     
@@ -855,8 +855,8 @@ void PathfindingGrid::updateCoarseGrid() {
             float avgWeight = 0.0f;
             int sampleCount = 0;
             
-            int fineStartX = cx * static_cast<int>(COARSE_GRID_MULTIPLIER);
-            int fineStartY = cy * static_cast<int>(COARSE_GRID_MULTIPLIER);
+            int const fineStartX = cx * static_cast<int>(COARSE_GRID_MULTIPLIER);
+            int const fineStartY = cy * static_cast<int>(COARSE_GRID_MULTIPLIER);
             
             // Sample the 4x4 region
             for (int fy = fineStartY; fy < fineStartY + static_cast<int>(COARSE_GRID_MULTIPLIER) && fy < m_h; ++fy) {
@@ -877,14 +877,14 @@ void PathfindingGrid::updateCoarseGrid() {
             
             // IMPROVED: Mark coarse cell as blocked if >50% of fine cells are blocked
             // Better reflects dense obstacles and improves refinement reliability
-            bool coarseBlocked = (totalCount > 0) && (static_cast<float>(blockedCount) / static_cast<float>(totalCount) > 0.50f);
+            bool const coarseBlocked = (totalCount > 0) && (static_cast<float>(blockedCount) / static_cast<float>(totalCount) > 0.50f);
             
             // Update coarse grid cell using safe setter methods
             m_coarseGrid->setBlocked(cx, cy, coarseBlocked);
             if (sampleCount > 0) {
                 // Increase weight for areas with some obstacles (but not fully blocked)
-                float blockageRatio = (totalCount > 0) ? static_cast<float>(blockedCount) / static_cast<float>(totalCount) : 0.0f;
-                float adjustedWeight = (avgWeight / static_cast<float>(sampleCount)) * (1.0f + blockageRatio * 2.0f);
+                float const blockageRatio = (totalCount > 0) ? static_cast<float>(blockedCount) / static_cast<float>(totalCount) : 0.0f;
+                float const adjustedWeight = (avgWeight / static_cast<float>(sampleCount)) * (1.0f + blockageRatio * 2.0f);
                 m_coarseGrid->setWeight(cx, cy, adjustedWeight);
             } else {
                 m_coarseGrid->setWeight(cx, cy, 1.0f); // Default weight
@@ -908,7 +908,7 @@ bool PathfindingGrid::shouldUseHierarchicalPathfinding(const Vector2D& start, co
         // Fallback to static threshold if PathfinderManager not available
     }
 
-    float distance = (goal - start).length();
+    float const distance = (goal - start).length();
     if (distance <= threshold) {
         return false;
     }
@@ -983,7 +983,7 @@ PathfindingResult PathfindingGrid::findPathHierarchical(const Vector2D& start, c
     if (refineResult == PathfindingResult::SUCCESS && outPath.size() >= 2) {
         // Allow gaps up to 8x coarse cell size (accounts for diagonal + refinement skips)
         // Larger tolerance prevents unnecessary fallbacks to direct A*
-        float maxAllowedGap = m_cell * COARSE_GRID_MULTIPLIER * 8.0f;
+        float const maxAllowedGap = m_cell * COARSE_GRID_MULTIPLIER * 8.0f;
         bool hasDisconnectedSegment = false;
 
         for (size_t i = 1; i < outPath.size(); ++i) {

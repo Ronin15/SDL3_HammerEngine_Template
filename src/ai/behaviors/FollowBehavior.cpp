@@ -162,7 +162,7 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
   // If target is stationary, only stop if already in range (prevent path spam but allow catch-up)
   if (!state.targetMoving) {
-    float distanceToPlayer = (currentPos - targetPos).length();
+    float const distanceToPlayer = (currentPos - targetPos).length();
     const float CATCHUP_RANGE = 200.0f; // Let distant followers catch up before stopping
 
     if (distanceToPlayer < CATCHUP_RANGE) {
@@ -217,11 +217,11 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
   // Calculate desired position with formation offset
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  float const distanceToDesired = (currentPos - desiredPos).length();
 
   // CRITICAL: Check distance to PLAYER for stop (prevent pushing)
   // Use distance to formation for pathfinding
-  float distanceToPlayer = (currentPos - targetPos).length();
+  float const distanceToPlayer = (currentPos - targetPos).length();
 
   // ARRIVAL RADIUS: If very close to desired formation position, stop (prevent micro-oscillations)
   const float ARRIVAL_RADIUS = 25.0f;
@@ -496,7 +496,7 @@ Vector2D FollowBehavior::calculateDesiredPosition(EntityPtr entity,
   }
 
   // Apply formation offset
-  Vector2D desiredPos = targetPos + state.formationOffset;
+  Vector2D const desiredPos = targetPos + state.formationOffset;
 
   return desiredPos;
 }
@@ -511,19 +511,19 @@ FollowBehavior::calculateFormationOffset(const EntityState &state) const {
     // First 3 NPCs: tight pet formation, stay very close
     if (state.formationSlot < 3) {
       float angle = (state.formationSlot * 2.0f * M_PI / 3.0f) + (M_PI / 2.0f); // Spread behind (90-270 degrees)
-      float distance = 40.0f + (state.formationSlot * 15.0f); // 40px, 55px, 70px
+      float const distance = 40.0f + (state.formationSlot * 15.0f); // 40px, 55px, 70px
       return Vector2D(std::cos(angle) * distance, std::sin(angle) * distance);
     }
     // Next 3 NPCs: medium formation ring
     else if (state.formationSlot < 6) {
       float angle = ((state.formationSlot - 3) * 2.0f * M_PI / 3.0f) + (M_PI / 6.0f);
-      float distance = 85.0f + ((state.formationSlot - 3) * 15.0f); // 85px, 100px, 115px
+      float const distance = 85.0f + ((state.formationSlot - 3) * 15.0f); // 85px, 100px, 115px
       return Vector2D(std::cos(angle) * distance, std::sin(angle) * distance);
     }
     // Additional NPCs: wide spread using golden angle for even distribution
     else {
       float angle = (state.formationSlot * 0.618f * 2.0f * M_PI); // Golden angle
-      float distance = 130.0f + ((state.formationSlot % 4) * 20.0f); // 130-190px range
+      float const distance = 130.0f + ((state.formationSlot % 4) * 20.0f); // 130-190px range
       return Vector2D(std::cos(angle) * distance, std::sin(angle) * distance);
     }
 
@@ -554,7 +554,7 @@ Vector2D FollowBehavior::predictTargetPosition(EntityPtr target,
   }
 
   Vector2D currentPos = target->getPosition();  // Use live position instead of cached
-  Vector2D velocity =
+  Vector2D const velocity =
       (currentPos - state.lastTargetPosition) / 0.016f; // Assume 60 FPS
 
   return currentPos + velocity * m_predictionTime;
@@ -566,7 +566,7 @@ bool FollowBehavior::isTargetMoving(EntityPtr target) const {
 
   // Check velocity instead of position - more reliable for detecting actual movement
   Vector2D targetVel = target->getVelocity();
-  float velocityMagnitude = targetVel.length();
+  float const velocityMagnitude = targetVel.length();
 
   // Consider target moving if velocity > 10 pixels/second
   const float VELOCITY_THRESHOLD = 10.0f;
@@ -612,14 +612,14 @@ Vector2D FollowBehavior::smoothPath(const Vector2D &currentPos,
 
   // Simple path smoothing - blend current direction with desired direction
   Vector2D desiredDirection = normalizeVector(targetPos - currentPos);
-  Vector2D currentDirection = normalizeVector(state.currentVelocity);
+  Vector2D const currentDirection = normalizeVector(state.currentVelocity);
 
   if (currentDirection.length() < 0.001f) {
     return desiredDirection;
   }
 
   // Blend directions for smoother turning
-  Vector2D blendedDirection =
+  Vector2D const blendedDirection =
       (currentDirection * 0.7f + desiredDirection * 0.3f);
   return normalizeVector(blendedDirection);
 }
@@ -632,8 +632,8 @@ void FollowBehavior::updateCloseFollow(EntityPtr entity, EntityState &state) {
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
   // PERFORMANCE: Use squared distance
-  float distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
-  float thresholdSquared = (m_followDistance * 0.3f) * (m_followDistance * 0.3f);
+  float const distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
+  float const thresholdSquared = (m_followDistance * 0.3f) * (m_followDistance * 0.3f);
 
   if (distanceToDesiredSquared > thresholdSquared) {
     // Compute actual distance only when needed for speed calculation
@@ -660,8 +660,8 @@ void FollowBehavior::updateLooseFollow(EntityPtr entity, EntityState &state) {
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
   // PERFORMANCE: Use squared distance
-  float distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
-  float followDistanceSquared = m_followDistance * m_followDistance;
+  float const distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
+  float const followDistanceSquared = m_followDistance * m_followDistance;
 
   // Only move if outside the follow distance
   if (distanceToDesiredSquared > followDistanceSquared) {
@@ -691,11 +691,11 @@ void FollowBehavior::updateFlankingFollow(EntityPtr entity,
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  float const distanceToDesired = (currentPos - desiredPos).length();
 
   if (distanceToDesired > m_followDistance * 0.5f) {
     float speed = calculateFollowSpeed(entity, state, distanceToDesired);
-    Vector2D direction = normalizeVector(desiredPos - currentPos);
+    Vector2D const direction = normalizeVector(desiredPos - currentPos);
 
     Vector2D velocity = direction * speed;
     entity->setVelocity(velocity);
@@ -711,13 +711,13 @@ void FollowBehavior::updateRearGuard(EntityPtr entity, EntityState &state) {
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  float const distanceToDesired = (currentPos - desiredPos).length();
 
   // Rear guard follows more conservatively
   if (distanceToDesired > m_followDistance * 0.8f) {
     float speed = calculateFollowSpeed(entity, state, distanceToDesired) *
                   0.8f; // Slightly slower
-    Vector2D direction = normalizeVector(desiredPos - currentPos);
+    Vector2D const direction = normalizeVector(desiredPos - currentPos);
 
     Vector2D velocity = direction * speed;
     entity->setVelocity(velocity);
@@ -734,14 +734,14 @@ void FollowBehavior::updateEscortFormation(EntityPtr entity,
 
   Vector2D currentPos = entity->getPosition();
   Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float distanceToDesired = (currentPos - desiredPos).length();
+  float const distanceToDesired = (currentPos - desiredPos).length();
 
   // Check if in formation
   state.inFormation = (distanceToDesired <= m_followDistance);
 
   if (distanceToDesired > m_followDistance * 0.4f) {
     float speed = calculateFollowSpeed(entity, state, distanceToDesired);
-    Vector2D direction = normalizeVector(desiredPos - currentPos);
+    Vector2D const direction = normalizeVector(desiredPos - currentPos);
 
     Vector2D velocity = direction * speed;
     entity->setVelocity(velocity);
@@ -751,7 +751,7 @@ void FollowBehavior::updateEscortFormation(EntityPtr entity,
 }
 
 Vector2D FollowBehavior::normalizeVector(const Vector2D &vector) const {
-  float magnitude = vector.length();
+  float const magnitude = vector.length();
   if (magnitude < 0.001f) {
     return Vector2D(0, 0);
   }
@@ -801,7 +801,7 @@ bool FollowBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& curre
   }
 
   // Check if path is stale
-  bool stale = state.pathUpdateTimer > pathTTL;
+  bool const stale = state.pathUpdateTimer > pathTTL;
 
   // Check if goal changed significantly
   bool goalChanged = true;
@@ -812,7 +812,7 @@ bool FollowBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& curre
   }
 
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
-  bool stuckOnObstacle = (state.progressTimer > 0.8f);
+  bool const stuckOnObstacle = (state.progressTimer > 0.8f);
 
   // Request new path if needed
   if (stale || goalChanged || stuckOnObstacle) {

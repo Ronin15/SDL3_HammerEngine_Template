@@ -25,6 +25,43 @@ WorldManager.cpp:misc-const-correctness:highElevationTiles incremented in loop
 # False positive: subBodyIndex is incremented later in loop
 CollisionManager.cpp:misc-const-correctness:subBodyIndex incremented in loop
 
+# misc-const-correctness false positives: clang-tidy auto-fixer adds const to variables
+# that are initialized then assigned in conditionals/loops - causes build failures
+#
+# WARNING: DO NOT use clang-tidy --fix for misc-const-correctness. The auto-fixer produces
+# many false positives that break compilation. Instead, apply const manually after review.
+#
+# Pattern 1: Variables initialized with default then assigned inside if/switch/loop
+AIDemoState.cpp:misc-const-correctness:zoom/renderCamX/renderCamY/playerInterpPos assigned in conditional
+EventDemoState.cpp:misc-const-correctness:zoom/renderCamX/renderCamY/playerInterpPos/spawned assigned in conditional
+GamePlayState.cpp:misc-const-correctness:zoom/renderCamX/renderCamY/viewWidth/viewHeight/playerInterpPos
+Crowd.cpp:misc-const-correctness:sep/avoidance/closest/adaptiveStrength assigned in loop
+PathfindingGrid.cpp:misc-const-correctness:avgWeight incremented in loop
+GameEngine.cpp:misc-const-correctness:allTasksSucceeded/interpolationAlpha/displayCount assigned in conditional
+WanderBehavior.cpp:misc-const-correctness:dest modified by setX/setY
+FollowBehavior.cpp:misc-const-correctness:usingPathfinding assigned in switch
+ChaseBehavior.cpp:misc-const-correctness:loop variables assigned in conditional
+AttackBehavior.cpp:misc-const-correctness:loop variables assigned in conditional
+FleeBehavior.cpp:misc-const-correctness:loop variables assigned in conditional
+PatrolBehavior.cpp:misc-const-correctness:loop variables assigned in conditional
+GuardBehavior.cpp:misc-const-correctness:loop variables assigned in conditional
+AIManager.cpp:misc-const-correctness:logWasThreaded assigned in conditional
+EventManager.cpp:misc-const-correctness:queueEmpty assigned in loop
+PathfinderManager.cpp:misc-const-correctness:expected/pathCount/pathIntersectsArea/pathIntersectsTile/PendingCallbacks
+ParticleManager.cpp:misc-const-correctness:threadingInfo/stoppedCount/affectedCount/weatherEffectsStopped
+CollisionManager.cpp:misc-const-correctness:subBodyIndex/isTopLeft assigned in loop
+WorldManager.cpp:misc-const-correctness:totalTiles/forestTiles/mountainTiles/swampTiles/celestialTiles/highElevationTiles
+UIManager.cpp:misc-const-correctness:UITheme/maxHeight/maxItemWidth modified after init
+FontManager.cpp:misc-const-correctness:success/texture/maxWidth/yOffset/maxLineWidth/currentY
+
+# Pattern 2: Singleton references that need non-const access (call mutation methods)
+*.cpp:misc-const-correctness:AIManager::Instance returns non-const for mutation methods
+*.cpp:misc-const-correctness:EventManager::Instance returns non-const for mutation methods
+*.cpp:misc-const-correctness:WorldManager::Instance returns non-const for mutation methods
+*.cpp:misc-const-correctness:TextureManager::Instance returns non-const for mutation methods
+*.cpp:misc-const-correctness:FontManager::Instance returns non-const for mutation methods
+*.cpp:misc-const-correctness:EventFactory::Instance returns non-const for mutation methods
+
 # Narrowing conversions - intentional int-to-float for grid/world coordinate transforms
 PathfindingGrid.cpp:bugprone-narrowing-conversions:intentional grid-to-world coord conversion
 PathfindingGrid.cpp:cppcoreguidelines-narrowing-conversions:intentional grid-to-world coord conversion

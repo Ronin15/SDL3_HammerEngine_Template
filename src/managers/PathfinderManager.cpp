@@ -423,9 +423,9 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         return;
     }
 
-    float worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
-    float worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
-    int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
+    float const worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
+    float const worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
+    int const gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
     if (gridWidth <= 0 || gridHeight <= 0) {
         PATHFIND_WARN("Calculated grid too small during rebuild");
@@ -433,7 +433,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     }
 
     // Capture rebuild parameters for async execution
-    float cellSize = m_cellSize;
+    float const cellSize = m_cellSize;
     bool allowDiagonal = m_allowDiagonal;
     int maxIterations = m_maxIterations;
 
@@ -629,7 +629,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     stats.failedRequests = m_failedRequests.load(std::memory_order_relaxed);
     
     // Calculate average processing time and requests per second
-    uint64_t totalRequests = stats.completedRequests + stats.failedRequests;
+    uint64_t const totalRequests = stats.completedRequests + stats.failedRequests;
     if (totalRequests > 0) {
         double totalTimeMs = m_totalProcessingTimeMs.load(std::memory_order_relaxed);
         stats.averageProcessingTimeMs = totalTimeMs / totalRequests;
@@ -688,7 +688,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     stats.memoryUsageKB = (gridMemory + cacheMemory) / 1024.0;
     
     // Calculate cache hit rates
-    uint64_t totalCacheChecks = stats.cacheHits + stats.cacheMisses;
+    uint64_t const totalCacheChecks = stats.cacheHits + stats.cacheMisses;
     if (totalCacheChecks > 0) {
         stats.cacheHitRate = static_cast<float>(stats.cacheHits) / static_cast<float>(totalCacheChecks);
         stats.totalHitRate = stats.cacheHitRate;
@@ -762,10 +762,10 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
         const float worldHeight = grid->getHeight() * gridCellSize;
-        float minX = halfW + extraMargin;
-        float minY = halfH + extraMargin;
-        float maxX = worldWidth - halfW - extraMargin;
-        float maxY = worldHeight - halfH - extraMargin;
+        float const minX = halfW + extraMargin;
+        float const minY = halfH + extraMargin;
+        float const maxX = worldWidth - halfW - extraMargin;
+        float const maxY = worldHeight - halfH - extraMargin;
         return Vector2D(
             std::clamp(position.getX(), minX, maxX),
             std::clamp(position.getY(), minY, maxY)
@@ -788,7 +788,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, floa
     const auto &wm = WorldManager::Instance();
     float minX=0, minY=0, maxX=0, maxY=0;
     if (wm.getWorldBounds(minX, minY, maxX, maxY)) {
-        Vector2D center((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+        Vector2D const center((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
         Vector2D dir = center - pos;
         if (dir.length() > 0.001f) {
             dir.normalize();
@@ -808,10 +808,10 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired
                                                          float minX, float minY,
                                                          float maxX, float maxY) const {
     // Clamp area by extents + interior margin
-    float aminX = minX + halfW + interiorMargin;
-    float aminY = minY + halfH + interiorMargin;
-    float amaxX = maxX - halfW - interiorMargin;
-    float amaxY = maxY - halfH - interiorMargin;
+    float const aminX = minX + halfW + interiorMargin;
+    float const aminY = minY + halfH + interiorMargin;
+    float const amaxX = maxX - halfW - interiorMargin;
+    float const amaxY = maxY - halfH - interiorMargin;
 
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
     // Clamp to area rect
@@ -822,7 +822,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired
         // Try snap within area (rings of ~cell size)
         float cell = grid->getCellSize();
         for (int r = 0; r <= 2; ++r) {
-            float rad = (r+1) * cell;
+            float const rad = (r+1) * cell;
             for (int i = 0; i < 16; ++i) {
                 float ang = static_cast<float>(i) * (static_cast<float>(M_PI) * 2.0f / 16.0f);
                 Vector2D cand = Vector2D(pos.getX() + std::cos(ang) * rad,
@@ -845,7 +845,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desir
     float effectiveR = std::max(0.0f, radius - std::max(halfW, halfH) - interiorMargin);
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
     Vector2D to = pos - center;
-    float d = to.length();
+    float const d = to.length();
     if (d > effectiveR && d > 0.001f) {
         to = to * (effectiveR / d);
         pos = center + to;
@@ -853,14 +853,14 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desir
     if (auto grid = getGridSnapshot()) {
         float cell = grid->getCellSize();
         for (int r = 0; r <= 2; ++r) {
-            float rad = (r+1) * cell;
+            float const rad = (r+1) * cell;
             for (int i = 0; i < 16; ++i) {
                 float ang = static_cast<float>(i) * (static_cast<float>(M_PI) * 2.0f / 16.0f);
                 Vector2D cand = Vector2D(pos.getX() + std::cos(ang) * rad,
                                          pos.getY() + std::sin(ang) * rad);
                 // Project back to circle if outside
                 Vector2D tc = cand - center;
-                float cd = tc.length();
+                float const cd = tc.length();
                 if (cd > effectiveR && cd > 0.001f) {
                     tc = tc * (effectiveR / cd);
                     cand = center + tc;
@@ -931,7 +931,7 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
     if (dist2 > 0.01f) { // equivalent to previous 0.1f threshold squared
         // Move toward current path node
         float invLen = 1.0f / std::sqrt(dist2);
-        Vector2D direction = toNode * invLen; // normalized
+        Vector2D const direction = toNode * invLen; // normalized
         entity->setVelocity(direction * speed);
         return true;
     }
@@ -980,14 +980,14 @@ uint64_t PathfinderManager::computeStableCacheKey(const Vector2D& start, const V
     constexpr float EDGE_MARGIN = 96.0f;
 
     // Clamp to world bounds (same as normalizeEndpoints step 1)
-    Vector2D nStart = clampToWorldBounds(start, EDGE_MARGIN);
-    Vector2D nGoal = clampToWorldBounds(goal, EDGE_MARGIN);
+    Vector2D const nStart = clampToWorldBounds(start, EDGE_MARGIN);
+    Vector2D const nGoal = clampToWorldBounds(goal, EDGE_MARGIN);
 
     // Quantize directly - NO snapping to open cells (makes key stable)
-    int sx = static_cast<int>(nStart.getX() / m_cacheKeyQuantization);
-    int sy = static_cast<int>(nStart.getY() / m_cacheKeyQuantization);
-    int gx = static_cast<int>(nGoal.getX() / m_cacheKeyQuantization);
-    int gy = static_cast<int>(nGoal.getY() / m_cacheKeyQuantization);
+    int const sx = static_cast<int>(nStart.getX() / m_cacheKeyQuantization);
+    int const sy = static_cast<int>(nStart.getY() / m_cacheKeyQuantization);
+    int const gx = static_cast<int>(nGoal.getX() / m_cacheKeyQuantization);
+    int const gy = static_cast<int>(nGoal.getY() / m_cacheKeyQuantization);
 
     // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
     return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
@@ -1080,20 +1080,20 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     }
     // Calculate actual path count for 8-connected grid: 2×N×(N-1) + 2×(N-1)²
     // For N=8: 2×8×7 + 2×7² = 112 + 98 = 210 paths
-    int N = m_prewarmSectorCount;
+    int const N = m_prewarmSectorCount;
     m_prewarmPathCount = 2 * N * (N - 1) + 2 * (N - 1) * (N - 1);
 
     // Cache key quantization based on sector size for pre-warming effectiveness
     // With RAW coord cache key (computed before normalization), coarser quantization is safe
     // because paths are stored/retrieved by bucket, and the actual path follows normalized coords.
     // Set to half sector size so NPCs anywhere in a sector can hit pre-warmed paths.
-    float sectorSize = worldW / static_cast<float>(m_prewarmSectorCount);
+    float const sectorSize = worldW / static_cast<float>(m_prewarmSectorCount);
     m_cacheKeyQuantization = sectorSize / 2.0f;  // Half sector = 4 buckets per sector
 
     // Calculate expected cache bucket count for logging
-    int bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
-    int bucketsY = static_cast<int>(worldH / m_cacheKeyQuantization);
-    int totalBuckets = bucketsX * bucketsY;
+    int const bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
+    int const bucketsY = static_cast<int>(worldH / m_cacheKeyQuantization);
+    int const totalBuckets = bucketsX * bucketsY;
     float cacheEfficiency = (static_cast<float>(MAX_CACHE_ENTRIES) / static_cast<float>(totalBuckets)) * 100.0f;
 
     PATHFIND_INFO(std::format("Auto-tuned cache settings for {}×{}px world:",
@@ -1123,9 +1123,9 @@ void PathfinderManager::prewarmPathCache() {
 
     float worldW = currentGrid->getWidth() * m_cellSize;
     float worldH = currentGrid->getHeight() * m_cellSize;
-    int sectors = m_prewarmSectorCount;
-    float sectorW = worldW / static_cast<float>(sectors);
-    float sectorH = worldH / static_cast<float>(sectors);
+    int const sectors = m_prewarmSectorCount;
+    float const sectorW = worldW / static_cast<float>(sectors);
+    float const sectorH = worldH / static_cast<float>(sectors);
 
     PATHFIND_INFO(std::format("Pre-warming cache with {} sector-based paths (world: {}×{}px, sectors: {}×{})...",
                   m_prewarmPathCount, static_cast<int>(worldW), static_cast<int>(worldH),
@@ -1137,7 +1137,7 @@ void PathfinderManager::prewarmPathCache() {
 
     for (int sy = 0; sy < sectors; sy++) {
         for (int sx = 0; sx < sectors; sx++) {
-            Vector2D sectorCenter(
+            Vector2D const sectorCenter(
                 (static_cast<float>(sx) + 0.5f) * sectorW,
                 (static_cast<float>(sy) + 0.5f) * sectorH
             );
@@ -1147,14 +1147,14 @@ void PathfinderManager::prewarmPathCache() {
                 for (int dx = -1; dx <= 1; dx++) {
                     if (dx == 0 && dy == 0) continue; // Skip self
 
-                    int nx = sx + dx;
-                    int ny = sy + dy;
+                    int const nx = sx + dx;
+                    int const ny = sy + dy;
 
                     // Only connect to valid neighbors within bounds
                     if (nx >= 0 && nx < sectors && ny >= 0 && ny < sectors) {
                         // Only add each connection once (avoid duplicates by only connecting forward)
                         if (ny > sy || (ny == sy && nx > sx)) {
-                            Vector2D neighborCenter(
+                            Vector2D const neighborCenter(
                                 (static_cast<float>(nx) + 0.5f) * sectorW,
                                 (static_cast<float>(ny) + 0.5f) * sectorH
                             );
@@ -1296,14 +1296,14 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
     auto currentGrid = getGridSnapshot();
     if (currentGrid) {
         // Convert world position to grid cell coordinates
-        int gridX = static_cast<int>((position.getX()) / m_cellSize);
-        int gridY = static_cast<int>((position.getY()) / m_cellSize);
+        int const gridX = static_cast<int>((position.getX()) / m_cellSize);
+        int const gridY = static_cast<int>((position.getY()) / m_cellSize);
         int gridRadius = static_cast<int>(std::ceil(radius / m_cellSize)) + 1; // +1 for safety margin
 
         // Mark circular dirty region
         for (int dy = -gridRadius; dy <= gridRadius; ++dy) {
             for (int dx = -gridRadius; dx <= gridRadius; ++dx) {
-                float distSq = dx * dx + dy * dy;
+                float const distSq = dx * dx + dy * dy;
                 if (distSq <= gridRadius * gridRadius) {
                     currentGrid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
                 }
@@ -1338,7 +1338,7 @@ void PathfinderManager::onWorldUnloaded() {
 
 void PathfinderManager::onTileChanged(int x, int y) {
     // Convert tile coordinates to world position using global tile size constant
-    Vector2D tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+    Vector2D const tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
                           y * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
 
     // Invalidate paths that pass through or near the changed tile

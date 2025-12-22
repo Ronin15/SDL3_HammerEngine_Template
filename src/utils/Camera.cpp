@@ -83,12 +83,12 @@ void Camera::update(float deltaTime) {
         // Sync world bounds only when version changes (avoids per-frame overhead)
         // This is needed for computeOffsetFromCenter() to clamp correctly
         if (m_autoSyncWorldBounds) {
-            uint64_t currentVersion = WorldManager::Instance().getWorldVersion();
+            uint64_t const currentVersion = WorldManager::Instance().getWorldVersion();
             if (currentVersion != m_lastWorldVersion) {
                 syncWorldBounds();
             }
         }
-        Vector2D targetPos = getTargetPosition();  // Target's UNCLAMPED position
+        Vector2D const targetPos = getTargetPosition();  // Target's UNCLAMPED position
 
         // Set m_position to unclamped target for smooth interpolation
         // The offset clamping happens in computeOffsetFromCenter(), NOT here
@@ -103,7 +103,7 @@ void Camera::update(float deltaTime) {
 }
 
 void Camera::setPosition(float x, float y) {
-    Vector2D oldPosition = m_position;
+    Vector2D const oldPosition = m_position;
     m_position.setX(x);
     m_position.setY(y);
     m_targetPosition = m_position; // Update target position to avoid interpolation
@@ -161,12 +161,12 @@ void Camera::setWorldBounds(const Bounds& bounds) {
 
 void Camera::setMode(Mode mode) {
     if (m_mode != mode) {
-        Mode oldMode = m_mode;
+        Mode const oldMode = m_mode;
         m_mode = mode;
         
         // When switching to follow mode, snap to target if available
         if (mode == Mode::Follow && hasTarget()) {
-            Vector2D targetPos = getTargetPosition();
+            Vector2D const targetPos = getTargetPosition();
             m_targetPosition = targetPos;
         }
         
@@ -240,8 +240,8 @@ bool Camera::setConfig(const Config& config) {
 Camera::ViewRect Camera::getViewRect() const {
     // With SDL_SetRenderScale, the visible world area shrinks as zoom increases
     // At 2x zoom, you see half as much world space (400x300 instead of 800x600)
-    float worldViewWidth = m_viewport.width / m_zoom;
-    float worldViewHeight = m_viewport.height / m_zoom;
+    float const worldViewWidth = m_viewport.width / m_zoom;
+    float const worldViewHeight = m_viewport.height / m_zoom;
 
     // Use full floating-point precision for smooth sub-pixel camera movement
     // Callers snap to pixels at render time if tile-aligned rendering is needed
@@ -259,8 +259,8 @@ Camera::ViewRect Camera::getViewRect() const {
 void Camera::computeOffsetFromCenter(float centerX, float centerY,
                                      float& offsetX, float& offsetY) const {
     // Compute camera offset (top-left corner) from a given center position
-    float worldViewWidth = m_viewport.width / m_zoom;
-    float worldViewHeight = m_viewport.height / m_zoom;
+    float const worldViewWidth = m_viewport.width / m_zoom;
+    float const worldViewHeight = m_viewport.height / m_zoom;
 
     // Convert center position to top-left offset
     offsetX = centerX - (worldViewWidth * 0.5f);
@@ -268,8 +268,8 @@ void Camera::computeOffsetFromCenter(float centerX, float centerY,
 
     // Apply world bounds clamping if enabled
     if (m_config.clampToWorldBounds) {
-        float maxOffsetX = m_worldBounds.maxX - worldViewWidth;
-        float maxOffsetY = m_worldBounds.maxY - worldViewHeight;
+        float const maxOffsetX = m_worldBounds.maxX - worldViewWidth;
+        float const maxOffsetY = m_worldBounds.maxY - worldViewHeight;
 
         if (maxOffsetX > m_worldBounds.minX) {
             offsetX = std::clamp(offsetX, m_worldBounds.minX, maxOffsetX);
@@ -301,7 +301,7 @@ Vector2D Camera::getRenderOffset(float& offsetX, float& offsetY, float interpola
 }
 
 bool Camera::isPointVisible(float x, float y) const {
-    ViewRect view = getViewRect();
+    ViewRect const view = getViewRect();
     return x >= view.left() && x <= view.right() && 
            y >= view.top() && y <= view.bottom();
 }
@@ -311,7 +311,7 @@ bool Camera::isPointVisible(const Vector2D& point) const {
 }
 
 bool Camera::isRectVisible(float x, float y, float width, float height) const {
-    ViewRect view = getViewRect();
+    ViewRect const view = getViewRect();
     
     // Check if rectangles intersect
     return !(x + width < view.left() || x > view.right() || 
@@ -321,12 +321,12 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
     // For coordinate transforms, use raw camera position without world bounds clamping
     // World bounds clamping is for rendering, not for abstract coordinate math
-    float worldViewWidth = m_viewport.width / m_zoom;
-    float worldViewHeight = m_viewport.height / m_zoom;
+    float const worldViewWidth = m_viewport.width / m_zoom;
+    float const worldViewHeight = m_viewport.height / m_zoom;
 
     // Use current camera position
-    float camX = m_position.getX();
-    float camY = m_position.getY();
+    float const camX = m_position.getX();
+    float const camY = m_position.getY();
 
     // Camera offset: centers camera on its position
     float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
@@ -340,16 +340,16 @@ void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& sc
 void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& worldY) const {
     // Mouse coordinates are in PHYSICAL window space (NOT scaled by SDL_SetRenderScale)
     // Convert physical mouse coords to logical coords first
-    float logicalX = screenX / m_zoom;
-    float logicalY = screenY / m_zoom;
+    float const logicalX = screenX / m_zoom;
+    float const logicalY = screenY / m_zoom;
 
     // For coordinate transforms, use raw camera position without world bounds clamping
-    float worldViewWidth = m_viewport.width / m_zoom;
-    float worldViewHeight = m_viewport.height / m_zoom;
+    float const worldViewWidth = m_viewport.width / m_zoom;
+    float const worldViewHeight = m_viewport.height / m_zoom;
 
     // Use current camera position
-    float camX = m_position.getX();
-    float camY = m_position.getY();
+    float const camX = m_position.getX();
+    float const camY = m_position.getY();
 
     // Camera offset: centers camera on its position
     float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
@@ -374,7 +374,7 @@ Vector2D Camera::worldToScreen(const Vector2D& worldCoords) const {
 
 void Camera::snapToTarget() {
     if (hasTarget()) {
-        Vector2D targetPos = getTargetPosition();
+        Vector2D const targetPos = getTargetPosition();
         setPosition(targetPos);
         CAMERA_INFO("Camera snapped to target position");
     } else {
@@ -384,7 +384,7 @@ void Camera::snapToTarget() {
 
 void Camera::shake(float duration, float intensity) {
     if (duration > 0.0f && intensity > 0.0f) {
-        bool wasShaking = m_shakeTimeRemaining > 0.0f;
+        bool const wasShaking = m_shakeTimeRemaining > 0.0f;
         m_shakeTimeRemaining = duration;
         m_shakeIntensity = intensity;
 
@@ -404,7 +404,7 @@ void Camera::syncWorldBounds() {
         try {
             const auto &wm = WorldManager::Instance();
             if (wm.hasActiveWorld()) {
-                uint64_t currentVersion = wm.getWorldVersion();
+                uint64_t const currentVersion = wm.getWorldVersion();
                 if (currentVersion != m_lastWorldVersion) {
                     float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
                     if (wm.getWorldBounds(minX, minY, maxX, maxY)) {
@@ -428,14 +428,14 @@ void Camera::clampToWorldBounds() {
 
     // Calculate effective bounds using zoom-adjusted viewport dimensions
     // At higher zoom, you see less world space, so bounds are tighter
-    float halfViewWidth = m_viewport.halfWidth() / m_zoom;
-    float halfViewHeight = m_viewport.halfHeight() / m_zoom;
+    float const halfViewWidth = m_viewport.halfWidth() / m_zoom;
+    float const halfViewHeight = m_viewport.halfHeight() / m_zoom;
 
     // Calculate effective bounds (world bounds minus half viewport to keep camera centered)
-    float minX = m_worldBounds.minX + halfViewWidth;
-    float maxX = m_worldBounds.maxX - halfViewWidth;
-    float minY = m_worldBounds.minY + halfViewHeight;
-    float maxY = m_worldBounds.maxY - halfViewHeight;
+    float const minX = m_worldBounds.minX + halfViewWidth;
+    float const maxX = m_worldBounds.maxX - halfViewWidth;
+    float const minY = m_worldBounds.minY + halfViewHeight;
+    float const maxY = m_worldBounds.maxY - halfViewHeight;
 
     // Only clamp if the world is larger than the viewport
     if (maxX > minX) {
@@ -537,7 +537,7 @@ void Camera::fireZoomChangedEvent(float oldZoom, float newZoom) {
 void Camera::zoomIn() {
     const int maxZoomIndex = static_cast<int>(m_config.zoomLevels.size()) - 1;
     if (m_currentZoomIndex < maxZoomIndex) {
-        float oldZoom = m_zoom;
+        float const oldZoom = m_zoom;
         m_currentZoomIndex++;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
@@ -554,7 +554,7 @@ void Camera::zoomIn() {
 
 void Camera::zoomOut() {
     if (m_currentZoomIndex > 0) {
-        float oldZoom = m_zoom;
+        float const oldZoom = m_zoom;
         m_currentZoomIndex--;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
@@ -578,7 +578,7 @@ bool Camera::setZoomLevel(int levelIndex) {
     }
 
     if (m_currentZoomIndex != levelIndex) {
-        float oldZoom = m_zoom;
+        float const oldZoom = m_zoom;
         m_currentZoomIndex = levelIndex;
         m_zoom = m_config.zoomLevels[m_currentZoomIndex];
 
@@ -596,8 +596,8 @@ bool Camera::setZoomLevel(int levelIndex) {
 void Camera::syncViewportWithEngine() {
     // Get current logical dimensions from GameEngine (authoritative source)
     const GameEngine& gameEngine = GameEngine::Instance();
-    float logicalWidth = static_cast<float>(gameEngine.getLogicalWidth());
-    float logicalHeight = static_cast<float>(gameEngine.getLogicalHeight());
+    float const logicalWidth = static_cast<float>(gameEngine.getLogicalWidth());
+    float const logicalHeight = static_cast<float>(gameEngine.getLogicalHeight());
 
     // Only update if dimensions actually changed (avoid unnecessary updates)
     if (m_viewport.width != logicalWidth || m_viewport.height != logicalHeight) {

@@ -59,7 +59,7 @@ bool GamePlayState::enter() {
     mp_Player->initializeInventory();
 
     // Position player at screen center
-    Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
+    Vector2D const screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
     mp_Player->setPosition(screenCenter);
 
     // Initialize the inventory UI
@@ -96,7 +96,7 @@ bool GamePlayState::enter() {
     ui.setComponentPositioning("gameplay_event_log", eventLogPos);
 
     // Create time status label at top-right of screen (no panel, just label)
-    int barHeight = UIConstants::STATUS_BAR_HEIGHT;
+    int const barHeight = UIConstants::STATUS_BAR_HEIGHT;
     int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
 
     ui.createLabel("gameplay_time_label",
@@ -306,7 +306,7 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
   // Update FPS display if visible (zero-allocation, only when changed)
   if (m_fpsVisible) {
-    float currentFPS = GameEngine::Instance().getCurrentFPS();
+    float const currentFPS = GameEngine::Instance().getCurrentFPS();
     // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
       m_fpsBuffer.clear();
@@ -595,13 +595,13 @@ void GamePlayState::handleInput() {
 
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
-        Vector2D mousePos = inputMgr.getMousePosition();
+        Vector2D const mousePos = inputMgr.getMousePosition();
         auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
-            int tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
-            int tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
+            int const tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
+            int const tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
             auto& worldMgr = WorldManager::Instance();
             if (worldMgr.isValidPosition(tileX, tileY)) {
@@ -621,7 +621,7 @@ void GamePlayState::handleInput() {
 void GamePlayState::initializeInventoryUI() {
   auto &ui = UIManager::Instance();
   const auto &gameEngine = GameEngine::Instance();
-  int windowWidth = gameEngine.getLogicalWidth();
+  int const windowWidth = gameEngine.getLogicalWidth();
 
   // Create inventory panel (initially hidden) matching EventDemoState layout
   // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
@@ -891,7 +891,7 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
       static_cast<uint8_t>(m_dayNightOverlayB),
       static_cast<uint8_t>(m_dayNightOverlayA));
 
-  SDL_FRect rect = {0, 0, static_cast<float>(width), static_cast<float>(height)};
+  SDL_FRect const rect = {0, 0, static_cast<float>(width), static_cast<float>(height)};
   SDL_RenderFillRect(renderer, &rect);
 }
 
