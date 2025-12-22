@@ -931,7 +931,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor col{r, g, b, a};
+    SDL_FColor const col{r, g, b, a};
     m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     ++quadCount;
@@ -1001,7 +1001,7 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor col{r, g, b, a};
+    SDL_FColor const col{r, g, b, a};
     m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
@@ -1061,7 +1061,7 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor col{r, g, b, a};
+    SDL_FColor const col{r, g, b, a};
     m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
@@ -1259,7 +1259,7 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
                             effectTypeToString(effectType), intensity));
 
   // Use smooth transitions for better visual quality
-  float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
+  float const actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
 
   // PERFORMANCE: Validate effect type BEFORE acquiring any locks
   if (effectType >= ParticleEffectType::COUNT) {
@@ -1383,7 +1383,7 @@ void ParticleManager::toggleFireEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_fireActive) {
     // Create a single central fire source for better performance
-    Vector2D basePosition(400, 300);
+    Vector2D const basePosition(400, 300);
 
     // Single main fire effect
     m_fireEffectId = playIndependentEffect(
@@ -1401,7 +1401,7 @@ void ParticleManager::toggleSmokeEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_smokeActive) {
     // Create single smoke source for better performance
-    Vector2D basePosition(400, 280); // Slightly above fire
+    Vector2D const basePosition(400, 280); // Slightly above fire
 
     // Single main smoke column
     m_smokeEffectId = playIndependentEffect(
@@ -2304,7 +2304,7 @@ void ParticleManager::updateParticleRange(
     
 
     // Enhanced physics with natural atmospheric effects
-    float windVariation = fastSin(windPhase + particleOffset) *
+    float const windVariation = fastSin(windPhase + particleOffset) *
                           0.3f;    // Per-particle wind variation
     float atmosphericDrag = 0.98f; // Slight air resistance
 
@@ -2398,7 +2398,7 @@ void ParticleManager::updateParticleRange(
       // OPTIMIZATION: Use switch for better branch prediction than nested if-else
       switch (effectType) {
         case ParticleEffectType::Fire: {
-          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          float const randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
           
           // More random turbulence for fire
           const float heatTurbulence = fastSin(windPhase8_0 + particleOffset3) * 15.0f +
@@ -2419,13 +2419,13 @@ void ParticleManager::updateParticleRange(
           break;
         }
         case ParticleEffectType::Smoke: {
-          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          float const randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
           
           // Circular billowing motion
           float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
-          float speed = 15.0f + (randomFactor * 10.0f);
-          float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
-          float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
+          float const speed = 15.0f + (randomFactor * 10.0f);
+          float const circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
+          float const circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
           particles.velX[i] += circleX * deltaTime;
           particles.velY[i] += circleY * deltaTime - (20.0f * deltaTime);
@@ -2485,7 +2485,7 @@ void ParticleManager::createParticleForEffect(
   if (!config.useWorldSpace) {
     // Screen-space effect (like weather) - spawn relative to camera position
     const auto &gameEngine = GameEngine::Instance();
-    float spawnX = m_viewport.x +
+    float const spawnX = m_viewport.x +
         static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
     float spawnY;
     if (config.fullScreenSpawn) {
@@ -2500,16 +2500,16 @@ void ParticleManager::createParticleForEffect(
     // World-space effect (like an explosion at a point)
     request.position = position;
     if (effectDef.type == ParticleEffectType::Smoke) {
-        float offsetX = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 20.0f; // Random offset in a 20px range
-        float offsetY = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 10.0f; // Smaller vertical offset
+        float const offsetX = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 20.0f; // Random offset in a 20px range
+        float const offsetY = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 10.0f; // Smaller vertical offset
         request.position.setX(request.position.getX() + offsetX);
         request.position.setY(request.position.getY() + offsetY);
     }
   }
 
   // Simplified physics and color calculation
-  float naturalRand = static_cast<float>(fast_rand()) / 32767.0f;
-  float speed =
+  float const naturalRand = static_cast<float>(fast_rand()) / 32767.0f;
+  float const speed =
       config.minSpeed + (config.maxSpeed - config.minSpeed) * naturalRand;
   
   // Special handling for weather effects that use spread as screen coverage, not angle
@@ -2518,19 +2518,19 @@ void ParticleManager::createParticleForEffect(
       effectDef.type == ParticleEffectType::Snow ||
       effectDef.type == ParticleEffectType::HeavySnow) {
     // For falling weather, use slight angular variation (±5 degrees) for natural movement
-    float angleRange = 5.0f * 0.017453f; // 5 degrees in radians
-    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    float const angleRange = 5.0f * 0.017453f; // 5 degrees in radians
+    float const angle = (naturalRand * 2.0f - 1.0f) * angleRange;
     request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
   } else if (effectDef.type == ParticleEffectType::Windy ||
              effectDef.type == ParticleEffectType::WindyDust ||
              effectDef.type == ParticleEffectType::WindyStorm) {
     // For wind effects, use horizontal direction with slight vertical variation
-    float verticalVariation = (naturalRand * 2.0f - 1.0f) * 0.15f; // ±15% vertical wobble
+    float const verticalVariation = (naturalRand * 2.0f - 1.0f) * 0.15f; // ±15% vertical wobble
     request.velocity = Vector2D(speed, speed * verticalVariation);
   } else {
     // For other effects, use spread as angular range
-    float angleRange = config.spread * 0.017453f; // Convert degrees to radians
-    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    float const angleRange = config.spread * 0.017453f; // Convert degrees to radians
+    float const angle = (naturalRand * 2.0f - 1.0f) * angleRange;
     request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
   }
   request.acceleration = config.gravity;
@@ -2654,7 +2654,7 @@ ParticleEffectType
 ParticleManager::weatherStringToEnum(const std::string &weatherType,
                                      float intensity) const {
   if (weatherType == "Rainy") {
-    ParticleEffectType result = (intensity > 0.9f) ? ParticleEffectType::HeavyRain
+    ParticleEffectType const result = (intensity > 0.9f) ? ParticleEffectType::HeavyRain
                               : ParticleEffectType::Rain;
     PARTICLE_INFO(std::format("Weather mapping: \"{}\" intensity={} -> {}",
                               weatherType, intensity,
@@ -2725,20 +2725,20 @@ std::string_view ParticleManager::effectTypeToString(ParticleEffectType type) co
 
 uint32_t ParticleManager::interpolateColor(uint32_t color1, uint32_t color2,
                                            float factor) {
-  uint8_t r1 = (color1 >> 24) & 0xFF;
-  uint8_t g1 = (color1 >> 16) & 0xFF;
-  uint8_t b1 = (color1 >> 8) & 0xFF;
-  uint8_t a1 = color1 & 0xFF;
+  uint8_t const r1 = (color1 >> 24) & 0xFF;
+  uint8_t const g1 = (color1 >> 16) & 0xFF;
+  uint8_t const b1 = (color1 >> 8) & 0xFF;
+  uint8_t const a1 = color1 & 0xFF;
 
-  uint8_t r2 = (color2 >> 24) & 0xFF;
-  uint8_t g2 = (color2 >> 16) & 0xFF;
-  uint8_t b2 = (color2 >> 8) & 0xFF;
-  uint8_t a2 = color2 & 0xFF;
+  uint8_t const r2 = (color2 >> 24) & 0xFF;
+  uint8_t const g2 = (color2 >> 16) & 0xFF;
+  uint8_t const b2 = (color2 >> 8) & 0xFF;
+  uint8_t const a2 = color2 & 0xFF;
 
-  uint8_t r = static_cast<uint8_t>(r1 + (r2 - r1) * factor);
-  uint8_t g = static_cast<uint8_t>(g1 + (g2 - g1) * factor);
-  uint8_t b = static_cast<uint8_t>(b1 + (b2 - b1) * factor);
-  uint8_t a = static_cast<uint8_t>(a1 + (a2 - a1) * factor);
+  uint8_t const r = static_cast<uint8_t>(r1 + (r2 - r1) * factor);
+  uint8_t const g = static_cast<uint8_t>(g1 + (g2 - g1) * factor);
+  uint8_t const b = static_cast<uint8_t>(b1 + (b2 - b1) * factor);
+  uint8_t const a = static_cast<uint8_t>(a1 + (a2 - a1) * factor);
 
   return (static_cast<uint32_t>(r) << 24) | (static_cast<uint32_t>(g) << 16) |
          (static_cast<uint32_t>(b) << 8) | static_cast<uint32_t>(a);

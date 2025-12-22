@@ -1789,11 +1789,11 @@ void UIManager::handleInput() {
   const auto &inputManager = InputManager::Instance();
 
   // Get mouse position
-  Vector2D mousePos = inputManager.getMousePosition();
+  Vector2D const mousePos = inputManager.getMousePosition();
   m_lastMousePosition = mousePos;
 
   // Check mouse state
-  bool mouseDown = inputManager.getMouseButtonState(LEFT);
+  bool const mouseDown = inputManager.getMouseButtonState(LEFT);
   bool mouseJustPressed = mouseDown && !m_mousePressed;
   bool mouseJustReleased = !mouseDown && m_mousePressed;
 
@@ -2154,8 +2154,8 @@ void UIManager::renderLabel(SDL_Renderer *renderer,
 #ifdef __APPLE__
   // On macOS, use logical coordinates directly - SDL3 handles scaling
   // automatically
-  int finalTextX = static_cast<int>(textX);
-  int finalTextY = static_cast<int>(textY);
+  int const finalTextX = static_cast<int>(textX);
+  int const finalTextY = static_cast<int>(textY);
 #else
   // Use logical coordinates directly - SDL3 logical presentation handles
   // scaling
@@ -2394,8 +2394,8 @@ void UIManager::renderCheckbox(SDL_Renderer *renderer,
 
 
 bool UIManager::isClickOnUI(const Vector2D& screenPos) const {
-    int mouseX = static_cast<int>(screenPos.getX());
-    int mouseY = static_cast<int>(screenPos.getY());
+    int const mouseX = static_cast<int>(screenPos.getX());
+    int const mouseY = static_cast<int>(screenPos.getY());
 
     for (const auto& [id, component] : m_components) {
         if (component && component->m_visible && component->m_enabled) {
@@ -2503,7 +2503,7 @@ void UIManager::renderList(SDL_Renderer *renderer,
             float texW, texH;
             SDL_GetTextureSize(texture.get(), &texW, &texH);
             int textX = component->m_bounds.x + scaledPadding * 2;
-            int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
+            int const textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
             SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
             SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
         }
@@ -2536,7 +2536,7 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
   int scaledItemHeight = static_cast<int>(component->m_style.listItemHeight * m_globalScale);
 
   // Event logs scroll from bottom to top (newest entries at bottom)
-  int itemHeight = scaledItemHeight;
+  int const itemHeight = scaledItemHeight;
   int availableHeight = component->m_bounds.height - (2 * scaledPadding);
   int maxVisibleItems = availableHeight / itemHeight;
 
@@ -2557,7 +2557,7 @@ void UIManager::renderEventLog(SDL_Renderer *renderer,
             float texW, texH;
             SDL_GetTextureSize(texture.get(), &texW, &texH);
             int textX = component->m_bounds.x + scaledPadding;
-            int textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
+            int const textY = itemY + (itemHeight - static_cast<int>(texH)) / 2; // Center vertically
             SDL_FRect destRect = {static_cast<float>(textX), static_cast<float>(textY), texW, texH};
             SDL_RenderTexture(renderer, texture.get(), nullptr, &destRect);
         }
@@ -2588,9 +2588,9 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
   }
 
   // Scale padding for resolution-aware sizing
-  int scaledPaddingWidth = static_cast<int>(UIConstants::TOOLTIP_PADDING_WIDTH * m_globalScale);
-  int scaledPaddingHeight = static_cast<int>(UIConstants::TOOLTIP_PADDING_HEIGHT * m_globalScale);
-  int scaledMouseOffset = static_cast<int>(UIConstants::TOOLTIP_MOUSE_OFFSET * m_globalScale);
+  int const scaledPaddingWidth = static_cast<int>(UIConstants::TOOLTIP_PADDING_WIDTH * m_globalScale);
+  int const scaledPaddingHeight = static_cast<int>(UIConstants::TOOLTIP_PADDING_HEIGHT * m_globalScale);
+  int const scaledMouseOffset = static_cast<int>(UIConstants::TOOLTIP_MOUSE_OFFSET * m_globalScale);
 
   // Calculate actual text dimensions for content-aware sizing
   auto &fontManager = FontManager::Instance();
@@ -2626,7 +2626,7 @@ void UIManager::renderTooltip(SDL_Renderer *renderer) {
   }
 
   // Draw tooltip
-  SDL_Color tooltipBg = {40, 40, 40, 240};
+  SDL_Color const tooltipBg = {40, 40, 40, 240};
   drawRect(renderer, tooltipRect, tooltipBg, true);
   drawBorder(renderer, tooltipRect, {200, 200, 200, 255}, 1);
 
@@ -2732,7 +2732,7 @@ void UIManager::drawRect(SDL_Renderer *renderer, const UIRect &rect,
                          const SDL_Color &color, bool filled) {
   SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
 
-  SDL_FRect sdlRect = {static_cast<float>(rect.x), static_cast<float>(rect.y),
+  SDL_FRect const sdlRect = {static_cast<float>(rect.x), static_cast<float>(rect.y),
                        static_cast<float>(rect.width),
                        static_cast<float>(rect.height)};
   if (filled) {
@@ -2747,7 +2747,7 @@ void UIManager::drawBorder(SDL_Renderer *renderer, const UIRect &rect,
   SDL_SetRenderDrawColor(renderer, color.r, color.g, color.b, color.a);
 
   for (int i = 0; i < width; ++i) {
-    SDL_FRect borderRect = {static_cast<float>(rect.x - i),
+    SDL_FRect const borderRect = {static_cast<float>(rect.x - i),
                             static_cast<float>(rect.y - i),
                             static_cast<float>(rect.width + 2 * i),
                             static_cast<float>(rect.height + 2 * i)};
@@ -2771,8 +2771,8 @@ void UIManager::drawTextWithBackground(const std::string &text,
   // Get the actual texture size
   float w, h;
   SDL_GetTextureSize(texture.get(), &w, &h);
-  int width = static_cast<int>(w);
-  int height = static_cast<int>(h);
+  int const width = static_cast<int>(w);
+  int const height = static_cast<int>(h);
 
   // Calculate position based on alignment (same as
   // FontManager::drawTextAligned)
@@ -2958,7 +2958,7 @@ bool UIManager::measureComponentContent(
     // Calculate height based on font metrics dynamically
     int lineHeight = 0;
     int itemHeight = UIConstants::DEFAULT_LIST_ITEM_HEIGHT; // Default fallback
-    int scaledPadding = static_cast<int>(UIConstants::LIST_ITEM_PADDING * m_globalScale);
+    int const scaledPadding = static_cast<int>(UIConstants::LIST_ITEM_PADDING * m_globalScale);
     if (fontManager.getFontMetrics(component->m_style.fontID, &lineHeight,
                                    nullptr, nullptr)) {
       itemHeight = lineHeight + scaledPadding; // Add padding for better mouse accuracy
@@ -2983,7 +2983,7 @@ bool UIManager::measureComponentContent(
               std::max(maxItemWidth, static_cast<int>(item.length() * UIConstants::CHAR_WIDTH_ESTIMATE));
         }
       }
-      int scaledScrollbarSpace = static_cast<int>(UIConstants::SCROLLBAR_WIDTH * m_globalScale);
+      int const scaledScrollbarSpace = static_cast<int>(UIConstants::SCROLLBAR_WIDTH * m_globalScale);
       *width = std::max(maxItemWidth + scaledScrollbarSpace,
                         UIConstants::MIN_LIST_WIDTH); // Add scrollbar space, minimum list width
       *height = itemHeight * static_cast<int>(component->m_listItems.size());
@@ -3114,8 +3114,8 @@ void UIManager::createCenteredDialog(const std::string &id, int width,
                                      int height, const std::string &theme) {
   // Use baseline dimensions from UIConstants - createModal() will scale to logical space
   // Calculate centered position in baseline space
-  int x = (UIConstants::BASELINE_WIDTH - width) / 2;
-  int y = (UIConstants::BASELINE_HEIGHT - height) / 2;
+  int const x = (UIConstants::BASELINE_WIDTH - width) / 2;
+  int const y = (UIConstants::BASELINE_HEIGHT - height) / 2;
 
   // Overlay also uses baseline dimensions
   createModal(id, {x, y, width, height}, theme, UIConstants::BASELINE_WIDTH, UIConstants::BASELINE_HEIGHT);
@@ -3139,8 +3139,8 @@ void UIManager::createCenteredButton(const std::string &id, int offsetY,
                                      int width, int height,
                                      const std::string &text) {
   // Calculate baseline center position
-  int centerX = (UIConstants::BASELINE_WIDTH - width) / 2;
-  int centerY = UIConstants::BASELINE_HEIGHT / 2 + offsetY;
+  int const centerX = (UIConstants::BASELINE_WIDTH - width) / 2;
+  int const centerY = UIConstants::BASELINE_HEIGHT / 2 + offsetY;
 
   createButton(id, {centerX, centerY, width, height}, text);
 

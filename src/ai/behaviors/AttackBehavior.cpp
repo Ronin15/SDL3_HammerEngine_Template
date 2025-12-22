@@ -216,7 +216,7 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   EntityPtr target = getTarget();
 
   // Track state for animation notification
-  AttackState previousState = state.currentState;
+  AttackState const previousState = state.currentState;
 
   // Update all timers
   updateTimers(state, deltaTime);
@@ -449,7 +449,7 @@ bool AttackBehavior::isTargetInRange(EntityPtr entity, EntityPtr target) const {
 
   // PERFORMANCE: Use squared distance to avoid sqrt
   float distanceSquared = (entity->getPosition() - target->getPosition()).lengthSquared();
-  float attackRangeSquared = m_attackRange * m_attackRange;
+  float const attackRangeSquared = m_attackRange * m_attackRange;
   return distanceSquared <= attackRangeSquared;
 }
 
@@ -461,7 +461,7 @@ bool AttackBehavior::isTargetInAttackRange(EntityPtr entity,
   // PERFORMANCE: Use squared distance to avoid sqrt
   float distanceSquared = (entity->getPosition() - target->getPosition()).lengthSquared();
   float effectiveRange = calculateEffectiveRange(m_entityStates.at(entity));
-  float effectiveRangeSquared = effectiveRange * effectiveRange;
+  float const effectiveRangeSquared = effectiveRange * effectiveRange;
   return distanceSquared <= effectiveRangeSquared;
 }
 
@@ -484,7 +484,7 @@ float AttackBehavior::calculateDamage(const EntityState &state) const {
 
   // Apply combo multiplier
   if (m_comboAttacks && state.currentCombo > 0) {
-    float comboMultiplier = 1.0f + (state.currentCombo * COMBO_DAMAGE_PER_LEVEL);
+    float const comboMultiplier = 1.0f + (state.currentCombo * COMBO_DAMAGE_PER_LEVEL);
     baseDamage *= comboMultiplier;
   }
 
@@ -513,7 +513,7 @@ Vector2D AttackBehavior::calculateOptimalAttackPosition(
   }
 
   // Calculate optimal position
-  Vector2D optimalPos = targetPos + direction * m_optimalRange;
+  Vector2D const optimalPos = targetPos + direction * m_optimalRange;
 
   return optimalPos;
 }
@@ -550,7 +550,7 @@ AttackBehavior::calculateStrafePosition(EntityPtr entity, EntityPtr target,
 
   // Calculate strafe direction (perpendicular to target direction)
   Vector2D toTarget = normalizeDirection(targetPos - entityPos);
-  Vector2D strafeDir =
+  Vector2D const strafeDir =
       Vector2D(-toTarget.getY(), toTarget.getX()) * state.strafeDirectionInt;
 
   return entityPos + strafeDir * (m_movementSpeed * 2.0f);
@@ -609,7 +609,7 @@ void AttackBehavior::notifyAnimationStateChange(EntityPtr entity, AttackState ne
 
 void AttackBehavior::updateStateTimer(EntityState &state) {
 
-  float timeInState = state.stateChangeTimer;
+  float const timeInState = state.stateChangeTimer;
 
   // Handle state transitions based on timing
   switch (state.currentState) {
@@ -638,7 +638,7 @@ void AttackBehavior::updateStateTimer(EntityState &state) {
 }
 
 bool AttackBehavior::shouldRetreat(const EntityState &state) const {
-  float healthRatio = state.currentHealth / state.maxHealth;
+  float const healthRatio = state.currentHealth / state.maxHealth;
   return healthRatio <= m_retreatThreshold && m_aggression < 0.8f;
 }
 
@@ -647,7 +647,7 @@ bool AttackBehavior::shouldCharge(EntityPtr entity, EntityPtr target,
   if (!entity || !target || m_attackMode != AttackMode::CHARGE_ATTACK)
     return false;
 
-  float distance = state.targetDistance;
+  float const distance = state.targetDistance;
   return distance > m_optimalRange * CHARGE_DISTANCE_THRESHOLD_MULT && distance <= m_attackRange;
 }
 
@@ -657,7 +657,7 @@ void AttackBehavior::executeAttack(EntityPtr entity, EntityPtr target,
     return;
 
   // Calculate damage
-  float damage = calculateDamage(state);
+  float const damage = calculateDamage(state);
 
   // Calculate knockback
   Vector2D knockback = calculateKnockbackVector(entity, target);
@@ -691,7 +691,7 @@ void AttackBehavior::executeAttack(EntityPtr entity, EntityPtr target,
 void AttackBehavior::executeSpecialAttack(EntityPtr entity, EntityPtr target,
                                           EntityState &state) {
   // Enhanced attack with special effects
-  float specialDamage = calculateDamage(state) * SPECIAL_ATTACK_MULTIPLIER;
+  float const specialDamage = calculateDamage(state) * SPECIAL_ATTACK_MULTIPLIER;
   Vector2D knockback =
       calculateKnockbackVector(entity, target) * (m_knockbackForce * SPECIAL_ATTACK_MULTIPLIER);
 
@@ -710,7 +710,7 @@ void AttackBehavior::executeComboAttack(EntityPtr entity, EntityPtr target,
 
   // Combo finisher
   if (state.currentCombo >= m_maxCombo) {
-    float comboDamage = calculateDamage(state) * COMBO_FINISHER_MULTIPLIER;
+    float const comboDamage = calculateDamage(state) * COMBO_FINISHER_MULTIPLIER;
     Vector2D knockback =
         calculateKnockbackVector(entity, target) * (m_knockbackForce * COMBO_FINISHER_MULTIPLIER);
 
@@ -791,11 +791,11 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, EntityState &state, fl
 
   Vector2D entityPos = entity->getPosition();
   Vector2D targetPos = target->getPosition();
-  float distance = state.targetDistance;
+  float const distance = state.targetDistance;
 
   // Ranged attackers need to maintain distance - back off if too close
-  bool tooClose = distance < m_minimumRange;
-  bool inOptimalRange = distance >= m_minimumRange && distance <= m_optimalRange * 1.2f;
+  bool const tooClose = distance < m_minimumRange;
+  bool const inOptimalRange = distance >= m_minimumRange && distance <= m_optimalRange * 1.2f;
 
   switch (state.currentState) {
   case AttackState::SEEKING:
@@ -814,8 +814,8 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, EntityState &state, fl
   case AttackState::POSITIONING:
     if (tooClose) {
       // Back off from target to maintain ranged distance
-      Vector2D awayFromTarget = (entityPos - targetPos).normalized();
-      Vector2D retreatPos = entityPos + awayFromTarget * (m_optimalRange * 0.5f);
+      Vector2D const awayFromTarget = (entityPos - targetPos).normalized();
+      Vector2D const retreatPos = entityPos + awayFromTarget * (m_optimalRange * 0.5f);
       moveToPosition(entity, retreatPos, m_movementSpeed * 1.2f, deltaTime);
     } else if (inOptimalRange && state.canAttack) {
       changeState(state, AttackState::ATTACKING);
@@ -824,10 +824,10 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, EntityState &state, fl
       changeState(state, AttackState::APPROACHING);
     } else {
       // Circle strafe at optimal range to avoid being an easy target
-      Vector2D toTarget = (targetPos - entityPos).normalized();
-      Vector2D perpendicular(-toTarget.getY(), toTarget.getX());
-      float strafeDir = (state.strafeDirectionInt > 0) ? 1.0f : -1.0f;
-      Vector2D strafePos = entityPos + perpendicular * (40.0f * strafeDir);
+      Vector2D const toTarget = (targetPos - entityPos).normalized();
+      Vector2D const perpendicular(-toTarget.getY(), toTarget.getX());
+      float const strafeDir = (state.strafeDirectionInt > 0) ? 1.0f : -1.0f;
+      Vector2D const strafePos = entityPos + perpendicular * (40.0f * strafeDir);
       moveToPosition(entity, strafePos, m_movementSpeed * 0.6f, deltaTime);
     }
     break;
@@ -850,8 +850,8 @@ void AttackBehavior::updateRangedAttack(EntityPtr entity, EntityState &state, fl
     if (distance >= m_optimalRange) {
       changeState(state, AttackState::POSITIONING);
     } else {
-      Vector2D awayFromTarget = (entityPos - targetPos).normalized();
-      Vector2D retreatPos = entityPos + awayFromTarget * (m_minimumRange);
+      Vector2D const awayFromTarget = (entityPos - targetPos).normalized();
+      Vector2D const retreatPos = entityPos + awayFromTarget * (m_minimumRange);
       moveToPosition(entity, retreatPos, m_movementSpeed, deltaTime);
     }
     break;
@@ -929,7 +929,7 @@ void AttackBehavior::updateBerserkerAttack(EntityPtr entity,
                                            EntityState &state, float deltaTime) {
   // Aggressive continuous attacks with reduced cooldown
   if (state.currentState == AttackState::COOLDOWN) {
-    float timeInState = state.stateChangeTimer;
+    float const timeInState = state.stateChangeTimer;
     if (timeInState > (m_attackCooldown * 0.5f)) { // Half cooldown
       changeState(state, AttackState::APPROACHING);
     }
@@ -1045,14 +1045,14 @@ void AttackBehavior::maintainDistance(EntityPtr entity, EntityPtr target,
   Vector2D targetPos = target->getPosition();
   
   // PERFORMANCE: Use squared distance for comparison
-  float currentDistanceSquared = (entityPos - targetPos).lengthSquared();
-  float desiredDistanceSquared = desiredDistance * desiredDistance;
-  float toleranceSquared = 100.0f; // 10.0f * 10.0f
+  float const currentDistanceSquared = (entityPos - targetPos).lengthSquared();
+  float const desiredDistanceSquared = desiredDistance * desiredDistance;
+  float const toleranceSquared = 100.0f; // 10.0f * 10.0f
   
   float difference = std::abs(currentDistanceSquared - desiredDistanceSquared);
   if (difference > toleranceSquared) {
     Vector2D direction = normalizeDirection(entityPos - targetPos);
-    Vector2D desiredPos = targetPos + direction * desiredDistance;
+    Vector2D const desiredPos = targetPos + direction * desiredDistance;
     moveToPosition(entity, desiredPos, m_movementSpeed, deltaTime);
   }
 }
@@ -1092,8 +1092,8 @@ bool AttackBehavior::isValidAttackPosition(const Vector2D &position,
 
   // PERFORMANCE: Use squared distance
   float distanceSquared = (position - target->getPosition()).lengthSquared();
-  float minRangeSquared = m_minimumRange * m_minimumRange;
-  float maxRangeSquared = m_attackRange * m_attackRange;
+  float const minRangeSquared = m_minimumRange * m_minimumRange;
+  float const maxRangeSquared = m_attackRange * m_attackRange;
   return distanceSquared >= minRangeSquared && distanceSquared <= maxRangeSquared;
 }
 
@@ -1120,7 +1120,7 @@ float AttackBehavior::calculateAttackSuccessChance(
   float baseChance = 0.8f; // 80% base hit chance
 
   // Modify based on distance
-  float distance = state.targetDistance;
+  float const distance = state.targetDistance;
   if (distance > m_optimalRange) {
     baseChance *= (m_attackRange - distance) / (m_attackRange - m_optimalRange);
   }

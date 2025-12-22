@@ -525,7 +525,7 @@ void GuardBehavior::updateAlertLevel(EntityPtr /*entity*/, EntityState &state,
     state.hasActiveThreat = true;
 
     // Escalate alert level based on how long threat has been present
-    float threatDuration = state.alertTimer;
+    float const threatDuration = state.alertTimer;
 
     if (state.currentAlertLevel == AlertLevel::CALM) {
       state.currentAlertLevel = AlertLevel::SUSPICIOUS;
@@ -680,7 +680,7 @@ void GuardBehavior::updateAreaGuard(EntityPtr entity, EntityState &state, float 
 
   // Ensure we're within the guard area
   if (!isWithinGuardArea(currentPos)) {
-    Vector2D clampedPos = clampToGuardArea(currentPos);
+    Vector2D const clampedPos = clampToGuardArea(currentPos);
     moveToPosition(entity, clampedPos, m_movementSpeed, deltaTime);
   } else {
     // Patrol within the area
@@ -802,7 +802,7 @@ bool GuardBehavior::isWithinGuardArea(const Vector2D &position) const {
 Vector2D GuardBehavior::clampToGuardArea(const Vector2D &position) const {
   if (m_useCircularArea) {
     Vector2D direction = position - m_areaCenter;
-    float distance = direction.length();
+    float const distance = direction.length();
 
     if (distance > m_areaRadius) {
       direction = normalizeDirection(direction);

@@ -78,7 +78,7 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
 
     // Calculate font sizes based on window height (universal for all platforms)
     int clampedHeight = std::clamp(windowHeight, 480, 8640);
-    float baseSizeFloat = static_cast<float>(clampedHeight) / HEIGHT_RATIO;
+    float const baseSizeFloat = static_cast<float>(clampedHeight) / HEIGHT_RATIO;
 
     int baseFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat)), MIN_BASE_FONT_SIZE, MAX_FONT_SIZE);
     int uiFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * UI_FONT_RATIO)), MIN_UI_FONT_SIZE, MAX_FONT_SIZE);
@@ -229,7 +229,7 @@ std::shared_ptr<SDL_Texture> FontManager::renderMultiLineText(
   }
 
   // Get font height for line spacing
-  int lineHeight = TTF_GetFontHeight(font);
+  int const lineHeight = TTF_GetFontHeight(font);
 
   // Calculate total dimensions needed
   int maxWidth = 0;
@@ -307,8 +307,8 @@ void FontManager::drawText(const std::string& text, const std::string& fontID,
   // Get the texture size
   float w, h;
   SDL_GetTextureSize(texture.get(), &w, &h);
-  int width = static_cast<int>(w);
-  int height = static_cast<int>(h);
+  int const width = static_cast<int>(w);
+  int const height = static_cast<int>(h);
 
   // Create a destination rectangle
   // Position x,y is considered to be the center of the text
@@ -341,8 +341,8 @@ void FontManager::drawTextAligned(const std::string& text, const std::string& fo
   // Get the texture size
   float w, h;
   SDL_GetTextureSize(texture.get(), &w, &h);
-  int width = static_cast<int>(w);
-  int height = static_cast<int>(h);
+  int const width = static_cast<int>(w);
+  int const height = static_cast<int>(h);
 
   // Calculate position based on alignment
   float destX, destY;
@@ -482,7 +482,7 @@ bool FontManager::measureTextWithWrapping(const std::string& text, const std::st
   }
 
   TTF_Font* font = fontIt->second.get();
-  int lineHeight = TTF_GetFontHeight(font);
+  int const lineHeight = TTF_GetFontHeight(font);
   int maxLineWidth = 0;
 
   // Measure each wrapped line to get the actual maximum width
@@ -516,7 +516,7 @@ void FontManager::drawTextWithWrapping(const std::string& text, const std::strin
 
   auto wrappedLines = wrapTextToLines(text, fontID, maxWidth);
   TTF_Font* font = fontIt->second.get();
-  int lineHeight = TTF_GetFontHeight(font);
+  int const lineHeight = TTF_GetFontHeight(font);
   int currentY = y;
 
   // Draw each wrapped line
@@ -641,7 +641,7 @@ bool FontManager::measureMultilineText(const std::string& text, const std::strin
   }
 
   TTF_Font* font = fontIt->second.get();
-  int lineHeight = TTF_GetFontHeight(font);
+  int const lineHeight = TTF_GetFontHeight(font);
   int maxLineWidth = 0;
 
   // Measure each line

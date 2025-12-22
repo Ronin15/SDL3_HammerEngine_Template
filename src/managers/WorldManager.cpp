@@ -387,7 +387,7 @@ void WorldManager::fireWorldUnloadedEvent(const std::string& worldId) {
 
 void WorldManager::registerEventHandlers() {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        EventManager & eventMgr = EventManager::Instance();
         m_handlerTokens.clear();
 
         // Register handler for world events (to respond to events from other systems)
