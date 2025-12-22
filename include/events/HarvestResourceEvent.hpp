@@ -33,7 +33,7 @@ public:
         : Event(), m_entityId(entityId), m_targetPosition(targetX, targetY),
           m_resourceType(resourceType) {}
     
-    virtual ~HarvestResourceEvent() override = default;
+    ~HarvestResourceEvent() override = default;
     
     // Event interface implementation
     void update() override {}

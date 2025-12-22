@@ -35,7 +35,7 @@ public:
     explicit CameraEvent(CameraEventType eventType) 
         : Event(), m_eventType(eventType) {}
     
-    virtual ~CameraEvent() override = default;
+    ~CameraEvent() override = default;
     
     CameraEventType getEventType() const { return m_eventType; }
     

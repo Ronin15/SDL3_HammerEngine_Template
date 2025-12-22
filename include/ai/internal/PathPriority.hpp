@@ -16,7 +16,7 @@ namespace AIInternal {
 /**
  * @brief Pathfinding priority levels for request scheduling
  */
-enum class PathPriority {
+enum class PathPriority : uint8_t {
     Critical = 0, // Player, combat situations
     High = 1,     // Close NPCs, important behaviors  
     Normal = 2,   // Regular NPC navigation

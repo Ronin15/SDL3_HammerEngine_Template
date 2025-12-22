@@ -24,3 +24,13 @@ WorldManager.cpp:misc-const-correctness:highElevationTiles incremented in loop
 
 # False positive: subBodyIndex is incremented later in loop
 CollisionManager.cpp:misc-const-correctness:subBodyIndex incremented in loop
+
+# Narrowing conversions - intentional int-to-float for grid/world coordinate transforms
+PathfindingGrid.cpp:bugprone-narrowing-conversions:intentional grid-to-world coord conversion
+PathfindingGrid.cpp:cppcoreguidelines-narrowing-conversions:intentional grid-to-world coord conversion
+WorldManager.cpp:bugprone-narrowing-conversions:intentional grid-to-world coord conversion
+WorldManager.cpp:cppcoreguidelines-narrowing-conversions:intentional grid-to-world coord conversion
+HierarchicalSpatialHash.cpp:bugprone-narrowing-conversions:intentional grid-to-world coord conversion
+HierarchicalSpatialHash.cpp:cppcoreguidelines-narrowing-conversions:intentional grid-to-world coord conversion
+GameTimeManager.cpp:bugprone-narrowing-conversions:intentional time calculations
+GameTimeManager.cpp:cppcoreguidelines-narrowing-conversions:intentional time calculations

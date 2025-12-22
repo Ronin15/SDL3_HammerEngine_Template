@@ -15,7 +15,7 @@
 
 class FleeBehavior : public AIBehavior {
 public:
-  enum class FleeMode {
+  enum class FleeMode : uint8_t {
     PANIC_FLEE,        // Run away in panic (fast, erratic)
     STRATEGIC_RETREAT, // Calculated retreat (slower, planned)
     EVASIVE_MANEUVER,  // Zigzag pattern while fleeing

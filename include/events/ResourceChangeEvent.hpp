@@ -36,7 +36,7 @@ public:
                       int oldQuantity, int newQuantity,
                       const std::string &changeReason = "");
 
-  virtual ~ResourceChangeEvent() override = default;
+  ~ResourceChangeEvent() override = default;
 
   // Event interface implementation
   void update() override {}

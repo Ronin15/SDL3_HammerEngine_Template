@@ -45,7 +45,7 @@ public:
     explicit TimeEvent(TimeEventType eventType)
         : Event(), m_timeEventType(eventType) {}
 
-    virtual ~TimeEvent() override = default;
+    ~TimeEvent() override = default;
 
     TimeEventType getTimeEventType() const { return m_timeEventType; }
 

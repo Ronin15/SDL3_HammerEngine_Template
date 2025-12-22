@@ -17,7 +17,7 @@
 
 class FollowBehavior : public AIBehavior {
 public:
-  enum class FollowMode {
+  enum class FollowMode : uint8_t {
     CLOSE_FOLLOW,    // Stay very close to target
     LOOSE_FOLLOW,    // Maintain some distance
     FLANKING_FOLLOW, // Follow from the sides
