@@ -229,16 +229,14 @@ void InputManager::onMouseButtonUp(const SDL_Event& event) {
 }
 
 void InputManager::onGamepadAxisMove(const SDL_Event& event) {
-  int whichOne = 0;
-
   // Find which gamepad this event belongs to
-  for (size_t i = 0; i < m_joysticks.size(); i++) {
-    // In SDL3, use SDL_GetGamepadID directly
-    if (SDL_GetGamepadID(m_joysticks[i]) == event.gaxis.which) {
-      whichOne = static_cast<int>(i);
-      break;
-    }
-  }
+  auto it = std::find_if(m_joysticks.begin(), m_joysticks.end(),
+    [&event](SDL_Gamepad* gamepad) {
+      return SDL_GetGamepadID(gamepad) == event.gaxis.which;
+    });
+  int whichOne = (it != m_joysticks.end())
+    ? static_cast<int>(std::distance(m_joysticks.begin(), it))
+    : 0;
 
   // Make sure the gamepad index is valid
   if (whichOne >= static_cast<int>(m_joystickValues.size())) {
@@ -325,16 +323,14 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
 }
 
 void InputManager::onGamepadButtonDown(const SDL_Event& event) {
-  int whichOne = 0;
-
   // Find which gamepad this event belongs to
-  for (size_t i = 0; i < m_joysticks.size(); i++) {
-    // In SDL3, use SDL_GetGamepadID directly
-    if (SDL_GetGamepadID(m_joysticks[i]) == event.gdevice.which) {
-      whichOne = static_cast<int>(i);
-      break;
-    }
-  }
+  auto it = std::find_if(m_joysticks.begin(), m_joysticks.end(),
+    [&event](SDL_Gamepad* gamepad) {
+      return SDL_GetGamepadID(gamepad) == event.gdevice.which;
+    });
+  int whichOne = (it != m_joysticks.end())
+    ? static_cast<int>(std::distance(m_joysticks.begin(), it))
+    : 0;
 
   // Make sure the gamepad and button indices are valid
   if (whichOne >= static_cast<int>(m_buttonStates.size()) ||
@@ -372,16 +368,14 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
 }
 
 void InputManager::onGamepadButtonUp(const SDL_Event& event) {
-  int whichOne = 0;
-
   // Find which gamepad this event belongs to
-  for (size_t i = 0; i < m_joysticks.size(); i++) {
-    // In SDL3, use SDL_GetGamepadID directly
-    if (SDL_GetGamepadID(m_joysticks[i]) == event.gdevice.which) {
-      whichOne = static_cast<int>(i);
-      break;
-    }
-  }
+  auto it = std::find_if(m_joysticks.begin(), m_joysticks.end(),
+    [&event](SDL_Gamepad* gamepad) {
+      return SDL_GetGamepadID(gamepad) == event.gdevice.which;
+    });
+  int whichOne = (it != m_joysticks.end())
+    ? static_cast<int>(std::distance(m_joysticks.begin(), it))
+    : 0;
 
   // Make sure the gamepad and button indices are valid
   if (whichOne >= static_cast<int>(m_buttonStates.size()) ||

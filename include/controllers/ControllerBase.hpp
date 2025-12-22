@@ -95,7 +95,7 @@ protected:
      * @brief Register a handler token for automatic cleanup
      * @param token The handler token from EventManager::registerHandlerWithToken
      */
-    void addHandlerToken(EventManager::HandlerToken token)
+    void addHandlerToken(const EventManager::HandlerToken& token)
     {
         m_handlerTokens.push_back(token);
     }

@@ -109,7 +109,7 @@ public:
 protected:
   int m_frameWidth{0};                // Width of a single animation frame
   void setupAnimationStates();
-  void initializeAnimationMap() override;
+  void initializeAnimationMap();
 
 private:
   void loadDimensionsFromTexture();

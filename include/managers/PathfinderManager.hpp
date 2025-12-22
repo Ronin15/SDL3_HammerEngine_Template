@@ -468,7 +468,6 @@ private:
     // Internal methods - simplified
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
-    uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
     uint64_t computeStableCacheKey(const Vector2D& start, const Vector2D& goal) const;
     void evictOldestCacheEntry();
     void clearOldestCacheEntries(float percentage); // Smart cache clearing (partial LRU eviction)

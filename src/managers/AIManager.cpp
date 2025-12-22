@@ -1293,10 +1293,9 @@ void AIManager::calculateDistancesSIMD(
         return; // No distance updates needed without player
     }
 
+#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
     const Float4 playerPosX = broadcast(playerPos.getX());
     const Float4 playerPosY = broadcast(playerPos.getY());
-
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
     // SIMD path: Process 4 entities at once
     // All entities processed every frame for accurate combat system
     for (size_t i = start; i + 3 < end && i + 3 < storage.entities.size(); i += 4) {
@@ -1419,9 +1418,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     try {
       // Use SIMD-precomputed distances for all entities (no staggering)
       // All entities get fresh distance/position every frame for accurate combat
-      size_t localIdx = i - start;
       if (hasPlayer) {
         // Use precomputed SIMD results (2-4x faster than scalar)
+        size_t localIdx = i - start;
         hotData.distanceSquared = precomputedDistances[localIdx];
         hotData.position = precomputedPositions[localIdx];
       }

@@ -116,7 +116,7 @@ private:
   void loadDimensionsFromTexture();
   void setupStates();
   void setupInventory();
-  void initializeAnimationMap() override;
+  void initializeAnimationMap();
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
