@@ -536,15 +536,15 @@ private:
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
 
   // SIMD-optimized distance calculation helper
+  // All entities processed every frame (no staggering) for accurate combat
   static void calculateDistancesSIMD(size_t start, size_t end,
                                      const Vector2D& playerPos,
-                                     uint64_t distanceUpdateSlice,
                                      const EntityStorage& storage,
                                      std::vector<float>& outDistances,
                                      std::vector<Vector2D>& outPositions);
 
   void processBatch(size_t start, size_t end, float deltaTime,
-                    const Vector2D &playerPos, uint64_t distanceUpdateSlice,
+                    const Vector2D &playerPos,
                     const EntityStorage& storage,
                     std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
                     size_t batchIndex = 0);

@@ -332,11 +332,9 @@ void AIManager::update(float deltaTime) {
     }
 
     // Get player position for distance calculations
-    // Distance calculation moved to processBatch to avoid redundant iteration
-    // OPTIMIZATION: Stagger distance updates - update 1/16th of entities per frame
-    // instead of all entities every 16 frames for smoother frame-to-frame consistency
+    // All entities get distance calculated every frame via SIMD (fast enough)
+    // Staggering removed - combat system needs accurate positions for all entities
     EntityPtr player = m_playerEntity.lock();
-    uint64_t distanceUpdateSlice = player ? (currentFrame % 16) : UINT64_MAX;
     Vector2D playerPos = player ? player->getPosition() : Vector2D(0, 0);
 
     // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
@@ -382,7 +380,7 @@ void AIManager::update(float deltaTime) {
         m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, distanceUpdateSlice, m_storage, m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, m_storage, m_reusableCollisionBuffer);
         }
 
         // Submit collision updates directly (single-threaded, no batching needed)
@@ -418,7 +416,7 @@ void AIManager::update(float deltaTime) {
         m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, distanceUpdateSlice, m_storage, m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, m_storage, m_reusableCollisionBuffer);
         }
 
         // Submit collision updates directly (single batch, no contention)
@@ -476,13 +474,13 @@ void AIManager::update(float deltaTime) {
             auto* batchCollisionUpdatesPtr = m_batchCollisionUpdates.get();
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
               [this, start, end, deltaTime, playerPos,
-               distanceUpdateSlice, batchCollisionUpdatesPtr, i]() -> void {
+               batchCollisionUpdatesPtr, i]() -> void {
                 try {
                   // Acquire shared_lock for this batch's execution
                   // Multiple batches can hold shared_locks simultaneously (parallel reads)
                   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
                   processBatch(start, end, deltaTime, playerPos,
-                              distanceUpdateSlice, m_storage, (*batchCollisionUpdatesPtr)[i], i);
+                              m_storage, (*batchCollisionUpdatesPtr)[i], i);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
@@ -511,7 +509,7 @@ void AIManager::update(float deltaTime) {
       m_reusableCollisionBuffer.clear();
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        processBatch(0, entityCount, deltaTime, playerPos, distanceUpdateSlice, m_storage, m_reusableCollisionBuffer);
+        processBatch(0, entityCount, deltaTime, playerPos, m_storage, m_reusableCollisionBuffer);
       }
 
       // Submit collision updates using convenience API (single-vector overload)
@@ -1274,11 +1272,11 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 /**
  * @brief SIMD-optimized batch distance calculation
  * Processes 4 entities at once using platform-specific SIMD instructions
+ * All entities are processed every frame (no staggering) for accurate combat
  *
  * @param start Starting index in storage
  * @param end Ending index in storage
  * @param playerPos Player position for distance calculations
- * @param distanceUpdateSlice Stagger pattern index (only entities matching i % 16 == slice are updated)
  * @param storage Entity storage (read-only)
  * @param outDistances Output array for calculated squared distances (must be sized >= end - start)
  * @param outPositions Output array for entity positions (must be sized >= end - start)
@@ -1286,14 +1284,13 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 void AIManager::calculateDistancesSIMD(
     size_t start, size_t end,
     const Vector2D& playerPos,
-    uint64_t distanceUpdateSlice,
     const EntityStorage& storage,
     std::vector<float>& outDistances,
     std::vector<Vector2D>& outPositions
 ) {
     const bool hasPlayer = (playerPos.getX() != 0 || playerPos.getY() != 0);
-    if (!hasPlayer || distanceUpdateSlice == UINT64_MAX) {
-        return; // No distance updates needed
+    if (!hasPlayer) {
+        return; // No distance updates needed without player
     }
 
     const Float4 playerPosX = broadcast(playerPos.getX());
@@ -1301,69 +1298,69 @@ void AIManager::calculateDistancesSIMD(
 
 #if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
     // SIMD path: Process 4 entities at once
-    // Only process entities that match the stagger pattern
+    // All entities processed every frame for accurate combat system
     for (size_t i = start; i + 3 < end && i + 3 < storage.entities.size(); i += 4) {
-        // Check if all 4 entities match the stagger pattern (same slice)
-        bool allMatch = ((i % 16) == distanceUpdateSlice) &&
-                       (((i + 1) % 16) == distanceUpdateSlice) &&
-                       (((i + 2) % 16) == distanceUpdateSlice) &&
-                       (((i + 3) % 16) == distanceUpdateSlice);
+        // Get entity positions
+        Vector2D pos0 = storage.entities[i]->getPosition();
+        Vector2D pos1 = storage.entities[i + 1]->getPosition();
+        Vector2D pos2 = storage.entities[i + 2]->getPosition();
+        Vector2D pos3 = storage.entities[i + 3]->getPosition();
 
-        if (allMatch && i < storage.entities.size() &&
-            (i + 1) < storage.entities.size() &&
-            (i + 2) < storage.entities.size() &&
-            (i + 3) < storage.entities.size()) {
+        // Load positions into SIMD registers
+        const Float4 entityPosX = set(pos0.getX(), pos1.getX(), pos2.getX(), pos3.getX());
+        const Float4 entityPosY = set(pos0.getY(), pos1.getY(), pos2.getY(), pos3.getY());
 
-            // Get entity positions
-            Vector2D pos0 = storage.entities[i]->getPosition();
-            Vector2D pos1 = storage.entities[i + 1]->getPosition();
-            Vector2D pos2 = storage.entities[i + 2]->getPosition();
-            Vector2D pos3 = storage.entities[i + 3]->getPosition();
+        // Calculate differences
+        const Float4 diffX = sub(entityPosX, playerPosX);
+        const Float4 diffY = sub(entityPosY, playerPosY);
 
-            // Load positions into SIMD registers
-            const Float4 entityPosX = set(pos0.getX(), pos1.getX(), pos2.getX(), pos3.getX());
-            const Float4 entityPosY = set(pos0.getY(), pos1.getY(), pos2.getY(), pos3.getY());
+        // Calculate squared distances: diffX * diffX + diffY * diffY
+        const Float4 distSq = add(mul(diffX, diffX), mul(diffY, diffY));
 
-            // Calculate differences
-            const Float4 diffX = sub(entityPosX, playerPosX);
-            const Float4 diffY = sub(entityPosY, playerPosY);
+        // Store results
+        alignas(16) float distSquaredArray[4];
+        store4(distSquaredArray, distSq);
 
-            // Calculate squared distances: diffX * diffX + diffY * diffY
-            const Float4 distSq = add(mul(diffX, diffX), mul(diffY, diffY));
+        // Update output arrays
+        size_t idx = i - start;
+        outDistances[idx] = distSquaredArray[0];
+        outDistances[idx + 1] = distSquaredArray[1];
+        outDistances[idx + 2] = distSquaredArray[2];
+        outDistances[idx + 3] = distSquaredArray[3];
 
-            // Store results
-            alignas(16) float distSquaredArray[4];
-            store4(distSquaredArray, distSq);
+        outPositions[idx] = pos0;
+        outPositions[idx + 1] = pos1;
+        outPositions[idx + 2] = pos2;
+        outPositions[idx + 3] = pos3;
+    }
 
-            // Update output arrays
-            size_t idx = i - start;
-            outDistances[idx] = distSquaredArray[0];
-            outDistances[idx + 1] = distSquaredArray[1];
-            outDistances[idx + 2] = distSquaredArray[2];
-            outDistances[idx + 3] = distSquaredArray[3];
-
-            outPositions[idx] = pos0;
-            outPositions[idx + 1] = pos1;
-            outPositions[idx + 2] = pos2;
-            outPositions[idx + 3] = pos3;
-        }
+    // Scalar tail loop for remaining entities (not divisible by 4)
+    // Calculate where SIMD actually stopped based on actual storage size
+    // SIMD loop condition is: i + 3 < end && i + 3 < storage.entities.size()
+    // So SIMD processed: start, start+4, start+8, ... up to where i+3 >= min(end, storage.size())
+    size_t effectiveEnd = std::min(end, storage.entities.size());
+    size_t simdProcessedCount = (effectiveEnd > start) ? ((effectiveEnd - start) / 4) * 4 : 0;
+    for (size_t i = start + simdProcessedCount; i < end && i < storage.entities.size(); ++i) {
+        const Vector2D entityPos = storage.entities[i]->getPosition();
+        const Vector2D diff = entityPos - playerPos;
+        size_t idx = i - start;
+        outDistances[idx] = diff.lengthSquared();
+        outPositions[idx] = entityPos;
+    }
+#else
+    // Scalar fallback for non-SIMD platforms
+    for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
+        const Vector2D entityPos = storage.entities[i]->getPosition();
+        const Vector2D diff = entityPos - playerPos;
+        size_t idx = i - start;
+        outDistances[idx] = diff.lengthSquared();
+        outPositions[idx] = entityPos;
     }
 #endif
-
-    // Scalar fallback/tail loop for remaining entities
-    for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
-        if ((i % 16) == distanceUpdateSlice) {
-            const Vector2D entityPos = storage.entities[i]->getPosition();
-            const Vector2D diff = entityPos - playerPos;
-            size_t idx = i - start;
-            outDistances[idx] = diff.lengthSquared();
-            outPositions[idx] = entityPos;
-        }
-    }
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
-                             const Vector2D &playerPos, uint64_t distanceUpdateSlice,
+                             const Vector2D &playerPos,
                              const EntityStorage& storage,
                              std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
                              size_t batchIndex) {
@@ -1392,6 +1389,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // SIMD OPTIMIZATION: Pre-compute distances for this batch using SIMD
   // Process 4 entities at once for 2-4x speedup
+  // All entities processed every frame (no staggering) for accurate combat
   // Use pre-allocated buffers to avoid per-batch allocation (Issue #2 fix)
   size_t bufferIndex = batchIndex % m_distanceBuffers.size();
   std::vector<float>& precomputedDistances = m_distanceBuffers[bufferIndex];
@@ -1399,11 +1397,11 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // Resize buffers for this batch (clear() + resize keeps capacity, minimal allocation)
   precomputedDistances.clear();
-  precomputedDistances.resize(batchSize, -1.0f);
+  precomputedDistances.resize(batchSize, 0.0f);
   precomputedPositions.clear();
   precomputedPositions.resize(batchSize);
 
-  calculateDistancesSIMD(start, end, playerPos, distanceUpdateSlice, storage,
+  calculateDistancesSIMD(start, end, playerPos, storage,
                         precomputedDistances, precomputedPositions);
 
   // OPTIMIZATION: Direct storage iteration - no copying overhead
@@ -1419,17 +1417,16 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     auto hotData = storage.hotData[i];  // Copy for local modification
 
     try {
-      // Use SIMD-precomputed distances for matched entities
-      // Staggered update: only update this entity if its index matches the current slice
+      // Use SIMD-precomputed distances for all entities (no staggering)
+      // All entities get fresh distance/position every frame for accurate combat
       size_t localIdx = i - start;
-      if (distanceUpdateSlice != UINT64_MAX && hasPlayer && (i % 16 == distanceUpdateSlice) &&
-          precomputedDistances[localIdx] >= 0.0f) {
+      if (hasPlayer) {
         // Use precomputed SIMD results (2-4x faster than scalar)
         hotData.distanceSquared = precomputedDistances[localIdx];
         hotData.position = precomputedPositions[localIdx];
       }
 
-      // Simple distance-based culling - no frame counting needed
+      // Priority-based distance culling - far entities are frozen
       bool shouldUpdate = true;
       if (hasPlayer) {
         // Use pre-calculated values from batch level
@@ -1498,14 +1495,19 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         pos = clamped; // Update pos for batch accumulation
 
+        // SYNC: Update cached position so queries always have current data
+        // Safe: each batch processes non-overlapping indices (no race condition)
+        m_storage.hotData[i].position = pos;
+        m_storage.hotData[i].distanceSquared = hotData.distanceSquared;
+
         // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
         collisionUpdates.emplace_back(entity->getID(), pos, vel);
 
         batchExecutions++;
       } else {
-        // PERFORMANCE OPTIMIZATION: Skip entity updates for culled entities entirely
-        // Use cached position from hotData to avoid virtual function calls
-        // No need to call setVelocity() - culled entities don't move anyway
+        // Frozen entities are too far for combat queries (beyond culling distance)
+        // No sync needed - they're not moving and outside any combat range
+        // When they become active again, they'll be synced on that first active frame
         collisionUpdates.emplace_back(entity->getID(), hotData.position, Vector2D(0, 0));
       }
     } catch (const std::exception &e) {
