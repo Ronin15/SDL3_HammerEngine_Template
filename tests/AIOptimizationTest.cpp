@@ -223,3 +223,62 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().unassignBehaviorFromEntity(entity);
     AIManager::Instance().resetBehaviors();
 }
+
+// Test case for SIMD distance calculations including tail loop edge cases
+// This verifies that ALL entities receive proper distance calculations,
+// especially for entity counts that are NOT multiples of 4 (SIMD width)
+BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
+{
+    // Register a test behavior
+    auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
+    AIManager::Instance().registerBehavior("DistanceTestWander", wanderBehavior);
+
+    // Test with entity counts that stress the SIMD tail loop:
+    // 1, 2, 3 (all scalar)
+    // 4, 5, 6, 7 (SIMD + tail)
+    // 8, 9, 10, 11 (SIMD*2 + tail)
+    std::vector<size_t> testCounts = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 17, 23};
+
+    for (size_t count : testCounts) {
+        // Create entities at known positions
+        std::vector<std::shared_ptr<OptimizationTestEntity>> entities;
+        for (size_t i = 0; i < count; ++i) {
+            // Place entities at (100 * i, 100 * i) for predictable distances
+            auto entity = OptimizationTestEntity::create(Vector2D(100.0f * static_cast<float>(i), 100.0f * static_cast<float>(i)));
+            AIManager::Instance().registerEntityForUpdates(entity, 5, "DistanceTestWander");
+            entities.push_back(entity);
+        }
+
+        // Process assignments
+        AIManager::Instance().update(0.016f);
+        AIManager::Instance().waitForAssignmentCompletion();
+
+        // Run a few update cycles to ensure distance calculations run
+        for (int frame = 0; frame < 3; ++frame) {
+            AIManager::Instance().update(0.016f);
+        }
+
+        // Verify all entities received valid processing (no teleportation to (0,0))
+        for (size_t i = 0; i < entities.size(); ++i) {
+            auto pos = entities[i]->getPosition();
+            // Entities should be near their starting positions (WanderBehavior may move them slightly)
+            // But they should NEVER teleport to (0,0) unless they started there
+            if (i > 0) {
+                // Entity i started at (100*i, 100*i), so it should NOT be at origin
+                // Allow for some movement due to WanderBehavior, but position should be reasonable
+                float distanceFromOrigin = std::sqrt(pos.getX() * pos.getX() + pos.getY() * pos.getY());
+                BOOST_CHECK_MESSAGE(distanceFromOrigin > 10.0f,
+                    "Entity " << i << " of " << count << " teleported to origin! Position: ("
+                    << pos.getX() << ", " << pos.getY() << ")");
+            }
+        }
+
+        // Cleanup
+        for (auto& entity : entities) {
+            AIManager::Instance().unregisterEntityFromUpdates(entity);
+            AIManager::Instance().unassignBehaviorFromEntity(entity);
+        }
+        entities.clear();
+        AIManager::Instance().resetBehaviors();
+    }
+}
