@@ -2755,8 +2755,7 @@ void ParticleManager::updateParticlePhysicsSIMD(
     LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
     float deltaTime) {
 
-#if defined(HAMMER_SIMD_SSE2)
-  // Prepare aligned SIMD constants using SIMDMath abstraction
+  // SIMD physics using SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
   const Float4 deltaTimeVec = broadcast(deltaTime);
   const Float4 atmosphericDragVec = broadcast(0.98f);
 
@@ -2853,126 +2852,6 @@ void ParticleManager::updateParticlePhysicsSIMD(
     }
   }
 
-  // No Vector2D sync required
-
-#elif defined(HAMMER_SIMD_NEON)
-  // ARM NEON: Prepare SIMD constants using SIMDMath abstraction
-  const Float4 deltaTimeVec = broadcast(deltaTime);
-  const Float4 atmosphericDragVec = broadcast(0.98f);
-
-  // Quick bounds check - only validate once
-  const size_t particleCount = particles.size();
-  if (endIdx > particleCount || startIdx >= endIdx) return;
-  endIdx = std::min(endIdx, particleCount);
-
-  // SIMD arrays are primary storage; operate directly on them
-  // NOTE: Previous positions for interpolation are stored inline during physics update
-  // to avoid a separate array pass (fused for better cache utilization)
-
-  // Scalar pre-loop to align to 4-float boundary for aligned loads
-  size_t i = startIdx;
-  while (i < endIdx && (i & 0x3) != 0) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
-      // Store previous position for interpolation before physics update
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      // Physics update
-      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
-      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
-    }
-    ++i;
-  }
-
-  // NEON main loop - use aligned loads for maximum performance
-  const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
-  // Safe SIMD flag load limit - need 16 bytes for load_byte16
-  const size_t simdFlagSafeEnd = particleCount >= 16 ? particleCount - 15 : 0;
-
-  for (; i < simdEnd; i += 4) {
-    // SIMD flag check for 4 particles: skip if none active
-    // Only use SIMD flag load when we have at least 16 elements available
-    bool anyActive = false;
-    if (i < simdFlagSafeEnd) {
-      // Safe to load 16 bytes
-      const Byte16 flagsv = load_byte16(&particles.flags[i]);
-      const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
-      const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
-      const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
-      const int maskBits = movemask_byte(gt0);
-      anyActive = (maskBits & 0xFFFFFFFF) != 0;
-    } else {
-      // Scalar flag check for safety near array end
-      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
-                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
-                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
-                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
-    }
-    if (!anyActive) continue;
-
-    // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
-    Float4 posXv = load4(&particles.posX[i]);
-    Float4 posYv = load4(&particles.posY[i]);
-
-    // Store previous positions for interpolation BEFORE physics update (fused optimization)
-    store4(&particles.prevPosX[i], posXv);
-    store4(&particles.prevPosY[i], posYv);
-
-    Float4 velXv = load4(&particles.velX[i]);
-    Float4 velYv = load4(&particles.velY[i]);
-    const Float4 accXv = load4(&particles.accX[i]);
-    const Float4 accYv = load4(&particles.accY[i]);
-
-    // SIMD physics update: vel = (vel + acc * dt) * drag
-    velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
-    velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
-
-    // pos = pos + vel * dt
-    posXv = madd(velXv, deltaTimeVec, posXv);
-    posYv = madd(velYv, deltaTimeVec, posYv);
-
-    // Store results back to SIMD arrays
-    store4(&particles.velX[i], velXv);
-    store4(&particles.velY[i], velYv);
-    store4(&particles.posX[i], posXv);
-    store4(&particles.posY[i], posYv);
-  }
-
-  // Scalar tail
-  for (; i < endIdx; ++i) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
-      // Store previous position for interpolation before physics update
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      // Physics update
-      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
-      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
-    }
-  }
-
-  // No Vector2D sync required
-
-#else
-  // Fallback to scalar implementation for platforms without SIMD
-
-  // INTERPOLATION: Store previous positions before physics update
-  // This enables smooth rendering between fixed timestep updates
-  for (size_t i = startIdx; i < endIdx; ++i) {
-    particles.prevPosX[i] = particles.posX[i];
-    particles.prevPosY[i] = particles.posY[i];
-  }
-
-  for (size_t i = startIdx; i < endIdx; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
-    particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-    particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-    particles.posX[i] += particles.velX[i] * deltaTime;
-    particles.posY[i] += particles.velY[i] * deltaTime;
-  }
-#endif
 }
 
 void ParticleManager::batchProcessParticleColors(
