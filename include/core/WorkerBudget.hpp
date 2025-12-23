@@ -11,6 +11,7 @@
 #include <cmath>
 #include <array>
 #include <atomic>
+#include <mutex>
 #include <utility>
 #include "Logger.hpp"
 
@@ -207,9 +208,10 @@ private:
         static constexpr double MAX_BATCH_TIME_MS = 2.0;  // 2ms - above this, split more
     };
 
-    // Cached budget
+    // Cached budget (protected by double-checked locking)
     WorkerBudget m_cachedBudget{};
     std::atomic<bool> m_budgetValid{false};
+    mutable std::mutex m_cacheMutex;
 
     // Per-system batch tuning (uses atomics, thread-safe)
     std::array<BatchTuningState, static_cast<size_t>(SystemType::COUNT)> m_batchState{};

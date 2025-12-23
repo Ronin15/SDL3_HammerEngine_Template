@@ -11,6 +11,7 @@
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <atomic>
+#include <mutex>
 #include <random>
 #include <unordered_map>
 #include <vector>
@@ -143,6 +144,7 @@ private:
   // Formation management (atomic for thread safety)
   static std::atomic<int> s_nextFormationSlot;
   static std::vector<Vector2D> s_escortFormationOffsets;
+  static std::once_flag s_formationInitFlag;
 
   // Random number generation for formation variation
   mutable std::mt19937 m_rng{std::random_device{}()};

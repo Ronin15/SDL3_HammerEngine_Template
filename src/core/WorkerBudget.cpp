@@ -21,9 +21,12 @@ const WorkerBudget& WorkerBudgetManager::getBudget() {
         return m_cachedBudget;
     }
 
-    // Slow path: calculate and cache
-    m_cachedBudget = calculateBudget();
-    m_budgetValid.store(true, std::memory_order_release);
+    // Slow path: double-checked locking to prevent race on m_cachedBudget
+    std::lock_guard<std::mutex> lock(m_cacheMutex);
+    if (!m_budgetValid.load(std::memory_order_relaxed)) {
+        m_cachedBudget = calculateBudget();
+        m_budgetValid.store(true, std::memory_order_release);
+    }
     return m_cachedBudget;
 }
 
