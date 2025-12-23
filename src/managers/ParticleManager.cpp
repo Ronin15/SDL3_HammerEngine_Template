@@ -2281,25 +2281,13 @@ void ParticleManager::updateParticleRange(
   }
   
   for (size_t i = startIdx; i < endIdx; ++i) {
-    // BOUNDS CHECK: Double-check index is still valid (Windows gcc strictness)
-    if (i >= flagsSize || !(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
+    // Skip inactive particles (bounds already validated by safeSize clamp above)
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
       continue;
     }
-    
-    // BOUNDS CHECK: Verify all array accesses are safe before proceeding
-    if (i >= positionsSize || i >= velocitiesSize || i >= accelerationsSize ||
-        i >= livesSize || i >= maxLivesSize || i >= sizesSize ||
-        i >= colorsSize || i >= effectTypesSize) {
-      break; // Exit safely if any buffer is inconsistent
-    }
-    
-    // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
+
+    // PRODUCTION OPTIMIZATION: Pre-compute per-particle offset for wind variation
     const float particleOffset = i * 0.1f;
-    
-    const float particleOffset15 = i * 0.15f;
-    const float particleOffset2 = i * 0.2f;
-    const float particleOffset25 = i * 0.25f;
-    const float particleOffset3 = i * 0.3f;
     
     
 
@@ -2318,6 +2306,7 @@ void ParticleManager::updateParticleRange(
       particles.accY[i] = 0.0f;
 
       // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
+      const float particleOffset15 = i * 0.15f;
       const float drift = fastSin(windPhase0_8 + particleOffset15) * 3.0f;
       const float verticalFloat = fastCos(windPhase1_2 + particleOffset) * 1.5f;
 
@@ -2337,6 +2326,7 @@ void ParticleManager::updateParticleRange(
       switch (effectType) {
         case ParticleEffectType::Snow:
         case ParticleEffectType::HeavySnow: {
+          const float particleOffset2 = i * 0.2f;
           const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
           particles.velX[i] += flutter * deltaTime;
           atmosphericDrag = 0.96f; // More air resistance for snow
@@ -2344,6 +2334,10 @@ void ParticleManager::updateParticleRange(
         }
         case ParticleEffectType::Rain:
         case ParticleEffectType::HeavyRain: {
+          // Offsets for this particle's atmospheric effects
+          const float particleOffset2 = i * 0.2f;
+          const float particleOffset25 = i * 0.25f;
+
           // Enhanced rain physics for natural movement
           const float particleSize = particles.sizes[i];
           const float sizeNormalized = (particleSize - 1.5f) / 4.5f; // Normalize to 0-1 range
@@ -2380,6 +2374,7 @@ void ParticleManager::updateParticleRange(
           break;
         }
         default: { // Regular fog behavior (not clouds)
+          const float particleOffset15 = i * 0.15f;
           const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
           const float verticalDrift = fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
           particles.velX[i] += drift * deltaTime;
@@ -2398,8 +2393,11 @@ void ParticleManager::updateParticleRange(
       // OPTIMIZATION: Use switch for better branch prediction than nested if-else
       switch (effectType) {
         case ParticleEffectType::Fire: {
+          // Offsets for fire turbulence
+          const float particleOffset3 = i * 0.3f;
+          const float particleOffset25 = i * 0.25f;
           float const randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
-          
+
           // More random turbulence for fire
           const float heatTurbulence = fastSin(windPhase8_0 + particleOffset3) * 15.0f +
                                      (randomFactor - 0.5f) * 10.0f;
@@ -2459,20 +2457,39 @@ void ParticleManager::updateParticleRange(
       continue;
     }
 
-    // Note: Enhanced visual properties with natural fading are now handled
-    // in batch color processing after the main update loop for better performance
+    // FUSED COLOR PROCESSING: Apply alpha fading based on life ratio
+    // This eliminates the separate batchProcessParticleColors pass
+    {
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ?
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+      const uint32_t color = particles.colors[i];
+      float alphaMultiplier;
 
-    // Note: Size variation for natural appearance would be applied during
-    // rendering
+      if (effectType == ParticleEffectType::Fire) {
+        // Fire particles: simple fade based on life
+        alphaMultiplier = lifeRatio;
+      } else if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
+        // Weather particles: fade in at start, fade out at end
+        if (lifeRatio > 0.9f) {
+          alphaMultiplier = (1.0f - lifeRatio) * 10.0f; // Fade in during first 10%
+        } else if (lifeRatio < 0.2f) {
+          alphaMultiplier = lifeRatio * 5.0f; // Fade out during last 20%
+        } else {
+          alphaMultiplier = 1.0f;
+        }
+      } else {
+        // Standard fade for other particles
+        alphaMultiplier = lifeRatio;
+      }
+
+      const uint8_t alpha = static_cast<uint8_t>(255.0f * alphaMultiplier);
+      particles.colors[i] = (color & 0xFFFFFF00) | alpha;
+    }
    }
    
    // PERFORMANCE OPTIMIZATION: Apply physics integration for all platforms.
    // The implementation uses SIMD when available, otherwise falls back to scalar.
    updateParticlePhysicsSIMD(particles, startIdx, endIdx, deltaTime);
-   
-   // PERFORMANCE OPTIMIZATION: Apply batch color processing for non-fire particles
-   // This provides better cache utilization and eliminates redundant alpha calculations
-   batchProcessParticleColors(particles, startIdx, endIdx);
 }
 
 void ParticleManager::createParticleForEffect(
