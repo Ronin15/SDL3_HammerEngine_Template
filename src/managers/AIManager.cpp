@@ -67,20 +67,6 @@ bool AIManager::init() {
     // Reserve with 10% headroom for growth (typical: 4000 NPCs → 4400 capacity)
     m_reusableCollisionBuffer.reserve(static_cast<size_t>(INITIAL_CAPACITY * 1.1));
 
-    // Pre-allocate distance/position buffers (Issue #2 fix)
-    // WorkerBudget.hpp: AI_BATCH_CONFIG allows up to 16 batches (maxBatchCount * 2)
-    // Batch size = (workloadSize + batchCount - 1) / batchCount
-    // Worst case: 10K entities / 4 batches (high queue pressure) = 2,500 entities/batch
-    // Conservative sizing: 16 batches * 3,000 entities/batch = handles up to 48K entities
-    constexpr size_t MAX_UPDATE_BATCHES = 16;     // AI_BATCH_CONFIG.maxBatchCount * 2
-    constexpr size_t MAX_BATCH_SIZE = 3000;       // Worst case: 10K entities / 4 batches with headroom
-    m_distanceBuffers.resize(MAX_UPDATE_BATCHES);
-    m_positionBuffers.resize(MAX_UPDATE_BATCHES);
-    for (size_t i = 0; i < MAX_UPDATE_BATCHES; ++i) {
-      m_distanceBuffers[i].reserve(MAX_BATCH_SIZE);
-      m_positionBuffers[i].reserve(MAX_BATCH_SIZE);
-    }
-
     // Initialize lock-free message queue
     for (auto &msg : m_lockFreeMessages) {
       msg.ready.store(false, std::memory_order_relaxed);
@@ -333,7 +319,8 @@ void AIManager::update(float deltaTime) {
     // All entities get distance calculated every frame via SIMD (fast enough)
     // Staggering removed - combat system needs accurate positions for all entities
     EntityPtr player = m_playerEntity.lock();
-    Vector2D playerPos = player ? player->getPosition() : Vector2D(0, 0);
+    bool hasPlayer = (player != nullptr);
+    Vector2D playerPos = hasPlayer ? player->getPosition() : Vector2D(0, 0);
 
     // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
     // No intermediate buffer copy needed - preFetchedData is our only copy
@@ -378,7 +365,7 @@ void AIManager::update(float deltaTime) {
         m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, m_storage, m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, m_reusableCollisionBuffer);
         }
 
         // Submit collision updates directly (single-threaded, no batching needed)
@@ -414,7 +401,7 @@ void AIManager::update(float deltaTime) {
         m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, m_storage, m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, m_reusableCollisionBuffer);
         }
 
         // Submit collision updates directly (single batch, no contention)
@@ -449,55 +436,46 @@ void AIManager::update(float deltaTime) {
           }
         }
 
-        // Submit batches using futures for native async result tracking
-        // OPTIMIZATION: Reuse m_batchFutures directly to avoid local vector allocation
-        {
-          std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-          m_batchFutures.clear();  // Clear old futures, keeps capacity
-          m_batchFutures.reserve(batchCount);
-          // Member variable already holds the buffer, no need for extra copy
+        // Submit batches using futures for parallel processing
+        // Reuse m_batchFutures vector (clear keeps capacity, avoids allocations)
+        m_batchFutures.clear();
+        m_batchFutures.reserve(batchCount);
 
-          for (size_t i = 0; i < batchCount; ++i) {
-            size_t start = i * entitiesPerBatch;
-            size_t end = start + entitiesPerBatch;
+        for (size_t i = 0; i < batchCount; ++i) {
+          size_t start = i * entitiesPerBatch;
+          size_t end = start + entitiesPerBatch;
 
-            // Add remaining entities to last batch
-            if (i == batchCount - 1) {
-              end += remainingEntities;
-            }
-
-            // Submit each batch with future for completion tracking
-            // Each batch will acquire its own shared_lock during execution
-            // PERFORMANCE: Capture raw pointer to avoid atomic ref-counting in lambda
-            auto* batchCollisionUpdatesPtr = m_batchCollisionUpdates.get();
-            m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-              [this, start, end, deltaTime, playerPos,
-               batchCollisionUpdatesPtr, i]() -> void {
-                try {
-                  // Acquire shared_lock for this batch's execution
-                  // Multiple batches can hold shared_locks simultaneously (parallel reads)
-                  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-                  processBatch(start, end, deltaTime, playerPos,
-                              m_storage, (*batchCollisionUpdatesPtr)[i], i);
-                } catch (const std::exception &e) {
-                  AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
-                } catch (...) {
-                  AI_ERROR("Unknown exception in AI batch");
-                }
-
-                // PER-BATCH BUFFER: Each batch writes to its own buffer (zero contention!)
-                // Collision updates will be submitted after all batches complete
-              },
-              HammerEngine::TaskPriority::High,
-              "AI_Batch"
-            ));
+          // Add remaining entities to last batch
+          if (i == batchCount - 1) {
+            end += remainingEntities;
           }
+
+          // Submit each batch with future for completion tracking
+          // Each batch will acquire its own shared_lock during execution
+          // PERFORMANCE: Capture raw pointer to avoid atomic ref-counting in lambda
+          auto* batchCollisionUpdatesPtr = m_batchCollisionUpdates.get();
+          m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+            [this, start, end, deltaTime, playerPos, hasPlayer,
+             batchCollisionUpdatesPtr, i]() -> void {
+              try {
+                // Acquire shared_lock for this batch's execution
+                // Multiple batches can hold shared_locks simultaneously (parallel reads)
+                std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+                processBatch(start, end, deltaTime, playerPos, hasPlayer,
+                            m_storage, (*batchCollisionUpdatesPtr)[i]);
+              } catch (const std::exception &e) {
+                AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
+              } catch (...) {
+                AI_ERROR("Unknown exception in AI batch");
+              }
+            },
+            HammerEngine::TaskPriority::High,
+            "AI_Batch"
+          ));
         }
 
-        // NO WAIT HERE: Async batches complete in background
-        // GameEngine waits for completion at NEXT frame's start (consistent timing, no jitter)
-        // Batches hold shared_locks during execution, allowing parallel reads
-        // This provides deterministic updates with minimal performance impact
+        // Batches execute in parallel via ThreadSystem
+        // waitForAsyncBatchCompletion() is called at end of update() to wait and submit collision updates
       }
 
     } else {
@@ -507,7 +485,7 @@ void AIManager::update(float deltaTime) {
       m_reusableCollisionBuffer.clear();
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        processBatch(0, entityCount, deltaTime, playerPos, m_storage, m_reusableCollisionBuffer);
+        processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, m_reusableCollisionBuffer);
       }
 
       // Submit collision updates using convenience API (single-vector overload)
@@ -576,33 +554,20 @@ void AIManager::waitForAsyncBatchCompletion() {
   // This ensures collision updates are ready before CollisionManager processes them.
   //
   // JITTER ELIMINATION: Per-batch buffers eliminate mutex contention
-  //   - Old approach: Each batch serializes on submitPendingKinematicUpdates mutex
-  //   - New approach: Each batch writes to its own buffer (zero contention!)
+  //   - Each batch writes to its own buffer (zero contention!)
   //   - Result: Consistent batch completion times → smooth frames
 
-  // Reuse member buffer instead of creating local vector (eliminates ~120 alloc/sec)
-  // Use swap() to preserve capacity on both vectors (avoids reallocation)
-  std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> collisionBuffers;
-
-  {
-    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
-    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
-    collisionBuffers = m_batchCollisionUpdates;
-    m_batchCollisionUpdates.reset();  // Clear for next frame
-  }
-
   // Wait for all batch futures to complete
-  for (auto& future : m_reusableBatchFutures) {
+  for (auto& future : m_batchFutures) {
     if (future.valid()) {
       future.wait();  // Block until batch completes
     }
   }
 
   // Submit ALL collision updates at once (zero mutex contention during batch execution!)
-  if (collisionBuffers && !collisionBuffers->empty()) {
+  if (m_batchCollisionUpdates && !m_batchCollisionUpdates->empty()) {
     auto &cm = CollisionManager::Instance();
-    cm.applyBatchedKinematicUpdates(*collisionBuffers);
+    cm.applyBatchedKinematicUpdates(*m_batchCollisionUpdates);
   }
 }
 
@@ -1271,22 +1236,21 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
  * @brief SIMD-optimized batch distance calculation
  * Processes 4 entities at once using platform-specific SIMD instructions
  * All entities are processed every frame (no staggering) for accurate combat
+ * Positions are read directly from entities in processBatch (not precomputed here)
  *
  * @param start Starting index in storage
  * @param end Ending index in storage
  * @param playerPos Player position for distance calculations
  * @param storage Entity storage (read-only)
  * @param outDistances Output array for calculated squared distances (must be sized >= end - start)
- * @param outPositions Output array for entity positions (must be sized >= end - start)
  */
 void AIManager::calculateDistancesSIMD(
     size_t start, size_t end,
     const Vector2D& playerPos,
+    bool hasPlayer,
     const EntityStorage& storage,
-    std::vector<float>& outDistances,
-    std::vector<Vector2D>& outPositions
+    std::vector<float>& outDistances
 ) {
-    const bool hasPlayer = (playerPos.getX() != 0 || playerPos.getY() != 0);
     if (!hasPlayer) {
         return; // No distance updates needed without player
     }
@@ -1318,23 +1282,15 @@ void AIManager::calculateDistancesSIMD(
         alignas(16) float distSquaredArray[4];
         store4(distSquaredArray, distSq);
 
-        // Update output arrays
+        // Update output array (distances only - positions read directly in processBatch)
         size_t idx = i - start;
         outDistances[idx] = distSquaredArray[0];
         outDistances[idx + 1] = distSquaredArray[1];
         outDistances[idx + 2] = distSquaredArray[2];
         outDistances[idx + 3] = distSquaredArray[3];
-
-        outPositions[idx] = pos0;
-        outPositions[idx + 1] = pos1;
-        outPositions[idx + 2] = pos2;
-        outPositions[idx + 3] = pos3;
     }
 
     // Scalar tail loop for remaining entities (not divisible by 4)
-    // Calculate where SIMD actually stopped based on actual storage size
-    // SIMD loop condition is: i + 3 < end && i + 3 < storage.entities.size()
-    // So SIMD processed: start, start+4, start+8, ... up to where i+3 >= min(end, storage.size())
     size_t effectiveEnd = std::min(end, storage.entities.size());
     size_t simdProcessedCount = (effectiveEnd > start) ? ((effectiveEnd - start) / 4) * 4 : 0;
     for (size_t i = start + simdProcessedCount; i < end && i < storage.entities.size(); ++i) {
@@ -1342,7 +1298,6 @@ void AIManager::calculateDistancesSIMD(
         const Vector2D diff = entityPos - playerPos;
         size_t idx = i - start;
         outDistances[idx] = diff.lengthSquared();
-        outPositions[idx] = entityPos;
     }
 #else
     // Scalar fallback for non-SIMD platforms
@@ -1351,16 +1306,15 @@ void AIManager::calculateDistancesSIMD(
         const Vector2D diff = entityPos - playerPos;
         size_t idx = i - start;
         outDistances[idx] = diff.lengthSquared();
-        outPositions[idx] = entityPos;
     }
 #endif
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                              const Vector2D &playerPos,
+                             bool hasPlayer,
                              const EntityStorage& storage,
-                             std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
-                             size_t batchIndex) {
+                             std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
   size_t batchExecutions = 0;
 
   // Reserve space in collision updates accumulator (approximate size)
@@ -1370,7 +1324,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   // Pre-calculate common values once per batch to reduce per-entity overhead
   const float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
   const float maxDistSquared = maxDist * maxDist;
-  const bool hasPlayer = (playerPos.getX() != 0 || playerPos.getY() != 0);
 
   // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
   // Eliminates 418+ atomic loads per frame → single atomic load per batch
@@ -1387,19 +1340,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
   // SIMD OPTIMIZATION: Pre-compute distances for this batch using SIMD
   // Process 4 entities at once for 2-4x speedup
   // All entities processed every frame (no staggering) for accurate combat
-  // Use pre-allocated buffers to avoid per-batch allocation (Issue #2 fix)
-  size_t bufferIndex = batchIndex % m_distanceBuffers.size();
-  std::vector<float>& precomputedDistances = m_distanceBuffers[bufferIndex];
-  std::vector<Vector2D>& precomputedPositions = m_positionBuffers[bufferIndex];
+  // Local buffer - each batch isolated, WorkerBudget determines batch count
+  std::vector<float> precomputedDistances(batchSize, 0.0f);
 
-  // Resize buffers for this batch (clear() + resize keeps capacity, minimal allocation)
-  precomputedDistances.clear();
-  precomputedDistances.resize(batchSize, 0.0f);
-  precomputedPositions.clear();
-  precomputedPositions.resize(batchSize);
-
-  calculateDistancesSIMD(start, end, playerPos, storage,
-                        precomputedDistances, precomputedPositions);
+  calculateDistancesSIMD(start, end, playerPos, hasPlayer, storage, precomputedDistances);
 
   // OPTIMIZATION: Direct storage iteration - no copying overhead
   // Caller holds shared_lock, safe for parallel read access
@@ -1415,23 +1359,20 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
     try {
       // Use SIMD-precomputed distances for all entities (no staggering)
-      // All entities get fresh distance/position every frame for accurate combat
+      // All entities get fresh distance every frame for accurate combat
+      // Position is read directly from entity to avoid buffer sync issues
       if (hasPlayer) {
-        // Use precomputed SIMD results (2-4x faster than scalar)
         size_t localIdx = i - start;
         hotData.distanceSquared = precomputedDistances[localIdx];
-        hotData.position = precomputedPositions[localIdx];
+        hotData.position = entity->getPosition();  // Direct read, not from buffer
       }
 
-      // Priority-based distance culling - far entities are frozen
+      // Priority-based distance culling - pure distance check
       bool shouldUpdate = true;
       if (hasPlayer) {
-        // Use pre-calculated values from batch level
         float priorityMultiplier = 1.0f + hotData.priority * 0.1f;
         float effectiveMaxDistSquared =
             maxDistSquared * priorityMultiplier * priorityMultiplier;
-
-        // Pure distance-based culling - entities too far away don't update
         shouldUpdate = (hotData.distanceSquared <= effectiveMaxDistSquared);
       }
 
@@ -1496,12 +1437,10 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         collisionUpdates.emplace_back(entity->getID(), pos, vel);
 
         batchExecutions++;
-      } else {
-        // Frozen entities are too far for combat queries (beyond culling distance)
-        // No sync needed - they're not moving and outside any combat range
-        // When they become active again, they'll be synced on that first active frame
-        collisionUpdates.emplace_back(entity->getID(), hotData.position, Vector2D(0, 0));
       }
+      // Culled entities: Don't sync to collision at all.
+      // They're far from player, don't need active collision.
+      // When they become active again (closer to player), they'll sync normally.
     } catch (const std::exception &e) {
       AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
       // NOTE: Don't decrement active counter here - entity is still active, just had an error

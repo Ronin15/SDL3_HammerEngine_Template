@@ -32,6 +32,7 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
     : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight), m_npcType(type) {
   // Initialize entity properties
   m_position = startPosition;
+  m_previousPosition = startPosition;  // Sync interpolation state at spawn
   m_velocity = Vector2D(0, 0);
   m_acceleration = Vector2D(0, 0);
   m_textureID = textureID;

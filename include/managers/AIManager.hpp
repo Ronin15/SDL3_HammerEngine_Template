@@ -480,17 +480,14 @@ private:
   // Cached manager references (avoid singleton lookups in hot paths)
   PathfinderManager* mp_pathfinderManager{nullptr};
 
-  // Async batch tracking for safe shutdown using futures
+  // Batch futures for parallel processing - reused via clear() each frame
   std::vector<std::future<void>> m_batchFutures;
-  std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // Async assignment tracking for deterministic synchronization (replaces m_assignmentInProgress)
   std::vector<std::future<void>> m_assignmentFutures;
   std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
 
-  // Reusable futures buffers to avoid per-frame allocations in sync paths
-  // These are cleared and reused each frame instead of creating local vectors
-  mutable std::vector<std::future<void>> m_reusableBatchFutures;
+  // Reusable futures buffer for assignment synchronization
   mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
 
   // Per-batch collision update buffers (zero contention approach)
@@ -507,11 +504,6 @@ private:
   // Reusable collision update buffer for single-threaded paths
   // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
   std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
-
-  // Pre-allocated batch buffers for distance/position calculations (Issue #2 fix)
-  // Eliminates ~480 allocations/sec @ 60 FPS with 8 batches (1-2ms frame spikes)
-  std::vector<std::vector<float>> m_distanceBuffers;
-  std::vector<std::vector<Vector2D>> m_positionBuffers;
 
   // Reusable buffers for behavior assignment processing
   // Eliminates per-frame allocations during entity spawning
@@ -537,17 +529,18 @@ private:
 
   // SIMD-optimized distance calculation helper
   // All entities processed every frame (no staggering) for accurate combat
+  // Positions are read directly from entities in processBatch (not precomputed)
   static void calculateDistancesSIMD(size_t start, size_t end,
                                      const Vector2D& playerPos,
+                                     bool hasPlayer,
                                      const EntityStorage& storage,
-                                     std::vector<float>& outDistances,
-                                     std::vector<Vector2D>& outPositions);
+                                     std::vector<float>& outDistances);
 
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos,
+                    bool hasPlayer,
                     const EntityStorage& storage,
-                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
-                    size_t batchIndex = 0);
+                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();
