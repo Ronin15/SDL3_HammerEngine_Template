@@ -28,6 +28,7 @@ std::mt19937& getThreadLocalRNG() {
 // Static member initialization (atomic for thread safety)
 std::atomic<int> FollowBehavior::s_nextFormationSlot{0};
 std::vector<Vector2D> FollowBehavior::s_escortFormationOffsets;
+std::once_flag FollowBehavior::s_formationInitFlag;
 
 FollowBehavior::FollowBehavior(float followSpeed, float followDistance,
                                float maxDistance)
@@ -760,15 +761,13 @@ Vector2D FollowBehavior::normalizeVector(const Vector2D &vector) const {
 
 
 void FollowBehavior::initializeFormationOffsets() {
-  if (s_escortFormationOffsets.empty()) {
-    // Initialize escort formation positions (8 positions around target)
+  std::call_once(s_formationInitFlag, []() {
     s_escortFormationOffsets.reserve(8);
-
     for (int i = 0; i < 8; ++i) {
       float angle = (i * 2.0f * M_PI) / 8.0f;
       s_escortFormationOffsets.emplace_back(std::cos(angle), std::sin(angle));
     }
-  }
+  });
 }
 
 int FollowBehavior::assignFormationSlot() {

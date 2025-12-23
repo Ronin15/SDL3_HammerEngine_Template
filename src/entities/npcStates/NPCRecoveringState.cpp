@@ -9,15 +9,17 @@
 NPCRecoveringState::NPCRecoveringState(NPC& npc) : m_npc(npc) {}
 
 void NPCRecoveringState::enter() {
-    // Play recovering animation using abstracted API
-    // This animation plays once (non-looping)
     m_npc.get().playAnimation("recovering");
+    m_animationDuration = static_cast<float>(m_npc.get().getNumFrames() * m_npc.get().getAnimSpeed()) / 1000.0f;
+    m_elapsedTime = 0.0f;
+    m_npc.get().setVelocity(Vector2D(0, 0));
 }
 
 void NPCRecoveringState::update(float deltaTime) {
-    (void)deltaTime;
-    // Animation frame updates are handled in NPC::update()
-    // Recovery completion is handled by AttackBehavior timing
+    m_elapsedTime += deltaTime;
+    if (m_elapsedTime >= m_animationDuration) {
+        m_npc.get().setAnimationState("Idle");
+    }
 }
 
 void NPCRecoveringState::exit() {

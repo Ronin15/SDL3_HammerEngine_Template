@@ -7,6 +7,8 @@
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "entities/playerStates/PlayerAttackingState.hpp"
+#include "entities/playerStates/PlayerDyingState.hpp"
+#include "entities/playerStates/PlayerHurtState.hpp"
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
 
@@ -112,6 +114,8 @@ void Player::setupStates() {
                           std::make_unique<PlayerRunningState>(*this));
   m_stateManager.addState("attacking",
                           std::make_unique<PlayerAttackingState>(*this));
+  m_stateManager.addState("hurt", std::make_unique<PlayerHurtState>(*this));
+  m_stateManager.addState("dying", std::make_unique<PlayerDyingState>(*this));
 }
 
 Player::~Player() {

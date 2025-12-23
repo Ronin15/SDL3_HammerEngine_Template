@@ -23,6 +23,8 @@ private:
     // Non-owning reference to the NPC entity
     // The NPC entity is owned elsewhere in the application
     std::reference_wrapper<NPC> m_npc;
+    float m_animationDuration{0.0f};
+    float m_elapsedTime{0.0f};
 };
 
 #endif // NPC_ATTACKING_STATE_HPP
