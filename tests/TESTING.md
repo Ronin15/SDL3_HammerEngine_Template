@@ -1144,7 +1144,7 @@ For thread-safety tests, follow these guidelines:
 **Solution**:
 - Add `#define BOOST_TEST_NO_SIGNAL_HANDLING` before including Boost.Test
 - Run with `--catch_system_errors=no --no_result_code --detect_memory_leak=0`
-- Disable threading before cleanup: `AIManager::Instance().configureThreading(false)`
+- Disable threading before cleanup: `AIManager::Instance().enableThreading(false)`
 - Add sleep between operations: `std::this_thread::sleep_for(std::chrono::milliseconds(100))`
 - Use timeout for futures: `future.wait_for(std::chrono::seconds(1))`
 - Don't register SIGSEGV handler in test code

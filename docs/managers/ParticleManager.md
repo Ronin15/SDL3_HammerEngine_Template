@@ -411,7 +411,7 @@ void setCameraViewport(float x, float y, float width, float height);
 
 ```cpp
 // Threading configuration
-void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+void enableThreading(bool enable);
 void setThreadingThreshold(size_t threshold);
 void enableWorkerBudgetThreading(bool enable);
 

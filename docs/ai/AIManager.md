@@ -805,7 +805,7 @@ int getEntityPriority(EntityPtr entity) const;
 float getUpdateRangeMultiplier(int priority) const;
 
 // Threading configuration
-void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+void enableThreading(bool enable);
 void configurePriorityMultiplier(float multiplier = 1.0f);
 
 // Message system

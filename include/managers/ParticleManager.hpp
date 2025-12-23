@@ -615,10 +615,9 @@ public:
   // Threading and Performance
   /**
    * @brief Configures threading behavior
-   * @param useThreading Whether to use multi-threading
-   * @param maxThreads Maximum threads to use (0 = auto-detect)
+   * @param enable Whether to enable multi-threading
    */
-  void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+  void enableThreading(bool enable);
 
   /**
    * @brief Sets the threading threshold (minimum particles to use threading)
@@ -930,7 +929,6 @@ private:
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
   std::atomic<size_t> m_threadingThreshold{750};
-  unsigned int m_maxThreads{0};
 
 
   std::atomic<size_t> m_activeCount{0};

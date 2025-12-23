@@ -137,7 +137,7 @@ struct AICollisionGlobalFixture {
         }
 
         // Enable threading for AI
-        AIManager::Instance().configureThreading(true);
+        AIManager::Instance().enableThreading(true);
 
         std::cout << "=== Global Setup Complete ===" << std::endl;
     }

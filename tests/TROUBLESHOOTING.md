@@ -59,7 +59,7 @@ This guide addresses common issues you might encounter when working with our tes
 **Solution**:
 - Add `#define BOOST_TEST_NO_SIGNAL_HANDLING` before including Boost.Test headers
 - Use `--catch_system_errors=no --no_result_code --detect_memory_leak=0` options when running tests
-- Disable threading before cleanup: `AIManager::Instance().configureThreading(false)` or `EventManager::Instance().configureThreading(false)`
+- Disable threading before cleanup: `AIManager::Instance().enableThreading(false)` or `EventManager::Instance().enableThreading(false)`
 - Add sleep between operations: `std::this_thread::sleep_for(std::chrono::milliseconds(100))`
 - Use timeout when waiting for futures: `future.wait_for(std::chrono::seconds(1))` instead of blocking `get()`
 - Always clean up resources in reverse order of initialization
@@ -147,8 +147,8 @@ When testing components that use ThreadSystem's priority-based scheduling (AIMan
    // Initialize manager
    AIManager::Instance().init();
 
-   // Configure with specific priority
-   AIManager::Instance().configureThreading(true, 0, HammerEngine::TaskPriority::High);
+   // Enable threading
+   AIManager::Instance().enableThreading(true);
    ```
 
 2. **Testing Priority Levels**:
