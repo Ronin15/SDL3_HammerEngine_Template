@@ -1634,8 +1634,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
 
     // Calculate epsilon-expanded bounds directly from cached min/max (NO AABB construction!)
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
-    // SIMD: Compute all 4 bounds in parallel using SIMDMath abstraction
+    // SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
     // Load: [aabbMinX, aabbMinY, aabbMaxX, aabbMaxY]
     Float4 bounds = set(dynamicHot.aabbMinX, dynamicHot.aabbMinY,
                        dynamicHot.aabbMaxX, dynamicHot.aabbMaxY);
@@ -1651,20 +1650,12 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     float queryMinY = queryBoundsArray[1];
     float queryMaxX = queryBoundsArray[2];
     float queryMaxY = queryBoundsArray[3];
-#else
-    // Scalar fallback
-    float queryMinX = dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON;
-    float queryMinY = dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON;
-    float queryMaxX = dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON;
-    float queryMaxY = dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON;
-#endif
 
     // 1. Movable-vs-movable collisions (use optimized bounds-based query)
     auto& dynamicCandidates = getPooledVector();
     m_dynamicSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, dynamicCandidates);
 
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
-    // SIMD: Process candidates in batches of 4 for layer mask filtering using SIMDMath
+    // SIMDMath abstraction: Process candidates in batches of 4 for layer mask filtering
     const Int4 maskVec = broadcast_int(dynamicCollidesWith);
     size_t i = 0;
     const size_t simdEnd = (dynamicCandidates.size() / 4) * 4;
@@ -1727,10 +1718,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
     // Scalar tail for remaining candidates
     for (; i < dynamicCandidates.size(); ++i) {
       size_t candidateIdx = dynamicCandidates[i];
-#else
-    // Scalar fallback
-    for (size_t candidateIdx : dynamicCandidates) {
-#endif
       if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
 
       const auto& candidateHot = m_storage.hotData[candidateIdx];
@@ -1764,8 +1751,7 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
 
         const auto& staticCandidates = regionCacheIt->second.staticIndices;
 
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
-        // Unified SIMD: Process static candidates in batches of 4 for layer mask filtering
+        // SIMDMath abstraction: Process static candidates in batches of 4 for layer mask filtering
         const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
         size_t si = 0;
         const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
@@ -1822,10 +1808,6 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
         // Scalar tail for remaining candidates
         for (; si < staticCandidates.size(); ++si) {
           size_t staticIdx = staticCandidates[si];
-#else
-        // Scalar fallback
-        for (size_t staticIdx : staticCandidates) {
-#endif
           if (staticIdx >= m_storage.hotData.size()) continue;
 
           const auto& staticHot = m_storage.hotData[staticIdx];
@@ -1876,8 +1858,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
   // Only trigger special handling for genuinely fast-moving bodies (250px/s @ 60fps = 4.17px/frame)
   constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD; // 62500.0f
 
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
-  // Unified SIMD: Batch process AABB intersection tests (4 pairs at a time)
+  // SIMDMath abstraction: Batch process AABB intersection tests (4 pairs at a time)
   size_t i = 0;
   const size_t simdEnd = (indexPairs.size() / 4) * 4;
 
@@ -1945,7 +1926,7 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
     m_storage.getCachedAABBBounds(aIdx3, minXA[3], minYA[3], maxXA[3], maxYA[3]);
     m_storage.getCachedAABBBounds(bIdx3, minXB[3], minYB[3], maxXB[3], maxYB[3]);
 
-    // Unified SIMD intersection test for 4 pairs
+    // SIMDMath intersection test for 4 pairs
     Float4 const maxXA_v = load4(maxXA);
     Float4 const minXB_v = load4(minXB);
     Float4 const maxXB_v = load4(maxXB);
@@ -2010,10 +1991,6 @@ void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t
   // Scalar tail for remaining pairs
   for (; i < indexPairs.size(); ++i) {
     const auto& [aIdx, bIdx] = indexPairs[i];
-#else
-  // Scalar fallback
-  for (const auto& [aIdx, bIdx] : indexPairs) {
-#endif
     if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
 
     const auto& hotA = m_storage.hotData[aIdx];
@@ -2194,13 +2171,12 @@ void CollisionManager::updateSOA(float dt) {
   auto t3 = clock::now();
 
   // RESOLUTION: Apply collision responses and update positions
-#ifdef HAMMER_SIMD_SSE2
-  // SIMD batch resolution: Process 4 collisions at a time where possible
+  // Batch resolution: Process 4 collisions at a time for cache efficiency
   size_t collIdx = 0;
   const size_t collSimdEnd = (m_collisionPool.collisionBuffer.size() / 4) * 4;
 
   for (; collIdx < collSimdEnd; collIdx += 4) {
-    // Process 4 collisions in parallel (SIMD vector operations)
+    // Process 4 collisions in a batch
     for (size_t j = 0; j < 4; ++j) {
       const auto& collision = m_collisionPool.collisionBuffer[collIdx + j];
       resolveSOA(collision);
@@ -2218,15 +2194,6 @@ void CollisionManager::updateSOA(float dt) {
       cb(collision);
     }
   }
-#else
-  // Scalar fallback
-  for (const auto& collision : m_collisionPool.collisionBuffer) {
-    resolveSOA(collision);
-    for (const auto& cb : m_callbacks) {
-      cb(collision);
-    }
-  }
-#endif
   auto t4 = clock::now();
 
   // Verbose logging removed for performance
@@ -2447,10 +2414,9 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   const float push = collision.penetration * 0.5f;
 
-  // Apply position corrections
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+  // Apply position corrections using SIMDMath abstraction
   if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
-    // Unified SIMD: Both dynamic/kinematic - split the correction
+    // Both dynamic/kinematic - split the correction
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const pushVec = broadcast(push);
     Float4 const correction = mul(normal, pushVec);
@@ -2470,7 +2436,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     hotB.position.setX(resultB[0]);
     hotB.position.setY(resultB[1]);
   } else if (typeA != BodyType::STATIC) {
-    // Unified SIMD: Only A moves
+    // Only A moves
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const penVec = broadcast(collision.penetration);
     Float4 const correction = mul(normal, penVec);
@@ -2484,7 +2450,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     hotA.position.setX(resultA[0]);
     hotA.position.setY(resultA[1]);
   } else if (typeB != BodyType::STATIC) {
-    // Unified SIMD: Only B moves
+    // Only B moves
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const penVec = broadcast(collision.penetration);
     Float4 const correction = mul(normal, penVec);
@@ -2498,26 +2464,10 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     hotB.position.setX(resultB[0]);
     hotB.position.setY(resultB[1]);
   }
-#else
-  // Scalar fallback
-  if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
-    // Both dynamic/kinematic - split the correction
-    Vector2D correction = collision.normal * push;
-    hotA.position -= correction;
-    hotB.position += correction;
-  } else if (typeA != BodyType::STATIC) {
-    // Only A moves
-    hotA.position -= collision.normal * collision.penetration;
-  } else if (typeB != BodyType::STATIC) {
-    // Only B moves
-    hotB.position += collision.normal * collision.penetration;
-  }
-#endif
 
-  // Apply velocity damping for dynamic bodies
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+  // Apply velocity damping for dynamic bodies using SIMDMath abstraction
   auto dampenVelocitySIMD = [](Vector2D& velocity, const Vector2D& collisionNormal, float restitution, bool isStatic) {
-    // Unified SIMD dot product
+    // SIMD dot product
     Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
     Float4 const norm = set(collisionNormal.getX(), collisionNormal.getY(), 0, 0);
     Float4 const dot_vec = mul(vel, norm);
@@ -2529,7 +2479,7 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
       return; // Moving away - no damping needed
     }
 
-    // Unified SIMD velocity damping
+    // SIMD velocity damping
     Float4 const vdotnVec = broadcast(vdotn);
     Float4 const normalVel = mul(norm, vdotnVec);
 
@@ -2555,56 +2505,6 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     Vector2D const flippedNormal = collision.normal * -1.0f;
     dampenVelocitySIMD(hotB.velocity, flippedNormal, m_storage.coldData[indexB].restitution, staticCollision);
   }
-#else
-  // Scalar fallback
-  auto dampenVelocity = [&collision](Vector2D& velocity, float restitution, bool isStatic) {
-    float vdotn = velocity.getX() * collision.normal.getX() +
-                  velocity.getY() * collision.normal.getY();
-
-    // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
-    // vdotn < 0 means moving AWAY from collision
-    if (vdotn < 0) {
-      return; // Moving away - no damping needed
-    }
-
-    // For collisions with static objects, completely zero velocity in collision direction
-    // to prevent continuous penetration when input keeps setting velocity
-    if (isStatic) {
-      Vector2D normalVelocity = collision.normal * vdotn;
-      velocity -= normalVelocity; // Remove all velocity along normal
-    } else {
-      // For dynamic-dynamic collisions, use restitution-based damping
-      Vector2D normalVelocity = collision.normal * vdotn;
-      velocity -= normalVelocity * (1.0f + restitution);
-    }
-  };
-
-  if (typeA == BodyType::DYNAMIC) {
-    bool staticCollision = (typeB == BodyType::STATIC);
-    float restitutionA = m_storage.coldData[indexA].restitution;  // Read from ColdData
-    dampenVelocity(hotA.velocity, restitutionA, staticCollision);
-  }
-  if (typeB == BodyType::DYNAMIC) {
-    bool staticCollision = (typeA == BodyType::STATIC);
-    // For entity B, we need to flip the normal (normal points A->B, but we need B->A)
-    CollisionInfo flippedCollision = collision;
-    flippedCollision.normal = collision.normal * -1.0f;
-    auto dampenVelocityB = [&flippedCollision](Vector2D& velocity, float restitution, bool isStatic) {
-      float vdotn = velocity.getX() * flippedCollision.normal.getX() +
-                    velocity.getY() * flippedCollision.normal.getY();
-      if (vdotn < 0) return; // Moving away
-      if (isStatic) {
-        Vector2D normalVelocity = flippedCollision.normal * vdotn;
-        velocity -= normalVelocity;
-      } else {
-        Vector2D normalVelocity = flippedCollision.normal * vdotn;
-        velocity -= normalVelocity * (1.0f + restitution);
-      }
-    };
-    float restitutionB = m_storage.coldData[indexB].restitution;  // Read from ColdData
-    dampenVelocityB(hotB.velocity, restitutionB, staticCollision);
-  }
-#endif
 
   // Add tangential slide for NPC-vs-NPC collisions (but not player)
   if (typeA == BodyType::DYNAMIC && typeB == BodyType::DYNAMIC) {
@@ -2628,19 +2528,18 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     }
   }
 
-  // Clamp velocities to reasonable limits
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+  // Clamp velocities to reasonable limits using SIMDMath abstraction
   auto clampVelocitySIMD = [](Vector2D& velocity) {
     const float maxSpeed = 300.0f;
 
-    // Unified SIMD length calculation
+    // SIMD length calculation
     Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
     Float4 const sq = mul(vel, vel);
     float const lenSq = horizontal_add(sq);
     float speed = std::sqrt(lenSq);
 
     if (speed > maxSpeed && speed > 0.0f) {
-      // Unified SIMD velocity scaling
+      // SIMD velocity scaling
       Float4 const scale = broadcast(maxSpeed / speed);
       vel = mul(vel, scale);
 
@@ -2653,19 +2552,6 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   clampVelocitySIMD(hotA.velocity);
   clampVelocitySIMD(hotB.velocity);
-#else
-  // Scalar fallback
-  auto clampVelocity = [](Vector2D& velocity) {
-    const float maxSpeed = 300.0f;
-    float speed = velocity.length();
-    if (speed > maxSpeed && speed > 0.0f) {
-      velocity = velocity * (maxSpeed / speed);
-    }
-  };
-
-  clampVelocity(hotA.velocity);
-  clampVelocity(hotB.velocity);
-#endif
 }
 
 void CollisionManager::syncEntitiesToSOA() {
