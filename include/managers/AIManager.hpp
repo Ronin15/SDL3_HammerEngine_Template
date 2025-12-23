@@ -317,7 +317,7 @@ public:
   void resetBehaviors();
 
   // Threading configuration
-  void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+  void enableThreading(bool enable);
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
   void setWaitForBatchCompletion(bool wait);
@@ -439,7 +439,6 @@ private:
   std::atomic<bool> m_waitForBatchCompletion{false}; // Default: non-blocking for smooth frames
   std::atomic<bool> m_globallyPaused{false};
   std::atomic<bool> m_processingMessages{false};
-  unsigned int m_maxThreads{0};
 
   // Legacy pathfinding state removed - all pathfinding handled by
   // PathfinderManager

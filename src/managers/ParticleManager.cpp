@@ -2630,14 +2630,9 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
   updateParticlesThreaded(deltaTime, particleCount, outThreadingInfo);
 }
 
-void ParticleManager::configureThreading(bool useThreading,
-                                         unsigned int maxThreads) {
-  m_useThreading.store(useThreading, std::memory_order_release);
-  m_maxThreads = maxThreads;
-
-  PARTICLE_INFO(std::format("Threading configured: {}{}",
-                useThreading ? "enabled" : "disabled",
-                maxThreads > 0 ? std::format(" (max: {})", maxThreads) : " (auto)"));
+void ParticleManager::enableThreading(bool enable) {
+  m_useThreading.store(enable, std::memory_order_release);
+  PARTICLE_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
 }
 
 void ParticleManager::setThreadingThreshold(size_t threshold) {

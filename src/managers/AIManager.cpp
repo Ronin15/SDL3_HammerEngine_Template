@@ -1074,15 +1074,9 @@ void AIManager::resetBehaviors() {
   m_activeEntityCount.store(0, std::memory_order_relaxed);  // BUGFIX: Reset active count when clearing storage
 }
 
-void AIManager::configureThreading(bool useThreading, unsigned int maxThreads) {
-  m_useThreading.store(useThreading, std::memory_order_release);
-
-  if (maxThreads > 0) {
-    m_maxThreads = maxThreads;
-  }
-
-  AI_INFO(std::format("Threading configured: {} with max threads: {}",
-         useThreading ? "enabled" : "disabled", m_maxThreads));
+void AIManager::enableThreading(bool enable) {
+  m_useThreading.store(enable, std::memory_order_release);
+  AI_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
 }
 
 void AIManager::setThreadingThreshold(size_t threshold) {

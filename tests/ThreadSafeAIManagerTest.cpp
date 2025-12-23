@@ -228,8 +228,7 @@ void performSafeCleanup() {
     try {
       // Additional pause to ensure AIManager is not in use
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      AIManager::Instance().configureThreading(
-          false); // Disable threading before cleanup
+      AIManager::Instance().enableThreading(false); // Disable threading before cleanup
       AIManager::Instance().resetBehaviors();
       AIManager::Instance().clean();
       std::cerr << "AIManager cleaned up successfully" << std::endl;
@@ -397,7 +396,7 @@ struct GlobalTestFixture {
       }
 
       // Enable threading
-      AIManager::Instance().configureThreading(true);
+      AIManager::Instance().enableThreading(true);
       g_aiManagerInitialized = true;
     }
   }
@@ -446,9 +445,8 @@ struct ThreadedAITestFixture {
     std::cout << "Setting up test fixture" << std::endl;
 
     // Enable threading for proper messaging and behavior processing
-    unsigned int maxThreads = std::thread::hardware_concurrency();
-    AIManager::Instance().configureThreading(true, maxThreads);
-    std::cout << "Enabled threading with " << maxThreads << " threads"
+    AIManager::Instance().enableThreading(true);
+    std::cout << "Enabled threading with hardware threads"
               << std::endl;
 
     // Allow time for threading setup
@@ -469,7 +467,7 @@ struct ThreadedAITestFixture {
     try {
       // First, disable threading in AIManager to prevent new threads from being
       // created
-      AIManager::Instance().configureThreading(false);
+      AIManager::Instance().enableThreading(false);
 
       // Wait for any in-progress operations to complete
       std::this_thread::sleep_for(std::chrono::milliseconds(200));

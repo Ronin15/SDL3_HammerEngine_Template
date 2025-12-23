@@ -424,7 +424,7 @@ BOOST_GLOBAL_FIXTURE(GlobalFixture);
 struct AIScalingFixture {
     AIScalingFixture() {
         // Configure threading for AIManager
-        AIManager::Instance().configureThreading(true);
+        AIManager::Instance().enableThreading(true);
 
         std::cout << "=========================================" << std::endl;
         std::cout << "AI SCALING BENCHMARK" << std::endl;
@@ -469,7 +469,7 @@ struct AIScalingFixture {
         behaviors.clear();
 
         // Enable threading and let AIManager decide based on entity count and thresholds
-        AIManager::Instance().configureThreading(true);
+        AIManager::Instance().enableThreading(true);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // Determine expected behavior based on actual thresholds
@@ -756,7 +756,7 @@ struct AIScalingFixture {
         behaviors.clear();
 
         // Enable threading and let AIManager decide based on entity count
-        AIManager::Instance().configureThreading(true);
+        AIManager::Instance().enableThreading(true);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // Determine expected behavior based on actual thresholds
@@ -1211,7 +1211,7 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
         behaviors.clear();
 
         // Force the threading mode (bypassing automatic threshold detection)
-        AIManager::Instance().configureThreading(forceThreading);
+        AIManager::Instance().enableThreading(forceThreading);
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         std::string mode = forceThreading ? "Forced Multi-Threaded" : "Forced Single-Threaded";
@@ -1312,9 +1312,8 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
 
     try {
         // Enable threading and let system decide automatically
-        unsigned int maxThreads = std::thread::hardware_concurrency();
-        AIManager::Instance().configureThreading(true, maxThreads);
-        std::cout << "Running extreme entity test with " << maxThreads << " threads available" << std::endl;
+        AIManager::Instance().enableThreading(true);
+        std::cout << "Running extreme entity test with hardware threads" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // Test 100K entities for proper stress testing
@@ -1360,7 +1359,7 @@ BOOST_AUTO_TEST_CASE(TestExtremeEntityCount) {
 
     } catch (const std::exception& e) {
         std::cerr << "Exception in extreme entity test: " << e.what() << std::endl;
-        AIManager::Instance().configureThreading(true); // Reset to default
+        AIManager::Instance().enableThreading(true); // Reset to default
         throw;
     }
 }
@@ -1527,17 +1526,13 @@ BOOST_AUTO_TEST_CASE(TestIntegratedScalability) {
     }
 
     try {
-        // Use maximum available threads for optimal performance
-        unsigned int maxThreads = std::thread::hardware_concurrency();
-        AIManager::Instance().configureThreading(true, maxThreads);
+        // Enable threading for optimal performance
+        AIManager::Instance().enableThreading(true);
         std::cout << "\n===== INTEGRATED SCALABILITY TEST SUITE (Production Behaviors) =====" << std::endl;
         std::cout << "Testing automatic threading behavior with real production AI behaviors" << std::endl;
-        std::cout << "Running with " << maxThreads << " threads available" << std::endl;
+        std::cout << "Running with hardware threads available" << std::endl;
         std::cout << "NOTE: Iterations scaled inversely with entity count to ensure ~100ms measurement duration" << std::endl;
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-
-        // Enable threading and let system decide automatically
-        AIManager::Instance().configureThreading(true);
 
         std::cout << "\nINTEGRATED SCALABILITY SUMMARY (Production Behaviors):" << std::endl;
         std::cout << "Entity Count | Iterations | Threading Mode | Updates Per Second | Performance Notes" << std::endl;
@@ -1574,7 +1569,7 @@ BOOST_AUTO_TEST_CASE(TestIntegratedScalability) {
     }
     catch (const std::exception& e) {
         std::cerr << "Error in integrated scalability test: " << e.what() << std::endl;
-        AIManager::Instance().configureThreading(false);
+        AIManager::Instance().enableThreading(false);
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         cleanupEntitiesAndBehaviors();
         throw;

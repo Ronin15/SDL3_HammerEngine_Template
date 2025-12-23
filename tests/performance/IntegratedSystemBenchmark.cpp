@@ -282,7 +282,7 @@ namespace {
             PathfinderManager::Instance().rebuildGrid();
             CollisionManager::Instance().init();
             AIManager::Instance().init();
-            AIManager::Instance().configureThreading(true);
+            AIManager::Instance().enableThreading(true);
             ParticleManager::Instance().init();  // Initialize without texture manager
             ParticleManager::Instance().registerBuiltInEffects();
         }
