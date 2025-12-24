@@ -1138,13 +1138,13 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
     
-    // The EventManager processes events in batches with a limit (base 32 + budget allocation).
-    // Formula: maxToProcess = 32 + (budget.eventAllocated * 32)
+    // The EventManager processes events in batches with a limit (base 32 + worker allocation).
+    // Formula: maxToProcess = 32 + (budget.totalWorkers * 32)
     // This is expected behavior for performance reasons - verify the batching works correctly.
     size_t expectedBatchSize = 64; // base when ThreadSystem doesn't exist
     if (HammerEngine::ThreadSystem::Exists()) {
         const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-        expectedBatchSize = 32 + (budget.eventAllocated * 32);
+        expectedBatchSize = 32 + (budget.totalWorkers * 32);
     }
     int actualEvents = eventCount.load();
     BOOST_CHECK_EQUAL(actualEvents, static_cast<int>(expectedBatchSize));

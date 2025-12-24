@@ -962,7 +962,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadi
 
   // Set thread allocation info for debug output
   outThreadingInfo.availableWorkers = availableWorkers;
-  outThreadingInfo.budget = budget.eventAllocated;
+  outThreadingInfo.budget = budget.totalWorkers;
 
   // Check queue pressure before submitting tasks
   size_t queueSize = threadSystem.getQueueSize();
@@ -985,12 +985,9 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadi
     return;
   }
 
-  // Get threading threshold
-  const size_t threshold = std::max(m_threadingThreshold, static_cast<size_t>(1));
-
-  // Get optimal workers (considers queue pressure internally)
+  // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Event, localEvents->size(), threshold);
+      HammerEngine::SystemType::Event, localEvents->size());
 
   // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
   auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
@@ -1616,7 +1613,7 @@ void EventManager::drainDispatchQueueWithBudget() {
   size_t maxToProcess = 64; // base
   if (HammerEngine::ThreadSystem::Exists()) {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-    maxToProcess = 32 + (budget.eventAllocated * 32);
+    maxToProcess = 32 + (budget.totalWorkers * 32);
   }
 
   // Removed timing budget - process all events for reliability

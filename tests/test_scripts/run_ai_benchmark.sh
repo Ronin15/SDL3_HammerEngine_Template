@@ -259,7 +259,7 @@ echo "===========================================" >> "$PROJECT_ROOT/test_result
 echo >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"
 
 # Use updated grep patterns to capture metrics including WorkerBudget information
-grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:|Entity updates per second:|Total behavior updates:|Entity updates:|SCALABILITY SUMMARY|Entity Count|Updates Per Second|WorkerBudget|Threading mode:|System:|hardware threads|allocated to AI" "$RESULTS_FILE" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" || true
+grep -E "Performance Results|Total time:|Time per update cycle:|Time per entity:|Entity updates per second:|Total behavior updates:|Entity updates:|SCALABILITY SUMMARY|Entity Count|Updates Per Second|WorkerBudget|Threading mode:|System:|hardware threads|workers.*available" "$RESULTS_FILE" >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt" || true
 
 # Extract specific benchmark configurations and results for better analysis
 echo >> "$PROJECT_ROOT/test_results/ai_benchmark_performance_metrics.txt"

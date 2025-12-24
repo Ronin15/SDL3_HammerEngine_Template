@@ -30,9 +30,9 @@ using namespace HammerEngine;
  * ThreadSystem workers.
  *
  * Tests the WorkerBudget coordination between:
- * - PathfinderManager (19% allocation)
- * - AIManager (44% allocation)
- * - Shared buffer workers (30% for burst capacity)
+ * - PathfinderManager (all workers during its update window)
+ * - AIManager (all workers during its update window)
+ * Sequential execution model: each manager gets full worker access
  */
 
 // Global ThreadSystem fixture (matching PathfinderManagerTests pattern)
@@ -60,27 +60,13 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetAllocation) {
     // Get WorkerBudget from manager
     const auto& budget = WorkerBudgetManager::Instance().getBudget();
 
-    BOOST_TEST_MESSAGE("Worker allocation:");
-    BOOST_TEST_MESSAGE("  AI: " << budget.aiAllocated << " (~44%)");
-    BOOST_TEST_MESSAGE("  Particle: " << budget.particleAllocated << " (~25%)");
-    BOOST_TEST_MESSAGE("  Pathfinding: " << budget.pathfindingAllocated << " (~19%)");
-    BOOST_TEST_MESSAGE("  Event: " << budget.eventAllocated << " (~12.5%)");
-    BOOST_TEST_MESSAGE("  Buffer: " << budget.remaining << " (~30%)");
+    BOOST_TEST_MESSAGE("Worker allocation (sequential execution model):");
+    BOOST_TEST_MESSAGE("  Total workers: " << budget.totalWorkers);
+    BOOST_TEST_MESSAGE("  Each manager gets ALL workers during its execution window");
 
-    // Verify allocations
-    BOOST_CHECK_GT(budget.aiAllocated, 0);
-    BOOST_CHECK_GT(budget.pathfindingAllocated, 0);
-    BOOST_CHECK_GT(budget.remaining, 0);
-
-    // Verify pathfinding gets reasonable allocation
-    if (availableWorkers >= 8) {
-        BOOST_CHECK_GE(budget.pathfindingAllocated, 1);
-    }
-
-    // Verify total doesn't exceed available
-    size_t total = budget.aiAllocated + budget.particleAllocated +
-                   budget.pathfindingAllocated + budget.eventAllocated + budget.remaining;
-    BOOST_CHECK_EQUAL(total, availableWorkers);
+    // Verify total workers matches available
+    BOOST_CHECK_EQUAL(budget.totalWorkers, availableWorkers);
+    BOOST_CHECK_GT(budget.totalWorkers, 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestSimultaneousAIAndPathfindingLoad) {

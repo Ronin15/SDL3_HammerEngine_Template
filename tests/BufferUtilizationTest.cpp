@@ -11,8 +11,8 @@
 
 struct ThreadSystemFixture {
     ThreadSystemFixture() {
-        // Initialize ThreadSystem for tests
-        HammerEngine::ThreadSystem::Instance().init(256, 8);  // 8 workers for testing
+        // Initialize ThreadSystem with default worker count (hardware_concurrency - 1)
+        HammerEngine::ThreadSystem::Instance().init();
     }
     ~ThreadSystemFixture() {
         HammerEngine::ThreadSystem::Instance().clean();
@@ -28,65 +28,51 @@ BOOST_AUTO_TEST_CASE(TestBudgetAllocation) {
     const auto& budget = budgetMgr.getBudget();
 
     std::cout << "System: " << budget.totalWorkers << " workers total\n";
-    std::cout << "Allocations - AI: " << budget.aiAllocated
-              << ", Particle: " << budget.particleAllocated
-              << ", Event: " << budget.eventAllocated
-              << ", Pathfinding: " << budget.pathfindingAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    std::cout << "Sequential execution model: each manager gets all "
+              << budget.totalWorkers << " workers during its window\n";
 
-    // Verify total allocation matches
-    size_t totalAllocated = budget.aiAllocated + budget.particleAllocated +
-                            budget.eventAllocated + budget.pathfindingAllocated + budget.remaining;
-    BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
-
-    // AI should get the largest allocation (highest weight)
-    BOOST_CHECK_GE(budget.aiAllocated, budget.eventAllocated);
-    BOOST_CHECK_GE(budget.aiAllocated, budget.pathfindingAllocated);
+    // Verify we have workers
+    BOOST_CHECK_GT(budget.totalWorkers, 0);
 }
 
-BOOST_AUTO_TEST_CASE(TestOptimalWorkersLowWorkload) {
-    std::cout << "\n=== Testing Optimal Workers - Low Workload ===\n";
+BOOST_AUTO_TEST_CASE(TestOptimalWorkersAllWorkloads) {
+    std::cout << "\n=== Testing Optimal Workers - Sequential Execution Model ===\n";
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     const auto& budget = budgetMgr.getBudget();
 
-    // Low workload - should use base allocation
+    // Any workload should get all workers (sequential execution model)
     size_t lowWorkload = 500;
-    size_t threshold = 1000;
-    size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, lowWorkload, threshold);
+    size_t optimalLow = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::AI, lowWorkload);
 
-    std::cout << "Low workload (" << lowWorkload << " entities, threshold: "
-              << threshold << "): " << optimalWorkers << " workers\n";
-    std::cout << "Base AI allocation: " << budget.aiAllocated << "\n";
+    size_t highWorkload = 5000;
+    size_t optimalHigh = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::AI, highWorkload);
 
-    // Should use base allocation when below threshold
-    BOOST_CHECK_EQUAL(optimalWorkers, budget.aiAllocated);
+    std::cout << "Low workload (" << lowWorkload << " entities): "
+              << optimalLow << " workers\n";
+    std::cout << "High workload (" << highWorkload << " entities): "
+              << optimalHigh << " workers\n";
+    std::cout << "Total workers: " << budget.totalWorkers << "\n";
+
+    // Both should get all workers (sequential execution = no contention)
+    BOOST_CHECK_EQUAL(optimalLow, budget.totalWorkers);
+    BOOST_CHECK_EQUAL(optimalHigh, budget.totalWorkers);
 }
 
-BOOST_AUTO_TEST_CASE(TestOptimalWorkersHighWorkload) {
-    std::cout << "\n=== Testing Optimal Workers - High Workload ===\n";
+BOOST_AUTO_TEST_CASE(TestZeroWorkloadReturnsZero) {
+    std::cout << "\n=== Testing Zero Workload Returns Zero Workers ===\n";
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    const auto& budget = budgetMgr.getBudget();
 
-    // High workload - should use buffer
-    size_t highWorkload = 5000;
-    size_t threshold = 1000;
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, highWorkload, threshold);
+        HammerEngine::SystemType::AI, 0);
 
-    std::cout << "High workload (" << highWorkload << " entities, threshold: "
-              << threshold << "): " << optimalWorkers << " workers\n";
-    std::cout << "Base AI allocation: " << budget.aiAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    std::cout << "Zero workload: " << optimalWorkers << " workers\n";
 
-    // Should use more than base allocation when above threshold (if buffer available)
-    if (budget.remaining > 0) {
-        BOOST_CHECK_GT(optimalWorkers, budget.aiAllocated);
-    } else {
-        BOOST_CHECK_EQUAL(optimalWorkers, budget.aiAllocated);
-    }
+    // Zero work = zero workers needed
+    BOOST_CHECK_EQUAL(optimalWorkers, 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestBatchStrategy) {
@@ -96,7 +82,7 @@ BOOST_AUTO_TEST_CASE(TestBatchStrategy) {
 
     size_t workload = 1000;
     size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::AI, workload, 500);
+        HammerEngine::SystemType::AI, workload);
 
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, workload, optimalWorkers);
@@ -149,32 +135,24 @@ BOOST_AUTO_TEST_CASE(TestAllSystemTypes) {
     const auto& budget = budgetMgr.getBudget();
 
     size_t workload = 2000;
-    size_t threshold = 500;
 
-    // Test each system type
-    struct SystemTest {
-        HammerEngine::SystemType type;
-        const char* name;
-        size_t baseAllocation;
+    // Test each system type - all should get same allocation (sequential execution)
+    std::vector<std::pair<HammerEngine::SystemType, const char*>> systems = {
+        {HammerEngine::SystemType::AI, "AI"},
+        {HammerEngine::SystemType::Particle, "Particle"},
+        {HammerEngine::SystemType::Pathfinding, "Pathfinding"},
+        {HammerEngine::SystemType::Event, "Event"}
     };
 
-    std::vector<SystemTest> systems = {
-        {HammerEngine::SystemType::AI, "AI", budget.aiAllocated},
-        {HammerEngine::SystemType::Particle, "Particle", budget.particleAllocated},
-        {HammerEngine::SystemType::Pathfinding, "Pathfinding", budget.pathfindingAllocated},
-        {HammerEngine::SystemType::Event, "Event", budget.eventAllocated}
-    };
+    for (const auto& [type, name] : systems) {
+        size_t optimalWorkers = budgetMgr.getOptimalWorkers(type, workload);
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(type, workload, optimalWorkers);
 
-    for (const auto& sys : systems) {
-        size_t optimalWorkers = budgetMgr.getOptimalWorkers(sys.type, workload, threshold);
-        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(sys.type, workload, optimalWorkers);
-
-        std::cout << sys.name << ": base=" << sys.baseAllocation
-                  << ", optimal=" << optimalWorkers
+        std::cout << name << ": optimal=" << optimalWorkers
                   << ", batches=" << batchCount << "x" << batchSize << "\n";
 
-        // Optimal should be at least base allocation
-        BOOST_CHECK_GE(optimalWorkers, std::max(sys.baseAllocation, static_cast<size_t>(1)));
+        // All systems get all workers (sequential execution model)
+        BOOST_CHECK_EQUAL(optimalWorkers, budget.totalWorkers);
 
         // Batch strategy should be valid
         BOOST_CHECK_GE(batchCount, 1);
@@ -189,17 +167,16 @@ BOOST_AUTO_TEST_CASE(TestCacheInvalidation) {
 
     // Get initial budget
     const auto& budget1 = budgetMgr.getBudget();
-    std::cout << "Initial budget - AI: " << budget1.aiAllocated << "\n";
+    std::cout << "Initial budget - totalWorkers: " << budget1.totalWorkers << "\n";
 
     // Invalidate cache
     budgetMgr.invalidateCache();
 
     // Get budget again (should recalculate)
     const auto& budget2 = budgetMgr.getBudget();
-    std::cout << "After invalidation - AI: " << budget2.aiAllocated << "\n";
+    std::cout << "After invalidation - totalWorkers: " << budget2.totalWorkers << "\n";
 
     // Should have same values (ThreadSystem hasn't changed)
-    BOOST_CHECK_EQUAL(budget1.aiAllocated, budget2.aiAllocated);
     BOOST_CHECK_EQUAL(budget1.totalWorkers, budget2.totalWorkers);
 }
 

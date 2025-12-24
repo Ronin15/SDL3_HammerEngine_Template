@@ -173,7 +173,7 @@ if [ $BENCHMARK_RESULT -eq 0 ]; then
 
         # Extract WorkerBudget system information
         print_status "WorkerBudget System Configuration:"
-        grep -E "System Configuration:|WorkerBudget:|hardware threads|allocated to Events" "$OUTPUT_FILE" | head -5 || true
+        grep -E "System Configuration:|WorkerBudget:|hardware threads|workers.*available" "$OUTPUT_FILE" | head -5 || true
 
         echo ""
         print_status "Threading Performance Analysis:"

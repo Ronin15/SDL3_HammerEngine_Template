@@ -25,8 +25,7 @@ struct ParticleManagerPerformanceFixture {
       // Log WorkerBudget allocations for production-matching verification
       const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
       std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
-      std::cout << "WorkerBudget: " << budget.totalWorkers << " workers ("
-                << budget.particleAllocated << " particle)\n";
+      std::cout << "WorkerBudget: " << budget.totalWorkers << " workers (all available per manager)\n";
     }
 
     manager = &ParticleManager::Instance();

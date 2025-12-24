@@ -30,34 +30,22 @@ const WorkerBudget& WorkerBudgetManager::getBudget() {
     return m_cachedBudget;
 }
 
-size_t WorkerBudgetManager::getOptimalWorkers(SystemType system,
-                                               size_t workloadSize,
-                                               size_t threshold) {
-    const auto& budget = getBudget();
-    size_t baseAllocation = getBaseAllocation(system);
-
-    // If workload is below threshold, use base allocation
-    if (workloadSize <= threshold) {
-        return baseAllocation;
+size_t WorkerBudgetManager::getOptimalWorkers([[maybe_unused]] SystemType system,
+                                               size_t workloadSize) {
+    // No work = no workers needed
+    if (workloadSize == 0) {
+        return 0;
     }
 
-    // Check queue pressure - if queue is stressed, be conservative
+    // Check queue pressure - if critically stressed, scale back
     double pressure = getQueuePressure();
-    if (pressure > QUEUE_PRESSURE_WARNING) {
-        // High pressure: stick with base to avoid flooding queue
-        return baseAllocation;
+    if (pressure > QUEUE_PRESSURE_CRITICAL) {
+        return 1;  // Minimum threading under critical pressure
     }
 
-    // Calculate extra workers based on workload severity
-    float severity = static_cast<float>(workloadSize) / static_cast<float>(threshold);
-    severity = std::clamp(severity, 1.0f, 4.0f);  // Cap at 4x
-
-    // Grant buffer proportional to severity (up to 75% of buffer)
-    size_t bufferToUse = static_cast<size_t>(
-        static_cast<float>(budget.remaining) * 0.75f * (severity / 4.0f));
-    bufferToUse = std::min(bufferToUse, baseAllocation);  // Cap at 2x total
-
-    return baseAllocation + bufferToUse;
+    // Sequential execution model: each manager gets ALL workers during its window
+    // Pre-allocated ThreadSystem means no overhead for using all threads
+    return getBudget().totalWorkers;
 }
 
 std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
@@ -65,30 +53,34 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
     size_t workloadSize,
     size_t optimalWorkers) {
 
-    if (workloadSize == 0) {
-        return {1, 0};
+    if (workloadSize == 0 || optimalWorkers == 0) {
+        return {1, workloadSize};  // Single batch with all items
     }
 
-    const auto& config = getConfig(system);
     auto& state = m_batchState[static_cast<size_t>(system)];
 
-    // BASE: Maximize parallelism - 2x workers for load balancing
-    size_t baseBatchCount = optimalWorkers * 2;
+    // Simple, smart batch calculation:
+    // - Use all available workers (pre-allocated ThreadSystem = minimal overhead)
+    // - Only limit batches if items/batch would be < 8 (truly tiny work units)
+    // - Let timing feedback fine-tune via multiplier
 
-    // Apply fine-tuning multiplier from previous feedback
+    constexpr size_t MIN_ITEMS_PER_BATCH = 8;
+
+    // Maximum batches to avoid overhead-dominated execution
+    size_t maxBatches = std::max(size_t{1}, workloadSize / MIN_ITEMS_PER_BATCH);
+
+    // Target: use all workers, capped by workload constraints
+    size_t targetBatches = std::min(optimalWorkers, maxBatches);
+
+    // Apply timing feedback multiplier (0.25x to 2.0x fine-tuning)
     float multiplier = state.batchMultiplier.load(std::memory_order_relaxed);
-    size_t batchCount = static_cast<size_t>(static_cast<float>(baseBatchCount) * multiplier);
+    size_t batchCount = static_cast<size_t>(static_cast<float>(targetBatches) * multiplier);
 
-    // Clamp to valid range
-    size_t maxBatches = std::min(workloadSize / config.minBatchSize, optimalWorkers * 4);
-    maxBatches = std::max(maxBatches, config.minBatchCount);
-    batchCount = std::clamp(batchCount, config.minBatchCount, maxBatches);
+    // Clamp: at least 1 batch, at most maxBatches
+    batchCount = std::clamp(batchCount, size_t{1}, maxBatches);
 
     // Calculate batch size (round up to ensure all items are processed)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
-
-    // Ensure minimum batch size
-    batchSize = std::max(batchSize, config.minBatchSize);
 
     return {batchCount, batchSize};
 }
@@ -105,22 +97,23 @@ void WorkerBudgetManager::reportBatchCompletion(SystemType system,
     // Calculate per-batch time
     double perBatchTimeMs = totalTimeMs / static_cast<double>(batchCount);
 
-    // Update rolling average (exponential smoothing with 30% weight to new sample)
+    // Update rolling average (exponential smoothing with 15% weight to new sample)
+    // Lower weight filters transient spikes better (~7 samples to reflect sustained change)
     double oldAvg = state.avgBatchTimeMs.load(std::memory_order_relaxed);
-    double newAvg = oldAvg * 0.7 + perBatchTimeMs * 0.3;
+    double newAvg = oldAvg * 0.85 + perBatchTimeMs * 0.15;
     state.avgBatchTimeMs.store(newAvg, std::memory_order_relaxed);
 
-    // Fine-tune multiplier based on per-batch time
+    // Fine-tune multiplier based on per-batch time using dead-band
     float multiplier = state.batchMultiplier.load(std::memory_order_relaxed);
 
-    if (perBatchTimeMs < BatchTuningState::MIN_BATCH_TIME_MS) {
-        // Batches too small (< 100µs) - consolidate to reduce overhead
+    if (perBatchTimeMs < BatchTuningState::DEAD_BAND_LOW_MS) {
+        // Batches finishing too fast (< 100µs) - consolidate for efficiency
         multiplier -= BatchTuningState::ADJUST_RATE;
-    } else if (perBatchTimeMs > BatchTuningState::MAX_BATCH_TIME_MS) {
-        // Batches too large (> 2ms) - split for better load balancing
+    } else if (perBatchTimeMs > BatchTuningState::DEAD_BAND_HIGH_MS) {
+        // Batches taking too long (> 500µs) - split for better load balancing
         multiplier += BatchTuningState::ADJUST_RATE;
     }
-    // Sweet spot (100µs - 2ms): no adjustment needed
+    // Inside dead-band (100-500µs): optimal zone, no adjustment
 
     multiplier = std::clamp(multiplier,
                             BatchTuningState::MIN_MULTIPLIER,
@@ -131,36 +124,6 @@ void WorkerBudgetManager::reportBatchCompletion(SystemType system,
 
 void WorkerBudgetManager::invalidateCache() {
     m_budgetValid.store(false, std::memory_order_release);
-}
-
-const BatchConfig& WorkerBudgetManager::getConfig(SystemType system) {
-    switch (system) {
-        case SystemType::AI:
-            return AI_BATCH_CONFIG;
-        case SystemType::Particle:
-            return PARTICLE_BATCH_CONFIG;
-        case SystemType::Pathfinding:
-            return PATHFINDING_BATCH_CONFIG;
-        case SystemType::Event:
-            return EVENT_BATCH_CONFIG;
-        default:
-            return AI_BATCH_CONFIG;  // Fallback
-    }
-}
-
-size_t WorkerBudgetManager::getBaseAllocation(SystemType system) const {
-    switch (system) {
-        case SystemType::AI:
-            return m_cachedBudget.aiAllocated;
-        case SystemType::Particle:
-            return m_cachedBudget.particleAllocated;
-        case SystemType::Pathfinding:
-            return m_cachedBudget.pathfindingAllocated;
-        case SystemType::Event:
-            return m_cachedBudget.eventAllocated;
-        default:
-            return 1;
-    }
 }
 
 double WorkerBudgetManager::getQueuePressure() const {
@@ -191,45 +154,10 @@ WorkerBudget WorkerBudgetManager::calculateBudget() const {
     }
 
     // Ensure minimum workers
-    if (budget.totalWorkers == 0) {
-        budget.totalWorkers = 1;
-    }
+    budget.totalWorkers = std::max(budget.totalWorkers, size_t{1});
 
-    // Calculate total weight
-    constexpr size_t totalWeight = AI_WORKER_WEIGHT + PARTICLE_WORKER_WEIGHT +
-                                   PATHFINDING_WORKER_WEIGHT + EVENT_WORKER_WEIGHT;
-
-    // Calculate buffer reserve (30% of workers for burst capacity)
-    size_t bufferWorkers = static_cast<size_t>(
-        static_cast<double>(budget.totalWorkers) * BUFFER_RESERVE_RATIO);
-
-    // Ensure at least 1 buffer worker if we have more than 4 workers
-    if (budget.totalWorkers > 4 && bufferWorkers == 0) {
-        bufferWorkers = 1;
-    }
-
-    // Remaining workers for distribution
-    size_t distributableWorkers = budget.totalWorkers - bufferWorkers;
-    if (distributableWorkers == 0) {
-        distributableWorkers = 1;
-    }
-
-    // Distribute workers based on weights
-    auto calculateAllocation = [&](size_t weight) -> size_t {
-        size_t allocation = (distributableWorkers * weight) / totalWeight;
-        return std::max(allocation, static_cast<size_t>(1));  // Minimum 1 worker
-    };
-
-    budget.aiAllocated = calculateAllocation(AI_WORKER_WEIGHT);
-    budget.particleAllocated = calculateAllocation(PARTICLE_WORKER_WEIGHT);
-    budget.pathfindingAllocated = calculateAllocation(PATHFINDING_WORKER_WEIGHT);
-    budget.eventAllocated = calculateAllocation(EVENT_WORKER_WEIGHT);
-
-    // Remaining goes to buffer (may differ slightly from calculated due to rounding)
-    size_t allocated = budget.aiAllocated + budget.particleAllocated +
-                       budget.pathfindingAllocated + budget.eventAllocated;
-    budget.remaining = (budget.totalWorkers > allocated) ?
-                       (budget.totalWorkers - allocated) : 0;
+    // Sequential execution model: all workers available to each manager during its window
+    // No partitioning needed since managers don't run concurrently
 
     return budget;
 }
