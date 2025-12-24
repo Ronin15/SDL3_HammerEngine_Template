@@ -140,11 +140,12 @@ private:
      * per-batch timing to find the sweet spot (100µs - 2ms per batch).
      */
     struct BatchTuningState {
-        std::atomic<float> batchMultiplier{1.0f};    // 0.25x to 2.0x adjustment
+        std::atomic<float> batchMultiplier{1.0f};    // Scales dynamically (floor: 0.25x)
         std::atomic<double> avgBatchTimeMs{0.5};     // Rolling average per-batch time
 
         static constexpr float MIN_MULTIPLIER = 0.25f;  // Allows 4x consolidation
-        static constexpr float MAX_MULTIPLIER = 2.0f;
+        // No artificial cap - maxBatches (workload/8) provides natural ceiling
+        // Timing feedback converges to optimal value within physical constraints
         static constexpr float ADJUST_RATE = 0.1f;   // 10% per update
 
         // Per-batch time outer bounds
