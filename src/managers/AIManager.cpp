@@ -332,16 +332,11 @@ void AIManager::update(float deltaTime) {
                          HammerEngine::ThreadSystem::Exists());
 
     // Track threading decision for interval logging (local vars, no storage overhead)
-    size_t logWorkerCount = 0;
-    size_t logAvailableWorkers = 0;
-    size_t logBudget = 0;
     size_t logBatchCount = 1;
     bool logWasThreaded = false;
 
     if (useThreading) {
       auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-      size_t availableWorkers =
-          static_cast<size_t>(threadSystem.getThreadCount());
 
       // Check queue pressure before submitting tasks
       size_t queueSize = threadSystem.getQueueSize();
@@ -375,7 +370,6 @@ void AIManager::update(float deltaTime) {
 
       // Use centralized WorkerBudgetManager for smart worker allocation
       auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-      const auto& budget = budgetMgr.getBudget();
 
       // Get optimal workers (WorkerBudget determines everything dynamically)
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
@@ -386,9 +380,6 @@ void AIManager::update(float deltaTime) {
           HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
       // Track for interval logging at end of function
-      logWorkerCount = optimalWorkerCount;
-      logAvailableWorkers = availableWorkers;
-      logBudget = budget.totalWorkers;
       logBatchCount = batchCount;
       logWasThreaded = (batchCount > 1);
 
