@@ -115,9 +115,8 @@ void WorkerBudgetManager::reportBatchCompletion(SystemType system,
     }
     // Inside dead-band (100-500µs): optimal zone, no adjustment
 
-    multiplier = std::clamp(multiplier,
-                            BatchTuningState::MIN_MULTIPLIER,
-                            BatchTuningState::MAX_MULTIPLIER);
+    // Only enforce floor - ceiling is naturally limited by maxBatches clamp
+    multiplier = std::max(multiplier, BatchTuningState::MIN_MULTIPLIER);
 
     state.batchMultiplier.store(multiplier, std::memory_order_relaxed);
 }
