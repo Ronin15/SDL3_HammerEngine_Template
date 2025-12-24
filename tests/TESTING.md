@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 58 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, GameTime simulation, controller systems, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 59 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, GameTime simulation, controller systems, entity state management, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -71,10 +71,13 @@ The Hammer Game Engine has the following test suites:
    - WeatherController Tests: Weather event coordination and particle integration
    - DayNightController Tests: Time period tracking and visual transitions
 
+10. **Entity State Machine Tests**
+    - EntityStateManager Tests: State registration, transitions, lifecycle callbacks (enter/exit/update)
+
 **Test Execution Categories:**
-- **Core Tests** (13 suites): Fast functional validation (~4-8 minutes total)
+- **Core Tests** (14 suites): Fast functional validation (~4-8 minutes total)
 - **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
-- **Total Coverage**: 58 test executables with comprehensive automation scripts
+- **Total Coverage**: 59 test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -99,6 +102,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_pathfinder_ai_contention_tests.sh  # PathfinderManager & AIManager WorkerBudget coordination tests
 ./tests/test_scripts/run_game_time_tests.sh               # GameTime system tests
 ./tests/test_scripts/run_controller_tests.sh              # Controller tests (Time, Weather, DayNight)
+./tests/test_scripts/run_entity_state_manager_tests.sh    # Entity state machine tests
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -153,6 +157,7 @@ tests/test_scripts/run_collision_tests.bat              # Collision system and s
 tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm and grid tests
 tests/test_scripts/run_game_time_tests.bat              # GameTime system tests
 tests/test_scripts/run_controller_tests.bat             # Controller tests (Time, Weather, DayNight)
+tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine tests
 
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
@@ -981,6 +986,58 @@ Located in `tests/controllers/`, these tests validate the state-scoped controlle
 # Windows
 tests/test_scripts/run_controller_tests.bat [--verbose]
 ```
+
+### Entity State Machine Tests
+
+Located in `tests/EntityStateManagerTests.cpp`, these tests validate the EntityStateManager class that manages entity state machines:
+
+#### Test Coverage
+
+1. **Basic State Management** (5 tests):
+   - AddState: Verify state added and retrievable
+   - AddMultipleStates: Multiple state registration
+   - AddDuplicateStateThrows: Duplicate name throws exception
+   - HasStateReturnsFalseForNonExistent: Non-existing state checks
+   - GetCurrentStateNameEmptyWhenNoState: Empty state handling
+
+2. **State Transitions** (4 tests):
+   - SetStateCallsEnter: Setting state triggers enter() callback
+   - SetStateTransitionCallsExitThenEnter: Proper exit/enter sequence
+   - SetSameStateTriggersCycle: Re-entering same state triggers cycle
+   - SetNonExistentStateResetsCurrentState: Invalid state handling
+
+3. **Update Propagation** (4 tests):
+   - UpdateCallsCurrentStateUpdate: update() propagates to state
+   - UpdatePassesDeltaTimeCorrectly: DeltaTime passed accurately
+   - UpdateWithNoCurrentStateIsNoOp: Safe with no current state
+   - UpdateOnlyAffectsCurrentState: Only active state updated
+
+4. **Remove State** (3 tests):
+   - RemoveState: Basic state removal
+   - RemoveCurrentStateResetsIt: Removing current state resets it
+   - RemoveNonExistentStateIsNoOp: Safe removal of non-existing state
+
+5. **Edge Cases** (2 tests):
+   - EmptyManagerIsValid: Empty manager operations safe
+   - MultipleTransitions: Complex transition sequences
+
+#### Running Entity State Machine Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_entity_state_manager_tests.sh [--verbose]
+./tests/test_scripts/run_entity_state_manager_tests.sh --basic-test       # Basic state management only
+./tests/test_scripts/run_entity_state_manager_tests.sh --transition-test  # State transitions only
+./tests/test_scripts/run_entity_state_manager_tests.sh --update-test      # Update propagation only
+
+# Windows
+tests/test_scripts/run_entity_state_manager_tests.bat [--verbose]
+tests/test_scripts/run_entity_state_manager_tests.bat --basic-test
+tests/test_scripts/run_entity_state_manager_tests.bat --transition-test
+tests/test_scripts/run_entity_state_manager_tests.bat --update-test
+```
+
+**Estimated Runtime:** ~1 second (18 tests)
 
 ## Adding New Tests
 
