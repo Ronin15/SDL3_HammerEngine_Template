@@ -326,10 +326,8 @@ void AIManager::update(float deltaTime) {
     // No intermediate buffer copy needed - preFetchedData is our only copy
     // This eliminates redundant copying and reduces cache thrashing
 
-    // Determine threading strategy
-    const size_t threadingThreshold = std::max<size_t>(
-        1, m_threadingThreshold.load(std::memory_order_acquire));
-    bool useThreading = (activeCount >= threadingThreshold &&
+    // Determine threading strategy based on threshold and WorkerBudget
+    bool useThreading = (entityCount >= m_threadingThreshold.load(std::memory_order_acquire) &&
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
@@ -379,9 +377,9 @@ void AIManager::update(float deltaTime) {
       auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
       const auto& budget = budgetMgr.getBudget();
 
-      // Get optimal workers (considers queue pressure internally)
+      // Get optimal workers (WorkerBudget determines everything dynamically)
       size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-          HammerEngine::SystemType::AI, entityCount, threadingThreshold);
+          HammerEngine::SystemType::AI, entityCount);
 
       // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
       auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
@@ -390,7 +388,7 @@ void AIManager::update(float deltaTime) {
       // Track for interval logging at end of function
       logWorkerCount = optimalWorkerCount;
       logAvailableWorkers = availableWorkers;
-      logBudget = budget.aiAllocated;
+      logBudget = budget.totalWorkers;
       logBatchCount = batchCount;
       logWasThreaded = (batchCount > 1);
 
@@ -843,12 +841,9 @@ size_t AIManager::processPendingBehaviorAssignments() {
   // Calculate optimal batching using centralized WorkerBudgetManager
   auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-  size_t assignmentThreadingThreshold =
-      std::max<size_t>(1, m_threadingThreshold.load(std::memory_order_acquire));
-
-  // Get optimal workers (considers queue pressure internally)
+  // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::AI, assignmentCount, assignmentThreadingThreshold);
+      HammerEngine::SystemType::AI, assignmentCount);
 
   // Get adaptive batch strategy
   auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(

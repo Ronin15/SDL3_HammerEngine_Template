@@ -2170,13 +2170,9 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   const auto& budget = budgetMgr.getBudget();
 
-  // Get threading threshold
-  const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
-                                    static_cast<size_t>(1));
-
-  // Get optimal workers (considers queue pressure internally)
+  // Get optimal workers (WorkerBudget determines everything dynamically)
   size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Particle, activeParticleCount, threshold);
+      HammerEngine::SystemType::Particle, activeParticleCount);
 
   // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
   auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
@@ -2185,7 +2181,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // Set threading info for interval logging (local struct, zero overhead in release)
   outThreadingInfo.workerCount = optimalWorkerCount;
   outThreadingInfo.availableWorkers = availableWorkers;
-  outThreadingInfo.budget = budget.particleAllocated;
+  outThreadingInfo.budget = budget.totalWorkers;
   outThreadingInfo.batchCount = batchCount;
   outThreadingInfo.wasThreaded = true;
 

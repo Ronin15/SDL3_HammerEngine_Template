@@ -443,13 +443,18 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     // Calculate optimal worker count for grid rebuild (considers queue pressure internally)
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
         HammerEngine::SystemType::Pathfinding,
-        static_cast<size_t>(gridHeight), // Workload = number of rows
-        MIN_GRID_ROWS_FOR_BATCHING       // Threshold (64 rows)
+        static_cast<size_t>(gridHeight)  // Workload = number of rows
+    );
+
+    // Get batch strategy from WorkerBudget
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Pathfinding,
+        static_cast<size_t>(gridHeight),
+        optimalWorkerCount
     );
 
     // Determine if parallel batching is beneficial
-    const bool useParallelBatching = (static_cast<size_t>(gridHeight) >= MIN_GRID_ROWS_FOR_BATCHING) &&
-                                     (optimalWorkerCount > 0);
+    const bool useParallelBatching = (batchCount > 1);
 
     if (!useParallelBatching) {
         // Sequential fallback for small grids or high queue pressure
@@ -487,13 +492,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         return;
     }
 
-    // Parallel batching path: Use WorkerBudgetManager for adaptive batch strategy
-    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::Pathfinding,
-        static_cast<size_t>(gridHeight),  // Total rows
-        optimalWorkerCount
-    );
-
+    // Parallel batching path: batchCount and batchSize already computed above
     PATHFIND_DEBUG(std::format("Parallel grid rebuild: {} rows in {} batches (size: {}), workers: {}",
                   gridHeight, batchCount, batchSize, optimalWorkerCount));
 
@@ -1414,6 +1413,16 @@ void PathfinderManager::waitForGridRebuildCompletion() {
 // WorkerBudget Batch Processing Implementation
 
 void PathfinderManager::processPendingRequests() {
+    // Report previous frame's batch completion (deferred, non-blocking)
+    if (m_lastBatchCount > 0) {
+        auto now = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double, std::milli>(
+            now - m_lastBatchSubmitTime).count();
+        HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+            HammerEngine::SystemType::Pathfinding, m_lastBatchCount, elapsed);
+        m_lastBatchCount = 0;
+    }
+
     // Swap out buffered requests to avoid holding lock during processing
     std::vector<BufferedRequest> requests;
     {
@@ -1429,70 +1438,41 @@ void PathfinderManager::processPendingRequests() {
         return;
     }
 
-    // Get ThreadSystem reference
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    // Let WorkerBudget decide everything - it handles queue pressure internally
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Pathfinding, requestCount);
 
-    // Query ThreadSystem state for WorkerBudget coordination
-    size_t availableWorkers = threadSystem.getThreadCount();
-    size_t queueSize = threadSystem.getQueueSize();
-    size_t queueCapacity = threadSystem.getQueueCapacity();
-    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
-
-    // CRITICAL: Queue pressure monitoring - graceful degradation
-    if (queuePressure > HammerEngine::QUEUE_PRESSURE_CRITICAL) {
-        // Queue critically full - defer requests to next frame
-        PATHFIND_WARN(std::format("Queue pressure critical ({}%), deferring {} path requests to next frame",
-                      queuePressure * 100.0, requestCount));
-
+    // If WorkerBudget returns 0, queue pressure is too high - defer to next frame
+    if (optimalWorkerCount == 0) {
         std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        // Re-insert requests at the front for next frame processing
         m_requestBuffer.insert(m_requestBuffer.begin(), requests.begin(), requests.end());
         return;
     }
 
-    // Rate limiting - cap requests per frame to prevent queue flooding
-    size_t requestsToProcess = std::min(requestCount, MAX_REQUESTS_PER_FRAME);
-    if (requestsToProcess < requestCount) {
-        PATHFIND_DEBUG(std::format("Rate limiting: Processing {} of {} requests this frame",
-                      requestsToProcess, requestCount));
+    // Get batch strategy from WorkerBudget
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Pathfinding, requestCount, optimalWorkerCount);
 
-        // Re-buffer excess requests for next frame
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        m_requestBuffer.insert(m_requestBuffer.end(),
-                              requests.begin() + requestsToProcess,
-                              requests.end());
-        requests.resize(requestsToProcess);
-    }
-
-    // Use centralized WorkerBudgetManager for smart worker allocation
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    const auto& budget = budgetMgr.getBudget();
-
-    // Get optimal workers (considers queue pressure internally)
-    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Pathfinding,
-        requestsToProcess,
-        MIN_REQUESTS_FOR_BATCHING
-    );
-
-    // Determine if threading is beneficial
-    const bool useThreading = (requestsToProcess >= MIN_REQUESTS_FOR_BATCHING) &&
-                             (optimalWorkerCount > 0) &&
-                             (queuePressure < HammerEngine::QUEUE_PRESSURE_WARNING);
+    // Determine if threading is beneficial (more than 1 batch)
+    const bool useThreading = (batchCount > 1);
 
 #ifndef NDEBUG
     // Interval stats logging - zero overhead in release (entire block compiles out)
     static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 0 && requestsToProcess > 0) {
+    if (++logFrameCounter % 300 == 0 && requestCount > 0) {
+        const auto& budget = budgetMgr.getBudget();
         if (useThreading) {
-            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {}, Workers: {}/{}, Budget: {} [Threaded]",
-                          requestsToProcess, optimalWorkerCount, availableWorkers, budget.pathfindingAllocated));
+            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {}, Batches: {}, Workers: {}, Budget: {} [Threaded]",
+                          requestCount, batchCount, optimalWorkerCount, budget.totalWorkers));
         } else {
             PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} [Single-threaded]",
-                          requestsToProcess));
+                          requestCount));
         }
     }
 #endif
+
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
     if (!useThreading) {
         // Process sequentially on main thread (low request count or high queue pressure)
@@ -1584,16 +1564,10 @@ void PathfinderManager::processPendingRequests() {
     }
 
     // Batch processing with WorkerBudget coordination (non-blocking)
-
-    // Get adaptive batch strategy
-    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::Pathfinding,
-        requestsToProcess,
-        optimalWorkerCount
-    );
+    // batchCount and batchSize already computed above
 
     PATHFIND_DEBUG(std::format("Processing {} requests in {} batches (size: {}), workers: {}",
-                  requestsToProcess, batchCount, batchSize, optimalWorkerCount));
+                  requestCount, batchCount, batchSize, optimalWorkerCount));
 
     // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
     // No lock needed: processPendingRequests runs on update thread only,
@@ -1604,7 +1578,7 @@ void PathfinderManager::processPendingRequests() {
     // Submit batches
     for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * batchSize;
-        size_t end = std::min(start + batchSize, requestsToProcess);
+        size_t end = std::min(start + batchSize, requestCount);
 
         auto batchWork = [this, requests, start, end]() {
             for (size_t idx = start; idx < end; ++idx) {
@@ -1690,6 +1664,10 @@ void PathfinderManager::processPendingRequests() {
 
     // Store futures for shutdown synchronization (swap back preserves both capacities)
     std::swap(m_batchFutures, m_reusableBatchFutures);
+
+    // Track for deferred reporting next frame (non-blocking)
+    m_lastBatchSubmitTime = std::chrono::steady_clock::now();
+    m_lastBatchCount = batchCount;
 
     // Batches submitted asynchronously - callbacks will fire when paths complete
     // waitForBatchCompletion() is only called during cleanup/state transitions

@@ -227,17 +227,16 @@ struct EventManagerScalingFixture {
         handlers.clear();
 
         EventManager::Instance().enableThreading(true);
-        EventManager::Instance().setThreadingThreshold(1000);
+        // Use default threshold (100) - matches EventManager::m_threadingThreshold
 
-        unsigned int systemThreads = std::thread::hardware_concurrency();
-        size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
+        // WorkerBudget: all workers available to each manager during its update window
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
 
         std::cout << "\n=== Immediate Event Trigger Benchmark ===" << std::endl;
         std::cout << "  Config: " << numHandlersPerType << " handlers per type, "
                   << numTriggers << " triggers" << std::endl;
-        std::cout << "  System: " << systemThreads << " hardware threads ("
-                  << eventWorkers << " allocated to events)" << std::endl;
+        std::cout << "  System: " << totalWorkers << " workers (all available via WorkerBudget)" << std::endl;
 
         // Register simple handlers (just count calls)
         std::atomic<int> weatherCallCount{0};
@@ -302,11 +301,11 @@ struct EventManagerScalingFixture {
 
     void runScalabilityTest() {
         std::cout << "\n===== SCALABILITY TEST =====" << std::endl;
-        unsigned int systemThreads = std::thread::hardware_concurrency();
-        size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
-        std::cout << "System Configuration: " << systemThreads << " hardware threads, "
-                  << totalWorkers << " workers (" << eventWorkers << " for Events)" << std::endl;
+        // WorkerBudget: all workers available to each manager during its update window
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
+        std::cout << "System Configuration: " << totalWorkers
+                  << " workers (all available via WorkerBudget)" << std::endl;
 
         // Test progression: realistic event counts for actual games
         std::vector<std::tuple<int, int, int>> testCases = {
@@ -484,7 +483,7 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
 
     // Use the same logic as production: optimal workers for 4000 events
     size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Event, 4000, 100);
+        HammerEngine::SystemType::Event, 4000);
     int numThreads = static_cast<int>(std::max(static_cast<size_t>(1), optimalWorkerCount));
 
     // FIXED: Keep total at 4000 events, divide by thread count

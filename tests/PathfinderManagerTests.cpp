@@ -606,11 +606,10 @@ BOOST_AUTO_TEST_CASE(TestWorkerBudgetCoordination) {
     // Get WorkerBudget from manager
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
 
-    BOOST_TEST_MESSAGE("Pathfinding allocated workers: " << budget.pathfindingAllocated);
-    BOOST_CHECK_GT(budget.pathfindingAllocated, 0); // Should have at least 1 worker allocated
+    BOOST_TEST_MESSAGE("Total workers available: " << budget.totalWorkers);
+    BOOST_CHECK_GT(budget.totalWorkers, 0); // Should have at least 1 worker available
 
-    // Verify buffer capacity exists
-    BOOST_CHECK_GT(budget.remaining, 0); // Buffer workers available
+    // Sequential execution model: each manager gets all workers during its window
 
     // Submit workload that should trigger batching (> 8 requests)
     const size_t batchWorkload = 24; // 3x the MIN_REQUESTS_FOR_BATCHING

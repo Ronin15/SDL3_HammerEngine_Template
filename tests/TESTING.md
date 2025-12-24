@@ -743,10 +743,10 @@ Located in `tests/integration/PathfinderAIContentionTests.cpp`, these integratio
 #### Test Coverage
 
 1. **WorkerBudget Allocation Tests**:
-   - Verify pathfinding gets 19% worker allocation (PATHFINDING_WORKER_WEIGHT = 3)
-   - Validate AI gets 44% worker allocation (AI_WORKER_WEIGHT = 7)
-   - Confirm buffer workers (30%) are available for burst capacity
-   - Check total allocations don't exceed available workers
+   - Verify each manager gets all workers during its update window (sequential execution model)
+   - Validate WorkerBudget returns full worker count for any active workload
+   - Confirm adaptive batch tuning adjusts based on timing feedback
+   - Check queue pressure monitoring prevents ThreadSystem overload
 
 2. **Simultaneous Load Tests**:
    - Submit 100+ simultaneous pathfinding requests alongside AI updates

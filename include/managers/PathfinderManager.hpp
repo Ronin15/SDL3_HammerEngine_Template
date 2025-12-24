@@ -441,12 +441,9 @@ private:
     std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
     // No mutex needed: update and state transitions never run concurrently
 
-    // Request batching configuration
-    static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)
-    static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;    // Rate limiting (60 FPS = 45K requests/sec capacity)
-
-    // Grid rebuild batching configuration
-    static constexpr size_t MIN_GRID_ROWS_FOR_BATCHING = 64; // Batch grid rebuild when grid has 64+ rows
+    // Deferred batch timing for WorkerBudget feedback (non-blocking)
+    size_t m_lastBatchCount{0};
+    std::chrono::steady_clock::time_point m_lastBatchSubmitTime{};
 
     // Incremental update configuration
     static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty

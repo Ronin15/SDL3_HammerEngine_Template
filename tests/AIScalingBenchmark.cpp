@@ -473,7 +473,7 @@ struct AIScalingFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // Determine expected behavior based on actual thresholds
-        const int AI_THRESHOLD = 200;  // Updated threshold
+        const int AI_THRESHOLD = 100;  // Matches AIManager::m_threadingThreshold
         bool willUseThreading = (numEntities >= AI_THRESHOLD);
         std::string expectedMode = willUseThreading ? "Automatic Threading" : "Automatic Single-Threaded";
 
@@ -487,10 +487,7 @@ struct AIScalingFixture {
         if (willUseThreading) {
             // Use real WorkerBudgetManager for production-matching behavior
             const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-            std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers, "
-                      << budget.aiAllocated << " allocated to AI ("
-                      << (budget.totalWorkers > 0 ? (budget.aiAllocated * 100 / budget.totalWorkers) : 0)
-                      << "%)" << std::endl;
+            std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers (all available to each manager)" << std::endl;
         }
 
         // Create behaviors with varying complexity using valid behavior names
@@ -760,7 +757,7 @@ struct AIScalingFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
         // Determine expected behavior based on actual thresholds
-        const int AI_THRESHOLD = 200;
+        const int AI_THRESHOLD = 100;  // Matches AIManager::m_threadingThreshold
         bool willUseThreading = (numEntities >= AI_THRESHOLD);
         std::string expectedMode = willUseThreading ? "Automatic Threading" : "Automatic Single-Threaded";
 
@@ -773,10 +770,7 @@ struct AIScalingFixture {
         if (willUseThreading) {
             // Use real WorkerBudgetManager for production-matching behavior
             const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-            std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers, "
-                      << budget.aiAllocated << " allocated to AI ("
-                      << (budget.totalWorkers > 0 ? (budget.aiAllocated * 100 / budget.totalWorkers) : 0)
-                      << "%)" << std::endl;
+            std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers (all available to each manager)" << std::endl;
         }
 
         // Create REAL production behaviors (limit to 5 available types)
@@ -1032,13 +1026,14 @@ struct AIScalingFixture {
 
     // Historical performance data from previous benchmark runs (BenchmarkBehavior)
     // WARNING: This is NOT a live benchmark - it's a lookup table of past results
-    // Updated Nov 7, 2025: Using actual measured values from historical TestSyntheticPerformance runs
+    // Updated: Using actual measured values from historical TestSyntheticPerformance runs
+    // Note: Threshold changed from 200 to 100 entities - historical values may not match current behavior
     double getHistoricalPerformanceRate(size_t numEntities, bool useThreading) {
         if (useThreading) {
-            // Automatic threading behavior (respects 200 entity threshold)
-            // These are HISTORICAL MEASURED values from past TestSyntheticPerformance runs
-            if (numEntities < 200) return 6987578.0;       // Single-threaded below threshold (~150 entities)
-            else if (numEntities <= 200) return 8154944.0; // Threading activation
+            // Automatic threading behavior (threshold is now 100 entities)
+            // These are HISTORICAL MEASURED values - may need re-measurement with new threshold
+            if (numEntities < 100) return 6987578.0;       // Single-threaded below threshold
+            else if (numEntities <= 100) return 8154944.0; // Threading activation
             else if (numEntities <= 500) return 12000000.0; // Interpolated (not directly measured)
             else if (numEntities <= 1000) return 19933555.0; // Measured at 1000 entities
             else if (numEntities <= 2000) return 23000000.0; // Interpolated
@@ -1075,7 +1070,7 @@ struct AIScalingFixture {
 
         // Display historical data across entity counts
         std::vector<int> entityCounts = {100, 200, 500, 1000, 2000, 5000, 10000};
-        const int AI_THRESHOLD = 200;
+        const int AI_THRESHOLD = 100;  // Matches AIManager::m_threadingThreshold
 
         double baselineRate = 0.0;
         for (size_t i = 0; i < entityCounts.size(); ++i) {
@@ -1135,21 +1130,21 @@ BOOST_AUTO_TEST_CASE(TestSyntheticPerformance) {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     unsigned int systemThreads = std::thread::hardware_concurrency();
     std::cout << "System Configuration: " << systemThreads << " hardware threads, "
-              << budget.totalWorkers << " workers (" << budget.aiAllocated << " for AI)" << std::endl;
+              << budget.totalWorkers << " workers (all available per manager)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
-    // 150 entities × 667 iterations = ~100K entity-updates for reliable measurement
-    int entities150 = 150;
-    int updates150 = calculateScaledIterations(entities150);
-    std::cout << "\n--- Test 1: Below Threshold (" << entities150 << " entities, " << updates150 << " iterations) ---" << std::endl;
-    runSyntheticBenchmark(entities150, numBehaviors, updates150);
+    // Threshold is 100 entities - test at 50 to verify single-threaded path
+    int entities50 = 50;
+    int updates50 = calculateScaledIterations(entities50);
+    std::cout << "\n--- Test 1: Below Threshold (" << entities50 << " entities, " << updates50 << " iterations) ---" << std::endl;
+    runSyntheticBenchmark(entities50, numBehaviors, updates50);
 
     // Test at threshold boundary (should use threading automatically)
-    // 200 entities × 500 iterations = ~100K entity-updates
-    int entities200 = 200;
-    int updates200 = calculateScaledIterations(entities200);
-    std::cout << "\n--- Test 2: At Threshold (" << entities200 << " entities, " << updates200 << " iterations) ---" << std::endl;
-    runSyntheticBenchmark(entities200, numBehaviors, updates200);
+    // Threshold is 100 entities - test at 150 to verify threading kicks in
+    int entities150 = 150;
+    int updates150 = calculateScaledIterations(entities150);
+    std::cout << "\n--- Test 2: At Threshold (" << entities150 << " entities, " << updates150 << " iterations) ---" << std::endl;
+    runSyntheticBenchmark(entities150, numBehaviors, updates150);
 
     // Test well above threshold (should use threading automatically)
     // 1000 entities × 100 iterations = ~100K entity-updates
@@ -1486,20 +1481,21 @@ BOOST_AUTO_TEST_CASE(TestIntegratedPerformance) {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
     unsigned int systemThreads = std::thread::hardware_concurrency();
     std::cout << "System Configuration: " << systemThreads << " hardware threads, "
-              << budget.totalWorkers << " workers (" << budget.aiAllocated << " for AI)" << std::endl;
+              << budget.totalWorkers << " workers (all available per manager)" << std::endl;
 
     // Test below threshold (should use single-threaded automatically)
-    // Scaled iterations ensure reliable measurement at low entity counts
-    int entities150 = 150;
-    int updates150 = calculateScaledIterations(entities150);
-    std::cout << "\n--- Test 1: Below Threshold (" << entities150 << " entities, " << updates150 << " iterations) ---" << std::endl;
-    runIntegratedBenchmark(entities150, numBehaviors, updates150);
+    // Threshold is 100 entities - test at 50 to verify single-threaded path
+    int entities50 = 50;
+    int updates50 = calculateScaledIterations(entities50);
+    std::cout << "\n--- Test 1: Below Threshold (" << entities50 << " entities, " << updates50 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities50, numBehaviors, updates50);
 
     // Test at threshold boundary (should use threading automatically)
-    int entities200 = 200;
-    int updates200 = calculateScaledIterations(entities200);
-    std::cout << "\n--- Test 2: At Threshold (" << entities200 << " entities, " << updates200 << " iterations) ---" << std::endl;
-    runIntegratedBenchmark(entities200, numBehaviors, updates200);
+    // Threshold is 100 entities - test at 150 to verify threading kicks in
+    int entities150 = 150;
+    int updates150 = calculateScaledIterations(entities150);
+    std::cout << "\n--- Test 2: At Threshold (" << entities150 << " entities, " << updates150 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities150, numBehaviors, updates150);
 
     // Test well above threshold (should use threading automatically)
     int entities1000 = 1000;
@@ -1539,8 +1535,8 @@ BOOST_AUTO_TEST_CASE(TestIntegratedScalability) {
         std::cout << "-------------|------------|----------------|-------------------|------------------" << std::endl;
 
         // Test across realistic entity counts with automatic behavior
-        std::vector<int> entityCounts = {100, 200, 500, 1000, 2000};
-        const int AI_THRESHOLD = 200;
+        std::vector<int> entityCounts = {50, 100, 200, 500, 1000, 2000};
+        const int AI_THRESHOLD = 100;  // Matches AIManager::m_threadingThreshold
 
         for (size_t i = 0; i < entityCounts.size(); ++i) {
             int numEntities = entityCounts[i];
