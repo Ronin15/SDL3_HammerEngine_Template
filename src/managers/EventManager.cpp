@@ -394,10 +394,11 @@ void EventManager::update() {
 
     if (threadingInfo.wasThreaded) {
       EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
-                              "[Threaded: {}/{} workers, Budget: {}] [Types: {}]",
+                              "[Threaded: {} batches, {}/batch] [Types: {}]",
                               totalEventCount, totalHandlers, m_avgUpdateTimeMs,
-                              threadingInfo.workerCount, threadingInfo.availableWorkers,
-                              threadingInfo.budget, eventSummary));
+                              threadingInfo.batchCount,
+                              totalEventCount > 0 ? totalEventCount / threadingInfo.batchCount : 0,
+                              eventSummary));
     } else {
       EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
                               "[Single-threaded] [Types: {}]",
@@ -411,9 +412,8 @@ void EventManager::update() {
   if (totalTimeMs > 10.0) {
     if (threadingInfo.wasThreaded) {
       EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) "
-                              "[Threaded: {}/{} workers, Budget: {}]",
-                              totalTimeMs, threadingInfo.workerCount,
-                              threadingInfo.availableWorkers, threadingInfo.budget));
+                              "[Threaded: {} batches]",
+                              totalTimeMs, threadingInfo.batchCount));
     } else {
       EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) [Single-threaded]",
                               totalTimeMs));
