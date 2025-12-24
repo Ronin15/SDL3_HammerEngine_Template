@@ -531,9 +531,9 @@ void AIManager::update(float deltaTime) {
           : 0.0;
       if (logWasThreaded) {
         AI_DEBUG(std::format("AI Summary - Entities: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-                             "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+                             "[Threaded: {} batches, {}/batch]",
                              entityCount, totalUpdateTime, entitiesPerSecond,
-                             logWorkerCount, logAvailableWorkers, logBudget, logBatchCount));
+                             logBatchCount, entityCount / logBatchCount));
       } else {
         AI_DEBUG(std::format("AI Summary - Entities: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
                              "[Single-threaded]",

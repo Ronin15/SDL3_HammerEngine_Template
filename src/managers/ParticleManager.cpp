@@ -845,10 +845,9 @@ void ParticleManager::update(float deltaTime) {
         if (threadingInfo.wasThreaded) {
           PARTICLE_DEBUG(std::format(
               "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} "
-              "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+              "[Threaded: {} batches, {}/batch]",
               activeCount, timeMs, m_effectInstances.size(),
-              threadingInfo.workerCount, threadingInfo.availableWorkers,
-              threadingInfo.budget, threadingInfo.batchCount));
+              threadingInfo.batchCount, activeCount / threadingInfo.batchCount));
         } else {
           PARTICLE_DEBUG(std::format(
               "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} [Single-threaded]",

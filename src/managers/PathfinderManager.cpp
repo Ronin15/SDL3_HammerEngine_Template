@@ -1461,10 +1461,10 @@ void PathfinderManager::processPendingRequests() {
     // Interval stats logging - zero overhead in release (entire block compiles out)
     static thread_local uint64_t logFrameCounter = 0;
     if (++logFrameCounter % 300 == 0 && requestCount > 0) {
-        const auto& budget = budgetMgr.getBudget();
         if (useThreading) {
-            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {}, Batches: {}, Workers: {}, Budget: {} [Threaded]",
-                          requestCount, batchCount, optimalWorkerCount, budget.totalWorkers));
+            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} "
+                          "[Threaded: {} batches, {}/batch]",
+                          requestCount, batchCount, requestCount / batchCount));
         } else {
             PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} [Single-threaded]",
                           requestCount));
