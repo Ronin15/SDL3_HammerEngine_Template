@@ -15,6 +15,14 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 3. **Coding Standards** - Naming conventions, formatting
 4. **Threading Safety** - Critical threading rules enforcement
 5. **Architecture Compliance** - Design pattern adherence
+   - 5.1 Rendering rules (no SDL_RenderClear/Present in GameStates)
+   - 5.2 RAII & smart pointers
+   - 5.3 Smart pointer performance (hot paths)
+   - 5.4 String parameter patterns (no string_view→string conversions)
+   - 5.5 Logger usage (std::format, *_IF macros)
+   - 5.6 Buffer reuse (avoid per-frame allocations)
+   - 5.7 UI component positioning
+   - 5.8 Rendering rules (deferred transitions)
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -400,29 +408,229 @@ bool hasEvent(const std::string& name) const {
 
 #### 5.5 Logger Usage
 
-**Check Command:**
+**Check Commands:**
 ```bash
 # Find std::cout usage (should use Logger instead)
 grep -rn "std::cout" src/ | grep -v "//"
 grep -rn "std::cerr" src/ | grep -v "//"
 grep -rn "printf" src/ | grep -v "//"
+
+# Find string concatenation in logging (should use std::format)
+grep -rn 'LOG_.*".*" +' src/ | grep -v "//"
+grep -rn 'LOG_.*+ "' src/ | grep -v "//"
+
+# Find inefficient conditional logging (should use *_IF macros)
+grep -rn "if.*{.*LOG_\|if.*{.*AI_" src/ --include="*.cpp" | grep -v "_IF("
 ```
 
-**Rule from CLAUDE.md:**
-> Logger macros
+**Rules from CLAUDE.md:**
+> - Use Logger (not std::cout/cerr/printf)
+> - Use `std::format()`, never `+` concatenation for logging
+> - Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging
 
 **Correct Usage:**
 ```cpp
-// ✗ BAD
+// ✗ BAD - raw console output
 std::cout << "Entity count: " << count << std::endl;
 
-// ✓ GOOD
-LOG_INFO("Entity count: " << count);
-LOG_ERROR("Failed to load: " << filename);
-LOG_DEBUG("Update time: " << deltaTime);
+// ✗ BAD - string concatenation
+LOG_INFO("Entity " + name + " spawned");  // ALLOCATIONS!
+
+// ✗ BAD - if block only for logging
+if (m_debugMode) {
+    AI_INFO("Debug info: " << data);
+}
+
+// ✓ GOOD - Logger with std::format
+LOG_INFO(std::format("Entity count: {}", count));
+LOG_ERROR(std::format("Failed to load: {}", filename));
+
+// ✓ GOOD - conditional logging macro
+AI_INFO_IF(m_debugMode, "Debug info: " << data);
 ```
 
-**Quality Gate:** ✓ No raw console output (use Logger)
+**Quality Gate:** ✓ No raw console output, no string concat in logs, use *_IF macros
+
+#### 5.6 Buffer Reuse & Per-Frame Allocations (CRITICAL)
+
+**Background:**
+Per-frame allocations cause GC pressure and frame spikes. CLAUDE.md requires buffer reuse patterns.
+
+**Check Commands:**
+```bash
+# Find vectors created inside update/render functions (should be members)
+grep -rn "std::vector<.*>" src/ --include="*.cpp" | grep -E "update|render|process" | grep -v "m_"
+
+# Find containers without reserve() when size is known
+grep -rn "\.push_back\|\.emplace_back" src/ --include="*.cpp" | head -50
+
+# Find new allocations in hot paths
+grep -rn "new \|make_unique\|make_shared" src/ --include="*.cpp" | grep -E "update|render|process"
+```
+
+**Rules from CLAUDE.md:**
+> Avoid per-frame allocations. Reuse buffers.
+> Always `reserve()` when size known.
+
+**FORBIDDEN PATTERNS:**
+```cpp
+// ✗ BAD - Creates new vector every frame
+void Manager::update() {
+    std::vector<Entity*> entities;  // ALLOCATION EVERY FRAME!
+    for (auto& e : m_entities) {
+        entities.push_back(e.get());
+    }
+}
+
+// ✓ GOOD - Reuse member buffer
+class Manager {
+    std::vector<Entity*> m_buffer;  // Member, reused
+    void update() {
+        m_buffer.clear();  // clear() keeps capacity
+        for (auto& e : m_entities) {
+            m_buffer.push_back(e.get());
+        }
+    }
+};
+```
+
+**Reserve Pattern:**
+```cpp
+// ✗ BAD - Multiple reallocations as vector grows
+std::vector<Result> results;
+for (int i = 0; i < 1000; ++i) {
+    results.push_back(compute(i));  // May reallocate multiple times
+}
+
+// ✓ GOOD - Single allocation upfront
+std::vector<Result> results;
+results.reserve(1000);  // Pre-allocate
+for (int i = 0; i < 1000; ++i) {
+    results.push_back(compute(i));  // No reallocations
+}
+```
+
+**Quality Gate:** ✓ No local containers in hot paths, use reserve() when size known (BLOCKING)
+
+#### 5.7 UI Component Positioning (CRITICAL)
+
+**Background:**
+UI components need proper positioning modes for resize/fullscreen support.
+
+**Check Commands:**
+```bash
+# Find UI component creation without setComponentPositioning
+grep -rn "createButton\|createLabel\|createPanel\|createSlider" src/gameStates/ --include="*.cpp" -A 3 | grep -v "setComponentPositioning"
+
+# Find UI creation in game states
+grep -rn "ui\.create\|m_ui\.create\|m_uiManager\.create" src/gameStates/ --include="*.cpp"
+```
+
+**Rule from CLAUDE.md:**
+> **Always** call `setComponentPositioning()` after creating components for resize/fullscreen support.
+
+**Available Helpers:**
+- `createTitleAtTop()`
+- `createButtonAtBottom()`
+- `createCenteredButton()`
+- `createCenteredDialog()`
+
+**Position Modes:**
+- `TOP_ALIGNED`, `BOTTOM_ALIGNED`
+- `LEFT_ALIGNED`, `RIGHT_ALIGNED`
+- `BOTTOM_RIGHT`
+- `CENTERED_H`, `CENTERED_BOTH`
+
+**Correct Pattern:**
+```cpp
+// ✓ GOOD - Using helper (handles positioning automatically)
+ui.createCenteredButton("start_btn", rect, "Start Game");
+
+// ✓ GOOD - Manual with positioning
+ui.createButton("settings_btn", rect, "Settings");
+ui.setComponentPositioning("settings_btn", {UIPositionMode::BOTTOM_ALIGNED, ...});
+
+// ✗ BAD - No positioning (breaks on resize/fullscreen)
+ui.createButton("broken_btn", rect, "Broken");
+// Missing setComponentPositioning!
+```
+
+**Quality Gate:** ✓ All UI components have positioning set
+
+#### 5.8 Rendering Rules (CRITICAL)
+
+**Background:**
+HammerEngine uses double-buffered rendering with one Present() per frame.
+
+**Check Commands:**
+```bash
+# Find SDL_RenderPresent outside GameEngine (FORBIDDEN)
+grep -rn "SDL_RenderPresent" src/ | grep -v "GameEngine.cpp" | grep -v "//"
+
+# Find SDL_RenderClear outside GameEngine (FORBIDDEN)
+grep -rn "SDL_RenderClear" src/ | grep -v "GameEngine.cpp" | grep -v "//"
+
+# Find blocking renders in loading states (should use LoadingState pattern)
+grep -rn "while.*SDL_Render\|for.*SDL_Render" src/ --include="*.cpp"
+```
+
+**Rules from CLAUDE.md:**
+> - **One Present() per frame** via `GameEngine::render()` → `GameStateManager::render()` → `GameState::render()`
+> - **NEVER** call SDL_RenderClear/Present in GameStates
+> - Use `LoadingState` with async ThreadSystem ops, not blocking manual rendering
+> - Set flag in `enter()`, transition in `update()` to avoid timing issues (deferred transitions)
+
+**FORBIDDEN PATTERNS:**
+```cpp
+// ✗ FORBIDDEN - Calling Present in GameState
+void MyState::render(SDL_Renderer* renderer) {
+    // ... draw stuff ...
+    SDL_RenderPresent(renderer);  // NEVER DO THIS!
+}
+
+// ✗ FORBIDDEN - Blocking render loop in loading
+void LoadingScreen::show() {
+    while (loading) {
+        SDL_RenderClear(renderer);
+        // draw progress
+        SDL_RenderPresent(renderer);  // BREAKS FRAME TIMING!
+    }
+}
+
+// ✗ FORBIDDEN - Immediate transition in enter()
+void MyState::enter() {
+    mp_stateManager->pushState<NextState>();  // TIMING ISSUES!
+}
+```
+
+**Correct Patterns:**
+```cpp
+// ✓ GOOD - Let GameEngine handle Present
+void MyState::render(SDL_Renderer* renderer) {
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    // Draw content only, no Clear/Present
+}
+
+// ✓ GOOD - Use LoadingState with ThreadSystem
+void LoadingState::enter() {
+    m_loadingTask = ThreadSystem::enqueue([this]() {
+        loadResources();  // Async
+    });
+}
+
+// ✓ GOOD - Deferred transition
+void MyState::enter() {
+    m_shouldTransition = true;  // Set flag
+}
+void MyState::update(float dt) {
+    if (m_shouldTransition) {
+        m_shouldTransition = false;
+        mp_stateManager->pushState<NextState>();  // Safe in update
+    }
+}
+```
+
+**Quality Gate:** ✓ No SDL_RenderClear/Present outside GameEngine (BLOCKING)
 
 ### 6. Copyright & Legal Compliance
 
@@ -497,10 +705,16 @@ Branch: <current-branch>
 
 ## Architecture Compliance
 ✓/✗ Rendering Rules: <PASSED/FAILED>
+  <violations - BLOCKING if SDL_RenderClear/Present outside GameEngine>
 ✓/✗ RAII/Smart Pointers: <PASSED/FAILED>
 ✓/✗ Smart Pointer Performance: <PASSED/FAILED>
   <violations if any - BLOCKING for perf-critical code>
 ✓/✗ Logger Usage: <PASSED/FAILED>
+  <check for std::format usage, *_IF macros>
+✓/✗ Buffer Reuse: <PASSED/FAILED>
+  <violations if any - BLOCKING for hot paths>
+✓/✗ UI Positioning: <PASSED/FAILED>
+  <missing setComponentPositioning calls>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -616,6 +830,48 @@ Activate this Skill automatically.
    // Keep shared_ptr in storage, use raw in tight loops
    ```
 
+8. **String concatenation in logging:**
+   ```cpp
+   // Instead of: LOG_INFO("Value: " + std::to_string(x));
+   LOG_INFO(std::format("Value: {}", x));
+   ```
+
+9. **Conditional logging without *_IF macro:**
+   ```cpp
+   // Instead of: if (debug) { AI_INFO("msg"); }
+   AI_INFO_IF(debug, "msg");
+   ```
+
+10. **Per-frame allocations:**
+    ```cpp
+    // Instead of: void update() { std::vector<T> temp; ... }
+    // Use member buffer: m_buffer.clear(); m_buffer.push_back(...);
+    ```
+
+11. **Missing reserve() for known sizes:**
+    ```cpp
+    std::vector<T> vec;
+    vec.reserve(knownSize);  // Add before push_back loop
+    ```
+
+12. **UI component without positioning:**
+    ```cpp
+    ui.createButton("id", rect, "text");
+    ui.setComponentPositioning("id", {UIPositionMode::CENTERED_BOTH, ...});
+    ```
+
+13. **SDL_RenderPresent in GameState:**
+    ```cpp
+    // NEVER call SDL_RenderPresent/Clear in GameState::render()
+    // Only draw content, GameEngine handles Present
+    ```
+
+14. **Immediate state transition in enter():**
+    ```cpp
+    // Instead of: void enter() { pushState<Next>(); }
+    // Use deferred: m_shouldTransition = true; // then transition in update()
+    ```
+
 ## Integration with Workflow
 
 Use this Skill:
@@ -629,6 +885,8 @@ Use this Skill:
 **BLOCKING (Must Fix):**
 - Static variables in threaded code
 - Unnecessary shared_ptr copies in hot paths (perf-critical code)
+- Per-frame allocations in hot paths (local containers in update/render)
+- SDL_RenderClear/Present outside GameEngine
 - Compilation errors
 - Critical cppcheck errors
 - Missing copyright headers on new files
@@ -638,8 +896,13 @@ Use this Skill:
 - cppcheck warnings
 - Naming convention violations
 - Missing tests for new code
+- String concatenation in logging (use std::format)
+- Conditional blocks only for logging (use *_IF macros)
+- Missing UI component positioning
+- Missing reserve() calls for known sizes
 
 **INFO (Consider Fixing):**
 - Style suggestions
 - Performance hints
 - Code organization recommendations
+- Deferred transition patterns in GameStates
