@@ -28,7 +28,8 @@ enum class SystemType : uint8_t {
     Particle = 1,
     Pathfinding = 2,
     Event = 3,
-    COUNT = 4
+    Collision = 4,
+    COUNT = 5
 };
 
 /**

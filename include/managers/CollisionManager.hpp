@@ -254,6 +254,27 @@ private:
     void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
                         std::vector<CollisionInfo>& collisions) const;
 
+    // Multi-threading support for narrowphase (WorkerBudget integrated)
+    void narrowphaseSingleThreaded(
+        const std::vector<std::pair<size_t, size_t>>& indexPairs,
+        std::vector<CollisionInfo>& collisions) const;
+
+    void narrowphaseMultiThreaded(
+        const std::vector<std::pair<size_t, size_t>>& indexPairs,
+        std::vector<CollisionInfo>& collisions,
+        size_t batchCount,
+        size_t batchSize) const;
+
+    void narrowphaseBatch(
+        const std::vector<std::pair<size_t, size_t>>& indexPairs,
+        size_t startIdx,
+        size_t endIdx,
+        std::vector<CollisionInfo>& outCollisions) const;
+
+    void processNarrowphasePairScalar(
+        const std::pair<size_t, size_t>& pair,
+        std::vector<CollisionInfo>& outCollisions) const;
+
     // Internal helper methods for SOA buffer management
     void swapCollisionBuffers();
     void copyHotDataToWorkingBuffer();
@@ -698,6 +719,16 @@ private:
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;
     mutable std::mutex m_commandQueueMutex;
+
+    // Multi-threading support for narrowphase (WorkerBudget integrated)
+    mutable std::vector<std::future<void>> m_narrowphaseFutures;
+    mutable std::shared_ptr<std::vector<std::vector<CollisionInfo>>> m_batchCollisionBuffers;
+    mutable std::mutex m_narrowphaseFuturesMutex;
+
+    // Threading config and metrics
+    static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;
+    mutable bool m_lastNarrowphaseWasThreaded{false};
+    mutable size_t m_lastNarrowphaseBatchCount{1};
 
     // Thread-safe access to collision storage (entityToIndex map and storage arrays)
     // shared_lock for reads (AI threads), unique_lock for writes (update thread)
