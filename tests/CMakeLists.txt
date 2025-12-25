@@ -280,3 +280,15 @@ foreach(test_name ${ALL_TESTS})
 endforeach()
 # resource_factory_tests uses test access helper from tests/resources
 target_sources(resource_factory_tests PRIVATE resources/ResourceTestAccess.cpp)
+
+# --- Power Profiling Tool (Standalone, no Boost.Test dependency) ---
+# This is a headless benchmark for measuring CPU power consumption via race-to-idle strategy
+add_executable(PowerProfile power_profile.cpp)
+target_link_libraries(PowerProfile PRIVATE HammerEngineLib)
+target_include_directories(PowerProfile PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
+# PowerProfile is not a test - it's a utility executable for power measurements
+# Set output directory to match other executables
+set_target_properties(PowerProfile PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}"
+)
