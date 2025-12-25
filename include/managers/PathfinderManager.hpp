@@ -443,6 +443,7 @@ private:
 
     // Deferred batch timing for WorkerBudget feedback (non-blocking)
     size_t m_lastBatchCount{0};
+    size_t m_lastWorkloadSize{0};
     std::chrono::steady_clock::time_point m_lastBatchSubmitTime{};
 
     // Incremental update configuration

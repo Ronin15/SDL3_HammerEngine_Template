@@ -59,25 +59,24 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
 
     auto& state = m_batchState[static_cast<size_t>(system)];
 
-    // Simple, smart batch calculation:
-    // - Use all available workers (pre-allocated ThreadSystem = minimal overhead)
-    // - Only limit batches if items/batch would be < 8 (truly tiny work units)
-    // - Let timing feedback fine-tune via multiplier
+    // =======================================================================
+    // Simple and robust: base = workers, adjusted by throughput-tuned multiplier
+    // No model assumptions - multiplier is tuned by measuring actual throughput
+    // =======================================================================
 
-    constexpr size_t MIN_ITEMS_PER_BATCH = 8;
+    // Base batch count = all available workers (max parallelism)
+    float multiplier = state.multiplier.load(std::memory_order_relaxed);
+    double adjustedBatches = static_cast<double>(optimalWorkers) * static_cast<double>(multiplier);
 
-    // Maximum batches to avoid overhead-dominated execution
-    size_t maxBatches = std::max(size_t{1}, workloadSize / MIN_ITEMS_PER_BATCH);
+    // Convert to integer
+    size_t batchCount = static_cast<size_t>(std::max(1.0, adjustedBatches));
 
-    // Target: use all workers, capped by workload constraints
-    size_t targetBatches = std::min(optimalWorkers, maxBatches);
+    // Cap based on minimum items per batch (prevent trivial batches)
+    size_t maxBatches = std::max(size_t{1}, workloadSize / BatchTuningState::MIN_ITEMS_PER_BATCH);
+    batchCount = std::min(batchCount, maxBatches);
 
-    // Apply timing feedback multiplier (0.25x to 2.0x fine-tuning)
-    float multiplier = state.batchMultiplier.load(std::memory_order_relaxed);
-    size_t batchCount = static_cast<size_t>(static_cast<float>(targetBatches) * multiplier);
-
-    // Clamp: at least 1 batch, at most maxBatches
-    batchCount = std::clamp(batchCount, size_t{1}, maxBatches);
+    // Ensure at least 1 batch
+    batchCount = std::max(batchCount, size_t{1});
 
     // Calculate batch size (round up to ensure all items are processed)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
@@ -86,39 +85,63 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
 }
 
 void WorkerBudgetManager::reportBatchCompletion(SystemType system,
+                                                 size_t workloadSize,
                                                  size_t batchCount,
                                                  double totalTimeMs) {
-    if (batchCount == 0) {
+    if (batchCount == 0 || workloadSize == 0 || totalTimeMs <= 0.0) {
         return;
     }
 
     auto& state = m_batchState[static_cast<size_t>(system)];
 
-    // Calculate per-batch time
-    double perBatchTimeMs = totalTimeMs / static_cast<double>(batchCount);
+    // =======================================================================
+    // THROUGHPUT-BASED HILL-CLIMBING
+    // Simple and robust: measure throughput, adjust multiplier to maximize it
+    // No model assumptions - just finds what works best experimentally
+    // =======================================================================
 
-    // Update rolling average (exponential smoothing with 15% weight to new sample)
-    // Lower weight filters transient spikes better (~7 samples to reflect sustained change)
-    double oldAvg = state.avgBatchTimeMs.load(std::memory_order_relaxed);
-    double newAvg = oldAvg * 0.85 + perBatchTimeMs * 0.15;
-    state.avgBatchTimeMs.store(newAvg, std::memory_order_relaxed);
+    // Calculate current throughput (items per ms)
+    double currentThroughput = static_cast<double>(workloadSize) / totalTimeMs;
 
-    // Fine-tune multiplier based on per-batch time using dead-band
-    float multiplier = state.batchMultiplier.load(std::memory_order_relaxed);
+    // Get previous values
+    double prev = state.smoothedThroughput.load(std::memory_order_relaxed);
+    double prevSmoothed = state.prevThroughput.load(std::memory_order_relaxed);
 
-    if (perBatchTimeMs < BatchTuningState::DEAD_BAND_LOW_MS) {
-        // Batches finishing too fast (< 100µs) - consolidate for efficiency
-        multiplier -= BatchTuningState::ADJUST_RATE;
-    } else if (perBatchTimeMs > BatchTuningState::DEAD_BAND_HIGH_MS) {
-        // Batches taking too long (> 500µs) - split for better load balancing
-        multiplier += BatchTuningState::ADJUST_RATE;
+    // Update smoothed throughput
+    double smoothed = prev * (1.0 - BatchTuningState::THROUGHPUT_SMOOTHING)
+                    + currentThroughput * BatchTuningState::THROUGHPUT_SMOOTHING;
+    state.smoothedThroughput.store(smoothed, std::memory_order_relaxed);
+    state.prevThroughput.store(prev, std::memory_order_relaxed);
+
+    // Skip first two frames (need history to compare)
+    if (prevSmoothed <= 0.0) {
+        return;
     }
-    // Inside dead-band (100-500µs): optimal zone, no adjustment
 
-    // Only enforce floor - ceiling is naturally limited by maxBatches clamp
-    multiplier = std::max(multiplier, BatchTuningState::MIN_MULTIPLIER);
+    // Calculate relative change from previous smoothed value
+    double change = (smoothed - prevSmoothed) / prevSmoothed;
 
-    state.batchMultiplier.store(multiplier, std::memory_order_relaxed);
+    // Hill-climb multiplier
+    float multiplier = state.multiplier.load(std::memory_order_relaxed);
+    int8_t direction = state.direction.load(std::memory_order_relaxed);
+
+    if (change > BatchTuningState::THROUGHPUT_TOLERANCE) {
+        // Throughput improved - continue in same direction
+        multiplier += static_cast<float>(direction) * BatchTuningState::ADJUST_RATE;
+    } else if (change < -BatchTuningState::THROUGHPUT_TOLERANCE) {
+        // Throughput degraded - reverse direction
+        direction = static_cast<int8_t>(-direction);
+        state.direction.store(direction, std::memory_order_relaxed);
+        multiplier += static_cast<float>(direction) * BatchTuningState::ADJUST_RATE;
+    }
+    // Within tolerance: at equilibrium, hold steady
+
+    // Clamp multiplier
+    multiplier = std::clamp(multiplier,
+                            BatchTuningState::MIN_MULTIPLIER,
+                            BatchTuningState::MAX_MULTIPLIER);
+
+    state.multiplier.store(multiplier, std::memory_order_relaxed);
 }
 
 void WorkerBudgetManager::invalidateCache() {

@@ -864,7 +864,7 @@ void ParticleManager::update(float deltaTime) {
     // Report batch completion for adaptive tuning (only if threaded with WorkerBudget)
     if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
       HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-          HammerEngine::SystemType::Particle, threadingInfo.batchCount, totalUpdateTime);
+          HammerEngine::SystemType::Particle, activeCount, threadingInfo.batchCount, totalUpdateTime);
     }
 
   } catch (const std::exception &e) {

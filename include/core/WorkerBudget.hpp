@@ -92,13 +92,10 @@ public:
     size_t getOptimalWorkers(SystemType system, size_t workloadSize);
 
     /**
-     * @brief Get adaptive batch strategy
+     * @brief Get adaptive batch strategy using optimal sqrt formula
      *
-     * Maximizes parallelism by default (2x workers for load balancing).
-     * Fine-tunes based on per-batch timing feedback:
-     * - Batch time < 100µs → consolidate (overhead dominates)
-     * - Batch time > 2ms → split more (straggler risk)
-     * - Sweet spot → maintain
+     * Uses mathematically derived optimal: batches = sqrt(work_time / overhead)
+     * Both work_time and overhead are learned from actual execution.
      *
      * @param system The system type
      * @param workloadSize Total items to process
@@ -110,15 +107,18 @@ public:
                                                 size_t optimalWorkers);
 
     /**
-     * @brief Report batch completion for fine-tuning
+     * @brief Report batch completion for learning and fine-tuning
      *
-     * Calculates per-batch time and adjusts the batch multiplier for next frame.
+     * Updates learned parameters (per-item time, overhead) and hill-climbs
+     * multiplier based on throughput to find true optimal.
      *
      * @param system The system type
+     * @param workloadSize Number of items that were processed
      * @param batchCount Number of batches that were executed
      * @param totalTimeMs Total time for all batches to complete
      */
-    void reportBatchCompletion(SystemType system, size_t batchCount, double totalTimeMs);
+    void reportBatchCompletion(SystemType system, size_t workloadSize,
+                               size_t batchCount, double totalTimeMs);
 
     /**
      * @brief Invalidate cached budget (call when ThreadSystem changes)
@@ -134,28 +134,31 @@ private:
     WorkerBudgetManager& operator=(const WorkerBudgetManager&) = delete;
 
     /**
-     * @brief Per-system batch tuning state
+     * @brief Per-system batch tuning state with throughput-based hill-climbing
      *
-     * Uses atomics for thread safety. Fine-tunes batch count based on
-     * per-batch timing to find the sweet spot (100µs - 2ms per batch).
+     * Simple and robust: starts at max parallelism (workers), adjusts multiplier
+     * based on measured throughput. No model assumptions - just measures what works.
+     *
+     * Thread-safe via atomics.
      */
     struct BatchTuningState {
-        std::atomic<float> batchMultiplier{1.0f};    // Scales dynamically (floor: 0.25x)
-        std::atomic<double> avgBatchTimeMs{0.5};     // Rolling average per-batch time
+        // Multiplier applied to worker count
+        std::atomic<float> multiplier{1.0f};
 
-        static constexpr float MIN_MULTIPLIER = 0.25f;  // Allows 4x consolidation
-        // No artificial cap - maxBatches (workload/8) provides natural ceiling
-        // Timing feedback converges to optimal value within physical constraints
-        static constexpr float ADJUST_RATE = 0.1f;   // 10% per update
+        // Throughput tracking for hill-climbing
+        std::atomic<double> smoothedThroughput{0.0};  // Items per ms
+        std::atomic<double> prevThroughput{0.0};      // Previous smoothed value
+        std::atomic<int8_t> direction{1};             // Hill-climb direction (+1 or -1)
 
-        // Per-batch time outer bounds
-        static constexpr double MIN_BATCH_TIME_MS = 0.1;  // 100µs - below this, consolidate
-        static constexpr double MAX_BATCH_TIME_MS = 2.0;  // 2ms - above this, split more
+        // Constants
+        static constexpr float MIN_MULTIPLIER = 0.25f;  // Allow 4x consolidation
+        static constexpr float MAX_MULTIPLIER = 2.5f;   // Allow 2.5x expansion
+        static constexpr float ADJUST_RATE = 0.02f;     // 2% adjustment - very stable
 
-        // Dead-band: inner stable zone where multiplier doesn't adjust
-        // Tighter band for faster convergence to optimal batch size
-        static constexpr double DEAD_BAND_LOW_MS = 0.1;   // 100µs (target minimum)
-        static constexpr double DEAD_BAND_HIGH_MS = 0.5;  // 500µs (target maximum)
+        static constexpr double THROUGHPUT_TOLERANCE = 0.06;   // 6% dead band - ignore more noise
+        static constexpr double THROUGHPUT_SMOOTHING = 0.12;   // 12% weight - heavier smoothing
+
+        static constexpr size_t MIN_ITEMS_PER_BATCH = 8;  // Prevent trivial batches
     };
 
     // Cached budget (protected by double-checked locking)
