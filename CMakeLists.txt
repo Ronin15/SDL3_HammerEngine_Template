@@ -31,8 +31,8 @@ if(APPLE)
     # macOS-specific debug flags with dSYM generation and LLDB compatibility
     set(CMAKE_C_FLAGS_DEBUG 
         "-g3 -O0 -gdwarf-4 -glldb -fno-limit-debug-info -DDEBUG")
-    set(CMAKE_CXX_FLAGS_DEBUG 
-        "-g3 -O0 -Wall -Wextra -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug -DDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG
+        "-g3 -O0 -Wall -Wextra -Wpedantic -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug -DDEBUG")
     
     # Ensure debug symbols are preserved (don't strip them)
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -g")
@@ -41,7 +41,7 @@ else()
     # Other platforms
     set(CMAKE_C_FLAGS_DEBUG 
         "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -DDEBUG")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -DDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -Wpedantic -DDEBUG")
 endif()
 
 # Release build settings - keep minimal safe flags for dependencies (SDL3 etc.)
