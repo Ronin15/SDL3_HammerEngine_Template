@@ -5,12 +5,13 @@
 
 set -e  # Exit on error
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+# Get absolute paths (fixes sudo path issues)
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$PROJECT_ROOT/build"
-POWER_PROFILE_BIN="$BUILD_DIR/../bin/debug/PowerProfile"
-GAME_BIN="$BUILD_DIR/../bin/debug/SDL3_Template"
-RESULTS_DIR="$SCRIPT_DIR/test_results/power_profiling"
+POWER_PROFILE_BIN="$PROJECT_ROOT/bin/debug/PowerProfile"
+GAME_BIN="$PROJECT_ROOT/bin/debug/SDL3_Template"
+RESULTS_DIR="$PROJECT_ROOT/tests/test_results/power_profiling"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 # Parse command-line arguments
