@@ -227,7 +227,7 @@ int main(int argc, char* argv[]) {
             // Periodic progress output
             if (config.verbose && frameCount % 60 == 0) {
                 auto elapsed_secs = std::chrono::duration_cast<std::chrono::seconds>(
-                    std::chrono::high_resolution_clock::now() - benchmarkStartTime
+                    std::chrono::steady_clock::now() - benchmarkStartTime
                 ).count();
                 std::cout << std::format("  Frame {:6d} (t={:3d}s)\n",
                                        frameCount,
