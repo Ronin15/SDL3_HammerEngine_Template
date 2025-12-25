@@ -630,7 +630,7 @@ private:
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
   size_t m_threadingThreshold{
-      100}; // Global threshold: Thread when total events > 100
+      500}; // Global threshold: Thread when total events > 500 (optimal from benchmark)
   static constexpr size_t PER_TYPE_THREAD_THRESHOLD = 20; // Per-type minimum: Only thread types with 20+ events
 
   // Performance monitoring
