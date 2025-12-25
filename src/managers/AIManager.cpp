@@ -513,7 +513,7 @@ void AIManager::update(float deltaTime) {
     // Report batch completion for adaptive tuning (only if threading was used)
     if (logWasThreaded) {
       HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-          HammerEngine::SystemType::AI, logBatchCount, totalUpdateTime);
+          HammerEngine::SystemType::AI, entityCount, logBatchCount, totalUpdateTime);
     }
 
     // Periodic cleanup tracking (balanced frequency)

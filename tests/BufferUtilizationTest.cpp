@@ -102,12 +102,12 @@ BOOST_AUTO_TEST_CASE(TestBatchCompletionReporting) {
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    // Report some batch completions
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, 4, 0.5);  // 0.125ms per batch
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, 4, 0.5);
+    // Report some batch completions (workload, batchCount, timeMs)
+    size_t workload = 1000;
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 4, 0.5);  // 0.125ms per batch
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 4, 0.5);
 
     // Get batch strategy after reporting
-    size_t workload = 1000;
     size_t workers = 4;
     auto [batchCount1, batchSize1] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, workload, workers);
@@ -115,8 +115,8 @@ BOOST_AUTO_TEST_CASE(TestBatchCompletionReporting) {
     std::cout << "After fast batches (0.125ms/batch): " << batchCount1 << " batches\n";
 
     // Report slow batches
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, 2, 10.0);  // 5ms per batch
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, 2, 10.0);
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 2, 10.0);  // 5ms per batch
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 2, 10.0);
 
     auto [batchCount2, batchSize2] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, workload, workers);

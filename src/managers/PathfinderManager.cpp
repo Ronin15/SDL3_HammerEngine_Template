@@ -1414,13 +1414,14 @@ void PathfinderManager::waitForGridRebuildCompletion() {
 
 void PathfinderManager::processPendingRequests() {
     // Report previous frame's batch completion (deferred, non-blocking)
-    if (m_lastBatchCount > 0) {
+    if (m_lastBatchCount > 0 && m_lastWorkloadSize > 0) {
         auto now = std::chrono::steady_clock::now();
         double elapsed = std::chrono::duration<double, std::milli>(
             now - m_lastBatchSubmitTime).count();
         HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-            HammerEngine::SystemType::Pathfinding, m_lastBatchCount, elapsed);
+            HammerEngine::SystemType::Pathfinding, m_lastWorkloadSize, m_lastBatchCount, elapsed);
         m_lastBatchCount = 0;
+        m_lastWorkloadSize = 0;
     }
 
     // Swap out buffered requests to avoid holding lock during processing
@@ -1668,6 +1669,7 @@ void PathfinderManager::processPendingRequests() {
     // Track for deferred reporting next frame (non-blocking)
     m_lastBatchSubmitTime = std::chrono::steady_clock::now();
     m_lastBatchCount = batchCount;
+    m_lastWorkloadSize = requestCount;
 
     // Batches submitted asynchronously - callbacks will fire when paths complete
     // waitForBatchCompletion() is only called during cleanup/state transitions

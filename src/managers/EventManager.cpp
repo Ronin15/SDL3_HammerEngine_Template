@@ -360,7 +360,7 @@ void EventManager::update() {
   // Report batch completion for adaptive tuning (only if threading was used)
   if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
     HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-        HammerEngine::SystemType::Event, threadingInfo.batchCount, totalTimeMs);
+        HammerEngine::SystemType::Event, totalEventCount, threadingInfo.batchCount, totalTimeMs);
   }
 
   // Update rolling average for DEBUG logging
