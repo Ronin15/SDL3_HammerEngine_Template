@@ -66,8 +66,8 @@ def parse_plist(file_path: str) -> dict:
     try:
         with open(file_path, 'rb') as f:
             return plistlib.load(f)
-    except Exception as e:
-        print(f"Error parsing plist {file_path}: {e}")
+    except Exception:
+        # Silently fail - will try text format fallback
         return {}
 
 def parse_json(file_path: str) -> dict:
@@ -108,6 +108,22 @@ def extract_cpu_power_samples(data: dict) -> List[float]:
                     if 'power' in k.lower() and isinstance(v, (int, float)):
                         samples.append(float(v))
 
+    return samples
+
+def extract_combined_power_samples(text_content: str) -> List[float]:
+    """Extract combined power samples from text format powermetrics"""
+    samples = []
+    for line in text_content.split('\n'):
+        if line.startswith('Combined Power'):
+            # Extract number from "Combined Power (CPU + GPU + ANE): 1475 mW"
+            parts = line.split(': ')
+            if len(parts) == 2:
+                power_str = parts[1].replace(' mW', '')
+                try:
+                    mW = float(power_str)
+                    samples.append(mW / 1000)  # Convert to watts
+                except:
+                    pass
     return samples
 
 def extract_gpu_power_samples(data: dict) -> List[float]:
@@ -184,6 +200,56 @@ def calculate_energy_per_frame(avg_power_W: float, duration_ms: float, frame_cou
     duration_s = duration_ms / 1000.0
     energy_per_frame_J = (avg_power_W * duration_s) / frame_count
     return energy_per_frame_J * 1000  # Convert to mJ
+
+def calculate_battery_life(avg_power_W: float, battery_capacity_Wh: float = 70) -> Dict[str, float]:
+    """Calculate battery life estimate"""
+    if avg_power_W <= 0:
+        return {}
+
+    hours = battery_capacity_Wh / avg_power_W
+    return {
+        'hours': hours,
+        'minutes': hours * 60,
+        'days': hours / 24
+    }
+
+def print_power_analysis(file_path: str, samples: List[float], battery_wh: float = 70):
+    """Print power consumption analysis with battery life estimate"""
+    if not samples:
+        return
+
+    avg = statistics.mean(samples)
+    min_val = min(samples)
+    max_val = max(samples)
+    stdev = statistics.stdev(samples) if len(samples) > 1 else 0
+
+    print(f"\n{'='*70}")
+    print(f"Power Analysis: {Path(file_path).name}")
+    print(f"{'='*70}")
+
+    print(f"\nActual Power Consumption:")
+    print(f"  Average:      {avg:.2f} W")
+    print(f"  Min:          {min_val:.2f} W (during sleep/vsync)")
+    print(f"  Max:          {max_val:.2f} W (peak gameplay)")
+    print(f"  Std Dev:      {stdev:.2f} W")
+    print(f"  Samples:      {len(samples)}")
+
+    print(f"\nBattery Life Estimates (M3 Pro 14\": {battery_wh} Wh):")
+    print(f"  Average Load:      {avg:.1f}W → {battery_wh/avg:.1f} hours ({(battery_wh/avg)*60:.0f} min)")
+    print(f"  Idle/Sleep:        {min_val:.2f}W → {battery_wh/min_val:.0f} hours")
+    print(f"  Peak Gameplay:     {max_val:.2f}W → {battery_wh/max_val:.1f} hours")
+
+    # Estimate based on residency pattern (81% idle, 19% active)
+    if avg > 0.2:  # Only estimate if not just idle
+        estimated_active_power = avg / 0.19  # If 19% active contributes to this avg
+        continuous_gameplay_hours = battery_wh / estimated_active_power
+
+        print(f"\nLoad Breakdown Estimate:")
+        print(f"  81% idle time:     ~{min_val:.2f}W")
+        print(f"  19% active time:   ~{estimated_active_power:.2f}W")
+        print(f"  → Continuous gameplay (no idle): {continuous_gameplay_hours:.1f} hours")
+
+    print(f"\n{'='*70}\n")
 
 def print_analysis(file_path: str, data: dict, stats: Dict[str, float]):
     """Print formatted analysis results"""
@@ -278,16 +344,146 @@ def print_text_analysis(file_path: str, data: dict, stats: Dict[str, float]):
 
     print(f"\n{'='*70}\n")
 
+def parse_benchmark_log(file_path: str) -> dict:
+    """Extract performance metrics from headless benchmark log"""
+    stats = {}
+    try:
+        with open(file_path, 'r') as f:
+            content = f.read()
+
+        # Extract entity count
+        entity_match = re.search(r'Entity Count:\s+(\d+)', content)
+        if entity_match:
+            stats['entity_count'] = int(entity_match.group(1))
+
+        # Extract threading mode
+        threading_match = re.search(r'Threading Mode:\s+(\w+)', content)
+        if threading_match:
+            stats['threading_mode'] = threading_match.group(1)
+
+        # Extract benchmark results
+        frames_match = re.search(r'Total Frames:\s+(\d+)', content)
+        if frames_match:
+            stats['total_frames'] = int(frames_match.group(1))
+
+        frame_time_match = re.search(r'Avg Frame Time:\s+([\d.]+)\s+ms', content)
+        if frame_time_match:
+            stats['avg_frame_time_ms'] = float(frame_time_match.group(1))
+
+        fps_match = re.search(r'Avg FPS:\s+([\d.]+)', content)
+        if fps_match:
+            stats['avg_fps'] = float(fps_match.group(1))
+
+        workers_match = re.search(r'Workers Active:\s+(\d+)', content)
+        if workers_match:
+            stats['workers_active'] = int(workers_match.group(1))
+
+        return stats
+    except Exception as e:
+        print(f"Error parsing benchmark log {file_path}: {e}")
+        return {}
+
+
+def find_benchmark_log(plist_file: str) -> str:
+    """Find corresponding benchmark log for a plist file"""
+    # Convert power_multi_50000_20251225_064755.plist -> benchmark_multi_50000_20251225_064755.txt
+    plist_path = Path(plist_file)
+    parts = plist_path.name.split('_')
+    if parts[0] == 'power' and len(parts) >= 4:
+        benchmark_name = 'benchmark_' + '_'.join(parts[1:]).replace('.plist', '.txt')
+        benchmark_file = plist_path.parent / benchmark_name
+        if benchmark_file.exists():
+            return str(benchmark_file)
+    return None
+
+
+def print_headless_analysis(plist_file: str, bench_file: str, power_samples: List[float]):
+    """Print headless benchmark analysis with performance metrics"""
+
+    # Parse benchmark log
+    bench_stats = parse_benchmark_log(bench_file)
+    if not bench_stats:
+        print(f"Warning: Could not parse benchmark log {bench_file}")
+        return
+
+    # Analyze power
+    power_stats = analyze_power_data(power_samples, [])
+
+    print(f"\n{'='*70}")
+    print(f"Headless Benchmark Analysis: {Path(plist_file).name}")
+    print(f"{'='*70}")
+
+    print(f"\nPerformance Metrics:")
+    print(f"  Entity Count:       {bench_stats.get('entity_count', 0):,}")
+    print(f"  Threading Mode:     {bench_stats.get('threading_mode', '?')}")
+    print(f"  Active Workers:     {bench_stats.get('workers_active', '?')}")
+    print(f"  Total Frames:       {bench_stats.get('total_frames', 0):,}")
+    print(f"  Avg Frame Time:     {bench_stats.get('avg_frame_time_ms', 0):.2f}ms")
+    print(f"  Avg FPS:            {bench_stats.get('avg_fps', 0):.1f}")
+
+    print(f"\nPower Consumption (AI/Collision/Pathfinding only - NO RENDERING):")
+    print(f"  Average:            {power_stats.get('cpu_avg_power_W', 0):.2f}W")
+    print(f"  Min:                {power_stats.get('cpu_min_power_W', 0):.2f}W")
+    print(f"  Max:                {power_stats.get('cpu_max_power_W', 0):.2f}W")
+    print(f"  Std Dev:            {power_stats.get('cpu_stdev_power_W', 0):.2f}W")
+
+    # Calculate efficiency metrics
+    entity_count = bench_stats.get('entity_count', 0)
+    avg_fps = bench_stats.get('avg_fps', 1)
+    avg_power = power_stats.get('cpu_avg_power_W', 1)
+    total_time_ms = bench_stats.get('avg_frame_time_ms', 0) * bench_stats.get('total_frames', 1)
+
+    print(f"\nEfficiency Metrics:")
+    if entity_count > 0:
+        print(f"  Power per entity:   {(avg_power * 1000) / entity_count:.3f}mW/entity")
+        print(f"  Throughput:         {(entity_count * avg_fps):,.0f} entity-updates/sec")
+    else:
+        print(f"  Idle baseline (no entities)")
+        print(f"  Throughput:         N/A")
+
+    # Battery drain calculation (realistic)
+    battery_wh = 70
+    total_time_hours = total_time_ms / (1000 * 3600)
+    battery_drain_wh = avg_power * total_time_hours
+    battery_drain_pct = (battery_drain_wh / battery_wh) * 100
+
+    print(f"\nBattery Impact (This Test):")
+    print(f"  Test Duration:      {total_time_hours*60:.1f} minutes")
+    print(f"  Energy Consumed:    {battery_drain_wh:.4f}Wh")
+    print(f"  Battery Drain:      {battery_drain_pct:.3f}%")
+
+    # Theoretical continuous play (unrealistic - no rendering)
+    hours = battery_wh / avg_power if avg_power > 0 else 0
+    print(f"\n⚠️  Theoretical Continuous Play (HEADLESS - NO RENDERING):")
+    print(f"  {hours:.1f} hours at {avg_power:.2f}W")
+    print(f"  ✗ This is NOT realistic - rendering adds ~15-20W")
+    print(f"  ✓ For actual battery estimates, use real-app gameplay data")
+
+    print(f"\n{'='*70}\n")
+
+
 def main():
-    if len(sys.argv) < 2:
-        print("Usage: parse_powermetrics.py <plist_file|json_file|text_file> [file2] ...")
-        print("\nSupported formats:")
-        print("  - Binary plist: power_*.plist")
-        print("  - JSON: power_*.json")
-        print("  - Text format: power_*.txt or power_*.plist (text output)")
-        print("\nExample:")
-        print("  python3 parse_powermetrics.py power_idle.plist")
-        print("  python3 parse_powermetrics.py power_*.plist")
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description='Parse powermetrics data for real-app or headless benchmarks'
+    )
+    parser.add_argument('files', nargs='+', help='Plist files to analyze')
+    parser.add_argument('--real-app', action='store_true',
+                       help='Parse real-app gameplay data (default behavior)')
+    parser.add_argument('--headless', action='store_true',
+                       help='Parse headless benchmark data (auto-finds benchmark logs)')
+
+    args = parser.parse_args()
+
+    # Determine mode
+    auto_detect = not args.real_app and not args.headless
+
+    # Filter out empty strings from argparse
+    args.files = [f for f in args.files if f.strip()]
+
+    if len(args.files) < 1:
+        parser.print_help()
         sys.exit(1)
 
     print("PowerMetrics Parser - SDL3 HammerEngine Power Analysis")
@@ -295,13 +491,14 @@ def main():
 
     all_results = []
 
-    for file_path in sys.argv[1:]:
+    for file_path in args.files:
         if not Path(file_path).exists():
             print(f"Warning: File not found: {file_path}")
             continue
 
-        # Try to detect file format
         file_ext = Path(file_path).suffix.lower()
+
+        # Try to detect file format
         data = {}
         is_text_format = False
 
@@ -317,7 +514,6 @@ def main():
             data = parse_text_format(file_path)
             is_text_format = True
         else:
-            # Try text format as fallback
             data = parse_text_format(file_path)
             is_text_format = bool(data)
 
@@ -325,30 +521,62 @@ def main():
             print(f"Warning: No data parsed from {file_path}")
             continue
 
-        # Process based on format
+        # Extract power samples from text format
+        power_samples = []
         if is_text_format:
-            stats = analyze_text_data(data)
-            all_results.append({
-                'file': file_path,
-                'stats': stats,
-                'format': 'text',
-                'data': data
-            })
-            print_text_analysis(file_path, data, stats)
-        else:
-            # Extract samples for binary/JSON format
-            cpu_samples = extract_cpu_power_samples(data)
-            gpu_samples = extract_gpu_power_samples(data)
+            with open(file_path, 'r') as f:
+                text_content = f.read()
+            power_samples = extract_combined_power_samples(text_content)
 
-            stats = analyze_power_data(cpu_samples, gpu_samples)
-            all_results.append({
-                'file': file_path,
-                'stats': stats,
-                'format': 'binary',
-                'cpu_samples': cpu_samples,
-                'gpu_samples': gpu_samples
-            })
-            print_analysis(file_path, data, stats)
+        # Determine if this is headless or real-app
+        is_headless = False
+        if auto_detect and is_text_format and 'power_' in Path(file_path).name:
+            # Check if corresponding benchmark log exists
+            bench_file = find_benchmark_log(file_path)
+            is_headless = bench_file is not None
+
+        # Process based on mode
+        if args.headless or (auto_detect and is_headless):
+            # Headless benchmark mode
+            bench_file = find_benchmark_log(file_path)
+            if bench_file and power_samples:
+                all_results.append({
+                    'file': file_path,
+                    'power_samples': power_samples,
+                    'format': 'headless'
+                })
+                print_headless_analysis(file_path, bench_file, power_samples)
+            else:
+                print(f"Warning: Could not find benchmark log for {file_path}")
+        else:
+            # Real-app mode
+            if is_text_format:
+                stats = analyze_text_data(data)
+                all_results.append({
+                    'file': file_path,
+                    'stats': stats,
+                    'format': 'text',
+                    'data': data
+                })
+                print_text_analysis(file_path, data, stats)
+
+                if power_samples:
+                    all_results[-1]['power_samples'] = power_samples
+                    print_power_analysis(file_path, power_samples)
+            else:
+                # Binary/JSON format
+                cpu_samples = extract_cpu_power_samples(data)
+                gpu_samples = extract_gpu_power_samples(data)
+
+                stats = analyze_power_data(cpu_samples, gpu_samples)
+                all_results.append({
+                    'file': file_path,
+                    'stats': stats,
+                    'format': 'binary',
+                    'cpu_samples': cpu_samples,
+                    'gpu_samples': gpu_samples
+                })
+                print_analysis(file_path, data, stats)
 
     # Summary comparison
     if len(all_results) > 1:
