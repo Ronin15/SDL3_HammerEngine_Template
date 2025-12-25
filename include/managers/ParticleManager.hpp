@@ -928,7 +928,7 @@ private:
   std::atomic<bool> m_globallyVisible{true};
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
-  std::atomic<size_t> m_threadingThreshold{100};  // Lower threshold - threading benefits even at low counts
+  std::atomic<size_t> m_threadingThreshold{2000};  // Optimal threshold from benchmark
 
 
   std::atomic<size_t> m_activeCount{0};

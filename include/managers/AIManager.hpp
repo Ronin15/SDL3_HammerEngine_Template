@@ -521,7 +521,7 @@ private:
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
-  std::atomic<size_t> m_threadingThreshold{100};  // Lower threshold - threading benefits even at low counts
+  std::atomic<size_t> m_threadingThreshold{200};  // Optimal threshold from benchmark
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

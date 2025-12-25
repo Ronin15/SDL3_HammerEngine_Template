@@ -1104,6 +1104,72 @@ struct AIScalingFixture {
     std::vector<std::shared_ptr<BenchmarkBehavior>> behaviors;
     size_t totalBehaviorExecutions = 0;  // Track total behavior executions before cleanup
 
+    /**
+     * Run a benchmark with forced threading mode and return average time per update cycle.
+     * Used for threading threshold detection.
+     */
+    double runThresholdBenchmark(int numEntities, bool forceThreading) {
+        if (g_shutdownInProgress.load()) return 0.0;
+
+        cleanupEntitiesAndBehaviors();
+        entities.clear();
+        behaviors.clear();
+
+        // Force the threading mode
+        AIManager::Instance().enableThreading(forceThreading);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+        const int numBehaviors = 5;
+        const int numUpdates = 20;
+
+        // Create behaviors
+        const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
+        for (int i = 0; i < numBehaviors; ++i) {
+            behaviors.push_back(std::make_shared<BenchmarkBehavior>(i, 5 + (i % 11)));
+            AIManager::Instance().registerBehavior(validBehaviors[i], behaviors.back());
+        }
+
+        // Create entities
+        Vector2D centralPosition(500.0f, 500.0f);
+        for (int i = 0; i < numEntities; ++i) {
+            auto entity = BenchmarkEntity::create(i, centralPosition);
+            entities.push_back(entity);
+            AIManager::Instance().assignBehaviorToEntity(entity, validBehaviors[i % validBehaviors.size()]);
+            AIManager::Instance().registerEntityForUpdates(entity, 9);
+        }
+
+        if (!entities.empty()) {
+            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+        }
+
+        // Warmup (16 frames for SIMD distance staggering)
+        for (int warmup = 0; warmup < 16; ++warmup) {
+            AIManager::Instance().update(0.016f);
+        }
+        while (HammerEngine::ThreadSystem::Instance().isBusy()) {
+            std::this_thread::sleep_for(std::chrono::microseconds(100));
+        }
+
+        // Measure
+        std::vector<double> times;
+        for (int run = 0; run < 3; ++run) {
+            auto startTime = std::chrono::high_resolution_clock::now();
+            for (int i = 0; i < numUpdates; ++i) {
+                AIManager::Instance().update(0.016f);
+            }
+            while (HammerEngine::ThreadSystem::Instance().isBusy()) {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+            }
+            auto endTime = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration<double, std::milli>(endTime - startTime).count();
+            times.push_back(elapsed / numUpdates);
+        }
+
+        // Return median time
+        std::sort(times.begin(), times.end());
+        return times[times.size() / 2];
+    }
+
 };
 
 BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
@@ -1292,6 +1358,78 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
 
     // Clean up
     cleanupEntitiesAndBehaviors();
+}
+
+// Detect optimal threading threshold by comparing single vs multi-threaded at various entity counts
+BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n===== AI THREADING THRESHOLD DETECTION =====" << std::endl;
+    std::cout << "Comparing single-threaded vs multi-threaded at different entity counts\n" << std::endl;
+
+    std::vector<int> testCounts = {25, 50, 75, 100, 150, 200, 300, 500};
+    size_t optimalThreshold = 0;
+    size_t marginalThreshold = 0;
+
+    std::cout << std::setw(10) << "Entities"
+              << std::setw(18) << "Single (ms/upd)"
+              << std::setw(18) << "Threaded (ms/upd)"
+              << std::setw(12) << "Speedup"
+              << std::setw(15) << "Verdict" << std::endl;
+    std::cout << std::string(73, '-') << std::endl;
+
+    for (int count : testCounts) {
+        double singleTime = runThresholdBenchmark(count, false);
+        double threadedTime = runThresholdBenchmark(count, true);
+
+        double speedup = (threadedTime > 0) ? singleTime / threadedTime : 0;
+
+        std::string verdict;
+        if (speedup > 1.5) {
+            verdict = "THREAD";
+            if (optimalThreshold == 0) optimalThreshold = count;
+        } else if (speedup > 1.1) {
+            verdict = "marginal";
+            if (marginalThreshold == 0) marginalThreshold = count;
+        } else {
+            verdict = "single";
+        }
+
+        std::cout << std::setw(10) << count
+                  << std::setw(18) << std::fixed << std::setprecision(3) << singleTime
+                  << std::setw(18) << std::fixed << std::setprecision(3) << threadedTime
+                  << std::setw(11) << std::fixed << std::setprecision(2) << speedup << "x"
+                  << std::setw(15) << verdict << std::endl;
+    }
+
+    std::cout << "\n=== AI THREADING RECOMMENDATION ===" << std::endl;
+    std::cout << "Current threshold:  100 entities" << std::endl;
+
+    if (optimalThreshold > 0) {
+        std::cout << "Optimal threshold:  " << optimalThreshold << " entities (speedup > 1.5x)" << std::endl;
+        if (optimalThreshold != 100) {
+            std::cout << "ACTION: Consider changing AIManager::m_threadingThreshold to " << optimalThreshold << std::endl;
+        } else {
+            std::cout << "STATUS: Current threshold is optimal" << std::endl;
+        }
+    } else if (marginalThreshold > 0) {
+        std::cout << "Marginal benefit at: " << marginalThreshold << " entities" << std::endl;
+        std::cout << "STATUS: Threading provides minimal benefit on this hardware" << std::endl;
+    } else {
+        std::cout << "STATUS: Single-threaded is faster at all tested counts" << std::endl;
+        std::cout << "ACTION: Consider raising threshold above 500" << std::endl;
+    }
+
+    std::cout << "====================================\n" << std::endl;
+
+    // Clean up
+    cleanupEntitiesAndBehaviors();
+
+    // Restore automatic threading
+    AIManager::Instance().enableThreading(true);
 }
 
 // Test with extreme number of entities using realistic automatic behavior
