@@ -275,6 +275,19 @@ private:
         const std::pair<size_t, size_t>& pair,
         std::vector<CollisionInfo>& outCollisions) const;
 
+    // Multi-threading support for broadphase (WorkerBudget integrated)
+    void broadphaseSingleThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs);
+
+    void broadphaseMultiThreaded(
+        std::vector<std::pair<size_t, size_t>>& indexPairs,
+        size_t batchCount,
+        size_t batchSize);
+
+    void broadphaseBatch(
+        std::vector<std::pair<size_t, size_t>>& outIndexPairs,
+        size_t startIdx,
+        size_t endIdx);
+
     // Internal helper methods for SOA buffer management
     void swapCollisionBuffers();
     void copyHotDataToWorkingBuffer();
@@ -725,10 +738,18 @@ private:
     mutable std::shared_ptr<std::vector<std::vector<CollisionInfo>>> m_batchCollisionBuffers;
     mutable std::mutex m_narrowphaseFuturesMutex;
 
+    // Multi-threading support for broadphase (WorkerBudget integrated)
+    mutable std::vector<std::future<void>> m_broadphaseFutures;
+    mutable std::shared_ptr<std::vector<std::vector<std::pair<size_t, size_t>>>> m_broadphasePairBuffers;
+    mutable std::mutex m_broadphaseFuturesMutex;
+
     // Threading config and metrics
     static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 500;
     mutable bool m_lastNarrowphaseWasThreaded{false};
     mutable size_t m_lastNarrowphaseBatchCount{1};
+    mutable bool m_lastBroadphaseWasThreaded{false};
+    mutable size_t m_lastBroadphaseBatchCount{1};
 
     // Thread-safe access to collision storage (entityToIndex map and storage arrays)
     // shared_lock for reads (AI threads), unique_lock for writes (update thread)
