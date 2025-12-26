@@ -309,6 +309,64 @@ void HierarchicalSpatialHash::queryRegionBounds(float minX, float minY, float ma
     }
 }
 
+void HierarchicalSpatialHash::queryRegionBoundsThreadSafe(
+    float minX, float minY, float maxX, float maxY,
+    std::vector<size_t>& outBodyIndices,
+    QueryBuffers& buffers) const {
+
+    outBodyIndices.clear();
+    outBodyIndices.reserve(64);
+
+    // Use thread-local buffers instead of mutable members (thread-safe)
+    buffers.seenBodies.clear();
+    buffers.seenBodies.reserve(64);
+
+    // Get all coarse regions this query overlaps using bounds directly
+    getCoarseCoordsForBounds(minX, minY, maxX, maxY, buffers.queryRegions);
+
+    // Construct AABB only if needed for fine cell queries
+    AABB const queryArea(
+        (minX + maxX) * 0.5f,
+        (minY + maxY) * 0.5f,
+        (maxX - minX) * 0.5f,
+        (maxY - minY) * 0.5f
+    );
+
+    // Thread-safe read-only access to m_regions (no modifications during query)
+    for (const auto& regionCoord : buffers.queryRegions) {
+        auto regionIt = m_regions.find(regionCoord);
+        if (regionIt == m_regions.end()) {
+            continue;
+        }
+
+        const Region& region = regionIt->second;
+
+        if (region.hasFineSplit) {
+            // Query only fine cells that overlap the query area
+            getFineCoordList(queryArea, regionCoord, buffers.queryFineCells);
+
+            for (const auto& fineCoord : buffers.queryFineCells) {
+                GridKey key = computeGridKey(fineCoord);
+                auto fineCellIt = region.fineCells.find(key);
+                if (fineCellIt != region.fineCells.end()) {
+                    for (size_t bodyIndex : fineCellIt->second) {
+                        if (buffers.seenBodies.insert(bodyIndex).second) {
+                            outBodyIndices.push_back(bodyIndex);
+                        }
+                    }
+                }
+            }
+        } else {
+            // Query coarse cell directly
+            for (size_t bodyIndex : region.bodyIndices) {
+                if (buffers.seenBodies.insert(bodyIndex).second) {
+                    outBodyIndices.push_back(bodyIndex);
+                }
+            }
+        }
+    }
+}
+
 // ========== Batch Operations ==========
 
 void HierarchicalSpatialHash::insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies) {

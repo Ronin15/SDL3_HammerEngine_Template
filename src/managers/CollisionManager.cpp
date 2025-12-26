@@ -1903,6 +1903,35 @@ void CollisionManager::broadphaseMultiThreaded(
     }
   }
 
+  // CRITICAL: Pre-populate static cache entries on main thread for thread-safe read-only access
+  // This ensures worker threads only do read-only lookups on the cache
+  std::unordered_set<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
+                     HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
+                     HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> neededRegions;
+  neededRegions.reserve(movableIndices.size() / 4);  // Estimate: 4 bodies per coarse region
+
+  for (size_t idx : movableIndices) {
+    if (idx >= m_storage.hotData.size() || !m_storage.hotData[idx].active) continue;
+    const auto& hot = m_storage.hotData[idx];
+
+    // Use cached AABB bounds to compute coarse cell
+    AABB aabb(
+      (hot.aabbMinX + hot.aabbMaxX) * 0.5f,
+      (hot.aabbMinY + hot.aabbMaxY) * 0.5f,
+      (hot.aabbMaxX - hot.aabbMinX) * 0.5f,
+      (hot.aabbMaxY - hot.aabbMinY) * 0.5f
+    );
+    neededRegions.insert(m_staticSpatialHash.getCoarseCoord(aabb));
+  }
+
+  // Populate any missing/invalid cache entries (single-threaded, safe)
+  for (const auto& region : neededRegions) {
+    auto& cache = m_coarseRegionStaticCache[region];
+    if (!cache.valid) {
+      populateCacheForRegion(region, cache);
+    }
+  }
+
   // Reuse per-batch buffers (avoid allocations)
   if (!m_broadphasePairBuffers) {
     m_broadphasePairBuffers =
@@ -1985,15 +2014,14 @@ void CollisionManager::broadphaseBatch(
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
 
-  // Use thread-local vectors for multi-threaded safety (avoid shared pool contention)
-  std::vector<size_t> threadLocalDynamicCandidates;
-  std::vector<size_t> threadLocalStaticCandidates;
-  threadLocalDynamicCandidates.reserve(256);
-  threadLocalStaticCandidates.reserve(256);
+  // Thread-local buffers with thread-safe query buffers (stack allocated, zero contention)
+  // Each worker thread has its own buffers to avoid data races on spatial hash queries
+  BroadphaseThreadBuffers buffers;
+  buffers.reserve();
 
   // Process each body in this batch's range
-  // NOTE: All AABB caches were updated on main thread before threading started
-  // This function only does READ-ONLY queries - no state modifications
+  // NOTE: All AABB caches and static cache entries were pre-populated on main thread
+  // This function only does READ-ONLY queries using thread-safe methods
   for (size_t idx = startIdx; idx < endIdx && idx < movableIndices.size(); ++idx) {
     size_t dynamicIdx = movableIndices[idx];
 
@@ -2023,10 +2051,12 @@ void CollisionManager::broadphaseBatch(
     float queryMaxX = queryBoundsArray[2];
     float queryMaxY = queryBoundsArray[3];
 
-    // 1. Movable-vs-movable collisions (use thread-local buffer)
-    threadLocalDynamicCandidates.clear();
-    m_dynamicSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, threadLocalDynamicCandidates);
-    auto& dynamicCandidates = threadLocalDynamicCandidates;
+    // 1. Movable-vs-movable collisions (use THREAD-SAFE query with per-thread buffers)
+    buffers.dynamicCandidates.clear();
+    m_dynamicSpatialHash.queryRegionBoundsThreadSafe(
+        queryMinX, queryMinY, queryMaxX, queryMaxY,
+        buffers.dynamicCandidates, buffers.queryBuffers);
+    auto& dynamicCandidates = buffers.dynamicCandidates;
 
     // SIMD layer mask filtering (4 candidates at a time)
     const Int4 maskVec = broadcast_int(dynamicCollidesWith);
@@ -2163,11 +2193,13 @@ void CollisionManager::broadphaseBatch(
           outIndexPairs.emplace_back(dynamicIdx, staticIdx);
         }
       } else {
-        // Fallback: query static hash directly (use thread-local buffer)
-        threadLocalStaticCandidates.clear();
-        m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, threadLocalStaticCandidates);
+        // Fallback: query static hash directly (use THREAD-SAFE query)
+        buffers.staticCandidates.clear();
+        m_staticSpatialHash.queryRegionBoundsThreadSafe(
+            queryMinX, queryMinY, queryMaxX, queryMaxY,
+            buffers.staticCandidates, buffers.queryBuffers);
 
-        for (size_t staticIdx : threadLocalStaticCandidates) {
+        for (size_t staticIdx : buffers.staticCandidates) {
           if (staticIdx >= m_storage.hotData.size()) continue;
           const auto& staticHot = m_storage.hotData[staticIdx];
           if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
@@ -2175,11 +2207,13 @@ void CollisionManager::broadphaseBatch(
         }
       }
     } else {
-      // Fallback: body not in cache - query directly (use thread-local buffer)
-      threadLocalStaticCandidates.clear();
-      m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, threadLocalStaticCandidates);
+      // Fallback: body not in cache - query directly (use THREAD-SAFE query)
+      buffers.staticCandidates.clear();
+      m_staticSpatialHash.queryRegionBoundsThreadSafe(
+          queryMinX, queryMinY, queryMaxX, queryMaxY,
+          buffers.staticCandidates, buffers.queryBuffers);
 
-      for (size_t staticIdx : threadLocalStaticCandidates) {
+      for (size_t staticIdx : buffers.staticCandidates) {
         if (staticIdx >= m_storage.hotData.size()) continue;
         const auto& staticHot = m_storage.hotData[staticIdx];
         if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
@@ -3063,6 +3097,27 @@ void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
   COLLISION_DEBUG_IF(evictedCount > 0 || invalidatedCount > 0,
       std::format("Cache maintenance: evicted={}, invalidated={}, active={}",
                   evictedCount, invalidatedCount, m_perf.cacheEntriesActive));
+}
+
+void CollisionManager::populateCacheForRegion(
+    const HammerEngine::HierarchicalSpatialHash::CoarseCoord& region,
+    CoarseRegionStaticCache& cache) {
+  // Query static spatial hash for this region's bounds
+  constexpr float COARSE_CELL_SIZE = 128.0f;
+
+  float minX = region.x * COARSE_CELL_SIZE;
+  float minY = region.y * COARSE_CELL_SIZE;
+  float maxX = minX + COARSE_CELL_SIZE;
+  float maxY = minY + COARSE_CELL_SIZE;
+
+  // Clear and populate static indices
+  cache.staticIndices.clear();
+  m_staticSpatialHash.queryRegionBounds(minX, minY, maxX, maxY, cache.staticIndices);
+
+  // Mark as valid and update access tracking
+  cache.valid = true;
+  cache.lastAccessFrame = m_perf.frames;
+  cache.staleCount = 0;
 }
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {

@@ -533,6 +533,10 @@ private:
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
 
+    // Pre-populate cache for a specific coarse region (thread-safe: single-threaded population)
+    void populateCacheForRegion(const HammerEngine::HierarchicalSpatialHash::CoarseCoord& region,
+                                CoarseRegionStaticCache& cache);
+
     // Cache statistics
     mutable size_t m_cacheHits{0};
     mutable size_t m_cacheMisses{0};
@@ -750,6 +754,26 @@ private:
     mutable size_t m_lastNarrowphaseBatchCount{1};
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
+
+    // Thread-local buffers for parallel broadphase (stack-allocated per batch, zero contention)
+    // Each worker thread creates its own instance to avoid data races on spatial hash queries
+    struct BroadphaseThreadBuffers {
+        std::vector<size_t> dynamicCandidates;
+        std::vector<size_t> staticCandidates;
+        HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
+
+        void reserve() {
+            dynamicCandidates.reserve(256);
+            staticCandidates.reserve(256);
+            queryBuffers.reserve();
+        }
+
+        void clear() {
+            dynamicCandidates.clear();
+            staticCandidates.clear();
+            queryBuffers.clear();
+        }
+    };
 
     // Thread-safe access to collision storage (entityToIndex map and storage arrays)
     // shared_lock for reads (AI threads), unique_lock for writes (update thread)
