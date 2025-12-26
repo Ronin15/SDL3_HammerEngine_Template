@@ -3516,7 +3516,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
                                 "Total: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
                                 "Pairs: {}, Collisions: {}, Cache: {}%{}",
                                 bodyCount, activeMovableBodies,
-                                m_perf.avgTotalMs, m_perf.avgBroadphaseMs, d23,
+                                m_perf.lastTotalMs, d12, d23,
                                 pairCount, collisionCount, cacheHitRate, threadingStatus));
 
     // Reset cache counters for next reporting window
