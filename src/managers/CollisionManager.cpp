@@ -440,7 +440,6 @@ size_t CollisionManager::createStaticObstacleBodies() {
       const int expectedTiles = (maxX - minX + 1) * (maxY - minY + 1);
       const bool isRectangle = (static_cast<int>(buildingTiles.size()) == expectedTiles);
 
-      // DEBUG: Log rectangle detection for troubleshooting
       COLLISION_DEBUG(std::format("Building {}: bounds ({},{}) to ({},{}), tiles={}, expected={}, isRectangle={}",
                                   tile.buildingId, minX, minY, maxX, maxY,
                                   buildingTiles.size(), expectedTiles, isRectangle ? "YES" : "NO"));
@@ -655,6 +654,8 @@ void CollisionManager::addCollisionCallback(CollisionCB cb) {
 }
 
 void CollisionManager::logCollisionStatistics() const {
+#ifndef NDEBUG
+  // Debug-only: expensive iteration for statistics logging
   size_t staticBodies = getStaticBodyCount();
   size_t kinematicBodies = getKinematicBodyCount();
   size_t dynamicBodies = getDynamicBodyCount();
@@ -702,6 +703,7 @@ void CollisionManager::logCollisionStatistics() const {
     }
     COLLISION_INFO(std::format("    {}: {}", layerName, layerCount.second));
   }
+#endif
 }
 
 size_t CollisionManager::getStaticBodyCount() const {
@@ -752,7 +754,8 @@ void CollisionManager::rebuildStaticFromWorld() {
     // so we must process them first or spatial hash will be empty!
     processPendingCommands();
 
-    // DEBUG: Count actual building collision bodies to verify cleanup
+#ifndef NDEBUG
+    // Debug-only: Count building collision bodies for verification
     int buildingBodyCount = 0;
     for (size_t i = 0; i < m_storage.entityIds.size(); ++i) {
       EntityID id = m_storage.entityIds[i];
@@ -765,10 +768,9 @@ void CollisionManager::rebuildStaticFromWorld() {
       }
     }
     COLLISION_INFO(std::format("Total building collision bodies in storage: {}", buildingBodyCount));
-
-
-    // Log detailed statistics for debugging
     logCollisionStatistics();
+#endif
+
     // Force immediate static spatial hash rebuild for world changes
     rebuildStaticSpatialHash();
   }
@@ -3490,46 +3492,34 @@ void CollisionManager::updatePerformanceMetricsSOA(
 
   // Performance warnings (throttled to reduce spam during benchmarks)
   COLLISION_WARN_IF(m_perf.lastTotalMs > 5.0 && logFrameCounter % 60 == 0,
-      std::format("SOA Slow frame: totalMs={}, syncMs={}, broadphaseMs={}, narrowphaseMs={}, pairs={}, collisions={}",
-                  m_perf.lastTotalMs, d01, d12, d23, pairCount, collisionCount));
+      std::format("Slow frame: {:.2f}ms (broad:{:.2f}, narrow:{:.2f}, pairs:{})",
+                  m_perf.lastTotalMs, d12, d23, pairCount));
 
-  // Periodic statistics (every 300 frames)
+  // Periodic statistics (every 300 frames) - concise format matching AIManager style
   if (logFrameCounter % 300 == 0 && bodyCount > 0) {
-    // PERFORMANCE OPTIMIZATION REPORTING: Show optimization effectiveness
-    std::string optimizationStats = std::format(" [Optimizations: Active={}%", m_perf.getActiveBodiesRate());
-    if (dynamicBodiesCulled > 0) {
-      optimizationStats += std::format(", DynCulled={}%", m_perf.getDynamicCullingRate());
-    }
-    if (staticBodiesCulled > 0) {
-      optimizationStats += std::format(", StaticCulled={}%", m_perf.getStaticCullingRate());
-    }
-    if (cullingMs > 0.0) {
-      optimizationStats += std::format(", CullingMs={}", cullingMs);
-    }
-    optimizationStats += "]";
-
-    // Coarse region cache statistics
+    // Cache statistics
     size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
-    float cacheHitRate = totalCacheAccesses > 0 ? (static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f : 0.0f;
-    size_t activeRegions = m_coarseRegionStaticCache.size();
-    std::string cacheStatsStr = std::format(" [RegionCache: Active={}, Hits={}, Misses={}, HitRate={}%",
-                                activeRegions, m_cacheHits, m_cacheMisses, static_cast<int>(cacheHitRate));
+    int cacheHitRate = totalCacheAccesses > 0
+        ? static_cast<int>((static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f) : 0;
 
-    // Add eviction statistics if available
-    if (m_perf.cacheEntriesEvicted > 0 || m_perf.totalCacheEvictions > 0) {
-      cacheStatsStr += std::format(", Evicted={}, TotalEvictions={}",
-                       m_perf.cacheEntriesEvicted, m_perf.totalCacheEvictions);
+    // Threading status
+    std::string threadingStatus;
+    if (m_lastBroadphaseWasThreaded || m_lastNarrowphaseWasThreaded) {
+      threadingStatus = std::format(" [Threaded: B:{} N:{}]",
+          m_lastBroadphaseWasThreaded ? std::format("{}bat", m_lastBroadphaseBatchCount) : "no",
+          m_lastNarrowphaseWasThreaded ? std::format("{}bat", m_lastNarrowphaseBatchCount) : "no");
+    } else {
+      threadingStatus = " [Single-threaded]";
     }
-    cacheStatsStr += "]";
 
-    COLLISION_DEBUG(std::format("SOA Collision Summary - Bodies: {} ({} movable), "
-                                "Avg Total: {}ms, Avg Broadphase: {}ms, Current Broadphase: {}ms, "
-                                "Narrowphase: {}ms, Last Pairs: {}, Last Collisions: {}{}{}",
+    COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable), "
+                                "Total: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
+                                "Pairs: {}, Collisions: {}, Cache: {}%{}",
                                 bodyCount, activeMovableBodies,
-                                m_perf.avgTotalMs, m_perf.avgBroadphaseMs, d12, d23,
-                                pairCount, collisionCount, optimizationStats, cacheStatsStr));
+                                m_perf.avgTotalMs, m_perf.avgBroadphaseMs, d23,
+                                pairCount, collisionCount, cacheHitRate, threadingStatus));
 
-    // Reset cache counters for next reporting window (every 300 frames)
+    // Reset cache counters for next reporting window
     m_cacheHits = 0;
     m_cacheMisses = 0;
   }
