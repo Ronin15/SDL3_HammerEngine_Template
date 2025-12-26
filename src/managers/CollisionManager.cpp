@@ -2568,9 +2568,6 @@ void CollisionManager::narrowphaseBatch(
   const size_t batchSize = endIdx - startIdx;
   const size_t simdEnd = startIdx + (batchSize / 4) * 4;
 
-  // PERFORMANCE: Fast velocity threshold for deep penetration correction
-  constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD;
-
   // SIMD loop: Process 4 pairs at a time (from narrowphaseSingleThreaded lines 1865-1989)
   for (size_t i = startIdx; i < simdEnd; i += 4) {
     // Load indices for 4 pairs
@@ -2753,8 +2750,10 @@ void CollisionManager::processNarrowphasePairScalar(
 void CollisionManager::updateSOA(float dt) {
   (void)dt;
 
-  using clock = std::chrono::steady_clock;
+  using clock = std::chrono::steady_clock; // Needed for WorkerBudget timing
+#ifdef DEBUG
   auto t0 = clock::now();
+#endif
 
   // Process pending add/remove commands first (thread-safe deferred operations)
   processPendingCommands();
@@ -2840,9 +2839,11 @@ void CollisionManager::updateSOA(float dt) {
   std::vector<std::pair<size_t, size_t>> indexPairs;
 
   // BROADPHASE: Generate collision pairs using spatial hash
+#ifdef DEBUG
   auto t1 = clock::now();
+#endif
   broadphaseSOA(indexPairs);
-  auto t2 = clock::now();
+  auto t2 = clock::now(); // Needed for WorkerBudget timing
 
   // NARROWPHASE: Detailed collision detection and response calculation
   const size_t pairCount = indexPairs.size();
@@ -2885,24 +2886,28 @@ void CollisionManager::updateSOA(float dt) {
       cb(collision);
     }
   }
+#ifdef DEBUG
   auto t4 = clock::now();
-
-  // Verbose logging removed for performance
+#endif
 
   // SYNCHRONIZATION: Update entity positions and velocities from SOA storage
   syncEntitiesToSOA();
+#ifdef DEBUG
   auto t5 = clock::now();
+#endif
 
   // TRIGGER PROCESSING: Handle trigger enter/exit events
   processTriggerEventsSOA();
+
+#ifdef DEBUG
   auto t6 = clock::now();
 
-  // Track performance metrics
+  // Track detailed performance metrics (debug only - zero overhead in release)
   updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6,
                                bodyCount, activeMovableBodies, pairCount, m_collisionPool.collisionBuffer.size(),
                                activeBodies, dynamicBodiesCulled, staticBodiesCulled, cullingMs,
                                totalStaticBodies, totalMovableBodies);
-
+#endif
 }
 
 
@@ -3455,8 +3460,14 @@ void CollisionManager::updatePerformanceMetricsSOA(
     size_t totalStaticBodies,
     size_t totalMovableBodies) {
 
-  // Calculate timing metrics
-  auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Sync spatial hash
+  // Basic counters - always tracked (minimal overhead)
+  m_perf.lastPairs = pairCount;
+  m_perf.lastCollisions = collisionCount;
+  m_perf.bodyCount = bodyCount;
+  m_perf.frames += 1;
+
+#ifdef DEBUG
+  // Detailed timing metrics and logging - zero overhead in release builds
   auto d12 = std::chrono::duration<double, std::milli>(t2 - t1).count(); // Broadphase
   auto d23 = std::chrono::duration<double, std::milli>(t3 - t2).count(); // Narrowphase
   auto d34 = std::chrono::duration<double, std::milli>(t4 - t3).count(); // Resolution
@@ -3469,9 +3480,6 @@ void CollisionManager::updatePerformanceMetricsSOA(
   m_perf.lastResolveMs = d34;
   m_perf.lastSyncMs = d45 + d56; // Combine sync phases
   m_perf.lastTotalMs = d06;
-  m_perf.lastPairs = pairCount;
-  m_perf.lastCollisions = collisionCount;
-  m_perf.bodyCount = bodyCount;
 
   // PERFORMANCE OPTIMIZATION METRICS: Track optimization effectiveness
   m_perf.lastActiveBodies = activeBodies > 0 ? activeBodies : bodyCount;
@@ -3483,10 +3491,8 @@ void CollisionManager::updatePerformanceMetricsSOA(
 
   m_perf.updateAverage(m_perf.lastTotalMs);
   m_perf.updateBroadphaseAverage(d12);
-  m_perf.frames += 1;
 
-#ifndef NDEBUG
-  // Interval stats logging - zero overhead in release (entire block compiles out)
+  // Interval stats logging
   static thread_local uint64_t logFrameCounter = 0;
   ++logFrameCounter;
 
@@ -3523,7 +3529,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
     m_cacheHits = 0;
     m_cacheMisses = 0;
   }
-#endif
+#endif // DEBUG
 }
 
 void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates) {
