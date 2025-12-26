@@ -53,7 +53,7 @@ public:
 
     void runScalingBenchmark() {
         std::cout << "=== Body Count Scaling Performance ===" << std::endl;
-        std::vector<size_t> bodyCounts = {100, 500, 1000, 2000, 5000, 10000};
+        std::vector<size_t> bodyCounts = {1000, 2000, 5000, 10000, 20000, 50000};
         std::vector<BenchmarkResult> results;
 
         for (size_t bodyCount : bodyCounts) {
@@ -74,9 +74,9 @@ public:
         std::cout << "Testing cache performance with moving vs stationary bodies" << std::endl;
         std::cout << std::endl;
 
-        // Test scenario: Many static bodies, few moving bodies (realistic game scenario)
-        constexpr size_t totalBodies = 2000;
-        constexpr size_t movingBodies = 50;   // Only 50 moving bodies
+        // Test scenario: Static bodies with significant moving population (stress test)
+        constexpr size_t totalBodies = 15000;
+        constexpr size_t movingBodies = 5000;   // 5000 moving bodies for narrowphase stress
         constexpr size_t staticBodies = totalBodies - movingBodies;
 
         std::cout << "Scenario: " << staticBodies << " static + " << movingBodies << " moving bodies" << std::endl;
@@ -104,10 +104,10 @@ public:
         };
 
         std::vector<WorldTest> worldTests = {
-            {500, 50, "Small area (500 static + 50 NPCs)"},
-            {2000, 100, "Medium area (2000 static + 100 NPCs)"},
-            {5000, 200, "Large area (5000 static + 200 NPCs)"},
-            {10000, 300, "Massive area (10000 static + 300 NPCs)"}
+            {2000, 1000, "Small area (2000 static + 1000 NPCs)"},
+            {5000, 2000, "Medium area (5000 static + 2000 NPCs)"},
+            {10000, 5000, "Large area (10000 static + 5000 NPCs)"},
+            {30000, 10000, "Massive area (30000 static + 10000 NPCs)"}
         };
 
         std::vector<BenchmarkResult> results;

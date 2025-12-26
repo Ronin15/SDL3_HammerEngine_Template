@@ -96,6 +96,26 @@ public:
         }
     };
 
+    // Thread-safe query buffers for parallel broadphase
+    // Each thread creates its own instance to avoid contention on mutable members
+    struct QueryBuffers {
+        std::unordered_set<size_t> seenBodies;
+        std::vector<CoarseCoord> queryRegions;
+        std::vector<FineCoord> queryFineCells;
+
+        void reserve() {
+            seenBodies.reserve(64);
+            queryRegions.reserve(16);
+            queryFineCells.reserve(64);
+        }
+
+        void clear() {
+            seenBodies.clear();
+            queryRegions.clear();
+            queryFineCells.clear();
+        }
+    };
+
 private:
 
 public:
@@ -118,6 +138,12 @@ public:
     void queryRegion(const AABB& area, std::vector<size_t>& outBodyIndices) const;
     // Optimized bounds-based query to avoid AABB object construction
     void queryRegionBounds(float minX, float minY, float maxX, float maxY, std::vector<size_t>& outBodyIndices) const;
+
+    // Thread-safe query for parallel broadphase - uses external buffers instead of mutable members
+    // Each thread should create its own QueryBuffers instance and reuse it across queries
+    void queryRegionBoundsThreadSafe(float minX, float minY, float maxX, float maxY,
+                                     std::vector<size_t>& outBodyIndices,
+                                     QueryBuffers& buffers) const;
 
     // Batch operations for high performance
     void insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies);
