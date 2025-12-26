@@ -747,9 +747,9 @@ private:
     mutable std::shared_ptr<std::vector<std::vector<std::pair<size_t, size_t>>>> m_broadphasePairBuffers;
     mutable std::mutex m_broadphaseFuturesMutex;
 
-    // Threading config and metrics
-    static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 500;
+    // Threading config and metrics (validated via benchmark: narrowphase threads at 100+ pairs, broadphase at 500+ movable)
+    static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;        // Narrowphase: min pairs before threading
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 500;  // Broadphase: min movable bodies
     mutable bool m_lastNarrowphaseWasThreaded{false};
     mutable size_t m_lastNarrowphaseBatchCount{1};
     mutable bool m_lastBroadphaseWasThreaded{false};
