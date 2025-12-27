@@ -4,13 +4,17 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 ## Key Features
 
-- **Modern C++20 & SDL3 Core**  
-    
+- **Modern C++20 & SDL3 Core**
+
     Clean, modular codebase with strict style, memory, and type safety.
+
+- **Rendering & Engine Core**
+
+    Fixed timestep game loop with smooth interpolation at any display refresh rate. Adaptive VSync, sprite sheet animations, particle effects with camera-aware culling, and a smooth-following camera system with world bounds clamping.
 
 - **Adaptive Multi-Threading System**
 
-   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one for the main render thread. Sequential manager execution gives each system ALL workers during its update window. Throughput-based hill-climbing converges to optimal batch sizes for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
+   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one to reduce OS contention. Sequential manager execution gives each system ALL workers during its update window. Throughput-based hill-climbing converges to optimal batch sizes for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
 
 - **High-Performance AI System**  
     
@@ -34,7 +38,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Comprehensive Testing & Analysis**
 
-    83+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+    60+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
 
 - **Cross-Platform Optimizations**
 
@@ -44,13 +48,13 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
     Fantasy calendar system with day/night cycles, four seasons, dynamic weather, and temperature simulation. Event-driven controllers for time-based gameplay.
 
+- **Chunk-Based World System**
+
+    Efficient tile-based world rendering with chunk culling for off-screen optimization. Supports procedural generation, seamless streaming, and automatic seasonal tile switching.
+
 - **Robust Combat System**
 
     Dedicated `CombatController` handles all combat logic, including hit detection, damage calculation, and status effects. Integrated with entity state machines and event system for dynamic combat scenarios.
-
-- **Smooth Rendering Pipeline**
-
-    Lock-free atomic interpolation for entities and camera. Eliminates jitter at any refresh rate with 16-byte aligned atomics (x86-64/ARM64 lock-free).
 
 - **Power Efficient (Race-to-Idle)**
 
