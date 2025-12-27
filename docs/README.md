@@ -133,6 +133,7 @@ See the [Utility Documentation Index](utils/README.md) for additional utility do
 - **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
 - **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
+- **[Power Efficiency](performance/PowerEfficiency.md)** - Race-to-idle strategy achieving 80%+ idle residency, 2-3W average during gameplay, detailed benchmarks and optimization tips
 
 ## Resource System Integration
 

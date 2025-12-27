@@ -52,6 +52,10 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
     Lock-free atomic interpolation for entities and camera. Eliminates jitter at any refresh rate with 16-byte aligned atomics (x86-64/ARM64 lock-free).
 
+- **Power Efficient (Race-to-Idle)**
+
+    Optimized for battery-powered devices. Completes frame work quickly then sleeps until vsync, achieving 80%+ CPU idle residency during active gameplay. See [Power Efficiency](docs/performance/PowerEfficiency.md) for detailed benchmarks.
+
 - **Extensive Documentation**  
     
     Full guides, API references, best practices, and troubleshooting for all major systems.
@@ -127,6 +131,7 @@ ninja -C build
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Camera](docs/utils/Camera.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
+- **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md)
 - **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
 - **Engine Plans & Issues:** [Camera Refactor Plan](docs/Camera_Refactor_Plan.md), [SDL3 macOS Cleanup Issue](docs/issues/SDL3_MACOS_CLEANUP_ISSUE.md)
 
