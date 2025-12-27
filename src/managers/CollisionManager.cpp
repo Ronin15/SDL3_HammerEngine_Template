@@ -3109,10 +3109,10 @@ void CollisionManager::populateCacheForRegion(
   // Query static spatial hash for this region's bounds
   constexpr float COARSE_CELL_SIZE = 128.0f;
 
-  float minX = region.x * COARSE_CELL_SIZE;
-  float minY = region.y * COARSE_CELL_SIZE;
-  float maxX = minX + COARSE_CELL_SIZE;
-  float maxY = minY + COARSE_CELL_SIZE;
+  const float minX = region.x * COARSE_CELL_SIZE;
+  const float minY = region.y * COARSE_CELL_SIZE;
+  const float maxX = minX + COARSE_CELL_SIZE;
+  const float maxY = minY + COARSE_CELL_SIZE;
 
   // Clear and populate static indices
   cache.staticIndices.clear();

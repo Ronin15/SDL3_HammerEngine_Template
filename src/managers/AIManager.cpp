@@ -1256,7 +1256,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       // All entities get fresh distance every frame for accurate combat
       if (hasPlayer) {
         Vector2D entityPos = entity->getPosition();
-        Float4 diff = set(
+        const Float4 diff = set(
             entityPos.getX() - playerPos.getX(),
             entityPos.getY() - playerPos.getY(),
             0.0f, 0.0f);
