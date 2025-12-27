@@ -142,6 +142,9 @@ bool AdvancedAIDemoState::enter() {
     mp_worldMgr = &WorldManager::Instance();
     mp_uiMgr = &UIManager::Instance();
 
+    // Resume all game managers (may be paused from menu states)
+    GameEngine::Instance().setGlobalPause(false);
+
     GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
     // Reset transition flag when entering state

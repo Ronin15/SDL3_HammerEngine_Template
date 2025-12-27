@@ -17,6 +17,9 @@
 bool SettingsMenuState::enter() {
     GAMESTATE_INFO("Entering SETTINGS MENU State");
 
+    // Pause all game managers to reduce power draw while in settings
+    GameEngine::Instance().setGlobalPause(true);
+
     auto& ui = UIManager::Instance();
     auto& fontMgr = FontManager::Instance();
 
@@ -65,6 +68,9 @@ void SettingsMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float in
 
 bool SettingsMenuState::exit() {
     GAMESTATE_INFO("Exiting SETTINGS MENU State");
+
+    // NOTE: Do NOT unpause here - gameplay states will unpause on enter
+    // This keeps systems paused during menu-to-menu transitions
 
     auto& ui = UIManager::Instance();
     ui.prepareForStateTransition();

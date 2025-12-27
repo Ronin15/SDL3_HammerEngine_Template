@@ -88,6 +88,16 @@ size_t EventManager::getThreadingThreshold() const
   return m_threadingThreshold;
 }
 
+void EventManager::setGlobalPause(bool paused)
+{
+  m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool EventManager::isGloballyPaused() const
+{
+  return m_globallyPaused.load(std::memory_order_acquire);
+}
+
 // --------------------------------------------
 // Convenience alias trigger method definitions
 // --------------------------------------------
@@ -274,6 +284,11 @@ void EventManager::prepareForStateTransition() {
 
 void EventManager::update() {
   if (!m_initialized.load() || m_isShutdown) {
+    return;
+  }
+
+  // Skip update when globally paused (menu states)
+  if (m_globallyPaused.load(std::memory_order_acquire)) {
     return;
   }
 
