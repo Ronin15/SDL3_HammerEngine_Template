@@ -228,8 +228,7 @@ void performSafeCleanup() {
     try {
       // Additional pause to ensure AIManager is not in use
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      AIManager::Instance().configureThreading(
-          false); // Disable threading before cleanup
+      AIManager::Instance().enableThreading(false); // Disable threading before cleanup
       AIManager::Instance().resetBehaviors();
       AIManager::Instance().clean();
       std::cerr << "AIManager cleaned up successfully" << std::endl;
@@ -397,7 +396,7 @@ struct GlobalTestFixture {
       }
 
       // Enable threading
-      AIManager::Instance().configureThreading(true);
+      AIManager::Instance().enableThreading(true);
       g_aiManagerInitialized = true;
     }
   }
@@ -446,9 +445,8 @@ struct ThreadedAITestFixture {
     std::cout << "Setting up test fixture" << std::endl;
 
     // Enable threading for proper messaging and behavior processing
-    unsigned int maxThreads = std::thread::hardware_concurrency();
-    AIManager::Instance().configureThreading(true, maxThreads);
-    std::cout << "Enabled threading with " << maxThreads << " threads"
+    AIManager::Instance().enableThreading(true);
+    std::cout << "Enabled threading with hardware threads"
               << std::endl;
 
     // Allow time for threading setup
@@ -469,7 +467,7 @@ struct ThreadedAITestFixture {
     try {
       // First, disable threading in AIManager to prevent new threads from being
       // created
-      AIManager::Instance().configureThreading(false);
+      AIManager::Instance().enableThreading(false);
 
       // Wait for any in-progress operations to complete
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -1220,4 +1218,175 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
   }
 
   std::cout << "StressTestThreadSafeAIManager completed" << std::endl;
+}
+
+// Test case for waitForAsyncBatchCompletion() synchronization
+BOOST_FIXTURE_TEST_CASE(TestWaitForAsyncBatchCompletion, ThreadedAITestFixture) {
+  std::cout << "Starting TestWaitForAsyncBatchCompletion..." << std::endl;
+  const int NUM_ENTITIES = 100;
+
+  // Create and set a player entity for distance optimization
+  auto player = std::make_shared<TestEntity>(Vector2D(500, 500));
+  AIManager::Instance().setPlayerForDistanceOptimization(player);
+
+  // Register a behavior
+  auto behavior = std::make_shared<ThreadTestBehavior>(0);
+  {
+    std::lock_guard<std::mutex> lock(g_behaviorMutex);
+    g_allBehaviors.push_back(behavior);
+  }
+  AIManager::Instance().registerBehavior("BatchTest", behavior);
+
+  // Create entities with behaviors
+  std::vector<std::shared_ptr<TestEntity>> entities;
+  entities.reserve(NUM_ENTITIES);
+  for (int i = 0; i < NUM_ENTITIES; ++i) {
+    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    entities.push_back(entity);
+    AIManager::Instance().registerEntityForUpdates(entity);
+    AIManager::Instance().assignBehaviorToEntity(entity, "BatchTest");
+  }
+
+  // Trigger several updates to start batch processing
+  for (int i = 0; i < 5; ++i) {
+    AIManager::Instance().update(0.016f);
+  }
+
+  // Test 1: Fast path - should complete quickly when no pending batches
+  auto start = std::chrono::high_resolution_clock::now();
+  AIManager::Instance().waitForAsyncBatchCompletion();
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+  // Fast path should complete in microseconds (not milliseconds)
+  BOOST_CHECK_LT(duration.count(), 10000); // Less than 10ms
+
+  // Test 2: Verify state is consistent after wait
+  size_t managedCount = AIManager::Instance().getManagedEntityCount();
+  BOOST_CHECK_EQUAL(managedCount, NUM_ENTITIES);
+
+  // Cleanup
+  for (auto &entity : entities) {
+    AIManager::Instance().unregisterEntityFromUpdates(entity);
+    AIManager::Instance().unassignBehaviorFromEntity(entity);
+  }
+  AIManager::Instance().setPlayerForDistanceOptimization(nullptr);
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  AIManager::Instance().resetBehaviors();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  std::cout << "TestWaitForAsyncBatchCompletion completed" << std::endl;
+}
+
+// Test case for waitForAssignmentCompletion() synchronization
+BOOST_FIXTURE_TEST_CASE(TestWaitForAssignmentCompletion, ThreadedAITestFixture) {
+  std::cout << "Starting TestWaitForAssignmentCompletion..." << std::endl;
+  const int NUM_ENTITIES = 50;
+  const int NUM_ASSIGNMENTS = 20;
+
+  // Register a behavior
+  auto behavior = std::make_shared<ThreadTestBehavior>(0);
+  {
+    std::lock_guard<std::mutex> lock(g_behaviorMutex);
+    g_allBehaviors.push_back(behavior);
+  }
+  AIManager::Instance().registerBehavior("AssignTest", behavior);
+
+  // Create entities
+  std::vector<std::shared_ptr<TestEntity>> entities;
+  entities.reserve(NUM_ENTITIES);
+  for (int i = 0; i < NUM_ENTITIES; ++i) {
+    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    entities.push_back(entity);
+    AIManager::Instance().registerEntityForUpdates(entity);
+  }
+
+  // Start multiple concurrent assignments
+  std::atomic<int> completedAssignments{0};
+  for (int i = 0; i < NUM_ASSIGNMENTS; ++i) {
+    HammerEngine::ThreadSystem::Instance().enqueueTask(
+        [&entities, &completedAssignments, i]() {
+          int idx = i % entities.size();
+          AIManager::Instance().assignBehaviorToEntity(entities[idx], "AssignTest");
+          completedAssignments++;
+        });
+  }
+
+  // Wait for all assignments to complete
+  AIManager::Instance().waitForAssignmentCompletion();
+
+  // Verify: After wait, all assignments should be reflected
+  std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Brief wait for atomic update
+
+  // Test fast path - calling again should be very fast
+  auto start = std::chrono::high_resolution_clock::now();
+  AIManager::Instance().waitForAssignmentCompletion();
+  auto end = std::chrono::high_resolution_clock::now();
+  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+  BOOST_CHECK_LT(duration.count(), 1000); // Less than 1ms for fast path
+
+  // Cleanup
+  for (auto &entity : entities) {
+    AIManager::Instance().unregisterEntityFromUpdates(entity);
+    AIManager::Instance().unassignBehaviorFromEntity(entity);
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  AIManager::Instance().resetBehaviors();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  std::cout << "TestWaitForAssignmentCompletion completed" << std::endl;
+}
+
+// Test case for prepareForStateTransition() cleanup pattern
+BOOST_FIXTURE_TEST_CASE(TestPrepareForStateTransition, ThreadedAITestFixture) {
+  std::cout << "Starting TestPrepareForStateTransition..." << std::endl;
+  const int NUM_ENTITIES = 30;
+
+  // Create a player entity
+  auto player = std::make_shared<TestEntity>(Vector2D(500, 500));
+  AIManager::Instance().setPlayerForDistanceOptimization(player);
+
+  // Register a behavior
+  auto behavior = std::make_shared<ThreadTestBehavior>(0);
+  {
+    std::lock_guard<std::mutex> lock(g_behaviorMutex);
+    g_allBehaviors.push_back(behavior);
+  }
+  AIManager::Instance().registerBehavior("TransitionTest", behavior);
+
+  // Create entities
+  std::vector<std::shared_ptr<TestEntity>> entities;
+  entities.reserve(NUM_ENTITIES);
+  for (int i = 0; i < NUM_ENTITIES; ++i) {
+    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
+    entities.push_back(entity);
+    AIManager::Instance().registerEntityForUpdates(entity);
+    AIManager::Instance().assignBehaviorToEntity(entity, "TransitionTest");
+  }
+
+  // Run a few updates to ensure system is active
+  for (int i = 0; i < 5; ++i) {
+    AIManager::Instance().update(0.016f);
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+  }
+
+  // Call prepareForStateTransition - this should wait for all async work
+  AIManager::Instance().prepareForStateTransition();
+
+  // After preparation, system should be in a safe state for cleanup
+  // Verify no crash when accessing state after preparation
+  size_t count = AIManager::Instance().getManagedEntityCount();
+  BOOST_CHECK_GE(count, 0); // Just verify no crash
+
+  // Cleanup
+  for (auto &entity : entities) {
+    AIManager::Instance().unregisterEntityFromUpdates(entity);
+    AIManager::Instance().unassignBehaviorFromEntity(entity);
+  }
+  AIManager::Instance().setPlayerForDistanceOptimization(nullptr);
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  AIManager::Instance().resetBehaviors();
+  std::this_thread::sleep_for(std::chrono::milliseconds(20));
+
+  std::cout << "TestPrepareForStateTransition completed" << std::endl;
 }

@@ -24,6 +24,7 @@
 #include <memory>
 #include <random>
 #include <format>
+#include <cmath>
 #include <ctime>
 
 
@@ -51,7 +52,7 @@ AIDemoState::~AIDemoState() {
 }
 
 void AIDemoState::handleInput() {
-  InputManager &inputMgr = InputManager::Instance();
+  InputManager  const&inputMgr = InputManager::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -192,7 +193,7 @@ void AIDemoState::handleInput() {
         }
       }
 
-      int npcsToSpawn = m_npcCount - m_npcsSpawned;
+      int const npcsToSpawn = m_npcCount - m_npcsSpawned;
       GAMESTATE_INFO(std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
       createNPCBatch(npcsToSpawn);
       m_npcsSpawned += npcsToSpawn;
@@ -226,6 +227,9 @@ bool AIDemoState::enter() {
   mp_particleMgr = &ParticleManager::Instance();
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
+
+  // Resume all game managers (may be paused from menu states)
+  GameEngine::Instance().setGlobalPause(false);
 
   GAMESTATE_INFO("Entering AIDemoState...");
 
@@ -587,9 +591,9 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   if (!mp_uiMgr->isShutdown()) {
     // Update status only when values change (C++20 type-safe, zero allocations)
     const auto &aiManager = AIManager::Instance();
-    int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+    int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
     size_t entityCount = m_npcs.size();
-    bool isPaused = aiManager.isGloballyPaused();
+    bool const isPaused = aiManager.isGloballyPaused();
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
@@ -680,7 +684,7 @@ void AIDemoState::setupAIBehaviors() {
 void AIDemoState::createNPCBatch(int count) {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
-  WorldManager &worldMgr = WorldManager::Instance();
+  WorldManager  const&worldMgr = WorldManager::Instance();
   const auto *worldData = worldMgr.getWorldData();
 
   if (!worldData) {
@@ -695,8 +699,8 @@ void AIDemoState::createNPCBatch(int count) {
     constexpr float tileSize = HammerEngine::TILE_SIZE;
 
     // Calculate tile range
-    int maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
-    int maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
+    int const maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
+    int const maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
 
     std::uniform_int_distribution<int> tileDistX(1, maxTileX);  // Start at 1 for margin
     std::uniform_int_distribution<int> tileDistY(1, maxTileY);
@@ -741,9 +745,8 @@ void AIDemoState::createNPCBatch(int count) {
       }
     }
 
-    if (created < count) {
-      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
-    }
+    GAMESTATE_WARN_IF(created < count,
+        std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
 
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("Exception in createNPCBatch(): {}", e.what()));
@@ -755,7 +758,7 @@ void AIDemoState::createNPCBatch(int count) {
 void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
-  WorldManager &worldMgr = WorldManager::Instance();
+  WorldManager  const&worldMgr = WorldManager::Instance();
   const auto *worldData = worldMgr.getWorldData();
 
   if (!worldData) {
@@ -770,8 +773,8 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
     constexpr float tileSize = HammerEngine::TILE_SIZE;
 
     // Calculate tile range
-    int maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
-    int maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
+    int const maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
+    int const maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
 
     std::uniform_int_distribution<int> tileDistX(1, maxTileX);  // Start at 1 for margin
     std::uniform_int_distribution<int> tileDistY(1, maxTileY);
@@ -827,9 +830,8 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
       }
     }
 
-    if (created < count) {
-      GAMESTATE_WARN(std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
-    }
+    GAMESTATE_WARN_IF(created < count,
+        std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
 
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));

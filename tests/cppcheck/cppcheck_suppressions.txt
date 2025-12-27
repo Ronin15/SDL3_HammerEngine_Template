@@ -534,3 +534,37 @@ unreadVariable:*/src/managers/InputManager.cpp:365
 # PathfinderManager - clearedCount/cacheEfficiency used in PATHFIND_INFO
 unreadVariable:*/src/managers/PathfinderManager.cpp:1035
 unreadVariable:*/src/managers/PathfinderManager.cpp:1092
+
+# ============================================================================
+# Confirmed False Positives (2025-12-21 Cppcheck Cleanup)
+# ============================================================================
+
+# --- Async callback patterns (cppcheck doesn't understand async flow) ---
+# m_navPath.empty() check is valid for synchronous path cache hits
+knownConditionTrueFalse:*/src/ai/behaviors/PatrolBehavior.cpp:250
+
+# --- Debug/release conditional separation (intentional duplicate conditions) ---
+# First check in #ifndef NDEBUG for stats, second for actual return
+duplicateCondition:*/src/ai/pathfinding/PathfindingGrid.cpp:767
+
+# --- Defensive programming (conditions kept for future-proofing) ---
+# refineCoarsePath may return other results in future implementations
+knownConditionTrueFalse:*/src/ai/pathfinding/PathfindingGrid.cpp:983
+
+# --- SDL/TTF API const-correctness limitations ---
+# TTF_Font APIs don't take const pointers even for read-only operations
+constVariablePointer:*/src/managers/FontManager.cpp:518
+constVariablePointer:*/src/managers/FontManager.cpp:602
+
+# --- Defensive null checks for safety ---
+# generateNoiseMaps could theoretically return nullptr on allocation failure
+knownConditionTrueFalse:*/src/world/WorldGenerator.cpp:78
+
+# --- Defensive check after buffer swap ---
+# toProcess.size() == 0 is possible if m_reusableToProcessBuffer was modified
+knownConditionTrueFalse:*/src/managers/AIManager.cpp:859
+
+# --- Correct min/max initialization pattern ---
+# Setting minX=maxX=first, minY=maxY=first is standard bounding box init
+duplicateAssignExpression:*/src/managers/CollisionManager.cpp:424
+duplicateAssignExpression:*/src/managers/CollisionManager.cpp:426

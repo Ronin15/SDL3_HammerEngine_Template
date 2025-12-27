@@ -36,6 +36,13 @@ struct SaveGameData {
     // Add more fields as needed
 };
 
+/**
+ * @brief Manages save/load operations for game data using binary serialization
+ *
+ * @note All string parameters in this class use const std::string& (not string_view)
+ * because they are passed directly to filesystem APIs (std::ofstream, std::ifstream,
+ * std::filesystem::path) which require std::string for construction/opening.
+ */
 class SaveGameManager {
 public:
     ~SaveGameManager() {

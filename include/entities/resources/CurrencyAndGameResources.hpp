@@ -15,7 +15,7 @@ class Currency : public Resource {
 public:
   Currency(HammerEngine::ResourceHandle handle, const std::string &id,
            const std::string &name, ResourceType type);
-  virtual ~Currency() override = default;
+  ~Currency() override = default;
 
   // Currency-specific properties
   float getExchangeRate() const { return m_exchangeRate; }
@@ -36,7 +36,7 @@ class Gold : public Currency {
 public:
   Gold(HammerEngine::ResourceHandle handle, const std::string &id,
        const std::string &name);
-  virtual ~Gold() override = default;
+  ~Gold() override = default;
 };
 
 /**
@@ -54,7 +54,7 @@ public:
 
   Gem(HammerEngine::ResourceHandle handle, const std::string &id,
       const std::string &name, GemType gemType);
-  virtual ~Gem() override = default;
+  ~Gem() override = default;
 
   GemType getGemType() const { return m_gemType; }
   int getClarity() const { return m_clarity; }
@@ -78,7 +78,7 @@ class FactionToken : public Currency {
 public:
   FactionToken(HammerEngine::ResourceHandle handle, const std::string &id,
                const std::string &name, const std::string &factionId);
-  virtual ~FactionToken() override = default;
+  ~FactionToken() override = default;
 
   const std::string &getFactionId() const { return m_factionId; }
   int getReputation() const { return m_reputation; }
@@ -101,7 +101,7 @@ class GameResource : public Resource {
 public:
   GameResource(HammerEngine::ResourceHandle handle, const std::string &id,
                const std::string &name, ResourceType type);
-  virtual ~GameResource() override = default;
+  ~GameResource() override = default;
 
   // Game resource properties
   float getRegenerationRate() const { return m_regenerationRate; }
@@ -122,7 +122,7 @@ class Energy : public GameResource {
 public:
   Energy(HammerEngine::ResourceHandle handle, const std::string &id,
          const std::string &name);
-  virtual ~Energy() override = default;
+  ~Energy() override = default;
 
   int getMaxEnergy() const { return m_maxEnergy; }
   void setMaxEnergy(int maxEnergy) { m_maxEnergy = maxEnergy; }
@@ -150,7 +150,7 @@ public:
 
   Mana(HammerEngine::ResourceHandle handle, const std::string &id,
        const std::string &name, ManaType manaType = ManaType::Arcane);
-  virtual ~Mana() override = default;
+  ~Mana() override = default;
 
   ManaType getManaType() const { return m_manaType; }
   int getMaxMana() const { return m_maxMana; }
@@ -182,7 +182,7 @@ public:
 
   BuildingMaterial(HammerEngine::ResourceHandle handle, const std::string &id,
                    const std::string &name, MaterialType materialType);
-  virtual ~BuildingMaterial() override = default;
+  ~BuildingMaterial() override = default;
 
   MaterialType getMaterialType() const { return m_materialType; }
   int getDurability() const { return m_durability; }
@@ -215,7 +215,7 @@ public:
 
   Ammunition(HammerEngine::ResourceHandle handle, const std::string &id,
              const std::string &name, AmmoType ammoType);
-  virtual ~Ammunition() override = default;
+  ~Ammunition() override = default;
 
   AmmoType getAmmoType() const { return m_ammoType; }
   int getDamage() const { return m_damage; }

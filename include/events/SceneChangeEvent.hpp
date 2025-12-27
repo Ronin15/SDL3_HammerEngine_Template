@@ -67,7 +67,7 @@ struct TransitionParams {
 class SceneChangeEvent : public Event {
 public:
     SceneChangeEvent(const std::string& name, const std::string& targetSceneID);
-    virtual ~SceneChangeEvent() override = default;
+    ~SceneChangeEvent() override = default;
     
     // Core event methods implementation
     void update() override;

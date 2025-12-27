@@ -631,8 +631,7 @@ BOOST_FIXTURE_TEST_CASE(TestInterpolationStateAcrossPauseResume, ParticleManager
     manager->update(0.016f);
   }
 
-  size_t countBeforePause = manager->getActiveParticleCount();
-  BOOST_CHECK_GT(countBeforePause, 0);
+  BOOST_CHECK_GT(manager->getActiveParticleCount(), 0);
 
   // Pause
   manager->setGlobalPause(true);
@@ -760,4 +759,418 @@ BOOST_FIXTURE_TEST_CASE(TestRapidEffectLifecycle, ParticleManagerCoreFixture) {
   // Should not crash and manager should be in valid state
   BOOST_CHECK(manager->isInitialized());
   BOOST_CHECK(!manager->isShutdown());
+}
+
+// ============================================================================
+// INDEPENDENT EFFECT MANAGEMENT API TESTS
+// Tests for independent effects (not weather-related) with group management
+// ============================================================================
+
+// Test basic independent effect creation
+BOOST_FIXTURE_TEST_CASE(TestPlayIndependentEffect, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  Vector2D position(100.0f, 100.0f);
+
+  // Play an independent effect
+  uint32_t effectId = manager->playIndependentEffect(
+      ParticleEffectType::Fire, position, 1.0f, -1.0f, "testGroup");
+
+  // Should return valid effect ID
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Should be marked as independent
+  BOOST_CHECK(manager->isIndependentEffect(effectId));
+
+  // Should be in the active independent effects list
+  auto activeEffects = manager->getActiveIndependentEffects();
+  BOOST_CHECK(std::find(activeEffects.begin(), activeEffects.end(), effectId) !=
+              activeEffects.end());
+
+  // Clean up
+  manager->stopIndependentEffect(effectId);
+}
+
+// Test stopping individual independent effect
+BOOST_FIXTURE_TEST_CASE(TestStopIndependentEffect, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  Vector2D position(200.0f, 200.0f);
+
+  // Create independent effect
+  uint32_t effectId = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, position, 1.0f, -1.0f, "group1");
+  BOOST_CHECK_NE(effectId, 0);
+  BOOST_CHECK(manager->isEffectPlaying(effectId));
+
+  // Stop the effect
+  manager->stopIndependentEffect(effectId);
+
+  // Should no longer be playing
+  BOOST_CHECK(!manager->isEffectPlaying(effectId));
+
+  // Should no longer be in active list
+  auto activeEffects = manager->getActiveIndependentEffects();
+  BOOST_CHECK(std::find(activeEffects.begin(), activeEffects.end(), effectId) ==
+              activeEffects.end());
+}
+
+// Test stopping all independent effects
+BOOST_FIXTURE_TEST_CASE(TestStopAllIndependentEffects, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create multiple independent effects with different groups
+  uint32_t effect1 = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "groupA");
+  uint32_t effect2 = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, {200.0f, 200.0f}, 1.0f, -1.0f, "groupB");
+  uint32_t effect3 = manager->playIndependentEffect(
+      ParticleEffectType::Sparks, {300.0f, 300.0f}, 1.0f, -1.0f, "groupC");
+
+  BOOST_CHECK_NE(effect1, 0);
+  BOOST_CHECK_NE(effect2, 0);
+  BOOST_CHECK_NE(effect3, 0);
+
+  // Verify all are playing
+  BOOST_CHECK(manager->isEffectPlaying(effect1));
+  BOOST_CHECK(manager->isEffectPlaying(effect2));
+  BOOST_CHECK(manager->isEffectPlaying(effect3));
+
+  // Stop all independent effects
+  manager->stopAllIndependentEffects();
+
+  // None should be playing now
+  BOOST_CHECK(!manager->isEffectPlaying(effect1));
+  BOOST_CHECK(!manager->isEffectPlaying(effect2));
+  BOOST_CHECK(!manager->isEffectPlaying(effect3));
+
+  // Active list should be empty
+  auto activeEffects = manager->getActiveIndependentEffects();
+  BOOST_CHECK(activeEffects.empty());
+}
+
+// Test stopping independent effects by group tag
+BOOST_FIXTURE_TEST_CASE(TestStopIndependentEffectsByGroup, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create effects in two groups
+  uint32_t effectA1 = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "combat");
+  uint32_t effectA2 = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, {150.0f, 150.0f}, 1.0f, -1.0f, "combat");
+  uint32_t effectB1 = manager->playIndependentEffect(
+      ParticleEffectType::Sparks, {200.0f, 200.0f}, 1.0f, -1.0f, "ambient");
+
+  BOOST_CHECK(manager->isEffectPlaying(effectA1));
+  BOOST_CHECK(manager->isEffectPlaying(effectA2));
+  BOOST_CHECK(manager->isEffectPlaying(effectB1));
+
+  // Stop only combat group
+  manager->stopIndependentEffectsByGroup("combat");
+
+  // Combat effects should be stopped
+  BOOST_CHECK(!manager->isEffectPlaying(effectA1));
+  BOOST_CHECK(!manager->isEffectPlaying(effectA2));
+
+  // Ambient effect should still be playing
+  BOOST_CHECK(manager->isEffectPlaying(effectB1));
+
+  // Clean up
+  manager->stopIndependentEffect(effectB1);
+}
+
+// Test pausing individual independent effect
+BOOST_FIXTURE_TEST_CASE(TestPauseIndependentEffect, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  Vector2D position(100.0f, 100.0f);
+
+  uint32_t effectId = manager->playIndependentEffect(
+      ParticleEffectType::Fire, position, 1.0f, -1.0f, "test");
+  BOOST_CHECK_NE(effectId, 0);
+
+  // Update to create particles
+  for (int i = 0; i < 5; ++i) {
+    manager->update(0.016f);
+  }
+
+
+
+  // Pause the effect
+  manager->pauseIndependentEffect(effectId, true);
+
+  // Update again - particle count shouldn't increase from this effect
+  for (int i = 0; i < 5; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Effect should still be playing (paused != stopped)
+  BOOST_CHECK(manager->isEffectPlaying(effectId));
+
+  // Resume the effect
+  manager->pauseIndependentEffect(effectId, false);
+
+  // Should continue working normally
+  manager->update(0.016f);
+  BOOST_CHECK(manager->isEffectPlaying(effectId));
+
+  // Clean up
+  manager->stopIndependentEffect(effectId);
+}
+
+// Test pausing all independent effects
+BOOST_FIXTURE_TEST_CASE(TestPauseAllIndependentEffects, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create multiple effects
+  uint32_t effect1 = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "group1");
+  uint32_t effect2 = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, {200.0f, 200.0f}, 1.0f, -1.0f, "group2");
+
+  // Update to create particles
+  for (int i = 0; i < 5; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Pause all independent effects
+  manager->pauseAllIndependentEffects(true);
+
+  // Effects should still exist but be paused
+  BOOST_CHECK(manager->isEffectPlaying(effect1));
+  BOOST_CHECK(manager->isEffectPlaying(effect2));
+
+  // Resume all
+  manager->pauseAllIndependentEffects(false);
+
+  // Should continue working
+  manager->update(0.016f);
+  BOOST_CHECK(manager->isEffectPlaying(effect1));
+  BOOST_CHECK(manager->isEffectPlaying(effect2));
+
+  // Clean up
+  manager->stopAllIndependentEffects();
+}
+
+// Test pausing independent effects by group
+BOOST_FIXTURE_TEST_CASE(TestPauseIndependentEffectsByGroup, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create effects in two groups
+  uint32_t effectA = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "explosions");
+  uint32_t effectB = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, {200.0f, 200.0f}, 1.0f, -1.0f, "environment");
+
+  // Update to create particles
+  for (int i = 0; i < 5; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Pause only explosions group
+  manager->pauseIndependentEffectsByGroup("explosions", true);
+
+  // Both should still be playing
+  BOOST_CHECK(manager->isEffectPlaying(effectA));
+  BOOST_CHECK(manager->isEffectPlaying(effectB));
+
+  // Resume explosions group
+  manager->pauseIndependentEffectsByGroup("explosions", false);
+
+  // Clean up
+  manager->stopAllIndependentEffects();
+}
+
+// Test isIndependentEffect distinguishes from regular effects
+BOOST_FIXTURE_TEST_CASE(TestIsIndependentEffectDistinction, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create a regular effect
+  Vector2D position(100.0f, 100.0f);
+  uint32_t regularEffect =
+      manager->playEffect(ParticleEffectType::Rain, position, 1.0f);
+
+  // Create an independent effect
+  uint32_t independentEffect = manager->playIndependentEffect(
+      ParticleEffectType::Fire, position, 1.0f, -1.0f, "combat");
+
+  BOOST_CHECK_NE(regularEffect, 0);
+  BOOST_CHECK_NE(independentEffect, 0);
+
+  // Regular effect should NOT be marked as independent
+  BOOST_CHECK(!manager->isIndependentEffect(regularEffect));
+
+  // Independent effect SHOULD be marked as independent
+  BOOST_CHECK(manager->isIndependentEffect(independentEffect));
+
+  // Clean up
+  manager->stopEffect(regularEffect);
+  manager->stopIndependentEffect(independentEffect);
+}
+
+// Test getActiveIndependentEffects returns correct list
+BOOST_FIXTURE_TEST_CASE(TestGetActiveIndependentEffects, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Initially no independent effects
+  auto initialEffects = manager->getActiveIndependentEffects();
+  BOOST_CHECK(initialEffects.empty());
+
+  // Create several independent effects
+  uint32_t effect1 = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "group1");
+  uint32_t effect2 = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, {200.0f, 200.0f}, 1.0f, -1.0f, "group1");
+  uint32_t effect3 = manager->playIndependentEffect(
+      ParticleEffectType::Sparks, {300.0f, 300.0f}, 1.0f, -1.0f, "group2");
+
+  // Get active effects
+  auto activeEffects = manager->getActiveIndependentEffects();
+  BOOST_CHECK_EQUAL(activeEffects.size(), 3);
+
+  // Verify all effects are in the list
+  BOOST_CHECK(std::find(activeEffects.begin(), activeEffects.end(), effect1) !=
+              activeEffects.end());
+  BOOST_CHECK(std::find(activeEffects.begin(), activeEffects.end(), effect2) !=
+              activeEffects.end());
+  BOOST_CHECK(std::find(activeEffects.begin(), activeEffects.end(), effect3) !=
+              activeEffects.end());
+
+  // Stop one effect
+  manager->stopIndependentEffect(effect2);
+
+  // Should now have 2 effects
+  activeEffects = manager->getActiveIndependentEffects();
+  BOOST_CHECK_EQUAL(activeEffects.size(), 2);
+  BOOST_CHECK(std::find(activeEffects.begin(), activeEffects.end(), effect2) ==
+              activeEffects.end());
+
+  // Clean up
+  manager->stopAllIndependentEffects();
+}
+
+// Test getActiveIndependentEffectsByGroup
+BOOST_FIXTURE_TEST_CASE(TestGetActiveIndependentEffectsByGroup, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create effects in different groups
+  uint32_t effectA1 = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "combat");
+  uint32_t effectA2 = manager->playIndependentEffect(
+      ParticleEffectType::Smoke, {150.0f, 150.0f}, 1.0f, -1.0f, "combat");
+  uint32_t effectB1 = manager->playIndependentEffect(
+      ParticleEffectType::Sparks, {200.0f, 200.0f}, 1.0f, -1.0f, "ambient");
+
+
+  // Get combat group effects
+  auto combatEffects = manager->getActiveIndependentEffectsByGroup("combat");
+  BOOST_CHECK_EQUAL(combatEffects.size(), 2);
+  BOOST_CHECK(std::find(combatEffects.begin(), combatEffects.end(), effectA1) !=
+              combatEffects.end());
+  BOOST_CHECK(std::find(combatEffects.begin(), combatEffects.end(), effectA2) !=
+              combatEffects.end());
+
+  // Get ambient group effects
+  auto ambientEffects = manager->getActiveIndependentEffectsByGroup("ambient");
+  BOOST_CHECK_EQUAL(ambientEffects.size(), 1);
+  BOOST_CHECK(std::find(ambientEffects.begin(), ambientEffects.end(), effectB1) !=
+              ambientEffects.end());
+
+  // Get non-existent group
+  auto emptyEffects = manager->getActiveIndependentEffectsByGroup("nonexistent");
+  BOOST_CHECK(emptyEffects.empty());
+
+  // Clean up
+  manager->stopAllIndependentEffects();
+}
+
+// Test independent effect with duration expiration
+BOOST_FIXTURE_TEST_CASE(TestIndependentEffectDuration, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create effect with short duration
+  uint32_t effectId = manager->playIndependentEffect(
+      ParticleEffectType::Sparks, {100.0f, 100.0f}, 1.0f, 0.5f, "timed");
+
+  BOOST_CHECK_NE(effectId, 0);
+  BOOST_CHECK(manager->isEffectPlaying(effectId));
+
+  // Update for longer than duration (0.5 seconds = 500ms)
+  for (int i = 0; i < 40; ++i) {  // 40 * 16ms = 640ms > 500ms
+    manager->update(0.016f);
+  }
+
+  // Effect should have expired
+  BOOST_CHECK(!manager->isEffectPlaying(effectId));
+}
+
+// Test multiple independent effects with same group tag
+BOOST_FIXTURE_TEST_CASE(TestMultipleEffectsSameGroup, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  const std::string groupName = "explosion_cluster";
+
+  // Create many effects with same group
+  std::vector<uint32_t> effects;
+  for (int i = 0; i < 10; ++i) {
+    uint32_t effectId = manager->playIndependentEffect(
+        ParticleEffectType::Sparks,
+        {static_cast<float>(100 + i * 20), static_cast<float>(100 + i * 10)},
+        1.0f, -1.0f, groupName);
+    BOOST_CHECK_NE(effectId, 0);
+    effects.push_back(effectId);
+  }
+
+  // All should be in the group
+  auto groupEffects = manager->getActiveIndependentEffectsByGroup(groupName);
+  BOOST_CHECK_EQUAL(groupEffects.size(), 10);
+
+  // Stop by group should stop all
+  manager->stopIndependentEffectsByGroup(groupName);
+
+  // All should be stopped
+  for (uint32_t effectId : effects) {
+    BOOST_CHECK(!manager->isEffectPlaying(effectId));
+  }
+
+  // Group should be empty
+  groupEffects = manager->getActiveIndependentEffectsByGroup(groupName);
+  BOOST_CHECK(groupEffects.empty());
+}
+
+// Test independent effect with infinite duration (-1)
+BOOST_FIXTURE_TEST_CASE(TestIndependentEffectInfiniteDuration, ParticleManagerCoreFixture) {
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Create effect with infinite duration
+  uint32_t effectId = manager->playIndependentEffect(
+      ParticleEffectType::Fire, {100.0f, 100.0f}, 1.0f, -1.0f, "persistent");
+
+  BOOST_CHECK_NE(effectId, 0);
+  BOOST_CHECK(manager->isEffectPlaying(effectId));
+
+  // Update for a long time
+  for (int i = 0; i < 100; ++i) {
+    manager->update(0.016f);
+  }
+
+  // Should still be playing (infinite duration)
+  BOOST_CHECK(manager->isEffectPlaying(effectId));
+
+  // Must be manually stopped
+  manager->stopIndependentEffect(effectId);
+  BOOST_CHECK(!manager->isEffectPlaying(effectId));
 }

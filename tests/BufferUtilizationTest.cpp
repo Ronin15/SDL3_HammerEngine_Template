@@ -6,263 +6,401 @@
 #define BOOST_TEST_MODULE BufferUtilizationTest
 #include <boost/test/unit_test.hpp>
 #include "core/WorkerBudget.hpp"
+#include "core/ThreadSystem.hpp"
 #include <iostream>
+#include <iomanip>
+#include <vector>
+#include <cstdlib>
+#include <chrono>
+#include <atomic>
+#include <thread>
+#include <cmath>
 
-BOOST_AUTO_TEST_SUITE(WorkerBudgetBufferTests)
+// Global fixture: ThreadSystem initialized once for entire test suite
+struct GlobalThreadSystemFixture {
+    GlobalThreadSystemFixture() {
+        // Initialize ThreadSystem with default worker count (hardware_concurrency - 1)
+        HammerEngine::ThreadSystem::Instance().init();
+    }
+    ~GlobalThreadSystemFixture() {
+        HammerEngine::ThreadSystem::Instance().clean();
+    }
+};
 
-BOOST_AUTO_TEST_CASE(TestBufferUtilizationLogic) {
-    std::cout << "\n=== Testing Buffer Thread Utilization ===\n";
+// Apply global fixture to entire test module
+BOOST_GLOBAL_FIXTURE(GlobalThreadSystemFixture);
 
-    // Test high-end system (12 workers)
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(12);
+BOOST_AUTO_TEST_SUITE(WorkerBudgetManagerTests)
 
-    std::cout << "System: 12 workers total\n";
-    std::cout << "Base allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+BOOST_AUTO_TEST_CASE(TestBudgetAllocation) {
+    std::cout << "\n=== Testing WorkerBudgetManager Budget Allocation ===\n";
 
-    // Test AI workload scenarios
-    std::cout << "\nAI Workload Tests:\n";
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    const auto& budget = budgetMgr.getBudget();
 
-    // Low workload - should use base allocation
+    std::cout << "System: " << budget.totalWorkers << " workers total\n";
+    std::cout << "Sequential execution model: each manager gets all "
+              << budget.totalWorkers << " workers during its window\n";
+
+    // Verify we have workers
+    BOOST_CHECK_GT(budget.totalWorkers, 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestOptimalWorkersAllWorkloads) {
+    std::cout << "\n=== Testing Optimal Workers - Sequential Execution Model ===\n";
+
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    const auto& budget = budgetMgr.getBudget();
+
+    // Any workload should get all workers (sequential execution model)
     size_t lowWorkload = 500;
-    size_t optimalWorkers = budget.getOptimalWorkerCount(budget.aiAllocated, lowWorkload, 1000);
-    std::cout << "Low workload (" << lowWorkload << " entities): " << optimalWorkers << " workers\n";
-    BOOST_CHECK_EQUAL(optimalWorkers, budget.aiAllocated);
+    size_t optimalLow = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::AI, lowWorkload);
 
-    // High workload - should use buffer
     size_t highWorkload = 5000;
-    optimalWorkers = budget.getOptimalWorkerCount(budget.aiAllocated, highWorkload, 1000);
-    std::cout << "High workload (" << highWorkload << " entities): " << optimalWorkers << " workers\n";
-    BOOST_CHECK_GT(optimalWorkers, budget.aiAllocated);
+    size_t optimalHigh = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::AI, highWorkload);
 
-    // Test Event workload scenarios
-    std::cout << "\nEvent Workload Tests:\n";
+    std::cout << "Low workload (" << lowWorkload << " entities): "
+              << optimalLow << " workers\n";
+    std::cout << "High workload (" << highWorkload << " entities): "
+              << optimalHigh << " workers\n";
+    std::cout << "Total workers: " << budget.totalWorkers << "\n";
 
-    // Low workload - should use base allocation
-    size_t lowEvents = 50;
-    optimalWorkers = budget.getOptimalWorkerCount(budget.eventAllocated, lowEvents, 100);
-    std::cout << "Low workload (" << lowEvents << " events): " << optimalWorkers << " workers\n";
-    BOOST_CHECK_EQUAL(optimalWorkers, budget.eventAllocated);
-
-    // High workload - should use buffer
-    size_t highEvents = 500;
-    optimalWorkers = budget.getOptimalWorkerCount(budget.eventAllocated, highEvents, 100);
-    std::cout << "High workload (" << highEvents << " events): " << optimalWorkers << " workers\n";
-    BOOST_CHECK_GT(optimalWorkers, budget.eventAllocated);
-
-    // Test buffer capacity checks
-    BOOST_CHECK(budget.hasBufferCapacity());
-
-    // Test max worker count
-    size_t maxWorkers = budget.getMaxWorkerCount(budget.aiAllocated);
-    BOOST_CHECK_EQUAL(maxWorkers, budget.aiAllocated + budget.remaining);
-
-    std::cout << "Max possible AI workers: " << maxWorkers << "\n";
+    // Both should get all workers (sequential execution = no contention)
+    BOOST_CHECK_EQUAL(optimalLow, budget.totalWorkers);
+    BOOST_CHECK_EQUAL(optimalHigh, budget.totalWorkers);
 }
 
-BOOST_AUTO_TEST_CASE(TestLowEndSystemBuffer) {
-    std::cout << "\n=== Testing Low-End System (No Buffer) ===\n";
+BOOST_AUTO_TEST_CASE(TestZeroWorkloadReturnsZero) {
+    std::cout << "\n=== Testing Zero Workload Returns Zero Workers ===\n";
 
-    // Test low-end system (3 workers)
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(3);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    std::cout << "System: 3 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    size_t optimalWorkers = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::AI, 0);
 
-    // After removing CollisionManager allocation, low-end systems (3 workers) now have 1 buffer worker
-// Old: engine=1, ai=1, collision=1, buffer=0
-// New: engine=1, ai=1, buffer=1 (more efficient!)
-BOOST_CHECK_EQUAL(budget.remaining, 1);
-BOOST_CHECK(budget.hasBufferCapacity());
+    std::cout << "Zero workload: " << optimalWorkers << " workers\n";
 
-    // Has buffer capacity, but with only 1 buffer worker, 75% usage rounds down to 0
-    // So optimalWorkerCount still returns base allocation
-    size_t highWorkload = 10000;
-    size_t optimalWorkers = budget.getOptimalWorkerCount(budget.aiAllocated, highWorkload, 1000);
-    // With small buffer (1 worker), integer math means no burst workers: (1 * 75%) = 0
-    BOOST_CHECK_EQUAL(optimalWorkers, budget.aiAllocated);
-
-    std::cout << "High workload with small buffer: " << optimalWorkers << " workers (base="
-              << budget.aiAllocated << ", buffer too small for burst)\n";
+    // Zero work = zero workers needed
+    BOOST_CHECK_EQUAL(optimalWorkers, 0);
 }
 
-BOOST_AUTO_TEST_CASE(TestVeryHighEndSystem) {
-    std::cout << "\n=== Testing Very High-End System (16 workers) ===\n";
+BOOST_AUTO_TEST_CASE(TestBatchStrategy) {
+    std::cout << "\n=== Testing Batch Strategy ===\n";
 
-    // Test very high-end system (16 workers)
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(16);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    std::cout << "System: 16 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    size_t workload = 1000;
+    size_t optimalWorkers = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::AI, workload);
 
-    // Should have substantial buffer
-    BOOST_CHECK_GT(budget.remaining, 1);
-    BOOST_CHECK(budget.hasBufferCapacity());
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::AI, workload, optimalWorkers);
 
-    // Test aggressive buffer usage (75% of buffer, capped at 2x base allocation)
-    size_t highWorkload = 50000;
-    size_t optimalWorkers = budget.getOptimalWorkerCount(budget.aiAllocated, highWorkload, 1000);
-    size_t bufferToUse = (budget.remaining * 3) / 4;
-    size_t expectedBurst = std::min(bufferToUse, budget.aiAllocated * 2);
+    std::cout << "Workload: " << workload << ", Workers: " << optimalWorkers << "\n";
+    std::cout << "Batch strategy: " << batchCount << " batches of size " << batchSize << "\n";
 
-    std::cout << "Very high workload burst: " << optimalWorkers << " workers\n";
-    std::cout << "Expected burst workers: " << expectedBurst << "\n";
+    // Batches should cover all work
+    BOOST_CHECK_GE(batchCount * batchSize, workload);
 
-    BOOST_CHECK_EQUAL(optimalWorkers, budget.aiAllocated + expectedBurst);
+    // Should have reasonable batch count
+    BOOST_CHECK_GE(batchCount, 1);
 }
 
-BOOST_AUTO_TEST_CASE(TestZeroWorkersEdgeCase) {
-    std::cout << "\n=== Testing Zero Workers Edge Case (Defensive) ===\n";
+BOOST_AUTO_TEST_CASE(TestBatchCompletionReporting) {
+    std::cout << "\n=== Testing Batch Completion Reporting ===\n";
 
-    // Test defensive handling of 0 workers (should never happen in practice)
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(0);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    std::cout << "System: 0 workers total (invalid configuration)\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Pathfinding: " << budget.pathfindingAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    // Report some batch completions (workload, batchCount, timeMs)
+    size_t workload = 1000;
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 4, 0.5);  // 0.125ms per batch
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 4, 0.5);
 
-    // Should return all-zero budget
-    BOOST_CHECK_EQUAL(budget.totalWorkers, 0);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 0);
-    BOOST_CHECK_EQUAL(budget.aiAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.particleAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.eventAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.remaining, 0);
+    // Get batch strategy after reporting
+    size_t workers = 4;
+    auto [batchCount1, batchSize1] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::AI, workload, workers);
+
+    std::cout << "After fast batches (0.125ms/batch): " << batchCount1 << " batches\n";
+
+    // Report slow batches
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 2, 10.0);  // 5ms per batch
+    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 2, 10.0);
+
+    auto [batchCount2, batchSize2] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::AI, workload, workers);
+
+    std::cout << "After slow batches (5ms/batch): " << batchCount2 << " batches\n";
+
+    // Both should produce valid batch strategies
+    BOOST_CHECK_GE(batchCount1, 1);
+    BOOST_CHECK_GE(batchCount2, 1);
 }
 
-BOOST_AUTO_TEST_CASE(TestSingleWorkerSystem) {
-    std::cout << "\n=== Testing Single Worker System (Tier 1) ===\n";
+BOOST_AUTO_TEST_CASE(TestAllSystemTypes) {
+    std::cout << "\n=== Testing All System Types ===\n";
 
-    // Test 1-core system: hardware_concurrency=1 → ThreadSystem=1 → GameLoop=1 → Managers=0
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(1);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    const auto& budget = budgetMgr.getBudget();
 
-    std::cout << "System: 1 worker total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Particle: " << budget.particleAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Pathfinding: " << budget.pathfindingAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    size_t workload = 2000;
 
-    // All 1 worker goes to GameLoop, managers use single-threaded fallback
-    BOOST_CHECK_EQUAL(budget.totalWorkers, 1);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
-    BOOST_CHECK_EQUAL(budget.aiAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.particleAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.eventAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.remaining, 0);
+    // Test each system type - all should get same allocation (sequential execution)
+    std::vector<std::pair<HammerEngine::SystemType, const char*>> systems = {
+        {HammerEngine::SystemType::AI, "AI"},
+        {HammerEngine::SystemType::Particle, "Particle"},
+        {HammerEngine::SystemType::Pathfinding, "Pathfinding"},
+        {HammerEngine::SystemType::Event, "Event"}
+    };
 
-    // No buffer capacity on single-worker system
-    BOOST_CHECK(!budget.hasBufferCapacity());
+    for (const auto& [type, name] : systems) {
+        size_t optimalWorkers = budgetMgr.getOptimalWorkers(type, workload);
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(type, workload, optimalWorkers);
+
+        std::cout << name << ": optimal=" << optimalWorkers
+                  << ", batches=" << batchCount << "x" << batchSize << "\n";
+
+        // All systems get all workers (sequential execution model)
+        BOOST_CHECK_EQUAL(optimalWorkers, budget.totalWorkers);
+
+        // Batch strategy should be valid
+        BOOST_CHECK_GE(batchCount, 1);
+        BOOST_CHECK_GE(batchSize, 1);
+    }
 }
 
-BOOST_AUTO_TEST_CASE(TestDualWorkerSystem) {
-    std::cout << "\n=== Testing Dual Worker System (Tier 2, 1 Manager Worker) ===\n";
+BOOST_AUTO_TEST_CASE(TestCacheInvalidation) {
+    std::cout << "\n=== Testing Cache Invalidation ===\n";
 
-    // Test 3-core system: hardware_concurrency=3 → ThreadSystem=2 → GameLoop=1 → Managers=1
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(2);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    std::cout << "System: 2 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Particle: " << budget.particleAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Pathfinding: " << budget.pathfindingAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    // Get initial budget
+    const auto& budget1 = budgetMgr.getBudget();
+    std::cout << "Initial budget - totalWorkers: " << budget1.totalWorkers << "\n";
 
-    // Engine gets 1, AI gets 1 (actualManagerWorkers=1)
-    BOOST_CHECK_EQUAL(budget.totalWorkers, 2);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
-    BOOST_CHECK_EQUAL(budget.aiAllocated, 1);  // actualManagerWorkers >= 1
-    BOOST_CHECK_EQUAL(budget.particleAllocated, 0); // Needs actualManagerWorkers >= 3
-    BOOST_CHECK_EQUAL(budget.eventAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0);
-    BOOST_CHECK_EQUAL(budget.remaining, 0);
+    // Invalidate cache
+    budgetMgr.invalidateCache();
 
-    // Verify total allocation matches
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.pathfindingAllocated + budget.remaining;
-    BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
+    // Get budget again (should recalculate)
+    const auto& budget2 = budgetMgr.getBudget();
+    std::cout << "After invalidation - totalWorkers: " << budget2.totalWorkers << "\n";
+
+    // Should have same values (ThreadSystem hasn't changed)
+    BOOST_CHECK_EQUAL(budget1.totalWorkers, budget2.totalWorkers);
 }
 
-BOOST_AUTO_TEST_CASE(TestFourWorkerSystem) {
-    std::cout << "\n=== Testing Four Worker System (Tier 2, 3 Manager Workers) ===\n";
+BOOST_AUTO_TEST_CASE(TestThreadingThresholds) {
+    std::cout << "\n=== Testing Threading Thresholds ===\n";
+    std::cout << "Finding optimal workload sizes for threading...\n\n";
 
-    // Test 5-core system: hardware_concurrency=5 → ThreadSystem=4 → GameLoop=1 → Managers=3
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(4);
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    const size_t workers = threadSystem.getThreadCount();
 
-    std::cout << "System: 4 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Particle: " << budget.particleAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Pathfinding: " << budget.pathfindingAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    std::cout << "Workers: " << workers << "\n\n";
 
-    // Tier 2 allocation with 3 manager workers
-    BOOST_CHECK_EQUAL(budget.totalWorkers, 4);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
-    BOOST_CHECK_EQUAL(budget.aiAllocated, 1);      // actualManagerWorkers >= 1
-    BOOST_CHECK_EQUAL(budget.particleAllocated, 1); // actualManagerWorkers >= 3
-    BOOST_CHECK_EQUAL(budget.eventAllocated, 0);    // Tier 2 keeps events single-threaded
-    BOOST_CHECK_EQUAL(budget.pathfindingAllocated, 0); // Tier 2 keeps pathfinding single-threaded
-    BOOST_CHECK_EQUAL(budget.remaining, 1);         // 3 - 2 = 1 buffer
+    // Test different workload sizes
+    std::vector<size_t> workloads = {10, 25, 50, 100, 200, 500, 1000, 2000, 5000, 10000};
 
-    // Should have small buffer
-    BOOST_CHECK(budget.hasBufferCapacity());
+    // Simulated work per item - adjust to match actual manager work
+    auto doWork = [](size_t iterations) {
+        volatile double result = 0;
+        for (size_t i = 0; i < iterations; ++i) {
+            result += std::sin(static_cast<double>(i)) * std::cos(static_cast<double>(i));
+        }
+        return result;
+    };
 
-    // Verify total allocation matches
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.pathfindingAllocated + budget.remaining;
-    BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
+    const size_t workPerItem = 100;  // iterations of work per item
+    const size_t testRuns = 5;       // average over multiple runs
+
+    std::cout << std::setw(10) << "Workload"
+              << std::setw(15) << "Single (ms)"
+              << std::setw(15) << "Threaded (ms)"
+              << std::setw(12) << "Speedup"
+              << std::setw(15) << "Recommendation" << "\n";
+    std::cout << std::string(67, '-') << "\n";
+
+    size_t threadingThreshold = 0;
+
+    for (size_t workload : workloads) {
+        double singleTotal = 0;
+        double threadedTotal = 0;
+
+        for (size_t run = 0; run < testRuns; ++run) {
+            // Single-threaded timing
+            auto singleStart = std::chrono::high_resolution_clock::now();
+            for (size_t i = 0; i < workload; ++i) {
+                doWork(workPerItem);
+            }
+            auto singleEnd = std::chrono::high_resolution_clock::now();
+            singleTotal += std::chrono::duration<double, std::milli>(singleEnd - singleStart).count();
+
+            // Multi-threaded timing using ThreadSystem
+            auto threadedStart = std::chrono::high_resolution_clock::now();
+
+            size_t batchCount = std::min(workers, workload);
+            size_t batchSize = (workload + batchCount - 1) / batchCount;
+            std::atomic<size_t> completed{0};
+
+            for (size_t batch = 0; batch < batchCount; ++batch) {
+                size_t start = batch * batchSize;
+                size_t end = std::min(start + batchSize, workload);
+
+                threadSystem.enqueueTask([&, start, end]() {
+                    for (size_t i = start; i < end; ++i) {
+                        doWork(workPerItem);
+                    }
+                    completed.fetch_add(1, std::memory_order_release);
+                });
+            }
+
+            // Wait for completion
+            while (completed.load(std::memory_order_acquire) < batchCount) {
+                std::this_thread::yield();
+            }
+
+            auto threadedEnd = std::chrono::high_resolution_clock::now();
+            threadedTotal += std::chrono::duration<double, std::milli>(threadedEnd - threadedStart).count();
+        }
+
+        double singleAvg = singleTotal / testRuns;
+        double threadedAvg = threadedTotal / testRuns;
+        double speedup = singleAvg / threadedAvg;
+
+        std::string recommendation;
+        if (speedup > 1.5) {
+            recommendation = "THREAD";
+            if (threadingThreshold == 0) threadingThreshold = workload;
+        } else if (speedup > 1.1) {
+            recommendation = "marginal";
+        } else {
+            recommendation = "single";
+        }
+
+        std::cout << std::setw(10) << workload
+                  << std::setw(15) << std::fixed << std::setprecision(3) << singleAvg
+                  << std::setw(15) << std::fixed << std::setprecision(3) << threadedAvg
+                  << std::setw(11) << std::fixed << std::setprecision(2) << speedup << "x"
+                  << std::setw(15) << recommendation << "\n";
+    }
+
+    std::cout << "\n=== Current Manager Thresholds ===\n";
+    std::cout << "AIManager:       100 entities\n";
+    std::cout << "ParticleManager: 100 particles\n";
+    std::cout << "EventManager:    100 events\n";
+
+    std::cout << "\n=== Recommendations ===\n";
+    if (threadingThreshold == 0) {
+        std::cout << "Threading beneficial at all tested sizes (10+)\n";
+        std::cout << "Current threshold of 100 is conservative - could lower to 50\n";
+    } else if (threadingThreshold <= 100) {
+        std::cout << "Threading beneficial at: " << threadingThreshold << "+ items\n";
+        std::cout << "Current threshold of 100 is appropriate\n";
+    } else {
+        std::cout << "Threading beneficial at: " << threadingThreshold << "+ items\n";
+        std::cout << "Consider RAISING thresholds to: " << threadingThreshold << "\n";
+    }
+
+    // Basic sanity check - threading should help somewhere
+    BOOST_CHECK_LE(threadingThreshold, 1000);
 }
 
-BOOST_AUTO_TEST_CASE(TestFiveWorkerSystem) {
-    std::cout << "\n=== Testing Five Worker System (Tier 3 Boundary) ===\n";
+BOOST_AUTO_TEST_CASE(TestBatchTuningStability) {
+    std::cout << "\n=== Testing Batch Tuning Stability (Simulation) ===\n";
 
-    // Test 6-core system: hardware_concurrency=6 → ThreadSystem=5 → GameLoop=1 → Managers=4
-    // This is the FIRST Tier 3 allocation (actualManagerWorkers=4)
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(5);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    const auto& budget = budgetMgr.getBudget();
 
-    std::cout << "System: 5 workers total\n";
-    std::cout << "Allocations - GameLoop: " << budget.engineReserved
-              << ", AI: " << budget.aiAllocated
-              << ", Particle: " << budget.particleAllocated
-              << ", Events: " << budget.eventAllocated
-              << ", Pathfinding: " << budget.pathfindingAllocated
-              << ", Buffer: " << budget.remaining << "\n";
+    // Use Particle system to avoid interference with AI state from other tests
+    const auto systemType = HammerEngine::SystemType::Particle;
+    const size_t workload = 14000;  // Simulate 14K entities like real game
+    const size_t numFrames = 200;   // Simulate 200 frames (~3.3 seconds at 60fps)
 
-    // Tier 3 allocation: weighted distribution + 30% buffer
-    BOOST_CHECK_EQUAL(budget.totalWorkers, 5);
-    BOOST_CHECK_EQUAL(budget.engineReserved, 1);
+    std::cout << "Workers: " << budget.totalWorkers << ", Workload: " << workload << "\n";
+    std::cout << "Simulating " << numFrames << " frames...\n\n";
 
-    // With 4 manager workers, buffer = max(1, 4*0.3) = 1
-    // Allocate remaining 3 workers via weights
-    BOOST_CHECK_GT(budget.aiAllocated, 0);        // Should get allocation
-    BOOST_CHECK_GT(budget.remaining, 0);          // Should have buffer
+    // Track batch counts
+    std::vector<size_t> batchCounts;
+    batchCounts.reserve(numFrames);
 
-    // All subsystems should get something or buffer should compensate
-    size_t totalAllocated = budget.engineReserved + budget.aiAllocated +
-                            budget.particleAllocated + budget.eventAllocated +
-                            budget.pathfindingAllocated + budget.remaining;
-    BOOST_CHECK_EQUAL(totalAllocated, budget.totalWorkers);
+    // Simulate realistic timing with noise
+    // Base time scales with batch count (fewer batches = less overhead but less parallelism)
+    auto simulateFrameTime = [&](size_t batches) -> double {
+        // Base work time per item (microseconds)
+        double baseTimePerItem = 0.15;  // ~0.15µs per entity
 
-    std::cout << "First Tier 3 allocation validated\n";
+        // Parallel speedup (not perfect - diminishing returns)
+        double parallelism = std::min(static_cast<double>(batches),
+                                      static_cast<double>(budget.totalWorkers));
+        double speedup = 1.0 + (parallelism - 1.0) * 0.85;  // 85% parallel efficiency
+
+        // Work time
+        double workTimeMs = (workload * baseTimePerItem / 1000.0) / speedup;
+
+        // Overhead per batch (~10-20µs per batch)
+        double overheadMs = batches * 0.015;
+
+        // Add realistic noise (±20%)
+        double noise = 0.8 + (static_cast<double>(rand() % 40) / 100.0);
+
+        return (workTimeMs + overheadMs) * noise;
+    };
+
+    // Run simulation
+    for (size_t frame = 0; frame < numFrames; ++frame) {
+        size_t workers = budgetMgr.getOptimalWorkers(systemType, workload);
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(systemType, workload, workers);
+
+        batchCounts.push_back(batchCount);
+
+        // Simulate frame execution
+        double frameTimeMs = simulateFrameTime(batchCount);
+
+        // Report completion
+        budgetMgr.reportBatchCompletion(systemType, workload, batchCount, frameTimeMs);
+
+        // Log every 20 frames
+        if (frame < 10 || frame % 20 == 0) {
+            std::cout << "Frame " << frame << ": " << batchCount << " batches, "
+                      << std::fixed << std::setprecision(2) << frameTimeMs << "ms\n";
+        }
+    }
+
+    // Analyze stability (last 100 frames after convergence)
+    size_t analysisStart = numFrames > 100 ? numFrames - 100 : 0;
+    size_t minBatch = batchCounts[analysisStart];
+    size_t maxBatch = batchCounts[analysisStart];
+    double sumBatch = 0;
+
+    for (size_t i = analysisStart; i < numFrames; ++i) {
+        minBatch = std::min(minBatch, batchCounts[i]);
+        maxBatch = std::max(maxBatch, batchCounts[i]);
+        sumBatch += batchCounts[i];
+    }
+
+    double avgBatch = sumBatch / (numFrames - analysisStart);
+    size_t range = maxBatch - minBatch;
+
+    std::cout << "\n=== Stability Analysis (last 100 frames) ===\n";
+    std::cout << "Batch count: min=" << minBatch << ", max=" << maxBatch
+              << ", avg=" << std::fixed << std::setprecision(1) << avgBatch << "\n";
+    std::cout << "Range: " << range << " batches (";
+
+    if (range <= 2) {
+        std::cout << "EXCELLENT - very stable)\n";
+    } else if (range <= 4) {
+        std::cout << "GOOD - stable)\n";
+    } else if (range <= 6) {
+        std::cout << "OK - some variance)\n";
+    } else {
+        std::cout << "NEEDS TUNING - too much variance)\n";
+    }
+
+    // Check convergence - should stabilize within reasonable range
+    BOOST_CHECK_LE(range, 6);  // Allow up to 6 batch variance
+    BOOST_CHECK_GE(avgBatch, 5);  // Should find reasonable parallelism
 }
 
 BOOST_AUTO_TEST_SUITE_END()

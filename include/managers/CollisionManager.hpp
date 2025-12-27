@@ -16,6 +16,7 @@
 #include <cstddef>
 #include <chrono>
 #include <array>
+#include <optional>
 
 #include "entities/Entity.hpp" // EntityID
 #include "collisions/CollisionBody.hpp"
@@ -252,6 +253,40 @@ private:
     void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs);
     void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
                         std::vector<CollisionInfo>& collisions) const;
+
+    // Multi-threading support for narrowphase (WorkerBudget integrated)
+    void narrowphaseSingleThreaded(
+        const std::vector<std::pair<size_t, size_t>>& indexPairs,
+        std::vector<CollisionInfo>& collisions) const;
+
+    void narrowphaseMultiThreaded(
+        const std::vector<std::pair<size_t, size_t>>& indexPairs,
+        std::vector<CollisionInfo>& collisions,
+        size_t batchCount,
+        size_t batchSize) const;
+
+    void narrowphaseBatch(
+        const std::vector<std::pair<size_t, size_t>>& indexPairs,
+        size_t startIdx,
+        size_t endIdx,
+        std::vector<CollisionInfo>& outCollisions) const;
+
+    void processNarrowphasePairScalar(
+        const std::pair<size_t, size_t>& pair,
+        std::vector<CollisionInfo>& outCollisions) const;
+
+    // Multi-threading support for broadphase (WorkerBudget integrated)
+    void broadphaseSingleThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs);
+
+    void broadphaseMultiThreaded(
+        std::vector<std::pair<size_t, size_t>>& indexPairs,
+        size_t batchCount,
+        size_t batchSize);
+
+    void broadphaseBatch(
+        std::vector<std::pair<size_t, size_t>>& outIndexPairs,
+        size_t startIdx,
+        size_t endIdx);
 
     // Internal helper methods for SOA buffer management
     void swapCollisionBuffers();
@@ -498,6 +533,10 @@ private:
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
                        HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
 
+    // Pre-populate cache for a specific coarse region (thread-safe: single-threaded population)
+    void populateCacheForRegion(const HammerEngine::HierarchicalSpatialHash::CoarseCoord& region,
+                                CoarseRegionStaticCache& cache);
+
     // Cache statistics
     mutable size_t m_cacheHits{0};
     mutable size_t m_cacheMisses{0};
@@ -506,9 +545,9 @@ private:
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
     // OPTIMIZATION: Static Spatial Grid for efficient culling queries
-    // Coarse grid (512×512 cells) to quickly filter static bodies by culling area
+    // Grid (128×128 cells) to quickly filter static bodies by culling area
     // Grid is rebuilt only on world events (statics added/removed), not every frame
-    static constexpr float STATIC_GRID_CELL_SIZE = 512.0f;
+    static constexpr float STATIC_GRID_CELL_SIZE = 128.0f;
     struct StaticGridCell {
         int32_t x;
         int32_t y;
@@ -524,6 +563,12 @@ private:
     };
     std::unordered_map<StaticGridCell, std::vector<size_t>, StaticGridCellHash> m_staticSpatialGrid;
     bool m_staticGridDirty{true};  // Rebuild grid when statics added/removed
+
+    // Tolerance-based static index cache - avoids requerying when camera moves small distances
+    static constexpr float STATIC_CACHE_TOLERANCE = STATIC_GRID_CELL_SIZE;  // 128px
+    mutable std::vector<size_t> m_cachedStaticIndices;
+    mutable CullingArea m_cachedStaticCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
+    mutable bool m_staticIndexCacheValid{false};
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
@@ -602,6 +647,12 @@ private:
     mutable std::unordered_set<EntityID> m_collidedEntitiesBuffer;      // For syncEntitiesToSOA()
     mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
     // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
+
+    // OPTIMIZATION: Persistent index tracking (avoids O(n) iteration per frame)
+    // Regression fix for commit 768ad87 - movable body iteration was O(18K) instead of O(3)
+    std::vector<size_t> m_movableBodyIndices;       // Indices of DYNAMIC + KINEMATIC bodies
+    std::unordered_set<size_t> m_movableIndexSet;   // For O(1) removal lookup
+    std::optional<size_t> m_playerBodyIndex;        // Cached player body index (Layer_Player)
 
     // Performance metrics
     struct PerfStats {
@@ -685,6 +736,44 @@ private:
     // Thread-safe command queue for deferred collision body operations
     std::vector<PendingCommand> m_pendingCommands;
     mutable std::mutex m_commandQueueMutex;
+
+    // Multi-threading support for narrowphase (WorkerBudget integrated)
+    mutable std::vector<std::future<void>> m_narrowphaseFutures;
+    mutable std::shared_ptr<std::vector<std::vector<CollisionInfo>>> m_batchCollisionBuffers;
+    mutable std::mutex m_narrowphaseFuturesMutex;
+
+    // Multi-threading support for broadphase (WorkerBudget integrated)
+    mutable std::vector<std::future<void>> m_broadphaseFutures;
+    mutable std::shared_ptr<std::vector<std::vector<std::pair<size_t, size_t>>>> m_broadphasePairBuffers;
+    mutable std::mutex m_broadphaseFuturesMutex;
+
+    // Threading config and metrics (validated via benchmark: narrowphase threads at 100+ pairs, broadphase at 500+ movable)
+    static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;        // Narrowphase: min pairs before threading
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 500;  // Broadphase: min movable bodies
+    mutable bool m_lastNarrowphaseWasThreaded{false};
+    mutable size_t m_lastNarrowphaseBatchCount{1};
+    mutable bool m_lastBroadphaseWasThreaded{false};
+    mutable size_t m_lastBroadphaseBatchCount{1};
+
+    // Thread-local buffers for parallel broadphase (stack-allocated per batch, zero contention)
+    // Each worker thread creates its own instance to avoid data races on spatial hash queries
+    struct BroadphaseThreadBuffers {
+        std::vector<size_t> dynamicCandidates;
+        std::vector<size_t> staticCandidates;
+        HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
+
+        void reserve() {
+            dynamicCandidates.reserve(256);
+            staticCandidates.reserve(256);
+            queryBuffers.reserve();
+        }
+
+        void clear() {
+            dynamicCandidates.clear();
+            staticCandidates.clear();
+            queryBuffers.clear();
+        }
+    };
 
     // Thread-safe access to collision storage (entityToIndex map and storage arrays)
     // shared_lock for reads (AI threads), unique_lock for writes (update thread)

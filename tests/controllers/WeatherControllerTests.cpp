@@ -7,7 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "controllers/world/WeatherController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
@@ -25,35 +25,54 @@ public:
         EventManagerTestAccess::reset();
 
         // Initialize GameTime
-        GameTime::Instance().init(12.0f, 1.0f);
+        GameTimeManager::Instance().init(12.0f, 1.0f);
     }
 
     ~WeatherControllerTestFixture() {
-        // Ensure WeatherController is unsubscribed
-        WeatherController::Instance().unsubscribe();
-
+        // Controller auto-unsubscribes on destruction via ControllerBase
         // Clean up
         EventManager::Instance().clean();
     }
 
 protected:
-    WeatherController& getController() {
-        return WeatherController::Instance();
-    }
+    // Controller owned by fixture (new ownership model)
+    WeatherController m_controller;
 };
 
 // ============================================================================
-// SINGLETON PATTERN TESTS
+// OWNERSHIP MODEL TESTS
 // ============================================================================
 
-BOOST_AUTO_TEST_SUITE(SingletonTests)
+BOOST_AUTO_TEST_SUITE(OwnershipModelTests)
 
-BOOST_AUTO_TEST_CASE(TestSingletonPattern) {
-    WeatherController* instance1 = &WeatherController::Instance();
-    WeatherController* instance2 = &WeatherController::Instance();
+BOOST_AUTO_TEST_CASE(TestControllerInstantiation) {
+    // Controllers can now be instantiated directly
+    WeatherController controller1;
+    WeatherController controller2;
 
-    BOOST_CHECK(instance1 == instance2);
-    BOOST_CHECK(instance1 != nullptr);
+    // Each is a separate instance
+    BOOST_CHECK(&controller1 != &controller2);
+}
+
+BOOST_AUTO_TEST_CASE(TestMoveSemantics) {
+    WeatherController controller1;
+    controller1.subscribe();
+    BOOST_CHECK(controller1.isSubscribed());
+
+    // Move constructor
+    WeatherController controller2(std::move(controller1));
+    BOOST_CHECK(controller2.isSubscribed());
+    BOOST_CHECK(!controller1.isSubscribed());  // Moved-from is unsubscribed
+}
+
+BOOST_AUTO_TEST_CASE(TestAutoUnsubscribeOnDestruction) {
+    {
+        WeatherController controller;
+        controller.subscribe();
+        BOOST_CHECK(controller.isSubscribed());
+        // Destructor should auto-unsubscribe
+    }
+    // No crash = success
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -66,73 +85,63 @@ BOOST_FIXTURE_TEST_SUITE(SubscriptionTests, WeatherControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestInitiallyNotSubscribed) {
     // Controller should not be subscribed initially
-    BOOST_CHECK(!getController().isSubscribed());
+    BOOST_CHECK(!m_controller.isSubscribed());
 }
 
 BOOST_AUTO_TEST_CASE(TestSubscribe) {
-    auto& controller = getController();
-
     // Subscribe
-    controller.subscribe();
+    m_controller.subscribe();
 
-    BOOST_CHECK(controller.isSubscribed());
+    BOOST_CHECK(m_controller.isSubscribed());
 }
 
 BOOST_AUTO_TEST_CASE(TestUnsubscribe) {
-    auto& controller = getController();
-
     // Subscribe first
-    controller.subscribe();
-    BOOST_CHECK(controller.isSubscribed());
+    m_controller.subscribe();
+    BOOST_CHECK(m_controller.isSubscribed());
 
     // Now unsubscribe
-    controller.unsubscribe();
-    BOOST_CHECK(!controller.isSubscribed());
+    m_controller.unsubscribe();
+    BOOST_CHECK(!m_controller.isSubscribed());
 }
 
 BOOST_AUTO_TEST_CASE(TestSubscribeUnsubscribeCycle) {
-    auto& controller = getController();
-
     // Multiple subscribe/unsubscribe cycles
     for (int i = 0; i < 3; ++i) {
-        controller.subscribe();
-        BOOST_CHECK(controller.isSubscribed());
+        m_controller.subscribe();
+        BOOST_CHECK(m_controller.isSubscribed());
 
-        controller.unsubscribe();
-        BOOST_CHECK(!controller.isSubscribed());
+        m_controller.unsubscribe();
+        BOOST_CHECK(!m_controller.isSubscribed());
     }
 }
 
 BOOST_AUTO_TEST_CASE(TestDoubleSubscribeIgnored) {
-    auto& controller = getController();
-
     // First subscribe
-    controller.subscribe();
-    BOOST_CHECK(controller.isSubscribed());
+    m_controller.subscribe();
+    BOOST_CHECK(m_controller.isSubscribed());
 
     // Second subscribe should be ignored (no crash, still subscribed)
-    controller.subscribe();
-    BOOST_CHECK(controller.isSubscribed());
+    m_controller.subscribe();
+    BOOST_CHECK(m_controller.isSubscribed());
 
     // Unsubscribe once should fully unsubscribe
-    controller.unsubscribe();
-    BOOST_CHECK(!controller.isSubscribed());
+    m_controller.unsubscribe();
+    BOOST_CHECK(!m_controller.isSubscribed());
 }
 
 BOOST_AUTO_TEST_CASE(TestDoubleUnsubscribeIgnored) {
-    auto& controller = getController();
-
     // Subscribe
-    controller.subscribe();
-    BOOST_CHECK(controller.isSubscribed());
+    m_controller.subscribe();
+    BOOST_CHECK(m_controller.isSubscribed());
 
     // First unsubscribe
-    controller.unsubscribe();
-    BOOST_CHECK(!controller.isSubscribed());
+    m_controller.unsubscribe();
+    BOOST_CHECK(!m_controller.isSubscribed());
 
     // Second unsubscribe should be safe (no crash)
-    controller.unsubscribe();
-    BOOST_CHECK(!controller.isSubscribed());
+    m_controller.unsubscribe();
+    BOOST_CHECK(!m_controller.isSubscribed());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -144,30 +153,21 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(CurrentWeatherTests, WeatherControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDefault) {
-    auto& controller = getController();
-
     // Default weather should be Clear
-    WeatherType weather = controller.getCurrentWeather();
+    WeatherType weather = m_controller.getCurrentWeather();
     BOOST_CHECK(weather == WeatherType::Clear);
 }
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherString) {
-    auto& controller = getController();
-
     // Default weather string should be "Clear"
-    const char* weatherStr = controller.getCurrentWeatherString();
-    BOOST_CHECK_EQUAL(std::string(weatherStr), "Clear");
+    std::string_view weatherStr = m_controller.getCurrentWeatherString();
+    BOOST_CHECK_EQUAL(weatherStr, "Clear");
 }
 
 BOOST_AUTO_TEST_CASE(TestWeatherStringValidity) {
-    auto& controller = getController();
-
-    // Weather string should not be null
-    const char* weatherStr = controller.getCurrentWeatherString();
-    BOOST_CHECK(weatherStr != nullptr);
-
-    // Should have some content
-    BOOST_CHECK(std::strlen(weatherStr) > 0);
+    // Weather string should not be empty
+    std::string_view weatherStr = m_controller.getCurrentWeatherString();
+    BOOST_CHECK(!weatherStr.empty());
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -179,77 +179,71 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(WeatherCheckEventTests, WeatherControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestWeatherCheckEventDispatch) {
-    auto& controller = getController();
-    controller.subscribe();
+    m_controller.subscribe();
 
     // Dispatch a weather check event with Rainy recommendation
     auto weatherCheckEvent = std::make_shared<WeatherCheckEvent>(Season::Spring, WeatherType::Rainy);
     EventManager::Instance().dispatchEvent(weatherCheckEvent, EventManager::DispatchMode::Immediate);
 
     // After processing, current weather should update
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Rainy);
-    BOOST_CHECK_EQUAL(std::string(controller.getCurrentWeatherString()), "Rainy");
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Rainy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherString()), "Rainy");
 }
 
 BOOST_AUTO_TEST_CASE(TestWeatherCheckEventIgnoredWhenUnsubscribed) {
-    auto& controller = getController();
-
     // Ensure not subscribed
-    BOOST_CHECK(!controller.isSubscribed());
+    BOOST_CHECK(!m_controller.isSubscribed());
 
     // Get initial weather
-    WeatherType initialWeather = controller.getCurrentWeather();
+    WeatherType initialWeather = m_controller.getCurrentWeather();
 
     // Dispatch a weather check event
     auto weatherCheckEvent = std::make_shared<WeatherCheckEvent>(Season::Winter, WeatherType::Snowy);
     EventManager::Instance().dispatchEvent(weatherCheckEvent, EventManager::DispatchMode::Immediate);
 
     // Weather should NOT change since we're not subscribed
-    BOOST_CHECK(controller.getCurrentWeather() == initialWeather);
+    BOOST_CHECK(m_controller.getCurrentWeather() == initialWeather);
 }
 
 BOOST_AUTO_TEST_CASE(TestWeatherChangeSequence) {
-    auto& controller = getController();
-    controller.subscribe();
+    m_controller.subscribe();
 
     // Change weather through sequence
     auto event1 = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Clear);
     EventManager::Instance().dispatchEvent(event1, EventManager::DispatchMode::Immediate);
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Clear);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Clear);
 
     auto event2 = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Cloudy);
     EventManager::Instance().dispatchEvent(event2, EventManager::DispatchMode::Immediate);
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Cloudy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Cloudy);
 
     auto event3 = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Rainy);
     EventManager::Instance().dispatchEvent(event3, EventManager::DispatchMode::Immediate);
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Rainy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Rainy);
 
     auto event4 = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Stormy);
     EventManager::Instance().dispatchEvent(event4, EventManager::DispatchMode::Immediate);
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Stormy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Stormy);
 }
 
 BOOST_AUTO_TEST_CASE(TestWeatherNoChangeOnSameWeather) {
-    auto& controller = getController();
-    controller.subscribe();
+    m_controller.subscribe();
 
     // Set initial weather
     auto event1 = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Cloudy);
     EventManager::Instance().dispatchEvent(event1, EventManager::DispatchMode::Immediate);
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Cloudy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Cloudy);
 
     // Dispatch same weather - should be ignored (no duplicate events)
     auto event2 = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Cloudy);
     EventManager::Instance().dispatchEvent(event2, EventManager::DispatchMode::Immediate);
 
     // Still Cloudy
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Cloudy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Cloudy);
 }
 
 BOOST_AUTO_TEST_CASE(TestAllWeatherTypes) {
-    auto& controller = getController();
-    controller.subscribe();
+    m_controller.subscribe();
 
     // Test all weather types
     struct WeatherTestCase {
@@ -271,8 +265,8 @@ BOOST_AUTO_TEST_CASE(TestAllWeatherTypes) {
         auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, tc.type);
         EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
 
-        BOOST_CHECK(controller.getCurrentWeather() == tc.type);
-        BOOST_CHECK_EQUAL(std::string(controller.getCurrentWeatherString()), tc.expectedString);
+        BOOST_CHECK(m_controller.getCurrentWeather() == tc.type);
+        BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherString()), tc.expectedString);
     }
 }
 
@@ -285,11 +279,10 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(TimeEventFilteringTests, WeatherControllerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestIgnoresNonWeatherCheckTimeEvents) {
-    auto& controller = getController();
-    controller.subscribe();
+    m_controller.subscribe();
 
     // Get initial weather
-    WeatherType initialWeather = controller.getCurrentWeather();
+    WeatherType initialWeather = m_controller.getCurrentWeather();
 
     // Dispatch various time events (not WeatherCheckEvent)
     auto hourEvent = std::make_shared<HourChangedEvent>(14, false);
@@ -302,24 +295,129 @@ BOOST_AUTO_TEST_CASE(TestIgnoresNonWeatherCheckTimeEvents) {
     EventManager::Instance().dispatchEvent(seasonEvent, EventManager::DispatchMode::Immediate);
 
     // Weather should remain unchanged
-    BOOST_CHECK(controller.getCurrentWeather() == initialWeather);
+    BOOST_CHECK(m_controller.getCurrentWeather() == initialWeather);
 }
 
 BOOST_AUTO_TEST_CASE(TestOnlyHandlesWeatherCheckEvent) {
-    auto& controller = getController();
-    controller.subscribe();
+    m_controller.subscribe();
 
     // Set initial weather
     auto weatherEvent = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Foggy);
     EventManager::Instance().dispatchEvent(weatherEvent, EventManager::DispatchMode::Immediate);
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Foggy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Foggy);
 
     // Dispatch other time events - should not affect weather
     auto hourEvent = std::make_shared<HourChangedEvent>(8, false);
     EventManager::Instance().dispatchEvent(hourEvent, EventManager::DispatchMode::Immediate);
 
     // Weather still Foggy
-    BOOST_CHECK(controller.getCurrentWeather() == WeatherType::Foggy);
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Foggy);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// WEATHER DESCRIPTION TESTS
+// ============================================================================
+
+BOOST_FIXTURE_TEST_SUITE(WeatherDescriptionTests, WeatherControllerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionClear) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Clear);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Clear);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Clear skies");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionCloudy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, WeatherType::Cloudy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Cloudy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Clouds gather");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionRainy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Rainy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Rainy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Rain begins");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionStormy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Summer, WeatherType::Stormy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Stormy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Storm approaches");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionFoggy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Fall, WeatherType::Foggy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Foggy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Fog rolls in");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionSnowy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Winter, WeatherType::Snowy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Snowy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Snow falls");
+}
+
+BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionWindy) {
+    m_controller.subscribe();
+
+    auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, WeatherType::Windy);
+    EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+    BOOST_CHECK(m_controller.getCurrentWeather() == WeatherType::Windy);
+    BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), "Wind picks up");
+}
+
+BOOST_AUTO_TEST_CASE(TestAllWeatherDescriptions) {
+    m_controller.subscribe();
+
+    // Test all weather types have correct descriptions
+    struct WeatherDescTestCase {
+        WeatherType type;
+        const char* expectedDesc;
+    };
+
+    WeatherDescTestCase testCases[] = {
+        {WeatherType::Clear,  "Clear skies"},
+        {WeatherType::Cloudy, "Clouds gather"},
+        {WeatherType::Rainy,  "Rain begins"},
+        {WeatherType::Stormy, "Storm approaches"},
+        {WeatherType::Foggy,  "Fog rolls in"},
+        {WeatherType::Snowy,  "Snow falls"},
+        {WeatherType::Windy,  "Wind picks up"}
+    };
+
+    for (const auto& tc : testCases) {
+        auto event = std::make_shared<WeatherCheckEvent>(Season::Spring, tc.type);
+        EventManager::Instance().dispatchEvent(event, EventManager::DispatchMode::Immediate);
+
+        BOOST_CHECK(m_controller.getCurrentWeather() == tc.type);
+        BOOST_CHECK_EQUAL(std::string(m_controller.getCurrentWeatherDescription()), tc.expectedDesc);
+    }
 }
 
 BOOST_AUTO_TEST_SUITE_END()

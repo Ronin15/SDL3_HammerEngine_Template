@@ -78,7 +78,7 @@ echo !BLUE!==== PERFORMANCE SUMMARY ====!NC!
 :: Extract WorkerBudget system information
 echo.
 echo !YELLOW!WorkerBudget System Configuration:!NC!
-findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"allocated to Events" "!OUTPUT_FILE!" 2>nul
+findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"workers" "!OUTPUT_FILE!" 2>nul
 
 :: Check if extreme scale test exists
 findstr /c:"===== EXTREME SCALE TEST =====" "!OUTPUT_FILE!" >nul 2>&1

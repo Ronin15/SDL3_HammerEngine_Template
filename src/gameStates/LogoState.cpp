@@ -55,8 +55,7 @@ void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolat
   // Scale all image dimensions and positions proportionally
   int bannerSize = static_cast<int>(256 * scale);
   int engineSize = static_cast<int>(128 * scale);
-  int sdlWidth = static_cast<int>(179 * scale);
-  int sdlHeight = static_cast<int>(99 * scale);
+  int sdlSize = static_cast<int>(128 * scale);
   int cppSize = static_cast<int>(50 * scale);
 
   // GAMESTATE_DEBUG("Rendering Main Menu State");
@@ -113,9 +112,9 @@ void LogoState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolat
   // Draw SDL logo centered below version text
   texMgr.draw(
       "sdl_logo",
-      (windowWidth / 2) - (sdlWidth / 2) + static_cast<int>(20 * scale),  // Center horizontally with right adjustment
-      (windowHeight / 2) + static_cast<int>(290 * scale),  // Scaled vertical position
-      sdlWidth, sdlHeight,
+      (windowWidth / 2) - (sdlSize / 2) + static_cast<int>(20 * scale),  // Center horizontally with offset
+      (windowHeight / 2) + static_cast<int>(260 * scale),  // Scaled vertical position
+      sdlSize, sdlSize,
       renderer);
 }
 

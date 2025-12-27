@@ -233,7 +233,7 @@ struct GlobalTestFixture {
         }
 
         // Enable threading
-        AIManager::Instance().configureThreading(true);
+        AIManager::Instance().enableThreading(true);
     }
 
     ~GlobalTestFixture() {

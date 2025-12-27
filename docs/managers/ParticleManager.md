@@ -141,35 +141,34 @@ ParticleManager leverages the SIMDMath.hpp abstraction layer for cross-platform 
 **Physics Update with SIMD:**
 ```cpp
 // Process 4 particles simultaneously using SIMDMath abstraction
+// Cross-platform: SSE2/NEON/scalar fallback handled automatically
 using namespace HammerEngine::SIMD;
 
-#if defined(HAMMER_SIMD_SSE2)
-  // Prepare SIMD constants
-  const Float4 deltaTimeVec = broadcast(deltaTime);
-  const Float4 atmosphericDragVec = broadcast(0.98f);
+// Prepare SIMD constants
+const Float4 deltaTimeVec = broadcast(deltaTime);
+const Float4 atmosphericDragVec = broadcast(0.98f);
 
-  // Load 4 particles' data (aligned loads)
-  Float4 posXv = load4(&particles.posX[i]);
-  Float4 posYv = load4(&particles.posY[i]);
-  Float4 velXv = load4(&particles.velX[i]);
-  Float4 velYv = load4(&particles.velY[i]);
-  const Float4 accXv = load4(&particles.accX[i]);
-  const Float4 accYv = load4(&particles.accY[i]);
+// Load 4 particles' data (aligned loads)
+Float4 posXv = load4(&particles.posX[i]);
+Float4 posYv = load4(&particles.posY[i]);
+Float4 velXv = load4(&particles.velX[i]);
+Float4 velYv = load4(&particles.velY[i]);
+const Float4 accXv = load4(&particles.accX[i]);
+const Float4 accYv = load4(&particles.accY[i]);
 
-  // Physics update: vel = (vel + acc * dt) * drag
-  velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
-  velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
+// Physics update: vel = (vel + acc * dt) * drag
+velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
+velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
 
-  // Position update: pos = pos + vel * dt
-  posXv = madd(velXv, deltaTimeVec, posXv);
-  posYv = madd(velYv, deltaTimeVec, posYv);
+// Position update: pos = pos + vel * dt
+posXv = madd(velXv, deltaTimeVec, posXv);
+posYv = madd(velYv, deltaTimeVec, posYv);
 
-  // Store results back to memory
-  store4(&particles.velX[i], velXv);
-  store4(&particles.velY[i], velYv);
-  store4(&particles.posX[i], posXv);
-  store4(&particles.posY[i], posYv);
-#endif
+// Store results back to memory
+store4(&particles.velX[i], velXv);
+store4(&particles.velY[i], velYv);
+store4(&particles.posX[i], posXv);
+store4(&particles.posY[i], posYv);
 ```
 
 **Active Flag Filtering with SIMD:**
@@ -411,7 +410,7 @@ void setCameraViewport(float x, float y, float width, float height);
 
 ```cpp
 // Threading configuration
-void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+void enableThreading(bool enable);
 void setThreadingThreshold(size_t threshold);
 void enableWorkerBudgetThreading(bool enable);
 

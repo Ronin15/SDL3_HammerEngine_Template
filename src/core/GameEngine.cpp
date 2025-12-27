@@ -7,8 +7,7 @@
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_surface.h"
 #include "SDL3/SDL_video.h"
-#include "core/GameLoop.hpp" // IWYU pragma: keep - Required for GameLoop weak_ptr declaration
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "gameStates/AIDemoState.hpp"
@@ -133,7 +132,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_WARN("Could not query display capabilities - proceeding with requested dimensions");
   }
   // Window handling with platform-specific optimizations
-  SDL_WindowFlags flags =
+  SDL_WindowFlags const flags =
       fullscreen ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
 
   if (fullscreen) {
@@ -211,12 +210,14 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
 
   // Log which renderer backend SDL3 actually selected
+#ifdef DEBUG
   auto rendererName = SDL_GetRendererName(mp_renderer.get());
   if (rendererName) {
     GAMEENGINE_INFO(std::format("SDL3 selected renderer backend: {}", rendererName));
   } else {
     GAMEENGINE_WARN("Could not determine selected renderer backend");
   }
+#endif
 
   GAMEENGINE_DEBUG("Rendering system online");
 
@@ -240,12 +241,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     m_isWayland = (sessionType == "wayland") || hasWaylandDisplay;
   }
 
+#ifdef DEBUG
   // Log detected platform
   if (m_isWayland) {
     GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
     GAMEENGINE_INFO(std::format("Platform detected: {}", videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
   }
+#endif
 
   // Load VSync preference from SettingsManager (defaults to enabled)
   auto& settings = HammerEngine::SettingsManager::Instance();
@@ -255,10 +258,9 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Attempt to set VSync based on user preference
   bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
 
-  if (!vsyncSetSuccessfully) {
-    GAMEENGINE_WARN(std::format("Failed to {} VSync: {}",
-                                vsyncRequested ? "enable" : "disable", SDL_GetError()));
-  }
+  GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
+      std::format("Failed to {} VSync: {}",
+                  vsyncRequested ? "enable" : "disable", SDL_GetError()));
 
   // Verify VSync state and update software frame limiting flag
   // verifyVSyncState() updates m_usingSoftwareFrameLimiting as a side effect
@@ -266,6 +268,7 @@ bool GameEngine::init(const std::string_view title, const int width,
     verifyVSyncState(vsyncRequested);
   }
 
+#ifdef DEBUG
   // Log frame timing mode
   if (m_usingSoftwareFrameLimiting) {
     if (vsyncRequested) {
@@ -276,6 +279,17 @@ bool GameEngine::init(const std::string_view title, const int width,
   } else {
     GAMEENGINE_INFO("Using hardware VSync for frame timing");
   }
+#endif
+
+  // Create TimestepManager with 60 FPS target and fixed timestep
+  constexpr float TARGET_FPS = 60.0f;
+  constexpr float FIXED_TIMESTEP = 1.0f / 60.0f;
+  m_timestepManager = std::make_unique<TimestepManager>(TARGET_FPS, FIXED_TIMESTEP);
+
+  // Configure software frame limiting if hardware VSync is unavailable
+  m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
+  GAMEENGINE_INFO(std::format("TimestepManager created: {} FPS, {} frame limiting",
+                              TARGET_FPS, m_usingSoftwareFrameLimiting ? "software" : "hardware"));
 
   // Load buffer configuration from SettingsManager (graphics settings)
   m_bufferCount = static_cast<size_t>(settings.get<int>("graphics", "buffer_count", 2));
@@ -297,15 +311,15 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
   // Use native resolution rendering on all platforms for crisp, sharp text
   // This eliminates GPU scaling blur and provides consistent cross-platform behavior
-  int actualWidth = pixelWidth;
-  int actualHeight = pixelHeight;
+  int const actualWidth = pixelWidth;
+  int const actualHeight = pixelHeight;
 
   // Store actual dimensions for UI positioning (no scaling needed)
   m_logicalWidth = actualWidth;
   m_logicalHeight = actualHeight;
 
   // Disable logical presentation to render at native resolution
-  SDL_RendererLogicalPresentation presentationMode =
+  SDL_RendererLogicalPresentation const presentationMode =
       SDL_LOGICAL_PRESENTATION_DISABLED;
   if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
                                         actualHeight, presentationMode)) {
@@ -641,7 +655,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Initialize GameTime (fast, no threading needed)
   // Time scale: 60.0 = 1 real second equals 1 game minute
   GAMEENGINE_INFO("Initializing GameTime system");
-  if (!GameTime::Instance().init(12.0f, 60.0f)) {
+  if (!GameTimeManager::Instance().init(12.0f, 60.0f)) {
     GAMEENGINE_ERROR("Failed to initialize GameTime");
     return false;
   }
@@ -792,9 +806,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   m_lastUpdateFrame.store(0, std::memory_order_release);
   m_lastRenderedFrame.store(0, std::memory_order_release);
 
-  // NOTE: Initial state will be pushed after GameLoop setup is complete
-  // This ensures the game loop is ready to handle state updates before any
-  // state enters
+  // Set running state - main loop will start after init returns
+  m_running.store(true, std::memory_order_release);
 
   return true;
 }
@@ -883,49 +896,22 @@ void GameEngine::handleEvents() {
 }
 
 void GameEngine::setRunning(bool running) {
-  if (auto gameLoop = m_gameLoop.lock()) {
-    if (running) {
-      // Can't restart GameLoop from GameEngine - this might be an error case
-      GAMEENGINE_WARN("Cannot start GameLoop from GameEngine - use "
-                      "GameLoop::run() instead");
-    } else {
-      gameLoop->stop();
-    }
-  } else {
-    GAMEENGINE_WARN("No GameLoop set - cannot change running state");
-  }
+  m_running.store(running, std::memory_order_relaxed);
 }
 
 bool GameEngine::getRunning() const {
-  if (auto gameLoop = m_gameLoop.lock()) {
-    return gameLoop->isRunning();
-  }
-  return false;
+  return m_running.load(std::memory_order_relaxed);
 }
 
 float GameEngine::getCurrentFPS() const {
-  if (auto gameLoop = m_gameLoop.lock()) {
-    return gameLoop->getCurrentFPS();
+  if (m_timestepManager) {
+    return m_timestepManager->getCurrentFPS();
   }
   return 0.0f;
 }
 
 void GameEngine::update(float deltaTime) {
-  // This method is now thread-safe and can be called from a worker thread
-#ifdef DEBUG
-  // TELEMETRY POINT 7: Start timing mutex wait
-  auto mutexWaitStart = std::chrono::high_resolution_clock::now();
-#endif
-
-  std::lock_guard<std::mutex> lock(m_updateMutex);
-
-#ifdef DEBUG
-  // TELEMETRY POINT 8: Mutex acquired - calculate wait time
-  auto mutexAcquired = std::chrono::high_resolution_clock::now();
-  double mutexWaitMs = std::chrono::duration<double, std::milli>(mutexAcquired - mutexWaitStart).count();
-#endif
-
-  // Mark update as running with relaxed ordering (protected by mutex)
+  // Main loop is single-threaded - update and render are sequential
   m_updateRunning.store(true, std::memory_order_relaxed);
 
   // Get the buffer for the current update
@@ -1007,10 +993,7 @@ void GameEngine::update(float deltaTime) {
   m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 
 #ifdef DEBUG
-  // TELEMETRY POINT 9: Buffer marked ready - record timing sample
-  auto bufferReadyTime = std::chrono::high_resolution_clock::now();
-  double bufferReadyDelayMs = std::chrono::duration<double, std::milli>(bufferReadyTime - mutexAcquired).count();
-  m_bufferTelemetry.addTimingSample(mutexWaitMs, bufferReadyDelayMs);
+  // Buffer telemetry - no mutex timing needed (single-threaded main loop)
 
   // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
   // Only logs when F3 toggle is enabled, otherwise silent
@@ -1029,8 +1012,6 @@ void GameEngine::update(float deltaTime) {
                                  m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG(std::format("  Render Stalls: {}", m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG(std::format("  Frames Skipped: {}", m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Avg Mutex Wait: {}ms", m_bufferTelemetry.avgMutexWaitMs.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Avg Buffer Ready Delay: {}ms", m_bufferTelemetry.avgBufferReadyMs.load(std::memory_order_relaxed)));
     GAMEENGINE_DEBUG(std::format("  Current Buffers: [Write:{} Read:{}]",
                                  m_currentBufferIndex.load(std::memory_order_relaxed),
                                  m_renderBufferIndex.load(std::memory_order_relaxed)));
@@ -1040,27 +1021,20 @@ void GameEngine::update(float deltaTime) {
   }
 #endif
 
-  // Mark update as completed with relaxed ordering (protected by condition
-  // variable)
+  // Mark update as completed
   m_updateCompleted.store(true, std::memory_order_relaxed);
-
   m_updateRunning.store(false, std::memory_order_relaxed);
-
-  // Notify anyone waiting on this update
-  m_updateCondition.notify_all();
-  m_bufferCondition.notify_all();
 }
 
 void GameEngine::render() {
-  // Always on MAIN thread as its an - SDL REQUIREMENT
-  std::lock_guard<std::mutex> lock(m_renderMutex);
+  // Always on MAIN thread - SDL REQUIREMENT
+  // Main loop is single-threaded, no mutex needed
 
-  // Calculate interpolation alpha from GameLoop's TimestepManager
+  // Calculate interpolation alpha from TimestepManager
   // This enables smooth rendering at any refresh rate with fixed 60Hz updates
   float interpolationAlpha = 1.0f;
-  if (auto gameLoop = m_gameLoop.lock()) {
-    interpolationAlpha = static_cast<float>(
-        gameLoop->getTimestepManager().getInterpolationAlpha());
+  if (m_timestepManager) {
+    interpolationAlpha = static_cast<float>(m_timestepManager->getInterpolationAlpha());
   }
 
   // Always render - optimized buffer management ensures render buffer is always
@@ -1125,9 +1099,6 @@ void GameEngine::swapBuffers() {
 
       // Clear the next buffer's ready state for the next update cycle
       m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-
-      // Signal buffer swap completion
-      m_bufferCondition.notify_one();
 
 #ifdef DEBUG
       // TELEMETRY POINT 2: Successful swap
@@ -1261,10 +1232,8 @@ GameEngine::getLogicalPresentationMode() const noexcept {
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
 
-  // Signal all threads to stop
+  // Signal shutdown
   m_stopRequested.store(true, std::memory_order_release);
-  m_updateCondition.notify_all();
-  m_bufferCondition.notify_all();
 
   // Cache manager references for better performance
   HammerEngine::ThreadSystem &threadSystem =
@@ -1357,10 +1326,6 @@ void GameEngine::clean() {
   window_to_destroy.reset();
   GAMEENGINE_INFO("Window destroyed successfully");
 
-  // Close gamepad handles right before SDL_Quit to ensure proper cleanup order
-  GAMEENGINE_INFO("Closing gamepad handles...");
-  InputManager::Instance().closeGamepads();
-
   GAMEENGINE_INFO("Calling SDL_Quit...");
   SDL_Quit();
 
@@ -1387,24 +1352,25 @@ bool GameEngine::setVSyncEnabled(bool enable) {
       GAMEENGINE_INFO("Falling back to software frame limiting");
 
       // Update TimestepManager
-      if (auto gameLoop = m_gameLoop.lock()) {
-        gameLoop->getTimestepManager().setSoftwareFrameLimiting(true);
+      if (m_timestepManager) {
+        m_timestepManager->setSoftwareFrameLimiting(true);
       }
     }
     return false;
   }
 
   // Verify VSync state and update software frame limiting flag
-  bool vsyncVerified = verifyVSyncState(enable);
+  bool const vsyncVerified = verifyVSyncState(enable);
 
   // Update TimestepManager
-  if (auto gameLoop = m_gameLoop.lock()) {
-    gameLoop->getTimestepManager().setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
+  if (m_timestepManager) {
+    m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
     GAMEENGINE_DEBUG(std::format("TimestepManager updated: software frame limiting {}",
                                  m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
   }
 
   // Log frame timing mode
+#ifdef DEBUG
   if (m_usingSoftwareFrameLimiting && enable) {
     GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
   } else if (!m_usingSoftwareFrameLimiting) {
@@ -1412,6 +1378,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   } else {
     GAMEENGINE_INFO("VSync disabled, using software frame limiting");
   }
+#endif
 
   // Save VSync setting to SettingsManager for persistence
   auto& settings = HammerEngine::SettingsManager::Instance();
@@ -1522,11 +1489,19 @@ void GameEngine::setGlobalPause(bool paused) {
     mp_pathfinderManager->setGlobalPause(paused);
   }
 
+  // Pause GameTime Manager
+  GameTimeManager::Instance().setGlobalPause(paused);
+
+  // Pause Event Manager
+  EventManager::Instance().setGlobalPause(paused);
+
+#ifdef DEBUG
   if (paused) {
     GAMEENGINE_INFO("Game globally paused - all managers idle");
   } else {
     GAMEENGINE_INFO("Game globally resumed");
   }
+#endif
 }
 
 bool GameEngine::isGloballyPaused() const {
@@ -1555,19 +1530,23 @@ bool GameEngine::verifyVSyncState(bool requested) {
     if (requested) {
       // When enabling, verify it's actually on
       vsyncVerified = (vsyncState > 0);
+#ifdef DEBUG
       if (vsyncVerified) {
         GAMEENGINE_INFO(std::format("VSync enabled and verified (mode: {})", vsyncState));
       } else {
         GAMEENGINE_WARN(std::format("VSync set but verification failed (reported mode: {})", vsyncState));
       }
+#endif
     } else {
       // When disabling, verify it's actually off
       vsyncVerified = (vsyncState == 0);
+#ifdef DEBUG
       if (vsyncVerified) {
         GAMEENGINE_INFO("VSync disabled and verified");
       } else {
         GAMEENGINE_WARN(std::format("VSync disable verification failed (reported mode: {})", vsyncState));
       }
+#endif
     }
   } else {
     GAMEENGINE_WARN(std::format("Could not verify VSync state: {}", SDL_GetError()));
@@ -1589,8 +1568,8 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   // 4) UI scales from logical size; UIManager layout recalculates on next render
 
   // Update GameEngine with new window dimensions
-  int newWidth = event.window.data1;
-  int newHeight = event.window.data2;
+  int const newWidth = event.window.data1;
+  int const newHeight = event.window.data2;
 
   GAMEENGINE_INFO(std::format("Window resized to: {}x{}", newWidth, newHeight));
 
@@ -1617,7 +1596,7 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
 
   // Reload fonts for new display configuration
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");
-  FontManager& fontManager = FontManager::Instance();
+  FontManager & fontManager = FontManager::Instance();
   if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
     GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
   } else {
@@ -1652,6 +1631,8 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
     case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
       eventName = "Content Scale Changed";
       break;
+    default:
+      break;
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
@@ -1672,7 +1653,7 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
 
     uiManager.cleanupForStateTransition();
 
-    FontManager& fontManager = FontManager::Instance();
+    FontManager & fontManager = FontManager::Instance();
     if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
       GAMEENGINE_WARN("Failed to reload fonts for new display size");
     } else {

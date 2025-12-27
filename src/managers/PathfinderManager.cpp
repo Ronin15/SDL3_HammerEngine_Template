@@ -148,7 +148,7 @@ void PathfinderManager::clean() {
     // No queue to clear - using direct ThreadSystem processing
 
     // Clear grid
-    m_grid.reset();
+    setGrid(nullptr);
 
     m_initialized.store(false);
     m_isShutdown = true;
@@ -175,9 +175,8 @@ void PathfinderManager::prepareForStateTransition() {
         std::lock_guard<std::mutex> lock(m_requestBufferMutex);
         size_t bufferSize = m_requestBuffer.size();
         m_requestBuffer.clear();
-        if (bufferSize > 0) {
-            PATHFIND_DEBUG(std::format("Cleared {} buffered requests", bufferSize));
-        }
+        PATHFIND_DEBUG_IF(bufferSize > 0,
+            std::format("Cleared {} buffered requests", bufferSize));
     }
 
     // Clear path cache completely for fresh state
@@ -185,9 +184,8 @@ void PathfinderManager::prepareForStateTransition() {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
         size_t cacheSize = m_pathCache.size();
         m_pathCache.clear();
-        if (cacheSize > 0) {
-            PATHFIND_INFO(std::format("Cleared {} cached paths for state transition", cacheSize));
-        }
+        PATHFIND_INFO_IF(cacheSize > 0,
+            std::format("Cleared {} cached paths for state transition", cacheSize));
     }
 
     // Clear pending requests to avoid callbacks to old game state
@@ -195,9 +193,8 @@ void PathfinderManager::prepareForStateTransition() {
         std::lock_guard<std::mutex> lock(m_pendingMutex);
         size_t pendingSize = m_pending.size();
         m_pending.clear();
-        if (pendingSize > 0) {
-            PATHFIND_DEBUG(std::format("Cleared {} pending requests", pendingSize));
-        }
+        PATHFIND_DEBUG_IF(pendingSize > 0,
+            std::format("Cleared {} pending requests", pendingSize));
     }
     
     // Reset statistics for clean slate
@@ -219,7 +216,7 @@ void PathfinderManager::prepareForStateTransition() {
     
     // Keep grid instance but invalidate any cached data within it
     // Grid will be rebuilt when needed by new state
-    if (m_grid) {
+    if (getGridSnapshot()) {
         // Clear any temporary weight fields that might be state-specific
         clearWeightFields();
     }
@@ -238,7 +235,7 @@ bool PathfinderManager::isShutdown() const {
 
 bool PathfinderManager::isGridReady() const {
     // Grid is ready if it exists and all rebuild tasks are complete
-    if (!m_grid) {
+    if (!getGridSnapshot()) {
         return false;
     }
 
@@ -262,7 +259,11 @@ uint64_t PathfinderManager::requestPath(
         return 0;
     }
 
-    // Normalize endpoints (clamp/snap/quantize)
+    // Compute cache key from RAW coordinates BEFORE normalization
+    // This ensures pre-warmed sector paths can be hit by nearby NPC requests
+    const uint64_t cacheKey = computeStableCacheKey(start, goal);
+
+    // Normalize endpoints (clamp/snap/quantize) - modifies coords for pathfinding accuracy
     Vector2D nStart = start;
     Vector2D nGoal = goal;
     normalizeEndpoints(nStart, nGoal);
@@ -281,6 +282,7 @@ uint64_t PathfinderManager::requestPath(
             priority,
             callback,
             requestId,
+            cacheKey,
             std::chrono::steady_clock::now()
         });
     }
@@ -313,7 +315,7 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     }
 
     // Take a snapshot of the grid to avoid races with background rebuilds
-    auto gridSnapshot = std::atomic_load(&m_grid);
+    auto gridSnapshot = getGridSnapshot();
     if (!gridSnapshot) {
         // Record timing even for failed requests
         auto endTime = std::chrono::steady_clock::now();
@@ -379,8 +381,9 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     }
 
     // Smart rebuild decision: check if incremental update is beneficial
-    if (allowIncremental && m_grid && m_grid->hasDirtyRegions()) {
-        float dirtyPercent = m_grid->calculateDirtyPercent();
+    auto currentGrid = getGridSnapshot();
+    if (allowIncremental && currentGrid && currentGrid->hasDirtyRegions()) {
+        float dirtyPercent = currentGrid->calculateDirtyPercent();
 
         if (dirtyPercent <= DIRTY_THRESHOLD_PERCENT * 100.0f) {
             // Incremental update is beneficial (small change)
@@ -391,8 +394,8 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             auto& threadSystem = HammerEngine::ThreadSystem::Instance();
             auto rebuildFuture = threadSystem.enqueueTaskWithResult(
                 [this]() {
-                    if (m_grid) {
-                        m_grid->rebuildDirtyRegions();
+                    if (auto grid = getGridSnapshot()) {
+                        grid->rebuildDirtyRegions();
                         PATHFIND_INFO("Incremental grid rebuild complete");
                     }
                 },
@@ -407,7 +410,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
             // Too much dirty (>25%) - full rebuild is faster
             PATHFIND_DEBUG(std::format("Full rebuild: {}% dirty exceeds threshold ({}%)",
                           dirtyPercent, DIRTY_THRESHOLD_PERCENT * 100.0f));
-            m_grid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
+            currentGrid->clearDirtyRegions(); // Clear dirty regions, will do full rebuild
         }
     }
 
@@ -417,9 +420,9 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         return;
     }
 
-    float worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
-    float worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
-    int gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
+    float const worldPixelWidth = worldWidth * HammerEngine::TILE_SIZE;
+    float const worldPixelHeight = worldHeight * HammerEngine::TILE_SIZE;
+    int const gridWidth = static_cast<int>(worldPixelWidth / m_cellSize);
     int gridHeight = static_cast<int>(worldPixelHeight / m_cellSize);
     if (gridWidth <= 0 || gridHeight <= 0) {
         PATHFIND_WARN("Calculated grid too small during rebuild");
@@ -427,33 +430,31 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
     }
 
     // Capture rebuild parameters for async execution
-    float cellSize = m_cellSize;
+    float const cellSize = m_cellSize;
     bool allowDiagonal = m_allowDiagonal;
     int maxIterations = m_maxIterations;
 
     // Get ThreadSystem reference
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    // Query ThreadSystem state for WorkerBudget coordination
-    size_t availableWorkers = threadSystem.getThreadCount();
-    size_t queueSize = threadSystem.getQueueSize();
-    size_t queueCapacity = threadSystem.getQueueCapacity();
-    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
+    // Use centralized WorkerBudgetManager for smart worker allocation
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    // Calculate WorkerBudget allocation
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
+    // Calculate optimal worker count for grid rebuild (considers queue pressure internally)
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Pathfinding,
+        static_cast<size_t>(gridHeight)  // Workload = number of rows
+    );
 
-    // Calculate optimal worker count for grid rebuild
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-        budget.pathfindingAllocated,  // Base allocation (typically 1-2 workers)
-        static_cast<size_t>(gridHeight), // Workload = number of rows
-        MIN_GRID_ROWS_FOR_BATCHING    // Threshold (64 rows)
+    // Get batch strategy from WorkerBudget
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Pathfinding,
+        static_cast<size_t>(gridHeight),
+        optimalWorkerCount
     );
 
     // Determine if parallel batching is beneficial
-    const bool useParallelBatching = (static_cast<size_t>(gridHeight) >= MIN_GRID_ROWS_FOR_BATCHING) &&
-                                     (optimalWorkerCount > 0) &&
-                                     (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
+    const bool useParallelBatching = (batchCount > 1);
 
     if (!useParallelBatching) {
         // Sequential fallback for small grids or high queue pressure
@@ -468,7 +469,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     newGrid->setMaxIterations(maxIterations);
                     newGrid->rebuildFromWorld(); // Full sequential rebuild
 
-                    std::atomic_store(&m_grid, newGrid);
+                    setGrid(newGrid);
 
                     if (m_initialized.load(std::memory_order_acquire)) {
                         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
@@ -491,16 +492,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
         return;
     }
 
-    // Parallel batching path: Use calculateBatchStrategy with PATHFINDING_BATCH_CONFIG
-    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-        HammerEngine::PATHFINDING_BATCH_CONFIG,
-        static_cast<size_t>(gridHeight),  // Total rows
-        MIN_GRID_ROWS_FOR_BATCHING,
-        optimalWorkerCount,
-        budget.pathfindingAllocated,
-        queuePressure
-    );
-
+    // Parallel batching path: batchCount and batchSize already computed above
     PATHFIND_DEBUG(std::format("Parallel grid rebuild: {} rows in {} batches (size: {}), workers: {}",
                   gridHeight, batchCount, batchSize, optimalWorkerCount));
 
@@ -548,7 +540,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                 newGrid->updateCoarseGrid();
 
                 // Atomically swap the grid
-                std::atomic_store(&m_grid, newGrid);
+                setGrid(newGrid);
                 PATHFIND_DEBUG("Parallel grid rebuild: Grid stored atomically");
 
                 if (m_initialized.load(std::memory_order_acquire)) {
@@ -580,7 +572,7 @@ void PathfinderManager::addTemporaryWeightField(const Vector2D& center, float ra
         return;
     }
 
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = getGridSnapshot()) {
         grid->addWeightCircle(center, radius, weight);
     }
 }
@@ -590,14 +582,14 @@ void PathfinderManager::clearWeightFields() {
         return;
     }
 
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = getGridSnapshot()) {
         grid->resetWeights(1.0f);
     }
 }
 
 void PathfinderManager::setAllowDiagonal(bool allow) {
     m_allowDiagonal = allow;
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = getGridSnapshot();
     if (grid) {
         grid->setAllowDiagonal(allow);
     }
@@ -605,7 +597,7 @@ void PathfinderManager::setAllowDiagonal(bool allow) {
 
 void PathfinderManager::setMaxIterations(int maxIterations) {
     m_maxIterations = std::max(100, maxIterations);
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = getGridSnapshot();
     if (grid) {
         grid->setMaxIterations(m_maxIterations);
     }
@@ -633,7 +625,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     stats.failedRequests = m_failedRequests.load(std::memory_order_relaxed);
     
     // Calculate average processing time and requests per second
-    uint64_t totalRequests = stats.completedRequests + stats.failedRequests;
+    uint64_t const totalRequests = stats.completedRequests + stats.failedRequests;
     if (totalRequests > 0) {
         double totalTimeMs = m_totalProcessingTimeMs.load(std::memory_order_relaxed);
         stats.averageProcessingTimeMs = totalTimeMs / totalRequests;
@@ -679,9 +671,10 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
 
     // Calculate approximate memory usage
     size_t gridMemory = 0;
-    if (m_grid) {
+    auto currentGrid = getGridSnapshot();
+    if (currentGrid) {
         // Approximate grid memory: width * height * sizeof(cell data)
-        gridMemory = m_grid->getWidth() * m_grid->getHeight() * 8; // ~8 bytes per cell
+        gridMemory = currentGrid->getWidth() * currentGrid->getHeight() * 8; // ~8 bytes per cell
     }
     
     // Cache memory usage (approximate)
@@ -691,7 +684,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
     stats.memoryUsageKB = (gridMemory + cacheMemory) / 1024.0;
     
     // Calculate cache hit rates
-    uint64_t totalCacheChecks = stats.cacheHits + stats.cacheMisses;
+    uint64_t const totalCacheChecks = stats.cacheHits + stats.cacheMisses;
     if (totalCacheChecks > 0) {
         stats.cacheHitRate = static_cast<float>(stats.cacheHits) / static_cast<float>(totalCacheChecks);
         stats.totalHitRate = stats.cacheHitRate;
@@ -728,11 +721,12 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
     // Cache the bounds during grid initialization and use fallback if not available
 
     // Use cached bounds from grid initialization if available
-    if (m_grid) {
+    auto currentGrid = getGridSnapshot();
+    if (currentGrid) {
         // Get bounds from the pathfinding grid which are cached
         const float gridCellSize = 64.0f; // Match m_cellSize
-        const float worldWidth = m_grid->getWidth() * gridCellSize;
-        const float worldHeight = m_grid->getHeight() * gridCellSize;
+        const float worldWidth = currentGrid->getWidth() * gridCellSize;
+        const float worldHeight = currentGrid->getHeight() * gridCellSize;
 
         Vector2D result(
             std::clamp(position.getX(), margin, worldWidth - margin),
@@ -747,7 +741,7 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
 }
 
 bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) const {
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = getGridSnapshot();
     if (grid) {
         const float gridCellSize = 64.0f;
         outWidth = grid->getWidth() * gridCellSize;
@@ -759,15 +753,15 @@ bool PathfinderManager::getCachedWorldBounds(float& outWidth, float& outHeight) 
 }
 
 Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float halfW, float halfH, float extraMargin) const {
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = getGridSnapshot();
     if (grid) {
         const float gridCellSize = 64.0f;
         const float worldWidth = grid->getWidth() * gridCellSize;
         const float worldHeight = grid->getHeight() * gridCellSize;
-        float minX = halfW + extraMargin;
-        float minY = halfH + extraMargin;
-        float maxX = worldWidth - halfW - extraMargin;
-        float maxY = worldHeight - halfH - extraMargin;
+        float const minX = halfW + extraMargin;
+        float const minY = halfH + extraMargin;
+        float const maxX = worldWidth - halfW - extraMargin;
+        float const maxY = worldHeight - halfH - extraMargin;
         return Vector2D(
             std::clamp(position.getX(), minX, maxX),
             std::clamp(position.getY(), minY, maxY)
@@ -779,7 +773,7 @@ Vector2D PathfinderManager::clampInsideExtents(const Vector2D& position, float h
 
 Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, float halfW, float halfH, float interiorMargin) const {
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
-    auto grid = std::atomic_load(&m_grid);
+    auto grid = getGridSnapshot();
     if (grid) {
         // Snap within ~2 cells
         Vector2D snapped = grid->snapToNearestOpenWorld(pos, grid->getCellSize() * 2.0f);
@@ -790,7 +784,7 @@ Vector2D PathfinderManager::adjustSpawnToNavigable(const Vector2D& desired, floa
     const auto &wm = WorldManager::Instance();
     float minX=0, minY=0, maxX=0, maxY=0;
     if (wm.getWorldBounds(minX, minY, maxX, maxY)) {
-        Vector2D center((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
+        Vector2D const center((minX + maxX) * 0.5f, (minY + maxY) * 0.5f);
         Vector2D dir = center - pos;
         if (dir.length() > 0.001f) {
             dir.normalize();
@@ -810,21 +804,21 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInRect(const Vector2D& desired
                                                          float minX, float minY,
                                                          float maxX, float maxY) const {
     // Clamp area by extents + interior margin
-    float aminX = minX + halfW + interiorMargin;
-    float aminY = minY + halfH + interiorMargin;
-    float amaxX = maxX - halfW - interiorMargin;
-    float amaxY = maxY - halfH - interiorMargin;
+    float const aminX = minX + halfW + interiorMargin;
+    float const aminY = minY + halfH + interiorMargin;
+    float const amaxX = maxX - halfW - interiorMargin;
+    float const amaxY = maxY - halfH - interiorMargin;
 
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
     // Clamp to area rect
     pos.setX(std::clamp(pos.getX(), aminX, amaxX));
     pos.setY(std::clamp(pos.getY(), aminY, amaxY));
 
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = getGridSnapshot()) {
         // Try snap within area (rings of ~cell size)
         float cell = grid->getCellSize();
         for (int r = 0; r <= 2; ++r) {
-            float rad = (r+1) * cell;
+            float const rad = (r+1) * cell;
             for (int i = 0; i < 16; ++i) {
                 float ang = static_cast<float>(i) * (static_cast<float>(M_PI) * 2.0f / 16.0f);
                 Vector2D cand = Vector2D(pos.getX() + std::cos(ang) * rad,
@@ -847,22 +841,22 @@ Vector2D PathfinderManager::adjustSpawnToNavigableInCircle(const Vector2D& desir
     float effectiveR = std::max(0.0f, radius - std::max(halfW, halfH) - interiorMargin);
     Vector2D pos = clampInsideExtents(desired, halfW, halfH, interiorMargin);
     Vector2D to = pos - center;
-    float d = to.length();
+    float const d = to.length();
     if (d > effectiveR && d > 0.001f) {
         to = to * (effectiveR / d);
         pos = center + to;
     }
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = getGridSnapshot()) {
         float cell = grid->getCellSize();
         for (int r = 0; r <= 2; ++r) {
-            float rad = (r+1) * cell;
+            float const rad = (r+1) * cell;
             for (int i = 0; i < 16; ++i) {
                 float ang = static_cast<float>(i) * (static_cast<float>(M_PI) * 2.0f / 16.0f);
                 Vector2D cand = Vector2D(pos.getX() + std::cos(ang) * rad,
                                          pos.getY() + std::sin(ang) * rad);
                 // Project back to circle if outside
                 Vector2D tc = cand - center;
-                float cd = tc.length();
+                float const cd = tc.length();
                 if (cd > effectiveR && cd > 0.001f) {
                     tc = tc * (effectiveR / cd);
                     cand = center + tc;
@@ -882,7 +876,7 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
     goal = clampToWorldBounds(goal, EDGE_MARGIN);
 
     // Snap to nearest open cells if grid available
-    if (auto grid = std::atomic_load(&m_grid)) {
+    if (auto grid = getGridSnapshot()) {
         float r = grid->getCellSize() * 2.0f;
         start = grid->snapToNearestOpenWorld(start, r);
         goal = grid->snapToNearestOpenWorld(goal, r);
@@ -933,7 +927,7 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
     if (dist2 > 0.01f) { // equivalent to previous 0.1f threshold squared
         // Move toward current path node
         float invLen = 1.0f / std::sqrt(dist2);
-        Vector2D direction = toNode * invLen; // normalized
+        Vector2D const direction = toNode * invLen; // normalized
         entity->setVelocity(direction * speed);
         return true;
     }
@@ -944,15 +938,14 @@ bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& current
 void PathfinderManager::reportStatistics() const {
     auto stats = getStats();
 
-    if (stats.totalRequests > 0) {
-        PATHFIND_INFO(std::format("PathfinderManager Status - Total Requests: {}, Completed: {}, Failed: {}, "
-                     "Cache Hits: {}, Cache Misses: {}, Hit Rate: {}%, Cache Size: {}, Avg Time: {}ms, "
-                     "RPS: {}, Memory: {} KB, ThreadSystem: {}",
-                     stats.totalRequests, stats.completedRequests, stats.failedRequests,
-                     stats.cacheHits, stats.cacheMisses, static_cast<int>(stats.cacheHitRate * 100),
-                     stats.cacheSize, stats.averageProcessingTimeMs, static_cast<int>(stats.requestsPerSecond),
-                     stats.memoryUsageKB, (stats.processorActive ? "Active" : "Inactive")));
-    }
+    PATHFIND_INFO_IF(stats.totalRequests > 0,
+        std::format("PathfinderManager Status - Total Requests: {}, Completed: {}, Failed: {}, "
+                    "Cache Hits: {}, Cache Misses: {}, Hit Rate: {}%, Cache Size: {}, Avg Time: {}ms, "
+                    "RPS: {}, Memory: {} KB, ThreadSystem: {}",
+                    stats.totalRequests, stats.completedRequests, stats.failedRequests,
+                    stats.cacheHits, stats.cacheMisses, static_cast<int>(stats.cacheHitRate * 100),
+                    stats.cacheSize, stats.averageProcessingTimeMs, static_cast<int>(stats.requestsPerSecond),
+                    stats.memoryUsageKB, (stats.processorActive ? "Active" : "Inactive")));
 
     // Reset per-cycle counters for next reporting window (every 600 frames / 10 seconds)
     m_enqueuedRequests.store(0, std::memory_order_relaxed);
@@ -965,16 +958,31 @@ void PathfinderManager::reportStatistics() const {
 
 bool PathfinderManager::ensureGridInitialized() {
     // Check if grid exists - no fallback
-    return std::atomic_load(&m_grid) != nullptr;
+    return getGridSnapshot() != nullptr;
 }
 
-uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2D& goal) const {
-    // Dynamic quantization scaled to world size for optimal cache coverage
-    // Automatically calculated to ensure cache buckets ≈ sqrt(MAX_CACHE_ENTRIES)
-    int sx = static_cast<int>(start.getX() / m_cacheKeyQuantization);
-    int sy = static_cast<int>(start.getY() / m_cacheKeyQuantization);
-    int gx = static_cast<int>(goal.getX() / m_cacheKeyQuantization);
-    int gy = static_cast<int>(goal.getY() / m_cacheKeyQuantization);
+uint64_t PathfinderManager::computeStableCacheKey(const Vector2D& start, const Vector2D& goal) const {
+    // OPTIMIZATION: Stable cache key that does NOT depend on obstacle layout
+    // This allows pre-warmed sector paths to be hit by nearby NPC requests
+    //
+    // Key insight: normalizeEndpoints() calls snapToNearestOpenWorld() which changes
+    // coordinates based on which cells are blocked. This made pre-warmed paths
+    // (from sector centers) unmatchable by runtime requests (from NPC positions).
+    //
+    // Solution: Quantize BEFORE any snapping, using only clamped raw coordinates.
+    // Two requests within the same quantization bucket will get the same cache key,
+    // even if they snap to different open cells during actual pathfinding.
+    constexpr float EDGE_MARGIN = 96.0f;
+
+    // Clamp to world bounds (same as normalizeEndpoints step 1)
+    Vector2D const nStart = clampToWorldBounds(start, EDGE_MARGIN);
+    Vector2D const nGoal = clampToWorldBounds(goal, EDGE_MARGIN);
+
+    // Quantize directly - NO snapping to open cells (makes key stable)
+    int const sx = static_cast<int>(nStart.getX() / m_cacheKeyQuantization);
+    int const sy = static_cast<int>(nStart.getY() / m_cacheKeyQuantization);
+    int const gx = static_cast<int>(nGoal.getX() / m_cacheKeyQuantization);
+    int const gy = static_cast<int>(nGoal.getY() / m_cacheKeyQuantization);
 
     // Pack into 64-bit key: sx(16) | sy(16) | gx(16) | gy(16)
     return (static_cast<uint64_t>(sx & 0xFFFF) << 48) |
@@ -982,7 +990,6 @@ uint64_t PathfinderManager::computeCacheKey(const Vector2D& start, const Vector2
            (static_cast<uint64_t>(gx & 0xFFFF) << 16) |
            static_cast<uint64_t>(gy & 0xFFFF);
 }
-
 
 void PathfinderManager::evictOldestCacheEntry() {
     if (m_pathCache.empty()) return;
@@ -1034,13 +1041,14 @@ void PathfinderManager::clearAllCache() {
 }
 
 void PathfinderManager::calculateOptimalCacheSettings() {
-    if (!m_grid) {
+    auto currentGrid = getGridSnapshot();
+    if (!currentGrid) {
         PATHFIND_WARN("Cannot calculate cache settings - no grid available");
         return;
     }
 
-    float worldW = m_grid->getWidth() * m_cellSize;
-    float worldH = m_grid->getHeight() * m_cellSize;
+    float worldW = currentGrid->getWidth() * m_cellSize;
+    float worldH = currentGrid->getHeight() * m_cellSize;
     float diagonal = std::sqrt(worldW * worldW + worldH * worldH);
 
     // ADAPTIVE QUANTIZATION: Single unified quantization for correctness
@@ -1049,17 +1057,6 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     // 0.5% of world size with strict 256px cap to keep quantization fine-grained
     // This prevents entities from snapping to blocked cells
     m_endpointQuantization = std::clamp(worldW / 200.0f, 128.0f, 256.0f);
-
-    // BUGFIX: Cache key quantization MUST match endpoint quantization to prevent
-    // coalescing requests with different normalized goals. Previously, cache key was
-    // 4-8x coarser than endpoint quantization, causing coalesced entities to receive
-    // paths to wrong destinations (off by 160-512px from their actual normalized goal).
-    // Example bug scenario with old values (endpoint=160px, cache=1280px):
-    //   Entity A requests path to (5920, 6720) [after endpoint quantization]
-    //   Entity B requests path to (6080, 6720) [after endpoint quantization]
-    //   Both get same cache key due to coarse cache quantization
-    //   Entity B receives path to (5920, 6720) instead of (6080, 6720) - 160px error!
-    m_cacheKeyQuantization = m_endpointQuantization;
 
     // ADAPTIVE THRESHOLDS
     m_hierarchicalThreshold = diagonal * 0.05f;      // 5% of world diagonal
@@ -1078,13 +1075,20 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     }
     // Calculate actual path count for 8-connected grid: 2×N×(N-1) + 2×(N-1)²
     // For N=8: 2×8×7 + 2×7² = 112 + 98 = 210 paths
-    int N = m_prewarmSectorCount;
+    int const N = m_prewarmSectorCount;
     m_prewarmPathCount = 2 * N * (N - 1) + 2 * (N - 1) * (N - 1);
 
+    // Cache key quantization based on sector size for pre-warming effectiveness
+    // With RAW coord cache key (computed before normalization), coarser quantization is safe
+    // because paths are stored/retrieved by bucket, and the actual path follows normalized coords.
+    // Set to half sector size so NPCs anywhere in a sector can hit pre-warmed paths.
+    float const sectorSize = worldW / static_cast<float>(m_prewarmSectorCount);
+    m_cacheKeyQuantization = sectorSize / 2.0f;  // Half sector = 4 buckets per sector
+
     // Calculate expected cache bucket count for logging
-    int bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
-    int bucketsY = static_cast<int>(worldH / m_cacheKeyQuantization);
-    int totalBuckets = bucketsX * bucketsY;
+    int const bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
+    int const bucketsY = static_cast<int>(worldH / m_cacheKeyQuantization);
+    int const totalBuckets = bucketsX * bucketsY;
     float cacheEfficiency = (static_cast<float>(MAX_CACHE_ENTRIES) / static_cast<float>(totalBuckets)) * 100.0f;
 
     PATHFIND_INFO(std::format("Auto-tuned cache settings for {}×{}px world:",
@@ -1107,15 +1111,16 @@ void PathfinderManager::calculateOptimalCacheSettings() {
 void PathfinderManager::prewarmPathCache() {
     // Use compare_exchange to ensure only one thread executes pre-warming
     bool expected = false;
-    if (!m_prewarming.compare_exchange_strong(expected, true) || !m_grid) {
+    auto currentGrid = getGridSnapshot();
+    if (!m_prewarming.compare_exchange_strong(expected, true) || !currentGrid) {
         return;
     }
 
-    float worldW = m_grid->getWidth() * m_cellSize;
-    float worldH = m_grid->getHeight() * m_cellSize;
-    int sectors = m_prewarmSectorCount;
-    float sectorW = worldW / static_cast<float>(sectors);
-    float sectorH = worldH / static_cast<float>(sectors);
+    float worldW = currentGrid->getWidth() * m_cellSize;
+    float worldH = currentGrid->getHeight() * m_cellSize;
+    int const sectors = m_prewarmSectorCount;
+    float const sectorW = worldW / static_cast<float>(sectors);
+    float const sectorH = worldH / static_cast<float>(sectors);
 
     PATHFIND_INFO(std::format("Pre-warming cache with {} sector-based paths (world: {}×{}px, sectors: {}×{})...",
                   m_prewarmPathCount, static_cast<int>(worldW), static_cast<int>(worldH),
@@ -1127,7 +1132,7 @@ void PathfinderManager::prewarmPathCache() {
 
     for (int sy = 0; sy < sectors; sy++) {
         for (int sx = 0; sx < sectors; sx++) {
-            Vector2D sectorCenter(
+            Vector2D const sectorCenter(
                 (static_cast<float>(sx) + 0.5f) * sectorW,
                 (static_cast<float>(sy) + 0.5f) * sectorH
             );
@@ -1137,14 +1142,14 @@ void PathfinderManager::prewarmPathCache() {
                 for (int dx = -1; dx <= 1; dx++) {
                     if (dx == 0 && dy == 0) continue; // Skip self
 
-                    int nx = sx + dx;
-                    int ny = sy + dy;
+                    int const nx = sx + dx;
+                    int const ny = sy + dy;
 
                     // Only connect to valid neighbors within bounds
                     if (nx >= 0 && nx < sectors && ny >= 0 && ny < sectors) {
                         // Only add each connection once (avoid duplicates by only connecting forward)
                         if (ny > sy || (ny == sy && nx > sx)) {
-                            Vector2D neighborCenter(
+                            Vector2D const neighborCenter(
                                 (static_cast<float>(nx) + 0.5f) * sectorW,
                                 (static_cast<float>(ny) + 0.5f) * sectorH
                             );
@@ -1276,25 +1281,25 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
             }
         }
         
-        if (removedCount > 0) {
-            PATHFIND_DEBUG(std::format("Invalidated {} cached paths due to obstacle change: {}",
-                          removedCount, description));
-        }
+        PATHFIND_DEBUG_IF(removedCount > 0,
+            std::format("Invalidated {} cached paths due to obstacle change: {}",
+                        removedCount, description));
     }
 
     // Mark dirty region on pathfinding grid for incremental update
-    if (m_grid) {
+    auto currentGrid = getGridSnapshot();
+    if (currentGrid) {
         // Convert world position to grid cell coordinates
-        int gridX = static_cast<int>((position.getX()) / m_cellSize);
-        int gridY = static_cast<int>((position.getY()) / m_cellSize);
+        int const gridX = static_cast<int>((position.getX()) / m_cellSize);
+        int const gridY = static_cast<int>((position.getY()) / m_cellSize);
         int gridRadius = static_cast<int>(std::ceil(radius / m_cellSize)) + 1; // +1 for safety margin
 
         // Mark circular dirty region
         for (int dy = -gridRadius; dy <= gridRadius; ++dy) {
             for (int dx = -gridRadius; dx <= gridRadius; ++dx) {
-                float distSq = dx * dx + dy * dy;
+                float const distSq = dx * dx + dy * dy;
                 if (distSq <= gridRadius * gridRadius) {
-                    m_grid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
+                    currentGrid->markDirtyRegion(gridX + dx, gridY + dy, 1, 1);
                 }
             }
         }
@@ -1327,7 +1332,7 @@ void PathfinderManager::onWorldUnloaded() {
 
 void PathfinderManager::onTileChanged(int x, int y) {
     // Convert tile coordinates to world position using global tile size constant
-    Vector2D tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+    Vector2D const tileWorldPos(x * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
                           y * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
 
     // Invalidate paths that pass through or near the changed tile
@@ -1357,20 +1362,20 @@ void PathfinderManager::onTileChanged(int x, int y) {
         }
     }
 
-    if (removedCount > 0) {
-        PATHFIND_DEBUG(std::format("Tile changed at ({}, {}), invalidated {} cached paths",
-                      x, y, removedCount));
-    }
+    PATHFIND_DEBUG_IF(removedCount > 0,
+        std::format("Tile changed at ({}, {}), invalidated {} cached paths",
+                    x, y, removedCount));
 
     // Mark dirty region on pathfinding grid for incremental update
-    if (m_grid) {
+    auto tileGrid = getGridSnapshot();
+    if (tileGrid) {
         // Convert tile coordinates to grid cell coordinates
         // Tile coordinates are in world tiles, grid cells may be different size
         int gridX = static_cast<int>((x * HammerEngine::TILE_SIZE) / m_cellSize);
         int gridY = static_cast<int>((y * HammerEngine::TILE_SIZE) / m_cellSize);
 
         // Mark single cell dirty (tile changes typically affect one cell)
-        m_grid->markDirtyRegion(gridX, gridY, 1, 1);
+        tileGrid->markDirtyRegion(gridX, gridY, 1, 1);
         PATHFIND_DEBUG(std::format("Marked dirty region for tile change at grid ({},{})",
                       gridX, gridY));
     }
@@ -1408,6 +1413,17 @@ void PathfinderManager::waitForGridRebuildCompletion() {
 // WorkerBudget Batch Processing Implementation
 
 void PathfinderManager::processPendingRequests() {
+    // Report previous frame's batch completion (deferred, non-blocking)
+    if (m_lastBatchCount > 0 && m_lastWorkloadSize > 0) {
+        auto now = std::chrono::steady_clock::now();
+        double elapsed = std::chrono::duration<double, std::milli>(
+            now - m_lastBatchSubmitTime).count();
+        HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+            HammerEngine::SystemType::Pathfinding, m_lastWorkloadSize, m_lastBatchCount, elapsed);
+        m_lastBatchCount = 0;
+        m_lastWorkloadSize = 0;
+    }
+
     // Swap out buffered requests to avoid holding lock during processing
     std::vector<BufferedRequest> requests;
     {
@@ -1423,67 +1439,48 @@ void PathfinderManager::processPendingRequests() {
         return;
     }
 
-    // Get ThreadSystem reference
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    // Let WorkerBudget decide everything - it handles queue pressure internally
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Pathfinding, requestCount);
 
-    // Query ThreadSystem state for WorkerBudget coordination
-    size_t availableWorkers = threadSystem.getThreadCount();
-    size_t queueSize = threadSystem.getQueueSize();
-    size_t queueCapacity = threadSystem.getQueueCapacity();
-    double queuePressure = (queueCapacity > 0) ? (static_cast<double>(queueSize) / queueCapacity) : 0.0;
-
-    // CRITICAL: Queue pressure monitoring - graceful degradation
-    if (queuePressure > HammerEngine::QUEUE_PRESSURE_CRITICAL) {
-        // Queue critically full - defer requests to next frame
-        PATHFIND_WARN(std::format("Queue pressure critical ({}%), deferring {} path requests to next frame",
-                      queuePressure * 100.0, requestCount));
-
+    // If WorkerBudget returns 0, queue pressure is too high - defer to next frame
+    if (optimalWorkerCount == 0) {
         std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        // Re-insert requests at the front for next frame processing
         m_requestBuffer.insert(m_requestBuffer.begin(), requests.begin(), requests.end());
         return;
     }
 
-    // Rate limiting - cap requests per frame to prevent queue flooding
-    size_t requestsToProcess = std::min(requestCount, MAX_REQUESTS_PER_FRAME);
-    if (requestsToProcess < requestCount) {
-        PATHFIND_DEBUG(std::format("Rate limiting: Processing {} of {} requests this frame",
-                      requestsToProcess, requestCount));
+    // Get batch strategy from WorkerBudget
+    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+        HammerEngine::SystemType::Pathfinding, requestCount, optimalWorkerCount);
 
-        // Re-buffer excess requests for next frame
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        m_requestBuffer.insert(m_requestBuffer.end(),
-                              requests.begin() + requestsToProcess,
-                              requests.end());
-        requests.resize(requestsToProcess);
+    // Determine if threading is beneficial (more than 1 batch)
+    const bool useThreading = (batchCount > 1);
+
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
+    static thread_local uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 300 == 0 && requestCount > 0) {
+        if (useThreading) {
+            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} "
+                          "[Threaded: {} batches, {}/batch]",
+                          requestCount, batchCount, requestCount / batchCount));
+        } else {
+            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} [Single-threaded]",
+                          requestCount));
+        }
     }
+#endif
 
-    // WorkerBudget coordination
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-        budget.pathfindingAllocated,
-        requestsToProcess,
-        MIN_REQUESTS_FOR_BATCHING
-    );
-
-    // Store metrics for debugging/profiling
-    m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
-    m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-    m_lastPathfindingBudget.store(budget.pathfindingAllocated, std::memory_order_relaxed);
-
-    // Determine if threading is beneficial
-    const bool useThreading = (requestsToProcess >= MIN_REQUESTS_FOR_BATCHING) &&
-                             (optimalWorkerCount > 0) &&
-                             (queuePressure < HammerEngine::QUEUE_PRESSURE_PATHFINDING);
-
-    m_lastWasThreaded.store(useThreading, std::memory_order_relaxed);
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
     if (!useThreading) {
         // Process sequentially on main thread (low request count or high queue pressure)
         for (size_t i = 0; i < requests.size(); ++i) {
             const auto& req = requests[i];
-            uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+            // Use pre-computed cache key from RAW coordinates (computed before normalization)
+            uint64_t cacheKey = req.cacheKey;
 
             // Coalesce with pending requests
             {
@@ -1568,31 +1565,27 @@ void PathfinderManager::processPendingRequests() {
     }
 
     // Batch processing with WorkerBudget coordination (non-blocking)
-
-    // Calculate batch strategy using WorkerBudget
-    auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-        HammerEngine::PATHFINDING_BATCH_CONFIG,
-        requestsToProcess,
-        MIN_REQUESTS_FOR_BATCHING,
-        optimalWorkerCount,
-        budget.pathfindingAllocated,
-        queuePressure,
-        m_adaptiveBatchState,
-        m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire)
-    );
+    // batchCount and batchSize already computed above
 
     PATHFIND_DEBUG(std::format("Processing {} requests in {} batches (size: {}), workers: {}",
-                  requestsToProcess, batchCount, batchSize, optimalWorkerCount));
+                  requestCount, batchCount, batchSize, optimalWorkerCount));
+
+    // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
+    // No lock needed: processPendingRequests runs on update thread only,
+    // waitForBatchCompletion only runs during state transitions when update is paused
+    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
+    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
 
     // Submit batches
     for (size_t i = 0; i < batchCount; ++i) {
         size_t start = i * batchSize;
-        size_t end = std::min(start + batchSize, requestsToProcess);
+        size_t end = std::min(start + batchSize, requestCount);
 
         auto batchWork = [this, requests, start, end]() {
             for (size_t idx = start; idx < end; ++idx) {
                 const auto& req = requests[idx];
-                uint64_t cacheKey = computeCacheKey(req.start, req.goal);
+                // Use pre-computed cache key from RAW coordinates (computed before normalization)
+                uint64_t cacheKey = req.cacheKey;
 
                 // Coalesce
                 {
@@ -1663,27 +1656,32 @@ void PathfinderManager::processPendingRequests() {
             }
         };
 
-        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-        m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+        m_reusableBatchFutures.push_back(threadSystem.enqueueTaskWithResult(
             batchWork,
             HammerEngine::TaskPriority::High,
             std::format("Pathfinding_Batch_{}", i)
         ));
     }
 
+    // Store futures for shutdown synchronization (swap back preserves both capacities)
+    std::swap(m_batchFutures, m_reusableBatchFutures);
+
+    // Track for deferred reporting next frame (non-blocking)
+    m_lastBatchSubmitTime = std::chrono::steady_clock::now();
+    m_lastBatchCount = batchCount;
+    m_lastWorkloadSize = requestCount;
+
     // Batches submitted asynchronously - callbacks will fire when paths complete
     // waitForBatchCompletion() is only called during cleanup/state transitions
 }
 
 void PathfinderManager::waitForBatchCompletion() {
-    std::vector<std::future<void>> localFutures;
+    // No lock needed: only called during state transitions when update is paused
+    // Use swap to preserve capacity for next use
+    m_reusableBatchFutures.clear();
+    std::swap(m_reusableBatchFutures, m_batchFutures);
 
-    {
-        std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-        localFutures = std::move(m_batchFutures);
-    }
-
-    for (auto& future : localFutures) {
+    for (auto& future : m_reusableBatchFutures) {
         if (future.valid()) {
             try {
                 future.wait();

@@ -9,7 +9,7 @@
 namespace HammerEngine {
 
 // Enum tags for world trigger volumes. Extend as needed.
-enum class TriggerTag {
+enum class TriggerTag : uint8_t {
   None = 0,
   Door,
   Checkpoint,

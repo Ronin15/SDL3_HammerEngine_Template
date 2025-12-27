@@ -9,7 +9,7 @@
 #include "entities/NPC.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <random>
 #include <algorithm>
 #include <format>
@@ -408,7 +408,7 @@ bool NPCSpawnEvent::checkTimeCondition() const {
     }
 
     // Get the current game time from the GameTime system
-    float currentHour = GameTime::Instance().getGameHour();
+    float currentHour = GameTimeManager::Instance().getGameHour();
 
     if (m_startHour <= m_endHour) {
         // Simple case: start time is before end time

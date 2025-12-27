@@ -7,6 +7,7 @@
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "ai/internal/SpatialPriority.hpp"
+#include "core/Logger.hpp"
 #include "entities/Entity.hpp"
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
@@ -148,12 +149,12 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     // Check if we're targeting a different waypoint than when path was computed
     // PERFORMANCE: Use squared distance to avoid sqrt()
     Vector2D pathGoal = m_navPath.back();
-    float waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
+    float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
     needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
   }
 
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
-  bool stuckOnObstacle = (m_progressTimer > 0.8f);
+  bool const stuckOnObstacle = (m_progressTimer > 0.8f);
   if (stuckOnObstacle) {
     m_navPath.clear(); // Clear path to force refresh
     m_navIndex = 0;
@@ -163,7 +164,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if ((needsNewPath || stuckOnObstacle) && m_backoffTimer <= 0.0f) {
     // GOAL VALIDATION: Don't request path if already at waypoint
     // PERFORMANCE: Use squared distance to avoid sqrt()
-    float distanceSquared = (targetWaypoint - position).lengthSquared();
+    float const distanceSquared = (targetWaypoint - position).lengthSquared();
     if (distanceSquared < (m_waypointRadius * m_waypointRadius)) { // Already at waypoint
       return; // Skip pathfinding request
     }
@@ -205,7 +206,7 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   } else {
     // Direct movement to waypoint
     Vector2D direction = targetWaypoint - position;
-    float length = direction.length();
+    float const length = direction.length();
     if (length > 0.1f) {
       direction = direction * (1.0f / length);
     } else {
@@ -227,10 +228,10 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       // Apply stall recovery: try sidestep maneuver or advance waypoint
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
         Vector2D toNode = m_navPath[m_navIndex] - position;
-        float len = toNode.length();
+        float const len = toNode.length();
         if (len > 0.01f) {
-          Vector2D dir = toNode * (1.0f / len);
-          Vector2D perp(-dir.getY(), dir.getX());
+          Vector2D const dir = toNode * (1.0f / len);
+          Vector2D const perp(-dir.getY(), dir.getX());
           float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = pathfinder().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
@@ -363,8 +364,8 @@ void PatrolBehavior::setMoveSpeed(float speed) { m_moveSpeed = speed; }
 bool PatrolBehavior::isAtWaypoint(const Vector2D &position,
                                   const Vector2D &waypoint) const {
   // PERFORMANCE: Use squared distance to avoid expensive sqrt()
-  Vector2D difference = position - waypoint;
-  float distanceSquared = difference.lengthSquared();
+  Vector2D const difference = position - waypoint;
+  float const distanceSquared = difference.lengthSquared();
 
   // Use a more forgiving radius when moving fast to prevent oscillation
   float dynamicRadius = m_waypointRadius;
@@ -491,8 +492,8 @@ void PatrolBehavior::generateRandomWaypointsInRectangle() {
   }
 
   if (m_waypoints.size() < 2) {
-    Vector2D center = (m_areaTopLeft + m_areaBottomRight) * 0.5f;
-    Vector2D size = m_areaBottomRight - m_areaTopLeft;
+    Vector2D const center = (m_areaTopLeft + m_areaBottomRight) * 0.5f;
+    Vector2D const size = m_areaBottomRight - m_areaTopLeft;
     m_waypoints.clear();
     m_waypoints.push_back(center +
                           Vector2D(-size.getX() * 0.25f, -size.getY() * 0.25f));
@@ -529,14 +530,14 @@ void PatrolBehavior::generateWaypointsAroundTarget() {
   ensureRandomSeed();
   m_waypoints.clear();
 
-  float angleStep = 2.0f * M_PI / m_waypointCount;
+  float const angleStep = 2.0f * M_PI / m_waypointCount;
 
   std::vector<float> cosValues, sinValues;
   cosValues.reserve(m_waypointCount);
   sinValues.reserve(m_waypointCount);
 
   for (int i = 0; i < m_waypointCount; ++i) {
-    float angle = i * angleStep;
+    float const angle = i * angleStep;
     cosValues.push_back(std::cos(angle));
     sinValues.push_back(std::sin(angle));
   }
@@ -598,20 +599,25 @@ void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   // Use world bounds instead of screen dimensions for true world-scale patrolling
   float minX, minY, maxX, maxY;
   if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
-    // No world loaded - can't initialize patrol
+    // No world loaded - use fallback defaults and log warning
+    AI_WARN("PatrolBehavior: World bounds unavailable, using fallback waypoints");
+    m_waypoints.clear();
+    m_waypoints.reserve(2);
+    m_waypoints.emplace_back(100.0f, 100.0f);
+    m_waypoints.emplace_back(300.0f, 300.0f);
     return;
   }
 
   constexpr float TILE = HammerEngine::TILE_SIZE;
-  float worldWidth = (maxX - minX) * TILE;
-  float worldHeight = (maxY - minY) * TILE;
-  float worldMinX = minX * TILE;
-  float worldMinY = minY * TILE;
+  float const worldWidth = (maxX - minX) * TILE;
+  float const worldHeight = (maxY - minY) * TILE;
+  float const worldMinX = minX * TILE;
+  float const worldMinY = minY * TILE;
 
   switch (mode) {
   case PatrolMode::FIXED_WAYPOINTS:
     if (m_waypoints.empty()) {
-      float margin = 100.0f;
+      float const margin = 100.0f;
       m_waypoints.reserve(4);
       m_waypoints.emplace_back(worldMinX + margin, worldMinY + margin);
       m_waypoints.emplace_back(worldMinX + worldWidth - margin,

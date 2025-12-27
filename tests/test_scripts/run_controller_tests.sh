@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Helper script to build and run World Controller tests (Time, Weather, DayNight)
+# Helper script to build and run World Controller tests (Weather, DayNight)
 
 # Set up colored output
 RED='\033[0;31m'
@@ -12,7 +12,6 @@ NC='\033[0m' # No Color
 # Process command line arguments
 VERBOSE=false
 RUN_ALL=true
-RUN_TIME=false
 RUN_WEATHER=false
 RUN_DAYNIGHT=false
 
@@ -27,16 +26,10 @@ for arg in "$@"; do
       echo -e "Usage: ./run_controller_tests.sh [options]"
       echo -e "\nOptions:"
       echo -e "  --verbose      Run tests with verbose output"
-      echo -e "  --time         Run only TimeController tests"
       echo -e "  --weather      Run only WeatherController tests"
       echo -e "  --daynight     Run only DayNightController tests"
       echo -e "  --help         Show this help message"
       exit 0
-      ;;
-    --time)
-      RUN_ALL=false
-      RUN_TIME=true
-      shift
       ;;
     --weather)
       RUN_ALL=false
@@ -55,10 +48,6 @@ echo -e "${BLUE}Running World Controller tests...${NC}"
 
 # Define the test executables to run
 EXECUTABLES=()
-
-if [ "$RUN_ALL" = true ] || [ "$RUN_TIME" = true ]; then
-  EXECUTABLES+=("time_controller_tests")
-fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_WEATHER" = true ]; then
   EXECUTABLES+=("weather_controller_tests")
@@ -200,7 +189,6 @@ if [ "$FINAL_RESULT" -ne 0 ]; then
   exit $FINAL_RESULT
 else
   echo -e "\n${GREEN}All controller tests completed successfully!${NC}"
-  echo -e "${GREEN}✓ TimeController tests${NC}"
   echo -e "${GREEN}✓ WeatherController tests${NC}"
   echo -e "${GREEN}✓ DayNightController tests${NC}"
   exit 0

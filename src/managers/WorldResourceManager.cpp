@@ -847,6 +847,7 @@ void WorldResourceManager::logCacheStatus() const {
   WORLD_RESOURCE_INFO(std::format("  Performance monitoring: {}",
       config.enablePerformanceMonitoring ? "enabled" : "disabled"));
 
+#ifdef DEBUG
   if (config.enablePerformanceMonitoring) {
     WORLD_RESOURCE_INFO("Performance Stats:");
     WORLD_RESOURCE_INFO(std::format("  Cache hit ratio: {}%",
@@ -860,6 +861,7 @@ void WorldResourceManager::logCacheStatus() const {
     WORLD_RESOURCE_INFO(std::format("  Aggregate cache rebuilds: {}",
                         stats.aggregateCacheRebuilds.load()));
   }
+#endif
 
   WORLD_RESOURCE_INFO("Current Usage:");
   WORLD_RESOURCE_INFO(std::format("  Total cache entries: {}",
@@ -966,25 +968,23 @@ void WorldResourceManager::handleWorldEvent(
     case WorldEventType::WorldUnloaded: {
       auto unloadedEvent =
           std::dynamic_pointer_cast<WorldUnloadedEvent>(worldEvent);
-      if (unloadedEvent) {
-        const std::string &worldId = unloadedEvent->getWorldId();
-        WORLD_RESOURCE_INFO(std::format("Received WorldUnloadedEvent for: {}", worldId));
+      WORLD_RESOURCE_INFO_IF(unloadedEvent,
+          std::format("Received WorldUnloadedEvent for: {}", unloadedEvent ? unloadedEvent->getWorldId() : ""));
 
-        // Optional: Remove world resources when unloaded
-        // For now, keep the data in case world is reloaded
-        // removeWorld(worldId);
-      }
+      // Optional: Remove world resources when unloaded
+      // For now, keep the data in case world is reloaded
+      // removeWorld(worldId);
       break;
     }
 
     case WorldEventType::TileChanged: {
       auto tileEvent = std::dynamic_pointer_cast<TileChangedEvent>(worldEvent);
-      if (tileEvent) {
-        // Handle tile changes - could affect resource distributions
-        WORLD_RESOURCE_DEBUG(std::format("Tile changed at ({}, {}) - {}",
-                             tileEvent->getX(), tileEvent->getY(),
-                             tileEvent->getChangeType()));
-      }
+      // Handle tile changes - could affect resource distributions
+      WORLD_RESOURCE_DEBUG_IF(tileEvent,
+          std::format("Tile changed at ({}, {}) - {}",
+                      tileEvent ? tileEvent->getX() : 0,
+                      tileEvent ? tileEvent->getY() : 0,
+                      tileEvent ? tileEvent->getChangeType() : ""));
       break;
     }
 

@@ -132,7 +132,7 @@ protected:
 
     // Stagger separation intervals per-entity (2.0s base + 0-2.0s stagger)
     float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
-    float effectiveInterval = 2.0f + entityStaggerOffset;
+    float const effectiveInterval = 2.0f + entityStaggerOffset;
 
     // Only recalculate separation periodically
     if (separationTimer >= effectiveInterval) {
@@ -145,7 +145,7 @@ protected:
     }
 
     // Only apply separation when actually moving (prevents oscillation when settling)
-    float velocityMagnitude = currentVelocity.length();
+    float const velocityMagnitude = currentVelocity.length();
     const float MIN_VELOCITY_FOR_SEPARATION = 20.0f; // Only separate when moving
 
     if (velocityMagnitude > MIN_VELOCITY_FOR_SEPARATION) {
@@ -180,7 +180,7 @@ protected:
     // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
     // from doing expensive separation calculations on the same frame
     float entityStaggerOffset = (entity->getID() % 200) * 0.01f; // Stagger by up to 2 seconds
-    float effectiveInterval = 2.0f + entityStaggerOffset;
+    float const effectiveInterval = 2.0f + entityStaggerOffset;
 
     if (separationTimer >= effectiveInterval) {
       // Only do the expensive separation calculation when absolutely necessary
@@ -208,7 +208,7 @@ protected:
     // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
     // from doing expensive separation calculations on the same frame
     float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
-    float effectiveInterval = 2.0f + entityStaggerOffset;
+    float const effectiveInterval = 2.0f + entityStaggerOffset;
 
     if (separationTimer >= effectiveInterval) {
       // Calculate separation using pre-fetched data (no collision query!)

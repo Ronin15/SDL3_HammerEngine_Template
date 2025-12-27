@@ -12,7 +12,6 @@
 #include <functional>
 #include <cstdint>
 #include <random>
-#include <atomic>
 
 // Forward declarations
 class Entity;
@@ -459,14 +458,6 @@ private:
 
     // Previous position for render interpolation (smooth camera at any refresh rate)
     Vector2D m_previousPosition{960.0f, 540.0f};
-
-    // Thread-safe interpolation state for render thread access
-    // 16-byte atomic is lock-free on x86-64 (CMPXCHG16B) and ARM64 (LDXP/STXP)
-    struct alignas(16) InterpolationState {
-        float posX{0.0f}, posY{0.0f};
-        float prevPosX{0.0f}, prevPosY{0.0f};
-    };
-    std::atomic<InterpolationState> m_interpState{};
 
     // Shake random number generation (mutable for const generateShakeOffset)
     // Per CLAUDE.md: NEVER use static vars in threaded code - use member vars instead

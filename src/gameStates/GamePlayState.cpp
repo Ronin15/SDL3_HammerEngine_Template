@@ -5,10 +5,11 @@
 
 #include "gameStates/GamePlayState.hpp"
 #include "core/GameEngine.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/PauseState.hpp"
 #include "gameStates/LoadingState.hpp"
+#include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -19,15 +20,11 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "world/WorldData.hpp"
-#include "controllers/world/WeatherController.hpp"
-#include "controllers/world/TimeController.hpp"
-#include "controllers/world/DayNightController.hpp"
 #include "managers/UIConstants.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <cmath>
 #include <format>
-#include <random>
 
 
 bool GamePlayState::enter() {
@@ -35,6 +32,9 @@ bool GamePlayState::enter() {
   mp_particleMgr = &ParticleManager::Instance();
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
+
+  // Resume all game managers (may be paused from menu states)
+  GameEngine::Instance().setGlobalPause(false);
 
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
@@ -62,7 +62,7 @@ bool GamePlayState::enter() {
     mp_Player->initializeInventory();
 
     // Position player at screen center
-    Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
+    Vector2D const screenCenter(gameEngine.getLogicalWidth() / 2.0, gameEngine.getLogicalHeight() / 2.0);
     mp_Player->setPosition(screenCenter);
 
     // Initialize the inventory UI
@@ -71,19 +71,19 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
-    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
-    WeatherController::Instance().subscribe();
+    // Subscribe weather controller (owned by this state)
+    m_weatherController.subscribe();
 
     // Enable automatic weather changes
-    GameTime::Instance().enableAutoWeather(true);
+    GameTimeManager::Instance().enableAutoWeather(true);
 #ifdef NDEBUG
     // Release: normal pacing
-    GameTime::Instance().setWeatherCheckInterval(4.0f);
-    GameTime::Instance().setTimeScale(60.0f);
+    GameTimeManager::Instance().setWeatherCheckInterval(4.0f);
+    GameTimeManager::Instance().setTimeScale(60.0f);
 #else
     // Debug: faster changes for testing seasons/weather
-    GameTime::Instance().setWeatherCheckInterval(1.0f);
-    GameTime::Instance().setTimeScale(3600.0f);
+    GameTimeManager::Instance().setWeatherCheckInterval(1.0f);
+    GameTimeManager::Instance().setTimeScale(3600.0f);
 #endif
 
     // Create event log for time/weather messages
@@ -98,11 +98,8 @@ bool GamePlayState::enter() {
     eventLogPos.widthPercent = UIConstants::EVENT_LOG_WIDTH_PERCENT;
     ui.setComponentPositioning("gameplay_event_log", eventLogPos);
 
-    // Subscribe to time events for event log display
-    TimeController::Instance().subscribe("gameplay_event_log");
-
     // Create time status label at top-right of screen (no panel, just label)
-    int barHeight = UIConstants::STATUS_BAR_HEIGHT;
+    int const barHeight = UIConstants::STATUS_BAR_HEIGHT;
     int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
 
     ui.createLabel("gameplay_time_label",
@@ -120,10 +117,10 @@ bool GamePlayState::enter() {
     labelPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("gameplay_time_label", labelPos);
 
-    // Connect status label with extended format mode (zero allocation)
-    auto& timeController = TimeController::Instance();
-    timeController.setStatusLabel("gameplay_time_label");
-    timeController.setStatusFormatMode(TimeController::StatusFormatMode::Extended);
+    // Pre-allocate status buffer for zero per-frame allocations
+    m_statusBuffer.reserve(256);
+
+    auto& eventMgr = EventManager::Instance();
 
     // Create FPS counter label (top-left, initially hidden, toggled with F2)
     ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12}, "FPS: --");
@@ -136,11 +133,16 @@ bool GamePlayState::enter() {
     fpsPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("gameplay_fps", fpsPos);
 
-    // Subscribe to day/night visual effects (controller dispatches events)
-    DayNightController::Instance().subscribe();
+    // Subscribe day/night controller (owned by this state)
+    m_dayNightController.subscribe();
+
+    // Subscribe combat controller (owned by this state)
+    m_combatController.subscribe();
+
+    // Initialize combat HUD (health/stamina bars, target frame)
+    initializeCombatHUD();
 
     // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
-    auto& eventMgr = EventManager::Instance();
     m_dayNightEventToken = eventMgr.registerHandlerWithToken(
         EventTypeId::Time,
         [this](const EventData& data) { onTimePeriodChanged(data); }
@@ -166,7 +168,7 @@ bool GamePlayState::enter() {
   return true;
 }
 
-void GamePlayState::update([[maybe_unused]] float deltaTime) {
+void GamePlayState::update(float deltaTime) {
   // Check if we need to transition to loading screen (do this in update, not enter)
   if (m_needsLoading) {
     m_needsLoading = false;  // Clear flag
@@ -201,11 +203,17 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
   }
 
   // Update game time (advances calendar, dispatches time events)
-  GameTime::Instance().update(deltaTime);
+  GameTimeManager::Instance().update(deltaTime);
 
   // Update player if it exists
   if (mp_Player) {
     mp_Player->update(deltaTime);
+
+    // Update combat controller (cooldowns, stamina regen, target tracking)
+    m_combatController.update(deltaTime, *mp_Player);
+
+    // Update combat HUD (health/stamina bars, target frame)
+    updateCombatHUD();
   }
 
   // Update camera (follows player automatically)
@@ -213,6 +221,21 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 
   // Update day/night overlay interpolation
   updateDayNightOverlay(deltaTime);
+
+  // Update time status bar only when events fire (event-driven, not per-frame)
+  if (m_statusBarDirty) {
+    m_statusBarDirty = false;
+    auto& gt = GameTimeManager::Instance();
+    m_statusBuffer.clear();
+    std::format_to(std::back_inserter(m_statusBuffer),
+                   "Day {} {}, Year {} | {} {} | {} | {}F | {}",
+                   gt.getDayOfMonth(), gt.getCurrentMonthName(), gt.getGameYear(),
+                   gt.formatCurrentTime(), gt.getTimeOfDayName(),
+                   gt.getSeasonName(),
+                   static_cast<int>(gt.getCurrentTemperature()),
+                   m_weatherController.getCurrentWeatherString());
+    UIManager::Instance().setText("gameplay_time_label", m_statusBuffer);
+  }
 
   // Update UI
   auto &ui = UIManager::Instance();
@@ -224,8 +247,6 @@ void GamePlayState::update([[maybe_unused]] float deltaTime) {
 }
 
 void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
-  const auto &gameEngine = GameEngine::Instance();
-
   // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
@@ -279,12 +300,16 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   }
 
   // Render day/night overlay tint (now at 1.0 scale, after zoom reset)
-  renderDayNightOverlay(renderer,
-      gameEngine.getLogicalWidth(), gameEngine.getLogicalHeight());
+  // Uses camera viewport (synced with engine) - avoids GameEngine access in hot path
+  if (m_camera) {
+    const auto& viewport = m_camera->getViewport();
+    renderDayNightOverlay(renderer,
+        static_cast<int>(viewport.width), static_cast<int>(viewport.height));
+  }
 
   // Update FPS display if visible (zero-allocation, only when changed)
   if (m_fpsVisible) {
-    float currentFPS = gameEngine.getCurrentFPS();
+    float const currentFPS = GameEngine::Instance().getCurrentFPS();
     // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
       m_fpsBuffer.clear();
@@ -397,15 +422,15 @@ bool GamePlayState::exit() {
   mp_worldMgr = nullptr;
   mp_uiMgr = nullptr;
 
-  // Unsubscribe from automatic weather events and disable auto-weather
-  WeatherController::Instance().unsubscribe();
-  GameTime::Instance().enableAutoWeather(false);
+  // Unsubscribe weather controller and disable auto-weather
+  m_weatherController.unsubscribe();
+  GameTimeManager::Instance().enableAutoWeather(false);
 
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
 
-  // Unsubscribe from day/night visual effects
-  DayNightController::Instance().unsubscribe();
+  // Unsubscribe day/night controller
+  m_dayNightController.unsubscribe();
 
   // Unsubscribe from TimePeriodChangedEvent
   if (m_dayNightSubscribed) {
@@ -418,10 +443,6 @@ bool GamePlayState::exit() {
     EventManager::Instance().removeHandler(m_weatherEventToken);
     m_weatherSubscribed = false;
   }
-
-  // Reset status format mode and unsubscribe from time events
-  TimeController::Instance().setStatusFormatMode(TimeController::StatusFormatMode::Default);
-  TimeController::Instance().unsubscribe();
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
@@ -437,6 +458,15 @@ void GamePlayState::pause() {
   ui.setComponentVisible("gameplay_event_log", false);
   ui.setComponentVisible("gameplay_time_label", false);
   ui.setComponentVisible("gameplay_fps", false);
+
+  // Hide combat HUD components
+  ui.setComponentVisible("hud_health_label", false);
+  ui.setComponentVisible("hud_health_bar", false);
+  ui.setComponentVisible("hud_stamina_label", false);
+  ui.setComponentVisible("hud_stamina_bar", false);
+  ui.setComponentVisible("hud_target_panel", false);
+  ui.setComponentVisible("hud_target_name", false);
+  ui.setComponentVisible("hud_target_health", false);
 
   // Also hide inventory components if visible
   if (m_inventoryVisible) {
@@ -464,6 +494,13 @@ void GamePlayState::resume() {
   if (m_fpsVisible) {
     ui.setComponentVisible("gameplay_fps", true);
   }
+
+  // Show combat HUD components (always visible during gameplay)
+  ui.setComponentVisible("hud_health_label", true);
+  ui.setComponentVisible("hud_health_bar", true);
+  ui.setComponentVisible("hud_stamina_label", true);
+  ui.setComponentVisible("hud_stamina_bar", true);
+  // Target frame visibility controlled by updateCombatHUD() based on hasActiveTarget()
 
   // Restore inventory visibility state
   if (m_inventoryVisible) {
@@ -513,6 +550,11 @@ void GamePlayState::handleInput() {
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
+  // Combat - spacebar to attack
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
+    m_combatController.tryAttack(*mp_Player);
+  }
+
   // Camera zoom controls
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
     m_camera->zoomIn();  // [ key = zoom in (objects larger)
@@ -524,13 +566,13 @@ void GamePlayState::handleInput() {
 #ifndef NDEBUG
   // Debug time speed controls: < (comma) = normal speed, > (period) = max speed
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_COMMA)) {
-    GameTime::Instance().setTimeScale(60.0f);
+    GameTimeManager::Instance().setTimeScale(60.0f);
     GAMEPLAY_INFO("Time scale set to NORMAL (60x)");
     auto& ui = UIManager::Instance();
     ui.addEventLogEntry("gameplay_event_log", "Time: NORMAL speed (60x)");
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_PERIOD)) {
-    GameTime::Instance().setTimeScale(3600.0f);
+    GameTimeManager::Instance().setTimeScale(3600.0f);
     GAMEPLAY_INFO("Time scale set to MAX (3600x)");
     auto& ui = UIManager::Instance();
     ui.addEventLogEntry("gameplay_event_log", "Time: MAX speed (3600x)");
@@ -556,24 +598,23 @@ void GamePlayState::handleInput() {
 
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
-        Vector2D mousePos = inputMgr.getMousePosition();
+        Vector2D const mousePos = inputMgr.getMousePosition();
         auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
-            int tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
-            int tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
+            int const tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
+            int const tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
             auto& worldMgr = WorldManager::Instance();
             if (worldMgr.isValidPosition(tileX, tileY)) {
                 const auto* tile = worldMgr.getTileAt(tileX, tileY);
-                if (tile) {
-                    // Log tile information for debugging
-                    GAMEPLAY_DEBUG(std::format("Clicked tile ({}, {}) - Biome: {}, Obstacle: {}",
-                                               tileX, tileY,
-                                               static_cast<int>(tile->biome),
-                                               static_cast<int>(tile->obstacleType)));
-                }
+                // Log tile information for debugging
+                GAMEPLAY_DEBUG_IF(tile,
+                    std::format("Clicked tile ({}, {}) - Biome: {}, Obstacle: {}",
+                                tileX, tileY,
+                                tile ? static_cast<int>(tile->biome) : 0,
+                                tile ? static_cast<int>(tile->obstacleType) : 0));
             }
         }
     }
@@ -582,7 +623,7 @@ void GamePlayState::handleInput() {
 void GamePlayState::initializeInventoryUI() {
   auto &ui = UIManager::Instance();
   const auto &gameEngine = GameEngine::Instance();
-  int windowWidth = gameEngine.getLogicalWidth();
+  int const windowWidth = gameEngine.getLogicalWidth();
 
   // Create inventory panel (initially hidden) matching EventDemoState layout
   // Using TOP_RIGHT positioning - UIManager handles all resize repositioning
@@ -793,9 +834,14 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
     return;
   }
 
-  // Check if this is a TimePeriodChangedEvent
   auto timeEvent = std::static_pointer_cast<TimeEvent>(data.event);
-  if (timeEvent->getTimeEventType() != TimeEventType::TimePeriodChanged) {
+  TimeEventType eventType = timeEvent->getTimeEventType();
+
+  // Mark status bar dirty on any time event (hour, day, season changes)
+  m_statusBarDirty = true;
+
+  // Only process visual changes for TimePeriodChangedEvent
+  if (eventType != TimeEventType::TimePeriodChanged) {
     return;
   }
 
@@ -813,6 +859,10 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
 
   // Update ambient particles for the new time period
   updateAmbientParticles(m_currentTimePeriod);
+
+  // Add event log entry for the time period change
+  UIManager::Instance().addEventLogEntry("gameplay_event_log",
+      std::string(m_dayNightController.getCurrentPeriodDescription()));
 
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
@@ -843,13 +893,13 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
       static_cast<uint8_t>(m_dayNightOverlayB),
       static_cast<uint8_t>(m_dayNightOverlayA));
 
-  SDL_FRect rect = {0, 0, static_cast<float>(width), static_cast<float>(height)};
+  SDL_FRect const rect = {0, 0, static_cast<float>(width), static_cast<float>(height)};
   SDL_RenderFillRect(renderer, &rect);
 }
 
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
   // Only spawn ambient particles during clear weather
-  if (WeatherController::Instance().getCurrentWeather() != WeatherType::Clear) {
+  if (m_weatherController.getCurrentWeather() != WeatherType::Clear) {
     if (m_ambientParticlesActive) {
       stopAmbientParticles();
     }
@@ -933,8 +983,176 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
   }
   m_lastWeatherType = newWeather;
 
+  // Mark status bar dirty for weather display update
+  m_statusBarDirty = true;
+
   // Re-evaluate ambient particles based on current time period and new weather
   updateAmbientParticles(m_currentTimePeriod);
 
+  // Add event log entry for the weather change
+  UIManager::Instance().addEventLogEntry("gameplay_event_log",
+      std::string(m_weatherController.getCurrentWeatherDescription()));
+
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
+
+void GamePlayState::initializeCombatHUD() {
+  auto& ui = UIManager::Instance();
+
+  // Combat HUD layout constants (top-left positioning)
+  constexpr int hudMarginLeft = 20;
+  constexpr int hudMarginTop = 40;  // Below time label area
+  constexpr int labelWidth = 30;
+  constexpr int barWidth = 150;
+  constexpr int barHeight = 20;
+  constexpr int rowSpacing = 25;
+  constexpr int labelBarGap = 5;
+
+  // Row positions
+  int healthRowY = hudMarginTop;
+  int staminaRowY = hudMarginTop + rowSpacing;
+  int targetRowY = hudMarginTop + rowSpacing * 2 + 10;  // Extra spacing before target
+
+  // --- Player Health Bar ---
+  ui.createLabel("hud_health_label",
+      {hudMarginLeft, healthRowY, labelWidth, barHeight}, "HP");
+  UIPositioning healthLabelPos;
+  healthLabelPos.mode = UIPositionMode::TOP_ALIGNED;
+  healthLabelPos.offsetX = hudMarginLeft;
+  healthLabelPos.offsetY = healthRowY;
+  healthLabelPos.fixedWidth = labelWidth;
+  healthLabelPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_health_label", healthLabelPos);
+
+  ui.createProgressBar("hud_health_bar",
+      {hudMarginLeft + labelWidth + labelBarGap, healthRowY, barWidth, barHeight},
+      0.0f, 100.0f);
+  UIPositioning healthBarPos;
+  healthBarPos.mode = UIPositionMode::TOP_ALIGNED;
+  healthBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
+  healthBarPos.offsetY = healthRowY;
+  healthBarPos.fixedWidth = barWidth;
+  healthBarPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_health_bar", healthBarPos);
+
+  // Set green fill color for health bar
+  UIStyle healthStyle;
+  healthStyle.backgroundColor = {40, 40, 40, 255};
+  healthStyle.borderColor = {180, 180, 180, 255};
+  healthStyle.hoverColor = {50, 200, 50, 255};  // Green fill
+  healthStyle.borderWidth = 1;
+  ui.setStyle("hud_health_bar", healthStyle);
+
+  // --- Player Stamina Bar ---
+  ui.createLabel("hud_stamina_label",
+      {hudMarginLeft, staminaRowY, labelWidth, barHeight}, "SP");
+  UIPositioning staminaLabelPos;
+  staminaLabelPos.mode = UIPositionMode::TOP_ALIGNED;
+  staminaLabelPos.offsetX = hudMarginLeft;
+  staminaLabelPos.offsetY = staminaRowY;
+  staminaLabelPos.fixedWidth = labelWidth;
+  staminaLabelPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_stamina_label", staminaLabelPos);
+
+  ui.createProgressBar("hud_stamina_bar",
+      {hudMarginLeft + labelWidth + labelBarGap, staminaRowY, barWidth, barHeight},
+      0.0f, 100.0f);
+  UIPositioning staminaBarPos;
+  staminaBarPos.mode = UIPositionMode::TOP_ALIGNED;
+  staminaBarPos.offsetX = hudMarginLeft + labelWidth + labelBarGap;
+  staminaBarPos.offsetY = staminaRowY;
+  staminaBarPos.fixedWidth = barWidth;
+  staminaBarPos.fixedHeight = barHeight;
+  ui.setComponentPositioning("hud_stamina_bar", staminaBarPos);
+
+  // Set yellow fill color for stamina bar
+  UIStyle staminaStyle;
+  staminaStyle.backgroundColor = {40, 40, 40, 255};
+  staminaStyle.borderColor = {180, 180, 180, 255};
+  staminaStyle.hoverColor = {255, 200, 50, 255};  // Yellow fill
+  staminaStyle.borderWidth = 1;
+  ui.setStyle("hud_stamina_bar", staminaStyle);
+
+  // --- Target Frame (NPC health when attacked) ---
+  constexpr int targetPanelWidth = 190;
+  constexpr int targetPanelHeight = 50;
+
+  ui.createPanel("hud_target_panel",
+      {hudMarginLeft, targetRowY, targetPanelWidth, targetPanelHeight});
+  UIPositioning targetPanelPos;
+  targetPanelPos.mode = UIPositionMode::TOP_ALIGNED;
+  targetPanelPos.offsetX = hudMarginLeft;
+  targetPanelPos.offsetY = targetRowY;
+  targetPanelPos.fixedWidth = targetPanelWidth;
+  targetPanelPos.fixedHeight = targetPanelHeight;
+  ui.setComponentPositioning("hud_target_panel", targetPanelPos);
+  ui.setComponentVisible("hud_target_panel", false);
+
+  ui.createLabel("hud_target_name",
+      {hudMarginLeft + 5, targetRowY + 5, targetPanelWidth - 10, 18}, "");
+  UIPositioning targetNamePos;
+  targetNamePos.mode = UIPositionMode::TOP_ALIGNED;
+  targetNamePos.offsetX = hudMarginLeft + 5;
+  targetNamePos.offsetY = targetRowY + 5;
+  targetNamePos.fixedWidth = targetPanelWidth - 10;
+  targetNamePos.fixedHeight = 18;
+  ui.setComponentPositioning("hud_target_name", targetNamePos);
+  ui.setComponentVisible("hud_target_name", false);
+
+  ui.createProgressBar("hud_target_health",
+      {hudMarginLeft + 5, targetRowY + 26, targetPanelWidth - 10, 18},
+      0.0f, 100.0f);
+  UIPositioning targetHealthPos;
+  targetHealthPos.mode = UIPositionMode::TOP_ALIGNED;
+  targetHealthPos.offsetX = hudMarginLeft + 5;
+  targetHealthPos.offsetY = targetRowY + 26;
+  targetHealthPos.fixedWidth = targetPanelWidth - 10;
+  targetHealthPos.fixedHeight = 18;
+  ui.setComponentPositioning("hud_target_health", targetHealthPos);
+  ui.setComponentVisible("hud_target_health", false);
+
+  // Set red fill color for target health bar
+  UIStyle targetHealthStyle;
+  targetHealthStyle.backgroundColor = {40, 40, 40, 255};
+  targetHealthStyle.borderColor = {180, 180, 180, 255};
+  targetHealthStyle.hoverColor = {200, 50, 50, 255};  // Red fill
+  targetHealthStyle.borderWidth = 1;
+  ui.setStyle("hud_target_health", targetHealthStyle);
+
+  // Initialize bars with player stats
+  if (mp_Player) {
+    ui.setValue("hud_health_bar", mp_Player->getHealth());
+    ui.setValue("hud_stamina_bar", mp_Player->getStamina());
+  }
+
+  GAMEPLAY_INFO("Combat HUD initialized");
+}
+
+void GamePlayState::updateCombatHUD() {
+  if (!mp_Player) {
+    return;
+  }
+
+  auto& ui = UIManager::Instance();
+
+  // Update player health and stamina bars
+  ui.setValue("hud_health_bar", mp_Player->getHealth());
+  ui.setValue("hud_stamina_bar", mp_Player->getStamina());
+
+  // Update target frame visibility and content
+  if (m_combatController.hasActiveTarget()) {
+    auto target = m_combatController.getTargetedNPC();
+    if (target) {
+      ui.setComponentVisible("hud_target_panel", true);
+      ui.setComponentVisible("hud_target_name", true);
+      ui.setComponentVisible("hud_target_health", true);
+      ui.setText("hud_target_name", target->getName());
+      ui.setValue("hud_target_health", target->getHealth());
+    }
+  } else {
+    ui.setComponentVisible("hud_target_panel", false);
+    ui.setComponentVisible("hud_target_name", false);
+    ui.setComponentVisible("hud_target_health", false);
+  }
+}
+

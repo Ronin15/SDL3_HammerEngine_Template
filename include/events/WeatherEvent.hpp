@@ -65,7 +65,7 @@ class WeatherEvent : public Event {
 public:
     WeatherEvent(const std::string& name, WeatherType type);
     WeatherEvent(const std::string& name, const std::string& customType);
-    virtual ~WeatherEvent() override = default;
+    ~WeatherEvent() override = default;
 
     // Core event methods implementation
     void update() override;

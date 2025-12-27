@@ -88,6 +88,16 @@ size_t EventManager::getThreadingThreshold() const
   return m_threadingThreshold;
 }
 
+void EventManager::setGlobalPause(bool paused)
+{
+  m_globallyPaused.store(paused, std::memory_order_release);
+}
+
+bool EventManager::isGloballyPaused() const
+{
+  return m_globallyPaused.load(std::memory_order_acquire);
+}
+
 // --------------------------------------------
 // Convenience alias trigger method definitions
 // --------------------------------------------
@@ -204,9 +214,7 @@ void EventManager::clean() {
   }
 
   // Only log if not in shutdown to avoid static destruction order issues
-  if (!m_isShutdown) {
-    EVENT_INFO("Cleaning up EventManager");
-  }
+  EVENT_INFO_IF(!m_isShutdown, "Cleaning up EventManager");
 
   // Clear all events with proper cleanup
   {
@@ -279,6 +287,11 @@ void EventManager::update() {
     return;
   }
 
+  // Skip update when globally paused (menu states)
+  if (m_globallyPaused.load(std::memory_order_acquire)) {
+    return;
+  }
+
   // NOTE: Early exit optimization removed - some tests dispatch events during update
   // that need to be processed in the same frame. Keep for now.
   // TODO: Re-evaluate this optimization with deferred event dispatch
@@ -310,16 +323,18 @@ void EventManager::update() {
   if (totalEventCount == 0) {
     // Still drain dispatch queue for deferred events
     drainDispatchQueueWithBudget();
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
     return;
   }
+
+  // Track threading decision for interval logging (local struct, zero overhead in release)
+  EventThreadingInfo threadingInfo;
 
   // Update all event types in optimized batches with per-type threading decision
   // Global check: Only consider threading if total events > threshold
   bool useThreadingGlobal = m_threadingEnabled.load() && totalEventCount > m_threadingThreshold;
 
   // Helper lambda to decide threading per type (uses cached counts - no mutex!)
-  auto updateEventType = [this, useThreadingGlobal, &eventCountsByType](EventTypeId typeId) {
+  auto updateEventType = [this, useThreadingGlobal, &eventCountsByType, &threadingInfo](EventTypeId typeId) {
     if (!useThreadingGlobal) {
       // Global threshold not met - use single-threaded for all types
       updateEventTypeBatch(typeId);
@@ -330,7 +345,7 @@ void EventManager::update() {
     size_t typeEventCount = eventCountsByType[static_cast<size_t>(typeId)];
     if (typeEventCount >= PER_TYPE_THREAD_THRESHOLD) {
       // This type has enough events to benefit from threading
-      updateEventTypeBatchThreaded(typeId);
+      updateEventTypeBatchThreaded(typeId, threadingInfo);
     } else {
       // Too few events in this type - threading overhead would hurt performance
       updateEventTypeBatch(typeId);
@@ -357,8 +372,11 @@ void EventManager::update() {
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-  // Store total update time for adaptive batch tuning
-  m_adaptiveBatchState.lastUpdateTimeMs.store(totalTimeMs, std::memory_order_release);
+  // Report batch completion for adaptive tuning (only if threading was used)
+  if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
+    HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+        HammerEngine::SystemType::Event, totalEventCount, threadingInfo.batchCount, totalTimeMs);
+  }
 
   // Update rolling average for DEBUG logging
   m_updateTimeSamples[m_currentSampleIndex] = totalTimeMs;
@@ -368,20 +386,16 @@ void EventManager::update() {
   double sum = std::accumulate(m_updateTimeSamples.begin(), m_updateTimeSamples.end(), 0.0);
   m_avgUpdateTimeMs = sum / PERF_SAMPLE_SIZE;
 
-  m_frameCounter++;
-
-  // Periodic DEBUG logging (every ~5 seconds at 60fps)
-  if (m_frameCounter - m_lastDebugLogFrame >= DEBUG_LOG_INTERVAL) {
-    m_lastDebugLogFrame = m_frameCounter;
-
-    // Count handlers per type (lock-free read for debug - slightly stale data is acceptable)
+#ifndef NDEBUG
+  // Interval stats logging - zero overhead in release (entire block compiles out)
+  static thread_local uint64_t logFrameCounter = 0;
+  if (++logFrameCounter % 300 == 0) {
     size_t totalHandlers = std::accumulate(m_handlersByType.begin(), m_handlersByType.end(),
                                             size_t{0},
                                             [](size_t sum, const auto& handlers) {
                                               return sum + handlers.size();
                                             });
 
-    // Build event summary string with counts per type
     std::string eventSummary;
     for (size_t i = 0; i < eventCountsByType.size(); ++i) {
       if (eventCountsByType[i] > 0) {
@@ -393,40 +407,34 @@ void EventManager::update() {
     }
     if (eventSummary.empty()) eventSummary = "none";
 
-    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
-
-    if (wasThreaded) {
-      size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-      size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
-      size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
-
+    if (threadingInfo.wasThreaded) {
       EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
-                              "[Threaded: {}/{} workers, Budget: {}] [Types: {}]",
+                              "[Threaded: {} batches, {}/batch] [Types: {}]",
                               totalEventCount, totalHandlers, m_avgUpdateTimeMs,
-                              optimalWorkers, availableWorkers, eventBudget, eventSummary));
+                              threadingInfo.batchCount,
+                              totalEventCount > 0 ? totalEventCount / threadingInfo.batchCount : 0,
+                              eventSummary));
     } else {
       EVENT_DEBUG(std::format("Event Summary - Active: {}, Handlers: {}, Avg Update: {:.2f}ms "
                               "[Single-threaded] [Types: {}]",
                               totalEventCount, totalHandlers, m_avgUpdateTimeMs, eventSummary));
     }
   }
+#endif
 
+#ifdef DEBUG
   // Only log severe performance issues (>10ms) to reduce noise
   if (totalTimeMs > 10.0) {
-    bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
-    if (wasThreaded) {
-      size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-      size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
-      size_t eventBudget = m_lastEventBudget.load(std::memory_order_relaxed);
-
+    if (threadingInfo.wasThreaded) {
       EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) "
-                              "[Threaded: {}/{} workers, Budget: {}]",
-                              totalTimeMs, optimalWorkers, availableWorkers, eventBudget));
+                              "[Threaded: {} batches]",
+                              totalTimeMs, threadingInfo.batchCount));
     } else {
       EVENT_DEBUG(std::format("EventManager update took {:.2f}ms (slow frame) [Single-threaded]",
                               totalTimeMs));
     }
   }
+#endif
   m_lastUpdateTime.store(endTime);
 }
 
@@ -509,10 +517,12 @@ bool EventManager::registerEventInternal(const std::string &name,
 
   std::unique_lock<std::shared_mutex> lock(m_eventsMutex);
 
+#ifdef DEBUG
   // Check if event already exists
   if (m_nameToIndex.find(name) != m_nameToIndex.end()) {
     EVENT_WARN(std::format("Event '{}' already exists, replacing", name));
   }
+#endif
 
   // Create event data
   EventData eventData;
@@ -923,13 +933,12 @@ void EventManager::updateEventTypeBatch(EventTypeId typeId) const {
   }
 
   // Only log significant performance issues (>5ms) to reduce noise
-  if (timeMs > 5.0) {
-    EVENT_DEBUG(std::format("Updated {} events of type {} in {:.2f}ms (slow)",
-                            localEvents.size(), getEventTypeName(typeId), timeMs));
-  }
+  EVENT_DEBUG_IF(timeMs > 5.0,
+      std::format("Updated {} events of type {} in {:.2f}ms (slow)",
+                  localEvents.size(), getEventTypeName(typeId), timeMs));
 }
 
-void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
+void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId, EventThreadingInfo& outThreadingInfo) {
   if (m_isShutdown || !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to single-threaded if shutting down or ThreadSystem not available
     updateEventTypeBatch(typeId);
@@ -961,15 +970,14 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     return;
   }
 
-  // Proper WorkerBudget calculation with architectural respect
+  // Use centralized WorkerBudgetManager for smart worker allocation
   size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
-  size_t eventWorkerBudget = budget.eventAllocated;
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const auto& budget = budgetMgr.getBudget();
 
-  // Store thread allocation info for debug output
-  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-  m_lastEventBudget.store(eventWorkerBudget, std::memory_order_relaxed);
+  // Set thread allocation info for debug output
+  outThreadingInfo.availableWorkers = availableWorkers;
+  outThreadingInfo.budget = budget.totalWorkers;
 
   // Check queue pressure before submitting tasks
   size_t queueSize = threadSystem.getQueueSize();
@@ -980,7 +988,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     // Graceful degradation: fallback to single-threaded processing
     EVENT_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
                             queueSize, queueCapacity));
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
+    outThreadingInfo.wasThreaded = false;
     for (auto &evt : *localEvents) { evt->update(); }
 
     // Record performance and return early
@@ -992,53 +1000,31 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
     return;
   }
 
-  // Use buffer capacity for high workloads
-  size_t optimalWorkerCount =
-      budget.getOptimalWorkerCount(eventWorkerBudget, localEvents->size(), 100);
+  // Get optimal workers (WorkerBudget determines everything dynamically)
+  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+      HammerEngine::SystemType::Event, localEvents->size());
 
-  // Store optimal worker count and mark as threaded
-  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
-  m_lastWasThreaded.store(true, std::memory_order_relaxed);
+  // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
+  auto [batchCount, calculatedBatchSize] = budgetMgr.getBatchStrategy(
+      HammerEngine::SystemType::Event, localEvents->size(), optimalWorkerCount);
 
-  // Use unified adaptive batch calculation for consistency across all managers
-  const size_t threshold = std::max(m_threadingThreshold, static_cast<size_t>(1));
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-
-  // Get previous frame's completion time for adaptive feedback
-  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
-
-  auto [batchCount, calculatedBatchSize] = HammerEngine::calculateBatchStrategy(
-      HammerEngine::EVENT_BATCH_CONFIG,
-      localEvents->size(),
-      threshold,
-      optimalWorkerCount,
-      eventWorkerBudget,     // Base allocation for buffer detection
-      queuePressure,
-      m_adaptiveBatchState,  // Adaptive state for performance tuning
-      lastFrameTime          // Previous frame's completion time
-  );
-
-  // Debug logging for high queue pressure
-  if (queuePressure > HammerEngine::QUEUE_PRESSURE_WARNING) {
-    EVENT_DEBUG(std::format("High queue pressure ({}%), using larger batches",
-                            static_cast<int>(queuePressure * 100)));
-  }
+  // Set threading info
+  outThreadingInfo.workerCount = optimalWorkerCount;
+  outThreadingInfo.batchCount = batchCount;
+  outThreadingInfo.wasThreaded = true;
 
   // Simple batch processing without complex spin-wait
   if (batchCount > 1) {
-    // Debug thread allocation info periodically
-    static thread_local uint64_t debugFrameCounter = 0;
-    if (++debugFrameCounter % 300 == 0 && !localEvents->empty()) {
-      EVENT_DEBUG(std::format("Event Thread Allocation - Workers: {}/{}, Event Budget: {}, Batches: {}",
-                              optimalWorkerCount, availableWorkers, eventWorkerBudget, batchCount));
-    }
-
     size_t batchSize = localEvents->size() / batchCount;
     size_t remainingEvents = localEvents->size() % batchCount;
 
-    // Submit batches using futures for native async result tracking
-    std::vector<std::future<void>> batchFutures;
-    batchFutures.reserve(batchCount);
+    // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
+    // Use swap() to preserve capacity on both vectors (avoids reallocation)
+    {
+      std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+      m_reusableBatchFutures.clear();  // Clear old content, keep capacity
+      std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
+    }
 
     for (size_t i = 0; i < batchCount; ++i) {
       size_t start = i * batchSize;
@@ -1051,7 +1037,7 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
       // Submit each batch with future for completion tracking
       // localEvents captured by shared_ptr value - safe for async execution after function returns
-      batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+      m_reusableBatchFutures.push_back(threadSystem.enqueueTaskWithResult(
         [this, localEvents, start, end, typeId]() -> void {
           try {
             for (size_t j = start; j < end; ++j) {
@@ -1082,9 +1068,9 @@ void EventManager::updateEventTypeBatchThreaded(EventTypeId typeId) {
 
     // Store futures for shutdown synchronization (futures-based completion tracking)
     // NO BLOCKING WAIT: Events don't need sync in update(), only during shutdown
-    if (!batchFutures.empty()) {
+    {
       std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-      m_batchFutures = std::move(batchFutures);
+      std::swap(m_batchFutures, m_reusableBatchFutures);  // Swap back, preserves both capacities
     }
   } else {
     // Process single-threaded for small event counts
@@ -1641,10 +1627,8 @@ void EventManager::drainDispatchQueueWithBudget() {
   // Compute per-frame cap from worker budget
   size_t maxToProcess = 64; // base
   if (HammerEngine::ThreadSystem::Exists()) {
-    const auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-    size_t workers = static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(workers);
-    maxToProcess = 32 + (budget.eventAllocated * 32);
+    const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+    maxToProcess = 32 + (budget.totalWorkers * 32);
   }
 
   // Removed timing budget - process all events for reliability

@@ -26,6 +26,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/EventManager.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "world/WorldGenerator.hpp"
 #include "utils/Vector2D.hpp"
 
@@ -44,7 +45,12 @@ class PathfinderBenchmarkFixture {
 public:
     PathfinderBenchmarkFixture() {
         // Initialize core systems required for pathfinding (order matters!)
-        HammerEngine::ThreadSystem::Instance().init(8); // 8 worker threads
+        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+
+        // Log WorkerBudget allocations for production-matching verification
+        const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+        std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
+        std::cout << "WorkerBudget: " << budget.totalWorkers << " workers (all available per manager)\n";
 
         // Initialize resource managers first
         ResourceTemplateManager::Instance().init();

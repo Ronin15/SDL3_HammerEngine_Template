@@ -275,14 +275,14 @@ namespace {
 
         void initializeAllManagers() {
             // Initialize in dependency order (matching GameEngine::init pattern)
-            HammerEngine::ThreadSystem::Instance().init(8);
+            HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
             EventManager::Instance().init();
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
             CollisionManager::Instance().init();
             AIManager::Instance().init();
-            AIManager::Instance().configureThreading(true);
+            AIManager::Instance().enableThreading(true);
             ParticleManager::Instance().init();  // Initialize without texture manager
             ParticleManager::Instance().registerBuiltInEffects();
         }

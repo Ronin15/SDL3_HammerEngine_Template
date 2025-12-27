@@ -229,16 +229,14 @@ void InputManager::onMouseButtonUp(const SDL_Event& event) {
 }
 
 void InputManager::onGamepadAxisMove(const SDL_Event& event) {
-  int whichOne = 0;
-
   // Find which gamepad this event belongs to
-  for (size_t i = 0; i < m_joysticks.size(); i++) {
-    // In SDL3, use SDL_GetGamepadID directly
-    if (SDL_GetGamepadID(m_joysticks[i]) == event.gaxis.which) {
-      whichOne = static_cast<int>(i);
-      break;
-    }
-  }
+  auto it = std::find_if(m_joysticks.begin(), m_joysticks.end(),
+    [&event](SDL_Gamepad* gamepad) {
+      return SDL_GetGamepadID(gamepad) == event.gaxis.which;
+    });
+  int whichOne = (it != m_joysticks.end())
+    ? static_cast<int>(std::distance(m_joysticks.begin(), it))
+    : 0;
 
   // Make sure the gamepad index is valid
   if (whichOne >= static_cast<int>(m_joystickValues.size())) {
@@ -311,30 +309,26 @@ void InputManager::onGamepadAxisMove(const SDL_Event& event) {
 
   // Process left trigger (L2/LT)
   if (event.gaxis.axis == 4) {
-    if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
-    }
+    INPUT_DEBUG_IF(event.gaxis.value > m_joystickDeadZone,
+        std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
   }
 
   // Process right trigger (R2/RT)
   if (event.gaxis.axis == 5) {
-    if (event.gaxis.value > m_joystickDeadZone) {
-      INPUT_DEBUG(std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
-    }
+    INPUT_DEBUG_IF(event.gaxis.value > m_joystickDeadZone,
+        std::format("Gamepad {} - {} pressed: {}", whichOne, axisName, event.gaxis.value));
   }
 }
 
 void InputManager::onGamepadButtonDown(const SDL_Event& event) {
-  int whichOne = 0;
-
   // Find which gamepad this event belongs to
-  for (size_t i = 0; i < m_joysticks.size(); i++) {
-    // In SDL3, use SDL_GetGamepadID directly
-    if (SDL_GetGamepadID(m_joysticks[i]) == event.gdevice.which) {
-      whichOne = static_cast<int>(i);
-      break;
-    }
-  }
+  auto it = std::find_if(m_joysticks.begin(), m_joysticks.end(),
+    [&event](SDL_Gamepad* gamepad) {
+      return SDL_GetGamepadID(gamepad) == event.gdevice.which;
+    });
+  int whichOne = (it != m_joysticks.end())
+    ? static_cast<int>(std::distance(m_joysticks.begin(), it))
+    : 0;
 
   // Make sure the gamepad and button indices are valid
   if (whichOne >= static_cast<int>(m_buttonStates.size()) ||
@@ -372,16 +366,14 @@ void InputManager::onGamepadButtonDown(const SDL_Event& event) {
 }
 
 void InputManager::onGamepadButtonUp(const SDL_Event& event) {
-  int whichOne = 0;
-
   // Find which gamepad this event belongs to
-  for (size_t i = 0; i < m_joysticks.size(); i++) {
-    // In SDL3, use SDL_GetGamepadID directly
-    if (SDL_GetGamepadID(m_joysticks[i]) == event.gdevice.which) {
-      whichOne = static_cast<int>(i);
-      break;
-    }
-  }
+  auto it = std::find_if(m_joysticks.begin(), m_joysticks.end(),
+    [&event](SDL_Gamepad* gamepad) {
+      return SDL_GetGamepadID(gamepad) == event.gdevice.which;
+    });
+  int whichOne = (it != m_joysticks.end())
+    ? static_cast<int>(std::distance(m_joysticks.begin(), it))
+    : 0;
 
   // Make sure the gamepad and button indices are valid
   if (whichOne >= static_cast<int>(m_buttonStates.size()) ||
@@ -398,14 +390,23 @@ void InputManager::clean() {
     return;
   }
 
-  // Don't close gamepads here - closeGamepads() must be called
-  // right before SDL_Quit() for proper cleanup ordering
-  if(m_gamePadInitialized) {
-    // Just clear our data, not the gamepad handles
+  // Close gamepad handles
+  if (m_gamePadInitialized) {
+    size_t count = m_joysticks.size();
+    for (auto& gamepad : m_joysticks) {
+      if (gamepad) {
+        SDL_CloseGamepad(gamepad);
+        gamepad = nullptr;
+      }
+    }
+    m_joysticks.clear();
     m_joystickValues.clear();
     m_buttonStates.clear();
     m_gamePadInitialized = false;
-    INPUT_INFO("Gamepad data cleared (handles preserved for later cleanup)");
+
+    if (count > 0) {
+      INPUT_INFO(std::format("Closed {} gamepad handles", count));
+    }
   } else {
     INPUT_INFO("No gamepads to free");
   }
@@ -416,26 +417,4 @@ void InputManager::clean() {
   // Set shutdown flag
   m_isShutdown = true;
   INPUT_INFO("InputManager resources cleaned");
-}
-
-void InputManager::closeGamepads() {
-  // Close gamepad handles - must be called before SDL_Quit
-  // Pump events first to ensure SDL's internal gamepad state is synchronized
-  SDL_PumpEvents();
-
-  size_t count = m_joysticks.size();
-  for (auto& gamepad : m_joysticks) {
-    if (gamepad) {
-      SDL_CloseGamepad(gamepad);
-      gamepad = nullptr;
-    }
-  }
-  m_joysticks.clear();
-
-  // Don't call SDL_QuitSubSystem - SDL_Quit() handles subsystem cleanup
-  // Gamepad was initialized with SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)
-
-  if (count > 0) {
-    INPUT_INFO(std::format("Closed {} gamepad handles", count));
-  }
 }

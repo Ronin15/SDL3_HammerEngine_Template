@@ -313,9 +313,9 @@ inline int movemask(Float4 v) {
     return _mm_movemask_ps(v);
 #elif defined(HAMMER_SIMD_NEON)
     // ARM NEON doesn't have direct movemask - use comparison trick
-    uint32x4_t mask = vreinterpretq_u32_f32(v);
-    uint32x4_t shifted = vshrq_n_u32(mask, 31); // Extract sign bits
-    uint32_t result = vgetq_lane_u32(shifted, 0) |
+    uint32x4_t const mask = vreinterpretq_u32_f32(v);
+    uint32x4_t const shifted = vshrq_n_u32(mask, 31); // Extract sign bits
+    uint32_t const result = vgetq_lane_u32(shifted, 0) |
                      (vgetq_lane_u32(shifted, 1) << 1) |
                      (vgetq_lane_u32(shifted, 2) << 2) |
                      (vgetq_lane_u32(shifted, 3) << 3);
@@ -442,8 +442,8 @@ inline int movemask_int(Int4 v) {
     return _mm_movemask_epi8(v);
 #elif defined(HAMMER_SIMD_NEON)
     // Similar to float movemask
-    uint32x4_t shifted = vshrq_n_u32(v, 31);
-    uint32_t result = vgetq_lane_u32(shifted, 0) |
+    uint32x4_t const shifted = vshrq_n_u32(v, 31);
+    uint32_t const result = vgetq_lane_u32(shifted, 0) |
                      (vgetq_lane_u32(shifted, 1) << 1) |
                      (vgetq_lane_u32(shifted, 2) << 2) |
                      (vgetq_lane_u32(shifted, 3) << 3);
@@ -604,12 +604,19 @@ inline Byte16 bitwise_and_byte(Byte16 a, Byte16 b) {
 }
 
 /**
- * @brief Greater-than comparison (byte-level, signed)
- * Returns 0xFF for true, 0x00 for false per byte
+ * @brief Greater-than comparison (byte-level, UNSIGNED)
+ * Returns 0xFF for true, 0x00 for false per byte.
+ * This performs UNSIGNED comparison on all platforms.
+ * Used by ParticleManager for unsigned lifetime values.
  */
 inline Byte16 cmpgt_byte(Byte16 a, Byte16 b) {
 #if defined(HAMMER_SIMD_SSE2)
-    return _mm_cmpgt_epi8(a, b);
+    // SSE only has signed byte comparison (_mm_cmpgt_epi8).
+    // To emulate unsigned comparison, XOR both operands with 0x80
+    // which flips the sign bit, converting unsigned [0,255] range
+    // to signed [-128,127] range while preserving comparison order.
+    __m128i sign_flip = _mm_set1_epi8(static_cast<char>(0x80));
+    return _mm_cmpgt_epi8(_mm_xor_si128(a, sign_flip), _mm_xor_si128(b, sign_flip));
 #elif defined(HAMMER_SIMD_NEON)
     return vcgtq_u8(a, b);
 #else
@@ -629,10 +636,36 @@ inline int movemask_byte(Byte16 v) {
 #if defined(HAMMER_SIMD_SSE2)
     return _mm_movemask_epi8(v);
 #elif defined(HAMMER_SIMD_NEON)
-    // NEON: Check first 4 bytes for particle flag checking
-    uint8x8_t narrow = vget_low_u8(v);
-    uint64_t maskBits = vget_lane_u64(vreinterpret_u64_u8(narrow), 0);
-    return static_cast<int>(maskBits & 0xFFFFFFFF);
+    // Correct NEON implementation for movemask_byte.
+    // NEON lacks a direct equivalent to SSE's _mm_movemask_epi8,
+    // so we use a sequence of shifts and horizontal adds (packed add).
+
+    // 1. Shift the high bit of each byte to the low bit. Result is 0x01 or 0x00.
+    uint8x16_t const msbs = vshrq_n_u8(v, 7);
+
+    // 2. Create a vector of powers of 2 to scale the bits.
+    const uint8_t p[] = { 1, 2, 4, 8, 16, 32, 64, 128 };
+    uint8x8_t const powers = vld1_u8(p);
+
+    // 3. Multiply the low and high 8 bytes of MSBs with the powers vector.
+    // This places each bit in its correct position within a byte.
+    uint8x8_t const low_scaled = vmul_u8(vget_low_u8(msbs), powers);
+    uint8x8_t const high_scaled = vmul_u8(vget_high_u8(msbs), powers);
+
+    // 4. Horizontally add the bytes in each 8-byte vector to get the final masks.
+    // We use a cascade of pairwise-add-and-widen operations.
+    uint16x4_t const low_sum1 = vpaddl_u8(low_scaled);
+    uint32x2_t const low_sum2 = vpaddl_u16(low_sum1);
+    uint64x1_t const low_sum3 = vpaddl_u32(low_sum2);
+
+    uint16x4_t const high_sum1 = vpaddl_u8(high_scaled);
+    uint32x2_t const high_sum2 = vpaddl_u16(high_sum1);
+    uint64x1_t const high_sum3 = vpaddl_u32(high_sum2);
+
+    uint8_t const low_mask = vget_lane_u64(low_sum3, 0);
+    uint8_t const high_mask = vget_lane_u64(high_sum3, 0);
+
+    return static_cast<int>(low_mask | (high_mask << 8));
 #else
     int result = 0;
     for (int i = 0; i < 16; ++i) {
@@ -719,10 +752,10 @@ inline float horizontal_add(Float4 v) {
     Float4 result = _mm_add_ps(sums, shuf);
     return _mm_cvtss_f32(result);
 #elif defined(HAMMER_SIMD_NEON)
-    float32x2_t low = vget_low_f32(v);
-    float32x2_t high = vget_high_f32(v);
-    float32x2_t sum = vpadd_f32(low, high);
-    float32x2_t final_sum = vpadd_f32(sum, sum);
+    float32x2_t const low = vget_low_f32(v);
+    float32x2_t const high = vget_high_f32(v);
+    float32x2_t const sum = vpadd_f32(low, high);
+    float32x2_t const final_sum = vpadd_f32(sum, sum);
     return vget_lane_f32(final_sum, 0);
 #else
     return v.data[0] + v.data[1] + v.data[2] + v.data[3];
@@ -744,8 +777,8 @@ inline float dot2D(Float4 a, Float4 b) {
     Float4 sum = _mm_add_ps(prod, shuf);
     return _mm_cvtss_f32(sum);
 #elif defined(HAMMER_SIMD_NEON)
-    Float4 prod = vmulq_f32(a, b);
-    float32x2_t sum = vpadd_f32(vget_low_f32(prod), vget_high_f32(prod));
+    Float4 const prod = vmulq_f32(a, b);
+    float32x2_t const sum = vpadd_f32(vget_low_f32(prod), vget_high_f32(prod));
     return vget_lane_f32(sum, 0);
 #else
     return a.data[0] * b.data[0] + a.data[1] * b.data[1];

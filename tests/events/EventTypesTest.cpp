@@ -11,6 +11,7 @@
 #include "events/ParticleEffectEvent.hpp"
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "entities/Player.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -533,7 +534,7 @@ BOOST_FIXTURE_TEST_CASE(ParticleEffectEventEdgeCases, EventTypesFixture) {
 // ============================================================================
 
 #include "events/TimeEvent.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 
 // Test HourChangedEvent creation and properties
 BOOST_FIXTURE_TEST_CASE(HourChangedEventBasics, EventTypesFixture) {
@@ -732,4 +733,280 @@ BOOST_FIXTURE_TEST_CASE(TimeEventBaseClass, EventTypesFixture) {
   event.update();
   event.execute();
   event.clean();
+}
+
+// ============================================================================
+// EVENTTYPEID COVERAGE TESTS
+// Tests for all EventTypeId enum values to ensure complete coverage
+// ============================================================================
+
+#include "events/CameraEvent.hpp"
+#include "events/CollisionEvent.hpp"
+#include "events/CollisionObstacleChangedEvent.hpp"
+#include "events/CombatEvent.hpp"
+#include "events/HarvestResourceEvent.hpp"
+#include "events/ResourceChangeEvent.hpp"
+#include "events/WorldEvent.hpp"
+#include "events/WorldTriggerEvent.hpp"
+
+// Test EventTypeId enum values
+BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
+  // Verify EventTypeId enum has expected values
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Weather), 0);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::SceneChange), 1);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::NPCSpawn), 2);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::ParticleEffect), 3);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::ResourceChange), 4);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::World), 5);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Camera), 6);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Harvest), 7);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Collision), 8);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::WorldTrigger), 9);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::CollisionObstacleChanged), 10);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Custom), 11);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 12);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 14);
+}
+
+// Test ResourceChangeEvent
+BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
+    // Create a mock player entity
+    auto player = std::make_shared<Player>();
+    player->initializeInventory(); // Important for the test
+
+    // Create a resource handle
+    HammerEngine::ResourceHandle woodHandle(1, 1);
+
+    // Create the event
+    ResourceChangeEvent event(player, woodHandle, 100, 150, "crafted");
+
+    // Check event properties
+    BOOST_CHECK(event.getOwner().lock() == player);
+    BOOST_CHECK(event.getResourceHandle() == woodHandle);
+    BOOST_CHECK_EQUAL(event.getOldQuantity(), 100);
+    BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
+    BOOST_CHECK_EQUAL(event.getQuantityChange(), 50);
+    BOOST_CHECK_EQUAL(event.getChangeReason(), "crafted");
+
+    // Check convenience methods
+    BOOST_CHECK(event.isIncrease());
+    BOOST_CHECK(!event.isDecrease());
+
+    // Test reset
+    event.reset();
+    // Reset is a no-op for this event, but let's check it doesn't crash
+    // and values remain
+    BOOST_CHECK(event.getOwner().lock() == player);
+    BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
+}
+
+// Test WorldEvent types
+BOOST_FIXTURE_TEST_CASE(WorldEventBasics, EventTypesFixture) {
+  // Test WorldLoadedEvent
+  WorldLoadedEvent loadedEvent("test_world", 100, 100);
+  BOOST_CHECK_EQUAL(loadedEvent.getName(), "WorldLoadedEvent");
+  BOOST_CHECK_EQUAL(loadedEvent.getType(), "WorldLoadedEvent");
+  BOOST_CHECK(loadedEvent.getTypeId() == EventTypeId::World);
+  BOOST_CHECK_EQUAL(loadedEvent.getWorldId(), "test_world");
+  BOOST_CHECK_EQUAL(loadedEvent.getWidth(), 100);
+  BOOST_CHECK_EQUAL(loadedEvent.getHeight(), 100);
+
+  // Test TileChangedEvent
+  TileChangedEvent tileEvent(10, 20, "biome_change");
+  BOOST_CHECK_EQUAL(tileEvent.getName(), "TileChangedEvent");
+  BOOST_CHECK(tileEvent.getTypeId() == EventTypeId::World);
+  BOOST_CHECK_EQUAL(tileEvent.getX(), 10);
+  BOOST_CHECK_EQUAL(tileEvent.getY(), 20);
+  BOOST_CHECK_EQUAL(tileEvent.getChangeType(), "biome_change");
+
+  // Test WorldGeneratedEvent
+  WorldGeneratedEvent genEvent("world_001", 200, 200, 2.5f);
+  BOOST_CHECK_EQUAL(genEvent.getName(), "WorldGeneratedEvent");
+  BOOST_CHECK(genEvent.getTypeId() == EventTypeId::World);
+  BOOST_CHECK_EQUAL(genEvent.getWorldId(), "world_001");
+  BOOST_CHECK_EQUAL(genEvent.getWidth(), 200);
+  BOOST_CHECK_EQUAL(genEvent.getHeight(), 200);
+  BOOST_CHECK_EQUAL(genEvent.getGenerationTime(), 2.5f);
+}
+
+// Test CameraEvent
+BOOST_FIXTURE_TEST_CASE(CameraEventBasics, EventTypesFixture) {
+    // Test CameraMovedEvent
+    CameraMovedEvent movedEvent(Vector2D(100.0f, 200.0f), Vector2D(50.0f, 150.0f));
+    BOOST_CHECK(movedEvent.getEventType() == CameraEventType::CameraMoved);
+    BOOST_CHECK_EQUAL(movedEvent.getNewX(), 100.0f);
+    BOOST_CHECK_EQUAL(movedEvent.getNewY(), 200.0f);
+    BOOST_CHECK_EQUAL(movedEvent.getOldX(), 50.0f);
+    BOOST_CHECK_EQUAL(movedEvent.getOldY(), 150.0f);
+    BOOST_CHECK(movedEvent.getTypeId() == EventTypeId::Camera);
+    BOOST_CHECK_EQUAL(movedEvent.getTypeName(), "CameraMovedEvent");
+
+
+    // Test CameraZoomChangedEvent
+    CameraZoomChangedEvent zoomEvent(2.0f, 1.0f);
+    BOOST_CHECK(zoomEvent.getEventType() == CameraEventType::CameraZoomChanged);
+    BOOST_CHECK_EQUAL(zoomEvent.getNewZoom(), 2.0f);
+    BOOST_CHECK_EQUAL(zoomEvent.getOldZoom(), 1.0f);
+    BOOST_CHECK(zoomEvent.getTypeId() == EventTypeId::Camera);
+
+    // Test CameraShakeStartedEvent
+    CameraShakeStartedEvent shakeEvent(1.0f, 5.0f);
+    BOOST_CHECK(shakeEvent.getEventType() == CameraEventType::CameraShakeStarted);
+    BOOST_CHECK_EQUAL(shakeEvent.getDuration(), 1.0f);
+    BOOST_CHECK_EQUAL(shakeEvent.getIntensity(), 5.0f);
+    BOOST_CHECK(shakeEvent.getTypeId() == EventTypeId::Camera);
+}
+
+// Test HarvestResourceEvent
+BOOST_FIXTURE_TEST_CASE(HarvestResourceEventBasics, EventTypesFixture) {
+  HarvestResourceEvent event(42, 10, 20, "wood");
+
+  BOOST_CHECK_EQUAL(event.getName(), "HarvestResource");
+  BOOST_CHECK_EQUAL(event.getType(), "HarvestResourceEvent");
+  BOOST_CHECK(event.getTypeId() == EventTypeId::Harvest);
+  BOOST_CHECK_EQUAL(event.getEntityId(), 42);
+  BOOST_CHECK_EQUAL(event.getTargetX(), 10);
+  BOOST_CHECK_EQUAL(event.getTargetY(), 20);
+  BOOST_CHECK_EQUAL(event.getResourceType(), "wood");
+
+  // Test checkConditions (should be valid with proper coords)
+  BOOST_CHECK(event.checkConditions());
+
+}
+
+// Test CollisionEvent
+BOOST_FIXTURE_TEST_CASE(CollisionEventBasics, EventTypesFixture) {
+    HammerEngine::CollisionInfo info;
+    info.a = 1;
+    info.b = 2;
+
+    CollisionEvent event(info);
+
+    BOOST_CHECK_EQUAL(event.getName(), "CollisionEvent");
+    BOOST_CHECK_EQUAL(event.getType(), "CollisionEvent");
+    BOOST_CHECK(event.getTypeId() == EventTypeId::Collision);
+    BOOST_CHECK_EQUAL(event.getInfo().a, 1);
+    BOOST_CHECK_EQUAL(event.getInfo().b, 2);
+
+    // Test reset
+    event.reset();
+    // In the new implementation, reset() on CollisionEvent does not clear the info.
+    // It only resets the cooldown and consumed status. So we check if the info remains.
+    BOOST_CHECK_EQUAL(event.getInfo().a, 1);
+    BOOST_CHECK_EQUAL(event.getInfo().b, 2);
+}
+
+// Test WorldTriggerEvent
+BOOST_FIXTURE_TEST_CASE(WorldTriggerEventBasics, EventTypesFixture) {
+    WorldTriggerEvent event(42, 1, HammerEngine::TriggerTag::Water, Vector2D(5, 10), TriggerPhase::Enter);
+
+    BOOST_CHECK_EQUAL(event.getName(), "WorldTriggerEvent");
+    BOOST_CHECK_EQUAL(event.getType(), "WorldTriggerEvent");
+    BOOST_CHECK(event.getTypeId() == EventTypeId::WorldTrigger);
+    BOOST_CHECK_EQUAL(event.getPlayerId(), 42);
+    BOOST_CHECK_EQUAL(event.getTriggerId(), 1);
+    BOOST_CHECK(event.getTag() == HammerEngine::TriggerTag::Water);
+    BOOST_CHECK_EQUAL(event.getPosition().getX(), 5);
+    BOOST_CHECK_EQUAL(event.getPosition().getY(), 10);
+    BOOST_CHECK(event.getPhase() == TriggerPhase::Enter);
+}
+
+// Test CollisionObstacleChangedEvent
+BOOST_FIXTURE_TEST_CASE(CollisionObstacleChangedEventBasics, EventTypesFixture) {
+    CollisionObstacleChangedEvent event(CollisionObstacleChangedEvent::ChangeType::REMOVED, Vector2D(100, 200), 128.0f, "obstacle_removed");
+
+    BOOST_CHECK_EQUAL(event.getName(), "collision_obstacle_changed");
+    BOOST_CHECK_EQUAL(event.getType(), "CollisionObstacleChanged");
+    BOOST_CHECK(event.getTypeId() == EventTypeId::CollisionObstacleChanged);
+    BOOST_CHECK(event.getChangeType() == CollisionObstacleChangedEvent::ChangeType::REMOVED);
+    BOOST_CHECK_EQUAL(event.getPosition().getX(), 100);
+    BOOST_CHECK_EQUAL(event.getPosition().getY(), 200);
+    BOOST_CHECK_EQUAL(event.getRadius(), 128.0f);
+    BOOST_CHECK_EQUAL(event.getDescription(), "obstacle_removed");
+}
+
+// Test CombatEvent
+BOOST_FIXTURE_TEST_CASE(CombatEventBasics, EventTypesFixture) {
+    auto attacker = std::make_shared<Player>();
+    auto target = std::make_shared<Player>();
+
+    CombatEvent event(CombatEventType::PlayerAttacked, attacker.get(), target.get());
+
+    BOOST_CHECK_EQUAL(event.getName(), "CombatEvent_PlayerAttacked");
+    BOOST_CHECK_EQUAL(event.getType(), "Combat");
+    BOOST_CHECK(event.getTypeId() == EventTypeId::Combat);
+    BOOST_CHECK(event.getCombatType() == CombatEventType::PlayerAttacked);
+    BOOST_CHECK(event.getAttacker() == attacker.get());
+    BOOST_CHECK(event.getTarget() == target.get());
+
+    // Test different combat event types
+    CombatEvent damageEvent(CombatEventType::NPCDamaged, attacker.get(), target.get(), 25.0f);
+    BOOST_CHECK(damageEvent.getCombatType() == CombatEventType::NPCDamaged);
+    BOOST_CHECK_EQUAL(damageEvent.getDamage(), 25.0f);
+
+    CombatEvent deathEvent(CombatEventType::NPCKilled, attacker.get(), target.get());
+    BOOST_CHECK(deathEvent.getCombatType() == CombatEventType::NPCKilled);
+}
+
+// Test all event types return correct TypeId
+BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
+  // Weather
+  WeatherEvent weatherEvent("test", WeatherType::Clear);
+  BOOST_CHECK(weatherEvent.getTypeId() == EventTypeId::Weather);
+
+  // SceneChange
+  SceneChangeEvent sceneEvent("test", "target");
+  BOOST_CHECK(sceneEvent.getTypeId() == EventTypeId::SceneChange);
+
+  // NPCSpawn
+  NPCSpawnEvent npcEvent("test", "Guard");
+  BOOST_CHECK(npcEvent.getTypeId() == EventTypeId::NPCSpawn);
+
+  // ParticleEffect
+  ParticleEffectEvent particleEvent("test", ParticleEffectType::Fire, 0.0f, 0.0f);
+  BOOST_CHECK(particleEvent.getTypeId() == EventTypeId::ParticleEffect);
+
+  // ResourceChange
+  auto player = std::make_shared<Player>();
+  HammerEngine::ResourceHandle goldHandle(2, 1);
+  ResourceChangeEvent resourceEvent(player, goldHandle, 0, 10, "looted");
+  BOOST_CHECK(resourceEvent.getTypeId() == EventTypeId::ResourceChange);
+
+  // World
+  WorldLoadedEvent worldEvent("world", 10, 10);
+  BOOST_CHECK(worldEvent.getTypeId() == EventTypeId::World);
+
+  // Camera
+  CameraMovedEvent cameraEvent(Vector2D(0.0f, 0.0f), Vector2D(0.0f, 0.0f));
+  BOOST_CHECK(cameraEvent.getTypeId() == EventTypeId::Camera);
+
+  // Harvest
+  HarvestResourceEvent harvestEvent(1, 0, 0, "wood");
+  BOOST_CHECK(harvestEvent.getTypeId() == EventTypeId::Harvest);
+
+  // Collision
+  HammerEngine::CollisionInfo info;
+  info.a = 1;
+  info.b = 2;
+  CollisionEvent collisionEvent(info);
+  BOOST_CHECK(collisionEvent.getTypeId() == EventTypeId::Collision);
+
+  // WorldTrigger
+  WorldTriggerEvent triggerEvent(1, 2, HammerEngine::TriggerTag::None, Vector2D(0,0), TriggerPhase::Enter);
+  BOOST_CHECK(triggerEvent.getTypeId() == EventTypeId::WorldTrigger);
+
+  // CollisionObstacleChanged
+  CollisionObstacleChangedEvent obstacleEvent(CollisionObstacleChangedEvent::ChangeType::REMOVED, Vector2D(0, 0), 64.0f, "removed");
+  BOOST_CHECK(obstacleEvent.getTypeId() == EventTypeId::CollisionObstacleChanged);
+
+  // Time
+  HourChangedEvent timeEvent(12, false);
+  BOOST_CHECK(timeEvent.getTypeId() == EventTypeId::Time);
+
+  // Combat
+  auto attacker = std::make_shared<Player>();
+  auto target = std::make_shared<Player>();
+  CombatEvent combatEvent(CombatEventType::PlayerAttacked, attacker.get(), target.get());
+  BOOST_CHECK(combatEvent.getTypeId() == EventTypeId::Combat);
 }

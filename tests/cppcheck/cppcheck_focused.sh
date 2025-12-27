@@ -30,18 +30,64 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Run cppcheck and capture output for counting
 TEMP_OUTPUT=$(mktemp)
-cppcheck \
-    --enable=warning,style,performance,portability \
-    --library=std,posix \
-    --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
-    --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
-    -I"$PROJECT_ROOT/include" \
-    -I"$PROJECT_ROOT/src" \
-    --platform=unix64 \
-    --std=c++20 \
-    --quiet \
-    --template='{file}:{line}: [{severity}] {message}' \
-    "$PROJECT_ROOT/src/" "$PROJECT_ROOT/include/" 2>&1 | tee "$TEMP_OUTPUT"
+
+# Determine number of CPU cores for parallel analysis
+if command -v nproc &> /dev/null; then
+    JOBS=$(nproc)
+elif command -v sysctl &> /dev/null; then
+    JOBS=$(sysctl -n hw.ncpu)
+else
+    JOBS=4
+fi
+echo -e "${BLUE}Using $JOBS parallel jobs${NC}"
+
+# Timeout in seconds (5 minutes)
+TIMEOUT_SECONDS=300
+
+# Check compile_commands.json exists for proper cross-TU analysis
+if [ -f "$PROJECT_ROOT/compile_commands.json" ]; then
+    echo -e "${BLUE}Using compile_commands.json for improved analysis${NC}"
+    echo -e "${YELLOW}Analysis may take 1-3 minutes...${NC}"
+    timeout $TIMEOUT_SECONDS cppcheck \
+        --project="$PROJECT_ROOT/compile_commands.json" \
+        --file-filter="*/src/*" \
+        --file-filter="*/include/*" \
+        -j$JOBS \
+        --enable=warning,style,performance,portability \
+        --library=std,posix \
+        --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
+        --std=c++20 \
+        --quiet \
+        --template='{file}:{line}: [{severity}] {message}' \
+        2>&1 | tee "$TEMP_OUTPUT"
+    CPPCHECK_EXIT=$?
+else
+    echo -e "${YELLOW}Warning: compile_commands.json not found, using manual include paths${NC}"
+    echo "Run cmake first for better analysis: cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug"
+    timeout $TIMEOUT_SECONDS cppcheck \
+        -I"$PROJECT_ROOT/include" \
+        -I"$PROJECT_ROOT/src" \
+        -j$JOBS \
+        --enable=warning,style,performance,portability \
+        --library=std,posix \
+        --library="$SCRIPT_DIR/cppcheck_lib.cfg" \
+        --suppressions-list="$SCRIPT_DIR/cppcheck_suppressions.txt" \
+        --platform=unix64 \
+        --std=c++20 \
+        --quiet \
+        --template='{file}:{line}: [{severity}] {message}' \
+        "$PROJECT_ROOT/src/" "$PROJECT_ROOT/include/" \
+        2>&1 | tee "$TEMP_OUTPUT"
+    CPPCHECK_EXIT=$?
+fi
+
+# Check for timeout
+if [ $CPPCHECK_EXIT -eq 124 ]; then
+    echo ""
+    echo -e "${RED}⚠ Analysis timed out after ${TIMEOUT_SECONDS}s${NC}"
+    echo -e "${YELLOW}Partial results shown above. Consider running on specific directories.${NC}"
+fi
 
 # Count issues with simple grep and wc
 ERROR_COUNT=$(grep '\[error\]' "$TEMP_OUTPUT" | wc -l | tr -d ' ')

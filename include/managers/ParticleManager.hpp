@@ -321,6 +321,15 @@ struct ParticlePerformanceStats {
   void reset();
 };
 
+// Threading info for debug logging (passed via local vars, not stored)
+struct ParticleThreadingInfo {
+  size_t workerCount{0};
+  size_t availableWorkers{0};
+  size_t budget{0};
+  size_t batchCount{1};
+  bool wasThreaded{false};
+};
+
 /**
  * @brief Ultra-high-performance ParticleManager
  */
@@ -606,10 +615,9 @@ public:
   // Threading and Performance
   /**
    * @brief Configures threading behavior
-   * @param useThreading Whether to use multi-threading
-   * @param maxThreads Maximum threads to use (0 = auto-detect)
+   * @param enable Whether to enable multi-threading
    */
-  void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+  void enableThreading(bool enable);
 
   /**
    * @brief Sets the threading threshold (minimum particles to use threading)
@@ -652,7 +660,8 @@ public:
    *
    * Called automatically by update() when WorkerBudget threading is enabled.
    */
-  void updateWithWorkerBudget(float deltaTime, size_t particleCount);
+  void updateWithWorkerBudget(float deltaTime, size_t particleCount,
+                              ParticleThreadingInfo& outThreadingInfo);
 
   /**
    * @brief Gets current performance statistics
@@ -810,8 +819,15 @@ private:
     std::atomic<size_t> writeHead{0};     // Next write position
     std::atomic<size_t> capacity{0};      // Current capacity
 
-    // Object pool: free-index list for slot reuse (LIFO for cache locality)
-    std::vector<size_t> freeIndices;
+    // Object pool: epoch-based deferred recycling for thread safety
+    // Indices are held in pending for 2 frames before becoming available,
+    // ensuring background threads from previous frames have completed.
+    struct ReleasedIndex {
+      size_t index;
+      uint64_t releaseEpoch;
+    };
+    std::vector<ReleasedIndex> pendingIndices;  // Recently freed, not yet safe
+    std::vector<size_t> readyIndices;           // Safe to reuse (2+ frames old)
     // Upper bound of currently active indices (last index that may be active)
     size_t maxActiveIndex{0};
 
@@ -834,9 +850,8 @@ private:
     std::atomic<size_t> creationHead{0};
     std::atomic<size_t> creationTail{0};
 
-    // Memory reclamation using epochs
+    // Epoch counter for deferred index recycling
     std::atomic<uint64_t> currentEpoch{0};
-    std::atomic<uint64_t> safeEpoch{0};
 
     LockFreeParticleStorage();
 
@@ -863,14 +878,34 @@ private:
     // Swap buffers for lock-free updates
     void swapBuffers();
 
-    // Pool helpers
-    inline bool hasFreeIndex() const { return !freeIndices.empty(); }
+    // Pool helpers for epoch-based deferred recycling
+    inline bool hasFreeIndex() const { return !readyIndices.empty(); }
+
     inline size_t popFreeIndex() {
-      const size_t idx = freeIndices.back();
-      freeIndices.pop_back();
+      const size_t idx = readyIndices.back();
+      readyIndices.pop_back();
       return idx;
     }
-    inline void pushFreeIndex(size_t idx) { freeIndices.push_back(idx); }
+
+    inline void pushFreeIndex(size_t idx) {
+      pendingIndices.push_back({idx, currentEpoch.load(std::memory_order_relaxed)});
+    }
+
+    // Move aged indices from pending to ready (call once per frame after updates)
+    inline void promoteSafeIndices() {
+      const uint64_t currentEp = currentEpoch.load(std::memory_order_relaxed);
+      const uint64_t safeThreshold = (currentEp >= 2) ? (currentEp - 2) : 0;
+
+      size_t writePos = 0;
+      for (size_t i = 0; i < pendingIndices.size(); ++i) {
+        if (pendingIndices[i].releaseEpoch <= safeThreshold) {
+          readyIndices.push_back(pendingIndices[i].index);
+        } else {
+          pendingIndices[writePos++] = pendingIndices[i];
+        }
+      }
+      pendingIndices.resize(writePos);
+    }
   };
 
   // Core storage - now lock-free
@@ -893,22 +928,10 @@ private:
   std::atomic<bool> m_globallyVisible{true};
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
-  std::atomic<size_t> m_threadingThreshold{750};
-  unsigned int m_maxThreads{0};
+  std::atomic<size_t> m_threadingThreshold{2000};  // Optimal threshold from benchmark
 
-  // Frame counter for periodic maintenance (like AIManager)
-  std::atomic<uint64_t> m_frameCounter{0};
 
-  // Thread allocation tracking for debug output
-  std::atomic<size_t> m_lastOptimalWorkerCount{0};
-  std::atomic<size_t> m_lastAvailableWorkers{0};
-  std::atomic<size_t> m_lastParticleBudget{0};
-  std::atomic<size_t> m_lastThreadBatchCount{0};
-  std::atomic<bool> m_lastWasThreaded{false};
   std::atomic<size_t> m_activeCount{0};
-
-  // Adaptive batch state for performance-based tuning
-  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
 
   // Camera and culling
   struct CameraViewport {
@@ -923,6 +946,7 @@ private:
 
   // Async batch tracking for safe shutdown using futures
   std::vector<std::future<void>> m_batchFutures;
+  std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
   std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // NOTE: No update mutex - GameEngine handles update/render synchronization
@@ -1044,7 +1068,8 @@ private:
   void swapBuffers();
   void cleanupInactiveParticles();
   void updateEffectInstances(float deltaTime);
-  void updateParticlesThreaded(float deltaTime, size_t activeParticleCount);
+  void updateParticlesThreaded(float deltaTime, size_t activeParticleCount,
+                               ParticleThreadingInfo& outThreadingInfo);
   void updateParticlesSingleThreaded(float deltaTime,
                                      size_t activeParticleCount);
   void updateParticleRange(LockFreeParticleStorage::ParticleSoA &particles,

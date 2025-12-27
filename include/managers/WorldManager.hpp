@@ -9,7 +9,7 @@
 #include "world/WorldData.hpp"
 #include "world/WorldGenerator.hpp"
 #include "utils/ResourceHandle.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <memory>
 #include <string>
 #include <atomic>

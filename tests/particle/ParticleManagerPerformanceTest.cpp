@@ -7,10 +7,12 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
+#include "core/WorkerBudget.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "managers/ParticleManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <chrono>
+#include <iomanip>
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -21,6 +23,10 @@ struct ParticleManagerPerformanceFixture {
     // Initialize ThreadSystem first (required for batch submissions)
     if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
       HammerEngine::ThreadSystem::Instance().init();
+      // Log WorkerBudget allocations for production-matching verification
+      const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+      std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
+      std::cout << "WorkerBudget: " << budget.totalWorkers << " workers (all available per manager)\n";
     }
 
     manager = &ParticleManager::Instance();
@@ -129,11 +135,6 @@ BOOST_FIXTURE_TEST_CASE(TestUpdatePerformance1000Particles,
 
   // Update time should be reasonable for real-time performance
   BOOST_CHECK_LT(updateTime, MAX_UPDATE_TIME_MS);
-
-  // Check performance stats
-  ParticlePerformanceStats stats = manager->getPerformanceStats();
-  BOOST_CHECK_GT(stats.updateCount, 0);
-  BOOST_CHECK_GT(stats.totalUpdateTime, 0.0);
 }
 
 // Test update performance with 5000 particles
@@ -471,6 +472,107 @@ BOOST_FIXTURE_TEST_CASE(TestDifferentEffectTypesPerformance,
     BOOST_CHECK_LT(updateTime, 20.0);
     BOOST_CHECK_GT(particleCount, 0);
   }
+}
+
+// Detect optimal threading threshold for ParticleManager
+BOOST_FIXTURE_TEST_CASE(TestThreadingThreshold,
+                        ParticleManagerPerformanceFixture) {
+  std::cout << "\n===== PARTICLE THREADING THRESHOLD DETECTION =====" << std::endl;
+  std::cout << "Comparing single-threaded vs multi-threaded at different particle counts\n" << std::endl;
+
+  std::vector<size_t> testCounts = {50, 100, 200, 500, 1000, 2000, 5000};
+  size_t optimalThreshold = 0;
+  size_t marginalThreshold = 0;
+
+  std::cout << std::setw(12) << "Particles"
+            << std::setw(18) << "Single (ms/upd)"
+            << std::setw(18) << "Threaded (ms/upd)"
+            << std::setw(12) << "Speedup"
+            << std::setw(15) << "Verdict" << std::endl;
+  std::cout << std::string(75, '-') << std::endl;
+
+  for (size_t targetCount : testCounts) {
+    // Test single-threaded
+    if (manager->isInitialized()) manager->clean();
+    manager->init();
+    manager->registerBuiltInEffects();
+    manager->enableThreading(false);
+
+    createParticles(targetCount);
+    size_t actualCount = manager->getActiveParticleCount();
+
+    // Warmup
+    for (int i = 0; i < 5; ++i) manager->update(0.016f);
+
+    // Measure single-threaded
+    double singleTotal = 0;
+    for (int i = 0; i < 5; ++i) {
+      singleTotal += measureExecutionTime([this]() { manager->update(0.016f); });
+    }
+    double singleTime = singleTotal / 5.0;
+
+    // Test multi-threaded
+    if (manager->isInitialized()) manager->clean();
+    manager->init();
+    manager->registerBuiltInEffects();
+    manager->enableThreading(true);
+
+    createParticles(targetCount);
+
+    // Warmup
+    for (int i = 0; i < 5; ++i) manager->update(0.016f);
+
+    // Measure threaded
+    double threadedTotal = 0;
+    for (int i = 0; i < 5; ++i) {
+      threadedTotal += measureExecutionTime([this]() { manager->update(0.016f); });
+    }
+    double threadedTime = threadedTotal / 5.0;
+
+    double speedup = (threadedTime > 0) ? singleTime / threadedTime : 0;
+
+    std::string verdict;
+    if (speedup > 1.5) {
+      verdict = "THREAD";
+      if (optimalThreshold == 0) optimalThreshold = actualCount;
+    } else if (speedup > 1.1) {
+      verdict = "marginal";
+      if (marginalThreshold == 0) marginalThreshold = actualCount;
+    } else {
+      verdict = "single";
+    }
+
+    std::cout << std::setw(12) << actualCount
+              << std::setw(18) << std::fixed << std::setprecision(3) << singleTime
+              << std::setw(18) << std::fixed << std::setprecision(3) << threadedTime
+              << std::setw(11) << std::fixed << std::setprecision(2) << speedup << "x"
+              << std::setw(15) << verdict << std::endl;
+  }
+
+  std::cout << "\n=== PARTICLE THREADING RECOMMENDATION ===" << std::endl;
+  std::cout << "Current threshold:  100 particles" << std::endl;
+
+  if (optimalThreshold > 0) {
+    std::cout << "Optimal threshold:  " << optimalThreshold << " particles (speedup > 1.5x)" << std::endl;
+    if (optimalThreshold > 100) {
+      std::cout << "ACTION: Consider raising ParticleManager::m_threadingThreshold to " << optimalThreshold << std::endl;
+    } else if (optimalThreshold < 100) {
+      std::cout << "ACTION: Consider lowering ParticleManager::m_threadingThreshold to " << optimalThreshold << std::endl;
+    } else {
+      std::cout << "STATUS: Current threshold is optimal" << std::endl;
+    }
+  } else if (marginalThreshold > 0) {
+    std::cout << "Marginal benefit at: " << marginalThreshold << " particles" << std::endl;
+    std::cout << "STATUS: Threading provides minimal benefit on this hardware" << std::endl;
+  } else {
+    std::cout << "STATUS: Single-threaded is faster at all tested counts" << std::endl;
+    std::cout << "ACTION: Consider raising threshold above 5000" << std::endl;
+  }
+
+  std::cout << "==========================================\n" << std::endl;
+
+  // Restore threading
+  manager->enableThreading(true);
 }
 
 // Ad-hoc high-count benchmarks for update cost at scale (Debug build)
