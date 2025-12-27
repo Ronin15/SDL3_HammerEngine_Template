@@ -33,6 +33,9 @@ bool GamePlayState::enter() {
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
 
+  // Resume all game managers (may be paused from menu states)
+  GameEngine::Instance().setGlobalPause(false);
+
   // Reset transition flag when entering state
   m_transitioningToLoading = false;
 

@@ -1492,6 +1492,9 @@ void GameEngine::setGlobalPause(bool paused) {
   // Pause GameTime Manager
   GameTimeManager::Instance().setGlobalPause(paused);
 
+  // Pause Event Manager
+  EventManager::Instance().setGlobalPause(paused);
+
 #ifdef DEBUG
   if (paused) {
     GAMEENGINE_INFO("Game globally paused - all managers idle");

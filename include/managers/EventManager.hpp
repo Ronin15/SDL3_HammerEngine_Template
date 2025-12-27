@@ -436,6 +436,10 @@ public:
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
 
+  // Global pause control (for menu states)
+  void setGlobalPause(bool paused);
+  bool isGloballyPaused() const;
+
   // High-level convenience methods
   bool changeWeather(const std::string &weatherType,
                      float transitionTime = 5.0f,
@@ -629,6 +633,7 @@ private:
   mutable std::shared_mutex m_handlersMutex;
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
+  std::atomic<bool> m_globallyPaused{false};
   size_t m_threadingThreshold{
       500}; // Global threshold: Thread when total events > 500 (optimal from benchmark)
   static constexpr size_t PER_TYPE_THREAD_THRESHOLD = 20; // Per-type minimum: Only thread types with 20+ events

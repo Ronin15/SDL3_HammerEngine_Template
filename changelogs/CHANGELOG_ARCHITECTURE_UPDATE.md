@@ -255,6 +255,38 @@ Unified all SIMD operations to `SIMDMath.hpp`:
 
 ---
 
+### 9. Menu State Power Optimization
+
+**Problem:**
+High power draw when the engine sits at MainMenuState or SettingsMenuState because game systems (AI, Collision, Pathfinding, Particles, GameTime, Events) continue running at full speed even though no gameplay is occurring.
+
+**Solution:**
+Implemented a pause-on-menu / resume-on-gameplay pattern:
+- **Menu states pause on enter, never unpause**: Systems stay paused during menu-to-menu transitions
+- **Gameplay states unpause on enter**: GamePlayState, AIDemoState, AdvancedAIDemoState, EventDemoState all resume systems when entered
+- **EventManager pause support**: Added `setGlobalPause()` method and early exit in `update()` when paused
+- **GameEngine::setGlobalPause()**: Now includes EventManager in the list of paused managers
+
+**Files Modified:**
+- `include/managers/EventManager.hpp` - Added `m_globallyPaused` atomic and pause methods
+- `src/managers/EventManager.cpp` - Implemented pause logic with early exit in `update()`
+- `src/core/GameEngine.cpp` - Added EventManager to `setGlobalPause()` call chain
+- `src/gameStates/MainMenuState.cpp` - Added pause on enter
+- `src/gameStates/SettingsMenuState.cpp` - Added pause on enter
+- `src/gameStates/GamePlayState.cpp` - Added unpause on enter
+- `src/gameStates/AIDemoState.cpp` - Added unpause on enter
+- `src/gameStates/AdvancedAIDemoState.cpp` - Added unpause on enter
+- `src/gameStates/EventDemoState.cpp` - Added unpause on enter
+
+**Impact:**
+- Significantly reduced CPU usage at main menu and settings screens
+- Lower power consumption on battery-powered devices
+- All managers (AI, Collision, Pathfinding, Particles, GameTime, Events) now idle at menu states
+- Systems remain paused during menu-to-menu transitions (no brief unpause/repause)
+- UI remains fully responsive while systems are paused
+
+---
+
 ## Documentation Updates
 
 ### New Documentation Created
