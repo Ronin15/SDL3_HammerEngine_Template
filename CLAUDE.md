@@ -13,7 +13,7 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=address -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=address" -DUSE_MOLD_LINKER=OFF && ninja -C build
 cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_DEBUG -fsanitize=thread -fno-omit-frame-pointer -g" -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread" -DUSE_MOLD_LINKER=OFF && ninja -C build
 
-# TSAN suppressions: export TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt"
+# TSAN suppressions: export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 ```
 
 **Output**: `bin/debug/` or `bin/release/` | **Run**: `./bin/debug/SDL3_Template`
