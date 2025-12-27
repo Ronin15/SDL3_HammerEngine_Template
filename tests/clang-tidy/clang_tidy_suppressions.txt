@@ -71,3 +71,17 @@ HierarchicalSpatialHash.cpp:bugprone-narrowing-conversions:intentional grid-to-w
 HierarchicalSpatialHash.cpp:cppcoreguidelines-narrowing-conversions:intentional grid-to-world coord conversion
 GameTimeManager.cpp:bugprone-narrowing-conversions:intentional time calculations
 GameTimeManager.cpp:cppcoreguidelines-narrowing-conversions:intentional time calculations
+CollisionManager.cpp:bugprone-narrowing-conversions:intentional grid-to-world coord conversion
+CollisionManager.cpp:cppcoreguidelines-narrowing-conversions:intentional grid-to-world coord conversion
+GameEngine.cpp:bugprone-narrowing-conversions:intentional display dimension conversion
+GameEngine.cpp:cppcoreguidelines-narrowing-conversions:intentional display dimension conversion
+
+# misc-use-internal-linkage false positives - member functions cannot have internal linkage
+# clang-tidy incorrectly flags these as "variables" that could be static/anonymous namespace
+CollisionManager.cpp:misc-use-internal-linkage:member functions cannot have internal linkage
+AIManager.cpp:misc-use-internal-linkage:member functions cannot have internal linkage
+
+# readability-make-member-function-const false positives - functions that DO modify member state
+CollisionManager.cpp:readability-make-member-function-const:populateStaticCache modifies m_coarseRegionStaticCache
+CollisionManager.cpp:readability-make-member-function-const:updatePerformanceMetricsSOA modifies m_perf
+GameEngine.cpp:readability-make-member-function-const:onDisplayChange has side effects via singletons
