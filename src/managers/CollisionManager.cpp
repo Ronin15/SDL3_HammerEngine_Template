@@ -3508,9 +3508,9 @@ void CollisionManager::updatePerformanceMetricsSOA(
     // Threading status
     std::string threadingStatus;
     if (m_lastBroadphaseWasThreaded || m_lastNarrowphaseWasThreaded) {
-      threadingStatus = std::format(" [Threaded: B:{} N:{}]",
-          m_lastBroadphaseWasThreaded ? std::format("{}bat", m_lastBroadphaseBatchCount) : "no",
-          m_lastNarrowphaseWasThreaded ? std::format("{}bat", m_lastNarrowphaseBatchCount) : "no");
+      threadingStatus = std::format(" [Threaded: Broad:{} Narrow:{}]",
+          m_lastBroadphaseWasThreaded ? std::format("{} batches", m_lastBroadphaseBatchCount) : "no",
+          m_lastNarrowphaseWasThreaded ? std::format("{} batches", m_lastNarrowphaseBatchCount) : "no");
     } else {
       threadingStatus = " [Single-threaded]";
     }
