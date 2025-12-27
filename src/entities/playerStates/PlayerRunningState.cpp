@@ -6,12 +6,12 @@
 #include "entities/playerStates/PlayerRunningState.hpp"
 #include "entities/Player.hpp"
 #include "managers/InputManager.hpp"
-#include <SDL3/SDL.h>  // For SDL_GetTicks()
 
 PlayerRunningState::PlayerRunningState(Player& player) : m_player(player) {}
 
 void PlayerRunningState::enter() {
-    // Nothing special needed on enter
+    // Set animation for running using abstracted API
+    m_player.get().playAnimation("running");
 }
 
 void PlayerRunningState::update(float deltaTime) {
@@ -109,22 +109,25 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
 }
 
 void PlayerRunningState::handleRunningAnimation(float deltaTime) {
-    (void)deltaTime; // Animation uses SDL_GetTicks() for consistent timing
-    
     Vector2D velocity = m_player.get().getVelocity();
 
     // Only animate when player is moving
     if (velocity.length() > 1.0f) {
-        Uint64 currentTime = SDL_GetTicks();
+        // Accumulate deltaTime (m_animSpeed is in milliseconds, convert to seconds)
+        float accumulator = m_player.get().getAnimationAccumulator() + deltaTime;
+        float frameTime = m_player.get().getAnimSpeed() / 1000.0f;  // ms to seconds
 
-        // Advance frame based on player's configurable animation speed
-        if (currentTime > m_player.get().getLastFrameTime() + static_cast<Uint64>(m_player.get().getAnimSpeed())) {
+        // Advance frame when accumulator exceeds frame time
+        if (accumulator >= frameTime) {
             int currentFrame = m_player.get().getCurrentFrame();
-            m_player.get().setCurrentFrame((currentFrame + 1) % 2);
-            m_player.get().setLastFrameTime(currentTime);
+            int numFrames = m_player.get().getNumFrames();
+            m_player.get().setCurrentFrame((currentFrame + 1) % numFrames);
+            accumulator -= frameTime;  // Preserve excess time for smooth timing
         }
+        m_player.get().setAnimationAccumulator(accumulator);
     } else {
         m_player.get().setCurrentFrame(0);
+        m_player.get().setAnimationAccumulator(0.0f);
     }
 }
 

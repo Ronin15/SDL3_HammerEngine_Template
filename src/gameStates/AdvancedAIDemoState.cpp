@@ -142,6 +142,9 @@ bool AdvancedAIDemoState::enter() {
     mp_worldMgr = &WorldManager::Instance();
     mp_uiMgr = &UIManager::Instance();
 
+    // Resume all game managers (may be paused from menu states)
+    GameEngine::Instance().setGlobalPause(false);
+
     GAMESTATE_INFO("Entering AdvancedAIDemoState...");
 
     // Reset transition flag when entering state
@@ -543,7 +546,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     if (!mp_uiMgr->isShutdown()) {
         // Update status only when values change (C++20 type-safe, zero allocations)
         const auto& aiManager = AIManager::Instance();
-        int currentFPS = static_cast<int>(gameEngine.getCurrentFPS() + 0.5f);
+        int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
         size_t npcCount = m_npcs.size();
         bool isPaused = aiManager.isGloballyPaused();
 

@@ -42,9 +42,9 @@ struct SpatialQueryCache {
   // Simple hash for position+radius (quantize to reduce unique keys)
   static uint64_t hashQuery(const Vector2D& center, float radius) {
     // Quantize position to 8-pixel grid to increase cache hits
-    int32_t qx = static_cast<int32_t>(center.getX() / 8.0f);
-    int32_t qy = static_cast<int32_t>(center.getY() / 8.0f);
-    int32_t qr = static_cast<int32_t>(radius / 8.0f);
+    int32_t const qx = static_cast<int32_t>(center.getX() / 8.0f);
+    int32_t const qy = static_cast<int32_t>(center.getY() / 8.0f);
+    int32_t const qr = static_cast<int32_t>(radius / 8.0f);
     // Combine into hash
     uint64_t hash = static_cast<uint64_t>(qx);
     hash ^= (static_cast<uint64_t>(qy) << 16);
@@ -145,22 +145,22 @@ static Vector2D ComputeSeparationForce(
   }
 
   Vector2D out = intendedVel;
-  float il = out.length();
+  float const il = out.length();
 
   if ((sep.length() > 0.001f || avoidance.length() > 0.001f) && il > 0.001f) {
-    Vector2D intendedDir = out * (1.0f / il);
+    Vector2D const intendedDir = out * (1.0f / il);
 
     // Emergency avoidance with pathfinding preservation
     if (criticalNeighbors > 0 && avoidance.length() > 0.001f) {
-      Vector2D avoidDir = avoidance.normalized();
+      Vector2D const avoidDir = avoidance.normalized();
       Vector2D perpendicular(-intendedDir.getY(), intendedDir.getX());
 
       if (avoidDir.dot(perpendicular) < 0) {
         perpendicular = Vector2D(intendedDir.getY(), -intendedDir.getX());
       }
 
-      Vector2D emergencyVel = intendedDir * 0.6f + perpendicular * 0.8f;
-      float emLen = emergencyVel.length();
+      Vector2D const emergencyVel = intendedDir * 0.6f + perpendicular * 0.8f;
+      float const emLen = emergencyVel.length();
       if (emLen > 0.01f) {
         out = emergencyVel * (speed / emLen);
       }
@@ -176,8 +176,8 @@ static Vector2D ComputeSeparationForce(
       }
 
       if (sep.length() > 0.001f) {
-        Vector2D sepDir = sep.normalized();
-        float directionConflict = -sepDir.dot(intendedDir);
+        Vector2D const sepDir = sep.normalized();
+        float const directionConflict = -sepDir.dot(intendedDir);
 
         if (directionConflict > 0.7f) {
           // High conflict: lateral redirection
@@ -186,18 +186,18 @@ static Vector2D ComputeSeparationForce(
             lateral = Vector2D(intendedDir.getY(), -intendedDir.getX());
           }
 
-          Vector2D redirected = intendedDir * 0.85f + lateral * adaptiveStrength * 1.2f;
-          float redirLen = redirected.length();
+          Vector2D const redirected = intendedDir * 0.85f + lateral * adaptiveStrength * 1.2f;
+          float const redirLen = redirected.length();
           if (redirLen > 0.01f) {
             out = redirected * (speed / redirLen);
           }
         } else {
           // Low conflict: gentle separation with forward bias
-          Vector2D forwardBias = out * (1.0f - adaptiveStrength * 0.35f);
-          Vector2D separationForce = sep * adaptiveStrength * speed * 0.5f;
-          Vector2D blended = forwardBias + separationForce;
+          Vector2D const forwardBias = out * (1.0f - adaptiveStrength * 0.35f);
+          Vector2D const separationForce = sep * adaptiveStrength * speed * 0.5f;
+          Vector2D const blended = forwardBias + separationForce;
 
-          float bl = blended.length();
+          float const bl = blended.length();
           if (bl > 0.01f) {
             out = blended * (speed / bl);
           }
@@ -289,7 +289,7 @@ Vector2D SmoothVelocityTransition(const Vector2D &currentVel,
                                   float smoothingFactor,
                                   float maxChange) {
   Vector2D deltaVel = targetVel - currentVel;
-  float deltaLen = deltaVel.length();
+  float const deltaLen = deltaVel.length();
   
   if (deltaLen <= 0.01f) {
     return currentVel; // No significant change needed
@@ -301,11 +301,11 @@ Vector2D SmoothVelocityTransition(const Vector2D &currentVel,
   }
   
   // Apply smoothing - smaller factor = more smoothing
-  Vector2D smoothedDelta = deltaVel * smoothingFactor;
+  Vector2D const smoothedDelta = deltaVel * smoothingFactor;
   Vector2D result = currentVel + smoothedDelta;
   
   // Ensure the result maintains reasonable bounds
-  float resultLen = result.length();
+  float const resultLen = result.length();
   if (resultLen > 200.0f) { // Cap maximum velocity
     result = result * (200.0f / resultLen);
   }

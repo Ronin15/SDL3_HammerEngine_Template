@@ -264,10 +264,9 @@ void SpatialPriority::updateEntityFrameState(EntityID entityId, PathPriority pri
     state.lastPriority = static_cast<int>(priority);
     
     // Detect entities that are being skipped too frequently (debugging aid)
-    if (state.consecutiveSkips > 60 && priority != PathPriority::Low) {
-        GAMEENGINE_WARN(std::format("Entity {} has been skipped {} frames consecutively",
-                       entityId, state.consecutiveSkips));
-    }
+    GAMEENGINE_WARN_IF(state.consecutiveSkips > 60 && priority != PathPriority::Low,
+        std::format("Entity {} has been skipped {} frames consecutively",
+                    entityId, state.consecutiveSkips));
 }
 
 void SpatialPriority::performEntityCleanup(uint64_t currentFrame, bool forceAggressive)
@@ -351,10 +350,9 @@ void SpatialPriority::performEntityCleanup(uint64_t currentFrame, bool forceAggr
     
     const size_t sizeAfterCleanup = m_entityFrameStates.size();
 
-    if (entitiesRemoved > 0) {
-        GAMEENGINE_INFO(std::format("SpatialPriority cleanup: {} entities removed ({} -> {})",
-                       entitiesRemoved, sizeBeforeCleanup, sizeAfterCleanup));
-    }
+    GAMEENGINE_INFO_IF(entitiesRemoved > 0,
+        std::format("SpatialPriority cleanup: {} entities removed ({} -> {})",
+                    entitiesRemoved, sizeBeforeCleanup, sizeAfterCleanup));
 }
 
 bool SpatialPriority::shouldTrackNewEntity() const

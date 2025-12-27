@@ -9,9 +9,9 @@
 #include "utils/UniqueID.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
-#include <atomic>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 // Forward declarations
 class Entity; // Forward declare for smart pointers
@@ -26,6 +26,21 @@ using EntityWeakPtr = std::weak_ptr<Entity>;
 
 // Type alias for entity ID
 using EntityID = HammerEngine::UniqueID::IDType;
+
+/**
+ * @brief Animation configuration for sprite sheet handling
+ * Unified struct used by NPC and Player for named animations
+ */
+struct AnimationConfig {
+    int row;           // Sprite sheet row (0-based, converted to 1-based in playAnimation)
+    int frameCount;    // Number of frames in animation
+    int speed;         // Milliseconds per frame
+    bool loop;         // Whether animation loops or plays once
+
+    AnimationConfig() : row(0), frameCount(1), speed(100), loop(true) {}
+    AnimationConfig(int r, int fc, int s, bool l)
+        : row(r), frameCount(fc), speed(s), loop(l) {}
+};
 
 /**
  * @brief Pure virtual base class for all game objects.
@@ -121,20 +136,21 @@ class Entity : public std::enable_shared_from_this<Entity> {
   Vector2D getAcceleration() const { return m_acceleration; }
 
   /**
-   * @brief Get interpolated position for smooth rendering (thread-safe).
+   * @brief Get interpolated position for smooth rendering.
    *
    * Uses linear interpolation between previous and current position
    * based on the interpolation alpha from the game loop.
-   * Reads from atomic state for thread-safe access from render thread.
+   *
+   * Note: With the single-threaded main loop (update completes before render),
+   * this is now a simple calculation without atomics.
    *
    * @param alpha Interpolation factor (0.0 = previous position, 1.0 = current position)
    * @return Interpolated position for rendering
    */
   Vector2D getInterpolatedPosition(float alpha) const {
-    auto state = m_interpState.load(std::memory_order_acquire);
     return Vector2D(
-      state.prevPosX + (state.posX - state.prevPosX) * alpha,
-      state.prevPosY + (state.posY - state.prevPosY) * alpha);
+      m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * alpha,
+      m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * alpha);
   }
 
   /**
@@ -144,18 +160,6 @@ class Entity : public std::enable_shared_from_this<Entity> {
    * This enables smooth rendering interpolation between fixed timestep updates.
    */
   void storePositionForInterpolation() { m_previousPosition = m_position; }
-
-  /**
-   * @brief Publish thread-safe interpolation state for render thread.
-   *
-   * Call this at the END of update() after all position modifications.
-   * Enables lock-free reads in getInterpolatedPosition() from render thread.
-   */
-  void publishInterpolationState() {
-    m_interpState.store({m_position.getX(), m_position.getY(),
-                         m_previousPosition.getX(), m_previousPosition.getY()},
-                         std::memory_order_release);
-  }
 
   /**
    * @brief Update position from movement (preserves interpolation state).
@@ -173,6 +177,8 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int getCurrentRow() const { return m_currentRow; }
   int getNumFrames() const { return m_numFrames; }
   int getAnimSpeed() const { return m_animSpeed; }
+  float getAnimationAccumulator() const { return m_animationAccumulator; }
+  const std::string& getCurrentAnimationName() const { return m_currentAnimationName; }
 
   // Setter methods
 
@@ -185,9 +191,6 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setPosition(const Vector2D& position) {
     m_position = position;
     m_previousPosition = position;  // Prevents interpolation sliding
-    m_interpState.store({position.getX(), position.getY(),
-                         position.getX(), position.getY()},
-                         std::memory_order_release);
   }
   virtual void setVelocity(const Vector2D& velocity) { m_velocity = velocity; }
   virtual void setAcceleration(const Vector2D& acceleration) { m_acceleration = acceleration; }
@@ -198,10 +201,26 @@ class Entity : public std::enable_shared_from_this<Entity> {
   virtual void setCurrentRow(int row) { m_currentRow = row; }
   virtual void setNumFrames(int numFrames) { m_numFrames = numFrames; }
   virtual void setAnimSpeed(int speed) { m_animSpeed = speed; }
+  virtual void setAnimationAccumulator(float acc) { m_animationAccumulator = acc; }
 
   // Used for rendering flipping - to be implemented by derived classes
   virtual void setFlip(SDL_FlipMode flip) { (void)flip; /* Unused in base class */ }
   virtual SDL_FlipMode getFlip() const { return SDL_FLIP_NONE; }
+
+  /**
+   * @brief Play a named animation from the animation map
+   *
+   * Looks up the animation config by name and sets the sprite sheet row,
+   * frame count, animation speed, and loop flag. Does nothing if animation
+   * name is not found in the map.
+   *
+   * @param animName The name of the animation (e.g., "idle", "walking", "attacking")
+   */
+  virtual void playAnimation(const std::string& animName);
+
+  // Note: initializeAnimationMap() is implemented separately in Player and NPC
+  // as a private non-virtual method called from their respective constructors.
+  // No base class virtual is needed since it's never called polymorphically.
 
  protected:
   const EntityID m_id;
@@ -209,14 +228,6 @@ class Entity : public std::enable_shared_from_this<Entity> {
   Vector2D m_velocity{0, 0};
   Vector2D m_position{0, 0};
   Vector2D m_previousPosition{0, 0};  // For render interpolation
-
-  // Thread-safe interpolation state for render thread access
-  // 16-byte atomic is lock-free on x86-64 (CMPXCHG16B) and ARM64 (LDXP/STXP)
-  struct alignas(16) EntityInterpState {
-    float posX{0.0f}, posY{0.0f};
-    float prevPosX{0.0f}, prevPosY{0.0f};
-  };
-  std::atomic<EntityInterpState> m_interpState{};
   int m_width{0};
   int m_height{0};
   std::string m_textureID{};
@@ -224,5 +235,13 @@ class Entity : public std::enable_shared_from_this<Entity> {
   int m_currentRow{0};
   int m_numFrames{0};
   int m_animSpeed{0};
+
+  // Animation abstraction - maps animation names to sprite sheet configurations
+  std::unordered_map<std::string, AnimationConfig> m_animationMap;
+  bool m_animationLoops{true};  // Whether current animation loops or plays once
+
+  // Animation timing - uses deltaTime accumulation for synchronized timing with physics
+  std::string m_currentAnimationName;      // Current animation name (for skip-if-same optimization)
+  float m_animationAccumulator{0.0f};      // Accumulates deltaTime for frame advancement
 };
 #endif  // ENTITY_HPP

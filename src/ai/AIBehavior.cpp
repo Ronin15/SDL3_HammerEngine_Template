@@ -5,8 +5,18 @@
 
 #include "ai/AIBehavior.hpp"
 #include "managers/PathfinderManager.hpp"
+#include <chrono>
 #include <cmath>
 #include <random>
+
+namespace {
+// Thread-safe RNG for stall recovery jitter
+std::mt19937& getThreadLocalRNG() {
+    static thread_local std::mt19937 rng(
+        static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
+    return rng;
+}
+} // namespace
 
 AIBehavior::~AIBehavior() = default;
 
@@ -119,8 +129,9 @@ void AIBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
       state.progressTimer = 0.0f;
       state.backoffTimer = 0.2f + (entity->getID() % 400) * 0.001f;
 
-      // Apply small random jitter
-      float jitter = (static_cast<float>(rand()) / RAND_MAX - 0.5f) * 0.3f;
+      // Apply small random jitter (thread-safe)
+      std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
+      float jitter = jitterDist(getThreadLocalRNG());
       Vector2D v = entity->getVelocity();
       if (v.length() < 0.01f)
         v = Vector2D(1, 0);

@@ -4,7 +4,7 @@
  */
 
 #include "events/WeatherEvent.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -38,7 +38,7 @@ static float getCurrentGameTime() {
   // Use the GameTime system for simulated game time
   // Add safety check to prevent segfault if GameTime not initialized
   try {
-    return GameTime::Instance().getGameHour();
+    return GameTimeManager::Instance().getGameHour();
   } catch (...) {
     // Return default time if GameTime is not available
     return 12.0f; // Default to noon
@@ -58,7 +58,7 @@ getCurrentSeason() { // Use the GameTime system for simulated game seasons
   // 0=spring, 1=summer, 2=fall, 3=winter
   // Add safety check to prevent segfault if GameTime not initialized
   try {
-    return GameTime::Instance().getCurrentSeason();
+    return GameTimeManager::Instance().getCurrentSeason();
   } catch (...) {
     // Return default season if GameTime is not available
     return 0; // Default to spring
@@ -202,9 +202,8 @@ void WeatherEvent::execute() {
   }
 
   // Play sound effects if specified
-  if (!m_params.soundEffect.empty()) {
-    EVENT_INFO(std::format("Playing sound effect: {}", m_params.soundEffect));
-  }
+  EVENT_INFO_IF(!m_params.soundEffect.empty(),
+      std::format("Playing sound effect: {}", m_params.soundEffect));
 }
 
 void WeatherEvent::reset() {

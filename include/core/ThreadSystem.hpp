@@ -34,7 +34,7 @@
 namespace HammerEngine {
 
 // Task priority levels
-enum class TaskPriority {
+enum class TaskPriority : uint8_t {
   Critical = 0, // Must execute ASAP (e.g., rendering, input handling)
   High = 1,     // Important tasks (e.g., physics, animation)
   Normal = 2,   // Default priority for most tasks
@@ -109,7 +109,7 @@ public:
   void push(std::function<void()> task,
             TaskPriority priority = TaskPriority::Normal,
             const std::string &description = "") {
-    int priorityIndex = static_cast<int>(priority);
+    int const priorityIndex = static_cast<int>(priority);
 
     // Update last enqueue time for low-activity detection
     m_lastEnqueueTime.store(std::chrono::steady_clock::now(), std::memory_order_relaxed);
@@ -308,7 +308,7 @@ public:
 
   // Get statistics for a specific priority level
   TaskStats getTaskStats(TaskPriority priority) const {
-    int index = static_cast<int>(priority);
+    int const index = static_cast<int>(priority);
     if (index >= 0 && index <= static_cast<int>(TaskPriority::Idle)) {
       return m_taskStats[index];
     }
@@ -371,13 +371,9 @@ private:
   // Track last time a task was enqueued for low-activity detection
   std::atomic<std::chrono::steady_clock::time_point> m_lastEnqueueTime{std::chrono::steady_clock::now()};
 
-  // Lock-free check for any tasks using atomic counters
+  // Lock-free check for any tasks using bitmask (O(1) single atomic load)
   bool hasAnyTasksLockFree() const {
-    constexpr int maxPriority = static_cast<int>(TaskPriority::Idle);
-    return std::any_of(m_priorityCounts.begin(), m_priorityCounts.begin() + maxPriority + 1,
-                       [](const auto& counter) {
-                         return counter.count.load(std::memory_order_relaxed) > 0;
-                       });
+    return m_queueBitmask.load(std::memory_order_relaxed) != 0;
   }
 
   // Try to pop a task without blocking
@@ -626,9 +622,11 @@ private:
     try {
       // For idle tracking and logging (scoped to try block)
       auto lastTaskTime = std::chrono::steady_clock::now();
+      std::chrono::steady_clock::time_point idleStartTime;
       bool isIdle = false;
       // Minimum idle time before logging (20 seconds) - only log truly idle states
       constexpr int64_t MIN_IDLE_TIME_MS = 20000;
+      constexpr int64_t MIN_IDLE_EXIT_LOG_MS = 100;
 
       // Main worker loop
       while (isRunning.load(std::memory_order_acquire)) {
@@ -647,7 +645,6 @@ private:
           if (taskQueue.pop(task)) {
             gotTask = true;
             highPriorityTasks++;
-            // Reset idle tracking when we get a task
             lastTaskTime = std::chrono::steady_clock::now();
           }
           // All tasks go through single global queue - simple and reliable
@@ -665,12 +662,14 @@ private:
         }
 
         if (gotTask) {
-          // Exiting idle mode - log if we were previously idle
+          // Exiting idle mode - log if we were previously idle for a meaningful duration
           if (isIdle) {
             auto idleTime = std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - lastTaskTime).count();
-            THREADSYSTEM_INFO(std::format("Worker {} exiting idle mode (was idle for {}ms)",
-                                          threadIndex, idleTime));
+                std::chrono::steady_clock::now() - idleStartTime).count();
+            if (idleTime >= MIN_IDLE_EXIT_LOG_MS) {
+              THREADSYSTEM_INFO(std::format("Worker {} exiting idle mode (was idle for {}ms)",
+                                            threadIndex, idleTime));
+            }
             isIdle = false;
           }
 
@@ -731,6 +730,7 @@ private:
               THREADSYSTEM_INFO(std::format("Worker {} entering idle mode (no tasks for {}ms)",
                                             threadIndex, timeSinceLastTask));
               isIdle = true;
+              idleStartTime = std::chrono::steady_clock::now();
             }
           }
           // Worker will loop back and block in pop() until a task arrives
@@ -866,17 +866,15 @@ public:
     // CPU resources for real-time rendering at 60 FPS.
     //
     // Thread allocation breakdown (8-core example):
-    //   - Main thread: 1 (rendering/events, NOT in worker pool)
+    //   - Main thread: 1 (main loop/rendering/events, NOT in worker pool)
     //   - ThreadSystem workers: 7 (hardware_concurrency - 1)
-    //   - GameLoop update thread: 1 (from worker pool, see ENGINE_WORKERS in WorkerBudget.hpp)
-    //   - Manager workers: 6 (remaining workers shared via WorkerBudget)
+    //   - All 7 workers available for managers via WorkerBudget
     //
-    // Minimum worker count is 1 (not 0) even on single-core systems, maintaining
-    // the concurrent update/render pattern with main thread + 1 update worker.
+    // Minimum worker count is 1 (not 0) even on single-core systems.
     //
     // COORDINATION WITH WORKERBUDGET:
-    // WorkerBudget::calculateWorkerBudget() receives this worker count and subtracts
-    // ENGINE_WORKERS (1) to calculate manager allocations. See WorkerBudget.hpp:423+
+    // WorkerBudget::calculateWorkerBudget() receives this worker count and
+    // distributes all workers to managers. See WorkerBudget.hpp.
     if (customThreadCount > 0) {
       m_numThreads = customThreadCount;
     } else {

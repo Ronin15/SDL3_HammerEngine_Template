@@ -1,0 +1,87 @@
+---
+# clang-tidy Configuration for SDL3_HammerEngine
+# Configured to match CLAUDE.md coding standards
+
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  misc-*,
+  modernize-*,
+  performance-*,
+  readability-*,
+  -modernize-use-trailing-return-type,
+  -readability-magic-numbers,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -readability-identifier-length,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-pro-bounds-pointer-arithmetic,
+  -cppcoreguidelines-pro-bounds-constant-array-index,
+  -cppcoreguidelines-avoid-non-const-global-variables,
+  -cppcoreguidelines-owning-memory,
+  -misc-non-private-member-variables-in-classes,
+  -modernize-avoid-c-arrays,
+  -cppcoreguidelines-avoid-c-arrays,
+  -cppcoreguidelines-pro-type-union-access,
+  -bugprone-easily-swappable-parameters,
+  -readability-function-cognitive-complexity,
+  -readability-uppercase-literal-suffix,
+  -readability-implicit-bool-conversion,
+  -cppcoreguidelines-pro-type-member-init,
+  -readability-convert-member-functions-to-static,
+  -bugprone-branch-clone,
+  -cppcoreguidelines-init-variables,
+  -modernize-use-nodiscard,
+  -readability-else-after-return,
+  -misc-include-cleaner
+
+WarningsAsErrors: ''
+
+HeaderFilterRegex: 'include/.*\.hpp$'
+
+CheckOptions:
+  # Naming conventions matching CLAUDE.md
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumCase
+    value: CamelCase
+  - key: readability-identifier-naming.EnumConstantCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.MethodCase
+    value: camelBack
+  - key: readability-identifier-naming.VariableCase
+    value: camelBack
+  - key: readability-identifier-naming.ParameterCase
+    value: camelBack
+  - key: readability-identifier-naming.PrivateMemberPrefix
+    value: 'm_'
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.ProtectedMemberPrefix
+    value: 'm_'
+  - key: readability-identifier-naming.ProtectedMemberCase
+    value: camelBack
+  - key: readability-identifier-naming.ConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.GlobalConstantCase
+    value: UPPER_CASE
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+
+  # Allow default destructors
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: true
+
+  # Allow smart pointer pass-by-value for ownership transfer
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'std::shared_ptr;std::unique_ptr'
+
+  # Braces around statements
+  - key: readability-braces-around-statements.ShortStatementLines
+    value: 0
+...

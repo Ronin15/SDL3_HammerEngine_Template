@@ -10,7 +10,6 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
-#include "core/GameTime.hpp"
 #include "core/Logger.hpp"
 #include "events/NPCSpawnEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
@@ -26,8 +25,6 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "controllers/world/WeatherController.hpp"
-#include "controllers/world/TimeController.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <cmath>
@@ -62,6 +59,9 @@ bool EventDemoState::enter() {
   mp_particleMgr = &ParticleManager::Instance();
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
+
+  // Resume all game managers (may be paused from menu states)
+  GameEngine::Instance().setGlobalPause(false);
 
   GAMESTATE_INFO("Entering EventDemoState...");
 
@@ -189,7 +189,7 @@ bool EventDemoState::enter() {
     constexpr int childInset = 10;        // Children are 10px inside panel
     constexpr int childWidth = inventoryWidth - (childInset * 2);  // 260px
 
-    int windowWidth = ui.getLogicalWidth();
+    int const windowWidth = ui.getLogicalWidth();
     int inventoryX = windowWidth - inventoryWidth - panelMarginRight;
     int inventoryY = panelMarginTop;
 
@@ -277,12 +277,6 @@ bool EventDemoState::enter() {
 
     // Initialize camera for world navigation (world is already loaded by LoadingState)
     initializeCamera();
-
-    // Subscribe to automatic weather events (GameTime → WeatherController → ParticleManager)
-    WeatherController::Instance().subscribe();
-
-    // Subscribe to time events for event log display
-    TimeController::Instance().subscribe("event_log");
 
     // Pre-allocate status buffers to avoid per-frame allocations
     m_phaseBuffer.reserve(32);
@@ -441,12 +435,6 @@ bool EventDemoState::exit() {
       m_worldLoaded = false;
     }
 
-    // Unsubscribe from automatic weather events
-    WeatherController::Instance().unsubscribe();
-
-    // Unsubscribe from time event logging
-    TimeController::Instance().unsubscribe();
-
     // Clear cached manager pointers
     mp_particleMgr = nullptr;
     mp_worldMgr = nullptr;
@@ -475,7 +463,7 @@ void EventDemoState::unregisterEventHandlers() {
     }
     m_handlerTokens.clear();
   } catch (...) {
-    // Swallow errors to avoid exit() failure
+      // Swallow errors during cleanup to avoid exit() failure
   }
 }
 
@@ -514,9 +502,6 @@ void EventDemoState::update(float deltaTime) {
 
     return;  // Don't continue with rest of update
   }
-
-  // Update game time (advances calendar, dispatches time events)
-  GameTime::Instance().update(deltaTime);
 
   // Update timing
   updateDemoTimer(deltaTime);
@@ -738,7 +723,7 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
         m_lastDisplayedPhase = currentPhase;
     }
 
-    float currentFPS = gameEngine.getCurrentFPS();
+    float const currentFPS = gameEngine.getCurrentFPS();
     std::string currentWeather = getCurrentWeatherString();
     size_t npcCount = m_spawnedNPCs.size();
 
@@ -832,7 +817,7 @@ void EventDemoState::createTestEvents() {
                                                    "dissolve", 2.5f);
 
   // Report creation results
-  int successCount = success1 + success2 + success3 + success4 + success5 +
+  int const successCount = success1 + success2 + success3 + success4 + success5 +
                      success6 + success7 + success8 + success9 + success10 +
                      success11;
 
@@ -1006,7 +991,7 @@ void EventDemoState::handleInput() {
 
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
-        Vector2D mousePos = inputMgr.getMousePosition();
+        Vector2D const mousePos = inputMgr.getMousePosition();
         const auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
@@ -1404,7 +1389,7 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
   bool success6 = eventMgr.createNPCSpawnEvent(std::format("conv_merchants_{}", m_convenienceDemoCounter),
                                                "Merchant", 1, 15.0f);
 
-  int successCount =
+  int const successCount =
       success1 + success2 + success3 + success4 + success5 + success6;
   if (successCount == 6) {
     addLogEntry("Created 6 events successfully");
@@ -1474,8 +1459,8 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
 
     // Deterministic offset pattern based on radius/count for visible spread
     float base = (params.spawnRadius > 0.0f) ? params.spawnRadius : 30.0f;
-    float stepX = 0.6f * base + 20.0f;
-    float stepY = 0.4f * base + 15.0f;
+    float const stepX = 0.6f * base + 20.0f;
+    float const stepY = 0.4f * base + 15.0f;
 
     int spawned = 0;
     AIManager &aiMgr = AIManager::Instance();
@@ -1957,7 +1942,7 @@ void EventDemoState::logResourceAnalytics(HammerEngine::ResourceHandle handle,
     return;
 
   const std::string& resourceName = resourceTemplate->getName();
-  int change = newQty - oldQty;
+  int const change = newQty - oldQty;
 
   // Create detailed analytics entry (console only)
   std::string analyticsEntry = std::format(

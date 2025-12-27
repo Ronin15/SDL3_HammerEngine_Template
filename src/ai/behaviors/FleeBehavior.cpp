@@ -45,6 +45,33 @@ FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
     }
 }
 
+FleeBehavior::FleeBehavior(const HammerEngine::FleeBehaviorConfig& config, FleeMode mode)
+    : m_config(config)
+    , m_fleeMode(mode)
+    , m_fleeSpeed(config.fleeSpeed)
+    , m_detectionRange(config.safeDistance) // Use safeDistance as detection trigger
+    , m_safeDistance(config.safeDistance)
+    , m_boundaryPadding(config.worldPadding)
+{
+    // Mode-specific adjustments using config values
+    switch (mode) {
+        case FleeMode::PANIC_FLEE:
+            m_fleeSpeed = config.fleeSpeed * 1.2f; // Faster in panic
+            m_panicDuration = 2.0f; // 2 seconds of panic
+            break;
+        case FleeMode::STRATEGIC_RETREAT:
+            m_fleeSpeed = config.fleeSpeed * 0.8f; // Slower, more calculated
+            m_safeDistance = config.safeDistance * 1.5f;
+            break;
+        case FleeMode::EVASIVE_MANEUVER:
+            m_zigzagInterval = 0.3f; // More frequent direction changes
+            break;
+        case FleeMode::SEEK_COVER:
+            m_safeDistance = config.safeDistance * 1.2f;
+            break;
+    }
+}
+
 void FleeBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
@@ -127,7 +154,7 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     } else if (state.isFleeing) {
         // PERFORMANCE: Use squared distance for comparison
         float distanceToThreatSquared = (entity->getPosition() - threat->getPosition()).lengthSquared();
-        float safeDistanceSquared = m_safeDistance * m_safeDistance;
+        float const safeDistanceSquared = m_safeDistance * m_safeDistance;
         if (distanceToThreatSquared >= safeDistanceSquared) {
             state.isFleeing = false;
             state.isInPanic = false;
@@ -274,7 +301,7 @@ bool FleeBehavior::isThreatInRange(EntityPtr entity, EntityPtr threat) const {
     
     // PERFORMANCE: Use squared distance
     float distanceSquared = (entity->getPosition() - threat->getPosition()).lengthSquared();
-    float detectionRangeSquared = m_detectionRange * m_detectionRange;
+    float const detectionRangeSquared = m_detectionRange * m_detectionRange;
     return distanceSquared <= detectionRangeSquared;
 }
 
@@ -306,19 +333,19 @@ Vector2D FleeBehavior::calculateFleeDirection(EntityPtr entity, EntityPtr threat
 
 Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     if (m_safeZones.empty()) return Vector2D(0, 0);
-    
+
     const SafeZone* nearest = nullptr;
-    float minDistance = std::numeric_limits<float>::max();
-    
+    float minDistanceSquared = std::numeric_limits<float>::max();
+
     for (const auto& zone : m_safeZones) {
-        // PERFORMANCE: Use squared distance for comparison
+        // PERFORMANCE: Use squared distance throughout - avoid sqrt in loop
         float distanceSquared = (position - zone.center).lengthSquared();
-        if (distanceSquared < minDistance * minDistance) {
-            minDistance = std::sqrt(distanceSquared); // Only compute sqrt when updating minimum
+        if (distanceSquared < minDistanceSquared) {
+            minDistanceSquared = distanceSquared;
             nearest = &zone;
         }
     }
-    
+
     return nearest ? (nearest->center - position) : Vector2D(0, 0);
 }
 
@@ -328,7 +355,7 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     
     // PERFORMANCE: Use squared distance
     float distanceToThreatSquared = (position - threat->getPosition()).lengthSquared();
-    float safeDistanceSquared = m_safeDistance * m_safeDistance;
+    float const safeDistanceSquared = m_safeDistance * m_safeDistance;
     return distanceToThreatSquared >= safeDistanceSquared;
 }
 
@@ -341,10 +368,10 @@ Vector2D FleeBehavior::findNearestSafeZone(const Vector2D& position) const {
     }
 
     constexpr float TILE = HammerEngine::TILE_SIZE;
-    float worldMinX = minX * TILE + m_boundaryPadding;
-    float worldMinY = minY * TILE + m_boundaryPadding;
-    float worldMaxX = maxX * TILE - m_boundaryPadding;
-    float worldMaxY = maxY * TILE - m_boundaryPadding;
+    float const worldMinX = minX * TILE + m_boundaryPadding;
+    float const worldMinY = minY * TILE + m_boundaryPadding;
+    float const worldMaxX = maxX * TILE - m_boundaryPadding;
+    float const worldMaxY = maxY * TILE - m_boundaryPadding;
 
     return (position.getX() < worldMinX ||
             position.getX() > worldMaxX ||
@@ -363,10 +390,10 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D&
     Vector2D adjustedDir = direction;
     constexpr float TILE = HammerEngine::TILE_SIZE;
     const float worldPadding = 80.0f; // Increased padding for world-scale movement
-    float worldMinX = minX * TILE + worldPadding;
-    float worldMinY = minY * TILE + worldPadding;
-    float worldMaxX = maxX * TILE - worldPadding;
-    float worldMaxY = maxY * TILE - worldPadding;
+    float const worldMinX = minX * TILE + worldPadding;
+    float const worldMinY = minY * TILE + worldPadding;
+    float const worldMaxX = maxX * TILE - worldPadding;
+    float const worldMaxY = maxY * TILE - worldPadding;
 
     // Check world boundaries and adjust direction
     if (position.getX() < worldMinX && direction.getX() < 0) {
@@ -400,7 +427,7 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float d
         float cos_a = std::cos(randomAngle);
         float sin_a = std::sin(randomAngle);
 
-        Vector2D rotated(
+        Vector2D const rotated(
             state.fleeDirection.getX() * cos_a - state.fleeDirection.getY() * sin_a,
             state.fleeDirection.getX() * sin_a + state.fleeDirection.getY() * cos_a
         );
@@ -416,8 +443,8 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float d
         panicDest = pathfinder().clampToWorldBounds(panicDest, 100.0f);
     }
     
-    float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D intended = state.fleeDirection * m_fleeSpeed * speedModifier;
+    float const speedModifier = calculateFleeSpeedModifier(state);
+    Vector2D const intended = state.fleeDirection * m_fleeSpeed * speedModifier;
     // PERFORMANCE OPTIMIZATION: Use cached collision data to avoid redundant queries
     applySeparationWithCache(entity, entity->getPosition(), intended,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
@@ -438,16 +465,16 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
         state.fleeDirection = calculateFleeDirection(entity, threat, state);
 
         // Blend with nearest safe zone direction if exists
-        Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
+        Vector2D const safeZoneDirection = findNearestSafeZone(currentPos);
         if (safeZoneDirection.length() > 0.001f) {
-            Vector2D blended = (state.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
+            Vector2D const blended = (state.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
             state.fleeDirection = normalizeVector(blended);
         }
         state.directionChangeTimer = 0.0f;
     }
 
     // Dynamic retreat distance based on local entity density
-    float baseRetreatDistance = 800.0f; // Increased base for world scale
+    float const baseRetreatDistance = 800.0f; // Increased base for world scale
     int nearbyCount = 0;
     
     // Check for other fleeing entities to avoid clustering in same escape routes
@@ -459,7 +486,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
         retreatDistance = baseRetreatDistance * 1.8f; // Up to 1440px retreat
         
         // Also add lateral bias to prevent all entities fleeing in same direction
-        Vector2D lateral(-state.fleeDirection.getY(), state.fleeDirection.getX());
+        Vector2D const lateral(-state.fleeDirection.getY(), state.fleeDirection.getX());
         float lateralBias = ((float)(entity->getID() % 5) - 2.0f) * 0.3f; // -0.6 to +0.6
         state.fleeDirection = (state.fleeDirection + lateral * lateralBias).normalized();
     } else if (nearbyCount > 0) {
@@ -471,10 +498,10 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
     Vector2D dest = pathfinder().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
 
     // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
-    float speedModifier = calculateFleeSpeedModifier(state);
+    float const speedModifier = calculateFleeSpeedModifier(state);
     if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
-        Vector2D intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Vector2D const intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
         // PERFORMANCE OPTIMIZATION: Use cached collision data
         applySeparationWithCache(entity, entity->getPosition(), intended2,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
@@ -504,15 +531,15 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, f
     float cos_z = std::cos(zigzagAngleRad);
     float sin_z = std::sin(zigzagAngleRad);
     
-    Vector2D zigzagDir(
+    Vector2D const zigzagDir(
         baseFleeDir.getX() * cos_z - baseFleeDir.getY() * sin_z,
         baseFleeDir.getX() * sin_z + baseFleeDir.getY() * cos_z
     );
     
     state.fleeDirection = normalizeVector(zigzagDir);
 
-    float speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
+    float const speedModifier = calculateFleeSpeedModifier(state);
+    Vector2D const intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
     // PERFORMANCE OPTIMIZATION: Use cached collision data
     applySeparationWithCache(entity, entity->getPosition(), intended3,
                              m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
@@ -523,10 +550,10 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, f
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float deltaTime) {
     // Move toward nearest safe zone using pathfinding when possible
     Vector2D currentPos = entity->getPosition();
-    Vector2D safeZoneDirection = findNearestSafeZone(currentPos);
+    Vector2D const safeZoneDirection = findNearestSafeZone(currentPos);
 
     // Dynamic cover seeking distance based on entity density
-    float baseCoverDistance = 720.0f; // Increased base for world scale
+    float const baseCoverDistance = 720.0f; // Increased base for world scale
     int nearbyCount = 0;
     
     // Check for clustering of other cover-seekers
@@ -558,10 +585,10 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
     dest = pathfinder().clampToWorldBounds(dest, 100.0f);
 
     // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
-    float speedModifier = calculateFleeSpeedModifier(state);
+    float const speedModifier = calculateFleeSpeedModifier(state);
     if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
-        Vector2D intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Vector2D const intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
         // PERFORMANCE OPTIMIZATION: Use cached collision data
         applySeparationWithCache(entity, entity->getPosition(), intended4,
                                  m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
@@ -581,7 +608,7 @@ void FleeBehavior::updateStamina(EntityState& state, float deltaTime, bool fleei
 }
 
 Vector2D FleeBehavior::normalizeVector(const Vector2D& direction) const {
-    float magnitude = direction.length();
+    float const magnitude = direction.length();
     if (magnitude < 0.001f) {
         return Vector2D(1, 0); // Default direction
     }
@@ -598,7 +625,7 @@ float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
 
     // Stamina affects speed
     if (m_useStamina) {
-        float staminaRatio = state.currentStamina / m_maxStamina;
+        float const staminaRatio = state.currentStamina / m_maxStamina;
         modifier *= (0.3f + 0.7f * staminaRatio); // Speed ranges from 30% to 100%
     }
 
@@ -672,7 +699,7 @@ bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& current
     if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
         Vector2D node = state.pathPoints[state.currentPathIndex];
         Vector2D dir = node - currentPos;
-        float len = dir.length();
+        float const len = dir.length();
 
         if (len > 0.01f) {
             dir = dir * (1.0f / len);

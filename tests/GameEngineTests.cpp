@@ -7,7 +7,6 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/GameEngine.hpp"
-#include "core/GameLoop.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/Logger.hpp"
 #include <atomic>
@@ -235,8 +234,8 @@ BOOST_AUTO_TEST_SUITE(ThreadSafetyTests)
 BOOST_AUTO_TEST_CASE(TestUpdateIsThreadSafe) {
     auto& engine = GameEngine::Instance();
 
-    // The update() method should be thread-safe and can be called from a worker thread
-    // GameEngine.cpp:891 uses std::lock_guard<std::mutex> lock(m_updateMutex)
+    // The update() method can be called from a worker thread for testing purposes
+    // Note: In production, update runs on main thread in single-threaded main loop
 
     std::atomic<bool> updateCompleted{false};
     std::atomic<bool> updateFailed{false};

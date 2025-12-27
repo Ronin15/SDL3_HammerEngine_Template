@@ -7,15 +7,18 @@
 #define FOLLOW_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
+#include <atomic>
+#include <mutex>
 #include <random>
 #include <unordered_map>
 #include <vector>
 
 class FollowBehavior : public AIBehavior {
 public:
-  enum class FollowMode {
+  enum class FollowMode : uint8_t {
     CLOSE_FOLLOW,    // Stay very close to target
     LOOSE_FOLLOW,    // Maintain some distance
     FLANKING_FOLLOW, // Follow from the sides
@@ -29,6 +32,10 @@ public:
 
   // Constructor with mode
   explicit FollowBehavior(FollowMode mode, float followSpeed = 2.5f);
+
+  // Constructor with config
+  explicit FollowBehavior(const HammerEngine::FollowBehaviorConfig& config,
+                          FollowMode mode = FollowMode::LOOSE_FOLLOW);
 
   void init(EntityPtr entity) override;
   void executeLogic(EntityPtr entity, float deltaTime) override;
@@ -103,6 +110,9 @@ private:
   // Map to store per-entity state
   std::unordered_map<EntityPtr, EntityState> m_entityStates;
 
+  // Configuration
+  HammerEngine::FollowBehaviorConfig m_config;
+
   // Behavior parameters
   FollowMode m_followMode{FollowMode::LOOSE_FOLLOW};
   float m_followSpeed{2.5f};
@@ -131,9 +141,10 @@ private:
   Uint64 m_stationaryThreshold{
       1000}; // Milliseconds before considering target stationary
 
-  // Formation management
-  static int s_nextFormationSlot;
+  // Formation management (atomic for thread safety)
+  static std::atomic<int> s_nextFormationSlot;
   static std::vector<Vector2D> s_escortFormationOffsets;
+  static std::once_flag s_formationInitFlag;
 
   // Random number generation for formation variation
   mutable std::mt19937 m_rng{std::random_device{}()};

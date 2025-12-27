@@ -408,12 +408,12 @@ The AIManager implements high-performance threading with **4-6% CPU usage** achi
 - Dynamic scaling based on WorkerBudget allocation and entity workload
 - **Optimal batching**: 2-4 large batches for maximum efficiency
 
-**WorkerBudget Resource Allocation:**
-- Receives ~**45% of remaining workers** (after engine reservation) from the WorkerBudget system
-- Events receive ~20%, Particles ~25%, with remaining threads kept as buffer capacity
-- Uses `budget.getOptimalWorkerCount()` with a 1000-entity threshold for buffer allocation
-- Maintains system-wide resource coordination with EventManager and GameEngine
-- **Conservative buffer usage**: Only activates buffer workers for high workloads
+**WorkerBudget Integration:**
+- Uses `WorkerBudgetManager::Instance().getOptimalWorkers(SystemType::AI, entityCount)`
+- Gets **all available workers** during AI update (sequential execution model)
+- Uses `getBatchStrategy()` for adaptive batch count optimization
+- Reports completion via `reportBatchCompletion()` for throughput learning
+- See [WorkerBudget.md](../core/WorkerBudget.md) for details
 
 **Optimized Batch Processing:**
 - **Large batch strategy**: 1000+ entities per batch for optimal performance
@@ -805,7 +805,7 @@ int getEntityPriority(EntityPtr entity) const;
 float getUpdateRangeMultiplier(int priority) const;
 
 // Threading configuration
-void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+void enableThreading(bool enable);
 void configurePriorityMultiplier(float multiplier = 1.0f);
 
 // Message system
@@ -949,26 +949,19 @@ The AIManager integrates seamlessly with the engine's optimized threading archit
 4. **No manual update calls** required in game states
 5. **Architectural compliance** ensures system-wide coordination and stability
 
-**ThreadSystem & WorkerBudget Architecture (Enhanced):**
-1. **Centralized Resource Allocation**: Uses `HammerEngine::calculateWorkerBudget()` for coordinated distribution
-2. **AI Worker Budget**: Receives ~45% of remaining workers (after engine reservation); Events ~20%, Particles ~25%, remainder is buffer
-3. **Buffer Thread Access**: Utilizes buffer threads when entity count > 1000 for burst capacity
-4. **Dynamic Scaling**: Batch sizes scale with allocated workers (`entities / optimalWorkerCount`)
-5. **Queue Pressure Management**: Monitors ThreadSystem load to prevent resource contention
-6. **Architectural Coordination**: Maintains proper resource boundaries with EventManager and GameEngine
+**ThreadSystem & WorkerBudget Architecture:**
+1. **Sequential Execution**: AIManager gets ALL workers during its update window (see [GameEngine.md](../core/GameEngine.md))
+2. **Adaptive Batching**: Uses `WorkerBudgetManager::getBatchStrategy()` for optimal batch count
+3. **Throughput Learning**: Reports completion times for hill-climbing optimization
+4. **Queue Pressure Management**: Monitors ThreadSystem load to prevent resource contention
+5. **Fire-and-Forget**: Submits batches to ThreadSystem, waits for completion
 
 **Optimized Performance Characteristics:**
 - **Threading Threshold**: 500 entities for automatic multi-threading activation
-- **Batch Size Scaling**: 800-1500 entities per batch based on queue pressure; max 2-4 batches
+- **Batch Size Scaling**: Adaptive via WorkerBudget hill-climbing
 - **Cache Efficiency**: Optimized batch limits for L1/L2 cache friendliness
 - **Atomic Operations**: Reduced per-entity overhead with batch-level updates
-- **Lock Contention**: Minimized through periodic stats updates (every 60 frames)
-
-**Resource Scaling Examples (Optimized):**
-- **4-core/8-thread system (7 workers)**: GameLoop=2, AI=2, Particles=1, Events=1, Buffer=1
-- **8-core/16-thread system (15 workers)**: GameLoop=2, AI=5, Particles=3, Events=2, Buffer=3
-- **16-core/32-thread system (31 workers)**: GameLoop=2, AI=13, Particles=7, Events=5, Buffer=4
-- **High-end systems**: Automatic scaling with buffer utilization for workloads >1000 entities
+- **Lock Contention**: Minimized through batch-level locking (single lock per batch)
 
 **Performance Guarantees:**
 - 2M+ entity updates per second for large-scale scenarios (100K+ entities)

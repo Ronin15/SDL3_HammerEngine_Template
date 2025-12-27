@@ -97,7 +97,7 @@ struct WorldResourceStats {
   double getCacheHitRatio() const {
     uint64_t hits = cacheHits.load();
     uint64_t misses = cacheMisses.load();
-    uint64_t total = hits + misses;
+    uint64_t const total = hits + misses;
     return total > 0 ? static_cast<double>(hits) / total : 0.0;
   }
 };

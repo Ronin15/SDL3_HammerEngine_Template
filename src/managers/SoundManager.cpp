@@ -125,11 +125,13 @@ bool SoundManager::loadAudio(const std::string &filePath, const std::string &idP
         }
       }
 
+#ifdef DEBUG
       if (loadedAny) {
         SOUND_INFO(std::format("Loaded {} files from directory: {}", fileCount, filePath));
       } else {
         SOUND_WARN(std::format("No supported audio files found in directory: {}", filePath));
       }
+#endif
 
       return loadedAny;
     } else {
@@ -430,12 +432,10 @@ bool SoundManager::isMusicPlaying() const {
   const_cast<SoundManager*>(this)->cleanupStoppedTracks();
 
   // Check if any music track is currently playing
-  for (MIX_Track *track : m_activeMusicTracks) {
-    if (MIX_TrackPlaying(track) && !MIX_TrackPaused(track)) {
-      return true;
-    }
-  }
-  return false;
+  return std::any_of(m_activeMusicTracks.begin(), m_activeMusicTracks.end(),
+    [](MIX_Track* track) {
+      return MIX_TrackPlaying(track) && !MIX_TrackPaused(track);
+    });
 }
 
 void SoundManager::setMusicVolume(float volume) {

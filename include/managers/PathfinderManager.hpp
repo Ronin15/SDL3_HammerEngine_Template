@@ -55,12 +55,13 @@
 #include <vector>
 #include <unordered_map>
 #include <mutex>
+#include <shared_mutex>
 #include <cmath>
 
 // Forward declarations
 namespace HammerEngine {
     class PathfindingGrid;
-    enum class PathfindingResult;
+    enum class PathfindingResult : uint8_t;
 }
 
 // Do not include internal AI headers here; keep public API stable and minimal.
@@ -330,9 +331,22 @@ private:
     PathfinderManager& operator=(const PathfinderManager&) = delete;
 
     // Core components - Clean Architecture
-    // Shared grid allows atomic updates during processing
+    // Mutex-protected shared_ptr with snapshot semantics for thread-safe grid access
+    // Note: std::atomic<std::shared_ptr<T>> requires C++20 library support not available on all platforms
     std::shared_ptr<HammerEngine::PathfindingGrid> m_grid;
+    mutable std::shared_mutex m_gridMutex;  // Read-write lock for concurrent read access
     // Direct ThreadSystem processing - no queue needed
+
+    // Thread-safe grid access helpers
+    std::shared_ptr<HammerEngine::PathfindingGrid> getGridSnapshot() const {
+        std::shared_lock<std::shared_mutex> lock(m_gridMutex);
+        return m_grid;  // Copy increments refcount, safe to use after lock release
+    }
+
+    void setGrid(std::shared_ptr<HammerEngine::PathfindingGrid> newGrid) {
+        std::unique_lock<std::shared_mutex> lock(m_gridMutex);
+        m_grid = std::move(newGrid);
+    }
 
     // Pending request coalescing
     mutable std::mutex m_pendingMutex;
@@ -419,25 +433,18 @@ private:
 
     // Async task synchronization (mirroring AIManager pattern)
     std::vector<std::future<void>> m_gridRebuildFutures;
+    std::vector<std::future<void>> m_reusableGridRebuildFutures;  // Swap target to preserve capacity
     std::mutex m_gridRebuildFuturesMutex;
 
     // WorkerBudget integration for coordinated batch processing
-    HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
     std::vector<std::future<void>> m_batchFutures;
-    std::mutex m_batchFuturesMutex;
+    std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
+    // No mutex needed: update and state transitions never run concurrently
 
-    // Performance tracking (matching AIManager pattern)
-    std::atomic<size_t> m_lastOptimalWorkerCount{0};
-    std::atomic<size_t> m_lastAvailableWorkers{0};
-    std::atomic<size_t> m_lastPathfindingBudget{0};
-    std::atomic<bool> m_lastWasThreaded{false};
-
-    // Request batching configuration
-    static constexpr size_t MIN_REQUESTS_FOR_BATCHING = 128; // Batch when queue pressure starts to matter (128+ requests)
-    static constexpr size_t MAX_REQUESTS_PER_FRAME = 750;    // Rate limiting (60 FPS = 45K requests/sec capacity)
-
-    // Grid rebuild batching configuration
-    static constexpr size_t MIN_GRID_ROWS_FOR_BATCHING = 64; // Batch grid rebuild when grid has 64+ rows
+    // Deferred batch timing for WorkerBudget feedback (non-blocking)
+    size_t m_lastBatchCount{0};
+    size_t m_lastWorkloadSize{0};
+    std::chrono::steady_clock::time_point m_lastBatchSubmitTime{};
 
     // Incremental update configuration
     static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty
@@ -450,6 +457,7 @@ private:
         Priority priority;
         PathCallback callback;
         uint64_t requestId;
+        uint64_t cacheKey;  // Pre-computed from RAW coords before normalization
         std::chrono::steady_clock::time_point enqueueTime;
     };
     std::vector<BufferedRequest> m_requestBuffer;
@@ -458,7 +466,7 @@ private:
     // Internal methods - simplified
     void reportStatistics() const;
     bool ensureGridInitialized(); // Lazy initialization helper
-    uint64_t computeCacheKey(const Vector2D& start, const Vector2D& goal) const;
+    uint64_t computeStableCacheKey(const Vector2D& start, const Vector2D& goal) const;
     void evictOldestCacheEntry();
     void clearOldestCacheEntries(float percentage); // Smart cache clearing (partial LRU eviction)
     void clearAllCache(); // Complete cache clear for world load/unload

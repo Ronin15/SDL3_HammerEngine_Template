@@ -6,6 +6,7 @@
 #ifndef COLLISION_INFO_HPP
 #define COLLISION_INFO_HPP
 
+#include "entities/Entity.hpp"
 #include "collisions/AABB.hpp"
 
 namespace HammerEngine {

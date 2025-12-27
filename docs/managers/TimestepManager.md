@@ -1,11 +1,8 @@
 # TimestepManager Documentation
 
-> **Note:**
-> There is no `TimestepManager` C++ class in the codebase. This documentation describes a conceptual timing pattern and utility API used by the engine's `GameLoop` and related timing systems. All timing is handled by the `GameLoop` and related classes, not by a standalone manager.
-
 ## Overview
 
-The `TimestepManager` class provides consistent game timing with simplified accumulator handling that separates update timing (fixed timestep for consistent physics/logic) from render timing (variable timestep for smooth visuals). It uses a 1:1 frame-to-update mapping to eliminate timing drift and micro-stuttering that can occur with traditional accumulator patterns.
+The `TimestepManager` class provides consistent game timing with accumulator-based fixed timestep handling that separates update timing (fixed timestep for consistent physics/logic) from render timing (VSync-driven or software-limited). The main loop implementation is in `HammerMain.cpp`, with TimestepManager handling timing calculations.
 
 ## Table of Contents
 
@@ -53,15 +50,28 @@ while (running) {
 }
 ```
 
-### Integration with GameLoop
+### Integration with GameEngine
 
 ```cpp
-// TimestepManager is created and managed by GameLoop
-GameLoop gameLoop(60.0f, 1.0f/60.0f, true);
+// TimestepManager is created and owned by GameEngine
+GameEngine& engine = GameEngine::Instance();
+engine.init("My Game", 1280, 720, false);
 
-// Access for advanced configuration
-TimestepManager& timestep = gameLoop.getTimestepManager();
-timestep.setTargetFPS(144.0f); // Change to 144 FPS
+// Access for configuration
+TimestepManager& ts = engine.getTimestepManager();
+
+// Main loop pattern
+while (engine.isRunning()) {
+    ts.startFrame();
+    engine.handleEvents();
+
+    while (ts.shouldUpdate()) {
+        engine.update(ts.getUpdateDeltaTime());
+    }
+
+    engine.render();
+    ts.endFrame();
+}
 ```
 
 ## Architecture

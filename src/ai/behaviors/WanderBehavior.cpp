@@ -115,7 +115,7 @@ bool WanderBehavior::handleStartDelay(EntityPtr entity, EntityState& state, floa
 
   // Time to start moving
   state.movementStarted = true;
-  Vector2D intended = state.currentDirection * m_speed;
+  Vector2D const intended = state.currentDirection * m_speed;
 
   // PERFORMANCE OPTIMIZATION: Use cached collision data if available
   if (!state.baseState.cachedNearbyPositions.empty()) {
@@ -206,18 +206,18 @@ void WanderBehavior::applyBoundaryAvoidance(EntityState& state, const Vector2D& 
   Vector2D boundaryForce(0, 0);
 
   if (position.getX() < state.cachedBounds.minX + EDGE_THRESHOLD) {
-    float strength = 1.0f - ((position.getX() - state.cachedBounds.minX) / EDGE_THRESHOLD);
+    float const strength = 1.0f - ((position.getX() - state.cachedBounds.minX) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(strength, 0);
   } else if (position.getX() > state.cachedBounds.maxX - EDGE_THRESHOLD) {
-    float strength = 1.0f - ((state.cachedBounds.maxX - position.getX()) / EDGE_THRESHOLD);
+    float const strength = 1.0f - ((state.cachedBounds.maxX - position.getX()) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(-strength, 0);
   }
 
   if (position.getY() < state.cachedBounds.minY + EDGE_THRESHOLD) {
-    float strength = 1.0f - ((position.getY() - state.cachedBounds.minY) / EDGE_THRESHOLD);
+    float const strength = 1.0f - ((position.getY() - state.cachedBounds.minY) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(0, strength);
   } else if (position.getY() > state.cachedBounds.maxY - EDGE_THRESHOLD) {
-    float strength = 1.0f - ((state.cachedBounds.maxY - position.getY()) / EDGE_THRESHOLD);
+    float const strength = 1.0f - ((state.cachedBounds.maxY - position.getY()) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(0, -strength);
   }
 
@@ -230,7 +230,7 @@ void WanderBehavior::applyBoundaryAvoidance(EntityState& state, const Vector2D& 
 void WanderBehavior::handlePathfinding(EntityPtr entity, EntityState& state,
                                        const Vector2D& position, const Vector2D& dest) {
   // Additional validation: don't pathfind to current position
-  float distanceToGoal = (dest - position).length();
+  float const distanceToGoal = (dest - position).length();
   if (distanceToGoal < 64.0f) {
     return; // Too close
   }
@@ -253,7 +253,7 @@ void WanderBehavior::handlePathfinding(EntityPtr entity, EntityState& state,
     bool goalChanged = true;
     if (!state.baseState.pathPoints.empty()) {
       Vector2D lastGoal = state.baseState.pathPoints.back();
-      float goalDistanceSquared = (dest - lastGoal).lengthSquared();
+      float const goalDistanceSquared = (dest - lastGoal).lengthSquared();
       goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);
     }
 
@@ -305,7 +305,7 @@ void WanderBehavior::handleMovement(EntityPtr entity, EntityState& state, float 
                                state.baseState.cachedNearbyPositions);
     }
   } else {
-    Vector2D intended = state.currentDirection * m_speed;
+    Vector2D const intended = state.currentDirection * m_speed;
     applySeparationWithCache(entity, entity->getPosition(), intended,
                              m_speed, 28.0f, 0.30f, 6, state.baseState.separationTimer,
                              state.baseState.lastSepVelocity, deltaTime, state.baseState.cachedNearbyPositions);
@@ -329,17 +329,17 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
   Vector2D previousVelocity = state.previousVelocity;
 
   // Check if there was a direction change that would cause a flip
-  bool wouldFlip =
+  bool const wouldFlip =
       (previousVelocity.getX() > 0.5f && currentVelocity.getX() < -0.5f) ||
       (previousVelocity.getX() < -0.5f && currentVelocity.getX() > 0.5f);
 
-  float minimumFlipIntervalSeconds = m_minimumFlipInterval / 1000.0f; // Convert ms to seconds
+  float const minimumFlipIntervalSeconds = m_minimumFlipInterval / 1000.0f; // Convert ms to seconds
   if (wouldFlip && state.lastDirectionFlip < minimumFlipIntervalSeconds) {
     // Prevent the flip by maintaining previous direction's sign but with new
     // magnitude
-    float magnitude = currentVelocity.length();
-    float xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
-    float yVal = currentVelocity.getY();
+    float const magnitude = currentVelocity.length();
+    float const xDir = (previousVelocity.getX() < 0) ? -1.0f : 1.0f;
+    float const yVal = currentVelocity.getY();
 
     // Create a new direction that doesn't cause a flip
     Vector2D stableVelocity(xDir * magnitude * 0.8f, yVal);
@@ -375,7 +375,7 @@ void WanderBehavior::updateWanderState(EntityPtr entity, float deltaTime) {
   }
 
   // Check if it's time to change direction (convert interval from ms to seconds)
-  float changeIntervalSeconds = m_changeDirectionInterval / 1000.0f;
+  float const changeIntervalSeconds = m_changeDirectionInterval / 1000.0f;
   if (state.directionChangeTimer >= changeIntervalSeconds) {
     chooseNewDirection(entity, deltaTime);
     state.directionChangeTimer = 0.0f;
@@ -479,7 +479,7 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, float deltaTime) {
   EntityState &state = m_entityStates[entity];
 
   // If movement hasn't started yet, just set the direction but don't apply velocity
-  bool applyVelocity = state.movementStarted;
+  bool const applyVelocity = state.movementStarted;
 
   // Generate a random angle using shared RNG
   float angle = s_angleDistribution(getSharedRNG());
@@ -492,7 +492,7 @@ void WanderBehavior::chooseNewDirection(EntityPtr entity, float deltaTime) {
 
   // Apply the new direction to the entity only if movement has started
   if (applyVelocity) {
-    Vector2D intended = state.currentDirection * m_speed;
+    Vector2D const intended = state.currentDirection * m_speed;
     // PERFORMANCE OPTIMIZATION: Use cached collision data if available
     if (!state.baseState.cachedNearbyPositions.empty()) {
       applySeparationWithCache(entity, entity->getPosition(), intended,
@@ -514,8 +514,8 @@ void WanderBehavior::setupModeDefaults(WanderMode mode) {
   float minX, minY, maxX, maxY;
   if (WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
     // WorldManager returns bounds in PIXELS; use directly
-    float worldWidth = (maxX - minX);
-    float worldHeight = (maxY - minY);
+    float const worldWidth = (maxX - minX);
+    float const worldHeight = (maxY - minY);
 
     // Set center point to world center
     m_centerPoint = Vector2D(worldWidth * 0.5f, worldHeight * 0.5f);

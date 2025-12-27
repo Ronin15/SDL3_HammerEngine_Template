@@ -91,35 +91,6 @@ struct AIEntityData {
 };
 
 /**
- * @brief AI Performance statistics
- */
-struct AIPerformanceStats {
-  double totalUpdateTime{0.0};
-  uint64_t updateCount{0};
-  uint64_t entitiesProcessed{0};
-  double entitiesPerSecond{0.0};
-
-  void addSample(double timeMs, uint64_t entities) {
-    totalUpdateTime += timeMs;
-    updateCount++;
-    entitiesProcessed += entities;
-    
-    // Use simple instantaneous rate calculation to avoid per-frame timing overhead
-    // This is much faster than time-windowed calculations
-    if (timeMs > 0) {
-      entitiesPerSecond = (entities * 1000.0) / timeMs; // entities processed per second in this frame
-    }
-  }
-
-  void reset() {
-    totalUpdateTime = 0.0;
-    updateCount = 0;
-    entitiesProcessed = 0;
-    entitiesPerSecond = 0.0;
-  }
-};
-
-/**
  * @brief Pre-fetched batch data for lock-free parallel processing
  *
  * This struct holds copies of all entity data needed for AI processing.
@@ -318,6 +289,18 @@ public:
                                 const std::string &behaviorName);
   void unregisterEntityFromUpdates(EntityPtr entity);
 
+  /**
+   * @brief Query entities within a radius of a position
+   * @param center Center point for the query
+   * @param radius Radius to search within
+   * @param outEntities Output vector of entities found (cleared before populating)
+   * @param excludePlayer If true, excludes the player entity from results
+   * @note Thread-safe. Useful for combat hit detection, area effects, etc.
+   */
+  void queryEntitiesInRadius(const Vector2D& center, float radius,
+                             std::vector<EntityPtr>& outEntities,
+                             bool excludePlayer = true) const;
+
   // Update extents for an entity if its sprite/physics size changes
   void updateEntityExtents(EntityPtr entity, float halfW, float halfH);
 
@@ -334,17 +317,14 @@ public:
   void resetBehaviors();
 
   // Threading configuration
-  void configureThreading(bool useThreading, unsigned int maxThreads = 0);
+  void enableThreading(bool enable);
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
   void setWaitForBatchCompletion(bool wait);
   bool getWaitForBatchCompletion() const;
   void configurePriorityMultiplier(float multiplier = 1.0f);
-  void setMaxBatchesPerUpdate(size_t maxBatches);
-  size_t getMaxBatchesPerUpdate() const;
 
   // Performance monitoring
-  AIPerformanceStats getPerformanceStats() const;
   size_t getBehaviorCount() const;
   size_t getManagedEntityCount() const;
   size_t getBehaviorUpdateCount() const;
@@ -415,21 +395,6 @@ private:
   mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
   mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
 
-  // Performance stats per behavior type
-  std::array<AIPerformanceStats, static_cast<size_t>(BehaviorType::COUNT)>
-      m_behaviorStats;
-  AIPerformanceStats m_globalStats;
-
-  // Thread allocation tracking for debug output
-  std::atomic<size_t> m_lastOptimalWorkerCount{0};
-  std::atomic<size_t> m_lastAvailableWorkers{0};
-  std::atomic<size_t> m_lastAIBudget{0};
-  std::atomic<size_t> m_lastThreadBatchCount{0};
-  std::atomic<bool> m_lastWasThreaded{false};
-
-  // Adaptive batch state for performance-based tuning
-  HammerEngine::AdaptiveBatchState m_adaptiveBatchState;
-
   // Player reference
   EntityWeakPtr m_playerEntity;
 
@@ -474,7 +439,6 @@ private:
   std::atomic<bool> m_waitForBatchCompletion{false}; // Default: non-blocking for smooth frames
   std::atomic<bool> m_globallyPaused{false};
   std::atomic<bool> m_processingMessages{false};
-  unsigned int m_maxThreads{0};
 
   // Legacy pathfinding state removed - all pathfinding handled by
   // PathfinderManager
@@ -488,7 +452,7 @@ private:
   // Thread-safe assignment tracking
   std::atomic<size_t> m_totalAssignmentCount{0};
 
-  // Frame counter for periodic logging (thread-safe)
+  // Frame counter for cache invalidation and distance staggering (operational)
   std::atomic<uint64_t> m_frameCounter{0};
 
   // Asynchronous assignment processing (replaced with futures for deterministic tracking)
@@ -511,22 +475,18 @@ private:
   mutable std::shared_mutex m_behaviorsMutex;
   mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
-  mutable std::mutex m_statsMutex;
 
   // Cached manager references (avoid singleton lookups in hot paths)
   PathfinderManager* mp_pathfinderManager{nullptr};
 
-  // Async batch tracking for safe shutdown using futures
+  // Batch futures for parallel processing - reused via clear() each frame
   std::vector<std::future<void>> m_batchFutures;
-  std::mutex m_batchFuturesMutex;  // Protect futures vector
 
   // Async assignment tracking for deterministic synchronization (replaces m_assignmentInProgress)
   std::vector<std::future<void>> m_assignmentFutures;
   std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
 
-  // Reusable futures buffers to avoid per-frame allocations in sync paths
-  // These are cleared and reused each frame instead of creating local vectors
-  mutable std::vector<std::future<void>> m_reusableBatchFutures;
+  // Reusable futures buffer for assignment synchronization
   mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
 
   // Per-batch collision update buffers (zero contention approach)
@@ -544,10 +504,10 @@ private:
   // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
   std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
 
-  // Pre-allocated batch buffers for distance/position calculations (Issue #2 fix)
-  // Eliminates ~480 allocations/sec @ 60 FPS with 8 batches (1-2ms frame spikes)
-  std::vector<std::vector<float>> m_distanceBuffers;
-  std::vector<std::vector<Vector2D>> m_positionBuffers;
+  // Reusable buffers for behavior assignment processing
+  // Eliminates per-frame allocations during entity spawning
+  mutable std::vector<PendingAssignment> m_reusableToProcessBuffer;
+  mutable std::shared_ptr<std::vector<PendingAssignment>> m_reusableAssignmentBatch;
 
   // Camera bounds cache for entity update culling
   // Only update animations/sprites for entities within camera view + buffer
@@ -561,29 +521,20 @@ private:
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
-  std::atomic<size_t> m_threadingThreshold{500};
+  std::atomic<size_t> m_threadingThreshold{200};  // Optimal threshold from benchmark
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
 
-  // SIMD-optimized distance calculation helper
-  static void calculateDistancesSIMD(size_t start, size_t end,
-                                     const Vector2D& playerPos,
-                                     uint64_t distanceUpdateSlice,
-                                     const EntityStorage& storage,
-                                     std::vector<float>& outDistances,
-                                     std::vector<Vector2D>& outPositions);
-
   void processBatch(size_t start, size_t end, float deltaTime,
-                    const Vector2D &playerPos, uint64_t distanceUpdateSlice,
+                    const Vector2D &playerPos,
+                    bool hasPlayer,
                     const EntityStorage& storage,
-                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates,
-                    size_t batchIndex = 0);
+                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
   void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();
   void updateDistancesScalar(const Vector2D &playerPos);
-  void recordPerformance(BehaviorType type, double timeMs, uint64_t entities);
   static uint64_t getCurrentTimeNanos();
 
   // Legacy pathfinding methods removed - use PathfinderManager instead

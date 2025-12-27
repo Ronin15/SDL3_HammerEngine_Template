@@ -156,7 +156,11 @@ IdleBehavior::IdleMode IdleBehavior::getIdleMode() const { return m_idleMode; }
 float IdleBehavior::getIdleRadius() const { return m_idleRadius; }
 
 std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
-  return std::make_shared<IdleBehavior>(m_idleMode, m_idleRadius);
+  auto cloned = std::make_shared<IdleBehavior>(m_idleMode, m_idleRadius);
+  cloned->m_movementFrequency = m_movementFrequency;
+  cloned->m_turnFrequency = m_turnFrequency;
+  cloned->setActive(m_active);
+  return cloned;
 }
 
 void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) const {
@@ -248,7 +252,7 @@ float IdleBehavior::getRandomMovementInterval() const {
   if (m_movementFrequency <= 0.0f)
     return std::numeric_limits<float>::max();
 
-  float baseInterval = 1.0f / m_movementFrequency; // Convert to seconds
+  float const baseInterval = 1.0f / m_movementFrequency; // Convert to seconds
   float variation = m_frequencyVariation(m_rng);
 
   return baseInterval * variation;
@@ -258,7 +262,7 @@ float IdleBehavior::getRandomTurnInterval() const {
   if (m_turnFrequency <= 0.0f)
     return std::numeric_limits<float>::max();
 
-  float baseInterval = 1.0f / m_turnFrequency; // Convert to seconds
+  float const baseInterval = 1.0f / m_turnFrequency; // Convert to seconds
   float variation = m_frequencyVariation(m_rng);
 
   return baseInterval * variation;

@@ -227,17 +227,16 @@ struct EventManagerScalingFixture {
         handlers.clear();
 
         EventManager::Instance().enableThreading(true);
-        EventManager::Instance().setThreadingThreshold(1000);
+        // Use default threshold (100) - matches EventManager::m_threadingThreshold
 
-        unsigned int systemThreads = std::thread::hardware_concurrency();
-        size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
+        // WorkerBudget: all workers available to each manager during its update window
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
 
         std::cout << "\n=== Immediate Event Trigger Benchmark ===" << std::endl;
         std::cout << "  Config: " << numHandlersPerType << " handlers per type, "
                   << numTriggers << " triggers" << std::endl;
-        std::cout << "  System: " << systemThreads << " hardware threads ("
-                  << eventWorkers << " allocated to events)" << std::endl;
+        std::cout << "  System: " << totalWorkers << " workers (all available via WorkerBudget)" << std::endl;
 
         // Register simple handlers (just count calls)
         std::atomic<int> weatherCallCount{0};
@@ -302,11 +301,11 @@ struct EventManagerScalingFixture {
 
     void runScalabilityTest() {
         std::cout << "\n===== SCALABILITY TEST =====" << std::endl;
-        unsigned int systemThreads = std::thread::hardware_concurrency();
-        size_t totalWorkers = (systemThreads > 0) ? systemThreads - 1 : 0;
-        size_t eventWorkers = static_cast<size_t>(totalWorkers * 0.3);
-        std::cout << "System Configuration: " << systemThreads << " hardware threads, "
-                  << totalWorkers << " workers (" << eventWorkers << " for Events)" << std::endl;
+        // WorkerBudget: all workers available to each manager during its update window
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+        size_t totalWorkers = budgetMgr.getBudget().totalWorkers;
+        std::cout << "System Configuration: " << totalWorkers
+                  << " workers (all available via WorkerBudget)" << std::endl;
 
         // Test progression: realistic event counts for actual games
         std::vector<std::tuple<int, int, int>> testCases = {
@@ -480,13 +479,11 @@ BOOST_AUTO_TEST_CASE(ConcurrencyTest) {
     }
 
     // Test concurrent event generation using WorkerBudget (production config)
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-    size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-    HammerEngine::WorkerBudget budget = HammerEngine::calculateWorkerBudget(availableWorkers);
-    size_t eventWorkers = budget.eventAllocated;
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
     // Use the same logic as production: optimal workers for 4000 events
-    size_t optimalWorkerCount = budget.getOptimalWorkerCount(eventWorkers, 4000, 100);
+    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+        HammerEngine::SystemType::Event, 4000);
     int numThreads = static_cast<int>(std::max(static_cast<size_t>(1), optimalWorkerCount));
 
     // FIXED: Keep total at 4000 events, divide by thread count
@@ -520,4 +517,122 @@ BOOST_AUTO_TEST_CASE(ExtremeScaleTest) {
     } catch (const std::exception& e) {
         std::cerr << "Error in extreme scale test: " << e.what() << std::endl;
     }
+}
+
+// Detect optimal threading threshold for EventManager
+BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n===== EVENT THREADING THRESHOLD DETECTION =====" << std::endl;
+    std::cout << "Comparing single-threaded vs multi-threaded at different event counts\n" << std::endl;
+
+    std::vector<int> testCounts = {25, 50, 75, 100, 150, 200, 300, 500};
+    size_t optimalThreshold = 0;
+    size_t marginalThreshold = 0;
+
+    std::cout << std::setw(10) << "Events"
+              << std::setw(18) << "Single (ms)"
+              << std::setw(18) << "Threaded (ms)"
+              << std::setw(12) << "Speedup"
+              << std::setw(15) << "Verdict" << std::endl;
+    std::cout << std::string(73, '-') << std::endl;
+
+    const int numHandlersPerType = 3;  // Realistic handler count
+    const int numMeasurements = 3;
+
+    auto runBenchmark = [&](int numTriggers, bool useThreading) -> double {
+        // Reset
+        EventManager::Instance().clean();
+        EventManager::Instance().init();
+        EventManager::Instance().enableThreading(useThreading);
+        std::this_thread::sleep_for(std::chrono::milliseconds(30));
+
+        // Register handlers
+        std::atomic<int> callCount{0};
+        for (int i = 0; i < numHandlersPerType; ++i) {
+            EventManager::Instance().registerHandler(EventTypeId::Weather,
+                [&callCount](const EventData&) { callCount++; });
+            EventManager::Instance().registerHandler(EventTypeId::NPCSpawn,
+                [&callCount](const EventData&) { callCount++; });
+            EventManager::Instance().registerHandler(EventTypeId::SceneChange,
+                [&callCount](const EventData&) { callCount++; });
+        }
+
+        // Warmup
+        for (int i = 0; i < 5; ++i) {
+            EventManager::Instance().changeWeather("Clear", 1.0f);
+        }
+
+        // Measure
+        std::vector<double> durations;
+        for (int run = 0; run < numMeasurements; ++run) {
+            callCount = 0;
+            auto startTime = std::chrono::high_resolution_clock::now();
+
+            for (int i = 0; i < numTriggers; ++i) {
+                switch (i % 3) {
+                    case 0: EventManager::Instance().changeWeather("Rainy", 1.0f); break;
+                    case 1: EventManager::Instance().spawnNPC("TestNPC", 100.0f, 100.0f); break;
+                    case 2: EventManager::Instance().changeScene("TestScene", "fade", 1.0f); break;
+                }
+            }
+
+            auto endTime = std::chrono::high_resolution_clock::now();
+            durations.push_back(std::chrono::duration<double, std::milli>(endTime - startTime).count());
+        }
+
+        // Return median
+        std::sort(durations.begin(), durations.end());
+        return durations[durations.size() / 2];
+    };
+
+    for (int count : testCounts) {
+        double singleTime = runBenchmark(count, false);
+        double threadedTime = runBenchmark(count, true);
+
+        double speedup = (threadedTime > 0) ? singleTime / threadedTime : 0;
+
+        std::string verdict;
+        if (speedup > 1.5) {
+            verdict = "THREAD";
+            if (optimalThreshold == 0) optimalThreshold = count;
+        } else if (speedup > 1.1) {
+            verdict = "marginal";
+            if (marginalThreshold == 0) marginalThreshold = count;
+        } else {
+            verdict = "single";
+        }
+
+        std::cout << std::setw(10) << count
+                  << std::setw(18) << std::fixed << std::setprecision(3) << singleTime
+                  << std::setw(18) << std::fixed << std::setprecision(3) << threadedTime
+                  << std::setw(11) << std::fixed << std::setprecision(2) << speedup << "x"
+                  << std::setw(15) << verdict << std::endl;
+    }
+
+    std::cout << "\n=== EVENT THREADING RECOMMENDATION ===" << std::endl;
+    std::cout << "Current threshold:  100 events" << std::endl;
+
+    if (optimalThreshold > 0) {
+        std::cout << "Optimal threshold:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
+        if (optimalThreshold != 100) {
+            std::cout << "ACTION: Consider changing EventManager::m_threadingThreshold to " << optimalThreshold << std::endl;
+        } else {
+            std::cout << "STATUS: Current threshold is optimal" << std::endl;
+        }
+    } else if (marginalThreshold > 0) {
+        std::cout << "Marginal benefit at: " << marginalThreshold << " events" << std::endl;
+        std::cout << "STATUS: Threading provides minimal benefit for events on this hardware" << std::endl;
+    } else {
+        std::cout << "STATUS: Single-threaded is faster at all tested counts" << std::endl;
+        std::cout << "ACTION: Consider raising threshold above 500 or disabling event threading" << std::endl;
+    }
+
+    std::cout << "========================================\n" << std::endl;
+
+    // Restore threading
+    EventManager::Instance().enableThreading(true);
 }

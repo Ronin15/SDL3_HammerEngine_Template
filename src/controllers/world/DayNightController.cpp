@@ -4,19 +4,13 @@
  */
 
 #include "controllers/world/DayNightController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include <format>
 
-DayNightController& DayNightController::Instance()
-{
-    static DayNightController instance;
-    return instance;
-}
-
 void DayNightController::subscribe()
 {
-    if (m_subscribed) {
+    if (checkAlreadySubscribed()) {
         return;
     }
 
@@ -27,10 +21,10 @@ void DayNightController::subscribe()
         EventTypeId::Time,
         [this](const EventData& data) { onTimeEvent(data); }
     );
-    m_handlerTokens.push_back(timeToken);
+    addHandlerToken(timeToken);
 
     // Initialize to current time period
-    float currentHour = GameTime::Instance().getGameHour();
+    float currentHour = GameTimeManager::Instance().getGameHour();
     m_currentPeriod = hourToTimePeriod(currentHour);
     m_previousPeriod = m_currentPeriod;
 
@@ -40,25 +34,9 @@ void DayNightController::subscribe()
     auto event = std::make_shared<TimePeriodChangedEvent>(m_currentPeriod, m_previousPeriod, visuals);
     eventMgr.dispatchEvent(event, EventManager::DispatchMode::Deferred);
 
-    m_subscribed = true;
+    setSubscribed(true);
     DAYNIGHT_INFO(std::format("Subscribed to time events, period: {}",
                 getCurrentPeriodString()));
-}
-
-void DayNightController::unsubscribe()
-{
-    if (!m_subscribed) {
-        return;
-    }
-
-    auto& eventMgr = EventManager::Instance();
-    for (const auto& token : m_handlerTokens) {
-        eventMgr.removeHandler(token);
-    }
-    m_handlerTokens.clear();
-
-    m_subscribed = false;
-    DAYNIGHT_INFO("Unsubscribed from time events");
 }
 
 void DayNightController::onTimeEvent(const EventData& data)
@@ -102,7 +80,7 @@ void DayNightController::transitionToPeriod(TimePeriod newPeriod)
     DAYNIGHT_INFO(std::format("Transitioned to {}", getCurrentPeriodString()));
 }
 
-const char* DayNightController::getCurrentPeriodString() const
+std::string_view DayNightController::getCurrentPeriodString() const
 {
     switch (m_currentPeriod) {
         case TimePeriod::Morning: return "Morning";
@@ -113,6 +91,17 @@ const char* DayNightController::getCurrentPeriodString() const
     }
 }
 
+std::string_view DayNightController::getCurrentPeriodDescription() const
+{
+    switch (m_currentPeriod) {
+        case TimePeriod::Morning: return "Dawn approaches";
+        case TimePeriod::Day:     return "The sun rises high";
+        case TimePeriod::Evening: return "Dusk settles in";
+        case TimePeriod::Night:   return "Night falls";
+        default:                  return "Time passes";
+    }
+}
+
 TimePeriodVisuals DayNightController::getCurrentVisuals() const
 {
     return TimePeriodVisuals::getForPeriod(m_currentPeriod);
@@ -120,7 +109,7 @@ TimePeriodVisuals DayNightController::getCurrentVisuals() const
 
 TimePeriod DayNightController::hourToTimePeriod(float hour)
 {
-    // Time periods matching GameTime::getTimeOfDayName() logic:
+    // Time periods matching GameTimeManager::getTimeOfDayName() logic:
     // Morning: 5:00 - 8:00
     // Day:     8:00 - 17:00
     // Evening: 17:00 - 21:00

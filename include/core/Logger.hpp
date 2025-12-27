@@ -98,6 +98,15 @@ private:
 #define HAMMER_DEBUG(system, msg)                                              \
   HammerEngine::Logger::Log(HammerEngine::LogLevel::DEBUG_LEVEL, system, msg)
 
+// Conditional logging macros - use when logging is the ONLY content in an if-block
+// These eliminate condition evaluation overhead in release builds
+#define HAMMER_WARN_IF(cond, system, msg)                                      \
+  do { if (cond) HAMMER_WARN(system, msg); } while(0)
+#define HAMMER_INFO_IF(cond, system, msg)                                      \
+  do { if (cond) HAMMER_INFO(system, msg); } while(0)
+#define HAMMER_DEBUG_IF(cond, system, msg)                                     \
+  do { if (cond) HAMMER_DEBUG(system, msg); } while(0)
+
 #else
 // Release builds - ultra-minimal overhead, lockless
 class Logger {
@@ -145,6 +154,11 @@ public:
 #define HAMMER_WARN(system, msg) ((void)0)  // Zero overhead
 #define HAMMER_INFO(system, msg) ((void)0)  // Zero overhead
 #define HAMMER_DEBUG(system, msg) ((void)0) // Zero overhead
+
+// Conditional logging macros - compiled out entirely in release
+#define HAMMER_WARN_IF(cond, system, msg) ((void)0)
+#define HAMMER_INFO_IF(cond, system, msg) ((void)0)
+#define HAMMER_DEBUG_IF(cond, system, msg) ((void)0)
 #endif
 
 // Static member definitions - shared by both DEBUG and RELEASE builds
@@ -214,6 +228,9 @@ inline std::mutex Logger::s_logMutex{};
 #define INPUT_WARN(msg) HAMMER_WARN("InputManager", msg)
 #define INPUT_INFO(msg) HAMMER_INFO("InputManager", msg)
 #define INPUT_DEBUG(msg) HAMMER_DEBUG("InputManager", msg)
+#define INPUT_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "InputManager", msg)
+#define INPUT_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "InputManager", msg)
+#define INPUT_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "InputManager", msg)
 
 #define UI_CRITICAL(msg) HAMMER_CRITICAL("UIManager", msg)
 #define UI_ERROR(msg) HAMMER_ERROR("UIManager", msg)
@@ -238,12 +255,18 @@ inline std::mutex Logger::s_logMutex{};
 #define RESOURCE_WARN(msg) HAMMER_WARN("ResourceTemplateManager", msg)
 #define RESOURCE_INFO(msg) HAMMER_INFO("ResourceTemplateManager", msg)
 #define RESOURCE_DEBUG(msg) HAMMER_DEBUG("ResourceTemplateManager", msg)
+#define RESOURCE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "ResourceTemplateManager", msg)
+#define RESOURCE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "ResourceTemplateManager", msg)
+#define RESOURCE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "ResourceTemplateManager", msg)
 
 #define INVENTORY_CRITICAL(msg) HAMMER_CRITICAL("InventoryComponent", msg)
 #define INVENTORY_ERROR(msg) HAMMER_ERROR("InventoryComponent", msg)
 #define INVENTORY_WARN(msg) HAMMER_WARN("InventoryComponent", msg)
 #define INVENTORY_INFO(msg) HAMMER_INFO("InventoryComponent", msg)
 #define INVENTORY_DEBUG(msg) HAMMER_DEBUG("InventoryComponent", msg)
+#define INVENTORY_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "InventoryComponent", msg)
+#define INVENTORY_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "InventoryComponent", msg)
+#define INVENTORY_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "InventoryComponent", msg)
 
 #define WORLD_RESOURCE_CRITICAL(msg)                                           \
   HAMMER_CRITICAL("WorldResourceManager", msg)
@@ -251,6 +274,9 @@ inline std::mutex Logger::s_logMutex{};
 #define WORLD_RESOURCE_WARN(msg) HAMMER_WARN("WorldResourceManager", msg)
 #define WORLD_RESOURCE_INFO(msg) HAMMER_INFO("WorldResourceManager", msg)
 #define WORLD_RESOURCE_DEBUG(msg) HAMMER_DEBUG("WorldResourceManager", msg)
+#define WORLD_RESOURCE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "WorldResourceManager", msg)
+#define WORLD_RESOURCE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "WorldResourceManager", msg)
+#define WORLD_RESOURCE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "WorldResourceManager", msg)
 
 #define WORLD_MANAGER_CRITICAL(msg) HAMMER_CRITICAL("WorldManager", msg)
 #define WORLD_MANAGER_ERROR(msg) HAMMER_ERROR("WorldManager", msg)
@@ -264,12 +290,18 @@ inline std::mutex Logger::s_logMutex{};
 #define GAMESTATE_WARN(msg) HAMMER_WARN("GameStateManager", msg)
 #define GAMESTATE_INFO(msg) HAMMER_INFO("GameStateManager", msg)
 #define GAMESTATE_DEBUG(msg) HAMMER_DEBUG("GameStateManager", msg)
+#define GAMESTATE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GameStateManager", msg)
+#define GAMESTATE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "GameStateManager", msg)
+#define GAMESTATE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "GameStateManager", msg)
 
 #define GAMEPLAY_CRITICAL(msg) HAMMER_CRITICAL("GamePlayState", msg)
 #define GAMEPLAY_ERROR(msg) HAMMER_ERROR("GamePlayState", msg)
 #define GAMEPLAY_WARN(msg) HAMMER_WARN("GamePlayState", msg)
 #define GAMEPLAY_INFO(msg) HAMMER_INFO("GamePlayState", msg)
 #define GAMEPLAY_DEBUG(msg) HAMMER_DEBUG("GamePlayState", msg)
+#define GAMEPLAY_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GamePlayState", msg)
+#define GAMEPLAY_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "GamePlayState", msg)
+#define GAMEPLAY_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "GamePlayState", msg)
 
 #define ENTITYSTATE_CRITICAL(msg) HAMMER_CRITICAL("EntityStateManager", msg)
 #define ENTITYSTATE_ERROR(msg) HAMMER_ERROR("EntityStateManager", msg)
@@ -289,6 +321,9 @@ inline std::mutex Logger::s_logMutex{};
 #define PLAYER_WARN(msg) HAMMER_WARN("Player", msg)
 #define PLAYER_INFO(msg) HAMMER_INFO("Player", msg)
 #define PLAYER_DEBUG(msg) HAMMER_DEBUG("Player", msg)
+#define PLAYER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "Player", msg)
+#define PLAYER_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "Player", msg)
+#define PLAYER_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "Player", msg)
 
 #define NPC_CRITICAL(msg) HAMMER_CRITICAL("NPC", msg)
 #define NPC_ERROR(msg) HAMMER_ERROR("NPC", msg)
@@ -337,6 +372,39 @@ inline std::mutex Logger::s_logMutex{};
 #define TIME_WARN(msg) HAMMER_WARN("TimeController", msg)
 #define TIME_INFO(msg) HAMMER_INFO("TimeController", msg)
 #define TIME_DEBUG(msg) HAMMER_DEBUG("TimeController", msg)
+
+// CombatController logging
+#define COMBAT_CRITICAL(msg) HAMMER_CRITICAL("CombatController", msg)
+#define COMBAT_ERROR(msg) HAMMER_ERROR("CombatController", msg)
+#define COMBAT_WARN(msg) HAMMER_WARN("CombatController", msg)
+#define COMBAT_INFO(msg) HAMMER_INFO("CombatController", msg)
+#define COMBAT_DEBUG(msg) HAMMER_DEBUG("CombatController", msg)
+
+// Conditional logging macros for common systems
+// Use these when an if-block contains ONLY logging (eliminates condition overhead in release)
+#define GAMEENGINE_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "GameEngine", msg)
+#define GAMEENGINE_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "GameEngine", msg)
+#define GAMEENGINE_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "GameEngine", msg)
+
+#define AI_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "AIManager", msg)
+#define AI_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "AIManager", msg)
+#define AI_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "AIManager", msg)
+
+#define COLLISION_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "CollisionManager", msg)
+#define COLLISION_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "CollisionManager", msg)
+#define COLLISION_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "CollisionManager", msg)
+
+#define PATHFIND_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "Pathfinding", msg)
+#define PATHFIND_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "Pathfinding", msg)
+#define PATHFIND_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "Pathfinding", msg)
+
+#define EVENT_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "EventManager", msg)
+#define EVENT_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "EventManager", msg)
+#define EVENT_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "EventManager", msg)
+
+#define WORLD_MANAGER_WARN_IF(cond, msg) HAMMER_WARN_IF(cond, "WorldManager", msg)
+#define WORLD_MANAGER_INFO_IF(cond, msg) HAMMER_INFO_IF(cond, "WorldManager", msg)
+#define WORLD_MANAGER_DEBUG_IF(cond, msg) HAMMER_DEBUG_IF(cond, "WorldManager", msg)
 
 // Benchmark mode convenience macros
 #define HAMMER_ENABLE_BENCHMARK_MODE()                                         \

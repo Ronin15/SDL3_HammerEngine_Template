@@ -5,7 +5,7 @@
 - Implementation: `src/controllers/world/WeatherController.cpp`
 - Tests: `tests/controllers/WeatherControllerTests.cpp`
 
-**Singleton Access:** Use `WeatherController::Instance()` to access.
+**Ownership:** GameState owns the controller instance (not a singleton).
 
 ## Overview
 
@@ -14,7 +14,7 @@ WeatherController is a lightweight controller that bridges GameTime weather chec
 ## Event Flow
 
 ```
-GameTime::checkWeatherUpdate()
+GameTimeManager::checkWeatherUpdate()
   → WeatherCheckEvent (Deferred)
     → WeatherController handles it
       → EventManager::changeWeather() (Deferred)
@@ -26,14 +26,20 @@ GameTime::checkWeatherUpdate()
 
 ```cpp
 #include "controllers/world/WeatherController.hpp"
-#include "core/GameTime.hpp"
+#include "managers/GameTimeManager.hpp"
 
-// In GameState::enter()
-GameTime::Instance().enableAutoWeather(true);  // Enable weather checks
-WeatherController::Instance().subscribe();
+// In GamePlayState.hpp - controller as member
+class GamePlayState : public GameState {
+private:
+    WeatherController m_weatherController;  // Owned by state
+};
 
-// In GameState::exit()
-WeatherController::Instance().unsubscribe();
+// In GamePlayState::enter()
+GameTimeManager::Instance().enableAutoWeather(true);  // Enable weather checks
+m_weatherController.subscribe();
+
+// In GamePlayState::exit()
+m_weatherController.unsubscribe();
 ```
 
 ## API Reference
@@ -103,25 +109,32 @@ enum class WeatherType {
 ## Usage Example
 
 ```cpp
-// GamePlayState.cpp
+// GamePlayState.hpp
 #include "controllers/world/WeatherController.hpp"
-#include "core/GameTime.hpp"
+
+class GamePlayState : public GameState {
+private:
+    WeatherController m_weatherController;  // Owned by state
+};
+
+// GamePlayState.cpp
+#include "managers/GameTimeManager.hpp"
 
 bool GamePlayState::enter() {
     // Enable automatic weather in GameTime
-    GameTime::Instance().enableAutoWeather(true);
-    GameTime::Instance().setWeatherCheckInterval(4.0f);  // Every 4 game hours
+    GameTimeManager::Instance().enableAutoWeather(true);
+    GameTimeManager::Instance().setWeatherCheckInterval(4.0f);  // Every 4 game hours
 
     // Subscribe WeatherController to handle weather checks
-    WeatherController::Instance().subscribe();
+    m_weatherController.subscribe();
 
     return true;
 }
 
 void GamePlayState::update(float deltaTime) {
     // Display current weather
-    WeatherType weather = WeatherController::Instance().getCurrentWeather();
-    const char* weatherStr = WeatherController::Instance().getCurrentWeatherString();
+    WeatherType weather = m_weatherController.getCurrentWeather();
+    const char* weatherStr = m_weatherController.getCurrentWeatherString();
 
     // Use in UI or game logic
     if (weather == WeatherType::Rainy || weather == WeatherType::Stormy) {
@@ -131,7 +144,7 @@ void GamePlayState::update(float deltaTime) {
 }
 
 void GamePlayState::exit() {
-    WeatherController::Instance().unsubscribe();
+    m_weatherController.unsubscribe();
 }
 ```
 
@@ -151,7 +164,7 @@ If you want to override automatic weather:
 
 ```cpp
 // Disable auto weather
-GameTime::Instance().enableAutoWeather(false);
+GameTimeManager::Instance().enableAutoWeather(false);
 
 // Manually trigger weather change
 EventManager::Instance().changeWeather(WeatherType::Stormy);

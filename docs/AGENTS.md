@@ -5,7 +5,7 @@ SDL3 HammerEngine development guide for AI agents.
 ## Project Structure
 
 ```
-src/{core, managers, gameStates, entities, events, ai, collisions, utils, world}
+src/{core, managers, controllers, gameStates, entities, events, ai, collisions, utils, world}
 include/       # Headers mirror src/
 tests/         # Boost.Test (68+ executables)
 bin/debug/     # Debug builds & test binaries
@@ -58,9 +58,9 @@ ninja -C build -v 2>&1 | grep -E "(warning|unused|error)" | head -n 100
 
 ## Architecture
 
-**Core**: GameEngine (double-buffered coordinator) | GameLoop (fixed timestep, update/render threads) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
+**Core**: GameEngine (fixed timestep, single-threaded main loop) | TimestepManager (accumulator-based timing) | ThreadSystem (WorkerBudget priorities) | Logger (thread-safe)
 
-**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed) | EventManager (thread-safe, batch) | CollisionManager (spatial hash, pathfinding) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
+**Systems**: AIManager (10K+ entities @ 60+ FPS, batch-processed, with dynamic behaviors like Attack, Flee, Follow, Guard, Chase, Idle, Patrol) | GameTimeManager (manages game time, day/night cycles, and weather in coordination with controllers) | EventManager (thread-safe, batch) | CombatController (handles combat logic and interactions) | CollisionManager (spatial hash, pathfinding) | ParticleManager (camera-aware, batched) | WorldManager (tile-based, procedural) | UIManager (theming, DPI-aware) | ResourceManager (JSON + handles) | InputManager (keyboard/mouse/gamepad)
 
 **Utils**: Camera (world↔screen, zoom) | Vector2D (2D math) | JsonReader | BinarySerializer (cross-platform save/load)
 
@@ -125,15 +125,15 @@ class Manager {
 
 ## Engine Loop & Render Flow
 
-**GameLoop** (configured in `HammerMain.cpp`): Drives events (main thread) → fixed-timestep update → render callbacks.
+**Main Loop** (in `HammerMain.cpp`): Single-threaded fixed timestep pattern. Events → Update(s) → Render, all sequential on main thread.
 
-**Update** (thread-safe, mutex-locked): `GameEngine::update(deltaTime)` updates global systems (AIManager, EventManager, ParticleManager) → delegates to `GameStateManager::update`. Completes before render starts.
+**Update** (main thread): `GameEngine::update(deltaTime)` updates global systems (AIManager, EventManager, ParticleManager) → delegates to `GameStateManager::update`. Fixed timestep via accumulator drains multiple updates per frame if needed.
 
 **Double Buffer**: `m_currentBufferIndex` (update) + `m_renderBufferIndex` (render) + `m_bufferReady[]`. Main loop calls `hasNewFrameToRender()` + `swapBuffers()` before update; render consumes stable previous buffer.
 
-**Render** (main thread only): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera). World tiles use `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)`. Entities use `Entity::render(const Camera*)` for world→screen conversion.
+**Render** (main thread): `GameEngine::render()` clears renderer → `GameStateManager::render()` → world/entities/particles/UI (deterministic order, current camera). World tiles use `WorldManager::render(renderer, cameraX, cameraY, viewportW, viewportH)`. Entities use `Entity::render(const Camera*)` for world→screen conversion.
 
-**Rules**: No background thread rendering | No extra manager sync (rely on mutexed update + buffer swap) | Snapshot camera once per render | NEVER static vars in threaded code
+**Rules**: No background thread rendering | Sequential update/render (no mutex needed) | Snapshot camera once per render | NEVER static vars in threaded code | Background work via ThreadSystem workers
 
 ## Critical System Patterns
 

@@ -443,9 +443,8 @@ void ParticleManager::LockFreeParticleStorage::processCreationRequests() {
                 particle.effectType = req.effectType;
 
                 // Prefer slot reuse: use a free index if available
-                if (!freeIndices.empty()) {
-                    const size_t idx = freeIndices.back();
-                    freeIndices.pop_back();
+                if (hasFreeIndex()) {
+                    const size_t idx = popFreeIndex();
                     if (idx < activeParticles.flags.size()) {
                         // Write into SIMD lanes and attribute arrays
                         activeParticles.posX[idx] = particle.position.getX();
@@ -698,7 +697,6 @@ void ParticleManager::prepareForStateTransition() {
   for (size_t i = 0; i < particleCount; ++i) {
     if (activeParticles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
       activeParticles.flags[i] &= ~UnifiedParticle::FLAG_ACTIVE;
-      m_storage.freeIndices.push_back(i);
       activeParticles.lives[i] = 0.0f; // Ensure life is zero for double safety
       particlesCleared++;
     }
@@ -707,7 +705,8 @@ void ParticleManager::prepareForStateTransition() {
   // 3.5. IMMEDIATE COMPLETE CLEANUP - Remove ALL particles to ensure zero count
   activeParticles.clear(); // Complete clear to ensure zero particles
   m_storage.particles[1 - activeIdx].clear(); // Clear other buffer too
-  m_storage.freeIndices.clear();
+  m_storage.pendingIndices.clear();
+  m_storage.readyIndices.clear();
   m_storage.particleCount.store(0, std::memory_order_release);
 
   PARTICLE_INFO(std::format("Complete particle cleanup: cleared {} active particles from storage",
@@ -778,20 +777,22 @@ void ParticleManager::update(float deltaTime) {
                          m_useThreading.load(std::memory_order_acquire) &&
                          HammerEngine::ThreadSystem::Exists());
 
+    // Track threading decision for interval logging (local vars, zero overhead in release)
+    ParticleThreadingInfo threadingInfo;
+
     if (useThreading) {
       // Use WorkerBudget system if enabled, otherwise fall back to legacy
       // threading
       if (m_useWorkerBudget.load(std::memory_order_acquire)) {
         // Limit range to the highest potentially-active index + 1
         const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-        updateWithWorkerBudget(deltaTime, rangeEnd);
+        updateWithWorkerBudget(deltaTime, rangeEnd, threadingInfo);
       } else {
         const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
-        updateParticlesThreaded(deltaTime, rangeEnd);
+        updateParticlesThreaded(deltaTime, rangeEnd, threadingInfo);
       }
     } else {
-      m_lastWasThreaded.store(false, std::memory_order_relaxed);
-      m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+      // Single-threaded: threadingInfo stays at defaults (wasThreaded=false, batchCount=1)
       const size_t rangeEnd = std::min(bufferSize, m_storage.maxActiveIndex + 1);
       updateParticlesSingleThreaded(deltaTime, rangeEnd);
     }
@@ -799,7 +800,7 @@ void ParticleManager::update(float deltaTime) {
   // Phase 5: Swap buffers for next frame (lock-free)
   m_storage.swapBuffers();
 
-  // Phase 5.5: Collect recently deactivated particles into the free-index pool
+  // Phase 5.5: Collect recently deactivated particles into the pending pool
   {
     size_t activeIdx = m_storage.activeBuffer.load(std::memory_order_acquire);
     auto &p = m_storage.particles[activeIdx];
@@ -808,7 +809,7 @@ void ParticleManager::update(float deltaTime) {
     for (size_t i = 0; i < n; ++i) {
       if (!(p.flags[i] & UnifiedParticle::FLAG_ACTIVE) &&
           (p.flags[i] & UnifiedParticle::FLAG_RECENTLY_DEACTIVATED)) {
-        m_storage.freeIndices.push_back(i);
+        m_storage.pushFreeIndex(i);
         p.flags[i] &= ~UnifiedParticle::FLAG_RECENTLY_DEACTIVATED;
         if (i == newMax) {
           // We'll tighten upper bound after the loop
@@ -822,37 +823,31 @@ void ParticleManager::update(float deltaTime) {
     m_storage.maxActiveIndex = newMax;
   }
 
-    // Phase 6: Frame counter and performance tracking (compaction disabled)
-    uint64_t currentFrame =
-        m_frameCounter.fetch_add(1, std::memory_order_relaxed);
+  // Phase 5.6: Promote aged indices from pending to ready pool
+  // Indices are safe to reuse after 2 frames (background threads have completed)
+  m_storage.promoteSafeIndices();
 
-    // Phase 7: Performance tracking (reduced overhead)
+    // Phase 6: Performance tracking
     auto endTime = std::chrono::high_resolution_clock::now();
     double timeMs = std::chrono::duration_cast<std::chrono::microseconds>(
                         endTime - startTime)
                         .count() /
                     1000.0;
 
-    // Only track performance every 1200 frames (20 seconds) to minimize
-    // overhead
-    if (currentFrame % 1200 == 0) {
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
+    static thread_local uint64_t logFrameCounter = 0;
+    if (++logFrameCounter % 300 == 0) {
       size_t currentActiveCount = countActiveParticles();
       recordPerformance(false, timeMs, currentActiveCount);
 
       if (currentActiveCount > 0) {
-        bool wasThreaded = m_lastWasThreaded.load(std::memory_order_relaxed);
-        if (wasThreaded) {
-          [[maybe_unused]] size_t optimalWorkers = m_lastOptimalWorkerCount.load(std::memory_order_relaxed);
-          [[maybe_unused]] size_t availableWorkers = m_lastAvailableWorkers.load(std::memory_order_relaxed);
-          [[maybe_unused]] size_t particleBudget = m_lastParticleBudget.load(std::memory_order_relaxed);
-          [[maybe_unused]] size_t batchCount = std::max<size_t>(
-              1, m_lastThreadBatchCount.load(std::memory_order_relaxed));
-
+        if (threadingInfo.wasThreaded) {
           PARTICLE_DEBUG(std::format(
               "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} "
-              "[Threaded: {}/{} workers, Budget: {}, Batches: {}]",
+              "[Threaded: {} batches, {}/batch]",
               activeCount, timeMs, m_effectInstances.size(),
-              optimalWorkers, availableWorkers, particleBudget, batchCount));
+              threadingInfo.batchCount, activeCount / threadingInfo.batchCount));
         } else {
           PARTICLE_DEBUG(std::format(
               "Particle Summary - Count: {}, Update: {:.2f}ms, Effects: {} [Single-threaded]",
@@ -860,11 +855,17 @@ void ParticleManager::update(float deltaTime) {
         }
       }
     }
+#endif
 
     // Measure total update time for adaptive batch tuning
     auto updateEndTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
-    m_adaptiveBatchState.lastUpdateTimeMs.store(totalUpdateTime, std::memory_order_release);
+
+    // Report batch completion for adaptive tuning (only if threaded with WorkerBudget)
+    if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
+      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
+          HammerEngine::SystemType::Particle, activeCount, threadingInfo.batchCount, totalUpdateTime);
+    }
 
   } catch (const std::exception &e) {
     PARTICLE_ERROR(std::format("Exception in ParticleManager::update: {}", e.what()));
@@ -929,7 +930,7 @@ void ParticleManager::render(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor col{r, g, b, a};
+    SDL_FColor const col{r, g, b, a};
     m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     ++quadCount;
@@ -999,7 +1000,7 @@ void ParticleManager::renderBackground(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor col{r, g, b, a};
+    SDL_FColor const col{r, g, b, a};
     m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
@@ -1059,7 +1060,7 @@ void ParticleManager::renderForeground(SDL_Renderer *renderer, float cameraX,
     const float x3 = cx - hx, y3 = cy + hy;
 
     // Safe append using pre-sized buffer (bounds guaranteed by flush logic)
-    SDL_FColor col{r, g, b, a};
+    SDL_FColor const col{r, g, b, a};
     m_renderBuffer.appendQuad(x0, y0, x1, y1, x2, y2, x3, y3, col);
 
     if (++quadCount == BatchRenderBuffers::MAX_RECTS_PER_BATCH) flush();
@@ -1257,7 +1258,7 @@ void ParticleManager::triggerWeatherEffect(ParticleEffectType effectType,
                             effectTypeToString(effectType), intensity));
 
   // Use smooth transitions for better visual quality
-  float actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
+  float const actualTransitionTime = (transitionTime > 0.0f) ? transitionTime : 1.5f;
 
   // PERFORMANCE: Validate effect type BEFORE acquiring any locks
   if (effectType >= ParticleEffectType::COUNT) {
@@ -1381,7 +1382,7 @@ void ParticleManager::toggleFireEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_fireActive) {
     // Create a single central fire source for better performance
-    Vector2D basePosition(400, 300);
+    Vector2D const basePosition(400, 300);
 
     // Single main fire effect
     m_fireEffectId = playIndependentEffect(
@@ -1399,7 +1400,7 @@ void ParticleManager::toggleSmokeEffect() {
   std::unique_lock<std::shared_mutex> lock(m_effectsMutex);
   if (!m_smokeActive) {
     // Create single smoke source for better performance
-    Vector2D basePosition(400, 280); // Slightly above fire
+    Vector2D const basePosition(400, 280); // Slightly above fire
 
     // Single main smoke column
     m_smokeEffectId = playIndependentEffect(
@@ -2139,21 +2140,21 @@ void ParticleManager::updateEffectInstances(float deltaTime) {
   }
 }
 void ParticleManager::updateParticlesThreaded(float deltaTime,
-                                              size_t activeParticleCount) {
+                                              size_t activeParticleCount,
+                                              ParticleThreadingInfo& outThreadingInfo) {
   // Use lock-free double buffering for threaded updates
   auto &currentBuffer = m_storage.getCurrentBuffer();
 
   // CRITICAL FIX: Validate buffer consistency before threading
   const size_t bufferSize = currentBuffer.flags.size();
-  
+
   // BOUNDS SAFETY: Ensure all vectors have consistent sizes
   if (bufferSize == 0 ||
       currentBuffer.posX.size() != bufferSize ||
       currentBuffer.velX.size() != bufferSize ||
       currentBuffer.lives.size() != bufferSize) {
     // Buffer is inconsistent, fall back to single-threaded update
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+    // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
     updateParticlesSingleThreaded(deltaTime, activeParticleCount);
     return;
   }
@@ -2163,51 +2164,36 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
   // resource allocation across the engine's subsystems
   auto &threadSystem = HammerEngine::ThreadSystem::Instance();
   size_t availableWorkers = static_cast<size_t>(threadSystem.getThreadCount());
-  size_t queueSize = threadSystem.getQueueSize();
-  size_t queueCapacity = threadSystem.getQueueCapacity();
 
-  // Calculate WorkerBudget allocation for particle system
-  // WorkerBudget ensures fair distribution of threads between AI, particles,
-  // events, etc.
-  HammerEngine::WorkerBudget budget =
-      HammerEngine::calculateWorkerBudget(availableWorkers);
+  // Use centralized WorkerBudgetManager for smart worker allocation
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  const auto& budget = budgetMgr.getBudget();
 
-  // Use WorkerBudget system with threshold-based buffer allocation
-  // This allows particle system to use additional threads when workload is high
-  size_t optimalWorkerCount = budget.getOptimalWorkerCount(
-      budget.particleAllocated, activeParticleCount, m_threadingThreshold);
+  // Get optimal workers (WorkerBudget determines everything dynamically)
+  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+      HammerEngine::SystemType::Particle, activeParticleCount);
 
-  // Store thread allocation info for debug output
-  m_lastOptimalWorkerCount.store(optimalWorkerCount, std::memory_order_relaxed);
-  m_lastAvailableWorkers.store(availableWorkers, std::memory_order_relaxed);
-  m_lastParticleBudget.store(budget.particleAllocated, std::memory_order_relaxed);
-  m_lastWasThreaded.store(true, std::memory_order_relaxed);
+  // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
+  auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+      HammerEngine::SystemType::Particle, activeParticleCount, optimalWorkerCount);
 
-  // Use unified adaptive batch calculation for consistency across all managers
-  const size_t threshold = std::max(m_threadingThreshold.load(std::memory_order_relaxed),
-                                    static_cast<size_t>(1));
-  double queuePressure = static_cast<double>(queueSize) / queueCapacity;
-
-  // Get previous frame's completion time for adaptive feedback
-  double lastFrameTime = m_adaptiveBatchState.lastUpdateTimeMs.load(std::memory_order_acquire);
-
-  auto [batchCount, batchSize] = HammerEngine::calculateBatchStrategy(
-      HammerEngine::PARTICLE_BATCH_CONFIG,
-      activeParticleCount,
-      threshold,
-      optimalWorkerCount,
-      budget.particleAllocated,  // Base allocation for buffer detection
-      queuePressure,
-      m_adaptiveBatchState,  // Adaptive state for performance tuning
-      lastFrameTime          // Previous frame's completion time
-  );
+  // Set threading info for interval logging (local struct, zero overhead in release)
+  outThreadingInfo.workerCount = optimalWorkerCount;
+  outThreadingInfo.availableWorkers = availableWorkers;
+  outThreadingInfo.budget = budget.totalWorkers;
+  outThreadingInfo.batchCount = batchCount;
+  outThreadingInfo.wasThreaded = true;
 
   size_t particlesPerBatch = activeParticleCount / batchCount;
   size_t remainingParticles = activeParticleCount % batchCount;
 
-  // Submit batches using futures for native async result tracking
-  std::vector<std::future<void>> batchFutures;
-  batchFutures.reserve(batchCount);
+  // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
+  // Use swap() to preserve capacity on both vectors (avoids reallocation)
+  {
+    std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
+    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
+  }
 
   for (size_t i = 0; i < batchCount; ++i) {
     size_t startIdx = i * particlesPerBatch;
@@ -2224,7 +2210,7 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
     // Submit each batch with future for completion tracking
     // currentBuffer captured by reference is safe - it points to member storage
-    batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+    m_reusableBatchFutures.push_back(threadSystem.enqueueTaskWithResult(
       [this, &currentBuffer, startIdx, endIdx, deltaTime,
        windPhase = m_windPhase]() -> void {
         try {
@@ -2242,12 +2228,10 @@ void ParticleManager::updateParticlesThreaded(float deltaTime,
 
   // Store futures for shutdown synchronization (futures-based completion tracking)
   // NO BLOCKING WAIT: Particles are visual-only and don't need sync in update()
-  if (!batchFutures.empty()) {
+  {
     std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
-    m_batchFutures = std::move(batchFutures);
+    std::swap(m_batchFutures, m_reusableBatchFutures);  // Swap back, preserves both capacities
   }
-
-  m_lastThreadBatchCount.store(batchCount, std::memory_order_relaxed);
 }
 
 void ParticleManager::updateParticlesSingleThreaded(
@@ -2292,30 +2276,18 @@ void ParticleManager::updateParticleRange(
   }
   
   for (size_t i = startIdx; i < endIdx; ++i) {
-    // BOUNDS CHECK: Double-check index is still valid (Windows gcc strictness)
-    if (i >= flagsSize || !(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
+    // Skip inactive particles (bounds already validated by safeSize clamp above)
+    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) {
       continue;
     }
-    
-    // BOUNDS CHECK: Verify all array accesses are safe before proceeding
-    if (i >= positionsSize || i >= velocitiesSize || i >= accelerationsSize ||
-        i >= livesSize || i >= maxLivesSize || i >= sizesSize ||
-        i >= colorsSize || i >= effectTypesSize) {
-      break; // Exit safely if any buffer is inconsistent
-    }
-    
-    // PRODUCTION OPTIMIZATION: Pre-compute per-particle values
+
+    // PRODUCTION OPTIMIZATION: Pre-compute per-particle offset for wind variation
     const float particleOffset = i * 0.1f;
-    
-    const float particleOffset15 = i * 0.15f;
-    const float particleOffset2 = i * 0.2f;
-    const float particleOffset25 = i * 0.25f;
-    const float particleOffset3 = i * 0.3f;
     
     
 
     // Enhanced physics with natural atmospheric effects
-    float windVariation = fastSin(windPhase + particleOffset) *
+    float const windVariation = fastSin(windPhase + particleOffset) *
                           0.3f;    // Per-particle wind variation
     float atmosphericDrag = 0.98f; // Slight air resistance
 
@@ -2329,6 +2301,7 @@ void ParticleManager::updateParticleRange(
       particles.accY[i] = 0.0f;
 
       // PRODUCTION OPTIMIZATION: Pre-computed trigonometric values
+      const float particleOffset15 = i * 0.15f;
       const float drift = fastSin(windPhase0_8 + particleOffset15) * 3.0f;
       const float verticalFloat = fastCos(windPhase1_2 + particleOffset) * 1.5f;
 
@@ -2348,6 +2321,7 @@ void ParticleManager::updateParticleRange(
       switch (effectType) {
         case ParticleEffectType::Snow:
         case ParticleEffectType::HeavySnow: {
+          const float particleOffset2 = i * 0.2f;
           const float flutter = fastSin(windPhase3_0 + particleOffset2) * 8.0f;
           particles.velX[i] += flutter * deltaTime;
           atmosphericDrag = 0.96f; // More air resistance for snow
@@ -2355,6 +2329,10 @@ void ParticleManager::updateParticleRange(
         }
         case ParticleEffectType::Rain:
         case ParticleEffectType::HeavyRain: {
+          // Offsets for this particle's atmospheric effects
+          const float particleOffset2 = i * 0.2f;
+          const float particleOffset25 = i * 0.25f;
+
           // Enhanced rain physics for natural movement
           const float particleSize = particles.sizes[i];
           const float sizeNormalized = (particleSize - 1.5f) / 4.5f; // Normalize to 0-1 range
@@ -2391,6 +2369,7 @@ void ParticleManager::updateParticleRange(
           break;
         }
         default: { // Regular fog behavior (not clouds)
+          const float particleOffset15 = i * 0.15f;
           const float drift = fastSin(windPhase0_8 + particleOffset15) * 15.0f;
           const float verticalDrift = fastCos(windPhase1_2 + particleOffset) * 3.0f * deltaTime;
           particles.velX[i] += drift * deltaTime;
@@ -2409,8 +2388,11 @@ void ParticleManager::updateParticleRange(
       // OPTIMIZATION: Use switch for better branch prediction than nested if-else
       switch (effectType) {
         case ParticleEffectType::Fire: {
-          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
-          
+          // Offsets for fire turbulence
+          const float particleOffset3 = i * 0.3f;
+          const float particleOffset25 = i * 0.25f;
+          float const randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+
           // More random turbulence for fire
           const float heatTurbulence = fastSin(windPhase8_0 + particleOffset3) * 15.0f +
                                      (randomFactor - 0.5f) * 10.0f;
@@ -2430,13 +2412,13 @@ void ParticleManager::updateParticleRange(
           break;
         }
         case ParticleEffectType::Smoke: {
-          float randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
+          float const randomFactor = static_cast<float>(fast_rand()) / 32767.0f;
           
           // Circular billowing motion
           float angle = (i % 360) * 3.14159f / 180.0f; // Unique angle per particle
-          float speed = 15.0f + (randomFactor * 10.0f);
-          float circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
-          float circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
+          float const speed = 15.0f + (randomFactor * 10.0f);
+          float const circleX = fastCos(angle + windPhase) * speed * (1.0f - lifeRatio);
+          float const circleY = fastSin(angle + windPhase) * speed * (1.0f - lifeRatio);
 
           particles.velX[i] += circleX * deltaTime;
           particles.velY[i] += circleY * deltaTime - (20.0f * deltaTime);
@@ -2470,20 +2452,39 @@ void ParticleManager::updateParticleRange(
       continue;
     }
 
-    // Note: Enhanced visual properties with natural fading are now handled
-    // in batch color processing after the main update loop for better performance
+    // FUSED COLOR PROCESSING: Apply alpha fading based on life ratio
+    // This eliminates the separate batchProcessParticleColors pass
+    {
+      const float lifeRatio = (particles.maxLives[i] > 0.0f) ?
+                             (particles.lives[i] / particles.maxLives[i]) : 0.0f;
+      const uint32_t color = particles.colors[i];
+      float alphaMultiplier;
 
-    // Note: Size variation for natural appearance would be applied during
-    // rendering
+      if (effectType == ParticleEffectType::Fire) {
+        // Fire particles: simple fade based on life
+        alphaMultiplier = lifeRatio;
+      } else if (particles.flags[i] & UnifiedParticle::FLAG_WEATHER) {
+        // Weather particles: fade in at start, fade out at end
+        if (lifeRatio > 0.9f) {
+          alphaMultiplier = (1.0f - lifeRatio) * 10.0f; // Fade in during first 10%
+        } else if (lifeRatio < 0.2f) {
+          alphaMultiplier = lifeRatio * 5.0f; // Fade out during last 20%
+        } else {
+          alphaMultiplier = 1.0f;
+        }
+      } else {
+        // Standard fade for other particles
+        alphaMultiplier = lifeRatio;
+      }
+
+      const uint8_t alpha = static_cast<uint8_t>(255.0f * alphaMultiplier);
+      particles.colors[i] = (color & 0xFFFFFF00) | alpha;
+    }
    }
    
    // PERFORMANCE OPTIMIZATION: Apply physics integration for all platforms.
    // The implementation uses SIMD when available, otherwise falls back to scalar.
    updateParticlePhysicsSIMD(particles, startIdx, endIdx, deltaTime);
-   
-   // PERFORMANCE OPTIMIZATION: Apply batch color processing for non-fire particles
-   // This provides better cache utilization and eliminates redundant alpha calculations
-   batchProcessParticleColors(particles, startIdx, endIdx);
 }
 
 void ParticleManager::createParticleForEffect(
@@ -2496,7 +2497,7 @@ void ParticleManager::createParticleForEffect(
   if (!config.useWorldSpace) {
     // Screen-space effect (like weather) - spawn relative to camera position
     const auto &gameEngine = GameEngine::Instance();
-    float spawnX = m_viewport.x +
+    float const spawnX = m_viewport.x +
         static_cast<float>(fast_rand() % gameEngine.getLogicalWidth());
     float spawnY;
     if (config.fullScreenSpawn) {
@@ -2511,16 +2512,16 @@ void ParticleManager::createParticleForEffect(
     // World-space effect (like an explosion at a point)
     request.position = position;
     if (effectDef.type == ParticleEffectType::Smoke) {
-        float offsetX = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 20.0f; // Random offset in a 20px range
-        float offsetY = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 10.0f; // Smaller vertical offset
+        float const offsetX = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 20.0f; // Random offset in a 20px range
+        float const offsetY = (static_cast<float>(fast_rand()) / 32767.0f - 0.5f) * 10.0f; // Smaller vertical offset
         request.position.setX(request.position.getX() + offsetX);
         request.position.setY(request.position.getY() + offsetY);
     }
   }
 
   // Simplified physics and color calculation
-  float naturalRand = static_cast<float>(fast_rand()) / 32767.0f;
-  float speed =
+  float const naturalRand = static_cast<float>(fast_rand()) / 32767.0f;
+  float const speed =
       config.minSpeed + (config.maxSpeed - config.minSpeed) * naturalRand;
   
   // Special handling for weather effects that use spread as screen coverage, not angle
@@ -2529,19 +2530,19 @@ void ParticleManager::createParticleForEffect(
       effectDef.type == ParticleEffectType::Snow ||
       effectDef.type == ParticleEffectType::HeavySnow) {
     // For falling weather, use slight angular variation (±5 degrees) for natural movement
-    float angleRange = 5.0f * 0.017453f; // 5 degrees in radians
-    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    float const angleRange = 5.0f * 0.017453f; // 5 degrees in radians
+    float const angle = (naturalRand * 2.0f - 1.0f) * angleRange;
     request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
   } else if (effectDef.type == ParticleEffectType::Windy ||
              effectDef.type == ParticleEffectType::WindyDust ||
              effectDef.type == ParticleEffectType::WindyStorm) {
     // For wind effects, use horizontal direction with slight vertical variation
-    float verticalVariation = (naturalRand * 2.0f - 1.0f) * 0.15f; // ±15% vertical wobble
+    float const verticalVariation = (naturalRand * 2.0f - 1.0f) * 0.15f; // ±15% vertical wobble
     request.velocity = Vector2D(speed, speed * verticalVariation);
   } else {
     // For other effects, use spread as angular range
-    float angleRange = config.spread * 0.017453f; // Convert degrees to radians
-    float angle = (naturalRand * 2.0f - 1.0f) * angleRange;
+    float const angleRange = config.spread * 0.017453f; // Convert degrees to radians
+    float const angle = (naturalRand * 2.0f - 1.0f) * angleRange;
     request.velocity = Vector2D(speed * fastSin(angle), speed * fastCos(angle));
   }
   request.acceleration = config.gravity;
@@ -2615,7 +2616,8 @@ void ParticleManager::enableWorkerBudgetThreading(bool enable) {
 }
 
 void ParticleManager::updateWithWorkerBudget(float deltaTime,
-                                             size_t particleCount) {
+                                             size_t particleCount,
+                                             ParticleThreadingInfo& outThreadingInfo) {
   /**
    * WorkerBudget-optimized particle update path.
    *
@@ -2625,29 +2627,24 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    *
    * @param deltaTime Time elapsed since last update
    * @param particleCount Current number of active particles
+   * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
   if (!m_useWorkerBudget.load(std::memory_order_acquire) ||
       particleCount < m_threadingThreshold ||
       !HammerEngine::ThreadSystem::Exists()) {
     // Fall back to regular single-threaded update
-    m_lastWasThreaded.store(false, std::memory_order_relaxed);
-    m_lastThreadBatchCount.store(1, std::memory_order_relaxed);
+    // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
     updateParticlesSingleThreaded(deltaTime, particleCount);
     return;
   }
 
   // Use WorkerBudget-aware threaded update
-  updateParticlesThreaded(deltaTime, particleCount);
+  updateParticlesThreaded(deltaTime, particleCount, outThreadingInfo);
 }
 
-void ParticleManager::configureThreading(bool useThreading,
-                                         unsigned int maxThreads) {
-  m_useThreading.store(useThreading, std::memory_order_release);
-  m_maxThreads = maxThreads;
-
-  PARTICLE_INFO(std::format("Threading configured: {}{}",
-                useThreading ? "enabled" : "disabled",
-                maxThreads > 0 ? std::format(" (max: {})", maxThreads) : " (auto)"));
+void ParticleManager::enableThreading(bool enable) {
+  m_useThreading.store(enable, std::memory_order_release);
+  PARTICLE_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
 }
 
 void ParticleManager::setThreadingThreshold(size_t threshold) {
@@ -2664,7 +2661,7 @@ ParticleEffectType
 ParticleManager::weatherStringToEnum(const std::string &weatherType,
                                      float intensity) const {
   if (weatherType == "Rainy") {
-    ParticleEffectType result = (intensity > 0.9f) ? ParticleEffectType::HeavyRain
+    ParticleEffectType const result = (intensity > 0.9f) ? ParticleEffectType::HeavyRain
                               : ParticleEffectType::Rain;
     PARTICLE_INFO(std::format("Weather mapping: \"{}\" intensity={} -> {}",
                               weatherType, intensity,
@@ -2735,20 +2732,20 @@ std::string_view ParticleManager::effectTypeToString(ParticleEffectType type) co
 
 uint32_t ParticleManager::interpolateColor(uint32_t color1, uint32_t color2,
                                            float factor) {
-  uint8_t r1 = (color1 >> 24) & 0xFF;
-  uint8_t g1 = (color1 >> 16) & 0xFF;
-  uint8_t b1 = (color1 >> 8) & 0xFF;
-  uint8_t a1 = color1 & 0xFF;
+  uint8_t const r1 = (color1 >> 24) & 0xFF;
+  uint8_t const g1 = (color1 >> 16) & 0xFF;
+  uint8_t const b1 = (color1 >> 8) & 0xFF;
+  uint8_t const a1 = color1 & 0xFF;
 
-  uint8_t r2 = (color2 >> 24) & 0xFF;
-  uint8_t g2 = (color2 >> 16) & 0xFF;
-  uint8_t b2 = (color2 >> 8) & 0xFF;
-  uint8_t a2 = color2 & 0xFF;
+  uint8_t const r2 = (color2 >> 24) & 0xFF;
+  uint8_t const g2 = (color2 >> 16) & 0xFF;
+  uint8_t const b2 = (color2 >> 8) & 0xFF;
+  uint8_t const a2 = color2 & 0xFF;
 
-  uint8_t r = static_cast<uint8_t>(r1 + (r2 - r1) * factor);
-  uint8_t g = static_cast<uint8_t>(g1 + (g2 - g1) * factor);
-  uint8_t b = static_cast<uint8_t>(b1 + (b2 - b1) * factor);
-  uint8_t a = static_cast<uint8_t>(a1 + (a2 - a1) * factor);
+  uint8_t const r = static_cast<uint8_t>(r1 + (r2 - r1) * factor);
+  uint8_t const g = static_cast<uint8_t>(g1 + (g2 - g1) * factor);
+  uint8_t const b = static_cast<uint8_t>(b1 + (b2 - b1) * factor);
+  uint8_t const a = static_cast<uint8_t>(a1 + (a2 - a1) * factor);
 
   return (static_cast<uint32_t>(r) << 24) | (static_cast<uint32_t>(g) << 16) |
          (static_cast<uint32_t>(b) << 8) | static_cast<uint32_t>(a);
@@ -2770,8 +2767,7 @@ void ParticleManager::updateParticlePhysicsSIMD(
     LockFreeParticleStorage::ParticleSoA &particles, size_t startIdx, size_t endIdx,
     float deltaTime) {
 
-#if defined(HAMMER_SIMD_SSE2)
-  // Prepare aligned SIMD constants using SIMDMath abstraction
+  // SIMD physics using SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
   const Float4 deltaTimeVec = broadcast(deltaTime);
   const Float4 atmosphericDragVec = broadcast(0.98f);
 
@@ -2868,126 +2864,6 @@ void ParticleManager::updateParticlePhysicsSIMD(
     }
   }
 
-  // No Vector2D sync required
-
-#elif defined(HAMMER_SIMD_NEON)
-  // ARM NEON: Prepare SIMD constants using SIMDMath abstraction
-  const Float4 deltaTimeVec = broadcast(deltaTime);
-  const Float4 atmosphericDragVec = broadcast(0.98f);
-
-  // Quick bounds check - only validate once
-  const size_t particleCount = particles.size();
-  if (endIdx > particleCount || startIdx >= endIdx) return;
-  endIdx = std::min(endIdx, particleCount);
-
-  // SIMD arrays are primary storage; operate directly on them
-  // NOTE: Previous positions for interpolation are stored inline during physics update
-  // to avoid a separate array pass (fused for better cache utilization)
-
-  // Scalar pre-loop to align to 4-float boundary for aligned loads
-  size_t i = startIdx;
-  while (i < endIdx && (i & 0x3) != 0) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
-      // Store previous position for interpolation before physics update
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      // Physics update
-      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
-      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
-    }
-    ++i;
-  }
-
-  // NEON main loop - use aligned loads for maximum performance
-  const size_t simdEnd = ((endIdx - i) / 4) * 4 + i;
-  // Safe SIMD flag load limit - need 16 bytes for load_byte16
-  const size_t simdFlagSafeEnd = particleCount >= 16 ? particleCount - 15 : 0;
-
-  for (; i < simdEnd; i += 4) {
-    // SIMD flag check for 4 particles: skip if none active
-    // Only use SIMD flag load when we have at least 16 elements available
-    bool anyActive = false;
-    if (i < simdFlagSafeEnd) {
-      // Safe to load 16 bytes
-      const Byte16 flagsv = load_byte16(&particles.flags[i]);
-      const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
-      const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
-      const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
-      const int maskBits = movemask_byte(gt0);
-      anyActive = (maskBits & 0xFFFFFFFF) != 0;
-    } else {
-      // Scalar flag check for safety near array end
-      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
-                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
-                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
-                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
-    }
-    if (!anyActive) continue;
-
-    // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
-    Float4 posXv = load4(&particles.posX[i]);
-    Float4 posYv = load4(&particles.posY[i]);
-
-    // Store previous positions for interpolation BEFORE physics update (fused optimization)
-    store4(&particles.prevPosX[i], posXv);
-    store4(&particles.prevPosY[i], posYv);
-
-    Float4 velXv = load4(&particles.velX[i]);
-    Float4 velYv = load4(&particles.velY[i]);
-    const Float4 accXv = load4(&particles.accX[i]);
-    const Float4 accYv = load4(&particles.accY[i]);
-
-    // SIMD physics update: vel = (vel + acc * dt) * drag
-    velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
-    velYv = mul(madd(accYv, deltaTimeVec, velYv), atmosphericDragVec);
-
-    // pos = pos + vel * dt
-    posXv = madd(velXv, deltaTimeVec, posXv);
-    posYv = madd(velYv, deltaTimeVec, posYv);
-
-    // Store results back to SIMD arrays
-    store4(&particles.velX[i], velXv);
-    store4(&particles.velY[i], velYv);
-    store4(&particles.posX[i], posXv);
-    store4(&particles.posY[i], posYv);
-  }
-
-  // Scalar tail
-  for (; i < endIdx; ++i) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
-      // Store previous position for interpolation before physics update
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      // Physics update
-      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
-      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
-    }
-  }
-
-  // No Vector2D sync required
-
-#else
-  // Fallback to scalar implementation for platforms without SIMD
-
-  // INTERPOLATION: Store previous positions before physics update
-  // This enables smooth rendering between fixed timestep updates
-  for (size_t i = startIdx; i < endIdx; ++i) {
-    particles.prevPosX[i] = particles.posX[i];
-    particles.prevPosY[i] = particles.posY[i];
-  }
-
-  for (size_t i = startIdx; i < endIdx; ++i) {
-    if (!(particles.flags[i] & UnifiedParticle::FLAG_ACTIVE)) continue;
-    particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-    particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-    particles.posX[i] += particles.velX[i] * deltaTime;
-    particles.posY[i] += particles.velY[i] * deltaTime;
-  }
-#endif
 }
 
 void ParticleManager::batchProcessParticleColors(

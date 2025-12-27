@@ -28,7 +28,7 @@ struct CollisionPathfindingFixture {
     CollisionPathfindingFixture() {
         // Initialize ThreadSystem first (required for PathfinderManager async tasks)
         // Always call init() - it has guards against double-initialization
-        HammerEngine::ThreadSystem::Instance().init(4);
+        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
         // Initialize managers in proper order
         EventManager::Instance().init();

@@ -6,6 +6,7 @@
   - [GameEngine & Core Systems](#gameengine--core-systems)
   - [AI System](#ai-system)
   - [Collision System](#collision-system)
+  - [Combat System](#combat-system)
   - [Event System](#event-system)
   - [Controller System](#controller-system)
   - [UI System](#ui-system)
@@ -29,9 +30,8 @@ The Hammer Game Engine is a high-performance game development framework built on
 Foundation systems that power the game engine architecture and timing.
 
 - **[GameEngine](core/GameEngine.md)** - Central engine singleton managing all systems and coordination
-- **[GameLoop](core/GameLoop.md)** - Industry-standard timing with fixed/variable timestep support
 - **[GameTime](core/GameTime.md)** - Fantasy calendar, day/night cycles, seasons, weather, and time events
-- **[TimestepManager](managers/TimestepManager.md)** - Simplified timing system with 1:1 frame mapping
+- **[TimestepManager](managers/TimestepManager.md)** - Fixed timestep timing with accumulator-based updates
 
 ### AI System
 The AI system provides flexible, thread-safe behavior management for game entities with individual behavior instances and mode-based configuration.
@@ -44,8 +44,12 @@ The AI system provides flexible, thread-safe behavior management for game entiti
 ### Collision System
 High-performance spatial hashing, broadphase queries, and pathfinding integration for world interactions.
 
-- **[Collision System](collisions/CollisionSystem.md)** - Spatial hash design, broadphase/narrowphase processing, and debug visualization tooling
-- **[CollisionManager](managers/CollisionManager.md)** - Runtime collision component registration, query utilities, and integration hooks
+- **[CollisionManager](managers/CollisionManager.md)** - Complete collision system documentation including spatial hash architecture, dual-path threading for broadphase and narrowphase, SIMD processing, SOA storage, and WorkerBudget integration
+
+### Combat System
+Dedicated system for managing in-game combat logic, interactions, and events.
+
+- **[CombatController](controllers/CombatController.md)** - Manages hit detection, damage calculation, status effects, and integrates with entity state machines and the event system.
 
 ### Event System
 Comprehensive event management system with EventManager as the single source of truth for weather events, NPC spawning, scene transitions, and custom events.
@@ -61,9 +65,9 @@ Comprehensive event management system with EventManager as the single source of 
 State-scoped event handlers that control specific behaviors without owning data. Subscribe/unsubscribe lifecycle per GameState.
 
 - **[Controllers Overview](controllers/README.md)** - Controller pattern, lifecycle, vs. Managers comparison
-- **[TimeController](controllers/TimeController.md)** - Time event logging and status UI
 - **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
 - **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
+- **[CombatController](controllers/CombatController.md)** - Handles combat logic, including hit detection, damage, and status effects.
 
 ### UI System
 Comprehensive UI system with professional theming, animations, layouts, content-aware auto-sizing, and event handling for creating polished game interfaces.
@@ -75,13 +79,13 @@ Comprehensive UI system with professional theming, animations, layouts, content-
 - **[Minimap Implementation](ui/Minimap_Implementation.md)** - Design blueprint for the minimap renderer, layer compositing, and interaction hooks
 
 ### Threading System
-High-performance multithreading framework with intelligent WorkerBudget allocation and priority-based task scheduling.
+High-performance multithreading framework with priority-based task scheduling and adaptive batch optimization.
 
-- **[ThreadSystem](core/ThreadSystem.md)** - Complete threading system documentation with WorkerBudget allocation, buffer thread utilization, priority scheduling, engine integration, implementation details, and production best practices
-- **WorkerBudget System** - Tiered resource allocation strategy (Tier 1: single-threaded, Tier 2: minimal allocation, Tier 3: AI ~45% / Particles ~25% / Events ~20% of remaining workers; buffer retained for bursts)
+- **[ThreadSystem](core/ThreadSystem.md)** - Thread pool with priority-based task queue, worker thread management, and task submission API
+- **[WorkerBudget](core/WorkerBudget.md)** - Adaptive batch optimization using throughput-based hill-climbing for each manager system
 - **Priority-Based Scheduling** - Five-level priority system (Critical, High, Normal, Low, Idle) for optimal task ordering
-- **Buffer Thread Utilization** - Intelligent scaling based on workload thresholds (AI: >1000 entities, Events: >100 events)
-- **Hardware Adaptive** - Automatic scaling from ultra low-end (single-threaded) to high-end (multi-threaded) systems
+- **Sequential Manager Execution** - Each manager gets ALL workers during its update window (no concurrent manager execution)
+- **Hardware Adaptive** - Detects logical cores (including SMT/hyperthreading), reserves one for main thread, scales workers accordingly
 
 ### Manager Systems
 Resource management systems for fonts, textures, audio, particles, game data, entity states, settings, and world resources.
@@ -129,6 +133,7 @@ See the [Utility Documentation Index](utils/README.md) for additional utility do
 - **[SIMDMath](utils/SIMDMath.md)** - Cross-platform SIMD abstraction layer for x86-64 (SSE2/AVX2) and ARM64 (NEON) with 2-4x performance improvements
 - **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
+- **[Power Efficiency](performance/PowerEfficiency.md)** - Race-to-idle strategy achieving 80%+ idle residency, 2-3W average during gameplay, detailed benchmarks and optimization tips
 
 ## Resource System Integration
 
@@ -205,7 +210,7 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
 
 ### System Overview
 The Hammer Game Engine provides several core systems that work together:
-- **Core Engine**: GameEngine singleton, GameLoop, and TimestepManager timing systems
+- **Core Engine**: GameEngine singleton with fixed timestep timing via TimestepManager
 - **AI System**: Behavior management for NPCs with threading support and distance optimization
 - **Event System**: Global event handling for weather, spawning, and custom events
 - **UI System**: Professional interface components with theming, animations, and auto-sizing
@@ -214,7 +219,6 @@ The Hammer Game Engine provides several core systems that work together:
 
 ### Quick Links
 - **[GameEngine Setup](core/GameEngine.md#quick-start)** - Initialize the engine
-- **[GameLoop Setup](core/GameLoop.md#quick-start)** - Configure main game loop
 - **[TimestepManager Setup](managers/TimestepManager.md#quick-start)** - Timing system configuration
 
 - **[AI Quick Start](ai/BehaviorQuickReference.md)** - Set up AI behaviors in minutes
@@ -226,8 +230,8 @@ The Hammer Game Engine provides several core systems that work together:
 
 ### Modern Architecture
 - **Singleton Engine Management**: Centralized system coordination through GameEngine
-- **Fixed/Variable Timestep**: Deterministic updates with smooth rendering via GameLoop
-- **Simplified Timing System**: 1:1 frame-to-update mapping eliminates timing drift
+- **Fixed Timestep Architecture**: Deterministic updates with accumulator-based timing via TimestepManager
+- **Single-Threaded Main Loop**: Sequential update/render on main thread with background worker threads
 - **Zero-Overhead Utilities**: Debug logging and memory management without release impact
 - **Individual Behavior Instances**: Each NPC gets isolated behavior state via clone()
 - **Mode-Based Configuration**: Automatic setup for common AI and UI patterns
@@ -239,9 +243,9 @@ The Hammer Game Engine provides several core systems that work together:
 - **Resource Management**: Automatic cleanup and efficient memory usage
 
 ### Performance Optimized
-- **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and WorkerBudget allocation
-- **Priority-Based Threading**: Critical tasks processed first with tiered worker allocation and optimal resource distribution
-- **WorkerBudget Allocation**: Intelligent tiered resource distribution (Engine: 1 worker, AI: ~54% of remaining, Particles: ~31%, Events: ~15%, Buffer: dynamic scaling)
+- **Scales to 10,000+ NPCs**: Linear performance scaling with distance optimization and adaptive batch sizing
+- **Priority-Based Threading**: Critical tasks processed first with optimal task ordering
+- **Sequential Manager Execution**: Each manager gets ALL workers during its update window with adaptive batch optimization via throughput-based hill-climbing
 - **Efficient UI Rendering**: Only processes visible components with auto-sizing
 - **Memory Optimizations**: Smart pointers and cache-friendly data structures
 - **Batched Operations**: Bulk processing for better performance across all systems
@@ -270,7 +274,6 @@ The Hammer Game Engine provides several core systems that work together:
 
 For issues with specific systems, see the troubleshooting sections in each system's documentation:
 - Core engine issues: See [GameEngine Documentation](core/GameEngine.md)
-- Game loop issues: See [GameLoop Best Practices](core/GameLoop.md#best-practices)
 - Timing issues: See [TimestepManager Best Practices](managers/TimestepManager.md#best-practices)
 - Logger issues: See [Logger Best Practices](utils/Logger.md#best-practices)
 - AI issues: See [AI System Overview](ai/AIManager.md) and [Behavior Modes](ai/BehaviorModes.md)

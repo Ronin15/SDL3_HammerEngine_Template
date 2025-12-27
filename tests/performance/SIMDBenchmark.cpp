@@ -158,7 +158,7 @@ void calculateDistancesSIMD(
     const Vector2D& playerPos,
     std::vector<float>& outDistances
 ) {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+    // SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
     const Float4 playerPosX = broadcast(playerPos.getX());
     const Float4 playerPosY = broadcast(playerPos.getY());
 
@@ -202,10 +202,6 @@ void calculateDistancesSIMD(
         Vector2D diff = entityPos - playerPos;
         outDistances[i] = diff.lengthSquared();
     }
-#else
-    // Fallback to scalar if SIMD not available
-    calculateDistancesScalar(entityPositions, playerPos, outDistances);
-#endif
 }
 
 BenchmarkResult benchmarkAIDistanceCalculation() {
@@ -308,7 +304,7 @@ void expandBoundsSIMD(
     std::vector<float>& outMaxX,
     std::vector<float>& outMaxY
 ) {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+    // SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
     size_t count = minX.size();
 
     // CollisionManager pattern: Process each entity's bounds using SIMD
@@ -331,9 +327,6 @@ void expandBoundsSIMD(
         outMaxX[i] = queryBoundsArray[2];
         outMaxY[i] = queryBoundsArray[3];
     }
-#else
-    expandBoundsScalar(minX, minY, maxX, maxY, epsilon, outMinX, outMinY, outMaxX, outMaxY);
-#endif
 }
 
 BenchmarkResult benchmarkCollisionBoundsExpansion() {
@@ -442,7 +435,7 @@ void filterLayerMasksSIMD(
     uint32_t targetMask,
     std::vector<bool>& outPassed
 ) {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+    // SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
     const Int4 maskVec = broadcast_int(static_cast<int32_t>(targetMask));
     size_t i = 0;
     const size_t simdEnd = (candidateLayers.size() / 4) * 4;
@@ -473,9 +466,6 @@ void filterLayerMasksSIMD(
     for (; i < candidateLayers.size(); ++i) {
         outPassed[i] = ((candidateLayers[i] & targetMask) != 0);
     }
-#else
-    filterLayerMasksScalar(candidateLayers, targetMask, outPassed);
-#endif
 }
 
 BenchmarkResult benchmarkCollisionLayerMaskFiltering() {
@@ -577,7 +567,7 @@ void updateParticlePhysicsSIMD(
     float deltaTime,
     float drag
 ) {
-#if defined(HAMMER_SIMD_SSE2) || defined(HAMMER_SIMD_NEON)
+    // SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
     const Float4 dtVec = broadcast(deltaTime);
     const Float4 dragVec = broadcast(drag);
 
@@ -615,9 +605,6 @@ void updateParticlePhysicsSIMD(
         posX[i] += velX[i] * deltaTime;
         posY[i] += velY[i] * deltaTime;
     }
-#else
-    updateParticlePhysicsScalar(posX, posY, velX, velY, accX, accY, deltaTime, drag);
-#endif
 }
 
 BenchmarkResult benchmarkParticlePhysicsUpdate() {

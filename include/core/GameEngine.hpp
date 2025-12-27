@@ -7,17 +7,15 @@
 #define GAME_ENGINE_HPP
 
 #include "managers/GameStateManager.hpp"
+#include "core/TimestepManager.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
 #include <chrono>
-#include <condition_variable>
 #include <memory>
-#include <mutex>
 #include <string_view>
 
 // Forward declarations
-class GameLoop;
 class AIManager;
 class EventManager;
 class InputManager;
@@ -31,59 +29,26 @@ class CollisionManager;
 #ifdef DEBUG
 /**
  * @brief Buffer telemetry statistics for monitoring double/triple buffering performance
- * @details Tracks swap success/failures, render stalls, and timing metrics using rolling averages
+ * @details Tracks swap success/failures and render stalls for lock-free buffer coordination.
  *
  * Only compiled in DEBUG builds for zero-overhead performance monitoring.
  * Follows EventManager's PerformanceStats pattern for consistency.
  *
- * Thread Safety: Counters use atomics (Main/Render thread increments).
- * Timing arrays accessed only from Update thread via addTimingSample().
- * Read operations (getSwapSuccessRate, avgMutexWaitMs) are safe for display.
+ * Thread Safety: All counters use atomics (safe for Main thread increments).
  */
 struct BufferTelemetryStats {
-    // Swap tracking (atomic - incremented from Main/Render thread)
+    // Swap tracking (atomic - incremented from Main thread)
     std::atomic<uint64_t> swapAttempts{0};   // Total buffer swap attempts
     std::atomic<uint64_t> swapSuccesses{0};  // Successful swaps (buffer available)
     std::atomic<uint64_t> swapBlocked{0};    // Swaps blocked (buffer not ready or rendering conflict)
     std::atomic<uint64_t> casFailures{0};    // Compare-and-swap failures (atomic contention)
 
-    // Render tracking (atomic - incremented from Main/Render thread)
+    // Render tracking (atomic - incremented from Main thread)
     std::atomic<uint64_t> renderStalls{0};   // Render stalled (no buffer ready)
     std::atomic<uint64_t> framesSkipped{0};  // Frames where lastUpdate == lastRendered
 
-    // Timing (rolling averages over 60 frames) - accessed only from Update thread
-    static constexpr size_t SAMPLE_SIZE = 60;
-    std::array<double, SAMPLE_SIZE> mutexWaitTimes{};    // Time waiting for update mutex (ms)
-    std::array<double, SAMPLE_SIZE> bufferReadyDelays{};  // Time from update complete to buffer ready (ms)
-    size_t currentSample{0};
-
-    std::atomic<double> avgMutexWaitMs{0.0};
-    std::atomic<double> avgBufferReadyMs{0.0};
-
     /**
-     * @brief Adds a timing sample to the rolling average
-     * @param mutexWait Time spent waiting for update mutex (ms)
-     * @param bufferDelay Time from update complete to buffer marked ready (ms)
-     * @note Called only from Update thread - timing arrays not shared
-     */
-    void addTimingSample(double mutexWait, double bufferDelay) {
-        mutexWaitTimes[currentSample] = mutexWait;
-        bufferReadyDelays[currentSample] = bufferDelay;
-        currentSample = (currentSample + 1) % SAMPLE_SIZE;
-
-        // Calculate rolling averages
-        double mutexSum = 0.0;
-        double bufferSum = 0.0;
-        for (size_t i = 0; i < SAMPLE_SIZE; ++i) {
-            mutexSum += mutexWaitTimes[i];
-            bufferSum += bufferReadyDelays[i];
-        }
-        avgMutexWaitMs.store(mutexSum / SAMPLE_SIZE, std::memory_order_relaxed);
-        avgBufferReadyMs.store(bufferSum / SAMPLE_SIZE, std::memory_order_relaxed);
-    }
-
-    /**
-     * @brief Resets all telemetry counters and timing samples
+     * @brief Resets all telemetry counters
      * @note Should be called when no other threads are accessing telemetry
      */
     void reset() {
@@ -93,11 +58,6 @@ struct BufferTelemetryStats {
         casFailures.store(0, std::memory_order_relaxed);
         renderStalls.store(0, std::memory_order_relaxed);
         framesSkipped.store(0, std::memory_order_relaxed);
-        mutexWaitTimes.fill(0.0);
-        bufferReadyDelays.fill(0.0);
-        currentSample = 0;
-        avgMutexWaitMs.store(0.0, std::memory_order_relaxed);
-        avgBufferReadyMs.store(0.0, std::memory_order_relaxed);
     }
 
     /**
@@ -245,12 +205,31 @@ public:
   }
 
   /**
-   * @brief Sets the game loop reference for delegation
-   * @param gameLoop Shared pointer to the GameLoop instance
+   * @brief Gets the timestep manager for frame timing
+   * @return Reference to the TimestepManager instance
    */
-  void setGameLoop(std::shared_ptr<GameLoop> gameLoop) {
-    m_gameLoop = gameLoop;
+  TimestepManager& getTimestepManager() {
+    return *m_timestepManager;
   }
+
+  /**
+   * @brief Gets the timestep manager for frame timing (const)
+   * @return Const reference to the TimestepManager instance
+   */
+  const TimestepManager& getTimestepManager() const {
+    return *m_timestepManager;
+  }
+
+  /**
+   * @brief Checks if the engine is currently running
+   * @return true if engine is running, false otherwise
+   */
+  bool isRunning() const { return m_running.load(std::memory_order_relaxed); }
+
+  /**
+   * @brief Stops the game engine
+   */
+  void stop() { m_running.store(false, std::memory_order_relaxed); }
 
   /**
    * @brief Sets the running state of the engine
@@ -264,13 +243,6 @@ public:
    */
   bool getRunning() const;
 
-  /**
-   * @brief Gets the GameLoop instance
-   * @return Shared pointer to GameLoop, null if not set
-   */
-  std::shared_ptr<GameLoop> getGameLoop() const {
-    return m_gameLoop.lock();
-  }
 
   /**
    * @brief Gets the SDL renderer instance
@@ -285,7 +257,7 @@ public:
   SDL_Window *getWindow() const noexcept { return mp_window.get(); }
 
   /**
-   * @brief Gets current FPS from GameLoop's TimestepManager
+   * @brief Gets current FPS from TimestepManager
    * @return Current frames per second
    */
   float getCurrentFPS() const;
@@ -459,7 +431,8 @@ private:
       nullptr, SDL_DestroyWindow};
   std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{
       nullptr, SDL_DestroyRenderer};
-  std::weak_ptr<GameLoop> m_gameLoop{}; // Non-owning weak reference to GameLoop
+  std::unique_ptr<TimestepManager> m_timestepManager{nullptr};
+  std::atomic<bool> m_running{false};
   int m_windowWidth{0};
   int m_windowHeight{0};
   int m_windowedWidth{1920};  // Windowed mode width (for restoring from fullscreen)
@@ -495,10 +468,6 @@ private:
   // Global pause state for coordinating all managers
   std::atomic<bool> m_globallyPaused{false};
 
-  // Multithreading synchronization
-  std::mutex m_updateMutex{};
-  std::condition_variable m_updateCondition{};
-
   // Using memory_order for thread synchronization
   std::atomic<bool> m_updateCompleted{false};
   std::atomic<bool> m_updateRunning{false};
@@ -522,14 +491,8 @@ private:
   std::atomic<size_t> m_renderBufferIndex{0};
   std::atomic<bool> m_bufferReady[MAX_BUFFER_COUNT]{false, false, false};
 
-  // Buffer synchronization (lock-free atomic operations)
-  std::condition_variable m_bufferCondition{};
-
   // Protection for high entity counts
   std::atomic<size_t> m_entityProcessingCount{0};
-
-  // Render synchronization
-  std::mutex m_renderMutex{};
 
 #ifdef DEBUG
   // Buffer telemetry (debug-only, F3 to toggle overlay)

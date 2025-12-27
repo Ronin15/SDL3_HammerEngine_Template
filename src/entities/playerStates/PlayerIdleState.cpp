@@ -10,8 +10,8 @@
 PlayerIdleState::PlayerIdleState(Player& player) : m_player(player) {}
 
 void PlayerIdleState::enter() {
-    // Set animation for idle
-    m_player.get().setCurrentFrame(0);
+    // Set animation for idle using abstracted API
+    m_player.get().playAnimation("idle");
     // Stop movement immediately upon entering idle state
     m_player.get().setVelocity(Vector2D(0, 0));
     m_player.get().setAcceleration(Vector2D(0, 0));
@@ -19,15 +19,14 @@ void PlayerIdleState::enter() {
 
 void PlayerIdleState::update(float deltaTime) {
     (void)deltaTime; // Mark as unused
-    
+
     // Check for input to transition to running
     if (hasInputDetected()) {
         m_player.get().changeState("running");
         return;
     }
-    
-    // Keep idle animation frame
-    m_player.get().setCurrentFrame(0);
+
+    // Animation is handled by playAnimation() in enter() - no manual frame setting needed
 }
 
 bool PlayerIdleState::hasInputDetected() const {

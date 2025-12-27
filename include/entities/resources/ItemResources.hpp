@@ -16,7 +16,7 @@ class Item : public Resource {
 public:
   Item(HammerEngine::ResourceHandle handle, const std::string &id,
        const std::string &name, ResourceType type);
-  virtual ~Item() override = default;
+  ~Item() override = default;
 
   // Item-specific properties
   int getDurability() const { return m_durability; }
@@ -51,7 +51,7 @@ public:
 
   Equipment(HammerEngine::ResourceHandle handle, const std::string &id,
             const std::string &name, EquipmentSlot slot);
-  virtual ~Equipment() override = default;
+  ~Equipment() override = default;
 
   EquipmentSlot getEquipmentSlot() const { return m_equipmentSlot; }
   int getAttackBonus() const { return m_attackBonus; }
@@ -92,7 +92,7 @@ public:
 
   Consumable(HammerEngine::ResourceHandle handle, const std::string &id,
              const std::string &name);
-  virtual ~Consumable() override = default;
+  ~Consumable() override = default;
 
   ConsumableEffect getEffect() const { return m_effect; }
   int getEffectPower() const { return m_effectPower; }
@@ -121,7 +121,7 @@ class QuestItem : public Item {
 public:
   QuestItem(HammerEngine::ResourceHandle handle, const std::string &id,
             const std::string &name, const std::string &questId = "");
-  virtual ~QuestItem() override = default;
+  ~QuestItem() override = default;
 
   const std::string &getQuestId() const { return m_questId; }
   bool isQuestSpecific() const { return !m_questId.empty(); }

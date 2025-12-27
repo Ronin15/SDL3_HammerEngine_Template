@@ -16,6 +16,9 @@
 bool MainMenuState::enter() {
   GAMESTATE_INFO("Entering MAIN MENU State");
 
+  // Pause all game managers to reduce power draw while at menu
+  GameEngine::Instance().setGlobalPause(true);
+
   auto& ui = UIManager::Instance();
   auto& fontMgr = FontManager::Instance();
 
@@ -122,6 +125,9 @@ void MainMenuState::render(SDL_Renderer* renderer, [[maybe_unused]] float interp
 
 bool MainMenuState::exit() {
   GAMESTATE_INFO("Exiting MAIN MENU State");
+
+  // NOTE: Do NOT unpause here - gameplay states will unpause on enter
+  // This keeps systems paused during menu-to-menu transitions
 
   // Clean up UI components using simplified method
   auto& ui = UIManager::Instance();

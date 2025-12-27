@@ -14,7 +14,11 @@
 #include "events/WeatherEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
+#include "controllers/world/WeatherController.hpp"
+#include "controllers/world/DayNightController.hpp"
+#include "controllers/combat/CombatController.hpp"
 #include <memory>
+#include <string>
 
 // Forward declarations for cached manager pointers
 class WorldManager;
@@ -41,7 +45,7 @@ private:
   std::shared_ptr<Player> mp_Player{nullptr}; // Player object
   bool m_inventoryVisible{false}; // Flag to control inventory UI visibility
   bool m_initialized{false}; // Flag to track if state is already initialized (for pause/resume)
-  
+
   // Camera for world navigation and player following
   std::unique_ptr<HammerEngine::Camera> m_camera{nullptr};
 
@@ -70,6 +74,19 @@ private:
   bool m_fpsVisible{false};
   std::string m_fpsBuffer{};
   float m_lastDisplayedFPS{-1.0f};
+
+  // --- Controllers (owned by this state) ---
+  WeatherController m_weatherController;
+  DayNightController m_dayNightController;
+  CombatController m_combatController;
+
+  // --- Time UI display buffer ---
+  std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)
+  bool m_statusBarDirty{true};   // Flag to rebuild status bar only when events fire
+
+  // --- Combat HUD ---
+  void initializeCombatHUD();
+  void updateCombatHUD();
 
   // Inventory UI methods
   void initializeInventoryUI();

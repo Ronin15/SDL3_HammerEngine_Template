@@ -91,7 +91,7 @@ if !ERRORLEVEL! equ 0 (
 :: Extract all performance metrics in order
 echo.
 echo !YELLOW!WorkerBudget System Configuration:!NC!
-findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"allocated to AI" "!OUTPUT_FILE!" 2>nul
+findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"workers" "!OUTPUT_FILE!" 2>nul
 
 echo.
 echo !YELLOW!Performance Metrics Found:!NC!
@@ -369,7 +369,7 @@ if !BENCHMARK_RESULT! equ 0 (
 
     :: Extract WorkerBudget system information
     echo WorkerBudget System Configuration:>> "!METRICS_FILE!"
-    findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"allocated to AI" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
+    findstr /c:"System Configuration:" /c:"WorkerBudget:" /c:"hardware threads" /c:"workers" "!OUTPUT_FILE!" >> "!METRICS_FILE!" 2>nul
     echo.>> "!METRICS_FILE!"
 
     :: Extract key metrics to summary file

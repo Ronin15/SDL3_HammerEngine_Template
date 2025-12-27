@@ -298,27 +298,27 @@ public:
   }
 
 #define SERIALIZE_PRIMITIVE(writer, member)                                    \
-  if (!writer.write(member))                                                   \
+  if (!(writer).write((member)))                                               \
     return false;
 
 #define DESERIALIZE_PRIMITIVE(reader, member)                                  \
-  if (!reader.read(member))                                                    \
+  if (!(reader).read((member)))                                                \
     return false;
 
 #define SERIALIZE_STRING(writer, member)                                       \
-  if (!writer.writeString(member))                                             \
+  if (!(writer).writeString((member)))                                         \
     return false;
 
 #define DESERIALIZE_STRING(reader, member)                                     \
-  if (!reader.readString(member))                                              \
+  if (!(reader).readString((member)))                                          \
     return false;
 
 #define SERIALIZE_SERIALIZABLE(writer, member)                                 \
-  if (!writer.writeSerializable(member))                                       \
+  if (!(writer).writeSerializable((member)))                                   \
     return false;
 
 #define DESERIALIZE_SERIALIZABLE(reader, member)                               \
-  if (!reader.readSerializable(member))                                        \
+  if (!(reader).readSerializable((member)))                                    \
     return false;
 
 #endif // BINARY_SERIALIZER_HPP

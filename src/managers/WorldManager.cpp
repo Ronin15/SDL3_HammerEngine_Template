@@ -105,9 +105,8 @@ bool WorldManager::loadNewWorld(const HammerEngine::WorldGenerationConfig& confi
         }
 
         // Unload current world if it exists
-        if (m_currentWorld) {
-            WORLD_MANAGER_INFO(std::format("Unloading current world: {}", m_currentWorld->worldId));
-        }
+        WORLD_MANAGER_INFO_IF(m_currentWorld,
+            std::format("Unloading current world: {}", m_currentWorld->worldId));
 
         // Set new world
         m_currentWorld = std::move(newWorld);
@@ -203,8 +202,8 @@ bool WorldManager::isValidPosition(int x, int y) const {
         return false;
     }
 
-    int height = static_cast<int>(m_currentWorld->grid.size());
-    int width = height > 0 ? static_cast<int>(m_currentWorld->grid[0].size()) : 0;
+    const int height = static_cast<int>(m_currentWorld->grid.size());
+    const int width = height > 0 ? static_cast<int>(m_currentWorld->grid[0].size()) : 0;
 
     return x >= 0 && x < width && y >= 0 && y < height;
 }
@@ -268,7 +267,7 @@ bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY)
     }
 
     // Store the original obstacle type for resource tracking
-    HammerEngine::ObstacleType harvestedType = tile.obstacleType;
+    const HammerEngine::ObstacleType harvestedType = tile.obstacleType;
     (void)harvestedType; // Suppress unused warning
 
     // Remove the obstacle
@@ -304,8 +303,8 @@ bool WorldManager::updateTile(int x, int y, const HammerEngine::Tile& newTile) {
     // Sprites can extend from adjacent tiles into neighboring chunks
     if (m_tileRenderer) {
         constexpr int chunkSize = 32;  // TileRenderer::CHUNK_SIZE
-        int chunkX = x / chunkSize;
-        int chunkY = y / chunkSize;
+        const int chunkX = x / chunkSize;
+        const int chunkY = y / chunkSize;
 
         // Invalidate primary chunk
         m_tileRenderer->invalidateChunk(chunkX, chunkY);
@@ -387,7 +386,7 @@ void WorldManager::fireWorldUnloadedEvent(const std::string& worldId) {
 
 void WorldManager::registerEventHandlers() {
     try {
-        EventManager& eventMgr = EventManager::Instance();
+        EventManager & eventMgr = EventManager::Instance();
         m_handlerTokens.clear();
 
         // Register handler for world events (to respond to events from other systems)
@@ -411,11 +410,10 @@ void WorldManager::registerEventHandlers() {
             if (data.isActive() && data.event) {
                 // Handle resource changes that may affect world generation or state
                 auto resourceEvent = std::dynamic_pointer_cast<ResourceChangeEvent>(data.event);
-                if (resourceEvent) {
-                    WORLD_MANAGER_DEBUG(std::format("WorldManager received resource change: {} changed by {}",
-                                       resourceEvent->getResourceHandle().toString(),
-                                       resourceEvent->getQuantityChange()));
-                }
+                WORLD_MANAGER_DEBUG_IF(resourceEvent,
+                    std::format("WorldManager received resource change: {} changed by {}",
+                                resourceEvent ? resourceEvent->getResourceHandle().toString() : "",
+                                resourceEvent ? resourceEvent->getQuantityChange() : 0));
             }
         }));
 
@@ -548,26 +546,26 @@ void WorldManager::initializeWorldResources() {
 
     try {
         // Calculate base resource quantities based on world size
-        int baseAmount = std::max(10, totalTiles / 20); // Scale with world size
+        const int baseAmount = std::max(10, totalTiles / 20); // Scale with world size
         // Basic resources available everywhere
         auto woodHandle = resourceMgr.getHandleById("wood");
         auto ironHandle = resourceMgr.getHandleById("iron_ore");
         auto goldHandle = resourceMgr.getHandleById("gold");
 
         if (woodHandle.isValid()) {
-            int woodAmount = baseAmount + forestTiles * 2; // More wood in forests
+            const int woodAmount = baseAmount + forestTiles * 2; // More wood in forests
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, woodHandle, woodAmount);
             WORLD_MANAGER_DEBUG(std::format("Added {} wood to world", woodAmount));
         }
 
         if (ironHandle.isValid()) {
-            int ironAmount = baseAmount + mountainTiles; // More iron in mountains
+            const int ironAmount = baseAmount + mountainTiles; // More iron in mountains
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, ironHandle, ironAmount);
             WORLD_MANAGER_DEBUG(std::format("Added {} iron ore to world", ironAmount));
         }
 
         if (goldHandle.isValid()) {
-            int goldAmount = baseAmount * 3; // Basic starting gold
+            const int goldAmount = baseAmount * 3; // Basic starting gold
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, goldHandle, goldAmount);
             WORLD_MANAGER_DEBUG(std::format("Added {} gold to world", goldAmount));
         }
@@ -576,7 +574,7 @@ void WorldManager::initializeWorldResources() {
         if (mountainTiles > 0) {
             auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
             if (mithrilHandle.isValid()) {
-                int mithrilAmount = std::max(1, mountainTiles / 10); // Rare resource
+                const int mithrilAmount = std::max(1, mountainTiles / 10); // Rare resource
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, mithrilHandle, mithrilAmount);
                 WORLD_MANAGER_DEBUG(std::format("Added {} mithril ore to world", mithrilAmount));
             }
@@ -585,7 +583,7 @@ void WorldManager::initializeWorldResources() {
         if (forestTiles > 0) {
             auto enchantedWoodHandle = resourceMgr.getHandleById("enchanted_wood");
             if (enchantedWoodHandle.isValid()) {
-                int enchantedAmount = std::max(1, forestTiles / 15); // Rare forest resource
+                const int enchantedAmount = std::max(1, forestTiles / 15); // Rare forest resource
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, enchantedWoodHandle, enchantedAmount);
                 WORLD_MANAGER_DEBUG(std::format("Added {} enchanted wood to world", enchantedAmount));
             }
@@ -594,7 +592,7 @@ void WorldManager::initializeWorldResources() {
         if (celestialTiles > 0) {
             auto crystalHandle = resourceMgr.getHandleById("crystal_essence");
             if (crystalHandle.isValid()) {
-                int crystalAmount = std::max(1, celestialTiles / 8); // Celestial biome exclusive
+                const int crystalAmount = std::max(1, celestialTiles / 8); // Celestial biome exclusive
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, crystalHandle, crystalAmount);
                 WORLD_MANAGER_DEBUG(std::format("Added {} crystal essence to world", crystalAmount));
             }
@@ -603,7 +601,7 @@ void WorldManager::initializeWorldResources() {
         if (swampTiles > 0) {
             auto voidSilkHandle = resourceMgr.getHandleById("void_silk");
             if (voidSilkHandle.isValid()) {
-                int voidSilkAmount = std::max(1, swampTiles / 20); // Very rare swamp resource
+                const int voidSilkAmount = std::max(1, swampTiles / 20); // Very rare swamp resource
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, voidSilkHandle, voidSilkAmount);
                 WORLD_MANAGER_DEBUG(std::format("Added {} void silk to world", voidSilkAmount));
             }
@@ -613,7 +611,7 @@ void WorldManager::initializeWorldResources() {
         if (highElevationTiles > 0) {
             auto stoneHandle = resourceMgr.getHandleById("enchanted_stone");
             if (stoneHandle.isValid()) {
-                int stoneAmount = highElevationTiles / 5; // Building materials from high areas
+                const int stoneAmount = highElevationTiles / 5; // Building materials from high areas
                 WorldResourceManager::Instance().addResource(m_currentWorld->worldId, stoneHandle, stoneAmount);
                 WORLD_MANAGER_DEBUG(std::format("Added {} enchanted stone to world", stoneAmount));
             }
@@ -622,7 +620,7 @@ void WorldManager::initializeWorldResources() {
         // Energy resources based on world size
         auto arcaneEnergyHandle = resourceMgr.getHandleById("arcane_energy");
         if (arcaneEnergyHandle.isValid()) {
-            int energyAmount = totalTiles * 2; // Abundant energy resource
+            const int energyAmount = totalTiles * 2; // Abundant energy resource
             WorldResourceManager::Instance().addResource(m_currentWorld->worldId, arcaneEnergyHandle, energyAmount);
             WORLD_MANAGER_DEBUG(std::format("Added {} arcane energy to world", energyAmount));
         }
@@ -691,8 +689,8 @@ HammerEngine::TileRenderer::TileRenderer()
 
 void HammerEngine::TileRenderer::updateCachedTextureIDs()
 {
-    static const char* seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
-    const char* prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
+    static const char* const seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
+    const char* const prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
 
     // Pre-compute all seasonal texture IDs once (eliminates ~24,000 heap allocations/frame at 4K)
     m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
@@ -742,7 +740,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs()
 
     // Decoration textures - handle seasonal variants
     // Flowers only appear in Spring/Summer (empty string = won't render)
-    bool hasFlowers = (m_currentSeason == Season::Spring || m_currentSeason == Season::Summer);
+    const bool hasFlowers = (m_currentSeason == Season::Spring || m_currentSeason == Season::Summer);
     m_cachedTextureIDs.decoration_flower_blue = hasFlowers ? "flower_blue" : "";
     m_cachedTextureIDs.decoration_flower_pink = hasFlowers ? "flower_pink" : "";
     m_cachedTextureIDs.decoration_flower_white = hasFlowers ? "flower_white" : "";
@@ -814,7 +812,7 @@ void HammerEngine::TileRenderer::setCurrentSeason(Season season)
 
 void HammerEngine::TileRenderer::invalidateChunk(int chunkX, int chunkY)
 {
-    uint64_t key = makeChunkKey(chunkX, chunkY);
+    const uint64_t key = makeChunkKey(chunkX, chunkY);
     auto it = m_chunkCache.find(key);
     if (it != m_chunkCache.end()) {
         it->second.dirty = true;
@@ -848,9 +846,9 @@ void HammerEngine::TileRenderer::subscribeToSeasonEvents()
     m_subscribedToSeasons = true;
 
     // Initialize with current season from GameTime
-    m_currentSeason = GameTime::Instance().getSeason();
+    m_currentSeason = GameTimeManager::Instance().getSeason();
     WORLD_MANAGER_INFO(std::format("TileRenderer subscribed to season events, current season: {}",
-                       GameTime::Instance().getSeasonName()));
+                       GameTimeManager::Instance().getSeasonName()));
 }
 
 void HammerEngine::TileRenderer::unsubscribeFromSeasonEvents()
@@ -872,13 +870,13 @@ void HammerEngine::TileRenderer::onSeasonChange(const EventData& data)
     }
 
     // Match TimeController pattern - use static_pointer_cast + getTimeEventType()
-    auto timeEvent = std::static_pointer_cast<TimeEvent>(data.event);
+    const auto timeEvent = std::static_pointer_cast<TimeEvent>(data.event);
     if (timeEvent->getTimeEventType() != TimeEventType::SeasonChanged) {
         return;
     }
 
-    auto seasonEvent = std::static_pointer_cast<SeasonChangedEvent>(data.event);
-    Season newSeason = seasonEvent->getSeason();
+    const auto seasonEvent = std::static_pointer_cast<SeasonChangedEvent>(data.event);
+    const Season newSeason = seasonEvent->getSeason();
     if (newSeason != m_currentSeason) {
         WORLD_MANAGER_INFO(std::format("TileRenderer: Season changed to {}", seasonEvent->getSeasonName()));
         setCurrentSeason(newSeason);  // This updates m_currentSeason AND refreshes cached texture IDs
@@ -887,7 +885,7 @@ void HammerEngine::TileRenderer::onSeasonChange(const EventData& data)
 
 std::string HammerEngine::TileRenderer::getSeasonalTextureID(const std::string& baseID) const
 {
-    static const char* seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
+    static const char* const seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
     return seasonPrefixes[static_cast<int>(m_currentSeason)] + baseID;
 }
 
@@ -899,18 +897,18 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
     SDL_RenderClear(renderer);
 
     // Calculate tile range for this chunk (extended by 1 tile for padding fill)
-    int worldWidth = static_cast<int>(world.grid[0].size());
-    int worldHeight = static_cast<int>(world.grid.size());
-    int startTileX = chunkX * CHUNK_SIZE;
-    int startTileY = chunkY * CHUNK_SIZE;
-    int endTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
-    int endTileY = std::min(startTileY + CHUNK_SIZE, worldHeight);
+    const int worldWidth = static_cast<int>(world.grid[0].size());
+    const int worldHeight = static_cast<int>(world.grid.size());
+    const int startTileX = chunkX * CHUNK_SIZE;
+    const int startTileY = chunkY * CHUNK_SIZE;
+    const int endTileX = std::min(startTileX + CHUNK_SIZE, worldWidth);
+    const int endTileY = std::min(startTileY + CHUNK_SIZE, worldHeight);
 
     // Extended range for biome rendering (fills padding area)
-    int extStartX = std::max(0, startTileX - 1);
-    int extStartY = std::max(0, startTileY - 1);
-    int extEndX = std::min(worldWidth, endTileX + 1);
-    int extEndY = std::min(worldHeight, endTileY + 1);
+    const int extStartX = std::max(0, startTileX - 1);
+    const int extStartY = std::max(0, startTileY - 1);
+    const int extEndX = std::min(worldWidth, endTileX + 1);
+    const int extEndY = std::min(worldHeight, endTileY + 1);
 
     constexpr int tileSize = static_cast<int>(TILE_SIZE);
 
@@ -919,8 +917,8 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
         for (int x = extStartX; x < extEndX; ++x) {
             const HammerEngine::Tile& tile = world.grid[y][x];
             // Biomes render without SPRITE_OVERHANG offset for padding fill
-            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+            const float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
+            const float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
 
             const CachedTexture* tex = &m_cachedTextures.biome_default;
             if (tile.isWater) {
@@ -952,8 +950,8 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
                 continue;
             }
 
-            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+            const float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
+            const float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
 
             const CachedTexture* tex = nullptr;
             switch (tile.decorationType) {
@@ -991,8 +989,8 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
             }
 
             // Center decoration horizontally, align bottom to tile bottom
-            float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-            float offsetY = TILE_SIZE - tex->h;
+            const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
+            const float offsetY = TILE_SIZE - tex->h;
 
             TextureManager::drawTileDirect(tex->ptr, localX + offsetX, localY + offsetY,
                                            static_cast<int>(tex->w), static_cast<int>(tex->h), renderer);
@@ -1001,10 +999,10 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
 
     // LAYER 3: Collect obstacles and buildings for Y-sorted rendering
     // Extended range to capture sprites that overhang into this chunk from adjacent tiles
-    int spriteStartX = std::max(0, startTileX - 2);  // 2 tiles for building overhang
-    int spriteStartY = std::max(0, startTileY - 4);  // 4 tiles for tall sprites above
-    int spriteEndX = std::min(worldWidth, endTileX + 2);
-    int spriteEndY = std::min(worldHeight, endTileY + 1);
+    const int spriteStartX = std::max(0, startTileX - 2);  // 2 tiles for building overhang
+    const int spriteStartY = std::max(0, startTileY - 4);  // 4 tiles for tall sprites above
+    const int spriteEndX = std::min(worldWidth, endTileX + 2);
+    const int spriteEndY = std::min(worldHeight, endTileY + 1);
 
     m_ySortBuffer.clear();
 
@@ -1013,10 +1011,10 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
             const HammerEngine::Tile& tile = world.grid[y][x];
 
             // Calculate local position in chunk texture
-            float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
-            float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
+            const float localX = static_cast<float>((x - startTileX) * tileSize + SPRITE_OVERHANG);
+            const float localY = static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
 
-            bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
+            const bool isPartOfBuilding = (tile.obstacleType == HammerEngine::ObstacleType::BUILDING &&
                                      !tile.isTopLeftOfBuilding);
 
             // Obstacles (trees, rocks) - bottom-center positioned
@@ -1032,11 +1030,11 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
                     default: break;
                 }
 
-                float offsetX = (TILE_SIZE - tex->w) / 2.0f;
-                float offsetY = TILE_SIZE - tex->h;
+                const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
+                const float offsetY = TILE_SIZE - tex->h;
 
                 // Y-sort key is bottom of sprite (tile Y + 1 tile = bottom)
-                float sortY = localY + TILE_SIZE;
+                const float sortY = localY + TILE_SIZE;
 
                 m_ySortBuffer.push_back({sortY, localX + offsetX, localY + offsetY, tex, false, 0, 0});
             }
@@ -1067,8 +1065,8 @@ void HammerEngine::TileRenderer::renderChunkToTexture(const HammerEngine::WorldD
 
     // Render sorted sprites into chunk texture
     for (const auto& sprite : m_ySortBuffer) {
-        int spriteW = sprite.isBuilding ? sprite.buildingWidth : static_cast<int>(sprite.tex->w);
-        int spriteH = sprite.isBuilding ? sprite.buildingHeight : static_cast<int>(sprite.tex->h);
+        const int spriteW = sprite.isBuilding ? sprite.buildingWidth : static_cast<int>(sprite.tex->w);
+        const int spriteH = sprite.isBuilding ? sprite.buildingHeight : static_cast<int>(sprite.tex->h);
         TextureManager::drawTileDirect(sprite.tex->ptr, sprite.renderX, sprite.renderY,
                                        spriteW, spriteH, renderer);
     }
@@ -1100,15 +1098,15 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     ++m_frameCounter;
 
     // Calculate visible chunk range
-    int worldWidth = static_cast<int>(world.grid[0].size());
-    int worldHeight = static_cast<int>(world.grid.size());
-    int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
-    int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    const int worldWidth = static_cast<int>(world.grid[0].size());
+    const int worldHeight = static_cast<int>(world.grid.size());
+    const int maxChunkX = (worldWidth + CHUNK_SIZE - 1) / CHUNK_SIZE;
+    const int maxChunkY = (worldHeight + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
-    int startChunkX = std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
-    int startChunkY = std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
-    int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1);
-    int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1);
+    const int startChunkX = std::max(0, static_cast<int>(cameraX / (CHUNK_SIZE * TILE_SIZE)));
+    const int startChunkY = std::max(0, static_cast<int>(cameraY / (CHUNK_SIZE * TILE_SIZE)));
+    const int endChunkX = std::min(maxChunkX, static_cast<int>((cameraX + viewportWidth) / (CHUNK_SIZE * TILE_SIZE)) + 1);
+    const int endChunkY = std::min(maxChunkY, static_cast<int>((cameraY + viewportHeight) / (CHUNK_SIZE * TILE_SIZE)) + 1);
 
     // Chunk texture size includes padding for sprites extending beyond tile bounds
     constexpr int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE) + SPRITE_OVERHANG * 2;
@@ -1119,7 +1117,7 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
     // Render visible chunks (typically 4-16 chunks vs 8000 individual tiles)
     for (int chunkY = startChunkY; chunkY <= endChunkY; ++chunkY) {
         for (int chunkX = startChunkX; chunkX <= endChunkX; ++chunkX) {
-            uint64_t key = makeChunkKey(chunkX, chunkY);
+            const uint64_t key = makeChunkKey(chunkX, chunkY);
             m_visibleKeysBuffer.push_back(key);
 
             // Get or create chunk cache entry
@@ -1204,7 +1202,7 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                   [](const auto& a, const auto& b) { return a.second < b.second; });
 
         // Evict oldest chunks until we're under the limit
-        size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
+        const size_t toEvict = m_chunkCache.size() - MAX_CACHED_CHUNKS;
         for (size_t i = 0; i < std::min(toEvict, m_evictionBuffer.size()); ++i) {
             m_chunkCache.erase(m_evictionBuffer[i].first);
         }
@@ -1219,17 +1217,17 @@ HammerEngine::TileRenderer::ChunkBounds HammerEngine::TileRenderer::calculateVis
     float cameraX, float cameraY, int viewportWidth, int viewportHeight) const {
 
     // Add generous padding for chunk pre-loading (load chunks well in advance)
-    float chunkPadding = (CHUNK_SIZE * TILE_SIZE) * 2.0f;  // Load 2 full chunks ahead in each direction
+    const float chunkPadding = (CHUNK_SIZE * TILE_SIZE) * 2.0f;  // Load 2 full chunks ahead in each direction
 
     // Calculate camera bounds with expanded padding for chunk pre-loading
-    float leftBound = cameraX - (viewportWidth * 0.5f) - chunkPadding;
-    float rightBound = cameraX + (viewportWidth * 0.5f) + chunkPadding;
-    float topBound = cameraY - (viewportHeight * 0.5f) - chunkPadding;
-    float bottomBound = cameraY + (viewportHeight * 0.5f) + chunkPadding;
+    const float leftBound = cameraX - (viewportWidth * 0.5f) - chunkPadding;
+    const float rightBound = cameraX + (viewportWidth * 0.5f) + chunkPadding;
+    const float topBound = cameraY - (viewportHeight * 0.5f) - chunkPadding;
+    const float bottomBound = cameraY + (viewportHeight * 0.5f) + chunkPadding;
 
     // Convert to chunk coordinates
     ChunkBounds bounds;
-    int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
+    const int chunkPixelSize = CHUNK_SIZE * static_cast<int>(TILE_SIZE);
     bounds.startChunkX = std::max(0, static_cast<int>(leftBound) / chunkPixelSize);
     bounds.endChunkX = static_cast<int>(rightBound) / chunkPixelSize;
     bounds.startChunkY = std::max(0, static_cast<int>(topBound) / chunkPixelSize);
@@ -1257,19 +1255,16 @@ void HammerEngine::TileRenderer::renderTile(const HammerEngine::Tile& tile, SDL_
 
     // LAYER 2: Render obstacles on top of biome (if present) with seasonal variant
     if (tile.obstacleType != HammerEngine::ObstacleType::NONE) {
-        std::string obstacleTextureID = getSeasonalTextureID(getObstacleTexture(tile.obstacleType));
+        const std::string obstacleTextureID = getSeasonalTextureID(getObstacleTexture(tile.obstacleType));
 
         // Render obstacle layer on top of biome
         TextureManager::Instance().drawTileF(obstacleTextureID, screenX, screenY, TILE_SIZE, TILE_SIZE, renderer);
     }
 
     // Debug logging for texture issues (only in debug builds)
-    #ifdef DEBUG
-    if (biomeTextureID.empty()) {
-        WORLD_MANAGER_WARN(std::format("TileRenderer: Empty biome texture ID for tile at screen position ({}, {})",
-                           screenX, screenY));
-    }
-    #endif
+    WORLD_MANAGER_WARN_IF(biomeTextureID.empty(),
+        std::format("TileRenderer: Empty biome texture ID for tile at screen position ({}, {})",
+                    screenX, screenY));
 }
 
 std::string HammerEngine::TileRenderer::getBiomeTexture(HammerEngine::Biome biome) const {

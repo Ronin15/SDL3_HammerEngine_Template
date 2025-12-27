@@ -137,7 +137,7 @@ struct AICollisionGlobalFixture {
         }
 
         // Enable threading for AI
-        AIManager::Instance().configureThreading(true);
+        AIManager::Instance().enableThreading(true);
 
         std::cout << "=== Global Setup Complete ===" << std::endl;
     }
@@ -738,10 +738,10 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
     // Verify collision system is actually working (pairs detected)
     BOOST_CHECK_GT(collisionStats.lastPairs, 0);
 
-    // Verify entities are being processed
-    auto aiStats = AIManager::Instance().getPerformanceStats();
-    std::cout << "AI entities processed: " << aiStats.entitiesProcessed << std::endl;
-    BOOST_CHECK_GT(aiStats.entitiesProcessed, 0);
+    // Verify entities are being managed
+    size_t managedCount = AIManager::Instance().getManagedEntityCount();
+    std::cout << "AI entities managed: " << managedCount << std::endl;
+    BOOST_CHECK_GT(managedCount, 0);
 
     std::cout << "=== TEST 4: PASSED ===" << std::endl;
 }

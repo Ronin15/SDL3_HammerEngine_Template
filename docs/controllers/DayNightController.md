@@ -5,7 +5,7 @@
 - Implementation: `src/controllers/world/DayNightController.cpp`
 - Tests: `tests/controllers/DayNightControllerTests.cpp`
 
-**Singleton Access:** Use `DayNightController::Instance()` to access.
+**Ownership:** GameState owns the controller instance (not a singleton).
 
 ## Overview
 
@@ -14,7 +14,7 @@ DayNightController tracks time periods (Morning/Day/Evening/Night) and dispatche
 ## Event Flow
 
 ```
-GameTime::dispatchTimeEvents()
+GameTimeManager::dispatchTimeEvents()
   → HourChangedEvent (Deferred)
     → DayNightController detects period change
       → Dispatches TimePeriodChangedEvent with visual config
@@ -26,8 +26,15 @@ GameTime::dispatchTimeEvents()
 ```cpp
 #include "controllers/world/DayNightController.hpp"
 
-// In GameState::enter()
-DayNightController::Instance().subscribe();
+// In GamePlayState.hpp - controller as member
+class GamePlayState : public GameState {
+private:
+    DayNightController m_dayNightController;  // Owned by state
+    EventHandlerToken m_periodToken;
+};
+
+// In GamePlayState::enter()
+m_dayNightController.subscribe();
 
 // Subscribe to time period changes for rendering
 m_periodToken = EventManager::Instance().registerHandlerWithToken(
@@ -35,9 +42,9 @@ m_periodToken = EventManager::Instance().registerHandlerWithToken(
     [this](const EventData& data) { onTimePeriodChanged(data); }
 );
 
-// In GameState::exit()
+// In GamePlayState::exit()
 EventManager::Instance().removeHandler(m_periodToken);
-DayNightController::Instance().unsubscribe();
+m_dayNightController.unsubscribe();
 ```
 
 ## Time Periods

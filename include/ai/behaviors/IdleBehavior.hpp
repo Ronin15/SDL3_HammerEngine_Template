@@ -14,7 +14,7 @@
 
 class IdleBehavior : public AIBehavior {
 public:
-  enum class IdleMode {
+  enum class IdleMode : uint8_t {
     STATIONARY,      // Completely still
     SUBTLE_SWAY,     // Small swaying motion
     OCCASIONAL_TURN, // Turn around occasionally

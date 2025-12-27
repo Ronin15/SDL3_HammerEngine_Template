@@ -69,7 +69,7 @@ public:
                       float duration = -1.0f, const std::string &groupTag = "",
                       const std::string &soundEffect = "");
 
-  virtual ~ParticleEffectEvent() override = default;
+  ~ParticleEffectEvent() override = default;
 
   // Core Event interface
   void update() override;

@@ -1,5 +1,5 @@
 @echo off
-rem GameTime System Test Runner
+rem GameTimeManager System Test Runner
 rem Copyright 2025 Hammer Forged Games
 
 setlocal enabledelayedexpansion
@@ -44,12 +44,12 @@ if /i "%~1"=="--season" (
     goto parse_args
 )
 if /i "%~1"=="--help" (
-    echo !BLUE!GameTime System Test Runner!NC!
+    echo !BLUE!GameTimeManager System Test Runner!NC!
     echo Usage: run_game_time_tests.bat [options]
     echo.
     echo Options:
     echo   --verbose      Run tests with verbose output
-    echo   --core         Run only core GameTime tests
+    echo   --core         Run only core GameTimeManager tests
     echo   --calendar     Run only calendar tests
     echo   --season       Run only season tests
     echo   --help         Show this help message
@@ -60,20 +60,20 @@ goto parse_args
 
 :done_parsing
 
-echo !BLUE!Running GameTime System Tests!NC!
+echo !BLUE!Running GameTimeManager System Tests!NC!
 
 rem Track overall result
 set OVERALL_RESULT=0
 
 rem Run selected tests
 if "%RUN_ALL%"=="true" (
-    call :run_single_test game_time_tests
-    call :run_single_test game_time_calendar_tests
-    call :run_single_test game_time_season_tests
+    call :run_single_test game_time_manager_tests
+    call :run_single_test game_time_manager_calendar_tests
+    call :run_single_test game_time_manager_season_tests
 ) else (
-    if "%RUN_CORE%"=="true" call :run_single_test game_time_tests
-    if "%RUN_CALENDAR%"=="true" call :run_single_test game_time_calendar_tests
-    if "%RUN_SEASON%"=="true" call :run_single_test game_time_season_tests
+    if "%RUN_CORE%"=="true" call :run_single_test game_time_manager_tests
+    if "%RUN_CALENDAR%"=="true" call :run_single_test game_time_manager_calendar_tests
+    if "%RUN_SEASON%"=="true" call :run_single_test game_time_manager_season_tests
 )
 
 goto show_summary
@@ -123,13 +123,13 @@ goto :eof
 :show_summary
 if !OVERALL_RESULT! neq 0 (
     echo.
-    echo !RED!Some GameTime tests failed!!NC!
+    echo !RED!Some GameTimeManager tests failed!!NC!
     exit /b 1
 ) else (
     echo.
-    echo !GREEN!All GameTime tests completed successfully!!NC!
-    echo !GREEN!  GameTime core tests!NC!
-    echo !GREEN!  GameTime calendar tests!NC!
-    echo !GREEN!  GameTime season tests!NC!
+    echo !GREEN!All GameTimeManager tests completed successfully!!NC!
+    echo !GREEN!  GameTimeManager core tests!NC!
+    echo !GREEN!  GameTimeManager calendar tests!NC!
+    echo !GREEN!  GameTimeManager season tests!NC!
     exit /b 0
 )

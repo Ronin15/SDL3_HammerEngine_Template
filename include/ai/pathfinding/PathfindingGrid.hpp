@@ -19,7 +19,7 @@
 
 namespace HammerEngine {
 
-enum class PathfindingResult { SUCCESS, NO_PATH_FOUND, INVALID_START, INVALID_GOAL, TIMEOUT };
+enum class PathfindingResult : uint8_t { SUCCESS, NO_PATH_FOUND, INVALID_START, INVALID_GOAL, TIMEOUT };
 
 // Stream operator for PathfindingResult to support test output
 inline std::ostream& operator<<(std::ostream& os, const PathfindingResult& result) {

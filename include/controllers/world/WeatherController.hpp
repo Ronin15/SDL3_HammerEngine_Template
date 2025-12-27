@@ -10,31 +10,35 @@
  * @file WeatherController.hpp
  * @brief Lightweight controller that bridges GameTime weather checks to actual weather changes
  *
- * WeatherController subscribes to WeatherCheckEvent (from GameTime) and triggers actual
+ * WeatherController subscribes to WeatherCheckEvent (from GameTimeManager) and triggers actual
  * weather changes via EventManager::changeWeather(). This is a controller, not a manager -
  * it's an event subscriber that reacts to time events, not a system initialized in GameEngine.
  *
+ * Ownership: GameState owns the controller instance (not a singleton).
+ *
  * Event flow:
- *   GameTime::checkWeatherUpdate() → WeatherCheckEvent (Deferred)
- *     → WeatherController handles it
- *     → EventManager::changeWeather() (Deferred)
- *     → WeatherEvent dispatched
- *     → ParticleManager handles it → Visual effects rendered
+ *   GameTimeManager::checkWeatherUpdate() -> WeatherCheckEvent (Deferred)
+ *     -> WeatherController handles it
+ *     -> EventManager::changeWeather() (Deferred)
+ *     -> WeatherEvent dispatched
+ *     -> ParticleManager handles it -> Visual effects rendered
  */
 
-#include "managers/EventManager.hpp"
-#include <vector>
+#include "controllers/ControllerBase.hpp"
+#include <string_view>
 
 // Forward declaration
 enum class WeatherType;
 
-class WeatherController {
+class WeatherController : public ControllerBase
+{
 public:
-    /**
-     * @brief Get the singleton instance of WeatherController
-     * @return Reference to the WeatherController instance
-     */
-    static WeatherController& Instance();
+    WeatherController() = default;
+    ~WeatherController() override = default;
+
+    // Movable (inherited from base)
+    WeatherController(WeatherController&&) noexcept = default;
+    WeatherController& operator=(WeatherController&&) noexcept = default;
 
     /**
      * @brief Subscribe to weather check events
@@ -43,44 +47,30 @@ public:
     void subscribe();
 
     /**
-     * @brief Unsubscribe from weather check events
-     * @note Called when a world state exits
-     */
-    void unsubscribe();
-
-    /**
-     * @brief Check if currently subscribed to weather events
-     * @return True if subscribed, false otherwise
-     */
-    bool isSubscribed() const { return m_subscribed; }
-
-    /**
      * @brief Get the current weather type
      * @return Current WeatherType enum value (defaults to Clear)
      */
-    WeatherType getCurrentWeather() const { return m_currentWeather; }
+    [[nodiscard]] WeatherType getCurrentWeather() const { return m_currentWeather; }
 
     /**
      * @brief Get current weather as string (zero allocation)
-     * @return Static string pointer: "Clear", "Rainy", etc.
+     * @return String view: "Clear", "Rainy", etc.
      */
-    const char* getCurrentWeatherString() const;
+    [[nodiscard]] std::string_view getCurrentWeatherString() const;
+
+    /**
+     * @brief Get descriptive weather message for event log (zero allocation)
+     * @return String view: "Fog rolls in", "Storm approaches", etc.
+     */
+    [[nodiscard]] std::string_view getCurrentWeatherDescription() const;
 
 private:
-    // Singleton pattern
-    WeatherController() = default;
-    ~WeatherController() = default;
-    WeatherController(const WeatherController&) = delete;
-    WeatherController& operator=(const WeatherController&) = delete;
-
     /**
      * @brief Handler for time events - filters for WeatherCheckEvent
      * @param data Event data containing the time event
      */
     void onTimeEvent(const EventData& data);
 
-    bool m_subscribed{false};
-    std::vector<EventManager::HandlerToken> m_handlerTokens;
     WeatherType m_currentWeather{};  // Initialized in cpp to avoid header dependency
 };
 

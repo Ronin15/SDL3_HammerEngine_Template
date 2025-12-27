@@ -31,8 +31,8 @@ if(APPLE)
     # macOS-specific debug flags with dSYM generation and LLDB compatibility
     set(CMAKE_C_FLAGS_DEBUG 
         "-g3 -O0 -gdwarf-4 -glldb -fno-limit-debug-info -DDEBUG")
-    set(CMAKE_CXX_FLAGS_DEBUG 
-        "-g3 -O0 -Wall -Wextra -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug -DDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG
+        "-g3 -O0 -Wall -Wextra -Wpedantic -gdwarf-4 -glldb -fno-limit-debug-info -fstandalone-debug -DDEBUG")
     
     # Ensure debug symbols are preserved (don't strip them)
     set(CMAKE_SHARED_LINKER_FLAGS_DEBUG "${CMAKE_SHARED_LINKER_FLAGS_DEBUG} -g")
@@ -41,7 +41,7 @@ else()
     # Other platforms
     set(CMAKE_C_FLAGS_DEBUG 
         "${CMAKE_C_FLAGS_DEBUG} -g3 -O0 -DDEBUG")
-    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -DDEBUG")
+    set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O0 -Wall -Wextra -Wpedantic -DDEBUG")
 endif()
 
 # Release build settings - keep minimal safe flags for dependencies (SDL3 etc.)
@@ -144,7 +144,7 @@ message(STATUS
 
 # Specify the stable release tags for each SDL3 component
 # SDL3 3.3.4 includes native PNG loading (SDL_LoadPNG) - no SDL3_image needed
-set(SDL3_GIT_TAG "prerelease-3.3.4")       # SDL3 3.3.4 prerelease with native PNG support
+set(SDL3_GIT_TAG "prerelease-3.3.6")       # SDL3 3.3.6 prerelease final 3.4.0 release candidate for mixer to get off main tag. first step.
 set(SDL3_TTF_GIT_TAG "release-3.2.2")      # Latest stable SDL3_ttf release
 set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
 
@@ -216,6 +216,7 @@ target_include_directories(HammerEngineObjects PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities
     ${CMAKE_CURRENT_SOURCE_DIR}/include/events
     ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/playerStates
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/entities/npcStates
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai
     ${CMAKE_CURRENT_SOURCE_DIR}/include/ai/behaviors
     ${CMAKE_CURRENT_SOURCE_DIR}/include/utils
@@ -231,12 +232,6 @@ target_link_libraries(HammerEngineObjects PUBLIC
     SDL3_ttf::SDL3_ttf
     SDL3_mixer::SDL3_mixer
 )
-
-# Link libatomic for 16-byte atomic operations (required on Linux with GCC/Clang)
-# Windows MSVC and macOS Apple Clang have built-in atomics, no external library needed
-if(NOT MSVC AND NOT APPLE)
-    target_link_libraries(HammerEngineObjects PUBLIC atomic)
-endif()
 
 # Apply aggressive optimization flags to our project targets only (not SDL3)
 # These flags like -ffast-math conflict with SDL3's audio code
