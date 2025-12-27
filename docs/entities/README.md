@@ -48,7 +48,7 @@ Each entity (Player, NPC) maintains its own state machine, which manages transit
 
 **Where to find the code:**
 - Base State: `include/entities/EntityState.hpp`
-- Base State Machine: `include/entities/EntityStateMachine.hpp`
+- State Manager: `include/managers/EntityStateManager.hpp`
 
 ## Player Entities
 

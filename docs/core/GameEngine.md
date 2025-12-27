@@ -236,27 +236,62 @@ void GameEngine::handleEvents() {
 ```
 
 #### Game Logic Update
+
+**Sequential Manager Updates**: Managers are updated one at a time in a defined order. This replaced the old GameLoop class (which was removed to regain a worker thread and eliminate engine stuttering).
+
+**Update Order:**
+1. **EventManager** - Process global events and state changes first
+2. **GameStateManager** - Player movement, state logic, controller updates
+3. **AIManager** - NPC behaviors (dispatches work to ThreadSystem internally)
+4. **ParticleManager** - Weather and visual effects
+5. **PathfinderManager** - Periodic grid updates
+6. **CollisionManager** - Process collision detection after all movement complete
+
+Each manager gets **all available workers** during its update window since they execute sequentially (not concurrently). This is the foundation of the WorkerBudget system's design.
+
 ```cpp
 void GameEngine::update(float deltaTime) {
-    // Single-threaded main loop - no mutex needed
+    // Sequential manager updates - each manager gets full ThreadSystem access
 
-    // Hybrid Manager Update Architecture:
-    // Global systems updated by GameEngine (cached references for performance)
-    if (mp_aiManager) {
-        mp_aiManager->update(deltaTime);  // Dispatches work to ThreadSystem
-    }
+    // 1. Events first (may trigger state changes)
     if (mp_eventManager) {
         mp_eventManager->update(deltaTime);
     }
 
-    // State-managed systems updated by individual game states
+    // 2. Game state (player, controllers, state-specific logic)
     mp_gameStateManager->update(deltaTime);
+
+    // 3. AI (dispatches batches to ThreadSystem, waits for completion)
+    if (mp_aiManager) {
+        mp_aiManager->update(deltaTime);
+    }
+
+    // 4. Particles (weather, effects)
+    if (mp_particleManager) {
+        mp_particleManager->update(deltaTime);
+    }
+
+    // 5. Pathfinding (periodic grid updates)
+    if (mp_pathfinderManager) {
+        mp_pathfinderManager->update(deltaTime);
+    }
+
+    // 6. Collision (after all movement complete)
+    if (mp_collisionManager) {
+        mp_collisionManager->update(deltaTime);
+    }
 
     // Update frame counters and buffer management
     m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
     m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 }
 ```
+
+**Why Sequential?**
+- **GameLoop Removal**: The old GameLoop class ran updates on a separate thread, consuming a worker. Removing it regained that thread and eliminated stuttering caused by thread synchronization.
+- **No Contention**: Managers don't compete for workers - each uses 100% during its window
+- **Simpler Design**: No complex allocation percentages to tune
+- **Better Cache Locality**: Workers process related work together
 
 #### Rendering
 ```cpp

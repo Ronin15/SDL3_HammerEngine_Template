@@ -405,14 +405,12 @@ The recommended pattern uses Controllers for state-specific time handling:
 ```cpp
 // GamePlayState::enter()
 GameTimeManager::Instance().enableAutoWeather(true);
-WeatherController::Instance().subscribe();
-TimeController::Instance().subscribe("gameplay_event_log");
-DayNightController::Instance().subscribe();
+m_weatherController.subscribe();
+m_dayNightController.subscribe();
 
 // GamePlayState::exit()
-WeatherController::Instance().unsubscribe();
-TimeController::Instance().unsubscribe();
-DayNightController::Instance().unsubscribe();
+m_weatherController.unsubscribe();
+m_dayNightController.unsubscribe();
 ```
 
 See: `docs/controllers/README.md` for Controller pattern details.
@@ -461,7 +459,8 @@ void GamePlayState::update(float deltaTime) {
 
 ```cpp
 // GOOD: Use Controllers for common patterns
-TimeController::Instance().subscribe("event_log");
+m_weatherController.subscribe();      // Weather events
+m_dayNightController.subscribe();     // Time period changes
 
 // AVOID: Manual event subscription for common cases
 // (Controllers handle zero-allocation, proper lifecycle)
@@ -567,7 +566,6 @@ void setupDebugTimeControls() {
 ## Related Documentation
 
 - **Controllers:** `docs/controllers/README.md` - State-scoped event handling
-- **TimeController:** `docs/controllers/TimeController.md` - Time event logging
 - **WeatherController:** `docs/controllers/WeatherController.md` - Weather coordination
 - **DayNightController:** `docs/controllers/DayNightController.md` - Visual time periods
 - **EventManager:** `docs/events/EventManager.md` - Event system reference

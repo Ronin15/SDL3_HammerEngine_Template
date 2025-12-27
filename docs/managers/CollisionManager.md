@@ -2,27 +2,62 @@
 
 ## Overview
 
-The CollisionManager is a high-performance collision detection and response system designed for the Hammer Engine. It provides efficient spatial partitioning, batch processing capabilities, and tight integration with the AI and pathfinding systems. The manager supports thousands of collision bodies while maintaining 60+ FPS performance.
+The CollisionManager is a high-performance collision detection and response system designed for the Hammer Engine. It provides efficient spatial partitioning, batch processing capabilities, and tight integration with the AI and pathfinding systems. The manager supports 27,000+ collision bodies at 60+ FPS through hybrid dual-path threading, SOA storage, and SIMD optimizations.
 
 ## Architecture
 
 ### Design Patterns
 - **Singleton Pattern**: Ensures single instance with global access
 - **Hierarchical Spatial Hash**: Two-tier adaptive spatial hash system optimized for 10K+ bodies
+- **SOA Storage**: Structure-of-Arrays layout for cache-friendly collision processing
 - **Event-Driven**: Integrates with EventManager for collision notifications
 - **Batch Processing**: Optimized batch updates for AI entity kinematics
+- **Hybrid Threading**: Dual-path (single/multi-threaded) for both broadphase and narrowphase
 
 ### Core Components
+
+#### AABB (Axis-Aligned Bounding Box)
+The fundamental collision primitive used throughout the system.
+```cpp
+namespace HammerEngine {
+    struct AABB {
+        Vector2D center;    // World center position
+        Vector2D halfSize;  // Half-width and half-height
+
+        // Constructors
+        AABB() = default;
+        AABB(float cx, float cy, float hw, float hh);
+
+        // Boundary methods
+        float left() const;
+        float right() const;
+        float top() const;
+        float bottom() const;
+
+        // Collision detection
+        bool intersects(const AABB& other) const;
+        bool contains(const Vector2D& point) const;
+        Vector2D closestPoint(const Vector2D& point) const;
+    };
+}
+```
 
 #### Body Types
 ```cpp
 enum class BodyType {
     STATIC,     // Immovable world geometry (walls, obstacles)
     KINEMATIC,  // Movable by script/AI (NPCs, moving platforms)
-    DYNAMIC,    // Physics-driven bodies (reserved for future physics)
+    DYNAMIC,    // Physics-driven bodies (player, projectiles)
     TRIGGER     // Non-solid areas that generate events
 };
 ```
+
+**Body Type Distinctions:**
+- **STATIC**: World obstacles, buildings, triggers (never move, handled separately)
+- **KINEMATIC**: NPCs, script-controlled entities (move via script, not physics)
+- **DYNAMIC**: Player, projectiles (physics-simulated, respond to forces)
+
+The collision system groups KINEMATIC + DYNAMIC as "movable" bodies for broadphase optimization, since both require collision detection against static geometry and each other.
 
 #### Collision Layers
 ```cpp
@@ -36,6 +71,273 @@ namespace CollisionLayer {
 }
 ```
 
+---
+
+## Threading Architecture
+
+### Hybrid Dual-Path Threading
+
+CollisionManager uses **adaptive hybrid threading** with WorkerBudget integration. Both broadphase and narrowphase have single-threaded and multi-threaded execution paths, selected dynamically based on workload size.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    CollisionManager::updateSOA()                │
+├─────────────────────────────────────────────────────────────────┤
+│  1. Build Active Indices (culling)                              │
+│  2. Sync Dynamic Spatial Hash                                   │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  BROADPHASE (broadphaseSOA)                             │    │
+│  │  ┌───────────────────┐  ┌───────────────────────────┐   │    │
+│  │  │ Single-Threaded   │  │ Multi-Threaded            │   │    │
+│  │  │ (<500 movable)    │  │ (>=500 movable bodies)    │   │    │
+│  │  │                   │  │ WorkerBudget batching     │   │    │
+│  │  └───────────────────┘  └───────────────────────────┘   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                              │                                  │
+│                              ▼                                  │
+│  ┌─────────────────────────────────────────────────────────┐    │
+│  │  NARROWPHASE (narrowphaseSOA)                           │    │
+│  │  ┌───────────────────┐  ┌───────────────────────────┐   │    │
+│  │  │ Single-Threaded   │  │ Multi-Threaded            │   │    │
+│  │  │ (<100 pairs)      │  │ (>=100 collision pairs)   │   │    │
+│  │  │ 4-wide SIMD       │  │ Per-batch buffers         │   │    │
+│  │  └───────────────────┘  └───────────────────────────┘   │    │
+│  └─────────────────────────────────────────────────────────┘    │
+│                                                                 │
+│  3. Resolve Collisions                                          │
+│  4. Process Trigger Events                                      │
+│  5. Sync Entities                                               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Threading Thresholds
+
+| Phase | Threshold | Rationale |
+|-------|-----------|-----------|
+| Broadphase | 500+ movable bodies | Threading overhead outweighs benefit for smaller counts |
+| Narrowphase | 100+ collision pairs | SIMD single-threaded is fast enough below this |
+
+### WorkerBudget Integration
+
+CollisionManager queries WorkerBudgetManager for optimal batch configuration:
+
+```cpp
+// Dispatcher in broadphaseSOA()
+auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+size_t optimalWorkers = budgetMgr.getOptimalWorkers(
+    HammerEngine::SystemType::Collision, movableIndices.size());
+
+auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+    HammerEngine::SystemType::Collision,
+    movableIndices.size(),
+    optimalWorkers);
+
+if (batchCount <= 1 || movableIndices.size() < MIN_MOVABLE_FOR_BROADPHASE_THREADING) {
+    broadphaseSingleThreaded(indexPairs);
+} else {
+    broadphaseMultiThreaded(indexPairs, batchCount, batchSize);
+}
+```
+
+### Per-Batch Output Buffers (Zero Contention)
+
+Multi-threaded narrowphase uses **per-batch output buffers** to eliminate lock contention:
+
+```cpp
+// Each worker thread has its own collision buffer
+std::vector<std::vector<CollisionInfo>> m_batchCollisionBuffers;
+
+// After all batches complete, results are merged
+void mergeThreadResults() {
+    for (auto& batchBuffer : m_batchCollisionBuffers) {
+        collisions.insert(collisions.end(),
+                         batchBuffer.begin(), batchBuffer.end());
+    }
+}
+```
+
+### Performance
+
+- **2-4x speedup** for narrowphase with 10K+ bodies when multi-threaded
+- **27K+ bodies @ 60 FPS** on Apple Silicon (M1/M2/M3)
+- **Adaptive batching** converges to optimal batch size via WorkerBudget hill-climbing
+
+---
+
+## SOA Storage Architecture
+
+CollisionManager uses Structure-of-Arrays (SOA) storage for optimal cache performance during collision detection.
+
+### HotData (64 bytes, cache-aligned)
+Accessed every frame during collision detection:
+```cpp
+struct HotData {
+    Vector2D position;           // 8 bytes: Current position (center of AABB)
+    Vector2D velocity;           // 8 bytes: Current velocity
+    Vector2D halfSize;           // 8 bytes: Half-width and half-height
+
+    // Cached AABB for performance
+    mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;  // 16 bytes
+
+    uint16_t layers;             // 2 bytes: Layer mask
+    uint16_t collidesWith;       // 2 bytes: Collision mask
+    uint8_t bodyType;            // 1 byte: BodyType enum
+    uint8_t triggerTag;          // 1 byte: TriggerTag enum
+    uint8_t active;              // 1 byte: Participates in detection
+    uint8_t isTrigger;           // 1 byte: Is trigger body
+    mutable uint8_t aabbDirty;   // 1 byte: Cache invalidation flag
+
+    int16_t coarseCellX, coarseCellY;  // 4 bytes: Cached grid coords
+    uint8_t _reserved[5];        // 5 bytes: Future expansion
+    uint8_t _padding[2];         // 2 bytes: Alignment
+};
+static_assert(sizeof(HotData) == 64, "HotData must be cache-line aligned");
+```
+
+### ColdData (Rarely Accessed)
+Separated to avoid cache pollution:
+```cpp
+struct ColdData {
+    EntityWeakPtr entityWeak;    // Back-reference to entity
+    Vector2D acceleration;       // Acceleration (rarely used)
+    Vector2D lastPosition;       // Previous position
+    AABB fullAABB;              // Full AABB object
+    float restitution;           // Bounce coefficient
+    float friction;              // Surface friction
+    float mass;                  // Mass (kg)
+};
+```
+
+### Benefits
+- **Cache-friendly**: HotData fits in single cache line
+- **Minimal pollution**: ColdData accessed only when needed
+- **Fast iteration**: Sequential memory access during broadphase/narrowphase
+
+---
+
+## Hierarchical Spatial Hash
+
+### Two-Tier Architecture
+
+The collision system uses **two separate spatial hashes** for optimal performance:
+
+#### Static Spatial Hash (`m_staticSpatialHash`)
+- **Contains**: World geometry (buildings, obstacles, water triggers)
+- **Rebuilt**: Only when world changes (tile edits, building placement)
+- **Queried**: By dynamic/kinematic bodies during broadphase
+- **Optimization**: Coarse-grid region cache (128x128 cells) reduces redundant queries
+
+#### Dynamic Spatial Hash (`m_dynamicSpatialHash`)
+- **Contains**: Moving entities (player, NPCs, projectiles)
+- **Rebuilt**: Every frame from active culled bodies
+- **Queried**: For dynamic-vs-dynamic collision detection
+- **Optimization**: Only includes bodies within culling area
+
+### Why Separation?
+- Avoids rebuilding thousands of static tiles every frame
+- Static bodies never initiate collision checks (optimization)
+- Cache remains valid across frames for static geometry
+- Culling only applies to dynamic hash, not static
+
+### HierarchicalSpatialHash Configuration
+```cpp
+class HierarchicalSpatialHash {
+public:
+    static constexpr float COARSE_CELL_SIZE = 128.0f;    // Region-level culling
+    static constexpr float FINE_CELL_SIZE = 32.0f;       // Precise collision detection
+    static constexpr float MOVEMENT_THRESHOLD = 8.0f;    // Static body update threshold
+    static constexpr size_t REGION_ACTIVE_THRESHOLD = 16; // Dynamic subdivision threshold
+
+    // Core operations
+    void insert(size_t bodyIndex, const AABB& aabb);
+    void remove(size_t bodyIndex);
+    void update(size_t bodyIndex, const AABB& oldAABB, const AABB& newAABB);
+    void clear();
+
+    // Query operations
+    void queryRegion(const AABB& area, std::vector<size_t>& outBodyIndices) const;
+    void queryRegionBounds(float minX, float minY, float maxX, float maxY,
+                          std::vector<size_t>& outBodyIndices) const;
+
+    // Batch operations
+    void insertBatch(const std::vector<std::pair<size_t, AABB>>& bodies);
+    void updateBatch(const std::vector<std::tuple<size_t, AABB, AABB>>& updates);
+};
+```
+
+### Adaptive Subdivision
+```cpp
+// Low density region (<=16 bodies): Single coarse cell lookup
+// High density region (>16 bodies): Fine grid subdivision for precision
+
+struct Region {
+    CoarseCoord coord;
+    size_t bodyCount;
+    bool hasFineSplit;  // true when bodyCount > REGION_ACTIVE_THRESHOLD (16)
+
+    // Fine subdivision (only created for high-density regions)
+    std::unordered_map<GridKey, std::vector<size_t>> fineCells;
+
+    // Coarse body list (used for low-density regions)
+    std::vector<size_t> bodyIndices;
+};
+```
+
+---
+
+## SIMD Processing
+
+CollisionManager uses cross-platform SIMD operations from `SIMDMath.hpp` for high-performance collision detection.
+
+### 4-Wide AABB Intersection Testing
+
+Both single-threaded and multi-threaded narrowphase process collision pairs in batches of 4:
+
+```cpp
+// In narrowphaseSingleThreaded()
+size_t i = 0;
+const size_t simdEnd = (indexPairs.size() / 4) * 4;
+
+for (; i < simdEnd; i += 4) {
+    // Load indices for 4 pairs
+    const auto& [aIdx0, bIdx0] = indexPairs[i];
+    const auto& [aIdx1, bIdx1] = indexPairs[i+1];
+    const auto& [aIdx2, bIdx2] = indexPairs[i+2];
+    const auto& [aIdx3, bIdx3] = indexPairs[i+3];
+
+    // Get AABB bounds for all 4 pairs
+    alignas(16) float minXA[4], minYA[4], maxXA[4], maxYA[4];
+    alignas(16) float minXB[4], minYB[4], maxXB[4], maxYB[4];
+
+    // SIMD intersection tests...
+}
+
+// Scalar tail for remaining pairs
+for (; i < indexPairs.size(); ++i) {
+    processNarrowphasePairScalar(indexPairs[i], collisions);
+}
+```
+
+### Layer Mask Filtering
+```cpp
+// Check collision layer masks for 4 bodies simultaneously
+const Int4 maskVec = broadcast_int(dynamicCollidesWith);
+
+for (; i < simdEnd; i += 4) {
+    Int4 layers = load4_int(layerMasks);
+    Int4 overlap = bitwise_and_int(layers, maskVec);
+    // Non-zero means can collide
+}
+```
+
+### Platform Support
+- **x86-64**: SSE2 (baseline), AVX2 (advanced)
+- **ARM64**: NEON (Apple Silicon M1/M2/M3)
+- **Fallback**: Automatic scalar fallback for unsupported platforms
+
+---
+
 ## Public API Reference
 
 ### Initialization and Lifecycle
@@ -47,43 +349,32 @@ Initializes the CollisionManager singleton.
 
 #### `void clean()`
 Shuts down the CollisionManager and cleans up all resources.
-- **Side Effects**: Clears all bodies, spatial hashes, and callbacks
 
 #### `void prepareForStateTransition()`
 Prepares the manager for game state transitions.
-- **Side Effects**: Clears all collision state while keeping the manager initialized
+- **CRITICAL**: Clears ALL bodies (static and dynamic) during state transitions
+- Called automatically by GameStateManager before state transitions
 
 ### Body Management
 
-#### `void addBody(EntityID id, const AABB& aabb, BodyType type)`
-Adds a collision body to the system.
+#### SOA Body Management (Recommended)
 ```cpp
-// Add a static wall
-CollisionManager::Instance().addBody(
-    wallId,
-    AABB(50.0f, 50.0f, 10.0f, 100.0f),
-    BodyType::STATIC
-);
+// Add body using SOA storage
+size_t addCollisionBodySOA(EntityID id, const Vector2D& position,
+                           const Vector2D& halfSize, BodyType type,
+                           uint32_t layer = CollisionLayer::Layer_Default,
+                           uint32_t collideMask = 0xFFFFFFFFu,
+                           bool isTrigger = false, uint8_t triggerTag = 0);
 
-// Add a kinematic NPC
-CollisionManager::Instance().addBody(
-    npcId,
-    AABB(player.x, player.y, 16.0f, 16.0f),
-    BodyType::KINEMATIC
-);
+// Remove body
+void removeCollisionBodySOA(EntityID id);
+
+// Update position/velocity
+void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
+void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
 ```
 
-#### `void removeBody(EntityID id)`
-Removes a collision body from the system.
-```cpp
-CollisionManager::Instance().removeBody(entityId);
-```
-
-#### `void setBodyEnabled(EntityID id, bool enabled)`
-Enables or disables collision detection for a body.
-
-#### `void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask)`
-Sets collision layers and masks for filtering.
+#### Layer Configuration
 ```cpp
 // NPC that collides with players and environment
 CollisionManager::Instance().setBodyLayer(
@@ -93,23 +384,26 @@ CollisionManager::Instance().setBodyLayer(
 );
 ```
 
-### Kinematic Body Updates
+### Batch Updates
 
-#### `void setKinematicPose(EntityID id, const Vector2D& center)`
-Updates a kinematic body's position.
-
-#### `void setVelocity(EntityID id, const Vector2D& velocity)`
-Sets a body's velocity for collision resolution.
-
-#### `void updateKinematicBatch(const std::vector<KinematicUpdate>& updates)`
-**High-Performance Batch Update** - Optimized for AI systems managing hundreds of entities.
+#### `void updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates)`
+High-performance batch update for AI systems.
 ```cpp
+struct KinematicUpdate {
+    EntityID id;
+    Vector2D position;
+    Vector2D velocity;
+};
+
 std::vector<CollisionManager::KinematicUpdate> updates;
 for (const auto& entity : aiEntities) {
     updates.emplace_back(entity.id, entity.position, entity.velocity);
 }
-CollisionManager::Instance().updateKinematicBatch(updates);
+CollisionManager::Instance().updateKinematicBatchSOA(updates);
 ```
+
+#### `void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates)`
+Zero-contention batch updates where each AI batch has its own buffer.
 
 ### Trigger System
 
@@ -148,69 +442,70 @@ enum class TriggerTag {
 
 #### Trigger Cooldowns
 ```cpp
-// Set cooldown for specific trigger
 CollisionManager::Instance().setTriggerCooldown(triggerId, 2.0f);
-
-// Set default cooldown for all new triggers
 CollisionManager::Instance().setDefaultTriggerCooldown(1.0f);
+```
+
+### Queries
+
+```cpp
+// Test if two bodies overlap
+bool overlaps(EntityID a, EntityID b) const;
+
+// Find all bodies within area
+void queryArea(const AABB& area, std::vector<EntityID>& out) const;
+
+// Get body center position
+bool getBodyCenter(EntityID id, Vector2D& outCenter) const;
+
+// Type checking
+bool isDynamic(EntityID id) const;
+bool isKinematic(EntityID id) const;
+bool isStatic(EntityID id) const;
+bool isTrigger(EntityID id) const;
 ```
 
 ### World Integration
 
-#### `size_t createTriggersForWaterTiles(TriggerTag tag = TriggerTag::Water)`
-Automatically creates trigger areas for all water tiles in the world.
-- **Returns**: Number of water triggers created
-- **Use Case**: Called during world initialization
-
-#### `size_t createTriggersForObstacles()`
-Creates triggers for movement-affecting obstacles (rocks, trees).
-- **Returns**: Number of obstacle triggers created
-
-#### `size_t createStaticObstacleBodies()`
-Creates static collision bodies for solid world obstacles.
-- **Returns**: Number of static bodies created
-
-#### `void rebuildStaticFromWorld()`
-Rebuilds all static collision bodies from the current WorldManager state.
-
-#### `void onTileChanged(int x, int y)`
-Updates collision state when a world tile changes.
-
-### Queries and Collision Detection
-
-#### `bool overlaps(EntityID a, EntityID b) const`
-Tests if two bodies overlap.
-
-#### `void queryArea(const AABB& area, std::vector<EntityID>& out) const`
-Finds all bodies within a specified area.
 ```cpp
-std::vector<EntityID> nearbyBodies;
-AABB searchArea(playerX, playerY, 50.0f, 50.0f);
-CollisionManager::Instance().queryArea(searchArea, nearbyBodies);
+// Rebuild all static collision bodies from world
+void rebuildStaticFromWorld();
+
+// Create triggers for water tiles
+size_t createTriggersForWaterTiles(TriggerTag tag = TriggerTag::Water);
+
+// Create triggers for movement-affecting obstacles
+size_t createTriggersForObstacles();
+
+// Create static collision bodies for solid obstacles
+size_t createStaticObstacleBodies();
+
+// Update collision state when tile changes
+void onTileChanged(int x, int y);
 ```
 
-#### `bool getBodyCenter(EntityID id, Vector2D& outCenter) const`
-Gets the center position of a body.
-
-#### Type Checking
-```cpp
-bool isDynamic(EntityID id) const;
-bool isKinematic(EntityID id) const;
-bool isTrigger(EntityID id) const;
-```
-
-### Performance Monitoring
-
-#### `void update(float deltaTime)`
-Main update loop - processes collision detection and triggers.
-- **Performance**: Handles 10,000+ bodies at 60+ FPS
-- **Threading**: Thread-safe, can be called from update thread
+---
 
 ## Integration Examples
 
+### World Loading
+```cpp
+void GameState::loadLevel() {
+    WorldManager::Instance().loadWorld("level1.json");
+
+    CollisionManager::Instance().rebuildStaticFromWorld();
+
+    size_t waterTriggers = CollisionManager::Instance().createTriggersForWaterTiles();
+    size_t obstacleTriggers = CollisionManager::Instance().createTriggersForObstacles();
+
+    GAMEENGINE_INFO(std::format("Created {} water, {} obstacle triggers",
+                                waterTriggers, obstacleTriggers));
+}
+```
+
 ### AI System Integration
 ```cpp
-// In AIManager update loop
+// In AIManager - batch update all kinematic bodies
 std::vector<CollisionManager::KinematicUpdate> kinematicUpdates;
 kinematicUpdates.reserve(m_activeEntities.size());
 
@@ -219,204 +514,120 @@ for (const auto& entity : m_activeEntities) {
     kinematicUpdates.emplace_back(entity->getId(), newPosition, entity->getVelocity());
 }
 
-// Batch update all kinematic bodies
-CollisionManager::Instance().updateKinematicBatch(kinematicUpdates);
+CollisionManager::Instance().updateKinematicBatchSOA(kinematicUpdates);
 ```
 
-### Event System Integration
+### Collision Event Handling
 ```cpp
-// Collision callbacks are automatically forwarded to EventManager
-// Listen for collision events in your game systems:
 EventManager::Instance().subscribe<CollisionEvent>(
     [](const CollisionEvent& event) {
-        // Handle collision between event.entityA and event.entityB
         handleEntityCollision(event.entityA, event.entityB);
     }
 );
 ```
 
-### World Loading Integration
+### AI Obstacle Avoidance
 ```cpp
-// After loading a new world/level
-void GameState::loadLevel() {
-    // Load world data first
-    WorldManager::Instance().loadWorld("level1.json");
+bool AIBehavior::canMoveToPosition(const Vector2D& targetPos) {
+    AABB testAABB(targetPos.x, targetPos.y, m_entity->getHalfWidth(), m_entity->getHalfHeight());
 
-    // Rebuild collision system from world
-    CollisionManager::Instance().rebuildStaticFromWorld();
+    std::vector<EntityID> obstacles;
+    CollisionManager::Instance().queryArea(testAABB, obstacles);
 
-    // Create environmental triggers
-    size_t waterTriggers = CollisionManager::Instance().createTriggersForWaterTiles();
-    size_t obstacleTriggers = CollisionManager::Instance().createTriggersForObstacles();
-
-    GAMEENGINE_INFO("Created " + std::to_string(waterTriggers) + " water triggers, " +
-                   std::to_string(obstacleTriggers) + " obstacle triggers");
+    for (EntityID obstacleId : obstacles) {
+        if (CollisionManager::Instance().isDynamic(obstacleId) ||
+            CollisionManager::Instance().isKinematic(obstacleId)) {
+            continue; // Ignore dynamic entities
+        }
+        if (!CollisionManager::Instance().isTrigger(obstacleId)) {
+            return false; // Blocked by static geometry
+        }
+    }
+    return true;
 }
 ```
 
-## Performance Considerations
+---
 
-### Hierarchical Spatial Hash Optimization
-- **Two-Tier Grid System**: Coarse grid (128 units) for region culling, fine grid (32 units) for precise detection
-- **Adaptive Subdivision**: Fine grid only created when region exceeds 16 bodies (20-30% performance boost)
-- **Cache-Friendly**: SOA layout and zero-allocation frame processing for optimal performance
-- **Automatic Sizing**: Hash automatically sizes based on world bounds and entity density
+## Performance Metrics
 
-### Batch Processing Benefits
-- **Reduced Lock Contention**: Single lock acquisition for batch updates
-- **Cache Efficiency**: Sequential memory access patterns
-- **SIMD Optimizations**: Active use of SIMDMath.hpp for AABB calculations
+### Measured Performance
+| Metric | Value |
+|--------|-------|
+| Max Bodies @ 60 FPS | 27,000+ (Apple Silicon) |
+| Average Update Time (10K bodies) | 0.25ms |
+| Memory per Body | ~200 bytes |
+| CPU Usage (typical) | 2-4% |
 
-### SIMD Optimizations
+### Scaling Characteristics
+| Body Count | Update Time |
+|------------|-------------|
+| 100 | <0.1ms |
+| 1,000 | 0.05-0.08ms |
+| 10,000+ | 0.2-0.3ms |
 
-CollisionManager leverages cross-platform SIMD operations for high-performance AABB (Axis-Aligned Bounding Box) calculations and layer mask filtering.
+### Threading Speedup
+| Workload | Speedup |
+|----------|---------|
+| 10K+ bodies (narrowphase) | 2-4x |
+| Broadphase spatial queries | 1.5-2x |
 
-**SIMD Abstraction Layer:**
-- **Cross-Platform**: Uses `SIMDMath.hpp` for unified SIMD operations
-- **x86-64 Support**: SSE2 (baseline), AVX2 (advanced)
-- **ARM64 Support**: NEON (Apple Silicon M1/M2/M3)
-- **Scalar Fallback**: Automatic fallback for unsupported platforms
+---
 
-**AABB Bounds Calculation:**
-```cpp
-// Compute AABB bounds for 4 collision bodies simultaneously
-using namespace HammerEngine::SIMD;
+## Thread Safety
 
-// Load centers and halfsizes (Structure-of-Arrays layout)
-Float4 cx = load4(centerX);  // 4 center X coordinates
-Float4 cy = load4(centerY);  // 4 center Y coordinates
-Float4 hx = load4(halfsizeX); // 4 halfsize X values
-Float4 hy = load4(halfsizeY); // 4 halfsize Y values
+### Lock Strategy
+- **`std::shared_mutex` (`m_storageMutex`)**: Read-write locking for storage access
+  - `std::shared_lock` for concurrent reads (queryArea, overlaps, getBodyCenter)
+  - `std::unique_lock` for exclusive writes (attachEntity, prepareForStateTransition)
+- **Command Queue**: Deferred add/remove operations via `m_commandQueueMutex`
+- **Per-Batch Buffers**: Narrowphase uses isolated buffers per worker thread
 
-// Compute bounds: minX = cx - hx, maxX = cx + hx
-Float4 minX = sub(cx, hx);
-Float4 minY = sub(cy, hy);
-Float4 maxX = add(cx, hx);
-Float4 maxY = add(cy, hy);
-
-// Store results
-store4(boundsMinX, minX);
-store4(boundsMinY, minY);
-store4(boundsMaxX, maxX);
-store4(boundsMaxY, maxY);
-```
-
-**Layer Mask Filtering:**
-```cpp
-// Check collision layer masks for 4 bodies simultaneously
-Int4 layers = load4_int(layerMasks);
-Int4 collides = load4_int(collideMasks);
-
-// Bitwise AND to test overlap
-Int4 overlap = bitwise_and_int(layers, collides);
-
-// Check if any bits set (non-zero means can collide)
-Int4 zero = broadcast_int(0);
-Int4 mask = cmpgt_int(overlap, zero);
-
-// Extract results as bitmask
-int movemask = movemask_int(mask);
-bool canCollide = (movemask != 0);
-```
-
-**Performance Benefits:**
-- **2-3x speedup** on AABB calculations for 10,000+ bodies
-- **Better cache locality**: Process 4 bodies per SIMD instruction
-- **Reduced memory bandwidth**: Fewer loads/stores vs scalar code
-- **Platform-optimized**: Automatic selection of best SIMD path
-
-**Implementation Details:**
-- AABB calculations batch processed in groups of 4
-- Scalar tail loop handles remaining bodies (count % 4)
-- SIMD path automatically enabled on supported platforms
-- See [SIMDMath Documentation](../utils/SIMDMath.md) for complete API reference
-
-### Performance Metrics
-
-**Measured Performance (from performance reports):**
-- **Average Update Time**: 0.25ms with 10,300 collision bodies
-- **Throughput**: 10,000+ bodies at 60+ FPS consistently
-- **Memory**: ~200 bytes per collision body
-- **CPU Usage**: 2-4% on modern hardware for typical game scenarios
-
-**Scaling Characteristics:**
-- **100 bodies**: <0.1ms average update time
-- **1,000 bodies**: 0.05-0.08ms average update time
-- **10,000+ bodies**: 0.2-0.3ms average update time
-- **Spatial Hash Efficiency**: O(1) average lookup, O(n) worst case
-
-**SIMD Performance Impact:**
-- **AABB Calculations**: 2-3x faster with SIMD vs scalar
-- **Layer Mask Filtering**: 2-3x faster with SIMD vs scalar
-- **Overall Collision System**: 20-30% improvement with SIMD optimizations
-
-### Best Practices
-1. **Use Batch Updates**: Always prefer `updateKinematicBatch()` over individual updates
-2. **Layer Filtering**: Use collision layers to avoid unnecessary checks
-3. **Static Body Caching**: Static bodies are cached - prefer them for immovable geometry
-4. **Trigger Cooldowns**: Use cooldowns to prevent trigger spam
-
-## Threading Model
-
-### Design Decision: Single-Threaded Collision Detection
-
-**CollisionManager uses single-threaded collision detection and is NOT included in WorkerBudget calculations.**
-
-**Rationale:**
-- Collision detection requires complex synchronization for spatial hash updates
-- Current SoA implementation is optimized for cache-friendly single-threaded access
-- Parallelization would require per-batch spatial hashes (significant memory overhead)
-- Broadphase is already highly optimized (SIMD, spatial hashing, culling)
-
-**Performance:** Handles 27,000+ bodies @ 60 FPS single-threaded on Apple Silicon. Threading is not a bottleneck for current game scale.
-
-**Future Considerations:** If profiling shows collision as a bottleneck, consider parallel narrowphase after single-threaded broadphase.
-
-### Thread Safety
+### Safe Access Patterns
 - **Update Thread**: Main collision detection runs on update thread
-- **Render Thread**: Query operations are thread-safe for rendering
+- **Render Thread**: Query operations are thread-safe
 - **Background Threads**: PathfinderManager can safely query collision state
 
-### Synchronization
-- **Shared Mutex**: Read-heavy operations use shared locks
-- **Batch Locking**: Batch operations acquire single lock for efficiency
-- **Lock-Free Queries**: Spatial hash queries avoid locks where possible
+---
 
-## Error Handling
-
-### Common Issues
-1. **Invalid EntityID**: Operations on non-existent bodies are safely ignored
-2. **Duplicate Bodies**: Adding duplicate IDs overwrites existing bodies
-3. **State Transitions**: Use `prepareForStateTransition()` to avoid dangling references
+## Debug and Testing
 
 ### Debug Features
 ```cpp
 // Enable verbose collision logging
 CollisionManager::Instance().setVerboseLogging(true);
 
-// Performance statistics
-auto stats = CollisionManager::Instance().getPerformanceStats();
-GAMEENGINE_INFO("Collision checks: " + std::to_string(stats.collisionChecks));
+// Get performance statistics
+const auto& stats = CollisionManager::Instance().getPerfStats();
 ```
 
-## Testing
+### Performance Stats Structure
+```cpp
+struct PerfStats {
+    double lastBroadphaseMs;
+    double lastNarrowphaseMs;
+    double lastTotalMs;
+    double avgTotalMs;
+    size_t lastPairs;
+    size_t lastCollisions;
+    size_t lastActiveBodies;
+    size_t lastDynamicBodiesCulled;
+    size_t lastStaticBodiesCulled;
+};
+```
 
 ### Unit Tests
-- **AABB Tests**: Collision boundary validation
-- **SpatialHash Tests**: Insertion, removal, and query validation
-- **Performance Tests**: Scaling tests with 10K+ entities
-
-### Integration Tests
-- **World Integration**: Automatic body creation from world data
-- **AI Integration**: Batch update performance and correctness
-- **Event Integration**: Collision event forwarding validation
-
-### Benchmark Tests
 ```bash
-# Run collision system benchmarks
+# Run collision system tests
 ./tests/test_scripts/run_collision_tests.sh
-./tests/test_scripts/run_collision_benchmark.sh      # Collision performance benchmarks
-./tests/test_scripts/run_pathfinder_benchmark.sh     # Pathfinding performance benchmarks
+
+# Individual test executables
+./bin/debug/collision_system_tests
+./bin/debug/collision_config_tests
+
+# Performance benchmarks
+./bin/debug/collision_benchmark
+./tests/test_scripts/run_collision_benchmark.sh
 ```
 
 For more details on testing, see [TESTING.md](../../tests/TESTING.md).
