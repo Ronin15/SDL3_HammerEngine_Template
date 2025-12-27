@@ -16,17 +16,21 @@
 #include <thread>
 #include <cmath>
 
-struct ThreadSystemFixture {
-    ThreadSystemFixture() {
+// Global fixture: ThreadSystem initialized once for entire test suite
+struct GlobalThreadSystemFixture {
+    GlobalThreadSystemFixture() {
         // Initialize ThreadSystem with default worker count (hardware_concurrency - 1)
         HammerEngine::ThreadSystem::Instance().init();
     }
-    ~ThreadSystemFixture() {
+    ~GlobalThreadSystemFixture() {
         HammerEngine::ThreadSystem::Instance().clean();
     }
 };
 
-BOOST_FIXTURE_TEST_SUITE(WorkerBudgetManagerTests, ThreadSystemFixture)
+// Apply global fixture to entire test module
+BOOST_GLOBAL_FIXTURE(GlobalThreadSystemFixture);
+
+BOOST_AUTO_TEST_SUITE(WorkerBudgetManagerTests)
 
 BOOST_AUTO_TEST_CASE(TestBudgetAllocation) {
     std::cout << "\n=== Testing WorkerBudgetManager Budget Allocation ===\n";
