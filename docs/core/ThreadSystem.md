@@ -480,11 +480,11 @@ ninja -C build
 
 ```bash
 # Run with TSAN suppression file
-export TSAN_OPTIONS="suppressions=$(pwd)/tsan_suppressions.txt"
+export TSAN_OPTIONS="suppressions=$(pwd)/tests/tsan_suppressions.txt"
 ./bin/debug/SDL3_Template
 ```
 
-ThreadSystem has documented benign race patterns (lock-free statistics, performance counters) suppressed via `tsan_suppressions.txt`.
+ThreadSystem has documented benign race patterns (lock-free statistics, performance counters) suppressed via `tests/tsan_suppressions.txt`.
 
 ---
 
