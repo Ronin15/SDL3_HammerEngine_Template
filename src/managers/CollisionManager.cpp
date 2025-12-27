@@ -1987,10 +1987,9 @@ void CollisionManager::broadphaseMultiThreaded(
 
   // Merge results (single allocation, sequential merge)
   indexPairs.clear();
-  size_t totalPairs = 0;
-  for (const auto& batchPairs : *m_broadphasePairBuffers) {
-    totalPairs += batchPairs.size();
-  }
+  size_t totalPairs = std::accumulate(
+      m_broadphasePairBuffers->begin(), m_broadphasePairBuffers->end(), size_t{0},
+      [](size_t sum, const auto& batchPairs) { return sum + batchPairs.size(); });
   indexPairs.reserve(totalPairs);
 
   for (const auto& batchPairs : *m_broadphasePairBuffers) {
@@ -2058,7 +2057,7 @@ void CollisionManager::broadphaseBatch(
     m_dynamicSpatialHash.queryRegionBoundsThreadSafe(
         queryMinX, queryMinY, queryMaxX, queryMaxY,
         buffers.dynamicCandidates, buffers.queryBuffers);
-    auto& dynamicCandidates = buffers.dynamicCandidates;
+    const auto& dynamicCandidates = buffers.dynamicCandidates;
 
     // SIMD layer mask filtering (4 candidates at a time)
     const Int4 maskVec = broadcast_int(dynamicCollidesWith);
@@ -2545,10 +2544,9 @@ void CollisionManager::narrowphaseMultiThreaded(
 
   // Merge per-batch results into output buffer
   collisions.clear();
-  size_t totalCollisions = 0;
-  for (const auto& batchCollisions : *m_batchCollisionBuffers) {
-    totalCollisions += batchCollisions.size();
-  }
+  size_t totalCollisions = std::accumulate(
+      m_batchCollisionBuffers->begin(), m_batchCollisionBuffers->end(), size_t{0},
+      [](size_t sum, const auto& batchCollisions) { return sum + batchCollisions.size(); });
   collisions.reserve(totalCollisions);
 
   for (const auto& batchCollisions : *m_batchCollisionBuffers) {
@@ -2923,12 +2921,11 @@ void CollisionManager::syncSpatialHashesWithActiveIndices() {
   // OPTIMIZATION: Pre-reserve hash capacity to prevent rebalancing during insertions
   // This prevents hash table growth from triggering rehashing which causes 10-15% performance regression
   // Reserve for expected number of movable bodies (empirically: ~5-10 regions per 1K bodies)
-  size_t activeMovableCount = 0;
-  for (size_t idx : pools.movableIndices) {
-    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
-      activeMovableCount++;
-    }
-  }
+  size_t activeMovableCount = std::count_if(
+      pools.movableIndices.begin(), pools.movableIndices.end(),
+      [this](size_t idx) {
+        return idx < m_storage.hotData.size() && m_storage.hotData[idx].active;
+      });
   if (activeMovableCount > 0) {
     m_dynamicSpatialHash.reserve(activeMovableCount);  // 1.2-1.5x speedup by preventing rehashing
   }
