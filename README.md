@@ -9,8 +9,8 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
     Clean, modular codebase with strict style, memory, and type safety.
 
 - **Adaptive Multi-Threading System**
-   
-   Hardware-adaptive thread pool with intelligent WorkerBudget allocation that scales from 1 to 16+ cores. Dynamic burst capacity (30% buffer reserve), queue pressure adaptation, and performance-based batch tuning that converges to optimal parallelism for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
+
+   Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one for the main render thread. Sequential manager execution gives each system ALL workers during its update window. Throughput-based hill-climbing converges to optimal batch sizes for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
 
 - **High-Performance AI System**  
     
@@ -120,9 +120,9 @@ ninja -C build
 
 - **Core:** [GameEngine](docs/core/GameEngine.md), [GameTime](docs/core/GameTime.md), [ThreadSystem](docs/core/ThreadSystem.md), [TimestepManager](docs/managers/TimestepManager.md)
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
-- **Collision & Physics:** [Collision System](docs/collisions/CollisionSystem.md)
+- **Collision & Physics:** [CollisionManager](docs/managers/CollisionManager.md)
 - **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [TimeEvents](docs/events/TimeEvents.md), [EventFactory](docs/events/EventFactory.md)
-- **Controllers:** [Overview](docs/controllers/README.md), [TimeController](docs/controllers/TimeController.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md)
+- **Controllers:** [Overview](docs/controllers/README.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md)
 - **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md), [CollisionManager](docs/managers/CollisionManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Camera](docs/utils/Camera.md)

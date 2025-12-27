@@ -220,17 +220,20 @@ EventManager::Instance().removeHandler(m_timeToken);
 
 ### Using Controllers (Recommended)
 
-Controllers handle common patterns with zero per-frame allocations:
+Controllers handle common patterns with zero per-frame allocations. Controllers are owned by GameState, not singletons:
 
 ```cpp
-// Time logging to UI
-TimeController::Instance().subscribe("my_event_log");
+// In GamePlayState.hpp
+WeatherController m_weatherController;
+DayNightController m_dayNightController;
 
-// Weather coordination
-WeatherController::Instance().subscribe();
+// In GamePlayState::enter()
+m_weatherController.subscribe();      // Weather coordination
+m_dayNightController.subscribe();     // Day/night visual effects
 
-// Day/night visual effects
-DayNightController::Instance().subscribe();
+// In GamePlayState::exit()
+m_weatherController.unsubscribe();
+m_dayNightController.unsubscribe();
 ```
 
 ## Event Filtering Pattern
@@ -278,7 +281,6 @@ GameTimeManager::update(deltaTime)
 
 - **GameTime**: `docs/core/GameTime.md` - Time system that dispatches events
 - **EventManager**: `docs/events/EventManager.md` - Event subscription system
-- **TimeController**: `docs/controllers/TimeController.md` - Time event logging
 - **WeatherController**: `docs/controllers/WeatherController.md` - Weather handling
 - **DayNightController**: `docs/controllers/DayNightController.md` - Time period tracking
 

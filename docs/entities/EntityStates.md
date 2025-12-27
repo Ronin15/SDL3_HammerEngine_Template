@@ -4,7 +4,7 @@
 
 This document details the various states that Player and NPC entities can transition through, managed by their respective state machines. The state machine pattern centralizes behavior logic, ensuring modularity, clear transitions, and robust handling of entity actions.
 
-Each state defines `enter()`, `execute()`, and `exit()` methods, which are called when the state is entered, updated each frame, and exited, respectively.
+Each state defines `enter()`, `update(float deltaTime)`, and `exit()` methods, which are called when the state is entered, updated each frame, and exited, respectively.
 
 ## Table of Contents
 
@@ -20,25 +20,27 @@ Each state defines `enter()`, `execute()`, and `exit()` methods, which are calle
   - [PlayerIdleState](#playeridlestate)
   - [PlayerAttackingState](#playerattackingstate)
   - [PlayerRunningState](#playerrunningstate)
+  - [PlayerHurtState](#playerhurtstate)
+  - [PlayerDyingState](#playerdyingstate)
 - [Creating Custom States](#creating-custom-states)
 - [Best Practices](#best-practices)
 - [Related Documentation](#related-documentation)
 
 ## Core State Machine Concepts
 
-Entities (Player and NPC) utilize an `EntityStateMachine` to manage their current behavior.
+Entities (Player and NPC) utilize an `EntityStateManager` to manage their current behavior.
 
 **Key Components:**
-- **`EntityState`**: Base abstract class for all states, defining `enter()`, `execute()`, `exit()`, and `onMessage()` interfaces.
-- **`EntityStateMachine`**: Manages the current state, handles state transitions, and delegates `update()` calls to the active state.
+- **`EntityState`**: Base abstract class for all states, defining `enter()`, `update(float deltaTime)`, and `exit()` interfaces.
+- **`EntityStateManager`**: Manages the current state, handles state transitions, and delegates `update()` calls to the active state.
 
 **State Transition Example:**
 ```cpp
-// In a state's execute() method or a controller
+// In a state's update() method or a controller
 if (entity->getHealth() <= 0) {
-    entity->getStateMachine().changeState(std::make_unique<NPCDyingState>());
+    entity->getStateManager().changeState(std::make_unique<NPCDyingState>());
 } else if (targetInRange) {
-    entity->getStateMachine().changeState(std::make_unique<NPCAttackingState>(target));
+    entity->getStateManager().changeState(std::make_unique<NPCAttackingState>(target));
 }
 ```
 
@@ -186,28 +188,59 @@ Player entities have their own set of states, often driven by player input and i
 - Updates player position based on input.
 - Controls running animations.
 
+### PlayerHurtState
+
+**Purpose**: Represents the player that has just taken damage and is reacting to it. This state typically involves a brief stun, recoil animation, or invulnerability period.
+
+**Where to find the code:**
+- Header: `include/entities/playerStates/PlayerHurtState.hpp`
+- Implementation: `src/entities/playerStates/PlayerHurtState.cpp`
+
+**Transitions from:** `PlayerIdleState`, `PlayerRunningState`, `PlayerAttackingState`.
+**Transitions to:** `PlayerIdleState` (after recovery), `PlayerDyingState` (if health drops to zero).
+
+**Key Features**:
+- Short duration with invulnerability frames.
+- Triggers damaged visual effects or sound cues.
+- Prevents player input during stun duration.
+
+### PlayerDyingState
+
+**Purpose**: Represents the player whose health has dropped to zero. This state handles death animations, sound effects, and game over logic.
+
+**Where to find the code:**
+- Header: `include/entities/playerStates/PlayerDyingState.hpp`
+- Implementation: `src/entities/playerStates/PlayerDyingState.cpp`
+
+**Transitions from:** `PlayerIdleState`, `PlayerRunningState`, `PlayerAttackingState`, `PlayerHurtState`.
+**Transitions to:** None (final state, triggers game over or respawn).
+
+**Key Features**:
+- Triggers death animation and effects.
+- Can trigger game over screen or respawn logic via `EventManager`.
+- Disables all player input.
+
 ## Creating Custom States
 
 To create a new custom state for an `Entity`, follow these steps:
 
 1.  **Inherit from `EntityState`**: Create a new class that publicly inherits from `EntityState`.
-2.  **Implement `enter()`, `execute()`, `exit()`**: Define the behavior for when the state is entered, active, and exited.
-3.  **Implement `onMessage()` (Optional)**: Handle any specific messages relevant to this state.
-4.  **Implement `clone()` (if creating instances for multiple entities)**: If the state needs unique data per entity, provide a `clone()` method.
-5.  **Integrate with `EntityStateMachine`**: Update the `EntityStateMachine` logic to allow transitions to and from your new state.
+2.  **Implement `enter()`, `update(float deltaTime)`, `exit()`**: Define the behavior for when the state is entered, active, and exited.
+3.  **Store entity reference**: Pass the entity reference via constructor and store it as a member.
+4.  **Integrate with `EntityStateManager`**: Update the `EntityStateManager` logic to allow transitions to and from your new state.
 
 **Example Structure for a New State:**
 ```cpp
 // include/entities/playerStates/PlayerDodgingState.hpp
 class PlayerDodgingState : public EntityState {
 public:
-    PlayerDodgingState(float dodgeDuration);
-    void enter(Entity& entity) override;
-    void execute(Entity& entity, float deltaTime) override;
-    void exit(Entity& entity) override;
-    void onMessage(Entity& entity, const std::string& message) override;
+    PlayerDodgingState(Player& player, float dodgeDuration);
+    void enter() override;
+    void update(float deltaTime) override;
+    void exit() override;
 
 private:
+    Player& m_player;
     float m_dodgeTimer;
     float m_dodgeDuration;
     Vector2D m_dodgeDirection;

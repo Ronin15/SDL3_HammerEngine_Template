@@ -5,6 +5,8 @@
 - Implementation: `src/controllers/combat/CombatController.cpp`
 - Tests: `tests/controllers/CombatControllerTests.cpp` (assuming this will be created)
 
+**Ownership:** GameState owns the controller instance (not a singleton).
+
 ## Overview
 
 The CombatController is responsible for managing all in-game combat logic and interactions. It handles hit detection, damage calculation, applying status effects, and integrating with entity state machines and the event system to orchestrate dynamic combat scenarios.
@@ -25,8 +27,15 @@ InputManager (Player Attack) / AIManager (NPC Attack)
 #include "controllers/combat/CombatController.hpp"
 #include "events/CombatEvent.hpp"
 
-// In GameState::enter()
-CombatController::Instance().subscribe();
+// In GamePlayState.hpp - controller as member
+class GamePlayState : public GameState {
+private:
+    CombatController m_combatController;  // Owned by state
+    EventHandlerToken m_damageToken;
+};
+
+// In GamePlayState::enter()
+m_combatController.subscribe();
 
 // Subscribe to combat-related events for UI or game logic updates
 m_damageToken = EventManager::Instance().registerHandlerWithToken(
@@ -34,9 +43,9 @@ m_damageToken = EventManager::Instance().registerHandlerWithToken(
     [this](const EventData& data) { onCombatEvent(data); }
 );
 
-// In GameState::exit()
+// In GamePlayState::exit()
 EventManager::Instance().removeHandler(m_damageToken);
-CombatController::Instance().unsubscribe();
+m_combatController.unsubscribe();
 ```
 
 ## Combat Mechanics
@@ -118,51 +127,59 @@ Returns a log of recent combat events for display or analysis.
 ## Usage Example
 
 ```cpp
-// GamePlayState.cpp
+// GamePlayState.hpp
 #include "controllers/combat/CombatController.hpp"
-#include "events/CombatEvent.hpp" // Assuming CombatEvent exists
 
 class GamePlayState : public GameState {
 private:
+    CombatController m_combatController;  // Owned by state
     EventManager::HandlerToken m_combatEventToken;
 
 public:
-    bool enter() override {
-        // Subscribe CombatController
-        CombatController::Instance().subscribe();
-
-        // Subscribe to combat events for UI/game logic
-        m_combatEventToken = EventManager::Instance().registerHandlerWithToken(
-            EventTypeId::Combat, // Assuming a Combat EventType
-            [this](const EventData& data) { onCombatEvent(data); }
-        );
-
-        return true;
-    }
-
-    void exit() override {
-        EventManager::Instance().removeHandler(m_combatEventToken);
-        CombatController::Instance().unsubscribe();
-    }
+    bool enter() override;
+    void exit() override;
 
 private:
-    void onCombatEvent(const EventData& data) {
-        auto combatEvent = std::static_pointer_cast<CombatEvent>(data.event);
-
-        if (combatEvent->getCombatEventType() == CombatEventType::DamageDealt) {
-            // Update UI to show damage numbers
-            displayDamageNumber(combatEvent->getTargetId(), combatEvent->getDamageAmount());
-        } else if (combatEvent->getCombatEventType() == CombatEventType::EntityDied) {
-            // Handle entity death (e.g., remove from game, play animation)
-            handleEntityDeath(combatEvent->getTargetId());
-        }
-    }
+    void onCombatEvent(const EventData& data);
 };
 
-// Example usage in an entity's attack logic
-void Player::performAttack(EntityPtr target) {
+// GamePlayState.cpp
+#include "events/CombatEvent.hpp"
+
+bool GamePlayState::enter() {
+    // Subscribe CombatController
+    m_combatController.subscribe();
+
+    // Subscribe to combat events for UI/game logic
+    m_combatEventToken = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::Combat,
+        [this](const EventData& data) { onCombatEvent(data); }
+    );
+
+    return true;
+}
+
+void GamePlayState::exit() {
+    EventManager::Instance().removeHandler(m_combatEventToken);
+    m_combatController.unsubscribe();
+}
+
+void GamePlayState::onCombatEvent(const EventData& data) {
+    auto combatEvent = std::static_pointer_cast<CombatEvent>(data.event);
+
+    if (combatEvent->getCombatEventType() == CombatEventType::DamageDealt) {
+        // Update UI to show damage numbers
+        displayDamageNumber(combatEvent->getTargetId(), combatEvent->getDamageAmount());
+    } else if (combatEvent->getCombatEventType() == CombatEventType::EntityDied) {
+        // Handle entity death (e.g., remove from game, play animation)
+        handleEntityDeath(combatEvent->getTargetId());
+    }
+}
+
+// Example usage in an entity's attack logic - pass controller reference
+void Player::performAttack(CombatController& combatController, EntityPtr target) {
     // Other attack animations/SFX
-    CombatController::Instance().initiateAttack(shared_from_this(), target, AttackType::Melee);
+    combatController.initiateAttack(shared_from_this(), target, AttackType::Melee);
 }
 ```
 
