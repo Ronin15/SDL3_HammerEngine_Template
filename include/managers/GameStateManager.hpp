@@ -30,6 +30,10 @@ class GameStateManager {
   void removeState(const std::string& stateName);
   void clearAllStates();
 
+  // Frame data pushed from GameEngine - avoids states calling GameEngine::Instance()
+  void setCurrentFPS(float fps) { m_currentFPS = fps; }
+  float getCurrentFPS() const { return m_currentFPS; }
+
  private:
   // All registered states, available for activation
   std::unordered_map<std::string, std::shared_ptr<GameState>> m_registeredStates;
@@ -37,6 +41,7 @@ class GameStateManager {
   std::vector<std::shared_ptr<GameState>> m_activeStates;
 
   float m_lastDeltaTime{0.0f}; // Store deltaTime from update to pass to render
+  float m_currentFPS{0.0f};    // Current FPS pushed from GameEngine
 };
 
 #endif  // GAME_STATE_MANAGER_HPP

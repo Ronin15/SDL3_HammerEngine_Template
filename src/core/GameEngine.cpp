@@ -950,6 +950,8 @@ void GameEngine::update(float deltaTime) {
   }
 
   // 2. Game states - player movement and state logic
+  // Push FPS to GameStateManager so states don't need to call GameEngine::Instance()
+  mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
   mp_gameStateManager->update(deltaTime);
 
   // 3. AI system - processes NPC behaviors with internal parallelization

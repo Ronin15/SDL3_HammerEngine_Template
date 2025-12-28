@@ -7,6 +7,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
@@ -59,52 +60,37 @@ bool MainMenuState::enter() {
   ui.createButtonDanger("mainmenu_exit_btn", {ui.getLogicalWidth()/2 - buttonWidth/2, ui.getLogicalHeight()/2 + firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight}, "Exit");
   ui.setComponentPositioning("mainmenu_exit_btn", {UIPositionMode::CENTERED_BOTH, 0, firstButtonOffset + 7 * buttonStep, buttonWidth, buttonHeight});
 
-  // Set up button callbacks
-  ui.setOnClick("mainmenu_start_game_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("GamePlayState");
+  // Set up button callbacks - capture mp_stateManager for proper architecture
+  ui.setOnClick("mainmenu_start_game_btn", [this]() {
+    mp_stateManager->changeState("GamePlayState");
   });
 
-  ui.setOnClick("mainmenu_ai_demo_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AIDemoState");
+  ui.setOnClick("mainmenu_ai_demo_btn", [this]() {
+    mp_stateManager->changeState("AIDemoState");
   });
 
-  ui.setOnClick("mainmenu_advanced_ai_demo_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("AdvancedAIDemoState");
+  ui.setOnClick("mainmenu_advanced_ai_demo_btn", [this]() {
+    mp_stateManager->changeState("AdvancedAIDemoState");
   });
 
-  ui.setOnClick("mainmenu_event_demo_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("EventDemo");
+  ui.setOnClick("mainmenu_event_demo_btn", [this]() {
+    mp_stateManager->changeState("EventDemo");
   });
 
-  ui.setOnClick("mainmenu_ui_example_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("UIExampleState");
+  ui.setOnClick("mainmenu_ui_example_btn", [this]() {
+    mp_stateManager->changeState("UIExampleState");
   });
 
-  ui.setOnClick("mainmenu_overlay_demo_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("OverlayDemoState");
+  ui.setOnClick("mainmenu_overlay_demo_btn", [this]() {
+    mp_stateManager->changeState("OverlayDemoState");
   });
 
-  ui.setOnClick("mainmenu_settings_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("SettingsMenuState");
+  ui.setOnClick("mainmenu_settings_btn", [this]() {
+    mp_stateManager->changeState("SettingsMenuState");
   });
 
   ui.setOnClick("mainmenu_exit_btn", []() {
-    auto& gameEngine = GameEngine::Instance();
-    gameEngine.setRunning(false);
+    GameEngine::Instance().setRunning(false);
   });
 
   return true;
@@ -141,44 +127,31 @@ void MainMenuState::handleInput() {
 
   // Keyboard shortcuts for quick navigation
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {
-      auto& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("GamePlayState");
+      mp_stateManager->changeState("GamePlayState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_A)) {
-      auto& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("AIDemoState");
+      mp_stateManager->changeState("AIDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_E)) {
-      auto& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("EventDemo");
+      mp_stateManager->changeState("EventDemo");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_U)) {
-      auto& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("UIExampleState");
+      mp_stateManager->changeState("UIExampleState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_O)) {
-      auto& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("OverlayDemoState");
+      mp_stateManager->changeState("OverlayDemoState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_S)) {
-      auto& gameEngine = GameEngine::Instance();
-      auto* gameStateManager = gameEngine.getGameStateManager();
-      gameStateManager->changeState("SettingsMenuState");
+      mp_stateManager->changeState("SettingsMenuState");
   }
 
   if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-      auto& gameEngine = GameEngine::Instance();
-      gameEngine.setRunning(false);
+      GameEngine::Instance().setRunning(false);
   }
 }
 
