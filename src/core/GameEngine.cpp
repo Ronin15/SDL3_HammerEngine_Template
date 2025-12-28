@@ -74,11 +74,11 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // VSync and buffering hints
   // VSync hint - preference before renderer creation (runtime API SDL_SetRenderVSync() also used)
-  SDL_SetHint("SDL_HINT_RENDER_VSYNC", "1");
+  SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
   // Double buffer hint - only supported on Raspberry Pi and Wayland (no-op on Windows/macOS)
-  SDL_SetHint("SDL_HINT_VIDEO_DOUBLE_BUFFER", "1");
+  SDL_SetHint(SDL_HINT_VIDEO_DOUBLE_BUFFER, "1");
   // Framebuffer acceleration - cross-platform
-  SDL_SetHint("SDL_HINT_FRAMEBUFFER_ACCELERATION", "1");
+  SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");
 
 // macOS-specific hints for better fullscreen and DPI handling
 #ifdef __APPLE__
