@@ -93,6 +93,7 @@ set(MOCK_TESTS
     ai_collision_integration_tests
     weather_controller_tests
     day_night_controller_tests
+    controller_registry_tests
 )
 
 # Tests that need special mock combinations
@@ -234,6 +235,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/WeatherControllerTests.cpp")
     elseif(${test_name} STREQUAL "day_night_controller_tests")
         set(test_source "controllers/DayNightControllerTests.cpp")
+    elseif(${test_name} STREQUAL "controller_registry_tests")
+        set(test_source "controllers/ControllerRegistryTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
