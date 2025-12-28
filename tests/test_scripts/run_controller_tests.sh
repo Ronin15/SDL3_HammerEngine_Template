@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Helper script to build and run World Controller tests (Weather, DayNight)
+# Helper script to build and run Controller tests (Registry, Weather, DayNight)
 
 # Set up colored output
 RED='\033[0;31m'
@@ -12,6 +12,7 @@ NC='\033[0m' # No Color
 # Process command line arguments
 VERBOSE=false
 RUN_ALL=true
+RUN_REGISTRY=false
 RUN_WEATHER=false
 RUN_DAYNIGHT=false
 
@@ -22,14 +23,20 @@ for arg in "$@"; do
       shift
       ;;
     --help)
-      echo -e "${BLUE}World Controller Test Runner${NC}"
+      echo -e "${BLUE}Controller Test Runner${NC}"
       echo -e "Usage: ./run_controller_tests.sh [options]"
       echo -e "\nOptions:"
       echo -e "  --verbose      Run tests with verbose output"
+      echo -e "  --registry     Run only ControllerRegistry tests"
       echo -e "  --weather      Run only WeatherController tests"
       echo -e "  --daynight     Run only DayNightController tests"
       echo -e "  --help         Show this help message"
       exit 0
+      ;;
+    --registry)
+      RUN_ALL=false
+      RUN_REGISTRY=true
+      shift
       ;;
     --weather)
       RUN_ALL=false
@@ -44,10 +51,14 @@ for arg in "$@"; do
   esac
 done
 
-echo -e "${BLUE}Running World Controller tests...${NC}"
+echo -e "${BLUE}Running Controller tests...${NC}"
 
 # Define the test executables to run
 EXECUTABLES=()
+
+if [ "$RUN_ALL" = true ] || [ "$RUN_REGISTRY" = true ]; then
+  EXECUTABLES+=("controller_registry_tests")
+fi
 
 if [ "$RUN_ALL" = true ] || [ "$RUN_WEATHER" = true ]; then
   EXECUTABLES+=("weather_controller_tests")
@@ -189,6 +200,7 @@ if [ "$FINAL_RESULT" -ne 0 ]; then
   exit $FINAL_RESULT
 else
   echo -e "\n${GREEN}All controller tests completed successfully!${NC}"
+  echo -e "${GREEN}✓ ControllerRegistry tests${NC}"
   echo -e "${GREEN}✓ WeatherController tests${NC}"
   echo -e "${GREEN}✓ DayNightController tests${NC}"
   exit 0
