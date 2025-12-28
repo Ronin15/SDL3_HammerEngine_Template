@@ -951,13 +951,10 @@ void GameEngine::update(float deltaTime) {
   //   See UIExampleState::update() for proper state-managed pattern
 
   // 1. Event system - FIRST: process global events, state changes, weather triggers
-  if (mp_eventManager) {
-    mp_eventManager->update();
-  } else {
-    GAMEENGINE_ERROR("EventManager cache is null!");
-  }
+  mp_eventManager->update();
 
   // 2. Game states - player movement and state logic
+  // MUST update BEFORE AIManager so NPCs react to current player position, not stale data
   // Push FPS to GameStateManager so states don't need to call GameEngine::Instance()
   mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
   mp_gameStateManager->update(deltaTime);
@@ -965,35 +962,19 @@ void GameEngine::update(float deltaTime) {
   // 3. AI system - processes NPC behaviors with internal parallelization
   //    Batches run in parallel, waits for completion internally before returning.
   //    From GameEngine perspective: just a regular update call (sync is internal).
-  if (mp_aiManager) {
-    mp_aiManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("AIManager cache is null!");
-  }
+  mp_aiManager->update(deltaTime);
 
   // 4. Particle system - global weather and effect particles
-  if (mp_particleManager) {
-    mp_particleManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("ParticleManager cache is null!");
-  }
+  mp_particleManager->update(deltaTime);
 
   // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
   // PathfinderManager initialized by AIManager, cached by GameEngine for performance
-  if (mp_pathfinderManager) {
-    mp_pathfinderManager->update();
-  } else {
-    GAMEENGINE_ERROR("PathfinderManager cache is null!");
-  }
+  mp_pathfinderManager->update();
 
   // 6. Collision system - LAST: processes complete NPC updates from AIManager
   //    AIManager guarantees all batches complete before returning, so collision
   //    always receives complete, consistent updates (no partial/stale data).
-  if (mp_collisionManager) {
-    mp_collisionManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("CollisionManager cache is null!");
-  }
+  mp_collisionManager->update(deltaTime);
 
   // Increment the frame counter atomically for thread-safe render
   // synchronization
