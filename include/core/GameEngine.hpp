@@ -26,53 +26,6 @@ class WorldResourceManager;
 class WorldManager;
 class CollisionManager;
 
-#ifdef DEBUG
-/**
- * @brief Buffer telemetry statistics for monitoring double/triple buffering performance
- * @details Tracks swap success/failures and render stalls for lock-free buffer coordination.
- *
- * Only compiled in DEBUG builds for zero-overhead performance monitoring.
- * Follows EventManager's PerformanceStats pattern for consistency.
- *
- * Thread Safety: All counters use atomics (safe for Main thread increments).
- */
-struct BufferTelemetryStats {
-    // Swap tracking (atomic - incremented from Main thread)
-    std::atomic<uint64_t> swapAttempts{0};   // Total buffer swap attempts
-    std::atomic<uint64_t> swapSuccesses{0};  // Successful swaps (buffer available)
-    std::atomic<uint64_t> swapBlocked{0};    // Swaps blocked (buffer not ready or rendering conflict)
-    std::atomic<uint64_t> casFailures{0};    // Compare-and-swap failures (atomic contention)
-
-    // Render tracking (atomic - incremented from Main thread)
-    std::atomic<uint64_t> renderStalls{0};   // Render stalled (no buffer ready)
-    std::atomic<uint64_t> framesSkipped{0};  // Frames where lastUpdate == lastRendered
-
-    /**
-     * @brief Resets all telemetry counters
-     * @note Should be called when no other threads are accessing telemetry
-     */
-    void reset() {
-        swapAttempts.store(0, std::memory_order_relaxed);
-        swapSuccesses.store(0, std::memory_order_relaxed);
-        swapBlocked.store(0, std::memory_order_relaxed);
-        casFailures.store(0, std::memory_order_relaxed);
-        renderStalls.store(0, std::memory_order_relaxed);
-        framesSkipped.store(0, std::memory_order_relaxed);
-    }
-
-    /**
-     * @brief Calculates swap success rate as percentage
-     * @return Swap success rate (0.0 to 100.0)
-     */
-    double getSwapSuccessRate() const {
-        uint64_t attempts = swapAttempts.load(std::memory_order_relaxed);
-        if (attempts == 0) return 100.0;
-        uint64_t successes = swapSuccesses.load(std::memory_order_relaxed);
-        return (static_cast<double>(successes) / attempts) * 100.0;
-    }
-};
-#endif // DEBUG
-
 class GameEngine {
 public:
   ~GameEngine() = default;
@@ -168,35 +121,6 @@ public:
   void processBackgroundTasks();
 
   /**
-   * @brief Checks if there's a new frame ready to render
-   * @return true if new frame available, false otherwise
-   */
-  bool hasNewFrameToRender() const noexcept;
-
-  /**
-   * @brief Checks if update is currently running
-   * @return true if update in progress, false otherwise
-   */
-  bool isUpdateRunning() const noexcept;
-
-  /**
-   * @brief Gets the current buffer index being used for updates
-   * @return Current buffer index (0 or 1)
-   */
-  size_t getCurrentBufferIndex() const noexcept;
-
-  /**
-   * @brief Gets the buffer index being used for rendering
-   * @return Render buffer index (0 or 1)
-   */
-  size_t getRenderBufferIndex() const noexcept;
-
-  /**
-   * @brief Swaps double buffers for thread-safe rendering
-   */
-  void swapBuffers();
-
-  /**
    * @brief Gets pointer to the game state manager
    * @return Pointer to GameStateManager instance
    */
@@ -224,12 +148,12 @@ public:
    * @brief Checks if the engine is currently running
    * @return true if engine is running, false otherwise
    */
-  bool isRunning() const { return m_running.load(std::memory_order_relaxed); }
+  bool isRunning() const { return m_running; }
 
   /**
    * @brief Stops the game engine
    */
-  void stop() { m_running.store(false, std::memory_order_relaxed); }
+  void stop() { m_running = false; }
 
   /**
    * @brief Sets the running state of the engine
@@ -432,7 +356,7 @@ private:
   std::unique_ptr<SDL_Renderer, decltype(&SDL_DestroyRenderer)> mp_renderer{
       nullptr, SDL_DestroyRenderer};
   std::unique_ptr<TimestepManager> m_timestepManager{nullptr};
-  std::atomic<bool> m_running{false};
+  bool m_running{false};
   int m_windowWidth{0};
   int m_windowHeight{0};
   int m_windowedWidth{1920};  // Windowed mode width (for restoring from fullscreen)
@@ -465,42 +389,8 @@ private:
   bool m_usingSoftwareFrameLimiting{false};
   bool m_isFullscreen{false};
 
-  // Global pause state for coordinating all managers
+  // Global pause state for coordinating all managers (read by worker threads)
   std::atomic<bool> m_globallyPaused{false};
-
-  // Using memory_order for thread synchronization
-  std::atomic<bool> m_updateCompleted{false};
-  std::atomic<bool> m_updateRunning{false};
-  std::atomic<bool> m_stopRequested{false};
-  std::atomic<uint64_t> m_lastUpdateFrame{0};
-  std::atomic<uint64_t> m_lastRenderedFrame{0};
-
-  // Double/Triple buffering (runtime configurable)
-  // Triple buffering (m_bufferCount=3) benefits workloads with:
-  //   - Frame time bursts: occasional heavy updates exceeding frame budget (16.67ms @ 60 FPS)
-  //   - Variable update costs: pathfinding spikes, AI batch processing, world generation
-  //   - Smoother frame delivery: always has a free buffer available, reducing swap contention
-  //   - Trade-off: +1 frame input latency (~16ms), +33% memory for buffer (acceptable for most games)
-  // Double buffering (m_bufferCount=2) recommended for:
-  //   - Consistent frame times: predictable update costs that rarely exceed budget
-  //   - Low-latency requirements: fighting games, competitive shooters, rhythm games
-  // Use F3 key (DEBUG builds) to monitor buffer telemetry and make data-driven decisions
-  static constexpr size_t MAX_BUFFER_COUNT = 3;  // Support up to 3 buffers
-  size_t m_bufferCount{2};                        // Runtime buffer count (2 or 3)
-  std::atomic<size_t> m_currentBufferIndex{0};
-  std::atomic<size_t> m_renderBufferIndex{0};
-  std::atomic<bool> m_bufferReady[MAX_BUFFER_COUNT]{false, false, false};
-
-  // Protection for high entity counts
-  std::atomic<size_t> m_entityProcessingCount{0};
-
-#ifdef DEBUG
-  // Buffer telemetry (debug-only, F3 to toggle overlay)
-  mutable BufferTelemetryStats m_bufferTelemetry{};
-  std::atomic<bool> m_showBufferTelemetry{false};
-  mutable uint64_t m_telemetryLogFrame{0};
-  static constexpr uint64_t TELEMETRY_LOG_INTERVAL = 300;  // Log every 300 frames (~5s @ 60fps)
-#endif // DEBUG
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying

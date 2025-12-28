@@ -39,7 +39,6 @@ set(SIMPLE_TESTS
     settings_manager_tests
     thread_system_tests
     game_state_manager_tests
-    game_engine_tests
     ai_optimization_tests
     buffer_utilization_tests
     resource_template_manager_tests
@@ -114,8 +113,6 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "ThreadSystemTests.cpp")
     elseif(${test_name} STREQUAL "game_state_manager_tests")
         set(test_source "GameStateManagerTests.cpp")
-    elseif(${test_name} STREQUAL "game_engine_tests")
-        set(test_source "GameEngineTests.cpp")
     elseif(${test_name} STREQUAL "ai_optimization_tests")
         set(test_source "AIOptimizationTest.cpp")
     elseif(${test_name} STREQUAL "buffer_utilization_tests")

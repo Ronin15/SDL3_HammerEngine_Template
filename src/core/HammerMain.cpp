@@ -110,12 +110,6 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 #endif
 
     while (ts.shouldUpdate()) {
-      // Swap buffers if we have a new frame ready for rendering
-      if (gameEngine.hasNewFrameToRender()) {
-        gameEngine.swapBuffers();
-      }
-
-      // Update game logic with fixed timestep
       gameEngine.update(ts.getUpdateDeltaTime());
     }
 
