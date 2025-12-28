@@ -477,18 +477,15 @@ void AdvancedAIDemoState::update(float deltaTime) {
 }
 
 void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
-    // Get GameEngine for logical dimensions (renderer now passed as parameter)
+    // Get GameEngine for FPS query (cached pointer would require header changes)
     const auto& gameEngine = GameEngine::Instance();
 
     // Camera offset with unified interpolation (single atomic read for sync)
     float renderCamX = 0.0f;
     float renderCamY = 0.0f;
+    float viewWidth = 0.0f;
+    float viewHeight = 0.0f;
     Vector2D playerInterpPos;  // Position synced with camera
-
-    if (m_camera) {
-        // Returns the position used for offset - use it for player rendering
-        playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
-    }
 
     // Set render scale for zoom only when changed (avoids GPU state change overhead)
     float zoom = m_camera ? m_camera->getZoom() : 1.0f;
@@ -497,14 +494,19 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         m_lastRenderedZoom = zoom;
     }
 
+    if (m_camera) {
+        // Returns the position used for offset - use it for player rendering
+        playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+
+        // Derive view dimensions from viewport/zoom (no per-frame GameEngine calls)
+        viewWidth = m_camera->getViewport().width / zoom;
+        viewHeight = m_camera->getViewport().height / zoom;
+    }
+
     // Render world first (background layer) using pixel-snapped camera - use cached pointer
     // mp_worldMgr guaranteed valid between enter() and exit()
     if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
-        mp_worldMgr->render(renderer,
-                           renderCamX,
-                           renderCamY,
-                           gameEngine.getLogicalWidth(),
-                           gameEngine.getLogicalHeight());
+        mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
     }
 
     // Render all NPCs using camera-aware rendering with interpolation
@@ -545,24 +547,23 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     // mp_uiMgr guaranteed valid between enter() and exit()
     if (!mp_uiMgr->isShutdown()) {
         // Update status only when values change (C++20 type-safe, zero allocations)
-        const auto& aiManager = AIManager::Instance();
+        // Use m_aiPaused member instead of polling AIManager::isGloballyPaused() every frame
         int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
         size_t npcCount = m_npcs.size();
-        bool isPaused = aiManager.isGloballyPaused();
 
         if (currentFPS != m_lastDisplayedFPS ||
             npcCount != m_lastDisplayedNPCCount ||
-            isPaused != m_lastDisplayedPauseState) {
+            m_aiPaused != m_lastDisplayedPauseState) {
 
             m_statusBuffer.clear();
             std::format_to(std::back_inserter(m_statusBuffer),
                            "FPS: {} | NPCs: {} | AI: {} | Combat: ON",
-                           currentFPS, npcCount, isPaused ? "PAUSED" : "RUNNING");
+                           currentFPS, npcCount, m_aiPaused ? "PAUSED" : "RUNNING");
             mp_uiMgr->setText("advanced_ai_status", m_statusBuffer);
 
             m_lastDisplayedFPS = currentFPS;
             m_lastDisplayedNPCCount = npcCount;
-            m_lastDisplayedPauseState = isPaused;
+            m_lastDisplayedPauseState = m_aiPaused;
         }
     }
     mp_uiMgr->render(renderer);
