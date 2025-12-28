@@ -405,6 +405,10 @@ bool GameEngine::init(const std::string_view title, const int width,
             GAMEENGINE_INFO(
                 "Detecting and initializing gamepads and input handling");
             InputManager &inputMgr = InputManager::Instance();
+            if (!inputMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Input Manager");
+              return false;
+            }
             inputMgr.initializeGamePad();
             return true;
           }));
@@ -471,6 +475,10 @@ bool GameEngine::init(const std::string_view title, const int width,
           []() -> bool {
             GAMEENGINE_INFO("Creating Save Game Manager");
             SaveGameManager &saveMgr = SaveGameManager::Instance();
+            if (!saveMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Save Game Manager");
+              return false;
+            }
 
             // Set the save directory to "res" folder
             constexpr std::string_view saveDir = "res";
