@@ -3,6 +3,14 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
+/**
+ * @file DayNightControllerTests.cpp
+ * @brief Tests for DayNightController
+ *
+ * Common ControllerBase tests are generated via template macros.
+ * This file contains only DayNightController-specific tests.
+ */
+
 #define BOOST_TEST_MODULE DayNightControllerTests
 #include <boost/test/unit_test.hpp>
 
@@ -10,146 +18,33 @@
 #include "managers/GameTimeManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/TimeEvent.hpp"
-#include "../events/EventManagerTestAccess.hpp"
 #include <string>
 
-// ============================================================================
-// Test Fixture
-// ============================================================================
-
-class DayNightControllerTestFixture {
-public:
-    DayNightControllerTestFixture() {
-        // Reset event manager to clean state
-        EventManagerTestAccess::reset();
-
-        // Initialize GameTime to noon (Day period)
-        GameTimeManager::Instance().init(12.0f, 1.0f);
-    }
-
-    ~DayNightControllerTestFixture() {
-        // Controller auto-unsubscribes on destruction via ControllerBase
-        // Clean up
-        EventManager::Instance().clean();
-    }
-
-protected:
-    // Controller owned by fixture (new ownership model)
-    DayNightController m_controller;
-};
+// Common test infrastructure
+#include "common/ControllerTestFixture.hpp"
+#include "common/ControllerOwnershipTests.hpp"
+#include "common/ControllerSubscriptionTests.hpp"
+#include "common/ControllerSuspendResumeTests.hpp"
+#include "common/ControllerGetNameTests.hpp"
 
 // ============================================================================
-// OWNERSHIP MODEL TESTS
+// Common ControllerBase Tests (generated via macros)
 // ============================================================================
 
-BOOST_AUTO_TEST_SUITE(OwnershipModelTests)
+using DayNightControllerFixture = ControllerTestFixture<DayNightController>;
 
-BOOST_AUTO_TEST_CASE(TestControllerInstantiation) {
-    // Controllers can now be instantiated directly
-    DayNightController controller1;
-    DayNightController controller2;
-
-    // Each is a separate instance
-    BOOST_CHECK(&controller1 != &controller2);
-}
-
-BOOST_AUTO_TEST_CASE(TestMoveSemantics) {
-    DayNightController controller1;
-    controller1.subscribe();
-    BOOST_CHECK(controller1.isSubscribed());
-
-    // Move constructor
-    DayNightController controller2(std::move(controller1));
-    BOOST_CHECK(controller2.isSubscribed());
-    BOOST_CHECK(!controller1.isSubscribed());  // Moved-from is unsubscribed
-}
-
-BOOST_AUTO_TEST_CASE(TestAutoUnsubscribeOnDestruction) {
-    {
-        DayNightController controller;
-        controller.subscribe();
-        BOOST_CHECK(controller.isSubscribed());
-        // Destructor should auto-unsubscribe
-    }
-    // No crash = success
-}
-
-BOOST_AUTO_TEST_SUITE_END()
+INSTANTIATE_CONTROLLER_OWNERSHIP_TESTS(DayNightController)
+INSTANTIATE_CONTROLLER_SUBSCRIPTION_TESTS(DayNightController, DayNightControllerFixture)
+INSTANTIATE_CONTROLLER_SUSPEND_RESUME_TESTS(DayNightController, DayNightControllerFixture)
+INSTANTIATE_CONTROLLER_GET_NAME_TESTS(DayNightController, DayNightControllerFixture, "DayNightController")
 
 // ============================================================================
-// SUBSCRIPTION TESTS
+// DayNightController-Specific Tests
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(SubscriptionTests, DayNightControllerTestFixture)
+// --- Current Period Tests ---
 
-BOOST_AUTO_TEST_CASE(TestInitiallyNotSubscribed) {
-    // Controller should not be subscribed initially
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestSubscribe) {
-    // Subscribe
-    m_controller.subscribe();
-
-    BOOST_CHECK(m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestUnsubscribe) {
-    // Subscribe first
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // Now unsubscribe
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestSubscribeUnsubscribeCycle) {
-    // Multiple subscribe/unsubscribe cycles
-    for (int i = 0; i < 3; ++i) {
-        m_controller.subscribe();
-        BOOST_CHECK(m_controller.isSubscribed());
-
-        m_controller.unsubscribe();
-        BOOST_CHECK(!m_controller.isSubscribed());
-    }
-}
-
-BOOST_AUTO_TEST_CASE(TestDoubleSubscribeIgnored) {
-    // First subscribe
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // Second subscribe should be ignored (no crash, still subscribed)
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // Unsubscribe once should fully unsubscribe
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestDoubleUnsubscribeIgnored) {
-    // Subscribe
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // First unsubscribe
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-
-    // Second unsubscribe should be safe (no crash)
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-// ============================================================================
-// CURRENT PERIOD TESTS
-// ============================================================================
-
-BOOST_FIXTURE_TEST_SUITE(CurrentPeriodTests, DayNightControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(CurrentPeriodTests, DayNightControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodAtNoon) {
     // Init GameTime at noon
@@ -179,11 +74,9 @@ BOOST_AUTO_TEST_CASE(TestPeriodStringValidity) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// CURRENT VISUALS TESTS
-// ============================================================================
+// --- Current Visuals Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(CurrentVisualsTests, DayNightControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(CurrentVisualsTests, DayNightControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentVisuals) {
     GameTimeManager::Instance().init(12.0f, 1.0f);
@@ -221,11 +114,9 @@ BOOST_AUTO_TEST_CASE(TestVisualsMatchPeriodFactory) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// HOUR TO TIME PERIOD CONVERSION TESTS
-// ============================================================================
+// --- Hour To Time Period Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(HourToTimePeriodTests, DayNightControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(HourToTimePeriodTests, DayNightControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestMorningPeriod) {
     // Morning: 5:00 - 8:00
@@ -323,11 +214,9 @@ BOOST_AUTO_TEST_CASE(TestNightPeriod) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// PERIOD TRANSITION TESTS
-// ============================================================================
+// --- Period Transition Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(PeriodTransitionTests, DayNightControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(PeriodTransitionTests, DayNightControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestTransitionOnHourChangedEvent) {
     // Start at 7 AM (Morning)
@@ -436,11 +325,9 @@ BOOST_AUTO_TEST_CASE(TestFullDayCycle) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// EVENT FILTERING TESTS
-// ============================================================================
+// --- Event Filtering Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(EventFilteringTests, DayNightControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(EventFilteringTests, DayNightControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestIgnoresNonHourChangedEvents) {
     GameTimeManager::Instance().init(12.0f, 1.0f);
@@ -501,11 +388,9 @@ BOOST_AUTO_TEST_CASE(TestWeatherCheckEventIgnoredWhenUnsubscribed) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// PERIOD DESCRIPTION TESTS
-// ============================================================================
+// --- Period Description Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(PeriodDescriptionTests, DayNightControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(PeriodDescriptionTests, DayNightControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentPeriodDescriptionMorning) {
     GameTimeManager::Instance().init(7.0f, 1.0f);  // 7 AM - Morning
