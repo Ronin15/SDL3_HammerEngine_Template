@@ -388,8 +388,8 @@ private:
   bool m_isWayland{false};
   bool m_isFullscreen{false};
 
-  // Global pause state for coordinating all managers (read by worker threads)
-  std::atomic<bool> m_globallyPaused{false};
+  // Global pause state - propagated to managers which have their own atomics
+  bool m_globallyPaused{false};
 
   // Delete copy constructor and assignment operator
   GameEngine(const GameEngine &) = delete;            // Prevent copying
