@@ -8,6 +8,9 @@
 
 #include "gameStates/GameState.hpp"
 
+// Forward declaration
+class UIManager;
+
 // Example GameState that demonstrates comprehensive UIManager usage
 class UIExampleState : public GameState {
 public:
@@ -48,6 +51,9 @@ private:
     float m_progressValue{0.0f};
     bool m_progressIncreasing{true};
     float m_lastDeltaTime{0.0f}; // Track deltaTime for ui.update() in render()
+
+    // Cached manager pointer for performance
+    UIManager* mp_uiMgr = nullptr;
 };
 
 #endif // UI_EXAMPLE_STATE_HPP

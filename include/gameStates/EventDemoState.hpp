@@ -53,8 +53,6 @@ private:
   void updateDemoTimer(float deltaTime);
 
   void renderUI();
-  void renderEventStatus() const;
-  void renderControls();
 
   // Event demonstration methods
   void triggerWeatherDemo();
@@ -248,6 +246,12 @@ private:
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
   std::string m_lastDisplayedPhase{};
+
+  // Lazy-cached strings (computed only when underlying enum changes)
+  DemoPhase m_lastCachedPhase{DemoPhase::Complete};  // Initialize to invalid to force first compute
+  WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
+  std::string m_cachedPhaseStr{};
+  std::string m_cachedWeatherStr{};
 
   // Render scale caching - avoid GPU state changes when zoom unchanged
   float m_lastRenderedZoom{1.0f};

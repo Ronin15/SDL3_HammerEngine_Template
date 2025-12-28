@@ -9,6 +9,9 @@
 #include "gameStates/GameState.hpp"
 #include <string>
 
+// Forward declaration
+class UIManager;
+
 /**
  * @brief Settings menu state for editing game settings
  *
@@ -107,6 +110,9 @@ private:
      * @brief Create common buttons (Apply, Cancel, Back)
      */
     void createActionButtons();
+
+    // Cached manager pointer for performance
+    UIManager* mp_uiMgr = nullptr;
 };
 
 #endif  // SETTINGS_MENU_STATE_HPP

@@ -709,32 +709,42 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Render UI components through cached pointer (update moved to update() for consistent frame timing)
   // mp_uiMgr guaranteed valid between enter() and exit()
   if (!mp_uiMgr->isShutdown()) {
+    // Lazy-cache phase string (only compute when enum changes)
+    if (m_currentPhase != m_lastCachedPhase) {
+        m_cachedPhaseStr = getCurrentPhaseString();
+        m_lastCachedPhase = m_currentPhase;
+    }
+
     // Update UI displays only when values change (C++20 type-safe, zero allocations)
-    std::string currentPhase = getCurrentPhaseString();
-    if (currentPhase != m_lastDisplayedPhase) {
+    if (m_cachedPhaseStr != m_lastDisplayedPhase) {
         m_phaseBuffer.clear();
-        std::format_to(std::back_inserter(m_phaseBuffer), "Phase: {}", currentPhase);
+        std::format_to(std::back_inserter(m_phaseBuffer), "Phase: {}", m_cachedPhaseStr);
         mp_uiMgr->setText("event_phase", m_phaseBuffer);
-        m_lastDisplayedPhase = currentPhase;
+        m_lastDisplayedPhase = m_cachedPhaseStr;
+    }
+
+    // Lazy-cache weather string (only compute when enum changes)
+    if (m_currentWeather != m_lastCachedWeather) {
+        m_cachedWeatherStr = getCurrentWeatherString();
+        m_lastCachedWeather = m_currentWeather;
     }
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
-    std::string currentWeather = getCurrentWeatherString();
     size_t npcCount = m_spawnedNPCs.size();
 
     // Update if FPS changed by more than 0.05 (avoids flicker) or other values changed
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
-        currentWeather != m_lastDisplayedWeather ||
+        m_cachedWeatherStr != m_lastDisplayedWeather ||
         npcCount != m_lastDisplayedNPCCount) {
 
         m_statusBuffer2.clear();
         std::format_to(std::back_inserter(m_statusBuffer2),
                        "FPS: {:.1f} | Weather: {} | NPCs: {}",
-                       currentFPS, currentWeather, npcCount);
+                       currentFPS, m_cachedWeatherStr, npcCount);
         mp_uiMgr->setText("event_status", m_statusBuffer2);
 
         m_lastDisplayedFPS = currentFPS;
-        m_lastDisplayedWeather = currentWeather;
+        m_lastDisplayedWeather = m_cachedWeatherStr;
         m_lastDisplayedNPCCount = npcCount;
     }
 
@@ -1001,18 +1011,6 @@ void EventDemoState::updateDemoTimer(float deltaTime) {
     m_phaseTimer += deltaTime;
   }
   m_totalDemoTime += deltaTime;
-}
-
-// UI now handled by UIManager components
-
-void EventDemoState::renderEventStatus() const {
-  // Event status now displayed through UIManager components
-  // Event log functionality could be added as a list component if needed
-}
-
-void EventDemoState::renderControls() {
-  // Controls now displayed through UIManager components
-  // Control instructions are shown in the event_controls label
 }
 
 void EventDemoState::triggerWeatherDemo() { triggerWeatherDemoManual(); }
