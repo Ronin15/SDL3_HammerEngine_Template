@@ -149,6 +149,12 @@ public:
     void setSoftwareFrameLimiting(bool useSoftwareLimiting) const;
 
     /**
+     * Check if software frame limiting is active
+     * @return true if using software limiting, false if using hardware VSync
+     */
+    bool isUsingSoftwareFrameLimiting() const { return m_usingSoftwareFrameLimiting; }
+
+    /**
      * High-precision frame wait using hybrid sleep+spinlock (industry standard)
      * Used when VSync is unavailable for sub-millisecond timing accuracy.
      *
