@@ -1210,7 +1210,7 @@ void GameEngine::setFullscreen(bool enabled) {
 }
 
 void GameEngine::setGlobalPause(bool paused) {
-  m_globallyPaused.store(paused, std::memory_order_release);
+  m_globallyPaused = paused;
 
   // Pause AI Manager (already has setGlobalPause support)
   if (mp_aiManager) {
@@ -1248,7 +1248,7 @@ void GameEngine::setGlobalPause(bool paused) {
 }
 
 bool GameEngine::isGloballyPaused() const {
-  return m_globallyPaused.load(std::memory_order_acquire);
+  return m_globallyPaused;
 }
 
 int GameEngine::getOptimalDisplayIndex() const {

@@ -10,15 +10,13 @@
 #include "managers/SettingsManager.hpp"
 #include <array>
 #include <chrono>
-#include <cstdlib>
 #include <format>
 #include <numeric>
-#include <string>
+#include <string_view>
 
-const int WINDOW_WIDTH{1280};
-const int WINDOW_HEIGHT{720};
-// Game Name goes here.
-const std::string GAME_NAME{"Game Template"};
+constexpr int WINDOW_WIDTH{1280};
+constexpr int WINDOW_HEIGHT{720};
+constexpr std::string_view GAME_NAME{"Game Template"};
 
 // maybe_unused is just a hint to the compiler that the variable is not used.
 // with -Wall -Wextra flags
@@ -121,7 +119,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
 
     if (frameCount % PERF_LOG_INTERVAL == 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
       double avgMs = std::accumulate(updateSamples.begin(), updateSamples.end(), 0.0) / PERF_SAMPLE_COUNT;
-      double frameBudgetMs = 1000.0 / 60.0;  // 16.67ms
+      double frameBudgetMs = 1000.0 / ts.getTargetFPS();
       double utilizationPercent = (avgMs / frameBudgetMs) * 100.0;
       GAMEENGINE_DEBUG(std::format("Update performance: {:.2f}ms avg ({:.1f}% frame budget)",
                                    avgMs, utilizationPercent));
