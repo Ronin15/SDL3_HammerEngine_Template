@@ -262,34 +262,19 @@ bool GameEngine::init(const std::string_view title, const int width,
       std::format("Failed to {} VSync: {}",
                   vsyncRequested ? "enable" : "disable", SDL_GetError()));
 
-  // Verify VSync state and update software frame limiting flag
-  // verifyVSyncState() updates m_usingSoftwareFrameLimiting as a side effect
+  // Create TimestepManager (uses default 60 FPS target and 1/60s fixed timestep)
+  m_timestepManager = std::make_unique<TimestepManager>();
+
+  // Verify VSync state and configure software frame limiting in TimestepManager
   if (vsyncSetSuccessfully) {
     verifyVSyncState(vsyncRequested);
-  }
-
-#ifdef DEBUG
-  // Log frame timing mode
-  if (m_usingSoftwareFrameLimiting) {
-    if (vsyncRequested) {
-      GAMEENGINE_INFO("Using software frame limiting (VSync unavailable or failed verification)");
-    } else {
-      GAMEENGINE_INFO("Using software frame limiting (VSync disabled by user)");
-    }
   } else {
-    GAMEENGINE_INFO("Using hardware VSync for frame timing");
+    m_timestepManager->setSoftwareFrameLimiting(true);
   }
-#endif
 
-  // Create TimestepManager with 60 FPS target and fixed timestep
-  constexpr float TARGET_FPS = 60.0f;
-  constexpr float FIXED_TIMESTEP = 1.0f / 60.0f;
-  m_timestepManager = std::make_unique<TimestepManager>(TARGET_FPS, FIXED_TIMESTEP);
-
-  // Configure software frame limiting if hardware VSync is unavailable
-  m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
   GAMEENGINE_INFO(std::format("TimestepManager created: {} FPS, {} frame limiting",
-                              TARGET_FPS, m_usingSoftwareFrameLimiting ? "software" : "hardware"));
+                              m_timestepManager->getTargetFPS(),
+                              m_timestepManager->isUsingSoftwareFrameLimiting() ? "software" : "hardware"));
 
 
   if (!SDL_SetRenderDrawColor(
@@ -1129,37 +1114,14 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     GAMEENGINE_ERROR(std::format("Failed to {} VSync: {}", enable ? "enable" : "disable", SDL_GetError()));
     // Ensure software frame limiting is enabled if VSync enable failed
     if (enable) {
-      m_usingSoftwareFrameLimiting = true;
+      m_timestepManager->setSoftwareFrameLimiting(true);
       GAMEENGINE_INFO("Falling back to software frame limiting");
-
-      // Update TimestepManager
-      if (m_timestepManager) {
-        m_timestepManager->setSoftwareFrameLimiting(true);
-      }
     }
     return false;
   }
 
-  // Verify VSync state and update software frame limiting flag
+  // Verify VSync state - this sets TimestepManager's software limiting flag
   bool const vsyncVerified = verifyVSyncState(enable);
-
-  // Update TimestepManager
-  if (m_timestepManager) {
-    m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
-    GAMEENGINE_DEBUG(std::format("TimestepManager updated: software frame limiting {}",
-                                 m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
-  }
-
-  // Log frame timing mode
-#ifdef DEBUG
-  if (m_usingSoftwareFrameLimiting && enable) {
-    GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
-  } else if (!m_usingSoftwareFrameLimiting) {
-    GAMEENGINE_INFO("Using hardware VSync for frame timing");
-  } else {
-    GAMEENGINE_INFO("VSync disabled, using software frame limiting");
-  }
-#endif
 
   // Save VSync setting to SettingsManager for persistence
   auto& settings = HammerEngine::SettingsManager::Instance();
@@ -1334,9 +1296,12 @@ bool GameEngine::verifyVSyncState(bool requested) {
     vsyncVerified = false;
   }
 
-  // Update software frame limiting flag based on verification result
+  // Set software frame limiting based on verification result
   // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
-  m_usingSoftwareFrameLimiting = requested ? !vsyncVerified : true;
+  bool useSoftwareLimiting = requested ? !vsyncVerified : true;
+  if (m_timestepManager) {
+    m_timestepManager->setSoftwareFrameLimiting(useSoftwareLimiting);
+  }
 
   return vsyncVerified;
 }

@@ -291,7 +291,7 @@ public:
    * @brief Checks if the engine is using software frame limiting.
    * @return true if using software frame limiting, false if using hardware VSync.
    */
-  bool isUsingSoftwareFrameLimiting() const { return m_usingSoftwareFrameLimiting; }
+  bool isUsingSoftwareFrameLimiting() const { return m_timestepManager->isUsingSoftwareFrameLimiting(); }
 
   /**
    * @brief Toggles fullscreen mode at runtime
@@ -331,7 +331,7 @@ private:
    * @brief Verifies VSync state matches the requested setting
    * @param requested true if VSync should be enabled, false if disabled
    * @return true if VSync state verified to match requested, false otherwise
-   * @details Updates m_usingSoftwareFrameLimiting based on verification result.
+   * @details Sets TimestepManager's software frame limiting based on verification result.
    *          Used by both init() and setVSyncEnabled() to consolidate VSync logic.
    */
   bool verifyVSyncState(bool requested);
@@ -386,7 +386,6 @@ private:
 
   // Platform-specific flags
   bool m_isWayland{false};
-  bool m_usingSoftwareFrameLimiting{false};
   bool m_isFullscreen{false};
 
   // Global pause state for coordinating all managers (read by worker threads)
