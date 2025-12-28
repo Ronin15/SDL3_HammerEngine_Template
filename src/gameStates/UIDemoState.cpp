@@ -6,6 +6,7 @@
 #include "gameStates/UIDemoState.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
@@ -111,11 +112,9 @@ bool UIExampleState::enter() {
     ui.addListItem("uiexample_demo_list", "Option 4: Fourth Item");
     ui.addListItem("uiexample_demo_list", "Option 5: Fifth Item");
 
-    // Set up button callbacks
-    ui.setOnClick("uiexample_back_btn", []() {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+    // Set up button callbacks - capture mp_stateManager for proper architecture
+    ui.setOnClick("uiexample_back_btn", [this]() {
+        mp_stateManager->changeState("MainMenuState");
     });
 
     ui.setOnClick("uiexample_animate_btn", [this]() {
@@ -223,9 +222,7 @@ void UIExampleState::handleInput() {
     // Handle B key to go back
     const auto& inputManager = InputManager::Instance();
     if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
-        const auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+        mp_stateManager->changeState("MainMenuState");
     }
 }
 

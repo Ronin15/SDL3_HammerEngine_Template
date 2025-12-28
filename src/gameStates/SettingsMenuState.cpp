@@ -8,6 +8,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/SettingsManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
@@ -83,9 +84,7 @@ void SettingsMenuState::handleInput() {
 
     // ESC to go back without saving
     if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+        mp_stateManager->changeState("MainMenuState");
     }
 
     // Tab switching shortcuts
@@ -395,10 +394,8 @@ void SettingsMenuState::createActionButtons() {
         {backX, bottomY, buttonWidth, buttonHeight},
         "Back");
     ui.setComponentPositioning("settings_back_btn", {UIPositionMode::BOTTOM_CENTERED, buttonWidth/2 + buttonSpacing/2, bottomOffset, buttonWidth, buttonHeight});
-    ui.setOnClick("settings_back_btn", []() {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+    ui.setOnClick("settings_back_btn", [this]() {
+        mp_stateManager->changeState("MainMenuState");
     });
 }
 

@@ -92,10 +92,8 @@ void LoadingState::update([[maybe_unused]] float deltaTime) {
             }
 
             // Transition to target state
-            const auto& gameEngine = GameEngine::Instance();
-            auto* gameStateManager = gameEngine.getGameStateManager();
-            if (gameStateManager && gameStateManager->hasState(m_targetStateName)) {
-                gameStateManager->changeState(m_targetStateName);
+            if (mp_stateManager->hasState(m_targetStateName)) {
+                mp_stateManager->changeState(m_targetStateName);
             } else {
                 std::string errorMsg = std::format("Target state not found: {}", m_targetStateName);
                 GAMESTATE_ERROR(errorMsg);

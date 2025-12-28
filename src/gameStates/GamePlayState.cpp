@@ -186,17 +186,13 @@ void GamePlayState::update(float deltaTime) {
     config.mountainLevel = 0.7f;
 
     // Configure LoadingState and transition to it
-    const auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    if (gameStateManager) {
-      auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
-      if (loadingState) {
-        loadingState->configure("GamePlayState", config);
-        // Set flag before transitioning to preserve m_worldLoaded in exit()
-        m_transitioningToLoading = true;
-        // Use changeState (called from update) to properly exit and re-enter
-        gameStateManager->changeState("LoadingState");
-      }
+    auto* loadingState = dynamic_cast<LoadingState*>(mp_stateManager->getState("LoadingState").get());
+    if (loadingState) {
+      loadingState->configure("GamePlayState", config);
+      // Set flag before transitioning to preserve m_worldLoaded in exit()
+      m_transitioningToLoading = true;
+      // Use changeState (called from update) to properly exit and re-enter
+      mp_stateManager->changeState("LoadingState");
     }
 
     return;  // Don't continue with rest of update
@@ -309,7 +305,7 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
   // Update FPS display if visible (zero-allocation, only when changed)
   if (m_fpsVisible) {
-    float const currentFPS = GameEngine::Instance().getCurrentFPS();
+    float const currentFPS = mp_stateManager->getCurrentFPS();
     // Only update UI text if FPS changed by more than 0.05 (avoids flicker)
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f) {
       m_fpsBuffer.clear();
@@ -519,18 +515,15 @@ void GamePlayState::handleInput() {
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
     // Create PauseState if it doesn't exist
-    auto &gameEngine = GameEngine::Instance();
-    auto *gameStateManager = gameEngine.getGameStateManager();
-    if (!gameStateManager->hasState("PauseState")) {
-      gameStateManager->addState(std::make_unique<PauseState>());
+    if (!mp_stateManager->hasState("PauseState")) {
+      mp_stateManager->addState(std::make_unique<PauseState>());
     }
     // pushState will call pause() which handles UI hiding and player velocity
-    gameStateManager->pushState("PauseState");
+    mp_stateManager->pushState("PauseState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
-    const auto &gameEngine = GameEngine::Instance();
-    gameEngine.getGameStateManager()->changeState("MainMenuState");
+    mp_stateManager->changeState("MainMenuState");
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {

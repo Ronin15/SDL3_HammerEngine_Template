@@ -78,8 +78,7 @@ void AdvancedAIDemoState::handleInput() {
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_B)) {
         GAMESTATE_INFO("Preparing to exit AdvancedAIDemoState...");
-        const GameEngine& gameEngine = GameEngine::Instance();
-        gameEngine.getGameStateManager()->changeState("MainMenuState");
+        mp_stateManager->changeState("MainMenuState");
     }
 
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
@@ -429,19 +428,15 @@ void AdvancedAIDemoState::update(float deltaTime) {
             config.mountainLevel = 0.7f;
 
             // Configure LoadingState and transition to it
-            const auto& gameEngine = GameEngine::Instance();
-            auto* gameStateManager = gameEngine.getGameStateManager();
-            if (gameStateManager) {
-                auto* loadingState = dynamic_cast<LoadingState*>(gameStateManager->getState("LoadingState").get());
-                if (loadingState) {
-                    loadingState->configure("AdvancedAIDemoState", config);
-                    // Set flag before transitioning to preserve m_worldLoaded in exit()
-                    m_transitioningToLoading = true;
-                    // Use changeState (called from update) to properly exit and re-enter
-                    gameStateManager->changeState("LoadingState");
-                } else {
-                    GAMESTATE_ERROR("LoadingState not found in GameStateManager");
-                }
+            auto* loadingState = dynamic_cast<LoadingState*>(mp_stateManager->getState("LoadingState").get());
+            if (loadingState) {
+                loadingState->configure("AdvancedAIDemoState", config);
+                // Set flag before transitioning to preserve m_worldLoaded in exit()
+                m_transitioningToLoading = true;
+                // Use changeState (called from update) to properly exit and re-enter
+                mp_stateManager->changeState("LoadingState");
+            } else {
+                GAMESTATE_ERROR("LoadingState not found in GameStateManager");
             }
 
             return;  // Don't continue with rest of update
@@ -477,9 +472,6 @@ void AdvancedAIDemoState::update(float deltaTime) {
 }
 
 void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
-    // Get GameEngine for FPS query (cached pointer would require header changes)
-    const auto& gameEngine = GameEngine::Instance();
-
     // Camera offset with unified interpolation (single atomic read for sync)
     float renderCamX = 0.0f;
     float renderCamY = 0.0f;
@@ -548,7 +540,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     if (!mp_uiMgr->isShutdown()) {
         // Update status only when values change (C++20 type-safe, zero allocations)
         // Use m_aiPaused member instead of polling AIManager::isGloballyPaused() every frame
-        int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
+        int currentFPS = static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
         size_t npcCount = m_npcs.size();
 
         if (currentFPS != m_lastDisplayedFPS ||

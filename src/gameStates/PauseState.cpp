@@ -7,6 +7,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/UIConstants.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 
 bool PauseState::enter() {
@@ -39,15 +40,13 @@ bool PauseState::enter() {
   ui.createCenteredButton("pause_resume_btn", firstButtonY, buttonWidth, buttonHeight, "Resume Game");
   ui.createCenteredButton("pause_mainmenu_btn", firstButtonY + buttonSpacing, buttonWidth, buttonHeight, "Main Menu");
 
-  // Set button callbacks
-  ui.setOnClick("pause_resume_btn", []() {
-      const auto& gameEngine = GameEngine::Instance();
-      gameEngine.getGameStateManager()->popState();
+  // Set button callbacks - capture mp_stateManager for proper architecture
+  ui.setOnClick("pause_resume_btn", [this]() {
+      mp_stateManager->popState();
   });
 
-  ui.setOnClick("pause_mainmenu_btn", []() {
-      const auto& gameEngine = GameEngine::Instance();
-      gameEngine.getGameStateManager()->changeState("MainMenuState");
+  ui.setOnClick("pause_mainmenu_btn", [this]() {
+      mp_stateManager->changeState("MainMenuState");
   });
 
   return true;
@@ -86,17 +85,13 @@ std::string PauseState::getName() const {
 
 void PauseState::handleInput() {
   const auto& inputMgr = InputManager::Instance();
-  
+
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_R)) {
-      // Flag the GamePlayState transition
-      // We'll do the actual removal in GamePlayState::enter()
-      const auto& gameEngine = GameEngine::Instance();
-      gameEngine.getGameStateManager()->popState();
+      mp_stateManager->popState();
   }
-  
+
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-      auto& gameEngine = GameEngine::Instance();
-      gameEngine.setRunning(false);
+      GameEngine::Instance().setRunning(false);
   }
 }

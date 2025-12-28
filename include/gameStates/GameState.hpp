@@ -8,8 +8,9 @@
 
 #include <string>
 
-// Forward declaration for SDL renderer
+// Forward declarations
 struct SDL_Renderer;
+class GameStateManager;
 
 // pure virtual for inheritance
 class GameState {
@@ -23,5 +24,11 @@ class GameState {
   virtual void resume() {}
   virtual std::string getName() const = 0;
   virtual ~GameState() = default;
+
+  // State manager access - set by GameStateManager when state is registered
+  void setStateManager(GameStateManager* manager) { mp_stateManager = manager; }
+
+ protected:
+  GameStateManager* mp_stateManager = nullptr;
 };
 #endif  // GAME_STATE_HPP
