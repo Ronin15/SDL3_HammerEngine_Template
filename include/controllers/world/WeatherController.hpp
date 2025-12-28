@@ -42,9 +42,15 @@ public:
 
     /**
      * @brief Subscribe to weather check events
-     * @note Called when a world state enters, NOT in GameEngine::init()
+     * @note Called by ControllerRegistry::subscribeAll()
      */
-    void subscribe();
+    void subscribe() override;
+
+    /**
+     * @brief Get controller name for debugging
+     * @return "WeatherController"
+     */
+    [[nodiscard]] std::string_view getName() const override { return "WeatherController"; }
 
     /**
      * @brief Get the current weather type
