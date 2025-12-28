@@ -291,18 +291,6 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO(std::format("TimestepManager created: {} FPS, {} frame limiting",
                               TARGET_FPS, m_usingSoftwareFrameLimiting ? "software" : "hardware"));
 
-  // Load buffer configuration from SettingsManager (graphics settings)
-  m_bufferCount = static_cast<size_t>(settings.get<int>("graphics", "buffer_count", 2));
-  // Clamp to valid range [2, 3]
-  if (m_bufferCount < 2) m_bufferCount = 2;
-  if (m_bufferCount > 3) m_bufferCount = 3;
-  GAMEENGINE_INFO(std::format("Buffer mode: {} buffering configured",
-                              m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
-
-#ifdef DEBUG
-  // Buffer telemetry is disabled by default, press F3 to enable console logging
-  GAMEENGINE_INFO("Buffer telemetry: OFF (F3 to enable console logging every 5s)");
-#endif
 
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
@@ -799,24 +787,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO(std::format("Game {} initialized successfully!", title));
   GAMEENGINE_INFO(std::format("Running {} <]==={{}}", title));
 
-  // Initialize buffer system for first frame
-  m_currentBufferIndex.store(0, std::memory_order_release);
-  m_renderBufferIndex.store(0, std::memory_order_release);
-
-  // Mark first buffer as ready to ensure render() has a valid buffer before the first
-  // update() completes. This prevents a render stall on the very first frame where
-  // hasNewFrameToRender() would otherwise return false. The initial "frame" is just
-  // the cleared screen (HAMMER_GRAY background) set up above.
-  m_bufferReady[0].store(true, std::memory_order_release);
-  m_bufferReady[1].store(false, std::memory_order_release);
-
-  // Initialize frame counters
-  m_lastUpdateFrame.store(0, std::memory_order_release);
-  m_lastRenderedFrame.store(0, std::memory_order_release);
-
-  // Set running state - main loop will start after init returns
-  m_running.store(true, std::memory_order_release);
-
+  m_running = true;
   return true;
 }
 
@@ -887,28 +858,16 @@ void GameEngine::handleEvents() {
     toggleFullscreen();
   }
 
-#ifdef DEBUG
-  // Global buffer telemetry console logging toggle (F3 key) - debug builds only
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
-    bool currentState = m_showBufferTelemetry.load(std::memory_order_relaxed);
-    m_showBufferTelemetry.store(!currentState, std::memory_order_relaxed);
-    GAMEENGINE_INFO(std::format("Buffer telemetry console logging {} (F3 to toggle)",
-                                !currentState ? "ENABLED (every 5s)" : "DISABLED"));
-  }
-#endif
-
-  // Handle game state input on main thread where SDL events are processed (SDL3
-  // requirement) This prevents cross-thread input state access between main
-  // thread and update worker thread
+  // Handle game state input on main thread where SDL events are processed
   mp_gameStateManager->handleInput();
 }
 
 void GameEngine::setRunning(bool running) {
-  m_running.store(running, std::memory_order_relaxed);
+  m_running = running;
 }
 
 bool GameEngine::getRunning() const {
-  return m_running.load(std::memory_order_relaxed);
+  return m_running;
 }
 
 float GameEngine::getCurrentFPS() const {
@@ -919,13 +878,6 @@ float GameEngine::getCurrentFPS() const {
 }
 
 void GameEngine::update(float deltaTime) {
-  // Main loop is single-threaded - update and render are sequential
-  m_updateRunning.store(true, std::memory_order_relaxed);
-
-  // Get the buffer for the current update
-  const size_t updateBufferIndex =
-      m_currentBufferIndex.load(std::memory_order_acquire);
-
   // OPTIMAL MANAGER UPDATE ARCHITECTURE - CLEAN DESIGN
   // ===================================================
   // Update order optimized for both player responsiveness AND smooth NPC movement.
@@ -975,178 +927,19 @@ void GameEngine::update(float deltaTime) {
   //    AIManager guarantees all batches complete before returning, so collision
   //    always receives complete, consistent updates (no partial/stale data).
   mp_collisionManager->update(deltaTime);
-
-  // Increment the frame counter atomically for thread-safe render
-  // synchronization
-  m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
-
-  // Mark this buffer as ready for rendering
-  m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
-
-#ifdef DEBUG
-  // Buffer telemetry - no mutex timing needed (single-threaded main loop)
-
-  // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
-  // Only logs when F3 toggle is enabled, otherwise silent
-  uint64_t currentFrame = m_lastUpdateFrame.load(std::memory_order_relaxed);
-
-  if (m_showBufferTelemetry.load(std::memory_order_relaxed) &&
-      currentFrame - m_telemetryLogFrame >= TELEMETRY_LOG_INTERVAL) {
-    m_telemetryLogFrame = currentFrame;
-
-    GAMEENGINE_DEBUG(std::format("=== Buffer Telemetry Report (last {} frames) ===", TELEMETRY_LOG_INTERVAL));
-    GAMEENGINE_DEBUG(std::format("  Buffer Mode: {}", m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
-    GAMEENGINE_DEBUG(std::format("  Swap Success Rate: {}%", m_bufferTelemetry.getSwapSuccessRate()));
-    GAMEENGINE_DEBUG(std::format("  Swap Stats: {} success / {} blocked / {} CAS failures",
-                                 m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed),
-                                 m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed),
-                                 m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Render Stalls: {}", m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Frames Skipped: {}", m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Current Buffers: [Write:{} Read:{}]",
-                                 m_currentBufferIndex.load(std::memory_order_relaxed),
-                                 m_renderBufferIndex.load(std::memory_order_relaxed)));
-
-    // Reset counters for next interval
-    m_bufferTelemetry.reset();
-  }
-#endif
-
-  // Mark update as completed
-  m_updateCompleted.store(true, std::memory_order_relaxed);
-  m_updateRunning.store(false, std::memory_order_relaxed);
 }
 
 void GameEngine::render() {
-  // Always on MAIN thread - SDL REQUIREMENT
-  // Main loop is single-threaded, no mutex needed
+  // Calculate interpolation alpha for smooth rendering between fixed updates
+  float interpolationAlpha = static_cast<float>(m_timestepManager->getInterpolationAlpha());
 
-  // Calculate interpolation alpha from TimestepManager
-  // This enables smooth rendering at any refresh rate with fixed 60Hz updates
-  float interpolationAlpha = 1.0f;
-  if (m_timestepManager) {
-    interpolationAlpha = static_cast<float>(m_timestepManager->getInterpolationAlpha());
-  }
+  // Clear and render
+  SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
+  SDL_RenderClear(mp_renderer.get());
 
-  // Always render - optimized buffer management ensures render buffer is always
-  // valid
-  if (!SDL_SetRenderDrawColor(
-          mp_renderer.get(),
-          HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-    GAMEENGINE_ERROR(std::format("Failed to set render draw color: {}", SDL_GetError()));
-  }
-  if (!SDL_RenderClear(mp_renderer.get())) {
-    GAMEENGINE_ERROR(std::format("Failed to clear renderer: {}", SDL_GetError()));
-  }
-
-  // Pass renderer and interpolation alpha to GameStateManager for state rendering
   mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
 
-  if (!SDL_RenderPresent(mp_renderer.get())) {
-    GAMEENGINE_ERROR(std::format("Failed to present renderer: {}", SDL_GetError()));
-  }
-
-  // After presenting, mark the render buffer as consumed to avoid stale
-  // re-renders
-  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-  m_bufferReady[renderIndex].store(false, std::memory_order_release);
-
-  // Increment rendered frame counter for fast synchronization
-  m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
-}
-
-void GameEngine::swapBuffers() {
-  // Thread-safe buffer swap with proper synchronization
-  // Supports both double (2) and triple (3) buffering modes
-  size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-  size_t nextUpdateIndex = (currentIndex + 1) % m_bufferCount;  // Use runtime buffer count
-
-#ifdef DEBUG
-  // TELEMETRY POINT 1: Track swap attempt
-  m_bufferTelemetry.swapAttempts.fetch_add(1, std::memory_order_relaxed);
-#endif
-
-  // TRIPLE BUFFERING OPTIMIZATION:
-  // With 3 buffers, there's always a free buffer available (one for update, one for render, one free).
-  // With 2 buffers, we must check that next buffer isn't being rendered to prevent overwriting.
-
-  bool canSwap = m_bufferReady[currentIndex].load(std::memory_order_acquire);
-
-  if (m_bufferCount == 2) {
-    // Double buffering: also check that next buffer isn't being rendered
-    size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-    canSwap = canSwap && (nextUpdateIndex != currentRenderIndex);
-  }
-  // Triple buffering: always has a free buffer, no additional check needed
-
-  if (canSwap) {
-    // Atomic compare-exchange to ensure no race condition
-    size_t expected = currentIndex;
-    if (m_currentBufferIndex.compare_exchange_strong(
-            expected, nextUpdateIndex, std::memory_order_acq_rel)) {
-      // Successfully swapped update buffer
-      // Make previous update buffer available for rendering
-      m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-
-      // Clear the next buffer's ready state for the next update cycle
-      m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-
-#ifdef DEBUG
-      // TELEMETRY POINT 2: Successful swap
-      m_bufferTelemetry.swapSuccesses.fetch_add(1, std::memory_order_relaxed);
-#endif
-    } else {
-#ifdef DEBUG
-      // TELEMETRY POINT 3: CAS failure (atomic contention)
-      m_bufferTelemetry.casFailures.fetch_add(1, std::memory_order_relaxed);
-#endif
-    }
-  } else {
-#ifdef DEBUG
-    // TELEMETRY POINT 4: Swap blocked (buffer not ready or rendering conflict)
-    m_bufferTelemetry.swapBlocked.fetch_add(1, std::memory_order_relaxed);
-#endif
-  }
-}
-
-bool GameEngine::hasNewFrameToRender() const noexcept {
-  // Optimized render check with minimal atomic operations
-  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-
-  // Single check for buffer readiness
-  if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
-#ifdef DEBUG
-    // TELEMETRY POINT 5: Render stall (no buffer ready)
-    m_bufferTelemetry.renderStalls.fetch_add(1, std::memory_order_relaxed);
-#endif
-    return false;
-  }
-
-  // Compare frame counters only if buffer is ready - use relaxed ordering for
-  // counters
-  uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
-  uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
-
-#ifdef DEBUG
-  // TELEMETRY POINT 6: Frame skipped (update hasn't advanced)
-  if (lastUpdate == lastRendered) {
-    m_bufferTelemetry.framesSkipped.fetch_add(1, std::memory_order_relaxed);
-  }
-#endif
-
-  return lastUpdate > lastRendered;
-}
-
-bool GameEngine::isUpdateRunning() const noexcept {
-  return m_updateRunning.load(std::memory_order_relaxed);
-}
-
-size_t GameEngine::getCurrentBufferIndex() const noexcept {
-  return m_currentBufferIndex.load(std::memory_order_relaxed);
-}
-
-size_t GameEngine::getRenderBufferIndex() const noexcept {
-  return m_renderBufferIndex.load(std::memory_order_relaxed);
+  SDL_RenderPresent(mp_renderer.get());
 }
 
 void GameEngine::processBackgroundTasks() {
@@ -1222,9 +1015,6 @@ GameEngine::getLogicalPresentationMode() const noexcept {
 
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
-
-  // Signal shutdown
-  m_stopRequested.store(true, std::memory_order_release);
 
   // Cache manager references for better performance
   HammerEngine::ThreadSystem &threadSystem =
