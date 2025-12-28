@@ -346,14 +346,14 @@ The GameEngine configures VSync and rendering through SDL:
 
 ```cpp
 // Performance hints (set before renderer creation)
-SDL_SetHint("SDL_HINT_RENDER_BATCHING", "1");            // Enable render batching
-SDL_SetHint("SDL_HINT_FRAMEBUFFER_ACCELERATION", "1");   // GPU acceleration
+SDL_SetHint(SDL_HINT_RENDER_BATCHING, "1");            // Enable render batching
+SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");   // GPU acceleration
 
 // VSync configuration (runtime, after renderer creation)
 SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);   // Enable/disable VSync
 
 // Platform-specific: Double buffer hint (Raspberry Pi and Wayland ONLY)
-SDL_SetHint("SDL_HINT_VIDEO_DOUBLE_BUFFER", "1");        // Prefer double over triple buffer
+SDL_SetHint(SDL_HINT_VIDEO_DOUBLE_BUFFER, "1");        // Prefer double over triple buffer
 ```
 
 **VSync Control:**
