@@ -424,20 +424,87 @@ BOOST_AUTO_TEST_CASE(TestNoRandomInRenderMethods) {
 }
 
 // ----------------------------------------------------------------------------
-// Test: Rendering uses double-buffer from GameEngine
+// Test: TimestepManager provides deterministic fixed timestep
 // ----------------------------------------------------------------------------
-// GameStates should render from stable buffer, not current update buffer
+// Replaces old GameLoop buffer management (removed in commit 792501b)
 
-BOOST_AUTO_TEST_CASE(TestDoubleBufferRenderingPattern) {
-    const std::string gameEngineFile = "src/core/GameEngine.cpp";
+BOOST_AUTO_TEST_CASE(TestTimestepManagerPattern) {
+    const std::string gameEngineHpp = "include/core/GameEngine.hpp";
+    const std::string hammerMainCpp = "src/core/HammerMain.cpp";
 
-    // Verify double-buffer related code exists
-    bool hasBufferManagement = fileContainsPattern(gameEngineFile, "m_renderBufferIndex") ||
-                               fileContainsPattern(gameEngineFile, "m_currentBufferIndex") ||
-                               fileContainsPattern(gameEngineFile, "swapBuffers");
+    // GameEngine must have TimestepManager
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineHpp, "TimestepManager"),
+        "GameEngine should use TimestepManager for deterministic timing");
 
-    BOOST_CHECK_MESSAGE(hasBufferManagement,
-                       "GameEngine should have double-buffer management for deterministic rendering");
+    // Main loop uses fixed timestep pattern: startFrame -> shouldUpdate -> render -> endFrame
+    BOOST_CHECK_MESSAGE(fileContainsPattern(hammerMainCpp, "ts.startFrame()"),
+        "Main loop should call startFrame() for frame timing");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(hammerMainCpp, "ts.shouldUpdate()"),
+        "Main loop should use shouldUpdate() for fixed timestep updates");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(hammerMainCpp, "ts.endFrame()"),
+        "Main loop should call endFrame() for frame limiting");
+}
+
+// ----------------------------------------------------------------------------
+// Test: VSync configuration via SDL API
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TestVSyncConfiguration) {
+    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
+
+    // Verify runtime VSync handling via SDL API
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_SetRenderVSync"),
+        "GameEngine should configure VSync at runtime via SDL_SetRenderVSync");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_GetRenderVSync"),
+        "GameEngine should verify VSync state via SDL_GetRenderVSync");
+}
+
+// ----------------------------------------------------------------------------
+// Test: SDL performance hints are configured (cross-platform)
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TestSDLPerformanceHints) {
+    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
+
+    // Verify render batching hint (cross-platform performance optimization)
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_RENDER_BATCHING"),
+        "GameEngine should enable render batching for performance");
+
+    // Verify framebuffer acceleration hint (cross-platform)
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "SDL_HINT_FRAMEBUFFER_ACCELERATION"),
+        "GameEngine should enable framebuffer acceleration for performance");
+
+    // Note: SDL_HINT_VIDEO_DOUBLE_BUFFER only works on Raspberry Pi and Wayland
+    // so we don't test for it as it's a no-op on Windows/macOS
+}
+
+// ----------------------------------------------------------------------------
+// Test: Software frame limiting fallback exists
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TestSoftwareFrameLimitingFallback) {
+    const std::string timestepCpp = "src/core/TimestepManager.cpp";
+
+    // Verify software frame limiting exists as VSync fallback
+    BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "preciseFrameWait"),
+        "TimestepManager should have preciseFrameWait for software frame limiting");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "m_usingSoftwareFrameLimiting"),
+        "TimestepManager should track software vs hardware frame limiting mode");
+}
+
+// ----------------------------------------------------------------------------
+// Test: Interpolation alpha used for smooth rendering
+// ----------------------------------------------------------------------------
+
+BOOST_AUTO_TEST_CASE(TestInterpolationAlphaForSmoothRendering) {
+    const std::string gameEngineCpp = "src/core/GameEngine.cpp";
+    const std::string timestepCpp = "src/core/TimestepManager.cpp";
+
+    // Verify interpolation alpha is used for smooth rendering
+    BOOST_CHECK_MESSAGE(fileContainsPattern(gameEngineCpp, "getInterpolationAlpha"),
+        "GameEngine::render() should use interpolation alpha for smooth rendering");
+    BOOST_CHECK_MESSAGE(fileContainsPattern(timestepCpp, "getInterpolationAlpha"),
+        "TimestepManager should calculate interpolation alpha from accumulator");
 }
 
 BOOST_AUTO_TEST_SUITE_END()

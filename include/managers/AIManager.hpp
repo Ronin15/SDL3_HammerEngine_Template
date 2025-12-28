@@ -531,7 +531,6 @@ private:
                     bool hasPlayer,
                     const EntityStorage& storage,
                     std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
-  void swapBuffers();
   void cleanupInactiveEntities();
   void cleanupAllEntities();
   void updateDistancesScalar(const Vector2D &playerPos);
