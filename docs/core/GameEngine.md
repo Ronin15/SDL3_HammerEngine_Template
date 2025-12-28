@@ -52,19 +52,17 @@ int main() {
     TimestepManager& ts = engine.getTimestepManager();
 
     // Main game loop - fixed timestep pattern
+    // Sequential: update drains accumulator THEN render reads alpha (no race conditions)
     while (engine.isRunning()) {
-        ts.startFrame();
-        engine.handleEvents();
+        ts.startFrame();           // Start frame timing (adds delta to accumulator)
+        engine.handleEvents();      // Process SDL events (main thread only)
 
-        while (ts.shouldUpdate()) {
-            if (engine.hasNewFrameToRender()) {
-                engine.swapBuffers();
-            }
+        while (ts.shouldUpdate()) { // Fixed timestep updates - drain accumulator
             engine.update(ts.getUpdateDeltaTime());
         }
 
-        engine.render();
-        ts.endFrame();
+        engine.render();           // Render with interpolation alpha
+        ts.endFrame();             // VSync or software frame limiting
     }
 
     engine.clean();
@@ -100,7 +98,7 @@ private:
 - **Threading System**: Multi-threaded task processing with WorkerBudget system
 - **Resource Loading**: Asynchronous resource initialization
 - **State Management**: Integration with GameStateManager
-- **Configurable Buffering**: Thread-safe rendering with lock-free double or triple buffering (configurable via `setBufferCount()`, toggle with F3 in debug mode)
+- **SDL Buffer Hints**: Uses `SDL_HINT_VIDEO_DOUBLE_BUFFER` for GPU-level double buffering (low latency)
 
 ### System Dependencies
 
@@ -205,14 +203,12 @@ The main loop runs entirely on the main thread with a classic fixed timestep pat
 
 ```cpp
 // Main game loop - fixed timestep pattern
+// Sequential: update drains accumulator THEN render reads alpha (no race conditions)
 while (engine.isRunning()) {
     ts.startFrame();           // Start frame timing (adds delta to accumulator)
     engine.handleEvents();      // Process SDL events (main thread only)
 
     while (ts.shouldUpdate()) { // Fixed timestep updates - drain accumulator
-        if (engine.hasNewFrameToRender()) {
-            engine.swapBuffers();
-        }
         engine.update(ts.getUpdateDeltaTime());
     }
 
@@ -280,10 +276,6 @@ void GameEngine::update(float deltaTime) {
     if (mp_collisionManager) {
         mp_collisionManager->update(deltaTime);
     }
-
-    // Update frame counters and buffer management
-    m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
-    m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
 }
 ```
 
@@ -348,126 +340,40 @@ private:
 };
 ```
 
-#### Lock-Free Configurable Buffering System (Double/Triple)
+#### VSync and Rendering Configuration
 
-The GameEngine supports both **double buffering** (2 buffers) and **triple buffering** (3 buffers) for flexible performance tuning:
-
-```cpp
-class GameEngine {
-private:
-    // Configurable buffer count (default: 2 for double buffering)
-    size_t m_bufferCount{2};                    // Set to 3 for triple buffering
-    std::atomic<size_t> m_currentBufferIndex{0};
-    std::atomic<size_t> m_renderBufferIndex{0};
-    std::atomic<bool> m_bufferReady[3]{false, false, false};  // Max 3 buffers
-
-    // Frame tracking for synchronization
-    std::atomic<uint64_t> m_lastUpdateFrame{0};
-    std::atomic<uint64_t> m_lastRenderedFrame{0};
-
-    // DEBUG MODE ONLY: Buffer telemetry statistics (lock-free counters only)
-    struct BufferTelemetryStats {
-        std::atomic<uint64_t> swapAttempts{0};   // Total swap attempts
-        std::atomic<uint64_t> swapSuccesses{0};  // Successful swaps
-        std::atomic<uint64_t> renderStalls{0};   // Times renderer stalled
-        std::atomic<uint64_t> framesSkipped{0};  // Skipped frames
-    };
-    #ifdef DEBUG
-    BufferTelemetryStats m_bufferStats{};
-    #endif
-
-public:
-    // Configure double (2 buffers) or triple (3 buffers) buffering
-    void setBufferCount(size_t count) {
-        if (count == 2 || count == 3) {
-            m_bufferCount = count;
-        }
-    }
-
-    void swapBuffers() {
-        // Thread-safe buffer swap with proper synchronization
-        size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-        size_t nextUpdateIndex = (currentIndex + 1) % m_bufferCount;
-
-        // Check if we have a valid render buffer before attempting swap
-        size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-
-        // Only swap if current buffer is ready AND next buffer isn't being rendered
-        if (m_bufferReady[currentIndex].load(std::memory_order_acquire) &&
-            nextUpdateIndex != currentRenderIndex) {
-
-            // Atomic compare-exchange to ensure no race condition
-            size_t expected = currentIndex;
-            if (m_currentBufferIndex.compare_exchange_strong(expected, nextUpdateIndex,
-                                                             std::memory_order_acq_rel)) {
-                // Successfully swapped update buffer
-                // Make previous update buffer available for rendering
-                m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-
-                // Clear the next buffer's ready state for the next update cycle
-                m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-
-                // Signal buffer swap completion
-                m_bufferCondition.notify_one();
-            }
-        }
-    }
-
-    bool hasNewFrameToRender() const noexcept {
-        // Optimized render check with minimal atomic operations
-        size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-
-        // Single check for buffer readiness
-        if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
-            return false;
-        }
-
-        // Compare frame counters only if buffer is ready - use relaxed ordering for counters
-        uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
-        uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
-
-        return lastUpdate > lastRendered;
-    }
-
-    // DEBUG MODE: Get buffer telemetry statistics
-    #ifdef DEBUG
-    const BufferTelemetryStats& getBufferTelemetry() const {
-        return m_bufferStats;
-    }
-    #endif
-};
-```
-
-**Double vs Triple Buffering:**
-
-| Feature | Double Buffering (2) | Triple Buffering (3) |
-|---------|---------------------|----------------------|
-| Memory Usage | Lower (2 buffers) | Higher (3 buffers) |
-| Latency | Lower (simpler logic) | Slightly higher |
-| Smoothness | Good (no wait) | Excellent (guaranteed) |
-| Render Stalls | Possible if update slow | Never (always has buffer) |
-| Typical Use | Most games | High frame rate games |
-
-**Usage:**
+The GameEngine configures VSync and rendering through SDL:
 
 ```cpp
-auto& engine = GameEngine::Instance();
+// Performance hints (set before renderer creation)
+SDL_SetHint("SDL_HINT_RENDER_BATCHING", "1");            // Enable render batching
+SDL_SetHint("SDL_HINT_FRAMEBUFFER_ACCELERATION", "1");   // GPU acceleration
 
-// Switch to triple buffering (default is double)
-engine.setBufferCount(3);
+// VSync configuration (runtime, after renderer creation)
+SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);   // Enable/disable VSync
 
-// In debug mode, check buffer statistics
-#ifdef DEBUG
-const auto& stats = engine.getBufferTelemetry();
-std::cout << "Swap attempts: " << stats.swapAttempts << "\n";
-std::cout << "Render stalls: " << stats.renderStalls << "\n";
-#endif
+// Platform-specific: Double buffer hint (Raspberry Pi and Wayland ONLY)
+SDL_SetHint("SDL_HINT_VIDEO_DOUBLE_BUFFER", "1");        // Prefer double over triple buffer
 ```
 
-**Debug Toggle:**
+**VSync Control:**
 
-Press **F3** in debug mode to toggle between double and triple buffering at runtime.
+| Method | When to Use |
+|--------|-------------|
+| `SDL_SetRenderVSync(renderer, 1)` | Enable VSync (sync to display refresh, no tearing) |
+| `SDL_SetRenderVSync(renderer, 0)` | Disable VSync (use software frame limiting fallback) |
 
+**Platform Notes:**
+- `SDL_HINT_VIDEO_DOUBLE_BUFFER` only affects **Raspberry Pi** and **Wayland** platforms
+- On macOS/Windows, buffer count is managed by the graphics driver
+- The engine verifies VSync state after setting and falls back to software limiting if needed
+
+**Frame Limiting Fallback:**
+When VSync is unavailable, TimestepManager uses a hybrid sleep+spinlock approach:
+1. Sleep for most of the frame time (CPU-friendly)
+2. Spinlock for final ~2ms (sub-millisecond precision)
+
+**Note:** The old application-level buffer management (`swapBuffers()`, `m_bufferReady[]`, F3 toggle) was removed with GameLoop (commit 792501b) - SDL handles buffering internally, and the sequential main loop has no race conditions.
 
 #### Background Task Processing
 
@@ -732,14 +638,6 @@ void clean();                                                    // Cleanup all 
 
 ```cpp
 void processBackgroundTasks();                                   // Process background tasks
-void processEngineCoordination(float dt);                        // Engine coordination (high priority)
-void waitForUpdate();                                            // Wait for update completion
-void signalUpdateComplete();                                     // Signal update complete
-bool hasNewFrameToRender() const noexcept;                     // Check if new frame ready
-bool isUpdateRunning() const noexcept;                         // Check if update in progress
-void swapBuffers();                                             // Swap double buffers
-size_t getCurrentBufferIndex() const noexcept;                 // Get current update buffer
-size_t getRenderBufferIndex() const noexcept;                  // Get render buffer index
 ```
 
 ### State Management
@@ -809,10 +707,6 @@ bool initializeGame() {
 void workerThreadFunction() {
     // Safe to call from worker threads
     GameEngine& engine = GameEngine::Instance();
-
-    // These methods are thread-safe
-    bool hasFrame = engine.hasNewFrameToRender();
-    size_t bufferIndex = engine.getCurrentBufferIndex();
 
     // Access managers through engine (cached references)
     if (auto* gameStateManager = engine.getGameStateManager()) {
@@ -904,10 +798,12 @@ bool safeEngineOperation() {
    - Event Manager: Check for event processing bottlenecks
    - UI Manager: Only update when UI is active
 
-3. **Buffer System Health**:
+3. **Frame Timing Health**:
    ```cpp
-   bool hasFrame = engine.hasNewFrameToRender();
-   bool updateRunning = engine.isUpdateRunning();
+   // Check TimestepManager for frame timing info
+   TimestepManager& ts = engine.getTimestepManager();
+   float currentFPS = ts.getCurrentFPS();
+   bool excessiveFrameTime = ts.isFrameTimeExcessive();
    ```
 
 ### Movement and Animation Issues
@@ -965,14 +861,12 @@ public:
         TimestepManager& ts = engine.getTimestepManager();
 
         // Main game loop - fixed timestep pattern
+        // Sequential: update drains accumulator THEN render (no race conditions)
         while (engine.isRunning()) {
             ts.startFrame();
             engine.handleEvents();
 
             while (ts.shouldUpdate()) {
-                if (engine.hasNewFrameToRender()) {
-                    engine.swapBuffers();
-                }
                 engine.update(ts.getUpdateDeltaTime());
             }
 
@@ -1099,10 +993,8 @@ public:
             float engineFPS = engine.getCurrentFPS();
             float calculatedFPS = static_cast<float>(m_frameCount) / m_frameTimeAccumulator;
 
-            GAMEENGINE_INFO("Engine FPS: " + std::to_string(engineFPS) +
-                          ", Calculated FPS: " + std::to_string(calculatedFPS) +
-                          ", Update Running: " + std::to_string(engine.isUpdateRunning()) +
-                          ", New Frame Available: " + std::to_string(engine.hasNewFrameToRender()));
+            GAMEENGINE_INFO(std::format("Engine FPS: {:.1f}, Calculated FPS: {:.1f}",
+                                        engineFPS, calculatedFPS));
 
             // Reset counters
             m_frameTimeAccumulator = 0.0f;
