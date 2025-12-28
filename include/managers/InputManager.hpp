@@ -28,6 +28,12 @@ class InputManager {
         return instance;
     }
 
+    // Initialize input system
+    bool init();
+
+    // Check if initialized
+    bool isInitialized() const { return m_isInitialized; }
+
     // Initialize gamepad
     void initializeGamePad();
 
@@ -83,7 +89,8 @@ class InputManager {
     std::vector<bool> m_mouseButtonStates{};
     std::unique_ptr<Vector2D> m_mousePosition{nullptr};
     
-    // Shutdown state
+    // Initialization and shutdown state
+    bool m_isInitialized{false};
     bool m_isShutdown{false};
 
     // Delete copy constructor and assignment operator
