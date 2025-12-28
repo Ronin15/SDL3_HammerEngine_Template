@@ -89,6 +89,16 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 
 **Deferred transitions**: Set flag in `enter()`, transition in `update()` to avoid timing issues.
 
+## GameState Architecture
+
+**State Transitions**: Use `mp_stateManager->changeState()`, never `GameEngine::Instance()`. Base class provides `mp_stateManager`.
+
+**Manager Caching**: Cache singleton pointers in `enter()` as `mp_uiMgr`, `mp_worldMgr`, etc. Use cached pointers in render/callbacks: `mp_uiMgr->render(r)`.
+
+**Lazy String Caching**: Cache enum→string conversions, recompute only on change: `if (m_phase != m_lastPhase) { m_str = getPhaseString(); m_lastPhase = m_phase; }`
+
+**Layout Caching**: Compute static positions (LogoState) in `enter()`, use cached values in `render()`.
+
 ## Workflow
 
 Search existing patterns before implementing. Reference states: EventDemoState, UIDemoState, SettingsMenuState, MainMenuState.
