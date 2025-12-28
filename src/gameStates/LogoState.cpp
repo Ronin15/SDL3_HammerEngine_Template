@@ -16,6 +16,9 @@
 bool LogoState::enter() {
   GAMESTATE_INFO("Entering LOGO State");
 
+  // Pause all gameplay managers during logo display
+  GameEngine::Instance().setGlobalPause(true);
+
   // Reset timer when entering state
   m_stateTimer = 0.0f;
 

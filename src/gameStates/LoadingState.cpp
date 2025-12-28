@@ -11,6 +11,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/GameTimeManager.hpp"
 #include <format>
 #include <random>
 
@@ -41,6 +42,9 @@ bool LoadingState::enter() {
     }
 
     GAMESTATE_INFO(std::format("Entering LoadingState - Target: {}", m_targetStateName));
+
+    // Pause game time during loading (time shouldn't advance while loading)
+    GameTimeManager::Instance().setGlobalPause(true);
 
     // Initialize loading screen UI
     initializeUI();

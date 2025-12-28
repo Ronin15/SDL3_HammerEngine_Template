@@ -539,19 +539,25 @@ void AIDemoState::update(float deltaTime) {
 }
 
 void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
-  // Get GameEngine for logical dimensions (renderer now passed as parameter)
+  // Get GameEngine for FPS query (cached pointer would require header changes)
   const auto &gameEngine = GameEngine::Instance();
 
   // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
+  float viewWidth = 0.0f;
+  float viewHeight = 0.0f;
   Vector2D playerInterpPos;  // Position synced with camera
 
   if (m_camera) {
     zoom = m_camera->getZoom();
     // Returns the position used for offset - use it for player rendering
     playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+
+    // Derive view dimensions from viewport/zoom (no per-frame GameEngine calls)
+    viewWidth = m_camera->getViewport().width / zoom;
+    viewHeight = m_camera->getViewport().height / zoom;
   }
 
   // Set render scale for zoom only when changed (avoids GPU state change overhead)
@@ -562,11 +568,7 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
   // Render world first (background layer) using pixel-snapped camera - use cached pointer
   if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
-    mp_worldMgr->render(renderer,
-                       renderCamX,
-                       renderCamY,
-                       gameEngine.getLogicalWidth(),
-                       gameEngine.getLogicalHeight());
+    mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
   }
 
   // Render all NPCs using same camera offset as world (ensures sync)
@@ -590,24 +592,23 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // mp_uiMgr guaranteed valid between enter() and exit()
   if (!mp_uiMgr->isShutdown()) {
     // Update status only when values change (C++20 type-safe, zero allocations)
-    const auto &aiManager = AIManager::Instance();
+    // Use m_aiPaused member instead of polling AIManager::isGloballyPaused() every frame
     int currentFPS = static_cast<int>(std::lround(gameEngine.getCurrentFPS()));
     size_t entityCount = m_npcs.size();
-    bool const isPaused = aiManager.isGloballyPaused();
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
-        isPaused != m_lastDisplayedPauseState) {
+        m_aiPaused != m_lastDisplayedPauseState) {
 
         m_statusBuffer.clear();  // Keeps reserved capacity
         std::format_to(std::back_inserter(m_statusBuffer),
                        "FPS: {} | Entities: {} | AI: {}",
-                       currentFPS, entityCount, isPaused ? "PAUSED" : "RUNNING");
+                       currentFPS, entityCount, m_aiPaused ? "PAUSED" : "RUNNING");
         mp_uiMgr->setText("ai_status", m_statusBuffer);
 
         m_lastDisplayedFPS = currentFPS;
         m_lastDisplayedEntityCount = entityCount;
-        m_lastDisplayedPauseState = isPaused;
+        m_lastDisplayedPauseState = m_aiPaused;
     }
   }
   mp_uiMgr->render(renderer);
