@@ -8,7 +8,7 @@
 
 /**
  * @file CombatController.hpp
- * @brief Lightweight controller for player combat mechanics
+ * @brief Frame-updatable controller for player combat mechanics
  *
  * CombatController handles:
  * - Attack execution and cooldowns
@@ -16,20 +16,24 @@
  * - Target tracking for UI display
  * - Hit detection against NPCs (via AIManager)
  *
- * Ownership: GameState owns the controller instance (not a singleton).
- * Follows the same pattern as WeatherController, DayNightController.
+ * This is a frame-updatable controller (implements IUpdatable) because it
+ * manages per-frame state: attack cooldowns, stamina regen, target timers.
+ *
+ * Ownership: ControllerRegistry owns the controller instance.
  */
 
 #include "controllers/ControllerBase.hpp"
-#include <vector>
+#include "controllers/IUpdatable.hpp"
 #include <memory>
+#include <vector>
 
 // Forward declarations
 class Player;
 class Entity;
 class NPC;
 
-class CombatController : public ControllerBase {
+class CombatController : public ControllerBase, public IUpdatable
+{
 public:
     CombatController() = default;
     ~CombatController() override = default;
@@ -38,26 +42,46 @@ public:
     CombatController(CombatController&&) noexcept = default;
     CombatController& operator=(CombatController&&) noexcept = default;
 
+    // --- ControllerBase interface ---
+
     /**
      * @brief Subscribe to combat-related events
-     * @note Called when GamePlayState enters
+     * @note Called by ControllerRegistry::subscribeAll()
      */
-    void subscribe();
+    void subscribe() override;
+
+    /**
+     * @brief Get controller name for debugging
+     * @return "CombatController"
+     */
+    [[nodiscard]] std::string_view getName() const override { return "CombatController"; }
+
+    // --- IUpdatable interface ---
 
     /**
      * @brief Update combat state (cooldowns, stamina regen, target timer)
      * @param deltaTime Frame delta time in seconds
-     * @param player Reference to the player
+     * @note Called by ControllerRegistry::updateAll()
      */
-    void update(float deltaTime, Player& player);
+    void update(float deltaTime) override;
+
+    // --- Configuration ---
+
+    /**
+     * @brief Set the player reference for combat operations
+     * @param player Shared pointer to the player
+     * @note Must be called after add() and before subscribeAll()
+     */
+    void setPlayer(std::shared_ptr<Player> player) { mp_player = player; }
+
+    // --- Combat operations ---
 
     /**
      * @brief Attempt to perform an attack
-     * @param player Reference to the attacking player
      * @return true if attack was performed, false if blocked (cooldown, no stamina)
      * @note Uses AIManager::queryEntitiesInRadius() for hit detection
      */
-    bool tryAttack(Player& player);
+    bool tryAttack();
 
     /**
      * @brief Get the currently targeted NPC (for UI display)
@@ -79,23 +103,23 @@ public:
 
     // Configuration constants
     static constexpr float ATTACK_STAMINA_COST{10.0f};
-    static constexpr float STAMINA_REGEN_RATE{15.0f};    // per second
+    static constexpr float STAMINA_REGEN_RATE{15.0f};     // per second
     static constexpr float TARGET_DISPLAY_DURATION{3.0f}; // seconds after last hit
     static constexpr float ATTACK_COOLDOWN{0.5f};         // seconds between attacks
 
 private:
     /**
      * @brief Execute the attack and detect hits
-     * @param player Reference to the attacking player
+     * @param player Raw pointer to player (from locked weak_ptr)
      */
-    void performAttack(Player& player);
+    void performAttack(Player* player);
 
     /**
      * @brief Regenerate player stamina over time
-     * @param player Reference to the player
+     * @param player Raw pointer to player (from locked weak_ptr)
      * @param deltaTime Frame delta time in seconds
      */
-    void regenerateStamina(Player& player, float deltaTime);
+    void regenerateStamina(Player* player, float deltaTime);
 
     /**
      * @brief Update target display timer
@@ -103,8 +127,11 @@ private:
      */
     void updateTargetTimer(float deltaTime);
 
+    // Player reference (set via setPlayer())
+    std::weak_ptr<Player> mp_player;
+
     // Target tracking
-    std::weak_ptr<NPC> m_targetedNPC;  // Safe weak reference, doesn't extend lifetime
+    std::weak_ptr<NPC> m_targetedNPC; // Safe weak reference, doesn't extend lifetime
     float m_targetDisplayTimer{0.0f};
 
     // Attack timing

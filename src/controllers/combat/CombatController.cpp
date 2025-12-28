@@ -4,16 +4,17 @@
  */
 
 #include "controllers/combat/CombatController.hpp"
-#include "entities/Player.hpp"
-#include "entities/NPC.hpp"
-#include "events/CombatEvent.hpp"
-#include "managers/EventManager.hpp"
-#include "managers/AIManager.hpp"
 #include "core/Logger.hpp"
-#include <format>
+#include "entities/NPC.hpp"
+#include "entities/Player.hpp"
+#include "events/CombatEvent.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/EventManager.hpp"
 #include <cmath>
+#include <format>
 
-void CombatController::subscribe() {
+void CombatController::subscribe()
+{
     if (checkAlreadySubscribed()) {
         return;
     }
@@ -26,7 +27,13 @@ void CombatController::subscribe() {
     COMBAT_INFO("CombatController subscribed");
 }
 
-void CombatController::update(float deltaTime, Player& player) {
+void CombatController::update(float deltaTime)
+{
+    auto player = mp_player.lock();
+    if (!player) {
+        return;
+    }
+
     // Update attack cooldown
     if (m_attackCooldown > 0.0f) {
         m_attackCooldown -= deltaTime;
@@ -37,14 +44,20 @@ void CombatController::update(float deltaTime, Player& player) {
 
     // Regenerate stamina when not attacking
     if (m_attackCooldown <= 0.0f) {
-        regenerateStamina(player, deltaTime);
+        regenerateStamina(player.get(), deltaTime);
     }
 
     // Update target display timer
     updateTargetTimer(deltaTime);
 }
 
-bool CombatController::tryAttack(Player& player) {
+bool CombatController::tryAttack()
+{
+    auto player = mp_player.lock();
+    if (!player) {
+        return false;
+    }
+
     // Check cooldown
     if (m_attackCooldown > 0.0f) {
         COMBAT_DEBUG(std::format("Attack on cooldown: {:.2f}s remaining", m_attackCooldown));
@@ -52,41 +65,46 @@ bool CombatController::tryAttack(Player& player) {
     }
 
     // Check stamina
-    if (!player.canAttack(ATTACK_STAMINA_COST)) {
+    if (!player->canAttack(ATTACK_STAMINA_COST)) {
         COMBAT_DEBUG(std::format("Not enough stamina to attack. Need {:.1f}, have {:.1f}",
-            ATTACK_STAMINA_COST, player.getStamina()));
+            ATTACK_STAMINA_COST, player->getStamina()));
         return false;
     }
 
     // Consume stamina and start cooldown
-    float oldStamina = player.getStamina();
-    player.consumeStamina(ATTACK_STAMINA_COST);
+    float oldStamina = player->getStamina();
+    player->consumeStamina(ATTACK_STAMINA_COST);
     m_attackCooldown = ATTACK_COOLDOWN;
 
     COMBAT_INFO(std::format("Player attacking! Stamina: {:.1f} -> {:.1f}",
-        oldStamina, player.getStamina()));
+        oldStamina, player->getStamina()));
 
     // Transition player to attacking state
-    player.changeState("attacking");
+    player->changeState("attacking");
 
     // Perform hit detection using AIManager
-    performAttack(player);
+    performAttack(player.get());
 
     // Dispatch player attacked event
     auto attackEvent = std::make_shared<CombatEvent>(
-        CombatEventType::PlayerAttacked, &player, nullptr, player.getAttackDamage());
+        CombatEventType::PlayerAttacked, player.get(), nullptr, player->getAttackDamage());
     EventManager::Instance().dispatchEvent(attackEvent, EventManager::DispatchMode::Immediate);
 
     return true;
 }
 
-void CombatController::performAttack(Player& player) {
-    const Vector2D playerPos = player.getPosition();
-    const float attackRange = player.getAttackRange();
-    const float attackDamage = player.getAttackDamage();
+void CombatController::performAttack(Player* player)
+{
+    if (!player) {
+        return;
+    }
+
+    const Vector2D playerPos = player->getPosition();
+    const float attackRange = player->getAttackRange();
+    const float attackDamage = player->getAttackDamage();
 
     // Determine attack direction based on player facing
-    float attackDirX = (player.getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
+    float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
     // Query nearby entities from AIManager
     std::vector<EntityPtr> nearbyEntities;
@@ -133,7 +151,7 @@ void CombatController::performAttack(Player& player) {
 
         // Dispatch NPC damaged event
         auto damageEvent = std::make_shared<CombatEvent>(
-            CombatEventType::NPCDamaged, &player, npc.get(), attackDamage);
+            CombatEventType::NPCDamaged, player, npc.get(), attackDamage);
         damageEvent->setRemainingHealth(npc->getHealth());
         EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
 
@@ -142,7 +160,7 @@ void CombatController::performAttack(Player& player) {
             COMBAT_INFO(std::format("{} killed!", npc->getName()));
 
             auto killEvent = std::make_shared<CombatEvent>(
-                CombatEventType::NPCKilled, &player, npc.get(), attackDamage);
+                CombatEventType::NPCKilled, player, npc.get(), attackDamage);
             EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);
         }
     }
@@ -154,17 +172,23 @@ void CombatController::performAttack(Player& player) {
     }
 }
 
-void CombatController::regenerateStamina(Player& player, float deltaTime) {
-    float currentStamina = player.getStamina();
-    float maxStamina = player.getMaxStamina();
+void CombatController::regenerateStamina(Player* player, float deltaTime)
+{
+    if (!player) {
+        return;
+    }
+
+    float currentStamina = player->getStamina();
+    float maxStamina = player->getMaxStamina();
 
     if (currentStamina < maxStamina) {
         float regenAmount = STAMINA_REGEN_RATE * deltaTime;
-        player.restoreStamina(regenAmount);
+        player->restoreStamina(regenAmount);
     }
 }
 
-void CombatController::updateTargetTimer(float deltaTime) {
+void CombatController::updateTargetTimer(float deltaTime)
+{
     if (m_targetDisplayTimer > 0.0f) {
         m_targetDisplayTimer -= deltaTime;
         if (m_targetDisplayTimer <= 0.0f) {
@@ -175,7 +199,8 @@ void CombatController::updateTargetTimer(float deltaTime) {
     }
 }
 
-std::shared_ptr<NPC> CombatController::getTargetedNPC() const {
+std::shared_ptr<NPC> CombatController::getTargetedNPC() const
+{
     // Safely lock weak_ptr and verify target is still valid (alive)
     auto target = m_targetedNPC.lock();
     if (!target || !target->isAlive()) {
@@ -184,6 +209,7 @@ std::shared_ptr<NPC> CombatController::getTargetedNPC() const {
     return target;
 }
 
-bool CombatController::hasActiveTarget() const {
+bool CombatController::hasActiveTarget() const
+{
     return m_targetDisplayTimer > 0.0f && getTargetedNPC() != nullptr;
 }

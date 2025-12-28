@@ -22,6 +22,9 @@
 #include "world/WorldData.hpp"
 #include "managers/UIConstants.hpp"
 #include "utils/Camera.hpp"
+#include "controllers/world/WeatherController.hpp"
+#include "controllers/world/DayNightController.hpp"
+#include "controllers/combat/CombatController.hpp"
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -71,8 +74,12 @@ bool GamePlayState::enter() {
     // Initialize camera (world already loaded)
     initializeCamera();
 
-    // Subscribe weather controller (owned by this state)
-    m_weatherController.subscribe();
+    // Register controllers with the registry
+    mp_weatherCtrl = &m_controllers.add<WeatherController>();
+    mp_dayNightCtrl = &m_controllers.add<DayNightController>();
+    auto& combatCtrl = m_controllers.add<CombatController>();
+    combatCtrl.setPlayer(mp_Player);
+    mp_combatCtrl = &combatCtrl;
 
     // Enable automatic weather changes
     GameTimeManager::Instance().enableAutoWeather(true);
@@ -133,11 +140,8 @@ bool GamePlayState::enter() {
     fpsPos.fixedHeight = barHeight - 12;
     ui.setComponentPositioning("gameplay_fps", fpsPos);
 
-    // Subscribe day/night controller (owned by this state)
-    m_dayNightController.subscribe();
-
-    // Subscribe combat controller (owned by this state)
-    m_combatController.subscribe();
+    // Subscribe all controllers at once
+    m_controllers.subscribeAll();
 
     // Initialize combat HUD (health/stamina bars, target frame)
     initializeCombatHUD();
@@ -205,8 +209,8 @@ void GamePlayState::update(float deltaTime) {
   if (mp_Player) {
     mp_Player->update(deltaTime);
 
-    // Update combat controller (cooldowns, stamina regen, target tracking)
-    m_combatController.update(deltaTime, *mp_Player);
+    // Update all IUpdatable controllers (combat cooldowns, stamina regen, etc.)
+    m_controllers.updateAll(deltaTime);
 
     // Update combat HUD (health/stamina bars, target frame)
     updateCombatHUD();
@@ -229,7 +233,7 @@ void GamePlayState::update(float deltaTime) {
                    gt.formatCurrentTime(), gt.getTimeOfDayName(),
                    gt.getSeasonName(),
                    static_cast<int>(gt.getCurrentTemperature()),
-                   m_weatherController.getCurrentWeatherString());
+                   mp_weatherCtrl->getCurrentWeatherString());
     UIManager::Instance().setText("gameplay_time_label", m_statusBuffer);
   }
 
@@ -418,15 +422,17 @@ bool GamePlayState::exit() {
   mp_worldMgr = nullptr;
   mp_uiMgr = nullptr;
 
-  // Unsubscribe weather controller and disable auto-weather
-  m_weatherController.unsubscribe();
+  // Unsubscribe all controllers at once
+  m_controllers.unsubscribeAll();
   GameTimeManager::Instance().enableAutoWeather(false);
+
+  // Clear cached controller pointers
+  mp_weatherCtrl = nullptr;
+  mp_dayNightCtrl = nullptr;
+  mp_combatCtrl = nullptr;
 
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
-
-  // Unsubscribe day/night controller
-  m_dayNightController.unsubscribe();
 
   // Unsubscribe from TimePeriodChangedEvent
   if (m_dayNightSubscribed) {
@@ -477,6 +483,9 @@ void GamePlayState::pause() {
     mp_Player->setVelocity(Vector2D(0, 0));
   }
 
+  // Suspend all controllers (unsubscribe from events during pause)
+  m_controllers.suspendAll();
+
   GAMEPLAY_INFO("GamePlayState paused");
 }
 
@@ -505,6 +514,9 @@ void GamePlayState::resume() {
     ui.setComponentVisible("gameplay_inventory_status", true);
     ui.setComponentVisible("gameplay_inventory_list", true);
   }
+
+  // Resume all controllers (re-subscribe to events after pause)
+  m_controllers.resumeAll();
 
   GAMEPLAY_INFO("GamePlayState resumed");
 }
@@ -545,7 +557,7 @@ void GamePlayState::handleInput() {
 
   // Combat - spacebar to attack
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
-    m_combatController.tryAttack(*mp_Player);
+    mp_combatCtrl->tryAttack();
   }
 
   // Camera zoom controls
@@ -855,7 +867,7 @@ void GamePlayState::onTimePeriodChanged(const EventData& data) {
 
   // Add event log entry for the time period change
   UIManager::Instance().addEventLogEntry("gameplay_event_log",
-      std::string(m_dayNightController.getCurrentPeriodDescription()));
+      std::string(mp_dayNightCtrl->getCurrentPeriodDescription()));
 
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
@@ -892,7 +904,7 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer* renderer, int width, int
 
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
   // Only spawn ambient particles during clear weather
-  if (m_weatherController.getCurrentWeather() != WeatherType::Clear) {
+  if (mp_weatherCtrl->getCurrentWeather() != WeatherType::Clear) {
     if (m_ambientParticlesActive) {
       stopAmbientParticles();
     }
@@ -984,7 +996,7 @@ void GamePlayState::onWeatherChanged(const EventData& data) {
 
   // Add event log entry for the weather change
   UIManager::Instance().addEventLogEntry("gameplay_event_log",
-      std::string(m_weatherController.getCurrentWeatherDescription()));
+      std::string(mp_weatherCtrl->getCurrentWeatherDescription()));
 
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
@@ -1133,8 +1145,8 @@ void GamePlayState::updateCombatHUD() {
   ui.setValue("hud_stamina_bar", mp_Player->getStamina());
 
   // Update target frame visibility and content
-  if (m_combatController.hasActiveTarget()) {
-    auto target = m_combatController.getTargetedNPC();
+  if (mp_combatCtrl->hasActiveTarget()) {
+    auto target = mp_combatCtrl->getTargetedNPC();
     if (target) {
       ui.setComponentVisible("hud_target_panel", true);
       ui.setComponentVisible("hud_target_name", true);

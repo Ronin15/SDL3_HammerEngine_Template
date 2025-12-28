@@ -14,15 +14,18 @@
 #include "events/WeatherEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
-#include "controllers/world/WeatherController.hpp"
-#include "controllers/world/DayNightController.hpp"
-#include "controllers/combat/CombatController.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include <memory>
 #include <string>
 
 // Forward declarations for cached manager pointers
 class WorldManager;
 class UIManager;
+
+// Forward declarations for cached controller pointers
+class WeatherController;
+class DayNightController;
+class CombatController;
 
 class GamePlayState : public GameState {
 public:
@@ -75,10 +78,13 @@ private:
   std::string m_fpsBuffer{};
   float m_lastDisplayedFPS{-1.0f};
 
-  // --- Controllers (owned by this state) ---
-  WeatherController m_weatherController;
-  DayNightController m_dayNightController;
-  CombatController m_combatController;
+  // --- Controllers (owned by ControllerRegistry) ---
+  ControllerRegistry m_controllers;
+
+  // Cached controller pointers for frequent access (resolved in enter())
+  WeatherController* mp_weatherCtrl{nullptr};
+  DayNightController* mp_dayNightCtrl{nullptr};
+  CombatController* mp_combatCtrl{nullptr};
 
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)
