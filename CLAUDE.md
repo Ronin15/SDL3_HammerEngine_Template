@@ -20,12 +20,12 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 
 ## Testing
 
-Boost.Test (68+ executables). Use targeted tests during development.
+Boost.Test (58 executables). Use targeted tests during development. See `tests/TESTING.md` for comprehensive documentation.
 
 ```bash
-./run_all_tests.sh --core-only --errors-only
-./tests/test_scripts/run_save_tests.sh --verbose
-./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
+./tests/test_scripts/run_all_tests.sh --core-only --errors-only
+./tests/test_scripts/run_controller_tests.sh --verbose
+./bin/debug/save_manager_tests --run_test="TestSaveAndLoad*"
 ```
 
 ## Architecture

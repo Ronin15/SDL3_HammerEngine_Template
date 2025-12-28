@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 59 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, game engine initialization, GameTime simulation, controller systems, entity state management, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 58 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -24,7 +24,6 @@ The Hammer Game Engine has the following test suites:
 3. **Core Systems Tests**
    - Buffer Reuse Tests: Validate memory allocation patterns and buffer reuse across frames
    - Camera Tests: Validate camera world/screen coordinate transformations
-   - GameEngine Tests: Test core engine initialization and manager lifecycle
    - InputManager Tests: Validate input handling and coordinate conversion
    - Loading State Tests: Test async loading and deferred state transitions
    - Rendering Pipeline Tests: Validate frame pacing and render coordination
@@ -67,8 +66,8 @@ The Hammer Game Engine has the following test suites:
    - GameTime Season Tests: Validate seasonal transitions and weather probability changes
 
 9. **Controller Tests**
-   - TimeController Tests: Time event logging and status formatting
-   - WeatherController Tests: Weather event coordination and particle integration
+   - ControllerRegistry Tests: Type-safe controller registration, lifecycle management, batch operations
+   - WeatherController Tests: Weather event coordination and state transitions
    - DayNightController Tests: Time period tracking and visual transitions
 
 10. **Entity State Machine Tests**
@@ -101,7 +100,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_pathfinding_tests.sh           # Pathfinding algorithm and grid tests
 ./tests/test_scripts/run_pathfinder_ai_contention_tests.sh  # PathfinderManager & AIManager WorkerBudget coordination tests
 ./tests/test_scripts/run_game_time_tests.sh               # GameTime system tests
-./tests/test_scripts/run_controller_tests.sh              # Controller tests (Time, Weather, DayNight)
+./tests/test_scripts/run_controller_tests.sh              # Controller tests (Registry, Weather, DayNight)
 ./tests/test_scripts/run_entity_state_manager_tests.sh    # Entity state machine tests
 
 # Performance scaling benchmarks (slow execution)
@@ -156,7 +155,7 @@ tests/test_scripts/run_event_tests.bat                  # Event manager tests
 tests/test_scripts/run_collision_tests.bat              # Collision system and spatial hash tests
 tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm and grid tests
 tests/test_scripts/run_game_time_tests.bat              # GameTime system tests
-tests/test_scripts/run_controller_tests.bat             # Controller tests (Time, Weather, DayNight)
+tests/test_scripts/run_controller_tests.bat             # Controller tests (Registry, Weather, DayNight)
 tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine tests
 
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
@@ -958,33 +957,51 @@ tests/test_scripts/run_game_time_tests.bat [--verbose]
 
 ### Controller Tests
 
-Located in `tests/controllers/`, these tests validate the state-scoped controller pattern:
+Located in `tests/controllers/`, these tests validate the state-scoped controller pattern. Tests use a template-based infrastructure (`tests/controllers/common/`) that provides reusable test suites for common ControllerBase behaviors, reducing duplication across controller test files.
 
 #### Test Coverage
 
-1. **TimeController Tests** (`TimeControllerTest.cpp`):
-   - Subscribe/unsubscribe lifecycle
-   - Time event logging
-   - Status format modes
+1. **ControllerRegistry Tests** (`ControllerRegistryTests.cpp`):
+   - Type-safe controller registration and retrieval
+   - Batch operations (subscribeAll, unsubscribeAll, suspendAll, resumeAll, updateAll)
+   - Lifecycle management (clear, move semantics)
+   - Empty registry edge cases
 
-2. **WeatherController Tests** (`WeatherControllerTest.cpp`):
-   - Weather event coordination
-   - ParticleManager integration
-   - Weather state transitions
+2. **WeatherController Tests** (`WeatherControllerTests.cpp`):
+   - Weather event coordination and state transitions
+   - All weather types (Clear, Cloudy, Rainy, Stormy, Foggy, Snowy, Windy)
+   - Weather descriptions and event filtering
 
-3. **DayNightController Tests** (`DayNightControllerTest.cpp`):
+3. **DayNightController Tests** (`DayNightControllerTests.cpp`):
    - Time period tracking (Morning/Day/Evening/Night)
-   - Visual transition handling
-   - Period change event processing
+   - Hour-to-period mapping and transitions
+   - Visual state management and descriptions
+
+#### Common Test Infrastructure
+
+The `tests/controllers/common/` directory provides reusable test templates:
+- `ControllerTestFixture.hpp`: Base fixture with EventManager/GameTimeManager setup
+- `ControllerOwnershipTests.hpp`: Instantiation, move semantics, RAII destruction
+- `ControllerSubscriptionTests.hpp`: Subscribe/unsubscribe lifecycle
+- `ControllerSuspendResumeTests.hpp`: Suspend/resume behavior
+- `ControllerGetNameTests.hpp`: getName validation
 
 #### Running Controller Tests
 
 ```bash
 # Linux/macOS
-./tests/test_scripts/run_controller_tests.sh [--verbose]
+./tests/test_scripts/run_controller_tests.sh              # Run all controller tests
+./tests/test_scripts/run_controller_tests.sh --registry   # ControllerRegistry tests only
+./tests/test_scripts/run_controller_tests.sh --weather    # WeatherController tests only
+./tests/test_scripts/run_controller_tests.sh --daynight   # DayNightController tests only
+./tests/test_scripts/run_controller_tests.sh --verbose    # Verbose output
 
 # Windows
-tests/test_scripts/run_controller_tests.bat [--verbose]
+tests/test_scripts/run_controller_tests.bat              # Run all controller tests
+tests/test_scripts/run_controller_tests.bat --registry   # ControllerRegistry tests only
+tests/test_scripts/run_controller_tests.bat --weather    # WeatherController tests only
+tests/test_scripts/run_controller_tests.bat --daynight   # DayNightController tests only
+tests/test_scripts/run_controller_tests.bat --verbose    # Verbose output
 ```
 
 ### Entity State Machine Tests
