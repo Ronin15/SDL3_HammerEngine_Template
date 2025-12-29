@@ -27,6 +27,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
 #include "world/WorldData.hpp"
 
 #include <iostream>
@@ -44,7 +45,8 @@ using namespace HammerEngine;
 class TestEntity : public Entity {
 public:
     TestEntity(int id, const Vector2D& pos) : m_id(id) {
-        setPosition(pos);
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
         setTextureID("test_texture");
         setWidth(32);
         setHeight(32);
@@ -84,20 +86,17 @@ class WeatherResponseBehavior : public AIBehavior {
 public:
     WeatherResponseBehavior(const std::string& name) : m_name(name) {}
 
-    void executeLogic(EntityPtr entity, float deltaTime) override {
-        if (!entity) return;
-        (void)deltaTime;
-
+    void executeLogic(BehaviorContext& ctx) override {
         // Check if seeking shelter
         if (m_seekingShelter.load()) {
             // Move entity toward shelter position (simplified)
-            Vector2D currentPos = entity->getPosition();
+            Vector2D currentPos = ctx.transform.position;
             Vector2D toShelter = m_shelterPosition - currentPos;
             float distance = toShelter.length();
 
             if (distance > 5.0f) {
                 toShelter.normalize();
-                entity->setPosition(currentPos + toShelter * 2.0f);
+                ctx.transform.position = currentPos + toShelter * 2.0f;
                 m_movedTowardShelter.store(true);
             }
         }
@@ -153,6 +152,11 @@ struct GlobalEventCoordinationFixture {
         // Note: Use throw instead of BOOST_REQUIRE in fixture constructors
         if (!ThreadSystem::Instance().init()) {
             throw std::runtime_error("ThreadSystem initialization failed");
+        }
+
+        // EntityDataManager must be early - entities need it for registration
+        if (!EntityDataManager::Instance().init()) {
+            throw std::runtime_error("EntityDataManager initialization failed");
         }
 
         if (!ResourceTemplateManager::Instance().init()) {

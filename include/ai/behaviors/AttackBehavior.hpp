@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/behaviors/AttackBehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -44,7 +45,7 @@ public:
                           float attackDamage = 10.0f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -150,7 +151,7 @@ private:
 
   // Helper methods for executeLogic refactoring
   void updateTimers(EntityState& state, float deltaTime);
-  EntityState& ensureEntityState(EntityPtr entity);
+  EntityState& ensureEntityState(EntityHandle::IDType entityId);
   void updateTargetTracking(EntityPtr entity, EntityState& state, EntityPtr target);
   void updateTargetDistance(EntityPtr entity, EntityPtr target, EntityState& state);
   void updateCombatState(EntityState& state);
@@ -161,7 +162,10 @@ private:
   void applyConfig(const HammerEngine::AttackBehaviorConfig& config);
 
   // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+
+  // Cache EntityPtr for helper methods that still use it (temporary during migration)
+  std::unordered_map<EntityHandle::IDType, EntityPtr> m_entityPtrCache;
 
   // Attack parameters
   AttackMode m_attackMode{AttackMode::MELEE_ATTACK};

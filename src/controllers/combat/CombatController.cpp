@@ -146,17 +146,14 @@ void CombatController::performAttack(Player* player)
         Vector2D knockback = diff.normalized() * 20.0f;
         float oldHealth = npc->getHealth();
 
-        // === EVENT-DRIVEN DAMAGE PATTERN ===
-        // Fire DamageIntent event with EntityHandle (new architecture)
-        // This allows handlers to process damage centrally via EntityDataManager
+        // Fire DamageIntent event for any observers
         EntityHandle targetHandle = npc->getHandle();
         auto damageIntent = std::make_shared<DamageEvent>(
             EntityEventType::DamageIntent, playerHandle, targetHandle,
             attackDamage, knockback);
         EventManager::Instance().dispatchEvent(damageIntent, EventManager::DispatchMode::Immediate);
 
-        // Bridge: Also call existing method until EntityDataManager health migration is complete
-        // TODO: Remove this when DamageHandler processes via EntityDataManager
+        // Apply damage via NPC (writes to EntityDataManager, handles animations/death)
         npc->takeDamage(attackDamage, knockback);
 
         COMBAT_INFO(std::format("Hit {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
@@ -168,7 +165,7 @@ void CombatController::performAttack(Player* player)
             closestHit = std::static_pointer_cast<NPC>(entityPtr);
         }
 
-        // Fire CombatEvent for observers (UI, sound, etc.)
+        // Fire CombatEvent for UI/sound observers
         auto damageEvent = std::make_shared<CombatEvent>(
             CombatEventType::NPCDamaged, player, npc, attackDamage);
         damageEvent->setRemainingHealth(npc->getHealth());
@@ -178,13 +175,13 @@ void CombatController::performAttack(Player* player)
         if (!npc->isAlive()) {
             COMBAT_INFO(std::format("{} killed!", npc->getName()));
 
-            // Fire DeathEvent with EntityHandle (new architecture)
+            // Fire DeathEvent for entity lifecycle observers
             auto deathEvent = std::make_shared<DeathEvent>(
                 EntityEventType::DeathCompleted, targetHandle, playerHandle);
             deathEvent->setDeathPosition(npcPos);
             EventManager::Instance().dispatchEvent(deathEvent, EventManager::DispatchMode::Immediate);
 
-            // Also fire legacy CombatEvent for existing observers
+            // Fire CombatEvent for UI/sound observers
             auto killEvent = std::make_shared<CombatEvent>(
                 CombatEventType::NPCKilled, player, npc, attackDamage);
             EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);

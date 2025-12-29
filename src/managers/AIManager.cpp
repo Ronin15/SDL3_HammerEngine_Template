@@ -687,12 +687,9 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
         m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
       }
 
-      // Refresh extents
-      if (index < m_storage.halfWidths.size()) {
-        float halfW = std::max(1.0f, entity->getWidth() * 0.5f);
-        float halfH = std::max(1.0f, entity->getHeight() * 0.5f);
-        m_storage.halfWidths[index] = halfW;
-        m_storage.halfHeights[index] = halfH;
+      // Refresh EDM index if needed (entity may have been re-registered with EntityDataManager)
+      if (index < m_storage.edmIndices.size() && entity->hasValidHandle()) {
+        m_storage.edmIndices[index] = EntityDataManager::Instance().getIndex(entity->getHandle());
       }
 
       AI_INFO(std::format("Updated behavior for existing entity to: {}", behaviorName));
@@ -720,8 +717,14 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     // Increment active counter for new entity
     m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_storage.lastUpdateTimes.push_back(0.0f);
-    m_storage.halfWidths.push_back(std::max(1.0f, entity->getWidth() * 0.5f));
-    m_storage.halfHeights.push_back(std::max(1.0f, entity->getHeight() * 0.5f));
+
+    // Cache EntityDataManager index for lock-free batch access
+    // halfWidth/halfHeight now accessed via EntityDataManager::getHotDataByIndex()
+    size_t edmIndex = SIZE_MAX;
+    if (entity->hasValidHandle()) {
+      edmIndex = EntityDataManager::Instance().getIndex(entity->getHandle());
+    }
+    m_storage.edmIndices.push_back(edmIndex);
 
     // Update index map
     m_entityToIndex[entity] = newIndex;
@@ -1054,6 +1057,7 @@ void AIManager::resetBehaviors() {
   m_storage.entities.clear();
   m_storage.behaviors.clear();
   m_storage.lastUpdateTimes.clear();
+  m_storage.edmIndices.clear();  // BUGFIX: Must clear edmIndices to prevent stale index pollution
   m_entityToIndex.clear();
   m_managedEntities.clear();
 
@@ -1251,31 +1255,36 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     // Safe: shared_lock ensures storage stability, parent shared_ptrs keep objects alive
     Entity* entity = storage.entities[i].get();
     AIBehavior* behavior = storage.behaviors[i].get();
-    float halfW = storage.halfWidths[i];
-    float halfH = storage.halfHeights[i];
+    size_t edmIndex = storage.edmIndices[i];
     auto hotData = storage.hotData[i];  // Copy for local modification
 
+    // Skip entities without valid EDM index
+    if (edmIndex == SIZE_MAX) {
+      continue;
+    }
+
+    // PERFORMANCE: Direct EntityDataManager access (NO mutex per access)
+    // getHotDataByIndex() and getTransformByIndex() are lock-free array access
+    auto& edmHotData = edm.getHotDataByIndex(edmIndex);
+    auto& transform = edm.getTransformByIndex(edmIndex);
+
+    // Get half extents from EntityDataManager (single source of truth)
+    float halfW = edmHotData.halfWidth;
+    float halfH = edmHotData.halfHeight;
+
     // Phase 5: Skip non-Active tier entities - BackgroundSimulationManager handles them
-    // This prevents double-processing and allows tiered simulation scaling
-    if (entity && entity->hasValidHandle()) {
-      EntityHandle handle = entity->getHandle();
-      if (edm.isValidHandle(handle)) {
-        const auto& entityHotData = edm.getHotData(handle);
-        if (entityHotData.tier != SimulationTier::Active) {
-          continue;  // Skip - handled by BackgroundSimulationManager
-        }
-      }
+    if (edmHotData.tier != SimulationTier::Active) {
+      continue;
     }
 
     try {
       // SIMD distance calculation - inline using SIMDMath.hpp
       // All entities get fresh distance every frame for accurate combat
-      // NOTE: Position read from Entity::getPosition() (Phase 2 - EntityDataManager owns position data)
+      // PERFORMANCE: Direct transform access (lock-free, no Entity accessor overhead)
       if (hasPlayer) {
-        Vector2D entityPos = entity->getPosition();
         const Float4 diff = set(
-            entityPos.getX() - playerPos.getX(),
-            entityPos.getY() - playerPos.getY(),
+            transform.position.getX() - playerPos.getX(),
+            transform.position.getY() - playerPos.getY(),
             0.0f, 0.0f);
         hotData.distanceSquared = lengthSquared2D(diff);
       }
@@ -1292,11 +1301,13 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       if (shouldUpdate) {
         // INTERPOLATION: Store current position before any movement updates
         // This enables smooth rendering between fixed timestep updates
-        entity->storePositionForInterpolation();
+        // PERFORMANCE: Direct transform write (lock-free)
+        transform.previousPosition = transform.position;
 
-        // PERFORMANCE: Use shared_ptr only for executeLogic (required by interface)
-        // This is the only place we need shared ownership semantics
-        behavior->executeLogic(storage.entities[i], deltaTime);
+        // LOCK-FREE BEHAVIOR EXECUTION: Create BehaviorContext with direct EDM references
+        // No mutex acquisition per accessor call - behaviors read/write transform directly
+        BehaviorContext ctx(transform, edmHotData, entity->getID(), deltaTime);
+        behavior->executeLogic(ctx);
 
         // OPTIMIZATION: Only update animations/sprites for entities near the player
         // Off-screen entities still think (behavior logic runs) but don't animate
@@ -1312,9 +1323,9 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
         // Centralized clamp pass using cached world bounds (NO atomic loads)
         // halfW and halfH already loaded from pre-fetched data above
-
-        Vector2D pos = entity->getPosition();
-        Vector2D vel = entity->getVelocity();
+        // PERFORMANCE: Direct transform access (lock-free, no Entity accessor overhead)
+        Vector2D pos = transform.position;
+        Vector2D vel = transform.velocity;
 
         // MOVEMENT INTEGRATION: Apply velocity to position (core physics step)
         // AIManager is responsible for entity movement - CollisionManager only modifies
@@ -1332,7 +1343,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
         );
 
         // Update entity position (preserves previous position for interpolation)
-        entity->updatePositionFromMovement(clamped);
+        // PERFORMANCE: Direct transform write (lock-free)
+        transform.position = clamped;
 
         // Handle boundary collisions: stop velocity at world edges
         if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
@@ -1341,7 +1353,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
           if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
           if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
           if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
-          entity->Entity::setVelocity(vel); // Use base Entity::setVelocity
+          // PERFORMANCE: Direct transform write (lock-free)
+          transform.velocity = vel;
         }
 
         pos = clamped; // Update pos for batch accumulation
@@ -1405,6 +1418,7 @@ void AIManager::cleanupInactiveEntities() {
       m_storage.entities[index] = m_storage.entities[lastIndex];
       m_storage.behaviors[index] = m_storage.behaviors[lastIndex];
       m_storage.lastUpdateTimes[index] = m_storage.lastUpdateTimes[lastIndex];
+      m_storage.edmIndices[index] = m_storage.edmIndices[lastIndex];
 
       // Update index map
       m_entityToIndex[m_storage.entities[index]] = index;
@@ -1415,12 +1429,7 @@ void AIManager::cleanupInactiveEntities() {
     m_storage.entities.pop_back();
     m_storage.behaviors.pop_back();
     m_storage.lastUpdateTimes.pop_back();
-    if (!m_storage.halfWidths.empty()) {
-      m_storage.halfWidths.pop_back();
-    }
-    if (!m_storage.halfHeights.empty()) {
-      m_storage.halfHeights.pop_back();
-    }
+    m_storage.edmIndices.pop_back();
   }
 
   AI_DEBUG(std::format("Cleaned up {} inactive entities", toRemove.size()));
@@ -1445,6 +1454,7 @@ void AIManager::cleanupAllEntities() {
   m_storage.entities.clear();
   m_storage.behaviors.clear();
   m_storage.lastUpdateTimes.clear();
+  m_storage.edmIndices.clear();
   m_entityToIndex.clear();
 
   // Reset active counter
@@ -1460,15 +1470,16 @@ uint64_t AIManager::getCurrentTimeNanos() {
 }
 
 void AIManager::updateEntityExtents(EntityPtr entity, float halfW, float halfH) {
-  if (!entity) return;
-  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end()) {
-    size_t index = it->second;
-    if (index < m_storage.halfWidths.size()) {
-      m_storage.halfWidths[index] = std::max(1.0f, halfW);
-      m_storage.halfHeights[index] = std::max(1.0f, halfH);
-    }
+  if (!entity || !entity->hasValidHandle()) return;
+
+  // Entity extents are now stored in EntityDataManager (single source of truth)
+  // Update directly via the entity's handle
+  auto& edm = EntityDataManager::Instance();
+  size_t edmIndex = edm.getIndex(entity->getHandle());
+  if (edmIndex != SIZE_MAX) {
+    auto& hotData = edm.getHotDataByIndex(edmIndex);
+    hotData.halfWidth = std::max(1.0f, halfW);
+    hotData.halfHeight = std::max(1.0f, halfH);
   }
 }
 

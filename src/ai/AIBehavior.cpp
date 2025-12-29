@@ -4,7 +4,9 @@
 */
 
 #include "ai/AIBehavior.hpp"
+#include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <chrono>
 #include <cmath>
 #include <random>
@@ -19,6 +21,25 @@ std::mt19937& getThreadLocalRNG() {
 } // namespace
 
 AIBehavior::~AIBehavior() = default;
+
+// Legacy executeLogic - creates BehaviorContext from EntityPtr and calls new interface
+// This triggers mutex locks via Entity accessors - use executeLogic(BehaviorContext&) instead
+void AIBehavior::executeLogic(EntityPtr entity, float deltaTime) {
+    if (!entity || !entity->hasValidHandle()) return;
+
+    // Get EDM index (single mutex acquisition)
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(entity->getHandle());
+    if (idx == SIZE_MAX) return;
+
+    // Create BehaviorContext with direct references
+    auto& transform = edm.getTransformByIndex(idx);
+    auto& hotData = edm.getHotDataByIndex(idx);
+    BehaviorContext ctx(transform, hotData, entity->getID(), deltaTime);
+
+    // Call the new lock-free interface
+    executeLogic(ctx);
+}
 
 void AIBehavior::cleanupEntity(EntityPtr entity) {
     // Default implementation does nothing
@@ -174,6 +195,160 @@ Vector2D AIBehavior::rotateVector(const Vector2D &vector, float angle) const {
 
   return Vector2D(vector.getX() * cos_a - vector.getY() * sin_a,
                   vector.getX() * sin_a + vector.getY() * cos_a);
+}
+
+// ============================================================================
+// LOCK-FREE IMPLEMENTATIONS (use BehaviorContext)
+// ============================================================================
+
+void AIBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos,
+                                      float speed, AIBehaviorState &state,
+                                      int priority) {
+  if (speed <= 0.0f) return;
+
+  auto priorityEnum = static_cast<PathfinderManager::Priority>(priority);
+  Vector2D currentPos = ctx.transform.position;
+
+  // PERFORMANCE: Increase path TTL and reduce refresh frequency
+  constexpr float pathTTL = 3.0f;
+  constexpr float noProgressWindow = 0.5f;
+  bool needRefresh = state.pathPoints.empty() ||
+                     state.currentPathIndex >= state.pathPoints.size();
+
+  // Check for progress along current path
+  if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
+    float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
+    if (d + 1.0f < state.lastNodeDistance) {
+      state.lastNodeDistance = d;
+      state.progressTimer = 0.0f;
+    } else if (state.progressTimer > noProgressWindow) {
+      needRefresh = true;
+    }
+  }
+
+  if (state.pathUpdateTimer > pathTTL) needRefresh = true;
+
+  // Check if goal changed significantly
+  if (!needRefresh && !state.pathPoints.empty()) {
+    const float GOAL_CHANGE_THRESH_SQUARED = 150.0f * 150.0f;
+    Vector2D lastGoal = state.pathPoints.back();
+    float goalDeltaSquared = (targetPos - lastGoal).lengthSquared();
+    if (goalDeltaSquared > GOAL_CHANGE_THRESH_SQUARED) needRefresh = true;
+  }
+
+  // Request new path if needed
+  if (needRefresh && state.backoffTimer <= 0.0f) {
+    Vector2D clampedStart = pathfinder().clampToWorldBounds(currentPos, 100.0f);
+    Vector2D clampedGoal = pathfinder().clampToWorldBounds(targetPos, 100.0f);
+
+    pathfinder().requestPath(
+        ctx.entityId, clampedStart, clampedGoal, priorityEnum,
+        [&state](EntityID, const std::vector<Vector2D> &path) {
+          if (!path.empty()) {
+            state.pathPoints = path;
+            state.currentPathIndex = 0;
+            state.pathUpdateTimer = 0.0f;
+            state.lastNodeDistance = std::numeric_limits<float>::infinity();
+            state.progressTimer = 0.0f;
+          }
+        });
+
+    state.backoffTimer = 0.3f + (ctx.entityId % 300) * 0.001f;
+  }
+
+  // Follow path - need to update velocity directly
+  bool following = false;
+  if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+    Vector2D waypoint = state.pathPoints[state.currentPathIndex];
+    Vector2D toWaypoint = waypoint - currentPos;
+    float dist = toWaypoint.length();
+
+    if (dist < state.navRadius) {
+      state.currentPathIndex++;
+      if (state.currentPathIndex < state.pathPoints.size()) {
+        waypoint = state.pathPoints[state.currentPathIndex];
+        toWaypoint = waypoint - currentPos;
+        dist = toWaypoint.length();
+      }
+    }
+
+    if (dist > 0.001f) {
+      Vector2D direction = toWaypoint / dist;
+      ctx.transform.velocity = direction * speed;
+      following = true;
+    }
+  }
+
+  if (following) {
+    state.progressTimer = 0.0f;
+    // Apply separation using lock-free method
+    applyDecimatedSeparationDirect(ctx, ctx.transform.velocity, speed,
+                                   24.0f, 0.20f, 4, state.separationTimer,
+                                   state.lastSepVelocity);
+  } else {
+    // Fallback: direct movement
+    Vector2D direction = normalizeDirection(targetPos - currentPos);
+    if (direction.length() > 0.001f) {
+      ctx.transform.velocity = direction * speed;
+      state.progressTimer = 0.0f;
+    }
+  }
+
+  // Stall detection and recovery
+  float currentSpeed = ctx.transform.velocity.length();
+  const float stallSpeed = std::max(0.5f, speed * 0.5f);
+  constexpr float stallSeconds = 0.6f;
+
+  if (currentSpeed < stallSpeed) {
+    if (state.progressTimer > stallSeconds) {
+      state.pathPoints.clear();
+      state.currentPathIndex = 0;
+      state.pathUpdateTimer = 0.0f;
+      state.progressTimer = 0.0f;
+      state.backoffTimer = 0.2f + (ctx.entityId % 400) * 0.001f;
+
+      std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
+      float jitter = jitterDist(getThreadLocalRNG());
+      Vector2D v = ctx.transform.velocity;
+      if (v.length() < 0.01f) v = Vector2D(1, 0);
+      float c = std::cos(jitter), s = std::sin(jitter);
+      Vector2D rotated(v.getX() * c - v.getY() * s,
+                       v.getX() * s + v.getY() * c);
+      rotated.normalize();
+      ctx.transform.velocity = rotated * speed;
+    }
+  } else {
+    state.progressTimer = 0.0f;
+  }
+}
+
+// Lock-free separation using BehaviorContext
+void AIBehavior::applyDecimatedSeparationDirect(
+    BehaviorContext& ctx,
+    const Vector2D &intendedVelocity,
+    float speed, float queryRadius,
+    float strength, int maxNeighbors,
+    float &separationTimer,
+    Vector2D &lastSepVelocity) const {
+
+  separationTimer += ctx.deltaTime;
+
+  // Entity-based staggered separation
+  float entityStaggerOffset = (ctx.entityId % 200) * 0.01f;
+  float const effectiveInterval = 2.0f + entityStaggerOffset;
+
+  if (separationTimer >= effectiveInterval) {
+    // Full implementation in Crowd.cpp - queries CollisionManager using EntityID
+    lastSepVelocity = AIInternal::ApplySeparationDirect(
+        ctx.entityId, ctx.transform.position, intendedVelocity, speed, queryRadius, strength,
+        static_cast<size_t>(maxNeighbors));
+    separationTimer = 0.0f;
+    // LOCK-FREE: Write directly to transform
+    ctx.transform.velocity = lastSepVelocity;
+  } else {
+    // Use intended velocity until first separation calculation
+    ctx.transform.velocity = intendedVelocity;
+  }
 }
 
 

@@ -20,6 +20,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
 #include "utils/Vector2D.hpp"
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
@@ -28,7 +29,8 @@
 class BenchmarkEntity : public Entity {
 public:
     BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        setPosition(pos);
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
         setTextureID("benchmark");
         setWidth(32);
         setHeight(32);
@@ -53,6 +55,12 @@ private:
 class BenchmarkBehavior : public AIBehavior {
 public:
     BenchmarkBehavior(int id) : m_id(id) {}
+
+    // Lock-free hot path (required by pure virtual)
+    void executeLogic(BehaviorContext& ctx) override {
+        // Simulate some work directly on transform
+        ctx.transform.position.setX(ctx.transform.position.getX() + 1.0f);
+    }
 
     void executeLogic(EntityPtr entity, float deltaTime) override {
         if (!entity) return;
@@ -278,6 +286,9 @@ namespace {
             // Initialize in dependency order (matching GameEngine::init pattern)
             HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
+            // EntityDataManager must be early - entities need it for registration
+            EntityDataManager::Instance().init();
+
             EventManager::Instance().init();
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
@@ -297,6 +308,7 @@ namespace {
             CollisionManager::Instance().clean();
             PathfinderManager::Instance().clean();
             EventManager::Instance().clean();
+            EntityDataManager::Instance().clean();
             HammerEngine::ThreadSystem::Instance().clean();
         }
 

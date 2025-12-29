@@ -31,12 +31,17 @@
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight, NPCType type)
     : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight), m_npcType(type) {
-  // Initialize entity properties
-  m_position = startPosition;
-  m_previousPosition = startPosition;  // Sync interpolation state at spawn
-  m_velocity = Vector2D(0, 0);
-  m_acceleration = Vector2D(0, 0);
+  // Store initial position for collision registration later
+  m_initialPosition = startPosition;
   m_textureID = textureID;
+
+  // Register with EntityDataManager FIRST - data must exist before any state setup
+  // Use default half-sizes, will be updated in ensurePhysicsBodyRegistered
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    EntityHandle handle = edm.registerNPC(getID(), startPosition, 16.0f, 16.0f);
+    setHandle(handle);
+  }
 
   // Animation properties
   m_currentFrame = 1;    // Start with first frame
@@ -152,7 +157,7 @@ void NPC::update(float deltaTime) {
   // AIManager batch processing handles collision updates for AI-managed NPCs
   // Direct collision update removed to prevent race conditions with async AI threads
   // Collision updates are batched and submitted via submitPendingKinematicUpdates()
-  m_acceleration = Vector2D(0, 0);
+  setAcceleration(Vector2D(0, 0));
 
   // Update animation state machine
   m_stateManager.update(deltaTime);
@@ -186,8 +191,9 @@ void NPC::update(float deltaTime) {
   // Smooth flip: require sufficient lateral speed and a minimum interval
   const float flipSpeedThreshold = 15.0f; // px/s
   Uint64 currentTime = SDL_GetTicks();  // Used only for flip timing
-  if (std::abs(m_velocity.getX()) > flipSpeedThreshold) {
-    int newSign = (m_velocity.getX() < 0) ? -1 : 1;
+  Vector2D velocity = getVelocity();
+  if (std::abs(velocity.getX()) > flipSpeedThreshold) {
+    int newSign = (velocity.getX() < 0) ? -1 : 1;
     if (newSign != m_lastFlipSign) {
       if (currentTime - m_lastFlipTime >= 300) { // ms
         m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
@@ -235,9 +241,11 @@ void NPC::clean() {
   // clean() to avoid shared_from_this() issues during destruction. This method
   // now only handles internal NPC state cleanup.
 
-  // Reset velocity and internal state
-  m_velocity = Vector2D(0, 0);
-  m_acceleration = Vector2D(0, 0);
+  // Reset velocity and internal state via EntityDataManager
+  if (m_handle.isValid()) {
+    setVelocity(Vector2D(0, 0));
+    setAcceleration(Vector2D(0, 0));
+  }
 
   // Clean up inventory
   if (m_inventory) {
@@ -460,13 +468,18 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
 }
 
 void NPC::ensurePhysicsBodyRegistered() {
+  // Register collision body (requires shared_from_this, can't be in constructor)
+  // EntityDataManager registration already done in constructor
   auto &cm = CollisionManager::Instance();
   const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
-  HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
+
+  // Get current position from EntityDataManager (already registered in constructor)
+  Vector2D pos = getPosition();
+  HammerEngine::AABB aabb(pos.getX(), pos.getY(), halfW, halfH);
 
   NPC_DEBUG(std::format("Registering collision body - ID: {}, Position: ({},{}), Size: {}x{}",
-                         getID(), m_position.getX(), m_position.getY(), halfW * 2, halfH * 2));
+                         getID(), pos.getX(), pos.getY(), halfW * 2, halfH * 2));
 
   // Configure collision layers based on NPC type
   uint32_t layer, mask;
@@ -489,14 +502,6 @@ void NPC::ensurePhysicsBodyRegistered() {
   cm.processPendingCommands();
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
-
-  // Phase 4: Register with EntityDataManager and store handle
-  // EntityDataManager is now the single source of truth for transforms
-  auto& edm = EntityDataManager::Instance();
-  if (edm.isInitialized()) {
-    EntityHandle handle = edm.registerNPC(getID(), m_position, halfW, halfH, m_currentHealth, m_maxHealth);
-    setHandle(handle);  // Enable EntityDataManager-backed accessors
-  }
 
   std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
   NPC_DEBUG(std::format("Collision body registered successfully - KINEMATIC type with {}", layerName));
@@ -571,44 +576,70 @@ std::string NPC::getName() const {
   return std::format("{} #{}", m_textureID, getID() % 10000);
 }
 
-// Combat system methods
+// Combat system methods - all stats stored in EntityDataManager::CharacterData
+
+float NPC::getHealth() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).health;
+}
+
+float NPC::getMaxHealth() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).maxHealth;
+}
+
+float NPC::getStamina() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).stamina;
+}
+
+float NPC::getMaxStamina() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).maxStamina;
+}
+
+bool NPC::isAlive() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).health > 0.0f;
+}
 
 void NPC::takeDamage(float damage, const Vector2D& knockback) {
-  if (m_currentHealth <= 0.0f) {
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+
+  if (charData.health <= 0.0f) {
     return;  // Already dead
   }
 
-  m_currentHealth = std::max(0.0f, m_currentHealth - damage);
+  charData.health = std::max(0.0f, charData.health - damage);
 
-  // Apply knockback
+  // Apply knockback via transform
   if (knockback.length() > 0.001f) {
-    setPosition(getPosition() + knockback);
+    auto& transform = EntityDataManager::Instance().getTransform(m_handle);
+    transform.position = transform.position + knockback;
   }
 
   // Handle death or hurt
-  if (m_currentHealth <= 0.0f) {
+  if (charData.health <= 0.0f) {
     die();
   } else {
     setAnimationState("Hurt");
   }
 
-  NPC_DEBUG(std::format("NPC took {} damage, health: {}/{}", damage, m_currentHealth, m_maxHealth));
+  NPC_DEBUG(std::format("NPC took {} damage, health: {}/{}", damage, charData.health, charData.maxHealth));
 }
 
 void NPC::heal(float amount) {
-  if (m_currentHealth <= 0.0f) {
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+
+  if (charData.health <= 0.0f) {
     return;  // Can't heal dead NPC
   }
 
-  float oldHealth = m_currentHealth;
-  m_currentHealth = std::min(m_maxHealth, m_currentHealth + amount);
+  float oldHealth = charData.health;
+  charData.health = std::min(charData.maxHealth, charData.health + amount);
 
   NPC_DEBUG(std::format("NPC healed {} HP: {}/{} -> {}/{}",
-            amount, oldHealth, m_maxHealth, m_currentHealth, m_maxHealth));
+            amount, oldHealth, charData.maxHealth, charData.health, charData.maxHealth));
 }
 
 void NPC::die() {
-  NPC_INFO(std::format("NPC died at position ({}, {})", m_position.getX(), m_position.getY()));
+  Vector2D pos = getPosition();
+  NPC_INFO(std::format("NPC died at position ({}, {})", pos.getX(), pos.getY()));
 
   setAnimationState("Dying");
   dropLoot();
@@ -618,11 +649,13 @@ void NPC::die() {
 }
 
 void NPC::setMaxHealth(float maxHealth) {
-  m_maxHealth = maxHealth;
-  m_currentHealth = std::min(m_currentHealth, m_maxHealth);
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  charData.maxHealth = maxHealth;
+  charData.health = std::min(charData.health, charData.maxHealth);
 }
 
 void NPC::setMaxStamina(float maxStamina) {
-  m_maxStamina = maxStamina;
-  m_currentStamina = std::min(m_currentStamina, m_maxStamina);
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  charData.maxStamina = maxStamina;
+  charData.stamina = std::min(charData.stamina, charData.maxStamina);
 }

@@ -11,6 +11,7 @@
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "world/WorldData.hpp"
 #include "AIBehaviors.hpp" // from tests/mocks
@@ -24,7 +25,8 @@
 class TestEntity : public Entity {
 public:
     TestEntity(float x = 0.0f, float y = 0.0f) : Entity(), m_updateCount(0) {
-        setPosition(Vector2D(x, y));
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(Vector2D(x, y), 16.0f, 16.0f, EntityKind::NPC);
     }
     
     static std::shared_ptr<TestEntity> create(float x = 0.0f, float y = 0.0f) {
@@ -79,6 +81,7 @@ struct BehaviorTestFixture {
         }
 
         // Initialize managers in proper order for pathfinding support
+        EntityDataManager::Instance().init();  // Must be first - entities need this
         EventManager::Instance().init();
         WorldManager::Instance().init();
         CollisionManager::Instance().init();
@@ -120,67 +123,13 @@ struct BehaviorTestFixture {
     }
     
     ~BehaviorTestFixture() {
-        // Follow AIDemoState cleanup pattern for proper state reset
-        AIManager& aiMgr = AIManager::Instance();
-
-        // Clean up entities first (before resetBehaviors to avoid shared_from_this issues)
-        for (auto& entity : testEntities) {
-            if (entity) {
-                entity->setVelocity(Vector2D(0, 0));
-                entity->setAcceleration(Vector2D(0, 0));
-                if (auto testEntity = getTestEntity(entity)) {
-                    testEntity->resetUpdateCount();
-                }
-            }
-        }
+        // Simple cleanup - just release entities
+        // Managers persist across tests (singleton pattern)
         testEntities.clear();
+        playerEntity.reset();
 
-        // Clean up player
-        if (playerEntity) {
-            playerEntity->setVelocity(Vector2D(0, 0));
-            playerEntity->setAcceleration(Vector2D(0, 0));
-            playerEntity.reset();
-        }
-
-        // Reset AI Manager following AIDemoState pattern
-        aiMgr.resetBehaviors();
-
-        // Clean up managers in reverse order
-        PathfinderManager::Instance().clean();
-        CollisionManager::Instance().clean();
-        WorldManager::Instance().clean();
-        EventManager::Instance().clean();
-
-        // Re-initialize for next test
-        EventManager::Instance().init();
-        WorldManager::Instance().init();
-        CollisionManager::Instance().init();
-        PathfinderManager::Instance().init();
-        aiMgr.init();
-
-        // Reload world for next test
-        HammerEngine::WorldGenerationConfig cfg{};
-        cfg.width = 20; cfg.height = 20; cfg.seed = 12345;
-        cfg.elevationFrequency = 0.05f; cfg.humidityFrequency = 0.05f;
-        cfg.waterLevel = 0.3f; cfg.mountainLevel = 0.7f;
-        WorldManager::Instance().loadNewWorld(cfg);
-
-        // Set world bounds explicitly for tests
-        const float TILE_SIZE = 64.0f;
-        float worldPixelWidth2 = cfg.width * TILE_SIZE;
-        float worldPixelHeight2 = cfg.height * TILE_SIZE;
-        CollisionManager::Instance().setWorldBounds(0, 0, worldPixelWidth2, worldPixelHeight2);
-
-        // Rebuild pathfinding grid (async - best effort)
-        PathfinderManager::Instance().rebuildGrid();
-        std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-        // Re-register all behaviors for subsequent tests
-        AIBehaviors::BehaviorRegistrar::registerAllBehaviors(aiMgr);
-
-        // Set fresh player for next test
-        playerEntity = std::static_pointer_cast<Entity>(TestEntity::create(500.0f, 500.0f));
-        aiMgr.setPlayerForDistanceOptimization(playerEntity);
+        // Reset AI state for next test
+        AIManager::Instance().resetBehaviors();
     }
     
     std::vector<EntityPtr> testEntities;

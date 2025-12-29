@@ -20,7 +20,7 @@ public:
 
   void init(EntityPtr entity) override;
 
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
 
   void clean(EntityPtr entity) override;
 

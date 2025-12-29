@@ -5,6 +5,7 @@
 
 #include "ai/behaviors/IdleBehavior.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include <cmath>
 
@@ -42,48 +43,48 @@ void IdleBehavior::init(EntityPtr entity) {
   if (!entity)
     return;
 
-  auto &state = m_entityStates[entity];
-  initializeEntityState(entity, state);
+  auto &state = m_entityStates[entity->getID()];
+  initializeEntityState(entity->getPosition(), state);
 }
 
-void IdleBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-  if (!entity || !isActive())
+void IdleBehavior::executeLogic(BehaviorContext& ctx) {
+  if (!isActive())
     return;
 
-  auto it = m_entityStates.find(entity);
+  auto it = m_entityStates.find(ctx.entityId);
   if (it == m_entityStates.end()) {
-    init(entity); // Initialize if not found
-    it = m_entityStates.find(entity);
-    if (it == m_entityStates.end())
-      return;
+    // Initialize state for new entity
+    auto& state = m_entityStates[ctx.entityId];
+    initializeEntityState(ctx.transform.position, state);
+    it = m_entityStates.find(ctx.entityId);
   }
 
   EntityState &state = it->second;
 
   if (!state.initialized) {
-    initializeEntityState(entity, state);
+    initializeEntityState(ctx.transform.position, state);
   }
 
   // Execute behavior based on current mode
   switch (m_idleMode) {
   case IdleMode::STATIONARY:
-    updateStationary(entity, state);
+    updateStationary(ctx, state);
     break;
   case IdleMode::SUBTLE_SWAY:
-    updateSubtleSway(entity, state, deltaTime);
+    updateSubtleSway(ctx, state);
     break;
   case IdleMode::OCCASIONAL_TURN:
-    updateOccasionalTurn(entity, state, deltaTime);
+    updateOccasionalTurn(ctx, state);
     break;
   case IdleMode::LIGHT_FIDGET:
-    updateLightFidget(entity, state, deltaTime);
+    updateLightFidget(ctx, state);
     break;
   }
 }
 
 void IdleBehavior::clean(EntityPtr entity) {
   if (entity) {
-    m_entityStates.erase(entity);
+    m_entityStates.erase(entity->getID());
   }
 }
 
@@ -101,7 +102,7 @@ void IdleBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "idle_fidget") {
     setIdleMode(IdleMode::LIGHT_FIDGET);
   } else if (message == "reset_position") {
-    auto it = m_entityStates.find(entity);
+    auto it = m_entityStates.find(entity->getID());
     if (it != m_entityStates.end()) {
       it->second.originalPosition = entity->getPosition();
       it->second.currentOffset = Vector2D(0, 0);
@@ -163,8 +164,8 @@ std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
   return cloned;
 }
 
-void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) const {
-  state.originalPosition = entity->getPosition();
+void IdleBehavior::initializeEntityState(const Vector2D& position, EntityState &state) const {
+  state.originalPosition = position;
   state.currentOffset = Vector2D(0, 0);
   state.movementTimer = 0.0f;
   state.turnTimer = 0.0f;
@@ -174,32 +175,32 @@ void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) c
   state.initialized = true;
 }
 
-void IdleBehavior::updateStationary(EntityPtr entity,
+void IdleBehavior::updateStationary(BehaviorContext& ctx,
                                     EntityState & /* state */) {
   // Keep entity stationary with zero velocity
-  entity->setVelocity(Vector2D(0, 0));
+  ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const {
-  state.movementTimer += deltaTime;
+void IdleBehavior::updateSubtleSway(BehaviorContext& ctx, EntityState &state) const {
+  state.movementTimer += ctx.deltaTime;
 
   if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
-    entity->setVelocity(swayDirection * 35.0f); // Increased from 20px for world-scale movement
+    ctx.transform.velocity = swayDirection * 35.0f; // Increased from 20px for world-scale movement
     state.movementTimer = 0.0f;
     state.movementInterval = getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation - don't reset to zero
   // Apply very light separation (decimated) so idlers don't stack perfectly
-  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
+  applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
                            35.0f, 30.0f, 0.15f, 4, state.separationTimer,
-                           state.lastSepVelocity, deltaTime);
+                           state.lastSepVelocity);
 }
 
-void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const {
-  state.turnTimer += deltaTime;
+void IdleBehavior::updateOccasionalTurn(BehaviorContext& ctx, EntityState &state) const {
+  state.turnTimer += ctx.deltaTime;
 
   if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
     // Change facing direction
@@ -212,26 +213,26 @@ void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state, fl
   }
 
   // Stay at original position with zero velocity
-  entity->setVelocity(Vector2D(0, 0));
+  ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const {
-  state.movementTimer += deltaTime;
-  state.turnTimer += deltaTime;
+void IdleBehavior::updateLightFidget(BehaviorContext& ctx, EntityState &state) const {
+  state.movementTimer += ctx.deltaTime;
+  state.turnTimer += ctx.deltaTime;
 
   // Handle movement fidgeting
   if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
-    entity->setVelocity(fidgetDirection * 40.0f); // Increased from 25px for world-scale fidgeting
+    ctx.transform.velocity = fidgetDirection * 40.0f; // Increased from 25px for world-scale fidgeting
     state.movementTimer = 0.0f;
     state.movementInterval = getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation and apply very light separation (decimated)
-  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
+  applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
                            40.0f, 30.0f, 0.15f, 4, state.separationTimer,
-                           state.lastSepVelocity, deltaTime);
+                           state.lastSepVelocity);
 
   // Handle turning
   if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {

@@ -106,7 +106,12 @@ void AttackBehavior::init(EntityPtr entity) {
   if (!entity)
     return;
 
-  auto &state = m_entityStates[entity];
+  EntityHandle::IDType entityId = entity->getID();
+
+  // Cache EntityPtr for helper methods
+  m_entityPtrCache[entityId] = entity;
+
+  auto &state = m_entityStates[entityId];
   state = EntityState(); // Reset to default state
   state.currentState = AttackState::SEEKING;
   state.stateChangeTimer = 0.0f;
@@ -133,17 +138,18 @@ void AttackBehavior::updateTimers(EntityState& state, float deltaTime) {
   }
 }
 
-AttackBehavior::EntityState& AttackBehavior::ensureEntityState(EntityPtr entity) {
-  auto it = m_entityStates.find(entity);
+AttackBehavior::EntityState& AttackBehavior::ensureEntityState(EntityHandle::IDType entityId) {
+  auto it = m_entityStates.find(entityId);
   if (it == m_entityStates.end()) {
-    init(entity);
-    it = m_entityStates.find(entity);
-    if (it == m_entityStates.end()) {
+    // Create default state if not found
+    auto [insertIt, inserted] = m_entityStates.emplace(entityId, EntityState{});
+    if (!inserted) {
       // This should never happen, but provide fallback
       AI_ERROR("Failed to initialize entity state for AttackBehavior");
       static EntityState fallbackState;
       return fallbackState;
     }
+    return insertIt->second;
   }
   return it->second;
 }
@@ -208,18 +214,24 @@ void AttackBehavior::dispatchModeUpdate(EntityPtr entity, EntityState& state, fl
   }
 }
 
-void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-  if (!entity || !isActive())
+void AttackBehavior::executeLogic(BehaviorContext& ctx) {
+  if (!isActive())
     return;
 
-  EntityState &state = ensureEntityState(entity);
+  EntityState &state = ensureEntityState(ctx.entityId);
+
+  // Get cached EntityPtr for helper methods that still use it (getTarget, attack execution)
+  auto it = m_entityPtrCache.find(ctx.entityId);
+  if (it == m_entityPtrCache.end()) return;
+  EntityPtr entity = it->second;
+
   EntityPtr target = getTarget();
 
   // Track state for animation notification
   AttackState const previousState = state.currentState;
 
   // Update all timers
-  updateTimers(state, deltaTime);
+  updateTimers(state, ctx.deltaTime);
 
   // Update target tracking and combat state
   updateTargetTracking(entity, state, target);
@@ -233,7 +245,7 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   }
 
   // Execute behavior based on attack mode
-  dispatchModeUpdate(entity, state, deltaTime);
+  dispatchModeUpdate(entity, state, ctx.deltaTime);
 
   // Notify animation state change if state changed
   if (state.currentState != previousState) {
@@ -243,7 +255,9 @@ void AttackBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
 void AttackBehavior::clean(EntityPtr entity) {
   if (entity) {
-    m_entityStates.erase(entity);
+    EntityHandle::IDType entityId = entity->getID();
+    m_entityStates.erase(entityId);
+    m_entityPtrCache.erase(entityId);
   }
 }
 
@@ -251,7 +265,7 @@ void AttackBehavior::onMessage(EntityPtr entity, const std::string &message) {
   if (!entity)
     return;
 
-  auto it = m_entityStates.find(entity);
+  auto it = m_entityStates.find(entity->getID());
   if (it == m_entityStates.end())
     return;
 
@@ -460,7 +474,9 @@ bool AttackBehavior::isTargetInAttackRange(EntityPtr entity,
 
   // PERFORMANCE: Use squared distance to avoid sqrt
   float distanceSquared = (entity->getPosition() - target->getPosition()).lengthSquared();
-  float effectiveRange = calculateEffectiveRange(m_entityStates.at(entity));
+  auto it = m_entityStates.find(entity->getID());
+  if (it == m_entityStates.end()) return false;
+  float effectiveRange = calculateEffectiveRange(it->second);
   float const effectiveRangeSquared = effectiveRange * effectiveRange;
   return distanceSquared <= effectiveRangeSquared;
 }
@@ -1028,7 +1044,7 @@ void AttackBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
     return;
 
   // Access per-entity state
-  auto it = m_entityStates.find(entity);
+  auto it = m_entityStates.find(entity->getID());
   if (it == m_entityStates.end()) return;
   EntityState &state = it->second;
 

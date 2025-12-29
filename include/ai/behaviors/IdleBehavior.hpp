@@ -7,6 +7,7 @@
 #define IDLE_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -25,7 +26,7 @@ public:
                         float idleRadius = 20.0f);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -66,7 +67,7 @@ private:
   };
 
   // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
 
   // Behavior parameters
   IdleMode m_idleMode{IdleMode::STATIONARY};
@@ -84,11 +85,11 @@ private:
                                                                      1.5f};
 
   // Helper methods
-  void initializeEntityState(EntityPtr entity, EntityState &state) const;
-  void updateStationary(EntityPtr entity, EntityState &state);
-  void updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const;
-  void updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const;
-  void updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const;
+  void initializeEntityState(const Vector2D& position, EntityState &state) const;
+  void updateStationary(BehaviorContext& ctx, EntityState &state);
+  void updateSubtleSway(BehaviorContext& ctx, EntityState &state) const;
+  void updateOccasionalTurn(BehaviorContext& ctx, EntityState &state) const;
+  void updateLightFidget(BehaviorContext& ctx, EntityState &state) const;
 
   Vector2D generateRandomOffset() const;
   float getRandomMovementInterval() const;

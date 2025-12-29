@@ -16,8 +16,13 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
     : Entity(), m_resourceHandle(resourceHandle), m_quantity(quantity),
       m_pickupTimer(0.0f), m_bobTimer(0.0f), m_canBePickedUp(false) {
 
-  // Set position using Entity's method
-  setPosition(position);
+  // Register with EntityDataManager first - it sets up the initial transform
+  // EntityDataManager is the single source of truth for all entity data
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    EntityHandle handle = edm.registerDroppedItem(getID(), position, m_resourceHandle, m_quantity);
+    setHandle(handle);  // Enable EntityDataManager-backed accessors
+  }
 
   // Get the resource template to copy visual properties
   auto resourceTemplate = getResourceTemplate();
@@ -40,14 +45,6 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
 
   // Items become pickupable after a short delay to prevent immediate re-pickup
   m_pickupTimer = 0.5f; // 0.5 second delay
-
-  // Phase 4: Register with EntityDataManager and store handle
-  // EntityDataManager is now the single source of truth for transforms
-  auto& edm = EntityDataManager::Instance();
-  if (edm.isInitialized()) {
-    EntityHandle handle = edm.registerDroppedItem(getID(), m_position, m_resourceHandle, m_quantity);
-    setHandle(handle);  // Enable EntityDataManager-backed accessors
-  }
 }
 
 void DroppedItem::update(float deltaTime) {

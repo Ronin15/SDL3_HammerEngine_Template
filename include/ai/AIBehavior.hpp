@@ -16,6 +16,24 @@
 
 // Forward declarations
 class PathfinderManager;
+struct TransformData;
+struct EntityHotData;
+
+/**
+ * @brief Context for behavior execution - provides lock-free access to entity data
+ *
+ * This replaces EntityPtr in the hot path. AIManager resolves the EDM index once
+ * and passes direct references to transform/hotData. No mutex per behavior call.
+ */
+struct BehaviorContext {
+    TransformData& transform;      // Direct read/write access (lock-free)
+    EntityHotData& hotData;        // Entity metadata (halfWidth, halfHeight, etc.)
+    EntityHandle::IDType entityId; // For staggering calculations
+    float deltaTime;
+
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, float dt)
+        : transform(t), hotData(h), entityId(id), deltaTime(dt) {}
+};
 
 // Forward declare separation to avoid pulling internal headers here
 namespace AIInternal {
@@ -30,6 +48,14 @@ Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
                          float queryRadius, float strength,
                          size_t maxNeighbors,
                          const std::vector<Vector2D> &preFetchedNeighbors);
+
+// Lock-free version using EntityID directly (no EntityPtr needed)
+// Used by BehaviorContext hot path - queries CollisionManager with entityId for self-exclusion
+Vector2D ApplySeparationDirect(EntityID entityId,
+                               const Vector2D &position,
+                               const Vector2D &intendedVelocity, float speed,
+                               float queryRadius, float strength,
+                               size_t maxNeighbors = 6);
 }
 #include <string>
 
@@ -37,8 +63,30 @@ class AIBehavior : public std::enable_shared_from_this<AIBehavior> {
 public:
   virtual ~AIBehavior();
 
-  // Core behavior methods - pure logic only
-  virtual void executeLogic(EntityPtr entity, float deltaTime) = 0;
+  // =========================================================================
+  // CORE BEHAVIOR METHODS
+  // =========================================================================
+
+  /**
+   * @brief Execute behavior logic with lock-free EDM access
+   *
+   * Hot path method called every frame. Receives direct references to
+   * EntityDataManager data - no mutex acquisition per call.
+   *
+   * @param ctx BehaviorContext with transform, hotData, entityId, deltaTime
+   */
+  virtual void executeLogic(BehaviorContext& ctx) = 0;
+
+  /**
+   * @brief Legacy executeLogic for compatibility (DEPRECATED - DO NOT USE IN NEW CODE)
+   *
+   * This method triggers mutex locks per Entity accessor call.
+   * Only use for behaviors not yet migrated to BehaviorContext.
+   * Default implementation calls the new executeLogic(BehaviorContext&).
+   */
+  virtual void executeLogic(EntityPtr entity, float deltaTime);
+
+  // Initialization and cleanup (called rarely, EntityPtr is fine)
   virtual void init(EntityPtr entity) = 0;
   virtual void clean(EntityPtr entity) = 0;
 
@@ -236,6 +284,31 @@ protected:
   float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;
   float normalizeAngle(float angle) const;
   Vector2D rotateVector(const Vector2D &vector, float angle) const;
+
+  // =========================================================================
+  // LOCK-FREE HELPER METHODS (use BehaviorContext instead of EntityPtr)
+  // =========================================================================
+
+  /**
+   * @brief Apply decimated separation using BehaviorContext (LOCK-FREE)
+   *
+   * Same logic as applyDecimatedSeparation but writes velocity directly to
+   * transform instead of calling entity->setVelocity() which triggers mutex.
+   */
+  void applyDecimatedSeparationDirect(
+      BehaviorContext& ctx,
+      const Vector2D &intendedVelocity,
+      float speed, float queryRadius,
+      float strength, int maxNeighbors,
+      float &separationTimer,
+      Vector2D &lastSepVelocity) const;
+
+  /**
+   * @brief Move entity towards target using pathfinding (LOCK-FREE version)
+   */
+  void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos,
+                            float speed, AIBehaviorState &state,
+                            int priority = 1);
 };
 
 #endif // AI_BEHAVIOR_HPP

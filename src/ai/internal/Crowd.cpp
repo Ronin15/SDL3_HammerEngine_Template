@@ -284,6 +284,58 @@ Vector2D ApplySeparation(EntityPtr entity,
                                 queryRadius, strength, maxNeighbors, preFetchedNeighbors);
 }
 
+// LOCK-FREE VARIANT: ApplySeparation without EntityPtr
+// Uses EntityID directly for self-exclusion - no mutex acquisition needed.
+// This is the hot path for BehaviorContext-based behavior execution.
+Vector2D ApplySeparationDirect(EntityID entityId,
+                               const Vector2D &currentPos,
+                               const Vector2D &intendedVel,
+                               float speed,
+                               float radius,
+                               float strength,
+                               size_t maxNeighbors) {
+  if (speed <= 0.0f) return intendedVel;
+
+  const auto &cm = CollisionManager::Instance();
+
+  // Use thread-local vector to avoid repeated allocations
+  static thread_local std::vector<EntityID> queryResults;
+  queryResults.clear();
+
+  // Calculate query parameters (same as ApplySeparation)
+  float baseRadius = std::max(radius, 24.0f);
+  float speedMultiplier = std::clamp(speed / 120.0f, 1.0f, 1.5f);
+  float queryRadius = std::min(baseRadius * speedMultiplier, 96.0f);
+
+  // PERFORMANCE: Check spatial cache before expensive queryArea call
+  if (!g_spatialCache.lookup(currentPos, queryRadius, queryResults)) {
+    // Cache miss - perform actual collision query
+    HammerEngine::AABB area(currentPos.getX() - queryRadius, currentPos.getY() - queryRadius,
+                            queryRadius * 2.0f, queryRadius * 2.0f);
+    cm.queryArea(area, queryResults);
+
+    // Store result in cache for subsequent queries in same frame
+    g_spatialCache.store(currentPos, queryRadius, queryResults);
+  }
+
+  // Extract positions from query results (using EntityID for self-exclusion)
+  static thread_local std::vector<Vector2D> neighborPositions;
+  neighborPositions.clear();
+
+  for (EntityID id : queryResults) {
+    if (id == entityId) continue;  // Self-exclusion using EntityID (no EntityPtr needed)
+    if ((!cm.isDynamic(id) && !cm.isKinematic(id)) || cm.isTrigger(id)) continue;
+    Vector2D other;
+    if (cm.getBodyCenter(id, other)) {
+      neighborPositions.push_back(other);
+    }
+  }
+
+  // Use consolidated separation logic
+  return ComputeSeparationForce(currentPos, intendedVel, speed, baseRadius,
+                                queryRadius, strength, maxNeighbors, neighborPositions);
+}
+
 Vector2D SmoothVelocityTransition(const Vector2D &currentVel,
                                   const Vector2D &targetVel,
                                   float smoothingFactor,

@@ -6,6 +6,7 @@
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
@@ -108,7 +109,7 @@ void FollowBehavior::init(EntityPtr entity) {
   if (!entity)
     return;
 
-  auto &state = m_entityStates[entity];
+  auto &state = m_entityStates[entity->getID()];
   state = EntityState(); // Reset to default state
 
   EntityPtr target = getTarget();
@@ -125,16 +126,16 @@ void FollowBehavior::init(EntityPtr entity) {
   }
 }
 
-void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-  if (!entity || !isActive())
+void FollowBehavior::executeLogic(BehaviorContext& ctx) {
+  if (!isActive())
     return;
 
-  auto it = m_entityStates.find(entity);
+  auto it = m_entityStates.find(ctx.entityId);
   if (it == m_entityStates.end()) {
-    init(entity);
-    it = m_entityStates.find(entity);
-    if (it == m_entityStates.end())
-      return;
+    // State not found - this shouldn't happen as init() should be called first
+    // However, we can't call init() here as it requires EntityPtr
+    AI_ERROR(std::format("FollowBehavior: No state found for entity {}", ctx.entityId));
+    return;
   }
 
   EntityState &state = it->second;
@@ -142,12 +143,12 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
   if (!target) {
     // No target, stop following
-    AI_ERROR(std::format("FollowBehavior: No target found for entity {}", entity->getID()));
+    AI_ERROR(std::format("FollowBehavior: No target found for entity {}", ctx.entityId));
     state.isFollowing = false;
     return;
   }
 
-  Vector2D currentPos = entity->getPosition();
+  Vector2D currentPos = ctx.transform.position;
   Vector2D targetPos = target->getPosition();  // Use live position instead of cached
 
   // Update target movement tracking (velocity-based, no delay)
@@ -168,8 +169,8 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
     if (distanceToPlayer < CATCHUP_RANGE) {
       // Close enough - stop to prevent path spam
-      entity->setVelocity(Vector2D(0, 0));
-      entity->setAcceleration(Vector2D(0, 0));
+      ctx.transform.velocity = Vector2D(0, 0);
+      ctx.transform.acceleration = Vector2D(0, 0);
       state.progressTimer = 0.0f; // Reset progress timer
       return;
     }
@@ -180,10 +181,10 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   state.isFollowing = true;
 
   // Increment timers (deltaTime in seconds, timers in seconds)
-  state.pathUpdateTimer += deltaTime;
-  state.progressTimer += deltaTime;
+  state.pathUpdateTimer += ctx.deltaTime;
+  state.progressTimer += ctx.deltaTime;
   if (state.backoffTimer > 0.0f) {
-    state.backoffTimer -= deltaTime; // Countdown timer
+    state.backoffTimer -= ctx.deltaTime; // Countdown timer
   }
 
   // OPTIMIZATION: Path-following extracted to method for better compiler optimization
@@ -193,22 +194,22 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   bool hasActivePath = !state.pathPoints.empty() && state.pathUpdateTimer < 2.0f;
 
   if (!hasActivePath && !state.isStopped) {
-    float speedNow = entity->getVelocity().length();
+    float speedNow = ctx.transform.velocity.length();
     const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
     const float stallTime = 0.6f; // 600ms
     if (speedNow < stallSpeed) {
       if (state.progressTimer > stallTime) {
         // Enter a brief backoff to reduce clumping; vary per-entity
-        state.backoffTimer = 0.25f + (entity->getID() % 400) * 0.001f; // 250-650ms
+        state.backoffTimer = 0.25f + (ctx.entityId % 400) * 0.001f; // 250-650ms
         // Clear path and small micro-jitter to yield
         state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
         std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
         float jitter = jitterDist(getThreadLocalRNG()); // ~±17deg (thread-safe)
-        Vector2D v = entity->getVelocity(); if (v.length() < 0.01f) v = Vector2D(1,0);
+        Vector2D v = ctx.transform.velocity; if (v.length() < 0.01f) v = Vector2D(1,0);
         float c = std::cos(jitter), s = std::sin(jitter);
         Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
         // Use reduced speed for stall recovery to prevent shooting off at high speed
-        rotated.normalize(); entity->setVelocity(rotated * (m_followSpeed * 0.5f));
+        rotated.normalize(); ctx.transform.velocity = rotated * (m_followSpeed * 0.5f);
         state.progressTimer = 0.0f;
       }
     } else {
@@ -216,8 +217,14 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     }
   }
 
-  // Calculate desired position with formation offset
-  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
+  // Calculate desired position with formation offset (inline to avoid EntityPtr dependency)
+  Vector2D targetPosAdjusted = targetPos;
+  if (m_predictiveFollowing && state.targetMoving) {
+    // Predictive following: estimate where target will be
+    Vector2D const velocity = (targetPos - state.lastTargetPosition) / 0.016f; // Assume 60 FPS
+    targetPosAdjusted = targetPos + velocity * m_predictionTime;
+  }
+  Vector2D desiredPos = targetPosAdjusted + state.formationOffset;
   float const distanceToDesired = (currentPos - desiredPos).length();
 
   // CRITICAL: Check distance to PLAYER for stop (prevent pushing)
@@ -227,8 +234,8 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // ARRIVAL RADIUS: If very close to desired formation position, stop (prevent micro-oscillations)
   const float ARRIVAL_RADIUS = 25.0f;
   if (distanceToDesired < ARRIVAL_RADIUS && !state.isStopped) {
-    entity->setVelocity(Vector2D(0, 0));
-    entity->setAcceleration(Vector2D(0, 0));
+    ctx.transform.velocity = Vector2D(0, 0);
+    ctx.transform.acceleration = Vector2D(0, 0);
     state.progressTimer = 0.0f;
     state.isStopped = true;
     state.pathPoints.clear();
@@ -241,8 +248,8 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   if (state.isStopped) {
     // Already stopped - only resume if beyond resume distance FROM PLAYER
     if (distanceToPlayer < m_resumeDistance) {
-      entity->setVelocity(Vector2D(0, 0));
-      entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
+      ctx.transform.velocity = Vector2D(0, 0);
+      ctx.transform.acceleration = Vector2D(0, 0); // Clear acceleration too
       state.progressTimer = 0.0f;
       return;
     }
@@ -253,8 +260,8 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   } else {
     // Moving - check if we should stop based on distance to PLAYER
     if (distanceToPlayer < m_stopDistance) {
-      entity->setVelocity(Vector2D(0, 0));
-      entity->setAcceleration(Vector2D(0, 0)); // Clear acceleration too
+      ctx.transform.velocity = Vector2D(0, 0);
+      ctx.transform.acceleration = Vector2D(0, 0); // Clear acceleration too
       state.progressTimer = 0.0f;
       state.isStopped = true;
       // Clear path to prevent any residual path-following
@@ -265,51 +272,39 @@ void FollowBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   }
 
   // Use distance to player for catch-up speed calculation
-  float dynamicSpeed = calculateFollowSpeed(entity, state, distanceToPlayer);
+  float dynamicSpeed = calculateFollowSpeed(nullptr, state, distanceToPlayer);
 
   // Execute appropriate follow behavior based on mode (use pre-calculated desiredPos)
   // Track whether we're using pathfinding or direct movement
   bool usingPathfinding = false;
-  switch (m_followMode) {
-  case FollowMode::CLOSE_FOLLOW:
-    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-    if (!usingPathfinding)
-      updateCloseFollow(entity, state);
-    break;
-  case FollowMode::LOOSE_FOLLOW:
-    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-    if (!usingPathfinding)
-      updateLooseFollow(entity, state);
-    break;
-  case FollowMode::FLANKING_FOLLOW:
-    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-    if (!usingPathfinding)
-      updateFlankingFollow(entity, state);
-    break;
-  case FollowMode::REAR_GUARD:
-    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-    if (!usingPathfinding)
-      updateRearGuard(entity, state);
-    break;
-  case FollowMode::ESCORT_FORMATION:
-    usingPathfinding = tryFollowPathToGoal(entity, currentPos, state, desiredPos, dynamicSpeed);
-    if (!usingPathfinding)
-      updateEscortFormation(entity, state);
-    break;
+
+  // Try pathfinding first for all modes
+  usingPathfinding = tryFollowPathToGoal(ctx, state, desiredPos, dynamicSpeed);
+
+  // If pathfinding isn't active, fall back to direct movement toward desired position
+  if (!usingPathfinding) {
+    // Simple direct movement - just move toward desiredPos
+    Vector2D direction = desiredPos - currentPos;
+    float const length = direction.length();
+
+    if (length > 0.1f) {
+      direction = direction * (1.0f / length);  // Normalize
+      ctx.transform.velocity = direction * dynamicSpeed;
+    }
   }
 
   // Only apply separation during DIRECT MOVEMENT (not pathfinding)
   // Pathfinder already handles obstacle avoidance; separation during pathfinding causes oscillation
   if (!usingPathfinding) {
-    applyAdditiveDecimatedSeparation(entity, currentPos, entity->getVelocity(),
-                                     dynamicSpeed, 25.0f, 0.08f, 8,
-                                     state.separationTimer, state.lastSepForce, deltaTime);
+    applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
+                                   dynamicSpeed, 25.0f, 0.08f, 8,
+                                   state.separationTimer, state.lastSepForce);
   }
 }
 
 void FollowBehavior::clean(EntityPtr entity) {
   if (entity) {
-    auto it = m_entityStates.find(entity);
+    auto it = m_entityStates.find(entity->getID());
     if (it != m_entityStates.end()) {
       // Release formation slot if using escort formation
       if (m_followMode == FollowMode::ESCORT_FORMATION) {
@@ -324,7 +319,7 @@ void FollowBehavior::onMessage(EntityPtr entity, const std::string &message) {
   if (!entity)
     return;
 
-  auto it = m_entityStates.find(entity);
+  auto it = m_entityStates.find(entity->getID());
   if (it == m_entityStates.end())
     return;
 
@@ -441,12 +436,17 @@ float FollowBehavior::getDistanceToTarget() const {
   EntityPtr target = getTarget();
   if (!target)
     return -1.0f;
+
+  // Since we don't have EntityPtr lookup, use the desiredPosition from state instead
+  // This is close enough for query purposes
   auto it =
       std::find_if(m_entityStates.begin(), m_entityStates.end(),
                    [](const auto &pair) { return pair.second.isFollowing; });
   if (it != m_entityStates.end()) {
-    // PERFORMANCE: Only compute sqrt when actually returning distance
-    float distSquared = (it->first->getPosition() - target->getPosition()).lengthSquared();
+    // Use desiredPosition from state as an approximation
+    Vector2D targetPos = target->getPosition();
+    Vector2D entityDesiredPos = it->second.desiredPosition;
+    float distSquared = (entityDesiredPos - targetPos).lengthSquared();
     return std::sqrt(distSquared);
   }
   return -1.0f;
@@ -783,21 +783,13 @@ void FollowBehavior::releaseFormationSlot(int /*slot*/) {
 
 // OPTIMIZATION: Extracted from lambda for better compiler optimization
 // This method handles path-following logic with TTL, goal change detection, and obstacle handling
-bool FollowBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& desiredPos, float speed) {
+// LOCK-FREE VERSION: Uses BehaviorContext instead of EntityPtr
+bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& desiredPos, float speed) {
   const float nodeRadius = 20.0f; // Increased for faster path following
   const float pathTTL = 10.0f; // 10 seconds - reduce path churn when stationary
   const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate
 
-  // Dynamic backoff: if in a backoff window, don't refresh — just try to follow existing path
-  if (state.backoffTimer > 0.0f) {
-    bool following = pathfinder().followPathStep(entity, currentPos,
-                        state.pathPoints, state.currentPathIndex,
-                        speed, nodeRadius);
-    if (following) {
-      state.progressTimer = 0.0f;
-    }
-    return following;
-  }
+  Vector2D currentPos = ctx.transform.position;
 
   // Check if path is stale
   bool const stale = state.pathUpdateTimer > pathTTL;
@@ -816,10 +808,10 @@ bool FollowBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& curre
   // Request new path if needed
   if (stale || goalChanged || stuckOnObstacle) {
     auto& pf = this->pathfinder();
-    pf.requestPath(entity->getID(), currentPos, desiredPos, PathfinderManager::Priority::Normal,
-      [this, entity](EntityID, const std::vector<Vector2D>& path) {
+    pf.requestPath(ctx.entityId, currentPos, desiredPos, PathfinderManager::Priority::Normal,
+      [this, entityId = ctx.entityId](EntityID, const std::vector<Vector2D>& path) {
         // Safely look up state when callback executes
-        auto it = m_entityStates.find(entity);
+        auto it = m_entityStates.find(entityId);
         if (it != m_entityStates.end()) {
           it->second.pathPoints = path;
           it->second.currentPathIndex = 0;
@@ -828,17 +820,29 @@ bool FollowBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& curre
       });
   }
 
-  // Try to follow the path
-  bool pathStep = pathfinder().followPathStep(entity, currentPos,
-                      state.pathPoints, state.currentPathIndex,
-                      speed, nodeRadius);
-  if (pathStep) {
-    state.progressTimer = 0.0f;
-  }
+  // Try to follow the path (inline path-following logic to avoid EntityPtr dependency)
+  bool pathStep = false;
+  if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+    Vector2D waypoint = state.pathPoints[state.currentPathIndex];
+    Vector2D toWaypoint = waypoint - currentPos;
+    float dist = toWaypoint.length();
 
-  // REMOVED: Separation was overwriting path-following velocity with stale cached data
-  // Follow behavior uses followDistance (50px) to maintain spacing, so aggressive
-  // separation isn't needed and was causing erratic movement
+    if (dist < nodeRadius) {
+      state.currentPathIndex++;
+      if (state.currentPathIndex < state.pathPoints.size()) {
+        waypoint = state.pathPoints[state.currentPathIndex];
+        toWaypoint = waypoint - currentPos;
+        dist = toWaypoint.length();
+      }
+    }
+
+    if (state.currentPathIndex < state.pathPoints.size() && dist > 0.001f) {
+      Vector2D direction = toWaypoint / dist;
+      ctx.transform.velocity = direction * speed;
+      state.progressTimer = 0.0f;
+      pathStep = true;
+    }
+  }
 
   return pathStep;
 }

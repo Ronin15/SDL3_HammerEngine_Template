@@ -6,6 +6,7 @@
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
 #include "ai/internal/SpatialPriority.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"
@@ -80,8 +81,8 @@ void PatrolBehavior::init(EntityPtr entity) {
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
-void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-  if (!entity || !m_active || m_waypoints.empty()) {
+void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
+  if (!m_active || m_waypoints.empty()) {
     return;
   }
 
@@ -90,7 +91,8 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     m_currentWaypoint = 0;
   }
 
-  Vector2D position = entity->getPosition();
+  Vector2D position = ctx.transform.position;
+  float deltaTime = ctx.deltaTime;
 
   // Increment timers (deltaTime in seconds)
   m_pathUpdateTimer += deltaTime;
@@ -103,8 +105,6 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
-
-  // Use behavior-defined target; managers will normalize for pathfinding
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
@@ -130,7 +130,6 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       m_pathUpdateTimer = 0.0f;
       m_stallTimer = 0.0f; // Reset stall detection
     }
-    // If still in cooldown, continue toward current waypoint without advancing
   }
 
   // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
@@ -147,7 +146,6 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     needsNewPath = true;
   } else {
     // Check if we're targeting a different waypoint than when path was computed
-    // PERFORMANCE: Use squared distance to avoid sqrt()
     Vector2D pathGoal = m_navPath.back();
     float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
     needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
@@ -156,52 +154,61 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
   bool const stuckOnObstacle = (m_progressTimer > 0.8f);
   if (stuckOnObstacle) {
-    m_navPath.clear(); // Clear path to force refresh
+    m_navPath.clear();
     m_navIndex = 0;
   }
 
   // Per-instance cooldown via m_backoffTimer; no global static throttle
   if ((needsNewPath || stuckOnObstacle) && m_backoffTimer <= 0.0f) {
     // GOAL VALIDATION: Don't request path if already at waypoint
-    // PERFORMANCE: Use squared distance to avoid sqrt()
     float const distanceSquared = (targetWaypoint - position).lengthSquared();
-    if (distanceSquared < (m_waypointRadius * m_waypointRadius)) { // Already at waypoint
-      return; // Skip pathfinding request
+    if (distanceSquared < (m_waypointRadius * m_waypointRadius)) {
+      return;
     }
-    
-    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager  
+
     Vector2D clampedStart = position;
     Vector2D clampedGoal = targetWaypoint;
-    
+
     auto self = std::static_pointer_cast<PatrolBehavior>(shared_from_this());
+    EntityID entityId = ctx.entityId;
     pathfinder().requestPath(
-        entity->getID(), clampedStart, clampedGoal,
+        entityId, clampedStart, clampedGoal,
         PathfinderManager::Priority::Normal,
-        [self, entity](EntityID, const std::vector<Vector2D>& path) {
+        [self](EntityID, const std::vector<Vector2D>& path) {
           if (!path.empty()) {
             self->m_navPath = path;
             self->m_navIndex = 0;
             self->m_pathUpdateTimer = 0.0f;
           }
         });
-    // PERFORMANCE FIX: Long cooldown to match WanderBehavior (15-18 seconds)
-    // Reduces path requests from 1333/sec to ~120/sec with 2000 NPCs
-    m_backoffTimer = m_config.pathRequestCooldown + (entity->getID() % static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) * 0.001f;
+    m_backoffTimer = m_config.pathRequestCooldown + (ctx.entityId % static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) * 0.001f;
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT
   if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-    // Following computed path
-    using namespace AIInternal;
-    bool following =
-        pathfinder().followPathStep(entity, position, m_navPath, m_navIndex,
-                                 m_moveSpeed, m_navRadius);
-    if (following) {
+    // Following computed path - lock-free path following
+    Vector2D waypoint = m_navPath[m_navIndex];
+    Vector2D toWaypoint = waypoint - position;
+    float dist = toWaypoint.length();
+
+    if (dist < m_navRadius) {
+      m_navIndex++;
+      if (m_navIndex < m_navPath.size()) {
+        waypoint = m_navPath[m_navIndex];
+        toWaypoint = waypoint - position;
+        dist = toWaypoint.length();
+      }
+    }
+
+    if (dist > 0.001f) {
+      Vector2D direction = toWaypoint / dist;
+      ctx.transform.velocity = direction * m_moveSpeed;
       m_progressTimer = 0.0f;
-      // Separation decimation: compute at most every 2-4 seconds
-      applyDecimatedSeparation(entity, position, entity->getVelocity(),
-                               m_moveSpeed, 24.0f, 0.20f, 4, m_separationTimer,
-                               m_lastSepVelocity, deltaTime);
+
+      // Separation decimation using lock-free method
+      applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
+                                     m_moveSpeed, 24.0f, 0.20f, 4, m_separationTimer,
+                                     m_lastSepVelocity);
     }
   } else {
     // Direct movement to waypoint
@@ -212,19 +219,18 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     } else {
       direction.normalize();
     }
-    entity->setVelocity(direction * m_moveSpeed);
+    ctx.transform.velocity = direction * m_moveSpeed;
     m_progressTimer = 0.0f;
   }
 
   // State: STALL_DETECTION - Handle entities that get stuck
-  // PERFORMANCE: Use squared length to avoid sqrt()
-  float currentSpeedSquared = entity->getVelocity().lengthSquared();
+  float currentSpeedSquared = ctx.transform.velocity.lengthSquared();
   const float stallThreshold = std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
   const float stallThresholdSquared = stallThreshold * stallThreshold;
 
   if (currentSpeedSquared < stallThresholdSquared) {
-    m_stallTimer += deltaTime; // Accumulate stall time
-    if (m_stallTimer > 2.0f) { // 2 second stall detection
+    m_stallTimer += deltaTime;
+    if (m_stallTimer > 2.0f) {
       // Apply stall recovery: try sidestep maneuver or advance waypoint
       if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
         Vector2D toNode = m_navPath[m_navIndex] - position;
@@ -232,12 +238,13 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
         if (len > 0.01f) {
           Vector2D const dir = toNode * (1.0f / len);
           Vector2D const perp(-dir.getY(), dir.getX());
-          float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
+          float side = ((ctx.entityId & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = pathfinder().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
           auto self = std::static_pointer_cast<PatrolBehavior>(shared_from_this());
+          EntityID entityId = ctx.entityId;
           pathfinder().requestPath(
-              entity->getID(), pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
+              entityId, pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
               PathfinderManager::Priority::Normal,
               [self](EntityID, const std::vector<Vector2D> &path) {
                 if (!path.empty()) {
@@ -248,28 +255,26 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
               });
 
           if (m_navPath.empty()) {
-            // Fallback: advance waypoint and apply backoff (10-12 seconds)
-            m_backoffTimer = 10.0f + (entity->getID() % 2000) * 0.001f;
+            m_backoffTimer = 10.0f + (ctx.entityId % 2000) * 0.001f;
             m_navPath.clear();
             m_navIndex = 0;
-            if (m_waypointCooldown <= 0.0f) { // Cooldown already expired (>1.5s since last advance)
+            if (m_waypointCooldown <= 0.0f) {
               m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
               m_waypointCooldown = 1.5f;
             }
           }
         }
       } else {
-        // No path available, advance waypoint (10-12 seconds backoff)
-        m_backoffTimer = 10.0f + (entity->getID() % 2000) * 0.001f;
-        if (m_waypointCooldown <= 0.0f) { // Cooldown already expired
+        m_backoffTimer = 10.0f + (ctx.entityId % 2000) * 0.001f;
+        if (m_waypointCooldown <= 0.0f) {
           m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
           m_waypointCooldown = 1.5f;
         }
       }
-      m_stallTimer = 0.0f; // Reset stall timer after recovery attempt
+      m_stallTimer = 0.0f;
     }
   } else {
-    m_stallTimer = 0.0f; // Reset stall timer when moving normally
+    m_stallTimer = 0.0f;
   }
 }
 

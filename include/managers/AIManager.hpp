@@ -103,16 +103,15 @@ struct AIEntityData {
 struct PreFetchedBatchData {
     std::vector<EntityPtr> entities;
     std::vector<std::shared_ptr<AIBehavior>> behaviors;
-    std::vector<float> halfWidths;
-    std::vector<float> halfHeights;
     std::vector<AIEntityData::HotData> hotDataCopy;
+    std::vector<size_t> edmIndices;  // EntityDataManager indices for lock-free batch access
+    // NOTE: halfWidths/halfHeights REMOVED - accessed via EntityDataManager::getHotDataByIndex()
 
     void reserve(size_t capacity) {
         entities.reserve(capacity);
         behaviors.reserve(capacity);
-        halfWidths.reserve(capacity);
-        halfHeights.reserve(capacity);
         hotDataCopy.reserve(capacity);
+        edmIndices.reserve(capacity);
     }
 };
 
@@ -360,20 +359,19 @@ private:
   AIManager &operator=(const AIManager &) = delete;
 
   // Cache-efficient storage using Structure of Arrays (SoA)
-  // NOTE: Batch collision updates now use CollisionManager::KinematicUpdate directly (no conversion overhead)
+  // NOTE: Position/size data now lives in EntityDataManager (single source of truth)
+  // AIManager only stores AI-specific data (behaviors, priorities, distances)
   struct EntityStorage {
     // Hot data arrays - tightly packed for cache efficiency
-    std::vector<AIEntityData::HotData> hotData;
+    std::vector<AIEntityData::HotData> hotData;  // AI-specific: distanceSquared, priority, etc.
 
     // Cold data arrays - accessed less frequently
-    std::vector<EntityPtr> entities;
+    std::vector<EntityPtr> entities;              // For behavior execution compatibility
     std::vector<std::shared_ptr<AIBehavior>> behaviors;
     std::vector<float> lastUpdateTimes;
-    std::vector<float> halfWidths;  // entity half extents for clamp
-    std::vector<float> halfHeights; // entity half extents for clamp
+    std::vector<size_t> edmIndices;               // EntityDataManager indices for lock-free batch access
 
-    // Using single-copy pre-fetch pattern:
-    // PreFetchedBatchData copies directly from hotData, eliminating redundant copy
+    // NOTE: halfWidths/halfHeights REMOVED - now accessed via EntityDataManager::getHotDataByIndex()
 
     size_t size() const { return entities.size(); }
     void reserve(size_t capacity) {
@@ -381,8 +379,7 @@ private:
       entities.reserve(capacity);
       behaviors.reserve(capacity);
       lastUpdateTimes.reserve(capacity);
-      halfWidths.reserve(capacity);
-      halfHeights.reserve(capacity);
+      edmIndices.reserve(capacity);
     }
   };
 
