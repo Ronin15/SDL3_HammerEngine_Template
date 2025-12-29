@@ -148,7 +148,9 @@ void Player::update(float deltaTime) {
 
   // MOVEMENT INTEGRATION: Apply velocity to position (same as AIManager does for NPCs)
   // This is the core physics step that makes the player move
-  m_position = m_position + (m_velocity * deltaTime);
+  // Use getPosition()/getVelocity() to read from EntityDataManager (single source of truth)
+  Vector2D currentVel = getVelocity();
+  Vector2D newPos = getPosition() + (currentVel * deltaTime);
 
   // WORLD BOUNDS CONSTRAINT: Clamp player position to stay within world boundaries
   // PERFORMANCE: Use cached bounds instead of calling WorldManager::Instance() every frame
@@ -165,8 +167,8 @@ void Player::update(float deltaTime) {
     const float halfHeight = m_height * 0.5f;
 
     // Store original position before clamping
-    const float originalX = m_position.getX();
-    const float originalY = m_position.getY();
+    const float originalX = newPos.getX();
+    const float originalY = newPos.getY();
 
     // Clamp position to world bounds (with player size offset)
     const float clampedX = std::clamp(originalX, m_cachedWorldMinX + halfWidth, m_cachedWorldMaxX - halfWidth);
@@ -174,19 +176,27 @@ void Player::update(float deltaTime) {
 
     // Update position and stop velocity if we hit a boundary
     if (clampedX != originalX) {
-      m_position.setX(clampedX);
-      m_velocity.setX(0.0f);  // Stop horizontal movement at edge
+      newPos.setX(clampedX);
+      currentVel.setX(0.0f);  // Stop horizontal movement at edge
     }
     if (clampedY != originalY) {
-      m_position.setY(clampedY);
-      m_velocity.setY(0.0f);  // Stop vertical movement at edge
+      newPos.setY(clampedY);
+      currentVel.setY(0.0f);  // Stop vertical movement at edge
+    }
+
+    // Write velocity back if it was modified by boundary collision
+    if (clampedX != originalX || clampedY != originalY) {
+      setVelocity(currentVel);
     }
   }
 
+  // Write position to EntityDataManager (single source of truth)
+  setPosition(newPos);
+
   // Update collision body with new position and velocity
   auto &cm = CollisionManager::Instance();
-  cm.updateCollisionBodyPositionSOA(m_id, m_position);
-  cm.updateCollisionBodyVelocitySOA(m_id, m_velocity);
+  cm.updateCollisionBodyPositionSOA(m_id, newPos);
+  cm.updateCollisionBodyVelocitySOA(m_id, currentVel);
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
