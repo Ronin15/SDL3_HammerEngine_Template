@@ -279,9 +279,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     m_timestepManager->setSoftwareFrameLimiting(true);
   }
 
-  GAMEENGINE_INFO(std::format("TimestepManager created: {} FPS, {} frame limiting",
-                              m_timestepManager->getTargetFPS(),
-                              m_timestepManager->isUsingSoftwareFrameLimiting() ? "software" : "hardware"));
+  if (m_timestepManager->isUsingSoftwareFrameLimiting()) {
+    TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, {:.0f} FPS target, software frame limiting",
+                              m_timestepManager->getUpdateFrequencyHz(),
+                              m_timestepManager->getTargetFPS()));
+  } else {
+    TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, VSync enabled",
+                              m_timestepManager->getUpdateFrequencyHz()));
+  }
 
 
   if (!SDL_SetRenderDrawColor(

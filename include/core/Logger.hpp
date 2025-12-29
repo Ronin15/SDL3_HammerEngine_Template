@@ -186,6 +186,12 @@ inline std::mutex Logger::s_logMutex{};
 #define THREADSYSTEM_INFO(msg) HAMMER_INFO("ThreadSystem", msg)
 #define THREADSYSTEM_DEBUG(msg) HAMMER_DEBUG("ThreadSystem", msg)
 
+#define TIMESTEP_CRITICAL(msg) HAMMER_CRITICAL("TimestepManager", msg)
+#define TIMESTEP_ERROR(msg) HAMMER_ERROR("TimestepManager", msg)
+#define TIMESTEP_WARN(msg) HAMMER_WARN("TimestepManager", msg)
+#define TIMESTEP_INFO(msg) HAMMER_INFO("TimestepManager", msg)
+#define TIMESTEP_DEBUG(msg) HAMMER_DEBUG("TimestepManager", msg)
+
 // Manager Systems
 #define TEXTURE_CRITICAL(msg) HAMMER_CRITICAL("TextureManager", msg)
 #define TEXTURE_ERROR(msg) HAMMER_ERROR("TextureManager", msg)
