@@ -267,15 +267,24 @@ class Entity : public std::enable_shared_from_this<Entity> {
    */
   void setHandle(EntityHandle handle) { m_handle = handle; }
 
+  /**
+   * @brief Register entity with EntityDataManager (for test entities)
+   *
+   * Convenience method for derived classes (especially test entities) that need to
+   * register with EntityDataManager. Production code (NPC, Player) uses specific
+   * methods (registerNPC, registerPlayer) for full registration.
+   *
+   * @param position Initial entity position
+   * @param halfWidth Half width for collision bounds
+   * @param halfHeight Half height for collision bounds
+   * @param kind Entity kind (defaults to NPC for test entities)
+   */
+  void registerWithDataManager(const Vector2D& position, float halfWidth = 16.0f,
+                                float halfHeight = 16.0f, EntityKind kind = EntityKind::NPC);
+
   const EntityID m_id;
   EntityHandle m_handle;  // Handle for EntityDataManager access (Phase 4)
 
-  // Legacy transform storage - used as fallback when handle is invalid
-  // These will be removed in a future cleanup once all entities use EntityDataManager
-  Vector2D m_acceleration{0, 0};
-  Vector2D m_velocity{0, 0};
-  Vector2D m_position{0, 0};
-  Vector2D m_previousPosition{0, 0};  // For render interpolation
   int m_width{0};
   int m_height{0};
   std::string m_textureID{};

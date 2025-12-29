@@ -24,11 +24,15 @@
 #include <format>
 
 Player::Player() : Entity() {
-  // Initialize player properties
-  m_position =
-      Vector2D(400, 300); // Start position in the middle of a typical screen
-  m_velocity = Vector2D(0, 0);
-  m_acceleration = Vector2D(0, 0);
+  // Register with EntityDataManager FIRST - data must exist before any state setup
+  // This establishes the single source of truth for all entity data
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    // Use default half-sizes, will be updated in ensurePhysicsBodyRegistered
+    EntityHandle handle = edm.registerPlayer(getID(), m_initialPosition, 16.0f, 16.0f);
+    setHandle(handle);
+  }
+
   m_textureID =
       "player"; // Texture ID as loaded by TextureManager from res/img directory
 
@@ -53,7 +57,7 @@ Player::Player() : Entity() {
   // Setup inventory system - NOTE: Do NOT call setupInventory() here
   // because it can trigger shared_this() during construction.
   // Call setupInventory() after construction completes.
-  // Set default state
+  // Set default state (now safe - EntityDataManager handle is valid)
   changeState("idle");
 
   // PLAYER_DEBUG("Player created");
@@ -252,11 +256,15 @@ void Player::clean() {
 }
 
 void Player::ensurePhysicsBodyRegistered() {
-  // Register a dynamic body for the player and attach this entity
+  // Register collision body (requires shared_from_this, can't be in constructor)
+  // EntityDataManager registration already done in constructor
   auto &cm = CollisionManager::Instance();
   const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
   const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
-  HammerEngine::AABB aabb(m_position.getX(), m_position.getY(), halfW, halfH);
+
+  // Get current position from EntityDataManager (already registered in constructor)
+  Vector2D pos = getPosition();
+  HammerEngine::AABB aabb(pos.getX(), pos.getY(), halfW, halfH);
 
   // Use new SOA-based collision system
   // Player collides with everything except pets (pets pass through player)
@@ -267,14 +275,6 @@ void Player::ensurePhysicsBodyRegistered() {
   cm.processPendingCommands();
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
-
-  // Phase 4: Register with EntityDataManager and store handle
-  // EntityDataManager is now the single source of truth for transforms
-  auto& edm = EntityDataManager::Instance();
-  if (edm.isInitialized()) {
-    EntityHandle handle = edm.registerPlayer(getID(), m_position, halfW, halfH);
-    setHandle(handle);  // Enable EntityDataManager-backed accessors
-  }
 }
 
 void Player::setVelocity(const Vector2D& velocity) {
@@ -537,44 +537,82 @@ void Player::playAnimation(const std::string& animName) {
   }
 }
 
-// Combat system methods
+// Combat system methods - all stats stored in EntityDataManager::CharacterData
+
+float Player::getHealth() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).health;
+}
+
+float Player::getMaxHealth() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).maxHealth;
+}
+
+float Player::getStamina() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).stamina;
+}
+
+float Player::getMaxStamina() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).maxStamina;
+}
+
+float Player::getAttackDamage() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).attackDamage;
+}
+
+float Player::getAttackRange() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).attackRange;
+}
+
+bool Player::isAlive() const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).health > 0.0f;
+}
+
+bool Player::canAttack(float staminaCost) const {
+  return EntityDataManager::Instance().getCharacterData(m_handle).stamina >= staminaCost;
+}
 
 void Player::takeDamage(float damage, const Vector2D& knockback) {
-  if (m_currentHealth <= 0.0f) {
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+
+  if (charData.health <= 0.0f) {
     return;  // Already dead
   }
 
-  m_currentHealth = std::max(0.0f, m_currentHealth - damage);
+  charData.health = std::max(0.0f, charData.health - damage);
 
-  // Apply knockback
+  // Apply knockback via transform
   if (knockback.length() > 0.001f) {
-    setPosition(getPosition() + knockback);
+    auto& transform = EntityDataManager::Instance().getTransform(m_handle);
+    transform.position = transform.position + knockback;
   }
 
   // Handle death or hurt
-  if (m_currentHealth <= 0.0f) {
+  if (charData.health <= 0.0f) {
     die();
   } else {
     changeState("hurt");
   }
 
-  PLAYER_DEBUG(std::format("Player took {} damage, health: {}/{}", damage, m_currentHealth, m_maxHealth));
+  PLAYER_DEBUG(std::format("Player took {} damage, health: {}/{}", damage, charData.health, charData.maxHealth));
 }
 
 void Player::heal(float amount) {
-  if (m_currentHealth <= 0.0f) {
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+
+  if (charData.health <= 0.0f) {
     return;  // Can't heal dead player
   }
 
-  float oldHealth = m_currentHealth;
-  m_currentHealth = std::min(m_maxHealth, m_currentHealth + amount);
+  float oldHealth = charData.health;
+  charData.health = std::min(charData.maxHealth, charData.health + amount);
 
   PLAYER_DEBUG(std::format("Player healed {} HP: {}/{} -> {}/{}",
-               amount, oldHealth, m_maxHealth, m_currentHealth, m_maxHealth));
+               amount, oldHealth, charData.maxHealth, charData.health, charData.maxHealth));
 }
 
 void Player::die() {
-  PLAYER_INFO(std::format("Player died at position ({}, {})", m_position.getX(), m_position.getY()));
+  Vector2D pos = getPosition();
+  PLAYER_INFO(std::format("Player died at position ({}, {})", pos.getX(), pos.getY()));
 
   changeState("dying");
 
@@ -582,19 +620,23 @@ void Player::die() {
 }
 
 void Player::setMaxHealth(float maxHealth) {
-  m_maxHealth = maxHealth;
-  m_currentHealth = std::min(m_currentHealth, m_maxHealth);
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  charData.maxHealth = maxHealth;
+  charData.health = std::min(charData.health, charData.maxHealth);
 }
 
 void Player::setMaxStamina(float maxStamina) {
-  m_maxStamina = maxStamina;
-  m_currentStamina = std::min(m_currentStamina, m_maxStamina);
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  charData.maxStamina = maxStamina;
+  charData.stamina = std::min(charData.stamina, charData.maxStamina);
 }
 
 void Player::consumeStamina(float amount) {
-  m_currentStamina = std::max(0.0f, m_currentStamina - amount);
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  charData.stamina = std::max(0.0f, charData.stamina - amount);
 }
 
 void Player::restoreStamina(float amount) {
-  m_currentStamina = std::min(m_maxStamina, m_currentStamina + amount);
+  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  charData.stamina = std::min(charData.maxStamina, charData.stamina + amount);
 }

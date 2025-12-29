@@ -7,115 +7,81 @@
 #include "managers/EntityDataManager.hpp"
 
 // ============================================================================
-// TRANSFORM ACCESSORS - Redirect to EntityDataManager (Phase 4)
+// TRANSFORM ACCESSORS - EntityDataManager is the single source of truth
+// Entity must be registered before these are called (see registerWithDataManager)
 // ============================================================================
 
 Vector2D Entity::getPosition() const {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            return edm.getTransform(m_handle).position;
-        }
-    }
-    return m_position;  // Fallback to legacy storage
+    return EntityDataManager::Instance().getTransform(m_handle).position;
 }
 
 Vector2D Entity::getPreviousPosition() const {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            return edm.getTransform(m_handle).previousPosition;
-        }
-    }
-    return m_previousPosition;  // Fallback to legacy storage
+    return EntityDataManager::Instance().getTransform(m_handle).previousPosition;
 }
 
 Vector2D Entity::getVelocity() const {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            return edm.getTransform(m_handle).velocity;
-        }
-    }
-    return m_velocity;  // Fallback to legacy storage
+    return EntityDataManager::Instance().getTransform(m_handle).velocity;
 }
 
 Vector2D Entity::getAcceleration() const {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            return edm.getTransform(m_handle).acceleration;
-        }
-    }
-    return m_acceleration;  // Fallback to legacy storage
+    return EntityDataManager::Instance().getTransform(m_handle).acceleration;
 }
 
 Vector2D Entity::getInterpolatedPosition(float alpha) const {
-    Vector2D pos = getPosition();
-    Vector2D prevPos = getPreviousPosition();
+    const auto& transform = EntityDataManager::Instance().getTransform(m_handle);
     return Vector2D(
-        prevPos.getX() + (pos.getX() - prevPos.getX()) * alpha,
-        prevPos.getY() + (pos.getY() - prevPos.getY()) * alpha);
+        transform.previousPosition.getX() + (transform.position.getX() - transform.previousPosition.getX()) * alpha,
+        transform.previousPosition.getY() + (transform.position.getY() - transform.previousPosition.getY()) * alpha);
 }
 
 void Entity::storePositionForInterpolation() {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            auto& transform = edm.getTransform(m_handle);
-            transform.previousPosition = transform.position;
-            return;
-        }
-    }
-    m_previousPosition = m_position;  // Fallback to legacy storage
+    auto& transform = EntityDataManager::Instance().getTransform(m_handle);
+    transform.previousPosition = transform.position;
 }
 
 void Entity::updatePositionFromMovement(const Vector2D& position) {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            edm.getTransform(m_handle).position = position;
-            return;
-        }
-    }
-    m_position = position;  // Fallback to legacy storage
+    EntityDataManager::Instance().getTransform(m_handle).position = position;
 }
 
 void Entity::setPosition(const Vector2D& position) {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            auto& transform = edm.getTransform(m_handle);
-            transform.position = position;
-            transform.previousPosition = position;  // Prevents interpolation sliding
-            return;
-        }
-    }
-    // Fallback to legacy storage
-    m_position = position;
-    m_previousPosition = position;
+    auto& transform = EntityDataManager::Instance().getTransform(m_handle);
+    transform.position = position;
+    transform.previousPosition = position;  // Prevents interpolation sliding
 }
 
 void Entity::setVelocity(const Vector2D& velocity) {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            edm.getTransform(m_handle).velocity = velocity;
-            return;
-        }
-    }
-    m_velocity = velocity;  // Fallback to legacy storage
+    EntityDataManager::Instance().getTransform(m_handle).velocity = velocity;
 }
 
 void Entity::setAcceleration(const Vector2D& acceleration) {
-    if (m_handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
-        if (edm.isInitialized()) {
-            edm.getTransform(m_handle).acceleration = acceleration;
-            return;
-        }
+    EntityDataManager::Instance().getTransform(m_handle).acceleration = acceleration;
+}
+
+// ============================================================================
+// REGISTRATION (for test entities)
+// ============================================================================
+
+void Entity::registerWithDataManager(const Vector2D& position, float halfWidth,
+                                      float halfHeight, EntityKind kind) {
+    auto& edm = EntityDataManager::Instance();
+    if (!edm.isInitialized()) {
+        return;  // EDM not ready, skip registration
     }
-    m_acceleration = acceleration;  // Fallback to legacy storage
+
+    EntityHandle handle;
+    switch (kind) {
+        case EntityKind::NPC:
+            handle = edm.registerNPC(m_id, position, halfWidth, halfHeight);
+            break;
+        case EntityKind::Player:
+            handle = edm.registerPlayer(m_id, position, halfWidth, halfHeight);
+            break;
+        default:
+            // Use NPC registration for other kinds (test entities)
+            handle = edm.registerNPC(m_id, position, halfWidth, halfHeight);
+            break;
+    }
+    setHandle(handle);
 }
 
 // ============================================================================

@@ -10,6 +10,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"  // For TransformData
 #include "collisions/AABB.hpp"
 #include <cmath>
 #include <algorithm>
@@ -75,43 +76,51 @@ FleeBehavior::FleeBehavior(const HammerEngine::FleeBehaviorConfig& config, FleeM
 void FleeBehavior::init(EntityPtr entity) {
     if (!entity) return;
 
-    auto& state = m_entityStates[entity];
+    EntityID entityId = entity->getID();
+    auto& state = m_entityStates[entityId];
     state = EntityState(); // Reset to default state
     state.currentStamina = m_maxStamina;
     state.lastThreatPosition = entity->getPosition();
+
+    // Cache EntityPtr for helper methods during migration
+    m_entityPtrCache[entityId] = entity;
 }
 
-void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-    if (!entity || !isActive()) return;
+void FleeBehavior::executeLogic(BehaviorContext& ctx) {
+    if (!isActive()) return;
 
-    auto it = m_entityStates.find(entity);
+    auto it = m_entityStates.find(ctx.entityId);
     if (it == m_entityStates.end()) {
-        init(entity);
-        it = m_entityStates.find(entity);
-        if (it == m_entityStates.end()) return;
+        // State not initialized - skip this frame (init will be called separately)
+        return;
     }
 
     EntityState& state = it->second;
 
     // Update all timers
-    state.fleeTimer += deltaTime;
-    state.directionChangeTimer += deltaTime;
-    if (state.panicTimer > 0.0f) state.panicTimer -= deltaTime;
-    state.zigzagTimer += deltaTime;
-    state.pathUpdateTimer += deltaTime;
-    state.progressTimer += deltaTime;
-    if (state.pathCooldown > 0.0f) state.pathCooldown -= deltaTime;
-    if (state.backoffTimer > 0.0f) state.backoffTimer -= deltaTime;
-    state.lastCrowdAnalysis += deltaTime;
+    state.fleeTimer += ctx.deltaTime;
+    state.directionChangeTimer += ctx.deltaTime;
+    if (state.panicTimer > 0.0f) state.panicTimer -= ctx.deltaTime;
+    state.zigzagTimer += ctx.deltaTime;
+    state.pathUpdateTimer += ctx.deltaTime;
+    state.progressTimer += ctx.deltaTime;
+    if (state.pathCooldown > 0.0f) state.pathCooldown -= ctx.deltaTime;
+    if (state.backoffTimer > 0.0f) state.backoffTimer -= ctx.deltaTime;
+    state.lastCrowdAnalysis += ctx.deltaTime;
 
     // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
     // Reduces CollisionManager queries significantly for fleeing entities
-    float crowdCacheInterval = 3.0f + (entity->getID() % 200) * 0.01f; // 3-5 seconds
+    float crowdCacheInterval = 3.0f + (ctx.entityId % 200) * 0.01f; // 3-5 seconds
     if (state.lastCrowdAnalysis >= crowdCacheInterval) {
-      Vector2D position = entity->getPosition();
+      Vector2D position = ctx.transform.position;
       float queryRadius = 100.0f; // Smaller radius for flee (lighter separation)
-      state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
-          entity, position, queryRadius, state.cachedNearbyPositions);
+      // TODO: Update GetNearbyEntitiesWithPositions to support EntityID instead of EntityPtr
+      // For now, use cached EntityPtr
+      auto entityIt = m_entityPtrCache.find(ctx.entityId);
+      if (entityIt != m_entityPtrCache.end() && entityIt->second) {
+          state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
+              entityIt->second, position, queryRadius, state.cachedNearbyPositions);
+      }
       state.lastCrowdAnalysis = 0.0f; // Reset timer
     }
 
@@ -124,36 +133,38 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
             state.isInPanic = false;
             state.hasValidThreat = false;
         }
-        
+
         if (m_useStamina) {
-            updateStamina(state, 0.016f, false); // Assume ~60 FPS
+            updateStamina(state, ctx.deltaTime, false);
         }
         return;
     }
 
     // Check if threat is in detection range
-    bool threatInRange = isThreatInRange(entity, threat);
-    
-    
+    Vector2D threatPos = threat->getPosition();
+    float distanceToThreatSquared = (ctx.transform.position - threatPos).lengthSquared();
+    float const detectionRangeSquared = m_detectionRange * m_detectionRange;
+    bool threatInRange = (distanceToThreatSquared <= detectionRangeSquared);
+
+
     if (threatInRange) {
         // Start fleeing if not already
         if (!state.isFleeing) {
             state.isFleeing = true;
             state.fleeTimer = 0.0f;
-            state.lastThreatPosition = threat->getPosition();
-            
+            state.lastThreatPosition = threatPos;
+
             // Determine if this should trigger panic
             if (m_fleeMode == FleeMode::PANIC_FLEE) {
                 state.isInPanic = true;
                 state.panicTimer = m_panicDuration * m_panicVariation(m_rng);
             }
         }
-        
+
         state.hasValidThreat = true;
-        state.lastThreatPosition = threat->getPosition();
+        state.lastThreatPosition = threatPos;
     } else if (state.isFleeing) {
         // PERFORMANCE: Use squared distance for comparison
-        float distanceToThreatSquared = (entity->getPosition() - threat->getPosition()).lengthSquared();
         float const safeDistanceSquared = m_safeDistance * m_safeDistance;
         if (distanceToThreatSquared >= safeDistanceSquared) {
             state.isFleeing = false;
@@ -169,37 +180,48 @@ void FleeBehavior::executeLogic(EntityPtr entity, float deltaTime) {
 
     // Execute appropriate flee behavior
     if (state.isFleeing) {
+        // Get cached EntityPtr for helper methods
+        auto entityIt = m_entityPtrCache.find(ctx.entityId);
+        if (entityIt == m_entityPtrCache.end() || !entityIt->second) return;
+
+        EntityPtr entity = entityIt->second;
+
         switch (m_fleeMode) {
             case FleeMode::PANIC_FLEE:
-                updatePanicFlee(entity, state, deltaTime);
+                updatePanicFlee(entity, state, ctx.deltaTime);
                 break;
             case FleeMode::STRATEGIC_RETREAT:
-                updateStrategicRetreat(entity, state, deltaTime);
+                updateStrategicRetreat(entity, state, ctx.deltaTime);
                 break;
             case FleeMode::EVASIVE_MANEUVER:
-                updateEvasiveManeuver(entity, state, deltaTime);
+                updateEvasiveManeuver(entity, state, ctx.deltaTime);
                 break;
             case FleeMode::SEEK_COVER:
-                updateSeekCover(entity, state, deltaTime);
+                updateSeekCover(entity, state, ctx.deltaTime);
                 break;
         }
-        
+
         if (m_useStamina) {
-            updateStamina(state, 0.016f, true);
+            updateStamina(state, ctx.deltaTime, true);
         }
+
+        // Update ctx.transform.velocity from entity (helper methods still use entity->setVelocity)
+        ctx.transform.velocity = entity->getVelocity();
     }
 }
 
 void FleeBehavior::clean(EntityPtr entity) {
     if (entity) {
-        m_entityStates.erase(entity);
+        EntityID entityId = entity->getID();
+        m_entityStates.erase(entityId);
+        m_entityPtrCache.erase(entityId);
     }
 }
 
 void FleeBehavior::onMessage(EntityPtr entity, const std::string& message) {
     if (!entity) return;
 
-    auto it = m_entityStates.find(entity);
+    auto it = m_entityStates.find(entity->getID());
     if (it == m_entityStates.end()) return;
 
     EntityState& state = it->second;
@@ -267,12 +289,19 @@ bool FleeBehavior::isInPanic() const {
 float FleeBehavior::getDistanceToThreat() const {
     EntityPtr threat = getThreat();
     if (!threat) return -1.0f;
-    auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
-                          [](const auto& pair) { return pair.second.isFleeing; });
-    if (it != m_entityStates.end()) {
-        // PERFORMANCE: Only compute sqrt when actually returning distance
-        float distSquared = (it->first->getPosition() - threat->getPosition()).lengthSquared();
-        return std::sqrt(distSquared);
+
+    // Find a fleeing entity
+    auto stateIt = std::find_if(m_entityStates.begin(), m_entityStates.end(),
+                                [](const auto& pair) { return pair.second.isFleeing; });
+    if (stateIt != m_entityStates.end()) {
+        // Get the EntityPtr from cache
+        EntityID entityId = stateIt->first;
+        auto entityIt = m_entityPtrCache.find(entityId);
+        if (entityIt != m_entityPtrCache.end() && entityIt->second) {
+            // PERFORMANCE: Only compute sqrt when actually returning distance
+            float distSquared = (entityIt->second->getPosition() - threat->getPosition()).lengthSquared();
+            return std::sqrt(distSquared);
+        }
     }
     return -1.0f;
 }
@@ -678,8 +707,8 @@ bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& current
                 pf.clampToWorldBounds(currentPos, 100.0f),
                 goal,
                 PathfinderManager::Priority::High,
-                [self, entity](EntityID, const std::vector<Vector2D>& path) {
-                    auto it = self->m_entityStates.find(entity);
+                [self, entityId = entity->getID()](EntityID, const std::vector<Vector2D>& path) {
+                    auto it = self->m_entityStates.find(entityId);
                     if (it != self->m_entityStates.end() && !path.empty()) {
                         it->second.pathPoints = path;
                         it->second.currentPathIndex = 0;

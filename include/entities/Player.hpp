@@ -88,26 +88,26 @@ public:
   // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
   void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
 
-  // Combat system
+  // Combat system - all stats stored in EntityDataManager::CharacterData
   void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
   void heal(float amount);
   void die();
-  bool isAlive() const { return m_currentHealth > 0.0f; }
+  bool isAlive() const;
 
-  // Combat stat accessors
-  float getHealth() const { return m_currentHealth; }
-  float getMaxHealth() const { return m_maxHealth; }
-  float getStamina() const { return m_currentStamina; }
-  float getMaxStamina() const { return m_maxStamina; }
-  float getAttackDamage() const { return m_attackDamage; }
-  float getAttackRange() const { return m_attackRange; }
+  // Combat stat accessors (read from EntityDataManager)
+  float getHealth() const;
+  float getMaxHealth() const;
+  float getStamina() const;
+  float getMaxStamina() const;
+  float getAttackDamage() const;
+  float getAttackRange() const;
 
-  // Combat stat setters
+  // Combat stat setters (write to EntityDataManager)
   void setMaxHealth(float maxHealth);
   void setMaxStamina(float maxStamina);
 
   // Stamina management (for combat controller)
-  bool canAttack(float staminaCost) const { return m_currentStamina >= staminaCost; }
+  bool canAttack(float staminaCost) const;
   void consumeStamina(float amount);
   void restoreStamina(float amount);
 
@@ -144,12 +144,8 @@ private:
 
   void refreshWorldBoundsCache();
 
-  // Combat stats
-  float m_currentHealth{100.0f};
-  float m_maxHealth{100.0f};
-  float m_currentStamina{100.0f};
-  float m_maxStamina{100.0f};
-  float m_attackDamage{25.0f};
-  float m_attackRange{50.0f};
+  // Bootstrap: Initial position before EntityDataManager registration
+  // Used in ensurePhysicsBodyRegistered() then cleared
+  Vector2D m_initialPosition{400.0f, 300.0f};
 };
 #endif // PLAYER_HPP

@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <atomic>
@@ -38,7 +39,7 @@ public:
                           FollowMode mode = FollowMode::LOOSE_FOLLOW);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -108,7 +109,7 @@ private:
   };
 
   // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
 
   // Configuration
   HammerEngine::FollowBehaviorConfig m_config;
@@ -183,7 +184,7 @@ private:
   Vector2D normalizeVector(const Vector2D &vector) const;
 
   // OPTIMIZATION: Extracted lambda for better compiler optimization
-  bool tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& desiredPos, float speed);
+  bool tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& desiredPos, float speed);
 
   // Formation setup
   void initializeFormationOffsets();

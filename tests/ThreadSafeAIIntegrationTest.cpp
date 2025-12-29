@@ -21,6 +21,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 // GameEngine.hpp removed - not used directly
 
@@ -28,7 +29,8 @@
 class IntegrationTestEntity : public Entity {
 public:
     IntegrationTestEntity(int id = 0, const Vector2D& pos = Vector2D(0, 0)) : m_id(id) {
-        setPosition(pos);
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
         setTextureID("test_texture");
         setWidth(32);
         setHeight(32);
@@ -67,6 +69,14 @@ private:
 class IntegrationTestBehavior : public AIBehavior {
 public:
     IntegrationTestBehavior(const std::string& name) : m_name(name) {}
+
+    // Lock-free hot path (required by pure virtual)
+    void executeLogic(BehaviorContext& ctx) override {
+        // Test behavior: minimal implementation for BehaviorContext path
+        // The test primarily validates threading/registration, not behavior logic
+        m_updateCount++;
+        (void)ctx; // Behavior logic handled by EntityPtr version when called
+    }
 
     void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
             if (!entity) return;
@@ -213,7 +223,13 @@ struct GlobalTestFixture {
         }
 
         // Initialize dependencies in proper order
-        // AIManager requires PathfinderManager and CollisionManager to be initialized first
+        // EntityDataManager must be first - entities need it for registration
+        std::cout << "Initializing EntityDataManager" << std::endl;
+        if (!EntityDataManager::Instance().init()) {
+            std::cerr << "Failed to initialize EntityDataManager" << std::endl;
+            throw std::runtime_error("EntityDataManager initialization failed");
+        }
+
         std::cout << "Initializing CollisionManager" << std::endl;
         if (!CollisionManager::Instance().init()) {
             std::cerr << "Failed to initialize CollisionManager" << std::endl;

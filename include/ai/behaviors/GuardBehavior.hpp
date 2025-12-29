@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -46,7 +47,7 @@ public:
                          GuardMode mode = GuardMode::STATIC_GUARD);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -137,7 +138,7 @@ private:
   };
 
   // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
 
   // Configuration
   HammerEngine::GuardBehaviorConfig m_config;
@@ -193,29 +194,29 @@ private:
   // bool m_useAsyncPathfinding removed
 
   // Helper methods
-  EntityPtr detectThreat(EntityPtr entity, const EntityState &state) const;
-  bool isThreatInRange(EntityPtr entity, EntityPtr threat) const;
-  bool isThreatInFieldOfView(EntityPtr entity, EntityPtr threat,
+  EntityPtr detectThreat(BehaviorContext& ctx, const EntityState &state) const;
+  bool isThreatInRange(const Vector2D& entityPos, EntityPtr threat) const;
+  bool isThreatInFieldOfView(const Vector2D& entityPos, EntityPtr threat,
                              const EntityState &state) const;
-  bool hasLineOfSight(EntityPtr entity, EntityPtr threat) const;
-  float calculateThreatDistance(EntityPtr entity, EntityPtr threat) const;
+  bool hasLineOfSight(const Vector2D& entityPos, EntityPtr threat) const;
+  float calculateThreatDistance(const Vector2D& entityPos, EntityPtr threat) const;
 
-  void updateAlertLevel(EntityPtr entity, EntityState &state,
-                        bool threatPresent) const;
-  void handleThreatDetection(EntityPtr entity, EntityState &state,
-                             EntityPtr threat, float deltaTime);
-  void handleInvestigation(EntityPtr entity, EntityState &state, float deltaTime);
-  void handleReturnToPost(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAlertLevel(EntityState &state, bool threatPresent) const;
+  void handleThreatDetection(BehaviorContext& ctx, EntityState &state, EntityPtr threat);
+  void handleInvestigation(BehaviorContext& ctx, EntityState &state);
+  void handleReturnToPost(BehaviorContext& ctx, EntityState &state);
 
   // Mode-specific updates
-  void updateStaticGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updatePatrolGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateAreaGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateRoamingGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateAlertGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateStaticGuard(BehaviorContext& ctx, EntityState &state);
+  void updatePatrolGuard(BehaviorContext& ctx, EntityState &state);
+  void updateAreaGuard(BehaviorContext& ctx, EntityState &state);
+  void updateRoamingGuard(BehaviorContext& ctx, EntityState &state);
+  void updateAlertGuard(BehaviorContext& ctx, EntityState &state);
 
   // Movement and positioning
   void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
+  void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos, float speed,
+                           AIBehaviorState &state, int priority = 1);
   Vector2D getNextPatrolWaypoint(const EntityState &state) const;
   Vector2D generateRoamTarget(EntityPtr entity, const EntityState &state) const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,
@@ -224,7 +225,7 @@ private:
   Vector2D clampToGuardArea(const Vector2D &position) const;
 
   // Communication helpers
-  void callForHelp(EntityPtr entity, const Vector2D &threatPosition);
+  void callForHelp(const Vector2D &threatPosition);
   void broadcastAlert(EntityPtr entity, AlertLevel level,
                       const Vector2D &alertPosition);
 };

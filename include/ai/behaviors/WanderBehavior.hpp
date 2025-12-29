@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 
 #include <SDL3/SDL.h>
@@ -33,9 +34,9 @@ public:
   // Constructor with mode - automatically configures behavior based on mode
   explicit WanderBehavior(WanderMode mode, float speed = 2.0f);
 
-  // No state management - handled by AI Manager
+  // Core behavior methods
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;  // Lock-free hot path
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -88,17 +89,16 @@ private:
     }
   };
 
-  // Helper methods for executeLogic refactoring
-  void updateWanderState(EntityPtr entity, float deltaTime);
+  // Helper methods for executeLogic refactoring (use BehaviorContext for lock-free access)
   void updateTimers(EntityState& state, float deltaTime);
-  bool handleStartDelay(EntityPtr entity, EntityState& state, float deltaTime);
-  float calculateMoveDistance(EntityPtr entity, EntityState& state, const Vector2D& position, float baseDistance);
+  bool handleStartDelay(BehaviorContext& ctx, EntityState& state);
+  float calculateMoveDistance(EntityState& state, const Vector2D& position, float baseDistance);
   void applyBoundaryAvoidance(EntityState& state, const Vector2D& position);
-  void handlePathfinding(EntityPtr entity, EntityState& state, const Vector2D& position, const Vector2D& dest);
-  void handleMovement(EntityPtr entity, EntityState& state, float deltaTime);
+  void handlePathfinding(BehaviorContext& ctx, EntityState& state, const Vector2D& dest);
+  void handleMovement(BehaviorContext& ctx, EntityState& state);
 
-  // Map to store per-entity state using shared_ptr as key
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  // Map to store per-entity state keyed by entityId (not EntityPtr - enables lock-free access)
+  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
 
   // Configuration
   HammerEngine::WanderBehaviorConfig m_config;
@@ -119,8 +119,8 @@ private:
   static thread_local std::uniform_real_distribution<float> s_angleDistribution;
   static thread_local std::uniform_int_distribution<Uint64> s_delayDistribution;
 
-  // Choose a new random direction for the entity
-  void chooseNewDirection(EntityPtr entity, float deltaTime);
+  // Choose a new random direction for the entity (lock-free version)
+  void chooseNewDirection(BehaviorContext& ctx, EntityState& state);
 
   // Mode setup helper
   void setupModeDefaults(WanderMode mode);

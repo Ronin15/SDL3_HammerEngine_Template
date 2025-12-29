@@ -62,6 +62,18 @@ Vector2D ApplySeparation(EntityPtr entity,
                          size_t maxNeighbors,
                          const std::vector<Vector2D> &preFetchedNeighbors);
 
+// LOCK-FREE VARIANT: ApplySeparation without EntityPtr (for BehaviorContext hot path)
+// Uses EntityID directly for self-exclusion - no mutex acquisition needed.
+// - entityId: the querying entity's ID (excluded from neighbors)
+// Other parameters same as ApplySeparation
+Vector2D ApplySeparationDirect(EntityID entityId,
+                               const Vector2D &currentPos,
+                               const Vector2D &intendedVel,
+                               float speed,
+                               float radius,
+                               float strength,
+                               size_t maxNeighbors);
+
 // Smooths velocity changes to reduce visual glitching
 // - currentVel: entity's current velocity
 // - targetVel: desired velocity from AI logic

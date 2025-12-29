@@ -31,12 +31,14 @@
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
 
 // Simple test entity
 class TestEntity : public Entity {
 public:
   TestEntity(const Vector2D &pos = Vector2D(0, 0)) {
-    setPosition(pos);
+    // Register with EntityDataManager first (required before setPosition)
+    registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
     setTextureID("test_texture");
     setWidth(32);
     setHeight(32);
@@ -77,6 +79,27 @@ private:
 
 public:
   ThreadTestBehavior(int id) : m_id(id) {}
+
+  // Lock-free hot path (required by pure virtual)
+  void executeLogic(BehaviorContext& ctx) override {
+    // Test behavior: minimal lock-free implementation
+    // Uses pre-computed movement values for threading stress tests
+    static constexpr float movements[] = {
+        -0.05f, 0.03f,  -0.08f, 0.07f,  -0.02f, 0.09f,  -0.06f, 0.04f,
+        0.08f,  -0.09f, 0.01f,  -0.04f, 0.06f,  -0.07f, 0.02f,  -0.01f};
+    static constexpr size_t movementCount = sizeof(movements) / sizeof(movements[0]);
+
+    // Simple counter instead of random generation
+    Vector2D movement(movements[m_movementIndex % movementCount],
+                      movements[(m_movementIndex + 8) % movementCount]);
+    m_movementIndex++;
+
+    // Move entity directly via transform
+    ctx.transform.position.setX(ctx.transform.position.getX() + movement.getX());
+    ctx.transform.position.setY(ctx.transform.position.getY() + movement.getY());
+
+    m_updateCount++;
+  }
 
   void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
     if (!entity)
@@ -375,7 +398,13 @@ struct GlobalTestFixture {
     }
 
     // Initialize dependencies in proper order
-    // AIManager requires PathfinderManager and CollisionManager to be initialized first
+    // EntityDataManager must be first - entities need it for registration
+    std::cout << "Initializing EntityDataManager" << std::endl;
+    if (!EntityDataManager::Instance().init()) {
+      std::cerr << "Failed to initialize EntityDataManager" << std::endl;
+      throw std::runtime_error("EntityDataManager initialization failed");
+    }
+
     std::cout << "Initializing CollisionManager" << std::endl;
     if (!CollisionManager::Instance().init()) {
       std::cerr << "Failed to initialize CollisionManager" << std::endl;

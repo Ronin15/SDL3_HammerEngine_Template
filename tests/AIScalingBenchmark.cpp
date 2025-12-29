@@ -22,6 +22,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 
@@ -70,17 +71,27 @@ namespace {
 }
 
 // Simple test entity for benchmarking
+// NOTE: Entity transform is stored in EntityDataManager (single source of truth)
+// Entity must be registered with EDM before calling setPosition/getPosition
 class BenchmarkEntity : public Entity {
 public:
-    BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        setPosition(pos);
+    // Constructor does NOT set position - that requires EDM registration first
+    BenchmarkEntity(int id) : m_id(id) {
         setTextureID("benchmark_texture");
         setWidth(32);
         setHeight(32);
     }
 
+    // Factory method that properly registers with EntityDataManager
     static std::shared_ptr<BenchmarkEntity> create(int id, const Vector2D& pos) {
-        return std::make_shared<BenchmarkEntity>(id, pos);
+        auto entity = std::make_shared<BenchmarkEntity>(id);
+
+        // Register with EntityDataManager to get a valid handle
+        // This allocates transform storage in EDM
+        EntityHandle handle = EntityDataManager::Instance().createNPC(pos, 16.0f, 16.0f);
+        entity->setHandle(handle);
+
+        return entity;
     }
 
     void update(float deltaTime) override {
@@ -111,16 +122,61 @@ private:
 };
 
 // Simple test behavior for benchmarking
+// NOTE: Uses direct EntityDataManager access to avoid Entity accessor overhead
+// This matches how production behaviors should work with EDM architecture
 class BenchmarkBehavior : public AIBehavior {
 public:
     BenchmarkBehavior(int id, int complexity = 5)
         : m_id(id), m_complexity(complexity), m_initialized(false) {
     }
 
-    void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
-        if (!entity) return;
+    // Lock-free hot path (required by pure virtual)
+    void executeLogic(BehaviorContext& ctx) override {
+        // === REALISTIC PRODUCTION AI BEHAVIOR PATTERNS ===
+        // Direct transform access - no Entity accessors needed
 
-        auto benchmarkEntity = std::dynamic_pointer_cast<BenchmarkEntity>(entity);
+        // 1. State machine update
+        updateStateMachine(ctx.deltaTime);
+
+        // 2. Calculate movement direction based on current state
+        Vector2D direction = calculateDirectionDirect(ctx.transform.position);
+
+        // 3. Vector normalization
+        float length = std::sqrt(direction.getX() * direction.getX() +
+                                 direction.getY() * direction.getY());
+        if (length > 0.001f) {
+            direction.setX(direction.getX() / length);
+            direction.setY(direction.getY() / length);
+        }
+
+        // 4. World bounds checking
+        Vector2D boundaryForce = calculateBoundaryAvoidanceDirect(ctx.transform.position);
+        direction.setX(direction.getX() + boundaryForce.getX());
+        direction.setY(direction.getY() + boundaryForce.getY());
+
+        // 5. Separation forces (decimated)
+        if (m_frameCounter % 3 == 0) {
+            Vector2D separation = simulateSeparationForcesDirect(ctx.transform.position);
+            direction.setX(direction.getX() + separation.getX() * 0.5f);
+            direction.setY(direction.getY() + separation.getY() * 0.5f);
+        }
+
+        // 6. Path following simulation
+        if (m_hasActivePath) {
+            direction = simulatePathFollowingDirect(ctx.transform.position, ctx.deltaTime);
+        }
+
+        // 7. Apply velocity based on complexity - DIRECT WRITE to transform
+        float moveSpeed = 50.0f * static_cast<float>(m_complexity);
+        ctx.transform.velocity = Vector2D(direction.getX() * moveSpeed,
+                                          direction.getY() * moveSpeed);
+
+        m_frameCounter++;
+        m_updateCount++;
+    }
+
+    void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
+        if (!entity || !entity->hasValidHandle()) return;
 
         // DEBUG: Log first few executions
         static std::atomic<int> callCount{0};
@@ -129,14 +185,24 @@ public:
             std::cout << "[DEBUG] BenchmarkBehavior::executeLogic called (count=" << currentCall << ")" << std::endl;
         }
 
+        // PERFORMANCE: Get EDM index once, then use direct access for all operations
+        // This avoids mutex locks on every accessor call
+        auto& edm = EntityDataManager::Instance();
+        size_t edmIndex = edm.getIndex(entity->getHandle());  // Single mutex acquisition
+        if (edmIndex == SIZE_MAX) return;
+
+        // Get transform reference for direct read/write (lock-free after index lookup)
+        auto& transform = edm.getTransformByIndex(edmIndex);
+        Vector2D pos = transform.position;
+
         // === REALISTIC PRODUCTION AI BEHAVIOR PATTERNS ===
         // Based on WanderBehavior, ChaseBehavior, PatrolBehavior production implementations
 
         // 1. State machine update (all production behaviors have FSMs)
         updateStateMachine(deltaTime);
 
-        // 2. Calculate movement direction based on current state
-        Vector2D direction = calculateDirection(benchmarkEntity);
+        // 2. Calculate movement direction based on current state (using cached position)
+        Vector2D direction = calculateDirectionDirect(pos);
 
         // 3. Vector normalization (critical path in all production behaviors)
         float length = std::sqrt(direction.getX() * direction.getX() +
@@ -146,28 +212,27 @@ public:
             direction.setY(direction.getY() / length);
         }
 
-        // 4. World bounds checking and avoidance (from AIManager::processBatch)
-        Vector2D boundaryForce = calculateBoundaryAvoidance(benchmarkEntity);
+        // 4. World bounds checking and avoidance (using cached position)
+        Vector2D boundaryForce = calculateBoundaryAvoidanceDirect(pos);
         direction.setX(direction.getX() + boundaryForce.getX());
         direction.setY(direction.getY() + boundaryForce.getY());
 
         // 5. Separation forces - decimated (every 3 frames like production)
         if (m_frameCounter % 3 == 0) {
-            Vector2D separation = simulateSeparationForces(benchmarkEntity);
+            Vector2D separation = simulateSeparationForcesDirect(pos);
             direction.setX(direction.getX() + separation.getX() * 0.5f);
             direction.setY(direction.getY() + separation.getY() * 0.5f);
         }
 
         // 6. Path following simulation (periodic like production pathfinding)
         if (m_hasActivePath) {
-            direction = simulatePathFollowing(benchmarkEntity, deltaTime);
+            direction = simulatePathFollowingDirect(pos, deltaTime);
         }
 
-        // 7. Apply velocity based on complexity (simulates different movement speeds)
+        // 7. Apply velocity based on complexity - DIRECT WRITE to transform
         float moveSpeed = 50.0f * static_cast<float>(m_complexity);
-        Vector2D velocity(direction.getX() * moveSpeed,
-                         direction.getY() * moveSpeed);
-        benchmarkEntity->setVelocity(velocity);
+        transform.velocity = Vector2D(direction.getX() * moveSpeed,
+                                      direction.getY() * moveSpeed);
 
         // Update frame counter for decimation patterns
         m_frameCounter++;
@@ -201,6 +266,7 @@ public:
 
 private:
     // === Helper Methods for Realistic AI Patterns ===
+    // "Direct" versions take position as parameter to avoid Entity accessor overhead
 
     void updateStateMachine(float deltaTime) {
         // Simple 4-state FSM matching production behaviors
@@ -212,90 +278,65 @@ private:
         }
     }
 
-    Vector2D calculateDirection(std::shared_ptr<BenchmarkEntity> entity) {
-        // Calculate direction based on current state
-        Vector2D pos = entity->getPosition();
-
+    // Direct version - takes position to avoid Entity accessor
+    Vector2D calculateDirectionDirect(const Vector2D& pos) {
         switch (m_currentState) {
             case State::Moving:
-                // Move toward wander target
                 return Vector2D(m_wanderTarget.getX() - pos.getX(),
                                m_wanderTarget.getY() - pos.getY());
-
             case State::Seeking:
-                // Seek toward world center
                 return Vector2D(5000.0f - pos.getX(), 5000.0f - pos.getY());
-
             case State::Avoiding:
-                // Flee from world center
                 return Vector2D(pos.getX() - 5000.0f, pos.getY() - 5000.0f);
-
             case State::Idle:
             default:
-                // Default forward direction
                 return Vector2D(1.0f, 0.0f);
         }
     }
 
-    Vector2D calculateBoundaryAvoidance(std::shared_ptr<BenchmarkEntity> entity) {
-        // World bounds checking (matches AIManager::processBatch pattern)
-        Vector2D pos = entity->getPosition();
+    // Direct version - takes position to avoid Entity accessor
+    Vector2D calculateBoundaryAvoidanceDirect(const Vector2D& pos) {
         Vector2D avoidanceForce(0.0f, 0.0f);
-
         const float WORLD_MIN = 0.0f;
         const float WORLD_MAX = 10000.0f;
         const float BOUNDARY_MARGIN = 500.0f;
 
-        // X-axis boundary forces
         if (pos.getX() < WORLD_MIN + BOUNDARY_MARGIN) {
             avoidanceForce.setX((WORLD_MIN + BOUNDARY_MARGIN - pos.getX()) / BOUNDARY_MARGIN);
         } else if (pos.getX() > WORLD_MAX - BOUNDARY_MARGIN) {
             avoidanceForce.setX((WORLD_MAX - BOUNDARY_MARGIN - pos.getX()) / BOUNDARY_MARGIN);
         }
-
-        // Y-axis boundary forces
         if (pos.getY() < WORLD_MIN + BOUNDARY_MARGIN) {
             avoidanceForce.setY((WORLD_MIN + BOUNDARY_MARGIN - pos.getY()) / BOUNDARY_MARGIN);
         } else if (pos.getY() > WORLD_MAX - BOUNDARY_MARGIN) {
             avoidanceForce.setY((WORLD_MAX - BOUNDARY_MARGIN - pos.getY()) / BOUNDARY_MARGIN);
         }
-
         return avoidanceForce;
     }
 
-    Vector2D simulateSeparationForces(std::shared_ptr<BenchmarkEntity> entity) {
-        // Simulate separation from nearby entities (matches production crowd management)
-        Vector2D pos = entity->getPosition();
+    // Direct version - takes position to avoid Entity accessor
+    Vector2D simulateSeparationForcesDirect(const Vector2D& pos) {
         Vector2D separationForce(0.0f, 0.0f);
-
-        // Simulate checking 3-5 neighbors (production uses CollisionManager queries)
         int neighborCount = 3 + (m_rng() % 3);
         for (int i = 0; i < neighborCount; ++i) {
-            // Generate simulated neighbor position within typical separation range
             Vector2D neighborPos(
                 pos.getX() + (m_rng() % 200 - 100),
                 pos.getY() + (m_rng() % 200 - 100)
             );
-
-            // Calculate separation force
             Vector2D diff(pos.getX() - neighborPos.getX(),
                          pos.getY() - neighborPos.getY());
             float distance = std::sqrt(diff.getX() * diff.getX() +
                                       diff.getY() * diff.getY());
-
             if (distance < 100.0f && distance > 0.001f) {
-                // Normalize and accumulate separation force
                 separationForce.setX(separationForce.getX() + diff.getX() / distance);
                 separationForce.setY(separationForce.getY() + diff.getY() / distance);
             }
         }
-
         return separationForce;
     }
 
-    Vector2D simulatePathFollowing(std::shared_ptr<BenchmarkEntity> entity, float deltaTime) {
-        // Simulate path following (matches production PathfinderManager usage)
-        Vector2D pos = entity->getPosition();
+    // Direct version - takes position to avoid Entity accessor
+    Vector2D simulatePathFollowingDirect(const Vector2D& pos, float deltaTime) {
 
         // Calculate direction to path target
         Vector2D toTarget(m_pathTarget.getX() - pos.getX(),

@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -34,7 +35,7 @@ public:
                         FleeMode mode = FleeMode::PANIC_FLEE);
 
   void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
   void clean(EntityPtr entity) override;
   void onMessage(EntityPtr entity, const std::string &message) override;
   std::string getName() const override;
@@ -117,7 +118,11 @@ private:
   };
 
   // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+
+  // TEMPORARY: EntityPtr cache for helper methods during migration
+  // TODO: Refactor helper methods to use BehaviorContext instead of EntityPtr
+  std::unordered_map<EntityHandle::IDType, EntityPtr> m_entityPtrCache;
 
   // Configuration
   HammerEngine::FleeBehaviorConfig m_config;
