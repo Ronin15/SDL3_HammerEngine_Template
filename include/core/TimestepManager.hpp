@@ -105,6 +105,12 @@ public:
     void setFixedTimestep(float timestep);
 
     /**
+     * Get update frequency in Hz (inverse of fixed timestep)
+     * @return update frequency in Hz (e.g., 60.0 for 60 Hz updates)
+     */
+    float getUpdateFrequencyHz() const { return 1.0f / m_fixedTimestep; }
+
+    /**
      * Reset timing state (useful when pausing/unpausing)
      */
     void reset();
