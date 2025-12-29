@@ -47,11 +47,12 @@ class FontManager {
   /**
    * @brief Loads default fonts with sizes calculated based on display characteristics
    * @param fontPath Path to font file or directory containing TTF/OTF files
-   * @param windowWidth Current window width in pixels
-   * @param windowHeight Current window height in pixels
+   * @param windowWidth Current window width in logical pixels
+   * @param windowHeight Current window height in logical pixels
+   * @param dpiScale DPI scale factor for high-DPI displays (e.g., 2.0 for Retina)
    * @return true if fonts were loaded successfully, false otherwise
    */
-  bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
+  bool loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
 
   /**
    * @brief Refreshes existing fonts with new sizes based on updated display characteristics
@@ -138,11 +139,12 @@ class FontManager {
   /**
    * @brief Safely reloads all fonts for display changes (e.g., DPI changes)
    * @param fontPath Directory containing font files
-   * @param windowWidth Current window width
-   * @param windowHeight Current window height
+   * @param windowWidth Current window width in logical pixels
+   * @param windowHeight Current window height in logical pixels
+   * @param dpiScale DPI scale factor for high-DPI displays (e.g., 2.0 for Retina)
    * @return true if fonts were successfully reloaded, false otherwise
    */
-  bool reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight);
+  bool reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale = 1.0f);
 
   /**
    * @brief Cleans up all font resources and shuts down TTF system

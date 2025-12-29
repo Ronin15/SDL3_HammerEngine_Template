@@ -44,7 +44,7 @@ bool FontManager::init() {
   }
 }
 
-bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale) {
     if (m_fontsLoaded.load(std::memory_order_acquire)) {
         return true;
     }
@@ -76,17 +76,28 @@ bool FontManager::loadFontsForDisplay(const std::string& fontPath, int windowWid
         }
     }
 
-    // Calculate font sizes based on window height (universal for all platforms)
+    // Ensure dpiScale is valid
+    float const effectiveDpiScale = (dpiScale > 0.0f) ? dpiScale : 1.0f;
+
+    // Calculate font sizes based on LOGICAL window height first
+    // Apply minimums for readability, THEN scale by DPI for high-density displays
     int clampedHeight = std::clamp(windowHeight, 480, 8640);
-    float const baseSizeFloat = static_cast<float>(clampedHeight) / HEIGHT_RATIO;
+    float const logicalBaseSizeFloat = static_cast<float>(clampedHeight) / HEIGHT_RATIO;
 
-    int baseFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat)), MIN_BASE_FONT_SIZE, MAX_FONT_SIZE);
-    int uiFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * UI_FONT_RATIO)), MIN_UI_FONT_SIZE, MAX_FONT_SIZE);
-    int titleFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * TITLE_FONT_RATIO)), MIN_TITLE_FONT_SIZE, MAX_FONT_SIZE);
-    int tooltipFontSize = std::clamp(static_cast<int>(std::round(baseSizeFloat * TOOLTIP_FONT_RATIO)), MIN_TOOLTIP_FONT_SIZE, MAX_FONT_SIZE);
+    // Apply minimums at logical scale, then multiply by DPI scale for pixel rendering
+    int logicalBase = std::max(static_cast<int>(std::round(logicalBaseSizeFloat)), MIN_BASE_FONT_SIZE);
+    int logicalUI = std::max(static_cast<int>(std::round(logicalBaseSizeFloat * UI_FONT_RATIO)), MIN_UI_FONT_SIZE);
+    int logicalTitle = std::max(static_cast<int>(std::round(logicalBaseSizeFloat * TITLE_FONT_RATIO)), MIN_TITLE_FONT_SIZE);
+    int logicalTooltip = std::max(static_cast<int>(std::round(logicalBaseSizeFloat * TOOLTIP_FONT_RATIO)), MIN_TOOLTIP_FONT_SIZE);
 
-    FONT_INFO(std::format("Calculated font sizes: base={}, UI={}, title={}, tooltip={}",
-              baseFontSize, uiFontSize, titleFontSize, tooltipFontSize));
+    // Scale by DPI for pixel-perfect rendering on high-density displays
+    int baseFontSize = std::min(static_cast<int>(std::round(logicalBase * effectiveDpiScale)), MAX_FONT_SIZE);
+    int uiFontSize = std::min(static_cast<int>(std::round(logicalUI * effectiveDpiScale)), MAX_FONT_SIZE);
+    int titleFontSize = std::min(static_cast<int>(std::round(logicalTitle * effectiveDpiScale)), MAX_FONT_SIZE);
+    int tooltipFontSize = std::min(static_cast<int>(std::round(logicalTooltip * effectiveDpiScale)), MAX_FONT_SIZE);
+
+    FONT_INFO(std::format("Calculated font sizes (dpiScale={}, logical={}): base={}, UI={}, title={}, tooltip={}",
+              effectiveDpiScale, logicalBase, baseFontSize, uiFontSize, titleFontSize, tooltipFontSize));
 
     bool success = true;
     for (const auto& filePath : m_fontFilePaths) {
@@ -551,26 +562,26 @@ void FontManager::clearFont(const std::string& fontID) {
   }
 }
 
-bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight) {
+bool FontManager::reloadFontsForDisplay(const std::string& fontPath, int windowWidth, int windowHeight, float dpiScale) {
   if (m_isShutdown) {
     FONT_WARN("Cannot reload fonts - FontManager is shut down");
     return false;
   }
 
   FONT_INFO("Reloading fonts for display change...");
-  
+
   // Clear existing fonts and caches without shutting down the manager
   m_fontMap.clear();
   m_textCache.clear();
   m_fontsLoaded.store(false, std::memory_order_release);
-  
+
   // Reset display tracking
   m_lastWindowWidth = 0;
   m_lastWindowHeight = 0;
   m_lastFontPath.clear();
-  
-  // Reload fonts with new dimensions
-  return loadFontsForDisplay(fontPath, windowWidth, windowHeight);
+
+  // Reload fonts with new dimensions and DPI scale
+  return loadFontsForDisplay(fontPath, windowWidth, windowHeight, dpiScale);
 }
 
 bool FontManager::measureText(const std::string& text, const std::string& fontID, int* width, int* height) {
