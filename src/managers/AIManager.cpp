@@ -8,9 +8,10 @@
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "events/NPCSpawnEvent.hpp"
+#include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
 #include "utils/SIMDMath.hpp"
 #include <algorithm>
@@ -701,9 +702,9 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     size_t newIndex = m_storage.size();
 
     // Add to hot data
+    // NOTE: Position data is owned by EntityDataManager (Phase 2 refactor)
+    // We read positions from Entity::getPosition() which redirects to EntityDataManager
     AIEntityData::HotData hotData{};
-    hotData.position = entity->getPosition();
-    hotData.lastPosition = hotData.position;
     hotData.distanceSquared = 0.0f;
     hotData.frameCounter = 0;
     hotData.priority = DEFAULT_PRIORITY;
@@ -1014,7 +1015,8 @@ void AIManager::queryEntitiesInRadius(const Vector2D& center, float radius,
     }
 
     // Check distance (squared to avoid sqrt)
-    const Vector2D& pos = m_storage.hotData[i].position;
+    // NOTE: Position read from Entity (Phase 2 - EntityDataManager owns transform data)
+    const Vector2D pos = entity->getPosition();
     const float dx = pos.getX() - center.getX();
     const float dy = pos.getY() - center.getY();
     const float distSq = dx * dx + dy * dy;
@@ -1241,6 +1243,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
 
   // OPTIMIZATION: Direct storage iteration - no copying overhead
   // Caller holds shared_lock, safe for parallel read access
+  auto& edm = EntityDataManager::Instance();
+
   for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
     // Access storage directly (read-only, no allocation)
     // PERFORMANCE: Use raw pointers to avoid atomic ref-counting overhead
@@ -1251,9 +1255,22 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
     float halfH = storage.halfHeights[i];
     auto hotData = storage.hotData[i];  // Copy for local modification
 
+    // Phase 5: Skip non-Active tier entities - BackgroundSimulationManager handles them
+    // This prevents double-processing and allows tiered simulation scaling
+    if (entity && entity->hasValidHandle()) {
+      EntityHandle handle = entity->getHandle();
+      if (edm.isValidHandle(handle)) {
+        const auto& entityHotData = edm.getHotData(handle);
+        if (entityHotData.tier != SimulationTier::Active) {
+          continue;  // Skip - handled by BackgroundSimulationManager
+        }
+      }
+    }
+
     try {
       // SIMD distance calculation - inline using SIMDMath.hpp
       // All entities get fresh distance every frame for accurate combat
+      // NOTE: Position read from Entity::getPosition() (Phase 2 - EntityDataManager owns position data)
       if (hasPlayer) {
         Vector2D entityPos = entity->getPosition();
         const Float4 diff = set(
@@ -1261,7 +1278,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
             entityPos.getY() - playerPos.getY(),
             0.0f, 0.0f);
         hotData.distanceSquared = lengthSquared2D(diff);
-        hotData.position = entityPos;
       }
 
       // Priority-based distance culling - pure distance check

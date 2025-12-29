@@ -6,6 +6,7 @@
 #include "gameStates/AdvancedAIDemoState.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "core/Logger.hpp"
+#include "controllers/combat/CombatController.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -38,9 +39,6 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
         // Reset AI behaviors first to clear entity references
         AIManager& aiMgr = AIManager::Instance();
         aiMgr.resetBehaviors();
-
-        // Clear combat attributes
-        m_combatAttributes.clear();
 
         // Clear NPCs without calling clean() on them
         m_npcs.clear();
@@ -183,9 +181,6 @@ bool AdvancedAIDemoState::enter() {
             m_worldHeight = gameEngine.getLogicalHeight();
         }
 
-        // Initialize game time
-        m_gameTime = 0.0f;
-
         // Create player first (required for flee/follow/attack behaviors)
         m_player = std::make_shared<Player>();
         m_player->ensurePhysicsBodyRegistered();
@@ -220,8 +215,9 @@ bool AdvancedAIDemoState::enter() {
         // This ensures Guard behavior uses correct world dimensions and Follow has player target
         setupAdvancedAIBehaviors();
 
-        // Setup combat attributes for player
-        setupCombatAttributes();
+        // Register CombatController (follows GamePlayState pattern)
+        mp_combatCtrl = &m_controllers.add<CombatController>(m_player);
+        m_controllers.subscribeAll();
 
         // Configure priority multiplier for proper advanced behavior progression
         aiMgr.configurePriorityMultiplier(1.2f); // Slightly higher for advanced behaviors
@@ -262,7 +258,7 @@ bool AdvancedAIDemoState::enter() {
 
         // Log status
         GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors", m_npcs.size()));
-        GAMESTATE_INFO("Combat system initialized with health/damage attributes");
+        GAMESTATE_INFO("CombatController registered");
 
         // Pre-allocate status buffer to avoid per-frame allocations
         m_statusBuffer.reserve(64);
@@ -308,9 +304,6 @@ bool AdvancedAIDemoState::exit() {
 
         // Clear NPCs
         m_npcs.clear();
-
-        // Clear combat attributes
-        m_combatAttributes.clear();
 
         // Clean up player
         if (m_player) {
@@ -368,9 +361,6 @@ bool AdvancedAIDemoState::exit() {
 
     // Clear NPCs (AIManager::prepareForStateTransition already handled cleanup)
     m_npcs.clear();
-
-    // Clear combat attributes
-    m_combatAttributes.clear();
 
     // Clean up player
     if (m_player) {
@@ -442,9 +432,6 @@ void AdvancedAIDemoState::update(float deltaTime) {
             return;  // Don't continue with rest of update
         }
 
-        // Update game time for combat system
-        m_gameTime += deltaTime;
-
         // Update player
         if (m_player) {
             m_player->update(deltaTime);
@@ -453,8 +440,8 @@ void AdvancedAIDemoState::update(float deltaTime) {
         // Update camera (follows player automatically)
         updateCamera(deltaTime);
 
-        // Update combat system
-        updateCombatSystem(deltaTime);
+        // Update controllers (CombatController handles cooldowns, stamina regen)
+        m_controllers.updateAll(deltaTime);
 
         // AI Manager is updated globally by GameEngine for optimal performance
         // Entity updates are handled by AIManager::update() in GameEngine
@@ -505,15 +492,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
     for (auto& npc : m_npcs) {
         npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
 
-        // Render health bars for NPCs with combat attributes
-        auto it = m_combatAttributes.find(npc);
-        if (it != m_combatAttributes.end() && !it->second.isDead) {
-            //TODO:
-            // Note: Health bar rendering would be implemented with the graphics system
-            // const auto& combat = it->second;
-            // Vector2D pos = npc->getPosition();
-            // float healthPercent = combat.health / combat.maxHealth;
-        }
+        // TODO: Health bar rendering using npc->getHealth() / npc->getMaxHealth()
     }
 
     // Render player at the position camera used for offset calculation
@@ -521,12 +500,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         // Use position camera returned - no separate atomic read
         m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
 
-        // Render player health bar
-        auto it = m_combatAttributes.find(m_player);
-        if (it != m_combatAttributes.end()) {
-            //TODO:
-            // Player health bar rendering would go here
-        }
+        // TODO: Player health bar rendering using m_player->getHealth() / m_player->getMaxHealth()
     }
 
     // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
@@ -650,18 +624,6 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
 
                 // Initialize with Follow behavior by default for smooth movement demonstration
                 aiMgr.registerEntityForUpdates(npc, 5, "Follow");
-                //TODO: should be moved into the entity and NPC class based on what type of entity.
-                // Setup combat attributes for this NPC
-                CombatAttributes combat;
-                combat.health = 100.0f;
-                combat.maxHealth = 100.0f;
-                combat.attackDamage = 15.0f;
-                combat.attackRange = 80.0f;
-                combat.attackCooldown = 1.5f;
-                combat.lastAttackTime = 0.0f;
-                combat.isDead = false;
-
-                m_combatAttributes[npc] = combat;
 
                 // Add to collection
                 m_npcs.push_back(npc);
@@ -671,63 +633,13 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
             }
         }
 
-        GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs with combat attributes", m_npcs.size()));
+        GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs", m_npcs.size()));
     } catch (const std::exception& e) {
         GAMESTATE_ERROR(std::format("Exception in createAdvancedNPCs(): {}", e.what()));
     } catch (...) {
         GAMESTATE_ERROR("Unknown exception in createAdvancedNPCs()");
     }
 }
-
-void AdvancedAIDemoState::setupCombatAttributes() {
-    //TODO: Again should be consolidated into Player or Entity class
-    // Setup player combat attributes
-    if (m_player) {
-        CombatAttributes playerCombat;
-        playerCombat.health = 200.0f;
-        playerCombat.maxHealth = 200.0f;
-        playerCombat.attackDamage = 25.0f;
-        playerCombat.attackRange = 100.0f;
-        playerCombat.attackCooldown = 0.8f;
-        playerCombat.lastAttackTime = 0.0f;
-        playerCombat.isDead = false;
-
-        m_combatAttributes[m_player] = playerCombat;
-    }
-}
-
-void AdvancedAIDemoState::updateCombatSystem(float deltaTime) {
-    //TODO: Move to AIMAnager or maybe seperate Combat Manager?
-    // Simple combat system update
-    // This is architecturally integrated but kept simple for demonstration
-
-    for (auto& [entity, combat] : m_combatAttributes) {
-        if (combat.isDead) continue;
-
-        // Update attack cooldowns
-        if (combat.lastAttackTime > 0) {
-            combat.lastAttackTime -= deltaTime;
-            if (combat.lastAttackTime < 0) {
-                combat.lastAttackTime = 0;
-            }
-        }
-
-        // Simple health regeneration for demo purposes
-        if (combat.health < combat.maxHealth && combat.health > 0) {
-            combat.health += 5.0f * deltaTime; // 5 HP per second regen
-            if (combat.health > combat.maxHealth) {
-                combat.health = combat.maxHealth;
-            }
-        }
-
-        // Check if entity should be marked as dead
-        if (combat.health <= 0 && !combat.isDead) {
-            combat.isDead = true;
-            // In a full implementation, this would trigger death animations/effects
-        }
-    }
-}
-
 
 void AdvancedAIDemoState::initializeCamera() {
     const auto& gameEngine = GameEngine::Instance();

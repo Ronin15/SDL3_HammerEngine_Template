@@ -8,7 +8,9 @@
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
 #include "events/CombatEvent.hpp"
+#include "events/EntityEvents.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include <cmath>
 #include <format>
@@ -106,13 +108,16 @@ void CombatController::performAttack(Player* player)
     // Determine attack direction based on player facing
     float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
-    // Query nearby entities from AIManager
+    // Query nearby entities from AIManager (read-only query)
     std::vector<EntityPtr> nearbyEntities;
     AIManager::Instance().queryEntitiesInRadius(playerPos, attackRange, nearbyEntities, true);
 
     // Check all nearby entities for hits
     std::shared_ptr<NPC> closestHit = nullptr;
     float closestDist = attackRange + 1.0f;
+
+    // Get player's EntityHandle for event-driven damage
+    EntityHandle playerHandle = player->getHandle();
 
     for (const auto& entityPtr : nearbyEntities) {
         // Use EntityKind for fast type check (no RTTI overhead)
@@ -131,18 +136,27 @@ void CombatController::performAttack(Player* player)
         const float distance = diff.length();
 
         // Check if in attack direction (180 degree arc in front of player)
-        // Normalize direction to player facing
         float dotProduct = diff.getX() * attackDirX;
         if (dotProduct < 0.0f) {
             // NPC is behind the player
             continue;
         }
 
-        // Hit detected
+        // Hit detected - calculate knockback direction
+        Vector2D knockback = diff.normalized() * 20.0f;
         float oldHealth = npc->getHealth();
 
-        // Calculate knockback direction
-        Vector2D knockback = diff.normalized() * 20.0f;
+        // === EVENT-DRIVEN DAMAGE PATTERN ===
+        // Fire DamageIntent event with EntityHandle (new architecture)
+        // This allows handlers to process damage centrally via EntityDataManager
+        EntityHandle targetHandle = npc->getHandle();
+        auto damageIntent = std::make_shared<DamageEvent>(
+            EntityEventType::DamageIntent, playerHandle, targetHandle,
+            attackDamage, knockback);
+        EventManager::Instance().dispatchEvent(damageIntent, EventManager::DispatchMode::Immediate);
+
+        // Bridge: Also call existing method until EntityDataManager health migration is complete
+        // TODO: Remove this when DamageHandler processes via EntityDataManager
         npc->takeDamage(attackDamage, knockback);
 
         COMBAT_INFO(std::format("Hit {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
@@ -154,7 +168,7 @@ void CombatController::performAttack(Player* player)
             closestHit = std::static_pointer_cast<NPC>(entityPtr);
         }
 
-        // Dispatch NPC damaged event
+        // Fire CombatEvent for observers (UI, sound, etc.)
         auto damageEvent = std::make_shared<CombatEvent>(
             CombatEventType::NPCDamaged, player, npc, attackDamage);
         damageEvent->setRemainingHealth(npc->getHealth());
@@ -164,6 +178,13 @@ void CombatController::performAttack(Player* player)
         if (!npc->isAlive()) {
             COMBAT_INFO(std::format("{} killed!", npc->getName()));
 
+            // Fire DeathEvent with EntityHandle (new architecture)
+            auto deathEvent = std::make_shared<DeathEvent>(
+                EntityEventType::DeathCompleted, targetHandle, playerHandle);
+            deathEvent->setDeathPosition(npcPos);
+            EventManager::Instance().dispatchEvent(deathEvent, EventManager::DispatchMode::Immediate);
+
+            // Also fire legacy CombatEvent for existing observers
             auto killEvent = std::make_shared<CombatEvent>(
                 CombatEventType::NPCKilled, player, npc, attackDamage);
             EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);

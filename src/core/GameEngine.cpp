@@ -21,6 +21,7 @@
 #include "gameStates/SettingsMenuState.hpp"
 #include "gameStates/UIDemoState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
@@ -35,6 +36,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include <atomic>
 #include <chrono>
@@ -383,6 +385,22 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
+  // Initialize EntityDataManager - #1.5
+  // Central data authority for all entities (Phase 1 of Entity System Overhaul)
+  // Must be initialized before any entities are created
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Entity Data Manager");
+            EntityDataManager &edm = EntityDataManager::Instance();
+            if (!edm.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Entity Data Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Entity Data Manager initialized successfully");
+            return true;
+          }));
+
   // Initialize input manager in a background thread - #2
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
@@ -653,6 +671,15 @@ bool GameEngine::init(const std::string_view title, const int width,
     return false;
   }
   GAMEENGINE_INFO("GameTime initialized (starting at noon, 60x speed)");
+
+  // Initialize BackgroundSimulationManager (depends on EntityDataManager)
+  // Handles simplified simulation for off-screen entities (Phase 5 of Entity System Overhaul)
+  GAMEENGINE_INFO("Initializing Background Simulation Manager");
+  if (!BackgroundSimulationManager::Instance().init()) {
+    GAMEENGINE_CRITICAL("Failed to initialize Background Simulation Manager");
+    return false;
+  }
+  GAMEENGINE_INFO("Background Simulation Manager initialized");
 
   // Step 2: Cache manager references for performance (after all background init
   // complete)
@@ -964,8 +991,14 @@ void GameEngine::processBackgroundTasks() {
   //   resources (SDL rendering, UI state, etc.).
 
   try {
-    // Background processing tasks can be added here
-    // Currently a placeholder - extend as needed for specific use cases
+    // Background Simulation: Process Background tier entities
+    // These are entities outside the active camera area that need simplified simulation
+    auto& bgSim = BackgroundSimulationManager::Instance();
+    if (bgSim.isInitialized()) {
+      // Use fixed timestep for background simulation (less precision needed)
+      constexpr float BACKGROUND_TIMESTEP = 1.0f / 30.0f;  // 30 Hz
+      bgSim.update(BACKGROUND_TIMESTEP);
+    }
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR(std::format("Exception in background tasks: {}", e.what()));
   } catch (...) {
@@ -1056,8 +1089,14 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
+  BackgroundSimulationManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Entity Data Manager...");
+  EntityDataManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();

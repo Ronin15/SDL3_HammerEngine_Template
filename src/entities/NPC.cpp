@@ -18,6 +18,7 @@
 
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
@@ -241,6 +242,12 @@ void NPC::clean() {
   // Clean up inventory
   if (m_inventory) {
     m_inventory->clearInventory();
+  }
+
+  // Unregister from EntityDataManager (Phase 1 parallel storage)
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    edm.unregisterEntity(getID());
   }
 
   // Remove from collision system
@@ -482,6 +489,14 @@ void NPC::ensurePhysicsBodyRegistered() {
   cm.processPendingCommands();
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
+
+  // Phase 4: Register with EntityDataManager and store handle
+  // EntityDataManager is now the single source of truth for transforms
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    EntityHandle handle = edm.registerNPC(getID(), m_position, halfW, halfH, m_currentHealth, m_maxHealth);
+    setHandle(handle);  // Enable EntityDataManager-backed accessors
+  }
 
   std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
   NPC_DEBUG(std::format("Collision body registered successfully - KINEMATIC type with {}", layerName));
