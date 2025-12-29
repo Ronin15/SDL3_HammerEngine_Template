@@ -7,6 +7,7 @@
 #define ADVANCED_AI_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
@@ -25,6 +26,7 @@ using PlayerPtr = std::shared_ptr<Player>;
 class WorldManager;
 class UIManager;
 class ParticleManager;
+class CombatController;
 
 class AdvancedAIDemoState : public GameState {
 public:
@@ -47,8 +49,6 @@ private:
     // Methods
     void setupAdvancedAIBehaviors();
     void createAdvancedNPCs();
-    void setupCombatAttributes();
-    void updateCombatSystem(float deltaTime);
     void initializeCamera();
     void updateCamera(float deltaTime);
 
@@ -82,20 +82,9 @@ private:
     // Track if state is fully initialized (after returning from LoadingState)
     bool m_initialized{false};
 
-    // Combat system attributes (architecturally integrated)
-    struct CombatAttributes {
-        float health{100.0f};
-        float maxHealth{100.0f};
-        float attackDamage{10.0f};
-        float attackRange{80.0f};
-        float attackCooldown{1.0f};
-        float lastAttackTime{0.0f};
-        bool isDead{false};
-    };
-
-    // Combat state tracking
-    std::unordered_map<EntityPtr, CombatAttributes> m_combatAttributes;
-    float m_gameTime{0.0f};
+    // Controller registry (follows GamePlayState pattern)
+    ControllerRegistry m_controllers;
+    CombatController* mp_combatCtrl{nullptr};
 
     // AI pause state
     bool m_aiPaused{false};

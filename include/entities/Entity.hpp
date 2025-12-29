@@ -6,12 +6,16 @@
 #ifndef ENTITY_HPP
 #define ENTITY_HPP
 
+#include "entities/EntityHandle.hpp"  // EntityKind, SimulationTier, EntityHandle
 #include "utils/UniqueID.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <memory>
 #include <string>
 #include <unordered_map>
+
+// Forward declaration for EntityDataManager
+class EntityDataManager;
 
 // Forward declarations
 class Entity; // Forward declare for smart pointers
@@ -27,17 +31,9 @@ using EntityWeakPtr = std::weak_ptr<Entity>;
 // Type alias for entity ID
 using EntityID = HammerEngine::UniqueID::IDType;
 
-/**
- * @brief Entity type enumeration for fast type checking without RTTI
- *
- * Use getKind() instead of dynamic_cast for type filtering in hot paths.
- */
-enum class EntityKind : uint8_t {
-    Player = 0,
-    NPC = 1,
-    DroppedItem = 2,
-    Projectile = 3   // Reserved for future use
-};
+// Note: EntityKind enum is now defined in EntityHandle.hpp
+// This provides the expanded entity type list (Player, NPC, DroppedItem, Container,
+// Harvestable, Projectile, AreaEffect, Prop, Trigger) and SimulationTier enum.
 
 /**
  * @brief Animation configuration for sprite sheet handling
@@ -152,10 +148,24 @@ class Entity : public std::enable_shared_from_this<Entity> {
 
   // Accessor methods
   EntityID getID() const { return m_id; }
-  Vector2D getPosition() const { return m_position; }
-  Vector2D getPreviousPosition() const { return m_previousPosition; }
-  Vector2D getVelocity() const { return m_velocity; }
-  Vector2D getAcceleration() const { return m_acceleration; }
+
+  /**
+   * @brief Get entity handle for EntityDataManager access
+   * @return EntityHandle (may be invalid if not registered)
+   */
+  [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
+
+  /**
+   * @brief Check if entity is registered with EntityDataManager
+   */
+  [[nodiscard]] bool hasValidHandle() const { return m_handle.isValid(); }
+
+  // Transform accessors - redirect to EntityDataManager when handle is valid
+  // Phase 4: EntityDataManager is the single source of truth for transforms
+  Vector2D getPosition() const;
+  Vector2D getPreviousPosition() const;
+  Vector2D getVelocity() const;
+  Vector2D getAcceleration() const;
 
   /**
    * @brief Get interpolated position for smooth rendering.
@@ -169,28 +179,24 @@ class Entity : public std::enable_shared_from_this<Entity> {
    * @param alpha Interpolation factor (0.0 = previous position, 1.0 = current position)
    * @return Interpolated position for rendering
    */
-  Vector2D getInterpolatedPosition(float alpha) const {
-    return Vector2D(
-      m_previousPosition.getX() + (m_position.getX() - m_previousPosition.getX()) * alpha,
-      m_previousPosition.getY() + (m_position.getY() - m_previousPosition.getY()) * alpha);
-  }
+  Vector2D getInterpolatedPosition(float alpha) const;
 
   /**
    * @brief Store current position for interpolation before updating.
    *
-   * Call this at the START of update() before modifying m_position.
+   * Call this at the START of update() before modifying position.
    * This enables smooth rendering interpolation between fixed timestep updates.
    */
-  void storePositionForInterpolation() { m_previousPosition = m_position; }
+  void storePositionForInterpolation();
 
   /**
    * @brief Update position from movement (preserves interpolation state).
    *
    * Use this for smooth movement updates (physics integration, AI movement).
-   * Unlike setPosition(), this does NOT reset m_previousPosition.
+   * Unlike setPosition(), this does NOT reset previousPosition.
    * Call storePositionForInterpolation() before this each frame.
    */
-  void updatePositionFromMovement(const Vector2D& position) { m_position = position; }
+  void updatePositionFromMovement(const Vector2D& position);
 
   int getWidth() const { return m_width; }
   int getHeight() const { return m_height; }
@@ -202,20 +208,28 @@ class Entity : public std::enable_shared_from_this<Entity> {
   float getAnimationAccumulator() const { return m_animationAccumulator; }
   const std::string& getCurrentAnimationName() const { return m_currentAnimationName; }
 
-  // Setter methods
+  // Setter methods - redirect to EntityDataManager when handle is valid
 
   /**
    * @brief Set entity position directly (teleport).
    *
    * This resets both current and previous position to prevent
    * interpolation artifacts when teleporting/spawning.
+   * Redirects to EntityDataManager when handle is valid.
    */
-  virtual void setPosition(const Vector2D& position) {
-    m_position = position;
-    m_previousPosition = position;  // Prevents interpolation sliding
-  }
-  virtual void setVelocity(const Vector2D& velocity) { m_velocity = velocity; }
-  virtual void setAcceleration(const Vector2D& acceleration) { m_acceleration = acceleration; }
+  virtual void setPosition(const Vector2D& position);
+
+  /**
+   * @brief Set entity velocity.
+   * Redirects to EntityDataManager when handle is valid.
+   */
+  virtual void setVelocity(const Vector2D& velocity);
+
+  /**
+   * @brief Set entity acceleration.
+   * Redirects to EntityDataManager when handle is valid.
+   */
+  virtual void setAcceleration(const Vector2D& acceleration);
   virtual void setWidth(int width) { m_width = width; }
   virtual void setHeight(int height) { m_height = height; }
   virtual void setTextureID(const std::string& id) { m_textureID = id; }
@@ -245,7 +259,19 @@ class Entity : public std::enable_shared_from_this<Entity> {
   // No base class virtual is needed since it's never called polymorphically.
 
  protected:
+  /**
+   * @brief Set the entity handle after registration with EntityDataManager
+   *
+   * Called by derived classes after they register with EntityDataManager.
+   * Once set, transform accessors redirect to EntityDataManager.
+   */
+  void setHandle(EntityHandle handle) { m_handle = handle; }
+
   const EntityID m_id;
+  EntityHandle m_handle;  // Handle for EntityDataManager access (Phase 4)
+
+  // Legacy transform storage - used as fallback when handle is invalid
+  // These will be removed in a future cleanup once all entities use EntityDataManager
   Vector2D m_acceleration{0, 0};
   Vector2D m_velocity{0, 0};
   Vector2D m_position{0, 0};

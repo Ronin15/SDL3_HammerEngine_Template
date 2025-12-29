@@ -401,10 +401,10 @@ private:
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
 
         // Cold data: Rarely accessed, separated to avoid cache pollution
+        // NOTE: Position/velocity/acceleration now owned by EntityDataManager (Phase 3 refactor)
+        // CollisionManager reads from Entity::getPosition() which redirects to EntityDataManager in Phase 4
         struct ColdData {
             EntityWeakPtr entityWeak;    // Back-reference to entity
-            Vector2D acceleration;       // Acceleration (rarely used)
-            Vector2D lastPosition;       // Previous position for optimization
             AABB fullAABB;              // Full AABB (computed from position + halfSize)
             float restitution;           // Bounce coefficient (0.0-1.0) - moved from HotData for cache optimization
             float friction;              // Surface friction (0.0-1.0) - for future physics implementation

@@ -66,19 +66,22 @@ enum class BehaviorType : uint8_t {
  * @brief Cache-efficient AI entity data using Structure of Arrays (SoA)
  * Hot data (frequently accessed) is separated from cold data for better cache
  * performance
+ *
+ * NOTE: Position data is now owned by EntityDataManager (Phase 2 of Entity System Overhaul).
+ * AIManager reads positions from Entity::getPosition() which will eventually
+ * redirect to EntityDataManager in Phase 4.
  */
 struct AIEntityData {
   // Hot data - accessed every frame
+  // Position removed: EntityDataManager is the single source of truth for transforms
   struct HotData {
-    Vector2D position;     // Current position (8 bytes)
-    Vector2D lastPosition; // Last position (8 bytes)
     float distanceSquared; // Cached distance to player (4 bytes)
     uint16_t frameCounter; // Frame counter (2 bytes)
     uint8_t priority;      // Priority level (1 byte)
     uint8_t behaviorType;  // Behavior type enum (1 byte)
     bool active;           // Active flag (1 byte)
     bool shouldUpdate;     // Update flag (1 byte)
-    // Total: 26 bytes, padding to 32 for cache alignment
+    // Total: 10 bytes, padding to 16 for cache alignment
     uint8_t padding[6];
   };
 

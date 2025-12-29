@@ -12,8 +12,9 @@
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/playerStates/PlayerRunningState.hpp"
 
-#include "managers/EventManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -230,6 +231,12 @@ void Player::clean() {
   // Clear equipped items
   m_equippedItems.clear();
 
+  // Unregister from EntityDataManager (Phase 1 parallel storage)
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    edm.unregisterEntity(getID());
+  }
+
   // Remove collision body
   CollisionManager::Instance().removeCollisionBodySOA(getID());
 }
@@ -250,17 +257,28 @@ void Player::ensurePhysicsBodyRegistered() {
   cm.processPendingCommands();
   // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
+
+  // Phase 4: Register with EntityDataManager and store handle
+  // EntityDataManager is now the single source of truth for transforms
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    EntityHandle handle = edm.registerPlayer(getID(), m_position, halfW, halfH);
+    setHandle(handle);  // Enable EntityDataManager-backed accessors
+  }
 }
 
 void Player::setVelocity(const Vector2D& velocity) {
-  m_velocity = velocity;
+  // Update EntityDataManager (single source of truth) via base class
+  Entity::setVelocity(velocity);
+  // Also update CollisionManager's working copy
   auto& cm = CollisionManager::Instance();
   cm.updateCollisionBodyVelocitySOA(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
-  m_position = position;
-  m_previousPosition = position;  // Prevents interpolation sliding on teleport
+  // Update EntityDataManager (single source of truth) via base class
+  Entity::setPosition(position);
+  // Also update CollisionManager's working copy
   auto& cm = CollisionManager::Instance();
   cm.updateCollisionBodyPositionSOA(getID(), position);
 }

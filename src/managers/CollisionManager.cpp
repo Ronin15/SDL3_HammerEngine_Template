@@ -1218,9 +1218,8 @@ void CollisionManager::processPendingCommands() {
         hotData.coarseCellY = static_cast<int16_t>(initialCoarseCell.y);
 
         // Initialize cold data
+        // NOTE: acceleration/lastPosition removed - EntityDataManager owns transform data (Phase 3)
         CollisionStorage::ColdData coldData{};
-        coldData.acceleration = Vector2D(0, 0);
-        coldData.lastPosition = cmd.position;
         coldData.fullAABB = AABB(cmd.position.getX(), cmd.position.getY(),
                                  cmd.halfSize.getX(), cmd.halfSize.getY());
 

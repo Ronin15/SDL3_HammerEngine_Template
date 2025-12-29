@@ -5,6 +5,7 @@
 
 #include "entities/DroppedItem.hpp"
 #include "core/Logger.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "utils/Camera.hpp"
 #include <cmath>
@@ -39,6 +40,14 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
 
   // Items become pickupable after a short delay to prevent immediate re-pickup
   m_pickupTimer = 0.5f; // 0.5 second delay
+
+  // Phase 4: Register with EntityDataManager and store handle
+  // EntityDataManager is now the single source of truth for transforms
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    EntityHandle handle = edm.registerDroppedItem(getID(), m_position, m_resourceHandle, m_quantity);
+    setHandle(handle);  // Enable EntityDataManager-backed accessors
+  }
 }
 
 void DroppedItem::update(float deltaTime) {
@@ -95,6 +104,12 @@ void DroppedItem::clean() {
   m_pickupTimer = 0.0f;
   m_bobTimer = 0.0f;
   m_canBePickedUp = false;
+
+  // Unregister from EntityDataManager (Phase 1 parallel storage)
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    edm.unregisterEntity(getID());
+  }
 
   // Clean up Entity base properties using Entity methods
   setTextureID("");
