@@ -25,7 +25,7 @@
  *
  *     bool enter() override {
  *         m_controllers.add<WeatherController>();
- *         m_controllers.add<CombatController>().setPlayer(mp_Player.get());
+ *         m_controllers.add<CombatController>(mp_Player);  // Constructor args forwarded
  *         m_controllers.subscribeAll();
  *         return true;
  *     }

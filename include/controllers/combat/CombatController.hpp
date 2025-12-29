@@ -35,7 +35,14 @@ class NPC;
 class CombatController : public ControllerBase, public IUpdatable
 {
 public:
-    CombatController() = default;
+    /**
+     * @brief Construct CombatController with required player reference
+     * @param player Shared pointer to the player (required)
+     * @note Enforces dependency at construction - cannot forget to set player
+     */
+    explicit CombatController(std::shared_ptr<Player> player)
+        : mp_player(std::move(player)) {}
+
     ~CombatController() override = default;
 
     // Movable (inherited from base)
@@ -64,15 +71,6 @@ public:
      * @note Called by ControllerRegistry::updateAll()
      */
     void update(float deltaTime) override;
-
-    // --- Configuration ---
-
-    /**
-     * @brief Set the player reference for combat operations
-     * @param player Shared pointer to the player
-     * @note Must be called after add() and before subscribeAll()
-     */
-    void setPlayer(std::shared_ptr<Player> player) { mp_player = player; }
 
     // --- Combat operations ---
 

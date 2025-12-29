@@ -77,9 +77,7 @@ bool GamePlayState::enter() {
     // Register controllers with the registry
     mp_weatherCtrl = &m_controllers.add<WeatherController>();
     mp_dayNightCtrl = &m_controllers.add<DayNightController>();
-    auto& combatCtrl = m_controllers.add<CombatController>();
-    combatCtrl.setPlayer(mp_Player);
-    mp_combatCtrl = &combatCtrl;
+    mp_combatCtrl = &m_controllers.add<CombatController>(mp_Player);
 
     // Enable automatic weather changes
     GameTimeManager::Instance().enableAutoWeather(true);
