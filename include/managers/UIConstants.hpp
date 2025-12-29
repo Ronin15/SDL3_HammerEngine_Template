@@ -113,7 +113,7 @@ namespace UIConstants {
 
   // Timing and Animation Constants
   constexpr float DEFAULT_TOOLTIP_DELAY = 1.0f; // Default tooltip hover delay in seconds
-  constexpr float MAX_UI_SCALE = 1.0f;          // Maximum UI scale factor (prevents upscaling beyond baseline)
+  constexpr float MAX_UI_SCALE = 3.0f;          // Maximum UI scale factor (allows high-DPI scaling)
 
   // Positioning Constants
   constexpr int TITLE_TOP_OFFSET = 10;          // Default top offset for titles

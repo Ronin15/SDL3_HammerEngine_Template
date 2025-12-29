@@ -133,8 +133,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_WARN("Could not query display capabilities - proceeding with requested dimensions");
   }
   // Window handling with platform-specific optimizations
-  SDL_WindowFlags const flags =
-      fullscreen ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
+  SDL_WindowFlags flags = 0;
+#ifdef __APPLE__
+  // Always use high pixel density on macOS for crisp Retina rendering in both windowed and fullscreen
+  flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+  if (fullscreen) {
+    flags |= SDL_WINDOW_FULLSCREEN;
+  }
 
   if (fullscreen) {
 #ifdef __APPLE__
@@ -433,10 +439,10 @@ bool GameEngine::init(const std::string_view title, const int width,
 
             GAMEENGINE_INFO("Loading fonts with display-aware sizing");
 
-            // Use logical dimensions to match UI coordinate system
+            // Use logical dimensions with DPI scale for proper sizing on high-DPI displays
             constexpr std::string_view fontsPath = "res/fonts";
             if (!fontMgr.loadFontsForDisplay(std::string(fontsPath),
-                                             m_logicalWidth, m_logicalHeight)) {
+                                             m_windowWidth, m_windowHeight, m_dpiScale)) {
               GAMEENGINE_CRITICAL("Failed to load fonts for display");
               return false;
             }
@@ -1341,10 +1347,10 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
 
   GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}", actualWidth, actualHeight));
 
-  // Reload fonts for new display configuration
+  // Reload fonts for new display configuration with DPI scale
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");
   FontManager & fontManager = FontManager::Instance();
-  if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
+  if (!fontManager.reloadFontsForDisplay("res/fonts", m_windowWidth, m_windowHeight, m_dpiScale)) {
     GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
   } else {
     GAMEENGINE_INFO("Font system reinitialized successfully after window resize");
@@ -1401,7 +1407,7 @@ void GameEngine::onDisplayChange(const SDL_Event& event) {
     uiManager.cleanupForStateTransition();
 
     FontManager & fontManager = FontManager::Instance();
-    if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
+    if (!fontManager.reloadFontsForDisplay("res/fonts", m_windowWidth, m_windowHeight, m_dpiScale)) {
       GAMEENGINE_WARN("Failed to reload fonts for new display size");
     } else {
       GAMEENGINE_INFO("Successfully reloaded fonts for new display size");
