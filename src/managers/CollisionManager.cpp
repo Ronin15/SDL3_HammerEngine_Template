@@ -31,6 +31,7 @@
 #include "core/WorkerBudget.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "utils/UniqueID.hpp"
@@ -1431,15 +1432,24 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
 }
 
 void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
-  // Acquire exclusive lock for writing entityWeak pointer
-  // Ensures thread-safe access during concurrent reads from syncEntitiesToSOA()
+  // Acquire exclusive lock for writing entityWeak pointer and edmIndex
+  // Ensures thread-safe access during concurrent reads from collision detection
   std::unique_lock<std::shared_mutex> lock(m_storageMutex);
 
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
     size_t index = it->second;
     if (index < m_storage.coldData.size()) {
-      m_storage.coldData[index].entityWeak = entity;
+      auto& cold = m_storage.coldData[index];
+      cold.entityWeak = entity;
+
+      // Cache EDM index for direct position access (like AIManager pattern)
+      // SIZE_MAX means no EDM entry (static bodies, triggers)
+      if (entity && entity->hasValidHandle()) {
+        cold.edmIndex = EntityDataManager::Instance().getIndex(entity->getHandle());
+      } else {
+        cold.edmIndex = SIZE_MAX;
+      }
     }
   }
 }
@@ -2755,10 +2765,9 @@ void CollisionManager::updateSOA(float dt) {
   // Process pending add/remove commands first (thread-safe deferred operations)
   processPendingCommands();
 
-  // Note: Kinematic updates now applied via applyBatchedKinematicUpdates()
-  // called by AIManager after batch completion (zero contention)
-
-  // Pure SOA system - no legacy compatibility
+  // Read current positions from EntityDataManager (single source of truth)
+  // AIManager integrates movement and writes to EDM - we read from EDM here
+  syncPositionsFromEDM();
 
   // Check storage state at start of update
   size_t bodyCount = m_storage.size();
@@ -2887,8 +2896,8 @@ void CollisionManager::updateSOA(float dt) {
   auto t4 = clock::now();
 #endif
 
-  // SYNCHRONIZATION: Update entity positions and velocities from SOA storage
-  syncEntitiesToSOA();
+  // NOTE: syncEntitiesToSOA() removed - resolveSOA() writes directly to EDM
+  // Entity accessors (getPosition/setPosition) read from EDM as source of truth
 #ifdef DEBUG
   auto t5 = clock::now();
 #endif
@@ -3278,6 +3287,30 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
 
   clampVelocitySIMD(hotA.velocity);
   clampVelocitySIMD(hotB.velocity);
+
+  // Write collision corrections directly to EntityDataManager (single source of truth)
+  // Follows AIManager pattern: use cached edmIndex for direct write
+  auto& edm = EntityDataManager::Instance();
+
+  // Write body A corrections to EDM if it has an EDM entry
+  if (typeA != BodyType::STATIC) {
+    size_t edmIndexA = m_storage.coldData[indexA].edmIndex;
+    if (edmIndexA != SIZE_MAX) {
+      auto& transformA = edm.getTransformByIndex(edmIndexA);
+      transformA.position = hotA.position;
+      transformA.velocity = hotA.velocity;
+    }
+  }
+
+  // Write body B corrections to EDM if it has an EDM entry
+  if (typeB != BodyType::STATIC) {
+    size_t edmIndexB = m_storage.coldData[indexB].edmIndex;
+    if (edmIndexB != SIZE_MAX) {
+      auto& transformB = edm.getTransformByIndex(edmIndexB);
+      transformB.position = hotB.position;
+      transformB.velocity = hotB.velocity;
+    }
+  }
 }
 
 void CollisionManager::syncEntitiesToSOA() {
@@ -3325,6 +3358,49 @@ void CollisionManager::syncEntitiesToSOA() {
   }
 
   m_isSyncing = false;
+}
+
+void CollisionManager::syncPositionsFromEDM() {
+  // Read positions from EntityDataManager (single source of truth)
+  // Follows AIManager pattern: use cached edmIndex for direct access
+  // Static bodies (no EDM entry) keep their local position unchanged
+
+  auto& edm = EntityDataManager::Instance();
+  size_t syncCount = 0;
+  size_t skippedNoEdm = 0;
+
+  for (size_t idx = 0; idx < m_storage.hotData.size(); ++idx) {
+    auto& hot = m_storage.hotData[idx];
+
+    // Skip inactive bodies
+    if (!hot.active) continue;
+
+    // Skip static bodies - they don't have EDM entries
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) continue;
+
+    // Use cached EDM index from coldData (set in attachEntity)
+    size_t edmIndex = m_storage.coldData[idx].edmIndex;
+    if (edmIndex == SIZE_MAX) {
+      skippedNoEdm++;
+      continue;
+    }
+
+    // Read position/velocity from EDM (like AIManager's processBatch pattern)
+    const auto& transform = edm.getTransformByIndex(edmIndex);
+
+    // Update collision body for spatial hash consistency
+    hot.position = transform.position;
+    hot.velocity = transform.velocity;
+    hot.aabbDirty = 1;
+    syncCount++;
+  }
+
+  // Debug: Log sync stats periodically
+  static size_t frameCount = 0;
+  if (++frameCount % 300 == 0 && (syncCount > 0 || skippedNoEdm > 0)) {
+    COLLISION_DEBUG(std::format("syncPositionsFromEDM: synced {} bodies, {} skipped (no EDM)",
+                                syncCount, skippedNoEdm));
+  }
 }
 
 void CollisionManager::processTriggerEventsSOA() {
