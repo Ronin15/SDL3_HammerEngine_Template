@@ -241,15 +241,9 @@ void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
     }
 
     // Snap camera offset to whole pixels for tile rendering
-    // Tiles are on a grid and don't need sub-pixel precision
-    // Using round() instead of floor() to prevent oscillation at boundaries:
-    // - floor(99.8)=99, floor(100.2)=100 → oscillates!
-    // - round(99.8)=100, round(100.2)=100 → stable
-    // (Entities/player still use the original float camera for smooth movement)
-    float snappedCamX = std::round(cameraX);
-    float snappedCamY = std::round(cameraY);
-
-    m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, snappedCamX, snappedCamY, viewportWidth, viewportHeight);
+    // Pass camera position as-is; pixel snapping happens at final destRect in renderVisibleTiles()
+    // This avoids double-snapping which causes 1-pixel jumps at 0.5 boundaries
+    m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, cameraX, cameraY, viewportWidth, viewportHeight);
 }
 
 bool WorldManager::handleHarvestResource(int entityId, int targetX, int targetY) {
@@ -1188,8 +1182,10 @@ void HammerEngine::TileRenderer::renderVisibleTiles(const HammerEngine::WorldDat
                     destH = srcH;
                 }
 
+                // Snap destination to pixel grid to prevent sub-pixel rendering artifacts
+                // (waviness at screen edges from texture filtering on fractional positions)
                 SDL_FRect srcRect = {srcX, srcY, srcW, srcH};
-                SDL_FRect destRect = {screenX, screenY, destW, destH};
+                SDL_FRect destRect = {std::floor(screenX), std::floor(screenY), destW, destH};
                 SDL_RenderTexture(renderer, chunk.texture.get(), &srcRect, &destRect);
             }
         }
