@@ -64,10 +64,6 @@ bool AIManager::init() {
     m_pendingAssignments.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
     m_pendingAssignmentIndex.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
 
-    // Pre-allocate collision update buffer for single-threaded paths
-    // Reserve with 10% headroom for growth (typical: 4000 NPCs → 4400 capacity)
-    m_reusableCollisionBuffer.reserve(static_cast<size_t>(INITIAL_CAPACITY * 1.1));
-
     // Initialize lock-free message queue
     for (auto &msg : m_lockFreeMessages) {
       msg.ready.store(false, std::memory_order_relaxed);
@@ -232,6 +228,7 @@ void AIManager::prepareForStateTransition() {
     m_storage.entities.clear();
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
+    m_storage.edmIndices.clear();  // Clear EDM indices to prevent stale data
     m_entityToIndex.clear();
 
     // Clear managed entities list
@@ -356,16 +353,9 @@ void AIManager::update(float deltaTime) {
 
         // OPTIMIZATION: Direct storage iteration - no copying overhead
         // Hold shared_lock during processing for thread-safe read access
-        m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, m_reusableCollisionBuffer);
-        }
-
-        // Submit collision updates directly (single-threaded, no batching needed)
-        if (!m_reusableCollisionBuffer.empty()) {
-          auto &cm = CollisionManager::Instance();
-          cm.applyKinematicUpdates(m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
         }
       }
 
@@ -388,16 +378,9 @@ void AIManager::update(float deltaTime) {
       if (batchCount <= 1) {
         // OPTIMIZATION: Direct storage iteration - no copying overhead
         // Hold shared_lock during processing for thread-safe read access
-        m_reusableCollisionBuffer.clear();
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, m_reusableCollisionBuffer);
-        }
-
-        // Submit collision updates directly (single batch, no contention)
-        if (!m_reusableCollisionBuffer.empty()) {
-          auto &cm = CollisionManager::Instance();
-          cm.applyKinematicUpdates(m_reusableCollisionBuffer);
+          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
         }
       } else {
         size_t entitiesPerBatch = entityCount / batchCount;
@@ -405,26 +388,6 @@ void AIManager::update(float deltaTime) {
 
         // OPTIMIZATION: Direct storage iteration with per-batch locking
         // Each batch acquires its own shared_lock - multiple batches can read in parallel
-        // Eliminates 10K+ push_back operations for pre-fetch copying
-
-        // DEFERRED COLLISION UPDATE OPTIMIZATION:
-        // Create per-batch collision update vectors to eliminate CollisionManager lock contention.
-        // Each batch accumulates its updates independently, then we merge and submit once.
-        // Use shared_ptr so the lambda can safely capture this data for async completion
-        // OPTIMIZATION: Reuse member variable to avoid per-frame shared_ptr allocation
-        if (!m_batchCollisionUpdates) {
-          m_batchCollisionUpdates = std::make_shared<std::vector<std::vector<CollisionManager::KinematicUpdate>>>();
-        }
-        m_batchCollisionUpdates->resize(batchCount);
-        // PERFORMANCE: Avoid unnecessary shared_ptr copy - use member directly
-        for (size_t i = 0; i < batchCount; ++i) {
-          size_t estimatedSize = entitiesPerBatch + (i == batchCount - 1 ? remainingEntities : 0);
-          // Clear existing capacity, only reallocate if needed
-          (*m_batchCollisionUpdates)[i].clear();
-          if ((*m_batchCollisionUpdates)[i].capacity() < estimatedSize) {
-            (*m_batchCollisionUpdates)[i].reserve(estimatedSize);
-          }
-        }
 
         // Submit batches using futures for parallel processing
         // Reuse m_batchFutures vector (clear keeps capacity, avoids allocations)
@@ -442,17 +405,13 @@ void AIManager::update(float deltaTime) {
 
           // Submit each batch with future for completion tracking
           // Each batch will acquire its own shared_lock during execution
-          // PERFORMANCE: Capture raw pointer to avoid atomic ref-counting in lambda
-          auto* batchCollisionUpdatesPtr = m_batchCollisionUpdates.get();
           m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-            [this, start, end, deltaTime, playerPos, hasPlayer,
-             batchCollisionUpdatesPtr, i]() -> void {
+            [this, start, end, deltaTime, playerPos, hasPlayer]() -> void {
               try {
                 // Acquire shared_lock for this batch's execution
                 // Multiple batches can hold shared_locks simultaneously (parallel reads)
                 std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-                processBatch(start, end, deltaTime, playerPos, hasPlayer,
-                            m_storage, (*batchCollisionUpdatesPtr)[i]);
+                processBatch(start, end, deltaTime, playerPos, hasPlayer, m_storage);
               } catch (const std::exception &e) {
                 AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
               } catch (...) {
@@ -465,23 +424,15 @@ void AIManager::update(float deltaTime) {
         }
 
         // Batches execute in parallel via ThreadSystem
-        // waitForAsyncBatchCompletion() is called at end of update() to wait and submit collision updates
       }
 
     } else {
       // Single-threaded processing (threading disabled in config)
       // OPTIMIZATION: Direct storage iteration - no copying overhead
       // Hold shared_lock during processing for thread-safe read access
-      m_reusableCollisionBuffer.clear();
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, m_reusableCollisionBuffer);
-      }
-
-      // Submit collision updates using convenience API (single-vector overload)
-      if (!m_reusableCollisionBuffer.empty()) {
-        auto &cm = CollisionManager::Instance();
-        cm.applyKinematicUpdates(m_reusableCollisionBuffer);
+        processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
       }
     }
 
@@ -490,15 +441,15 @@ void AIManager::update(float deltaTime) {
 
     currentFrame = m_frameCounter.fetch_add(1, std::memory_order_relaxed);
 
-    // CRITICAL: Wait for all async batches to complete before returning
-    // This ensures CollisionManager receives complete updates when it runs.
-    // The waitForAsyncBatchCompletion() method:
-    // 1. Waits for all batch futures to complete
-    // 2. Submits aggregated collision updates to CollisionManager
-    // 3. Ensures consistent timing and eliminates race conditions
-    waitForAsyncBatchCompletion();
+    // Wait for async batches to complete (required for accurate timing)
+    // Batches execute in parallel - we wait for all to finish before measuring
+    for (auto& future : m_batchFutures) {
+      if (future.valid()) {
+        future.get();
+      }
+    }
 
-    // Performance tracking AFTER async wait (measures true total time)
+    // Measure completion time for adaptive tuning (after all batches complete)
     auto endTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
@@ -540,25 +491,16 @@ void AIManager::update(float deltaTime) {
 }
 
 void AIManager::waitForAsyncBatchCompletion() {
-  // BATCH SYNCHRONIZATION: Wait for all async batches to complete
-  // This ensures collision updates are ready before CollisionManager processes them.
-  //
-  // JITTER ELIMINATION: Per-batch buffers eliminate mutex contention
-  //   - Each batch writes to its own buffer (zero contention!)
-  //   - Result: Consistent batch completion times → smooth frames
-
   // Wait for all batch futures to complete
+  // Used during state transitions and cleanup to ensure no pending work
   for (auto& future : m_batchFutures) {
     if (future.valid()) {
-      future.wait();  // Block until batch completes
+      future.wait();
     }
   }
 
-  // Submit ALL collision updates at once (zero mutex contention during batch execution!)
-  if (m_batchCollisionUpdates && !m_batchCollisionUpdates->empty()) {
-    auto &cm = CollisionManager::Instance();
-    cm.applyBatchedKinematicUpdates(*m_batchCollisionUpdates);
-  }
+  // NOTE: No CollisionManager update needed - behaviors write directly to
+  // EntityDataManager transforms (lock-free). CollisionManager reads from EDM.
 }
 
 void AIManager::waitForAssignmentCompletion() {
@@ -1221,13 +1163,8 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                              const Vector2D &playerPos,
                              bool hasPlayer,
-                             const EntityStorage& storage,
-                             std::vector<CollisionManager::KinematicUpdate>& collisionUpdates) {
+                             const EntityStorage& storage) {
   size_t batchExecutions = 0;
-
-  // Reserve space in collision updates accumulator (approximate size)
-  size_t batchSize = end - start;
-  collisionUpdates.reserve(collisionUpdates.size() + batchSize);
 
   // Pre-calculate common values once per batch to reduce per-entity overhead
   const float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
@@ -1357,16 +1294,8 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
           transform.velocity = vel;
         }
 
-        pos = clamped; // Update pos for batch accumulation
-
-        // BATCH OPTIMIZATION: Accumulate position/velocity for collision system batch update
-        collisionUpdates.emplace_back(entity->getID(), pos, vel);
-
         batchExecutions++;
       }
-      // Culled entities: Don't sync to collision at all.
-      // They're far from player, don't need active collision.
-      // When they become active again (closer to player), they'll sync normally.
     } catch (const std::exception &e) {
       AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
       // NOTE: Don't decrement active counter here - entity is still active, just had an error
@@ -1374,12 +1303,6 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       // Decrementing here could cause count drift and make the counter unreliable
     }
   }
-
-  // DEFERRED COLLISION UPDATE: Accumulator pattern
-  // Instead of submitting to CollisionManager here (causing lock contention across all batches),
-  // we accumulate updates into the passed-in vector. The caller will submit all batches' updates
-  // in a single call after all parallel processing completes, reducing lock acquisitions from
-  // O(batches) to O(1) and eliminating inter-batch contention.
 
   if (batchExecutions > 0) {
     m_totalBehaviorExecutions.fetch_add(batchExecutions,

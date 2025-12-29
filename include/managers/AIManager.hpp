@@ -489,9 +489,6 @@ private:
   // Reusable futures buffer for assignment synchronization
   mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
 
-  // Per-batch collision update buffers (zero contention approach)
-  std::shared_ptr<std::vector<std::vector<CollisionManager::KinematicUpdate>>> m_batchCollisionUpdates;
-
   // Reusable pre-fetch buffer to avoid per-frame allocations (128KB for 2000 entities)
   // Cleared each frame but capacity is retained to eliminate heap churn
   PreFetchedBatchData m_reusablePreFetchBuffer;
@@ -499,10 +496,6 @@ private:
   // Reusable buffer for multi-threaded path (shared_ptr for lambda capture safety)
   // Multi-threaded batches run async, so we need shared_ptr to extend lifetime
   std::shared_ptr<PreFetchedBatchData> m_reusableMultiThreadedBuffer;
-
-  // Reusable collision update buffer for single-threaded paths
-  // Avoids ~128-192KB per-frame allocation (cleared but capacity retained)
-  std::vector<CollisionManager::KinematicUpdate> m_reusableCollisionBuffer;
 
   // Reusable buffers for behavior assignment processing
   // Eliminates per-frame allocations during entity spawning
@@ -529,8 +522,7 @@ private:
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos,
                     bool hasPlayer,
-                    const EntityStorage& storage,
-                    std::vector<CollisionManager::KinematicUpdate>& collisionUpdates);
+                    const EntityStorage& storage);
   void cleanupInactiveEntities();
   void cleanupAllEntities();
   void updateDistancesScalar(const Vector2D &playerPos);

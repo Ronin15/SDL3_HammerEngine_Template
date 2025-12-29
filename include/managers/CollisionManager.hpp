@@ -204,6 +204,7 @@ public:
     void resolveSOA(const CollisionInfo& collision);
     void syncEntitiesToSOA();
     void processTriggerEventsSOA();
+    void syncPositionsFromEDM();  // Sync kinematic body positions from EntityDataManager
 
     // PERFORMANCE: Vector pooling for temporary allocations
     std::vector<size_t>& getPooledVector();
@@ -401,14 +402,15 @@ private:
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
 
         // Cold data: Rarely accessed, separated to avoid cache pollution
-        // NOTE: Position/velocity/acceleration now owned by EntityDataManager (Phase 3 refactor)
-        // CollisionManager reads from Entity::getPosition() which redirects to EntityDataManager in Phase 4
+        // NOTE: Position/velocity now owned by EntityDataManager for movable bodies
+        // Static bodies (no EDM entry) still use hot.position directly
         struct ColdData {
             EntityWeakPtr entityWeak;    // Back-reference to entity
             AABB fullAABB;              // Full AABB (computed from position + halfSize)
             float restitution;           // Bounce coefficient (0.0-1.0) - moved from HotData for cache optimization
             float friction;              // Surface friction (0.0-1.0) - for future physics implementation
             float mass;                  // Mass (kg) - for future physics implementation
+            size_t edmIndex = SIZE_MAX;  // EntityDataManager index (SIZE_MAX = no EDM entry, use hot.position)
         };
 
         // Primary storage arrays (SOA layout)
