@@ -242,10 +242,12 @@ void WorldManager::render(SDL_Renderer* renderer, float cameraX, float cameraY,
 
     // Snap camera offset to whole pixels for tile rendering
     // Tiles are on a grid and don't need sub-pixel precision
-    // This eliminates tile edge shimmer from varying sub-pixel camera positions
+    // Using round() instead of floor() to prevent oscillation at boundaries:
+    // - floor(99.8)=99, floor(100.2)=100 → oscillates!
+    // - round(99.8)=100, round(100.2)=100 → stable
     // (Entities/player still use the original float camera for smooth movement)
-    float snappedCamX = std::floor(cameraX);
-    float snappedCamY = std::floor(cameraY);
+    float snappedCamX = std::round(cameraX);
+    float snappedCamY = std::round(cameraY);
 
     m_tileRenderer->renderVisibleTiles(*m_currentWorld, renderer, snappedCamX, snappedCamY, viewportWidth, viewportHeight);
 }

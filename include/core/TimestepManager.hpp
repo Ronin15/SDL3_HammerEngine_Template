@@ -8,7 +8,6 @@
 
 #include <cstdint>
 #include <chrono>
-#include <atomic>
 #include <SDL3/SDL.h>
 
 /**
@@ -126,8 +125,8 @@ private:
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
     
     // Simplified timing pattern (eliminates accumulator drift)
-    std::atomic<double> m_accumulator;   // Simple frame timing state (atomic for thread safety)
-    static constexpr double MAX_ACCUMULATOR = 0.25; // Unused (kept for compatibility)
+    double m_accumulator;                // Frame timing accumulator
+    static constexpr double MAX_ACCUMULATOR = 0.25; // Max delta clamp for VSync mode
     
     // Frame statistics
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds (for getFrameTimeMs())
@@ -142,6 +141,7 @@ private:
     // Fixed timestep for software frame limiting
     mutable bool m_usingSoftwareFrameLimiting = false;
     mutable bool m_explicitlySet = false;
+
     
     // Helper methods
     void updateFPS();
