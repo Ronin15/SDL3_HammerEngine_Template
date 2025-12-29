@@ -43,6 +43,7 @@ public:
   void update(float) override;
   void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
   void clean() override;
+  [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
   // Animation state management
   void setAnimationState(const std::string& stateName);

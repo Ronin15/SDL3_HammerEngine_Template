@@ -54,6 +54,7 @@ public:
 
   void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
   void clean() override {}
+  [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
   void updatePosition(const Vector2D &velocity) {
     std::lock_guard<std::mutex> lock(m_mutex);

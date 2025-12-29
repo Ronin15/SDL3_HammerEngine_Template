@@ -28,6 +28,7 @@ public:
   void update(float deltaTime) override { (void)deltaTime; }
   void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
   void clean() override {}
+  [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
   std::string getId() const { return m_id; }
 

@@ -46,6 +46,7 @@ public:
     }
 
     void clean() override {}
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
     int getID() const { return m_id; }
 

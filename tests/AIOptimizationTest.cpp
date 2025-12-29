@@ -49,6 +49,7 @@ public:
     void clean() override {
         // Safe cleanup - we're not calling shared_from_this() here
     }
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 };
 
 // Global fixture for test setup and cleanup

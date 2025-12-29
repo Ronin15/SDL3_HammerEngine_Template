@@ -43,6 +43,7 @@ public:
         (void)deltaTime; // Suppress unused parameter warning
     }
     void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
     void clean() override {
         // Proper cleanup to avoid bad_weak_ptr exceptions
         // Never call shared_from_this() in the destructor!

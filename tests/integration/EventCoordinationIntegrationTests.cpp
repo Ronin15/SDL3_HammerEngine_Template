@@ -67,6 +67,7 @@ public:
     }
 
     void clean() override {}
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
     int getId() const { return m_id; }
     int getUpdateCount() const { return m_updateCount.load(); }
