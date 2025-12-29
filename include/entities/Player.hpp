@@ -21,6 +21,7 @@ public:
 
   void update(float deltaTime) override;
   void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
+  [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
 
   /**
    * @brief Render player at a pre-computed interpolated position

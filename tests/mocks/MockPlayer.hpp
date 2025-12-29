@@ -31,6 +31,7 @@ public:
     void update(float deltaTime) override { (void)deltaTime; /* Mock implementation */ }
     void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; /* Mock implementation */ }
     void clean() override { /* Mock implementation */ }
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
     
     // Factory method for proper creation with shared_ptr
     static std::shared_ptr<MockPlayer> create() {

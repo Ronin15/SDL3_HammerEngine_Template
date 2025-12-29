@@ -28,6 +28,18 @@ using EntityWeakPtr = std::weak_ptr<Entity>;
 using EntityID = HammerEngine::UniqueID::IDType;
 
 /**
+ * @brief Entity type enumeration for fast type checking without RTTI
+ *
+ * Use getKind() instead of dynamic_cast for type filtering in hot paths.
+ */
+enum class EntityKind : uint8_t {
+    Player = 0,
+    NPC = 1,
+    DroppedItem = 2,
+    Projectile = 3   // Reserved for future use
+};
+
+/**
  * @brief Animation configuration for sprite sheet handling
  * Unified struct used by NPC and Player for named animations
  */
@@ -103,6 +115,16 @@ class Entity : public std::enable_shared_from_this<Entity> {
    * should happen here, NOT in the destructor.
    */
   virtual void clean() = 0;
+
+  /**
+   * @brief Get the entity's kind for fast type checking without RTTI
+   *
+   * Use this instead of dynamic_cast in hot paths (e.g., collision filtering,
+   * combat hit detection). Each Entity subclass must implement this.
+   *
+   * @return EntityKind enum value identifying the concrete type
+   */
+  [[nodiscard]] virtual EntityKind getKind() const = 0;
 
   /**
    * @brief Helper to get a shared_ptr to this object

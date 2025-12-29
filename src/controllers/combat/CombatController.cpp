@@ -115,9 +115,14 @@ void CombatController::performAttack(Player* player)
     float closestDist = attackRange + 1.0f;
 
     for (const auto& entityPtr : nearbyEntities) {
-        // Try to cast to NPC (skip non-NPC entities)
-        auto npc = std::dynamic_pointer_cast<NPC>(entityPtr);
-        if (!npc || !npc->isAlive()) {
+        // Use EntityKind for fast type check (no RTTI overhead)
+        if (entityPtr->getKind() != EntityKind::NPC) {
+            continue;
+        }
+
+        // Safe static_cast - we verified the kind via enum
+        auto* npc = static_cast<NPC*>(entityPtr.get());
+        if (!npc->isAlive()) {
             continue;
         }
 
@@ -146,12 +151,12 @@ void CombatController::performAttack(Player* player)
         // Track closest hit for targeting
         if (distance < closestDist) {
             closestDist = distance;
-            closestHit = npc;
+            closestHit = std::static_pointer_cast<NPC>(entityPtr);
         }
 
         // Dispatch NPC damaged event
         auto damageEvent = std::make_shared<CombatEvent>(
-            CombatEventType::NPCDamaged, player, npc.get(), attackDamage);
+            CombatEventType::NPCDamaged, player, npc, attackDamage);
         damageEvent->setRemainingHealth(npc->getHealth());
         EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
 
@@ -160,7 +165,7 @@ void CombatController::performAttack(Player* player)
             COMBAT_INFO(std::format("{} killed!", npc->getName()));
 
             auto killEvent = std::make_shared<CombatEvent>(
-                CombatEventType::NPCKilled, player, npc.get(), attackDamage);
+                CombatEventType::NPCKilled, player, npc, attackDamage);
             EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);
         }
     }
