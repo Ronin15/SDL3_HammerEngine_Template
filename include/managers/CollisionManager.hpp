@@ -521,6 +521,7 @@ private:
         std::vector<size_t> activeIndices;        // Indices of active bodies for processing
         std::vector<size_t> movableIndices;      // Indices of non-static bodies (dynamic + kinematic)
         std::vector<size_t> staticIndices;       // Indices of static bodies only
+        std::vector<std::pair<size_t, size_t>> broadphaseIndexPairs; // Storage index pairs from broadphase
 
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
@@ -550,6 +551,7 @@ private:
                 activeIndices.reserve(bodyCount);
                 movableIndices.reserve(bodyCount / 4);  // Estimate 25% movable (dynamic + kinematic)
                 staticIndices.reserve(bodyCount);
+                broadphaseIndexPairs.reserve(expectedPairs);
             }
         }
 
@@ -564,6 +566,7 @@ private:
             activeIndices.clear();
             movableIndices.clear();
             staticIndices.clear();
+            broadphaseIndexPairs.clear();
             // Vectors retain capacity
         }
     };
@@ -685,9 +688,12 @@ private:
     mutable std::shared_ptr<std::vector<std::vector<std::pair<size_t, size_t>>>> m_broadphasePairBuffers;
     mutable std::mutex m_broadphaseFuturesMutex;
 
-    // Threading config and metrics (validated via benchmark: narrowphase threads at 100+ pairs, broadphase at 500+ movable)
+    // Threading config and metrics
+    // Narrowphase: 100+ pairs worth threading (each pair = AABB test + layer check + collision info)
+    // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
+    //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
     static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;        // Narrowphase: min pairs before threading
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 500;  // Broadphase: min movable bodies
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 150;  // Broadphase: min movable bodies
     mutable bool m_lastNarrowphaseWasThreaded{false};
     mutable size_t m_lastNarrowphaseBatchCount{1};
     mutable bool m_lastBroadphaseWasThreaded{false};
