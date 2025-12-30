@@ -135,6 +135,12 @@ See the [Utility Documentation Index](utils/README.md) for additional utility do
 - **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
 - **[Power Efficiency](performance/PowerEfficiency.md)** - Race-to-idle strategy achieving 80%+ idle residency, 2-3W average during gameplay, detailed benchmarks and optimization tips
 
+### Performance Reports
+Detailed performance analysis and benchmarking reports.
+
+- **[EntityDataManager Power Analysis (2025-12-30)](performance_reports/power_profile_edm_comparison_2025-12-30.md)** - Comprehensive power profile comparison showing EDM architecture benefits: 55% P-core reduction, 52% peak power reduction, 21% lower CPU frequency
+- **[Collision Benchmark Report (2025-12-25)](performance_reports/collision_benchmark_report_2025-12-25.md)** - Collision system performance benchmarks
+
 ## Resource System Integration
 
 The HammerEngine features a comprehensive resource management system that integrates with multiple engine subsystems:

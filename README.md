@@ -135,7 +135,7 @@ ninja -C build
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Camera](docs/utils/Camera.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
-- **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md)
+- **Performance:** [Power Efficiency](docs/performance/PowerEfficiency.md), [EntityDataManager Power Analysis](docs/performance_reports/power_profile_edm_comparison_2025-12-30.md)
 - **Development:** [Claude Code Skills](docs/development/ClaudeSkills.md)
 - **Engine Plans & Issues:** [Camera Refactor Plan](docs/Camera_Refactor_Plan.md), [SDL3 macOS Cleanup Issue](docs/issues/SDL3_MACOS_CLEANUP_ISSUE.md)
 
