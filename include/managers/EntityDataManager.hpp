@@ -357,6 +357,20 @@ public:
                                   float duration);
 
     /**
+     * @brief Create a static obstacle entity (world geometry)
+     * @param position Center position
+     * @param halfWidth Collision half-width
+     * @param halfHeight Collision half-height
+     * @return Handle to the created entity
+     *
+     * Static obstacles are used for world tiles, walls, and terrain collision.
+     * They don't move, have no AI, and use Hibernated tier for minimal overhead.
+     */
+    EntityHandle createStaticBody(const Vector2D& position,
+                                  float halfWidth,
+                                  float halfHeight);
+
+    /**
      * @brief Mark an entity for destruction (processed at end of frame)
      * @param handle Entity to destroy
      */

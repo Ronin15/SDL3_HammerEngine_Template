@@ -70,10 +70,7 @@ bool CollisionManager::init() {
   subscribeWorldEvents();
   COLLISION_INFO("STORAGE LIFECYCLE: init() cleared SOA storage and spatial hash");
 
-  // PERFORMANCE: Pre-allocate hash map and vector pool to prevent FPS dips from rehashing
-  // Minimal reserve for tests and small worlds - proper sizing happens in setWorldBounds()
-  m_coarseRegionStaticCache.reserve(256);
-
+  // PERFORMANCE: Pre-allocate vector pool to prevent FPS dips from reallocations
   // Initialize vector pool (moved from lazy initialization in getPooledVector)
   m_vectorPool.clear();
   m_vectorPool.reserve(32);
@@ -84,7 +81,6 @@ bool CollisionManager::init() {
   m_nextPoolIndex.store(0, std::memory_order_relaxed);
 
   // Pre-reserve reusable containers to avoid per-frame allocations
-  m_collidedEntitiesBuffer.reserve(2000);       // Typical collision count
   m_currentTriggerPairsBuffer.reserve(1000);    // Typical trigger count
   // Note: pools.staticIndices is reserved by CollisionPool::ensureCapacity()
 
@@ -163,11 +159,8 @@ void CollisionManager::prepareForStateTransition() {
     m_pendingCommands.clear();
   }
 
-  // Clear all caches to prevent dangling references to deleted bodies
-  m_collisionPool.resetFrame();              // Clear collision buffers
-  m_coarseRegionStaticCache.clear();         // Clear region-based static cache
-  m_cacheHits = 0;                           // Reset cache statistics
-  m_cacheMisses = 0;
+  // Clear collision buffers to prevent dangling references to deleted bodies
+  m_collisionPool.resetFrame();
 
   // OPTIMIZATION: Clear persistent index tracking (regression fix for commit 768ad87)
   m_movableBodyIndices.clear();
@@ -227,28 +220,6 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
   const float hw = (maxX - minX) * 0.5f;
   const float hh = (maxY - minY) * 0.5f;
   m_worldBounds = AABB(cx, cy, hw, hh);
-
-  // PERFORMANCE FIX: Dynamic reserve sizing for coarse region static cache
-  // Scale reserve size based on world dimensions to prevent expensive rehashing
-  // in large worlds (e.g., EventDemoMode 32000x32000 needs ~62,500 coarse cells)
-  const float worldWidth = maxX - minX;
-  const float worldHeight = maxY - minY;
-  constexpr float COARSE_SIZE = HammerEngine::HierarchicalSpatialHash::COARSE_CELL_SIZE;
-
-  // Calculate number of coarse cells with 1.5x multiplier for hash map load factor
-  size_t estimatedCoarseCells = static_cast<size_t>(
-    (worldWidth / COARSE_SIZE) * (worldHeight / COARSE_SIZE) * 1.5f
-  );
-
-  // Only reserve if needed (avoid rehashing small worlds unnecessarily)
-  size_t currentCapacity = m_coarseRegionStaticCache.bucket_count();
-  if (estimatedCoarseCells > currentCapacity) {
-    size_t reserveSize = std::max<size_t>(256, estimatedCoarseCells);
-    m_coarseRegionStaticCache.reserve(reserveSize);
-    COLLISION_INFO(std::format("Resized coarse region cache from {} to {} buckets for world size {}x{}",
-                               currentCapacity, reserveSize,
-                               static_cast<int>(worldWidth), static_cast<int>(worldHeight)));
-  }
 
   COLLISION_DEBUG(std::format("World bounds set: [{},{}] - [{},{}]",
                               minX, minY, maxX, maxY));
@@ -580,7 +551,17 @@ bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
   if (it == m_storage.entityToIndex.end())
     return false;
 
-  outCenter = m_storage.hotData[it->second].position;
+  // Access position from EDM (single source of truth)
+  size_t edmIndex = m_storage.hotData[it->second].edmIndex;
+  if (edmIndex == SIZE_MAX) {
+    // Fallback: compute center from cached AABB
+    const auto& hot = m_storage.hotData[it->second];
+    outCenter = Vector2D((hot.aabbMinX + hot.aabbMaxX) * 0.5f,
+                         (hot.aabbMinY + hot.aabbMaxY) * 0.5f);
+  } else {
+    const auto& transform = EntityDataManager::Instance().getTransformByIndex(edmIndex);
+    outCenter = transform.position;
+  }
   return true;
 }
 
@@ -777,80 +758,7 @@ void CollisionManager::rebuildStaticFromWorld() {
   }
 }
 
-void CollisionManager::populateStaticCache() {
-  // INITIAL CACHE POPULATION: Pre-populate static collision cache after world load
-  // This eliminates the need for per-frame cache population while maintaining fast lookups
-
-  if (m_worldBounds.halfSize.getX() <= 0.0f || m_worldBounds.halfSize.getY() <= 0.0f) {
-    COLLISION_DEBUG("populateStaticCache: Invalid world bounds, skipping");
-    return;
-  }
-
-  // Clear existing cache
-  m_coarseRegionStaticCache.clear();
-
-  // Get coarse cell size from spatial hash (128x128 pixels)
-  constexpr float COARSE_CELL_SIZE = 128.0f;
-
-  // Calculate world bounds in coarse cell coordinates
-  const float worldMinX = m_worldBounds.center.getX() - m_worldBounds.halfSize.getX();
-  const float worldMinY = m_worldBounds.center.getY() - m_worldBounds.halfSize.getY();
-  const float worldMaxX = m_worldBounds.center.getX() + m_worldBounds.halfSize.getX();
-  const float worldMaxY = m_worldBounds.center.getY() + m_worldBounds.halfSize.getY();
-
-  int minCoarseX = static_cast<int>(std::floor(worldMinX / COARSE_CELL_SIZE));
-  int minCoarseY = static_cast<int>(std::floor(worldMinY / COARSE_CELL_SIZE));
-  int maxCoarseX = static_cast<int>(std::floor(worldMaxX / COARSE_CELL_SIZE));
-  int maxCoarseY = static_cast<int>(std::floor(worldMaxY / COARSE_CELL_SIZE));
-
-  size_t cachedCells = 0;
-  size_t totalStaticBodies = 0;
-
-  // Iterate through all coarse cells and populate cache
-  for (int cy = minCoarseY; cy <= maxCoarseY; ++cy) {
-    for (int cx = minCoarseX; cx <= maxCoarseX; ++cx) {
-      // Create AABB for this coarse cell
-      const float cellCenterX = cx * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
-      const float cellCenterY = cy * COARSE_CELL_SIZE + COARSE_CELL_SIZE * 0.5f;
-      const AABB cellAABB(cellCenterX, cellCenterY, COARSE_CELL_SIZE * 0.5f, COARSE_CELL_SIZE * 0.5f);
-
-      // Query static spatial hash for this region
-      auto& candidates = getPooledVector();
-      m_staticSpatialHash.queryRegion(cellAABB, candidates);
-
-      // Only cache if there are static bodies in this region
-      if (!candidates.empty()) {
-        HammerEngine::HierarchicalSpatialHash::CoarseCoord const coord{cx, cy};
-
-        // Filter to only static bodies and store in cache
-        CoarseRegionStaticCache& cache = m_coarseRegionStaticCache[coord];
-        cache.staticIndices.clear();
-        cache.staticIndices.reserve(candidates.size());
-
-        for (size_t staticIdx : candidates) {
-          if (staticIdx < m_storage.size()) {
-            const auto& hot = m_storage.hotData[staticIdx];
-            if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-              cache.staticIndices.push_back(staticIdx);
-            }
-          }
-        }
-
-        cache.valid = true;
-        cache.lastAccessFrame = m_perf.frames;
-        cache.staleCount = 0;
-
-        cachedCells++;
-        totalStaticBodies += cache.staticIndices.size();
-      }
-
-      returnPooledVector(candidates);
-    }
-  }
-
-  COLLISION_INFO(std::format("Static cache populated: {} cells, {} total static body references",
-                             cachedCells, totalStaticBodies));
-}
+// NOTE: populateStaticCache() removed in Phase 3 - m_staticSpatialHash queried directly
 
 void CollisionManager::onTileChanged(int x, int y) {
   const auto &wm = WorldManager::Instance();
@@ -1051,19 +959,6 @@ void CollisionManager::onTileChanged(int x, int y) {
     // ROCK and TREE movement penalties are handled by pathfinding system
     // No collision triggers needed for these obstacle types
 
-    // PERFORMANCE: Selectively invalidate only the coarse cell containing this tile
-    // This prevents invalidating the entire cache when only one tile changes
-    float const worldX = x * tileSize + tileSize * 0.5f;
-    float const worldY = y * tileSize + tileSize * 0.5f;
-    AABB const tileAABB(worldX, worldY, tileSize * 0.5f, tileSize * 0.5f);
-    auto changedCoarseCell = m_staticSpatialHash.getCoarseCoord(tileAABB);
-
-    // Invalidate only this specific coarse region cache
-    auto cacheIt = m_coarseRegionStaticCache.find(changedCoarseCell);
-    if (cacheIt != m_coarseRegionStaticCache.end()) {
-      cacheIt->second.valid = false;
-    }
-
     // Mark static hash as needing rebuild since tile changed
     m_staticHashDirty = true;
   }
@@ -1086,7 +981,6 @@ void CollisionManager::subscribeWorldEvents() {
           }
           COLLISION_INFO("World loaded - rebuilding static colliders");
           this->rebuildStaticFromWorld();
-          this->populateStaticCache();
           return;
         }
         if (auto generated =
@@ -1099,7 +993,6 @@ void CollisionManager::subscribeWorldEvents() {
           }
           COLLISION_INFO("World generated - rebuilding static colliders");
           this->rebuildStaticFromWorld();
-          this->populateStaticCache();
           return;
         }
         if (auto unloaded =
@@ -1152,9 +1045,16 @@ void CollisionManager::processPendingCommands() {
             BodyType oldBodyType = static_cast<BodyType>(hot.bodyType);
             uint32_t oldLayers = hot.layers;
 
-            hot.position = cmd.position;
-            hot.halfSize = cmd.halfSize;
-            hot.aabbDirty = 1;
+            // Update AABB cache directly (position/halfSize owned by EDM)
+            float px = cmd.position.getX();
+            float py = cmd.position.getY();
+            float hw = cmd.halfSize.getX();
+            float hh = cmd.halfSize.getY();
+            hot.aabbMinX = px - hw;
+            hot.aabbMinY = py - hh;
+            hot.aabbMaxX = px + hw;
+            hot.aabbMaxY = py + hh;
+            hot.aabbDirty = 0;
             hot.layers = cmd.layer;
             hot.collidesWith = cmd.collideMask;
             hot.bodyType = static_cast<uint8_t>(cmd.bodyType);
@@ -1198,12 +1098,19 @@ void CollisionManager::processPendingCommands() {
         // Add new entity
         size_t newIndex = m_storage.size();
 
-        // Initialize hot data
+        // Extract position and size for AABB calculation
+        float px = cmd.position.getX();
+        float py = cmd.position.getY();
+        float hw = cmd.halfSize.getX();
+        float hh = cmd.halfSize.getY();
+
+        // Initialize hot data (position/velocity/halfSize owned by EDM)
         CollisionStorage::HotData hotData{};
-        hotData.position = cmd.position;
-        hotData.velocity = Vector2D(0, 0);
-        hotData.halfSize = cmd.halfSize;
-        hotData.aabbDirty = 1;
+        hotData.aabbMinX = px - hw;
+        hotData.aabbMinY = py - hh;
+        hotData.aabbMaxX = px + hw;
+        hotData.aabbMaxY = py + hh;
+        hotData.aabbDirty = 0;
         hotData.layers = cmd.layer;
         hotData.collidesWith = cmd.collideMask;
         hotData.bodyType = static_cast<uint8_t>(cmd.bodyType);
@@ -1211,9 +1118,23 @@ void CollisionManager::processPendingCommands() {
         hotData.active = true;
         hotData.isTrigger = cmd.isTrigger;
 
+        // Set EDM index: All bodies get EDM entries (EDM is the single source of truth)
+        // - Static bodies use EntityKind::StaticObstacle
+        // - Dynamic/Kinematic bodies may have attachEntity() called later to link to Entity class
+        auto& edm = EntityDataManager::Instance();
+        if (cmd.bodyType == BodyType::STATIC) {
+          // Create EDM entry for static bodies (world geometry)
+          EntityHandle handle = edm.createStaticBody(cmd.position, hw, hh);
+          hotData.edmIndex = edm.getIndex(handle);
+        } else {
+          // Create temporary EDM entry for dynamic/kinematic (may be replaced by attachEntity)
+          // This ensures position/velocity can be accessed even before entity is attached
+          EntityHandle handle = edm.createStaticBody(cmd.position, hw, hh);
+          hotData.edmIndex = edm.getIndex(handle);
+        }
+
         // CRITICAL: Initialize coarse cell coords for cache optimization
-        AABB initialAABB(cmd.position.getX(), cmd.position.getY(), 
-                         cmd.halfSize.getX(), cmd.halfSize.getY());
+        AABB initialAABB(px, py, hw, hh);
         auto initialCoarseCell = m_staticSpatialHash.getCoarseCoord(initialAABB);
         hotData.coarseCellX = static_cast<int16_t>(initialCoarseCell.x);
         hotData.coarseCellY = static_cast<int16_t>(initialCoarseCell.y);
@@ -1249,7 +1170,6 @@ void CollisionManager::processPendingCommands() {
           EventManager::Instance().triggerCollisionObstacleChanged(cmd.position, radius, description,
                                                                   EventManager::DispatchMode::Deferred);
           m_staticHashDirty = true;
-          m_staticGridDirty = true;  // OPTIMIZATION: Rebuild spatial grid
         }
         break;
       }
@@ -1267,13 +1187,27 @@ void CollisionManager::processPendingCommands() {
         if (indexToRemove < m_storage.size()) {
           const auto& hot = m_storage.hotData[indexToRemove];
           if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-            float radius = std::max(hot.halfSize.getX(), hot.halfSize.getY()) + 16.0f;
+            // Get position/size from EDM or cached AABB
+            Vector2D position;
+            float halfW, halfH;
+            if (hot.edmIndex != SIZE_MAX) {
+              auto& edm = EntityDataManager::Instance();
+              position = edm.getTransformByIndex(hot.edmIndex).position;
+              const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+              halfW = edmHot.halfWidth;
+              halfH = edmHot.halfHeight;
+            } else {
+              position = Vector2D((hot.aabbMinX + hot.aabbMaxX) * 0.5f,
+                                  (hot.aabbMinY + hot.aabbMaxY) * 0.5f);
+              halfW = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
+              halfH = (hot.aabbMaxY - hot.aabbMinY) * 0.5f;
+            }
+            float radius = std::max(halfW, halfH) + 16.0f;
             std::string description = std::format("Static obstacle removed from ({}, {})",
-                                                  hot.position.getX(), hot.position.getY());
-            EventManager::Instance().triggerCollisionObstacleChanged(hot.position, radius, description,
+                                                  position.getX(), position.getY());
+            EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
                                                                     EventManager::DispatchMode::Deferred);
             m_staticHashDirty = true;
-            m_staticGridDirty = true;  // OPTIMIZATION: Rebuild spatial grid
           }
         }
 
@@ -1396,13 +1330,26 @@ void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     auto& hot = m_storage.hotData[index];
-    hot.position = newPosition;
-    hot.aabbDirty = 1;
 
-    // Update full AABB in cold data
-    if (index < m_storage.coldData.size()) {
-      m_storage.coldData[index].fullAABB = AABB(newPosition.getX(), newPosition.getY(),
-                                                hot.halfSize.getX(), hot.halfSize.getY());
+    // Write position to EDM (single source of truth)
+    if (hot.edmIndex != SIZE_MAX) {
+      auto& edm = EntityDataManager::Instance();
+      edm.getTransformByIndex(hot.edmIndex).position = newPosition;
+      const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+
+      // Update cached AABB
+      float halfW = edmHot.halfWidth;
+      float halfH = edmHot.halfHeight;
+      hot.aabbMinX = newPosition.getX() - halfW;
+      hot.aabbMinY = newPosition.getY() - halfH;
+      hot.aabbMaxX = newPosition.getX() + halfW;
+      hot.aabbMaxY = newPosition.getY() + halfH;
+      hot.aabbDirty = 0;
+
+      // Update full AABB in cold data
+      if (index < m_storage.coldData.size()) {
+        m_storage.coldData[index].fullAABB = AABB(newPosition.getX(), newPosition.getY(), halfW, halfH);
+      }
     }
   }
 }
@@ -1410,14 +1357,22 @@ void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2
 void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
-    m_storage.hotData[index].velocity = newVelocity;
+    auto& hot = m_storage.hotData[index];
+    // Write velocity to EDM (single source of truth)
+    if (hot.edmIndex != SIZE_MAX) {
+      EntityDataManager::Instance().getTransformByIndex(hot.edmIndex).velocity = newVelocity;
+    }
   }
 }
 
 Vector2D CollisionManager::getCollisionBodyVelocitySOA(EntityID id) const {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
-    return m_storage.hotData[index].velocity;
+    const auto& hot = m_storage.hotData[index];
+    // Read velocity from EDM (single source of truth)
+    if (hot.edmIndex != SIZE_MAX) {
+      return EntityDataManager::Instance().getTransformByIndex(hot.edmIndex).velocity;
+    }
   }
   return Vector2D(0, 0);
 }
@@ -1425,9 +1380,24 @@ Vector2D CollisionManager::getCollisionBodyVelocitySOA(EntityID id) const {
 void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
-    m_storage.hotData[index].halfSize = newHalfSize;
-    m_storage.hotData[index].aabbDirty = 1;
-    // Log removed for performance
+    auto& hot = m_storage.hotData[index];
+    // Write halfSize to EDM (single source of truth)
+    if (hot.edmIndex != SIZE_MAX) {
+      auto& edm = EntityDataManager::Instance();
+      auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+      edmHot.halfWidth = newHalfSize.getX();
+      edmHot.halfHeight = newHalfSize.getY();
+
+      // Update cached AABB
+      const auto& transform = edm.getTransformByIndex(hot.edmIndex);
+      float px = transform.position.getX();
+      float py = transform.position.getY();
+      hot.aabbMinX = px - newHalfSize.getX();
+      hot.aabbMinY = py - newHalfSize.getY();
+      hot.aabbMaxX = px + newHalfSize.getX();
+      hot.aabbMaxY = py + newHalfSize.getY();
+      hot.aabbDirty = 0;
+    }
   }
 }
 
@@ -1439,16 +1409,15 @@ void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
     size_t index = it->second;
-    if (index < m_storage.coldData.size()) {
-      auto& cold = m_storage.coldData[index];
-      cold.entityWeak = entity;
+    if (index < m_storage.coldData.size() && index < m_storage.hotData.size()) {
+      m_storage.coldData[index].entityWeak = entity;
 
       // Cache EDM index for direct position access (like AIManager pattern)
-      // SIZE_MAX means no EDM entry (static bodies, triggers)
+      // edmIndex is in HotData for cache locality during AABB updates
       if (entity && entity->hasValidHandle()) {
-        cold.edmIndex = EntityDataManager::Instance().getIndex(entity->getHandle());
+        m_storage.hotData[index].edmIndex = EntityDataManager::Instance().getIndex(entity->getHandle());
       } else {
-        cold.edmIndex = SIZE_MAX;
+        m_storage.hotData[index].edmIndex = SIZE_MAX;
       }
     }
   }
@@ -1471,81 +1440,13 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 }
 
 
-// OPTIMIZATION: Rebuild static spatial grid (called when statics added/removed)
-void CollisionManager::rebuildStaticSpatialGrid() {
-  m_staticSpatialGrid.clear();
+// NOTE: rebuildStaticSpatialGrid() and queryStaticGridCells() removed in Phase 3
+// Static bodies are now queried directly via m_staticSpatialHash
 
-  // Iterate through all bodies and add statics to grid
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto& hot = m_storage.hotData[i];
-    if (!hot.active) continue;
-
-    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-    if (bodyType != BodyType::STATIC) continue;
-
-    // Calculate grid cell for this static body
-    int32_t cellX = static_cast<int32_t>(std::floor(hot.position.getX() / STATIC_GRID_CELL_SIZE));
-    int32_t cellY = static_cast<int32_t>(std::floor(hot.position.getY() / STATIC_GRID_CELL_SIZE));
-
-    StaticGridCell const cell{cellX, cellY};
-    m_staticSpatialGrid[cell].push_back(i);
-  }
-
-  m_staticGridDirty = false;
-  m_staticIndexCacheValid = false;  // Invalidate cache when grid is rebuilt
-}
-
-// OPTIMIZATION: Query static grid cells that intersect with culling area
-// Performs inline bounds check to avoid second-pass filtering
-void CollisionManager::queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const {
-  outIndices.clear();
-
-  // Calculate grid cell range for culling area
-  const int32_t minCellX = static_cast<int32_t>(std::floor(area.minX / STATIC_GRID_CELL_SIZE));
-  const int32_t minCellY = static_cast<int32_t>(std::floor(area.minY / STATIC_GRID_CELL_SIZE));
-  const int32_t maxCellX = static_cast<int32_t>(std::floor(area.maxX / STATIC_GRID_CELL_SIZE));
-  const int32_t maxCellY = static_cast<int32_t>(std::floor(area.maxY / STATIC_GRID_CELL_SIZE));
-
-  // Pre-extract bounds for inline check (avoids repeated member access)
-  const float cullMinX = area.minX;
-  const float cullMinY = area.minY;
-  const float cullMaxX = area.maxX;
-  const float cullMaxY = area.maxY;
-  const bool hasCullingBounds = (cullMinX != cullMaxX || cullMinY != cullMaxY);
-  const size_t hotDataSize = m_storage.hotData.size();
-
-  // Iterate over grid cells that intersect culling area
-  for (int32_t cellY = minCellY; cellY <= maxCellY; ++cellY) {
-    for (int32_t cellX = minCellX; cellX <= maxCellX; ++cellX) {
-      StaticGridCell const cell{cellX, cellY};
-      auto it = m_staticSpatialGrid.find(cell);
-      if (it != m_staticSpatialGrid.end()) {
-        // Inline filter: check active status and exact bounds
-        for (size_t idx : it->second) {
-          if (idx >= hotDataSize) continue;
-          const auto& hot = m_storage.hotData[idx];
-          if (!hot.active) continue;
-
-          // Inline bounds check (single-pass, no second iteration needed)
-          if (hasCullingBounds) {
-            const float px = hot.position.getX();
-            const float py = hot.position.getY();
-            if (px < cullMinX || px > cullMaxX || py < cullMinY || py > cullMaxY) {
-              continue;
-            }
-          }
-          outIndices.push_back(idx);
-        }
-      }
-    }
-  }
-}
-
-// Optimized version of buildActiveIndicesSOA with spatial grid + frame decimation
+// Optimized version of buildActiveIndicesSOA - queries m_staticSpatialHash directly
 std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) const {
   // Build indices of active bodies within culling area
-  // OPTIMIZATION 1: Use spatial grid to only iterate visible static bodies
-  // OPTIMIZATION 2: Cache static culling results for 4 frames (statics don't move!)
+  // Phase 3 simplified: Query m_staticSpatialHash directly instead of separate grid/cache
   auto& pools = m_collisionPool;
 
   // Store current culling area for use in broadphase queries
@@ -1559,31 +1460,16 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   size_t totalDynamic = 0;
   size_t totalKinematic = 0;
 
-  // OPTIMIZATION: Rebuild static spatial grid only on world events (when statics added/removed)
-  if (m_staticGridDirty) {
-    // Rebuild spatial grid (world changed - statics added/removed)
-    const_cast<CollisionManager*>(this)->rebuildStaticSpatialGrid();
-  }
+  // Query m_staticSpatialHash directly for statics in culling area
+  // Creates an AABB from the culling bounds for the spatial hash query
+  const float cullCenterX = (cullingArea.minX + cullingArea.maxX) * 0.5f;
+  const float cullCenterY = (cullingArea.minY + cullingArea.maxY) * 0.5f;
+  const float cullHalfW = (cullingArea.maxX - cullingArea.minX) * 0.5f;
+  const float cullHalfH = (cullingArea.maxY - cullingArea.minY) * 0.5f;
 
-  // OPTIMIZATION: Tolerance-based static index cache
-  // Only requery when camera moves more than STATIC_CACHE_TOLERANCE (128px)
-  // This avoids ~256 hash lookups per frame when camera moves small distances
-  const bool cacheValid = m_staticIndexCacheValid && !m_staticGridDirty &&
-      std::abs(cullingArea.minX - m_cachedStaticCullingArea.minX) < STATIC_CACHE_TOLERANCE &&
-      std::abs(cullingArea.minY - m_cachedStaticCullingArea.minY) < STATIC_CACHE_TOLERANCE &&
-      std::abs(cullingArea.maxX - m_cachedStaticCullingArea.maxX) < STATIC_CACHE_TOLERANCE &&
-      std::abs(cullingArea.maxY - m_cachedStaticCullingArea.maxY) < STATIC_CACHE_TOLERANCE;
-
-  if (cacheValid) {
-    // Reuse cached indices - skip expensive grid query
-    pools.staticIndices = m_cachedStaticIndices;
-  } else {
-    // Query spatial grid for statics in culling area
-    queryStaticGridCells(cullingArea, pools.staticIndices);
-    // Cache results for subsequent frames
-    m_cachedStaticIndices = pools.staticIndices;
-    m_cachedStaticCullingArea = cullingArea;
-    m_staticIndexCacheValid = true;
+  if (cullHalfW > 0.0f && cullHalfH > 0.0f) {
+    AABB cullAABB(cullCenterX, cullCenterY, cullHalfW, cullHalfH);
+    m_staticSpatialHash.queryRegion(cullAABB, pools.staticIndices);
   }
   totalStatic = pools.staticIndices.size();
 
@@ -1594,9 +1480,11 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
     const auto& hot = m_storage.hotData[i];
     if (!hot.active) continue;
 
-    // Apply culling to movable bodies
+    // Apply culling to movable bodies using cached AABB center
     if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
-      if (!cullingArea.contains(hot.position.getX(), hot.position.getY())) {
+      float posX = (hot.aabbMinX + hot.aabbMaxX) * 0.5f;
+      float posY = (hot.aabbMinY + hot.aabbMaxY) * 0.5f;
+      if (!cullingArea.contains(posX, posY)) {
         continue;
       }
     }
@@ -1676,10 +1564,7 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
     const uint32_t dynamicCollidesWith = m_storage.hotData[dynamicIdx].collidesWith;
 
     // PERFORMANCE: Use cached AABB bounds directly without constructing AABB object
-    // Cached bounds are already updated in updateCachedAABB()
-    m_storage.updateCachedAABB(dynamicIdx); // Ensure cache is fresh
-
-    // Re-fetch reference after updateCachedAABB (safe since updateCachedAABB doesn't reallocate)
+    // Cached bounds are refreshed at start of updateSOA via refreshCachedAABBs()
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
 
     // Calculate epsilon-expanded bounds directly from cached min/max (NO AABB construction!)
@@ -1778,120 +1663,70 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
       indexPairs.emplace_back(a, b);
     }
 
-    // 2. Use coarse-grid region cache for static collision queries
-    // Compute current coarse cell from body's AABB (not cached - always up-to-date)
-    AABB dynamicAABB(
-      (dynamicHot.aabbMinX + dynamicHot.aabbMaxX) * 0.5f,
-      (dynamicHot.aabbMinY + dynamicHot.aabbMaxY) * 0.5f,
-      (dynamicHot.aabbMaxX - dynamicHot.aabbMinX) * 0.5f,
-      (dynamicHot.aabbMaxY - dynamicHot.aabbMinY) * 0.5f
-    );
-    auto currentCoarseCell = m_staticSpatialHash.getCoarseCoord(dynamicAABB);
+    // 2. Query static spatial hash directly
+    auto& staticCandidates = getPooledVector();
+    m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
 
-    // Look up region cache using current coarse cell
-    auto regionCacheIt = m_coarseRegionStaticCache.find(currentCoarseCell);
+    // SIMD batch processing for static candidates
+    const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
+    size_t si = 0;
+    const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
 
-    if (regionCacheIt != m_coarseRegionStaticCache.end()) {
-
-      if (regionCacheIt->second.valid) {
-        // Mark cache entry as accessed (reset stale count)
-        regionCacheIt->second.lastAccessFrame = m_perf.frames;
-        regionCacheIt->second.staleCount = 0;
-
-        const auto& staticCandidates = regionCacheIt->second.staticIndices;
-
-        // SIMDMath abstraction: Process static candidates in batches of 4 for layer mask filtering
-        const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
-        size_t si = 0;
-        const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
-
-        for (; si < staticSimdEnd; si += 4) {
-          // Bounds check for batch
-          if (staticCandidates[si] >= m_storage.hotData.size() ||
-              staticCandidates[si+1] >= m_storage.hotData.size() ||
-              staticCandidates[si+2] >= m_storage.hotData.size() ||
-              staticCandidates[si+3] >= m_storage.hotData.size()) {
-            // Fall back to scalar for this batch
-            for (size_t j = si; j < si + 4 && j < staticCandidates.size(); ++j) {
-              size_t staticIdx = staticCandidates[j];
-              if (staticIdx >= m_storage.hotData.size()) continue;
-              const auto& staticHot = m_storage.hotData[staticIdx];
-              if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-              indexPairs.emplace_back(dynamicIdx, staticIdx);
-            }
-            continue;
-          }
-
-          // Load 4 static candidate layers (correct order - not reversed)
-          Int4 staticLayers = set_int4(
-            m_storage.hotData[staticCandidates[si]].layers,
-            m_storage.hotData[staticCandidates[si+1]].layers,
-            m_storage.hotData[staticCandidates[si+2]].layers,
-            m_storage.hotData[staticCandidates[si+3]].layers
-          );
-
-          // Batch layer mask check: result = staticLayers & staticMaskVec
-          Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-          Int4 staticZeros = setzero_int();
-          Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
-          int staticFailMask = movemask_int(staticCmp);
-
-          // If all 4 failed (all bits set), skip entire batch
-          if (staticFailMask == 0xFFFF) continue;
-
-          // Process individual static candidates that passed layer mask check
-          for (size_t j = 0; j < 4; ++j) {
-            size_t staticIdx = staticCandidates[si + j];
-
-            // Check if this candidate passed (failMask bit for this lane is 0)
-            int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
-            if (laneFailBits == 0xF) continue; // This candidate failed layer mask
-
-            const auto& staticHot = m_storage.hotData[staticIdx];
-            if (!staticHot.active) continue;
-
-            indexPairs.emplace_back(dynamicIdx, staticIdx);
-          }
-        }
-
-        // Scalar tail for remaining candidates
-        for (; si < staticCandidates.size(); ++si) {
-          size_t staticIdx = staticCandidates[si];
-          if (staticIdx >= m_storage.hotData.size()) continue;
-
-          const auto& staticHot = m_storage.hotData[staticIdx];
-          if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-
-          indexPairs.emplace_back(dynamicIdx, staticIdx);
-        }
-      } else {
-        // FALLBACK: Cache doesn't exist or is invalid - query static hash directly
-        // This ensures static collisions are ALWAYS detected, even if cache is stale
-        auto& staticCandidates = getPooledVector();
-        m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
-
-        // Process static candidates (simplified - no SIMD since this is fallback)
-        for (size_t staticIdx : staticCandidates) {
+    for (; si < staticSimdEnd; si += 4) {
+      // Bounds check for batch
+      if (staticCandidates[si] >= m_storage.hotData.size() ||
+          staticCandidates[si+1] >= m_storage.hotData.size() ||
+          staticCandidates[si+2] >= m_storage.hotData.size() ||
+          staticCandidates[si+3] >= m_storage.hotData.size()) {
+        // Fall back to scalar for this batch
+        for (size_t j = si; j < si + 4 && j < staticCandidates.size(); ++j) {
+          size_t staticIdx = staticCandidates[j];
           if (staticIdx >= m_storage.hotData.size()) continue;
           const auto& staticHot = m_storage.hotData[staticIdx];
           if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
           indexPairs.emplace_back(dynamicIdx, staticIdx);
         }
-        returnPooledVector(staticCandidates);
+        continue;
       }
-    } else {
-      // FALLBACK: Body not tracked in coarse cell map - query static hash directly
-      auto& staticCandidates = getPooledVector();
-      m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
 
-      for (size_t staticIdx : staticCandidates) {
-        if (staticIdx >= m_storage.hotData.size()) continue;
+      // Load 4 static candidate layers
+      Int4 staticLayers = set_int4(
+        m_storage.hotData[staticCandidates[si]].layers,
+        m_storage.hotData[staticCandidates[si+1]].layers,
+        m_storage.hotData[staticCandidates[si+2]].layers,
+        m_storage.hotData[staticCandidates[si+3]].layers
+      );
+
+      // Batch layer mask check
+      Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+      Int4 staticZeros = setzero_int();
+      Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
+      int staticFailMask = movemask_int(staticCmp);
+
+      if (staticFailMask == 0xFFFF) continue;
+
+      for (size_t j = 0; j < 4; ++j) {
+        size_t staticIdx = staticCandidates[si + j];
+        int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
+        if (laneFailBits == 0xF) continue;
+
         const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+        if (!staticHot.active) continue;
+
         indexPairs.emplace_back(dynamicIdx, staticIdx);
       }
-      returnPooledVector(staticCandidates);
     }
+
+    // Scalar tail
+    for (; si < staticCandidates.size(); ++si) {
+      size_t staticIdx = staticCandidates[si];
+      if (staticIdx >= m_storage.hotData.size()) continue;
+      const auto& staticHot = m_storage.hotData[staticIdx];
+      if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+      indexPairs.emplace_back(dynamicIdx, staticIdx);
+    }
+
+    returnPooledVector(staticCandidates);
 
     // Return pooled vector
     returnPooledVector(dynamicCandidates);
@@ -1906,42 +1741,10 @@ void CollisionManager::broadphaseMultiThreaded(
 
   const auto& movableIndices = m_collisionPool.movableIndices;
 
-  // CRITICAL: Update all AABB caches on main thread BEFORE spawning worker threads
-  // This prevents data races from multiple threads calling updateCachedAABB simultaneously
-  for (size_t idx : movableIndices) {
-    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
-      m_storage.updateCachedAABB(idx);
-    }
-  }
+  // NOTE: AABB caches already refreshed at start of updateSOA via refreshCachedAABBs()
+  // No per-body update needed here (prevents data races by design)
 
-  // CRITICAL: Pre-populate static cache entries on main thread for thread-safe read-only access
-  // This ensures worker threads only do read-only lookups on the cache
-  std::unordered_set<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
-                     HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
-                     HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> neededRegions;
-  neededRegions.reserve(movableIndices.size() / 4);  // Estimate: 4 bodies per coarse region
-
-  for (size_t idx : movableIndices) {
-    if (idx >= m_storage.hotData.size() || !m_storage.hotData[idx].active) continue;
-    const auto& hot = m_storage.hotData[idx];
-
-    // Use cached AABB bounds to compute coarse cell
-    AABB aabb(
-      (hot.aabbMinX + hot.aabbMaxX) * 0.5f,
-      (hot.aabbMinY + hot.aabbMaxY) * 0.5f,
-      (hot.aabbMaxX - hot.aabbMinX) * 0.5f,
-      (hot.aabbMaxY - hot.aabbMinY) * 0.5f
-    );
-    neededRegions.insert(m_staticSpatialHash.getCoarseCoord(aabb));
-  }
-
-  // Populate any missing/invalid cache entries (single-threaded, safe)
-  for (const auto& region : neededRegions) {
-    auto& cache = m_coarseRegionStaticCache[region];
-    if (!cache.valid) {
-      populateCacheForRegion(region, cache);
-    }
-  }
+  // Phase 3: Cache removed - m_staticSpatialHash queried directly (thread-safe for reads)
 
   // Reuse per-batch buffers (avoid allocations)
   if (!m_broadphasePairBuffers) {
@@ -2133,102 +1936,65 @@ void CollisionManager::broadphaseBatch(
       outIndexPairs.emplace_back(a, b);
     }
 
-    // 2. Static cache query
-    AABB dynamicAABB(
-      (dynamicHot.aabbMinX + dynamicHot.aabbMaxX) * 0.5f,
-      (dynamicHot.aabbMinY + dynamicHot.aabbMaxY) * 0.5f,
-      (dynamicHot.aabbMaxX - dynamicHot.aabbMinX) * 0.5f,
-      (dynamicHot.aabbMaxY - dynamicHot.aabbMinY) * 0.5f
-    );
-    auto currentCoarseCell = m_staticSpatialHash.getCoarseCoord(dynamicAABB);
+    // 2. Static spatial hash query directly (Phase 3: cache removed)
+    buffers.staticCandidates.clear();
+    m_staticSpatialHash.queryRegionBoundsThreadSafe(
+        queryMinX, queryMinY, queryMaxX, queryMaxY,
+        buffers.staticCandidates, buffers.queryBuffers);
 
-    auto regionCacheIt = m_coarseRegionStaticCache.find(currentCoarseCell);
+    // SIMD batch processing for static candidates
+    const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
+    size_t si = 0;
+    const size_t staticSimdEnd = (buffers.staticCandidates.size() / 4) * 4;
 
-    if (regionCacheIt != m_coarseRegionStaticCache.end()) {
-      if (regionCacheIt->second.valid) {
-        const auto& staticCandidates = regionCacheIt->second.staticIndices;
-
-        const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
-        size_t si = 0;
-        const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
-
-        for (; si < staticSimdEnd; si += 4) {
-          if (staticCandidates[si] >= m_storage.hotData.size() ||
-              staticCandidates[si+1] >= m_storage.hotData.size() ||
-              staticCandidates[si+2] >= m_storage.hotData.size() ||
-              staticCandidates[si+3] >= m_storage.hotData.size()) {
-            for (size_t j = si; j < si + 4 && j < staticCandidates.size(); ++j) {
-              size_t staticIdx = staticCandidates[j];
-              if (staticIdx >= m_storage.hotData.size()) continue;
-              const auto& staticHot = m_storage.hotData[staticIdx];
-              if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-              outIndexPairs.emplace_back(dynamicIdx, staticIdx);
-            }
-            continue;
-          }
-
-          Int4 staticLayers = set_int4(
-            m_storage.hotData[staticCandidates[si]].layers,
-            m_storage.hotData[staticCandidates[si+1]].layers,
-            m_storage.hotData[staticCandidates[si+2]].layers,
-            m_storage.hotData[staticCandidates[si+3]].layers
-          );
-
-          Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-          Int4 staticZeros = setzero_int();
-          Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
-          int staticFailMask = movemask_int(staticCmp);
-
-          if (staticFailMask == 0xFFFF) continue;
-
-          for (size_t j = 0; j < 4; ++j) {
-            size_t staticIdx = staticCandidates[si + j];
-            int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
-            if (laneFailBits == 0xF) continue;
-
-            const auto& staticHot = m_storage.hotData[staticIdx];
-            if (!staticHot.active) continue;
-
-            outIndexPairs.emplace_back(dynamicIdx, staticIdx);
-          }
-        }
-
-        for (; si < staticCandidates.size(); ++si) {
-          size_t staticIdx = staticCandidates[si];
-          if (staticIdx >= m_storage.hotData.size()) continue;
-
-          const auto& staticHot = m_storage.hotData[staticIdx];
-          if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-
-          outIndexPairs.emplace_back(dynamicIdx, staticIdx);
-        }
-      } else {
-        // Fallback: query static hash directly (use THREAD-SAFE query)
-        buffers.staticCandidates.clear();
-        m_staticSpatialHash.queryRegionBoundsThreadSafe(
-            queryMinX, queryMinY, queryMaxX, queryMaxY,
-            buffers.staticCandidates, buffers.queryBuffers);
-
-        for (size_t staticIdx : buffers.staticCandidates) {
+    for (; si < staticSimdEnd; si += 4) {
+      if (buffers.staticCandidates[si] >= m_storage.hotData.size() ||
+          buffers.staticCandidates[si+1] >= m_storage.hotData.size() ||
+          buffers.staticCandidates[si+2] >= m_storage.hotData.size() ||
+          buffers.staticCandidates[si+3] >= m_storage.hotData.size()) {
+        for (size_t j = si; j < si + 4 && j < buffers.staticCandidates.size(); ++j) {
+          size_t staticIdx = buffers.staticCandidates[j];
           if (staticIdx >= m_storage.hotData.size()) continue;
           const auto& staticHot = m_storage.hotData[staticIdx];
           if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
           outIndexPairs.emplace_back(dynamicIdx, staticIdx);
         }
+        continue;
       }
-    } else {
-      // Fallback: body not in cache - query directly (use THREAD-SAFE query)
-      buffers.staticCandidates.clear();
-      m_staticSpatialHash.queryRegionBoundsThreadSafe(
-          queryMinX, queryMinY, queryMaxX, queryMaxY,
-          buffers.staticCandidates, buffers.queryBuffers);
 
-      for (size_t staticIdx : buffers.staticCandidates) {
-        if (staticIdx >= m_storage.hotData.size()) continue;
+      Int4 staticLayers = set_int4(
+        m_storage.hotData[buffers.staticCandidates[si]].layers,
+        m_storage.hotData[buffers.staticCandidates[si+1]].layers,
+        m_storage.hotData[buffers.staticCandidates[si+2]].layers,
+        m_storage.hotData[buffers.staticCandidates[si+3]].layers
+      );
+
+      Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+      Int4 staticZeros = setzero_int();
+      Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
+      int staticFailMask = movemask_int(staticCmp);
+
+      if (staticFailMask == 0xFFFF) continue;
+
+      for (size_t j = 0; j < 4; ++j) {
+        size_t staticIdx = buffers.staticCandidates[si + j];
+        int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
+        if (laneFailBits == 0xF) continue;
+
         const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+        if (!staticHot.active) continue;
+
         outIndexPairs.emplace_back(dynamicIdx, staticIdx);
       }
+    }
+
+    // Scalar tail
+    for (; si < buffers.staticCandidates.size(); ++si) {
+      size_t staticIdx = buffers.staticCandidates[si];
+      if (staticIdx >= m_storage.hotData.size()) continue;
+      const auto& staticHot = m_storage.hotData[staticIdx];
+      if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+      outIndexPairs.emplace_back(dynamicIdx, staticIdx);
     }
   }
 }
@@ -2444,9 +2210,13 @@ void CollisionManager::narrowphaseSingleThreaded(const std::vector<std::pair<siz
       // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
       // Only needed for rare edge cases (reduced from 16px with cache fixes)
       constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
+      // Get velocity from EDM for deep penetration check
+      Vector2D velA = (hotA.edmIndex != SIZE_MAX)
+          ? EntityDataManager::Instance().getTransformByIndex(hotA.edmIndex).velocity
+          : Vector2D(0, 0);
+      if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
         // Push opposite to velocity direction (player was moving INTO the collision)
-        normal = (hotA.velocity.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
+        normal = (velA.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
       } else {
         // Standard center comparison for shallow penetrations
         float const centerXA = (minXA + maxXA) * 0.5f;
@@ -2460,9 +2230,13 @@ void CollisionManager::narrowphaseSingleThreaded(const std::vector<std::pair<siz
       // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
       // Only needed for rare edge cases (reduced from 16px with cache fixes)
       constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-      if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
+      // Get velocity from EDM for deep penetration check
+      Vector2D velA = (hotA.edmIndex != SIZE_MAX)
+          ? EntityDataManager::Instance().getTransformByIndex(hotA.edmIndex).velocity
+          : Vector2D(0, 0);
+      if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
         // Push opposite to velocity direction (player was moving INTO the collision)
-        normal = (hotA.velocity.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
+        normal = (velA.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
       } else {
         // Standard center comparison for shallow penetrations
         float const centerYA = (minYA + maxYA) * 0.5f;
@@ -2717,13 +2491,18 @@ void CollisionManager::processNarrowphasePairScalar(
   constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD;
   constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
 
+  // Get velocity from EDM for deep penetration check
+  Vector2D velA = (hotA.edmIndex != SIZE_MAX)
+      ? EntityDataManager::Instance().getTransformByIndex(hotA.edmIndex).velocity
+      : Vector2D(0, 0);
+
   if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
     // Separate on X-axis
     minPen = overlapX;
 
     // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
-    if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
-      normal = (hotA.velocity.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
+    if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
+      normal = (velA.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
     } else {
       float const centerXA = (minXA + maxXA) * 0.5f;
       float const centerXB = (minXB + maxXB) * 0.5f;
@@ -2733,8 +2512,8 @@ void CollisionManager::processNarrowphasePairScalar(
     // Separate on Y-axis
     minPen = overlapY;
 
-    if (minPen > DEEP_PENETRATION_THRESHOLD && hotA.velocity.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
-      normal = (hotA.velocity.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
+    if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
+      normal = (velA.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
     } else {
       float const centerYA = (minYA + maxYA) * 0.5f;
       float const centerYB = (minYB + maxYB) * 0.5f;
@@ -2765,9 +2544,9 @@ void CollisionManager::updateSOA(float dt) {
   // Process pending add/remove commands first (thread-safe deferred operations)
   processPendingCommands();
 
-  // Read current positions from EntityDataManager (single source of truth)
+  // Refresh cached AABB bounds from EntityDataManager (single source of truth)
   // AIManager integrates movement and writes to EDM - we read from EDM here
-  syncPositionsFromEDM();
+  refreshCachedAABBs();
 
   // Check storage state at start of update
   size_t bodyCount = m_storage.size();
@@ -2813,19 +2592,7 @@ void CollisionManager::updateSOA(float dt) {
   // Reset static culling counter for this frame
   m_perf.lastStaticBodiesCulled = 0;
 
-  // Update static collision cache for movable bodies
-  // Initial cache populated on world load, this updates as bodies move between coarse cells
-  updateStaticCollisionCacheForMovableBodies();
-
-  // Periodic cache eviction: Remove stale cache entries every N frames
-  m_framesSinceLastEviction++;
-  if (m_framesSinceLastEviction >= CACHE_EVICTION_INTERVAL) {
-    evictStaleCacheEntries(cullingArea);
-    m_framesSinceLastEviction = 0;
-  } else {
-    // Reset per-frame eviction counter when not evicting
-    m_perf.cacheEntriesEvicted = 0;
-  }
+  // NOTE: Coarse region cache removed in Phase 3 - static bodies queried directly via m_staticSpatialHash
 
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
@@ -2956,9 +2723,6 @@ void CollisionManager::rebuildStaticSpatialHash() {
   // Only called when static objects are added/removed
   m_staticSpatialHash.clear();
 
-  // Clear static collision caches since static bodies have changed
-  m_coarseRegionStaticCache.clear();  // Invalidate all coarse region caches
-
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto& hot = m_storage.hotData[i];
     if (!hot.active) continue;
@@ -2971,166 +2735,8 @@ void CollisionManager::rebuildStaticSpatialHash() {
   }
 }
 
-void CollisionManager::updateStaticCollisionCacheForMovableBodies() {
-  // PERFORMANCE: Coarse-grid region-based caching instead of per-body caching
-  // Bodies in the same 128×128 coarse cell share the same cached static query results
-
-  const auto& movableIndices = m_collisionPool.movableIndices;
-
-  for (size_t dynamicIdx : movableIndices) {
-    if (dynamicIdx >= m_storage.hotData.size()) continue;
-
-    const auto& hot = m_storage.hotData[dynamicIdx];
-    if (!hot.active) continue;
-
-    // Compute AABB and current coarse cell for this body
-    AABB dynamicAABB = m_storage.computeAABB(dynamicIdx);
-    auto currentCoarseCell = m_staticSpatialHash.getCoarseCoord(dynamicAABB);
-
-    // Check if body has moved to a different coarse cell using cached coords
-    HammerEngine::HierarchicalSpatialHash::CoarseCoord cachedCell{hot.coarseCellX, hot.coarseCellY};
-    bool crossedBoundary = (cachedCell.x != currentCoarseCell.x || cachedCell.y != currentCoarseCell.y);
-
-    // Get or create cache entry for this region
-    auto& regionCache = m_coarseRegionStaticCache[currentCoarseCell];
-
-    // If body crossed coarse cell boundary OR region cache is invalid, query static hash
-    if (crossedBoundary || !regionCache.valid) {
-      if (!regionCache.valid) {
-        m_cacheMisses++;
-
-        // FIXED: Query entire coarse cell region (128x128), not just player AABB + margin
-        // Coarse cell size is 128 pixels, so half-size is 64
-        constexpr float COARSE_CELL_SIZE = 128.0f;
-        const float coarseCellHalfSize = COARSE_CELL_SIZE * 0.5f;
-
-        // Calculate center of current coarse cell
-        float cellCenterX = (currentCoarseCell.x + 0.5f) * COARSE_CELL_SIZE;
-        float cellCenterY = (currentCoarseCell.y + 0.5f) * COARSE_CELL_SIZE;
-
-        // Create AABB covering entire coarse cell + small margin for border cases
-        // Reduced from 32px to 16px now that fallback queries work correctly
-        AABB regionAABB(cellCenterX, cellCenterY,
-                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 16.0f,
-                       coarseCellHalfSize + SPATIAL_QUERY_EPSILON + 16.0f);
-
-        // Query static spatial hash for this entire coarse region
-        auto& staticCandidates = getPooledVector();
-        m_staticSpatialHash.queryRegion(regionAABB, staticCandidates);
-
-        // FIXED: NO CULLING on cache population!
-        // The coarse region cache must contain ALL static bodies in the cell,
-        // regardless of culling area. Otherwise, buildings approaching from
-        // outside the specified area won't be detected until deep penetration occurs.
-        // Culling happens at the dynamic body level (buildActiveIndicesSOA).
-
-        // Cache result for entire region (all bodies in this cell will share it)
-        regionCache.staticIndices = staticCandidates;
-        regionCache.valid = true;
-        returnPooledVector(staticCandidates);
-      } else {
-        m_cacheHits++;
-      }
-
-      // Update body's cached coarse cell coords in HotData
-      m_storage.hotData[dynamicIdx].coarseCellX = static_cast<int16_t>(currentCoarseCell.x);
-      m_storage.hotData[dynamicIdx].coarseCellY = static_cast<int16_t>(currentCoarseCell.y);
-    } else {
-      // Body still in same coarse cell, cache is valid
-      m_cacheHits++;
-    }
-
-    // Mark cache entry as accessed this frame (reset stale count)
-    regionCache.lastAccessFrame = m_perf.frames;
-    regionCache.staleCount = 0;
-  }
-}
-
-void CollisionManager::evictStaleCacheEntries(const CullingArea& cullingArea) {
-  // PERFORMANCE: Evict cache entries for coarse cells far from active culling area
-  // This prevents unbounded memory growth when entities spread across large maps
-
-  if (m_coarseRegionStaticCache.empty()) {
-    return; // No cache entries to evict
-  }
-
-  // Calculate eviction bounds (3x culling buffer = 6000x6000 area)
-  const float evictionBuffer = COLLISION_CULLING_BUFFER * CACHE_EVICTION_MULTIPLIER;
-  const float evictionMinX = cullingArea.minX - evictionBuffer;
-  const float evictionMinY = cullingArea.minY - evictionBuffer;
-  const float evictionMaxX = cullingArea.maxX + evictionBuffer;
-  const float evictionMaxY = cullingArea.maxY + evictionBuffer;
-
-  // Coarse cell size (from HierarchicalSpatialHash - 128 pixels)
-  constexpr float COARSE_CELL_SIZE = 128.0f;
-
-  // Iterate through cache and mark stale entries for potential removal
-  size_t evictedCount = 0;
-  size_t invalidatedCount = 0;
-  for (auto it = m_coarseRegionStaticCache.begin(); it != m_coarseRegionStaticCache.end(); ) {
-    const auto& coord = it->first;
-
-    // Calculate center of this coarse cell
-    float cellCenterX = (coord.x + 0.5f) * COARSE_CELL_SIZE;
-    float cellCenterY = (coord.y + 0.5f) * COARSE_CELL_SIZE;
-
-    // Check if cell center is outside eviction bounds
-    bool const outsideBounds = (cellCenterX < evictionMinX || cellCenterX > evictionMaxX ||
-                         cellCenterY < evictionMinY || cellCenterY > evictionMaxY);
-
-    if (outsideBounds) {
-      auto& cache = it->second;
-      // Cache entry is far from active area - increment stale count
-      cache.staleCount++;
-
-      // Only remove if stale for multiple eviction cycles (prevents thrashing)
-      if (cache.staleCount >= m_cacheStaleThreshold) {
-        it = m_coarseRegionStaticCache.erase(it);
-        evictedCount++;
-        continue;
-      } else {
-        // Mark as invalid but keep in memory (lazy re-population)
-        if (cache.valid) {
-          cache.valid = false;
-          invalidatedCount++;
-        }
-      }
-    }
-
-    ++it;
-  }
-
-  // Update performance metrics
-  m_perf.cacheEntriesEvicted = evictedCount;
-  m_perf.totalCacheEvictions += evictedCount;
-  m_perf.cacheEntriesActive = m_coarseRegionStaticCache.size();
-
-  // Log cache maintenance activity if any changes occurred
-  COLLISION_DEBUG_IF(evictedCount > 0 || invalidatedCount > 0,
-      std::format("Cache maintenance: evicted={}, invalidated={}, active={}",
-                  evictedCount, invalidatedCount, m_perf.cacheEntriesActive));
-}
-
-void CollisionManager::populateCacheForRegion(
-    const HammerEngine::HierarchicalSpatialHash::CoarseCoord& region,
-    CoarseRegionStaticCache& cache) {
-  // Query static spatial hash for this region's bounds
-  constexpr float COARSE_CELL_SIZE = 128.0f;
-
-  const float minX = region.x * COARSE_CELL_SIZE;
-  const float minY = region.y * COARSE_CELL_SIZE;
-  const float maxX = minX + COARSE_CELL_SIZE;
-  const float maxY = minY + COARSE_CELL_SIZE;
-
-  // Clear and populate static indices
-  cache.staticIndices.clear();
-  m_staticSpatialHash.queryRegionBounds(minX, minY, maxX, maxY, cache.staticIndices);
-
-  // Mark as valid and update access tracking
-  cache.valid = true;
-  cache.lastAccessFrame = m_perf.frames;
-  cache.staleCount = 0;
-}
+// NOTE: updateStaticCollisionCacheForMovableBodies(), evictStaleCacheEntries(),
+// and populateCacheForRegion() removed in Phase 3 - static bodies queried directly via m_staticSpatialHash
 
 void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   if (collision.trigger) return; // Triggers don't need position resolution
@@ -3150,14 +2756,27 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
   const float push = collision.penetration * 0.5f;
 
   // Apply position corrections using SIMDMath abstraction
-  if (typeA != BodyType::STATIC && typeB != BodyType::STATIC) {
-    // Both dynamic/kinematic - split the correction
+  // Access positions from EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+
+  // Skip bodies without valid EDM index (test bodies, not yet attached)
+  bool hasValidA = (hotA.edmIndex != SIZE_MAX);
+  bool hasValidB = (hotB.edmIndex != SIZE_MAX);
+  if (!hasValidA && !hasValidB) {
+    return;  // Neither body has EDM entry, skip resolution
+  }
+
+  if (typeA != BodyType::STATIC && typeB != BodyType::STATIC && hasValidA && hasValidB) {
+    // Both dynamic/kinematic with valid EDM - split the correction
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const pushVec = broadcast(push);
     Float4 const correction = mul(normal, pushVec);
 
-    Float4 posA = set(hotA.position.getX(), hotA.position.getY(), 0, 0);
-    Float4 posB = set(hotB.position.getX(), hotB.position.getY(), 0, 0);
+    // Read positions from EDM
+    auto& transformA = edm.getTransformByIndex(hotA.edmIndex);
+    auto& transformB = edm.getTransformByIndex(hotB.edmIndex);
+    Float4 posA = set(transformA.position.getX(), transformA.position.getY(), 0, 0);
+    Float4 posB = set(transformB.position.getX(), transformB.position.getY(), 0, 0);
 
     posA = sub(posA, correction);
     posB = add(posB, correction);
@@ -3166,38 +2785,67 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     store4(resultA, posA);
     store4(resultB, posB);
 
-    hotA.position.setX(resultA[0]);
-    hotA.position.setY(resultA[1]);
-    hotB.position.setX(resultB[0]);
-    hotB.position.setY(resultB[1]);
-  } else if (typeA != BodyType::STATIC) {
-    // Only A moves
+    // Write positions back to EDM
+    transformA.position.setX(resultA[0]);
+    transformA.position.setY(resultA[1]);
+    transformB.position.setX(resultB[0]);
+    transformB.position.setY(resultB[1]);
+
+    // Update cached AABBs
+    const auto& edmHotA = edm.getHotDataByIndex(hotA.edmIndex);
+    const auto& edmHotB = edm.getHotDataByIndex(hotB.edmIndex);
+    hotA.aabbMinX = resultA[0] - edmHotA.halfWidth;
+    hotA.aabbMinY = resultA[1] - edmHotA.halfHeight;
+    hotA.aabbMaxX = resultA[0] + edmHotA.halfWidth;
+    hotA.aabbMaxY = resultA[1] + edmHotA.halfHeight;
+    hotB.aabbMinX = resultB[0] - edmHotB.halfWidth;
+    hotB.aabbMinY = resultB[1] - edmHotB.halfHeight;
+    hotB.aabbMaxX = resultB[0] + edmHotB.halfWidth;
+    hotB.aabbMaxY = resultB[1] + edmHotB.halfHeight;
+  } else if (typeA != BodyType::STATIC && hasValidA) {
+    // Only A moves (has valid EDM)
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const penVec = broadcast(collision.penetration);
     Float4 const correction = mul(normal, penVec);
 
-    Float4 posA = set(hotA.position.getX(), hotA.position.getY(), 0, 0);
+    auto& transformA = edm.getTransformByIndex(hotA.edmIndex);
+    Float4 posA = set(transformA.position.getX(), transformA.position.getY(), 0, 0);
     posA = sub(posA, correction);
 
     alignas(16) float resultA[4];
     store4(resultA, posA);
 
-    hotA.position.setX(resultA[0]);
-    hotA.position.setY(resultA[1]);
-  } else if (typeB != BodyType::STATIC) {
-    // Only B moves
+    transformA.position.setX(resultA[0]);
+    transformA.position.setY(resultA[1]);
+
+    // Update cached AABB
+    const auto& edmHotA = edm.getHotDataByIndex(hotA.edmIndex);
+    hotA.aabbMinX = resultA[0] - edmHotA.halfWidth;
+    hotA.aabbMinY = resultA[1] - edmHotA.halfHeight;
+    hotA.aabbMaxX = resultA[0] + edmHotA.halfWidth;
+    hotA.aabbMaxY = resultA[1] + edmHotA.halfHeight;
+  } else if (typeB != BodyType::STATIC && hasValidB) {
+    // Only B moves (has valid EDM)
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const penVec = broadcast(collision.penetration);
     Float4 const correction = mul(normal, penVec);
 
-    Float4 posB = set(hotB.position.getX(), hotB.position.getY(), 0, 0);
+    auto& transformB = edm.getTransformByIndex(hotB.edmIndex);
+    Float4 posB = set(transformB.position.getX(), transformB.position.getY(), 0, 0);
     posB = add(posB, correction);
 
     alignas(16) float resultB[4];
     store4(resultB, posB);
 
-    hotB.position.setX(resultB[0]);
-    hotB.position.setY(resultB[1]);
+    transformB.position.setX(resultB[0]);
+    transformB.position.setY(resultB[1]);
+
+    // Update cached AABB
+    const auto& edmHotB = edm.getHotDataByIndex(hotB.edmIndex);
+    hotB.aabbMinX = resultB[0] - edmHotB.halfWidth;
+    hotB.aabbMinY = resultB[1] - edmHotB.halfHeight;
+    hotB.aabbMaxX = resultB[0] + edmHotB.halfWidth;
+    hotB.aabbMaxY = resultB[1] + edmHotB.halfHeight;
   }
 
   // Apply velocity damping for dynamic bodies using SIMDMath abstraction
@@ -3230,19 +2878,22 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     velocity.setY(result[1]);
   };
 
-  if (typeA == BodyType::DYNAMIC) {
+  if (typeA == BodyType::DYNAMIC && hotA.edmIndex != SIZE_MAX) {
     bool const staticCollision = (typeB == BodyType::STATIC);
-    dampenVelocitySIMD(hotA.velocity, collision.normal, m_storage.coldData[indexA].restitution, staticCollision);
+    auto& velA = edm.getTransformByIndex(hotA.edmIndex).velocity;
+    dampenVelocitySIMD(velA, collision.normal, m_storage.coldData[indexA].restitution, staticCollision);
   }
-  if (typeB == BodyType::DYNAMIC) {
+  if (typeB == BodyType::DYNAMIC && hotB.edmIndex != SIZE_MAX) {
     bool const staticCollision = (typeA == BodyType::STATIC);
     // For entity B, flip the normal (normal points A->B, but we need B->A)
     Vector2D const flippedNormal = collision.normal * -1.0f;
-    dampenVelocitySIMD(hotB.velocity, flippedNormal, m_storage.coldData[indexB].restitution, staticCollision);
+    auto& velB = edm.getTransformByIndex(hotB.edmIndex).velocity;
+    dampenVelocitySIMD(velB, flippedNormal, m_storage.coldData[indexB].restitution, staticCollision);
   }
 
   // Add tangential slide for NPC-vs-NPC collisions (but not player)
-  if (typeA == BodyType::DYNAMIC && typeB == BodyType::DYNAMIC) {
+  if (typeA == BodyType::DYNAMIC && typeB == BodyType::DYNAMIC &&
+      hotA.edmIndex != SIZE_MAX && hotB.edmIndex != SIZE_MAX) {
     bool isPlayerA = (hotA.layers & CollisionLayer::Layer_Player) != 0;
     bool isPlayerB = (hotB.layers & CollisionLayer::Layer_Player) != 0;
 
@@ -3253,12 +2904,15 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
       EntityID entityA = collision.a;  // Use already-known entity IDs
       EntityID entityB = collision.b;
 
+      auto& velA = edm.getTransformByIndex(hotA.edmIndex).velocity;
+      auto& velB = edm.getTransformByIndex(hotB.edmIndex).velocity;
+
       if (entityA < entityB) {
-        hotA.velocity += tangent * slideBoost;
-        hotB.velocity -= tangent * slideBoost;
+        velA += tangent * slideBoost;
+        velB -= tangent * slideBoost;
       } else {
-        hotA.velocity -= tangent * slideBoost;
-        hotB.velocity += tangent * slideBoost;
+        velA -= tangent * slideBoost;
+        velB += tangent * slideBoost;
       }
     }
   }
@@ -3285,121 +2939,125 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     }
   };
 
-  clampVelocitySIMD(hotA.velocity);
-  clampVelocitySIMD(hotB.velocity);
-
-  // Write collision corrections directly to EntityDataManager (single source of truth)
-  // Follows AIManager pattern: use cached edmIndex for direct write
-  auto& edm = EntityDataManager::Instance();
-
-  // Write body A corrections to EDM if it has an EDM entry
-  if (typeA != BodyType::STATIC) {
-    size_t edmIndexA = m_storage.coldData[indexA].edmIndex;
-    if (edmIndexA != SIZE_MAX) {
-      auto& transformA = edm.getTransformByIndex(edmIndexA);
-      transformA.position = hotA.position;
-      transformA.velocity = hotA.velocity;
-    }
+  // Clamp velocities in EDM (already modified above)
+  if (typeA == BodyType::DYNAMIC && hotA.edmIndex != SIZE_MAX) {
+    clampVelocitySIMD(edm.getTransformByIndex(hotA.edmIndex).velocity);
+  }
+  if (typeB == BodyType::DYNAMIC && hotB.edmIndex != SIZE_MAX) {
+    clampVelocitySIMD(edm.getTransformByIndex(hotB.edmIndex).velocity);
   }
 
-  // Write body B corrections to EDM if it has an EDM entry
-  if (typeB != BodyType::STATIC) {
-    size_t edmIndexB = m_storage.coldData[indexB].edmIndex;
-    if (edmIndexB != SIZE_MAX) {
-      auto& transformB = edm.getTransformByIndex(edmIndexB);
-      transformB.position = hotB.position;
-      transformB.velocity = hotB.velocity;
-    }
-  }
+  // NOTE: Position corrections already written to EDM above
+  // No need for redundant write-back - EDM is now the source of truth
 }
 
-void CollisionManager::syncEntitiesToSOA() {
-  // CRITICAL: Only sync entities that were involved in collision resolution
-  // AIManager is responsible for regular movement - CollisionManager ONLY modifies
-  // positions when pushing bodies apart during collision resolution.
-  //
-  // This prevents CollisionManager from overwriting AIManager's movement integration.
+// NOTE: syncEntitiesToSOA() removed in Phase 4 - Entity::setPosition/getPosition
+// now read/write directly through EDM, so syncing EDM → Entity is redundant
 
-  m_isSyncing = true;
+void CollisionManager::refreshCachedAABB(size_t index) {
+  // Update single body's cached AABB from EntityDataManager
+  // Following AIManager pattern: direct EDM access via edmIndex
+  auto& hot = m_storage.hotData[index];
 
-  // Acquire shared lock for reading storage during entity sync
-  // Prevents races with prepareForStateTransition() clearing storage
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
-  // Build set of entity IDs that were involved in collisions this frame
-  // Reuse member buffer to avoid per-frame hash table allocation
-  m_collidedEntitiesBuffer.clear();
-  for (const auto& collision : m_collisionPool.collisionBuffer) {
-    if (!collision.trigger) {  // Triggers don't resolve positions
-      m_collidedEntitiesBuffer.insert(collision.a);
-      m_collidedEntitiesBuffer.insert(collision.b);
-    }
+  // Skip bodies without valid EDM index (test bodies, not yet attached)
+  if (hot.edmIndex == SIZE_MAX) {
+    hot.aabbDirty = 0;  // Mark as clean even if not updated
+    return;
   }
 
-  // Only sync entities that had collision resolution (positions were modified by resolveSOA)
-  for (size_t idx : m_collisionPool.movableIndices) {
-    if (idx >= m_storage.hotData.size() || idx >= m_storage.coldData.size()) continue;
+  // Get position and half-extents from EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  const auto& transform = edm.getTransformByIndex(hot.edmIndex);
+  const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
 
-    const auto& hot = m_storage.hotData[idx];
-    auto& cold = m_storage.coldData[idx];
+  // Update cached AABB bounds
+  float posX = transform.position.getX();
+  float posY = transform.position.getY();
+  float halfW = edmHot.halfWidth;
+  float halfH = edmHot.halfHeight;
 
-    if (!hot.active) continue;
-
-    // ONLY update entities that were involved in collisions
-    if (m_collidedEntitiesBuffer.find(m_storage.entityIds[idx]) == m_collidedEntitiesBuffer.end()) {
-      continue;  // Skip entities that didn't collide - AIManager already updated their positions
-    }
-
-    // Sync collision-resolved position and velocity back to entity
-    if (auto entity = cold.entityWeak.lock()) {
-      entity->setPosition(hot.position);
-      entity->setVelocity(hot.velocity);
-    }
-  }
-
-  m_isSyncing = false;
+  hot.aabbMinX = posX - halfW;
+  hot.aabbMinY = posY - halfH;
+  hot.aabbMaxX = posX + halfW;
+  hot.aabbMaxY = posY + halfH;
+  hot.aabbDirty = 0;
 }
 
-void CollisionManager::syncPositionsFromEDM() {
-  // Read positions from EntityDataManager (single source of truth)
-  // Follows AIManager pattern: use cached edmIndex for direct access
-  // Static bodies (no EDM entry) keep their local position unchanged
+void CollisionManager::refreshCachedAABBs() {
+  // Batch refresh all cached AABBs from EntityDataManager
+  // Called at start of broadphase to ensure all bounds are current
+  // Following AIManager pattern: direct EDM access, SIMD batch processing
 
   auto& edm = EntityDataManager::Instance();
-  size_t syncCount = 0;
-  size_t skippedNoEdm = 0;
+  const size_t count = m_storage.hotData.size();
 
-  for (size_t idx = 0; idx < m_storage.hotData.size(); ++idx) {
-    auto& hot = m_storage.hotData[idx];
+  // SIMD batch processing (4 bodies at a time)
+  size_t i = 0;
+  const size_t simdEnd = (count / 4) * 4;
 
-    // Skip inactive bodies
-    if (!hot.active) continue;
+  for (; i < simdEnd; i += 4) {
+    // Load EDM indices
+    size_t idx0 = m_storage.hotData[i].edmIndex;
+    size_t idx1 = m_storage.hotData[i + 1].edmIndex;
+    size_t idx2 = m_storage.hotData[i + 2].edmIndex;
+    size_t idx3 = m_storage.hotData[i + 3].edmIndex;
 
-    // Skip static bodies - they don't have EDM entries
-    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) continue;
-
-    // Use cached EDM index from coldData (set in attachEntity)
-    size_t edmIndex = m_storage.coldData[idx].edmIndex;
-    if (edmIndex == SIZE_MAX) {
-      skippedNoEdm++;
+    // If any index is invalid, fall back to scalar for this batch
+    if (idx0 == SIZE_MAX || idx1 == SIZE_MAX || idx2 == SIZE_MAX || idx3 == SIZE_MAX) {
+      for (size_t j = 0; j < 4; ++j) {
+        refreshCachedAABB(i + j);
+      }
       continue;
     }
 
-    // Read position/velocity from EDM (like AIManager's processBatch pattern)
-    const auto& transform = edm.getTransformByIndex(edmIndex);
+    // Fetch transforms from EDM
+    const auto& t0 = edm.getTransformByIndex(idx0);
+    const auto& t1 = edm.getTransformByIndex(idx1);
+    const auto& t2 = edm.getTransformByIndex(idx2);
+    const auto& t3 = edm.getTransformByIndex(idx3);
 
-    // Update collision body for spatial hash consistency
-    hot.position = transform.position;
-    hot.velocity = transform.velocity;
-    hot.aabbDirty = 1;
-    syncCount++;
+    // Fetch half-extents from EDM
+    const auto& h0 = edm.getHotDataByIndex(idx0);
+    const auto& h1 = edm.getHotDataByIndex(idx1);
+    const auto& h2 = edm.getHotDataByIndex(idx2);
+    const auto& h3 = edm.getHotDataByIndex(idx3);
+
+    // SIMD positions
+    Float4 posX = set(t0.position.getX(), t1.position.getX(),
+                      t2.position.getX(), t3.position.getX());
+    Float4 posY = set(t0.position.getY(), t1.position.getY(),
+                      t2.position.getY(), t3.position.getY());
+
+    // SIMD half-extents
+    Float4 halfW = set(h0.halfWidth, h1.halfWidth, h2.halfWidth, h3.halfWidth);
+    Float4 halfH = set(h0.halfHeight, h1.halfHeight, h2.halfHeight, h3.halfHeight);
+
+    // Compute AABB bounds
+    Float4 minX = sub(posX, halfW);
+    Float4 minY = sub(posY, halfH);
+    Float4 maxX = add(posX, halfW);
+    Float4 maxY = add(posY, halfH);
+
+    // Extract and store results
+    alignas(16) float minXArr[4], minYArr[4], maxXArr[4], maxYArr[4];
+    store4(minXArr, minX);
+    store4(minYArr, minY);
+    store4(maxXArr, maxX);
+    store4(maxYArr, maxY);
+
+    for (size_t j = 0; j < 4; ++j) {
+      auto& hot = m_storage.hotData[i + j];
+      hot.aabbMinX = minXArr[j];
+      hot.aabbMinY = minYArr[j];
+      hot.aabbMaxX = maxXArr[j];
+      hot.aabbMaxY = maxYArr[j];
+      hot.aabbDirty = 0;
+    }
   }
 
-  // Debug: Log sync stats periodically
-  static size_t frameCount = 0;
-  if (++frameCount % 300 == 0 && (syncCount > 0 || skippedNoEdm > 0)) {
-    COLLISION_DEBUG(std::format("syncPositionsFromEDM: synced {} bodies, {} skipped (no EDM)",
-                                syncCount, skippedNoEdm));
+  // Scalar tail
+  for (; i < count; ++i) {
+    refreshCachedAABB(i);
   }
 }
 
@@ -3462,12 +3120,17 @@ void CollisionManager::processTriggerEventsSOA() {
 
       if (cooled) {
         HammerEngine::TriggerTag triggerTag = static_cast<HammerEngine::TriggerTag>(triggerHot->triggerTag);
-        WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerHot->position, TriggerPhase::Enter);
+        // Get player position from EDM (single source of truth)
+        auto& edm = EntityDataManager::Instance();
+        const auto& playerTransform = edm.getTransformByIndex(playerHot->edmIndex);
+        Vector2D playerPos = playerTransform.position;
+
+        WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerPos, TriggerPhase::Enter);
         EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
         COLLISION_DEBUG(std::format("Player {} ENTERED trigger {} (tag: {}) at position ({}, {})",
                                     playerId, triggerId, static_cast<int>(triggerTag),
-                                    playerHot->position.getX(), playerHot->position.getY()));
+                                    playerPos.getX(), playerPos.getY()));
 
         if (m_defaultTriggerCooldownSec > 0.0f) {
           m_triggerCooldownUntil[triggerId] = now +
@@ -3494,7 +3157,10 @@ void CollisionManager::processTriggerEventsSOA() {
         size_t triggerIndex = triggerIt->second;
         if (triggerIndex < m_storage.hotData.size()) {
           const auto& hot = m_storage.hotData[triggerIndex];
-          triggerPos = hot.position;
+          // Get position from EDM (single source of truth)
+          auto& edm = EntityDataManager::Instance();
+          const auto& transform = edm.getTransformByIndex(hot.edmIndex);
+          triggerPos = transform.position;
           triggerTag = static_cast<HammerEngine::TriggerTag>(hot.triggerTag);
         }
       }
@@ -3575,11 +3241,6 @@ void CollisionManager::updatePerformanceMetricsSOA(
 
   // Periodic statistics (every 300 frames) - concise format matching AIManager style
   if (logFrameCounter % 300 == 0 && bodyCount > 0) {
-    // Cache statistics
-    size_t totalCacheAccesses = m_cacheHits + m_cacheMisses;
-    int cacheHitRate = totalCacheAccesses > 0
-        ? static_cast<int>((static_cast<float>(m_cacheHits) / totalCacheAccesses) * 100.0f) : 0;
-
     // Threading status
     std::string threadingStatus;
     if (m_lastBroadphaseWasThreaded || m_lastNarrowphaseWasThreaded) {
@@ -3596,15 +3257,11 @@ void CollisionManager::updatePerformanceMetricsSOA(
 
     COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable), "
                                 "Total: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
-                                "Pairs: {}, Collisions: {}, Cache: {}%{}, Bounds: {}x{}",
+                                "Pairs: {}, Collisions: {}{}, Bounds: {}x{}",
                                 bodyCount, activeMovableBodies,
                                 m_perf.lastTotalMs, d12, d23,
-                                pairCount, collisionCount, cacheHitRate, threadingStatus,
+                                pairCount, collisionCount, threadingStatus,
                                 static_cast<int>(worldW), static_cast<int>(worldH)));
-
-    // Reset cache counters for next reporting window
-    m_cacheHits = 0;
-    m_cacheMisses = 0;
   }
 #endif // DEBUG
 }
@@ -3616,18 +3273,47 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
   // Reduces lock acquisitions from O(n) to O(1) - critical for 1000+ entity updates
   std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
-  // Batch update all kinematic bodies in SOA storage
+  // Batch update all kinematic bodies - update EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
   for (const auto& bodyUpdate : updates) {
     // Direct map access without additional locking (we hold the lock)
     auto it = m_storage.entityToIndex.find(bodyUpdate.id);
     if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
       size_t index = it->second;
       auto& hot = m_storage.hotData[index];
-      if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC) {
-        hot.position = bodyUpdate.position;
-        hot.velocity = bodyUpdate.velocity;
-        hot.aabbDirty = 1;
-        hot.active = true; // Ensure body stays enabled
+      if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC && hot.edmIndex != SIZE_MAX) {
+        // Update EDM - it owns position/velocity
+        auto& transform = edm.getTransformByIndex(hot.edmIndex);
+        transform.position = bodyUpdate.position;
+        transform.velocity = bodyUpdate.velocity;
+
+        // Update cached AABB immediately for spatial queries
+        const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+        float px = bodyUpdate.position.getX();
+        float py = bodyUpdate.position.getY();
+        float hw = edmHot.halfWidth;
+        float hh = edmHot.halfHeight;
+
+        // Store old bounds for spatial hash update
+        float oldMinX = hot.aabbMinX;
+        float oldMinY = hot.aabbMinY;
+        float oldMaxX = hot.aabbMaxX;
+        float oldMaxY = hot.aabbMaxY;
+
+        // Update cached AABB
+        hot.aabbMinX = px - hw;
+        hot.aabbMinY = py - hh;
+        hot.aabbMaxX = px + hw;
+        hot.aabbMaxY = py + hh;
+        hot.aabbDirty = 0;
+        hot.active = true;
+
+        // Update spatial hash if position changed significantly
+        EntityID entityId = m_storage.entityIds[index];
+        AABB oldAABB((oldMinX + oldMaxX) * 0.5f, (oldMinY + oldMaxY) * 0.5f,
+                     (oldMaxX - oldMinX) * 0.5f, (oldMaxY - oldMinY) * 0.5f);
+        AABB newAABB(px, py, hw, hh);
+        m_dynamicSpatialHash.update(entityId, oldAABB, newAABB);
       }
     }
   }
@@ -3651,18 +3337,47 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
   // PERFORMANCE: Acquire shared lock ONCE for all batches
   std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
-  // Merge all batch updates into collision storage
+  // Merge all batch updates into EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
   for (const auto& batchBuffer : batchUpdates) {
     for (const auto& bodyUpdate : batchBuffer) {
       auto it = m_storage.entityToIndex.find(bodyUpdate.id);
       if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
         size_t index = it->second;
         auto& hot = m_storage.hotData[index];
-        if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC) {
-          hot.position = bodyUpdate.position;
-          hot.velocity = bodyUpdate.velocity;
-          hot.aabbDirty = 1;
+        if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC && hot.edmIndex != SIZE_MAX) {
+          // Update EDM - it owns position/velocity
+          auto& transform = edm.getTransformByIndex(hot.edmIndex);
+          transform.position = bodyUpdate.position;
+          transform.velocity = bodyUpdate.velocity;
+
+          // Update cached AABB immediately for spatial queries
+          const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+          float px = bodyUpdate.position.getX();
+          float py = bodyUpdate.position.getY();
+          float hw = edmHot.halfWidth;
+          float hh = edmHot.halfHeight;
+
+          // Store old bounds for spatial hash update
+          float oldMinX = hot.aabbMinX;
+          float oldMinY = hot.aabbMinY;
+          float oldMaxX = hot.aabbMaxX;
+          float oldMaxY = hot.aabbMaxY;
+
+          // Update cached AABB
+          hot.aabbMinX = px - hw;
+          hot.aabbMinY = py - hh;
+          hot.aabbMaxX = px + hw;
+          hot.aabbMaxY = py + hh;
+          hot.aabbDirty = 0;
           hot.active = true;
+
+          // Update spatial hash
+          EntityID entityId = m_storage.entityIds[index];
+          AABB oldAABB((oldMinX + oldMaxX) * 0.5f, (oldMinY + oldMaxY) * 0.5f,
+                       (oldMaxX - oldMinX) * 0.5f, (oldMaxY - oldMinY) * 0.5f);
+          AABB newAABB(px, py, hw, hh);
+          m_dynamicSpatialHash.update(entityId, oldAABB, newAABB);
         }
       }
     }
@@ -3703,8 +3418,11 @@ void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t co
 void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
-    m_storage.hotData[index].velocity = velocity;
-    }
+    // Update EDM - it owns velocity
+    auto& edm = EntityDataManager::Instance();
+    auto& transform = edm.getTransformByIndex(m_storage.hotData[index].edmIndex);
+    transform.velocity = velocity;
+  }
 }
 
 void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
@@ -3726,25 +3444,29 @@ CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const
     if (playerIndex < m_storage.hotData.size()) {
       const auto& hot = m_storage.hotData[playerIndex];
       if (hot.active && (hot.layers & CollisionLayer::Layer_Player)) {
-        playerPos = hot.position;
-        playerFound = true;
+        // Get position from EDM (single source of truth)
+        if (hot.edmIndex != SIZE_MAX) {
+          auto& edm = EntityDataManager::Instance();
+          const auto& transform = edm.getTransformByIndex(hot.edmIndex);
+          playerPos = transform.position;
+          playerFound = true;
+        }
       }
     }
   }
 
   if (playerFound) {
-    // Create player-centered culling area
-    area.minX = playerPos.getX() - COLLISION_CULLING_BUFFER;
-    area.minY = playerPos.getY() - COLLISION_CULLING_BUFFER;
-    area.maxX = playerPos.getX() + COLLISION_CULLING_BUFFER;
-    area.maxY = playerPos.getY() + COLLISION_CULLING_BUFFER;
+    // Create player-centered culling area (use configurable buffer)
+    area.minX = playerPos.getX() - m_cullingBuffer;
+    area.minY = playerPos.getY() - m_cullingBuffer;
+    area.maxX = playerPos.getX() + m_cullingBuffer;
+    area.maxY = playerPos.getY() + m_cullingBuffer;
   } else {
-    // Player not found - use world center with standard culling area
-    // This maintains consistent culling behavior instead of processing entire world
-    area.minX = 0.0f - COLLISION_CULLING_BUFFER;
-    area.minY = 0.0f - COLLISION_CULLING_BUFFER;
-    area.maxX = 0.0f + COLLISION_CULLING_BUFFER;
-    area.maxY = 0.0f + COLLISION_CULLING_BUFFER;
+    // Player not found - use world center with configurable culling area
+    area.minX = 0.0f - m_cullingBuffer;
+    area.minY = 0.0f - m_cullingBuffer;
+    area.maxX = 0.0f + m_cullingBuffer;
+    area.maxY = 0.0f + m_cullingBuffer;
 
 #ifdef DEBUG
     // Log warning only once every 300 frames to avoid spam

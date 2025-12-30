@@ -462,6 +462,42 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     return EntityHandle{id, EntityKind::AreaEffect, generation};
 }
 
+EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
+                                                  float halfWidth,
+                                                  float halfHeight) {
+    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
+
+    size_t index = allocateSlot(EntityKind::StaticObstacle);
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = nextGeneration(index);
+
+    // Initialize hot data - static bodies have no velocity or type-specific data
+    auto& hot = m_hotData[index];
+    hot.transform.position = position;
+    hot.transform.previousPosition = position;
+    hot.transform.velocity = Vector2D{0.0f, 0.0f};
+    hot.transform.acceleration = Vector2D{0.0f, 0.0f};
+    hot.halfWidth = halfWidth;
+    hot.halfHeight = halfHeight;
+    hot.kind = EntityKind::StaticObstacle;
+    hot.tier = SimulationTier::Hibernated;  // Static bodies don't need updates
+    hot.flags = EntityHotData::FLAG_ALIVE;
+    hot.generation = generation;
+    hot.typeLocalIndex = 0;  // No type-specific data for static obstacles
+
+    // Store ID and mapping
+    m_entityIds[index] = id;
+    m_generations[index] = generation;
+    m_idToIndex[id] = index;
+
+    // Update counters
+    m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
+    m_countByKind[static_cast<size_t>(EntityKind::StaticObstacle)].fetch_add(1, std::memory_order_relaxed);
+    m_countByTier[static_cast<size_t>(SimulationTier::Hibernated)].fetch_add(1, std::memory_order_relaxed);
+
+    return EntityHandle{id, EntityKind::StaticObstacle, generation};
+}
+
 // ============================================================================
 // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
 // ============================================================================
