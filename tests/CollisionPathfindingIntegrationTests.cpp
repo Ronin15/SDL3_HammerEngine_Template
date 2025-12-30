@@ -84,7 +84,6 @@ struct CollisionPathfindingFixture {
             AABB wallAABB(i * 64.0f, 320.0f, 32.0f, 32.0f);
             CollisionManager::Instance().addCollisionBodySOA(wallId, wallAABB.center, wallAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         }
-        CollisionManager::Instance().processPendingCommands();
 
         // L-shaped obstacle
         for (int i = 0; i < 3; ++i) {
@@ -97,7 +96,6 @@ struct CollisionPathfindingFixture {
             AABB obstacleAABB(800.0f, 200.0f + i * 64.0f, 32.0f, 32.0f);
             CollisionManager::Instance().addCollisionBodySOA(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         }
-        CollisionManager::Instance().processPendingCommands();
     }
 
     // Helper: Check if path intersects with known obstacles
@@ -135,7 +133,6 @@ struct CollisionPathfindingFixture {
             BodyType::KINEMATIC, CollisionLayer::Layer_Player,
             CollisionLayer::Layer_Environment
         );
-        CollisionManager::Instance().processPendingCommands();
 
         // Check for collisions using queryArea (use actual radius, not 2x)
         AABB queryAABB(position.getX(), position.getY(), radius, radius);
@@ -243,7 +240,6 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
     EntityID dynamicObstacle = 5001;
     AABB obstacleAABB(300.0f, 300.0f, 48.0f, 48.0f);
     CollisionManager::Instance().addCollisionBodySOA(dynamicObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     // Event-driven: PathfinderManager automatically updates via CollisionObstacleChanged events
     EventManager::Instance().update();
@@ -314,7 +310,6 @@ BOOST_FIXTURE_TEST_CASE(TestEventDrivenPathInvalidation, CollisionPathfindingFix
     EntityID newObstacle = 6001;
     AABB newObstacleAABB(300.0f, 300.0f, 64.0f, 64.0f);
     CollisionManager::Instance().addCollisionBodySOA(newObstacle, newObstacleAABB.center, newObstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     // Process events and allow grid rebuild
     EventManager::Instance().update();
@@ -381,7 +376,6 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentCollisionPathfindingOperations, CollisionP
         CollisionManager::Instance().addCollisionBodySOA(bodyId, bodyAABB.center, bodyAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
         tempBodies.push_back(bodyId);
     }
-    CollisionManager::Instance().processPendingCommands();
 
     // Wait for all async callbacks to complete
     for (int i = 0; i < 50 && completedCallbacks < NUM_CONCURRENT_REQUESTS; ++i) {
@@ -420,7 +414,6 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceUnderLoad, CollisionPathfindingFixture)
         CollisionManager::Instance().addCollisionBodySOA(bodyId, bodyAABB.center, bodyAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
         bodies.push_back(bodyId);
     }
-    CollisionManager::Instance().processPendingCommands();
 
     // Measure combined system performance using async API
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -483,7 +476,6 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionLayerPathfindingInteraction, CollisionPathf
     CollisionManager::Instance().addCollisionBodySOA(playerObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(enemyObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
     CollisionManager::Instance().addCollisionBodySOA(environmentObstacle, obstacleAABB.center, obstacleAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     // Set different collision layers
     CollisionManager::Instance().setBodyLayer(
@@ -581,7 +573,6 @@ BOOST_FIXTURE_TEST_CASE(TestEntityMovementAlongPath, CollisionPathfindingFixture
         BodyType::KINEMATIC, CollisionLayer::Layer_Player,
         CollisionLayer::Layer_Environment
     );
-    CollisionManager::Instance().processPendingCommands();
 
     // Simulate movement along the path
     int collisionsDetected = 0;
@@ -603,7 +594,6 @@ BOOST_FIXTURE_TEST_CASE(TestEntityMovementAlongPath, CollisionPathfindingFixture
 
             // Update collision body position
             CollisionManager::Instance().updateCollisionBodyPositionSOA(entityId, currentPos);
-            CollisionManager::Instance().processPendingCommands();
 
             // Check for collisions using the actual entity radius (not 2x)
             AABB queryAABB(currentPos.getX(), currentPos.getY(), entityRadius, entityRadius);

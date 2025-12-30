@@ -297,7 +297,6 @@ private:
                                        body.type, body.layer, body.collidesWith);
             entityIds.push_back(id);
         }
-        manager.processPendingCommands();
 
         // Simulate cache effectiveness: most bodies don't move much
         constexpr int cacheTestFrames = 100;
@@ -378,7 +377,6 @@ private:
                                         body.type, body.layer, body.collidesWith);
             entityIds.push_back(id);
         }
-        manager.processPendingCommands();
 
         // Reduced warmup iterations for faster benchmarking
         for (int i = 0; i < 2; ++i) {

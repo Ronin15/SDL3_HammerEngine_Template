@@ -43,7 +43,6 @@
 #include <map>
 #include <numeric>
 #include <queue>
-#include <set>
 #include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>
@@ -62,6 +61,17 @@ using ::HammerEngine::ObstacleType;
 
 // Building collision body limits
 constexpr uint16_t MAX_BUILDING_SUB_BODIES = 1000;
+
+// Fibonacci hash for pair<int,int> - excellent for sequential tile coordinates
+// Uses golden ratio multiplier for even distribution of consecutive values
+struct PairHash {
+  size_t operator()(const std::pair<int, int>& p) const noexcept {
+    constexpr uint64_t kFibMult = 11400714819323198485ULL;  // 2^64 / φ (golden ratio)
+    uint64_t h1 = static_cast<uint64_t>(static_cast<uint32_t>(p.first)) * kFibMult;
+    uint64_t h2 = static_cast<uint64_t>(static_cast<uint32_t>(p.second)) * kFibMult;
+    return h1 ^ (h2 >> 1);  // Shift h2 to break symmetry (a,b) != (b,a)
+  }
+};
 
 bool CollisionManager::init() {
   if (m_initialized)
@@ -139,25 +149,10 @@ void CollisionManager::prepareForStateTransition() {
   COLLISION_INFO(std::format("STORAGE LIFECYCLE: prepareForStateTransition() clearing {} SOA bodies (dynamic + static)",
                              soaBodyCount));
 
-  // Acquire exclusive write lock before clearing storage
-  // Prevents AI threads from reading during modifications
-  {
-    std::unique_lock<std::shared_mutex> storageLock(m_storageMutex);
-
-    // Clear all collision bodies and spatial hashes
-    m_storage.clear();
-    m_staticSpatialHash.clear();
-    m_dynamicSpatialHash.clear();
-  }
-
-  // Process any pending commands before clearing caches to ensure clean state
-  processPendingCommands();
-
-  // Clear pending command queue to prevent stale commands in new state
-  {
-    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
-    m_pendingCommands.clear();
-  }
+  // Clear all collision bodies and spatial hashes
+  m_storage.clear();
+  m_staticSpatialHash.clear();
+  m_dynamicSpatialHash.clear();
 
   // Clear collision buffers to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();
@@ -243,7 +238,7 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
   const EntityID id = HammerEngine::UniqueID::generate();
   const Vector2D center(aabb.center.getX(), aabb.center.getY());
   const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-  // Pass trigger properties through deferred command queue (thread-safe)
+  // addCollisionBodySOA creates EDM entry for STATIC bodies
   addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
                       layerMask, collideMask, true, static_cast<uint8_t>(tag));
   return id;
@@ -341,8 +336,8 @@ size_t CollisionManager::createStaticObstacleBodies() {
   constexpr float tileSize = HammerEngine::TILE_SIZE;
   const int h = static_cast<int>(world->grid.size());
 
-  // Track which tiles we've already processed
-  std::set<std::pair<int, int>> processedTiles;
+  // Track which tiles we've already processed (O(1) lookup with unordered_set)
+  std::unordered_set<std::pair<int, int>, PairHash> processedTiles;
 
   for (int y = 0; y < h; ++y) {
     const int w = static_cast<int>(world->grid[y].size());
@@ -357,7 +352,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
         continue;
 
       // Flood fill to find all connected building tiles with same buildingId
-      std::set<std::pair<int, int>> visited;
+      std::unordered_set<std::pair<int, int>, PairHash> visited;
       std::queue<std::pair<int, int>> toVisit;
       std::vector<std::pair<int, int>> buildingTiles;
 
@@ -508,9 +503,6 @@ size_t CollisionManager::createStaticObstacleBodies() {
 
 
 bool CollisionManager::overlaps(EntityID a, EntityID b) const {
-  // Thread-safe read access - single lock for entire operation
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto itA = m_storage.entityToIndex.find(a);
   auto itB = m_storage.entityToIndex.find(b);
   if (itA == m_storage.entityToIndex.end() || itB == m_storage.entityToIndex.end())
@@ -526,9 +518,6 @@ bool CollisionManager::overlaps(EntityID a, EntityID b) const {
 
 void CollisionManager::queryArea(const AABB &area,
                                  std::vector<EntityID> &out) const {
-  // Thread-safe read access - allows concurrent reads from multiple AI threads
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   // Query SOA storage for bodies that intersect with the area
   out.clear();
 
@@ -544,9 +533,6 @@ void CollisionManager::queryArea(const AABB &area,
 }
 
 bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
-  // Thread-safe read access - single lock for entire operation
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end())
     return false;
@@ -566,9 +552,6 @@ bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
 }
 
 bool CollisionManager::isDynamic(EntityID id) const {
-  // Thread-safe read access - single lock for entire operation
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end())
     return false;
@@ -577,9 +560,6 @@ bool CollisionManager::isDynamic(EntityID id) const {
 }
 
 bool CollisionManager::isKinematic(EntityID id) const {
-  // Thread-safe read access - single lock for entire operation
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end())
     return false;
@@ -588,9 +568,6 @@ bool CollisionManager::isKinematic(EntityID id) const {
 }
 
 bool CollisionManager::isStatic(EntityID id) const {
-  // Thread-safe read access - single lock for entire operation
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end())
     return false;
@@ -599,9 +576,6 @@ bool CollisionManager::isStatic(EntityID id) const {
 }
 
 bool CollisionManager::isTrigger(EntityID id) const {
-  // Thread-safe read access - single lock for entire operation
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end())
     return false;
@@ -731,11 +705,6 @@ void CollisionManager::rebuildStaticFromWorld() {
         "World colliders built: solid={}, water triggers={}",
         solidBodies, waterTriggers));
 
-    // CRITICAL: Process pending commands BEFORE rebuilding spatial hash
-    // The createStatic*() functions above add bodies via command queue,
-    // so we must process them first or spatial hash will be empty!
-    processPendingCommands();
-
 #ifndef NDEBUG
     // Debug-only: Count building collision bodies for verification
     int buildingBodyCount = 0;
@@ -798,7 +767,7 @@ void CollisionManager::onTileChanged(int x, int y) {
     if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
       // Find all connected building tiles to create unified collision body
       // This prevents collision seams when buildings are adjacent
-      std::set<std::pair<int, int>> visited;
+      std::unordered_set<std::pair<int, int>, PairHash> visited;
       std::queue<std::pair<int, int>> toVisit;
       std::vector<std::pair<int, int>> buildingTiles;
 
@@ -1013,311 +982,222 @@ void CollisionManager::subscribeWorldEvents() {
   m_handlerTokens.push_back(token);
 }
 
-// ========== NEW SOA STORAGE MANAGEMENT METHODS ==========
-
-void CollisionManager::processPendingCommands() {
-  // Drain the command queue and apply all pending operations
-  // This is called from updateSOA() on the update thread
-  std::vector<PendingCommand> commandsToProcess;
-
-  {
-    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
-    if (m_pendingCommands.empty()) {
-      return; // Early exit if no commands
-    }
-    commandsToProcess.swap(m_pendingCommands); // Move commands out quickly
-  }
-
-  // Acquire exclusive write lock - prevents AI threads from reading during modifications
-  // This protects entityToIndex map and storage arrays from concurrent access
-  std::unique_lock<std::shared_mutex> storageLock(m_storageMutex);
-
-  for (const auto& cmd : commandsToProcess) {
-    switch (cmd.type) {
-      case CommandType::Add: {
-        // Check if entity already exists
-        auto it = m_storage.entityToIndex.find(cmd.id);
-        if (it != m_storage.entityToIndex.end()) {
-          // Update existing entity
-          size_t index = it->second;
-          if (index < m_storage.hotData.size()) {
-            auto& hot = m_storage.hotData[index];
-            BodyType oldBodyType = static_cast<BodyType>(hot.bodyType);
-            uint32_t oldLayers = hot.layers;
-
-            // Update AABB cache directly (position/halfSize owned by EDM)
-            float px = cmd.position.getX();
-            float py = cmd.position.getY();
-            float hw = cmd.halfSize.getX();
-            float hh = cmd.halfSize.getY();
-            hot.aabbMinX = px - hw;
-            hot.aabbMinY = py - hh;
-            hot.aabbMaxX = px + hw;
-            hot.aabbMaxY = py + hh;
-            hot.aabbDirty = 0;
-            hot.layers = cmd.layer;
-            hot.collidesWith = cmd.collideMask;
-            hot.bodyType = static_cast<uint8_t>(cmd.bodyType);
-            hot.active = true;
-
-            // OPTIMIZATION: Update movable tracking if body type changed
-            bool wasMovable = (oldBodyType != BodyType::STATIC);
-            bool isMovable = (cmd.bodyType != BodyType::STATIC);
-            if (wasMovable && !isMovable) {
-              // Changed from movable to static: remove from tracking
-              m_movableIndexSet.erase(index);
-              auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), index);
-              if (movableIt != m_movableBodyIndices.end()) {
-                *movableIt = m_movableBodyIndices.back();
-                m_movableBodyIndices.pop_back();
-              }
-            } else if (!wasMovable && isMovable) {
-              // Changed from static to movable: add to tracking
-              m_movableBodyIndices.push_back(index);
-              m_movableIndexSet.insert(index);
-            }
-
-            // OPTIMIZATION: Update player index if layer changed
-            bool wasPlayer = (oldLayers & CollisionLayer::Layer_Player) != 0;
-            bool isPlayer = (cmd.layer & CollisionLayer::Layer_Player) != 0;
-            if (!wasPlayer && isPlayer) {
-              m_playerBodyIndex = index;
-            } else if (wasPlayer && !isPlayer && m_playerBodyIndex == index) {
-              m_playerBodyIndex = std::nullopt;
-            }
-
-            // Update cold data
-            if (index < m_storage.coldData.size()) {
-              m_storage.coldData[index].fullAABB = AABB(cmd.position.getX(), cmd.position.getY(),
-                                                        cmd.halfSize.getX(), cmd.halfSize.getY());
-            }
-          }
-          continue;
-        }
-
-        // Add new entity
-        size_t newIndex = m_storage.size();
-
-        // Extract position and size for AABB calculation
-        float px = cmd.position.getX();
-        float py = cmd.position.getY();
-        float hw = cmd.halfSize.getX();
-        float hh = cmd.halfSize.getY();
-
-        // Initialize hot data (position/velocity/halfSize owned by EDM)
-        CollisionStorage::HotData hotData{};
-        hotData.aabbMinX = px - hw;
-        hotData.aabbMinY = py - hh;
-        hotData.aabbMaxX = px + hw;
-        hotData.aabbMaxY = py + hh;
-        hotData.aabbDirty = 0;
-        hotData.layers = cmd.layer;
-        hotData.collidesWith = cmd.collideMask;
-        hotData.bodyType = static_cast<uint8_t>(cmd.bodyType);
-        hotData.triggerTag = cmd.triggerTag;
-        hotData.active = true;
-        hotData.isTrigger = cmd.isTrigger;
-
-        // Set EDM index: All bodies get EDM entries (EDM is the single source of truth)
-        // - Static bodies use EntityKind::StaticObstacle
-        // - Dynamic/Kinematic bodies may have attachEntity() called later to link to Entity class
-        auto& edm = EntityDataManager::Instance();
-        if (cmd.bodyType == BodyType::STATIC) {
-          // Create EDM entry for static bodies (world geometry)
-          EntityHandle handle = edm.createStaticBody(cmd.position, hw, hh);
-          hotData.edmIndex = edm.getIndex(handle);
-        } else {
-          // Create temporary EDM entry for dynamic/kinematic (may be replaced by attachEntity)
-          // This ensures position/velocity can be accessed even before entity is attached
-          EntityHandle handle = edm.createStaticBody(cmd.position, hw, hh);
-          hotData.edmIndex = edm.getIndex(handle);
-        }
-
-        // CRITICAL: Initialize coarse cell coords for cache optimization
-        AABB initialAABB(px, py, hw, hh);
-        auto initialCoarseCell = m_staticSpatialHash.getCoarseCoord(initialAABB);
-        hotData.coarseCellX = static_cast<int16_t>(initialCoarseCell.x);
-        hotData.coarseCellY = static_cast<int16_t>(initialCoarseCell.y);
-
-        // Initialize cold data
-        // NOTE: acceleration/lastPosition removed - EntityDataManager owns transform data (Phase 3)
-        CollisionStorage::ColdData coldData{};
-        coldData.fullAABB = AABB(cmd.position.getX(), cmd.position.getY(),
-                                 cmd.halfSize.getX(), cmd.halfSize.getY());
-
-        // Add to storage
-        m_storage.hotData.push_back(hotData);
-        m_storage.coldData.push_back(coldData);
-        m_storage.entityIds.push_back(cmd.id);
-        m_storage.entityToIndex[cmd.id] = newIndex;
-
-        // OPTIMIZATION: Track movable body indices (avoids O(n) iteration per frame)
-        if (cmd.bodyType != BodyType::STATIC) {
-          m_movableBodyIndices.push_back(newIndex);
-          m_movableIndexSet.insert(newIndex);
-        }
-
-        // OPTIMIZATION: Cache player index for O(1) culling area lookup
-        if (cmd.layer & CollisionLayer::Layer_Player) {
-          m_playerBodyIndex = newIndex;
-        }
-
-        // Fire collision obstacle changed event for static bodies
-        if (cmd.bodyType == BodyType::STATIC) {
-          float radius = std::max(cmd.halfSize.getX(), cmd.halfSize.getY()) + 16.0f;
-          std::string description = std::format("Static obstacle added at ({}, {})",
-                                                cmd.position.getX(), cmd.position.getY());
-          EventManager::Instance().triggerCollisionObstacleChanged(cmd.position, radius, description,
-                                                                  EventManager::DispatchMode::Deferred);
-          m_staticHashDirty = true;
-        }
-        break;
-      }
-
-      case CommandType::Remove: {
-        auto it = m_storage.entityToIndex.find(cmd.id);
-        if (it == m_storage.entityToIndex.end()) {
-          continue; // Entity not found
-        }
-
-        size_t indexToRemove = it->second;
-        size_t lastIndex = m_storage.size() - 1;
-
-        // Fire collision obstacle changed event for static bodies before removal
-        if (indexToRemove < m_storage.size()) {
-          const auto& hot = m_storage.hotData[indexToRemove];
-          if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-            // Get position/size from EDM or cached AABB
-            Vector2D position;
-            float halfW, halfH;
-            if (hot.edmIndex != SIZE_MAX) {
-              auto& edm = EntityDataManager::Instance();
-              position = edm.getTransformByIndex(hot.edmIndex).position;
-              const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
-              halfW = edmHot.halfWidth;
-              halfH = edmHot.halfHeight;
-            } else {
-              position = Vector2D((hot.aabbMinX + hot.aabbMaxX) * 0.5f,
-                                  (hot.aabbMinY + hot.aabbMaxY) * 0.5f);
-              halfW = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
-              halfH = (hot.aabbMaxY - hot.aabbMinY) * 0.5f;
-            }
-            float radius = std::max(halfW, halfH) + 16.0f;
-            std::string description = std::format("Static obstacle removed from ({}, {})",
-                                                  position.getX(), position.getY());
-            EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
-                                                                    EventManager::DispatchMode::Deferred);
-            m_staticHashDirty = true;
-          }
-        }
-
-        // OPTIMIZATION: Clear player index if removing player
-        if (m_playerBodyIndex && *m_playerBodyIndex == indexToRemove) {
-          m_playerBodyIndex = std::nullopt;
-        }
-
-        // OPTIMIZATION: Remove from movable tracking (swap-and-pop for O(1))
-        if (m_movableIndexSet.count(indexToRemove)) {
-          m_movableIndexSet.erase(indexToRemove);
-          auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), indexToRemove);
-          if (movableIt != m_movableBodyIndices.end()) {
-            *movableIt = m_movableBodyIndices.back();
-            m_movableBodyIndices.pop_back();
-          }
-        }
-
-        if (indexToRemove != lastIndex) {
-          // Swap with last element
-          m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
-          m_storage.coldData[indexToRemove] = m_storage.coldData[lastIndex];
-          m_storage.entityIds[indexToRemove] = m_storage.entityIds[lastIndex];
-
-          // Update map for swapped entity
-          EntityID movedEntity = m_storage.entityIds[indexToRemove];
-          m_storage.entityToIndex[movedEntity] = indexToRemove;
-
-          // OPTIMIZATION: Update tracking for moved element (lastIndex -> indexToRemove)
-          if (m_playerBodyIndex && *m_playerBodyIndex == lastIndex) {
-            m_playerBodyIndex = indexToRemove;
-          }
-          if (m_movableIndexSet.count(lastIndex)) {
-            m_movableIndexSet.erase(lastIndex);
-            m_movableIndexSet.insert(indexToRemove);
-            // Update vector: find lastIndex and replace with indexToRemove
-            auto movedIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), lastIndex);
-            if (movedIt != m_movableBodyIndices.end()) {
-              *movedIt = indexToRemove;
-            }
-          }
-        }
-
-        // Remove last element
-        m_storage.hotData.pop_back();
-        m_storage.coldData.pop_back();
-        m_storage.entityIds.pop_back();
-        m_storage.entityToIndex.erase(cmd.id);
-        break;
-      }
-
-      case CommandType::Modify:
-        // Handle modify commands if needed in the future
-        break;
-    }
-  }
-}
+// ========== SOA STORAGE MANAGEMENT METHODS ==========
 
 size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& position,
                                               const Vector2D& halfSize, BodyType type,
                                               uint32_t layer, uint32_t collidesWith,
                                               bool isTrigger, uint8_t triggerTag) {
-  // Queue command for deferred processing on update thread (thread-safe)
-  PendingCommand cmd;
-  cmd.type = CommandType::Add;
-  cmd.id = id;
-  cmd.position = position;
-  cmd.halfSize = halfSize;
-  cmd.bodyType = type;
-  cmd.layer = layer;
-  cmd.collideMask = collidesWith;
-  cmd.isTrigger = isTrigger;
-  cmd.triggerTag = triggerTag;
+  // Check if entity already exists
+  auto it = m_storage.entityToIndex.find(id);
+  if (it != m_storage.entityToIndex.end()) {
+    // Update existing entity
+    size_t index = it->second;
+    if (index < m_storage.hotData.size()) {
+      auto& hot = m_storage.hotData[index];
+      BodyType oldBodyType = static_cast<BodyType>(hot.bodyType);
+      uint32_t oldLayers = hot.layers;
 
-  {
-    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
-    m_pendingCommands.push_back(cmd);
+      float px = position.getX();
+      float py = position.getY();
+      float hw = halfSize.getX();
+      float hh = halfSize.getY();
+      hot.aabbMinX = px - hw;
+      hot.aabbMinY = py - hh;
+      hot.aabbMaxX = px + hw;
+      hot.aabbMaxY = py + hh;
+      hot.aabbDirty = 0;
+      hot.layers = layer;
+      hot.collidesWith = collidesWith;
+      hot.bodyType = static_cast<uint8_t>(type);
+      hot.active = true;
+
+      // Update movable tracking if body type changed
+      bool wasMovable = (oldBodyType != BodyType::STATIC);
+      bool isMovable = (type != BodyType::STATIC);
+      if (wasMovable && !isMovable) {
+        m_movableIndexSet.erase(index);
+        auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), index);
+        if (movableIt != m_movableBodyIndices.end()) {
+          *movableIt = m_movableBodyIndices.back();
+          m_movableBodyIndices.pop_back();
+        }
+      } else if (!wasMovable && isMovable) {
+        m_movableBodyIndices.push_back(index);
+        m_movableIndexSet.insert(index);
+      }
+
+      // Update player index if layer changed
+      bool wasPlayer = (oldLayers & CollisionLayer::Layer_Player) != 0;
+      bool isPlayer = (layer & CollisionLayer::Layer_Player) != 0;
+      if (!wasPlayer && isPlayer) {
+        m_playerBodyIndex = index;
+      } else if (wasPlayer && !isPlayer && m_playerBodyIndex == index) {
+        m_playerBodyIndex = std::nullopt;
+      }
+
+      if (index < m_storage.coldData.size()) {
+        m_storage.coldData[index].fullAABB = AABB(px, py, hw, hh);
+      }
+    }
+    return it->second;
   }
 
-  // Return 0 as placeholder - actual index will be assigned when command is processed
-  // This is acceptable since most callers don't use the return value
-  return 0;
+  // Add new entity
+  size_t newIndex = m_storage.size();
+  float px = position.getX();
+  float py = position.getY();
+  float hw = halfSize.getX();
+  float hh = halfSize.getY();
+
+  CollisionStorage::HotData hotData{};
+  hotData.aabbMinX = px - hw;
+  hotData.aabbMinY = py - hh;
+  hotData.aabbMaxX = px + hw;
+  hotData.aabbMaxY = py + hh;
+  hotData.aabbDirty = 0;
+  hotData.layers = layer;
+  hotData.collidesWith = collidesWith;
+  hotData.bodyType = static_cast<uint8_t>(type);
+  hotData.triggerTag = triggerTag;
+  hotData.active = true;
+  hotData.isTrigger = isTrigger;
+
+  // Look up EDM entry by EntityID - EDM is source of truth
+  auto& edm = EntityDataManager::Instance();
+  size_t edmIdx = edm.findIndexByEntityId(id);
+  if (edmIdx == SIZE_MAX) {
+    // Not registered with EDM - create entry for collision body
+    EntityHandle handle = edm.createStaticBody(position, hw, hh);
+    edmIdx = edm.getIndex(handle);
+  }
+  hotData.edmIndex = edmIdx;
+
+  // Initialize coarse cell coords for cache optimization
+  AABB initialAABB(px, py, hw, hh);
+  auto initialCoarseCell = m_staticSpatialHash.getCoarseCoord(initialAABB);
+  hotData.coarseCellX = static_cast<int16_t>(initialCoarseCell.x);
+  hotData.coarseCellY = static_cast<int16_t>(initialCoarseCell.y);
+
+  CollisionStorage::ColdData coldData{};
+  coldData.fullAABB = AABB(px, py, hw, hh);
+
+  m_storage.hotData.push_back(hotData);
+  m_storage.coldData.push_back(coldData);
+  m_storage.entityIds.push_back(id);
+  m_storage.entityToIndex[id] = newIndex;
+
+  if (type != BodyType::STATIC) {
+    m_movableBodyIndices.push_back(newIndex);
+    m_movableIndexSet.insert(newIndex);
+  }
+
+  if (layer & CollisionLayer::Layer_Player) {
+    m_playerBodyIndex = newIndex;
+  }
+
+  if (type == BodyType::STATIC) {
+    float radius = std::max(hw, hh) + 16.0f;
+    std::string description = std::format("Static obstacle added at ({}, {})", px, py);
+    EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
+                                                            EventManager::DispatchMode::Deferred);
+    m_staticHashDirty = true;
+  }
+
+  return newIndex;
 }
 
 void CollisionManager::removeCollisionBodySOA(EntityID id) {
-  // Queue command for deferred processing on update thread (thread-safe)
-  PendingCommand cmd;
-  cmd.type = CommandType::Remove;
-  cmd.id = id;
-
-  {
-    std::lock_guard<std::mutex> lock(m_commandQueueMutex);
-    m_pendingCommands.push_back(cmd);
+  auto it = m_storage.entityToIndex.find(id);
+  if (it == m_storage.entityToIndex.end()) {
+    return; // Entity not found
   }
 
-  // Clean up trigger-related state for this entity
-  for (auto it = m_activeTriggerPairs.begin(); it != m_activeTriggerPairs.end(); ) {
-    if (it->second.first == id || it->second.second == id) {
-      it = m_activeTriggerPairs.erase(it);
+  size_t indexToRemove = it->second;
+  size_t lastIndex = m_storage.size() - 1;
+
+  // Fire collision obstacle changed event for static bodies before removal
+  if (indexToRemove < m_storage.size()) {
+    const auto& hot = m_storage.hotData[indexToRemove];
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      Vector2D position;
+      float halfW, halfH;
+      if (hot.edmIndex != SIZE_MAX) {
+        auto& edm = EntityDataManager::Instance();
+        position = edm.getTransformByIndex(hot.edmIndex).position;
+        const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+        halfW = edmHot.halfWidth;
+        halfH = edmHot.halfHeight;
+      } else {
+        position = Vector2D((hot.aabbMinX + hot.aabbMaxX) * 0.5f,
+                            (hot.aabbMinY + hot.aabbMaxY) * 0.5f);
+        halfW = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
+        halfH = (hot.aabbMaxY - hot.aabbMinY) * 0.5f;
+      }
+      float radius = std::max(halfW, halfH) + 16.0f;
+      std::string description = std::format("Static obstacle removed from ({}, {})",
+                                            position.getX(), position.getY());
+      EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
+                                                              EventManager::DispatchMode::Deferred);
+      m_staticHashDirty = true;
+    }
+  }
+
+  // Clear player index if removing player
+  if (m_playerBodyIndex && *m_playerBodyIndex == indexToRemove) {
+    m_playerBodyIndex = std::nullopt;
+  }
+
+  // Remove from movable tracking (swap-and-pop for O(1))
+  if (m_movableIndexSet.count(indexToRemove)) {
+    m_movableIndexSet.erase(indexToRemove);
+    auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), indexToRemove);
+    if (movableIt != m_movableBodyIndices.end()) {
+      *movableIt = m_movableBodyIndices.back();
+      m_movableBodyIndices.pop_back();
+    }
+  }
+
+  if (indexToRemove != lastIndex) {
+    // Swap with last element
+    m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
+    m_storage.coldData[indexToRemove] = m_storage.coldData[lastIndex];
+    m_storage.entityIds[indexToRemove] = m_storage.entityIds[lastIndex];
+
+    EntityID movedEntity = m_storage.entityIds[indexToRemove];
+    m_storage.entityToIndex[movedEntity] = indexToRemove;
+
+    // Update tracking for moved element
+    if (m_playerBodyIndex && *m_playerBodyIndex == lastIndex) {
+      m_playerBodyIndex = indexToRemove;
+    }
+    if (m_movableIndexSet.count(lastIndex)) {
+      m_movableIndexSet.erase(lastIndex);
+      m_movableIndexSet.insert(indexToRemove);
+      auto movedIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), lastIndex);
+      if (movedIt != m_movableBodyIndices.end()) {
+        *movedIt = indexToRemove;
+      }
+    }
+  }
+
+  m_storage.hotData.pop_back();
+  m_storage.coldData.pop_back();
+  m_storage.entityIds.pop_back();
+  m_storage.entityToIndex.erase(id);
+
+  // Clean up trigger-related state
+  for (auto triggerIt = m_activeTriggerPairs.begin(); triggerIt != m_activeTriggerPairs.end(); ) {
+    if (triggerIt->second.first == id || triggerIt->second.second == id) {
+      triggerIt = m_activeTriggerPairs.erase(triggerIt);
     } else {
-      ++it;
+      ++triggerIt;
     }
   }
   m_triggerCooldownUntil.erase(id);
 }
 
 bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
-  // Thread-safe read access - allows concurrent reads from multiple AI threads
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
     outIndex = it->second;
@@ -1402,10 +1282,6 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
 }
 
 void CollisionManager::attachEntity(EntityID id, EntityPtr entity) {
-  // Acquire exclusive lock for writing entityWeak pointer and edmIndex
-  // Ensures thread-safe access during concurrent reads from collision detection
-  std::unique_lock<std::shared_mutex> lock(m_storageMutex);
-
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
     size_t index = it->second;
@@ -2482,9 +2358,6 @@ void CollisionManager::updateSOA(float dt) {
   auto t0 = clock::now();
 #endif
 
-  // Process pending add/remove commands first (thread-safe deferred operations)
-  processPendingCommands();
-
   // Refresh cached AABB bounds from EntityDataManager (single source of truth)
   // AIManager integrates movement and writes to EDM - we read from EDM here
   refreshCachedAABBs();
@@ -3203,14 +3076,9 @@ void CollisionManager::updatePerformanceMetricsSOA(
 void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates) {
   if (updates.empty()) return;
 
-  // PERFORMANCE FIX: Acquire lock ONCE for entire batch instead of per-entity
-  // Reduces lock acquisitions from O(n) to O(1) - critical for 1000+ entity updates
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
-
   // Batch update all kinematic bodies - update EDM (single source of truth)
   auto& edm = EntityDataManager::Instance();
   for (const auto& bodyUpdate : updates) {
-    // Direct map access without additional locking (we hold the lock)
     auto it = m_storage.entityToIndex.find(bodyUpdate.id);
     if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
       size_t index = it->second;
@@ -3252,9 +3120,6 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
     [](size_t sum, const auto& batch) { return sum + batch.size(); });
 
   if (totalUpdates == 0) return;
-
-  // PERFORMANCE: Acquire shared lock ONCE for all batches
-  std::shared_lock<std::shared_mutex> lock(m_storageMutex);
 
   // Merge all batch updates into EDM (single source of truth)
   auto& edm = EntityDataManager::Instance();

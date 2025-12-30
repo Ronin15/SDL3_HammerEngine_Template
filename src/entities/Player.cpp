@@ -276,14 +276,11 @@ void Player::ensurePhysicsBodyRegistered() {
   Vector2D pos = getPosition();
   HammerEngine::AABB aabb(pos.getX(), pos.getY(), halfW, halfH);
 
-  // Use new SOA-based collision system
+  // Add collision body, then attach entity to link EDM entry
   // Player collides with everything except pets (pets pass through player)
   uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Pet;
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
                         HammerEngine::CollisionLayer::Layer_Player, mask);
-  // Process queued command to ensure body exists before attaching
-  cm.processPendingCommands();
-  // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 }
 

@@ -508,12 +508,8 @@ void NPC::ensurePhysicsBodyRegistered() {
                            HammerEngine::CollisionLayer::Layer_Pet);
   }
 
-  // Use new SOA-based collision system (deferred command queue)
+  // Add collision body, then attach entity to link EDM entry
   cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
-  // CRITICAL: Process command immediately so body exists before attaching entity
-  // This is safe because we batch spawn NPCs (30 every 10 frames) instead of per-frame
-  cm.processPendingCommands();
-  // Attach entity reference to SOA storage
   cm.attachEntity(getID(), shared_this());
 
   std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
