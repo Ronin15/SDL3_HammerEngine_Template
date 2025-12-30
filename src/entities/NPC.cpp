@@ -213,6 +213,12 @@ void NPC::update(float deltaTime) {
 }
 
 void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
+  // Cache texture on first render (like WorldManager pattern - no hash lookup per frame)
+  if (!m_cachedTexture) {
+    m_cachedTexture = TextureManager::Instance().getTexturePtr(m_textureID);
+    if (!m_cachedTexture) return;
+  }
+
   // Get interpolated position for smooth rendering between fixed timestep updates
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
@@ -221,12 +227,19 @@ void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float int
   float renderX = interpPos.getX() - cameraX - (m_frameWidth / 2.0f);
   float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
-  // Render the NPC with the current animation frame
-  TextureManager::Instance().drawFrame(m_textureID,
-                    renderX,
-                    renderY,
-                    m_frameWidth, m_height, m_currentRow, m_currentFrame,
-                    renderer, m_flip);
+  // Direct SDL call with cached texture - no hash lookup!
+  SDL_FRect srcRect = {
+      static_cast<float>(m_frameWidth * m_currentFrame),
+      static_cast<float>(m_height * (m_currentRow - 1)),
+      static_cast<float>(m_frameWidth),
+      static_cast<float>(m_height)
+  };
+  SDL_FRect destRect = {renderX, renderY,
+                        static_cast<float>(m_frameWidth),
+                        static_cast<float>(m_height)};
+  SDL_FPoint center = {m_frameWidth / 2.0f, m_height / 2.0f};
+
+  SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0, &center, m_flip);
 }
 
 void NPC::clean() {
