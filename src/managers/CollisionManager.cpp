@@ -1557,142 +1557,81 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
   indexPairs.reserve(movableIndices.size() * (movableIndices.size() / 2 + staticIndices.size()) / 4);
 
   // ========================================================================
-  // 1. MOVABLE-VS-MOVABLE: Direct iteration with SIMD AABB checks
-  //    Zero spatial hash queries - O(M²/2) checks with SIMD batching
+  // 1. MOVABLE-VS-MOVABLE: Sweep-and-Prune (SAP) algorithm
+  //    Sort by X, only check pairs with overlapping X ranges - O(M log M + M*k)
+  //    where k is average number of X-overlapping neighbors (typically small)
   // ========================================================================
+  if (movableIndices.size() > 1) {
+    // Copy and sort movables by minX for sweep-and-prune
+    auto& sorted = m_collisionPool.sortedMovableIndices;
+    sorted.assign(movableIndices.begin(), movableIndices.end());
+    std::sort(sorted.begin(), sorted.end(), [this](size_t a, size_t b) {
+      return m_storage.hotData[a].aabbMinX < m_storage.hotData[b].aabbMinX;
+    });
+
+    // Sweep: for each body, only check bodies that start before this one ends (X overlap)
+    for (size_t i = 0; i < sorted.size(); ++i) {
+      size_t idxA = sorted[i];
+      const auto& hotA = m_storage.hotData[idxA];
+      if (!hotA.active) continue;
+
+      const float maxXA = hotA.aabbMaxX + SPATIAL_QUERY_EPSILON;
+      const uint32_t collidesWithA = hotA.collidesWith;
+
+      // Check subsequent bodies until their minX > our maxX (early exit!)
+      for (size_t j = i + 1; j < sorted.size(); ++j) {
+        size_t idxB = sorted[j];
+        const auto& hotB = m_storage.hotData[idxB];
+
+        // SAP early termination: if B's minX > A's maxX, no more overlaps possible
+        if (hotB.aabbMinX > maxXA) break;
+
+        if (!hotB.active) continue;
+
+        // X already overlaps (from SAP), check Y overlap
+        if (hotA.aabbMaxY + SPATIAL_QUERY_EPSILON < hotB.aabbMinY ||
+            hotA.aabbMinY - SPATIAL_QUERY_EPSILON > hotB.aabbMaxY) continue;
+
+        // Layer mask check
+        if ((collidesWithA & hotB.layers) == 0) continue;
+
+        // Safety: skip self-pairs (shouldn't happen with unique indices)
+        if (idxA != idxB) {
+          indexPairs.emplace_back(idxA, idxB);
+        }
+      }
+    }
+  }
+
+  // ========================================================================
+  // 2. MOVABLE-VS-STATIC: Iterate each movable against statics
+  //    Uses pre-computed staticIndices from culling area
+  // ========================================================================
+  static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
+
   for (size_t mi = 0; mi < movableIndices.size(); ++mi) {
     size_t dynamicIdx = movableIndices[mi];
-    if (!m_storage.hotData[dynamicIdx].active) continue;
-
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
+    if (!dynamicHot.active) continue;
+
     const uint32_t dynamicCollidesWith = dynamicHot.collidesWith;
 
-    // Broadcast dynamic AABB for SIMD comparison
-    Float4 dynMinX = broadcast(dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON);
-    Float4 dynMinY = broadcast(dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON);
-    Float4 dynMaxX = broadcast(dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON);
-    Float4 dynMaxY = broadcast(dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON);
-    const Int4 dynamicMaskVec = broadcast_int(dynamicCollidesWith);
-
-    // Only check movables with higher index to avoid duplicate pairs
-    size_t startJ = mi + 1;
-    const size_t movableSimdEnd = startJ + ((movableIndices.size() - startJ) / 4) * 4;
-
-    for (size_t mj = startJ; mj < movableSimdEnd; mj += 4) {
-      size_t c0 = movableIndices[mj], c1 = movableIndices[mj+1];
-      size_t c2 = movableIndices[mj+2], c3 = movableIndices[mj+3];
-
-      // Load 4 candidate AABBs
-      Float4 candMinX = set(m_storage.hotData[c0].aabbMinX, m_storage.hotData[c1].aabbMinX,
-                            m_storage.hotData[c2].aabbMinX, m_storage.hotData[c3].aabbMinX);
-      Float4 candMaxX = set(m_storage.hotData[c0].aabbMaxX, m_storage.hotData[c1].aabbMaxX,
-                            m_storage.hotData[c2].aabbMaxX, m_storage.hotData[c3].aabbMaxX);
-      Float4 candMinY = set(m_storage.hotData[c0].aabbMinY, m_storage.hotData[c1].aabbMinY,
-                            m_storage.hotData[c2].aabbMinY, m_storage.hotData[c3].aabbMinY);
-      Float4 candMaxY = set(m_storage.hotData[c0].aabbMaxY, m_storage.hotData[c1].aabbMaxY,
-                            m_storage.hotData[c2].aabbMaxY, m_storage.hotData[c3].aabbMaxY);
-
-      // SIMD AABB overlap test
-      Float4 noOverlapX1 = cmplt(dynMaxX, candMinX);
-      Float4 noOverlapX2 = cmplt(candMaxX, dynMinX);
-      Float4 noOverlapY1 = cmplt(dynMaxY, candMinY);
-      Float4 noOverlapY2 = cmplt(candMaxY, dynMinY);
-      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
-      int noOverlapMask = movemask(noOverlap);
-
-      if (noOverlapMask == 0xF) continue;  // No overlaps in this batch
-
-      // Layer mask check for overlapping candidates
-      Int4 candLayers = set_int4(m_storage.hotData[c0].layers, m_storage.hotData[c1].layers,
-                                 m_storage.hotData[c2].layers, m_storage.hotData[c3].layers);
-      Int4 layerResult = bitwise_and(dynamicMaskVec, candLayers);
-      Int4 layerZero = cmpeq_int(layerResult, setzero_int());
-      int layerFailMask = movemask_int(layerZero);
-
-      // Emit pairs for lanes that overlap AND have matching layers
-      for (size_t k = 0; k < 4; ++k) {
-        if (((noOverlapMask >> k) & 1) == 0 && ((layerFailMask >> (k * 4)) & 0xF) == 0) {
-          size_t candIdx = movableIndices[mj + k];
-          if (candIdx != dynamicIdx && m_storage.hotData[candIdx].active) {
-            indexPairs.emplace_back(dynamicIdx, candIdx);
-          }
-        }
-      }
-    }
-
-    // Scalar tail for remaining movables
-    for (size_t mj = movableSimdEnd; mj < movableIndices.size(); ++mj) {
-      size_t candIdx = movableIndices[mj];
-      if (candIdx == dynamicIdx) continue;
-      const auto& candHot = m_storage.hotData[candIdx];
-      if (!candHot.active) continue;
-      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < candHot.aabbMinX ||
-          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > candHot.aabbMaxX ||
-          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < candHot.aabbMinY ||
-          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > candHot.aabbMaxY) continue;
-      if ((dynamicCollidesWith & candHot.layers) == 0) continue;
-      indexPairs.emplace_back(dynamicIdx, candIdx);
-    }
-
-    // ========================================================================
-    // 2. MOVABLE-VS-STATIC: Choose strategy based on static count in cull area
-    //    Small count: Direct SIMD iteration (zero queries)
-    //    Large count: Spatial hash query (filters to nearby statics)
-    // ========================================================================
-    static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
-    const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
-
     if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
-      // DIRECT PATH: Iterate all culled statics with SIMD AABB checks
-      size_t si = 0;
-      const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
-
-      for (; si < staticSimdEnd; si += 4) {
-        size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
-        size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
-
-        Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
-                              m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
-        Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
-                              m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
-        Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
-                              m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
-        Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
-                              m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
-
-        Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
-        Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
-        Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
-        Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
-        Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
-        int noOverlapMask = movemask(noOverlap);
-
-        if (noOverlapMask == 0xF) continue;
-
-        Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
-                                     m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
-        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
-        int layerFailMask = movemask_int(staticCmp);
-
-        for (size_t j = 0; j < 4; ++j) {
-          if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
-            if (m_storage.hotData[staticIndices[si + j]].active) {
-              indexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
-            }
-          }
-        }
-      }
-
-      for (; si < staticIndices.size(); ++si) {
+      // DIRECT PATH: Check all statics in culling area
+      for (size_t si = 0; si < staticIndices.size(); ++si) {
         size_t staticIdx = staticIndices[si];
         const auto& staticHot = m_storage.hotData[staticIdx];
         if (!staticHot.active) continue;
+
+        // AABB overlap test
         if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
             dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
             dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
             dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+
+        // Layer mask check
         if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
+
         indexPairs.emplace_back(dynamicIdx, staticIdx);
       }
     } else {
@@ -1705,41 +1644,16 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
       auto& staticCandidates = getPooledVector();
       m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
 
-      size_t si = 0;
-      const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
-
-      for (; si < staticSimdEnd; si += 4) {
-        Int4 staticLayers = set_int4(
-          m_storage.hotData[staticCandidates[si]].layers,
-          m_storage.hotData[staticCandidates[si+1]].layers,
-          m_storage.hotData[staticCandidates[si+2]].layers,
-          m_storage.hotData[staticCandidates[si+3]].layers
-        );
-        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
-        int staticFailMask = movemask_int(staticCmp);
-
-        if (staticFailMask == 0xFFFF) continue;
-
-        for (size_t j = 0; j < 4; ++j) {
-          if (((staticFailMask >> (j * 4)) & 0xF) == 0) {
-            size_t staticIdx = staticCandidates[si + j];
-            if (m_storage.hotData[staticIdx].active) {
-              indexPairs.emplace_back(dynamicIdx, staticIdx);
-            }
-          }
-        }
-      }
-
-      for (; si < staticCandidates.size(); ++si) {
+      for (size_t si = 0; si < staticCandidates.size(); ++si) {
         size_t staticIdx = staticCandidates[si];
         const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+        if (!staticHot.active) continue;
+        if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
         indexPairs.emplace_back(dynamicIdx, staticIdx);
       }
       returnPooledVector(staticCandidates);
     }
-  }  // End per-movable loop
+  }
 }
 
 void CollisionManager::broadphaseMultiThreaded(
