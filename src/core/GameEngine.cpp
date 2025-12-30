@@ -74,6 +74,12 @@ bool GameEngine::init(const std::string_view title, const int width,
   SDL_SetHint("SDL_RENDER_BATCHING",
               "1"); // Enable render batching for performance
 
+// Prefer Vulkan backend for lower per-draw-call overhead on Linux/AMD
+// SDL3 auto-falls back to OpenGL if Vulkan unavailable
+#ifdef __linux__
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "vulkan");
+#endif
+
   // VSync and buffering hints
   // VSync hint - preference before renderer creation (runtime API SDL_SetRenderVSync() also used)
   SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
