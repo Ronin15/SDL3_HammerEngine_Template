@@ -192,11 +192,8 @@ void IdleBehavior::updateSubtleSway(BehaviorContext& ctx, EntityState &state) co
     state.movementTimer = 0.0f;
     state.movementInterval = getRandomMovementInterval();
   }
-  // Keep velocity applied for smooth animation - don't reset to zero
-  // Apply very light separation (decimated) so idlers don't stack perfectly
-  applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
-                           35.0f, 30.0f, 0.15f, 4, state.separationTimer,
-                           state.lastSepVelocity);
+  // Keep velocity applied for smooth animation
+  // CollisionManager handles overlap resolution
 }
 
 void IdleBehavior::updateOccasionalTurn(BehaviorContext& ctx, EntityState &state) const {
@@ -229,10 +226,8 @@ void IdleBehavior::updateLightFidget(BehaviorContext& ctx, EntityState &state) c
     state.movementTimer = 0.0f;
     state.movementInterval = getRandomMovementInterval();
   }
-  // Keep velocity applied for smooth animation and apply very light separation (decimated)
-  applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
-                           40.0f, 30.0f, 0.15f, 4, state.separationTimer,
-                           state.lastSepVelocity);
+  // Keep velocity applied for smooth animation
+  // CollisionManager handles overlap resolution
 
   // Handle turning
   if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {

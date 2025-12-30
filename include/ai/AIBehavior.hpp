@@ -35,28 +35,6 @@ struct BehaviorContext {
         : transform(t), hotData(h), entityId(id), deltaTime(dt) {}
 };
 
-// Forward declare separation to avoid pulling internal headers here
-namespace AIInternal {
-Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
-                         const Vector2D &intendedVelocity, float speed,
-                         float queryRadius, float strength,
-                         size_t maxNeighbors);
-
-// Overload with pre-fetched neighbor data
-Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
-                         const Vector2D &intendedVelocity, float speed,
-                         float queryRadius, float strength,
-                         size_t maxNeighbors,
-                         const std::vector<Vector2D> &preFetchedNeighbors);
-
-// Lock-free version using EntityID directly (no EntityPtr needed)
-// Used by BehaviorContext hot path - queries CollisionManager with entityId for self-exclusion
-Vector2D ApplySeparationDirect(EntityID entityId,
-                               const Vector2D &position,
-                               const Vector2D &intendedVelocity, float speed,
-                               float queryRadius, float strength,
-                               size_t maxNeighbors = 6);
-}
 #include <string>
 
 class AIBehavior : public std::enable_shared_from_this<AIBehavior> {
@@ -166,110 +144,7 @@ protected:
     return (lastProgressTime > 0 && (now - lastProgressTime) > STUCK_THRESHOLD_MS);
   }
 
-  // Apply separation as an additive force that blends with existing velocity
-  inline void applyAdditiveDecimatedSeparation(EntityPtr entity,
-                                       const Vector2D &position,
-                                       const Vector2D &currentVelocity,
-                                       float speed, float queryRadius,
-                                       float strength, int maxNeighbors,
-                                       float &separationTimer,
-                                       Vector2D &lastSepForce,
-                                       float deltaTime) const {
-    // Increment timer
-    separationTimer += deltaTime;
-
-    // Stagger separation intervals per-entity (2.0s base + 0-2.0s stagger)
-    float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
-    float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-    // Only recalculate separation periodically
-    if (separationTimer >= effectiveInterval) {
-      Vector2D sepVelocity = AIInternal::ApplySeparation(
-          entity, position, currentVelocity, speed, queryRadius, strength,
-          static_cast<size_t>(maxNeighbors));
-      // Store the separation FORCE (difference from intended velocity)
-      lastSepForce = sepVelocity - currentVelocity;
-      separationTimer = 0.0f;
-    }
-
-    // Only apply separation when actually moving (prevents oscillation when settling)
-    float const velocityMagnitude = currentVelocity.length();
-    const float MIN_VELOCITY_FOR_SEPARATION = 20.0f; // Only separate when moving
-
-    if (velocityMagnitude > MIN_VELOCITY_FOR_SEPARATION) {
-      // Apply the separation force additively (blend with current velocity)
-      Vector2D blendedVelocity = currentVelocity + (lastSepForce * 0.1f); // 10% separation influence
-
-      // Clamp to max speed
-      if (blendedVelocity.length() > speed) {
-        blendedVelocity.normalize();
-        blendedVelocity = blendedVelocity * speed;
-      }
-
-      entity->setVelocity(blendedVelocity);
-    } else {
-      // Not moving much - don't apply separation to avoid oscillation
-      entity->setVelocity(currentVelocity);
-    }
-  }
-
-  // Apply separation at most every 2-4 seconds, with entity-based staggering
-  inline void applyDecimatedSeparation(EntityPtr entity,
-                                       const Vector2D &position,
-                                       const Vector2D &intendedVelocity,
-                                       float speed, float queryRadius,
-                                       float strength, int maxNeighbors,
-                                       float &separationTimer,
-                                       Vector2D &lastSepVelocity,
-                                       float deltaTime) const {
-    // Increment timer
-    separationTimer += deltaTime;
-
-    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
-    // from doing expensive separation calculations on the same frame
-    float entityStaggerOffset = (entity->getID() % 200) * 0.01f; // Stagger by up to 2 seconds
-    float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-    if (separationTimer >= effectiveInterval) {
-      // Only do the expensive separation calculation when absolutely necessary
-      lastSepVelocity = AIInternal::ApplySeparation(
-          entity, position, intendedVelocity, speed, queryRadius, strength,
-          static_cast<size_t>(maxNeighbors));
-      separationTimer = 0.0f;
-    }
-    entity->setVelocity(lastSepVelocity);
-  }
-
-  // PERFORMANCE OPTIMIZATION: Apply decimated separation using pre-fetched neighbor data
-  // This version maintains the same decimation logic but uses cached collision data
-  inline void applySeparationWithCache(EntityPtr entity,
-                                       const Vector2D &position,
-                                       const Vector2D &intendedVelocity,
-                                       float speed, float queryRadius,
-                                       float strength, int maxNeighbors,
-                                       float &separationTimer,
-                                       Vector2D &lastSepVelocity,
-                                       float deltaTime,
-                                       const std::vector<Vector2D> &preFetchedNeighbors) const {
-    separationTimer += deltaTime;
-
-    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
-    // from doing expensive separation calculations on the same frame
-    float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
-    float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-    if (separationTimer >= effectiveInterval) {
-      // Calculate separation using pre-fetched data (no collision query!)
-      lastSepVelocity = AIInternal::ApplySeparation(
-          entity, position, intendedVelocity, speed, queryRadius, strength,
-          static_cast<size_t>(maxNeighbors), preFetchedNeighbors);
-      separationTimer = 0.0f;
-      entity->setVelocity(lastSepVelocity);
-    } else {
-      // Use intended velocity until first separation calculation
-      entity->setVelocity(intendedVelocity);
-    }
-  }
+  // NOTE: Separation functions removed - CollisionManager handles overlap resolution
 
   // Common utility functions for behaviors
 
@@ -288,20 +163,6 @@ protected:
   // =========================================================================
   // LOCK-FREE HELPER METHODS (use BehaviorContext instead of EntityPtr)
   // =========================================================================
-
-  /**
-   * @brief Apply decimated separation using BehaviorContext (LOCK-FREE)
-   *
-   * Same logic as applyDecimatedSeparation but writes velocity directly to
-   * transform instead of calling entity->setVelocity() which triggers mutex.
-   */
-  void applyDecimatedSeparationDirect(
-      BehaviorContext& ctx,
-      const Vector2D &intendedVelocity,
-      float speed, float queryRadius,
-      float strength, int maxNeighbors,
-      float &separationTimer,
-      Vector2D &lastSepVelocity) const;
 
   /**
    * @brief Move entity towards target using pathfinding (LOCK-FREE version)

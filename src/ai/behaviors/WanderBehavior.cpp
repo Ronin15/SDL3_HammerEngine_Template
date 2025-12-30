@@ -120,10 +120,8 @@ bool WanderBehavior::handleStartDelay(BehaviorContext& ctx, EntityState& state) 
   state.movementStarted = true;
   Vector2D const intended = state.currentDirection * m_speed;
 
-  // Apply separation and write velocity directly to transform (LOCK-FREE)
-  applyDecimatedSeparationDirect(ctx, intended, m_speed, 28.0f, 0.30f, 6,
-                                  state.baseState.separationTimer,
-                                  state.baseState.lastSepVelocity);
+  // Set velocity directly - CollisionManager handles overlap resolution
+  ctx.transform.velocity = intended;
 
   return false;
 }
@@ -270,16 +268,10 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, EntityState& state) {
 
     if (dist > 0.001f) {
       Vector2D direction = toWaypoint / dist;
-      Vector2D intended = direction * m_speed;
-      applyDecimatedSeparationDirect(ctx, intended, m_speed, 28.0f, 0.30f, 6,
-                                      state.baseState.separationTimer,
-                                      state.baseState.lastSepVelocity);
+      ctx.transform.velocity = direction * m_speed;
     }
   } else {
-    Vector2D const intended = state.currentDirection * m_speed;
-    applyDecimatedSeparationDirect(ctx, intended, m_speed, 28.0f, 0.30f, 6,
-                                    state.baseState.separationTimer,
-                                    state.baseState.lastSepVelocity);
+    ctx.transform.velocity = state.currentDirection * m_speed;
   }
 
   // Stall detection
@@ -317,10 +309,7 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, EntityState& state) {
     if (rotated.length() > 0.001f) {
       rotated.normalize();
       state.currentDirection = rotated;
-      Vector2D intended = state.currentDirection * m_speed;
-      applyDecimatedSeparationDirect(ctx, intended, m_speed, 28.0f, 0.30f, 6,
-                                      state.baseState.separationTimer,
-                                      state.baseState.lastSepVelocity);
+      ctx.transform.velocity = state.currentDirection * m_speed;
     }
   }
 
@@ -403,10 +392,7 @@ void WanderBehavior::chooseNewDirection(BehaviorContext& ctx, EntityState& state
   state.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
 
   if (state.movementStarted) {
-    Vector2D const intended = state.currentDirection * m_speed;
-    applyDecimatedSeparationDirect(ctx, intended, m_speed, 28.0f, 0.30f, 6,
-                                    state.baseState.separationTimer,
-                                    state.baseState.lastSepVelocity);
+    ctx.transform.velocity = state.currentDirection * m_speed;
   }
 }
 

@@ -123,10 +123,7 @@ void AIBehavior::moveToPosition(EntityPtr entity, const Vector2D &targetPos,
 
   if (following) {
     state.progressTimer = 0.0f;
-    // Apply separation using base class method
-    applyDecimatedSeparation(entity, currentPos, entity->getVelocity(), speed,
-                             24.0f, 0.20f, 4, state.separationTimer,
-                             state.lastSepVelocity, deltaTime);
+    // CollisionManager handles overlap resolution
   } else {
     // Fallback: direct movement
     Vector2D direction = normalizeDirection(targetPos - currentPos);
@@ -281,10 +278,7 @@ void AIBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targ
 
   if (following) {
     state.progressTimer = 0.0f;
-    // Apply separation using lock-free method
-    applyDecimatedSeparationDirect(ctx, ctx.transform.velocity, speed,
-                                   24.0f, 0.20f, 4, state.separationTimer,
-                                   state.lastSepVelocity);
+    // CollisionManager handles overlap resolution
   } else {
     // Fallback: direct movement
     Vector2D direction = normalizeDirection(targetPos - currentPos);
@@ -322,34 +316,7 @@ void AIBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targ
   }
 }
 
-// Lock-free separation using BehaviorContext
-void AIBehavior::applyDecimatedSeparationDirect(
-    BehaviorContext& ctx,
-    const Vector2D &intendedVelocity,
-    float speed, float queryRadius,
-    float strength, int maxNeighbors,
-    float &separationTimer,
-    Vector2D &lastSepVelocity) const {
-
-  separationTimer += ctx.deltaTime;
-
-  // Entity-based staggered separation
-  float entityStaggerOffset = (ctx.entityId % 200) * 0.01f;
-  float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-  if (separationTimer >= effectiveInterval) {
-    // Full implementation in Crowd.cpp - queries CollisionManager using EntityID
-    lastSepVelocity = AIInternal::ApplySeparationDirect(
-        ctx.entityId, ctx.transform.position, intendedVelocity, speed, queryRadius, strength,
-        static_cast<size_t>(maxNeighbors));
-    separationTimer = 0.0f;
-    // LOCK-FREE: Write directly to transform
-    ctx.transform.velocity = lastSepVelocity;
-  } else {
-    // Use intended velocity until first separation calculation
-    ctx.transform.velocity = intendedVelocity;
-  }
-}
+// NOTE: applyDecimatedSeparationDirect removed - CollisionManager handles overlap resolution
 
 
 

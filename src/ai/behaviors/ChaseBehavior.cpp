@@ -209,55 +209,29 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           Vector2D direction = toWaypoint / dist;
           ctx.transform.velocity = direction * m_chaseSpeed;
           m_progressTimer = 0.0f; // Reset progress timer
-          // Apply enhanced separation for combat scenarios with dynamic adjustment
-          using namespace AIInternal::SeparationParams;
-          float dynamicRadius = COMBAT_RADIUS;
-          float dynamicStrength = COMBAT_STRENGTH;
 
-          // OPTIMIZED: Use AIManager's spatial partitioning instead of expensive collision queries
-          int chaserCount = 0;
-          const float CROWD_CHECK_INTERVAL = m_config.crowdCheckInterval; // Check crowd density periodically
-
+          // Simple crowd management - use cached chaser count for lateral spreading
           m_crowdCheckTimer += ctx.deltaTime;
-          if (m_crowdCheckTimer >= CROWD_CHECK_INTERVAL) {
-            // TODO: Update CountNearbyEntities to accept EntityID instead of EntityPtr
-            // For now, use cached value or skip
-            chaserCount = m_cachedChaserCount;
+          if (m_crowdCheckTimer >= m_config.crowdCheckInterval) {
             m_crowdCheckTimer = 0.0f;
-          } else {
-            // Use cached value between checks
-            chaserCount = m_cachedChaserCount;
           }
-          
-          // Simple crowd management - maintain direct pursuit with minimal spreading
-          if (chaserCount > 3) {
-            // High density: slight lateral spread but still pursue directly
-            dynamicRadius = COMBAT_RADIUS * 1.2f;
-            dynamicStrength = COMBAT_STRENGTH * 1.3f;
 
-            // Small lateral offset to reduce clumping
+          // High density: apply lateral spread to reduce clumping
+          if (m_cachedChaserCount > 3) {
             Vector2D const toTarget = (targetPos - entityPos).normalized();
             Vector2D const lateral(-toTarget.getY(), toTarget.getX());
-            float lateralBias = ((float)(ctx.entityId % 3) - 1.0f) * 15.0f; // Small spread: -15, 0, or +15
+            float lateralBias = ((float)(ctx.entityId % 3) - 1.0f) * 15.0f; // -15, 0, or +15
             Vector2D const adjustedTarget = targetPos + lateral * lateralBias;
             Vector2D const newDir = (adjustedTarget - entityPos).normalized();
             ctx.transform.velocity = newDir * m_chaseSpeed;
           }
 
-          // PERFORMANCE OPTIMIZATION: Apply separation using BehaviorContext (lock-free)
-          applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
-                                         m_chaseSpeed, dynamicRadius, dynamicStrength,
-                                         COMBAT_MAX_NEIGHBORS + chaserCount,
-                                         m_separationTimer, m_lastSepVelocity);
+          // Velocity set - CollisionManager handles overlap resolution
         } else {
-          // Fallback to direct movement with crowd awareness
+          // Fallback to direct movement
           Vector2D direction = (targetPos - entityPos);
           direction.normalize();
-          // PERFORMANCE OPTIMIZATION: Apply separation using BehaviorContext (lock-free)
-          Vector2D const intended = direction * m_chaseSpeed;
-          applyDecimatedSeparationDirect(ctx, intended, m_chaseSpeed,
-                                         26.0f, 0.22f, 4,
-                                         m_separationTimer, m_lastSepVelocity);
+          ctx.transform.velocity = direction * m_chaseSpeed;
           m_progressTimer = 0.0f;
         }
       } else {
@@ -277,11 +251,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           direction.normalize();
         }
 
-        // PERFORMANCE OPTIMIZATION: Apply separation using BehaviorContext (lock-free)
-        Vector2D const intended = direction * m_chaseSpeed;
-        applyDecimatedSeparationDirect(ctx, intended, m_chaseSpeed,
-                                       26.0f, 0.22f, 4,
-                                       m_separationTimer, m_lastSepVelocity);
+        // Set velocity directly - CollisionManager handles overlap resolution
+        ctx.transform.velocity = direction * m_chaseSpeed;
         m_progressTimer = 0.0f;
       }
 
