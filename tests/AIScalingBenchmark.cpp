@@ -483,11 +483,11 @@ struct AIScalingFixture {
     }
 
     /**
-     * Run synthetic benchmark with automatic threading behavior using BenchmarkBehavior.
+     * Run standalone benchmark with automatic threading behavior using REAL production behaviors.
      *
-     * This tests AIManager batch processing in isolation without PathfinderManager/CollisionManager
-     * integration overhead. Uses simplified BenchmarkBehavior that simulates production patterns
-     * without actual pathfinding requests or spatial queries.
+     * This tests AIManager batch processing with real behaviors (Wander, Guard, Patrol, Follow, Chase)
+     * but WITHOUT CollisionManager.resolveSOA() in the measurement loop. Measures pure AI behavior
+     * execution time without collision resolution overhead.
      *
      * IMPORTANT: This benchmark includes a 16-frame warmup phase before measurements.
      * The warmup is REQUIRED due to AIManager's SIMD distance staggering optimization
@@ -521,7 +521,7 @@ struct AIScalingFixture {
 
         // Get system threading information
         unsigned int systemThreads = std::thread::hardware_concurrency();
-        std::cout << "\nSynthetic Benchmark (Isolated AIManager): " << expectedMode << ", "
+        std::cout << "\nStandalone Benchmark (Real Behaviors, AIManager Only): " << expectedMode << ", "
                   << numEntities << " entities, "
                   << numBehaviors << " behaviors, "
                   << numUpdates << " updates" << std::endl;
@@ -532,16 +532,38 @@ struct AIScalingFixture {
             std::cout << "  WorkerBudget: " << budget.totalWorkers << " total workers (all available to each manager)" << std::endl;
         }
 
-        // Create behaviors with varying complexity using valid behavior names
-        const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
-        for (int i = 0; i < numBehaviors && i < static_cast<int>(validBehaviors.size()); ++i) {
-            int complexity = 5 + (i % 11);
-            behaviors.push_back(std::make_shared<BenchmarkBehavior>(i, complexity));
-            AIManager::Instance().registerBehavior(validBehaviors[i], behaviors.back());
+        // Create REAL production behaviors (same as integrated benchmark)
+        const int MAX_BEHAVIORS = 5;
+        int actualBehaviors = std::min(numBehaviors, MAX_BEHAVIORS);
+
+        // Register real production behaviors with AIManager
+        if (actualBehaviors >= 1) {
+            auto wander = std::make_shared<WanderBehavior>(WanderBehavior::WanderMode::MEDIUM_AREA, 100.0f);
+            AIManager::Instance().registerBehavior("Wander", wander);
+        }
+        if (actualBehaviors >= 2) {
+            auto guard = std::make_shared<GuardBehavior>(Vector2D(5000.0f, 5000.0f), 500.0f);
+            AIManager::Instance().registerBehavior("Guard", guard);
+        }
+        if (actualBehaviors >= 3) {
+            std::vector<Vector2D> waypoints = {
+                Vector2D(4000.0f, 5000.0f),
+                Vector2D(6000.0f, 5000.0f)
+            };
+            auto patrol = std::make_shared<PatrolBehavior>(waypoints, 100.0f, true);
+            AIManager::Instance().registerBehavior("Patrol", patrol);
+        }
+        if (actualBehaviors >= 4) {
+            auto follow = std::make_shared<FollowBehavior>(2.5f, 200.0f, 400.0f);
+            AIManager::Instance().registerBehavior("Follow", follow);
+        }
+        if (actualBehaviors >= 5) {
+            auto chase = std::make_shared<ChaseBehavior>(100.0f, 500.0f, 50.0f);
+            AIManager::Instance().registerBehavior("Chase", chase);
         }
 
-        // Create entities at the same position to ensure they're close to player
-        Vector2D centralPosition(500.0f, 500.0f);
+        // Create entities at central position (same as integrated benchmark)
+        Vector2D centralPosition(5000.0f, 5000.0f);
         for (int i = 0; i < numEntities; ++i) {
             auto entity = BenchmarkEntity::create(i, centralPosition);
             entities.push_back(entity);
@@ -891,6 +913,7 @@ struct AIScalingFixture {
         std::cout << "  [DEBUG] Running 16 warmup frames..." << std::endl;
         for (int warmup = 0; warmup < 16; ++warmup) {
             AIManager::Instance().update(0.016f);
+            CollisionManager::Instance().update(0.016f);
         }
         while (HammerEngine::ThreadSystem::Instance().isBusy()) {
             std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -909,6 +932,7 @@ struct AIScalingFixture {
 
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f);
+                CollisionManager::Instance().update(0.016f);  // Includes resolveSOA()
             }
 
             auto dispatchEndTime = std::chrono::high_resolution_clock::now();
