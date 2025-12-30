@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/TextureManager.hpp"
 #include "utils/Camera.hpp"
 #include <cmath>
 #include <format>
@@ -75,6 +76,12 @@ void DroppedItem::render(SDL_Renderer* renderer, float cameraX, float cameraY, f
     return; // Don't render empty stacks
   }
 
+  // Cache texture on first render (like WorldManager pattern - no hash lookup per frame)
+  if (!m_cachedTexture) {
+    m_cachedTexture = TextureManager::Instance().getTexturePtr(m_textureID);
+    if (!m_cachedTexture) return;
+  }
+
   // Get interpolated position for smooth rendering between physics updates
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
@@ -82,15 +89,22 @@ void DroppedItem::render(SDL_Renderer* renderer, float cameraX, float cameraY, f
   float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
 
   // Convert world coords to screen coords using passed camera offset
-  // Same formula as WorldManager: screenX = worldX - cameraX
-  float renderX = interpPos.getX() - cameraX;
-  float renderY = interpPos.getY() - cameraY + bobOffset;
+  float renderX = interpPos.getX() - cameraX - (m_width / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f) + bobOffset;
 
-  // TODO: Implement actual rendering logic here using renderer and renderX/renderY
-  // For now, suppress unused parameter warning until full rendering is implemented
-  (void)renderer;
-  (void)renderX;
-  (void)renderY;
+  // Direct SDL call with cached texture - no hash lookup!
+  SDL_FRect srcRect = {
+      static_cast<float>(m_width * m_currentFrame),
+      static_cast<float>(m_height * (m_currentRow - 1)),
+      static_cast<float>(m_width),
+      static_cast<float>(m_height)
+  };
+  SDL_FRect destRect = {renderX, renderY,
+                        static_cast<float>(m_width),
+                        static_cast<float>(m_height)};
+  SDL_FPoint center = {m_width / 2.0f, m_height / 2.0f};
+
+  SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0, &center, SDL_FLIP_NONE);
 }
 
 void DroppedItem::clean() {

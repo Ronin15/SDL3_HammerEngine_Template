@@ -333,6 +333,11 @@ std::shared_ptr<SDL_Texture> TextureManager::getTexture(const std::string& textu
   return nullptr;
 }
 
+SDL_Texture* TextureManager::getTexturePtr(const std::string& textureID) const {
+  auto it = m_textureMap.find(textureID);
+  return (it != m_textureMap.end()) ? it->second.texture.get() : nullptr;
+}
+
 std::shared_ptr<SDL_Texture> TextureManager::getOrCreateDynamicTexture(const std::string& textureID,
                                                                        int width, int height,
                                                                        SDL_Renderer* p_renderer,

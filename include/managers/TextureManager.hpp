@@ -154,6 +154,14 @@ class TextureManager {
   std::shared_ptr<SDL_Texture> getTexture(const std::string& textureID) const;
 
   /**
+   * @brief Get raw texture pointer for caching in entities (like WorldManager pattern)
+   * @param textureID Unique identifier of the texture
+   * @return Raw SDL_Texture pointer, or nullptr if not found. Caller must NOT free.
+   * @note Use this for entity render caching to avoid per-frame hash lookups
+   */
+  SDL_Texture* getTexturePtr(const std::string& textureID) const;
+
+  /**
    * @brief Creates or retrieves a cached dynamic texture (e.g., for chunk rendering)
    * @param textureID Unique identifier for the dynamic texture
    * @param width Width of the texture to create
