@@ -163,7 +163,8 @@ public:
     size_t getBodyCount() const { return m_storage.size(); }
     bool isSyncing() const { return m_isSyncing; }
 
-    // NEW SOA STORAGE MANAGEMENT METHODS
+    // SOA STORAGE MANAGEMENT
+    // Uses EDM as single source of truth - looks up entity by ID
     size_t addCollisionBodySOA(EntityID id, const Vector2D& position, const Vector2D& halfSize,
                                BodyType type, uint32_t layer = CollisionLayer::Layer_Default,
                                uint32_t collidesWith = 0xFFFFFFFFu,
@@ -175,7 +176,6 @@ public:
     Vector2D getCollisionBodyVelocitySOA(EntityID id) const;
     void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
     void attachEntity(EntityID id, EntityPtr entity);
-    void processPendingCommands(); // Process queued collision body commands (for tests/immediate processing)
 
     // SOA Body Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
@@ -300,25 +300,6 @@ private:
     // Building collision validation
 
     void subscribeWorldEvents(); // hook to world events
-
-    // Thread-safe command queue system for collision body management
-    enum class CommandType {
-        Add,
-        Remove,
-        Modify
-    };
-
-    struct PendingCommand {
-        CommandType type = CommandType::Add;
-        EntityID id = 0;
-        Vector2D position{};
-        Vector2D halfSize{};
-        BodyType bodyType = BodyType::DYNAMIC;
-        uint32_t layer = 0;
-        uint32_t collideMask = 0;
-        bool isTrigger = false;
-        uint8_t triggerTag = 0;
-    };
 
     // Collision culling configuration - adjustable constants
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
@@ -677,10 +658,6 @@ private:
     // Cache eviction: Track frame count for periodic eviction
     size_t m_framesSinceLastEviction{0};
 
-    // Thread-safe command queue for deferred collision body operations
-    std::vector<PendingCommand> m_pendingCommands;
-    mutable std::mutex m_commandQueueMutex;
-
     // Multi-threading support for narrowphase (WorkerBudget integrated)
     mutable std::vector<std::future<void>> m_narrowphaseFutures;
     mutable std::shared_ptr<std::vector<std::vector<CollisionInfo>>> m_batchCollisionBuffers;
@@ -722,9 +699,6 @@ private:
         }
     };
 
-    // Thread-safe access to collision storage (entityToIndex map and storage arrays)
-    // shared_lock for reads (AI threads), unique_lock for writes (update thread)
-    mutable std::shared_mutex m_storageMutex;
 };
 
 #endif // COLLISION_MANAGER_HPP

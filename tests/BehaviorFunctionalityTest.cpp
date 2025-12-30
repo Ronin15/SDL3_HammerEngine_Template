@@ -250,7 +250,6 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     CollisionManager::Instance().addCollisionBodySOA(
         entity->getID(), entity->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     Vector2D initialPos = entity->getPosition();
     getTestEntity(entity)->resetUpdateCount();
@@ -317,7 +316,6 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     CollisionManager::Instance().addCollisionBodySOA(
         testPlayer->getID(), testPlayer->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     // Set the test player reference
     AIManager::Instance().setPlayerForDistanceOptimization(testPlayer);
@@ -401,7 +399,6 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     CollisionManager::Instance().addCollisionBodySOA(
         testPlayer->getID(), testPlayer->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     // Set the test player reference
     AIManager::Instance().setPlayerForDistanceOptimization(testPlayer);
@@ -772,7 +769,6 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     CollisionManager::Instance().addCollisionBodySOA(
         entity->getID(), entity->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().processPendingCommands();
 
     // Assign Patrol behavior
     AIManager::Instance().assignBehaviorToEntity(entity, "Patrol");

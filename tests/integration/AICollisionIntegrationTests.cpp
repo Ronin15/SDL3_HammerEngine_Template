@@ -319,7 +319,6 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
     std::cout << "Created " << obstaclesCreated << " obstacles in grid pattern" << std::endl;
 
     // Process collision commands
-    CollisionManager::Instance().processPendingCommands();
 
     // Rebuild static spatial hash for pathfinding
     CollisionManager::Instance().rebuildStaticFromWorld();
@@ -383,7 +382,6 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
     }
 
     // Process collision commands for entities
-    CollisionManager::Instance().processPendingCommands();
 
     std::cout << "Created " << NUM_ENTITIES << " AI entities with wander behavior" << std::endl;
 
@@ -432,7 +430,8 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
 
     // Create multiple entities in close proximity to trigger separation
     const int NUM_ENTITIES = 20;
-    const Vector2D SPAWN_CENTER(1000.0f, 1000.0f);
+    // Spawn within culling area (default: -1000 to +1000 when no player)
+    const Vector2D SPAWN_CENTER(500.0f, 500.0f);
     const float SPAWN_RADIUS = 100.0f;
 
     std::vector<std::shared_ptr<WanderBehavior>> behaviors;
@@ -462,7 +461,6 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
     }
 
     // Process collision commands
-    CollisionManager::Instance().processPendingCommands();
 
     std::cout << "Created " << NUM_ENTITIES << " entities in tight cluster" << std::endl;
 
@@ -580,7 +578,6 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
         (WORLD_MAX_Y - WORLD_MIN_Y) / 2.0f
     );
 
-    CollisionManager::Instance().processPendingCommands();
 
     std::cout << "Created world boundaries (" << WORLD_MAX_X << "x" << WORLD_MAX_Y << ")" << std::endl;
 
@@ -612,7 +609,6 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
         AIManager::Instance().registerEntityForUpdates(entity, 5, behaviorName);
     }
 
-    CollisionManager::Instance().processPendingCommands();
 
     std::cout << "Created " << NUM_ENTITIES << " entities with large wander areas" << std::endl;
 
@@ -682,7 +678,6 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
         AIManager::Instance().registerEntityForUpdates(entity, 5, behaviorName);
     }
 
-    CollisionManager::Instance().processPendingCommands();
 
     // Wait for async behavior assignments to complete before testing
     AIManager::Instance().waitForAsyncBatchCompletion();

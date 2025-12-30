@@ -399,6 +399,16 @@ public:
      */
     [[nodiscard]] size_t getIndex(EntityHandle handle) const;
 
+    /**
+     * @brief Look up storage index by EntityID
+     * @param entityId Entity's unique ID
+     * @return Storage index, or SIZE_MAX if not registered
+     */
+    [[nodiscard]] size_t findIndexByEntityId(EntityHandle::IDType entityId) const {
+        auto it = m_idToIndex.find(entityId);
+        return (it != m_idToIndex.end()) ? it->second : SIZE_MAX;
+    }
+
     // ========================================================================
     // TRANSFORM ACCESS (Single Source of Truth)
     // ========================================================================
@@ -580,6 +590,14 @@ private:
     std::vector<HarvestableData> m_harvestableData;  // Harvestable
     std::vector<AreaEffectData> m_areaEffectData;    // AreaEffect
 
+    // Type-specific free-lists (reuse indices when entities are destroyed)
+    std::vector<uint32_t> m_freeCharacterSlots;
+    std::vector<uint32_t> m_freeItemSlots;
+    std::vector<uint32_t> m_freeProjectileSlots;
+    std::vector<uint32_t> m_freeContainerSlots;
+    std::vector<uint32_t> m_freeHarvestableSlots;
+    std::vector<uint32_t> m_freeAreaEffectSlots;
+
     // Tier indices (rebuilt when tiers change)
     std::vector<size_t> m_activeIndices;
     std::vector<size_t> m_backgroundIndices;
@@ -590,8 +608,9 @@ private:
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
     bool m_kindIndicesDirty{true};
 
-    // Destruction queue
+    // Destruction queue and processing buffer (avoid per-frame allocation)
     std::vector<EntityHandle> m_destructionQueue;
+    std::vector<EntityHandle> m_destroyBuffer;  // Reused in processDestructionQueue
 
     // Free list for slot reuse
     std::vector<size_t> m_freeSlots;

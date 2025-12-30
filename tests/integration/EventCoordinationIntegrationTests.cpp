@@ -266,7 +266,6 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
     }
 
     // Process collision body commands
-    CollisionManager::Instance().processPendingCommands();
 
     // Process queued assignments
     for (int i = 0; i < 5; ++i) {
@@ -366,7 +365,6 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         AIManager::Instance().unassignBehaviorFromEntity(entity);
         CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
     }
-    CollisionManager::Instance().processPendingCommands();
     testEntities.clear();
     // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
     // Just unload the world if needed
@@ -424,7 +422,6 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     }
 
     // Process collision body commands
-    CollisionManager::Instance().processPendingCommands();
 
     // Process registrations
     for (int i = 0; i < 5; ++i) {
@@ -464,7 +461,6 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
         AIManager::Instance().unassignBehaviorFromEntity(entity);
         CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
     }
-    CollisionManager::Instance().processPendingCommands();
     oldSceneEntities.clear();
 
     // Wait for cleanup to process

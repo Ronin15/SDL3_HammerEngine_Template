@@ -49,6 +49,7 @@ bool EntityDataManager::init() {
         }
 
         m_destructionQueue.reserve(100);
+        m_destroyBuffer.reserve(100);  // Match destruction queue capacity
         m_freeSlots.reserve(1000);
 
         // Reset counters
@@ -94,6 +95,14 @@ void EntityDataManager::clean() {
         m_harvestableData.clear();
         m_areaEffectData.clear();
 
+        // Clear type-specific free-lists
+        m_freeCharacterSlots.clear();
+        m_freeItemSlots.clear();
+        m_freeProjectileSlots.clear();
+        m_freeContainerSlots.clear();
+        m_freeHarvestableSlots.clear();
+        m_freeAreaEffectSlots.clear();
+
         m_activeIndices.clear();
         m_backgroundIndices.clear();
         m_hibernatedIndices.clear();
@@ -109,6 +118,7 @@ void EntityDataManager::clean() {
         std::lock_guard<std::mutex> lock(m_destructionMutex);
         m_destructionQueue.clear();
     }
+    m_destroyBuffer.clear();
 
     m_totalEntityCount.store(0, std::memory_order_relaxed);
     for (auto& count : m_countByKind) {
@@ -141,6 +151,14 @@ void EntityDataManager::prepareForStateTransition() {
         m_containerData.clear();
         m_harvestableData.clear();
         m_areaEffectData.clear();
+
+        // Clear type-specific free-lists
+        m_freeCharacterSlots.clear();
+        m_freeItemSlots.clear();
+        m_freeProjectileSlots.clear();
+        m_freeContainerSlots.clear();
+        m_freeHarvestableSlots.clear();
+        m_freeAreaEffectSlots.clear();
 
         m_activeIndices.clear();
         m_backgroundIndices.clear();
@@ -198,6 +216,10 @@ void EntityDataManager::freeSlot(size_t index) {
         return;
     }
 
+    // Capture type info BEFORE clearing (for type-specific free-list)
+    EntityKind kind = m_hotData[index].kind;
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
     // Clear the slot
     m_hotData[index] = EntityHotData{};
     m_entityIds[index] = 0;
@@ -207,6 +229,32 @@ void EntityDataManager::freeSlot(size_t index) {
 
     // Add to free list
     m_freeSlots.push_back(index);
+
+    // Add type-specific index to appropriate free-list for reuse
+    switch (kind) {
+        case EntityKind::Player:
+        case EntityKind::NPC:
+            m_freeCharacterSlots.push_back(typeIndex);
+            break;
+        case EntityKind::DroppedItem:
+            m_freeItemSlots.push_back(typeIndex);
+            break;
+        case EntityKind::Projectile:
+            m_freeProjectileSlots.push_back(typeIndex);
+            break;
+        case EntityKind::Container:
+            m_freeContainerSlots.push_back(typeIndex);
+            break;
+        case EntityKind::Harvestable:
+            m_freeHarvestableSlots.push_back(typeIndex);
+            break;
+        case EntityKind::AreaEffect:
+            m_freeAreaEffectSlots.push_back(typeIndex);
+            break;
+        default:
+            // StaticObstacle, Prop, Trigger have no type-specific data
+            break;
+    }
 
     m_tierIndicesDirty = true;
     m_kindIndicesDirty = true;
@@ -245,11 +293,18 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate character data
-    size_t charIndex = m_characterData.size();
-    m_characterData.emplace_back();
-    m_characterData.back().stateFlags = CharacterData::STATE_ALIVE;
-    hot.typeLocalIndex = static_cast<uint32_t>(charIndex);
+    // Allocate character data (reuse freed slot if available)
+    uint32_t charIndex;
+    if (!m_freeCharacterSlots.empty()) {
+        charIndex = m_freeCharacterSlots.back();
+        m_freeCharacterSlots.pop_back();
+        m_characterData[charIndex] = CharacterData{};
+    } else {
+        charIndex = static_cast<uint32_t>(m_characterData.size());
+        m_characterData.emplace_back();
+    }
+    m_characterData[charIndex].stateFlags = CharacterData::STATE_ALIVE;
+    hot.typeLocalIndex = charIndex;
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -287,9 +342,17 @@ EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate character data
-    size_t charIndex = m_characterData.size();
-    CharacterData charData;
+    // Allocate character data (reuse freed slot if available)
+    uint32_t charIndex;
+    if (!m_freeCharacterSlots.empty()) {
+        charIndex = m_freeCharacterSlots.back();
+        m_freeCharacterSlots.pop_back();
+    } else {
+        charIndex = static_cast<uint32_t>(m_characterData.size());
+        m_characterData.emplace_back();
+    }
+    auto& charData = m_characterData[charIndex];
+    charData = CharacterData{};  // Reset to default
     charData.health = 100.0f;
     charData.maxHealth = 100.0f;
     charData.stamina = 100.0f;
@@ -297,8 +360,7 @@ EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
     charData.attackDamage = 25.0f;
     charData.attackRange = 50.0f;
     charData.stateFlags = CharacterData::STATE_ALIVE;
-    m_characterData.push_back(charData);
-    hot.typeLocalIndex = static_cast<uint32_t>(charIndex);
+    hot.typeLocalIndex = charIndex;
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -338,16 +400,23 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate item data
-    size_t itemIndex = m_itemData.size();
-    ItemData item;
+    // Allocate item data (reuse freed slot if available)
+    uint32_t itemIndex;
+    if (!m_freeItemSlots.empty()) {
+        itemIndex = m_freeItemSlots.back();
+        m_freeItemSlots.pop_back();
+    } else {
+        itemIndex = static_cast<uint32_t>(m_itemData.size());
+        m_itemData.emplace_back();
+    }
+    auto& item = m_itemData[itemIndex];
+    item = ItemData{};  // Reset to default
     item.resourceHandle = resourceHandle;
     item.quantity = quantity;
     item.pickupTimer = 0.5f;
     item.bobTimer = 0.0f;
     item.flags = 0;
-    m_itemData.push_back(item);
-    hot.typeLocalIndex = static_cast<uint32_t>(itemIndex);
+    hot.typeLocalIndex = itemIndex;
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -386,17 +455,24 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate projectile data
-    size_t projIndex = m_projectileData.size();
-    ProjectileData proj;
+    // Allocate projectile data (reuse freed slot if available)
+    uint32_t projIndex;
+    if (!m_freeProjectileSlots.empty()) {
+        projIndex = m_freeProjectileSlots.back();
+        m_freeProjectileSlots.pop_back();
+    } else {
+        projIndex = static_cast<uint32_t>(m_projectileData.size());
+        m_projectileData.emplace_back();
+    }
+    auto& proj = m_projectileData[projIndex];
+    proj = ProjectileData{};  // Reset to default
     proj.owner = owner;
     proj.damage = damage;
     proj.lifetime = lifetime;
     proj.speed = velocity.length();
     proj.damageType = 0;
     proj.flags = 0;
-    m_projectileData.push_back(proj);
-    hot.typeLocalIndex = static_cast<uint32_t>(projIndex);
+    hot.typeLocalIndex = projIndex;
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -435,9 +511,17 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate area effect data
-    size_t effectIndex = m_areaEffectData.size();
-    AreaEffectData effect;
+    // Allocate area effect data (reuse freed slot if available)
+    uint32_t effectIndex;
+    if (!m_freeAreaEffectSlots.empty()) {
+        effectIndex = m_freeAreaEffectSlots.back();
+        m_freeAreaEffectSlots.pop_back();
+    } else {
+        effectIndex = static_cast<uint32_t>(m_areaEffectData.size());
+        m_areaEffectData.emplace_back();
+    }
+    auto& effect = m_areaEffectData[effectIndex];
+    effect = AreaEffectData{};  // Reset to default
     effect.owner = owner;
     effect.radius = radius;
     effect.damage = damage;
@@ -446,8 +530,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     effect.elapsed = 0.0f;
     effect.lastTick = 0.0f;
     effect.effectType = 0;
-    m_areaEffectData.push_back(effect);
-    hot.typeLocalIndex = static_cast<uint32_t>(effectIndex);
+    hot.typeLocalIndex = effectIndex;
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -539,16 +622,23 @@ EntityHandle EntityDataManager::registerNPC(EntityHandle::IDType entityId,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate character data with provided health values
-    size_t charIndex = m_characterData.size();
-    CharacterData charData;
+    // Allocate character data with provided health values (reuse freed slot if available)
+    uint32_t charIndex;
+    if (!m_freeCharacterSlots.empty()) {
+        charIndex = m_freeCharacterSlots.back();
+        m_freeCharacterSlots.pop_back();
+    } else {
+        charIndex = static_cast<uint32_t>(m_characterData.size());
+        m_characterData.emplace_back();
+    }
+    auto& charData = m_characterData[charIndex];
+    charData = CharacterData{};  // Reset to default
     charData.health = health;
     charData.maxHealth = maxHealth;
     charData.stamina = 100.0f;
     charData.maxStamina = 100.0f;
     charData.stateFlags = CharacterData::STATE_ALIVE;
-    m_characterData.push_back(charData);
-    hot.typeLocalIndex = static_cast<uint32_t>(charIndex);
+    hot.typeLocalIndex = charIndex;
 
     // Store ID and mapping (using provided ID, not generating new)
     m_entityIds[index] = entityId;
@@ -600,9 +690,17 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate character data with player defaults
-    size_t charIndex = m_characterData.size();
-    CharacterData charData;
+    // Allocate character data with player defaults (reuse freed slot if available)
+    uint32_t charIndex;
+    if (!m_freeCharacterSlots.empty()) {
+        charIndex = m_freeCharacterSlots.back();
+        m_freeCharacterSlots.pop_back();
+    } else {
+        charIndex = static_cast<uint32_t>(m_characterData.size());
+        m_characterData.emplace_back();
+    }
+    auto& charData = m_characterData[charIndex];
+    charData = CharacterData{};  // Reset to default
     charData.health = 100.0f;
     charData.maxHealth = 100.0f;
     charData.stamina = 100.0f;
@@ -610,8 +708,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     charData.attackDamage = 25.0f;
     charData.attackRange = 50.0f;
     charData.stateFlags = CharacterData::STATE_ALIVE;
-    m_characterData.push_back(charData);
-    hot.typeLocalIndex = static_cast<uint32_t>(charIndex);
+    hot.typeLocalIndex = charIndex;
 
     // Store ID and mapping
     m_entityIds[index] = entityId;
@@ -663,16 +760,23 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate item data
-    size_t itemIndex = m_itemData.size();
-    ItemData item;
+    // Allocate item data (reuse freed slot if available)
+    uint32_t itemIndex;
+    if (!m_freeItemSlots.empty()) {
+        itemIndex = m_freeItemSlots.back();
+        m_freeItemSlots.pop_back();
+    } else {
+        itemIndex = static_cast<uint32_t>(m_itemData.size());
+        m_itemData.emplace_back();
+    }
+    auto& item = m_itemData[itemIndex];
+    item = ItemData{};  // Reset to default
     item.resourceHandle = resourceHandle;
     item.quantity = quantity;
     item.pickupTimer = 0.5f;
     item.bobTimer = 0.0f;
     item.flags = 0;
-    m_itemData.push_back(item);
-    hot.typeLocalIndex = static_cast<uint32_t>(itemIndex);
+    hot.typeLocalIndex = itemIndex;
 
     // Store ID and mapping
     m_entityIds[index] = entityId;
@@ -735,21 +839,21 @@ void EntityDataManager::destroyEntity(EntityHandle handle) {
 }
 
 void EntityDataManager::processDestructionQueue() {
-    std::vector<EntityHandle> toDestroy;
+    // Use member buffer to avoid per-frame allocation
+    m_destroyBuffer.clear();
 
     {
         std::lock_guard<std::mutex> lock(m_destructionMutex);
-        toDestroy = std::move(m_destructionQueue);
-        m_destructionQueue.clear();
+        std::swap(m_destroyBuffer, m_destructionQueue);
     }
 
-    if (toDestroy.empty()) {
+    if (m_destroyBuffer.empty()) {
         return;
     }
 
     std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
-    for (const auto& handle : toDestroy) {
+    for (const auto& handle : m_destroyBuffer) {
         auto it = m_idToIndex.find(handle.id);
         if (it == m_idToIndex.end()) {
             continue;
@@ -780,7 +884,7 @@ void EntityDataManager::processDestructionQueue() {
         freeSlot(index);
     }
 
-    ENTITY_DEBUG(std::format("Processed {} entity destructions", toDestroy.size()));
+    ENTITY_DEBUG(std::format("Processed {} entity destructions", m_destroyBuffer.size()));
 }
 
 // ============================================================================
