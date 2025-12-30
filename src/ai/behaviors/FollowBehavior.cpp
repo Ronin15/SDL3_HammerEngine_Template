@@ -293,13 +293,8 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
     }
   }
 
-  // Only apply separation during DIRECT MOVEMENT (not pathfinding)
-  // Pathfinder already handles obstacle avoidance; separation during pathfinding causes oscillation
-  if (!usingPathfinding) {
-    applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
-                                   dynamicSpeed, 25.0f, 0.08f, 8,
-                                   state.separationTimer, state.lastSepForce);
-  }
+  // CollisionManager handles overlap resolution
+  (void)usingPathfinding;  // No longer used
 }
 
 void FollowBehavior::clean(EntityPtr entity) {

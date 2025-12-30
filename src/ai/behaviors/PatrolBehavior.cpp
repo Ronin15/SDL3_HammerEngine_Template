@@ -204,11 +204,7 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
       Vector2D direction = toWaypoint / dist;
       ctx.transform.velocity = direction * m_moveSpeed;
       m_progressTimer = 0.0f;
-
-      // Separation decimation using lock-free method
-      applyDecimatedSeparationDirect(ctx, ctx.transform.velocity,
-                                     m_moveSpeed, 24.0f, 0.20f, 4, m_separationTimer,
-                                     m_lastSepVelocity);
+      // CollisionManager handles overlap resolution
     }
   } else {
     // Direct movement to waypoint

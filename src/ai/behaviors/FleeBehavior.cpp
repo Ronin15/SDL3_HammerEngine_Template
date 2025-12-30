@@ -474,11 +474,8 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, float d
     
     float const speedModifier = calculateFleeSpeedModifier(state);
     Vector2D const intended = state.fleeDirection * m_fleeSpeed * speedModifier;
-    // PERFORMANCE OPTIMIZATION: Use cached collision data to avoid redundant queries
-    applySeparationWithCache(entity, entity->getPosition(), intended,
-                             m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.separationTimer, state.lastSepVelocity, deltaTime,
-                             state.cachedNearbyPositions);
+    // Set velocity directly - CollisionManager handles overlap resolution
+    entity->setVelocity(intended);
 }
 
 void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, float deltaTime) {
@@ -531,11 +528,8 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
     if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
         Vector2D const intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        // PERFORMANCE OPTIMIZATION: Use cached collision data
-        applySeparationWithCache(entity, entity->getPosition(), intended2,
-                                 m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.separationTimer, state.lastSepVelocity, deltaTime,
-                                 state.cachedNearbyPositions);
+        // Set velocity directly - CollisionManager handles overlap resolution
+        entity->setVelocity(intended2);
     }
 }
 
@@ -569,11 +563,8 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, f
 
     float const speedModifier = calculateFleeSpeedModifier(state);
     Vector2D const intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
-    // PERFORMANCE OPTIMIZATION: Use cached collision data
-    applySeparationWithCache(entity, entity->getPosition(), intended3,
-                             m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                             state.separationTimer, state.lastSepVelocity, deltaTime,
-                             state.cachedNearbyPositions);
+    // Set velocity directly - CollisionManager handles overlap resolution
+    entity->setVelocity(intended3);
 }
 
 void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float deltaTime) {
@@ -618,11 +609,8 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, float d
     if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
         Vector2D const intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
-        // PERFORMANCE OPTIMIZATION: Use cached collision data
-        applySeparationWithCache(entity, entity->getPosition(), intended4,
-                                 m_fleeSpeed * speedModifier, 26.0f, 0.25f, 4,
-                                 state.separationTimer, state.lastSepVelocity, deltaTime,
-                                 state.cachedNearbyPositions);
+        // Set velocity directly - CollisionManager handles overlap resolution
+        entity->setVelocity(intended4);
     }
 }
 

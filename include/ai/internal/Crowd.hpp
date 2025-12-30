@@ -13,66 +13,7 @@
 
 namespace AIInternal {
 
-// Enhanced separation parameters for different behavior types
-namespace SeparationParams {
-  // Combat behaviors (attack, chase, guard when alert)
-  constexpr float COMBAT_RADIUS = 32.0f;
-  constexpr float COMBAT_STRENGTH = 0.35f;
-  constexpr size_t COMBAT_MAX_NEIGHBORS = 6;
-  
-  // Movement behaviors (follow, patrol, wander) - enhanced for better crowd control
-  constexpr float MOVEMENT_RADIUS = 28.0f;
-  constexpr float MOVEMENT_STRENGTH = 0.30f;
-  constexpr size_t MOVEMENT_MAX_NEIGHBORS = 6;
-  
-  // Idle/light behaviors - increased to prevent clustering
-  constexpr float IDLE_RADIUS = 24.0f;
-  constexpr float IDLE_STRENGTH = 0.20f;
-  constexpr size_t IDLE_MAX_NEIGHBORS = 5;
-  
-  // Flee behaviors (lighter touch to preserve escape direction)
-  constexpr float FLEE_RADIUS = 26.0f;
-  constexpr float FLEE_STRENGTH = 0.25f;
-  constexpr size_t FLEE_MAX_NEIGHBORS = 4;
-}
-
-// Applies proximity-weighted separation to an intended velocity and returns
-// the adjusted velocity normalized to the given speed.
-// - radius: query radius (px)
-// - strength: blend factor for separation contribution (~0.1f - 0.35f)
-// - maxNeighbors: cap number of neighbors considered (4-6 for better crowd control)
-Vector2D ApplySeparation(EntityPtr entity,
-                         const Vector2D &currentPos,
-                         const Vector2D &intendedVel,
-                         float speed,
-                         float radius,
-                         float strength,
-                         size_t maxNeighbors = 6);
-
-// PERFORMANCE OPTIMIZATION: ApplySeparation with pre-fetched neighbor data
-// Use this overload to avoid redundant collision queries when you already have
-// nearby entity positions from a previous query (e.g., crowd analysis)
-// - preFetchedNeighbors: vector of nearby entity positions (from previous query)
-Vector2D ApplySeparation(EntityPtr entity,
-                         const Vector2D &currentPos,
-                         const Vector2D &intendedVel,
-                         float speed,
-                         float radius,
-                         float strength,
-                         size_t maxNeighbors,
-                         const std::vector<Vector2D> &preFetchedNeighbors);
-
-// LOCK-FREE VARIANT: ApplySeparation without EntityPtr (for BehaviorContext hot path)
-// Uses EntityID directly for self-exclusion - no mutex acquisition needed.
-// - entityId: the querying entity's ID (excluded from neighbors)
-// Other parameters same as ApplySeparation
-Vector2D ApplySeparationDirect(EntityID entityId,
-                               const Vector2D &currentPos,
-                               const Vector2D &intendedVel,
-                               float speed,
-                               float radius,
-                               float strength,
-                               size_t maxNeighbors);
+// NOTE: ApplySeparation functions removed - CollisionManager handles overlap resolution
 
 // Smooths velocity changes to reduce visual glitching
 // - currentVel: entity's current velocity
