@@ -3590,12 +3590,17 @@ void CollisionManager::updatePerformanceMetricsSOA(
       threadingStatus = " [Single-threaded]";
     }
 
+    // Calculate effective world size from AABB (center + halfSize format)
+    float worldW = m_worldBounds.halfSize.getX() * 2.0f;
+    float worldH = m_worldBounds.halfSize.getY() * 2.0f;
+
     COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable), "
                                 "Total: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
-                                "Pairs: {}, Collisions: {}, Cache: {}%{}",
+                                "Pairs: {}, Collisions: {}, Cache: {}%{}, Bounds: {}x{}",
                                 bodyCount, activeMovableBodies,
                                 m_perf.lastTotalMs, d12, d23,
-                                pairCount, collisionCount, cacheHitRate, threadingStatus));
+                                pairCount, collisionCount, cacheHitRate, threadingStatus,
+                                static_cast<int>(worldW), static_cast<int>(worldH)));
 
     // Reset cache counters for next reporting window
     m_cacheHits = 0;

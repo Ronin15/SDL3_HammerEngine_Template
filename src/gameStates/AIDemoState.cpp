@@ -183,15 +183,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_N)) {
     // Spawn all NPCs up to m_npcCount with standard behavior (Wander)
     if (m_npcsSpawned < m_npcCount) {
-      // Set CollisionManager bounds once before spawning starts
-      if (m_npcsSpawned == 0) {
-        CollisionManager &collisionMgr = CollisionManager::Instance();
-        if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
-          collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-          GAMESTATE_INFO(std::format("CollisionManager bounds set to: {} x {}", m_worldWidth, m_worldHeight));
-        }
-      }
-
       int const npcsToSpawn = m_npcCount - m_npcsSpawned;
       GAMESTATE_INFO(std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
       createNPCBatch(npcsToSpawn);
@@ -204,15 +195,6 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
     // Spawn 2000 NPCs with random behaviors (like EventDemoState)
-    // Set CollisionManager bounds if this is the first spawn
-    if (m_npcs.empty()) {
-      CollisionManager &collisionMgr = CollisionManager::Instance();
-      if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
-        collisionMgr.setWorldBounds(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-        GAMESTATE_INFO(std::format("CollisionManager bounds set to: {} x {}", m_worldWidth, m_worldHeight));
-      }
-    }
-
     int previousCount = m_npcs.size();
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
