@@ -1635,64 +1635,109 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
     }
 
     // ========================================================================
-    // 2. MOVABLE-VS-STATIC: Direct iteration with SIMD AABB checks
-    //    Zero spatial hash queries - staticIndices already culled
+    // 2. MOVABLE-VS-STATIC: Choose strategy based on static count in cull area
+    //    Small count: Direct SIMD iteration (zero queries)
+    //    Large count: Spatial hash query (filters to nearby statics)
     // ========================================================================
+    static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
     const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
-    size_t si = 0;
-    const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
-    for (; si < staticSimdEnd; si += 4) {
-      size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
-      size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
+    if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
+      // DIRECT PATH: Iterate all culled statics with SIMD AABB checks
+      size_t si = 0;
+      const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
-      // Load 4 static AABBs
-      Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
-                            m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
-      Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
-                            m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
-      Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
-                            m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
-      Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
-                            m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
+      for (; si < staticSimdEnd; si += 4) {
+        size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
+        size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
 
-      // SIMD AABB overlap test
-      Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
-      Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
-      Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
-      Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
-      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
-      int noOverlapMask = movemask(noOverlap);
+        Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
+                              m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
+        Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
+                              m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
+        Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
+                              m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
+        Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
+                              m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
 
-      if (noOverlapMask == 0xF) continue;
+        Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
+        Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
+        Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
+        Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
+        Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
+        int noOverlapMask = movemask(noOverlap);
 
-      // Layer mask check
-      Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
-                                   m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
-      Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-      Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
-      int layerFailMask = movemask_int(staticCmp);
+        if (noOverlapMask == 0xF) continue;
 
-      for (size_t j = 0; j < 4; ++j) {
-        if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
-          if (m_storage.hotData[staticIndices[si + j]].active) {
-            indexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+        Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
+                                     m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
+        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
+        int layerFailMask = movemask_int(staticCmp);
+
+        for (size_t j = 0; j < 4; ++j) {
+          if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
+            if (m_storage.hotData[staticIndices[si + j]].active) {
+              indexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+            }
           }
         }
       }
-    }
 
-    // Scalar tail for remaining statics
-    for (; si < staticIndices.size(); ++si) {
-      size_t staticIdx = staticIndices[si];
-      const auto& staticHot = m_storage.hotData[staticIdx];
-      if (!staticHot.active) continue;
-      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
-      if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
-      indexPairs.emplace_back(dynamicIdx, staticIdx);
+      for (; si < staticIndices.size(); ++si) {
+        size_t staticIdx = staticIndices[si];
+        const auto& staticHot = m_storage.hotData[staticIdx];
+        if (!staticHot.active) continue;
+        if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+            dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+            dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+            dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+        if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
+        indexPairs.emplace_back(dynamicIdx, staticIdx);
+      }
+    } else {
+      // SPATIAL HASH PATH: Query for nearby statics only
+      float queryMinX = dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON;
+      float queryMinY = dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON;
+      float queryMaxX = dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON;
+      float queryMaxY = dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON;
+
+      auto& staticCandidates = getPooledVector();
+      m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
+
+      size_t si = 0;
+      const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
+
+      for (; si < staticSimdEnd; si += 4) {
+        Int4 staticLayers = set_int4(
+          m_storage.hotData[staticCandidates[si]].layers,
+          m_storage.hotData[staticCandidates[si+1]].layers,
+          m_storage.hotData[staticCandidates[si+2]].layers,
+          m_storage.hotData[staticCandidates[si+3]].layers
+        );
+        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
+        int staticFailMask = movemask_int(staticCmp);
+
+        if (staticFailMask == 0xFFFF) continue;
+
+        for (size_t j = 0; j < 4; ++j) {
+          if (((staticFailMask >> (j * 4)) & 0xF) == 0) {
+            size_t staticIdx = staticCandidates[si + j];
+            if (m_storage.hotData[staticIdx].active) {
+              indexPairs.emplace_back(dynamicIdx, staticIdx);
+            }
+          }
+        }
+      }
+
+      for (; si < staticCandidates.size(); ++si) {
+        size_t staticIdx = staticCandidates[si];
+        const auto& staticHot = m_storage.hotData[staticIdx];
+        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+        indexPairs.emplace_back(dynamicIdx, staticIdx);
+      }
+      returnPooledVector(staticCandidates);
     }
   }  // End per-movable loop
 }
@@ -1873,61 +1918,110 @@ void CollisionManager::broadphaseBatch(
     }
 
     // ========================================================================
-    // 2. MOVABLE-VS-STATIC: Direct iteration with SIMD AABB checks
+    // 2. MOVABLE-VS-STATIC: Choose strategy based on static count
     //    staticIndices is READ-ONLY - safe for parallel access
     // ========================================================================
+    static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
     const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
-    size_t si = 0;
-    const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
-    for (; si < staticSimdEnd; si += 4) {
-      size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
-      size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
+    if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
+      // DIRECT PATH: Iterate all culled statics with SIMD AABB checks
+      size_t si = 0;
+      const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
-      Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
-                            m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
-      Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
-                            m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
-      Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
-                            m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
-      Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
-                            m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
+      for (; si < staticSimdEnd; si += 4) {
+        size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
+        size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
 
-      Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
-      Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
-      Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
-      Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
-      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
-      int noOverlapMask = movemask(noOverlap);
+        Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
+                              m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
+        Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
+                              m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
+        Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
+                              m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
+        Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
+                              m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
 
-      if (noOverlapMask == 0xF) continue;
+        Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
+        Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
+        Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
+        Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
+        Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
+        int noOverlapMask = movemask(noOverlap);
 
-      Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
-                                   m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
-      Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-      Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
-      int layerFailMask = movemask_int(staticCmp);
+        if (noOverlapMask == 0xF) continue;
 
-      for (size_t j = 0; j < 4; ++j) {
-        if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
-          if (m_storage.hotData[staticIndices[si + j]].active) {
-            outIndexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+        Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
+                                     m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
+        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
+        int layerFailMask = movemask_int(staticCmp);
+
+        for (size_t j = 0; j < 4; ++j) {
+          if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
+            if (m_storage.hotData[staticIndices[si + j]].active) {
+              outIndexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+            }
           }
         }
       }
-    }
 
-    // Scalar tail for remaining statics
-    for (; si < staticIndices.size(); ++si) {
-      size_t staticIdx = staticIndices[si];
-      const auto& staticHot = m_storage.hotData[staticIdx];
-      if (!staticHot.active) continue;
-      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
-      if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
-      outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+      for (; si < staticIndices.size(); ++si) {
+        size_t staticIdx = staticIndices[si];
+        const auto& staticHot = m_storage.hotData[staticIdx];
+        if (!staticHot.active) continue;
+        if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+            dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+            dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+            dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+        if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
+        outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+      }
+    } else {
+      // SPATIAL HASH PATH: Query for nearby statics (thread-safe)
+      float queryMinX = dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON;
+      float queryMinY = dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON;
+      float queryMaxX = dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON;
+      float queryMaxY = dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON;
+
+      thread_local std::vector<size_t> staticCandidates;
+      thread_local HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
+      staticCandidates.clear();
+      m_staticSpatialHash.queryRegionBoundsThreadSafe(
+          queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates, queryBuffers);
+
+      size_t si = 0;
+      const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
+
+      for (; si < staticSimdEnd; si += 4) {
+        Int4 staticLayers = set_int4(
+          m_storage.hotData[staticCandidates[si]].layers,
+          m_storage.hotData[staticCandidates[si+1]].layers,
+          m_storage.hotData[staticCandidates[si+2]].layers,
+          m_storage.hotData[staticCandidates[si+3]].layers
+        );
+        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
+        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
+        int staticFailMask = movemask_int(staticCmp);
+
+        if (staticFailMask == 0xFFFF) continue;
+
+        for (size_t j = 0; j < 4; ++j) {
+          if (((staticFailMask >> (j * 4)) & 0xF) == 0) {
+            size_t staticIdx = staticCandidates[si + j];
+            if (m_storage.hotData[staticIdx].active) {
+              outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+            }
+          }
+        }
+      }
+
+      for (; si < staticCandidates.size(); ++si) {
+        size_t staticIdx = staticCandidates[si];
+        const auto& staticHot = m_storage.hotData[staticIdx];
+        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+        outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+      }
     }
   }
 }
@@ -2541,8 +2635,8 @@ void CollisionManager::updateSOA(float dt) {
   size_t dynamicBodiesCulled = (totalMovableBodies > activeMovableBodies) ?
                                (totalMovableBodies - activeMovableBodies) : 0;
 
-  // Object pool for SOA collision processing
-  std::vector<std::pair<size_t, size_t>> indexPairs;
+  // Use pooled vector for index pairs (avoids per-frame allocation)
+  auto& indexPairs = m_collisionPool.broadphaseIndexPairs;
 
   // BROADPHASE: Generate collision pairs using spatial hash
 #ifdef DEBUG
@@ -2621,32 +2715,11 @@ void CollisionManager::updateSOA(float dt) {
 
 // Sync spatial hash for active bodies after culling
 void CollisionManager::syncSpatialHashesWithActiveIndices() {
-  const auto& pools = m_collisionPool;
-
-  // Clear and rebuild dynamic spatial hash with only active movable bodies
-  m_dynamicSpatialHash.clear();
-
-  // OPTIMIZATION: Pre-reserve hash capacity to prevent rebalancing during insertions
-  // This prevents hash table growth from triggering rehashing which causes 10-15% performance regression
-  // Reserve for expected number of movable bodies (empirically: ~5-10 regions per 1K bodies)
-  size_t activeMovableCount = std::count_if(
-      pools.movableIndices.begin(), pools.movableIndices.end(),
-      [this](size_t idx) {
-        return idx < m_storage.hotData.size() && m_storage.hotData[idx].active;
-      });
-  if (activeMovableCount > 0) {
-    m_dynamicSpatialHash.reserve(activeMovableCount);  // 1.2-1.5x speedup by preventing rehashing
-  }
-
-  for (size_t idx : pools.movableIndices) {
-    if (idx >= m_storage.hotData.size()) continue;
-
-    const auto& hot = m_storage.hotData[idx];
-    if (!hot.active) continue;
-
-    AABB aabb = m_storage.computeAABB(idx);
-    m_dynamicSpatialHash.insert(idx, aabb);
-  }
+  // OPTIMIZATION: Dynamic spatial hash no longer needed!
+  // The optimized broadphase uses:
+  // - pools.movableIndices for movable-vs-movable (direct SIMD iteration)
+  // - pools.staticIndices or m_staticSpatialHash for movable-vs-static
+  // This eliminates ~160 hash insert calls per frame (each with allocation + mutex overhead)
 
   // Static hash is managed separately via rebuildStaticSpatialHash()
 }
@@ -2917,28 +2990,34 @@ void CollisionManager::refreshCachedAABB(size_t index) {
 }
 
 void CollisionManager::refreshCachedAABBs() {
-  // Batch refresh all cached AABBs from EntityDataManager
-  // Called at start of broadphase to ensure all bounds are current
-  // Following AIManager pattern: direct EDM access, SIMD batch processing
+  // OPTIMIZATION: Only refresh AABBs for MOVABLE bodies (dynamic + kinematic)
+  // Static bodies don't move - their AABBs are set once at creation and never change
+  // This reduces iterations from 15K (all bodies) to ~170 (movable only)
 
   auto& edm = EntityDataManager::Instance();
-  const size_t count = m_storage.hotData.size();
+  const auto& movableIndices = m_movableBodyIndices;
+  const size_t count = movableIndices.size();
+
+  if (count == 0) return;
 
   // SIMD batch processing (4 bodies at a time)
-  size_t i = 0;
+  size_t mi = 0;
   const size_t simdEnd = (count / 4) * 4;
 
-  for (; i < simdEnd; i += 4) {
+  for (; mi < simdEnd; mi += 4) {
+    size_t i0 = movableIndices[mi], i1 = movableIndices[mi + 1];
+    size_t i2 = movableIndices[mi + 2], i3 = movableIndices[mi + 3];
+
     // Load EDM indices
-    size_t idx0 = m_storage.hotData[i].edmIndex;
-    size_t idx1 = m_storage.hotData[i + 1].edmIndex;
-    size_t idx2 = m_storage.hotData[i + 2].edmIndex;
-    size_t idx3 = m_storage.hotData[i + 3].edmIndex;
+    size_t idx0 = m_storage.hotData[i0].edmIndex;
+    size_t idx1 = m_storage.hotData[i1].edmIndex;
+    size_t idx2 = m_storage.hotData[i2].edmIndex;
+    size_t idx3 = m_storage.hotData[i3].edmIndex;
 
     // If any index is invalid, fall back to scalar for this batch
     if (idx0 == SIZE_MAX || idx1 == SIZE_MAX || idx2 == SIZE_MAX || idx3 == SIZE_MAX) {
       for (size_t j = 0; j < 4; ++j) {
-        refreshCachedAABB(i + j);
+        refreshCachedAABB(movableIndices[mi + j]);
       }
       continue;
     }
@@ -2978,19 +3057,25 @@ void CollisionManager::refreshCachedAABBs() {
     store4(maxXArr, maxX);
     store4(maxYArr, maxY);
 
-    for (size_t j = 0; j < 4; ++j) {
-      auto& hot = m_storage.hotData[i + j];
-      hot.aabbMinX = minXArr[j];
-      hot.aabbMinY = minYArr[j];
-      hot.aabbMaxX = maxXArr[j];
-      hot.aabbMaxY = maxYArr[j];
-      hot.aabbDirty = 0;
-    }
+    // Store back to storage indices
+    auto& hot0 = m_storage.hotData[i0];
+    auto& hot1 = m_storage.hotData[i1];
+    auto& hot2 = m_storage.hotData[i2];
+    auto& hot3 = m_storage.hotData[i3];
+
+    hot0.aabbMinX = minXArr[0]; hot0.aabbMinY = minYArr[0];
+    hot0.aabbMaxX = maxXArr[0]; hot0.aabbMaxY = maxYArr[0]; hot0.aabbDirty = 0;
+    hot1.aabbMinX = minXArr[1]; hot1.aabbMinY = minYArr[1];
+    hot1.aabbMaxX = maxXArr[1]; hot1.aabbMaxY = maxYArr[1]; hot1.aabbDirty = 0;
+    hot2.aabbMinX = minXArr[2]; hot2.aabbMinY = minYArr[2];
+    hot2.aabbMaxX = maxXArr[2]; hot2.aabbMaxY = maxYArr[2]; hot2.aabbDirty = 0;
+    hot3.aabbMinX = minXArr[3]; hot3.aabbMinY = minYArr[3];
+    hot3.aabbMaxX = maxXArr[3]; hot3.aabbMaxY = maxYArr[3]; hot3.aabbDirty = 0;
   }
 
   // Scalar tail
-  for (; i < count; ++i) {
-    refreshCachedAABB(i);
+  for (; mi < count; ++mi) {
+    refreshCachedAABB(movableIndices[mi]);
   }
 }
 
@@ -3189,11 +3274,12 @@ void CollisionManager::updatePerformanceMetricsSOA(
     float worldH = m_worldBounds.halfSize.getY() * 2.0f;
 
     size_t culledStatics = m_collisionPool.staticIndices.size();
+    auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Pre-broadphase
     COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable, {} statics in cull), "
-                                "Total: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
+                                "Total: {:.2f}ms, Pre: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
                                 "Pairs: {}, Collisions: {}{}, Bounds: {}x{}",
                                 bodyCount, activeMovableBodies, culledStatics,
-                                m_perf.lastTotalMs, d12, d23,
+                                m_perf.lastTotalMs, d01, d12, d23,
                                 pairCount, collisionCount, threadingStatus,
                                 static_cast<int>(worldW), static_cast<int>(worldH)));
   }
@@ -3228,31 +3314,16 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
         float hw = edmHot.halfWidth;
         float hh = edmHot.halfHeight;
 
-        // Store old bounds for spatial hash update
-        float oldMinX = hot.aabbMinX;
-        float oldMinY = hot.aabbMinY;
-        float oldMaxX = hot.aabbMaxX;
-        float oldMaxY = hot.aabbMaxY;
-
-        // Update cached AABB
         hot.aabbMinX = px - hw;
         hot.aabbMinY = py - hh;
         hot.aabbMaxX = px + hw;
         hot.aabbMaxY = py + hh;
         hot.aabbDirty = 0;
         hot.active = true;
-
-        // Update spatial hash if position changed significantly
-        EntityID entityId = m_storage.entityIds[index];
-        AABB oldAABB((oldMinX + oldMaxX) * 0.5f, (oldMinY + oldMaxY) * 0.5f,
-                     (oldMaxX - oldMinX) * 0.5f, (oldMaxY - oldMinY) * 0.5f);
-        AABB newAABB(px, py, hw, hh);
-        m_dynamicSpatialHash.update(entityId, oldAABB, newAABB);
+        // NOTE: Dynamic spatial hash update removed - broadphase uses pools.movableIndices directly
       }
     }
   }
-
-  // Verbose logging removed for performance
 }
 
 void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates) {
@@ -3292,12 +3363,6 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
           float hw = edmHot.halfWidth;
           float hh = edmHot.halfHeight;
 
-          // Store old bounds for spatial hash update
-          float oldMinX = hot.aabbMinX;
-          float oldMinY = hot.aabbMinY;
-          float oldMaxX = hot.aabbMaxX;
-          float oldMaxY = hot.aabbMaxY;
-
           // Update cached AABB
           hot.aabbMinX = px - hw;
           hot.aabbMinY = py - hh;
@@ -3305,19 +3370,11 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
           hot.aabbMaxY = py + hh;
           hot.aabbDirty = 0;
           hot.active = true;
-
-          // Update spatial hash
-          EntityID entityId = m_storage.entityIds[index];
-          AABB oldAABB((oldMinX + oldMaxX) * 0.5f, (oldMinY + oldMaxY) * 0.5f,
-                       (oldMaxX - oldMinX) * 0.5f, (oldMaxY - oldMinY) * 0.5f);
-          AABB newAABB(px, py, hw, hh);
-          m_dynamicSpatialHash.update(entityId, oldAABB, newAABB);
+          // NOTE: Dynamic spatial hash update removed - broadphase uses pools.movableIndices directly
         }
       }
     }
   }
-
-  // Batch processing complete - zero mutex contention between AI batches
 }
 
 void CollisionManager::applyKinematicUpdates(std::vector<KinematicUpdate>& updates) {
