@@ -522,6 +522,7 @@ private:
         std::vector<size_t> movableIndices;      // Indices of non-static bodies (dynamic + kinematic)
         std::vector<size_t> staticIndices;       // Indices of static bodies only
         std::vector<std::pair<size_t, size_t>> broadphaseIndexPairs; // Storage index pairs from broadphase
+        std::vector<size_t> sortedMovableIndices; // Sorted by X for Sweep-and-Prune
 
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
@@ -552,6 +553,7 @@ private:
                 movableIndices.reserve(bodyCount / 4);  // Estimate 25% movable (dynamic + kinematic)
                 staticIndices.reserve(bodyCount);
                 broadphaseIndexPairs.reserve(expectedPairs);
+                sortedMovableIndices.reserve(bodyCount / 4);
             }
         }
 
@@ -567,6 +569,7 @@ private:
             movableIndices.clear();
             staticIndices.clear();
             broadphaseIndexPairs.clear();
+            sortedMovableIndices.clear();
             // Vectors retain capacity
         }
     };
