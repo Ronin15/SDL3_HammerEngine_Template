@@ -356,11 +356,12 @@ private:
             manager.prepareForStateTransition();
         }
 
-        // Set world bounds and culling buffer to encompass all test bodies
+        // Set world bounds - use realistic culling (default 1000.0f buffer)
         // Grid spans from (100,100) to roughly (100 + sqrt(count)*60, same for Y)
         float maxExtent = 100.0f + std::sqrt(static_cast<float>(testBodies.size())) * 60.0f + 100.0f;
         manager.setWorldBounds(0.0f, 0.0f, maxExtent, maxExtent);
-        manager.setCullingBuffer(maxExtent);  // Disable culling by setting buffer larger than world
+        // Use default culling buffer for realistic game scenario testing
+        // manager.setCullingBuffer(1000.0f); // Default - realistic game culling
 
         // Pre-allocate containers for better performance
         manager.prepareCollisionBuffers(testBodies.size());

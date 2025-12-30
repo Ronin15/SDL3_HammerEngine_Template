@@ -1551,186 +1551,150 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
 
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
+  const auto& staticIndices = pools.staticIndices;
 
-  // Reserve space for pairs
-  indexPairs.reserve(movableIndices.size() * 4);
+  // Reserve space for pairs (movable×movable/2 + movable×static)
+  indexPairs.reserve(movableIndices.size() * (movableIndices.size() / 2 + staticIndices.size()) / 4);
 
-  // Process only movable bodies (static never initiate collisions)
-  for (size_t dynamicIdx : movableIndices) {
-    // Check active status first (direct indexing to avoid long-lived reference)
+  // ========================================================================
+  // 1. MOVABLE-VS-MOVABLE: Direct iteration with SIMD AABB checks
+  //    Zero spatial hash queries - O(M²/2) checks with SIMD batching
+  // ========================================================================
+  for (size_t mi = 0; mi < movableIndices.size(); ++mi) {
+    size_t dynamicIdx = movableIndices[mi];
     if (!m_storage.hotData[dynamicIdx].active) continue;
 
-    // Copy collision mask to avoid dangling reference if vector reallocates
-    const uint32_t dynamicCollidesWith = m_storage.hotData[dynamicIdx].collidesWith;
-
-    // PERFORMANCE: Use cached AABB bounds directly without constructing AABB object
-    // Cached bounds are refreshed at start of updateSOA via refreshCachedAABBs()
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
+    const uint32_t dynamicCollidesWith = dynamicHot.collidesWith;
 
-    // Calculate epsilon-expanded bounds directly from cached min/max (NO AABB construction!)
-    // SIMDMath abstraction (cross-platform: SSE2/NEON/scalar fallback)
-    // Load: [aabbMinX, aabbMinY, aabbMaxX, aabbMaxY]
-    Float4 bounds = set(dynamicHot.aabbMinX, dynamicHot.aabbMinY,
-                       dynamicHot.aabbMaxX, dynamicHot.aabbMaxY);
-    // Epsilon: [-eps, -eps, +eps, +eps]
-    Float4 epsilon = set(-SPATIAL_QUERY_EPSILON, -SPATIAL_QUERY_EPSILON,
-                        SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
-    Float4 queryBounds = add(bounds, epsilon);
+    // Broadcast dynamic AABB for SIMD comparison
+    Float4 dynMinX = broadcast(dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON);
+    Float4 dynMinY = broadcast(dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON);
+    Float4 dynMaxX = broadcast(dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON);
+    Float4 dynMaxY = broadcast(dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON);
+    const Int4 dynamicMaskVec = broadcast_int(dynamicCollidesWith);
 
-    // Extract results
-    alignas(16) float queryBoundsArray[4];
-    store4(queryBoundsArray, queryBounds);
-    float queryMinX = queryBoundsArray[0];
-    float queryMinY = queryBoundsArray[1];
-    float queryMaxX = queryBoundsArray[2];
-    float queryMaxY = queryBoundsArray[3];
+    // Only check movables with higher index to avoid duplicate pairs
+    size_t startJ = mi + 1;
+    const size_t movableSimdEnd = startJ + ((movableIndices.size() - startJ) / 4) * 4;
 
-    // 1. Movable-vs-movable collisions (use optimized bounds-based query)
-    auto& dynamicCandidates = getPooledVector();
-    m_dynamicSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, dynamicCandidates);
+    for (size_t mj = startJ; mj < movableSimdEnd; mj += 4) {
+      size_t c0 = movableIndices[mj], c1 = movableIndices[mj+1];
+      size_t c2 = movableIndices[mj+2], c3 = movableIndices[mj+3];
 
-    // SIMDMath abstraction: Process candidates in batches of 4 for layer mask filtering
-    const Int4 maskVec = broadcast_int(dynamicCollidesWith);
-    size_t i = 0;
-    const size_t simdEnd = (dynamicCandidates.size() / 4) * 4;
+      // Load 4 candidate AABBs
+      Float4 candMinX = set(m_storage.hotData[c0].aabbMinX, m_storage.hotData[c1].aabbMinX,
+                            m_storage.hotData[c2].aabbMinX, m_storage.hotData[c3].aabbMinX);
+      Float4 candMaxX = set(m_storage.hotData[c0].aabbMaxX, m_storage.hotData[c1].aabbMaxX,
+                            m_storage.hotData[c2].aabbMaxX, m_storage.hotData[c3].aabbMaxX);
+      Float4 candMinY = set(m_storage.hotData[c0].aabbMinY, m_storage.hotData[c1].aabbMinY,
+                            m_storage.hotData[c2].aabbMinY, m_storage.hotData[c3].aabbMinY);
+      Float4 candMaxY = set(m_storage.hotData[c0].aabbMaxY, m_storage.hotData[c1].aabbMaxY,
+                            m_storage.hotData[c2].aabbMaxY, m_storage.hotData[c3].aabbMaxY);
 
-    for (; i < simdEnd; i += 4) {
-      // Bounds check for batch
-      if (dynamicCandidates[i] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+1] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+2] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+3] >= m_storage.hotData.size()) {
-        // Fall back to scalar for this batch
-        for (size_t j = i; j < i + 4 && j < dynamicCandidates.size(); ++j) {
-          size_t candidateIdx = dynamicCandidates[j];
-          if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
-          const auto& candidateHot = m_storage.hotData[candidateIdx];
-          if (!candidateHot.active || (dynamicCollidesWith & candidateHot.layers) == 0) continue;
-          size_t a = std::min(dynamicIdx, candidateIdx);
-          size_t b = std::max(dynamicIdx, candidateIdx);
-          indexPairs.emplace_back(a, b);
+      // SIMD AABB overlap test
+      Float4 noOverlapX1 = cmplt(dynMaxX, candMinX);
+      Float4 noOverlapX2 = cmplt(candMaxX, dynMinX);
+      Float4 noOverlapY1 = cmplt(dynMaxY, candMinY);
+      Float4 noOverlapY2 = cmplt(candMaxY, dynMinY);
+      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
+      int noOverlapMask = movemask(noOverlap);
+
+      if (noOverlapMask == 0xF) continue;  // No overlaps in this batch
+
+      // Layer mask check for overlapping candidates
+      Int4 candLayers = set_int4(m_storage.hotData[c0].layers, m_storage.hotData[c1].layers,
+                                 m_storage.hotData[c2].layers, m_storage.hotData[c3].layers);
+      Int4 layerResult = bitwise_and(dynamicMaskVec, candLayers);
+      Int4 layerZero = cmpeq_int(layerResult, setzero_int());
+      int layerFailMask = movemask_int(layerZero);
+
+      // Emit pairs for lanes that overlap AND have matching layers
+      for (size_t k = 0; k < 4; ++k) {
+        if (((noOverlapMask >> k) & 1) == 0 && ((layerFailMask >> (k * 4)) & 0xF) == 0) {
+          size_t candIdx = movableIndices[mj + k];
+          if (candIdx != dynamicIdx && m_storage.hotData[candIdx].active) {
+            indexPairs.emplace_back(dynamicIdx, candIdx);
+          }
         }
-        continue;
-      }
-
-      // Load 4 candidate layers
-      Int4 layers = set_int4(
-        m_storage.hotData[dynamicCandidates[i]].layers,
-        m_storage.hotData[dynamicCandidates[i+1]].layers,
-        m_storage.hotData[dynamicCandidates[i+2]].layers,
-        m_storage.hotData[dynamicCandidates[i+3]].layers
-      );
-
-      // Batch layer mask check: result = layers & dynamicCollidesWith
-      Int4 result = bitwise_and(layers, maskVec);
-      Int4 zeros = setzero_int();
-      Int4 cmp = cmpeq_int(result, zeros);
-      int failMask = movemask_int(cmp);
-
-      // If all 4 failed (all bits set), skip entire batch
-      if (failMask == 0xFFFF) continue;
-
-      // Process individual candidates that passed layer mask check
-      for (size_t j = 0; j < 4; ++j) {
-        size_t candidateIdx = dynamicCandidates[i + j];
-        if (candidateIdx == dynamicIdx) continue;
-
-        // Check if this candidate passed (failMask bit for this lane is 0)
-        int laneFailBits = (failMask >> (j * 4)) & 0xF;
-        if (laneFailBits == 0xF) continue; // This candidate failed layer mask
-
-        const auto& candidateHot = m_storage.hotData[candidateIdx];
-        if (!candidateHot.active) continue;
-
-        // Add collision pair
-        size_t a = std::min(dynamicIdx, candidateIdx);
-        size_t b = std::max(dynamicIdx, candidateIdx);
-        indexPairs.emplace_back(a, b);
       }
     }
 
-    // Scalar tail for remaining candidates
-    for (; i < dynamicCandidates.size(); ++i) {
-      size_t candidateIdx = dynamicCandidates[i];
-      if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
-
-      const auto& candidateHot = m_storage.hotData[candidateIdx];
-      if (!candidateHot.active || (dynamicCollidesWith & candidateHot.layers) == 0) continue;
-
-      // Ensure consistent ordering
-      size_t a = std::min(dynamicIdx, candidateIdx);
-      size_t b = std::max(dynamicIdx, candidateIdx);
-      indexPairs.emplace_back(a, b);
+    // Scalar tail for remaining movables
+    for (size_t mj = movableSimdEnd; mj < movableIndices.size(); ++mj) {
+      size_t candIdx = movableIndices[mj];
+      if (candIdx == dynamicIdx) continue;
+      const auto& candHot = m_storage.hotData[candIdx];
+      if (!candHot.active) continue;
+      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < candHot.aabbMinX ||
+          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > candHot.aabbMaxX ||
+          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < candHot.aabbMinY ||
+          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > candHot.aabbMaxY) continue;
+      if ((dynamicCollidesWith & candHot.layers) == 0) continue;
+      indexPairs.emplace_back(dynamicIdx, candIdx);
     }
 
-    // 2. Query static spatial hash directly
-    auto& staticCandidates = getPooledVector();
-    m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
-
-    // SIMD batch processing for static candidates
+    // ========================================================================
+    // 2. MOVABLE-VS-STATIC: Direct iteration with SIMD AABB checks
+    //    Zero spatial hash queries - staticIndices already culled
+    // ========================================================================
     const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
     size_t si = 0;
-    const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
+    const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
     for (; si < staticSimdEnd; si += 4) {
-      // Bounds check for batch
-      if (staticCandidates[si] >= m_storage.hotData.size() ||
-          staticCandidates[si+1] >= m_storage.hotData.size() ||
-          staticCandidates[si+2] >= m_storage.hotData.size() ||
-          staticCandidates[si+3] >= m_storage.hotData.size()) {
-        // Fall back to scalar for this batch
-        for (size_t j = si; j < si + 4 && j < staticCandidates.size(); ++j) {
-          size_t staticIdx = staticCandidates[j];
-          if (staticIdx >= m_storage.hotData.size()) continue;
-          const auto& staticHot = m_storage.hotData[staticIdx];
-          if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-          indexPairs.emplace_back(dynamicIdx, staticIdx);
-        }
-        continue;
-      }
+      size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
+      size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
 
-      // Load 4 static candidate layers
-      Int4 staticLayers = set_int4(
-        m_storage.hotData[staticCandidates[si]].layers,
-        m_storage.hotData[staticCandidates[si+1]].layers,
-        m_storage.hotData[staticCandidates[si+2]].layers,
-        m_storage.hotData[staticCandidates[si+3]].layers
-      );
+      // Load 4 static AABBs
+      Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
+                            m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
+      Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
+                            m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
+      Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
+                            m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
+      Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
+                            m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
 
-      // Batch layer mask check
+      // SIMD AABB overlap test
+      Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
+      Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
+      Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
+      Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
+      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
+      int noOverlapMask = movemask(noOverlap);
+
+      if (noOverlapMask == 0xF) continue;
+
+      // Layer mask check
+      Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
+                                   m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
       Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-      Int4 staticZeros = setzero_int();
-      Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
-      int staticFailMask = movemask_int(staticCmp);
-
-      if (staticFailMask == 0xFFFF) continue;
+      Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
+      int layerFailMask = movemask_int(staticCmp);
 
       for (size_t j = 0; j < 4; ++j) {
-        size_t staticIdx = staticCandidates[si + j];
-        int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
-        if (laneFailBits == 0xF) continue;
-
-        const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active) continue;
-
-        indexPairs.emplace_back(dynamicIdx, staticIdx);
+        if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
+          if (m_storage.hotData[staticIndices[si + j]].active) {
+            indexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+          }
+        }
       }
     }
 
-    // Scalar tail
-    for (; si < staticCandidates.size(); ++si) {
-      size_t staticIdx = staticCandidates[si];
-      if (staticIdx >= m_storage.hotData.size()) continue;
+    // Scalar tail for remaining statics
+    for (; si < staticIndices.size(); ++si) {
+      size_t staticIdx = staticIndices[si];
       const auto& staticHot = m_storage.hotData[staticIdx];
-      if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+      if (!staticHot.active) continue;
+      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+      if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
       indexPairs.emplace_back(dynamicIdx, staticIdx);
     }
-
-    returnPooledVector(staticCandidates);
-
-    // Return pooled vector
-    returnPooledVector(dynamicCandidates);
-  }
+  }  // End per-movable loop
 }
 
 void CollisionManager::broadphaseMultiThreaded(
@@ -1826,174 +1790,143 @@ void CollisionManager::broadphaseBatch(
     size_t endIdx) {
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
+  const auto& staticIndices = pools.staticIndices;
 
-  // Thread-local buffers with thread-safe query buffers (stack allocated, zero contention)
-  // Each worker thread has its own buffers to avoid data races on spatial hash queries
-  BroadphaseThreadBuffers buffers;
-  buffers.reserve();
+  // Process each movable in this batch's range [startIdx, endIdx)
+  // All data is READ-ONLY - safe for parallel access
+  for (size_t mi = startIdx; mi < endIdx && mi < movableIndices.size(); ++mi) {
+    size_t dynamicIdx = movableIndices[mi];
 
-  // Process each body in this batch's range
-  // NOTE: All AABB caches and static cache entries were pre-populated on main thread
-  // This function only does READ-ONLY queries using thread-safe methods
-  for (size_t idx = startIdx; idx < endIdx && idx < movableIndices.size(); ++idx) {
-    size_t dynamicIdx = movableIndices[idx];
-
-    // Bounds check
     if (dynamicIdx >= m_storage.hotData.size()) continue;
-
-    // Check active status first
     if (!m_storage.hotData[dynamicIdx].active) continue;
 
-    // Copy collision mask to avoid dangling reference
-    const uint32_t dynamicCollidesWith = m_storage.hotData[dynamicIdx].collidesWith;
-
-    // AABB bounds are already cached on main thread (READ-ONLY access here)
     const auto& dynamicHot = m_storage.hotData[dynamicIdx];
+    const uint32_t dynamicCollidesWith = dynamicHot.collidesWith;
 
-    // Calculate epsilon-expanded bounds
-    Float4 bounds = set(dynamicHot.aabbMinX, dynamicHot.aabbMinY,
-                       dynamicHot.aabbMaxX, dynamicHot.aabbMaxY);
-    Float4 epsilon = set(-SPATIAL_QUERY_EPSILON, -SPATIAL_QUERY_EPSILON,
-                        SPATIAL_QUERY_EPSILON, SPATIAL_QUERY_EPSILON);
-    Float4 queryBounds = add(bounds, epsilon);
+    // Broadcast dynamic AABB for SIMD comparison (with epsilon)
+    Float4 dynMinX = broadcast(dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON);
+    Float4 dynMinY = broadcast(dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON);
+    Float4 dynMaxX = broadcast(dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON);
+    Float4 dynMaxY = broadcast(dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON);
+    const Int4 dynamicMaskVec = broadcast_int(dynamicCollidesWith);
 
-    alignas(16) float queryBoundsArray[4];
-    store4(queryBoundsArray, queryBounds);
-    float queryMinX = queryBoundsArray[0];
-    float queryMinY = queryBoundsArray[1];
-    float queryMaxX = queryBoundsArray[2];
-    float queryMaxY = queryBoundsArray[3];
+    // ========================================================================
+    // 1. MOVABLE-VS-MOVABLE: Direct iteration with SIMD AABB checks
+    //    Only check movables with index > mi to avoid duplicates across batches
+    // ========================================================================
+    size_t startJ = mi + 1;
+    const size_t movableSimdEnd = startJ + ((movableIndices.size() - startJ) / 4) * 4;
 
-    // 1. Movable-vs-movable collisions (use THREAD-SAFE query with per-thread buffers)
-    buffers.dynamicCandidates.clear();
-    m_dynamicSpatialHash.queryRegionBoundsThreadSafe(
-        queryMinX, queryMinY, queryMaxX, queryMaxY,
-        buffers.dynamicCandidates, buffers.queryBuffers);
-    const auto& dynamicCandidates = buffers.dynamicCandidates;
+    for (size_t mj = startJ; mj < movableSimdEnd; mj += 4) {
+      size_t c0 = movableIndices[mj], c1 = movableIndices[mj+1];
+      size_t c2 = movableIndices[mj+2], c3 = movableIndices[mj+3];
 
-    // SIMD layer mask filtering (4 candidates at a time)
-    const Int4 maskVec = broadcast_int(dynamicCollidesWith);
-    size_t i = 0;
-    const size_t simdEnd = (dynamicCandidates.size() / 4) * 4;
+      // Load 4 candidate AABBs
+      Float4 candMinX = set(m_storage.hotData[c0].aabbMinX, m_storage.hotData[c1].aabbMinX,
+                            m_storage.hotData[c2].aabbMinX, m_storage.hotData[c3].aabbMinX);
+      Float4 candMaxX = set(m_storage.hotData[c0].aabbMaxX, m_storage.hotData[c1].aabbMaxX,
+                            m_storage.hotData[c2].aabbMaxX, m_storage.hotData[c3].aabbMaxX);
+      Float4 candMinY = set(m_storage.hotData[c0].aabbMinY, m_storage.hotData[c1].aabbMinY,
+                            m_storage.hotData[c2].aabbMinY, m_storage.hotData[c3].aabbMinY);
+      Float4 candMaxY = set(m_storage.hotData[c0].aabbMaxY, m_storage.hotData[c1].aabbMaxY,
+                            m_storage.hotData[c2].aabbMaxY, m_storage.hotData[c3].aabbMaxY);
 
-    for (; i < simdEnd; i += 4) {
-      if (dynamicCandidates[i] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+1] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+2] >= m_storage.hotData.size() ||
-          dynamicCandidates[i+3] >= m_storage.hotData.size()) {
-        for (size_t j = i; j < i + 4 && j < dynamicCandidates.size(); ++j) {
-          size_t candidateIdx = dynamicCandidates[j];
-          if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
-          const auto& candidateHot = m_storage.hotData[candidateIdx];
-          if (!candidateHot.active || (dynamicCollidesWith & candidateHot.layers) == 0) continue;
-          size_t a = std::min(dynamicIdx, candidateIdx);
-          size_t b = std::max(dynamicIdx, candidateIdx);
-          outIndexPairs.emplace_back(a, b);
+      // SIMD AABB overlap test
+      Float4 noOverlapX1 = cmplt(dynMaxX, candMinX);
+      Float4 noOverlapX2 = cmplt(candMaxX, dynMinX);
+      Float4 noOverlapY1 = cmplt(dynMaxY, candMinY);
+      Float4 noOverlapY2 = cmplt(candMaxY, dynMinY);
+      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
+      int noOverlapMask = movemask(noOverlap);
+
+      if (noOverlapMask == 0xF) continue;
+
+      // Layer mask check
+      Int4 candLayers = set_int4(m_storage.hotData[c0].layers, m_storage.hotData[c1].layers,
+                                 m_storage.hotData[c2].layers, m_storage.hotData[c3].layers);
+      Int4 layerResult = bitwise_and(dynamicMaskVec, candLayers);
+      Int4 layerZero = cmpeq_int(layerResult, setzero_int());
+      int layerFailMask = movemask_int(layerZero);
+
+      for (size_t k = 0; k < 4; ++k) {
+        if (((noOverlapMask >> k) & 1) == 0 && ((layerFailMask >> (k * 4)) & 0xF) == 0) {
+          size_t candIdx = movableIndices[mj + k];
+          if (candIdx != dynamicIdx && m_storage.hotData[candIdx].active) {
+            outIndexPairs.emplace_back(dynamicIdx, candIdx);
+          }
         }
-        continue;
-      }
-
-      Int4 layers = set_int4(
-        m_storage.hotData[dynamicCandidates[i]].layers,
-        m_storage.hotData[dynamicCandidates[i+1]].layers,
-        m_storage.hotData[dynamicCandidates[i+2]].layers,
-        m_storage.hotData[dynamicCandidates[i+3]].layers
-      );
-
-      Int4 result = bitwise_and(layers, maskVec);
-      Int4 zeros = setzero_int();
-      Int4 cmp = cmpeq_int(result, zeros);
-      int failMask = movemask_int(cmp);
-
-      if (failMask == 0xFFFF) continue;
-
-      for (size_t j = 0; j < 4; ++j) {
-        size_t candidateIdx = dynamicCandidates[i + j];
-        if (candidateIdx == dynamicIdx) continue;
-
-        int laneFailBits = (failMask >> (j * 4)) & 0xF;
-        if (laneFailBits == 0xF) continue;
-
-        const auto& candidateHot = m_storage.hotData[candidateIdx];
-        if (!candidateHot.active) continue;
-
-        size_t a = std::min(dynamicIdx, candidateIdx);
-        size_t b = std::max(dynamicIdx, candidateIdx);
-        outIndexPairs.emplace_back(a, b);
       }
     }
 
-    // Scalar tail
-    for (; i < dynamicCandidates.size(); ++i) {
-      size_t candidateIdx = dynamicCandidates[i];
-      if (candidateIdx >= m_storage.hotData.size() || candidateIdx == dynamicIdx) continue;
-
-      const auto& candidateHot = m_storage.hotData[candidateIdx];
-      if (!candidateHot.active || (dynamicCollidesWith & candidateHot.layers) == 0) continue;
-
-      size_t a = std::min(dynamicIdx, candidateIdx);
-      size_t b = std::max(dynamicIdx, candidateIdx);
-      outIndexPairs.emplace_back(a, b);
+    // Scalar tail for remaining movables
+    for (size_t mj = movableSimdEnd; mj < movableIndices.size(); ++mj) {
+      size_t candIdx = movableIndices[mj];
+      if (candIdx == dynamicIdx) continue;
+      const auto& candHot = m_storage.hotData[candIdx];
+      if (!candHot.active) continue;
+      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < candHot.aabbMinX ||
+          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > candHot.aabbMaxX ||
+          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < candHot.aabbMinY ||
+          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > candHot.aabbMaxY) continue;
+      if ((dynamicCollidesWith & candHot.layers) == 0) continue;
+      outIndexPairs.emplace_back(dynamicIdx, candIdx);
     }
 
-    // 2. Static spatial hash query directly (Phase 3: cache removed)
-    buffers.staticCandidates.clear();
-    m_staticSpatialHash.queryRegionBoundsThreadSafe(
-        queryMinX, queryMinY, queryMaxX, queryMaxY,
-        buffers.staticCandidates, buffers.queryBuffers);
-
-    // SIMD batch processing for static candidates
+    // ========================================================================
+    // 2. MOVABLE-VS-STATIC: Direct iteration with SIMD AABB checks
+    //    staticIndices is READ-ONLY - safe for parallel access
+    // ========================================================================
     const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
     size_t si = 0;
-    const size_t staticSimdEnd = (buffers.staticCandidates.size() / 4) * 4;
+    const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
     for (; si < staticSimdEnd; si += 4) {
-      if (buffers.staticCandidates[si] >= m_storage.hotData.size() ||
-          buffers.staticCandidates[si+1] >= m_storage.hotData.size() ||
-          buffers.staticCandidates[si+2] >= m_storage.hotData.size() ||
-          buffers.staticCandidates[si+3] >= m_storage.hotData.size()) {
-        for (size_t j = si; j < si + 4 && j < buffers.staticCandidates.size(); ++j) {
-          size_t staticIdx = buffers.staticCandidates[j];
-          if (staticIdx >= m_storage.hotData.size()) continue;
-          const auto& staticHot = m_storage.hotData[staticIdx];
-          if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-          outIndexPairs.emplace_back(dynamicIdx, staticIdx);
-        }
-        continue;
-      }
+      size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
+      size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
 
-      Int4 staticLayers = set_int4(
-        m_storage.hotData[buffers.staticCandidates[si]].layers,
-        m_storage.hotData[buffers.staticCandidates[si+1]].layers,
-        m_storage.hotData[buffers.staticCandidates[si+2]].layers,
-        m_storage.hotData[buffers.staticCandidates[si+3]].layers
-      );
+      Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
+                            m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
+      Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
+                            m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
+      Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
+                            m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
+      Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
+                            m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
 
+      Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
+      Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
+      Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
+      Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
+      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
+      int noOverlapMask = movemask(noOverlap);
+
+      if (noOverlapMask == 0xF) continue;
+
+      Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
+                                   m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
       Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-      Int4 staticZeros = setzero_int();
-      Int4 staticCmp = cmpeq_int(staticResult, staticZeros);
-      int staticFailMask = movemask_int(staticCmp);
-
-      if (staticFailMask == 0xFFFF) continue;
+      Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
+      int layerFailMask = movemask_int(staticCmp);
 
       for (size_t j = 0; j < 4; ++j) {
-        size_t staticIdx = buffers.staticCandidates[si + j];
-        int laneFailBits = (staticFailMask >> (j * 4)) & 0xF;
-        if (laneFailBits == 0xF) continue;
-
-        const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active) continue;
-
-        outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+        if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
+          if (m_storage.hotData[staticIndices[si + j]].active) {
+            outIndexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+          }
+        }
       }
     }
 
-    // Scalar tail
-    for (; si < buffers.staticCandidates.size(); ++si) {
-      size_t staticIdx = buffers.staticCandidates[si];
-      if (staticIdx >= m_storage.hotData.size()) continue;
+    // Scalar tail for remaining statics
+    for (; si < staticIndices.size(); ++si) {
+      size_t staticIdx = staticIndices[si];
       const auto& staticHot = m_storage.hotData[staticIdx];
-      if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
+      if (!staticHot.active) continue;
+      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+      if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
       outIndexPairs.emplace_back(dynamicIdx, staticIdx);
     }
   }
@@ -3255,10 +3188,11 @@ void CollisionManager::updatePerformanceMetricsSOA(
     float worldW = m_worldBounds.halfSize.getX() * 2.0f;
     float worldH = m_worldBounds.halfSize.getY() * 2.0f;
 
-    COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable), "
+    size_t culledStatics = m_collisionPool.staticIndices.size();
+    COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable, {} statics in cull), "
                                 "Total: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
                                 "Pairs: {}, Collisions: {}{}, Bounds: {}x{}",
-                                bodyCount, activeMovableBodies,
+                                bodyCount, activeMovableBodies, culledStatics,
                                 m_perf.lastTotalMs, d12, d23,
                                 pairCount, collisionCount, threadingStatus,
                                 static_cast<int>(worldW), static_cast<int>(worldH)));
