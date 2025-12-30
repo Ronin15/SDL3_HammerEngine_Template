@@ -151,7 +151,6 @@ public:
 
     // World coupling
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid
-    void populateStaticCache();                   // populate static collision cache after world load
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
 
@@ -183,15 +182,9 @@ public:
 
     // Configuration setters for collision culling (runtime adjustable)
     void setCullingBuffer(float buffer) { m_cullingBuffer = buffer; }
-    void setCacheEvictionMultiplier(float multiplier) { m_cacheEvictionMultiplier = multiplier; }
-    void setCacheEvictionInterval(size_t interval) { m_cacheEvictionInterval = interval; }
-    void setCacheStaleThreshold(uint8_t threshold) { m_cacheStaleThreshold = threshold; }
 
     // Configuration getters
     float getCullingBuffer() const { return m_cullingBuffer; }
-    float getCacheEvictionMultiplier() const { return m_cacheEvictionMultiplier; }
-    size_t getCacheEvictionInterval() const { return m_cacheEvictionInterval; }
-    uint8_t getCacheStaleThreshold() const { return m_cacheStaleThreshold; }
     void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
     void setVelocity(EntityID id, const Vector2D& velocity);
     void setBodyTrigger(EntityID id, bool isTrigger);
@@ -202,9 +195,7 @@ public:
     // SOA UPDATE HELPER METHODS
     void syncSpatialHashesWithActiveIndices();
     void resolveSOA(const CollisionInfo& collision);
-    void syncEntitiesToSOA();
     void processTriggerEventsSOA();
-    void syncPositionsFromEDM();  // Sync kinematic body positions from EntityDataManager
 
     // PERFORMANCE: Vector pooling for temporary allocations
     std::vector<size_t>& getPooledVector();
@@ -296,12 +287,15 @@ private:
     void prepareCollisionPools(size_t bodyCount, size_t threadCount);
     void mergeThreadResults();
 
+    // Refresh cached AABBs from EDM position/halfSize (batch operation at start of broadphase)
+    void refreshCachedAABBs();
+    void refreshCachedAABB(size_t index);  // Single body refresh
+
     // Apply pending kinematic updates from async AI threads (called at start of update)
     void applyPendingKinematicUpdates();
 
     // Spatial hash optimization methods
     void rebuildStaticSpatialHash();
-    void updateStaticCollisionCacheForMovableBodies();
 
     // Building collision validation
 
@@ -350,18 +344,12 @@ private:
     // Returns body type counts: {totalStatic, totalDynamic, totalKinematic}
     std::tuple<size_t, size_t, size_t> buildActiveIndicesSOA(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
-    void evictStaleCacheEntries(const CullingArea& cullingArea);
 
-    // OPTIMIZATION HELPERS: Static spatial grid and frame decimation
-    void rebuildStaticSpatialGrid();
-    void queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const;
+    // NOTE: Cache functions removed in Phase 3 - m_staticSpatialHash queried directly
 
 
     // Configurable collision culling parameters (runtime adjustable)
     float m_cullingBuffer{COLLISION_CULLING_BUFFER};
-    float m_cacheEvictionMultiplier{CACHE_EVICTION_MULTIPLIER};
-    size_t m_cacheEvictionInterval{CACHE_EVICTION_INTERVAL};
-    uint8_t m_cacheStaleThreshold{CACHE_STALE_THRESHOLD};
 
     bool m_initialized{false};
     bool m_isShutdown{false};
@@ -369,17 +357,17 @@ private:
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
+    // REFACTORED: Position/velocity/halfSize removed - accessed via EntityDataManager
     struct CollisionStorage {
         // Hot data: Accessed every frame during collision detection
-        // OPTIMIZED: Reduced from 64 bytes with wasted space to efficient 64-byte layout
+        // AIManager pattern: Only collision-specific data + EDM index for position access
         struct HotData {
-            Vector2D position;           // 8 bytes: Current position (center of AABB)
-            Vector2D velocity;           // 8 bytes: Current velocity
-            Vector2D halfSize;           // 8 bytes: Half-width and half-height
-            
-            // Cached AABB for performance - exactly 16 bytes (4 floats)
-            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
-            
+            // Cached AABB for performance - computed from EDM position + halfSize
+            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;  // 16 bytes
+
+            // EDM reference for accessing position/halfSize (moved from ColdData for cache locality)
+            size_t edmIndex;             // 8 bytes: EntityDataManager index
+
             uint16_t layers;             // 2 bytes: Layer mask (supports 16 layers, 7 currently defined)
             uint16_t collidesWith;       // 2 bytes: Collision mask
             uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
@@ -387,30 +375,27 @@ private:
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
             mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
-            
+
             // OPTIMIZATION: Cached coarse grid coords (eliminates m_bodyCoarseCell map lookup)
             int16_t coarseCellX;         // 2 bytes: Cached coarse grid X coordinate
             int16_t coarseCellY;         // 2 bytes: Cached coarse grid Y coordinate
-            
-            // Reserved for future optimizations (e.g., collision flags, frame counters)
-            uint8_t _reserved[5];        // 5 bytes: Future expansion space
-            
-            // Padding to exactly 64 bytes (current size: 62, need 2 more)
-            uint8_t _padding[2];
 
+            // Padding to 64 bytes (one cache line)
+            // Layout: 16 (floats) + 8 (size_t) + 4 (uint16_t) + 5 (uint8_t) + 1 (implicit pad) + 4 (int16_t) = 38
+            uint8_t _reserved[26];       // 26 bytes: Future expansion (38 + 26 = 64)
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
 
         // Cold data: Rarely accessed, separated to avoid cache pollution
-        // NOTE: Position/velocity now owned by EntityDataManager for movable bodies
-        // Static bodies (no EDM entry) still use hot.position directly
+        // NOTE: Position/velocity/halfSize owned by EntityDataManager
+        // All collision bodies must have valid EDM entries (statics via createStaticBody)
         struct ColdData {
             EntityWeakPtr entityWeak;    // Back-reference to entity
-            AABB fullAABB;              // Full AABB (computed from position + halfSize)
-            float restitution;           // Bounce coefficient (0.0-1.0) - moved from HotData for cache optimization
-            float friction;              // Surface friction (0.0-1.0) - for future physics implementation
-            float mass;                  // Mass (kg) - for future physics implementation
-            size_t edmIndex = SIZE_MAX;  // EntityDataManager index (SIZE_MAX = no EDM entry, use hot.position)
+            AABB fullAABB;              // Full AABB (computed from EDM position + halfSize)
+            float restitution;           // Bounce coefficient (0.0-1.0)
+            float friction;              // Surface friction (0.0-1.0)
+            float mass;                  // Mass (kg) - for future physics
+            // NOTE: edmIndex moved to HotData for cache locality during AABB updates
         };
 
         // Primary storage arrays (SOA layout)
@@ -450,21 +435,11 @@ private:
             return hotData[index];
         }
 
-        // Update cached AABB bounds if dirty
-        void updateCachedAABB(size_t index) const {
-            auto& hot = hotData[index];
-            if (hot.aabbDirty) {
-                hot.aabbMinX = hot.position.getX() - hot.halfSize.getX();
-                hot.aabbMinY = hot.position.getY() - hot.halfSize.getY();
-                hot.aabbMaxX = hot.position.getX() + hot.halfSize.getX();
-                hot.aabbMaxY = hot.position.getY() + hot.halfSize.getY();
-                hot.aabbDirty = 0;
-            }
-        }
+        // NOTE: updateCachedAABB moved to CollisionManager (needs EDM access)
+        // Call refreshCachedAABBs() at start of broadphase to batch-update all AABBs
 
-        // Get cached AABB bounds directly (more efficient for simple tests)
+        // Get cached AABB bounds directly (assumes AABB already refreshed)
         void getCachedAABBBounds(size_t index, float& minX, float& minY, float& maxX, float& maxY) const {
-            updateCachedAABB(index);
             const auto& hot = hotData[index];
             minX = hot.aabbMinX;
             minY = hot.aabbMinY;
@@ -472,11 +447,9 @@ private:
             maxY = hot.aabbMaxY;
         }
 
-        // Compute AABB from hot data (with caching)
+        // Compute AABB from cached bounds (assumes AABB already refreshed)
         AABB computeAABB(size_t index) const {
-            updateCachedAABB(index);
             const auto& hot = hotData[index];
-            // Use cached values to construct AABB - center and half-size from cached bounds
             float centerX = (hot.aabbMinX + hot.aabbMaxX) * 0.5f;
             float centerY = (hot.aabbMinY + hot.aabbMaxY) * 0.5f;
             float halfWidth = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
@@ -521,56 +494,13 @@ private:
     HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static world geometry
     HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash;  // Moving entities
 
-    // STATIC COLLISION CACHE: Coarse-grid region cache for static bodies
-    // Bodies in the same 128×128 coarse cell share the same cached static query results
-    // This replaces the old per-body cache for better memory efficiency
-    struct CoarseRegionStaticCache {
-        std::vector<size_t> staticIndices;
-        bool valid{false};
-        uint64_t lastAccessFrame{0};  // Frame number when this cache entry was last accessed
-        uint8_t staleCount{0};         // Number of consecutive eviction cycles without access
-    };
-    std::unordered_map<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
-                       CoarseRegionStaticCache,
-                       HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
-                       HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
-
-    // Pre-populate cache for a specific coarse region (thread-safe: single-threaded population)
-    void populateCacheForRegion(const HammerEngine::HierarchicalSpatialHash::CoarseCoord& region,
-                                CoarseRegionStaticCache& cache);
-
-    // Cache statistics
-    mutable size_t m_cacheHits{0};
-    mutable size_t m_cacheMisses{0};
-
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
-    // OPTIMIZATION: Static Spatial Grid for efficient culling queries
-    // Grid (128×128 cells) to quickly filter static bodies by culling area
-    // Grid is rebuilt only on world events (statics added/removed), not every frame
-    static constexpr float STATIC_GRID_CELL_SIZE = 128.0f;
-    struct StaticGridCell {
-        int32_t x;
-        int32_t y;
-        bool operator==(const StaticGridCell& other) const {
-            return x == other.x && y == other.y;
-        }
-    };
-    struct StaticGridCellHash {
-        size_t operator()(const StaticGridCell& cell) const {
-            // Simple hash combining x and y
-            return std::hash<int32_t>()(cell.x) ^ (std::hash<int32_t>()(cell.y) << 1);
-        }
-    };
-    std::unordered_map<StaticGridCell, std::vector<size_t>, StaticGridCellHash> m_staticSpatialGrid;
-    bool m_staticGridDirty{true};  // Rebuild grid when statics added/removed
-
-    // Tolerance-based static index cache - avoids requerying when camera moves small distances
-    static constexpr float STATIC_CACHE_TOLERANCE = STATIC_GRID_CELL_SIZE;  // 128px
-    mutable std::vector<size_t> m_cachedStaticIndices;
-    mutable CullingArea m_cachedStaticCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
-    mutable bool m_staticIndexCacheValid{false};
+    // NOTE: Redundant caches removed in Phase 3 EDM refactor:
+    // - m_coarseRegionStaticCache: Now use m_staticSpatialHash directly
+    // - m_staticSpatialGrid: Redundant with m_staticSpatialHash
+    // - m_cachedStaticIndices: Tolerance cache adds complexity without benefit
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
@@ -646,9 +576,15 @@ private:
 
     // PERFORMANCE: Reusable containers to avoid per-frame allocations
     // These are cleared each frame but capacity is retained to eliminate heap churn
-    mutable std::unordered_set<EntityID> m_collidedEntitiesBuffer;      // For syncEntitiesToSOA()
     mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
     // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
+
+    // OPTIMIZATION: Per-frame static query cache (avoids redundant spatial hash queries)
+    // Key: coarse cell coord packed as (x << 16 | y), Value: cached static indices for that cell
+    // Cleared each frame. Nearby movables in same coarse cell share cached results.
+    mutable std::unordered_map<uint32_t, std::vector<size_t>> m_staticCellCache;
+    mutable size_t m_staticCacheHits{0};
+    mutable size_t m_staticCacheMisses{0};
 
     // OPTIMIZATION: Persistent index tracking (avoids O(n) iteration per frame)
     // Regression fix for commit 768ad87 - movable body iteration was O(18K) instead of O(3)

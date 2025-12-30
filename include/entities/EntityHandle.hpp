@@ -41,6 +41,9 @@ enum class EntityKind : uint8_t {
     Prop = 7,           // Decorations, animated objects
     Trigger = 8,        // Invisible trigger zones
 
+    // World geometry (static collision bodies)
+    StaticObstacle = 9, // Tiles, walls, terrain collision
+
     COUNT
 };
 
@@ -75,7 +78,8 @@ constexpr bool hasInventory(EntityKind kind) noexcept {
 
 /// Returns true if this entity kind participates in physics/collision
 constexpr bool hasPhysics(EntityKind kind) noexcept {
-    return kind <= EntityKind::AreaEffect;  // Most types except Prop/Trigger
+    // Most types except Prop/Trigger, but StaticObstacle has collision
+    return kind <= EntityKind::AreaEffect || kind == EntityKind::StaticObstacle;
 }
 
 /// Returns true if this entity kind has AI behaviors
@@ -98,9 +102,10 @@ constexpr const char* kindToString(EntityKind kind) noexcept {
         case EntityKind::Harvestable: return "Harvestable";
         case EntityKind::Projectile:  return "Projectile";
         case EntityKind::AreaEffect:  return "AreaEffect";
-        case EntityKind::Prop:        return "Prop";
-        case EntityKind::Trigger:     return "Trigger";
-        default:                      return "Unknown";
+        case EntityKind::Prop:           return "Prop";
+        case EntityKind::Trigger:        return "Trigger";
+        case EntityKind::StaticObstacle: return "StaticObstacle";
+        default:                         return "Unknown";
     }
 }
 

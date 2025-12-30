@@ -10,6 +10,7 @@
 #include <iomanip>
 
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "utils/Vector2D.hpp"
 #include "utils/Camera.hpp"
@@ -27,12 +28,16 @@ public:
     };
 
     CollisionBenchmark() {
+        // EntityDataManager must be initialized before CollisionManager
+        // (collision bodies now store positions in EDM)
+        EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         setupRandomGenerator();
     }
 
     ~CollisionBenchmark() {
         CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
     }
 
     void runBenchmarkSuite() {
@@ -171,11 +176,22 @@ private:
 
     std::vector<TestBody> generateTestBodies(size_t count) {
         std::vector<TestBody> bodies;
-        bodies.reserve(count);
+        bodies.reserve(count + 1);  // +1 for player
 
         // Create overlapping grid pattern like unit tests to guarantee collisions
         size_t bodiesPerRow = static_cast<size_t>(std::sqrt(count)) + 1;
         float spacing = 60.0f;  // Bodies will be 80x80 (40.0f half-size), so 60.0f spacing = 20 pixels overlap
+
+        // Add player at grid center for proper culling
+        float gridCenter = (bodiesPerRow / 2) * spacing + 100.0f;
+        TestBody player{};
+        player.position = Vector2D(gridCenter, gridCenter);
+        player.velocity = Vector2D(0.0f, 0.0f);
+        player.halfSize = Vector2D(16.0f, 16.0f);
+        player.type = BodyType::DYNAMIC;
+        player.layer = CollisionLayer::Layer_Player;
+        player.collidesWith = 0xFFFFFFFFu;
+        bodies.push_back(player);
 
         for (size_t i = 0; i < count; ++i) {
             TestBody body{};
@@ -339,6 +355,12 @@ private:
         if (manager.getBodyCount() > 0) {
             manager.prepareForStateTransition();
         }
+
+        // Set world bounds and culling buffer to encompass all test bodies
+        // Grid spans from (100,100) to roughly (100 + sqrt(count)*60, same for Y)
+        float maxExtent = 100.0f + std::sqrt(static_cast<float>(testBodies.size())) * 60.0f + 100.0f;
+        manager.setWorldBounds(0.0f, 0.0f, maxExtent, maxExtent);
+        manager.setCullingBuffer(maxExtent);  // Disable culling by setting buffer larger than world
 
         // Pre-allocate containers for better performance
         manager.prepareCollisionBuffers(testBodies.size());
