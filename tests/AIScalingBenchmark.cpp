@@ -870,29 +870,45 @@ struct AIScalingFixture {
             AIManager::Instance().registerEntityForUpdates(entity, 9); // Max priority
         }
 
-        // Set player reference and position entities
+        // Set player reference and spread entities across world for realistic culling
         if (!entities.empty()) {
             AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
             Vector2D playerPosition = entities[0]->getPosition();
 
-            // Tight clustering within optimal AI update range
-            const float MAX_CLUSTER_RADIUS = 1500.0f;
-            for (size_t i = 1; i < entities.size(); ++i) {
-                static std::mt19937 rng(42);
-                std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
-                std::uniform_real_distribution<float> radiusDist(0.0f, MAX_CLUSTER_RADIUS);
+            // Spread entities across realistic world distances for proper culling test
+            // AIManager culls at 4000 units (priority 9 extends to ~7600 units)
+            // Distribution: 40% near (0-3000), 30% medium (3000-6000), 30% far (6000-12000)
+            static std::mt19937 rng(42);
+            std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
 
+            for (size_t i = 1; i < entities.size(); ++i) {
                 float angle = angleDist(rng);
-                float radius = radiusDist(rng);
+                float radius;
+
+                // Distribute entities across distance bands
+                float band = static_cast<float>(i % 10) / 10.0f;
+                if (band < 0.4f) {
+                    // 40% near player (always updated)
+                    std::uniform_real_distribution<float> nearDist(500.0f, 3000.0f);
+                    radius = nearDist(rng);
+                } else if (band < 0.7f) {
+                    // 30% medium distance (updated based on priority)
+                    std::uniform_real_distribution<float> medDist(3000.0f, 6000.0f);
+                    radius = medDist(rng);
+                } else {
+                    // 30% far from player (culled)
+                    std::uniform_real_distribution<float> farDist(6000.0f, 12000.0f);
+                    radius = farDist(rng);
+                }
+
                 float offsetX = radius * std::cos(angle);
                 float offsetY = radius * std::sin(angle);
-
-                Vector2D closePosition(playerPosition.getX() + offsetX, playerPosition.getY() + offsetY);
-                entities[i]->setPosition(closePosition);
+                Vector2D worldPosition(playerPosition.getX() + offsetX, playerPosition.getY() + offsetY);
+                entities[i]->setPosition(worldPosition);
             }
 
-            std::cout << "  [DEBUG] Positioned " << entities.size()
-                      << " entities with production behaviors" << std::endl;
+            std::cout << "  [DEBUG] Spread " << entities.size()
+                      << " entities across world (40% near, 30% mid, 30% far) for culling test" << std::endl;
         }
 
         // Warmup phase (16 frames for distance staggering)
@@ -1005,15 +1021,16 @@ struct AIScalingFixture {
         std::cout << "  Total behavior updates: " << totalBehaviorExecutions << std::endl;
         std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
-        // Verification - TIGHTENED to 90% threshold
-        size_t expectedExecutions = static_cast<size_t>(numEntities) * static_cast<size_t>(numUpdates);
-        size_t requiredExecutions = (expectedExecutions * 9) / 10; // 90% threshold
-        std::cout << "  Entity updates: " << totalBehaviorExecutions << "/" << expectedExecutions;
+        // Verification - 50% threshold for integrated (culling reduces updates intentionally)
+        // With 40% near + 30% medium distance, expect ~60-70% of entities to update
+        size_t maxPossibleExecutions = static_cast<size_t>(numEntities) * static_cast<size_t>(numUpdates) * static_cast<size_t>(numMeasurements);
+        size_t requiredExecutions = maxPossibleExecutions / 2; // 50% threshold (culling expected)
+        std::cout << "  Entity updates: " << totalBehaviorExecutions << "/" << maxPossibleExecutions;
+        std::cout << " (" << (totalBehaviorExecutions * 100 / maxPossibleExecutions) << "% - culling active)";
         if (totalBehaviorExecutions >= requiredExecutions) {
             std::cout << " ✓" << std::endl;
         } else {
-            std::cout << " ✗ (Expected at least " << requiredExecutions
-                      << " updates [90% threshold]. Some updates may be skipped due to distance culling.)" << std::endl;
+            std::cout << " ✗ (Expected at least 50% with culling)" << std::endl;
         }
 
         // Clean up
