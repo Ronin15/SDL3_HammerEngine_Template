@@ -578,12 +578,13 @@ struct AIScalingFixture {
         }
 
 
-        // Set the first entity as player reference and ensure all entities are positioned close
+        // Standalone benchmark: NO player reference = NO distance culling
+        // This tests raw AIManager throughput without production culling optimizations
         if (!entities.empty()) {
-            // Set player first to ensure proper distance calculations
-            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+            // Explicitly clear player reference to disable distance culling
+            AIManager::Instance().setPlayerForDistanceOptimization(nullptr);
 
-            // Position all entities very close to the first entity (which becomes the player reference)
+            // Position entities (no clustering needed since culling is disabled)
             Vector2D playerPosition = entities[0]->getPosition();
 
             // Keep ALL entities within optimal AI update range (under 2000 units from player)
@@ -614,9 +615,8 @@ struct AIScalingFixture {
                 }
             }
 
-            std::cout << "  [DEBUG] Set player reference and positioned " << entities.size()
-                      << " entities in tight cluster within " << MAX_CLUSTER_RADIUS
-                      << " units for optimal AI execution rates" << std::endl;
+            std::cout << "  [DEBUG] Positioned " << entities.size()
+                      << " entities (NO distance culling - testing raw throughput)" << std::endl;
             std::cout << "  [DEBUG] Entities with behaviors: " << entitiesWithBehaviors << "/" << entities.size() << std::endl;
             std::cout << "  [DEBUG] Managed entity count: " << AIManager::Instance().getManagedEntityCount() << std::endl;
 
@@ -631,29 +631,14 @@ struct AIScalingFixture {
             behaviorEntities[behaviorIdx].push_back(entities[i]);
         }
 
-        // ===== WARMUP PHASE =====
-        // Run 16 warmup frames to initialize distance staggering.
-        // AIManager's SIMD distance optimization staggers distance calculations across 16 frames
-        // (updating 1/16th of entities per frame). Without warmup, entities may not have their
-        // distance calculated, causing them to fail culling checks and report 0 updates.
-        // This warmup ensures all entities get at least one distance update before measurement.
-        std::cout << "  [DEBUG] Running 16 warmup frames for distance staggering initialization..." << std::endl;
-        for (int warmup = 0; warmup < 16; ++warmup) {
-            AIManager::Instance().update(0.016f);
-        }
-
-        // Wait for warmup to complete
-        while (HammerEngine::ThreadSystem::Instance().isBusy()) {
-            std::this_thread::sleep_for(std::chrono::microseconds(500));
-        }
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
-        std::cout << "  [DEBUG] Warmup complete. Starting measurement..." << std::endl;
+        // No warmup needed - distance culling is disabled for standalone benchmark
+        // This tests raw AIManager throughput without any culling overhead
+        std::cout << "  [DEBUG] Starting measurement (no warmup - culling disabled)..." << std::endl;
 
         // Run specified number of times for measurements
         std::vector<double> durations;
 
-        // Get starting behavior execution count from AIManager (AFTER warmup)
-        // Store in totalBehaviorExecutions so we can calculate delta at cleanup
+        // Get starting behavior execution count from AIManager
         totalBehaviorExecutions = AIManager::Instance().getBehaviorUpdateCount();
 
 
@@ -775,10 +760,11 @@ struct AIScalingFixture {
         std::cout << "  Threading mode: " << (willUseThreading ? "WorkerBudget Multi-threaded" : "Single-threaded") << std::endl;
 
         // Verification status based on behavior executions - TIGHTENED to 90% threshold
-        size_t expectedExecutions = static_cast<size_t>(numEntities) * static_cast<size_t>(numUpdates);
+        // Expected = entities × updates × measurements (all 5 runs counted)
+        size_t expectedExecutions = static_cast<size_t>(numEntities) * static_cast<size_t>(numUpdates) * static_cast<size_t>(numMeasurements);
         size_t requiredExecutions = (expectedExecutions * 9) / 10; // 90% threshold
-        std::cout << "  Entity updates: " << totalBehaviorExecutions << "/" << expectedExecutions;
-        if (totalBehaviorExecutions >= requiredExecutions) {
+        std::cout << "  Entity updates: " << totalBehaviorUpdates << "/" << expectedExecutions;
+        if (totalBehaviorUpdates >= requiredExecutions) {
             std::cout << " ✓" << std::endl;
         } else {
             std::cout << " ✗ (Expected at least " << requiredExecutions
