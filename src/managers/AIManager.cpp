@@ -357,73 +357,73 @@ void AIManager::update(float deltaTime) {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
           processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
         }
-      }
-
-      // Use centralized WorkerBudgetManager for smart worker allocation
-      auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-
-      // Get optimal workers (WorkerBudget determines everything dynamically)
-      size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-          HammerEngine::SystemType::AI, entityCount);
-
-      // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
-      auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-          HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
-
-      // Track for interval logging at end of function
-      logBatchCount = batchCount;
-      logWasThreaded = (batchCount > 1);
-
-      // Single batch optimization: avoid thread overhead
-      if (batchCount <= 1) {
-        // OPTIMIZATION: Direct storage iteration - no copying overhead
-        // Hold shared_lock during processing for thread-safe read access
-        {
-          std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
-        }
       } else {
-        size_t entitiesPerBatch = entityCount / batchCount;
-        size_t remainingEntities = entityCount % batchCount;
+        // Use centralized WorkerBudgetManager for smart worker allocation
+        auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-        // OPTIMIZATION: Direct storage iteration with per-batch locking
-        // Each batch acquires its own shared_lock - multiple batches can read in parallel
+        // Get optimal workers (WorkerBudget determines everything dynamically)
+        size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
+            HammerEngine::SystemType::AI, entityCount);
 
-        // Submit batches using futures for parallel processing
-        // Reuse m_batchFutures vector (clear keeps capacity, avoids allocations)
-        m_batchFutures.clear();
-        m_batchFutures.reserve(batchCount);
+        // Get adaptive batch strategy (maximizes parallelism, fine-tunes based on timing)
+        auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
+            HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
-        for (size_t i = 0; i < batchCount; ++i) {
-          size_t start = i * entitiesPerBatch;
-          size_t end = start + entitiesPerBatch;
+        // Track for interval logging at end of function
+        logBatchCount = batchCount;
+        logWasThreaded = (batchCount > 1);
 
-          // Add remaining entities to last batch
-          if (i == batchCount - 1) {
-            end += remainingEntities;
+        // Single batch optimization: avoid thread overhead
+        if (batchCount <= 1) {
+          // OPTIMIZATION: Direct storage iteration - no copying overhead
+          // Hold shared_lock during processing for thread-safe read access
+          {
+            std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+            processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
+          }
+        } else {
+          size_t entitiesPerBatch = entityCount / batchCount;
+          size_t remainingEntities = entityCount % batchCount;
+
+          // OPTIMIZATION: Direct storage iteration with per-batch locking
+          // Each batch acquires its own shared_lock - multiple batches can read in parallel
+
+          // Submit batches using futures for parallel processing
+          // Reuse m_batchFutures vector (clear keeps capacity, avoids allocations)
+          m_batchFutures.clear();
+          m_batchFutures.reserve(batchCount);
+
+          for (size_t i = 0; i < batchCount; ++i) {
+            size_t start = i * entitiesPerBatch;
+            size_t end = start + entitiesPerBatch;
+
+            // Add remaining entities to last batch
+            if (i == batchCount - 1) {
+              end += remainingEntities;
+            }
+
+            // Submit each batch with future for completion tracking
+            // Each batch will acquire its own shared_lock during execution
+            m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
+              [this, start, end, deltaTime, playerPos, hasPlayer]() -> void {
+                try {
+                  // Acquire shared_lock for this batch's execution
+                  // Multiple batches can hold shared_locks simultaneously (parallel reads)
+                  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+                  processBatch(start, end, deltaTime, playerPos, hasPlayer, m_storage);
+                } catch (const std::exception &e) {
+                  AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
+                } catch (...) {
+                  AI_ERROR("Unknown exception in AI batch");
+                }
+              },
+              HammerEngine::TaskPriority::High,
+              "AI_Batch"
+            ));
           }
 
-          // Submit each batch with future for completion tracking
-          // Each batch will acquire its own shared_lock during execution
-          m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-            [this, start, end, deltaTime, playerPos, hasPlayer]() -> void {
-              try {
-                // Acquire shared_lock for this batch's execution
-                // Multiple batches can hold shared_locks simultaneously (parallel reads)
-                std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-                processBatch(start, end, deltaTime, playerPos, hasPlayer, m_storage);
-              } catch (const std::exception &e) {
-                AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
-              } catch (...) {
-                AI_ERROR("Unknown exception in AI batch");
-              }
-            },
-            HammerEngine::TaskPriority::High,
-            "AI_Batch"
-          ));
+          // Batches execute in parallel via ThreadSystem
         }
-
-        // Batches execute in parallel via ThreadSystem
       }
 
     } else {
