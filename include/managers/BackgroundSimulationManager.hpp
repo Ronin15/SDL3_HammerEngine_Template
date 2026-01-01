@@ -248,8 +248,9 @@ private:
     float m_activeRadius{1650.0f};      // ~1.5x window half-diagonal (visible + buffer)
     float m_backgroundRadius{2200.0f};  // ~2x window half-diagonal (pre-load zone)
 
-    // Tier update interval - every 60 main loop frames (~1 second at 60Hz)
-    static constexpr uint32_t TIER_UPDATE_INTERVAL{60};
+    // Tier update interval - every 120 main loop frames (~2 seconds at 60Hz)
+    // Power optimization: entities move ~300 units/sec, radius is 1650px = safe margin
+    static constexpr uint32_t TIER_UPDATE_INTERVAL{120};
 
     // Timing (accumulator pattern like TimestepManager)
     // 10Hz is sufficient for off-screen entities - saves CPU while maintaining world consistency
