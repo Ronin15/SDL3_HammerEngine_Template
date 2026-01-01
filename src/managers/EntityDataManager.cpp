@@ -316,6 +316,9 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     m_countByKind[static_cast<size_t>(EntityKind::NPC)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
 
+    // Mark tier indices dirty so new entity gets added
+    m_tierIndicesDirty = true;
+
     ENTITY_DEBUG(std::format("Created NPC entity {} at ({}, {})",
                             id, position.getX(), position.getY()));
 
@@ -371,6 +374,7 @@ EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Player)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     ENTITY_INFO(std::format("Created Player entity {} at ({}, {})",
                            id, position.getX(), position.getY()));
@@ -427,6 +431,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::DroppedItem)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     return EntityHandle{id, EntityKind::DroppedItem, generation};
 }
@@ -483,6 +488,7 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Projectile)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     return EntityHandle{id, EntityKind::Projectile, generation};
 }
@@ -541,6 +547,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::AreaEffect)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     return EntityHandle{id, EntityKind::AreaEffect, generation};
 }
@@ -577,6 +584,7 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::StaticObstacle)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Hibernated)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     return EntityHandle{id, EntityKind::StaticObstacle, generation};
 }
@@ -649,6 +657,7 @@ EntityHandle EntityDataManager::registerNPC(EntityHandle::IDType entityId,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::NPC)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     ENTITY_DEBUG(std::format("Registered NPC entity {} at ({}, {})",
                             entityId, position.getX(), position.getY()));
@@ -719,6 +728,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Player)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     ENTITY_INFO(std::format("Registered Player entity {} at ({}, {})",
                            entityId, position.getX(), position.getY()));
@@ -787,6 +797,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::DroppedItem)].fetch_add(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
 
     ENTITY_DEBUG(std::format("Registered DroppedItem entity {} at ({}, {})",
                             entityId, position.getX(), position.getY()));
@@ -819,6 +830,7 @@ void EntityDataManager::unregisterEntity(EntityHandle::IDType entityId) {
     m_totalEntityCount.fetch_sub(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(kind)].fetch_sub(1, std::memory_order_relaxed);
     m_countByTier[static_cast<size_t>(tier)].fetch_sub(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;  // Remove destroyed entity from indices
 
     // Remove from ID mapping
     m_idToIndex.erase(it);
@@ -882,6 +894,11 @@ void EntityDataManager::processDestructionQueue() {
 
         // Free the slot
         freeSlot(index);
+    }
+
+    // Mark tier indices dirty if any entities were destroyed
+    if (!m_destroyBuffer.empty()) {
+        m_tierIndicesDirty = true;
     }
 
     ENTITY_DEBUG(std::format("Processed {} entity destructions", m_destroyBuffer.size()));
@@ -1213,10 +1230,11 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         m_tierIndicesDirty = false;
 
 #ifndef NDEBUG
-        // Rolling log every ~60 seconds (tier updates happen ~1/sec)
-        static uint32_t tierLogCounter = 0;
-        if (++tierLogCounter >= 60) {
-            tierLogCounter = 0;
+        // Rolling log every 60 seconds using time-based check
+        static auto lastLogTime = std::chrono::steady_clock::now();
+        auto now = std::chrono::steady_clock::now();
+        if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
+            lastLogTime = now;
             ENTITY_DEBUG(std::format(
                 "Tiers: Active={}, Background={}, Hibernated={}",
                 m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size()));
