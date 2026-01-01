@@ -342,11 +342,11 @@ private:
   std::array<std::shared_ptr<AIBehavior>, static_cast<size_t>(BehaviorType::COUNT)>
       m_behaviorsByType{};
 
-  // Performance optimization: cache frequently accessed behaviors and types
-  mutable std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
-      m_behaviorCache;
-  mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
-  mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
+  // NOTE: Behavior caches removed - they were duplicates of the primary maps:
+  // - m_behaviorCache duplicated m_behaviorTemplates (same O(1) lookup)
+  // - m_behaviorTypeCache duplicated m_behaviorTypeMap (immutable after init)
+  // - m_behaviorCacheMutex was only needed for cache writes on miss (removed)
+  // The maps are now accessed directly with appropriate locking.
 
   // Player handle
   EntityHandle m_playerHandle{};
