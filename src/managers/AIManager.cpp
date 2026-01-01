@@ -135,8 +135,6 @@ void AIManager::clean() {
 
     m_handleToIndex.clear();
     m_behaviorTemplates.clear();
-    m_behaviorCache.clear();
-    m_behaviorTypeCache.clear();
     m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
@@ -251,13 +249,8 @@ void AIManager::prepareForStateTransition() {
     m_playerHandle = EntityHandle{};
   }
 
-  // Don't call resetBehaviors() as we've already done comprehensive cleanup
-  // above Just clear the behavior caches
-  {
-    std::lock_guard<std::shared_mutex> lock(m_behaviorsMutex);
-    m_behaviorCache.clear();
-    m_behaviorTypeCache.clear();
-  }
+  // Don't call resetBehaviors() as we've already done comprehensive cleanup above
+  // No behavior caches to clear - maps are cleared by resetBehaviors() if needed
 
   // Reset pause state to false so next state starts unpaused
   m_globallyPaused.store(false, std::memory_order_release);
@@ -524,23 +517,7 @@ void AIManager::registerBehavior(const std::string &name,
   }
 
   std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
-
-  // OPTIMIZATION: Only invalidate cache entry for this specific behavior (not entire cache)
-  // If behavior already exists, we're replacing it - clear its cache entry
-  // If it's new, no cache entry exists anyway
-  auto existingIt = m_behaviorTemplates.find(name);
-  if (existingIt != m_behaviorTemplates.end()) {
-    // Replacing existing behavior - invalidate its cache entries
-    m_behaviorCache.erase(name);
-    m_behaviorTypeCache.erase(name);
-  }
-
   m_behaviorTemplates[name] = behavior;
-
-  // Pre-populate cache to ensure it's read-only during async operations
-  // This eliminates the race condition in getBehavior() cache miss path
-  m_behaviorCache[name] = behavior;
-
   AI_INFO(std::format("Registered behavior: {}", name));
 }
 
@@ -551,18 +528,9 @@ bool AIManager::hasBehavior(const std::string &name) const {
 
 std::shared_ptr<AIBehavior>
 AIManager::getBehavior(const std::string &name) const {
-  // THREADING: Cache is pre-populated by registerBehavior(), making this read-only
-  // and safe for concurrent access from worker threads during async assignment.
-  // Cache miss means the behavior was never registered.
+  // THREADING: Behaviors are registered during GameState::enter() before any
+  // concurrent access. Multiple readers can safely access with shared_lock.
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
-
-  auto cacheIt = m_behaviorCache.find(name);
-  if (cacheIt != m_behaviorCache.end()) {
-    return cacheIt->second;
-  }
-
-  // Cache miss - check template map as fallback (shouldn't happen after
-  // registerBehavior() now pre-populates cache, but handle gracefully)
   auto it = m_behaviorTemplates.find(name);
   return (it != m_behaviorTemplates.end()) ? it->second : nullptr;
 }
@@ -1078,26 +1046,10 @@ void AIManager::processMessageQueue() {
 
 BehaviorType
 AIManager::inferBehaviorType(const std::string &behaviorName) const {
-  // Check cache first with shared lock (multiple readers allowed)
-  {
-    std::shared_lock lock(m_behaviorCacheMutex);
-    auto cacheIt = m_behaviorTypeCache.find(behaviorName);
-    if (cacheIt != m_behaviorTypeCache.end()) {
-      return cacheIt->second;
-    }
-  }
-
-  // Cache miss - lookup result (m_behaviorTypeMap is read-only after init)
+  // m_behaviorTypeMap is populated once in init() and never modified.
+  // No lock needed for concurrent reads of an immutable container.
   auto it = m_behaviorTypeMap.find(behaviorName);
-  BehaviorType result =
-      (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
-
-  // Cache the result with exclusive lock
-  {
-    std::unique_lock lock(m_behaviorCacheMutex);
-    m_behaviorTypeCache[behaviorName] = result;
-  }
-  return result;
+  return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
