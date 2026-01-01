@@ -971,6 +971,11 @@ void GameEngine::update(float deltaTime) {
   //    always receives complete, consistent updates (no partial/stale data).
   mp_collisionManager->update(deltaTime);
 
+  // 7. Background simulation (tier updates + entity processing)
+  // Single call handles everything: tier recalc every 60 frames,
+  // background entity processing at 10Hz when entities exist.
+  // Power-efficient: immediate return when paused or no work needed.
+  mp_backgroundSimManager->update(mp_aiManager->getPlayerPosition(), deltaTime);
 }
 
 void GameEngine::render() {
@@ -987,39 +992,19 @@ void GameEngine::render() {
 }
 
 void GameEngine::processBackgroundTasks() {
-  // Background task processing hook for non-critical work
+  // Background task processing hook for truly-async, non-critical work.
   //
-  // PURPOSE: Provides a designated entry point for background processing that:
-  //   - Runs on worker threads via ThreadSystem (NOT the main thread)
-  //   - Executes asynchronously while main thread handles events/rendering
-  //   - Is separate from the main update loop to avoid impacting frame timing
-  //
-  // USE CASES:
+  // Background simulation moved to update() for power efficiency.
+  // This hook remains for future truly-async background work like:
   //   - Asset pre-loading for upcoming game states
   //   - Background save game serialization
   //   - Analytics/telemetry data collection
   //   - Periodic cache cleanup or memory defragmentation
   //   - Network polling for non-latency-critical updates
   //
-  // ARCHITECTURE NOTE:
-  //   Global systems (EventManager, AIManager, etc.) are updated in the main
-  //   update loop for deterministic ordering and proper synchronization.
-  //   This method is for truly asynchronous, non-critical tasks only.
-  //
   // THREAD SAFETY:
   //   Any work added here must be thread-safe and not require main-thread
   //   resources (SDL rendering, UI state, etc.).
-
-  // Background Simulation: Process Background tier entities
-  // Skip entirely if no work needed (no background entities AND tiers not dirty)
-  // This saves CPU when all entities are within Active radius
-  if (!mp_backgroundSimManager->hasWork()) {
-    return;
-  }
-
-  // Manager handles its own 10Hz timing internally via accumulator pattern
-  mp_backgroundSimManager->setReferencePoint(mp_aiManager->getPlayerPosition());
-  mp_backgroundSimManager->update(m_timestepManager->getUpdateDeltaTime());
 }
 
 void GameEngine::setLogicalPresentationMode(

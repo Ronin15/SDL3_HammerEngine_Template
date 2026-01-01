@@ -160,6 +160,12 @@ class Entity : public std::enable_shared_from_this<Entity> {
    */
   [[nodiscard]] bool hasValidHandle() const { return m_handle.isValid(); }
 
+  /**
+   * @brief Check if entity is in Active simulation tier (should be rendered/updated)
+   * @return true if in Active tier, false if Background/Hibernated or no valid handle
+   */
+  [[nodiscard]] bool isInActiveTier() const;
+
   // Transform accessors - redirect to EntityDataManager when handle is valid
   // Phase 4: EntityDataManager is the single source of truth for transforms
   Vector2D getPosition() const;

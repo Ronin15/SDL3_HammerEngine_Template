@@ -27,6 +27,14 @@ Vector2D Entity::getAcceleration() const {
     return EntityDataManager::Instance().getTransform(m_handle).acceleration;
 }
 
+bool Entity::isInActiveTier() const {
+    if (!m_handle.isValid()) {
+        return true;  // No handle = legacy entity, assume active for safety
+    }
+    const auto& hot = EntityDataManager::Instance().getHotData(m_handle);
+    return hot.tier == SimulationTier::Active;
+}
+
 Vector2D Entity::getInterpolatedPosition(float alpha) const {
     const auto& transform = EntityDataManager::Instance().getTransform(m_handle);
     return Vector2D(

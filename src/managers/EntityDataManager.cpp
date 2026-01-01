@@ -1211,6 +1211,17 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         }
 
         m_tierIndicesDirty = false;
+
+#ifndef NDEBUG
+        // Rolling log every ~60 seconds (tier updates happen ~1/sec)
+        static uint32_t tierLogCounter = 0;
+        if (++tierLogCounter >= 60) {
+            tierLogCounter = 0;
+            ENTITY_DEBUG(std::format(
+                "Tiers: Active={}, Background={}, Hibernated={}",
+                m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size()));
+        }
+#endif
     }
 }
 

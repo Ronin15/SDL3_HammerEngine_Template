@@ -434,10 +434,10 @@ void AdvancedAIDemoState::update(float deltaTime) {
             m_player->update(deltaTime);
         }
 
-        // Update NPCs (animations and state machine)
-        // AIManager handles behavior logic, but NPC::update() handles animations
+        // Update Active tier NPCs only (animations and state machine)
+        // AIManager handles behavior logic, BackgroundSimulationManager handles non-Active
         for (auto& npc : m_npcs) {
-            if (npc) {
+            if (npc && npc->isInActiveTier()) {
                 npc->update(deltaTime);
             }
         }
@@ -490,11 +490,12 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
     }
 
-    // Render all NPCs using camera-aware rendering with interpolation
+    // Render Active tier NPCs only (off-screen entities skip rendering)
     for (auto& npc : m_npcs) {
-        npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-
-        // TODO: Health bar rendering using npc->getHealth() / npc->getMaxHealth()
+        if (npc->isInActiveTier()) {
+            npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+            // TODO: Health bar rendering using npc->getHealth() / npc->getMaxHealth()
+        }
     }
 
     // Render player at the position camera used for offset calculation
