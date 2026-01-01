@@ -608,7 +608,7 @@ private:
     EntityDataManager& operator=(const EntityDataManager&) = delete;
 
     // Internal allocation helpers
-    size_t allocateSlot(EntityKind kind);
+    size_t allocateSlot();
     void freeSlot(size_t index);
     uint8_t nextGeneration(size_t index);
 

@@ -30,10 +30,12 @@
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight, NPCType type)
-    : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight), m_npcType(type) {
-  // Store initial position for collision registration later
-  m_initialPosition = startPosition;
-  m_textureID = textureID;
+    : Entity()
+    , m_frameWidth(frameWidth)
+    , m_frameHeight(frameHeight)
+    , m_npcType(type)
+    , m_initialPosition(startPosition) {
+  m_textureID = textureID;  // Base class member, must be assigned in body
 
   // Register with EntityDataManager FIRST - data must exist before any state setup
   // Use default half-sizes, will be updated in ensurePhysicsBodyRegistered
