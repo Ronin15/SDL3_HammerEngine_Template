@@ -68,6 +68,7 @@ public:
 private:
   
   struct EntityState {
+    EntityHandle handle;  // Stored for EDM lookups
     Vector2D lastThreatPosition{0, 0};
     Vector2D fleeDirection{0, 0};
     Vector2D lastKnownSafeDirection{0, 0};
@@ -121,10 +122,6 @@ private:
   // Map to store per-entity state
   std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
 
-  // TEMPORARY: EntityPtr cache for helper methods during migration
-  // TODO: Refactor helper methods to use BehaviorContext instead of EntityPtr
-  std::unordered_map<EntityHandle::IDType, EntityPtr> m_entityPtrCache;
-
   // Configuration
   HammerEngine::FleeBehaviorConfig m_config;
 
@@ -171,17 +168,17 @@ private:
   Vector2D avoidBoundaries(const Vector2D &position,
                            const Vector2D &direction) const;
 
-  void updatePanicFlee(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
-  void updateStrategicRetreat(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
-  void updateEvasiveManeuver(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
-  void updateSeekCover(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
+  void updatePanicFlee(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
+  void updateStrategicRetreat(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
+  void updateEvasiveManeuver(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
+  void updateSeekCover(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
 
   void updateStamina(EntityState &state, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;
   float calculateFleeSpeedModifier(const EntityState &state) const;
 
   // OPTIMIZATION: Extracted lambda for better compiler optimization
-  bool tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& goal, float speed);
+  bool tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& goal, float speed);
 
 public:
 };

@@ -84,6 +84,7 @@ void FleeBehavior::init(EntityHandle handle) {
     EntityID entityId = handle.getId();
     auto& state = m_entityStates[entityId];
     state = EntityState(); // Reset to default state
+    state.handle = handle;  // Store handle for EDM lookups
     state.currentStamina = m_maxStamina;
     state.lastThreatPosition = hotData.transform.position;
 }
@@ -116,13 +117,8 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     if (state.lastCrowdAnalysis >= crowdCacheInterval) {
       Vector2D position = ctx.transform.position;
       float queryRadius = 100.0f; // Smaller radius for flee (lighter separation)
-      // TODO: Update GetNearbyEntitiesWithPositions to support EntityID instead of EntityPtr
-      // For now, use cached EntityPtr
-      auto entityIt = m_entityPtrCache.find(ctx.entityId);
-      if (entityIt != m_entityPtrCache.end() && entityIt->second) {
-          state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
-              entityIt->second, position, queryRadius, state.cachedNearbyPositions);
-      }
+      state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
+          ctx.entityId, position, queryRadius, state.cachedNearbyPositions);
       state.lastCrowdAnalysis = 0.0f; // Reset timer
     }
 
@@ -195,41 +191,30 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
 
     // Execute appropriate flee behavior
     if (state.isFleeing) {
-        // Get cached EntityPtr for helper methods
-        auto entityIt = m_entityPtrCache.find(ctx.entityId);
-        if (entityIt == m_entityPtrCache.end() || !entityIt->second) return;
-
-        EntityPtr entity = entityIt->second;
-
         switch (m_fleeMode) {
             case FleeMode::PANIC_FLEE:
-                updatePanicFlee(entity, state, ctx.deltaTime, threatPos);
+                updatePanicFlee(ctx, state, threatPos);
                 break;
             case FleeMode::STRATEGIC_RETREAT:
-                updateStrategicRetreat(entity, state, ctx.deltaTime, threatPos);
+                updateStrategicRetreat(ctx, state, threatPos);
                 break;
             case FleeMode::EVASIVE_MANEUVER:
-                updateEvasiveManeuver(entity, state, ctx.deltaTime, threatPos);
+                updateEvasiveManeuver(ctx, state, threatPos);
                 break;
             case FleeMode::SEEK_COVER:
-                updateSeekCover(entity, state, ctx.deltaTime, threatPos);
+                updateSeekCover(ctx, state, threatPos);
                 break;
         }
 
         if (m_useStamina) {
             updateStamina(state, ctx.deltaTime, true);
         }
-
-        // Update ctx.transform.velocity from entity (helper methods still use entity->setVelocity)
-        ctx.transform.velocity = entity->getVelocity();
     }
 }
 
 void FleeBehavior::clean(EntityHandle handle) {
     if (handle.isValid()) {
-        EntityID entityId = handle.getId();
-        m_entityStates.erase(entityId);
-        m_entityPtrCache.erase(entityId);
+        m_entityStates.erase(handle.getId());
     }
 }
 
@@ -315,13 +300,9 @@ float FleeBehavior::getDistanceToThreat() const {
     // Find a fleeing entity and get its position from EDM
     for (const auto& [entityId, state] : m_entityStates) {
         if (!state.isFleeing) continue;
+        if (!state.handle.isValid()) continue;
 
-        // Look up entity position via EDM using handle from cache
-        auto handleIt = m_entityPtrCache.find(entityId);
-        if (handleIt == m_entityPtrCache.end() || !handleIt->second) continue;
-
-        EntityHandle entityHandle = handleIt->second->getHandle();
-        size_t entityIdx = edm.getIndex(entityHandle);
+        size_t entityIdx = edm.getIndex(state.handle);
         if (entityIdx == SIZE_MAX) continue;
 
         Vector2D entityPos = edm.getHotDataByIndex(entityIdx).transform.position;
@@ -469,8 +450,8 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D&
     return adjustedDir;
 }
 
-void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, [[maybe_unused]] float deltaTime, const Vector2D& threatPos) {
-    Vector2D currentPos = entity->getPosition();
+void FleeBehavior::updatePanicFlee(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+    Vector2D currentPos = ctx.transform.position;
 
     // In panic mode, change direction more frequently and use longer distances
     if (state.directionChangeTimer > 0.2f || state.fleeDirection.length() < 0.001f) {
@@ -499,11 +480,11 @@ void FleeBehavior::updatePanicFlee(EntityPtr entity, EntityState& state, [[maybe
     float const speedModifier = calculateFleeSpeedModifier(state);
     Vector2D const intended = state.fleeDirection * m_fleeSpeed * speedModifier;
     // Set velocity directly - CollisionManager handles overlap resolution
-    entity->setVelocity(intended);
+    ctx.transform.velocity = intended;
 }
 
-void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, [[maybe_unused]] float deltaTime, const Vector2D& threatPos) {
-    Vector2D currentPos = entity->getPosition();
+void FleeBehavior::updateStrategicRetreat(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+    Vector2D currentPos = ctx.transform.position;
 
     // Strategic retreat: aim for a point away from threat (or toward nearest safe zone)
     if (state.directionChangeTimer > 1.0f || state.fleeDirection.length() < 0.001f) {
@@ -523,7 +504,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
     int nearbyCount = 0;
 
     // Check for other fleeing entities to avoid clustering in same escape routes
-    nearbyCount = AIInternal::CountNearbyEntities(entity, currentPos, 100.0f);
+    nearbyCount = AIInternal::CountNearbyEntities(ctx.entityId, currentPos, 100.0f);
 
     float retreatDistance = baseRetreatDistance;
     if (nearbyCount > 2) {
@@ -532,7 +513,7 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
 
         // Also add lateral bias to prevent all entities fleeing in same direction
         Vector2D const lateral(-state.fleeDirection.getY(), state.fleeDirection.getX());
-        float lateralBias = ((float)(entity->getID() % 5) - 2.0f) * 0.3f; // -0.6 to +0.6
+        float lateralBias = ((float)(ctx.entityId % 5) - 2.0f) * 0.3f; // -0.6 to +0.6
         state.fleeDirection = (state.fleeDirection + lateral * lateralBias).normalized();
     } else if (nearbyCount > 0) {
         // Medium density: moderate expansion
@@ -544,16 +525,16 @@ void FleeBehavior::updateStrategicRetreat(EntityPtr entity, EntityState& state, 
 
     // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
     float const speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
+    if (!tryFollowPathToGoal(ctx, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
         Vector2D const intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
         // Set velocity directly - CollisionManager handles overlap resolution
-        entity->setVelocity(intended2);
+        ctx.transform.velocity = intended2;
     }
 }
 
-void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, [[maybe_unused]] float deltaTime, const Vector2D& threatPos) {
-    Vector2D currentPos = entity->getPosition();
+void FleeBehavior::updateEvasiveManeuver(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+    Vector2D currentPos = ctx.transform.position;
 
     // Zigzag pattern
     if (state.zigzagTimer > m_zigzagInterval) {
@@ -579,12 +560,12 @@ void FleeBehavior::updateEvasiveManeuver(EntityPtr entity, EntityState& state, [
     float const speedModifier = calculateFleeSpeedModifier(state);
     Vector2D const intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
     // Set velocity directly - CollisionManager handles overlap resolution
-    entity->setVelocity(intended3);
+    ctx.transform.velocity = intended3;
 }
 
-void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, [[maybe_unused]] float deltaTime, const Vector2D& threatPos) {
+void FleeBehavior::updateSeekCover(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
     // Move toward nearest safe zone using pathfinding when possible
-    Vector2D currentPos = entity->getPosition();
+    Vector2D currentPos = ctx.transform.position;
     Vector2D const safeZoneDirection = findNearestSafeZone(currentPos);
 
     // Dynamic cover seeking distance based on entity density
@@ -592,7 +573,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, [[maybe
     int nearbyCount = 0;
 
     // Check for clustering of other cover-seekers
-    nearbyCount = AIInternal::CountNearbyEntities(entity, currentPos, 90.0f);
+    nearbyCount = AIInternal::CountNearbyEntities(ctx.entityId, currentPos, 90.0f);
 
     float coverDistance = baseCoverDistance;
     if (nearbyCount > 2) {
@@ -618,11 +599,11 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, [[maybe
 
     // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
     float const speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPathToGoal(entity, currentPos, state, dest, m_fleeSpeed * speedModifier)) {
+    if (!tryFollowPathToGoal(ctx, state, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
         Vector2D const intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
         // Set velocity directly - CollisionManager handles overlap resolution
-        entity->setVelocity(intended4);
+        ctx.transform.velocity = intended4;
     }
 }
 
@@ -663,11 +644,13 @@ float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
 
 // OPTIMIZATION: Extracted from lambda for better compiler optimization
 // This method handles path-following logic with TTL and no-progress checks
-bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& goal, float speed) {
+bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& goal, float speed) {
     // PERFORMANCE: Increase TTL to reduce pathfinding frequency
     constexpr float pathTTL = 2.5f;
     constexpr float noProgressWindow = 0.4f;
     constexpr float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
+
+    Vector2D currentPos = ctx.transform.position;
 
     // Check if path needs refresh
     bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
@@ -702,12 +685,13 @@ bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& current
             // Use PathfinderManager for pathfinding requests
             auto& pf = this->pathfinder();
             auto self = std::static_pointer_cast<FleeBehavior>(shared_from_this());
+            EntityID entityId = ctx.entityId;
             pf.requestPath(
-                entity->getID(),
+                entityId,
                 pf.clampToWorldBounds(currentPos, 100.0f),
                 goal,
                 PathfinderManager::Priority::High,
-                [self, entityId = entity->getID()](EntityID, const std::vector<Vector2D>& path) {
+                [self, entityId](EntityID, const std::vector<Vector2D>& path) {
                     auto it = self->m_entityStates.find(entityId);
                     if (it != self->m_entityStates.end() && !path.empty()) {
                         it->second.pathPoints = path;
@@ -732,7 +716,7 @@ bool FleeBehavior::tryFollowPathToGoal(EntityPtr entity, const Vector2D& current
 
         if (len > 0.01f) {
             dir = dir * (1.0f / len);
-            entity->setVelocity(dir * speed);
+            ctx.transform.velocity = dir * speed;
         }
 
         // Check if reached current waypoint

@@ -405,12 +405,6 @@ private:
   // Frame counter for cache invalidation and distance staggering (operational)
   std::atomic<uint64_t> m_frameCounter{0};
 
-  // Asynchronous assignment processing (replaced with futures for deterministic tracking)
-  // std::atomic<bool> m_assignmentInProgress{false};  // DEPRECATED: Replaced by m_assignmentFutures
-
-  // Frame throttling for task submission (thread-safe)
-  std::atomic<uint64_t> m_lastFrameWithTasks{0};
-
   // Cleanup timing (thread-safe)
   std::atomic<uint64_t> m_lastCleanupFrame{0};
 
@@ -460,7 +454,7 @@ private:
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
-  std::atomic<size_t> m_threadingThreshold{200};  // Optimal threshold from benchmark
+  std::atomic<size_t> m_threadingThreshold{500};  // Updated: single-threaded faster below 500
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
@@ -469,7 +463,8 @@ private:
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos,
                     bool hasPlayer,
-                    const EntityStorage& storage);
+                    const EntityStorage& storage,
+                    float worldWidth, float worldHeight);
   void cleanupInactiveEntities();
   void cleanupAllEntities();
   void updateDistancesScalar(const Vector2D &playerPos);
