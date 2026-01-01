@@ -1235,9 +1235,12 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         auto now = std::chrono::steady_clock::now();
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
             lastLogTime = now;
+            size_t tierTotal = m_activeIndices.size() + m_backgroundIndices.size() + m_hibernatedIndices.size();
+            size_t entityCount = m_totalEntityCount.load(std::memory_order_relaxed);
             ENTITY_DEBUG(std::format(
-                "Tiers: Active={}, Background={}, Hibernated={}",
-                m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size()));
+                "Tiers: Active={}, Background={}, Hibernated={} (Total={}, Expected={})",
+                m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size(),
+                tierTotal, entityCount));
         }
 #endif
     }
