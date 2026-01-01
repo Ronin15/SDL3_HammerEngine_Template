@@ -35,10 +35,10 @@ public:
   explicit WanderBehavior(WanderMode mode, float speed = 2.0f);
 
   // Core behavior methods
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;  // Lock-free hot path
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Set a new center point for wandering

@@ -191,8 +191,8 @@ struct AICollisionTestFixture {
         // Clean up entities
         for (auto& entity : m_entities) {
             if (entity) {
-                AIManager::Instance().unregisterEntityFromUpdates(entity);
-                AIManager::Instance().unassignBehaviorFromEntity(entity);
+                AIManager::Instance().unregisterEntity(entity->getHandle());
+                AIManager::Instance().unassignBehavior(entity->getHandle());
             }
         }
         m_entities.clear();
@@ -378,7 +378,7 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
         // Register behavior
         std::string behaviorName = "WanderBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntityForUpdates(entity, 5, behaviorName);
+        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
     }
 
     // Process collision commands for entities
@@ -457,7 +457,7 @@ BOOST_AUTO_TEST_CASE(TestAISeparationForces) {
 
         std::string behaviorName = "SeparationBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntityForUpdates(entity, 5, behaviorName);
+        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
     }
 
     // Process collision commands
@@ -606,7 +606,7 @@ BOOST_AUTO_TEST_CASE(TestAIBoundaryAvoidance) {
 
         std::string behaviorName = "BoundaryBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntityForUpdates(entity, 5, behaviorName);
+        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
     }
 
 
@@ -675,7 +675,7 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
 
         std::string behaviorName = "LoadTestBehavior_" + std::to_string(i);
         AIManager::Instance().registerBehavior(behaviorName, behavior);
-        AIManager::Instance().registerEntityForUpdates(entity, 5, behaviorName);
+        AIManager::Instance().registerEntity(entity->getHandle(), behaviorName);
     }
 
 

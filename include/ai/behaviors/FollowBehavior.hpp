@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
@@ -38,10 +39,10 @@ public:
   explicit FollowBehavior(const HammerEngine::FollowBehaviorConfig& config,
                           FollowMode mode = FollowMode::LOOSE_FOLLOW);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -156,29 +157,14 @@ private:
   // bool m_useAsyncPathfinding removed
 
   // Helper methods
-  EntityPtr getTarget() const; // Gets player reference from AIManager
-  Vector2D calculateDesiredPosition(EntityPtr entity, EntityPtr target,
-                                    const EntityState &state) const;
+  EntityHandle getTargetHandle() const; // Gets player handle from AIManager
   Vector2D calculateFormationOffset(const EntityState &state) const;
-  Vector2D predictTargetPosition(EntityPtr target,
-                                 const EntityState &state) const;
 
-  bool isTargetMoving(EntityPtr target) const;
   bool shouldCatchUp(float distanceToTarget) const;
-  float calculateFollowSpeed(EntityPtr entity, const EntityState &state,
-                             float distanceToTarget) const;
+  float calculateFollowSpeed(float distanceToTarget) const;
 
-  Vector2D avoidObstacles(EntityPtr entity,
-                          const Vector2D &desiredVelocity) const;
   Vector2D smoothPath(const Vector2D &currentPos, const Vector2D &targetPos,
                       const EntityState &state) const;
-
-  // Mode-specific updates
-  void updateCloseFollow(EntityPtr entity, EntityState &state);
-  void updateLooseFollow(EntityPtr entity, EntityState &state);
-  void updateFlankingFollow(EntityPtr entity, EntityState &state);
-  void updateRearGuard(EntityPtr entity, EntityState &state);
-  void updateEscortFormation(EntityPtr entity, EntityState &state);
 
   // Utility methods
   Vector2D normalizeVector(const Vector2D &vector) const;

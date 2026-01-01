@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
@@ -46,10 +47,10 @@ public:
                          const Vector2D& guardPosition,
                          GuardMode mode = GuardMode::STATIC_GUARD);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -70,8 +71,8 @@ public:
 
   // Alert system
   void setAlertLevel(AlertLevel level);
-  void raiseAlert(EntityPtr entity, const Vector2D &alertPosition);
-  void clearAlert(EntityPtr entity);
+  void raiseAlert(EntityHandle handle, const Vector2D &alertPosition);
+  void clearAlert(EntityHandle handle);
   void setAlertDecayTime(float seconds);
 
   // Threat detection
@@ -193,16 +194,16 @@ private:
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed
 
-  // Helper methods
-  EntityPtr detectThreat(BehaviorContext& ctx, const EntityState &state) const;
-  bool isThreatInRange(const Vector2D& entityPos, EntityPtr threat) const;
-  bool isThreatInFieldOfView(const Vector2D& entityPos, EntityPtr threat,
+  // Helper methods - threat is player handle, positions from EDM
+  EntityHandle detectThreat(BehaviorContext& ctx, const EntityState &state) const;
+  bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
+  bool isThreatInFieldOfView(const Vector2D& entityPos, const Vector2D& threatPos,
                              const EntityState &state) const;
-  bool hasLineOfSight(const Vector2D& entityPos, EntityPtr threat) const;
-  float calculateThreatDistance(const Vector2D& entityPos, EntityPtr threat) const;
+  bool hasLineOfSight(const Vector2D& entityPos, const Vector2D& threatPos) const;
+  float calculateThreatDistance(const Vector2D& entityPos, const Vector2D& threatPos) const;
 
   void updateAlertLevel(EntityState &state, bool threatPresent) const;
-  void handleThreatDetection(BehaviorContext& ctx, EntityState &state, EntityPtr threat);
+  void handleThreatDetection(BehaviorContext& ctx, EntityState &state, EntityHandle threat);
   void handleInvestigation(BehaviorContext& ctx, EntityState &state);
   void handleReturnToPost(BehaviorContext& ctx, EntityState &state);
 
@@ -214,11 +215,10 @@ private:
   void updateAlertGuard(BehaviorContext& ctx, EntityState &state);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
   void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos, float speed,
                            AIBehaviorState &state, int priority = 1);
   Vector2D getNextPatrolWaypoint(const EntityState &state) const;
-  Vector2D generateRoamTarget(EntityPtr entity, const EntityState &state) const;
+  Vector2D generateRoamTarget(const EntityState &state) const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,
                     float threshold = 25.0f) const;
   bool isWithinGuardArea(const Vector2D &position) const;
@@ -226,8 +226,7 @@ private:
 
   // Communication helpers
   void callForHelp(const Vector2D &threatPosition);
-  void broadcastAlert(EntityPtr entity, AlertLevel level,
-                      const Vector2D &alertPosition);
+  void broadcastAlert(AlertLevel level, const Vector2D &alertPosition);
 };
 
 #endif // GUARD_BEHAVIOR_HPP

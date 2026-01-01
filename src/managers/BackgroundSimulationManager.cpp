@@ -50,6 +50,9 @@ void BackgroundSimulationManager::clean() {
 
     BGSIM_INFO("Cleaning up BackgroundSimulationManager...");
 
+    // Mark as shutdown to prevent new work
+    m_isShutdown.store(true, std::memory_order_release);
+
     // Wait for any pending async work
     waitForAsyncCompletion();
 
@@ -67,21 +70,46 @@ void BackgroundSimulationManager::prepareForStateTransition() {
     m_backgroundIndices.clear();
     m_tiersDirty.store(true, std::memory_order_release);
     m_framesSinceTierUpdate = 0;
+    m_referencePointSet = false;  // Force reference point update on next state
+    m_accumulator = 0.0;          // Reset timing for clean start
     BGSIM_INFO("State transition preparation complete");
 }
 
 // ============================================================================
-// MAIN UPDATE
+// MAIN UPDATE (Accumulator Pattern - like TimestepManager)
 // ============================================================================
 
 void BackgroundSimulationManager::update(float deltaTime) {
-    if (!m_initialized.load(std::memory_order_acquire)) {
+    // Early exit checks (follows AIManager pattern)
+    if (!m_initialized.load(std::memory_order_acquire) ||
+        m_isShutdown.load(std::memory_order_acquire)) {
         return;
     }
 
+    // Skip processing if globally paused
+    if (m_globallyPaused.load(std::memory_order_acquire)) {
+        return;
+    }
+
+    // Accumulate real time passed
+    m_accumulator += deltaTime;
+
+    // Only process when enough time has accumulated for target update rate (e.g., 30Hz)
+    if (m_accumulator < m_updateInterval) {
+        return;  // Not time yet
+    }
+
+    // Process updates - consume accumulated time (handles catch-up for slow frames)
+    while (m_accumulator >= m_updateInterval) {
+        m_accumulator -= m_updateInterval;
+        processBackgroundEntities(m_updateInterval);
+    }
+}
+
+void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime) {
     auto t0 = std::chrono::steady_clock::now();
 
-    // Periodic tier update
+    // Periodic tier update (still frame-based for consistency with EDM)
     m_framesSinceTierUpdate++;
     if (m_tiersDirty.load(std::memory_order_acquire) ||
         m_framesSinceTierUpdate >= m_tierUpdateInterval) {
@@ -94,7 +122,11 @@ void BackgroundSimulationManager::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
     auto backgroundSpan = edm.getBackgroundIndices();
 
-    if (backgroundSpan.empty()) {
+    // Update work-tracking flag for hasWork() optimization
+    bool hasBackground = !backgroundSpan.empty();
+    m_hasNonActiveEntities.store(hasBackground, std::memory_order_release);
+
+    if (!hasBackground) {
         m_perf.lastEntitiesProcessed = 0;
         m_perf.lastUpdateMs = 0.0;
         return;
@@ -125,11 +157,11 @@ void BackgroundSimulationManager::update(float deltaTime) {
                         batchSize >= MIN_BATCH_SIZE;
 
     if (useThreading) {
-        processMultiThreaded(deltaTime, m_backgroundIndices, batchCount, batchSize);
+        processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
         m_perf.lastWasThreaded = true;
         m_perf.lastBatchCount = batchCount;
     } else {
-        processSingleThreaded(deltaTime, m_backgroundIndices);
+        processSingleThreaded(fixedDeltaTime, m_backgroundIndices);
         m_perf.lastWasThreaded = false;
         m_perf.lastBatchCount = 1;
     }
@@ -165,7 +197,15 @@ void BackgroundSimulationManager::waitForAsyncCompletion() {
 // ============================================================================
 
 void BackgroundSimulationManager::setReferencePoint(const Vector2D& position) {
-    // Check if position changed significantly (avoid unnecessary tier updates)
+    // First call: always set reference point (m_referencePointSet starts false)
+    if (!m_referencePointSet) {
+        m_referencePoint = position;
+        m_referencePointSet = true;
+        m_tiersDirty.store(true, std::memory_order_release);
+        return;
+    }
+
+    // Subsequent calls: only update if moved significantly (avoid excessive tier recalcs)
     float dx = position.getX() - m_referencePoint.getX();
     float dy = position.getY() - m_referencePoint.getY();
     float distSq = dx * dx + dy * dy;

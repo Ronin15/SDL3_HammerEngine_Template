@@ -29,6 +29,7 @@
 #include "utils/Vector2D.hpp"
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <future>
 #include <memory>
@@ -66,6 +67,28 @@ public:
      */
     [[nodiscard]] bool isInitialized() const noexcept {
         return m_initialized.load(std::memory_order_acquire);
+    }
+
+    /**
+     * @brief Check if manager is shut down
+     */
+    [[nodiscard]] bool isShutdown() const noexcept {
+        return m_isShutdown.load(std::memory_order_acquire);
+    }
+
+    /**
+     * @brief Set global pause state for background simulation
+     * @param paused true to pause, false to resume
+     */
+    void setGlobalPause(bool paused) {
+        m_globallyPaused.store(paused, std::memory_order_release);
+    }
+
+    /**
+     * @brief Check if background simulation is globally paused
+     */
+    [[nodiscard]] bool isGloballyPaused() const noexcept {
+        return m_globallyPaused.load(std::memory_order_acquire);
     }
 
     /**
@@ -115,14 +138,59 @@ public:
      */
     void invalidateTiers() { m_tiersDirty.store(true, std::memory_order_release); }
 
+    /**
+     * @brief Check if manager has any work to do
+     * @return true if there are background entities or tiers need checking
+     */
+    [[nodiscard]] bool hasWork() const noexcept {
+        return m_hasNonActiveEntities.load(std::memory_order_acquire) ||
+               m_tiersDirty.load(std::memory_order_acquire);
+    }
+
     // Configuration
     void setActiveRadius(float radius) { m_activeRadius = radius; }
     void setBackgroundRadius(float radius) { m_backgroundRadius = radius; }
     void setTierUpdateInterval(uint32_t frames) { m_tierUpdateInterval = frames; }
 
+    /**
+     * @brief Configure tier radii based on screen dimensions
+     *
+     * Calculates radii relative to the screen's half-diagonal (center to corner).
+     * - Active: 1.5x half-diagonal (visible area + buffer)
+     * - Background: 3x half-diagonal (pre-loading zone)
+     *
+     * @param screenWidth Logical screen width
+     * @param screenHeight Logical screen height
+     */
+    void configureForScreenSize(int screenWidth, int screenHeight) {
+        // Half-diagonal = distance from screen center to corner
+        float halfWidth = static_cast<float>(screenWidth) / 2.0f;
+        float halfHeight = static_cast<float>(screenHeight) / 2.0f;
+        float halfDiagonal = std::sqrt(halfWidth * halfWidth + halfHeight * halfHeight);
+
+        // Active: 1.5x visible range (entities on screen + small buffer)
+        m_activeRadius = halfDiagonal * 1.5f;
+        // Background: 3x visible range (pre-load zone for smooth transitions)
+        m_backgroundRadius = halfDiagonal * 3.0f;
+
+        // Mark tiers dirty to recalculate with new radii
+        invalidateTiers();
+    }
+
     [[nodiscard]] float getActiveRadius() const { return m_activeRadius; }
     [[nodiscard]] float getBackgroundRadius() const { return m_backgroundRadius; }
     [[nodiscard]] uint32_t getTierUpdateInterval() const { return m_tierUpdateInterval; }
+
+    /**
+     * @brief Set the update rate for background simulation
+     * @param hz Target updates per second (default: 30Hz)
+     */
+    void setUpdateRate(float hz) {
+        m_updateRate = hz;
+        m_updateInterval = 1.0f / hz;
+    }
+
+    [[nodiscard]] float getUpdateRate() const { return m_updateRate; }
 
     // Performance metrics (follows AIManager pattern)
     struct PerfStats {
@@ -156,6 +224,9 @@ private:
     BackgroundSimulationManager(const BackgroundSimulationManager&) = delete;
     BackgroundSimulationManager& operator=(const BackgroundSimulationManager&) = delete;
 
+    // Core processing (called when accumulator triggers update)
+    void processBackgroundEntities(float fixedDeltaTime);
+
     // Batch processing (follows AIManager pattern)
     void processSingleThreaded(float deltaTime, const std::vector<size_t>& indices);
     void processMultiThreaded(float deltaTime, const std::vector<size_t>& indices,
@@ -168,15 +239,31 @@ private:
     void simulateItem(float deltaTime, size_t index);
 
     // Configuration
-    float m_activeRadius{1500.0f};      // Entities within this are Active
-    float m_backgroundRadius{10000.0f}; // Entities within this (outside active) are Background
+    // Default radii based on 1920x1080 logical resolution:
+    // - Half-diagonal (center to corner) ≈ 1100 pixels
+    // - Active: 1.5x half-diagonal = entities visible + small buffer
+    // - Background: 3x half-diagonal = pre-loading area for smooth transitions
+    // - Hibernated: beyond background radius (no processing)
+    float m_activeRadius{1650.0f};      // ~1.5x window half-diagonal (visible + buffer)
+    float m_backgroundRadius{3300.0f};  // ~3x window half-diagonal (pre-load zone)
     uint32_t m_tierUpdateInterval{60};  // Update tiers every N frames
+
+    // Timing (accumulator pattern like TimestepManager)
+    // 10Hz is sufficient for off-screen entities - saves CPU while maintaining world consistency
+    // When entities become Active, they immediately get 60Hz updates
+    float m_updateRate{10.0f};            // Target update rate in Hz
+    float m_updateInterval{1.0f / 10.0f}; // Time between updates (100ms at 10Hz)
+    double m_accumulator{0.0};            // Time accumulator for fixed timestep
 
     // State
     Vector2D m_referencePoint{0.0f, 0.0f};
+    bool m_referencePointSet{false};  // First setReferencePoint call always updates
     uint32_t m_framesSinceTierUpdate{0};
     std::atomic<bool> m_tiersDirty{true};
     std::atomic<bool> m_initialized{false};
+    std::atomic<bool> m_isShutdown{false};
+    std::atomic<bool> m_globallyPaused{false};
+    std::atomic<bool> m_hasNonActiveEntities{false};  // Track if work exists
 
     // Async task tracking (follows AIManager pattern)
     std::vector<std::future<void>> m_batchFutures;

@@ -685,7 +685,11 @@ bool GameEngine::init(const std::string_view title, const int width,
     GAMEENGINE_CRITICAL("Failed to initialize Background Simulation Manager");
     return false;
   }
-  GAMEENGINE_INFO("Background Simulation Manager initialized");
+  // Configure tier radii based on logical screen size (dynamic for different devices)
+  BackgroundSimulationManager::Instance().configureForScreenSize(m_logicalWidth, m_logicalHeight);
+  GAMEENGINE_INFO(std::format("Background Simulation Manager initialized (activeRadius: {:.0f}, backgroundRadius: {:.0f})",
+      BackgroundSimulationManager::Instance().getActiveRadius(),
+      BackgroundSimulationManager::Instance().getBackgroundRadius()));
 
   // Step 2: Cache manager references for performance (after all background init
   // complete)
@@ -734,6 +738,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
     mp_collisionManager = &collisionMgrTest;
+
+    // Validate Background Simulation Manager before caching
+    BackgroundSimulationManager &bgSimMgrTest = BackgroundSimulationManager::Instance();
+    if (!bgSimMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL(
+          "BackgroundSimulationManager not properly initialized before caching!");
+      return false;
+    }
+    mp_backgroundSimManager = &bgSimMgrTest;
 
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
@@ -953,10 +966,11 @@ void GameEngine::update(float deltaTime) {
   // PathfinderManager initialized by AIManager, cached by GameEngine for performance
   mp_pathfinderManager->update();
 
-  // 6. Collision system - LAST: processes complete NPC updates from AIManager
+  // 6. Collision system - processes complete NPC updates from AIManager
   //    AIManager guarantees all batches complete before returning, so collision
   //    always receives complete, consistent updates (no partial/stale data).
   mp_collisionManager->update(deltaTime);
+
 }
 
 void GameEngine::render() {
@@ -996,20 +1010,16 @@ void GameEngine::processBackgroundTasks() {
   //   Any work added here must be thread-safe and not require main-thread
   //   resources (SDL rendering, UI state, etc.).
 
-  try {
-    // Background Simulation: Process Background tier entities
-    // These are entities outside the active camera area that need simplified simulation
-    auto& bgSim = BackgroundSimulationManager::Instance();
-    if (bgSim.isInitialized()) {
-      // Use fixed timestep for background simulation (less precision needed)
-      constexpr float BACKGROUND_TIMESTEP = 1.0f / 30.0f;  // 30 Hz
-      bgSim.update(BACKGROUND_TIMESTEP);
-    }
-  } catch (const std::exception &e) {
-    GAMEENGINE_ERROR(std::format("Exception in background tasks: {}", e.what()));
-  } catch (...) {
-    GAMEENGINE_ERROR("Unknown exception in background tasks");
+  // Background Simulation: Process Background tier entities
+  // Skip entirely if no work needed (no background entities AND tiers not dirty)
+  // This saves CPU when all entities are within Active radius
+  if (!mp_backgroundSimManager->hasWork()) {
+    return;
   }
+
+  // Manager handles its own 10Hz timing internally via accumulator pattern
+  mp_backgroundSimManager->setReferencePoint(mp_aiManager->getPlayerPosition());
+  mp_backgroundSimManager->update(m_timestepManager->getUpdateDeltaTime());
 }
 
 void GameEngine::setLogicalPresentationMode(
@@ -1269,30 +1279,13 @@ void GameEngine::setFullscreen(bool enabled) {
 void GameEngine::setGlobalPause(bool paused) {
   m_globallyPaused = paused;
 
-  // Pause AI Manager (already has setGlobalPause support)
-  if (mp_aiManager) {
-    mp_aiManager->setGlobalPause(paused);
-  }
-
-  // Pause Particle Manager
-  if (mp_particleManager) {
-    mp_particleManager->setGlobalPause(paused);
-  }
-
-  // Pause Collision Manager
-  if (mp_collisionManager) {
-    mp_collisionManager->setGlobalPause(paused);
-  }
-
-  // Pause Pathfinder Manager
-  if (mp_pathfinderManager) {
-    mp_pathfinderManager->setGlobalPause(paused);
-  }
-
-  // Pause GameTime Manager
+  // Pause all managers (cached pointers guaranteed valid after init)
+  mp_aiManager->setGlobalPause(paused);
+  mp_particleManager->setGlobalPause(paused);
+  mp_collisionManager->setGlobalPause(paused);
+  mp_pathfinderManager->setGlobalPause(paused);
+  mp_backgroundSimManager->setGlobalPause(paused);
   GameTimeManager::Instance().setGlobalPause(paused);
-
-  // Pause Event Manager
   EventManager::Instance().setGlobalPause(paused);
 
 #ifdef DEBUG
@@ -1396,6 +1389,11 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   setLogicalSize(actualWidth, actualHeight);
 
   GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}", actualWidth, actualHeight));
+
+  // Reconfigure tier radii for new screen size
+  mp_backgroundSimManager->configureForScreenSize(actualWidth, actualHeight);
+  GAMEENGINE_INFO(std::format("Tier radii reconfigured (active: {:.0f}, background: {:.0f})",
+      mp_backgroundSimManager->getActiveRadius(), mp_backgroundSimManager->getBackgroundRadius()));
 
   // Reload fonts for new display configuration with DPI scale
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");

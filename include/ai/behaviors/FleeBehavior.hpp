@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
@@ -34,10 +35,10 @@ public:
   explicit FleeBehavior(const HammerEngine::FleeBehaviorConfig& config,
                         FleeMode mode = FleeMode::PANIC_FLEE);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -159,9 +160,10 @@ private:
   // (removed m_useAsyncPathfinding flag as it's no longer needed)
 
   // Helper methods
-  EntityPtr getThreat() const; // Gets player reference from AIManager
-  bool isThreatInRange(EntityPtr entity, EntityPtr threat) const;
-  Vector2D calculateFleeDirection(EntityPtr entity, EntityPtr threat,
+  EntityHandle getThreatHandle() const; // Gets player handle from AIManager
+  Vector2D getThreatPosition() const;   // Gets player position from AIManager
+  bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
+  Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threatPos,
                                   const EntityState &state) const;
   Vector2D findNearestSafeZone(const Vector2D &position) const;
   bool isPositionSafe(const Vector2D &position) const;
@@ -169,10 +171,10 @@ private:
   Vector2D avoidBoundaries(const Vector2D &position,
                            const Vector2D &direction) const;
 
-  void updatePanicFlee(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateStrategicRetreat(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateEvasiveManeuver(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateSeekCover(EntityPtr entity, EntityState &state, float deltaTime);
+  void updatePanicFlee(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
+  void updateStrategicRetreat(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
+  void updateEvasiveManeuver(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
+  void updateSeekCover(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& threatPos);
 
   void updateStamina(EntityState &state, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;

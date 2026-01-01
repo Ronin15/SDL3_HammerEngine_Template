@@ -18,6 +18,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
@@ -26,7 +27,8 @@
 class BenchmarkEntity : public Entity {
 public:
     BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        setPosition(pos);
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
         setTextureID("benchmark_texture");
         setWidth(32);
         setHeight(32);
@@ -115,6 +117,7 @@ void printConfig(const PowerProfileConfig& config) {
 void cleanup() {
     AIManager::Instance().clean();
     CollisionManager::Instance().clean();
+    EntityDataManager::Instance().clean();
     PathfinderManager::Instance().clean();
     HammerEngine::ThreadSystem::Instance().clean();
 }
@@ -136,6 +139,11 @@ int main(int argc, char* argv[]) {
         }
         PathfinderManager::Instance().init();
         PathfinderManager::Instance().rebuildGrid();
+
+        if (config.verbose) {
+            std::cout << "[INIT] Initializing EntityDataManager...\n";
+        }
+        EntityDataManager::Instance().init();
 
         if (config.verbose) {
             std::cout << "[INIT] Initializing CollisionManager...\n";
@@ -177,7 +185,7 @@ int main(int argc, char* argv[]) {
             auto entity = BenchmarkEntity::create(i, centralPos);
             entities.push_back(entity);
             // Register without behavior assignment - behavior system not initialized in headless mode
-            AIManager::Instance().registerEntityForUpdates(entity, 9);
+            AIManager::Instance().registerEntity(entity->getHandle());
         }
 
         if (config.verbose) {

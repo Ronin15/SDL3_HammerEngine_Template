@@ -75,42 +75,21 @@ public:
         // Test behavior: minimal implementation for BehaviorContext path
         // The test primarily validates threading/registration, not behavior logic
         m_updateCount++;
-        (void)ctx; // Behavior logic handled by EntityPtr version when called
+
+        // Occasionally send a message (very infrequently)
+        if (m_updateCount % 500 == 0) {
+            AIManager::Instance().broadcastMessage("test_message");
+        }
+        (void)ctx;
     }
 
-    void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
-            if (!entity) return;
-
-            try {
-                // Cast to our test entity type - use dynamic_cast for safety
-                auto testEntity = std::dynamic_pointer_cast<IntegrationTestEntity>(entity);
-                if (!testEntity) return;
-
-                // Update the entity - simulate some work (minimal sleep to avoid timeouts)
-                std::this_thread::sleep_for(std::chrono::microseconds(1));
-                testEntity->update(0.016f); // ~60 FPS deltaTime
-
-                // Update our counter
-                m_updateCount++;
-
-                // Occasionally send a message to another random entity (very infrequently)
-                if (m_updateCount % 500 == 0) {
-                    AIManager::Instance().broadcastMessage("test_message");
-                }
-            } catch (const std::exception& e) {
-                std::cerr << "Exception in behavior update: " << e.what() << std::endl;
-            } catch (...) {
-                std::cerr << "Unknown exception in behavior update" << std::endl;
-            }
-        }
-
-    void init(EntityPtr entity) override {
-        if (!entity) return;
+    void init(EntityHandle handle) override {
+        if (!handle.isValid()) return;
         m_initialized = true;
     }
 
-    void clean(EntityPtr entity) override {
-        if (!entity) return;
+    void clean(EntityHandle handle) override {
+        if (!handle.isValid()) return;
 
         // Avoid using shared_from_this() on the entity
         // Just mark as uninitialized
@@ -127,7 +106,7 @@ public:
         return cloned;
     }
 
-    void onMessage(EntityPtr /* entity */, const std::string& /* message */) override {
+    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {
         m_messageCount++;
     }
 
@@ -306,8 +285,8 @@ struct AIIntegrationTestFixture {
 
                 // Register entity for managed updates with behavior (uses queued assignment like production)
                 int behaviorIdx = i % NUM_BEHAVIORS;
-                AIManager::Instance().registerEntityForUpdates(
-                    entity, 5, "Behavior" + std::to_string(behaviorIdx));
+                AIManager::Instance().registerEntity(
+                    entity->getHandle(), "Behavior" + std::to_string(behaviorIdx));
             }
         }
 
@@ -320,7 +299,7 @@ struct AIIntegrationTestFixture {
 
         // Verify all entities have behaviors assigned
         for (const auto& entity : entities) {
-            if (!AIManager::Instance().entityHasBehavior(entity)) {
+            if (!AIManager::Instance().hasBehavior(entity->getHandle())) {
                 std::cerr << "Warning: Entity " << entity.get() << " didn't receive behavior after setup" << std::endl;
             }
         }
@@ -347,8 +326,8 @@ struct AIIntegrationTestFixture {
                 if (entity) {
                     // Safely unregister from managed updates and unassign behaviors
                     try {
-                        AIManager::Instance().unregisterEntityFromUpdates(entity);
-                        AIManager::Instance().unassignBehaviorFromEntity(entity);
+                        AIManager::Instance().unregisterEntity(entity->getHandle());
+                        AIManager::Instance().unassignBehavior(entity->getHandle());
                         std::this_thread::sleep_for(std::chrono::milliseconds(5)); // Small delay between operations
                     } catch (const std::exception& e) {
                         std::cerr << "Exception unassigning behavior: " << e.what() << std::endl;
@@ -460,7 +439,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAssignmentAndUpdate) {
 
     // If we have an entity, queue a behavior assignment (async-safe API)
     if (entity) {
-        AIManager::Instance().queueBehaviorAssignment(entity, "Behavior0");
+        AIManager::Instance().queueBehaviorAssignment(entity->getHandle(), "Behavior0");
         AIManager::Instance().update(0.016f); // ~60 FPS - processes queued assignments
     }
 
@@ -488,10 +467,10 @@ BOOST_AUTO_TEST_CASE(TestMessageDelivery) {
     // Now send an actual message with proper safeguards
     try {
         // Ensure the behavior is assigned before messaging
-        BOOST_REQUIRE(AIManager::Instance().entityHasBehavior(testEntity));
+        BOOST_REQUIRE(AIManager::Instance().hasBehavior(testEntity->getHandle()));
 
         // Send message immediately to avoid async issues
-        AIManager::Instance().sendMessageToEntity(testEntity, "test_message", true);
+        AIManager::Instance().sendMessageToEntity(testEntity->getHandle(), "test_message", true);
 
         // Give a small delay to ensure processing
         std::this_thread::sleep_for(std::chrono::milliseconds(5));

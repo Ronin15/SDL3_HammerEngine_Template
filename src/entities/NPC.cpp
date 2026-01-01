@@ -151,6 +151,17 @@ void NPC::loadDimensionsFromTexture() {
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
+  // Skip animation for non-Active tier entities (off-screen)
+  // This saves significant CPU when scaling to 10K+ entities
+  auto& edm = EntityDataManager::Instance();
+  size_t index = edm.getIndex(m_handle);
+  if (index != SIZE_MAX) {
+    const auto& hotData = edm.getHotDataByIndex(index);
+    if (hotData.tier != SimulationTier::Active) {
+      return;  // Entity is off-screen, skip animation
+    }
+  }
+
   // The AI drives velocity directly; sync to collision body
   // Let collision system handle movement integration to prevent micro-bouncing
 
@@ -213,6 +224,16 @@ void NPC::update(float deltaTime) {
 }
 
 void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
+  // Skip rendering for non-Active tier entities (off-screen)
+  auto& edm = EntityDataManager::Instance();
+  size_t index = edm.getIndex(m_handle);
+  if (index != SIZE_MAX) {
+    const auto& hotData = edm.getHotDataByIndex(index);
+    if (hotData.tier != SimulationTier::Active) {
+      return;  // Entity is off-screen, skip render
+    }
+  }
+
   // Cache texture on first render (like WorldManager pattern - no hash lookup per frame)
   if (!m_cachedTexture) {
     m_cachedTexture = TextureManager::Instance().getTexturePtr(m_textureID);

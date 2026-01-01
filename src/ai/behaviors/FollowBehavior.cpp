@@ -105,18 +105,28 @@ FollowBehavior::FollowBehavior(const HammerEngine::FollowBehaviorConfig& config,
   }
 }
 
-void FollowBehavior::init(EntityPtr entity) {
-  if (!entity)
+void FollowBehavior::init(EntityHandle handle) {
+  if (!handle.isValid())
     return;
 
-  auto &state = m_entityStates[entity->getID()];
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return;
+
+  auto& hotData = edm.getHotDataByIndex(idx);
+  auto &state = m_entityStates[handle.getId()];
   state = EntityState(); // Reset to default state
 
-  EntityPtr target = getTarget();
-  if (target) {
-    state.lastTargetPosition = target->getPosition();  // Use live position instead of cached
-    state.desiredPosition = entity->getPosition();
-    state.isFollowing = true;
+  // Phase 2 EDM Migration: Use handle-based target lookup
+  EntityHandle targetHandle = getTargetHandle();
+  if (targetHandle.isValid()) {
+    size_t targetIdx = edm.getIndex(targetHandle);
+    if (targetIdx != SIZE_MAX) {
+      auto& targetHotData = edm.getHotDataByIndex(targetIdx);
+      state.lastTargetPosition = targetHotData.transform.position;
+      state.desiredPosition = hotData.transform.position;
+      state.isFollowing = true;
+    }
   }
   // Assign formation slot for all follow modes to prevent clumping
   state.formationSlot = assignFormationSlot();
@@ -133,26 +143,36 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   auto it = m_entityStates.find(ctx.entityId);
   if (it == m_entityStates.end()) {
     // State not found - this shouldn't happen as init() should be called first
-    // However, we can't call init() here as it requires EntityPtr
     AI_ERROR(std::format("FollowBehavior: No state found for entity {}", ctx.entityId));
     return;
   }
 
   EntityState &state = it->second;
-  EntityPtr target = getTarget();
 
-  if (!target) {
+  // Phase 2 EDM Migration: Use handle-based target lookup
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle targetHandle = getTargetHandle();
+
+  if (!targetHandle.isValid()) {
     // No target, stop following
     AI_ERROR(std::format("FollowBehavior: No target found for entity {}", ctx.entityId));
     state.isFollowing = false;
     return;
   }
 
+  size_t targetIdx = edm.getIndex(targetHandle);
+  if (targetIdx == SIZE_MAX) {
+    state.isFollowing = false;
+    return;
+  }
+
+  auto& targetHotData = edm.getHotDataByIndex(targetIdx);
   Vector2D currentPos = ctx.transform.position;
-  Vector2D targetPos = target->getPosition();  // Use live position instead of cached
+  Vector2D targetPos = targetHotData.transform.position;
 
   // Update target movement tracking (velocity-based, no delay)
-  bool targetMoved = isTargetMoving(target);
+  Vector2D targetVel = targetHotData.transform.velocity;
+  bool targetMoved = (targetVel.length() > 10.0f); // VELOCITY_THRESHOLD
 
   if (targetMoved) {
     state.targetMoving = true;
@@ -272,7 +292,7 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   // Use distance to player for catch-up speed calculation
-  float dynamicSpeed = calculateFollowSpeed(nullptr, state, distanceToPlayer);
+  float dynamicSpeed = calculateFollowSpeed(distanceToPlayer);
 
   // Execute appropriate follow behavior based on mode (use pre-calculated desiredPos)
   // Track whether we're using pathfinding or direct movement
@@ -297,9 +317,9 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   (void)usingPathfinding;  // No longer used
 }
 
-void FollowBehavior::clean(EntityPtr entity) {
-  if (entity) {
-    auto it = m_entityStates.find(entity->getID());
+void FollowBehavior::clean(EntityHandle handle) {
+  if (handle.isValid()) {
+    auto it = m_entityStates.find(handle.getId());
     if (it != m_entityStates.end()) {
       // Release formation slot if using escort formation
       if (m_followMode == FollowMode::ESCORT_FORMATION) {
@@ -310,11 +330,11 @@ void FollowBehavior::clean(EntityPtr entity) {
   }
 }
 
-void FollowBehavior::onMessage(EntityPtr entity, const std::string &message) {
-  if (!entity)
+void FollowBehavior::onMessage(EntityHandle handle, const std::string &message) {
+  if (!handle.isValid())
     return;
 
-  auto it = m_entityStates.find(entity->getID());
+  auto it = m_entityStates.find(handle.getId());
   if (it == m_entityStates.end())
     return;
 
@@ -428,18 +448,24 @@ bool FollowBehavior::isInFormation() const {
 }
 
 float FollowBehavior::getDistanceToTarget() const {
-  EntityPtr target = getTarget();
-  if (!target)
+  // Phase 2 EDM Migration: Use handle-based target lookup
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle targetHandle = getTargetHandle();
+  if (!targetHandle.isValid())
     return -1.0f;
 
-  // Since we don't have EntityPtr lookup, use the desiredPosition from state instead
-  // This is close enough for query purposes
+  size_t targetIdx = edm.getIndex(targetHandle);
+  if (targetIdx == SIZE_MAX)
+    return -1.0f;
+
+  auto& targetHotData = edm.getHotDataByIndex(targetIdx);
+  Vector2D targetPos = targetHotData.transform.position;
+
+  // Find a following entity to calculate distance
   auto it =
       std::find_if(m_entityStates.begin(), m_entityStates.end(),
                    [](const auto &pair) { return pair.second.isFollowing; });
   if (it != m_entityStates.end()) {
-    // Use desiredPosition from state as an approximation
-    Vector2D targetPos = target->getPosition();
     Vector2D entityDesiredPos = it->second.desiredPosition;
     float distSquared = (entityDesiredPos - targetPos).lengthSquared();
     return std::sqrt(distSquared);
@@ -452,8 +478,17 @@ FollowBehavior::FollowMode FollowBehavior::getFollowMode() const {
 }
 
 Vector2D FollowBehavior::getTargetPosition() const {
-  EntityPtr target = getTarget();
-  return target ? target->getPosition() : Vector2D(0, 0);
+  // Phase 2 EDM Migration: Use handle-based target lookup
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle targetHandle = getTargetHandle();
+  if (!targetHandle.isValid())
+    return Vector2D(0, 0);
+
+  size_t targetIdx = edm.getIndex(targetHandle);
+  if (targetIdx == SIZE_MAX)
+    return Vector2D(0, 0);
+
+  return edm.getHotDataByIndex(targetIdx).transform.position;
 }
 
 std::shared_ptr<AIBehavior> FollowBehavior::clone() const {
@@ -474,27 +509,8 @@ std::shared_ptr<AIBehavior> FollowBehavior::clone() const {
   return clone;
 }
 
-EntityPtr FollowBehavior::getTarget() const {
-  return AIManager::Instance().getPlayerReference();
-}
-
-Vector2D FollowBehavior::calculateDesiredPosition(EntityPtr entity,
-                                                  EntityPtr target,
-                                                  const EntityState &state) const {
-  if (!entity || !target)
-    return Vector2D(0, 0);
-
-  Vector2D targetPos = target->getPosition();  // Use live position instead of cached
-
-  // Apply predictive following if enabled
-  if (m_predictiveFollowing && state.targetMoving) {
-    targetPos = predictTargetPosition(target, state);
-  }
-
-  // Apply formation offset
-  Vector2D const desiredPos = targetPos + state.formationOffset;
-
-  return desiredPos;
+EntityHandle FollowBehavior::getTargetHandle() const {
+  return AIManager::Instance().getPlayerHandle();
 }
 
 Vector2D
@@ -543,39 +559,11 @@ FollowBehavior::calculateFormationOffset(const EntityState &state) const {
   return Vector2D(0, 0);
 }
 
-Vector2D FollowBehavior::predictTargetPosition(EntityPtr target,
-                                               const EntityState &state) const {
-  if (!target || !state.targetMoving) {
-    return target ? target->getPosition() : Vector2D(0, 0);
-  }
-
-  Vector2D currentPos = target->getPosition();  // Use live position instead of cached
-  Vector2D const velocity =
-      (currentPos - state.lastTargetPosition) / 0.016f; // Assume 60 FPS
-
-  return currentPos + velocity * m_predictionTime;
-}
-
-bool FollowBehavior::isTargetMoving(EntityPtr target) const {
-  if (!target)
-    return false;
-
-  // Check velocity instead of position - more reliable for detecting actual movement
-  Vector2D targetVel = target->getVelocity();
-  float const velocityMagnitude = targetVel.length();
-
-  // Consider target moving if velocity > 10 pixels/second
-  const float VELOCITY_THRESHOLD = 10.0f;
-  return velocityMagnitude > VELOCITY_THRESHOLD;
-}
-
 bool FollowBehavior::shouldCatchUp(float distanceToTarget) const {
   return distanceToTarget > m_maxDistance;
 }
 
-float FollowBehavior::calculateFollowSpeed(EntityPtr /*entity*/,
-                                           const EntityState & /*state*/,
-                                           float distanceToTarget) const {
+float FollowBehavior::calculateFollowSpeed(float distanceToTarget) const {
   float speed = m_followSpeed;
 
   // Apply catch-up speed if far behind
@@ -589,14 +577,6 @@ float FollowBehavior::calculateFollowSpeed(EntityPtr /*entity*/,
   }
 
   return speed;
-}
-
-
-Vector2D FollowBehavior::avoidObstacles(EntityPtr /*entity*/,
-                                        const Vector2D &desiredVelocity) const {
-  // Simple obstacle avoidance - in a full implementation, this would check for
-  // collisions For now, just return the desired velocity
-  return desiredVelocity;
 }
 
 Vector2D FollowBehavior::smoothPath(const Vector2D &currentPos,
@@ -618,132 +598,6 @@ Vector2D FollowBehavior::smoothPath(const Vector2D &currentPos,
   Vector2D const blendedDirection =
       (currentDirection * 0.7f + desiredDirection * 0.3f);
   return normalizeVector(blendedDirection);
-}
-
-void FollowBehavior::updateCloseFollow(EntityPtr entity, EntityState &state) {
-  EntityPtr target = getTarget();
-  if (!target)
-    return;
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  // PERFORMANCE: Use squared distance
-  float const distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
-  float const thresholdSquared = (m_followDistance * 0.3f) * (m_followDistance * 0.3f);
-
-  if (distanceToDesiredSquared > thresholdSquared) {
-    // Compute actual distance only when needed for speed calculation
-    float distanceToDesired = std::sqrt(distanceToDesiredSquared);
-    float speed = calculateFollowSpeed(entity, state, distanceToDesired);
-    Vector2D direction = normalizeVector(desiredPos - currentPos);
-
-    if (m_pathSmoothing) {
-      direction = smoothPath(currentPos, desiredPos, state);
-    }
-
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
-
-    state.currentVelocity = direction * speed;
-  }
-}
-
-void FollowBehavior::updateLooseFollow(EntityPtr entity, EntityState &state) {
-  EntityPtr target = getTarget();
-  if (!target)
-    return;
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  // PERFORMANCE: Use squared distance
-  float const distanceToDesiredSquared = (currentPos - desiredPos).lengthSquared();
-  float const followDistanceSquared = m_followDistance * m_followDistance;
-
-  // Only move if outside the follow distance
-  if (distanceToDesiredSquared > followDistanceSquared) {
-    // Compute actual distance only when needed for speed calculation
-    float distanceToDesired = std::sqrt(distanceToDesiredSquared);
-    float speed = calculateFollowSpeed(entity, state, distanceToDesired);
-    Vector2D direction = normalizeVector(desiredPos - currentPos);
-
-    if (m_pathSmoothing) {
-      direction = smoothPath(currentPos, desiredPos, state);
-    }
-
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
-
-    state.currentVelocity = direction * speed;
-  } else {
-    state.currentVelocity = Vector2D(0, 0);
-  }
-}
-
-void FollowBehavior::updateFlankingFollow(EntityPtr entity,
-                                          EntityState &state) {
-  EntityPtr target = getTarget();
-  if (!target)
-    return;
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float const distanceToDesired = (currentPos - desiredPos).length();
-
-  if (distanceToDesired > m_followDistance * 0.5f) {
-    float speed = calculateFollowSpeed(entity, state, distanceToDesired);
-    Vector2D const direction = normalizeVector(desiredPos - currentPos);
-
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
-
-    state.currentVelocity = velocity;
-  }
-}
-
-void FollowBehavior::updateRearGuard(EntityPtr entity, EntityState &state) {
-  EntityPtr target = getTarget();
-  if (!target)
-    return;
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float const distanceToDesired = (currentPos - desiredPos).length();
-
-  // Rear guard follows more conservatively
-  if (distanceToDesired > m_followDistance * 0.8f) {
-    float speed = calculateFollowSpeed(entity, state, distanceToDesired) *
-                  0.8f; // Slightly slower
-    Vector2D const direction = normalizeVector(desiredPos - currentPos);
-
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
-
-    state.currentVelocity = velocity;
-  }
-}
-
-void FollowBehavior::updateEscortFormation(EntityPtr entity,
-                                           EntityState &state) {
-  EntityPtr target = getTarget();
-  if (!target)
-    return;
-
-  Vector2D currentPos = entity->getPosition();
-  Vector2D desiredPos = calculateDesiredPosition(entity, target, state);
-  float const distanceToDesired = (currentPos - desiredPos).length();
-
-  // Check if in formation
-  state.inFormation = (distanceToDesired <= m_followDistance);
-
-  if (distanceToDesired > m_followDistance * 0.4f) {
-    float speed = calculateFollowSpeed(entity, state, distanceToDesired);
-    Vector2D const direction = normalizeVector(desiredPos - currentPos);
-
-    Vector2D velocity = direction * speed;
-    entity->setVelocity(velocity);
-
-    state.currentVelocity = direction * speed;
-  }
 }
 
 Vector2D FollowBehavior::normalizeVector(const Vector2D &vector) const {

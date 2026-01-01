@@ -479,6 +479,19 @@ public:
     [[nodiscard]] const AreaEffectData& getAreaEffectData(EntityHandle handle) const;
 
     // ========================================================================
+    // BY-INDEX TYPE-SPECIFIC ACCESS (for batch processing)
+    // ========================================================================
+
+    /**
+     * @brief Get character data by EDM index (for batch processing)
+     * @param index EDM index from getActiveIndices()
+     * @return CharacterData for the entity
+     * @note Only valid for NPC/Player entities
+     */
+    [[nodiscard]] CharacterData& getCharacterDataByIndex(size_t index);
+    [[nodiscard]] const CharacterData& getCharacterDataByIndex(size_t index) const;
+
+    // ========================================================================
     // SIMULATION TIER MANAGEMENT
     // ========================================================================
 

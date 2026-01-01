@@ -1010,6 +1010,20 @@ const CharacterData& EntityDataManager::getCharacterData(EntityHandle handle) co
     return m_characterData[typeIndex];
 }
 
+CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    assert(typeIndex < m_characterData.size() && "Type index out of bounds");
+    return m_characterData[typeIndex];
+}
+
+const CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) const {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    assert(typeIndex < m_characterData.size() && "Type index out of bounds");
+    return m_characterData[typeIndex];
+}
+
 ItemData& EntityDataManager::getItemData(EntityHandle handle) {
     size_t index = getIndex(handle);
     assert(index != SIZE_MAX && "Invalid entity handle");

@@ -24,6 +24,7 @@
 
 #include "controllers/ControllerBase.hpp"
 #include "controllers/IUpdatable.hpp"
+#include "entities/EntityHandle.hpp"
 #include <memory>
 #include <vector>
 
@@ -128,8 +129,8 @@ private:
     // Player reference (set via setPlayer())
     std::weak_ptr<Player> mp_player;
 
-    // Target tracking
-    std::weak_ptr<NPC> m_targetedNPC; // Safe weak reference, doesn't extend lifetime
+    // Target tracking - Phase 2 EDM Migration: Use handle instead of weak_ptr
+    EntityHandle m_targetedHandle{};
     float m_targetDisplayTimer{0.0f};
 
     // Attack timing

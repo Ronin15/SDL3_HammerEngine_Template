@@ -25,10 +25,10 @@ public:
   explicit IdleBehavior(IdleMode mode = IdleMode::STATIONARY,
                         float idleRadius = 20.0f);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods

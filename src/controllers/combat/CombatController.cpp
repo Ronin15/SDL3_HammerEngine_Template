@@ -108,30 +108,40 @@ void CombatController::performAttack(Player* player)
     // Determine attack direction based on player facing
     float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
-    // Query nearby entities from AIManager (read-only query)
-    std::vector<EntityPtr> nearbyEntities;
-    AIManager::Instance().queryEntitiesInRadius(playerPos, attackRange, nearbyEntities, true);
+    // Query nearby entity handles from AIManager (EntityHandle-based API)
+    std::vector<EntityHandle> nearbyHandles;
+    AIManager::Instance().queryHandlesInRadius(playerPos, attackRange, nearbyHandles, true);
+
+    // Get EntityDataManager for position lookups
+    auto& edm = EntityDataManager::Instance();
 
     // Check all nearby entities for hits
-    std::shared_ptr<NPC> closestHit = nullptr;
+    EntityHandle closestHandle{};  // Invalid handle by default
     float closestDist = attackRange + 1.0f;
 
     // Get player's EntityHandle for event-driven damage
     EntityHandle playerHandle = player->getHandle();
 
-    for (const auto& entityPtr : nearbyEntities) {
-        // Use EntityKind for fast type check (no RTTI overhead)
-        if (entityPtr->getKind() != EntityKind::NPC) {
+    for (const auto& handle : nearbyHandles) {
+        if (!handle.isValid()) continue;
+
+        // Phase 2 EDM Migration: Use handle.getKind() instead of EntityPtr
+        if (handle.getKind() != EntityKind::NPC) {
             continue;
         }
 
-        // Safe static_cast - we verified the kind via enum
-        auto* npc = static_cast<NPC*>(entityPtr.get());
-        if (!npc->isAlive()) {
+        size_t idx = edm.getIndex(handle);
+        if (idx == SIZE_MAX) continue;
+
+        // Get entity data from EDM (single source of truth)
+        auto& hotData = edm.getHotDataByIndex(idx);
+
+        // Use EDM's isAlive() instead of Entity method
+        if (!hotData.isAlive()) {
             continue;
         }
 
-        const Vector2D npcPos = npc->getPosition();
+        const Vector2D npcPos = hotData.transform.position;
         const Vector2D diff = npcPos - playerPos;
         const float distance = diff.length();
 
@@ -144,53 +154,54 @@ void CombatController::performAttack(Player* player)
 
         // Hit detected - calculate knockback direction
         Vector2D knockback = diff.normalized() * 20.0f;
-        float oldHealth = npc->getHealth();
+
+        // Phase 2 EDM Migration: Use CharacterData for health
+        auto& charData = edm.getCharacterData(handle);
+        float oldHealth = charData.health;
 
         // Fire DamageIntent event for any observers
-        EntityHandle targetHandle = npc->getHandle();
         auto damageIntent = std::make_shared<DamageEvent>(
-            EntityEventType::DamageIntent, playerHandle, targetHandle,
+            EntityEventType::DamageIntent, playerHandle, handle,
             attackDamage, knockback);
         EventManager::Instance().dispatchEvent(damageIntent, EventManager::DispatchMode::Immediate);
 
-        // Apply damage via NPC (writes to EntityDataManager, handles animations/death)
-        npc->takeDamage(attackDamage, knockback);
+        // Apply damage directly to CharacterData
+        charData.health = std::max(0.0f, charData.health - attackDamage);
 
-        COMBAT_INFO(std::format("Hit {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
-            npc->getName(), attackDamage, oldHealth, npc->getHealth()));
+        // Apply knockback via velocity
+        hotData.transform.velocity = hotData.transform.velocity + knockback;
 
-        // Track closest hit for targeting
+        COMBAT_INFO(std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
+            handle.getId(), attackDamage, oldHealth, charData.health));
+
+        // Track closest hit for targeting (using handle for now)
         if (distance < closestDist) {
             closestDist = distance;
-            closestHit = std::static_pointer_cast<NPC>(entityPtr);
+            closestHandle = handle;
         }
 
-        // Fire CombatEvent for UI/sound observers
-        auto damageEvent = std::make_shared<CombatEvent>(
-            CombatEventType::NPCDamaged, player, npc, attackDamage);
-        damageEvent->setRemainingHealth(npc->getHealth());
-        EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
+        // Fire CombatEvent for UI/sound observers (using handles)
+        // Note: CombatEvent may need updating to use handles instead of EntityPtr
+        // For now, dispatch DamageEvent which already uses handles
 
         // Check for kill
-        if (!npc->isAlive()) {
-            COMBAT_INFO(std::format("{} killed!", npc->getName()));
+        if (charData.health <= 0.0f) {
+            // Mark as dead in HotData
+            hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+
+            COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
 
             // Fire DeathEvent for entity lifecycle observers
             auto deathEvent = std::make_shared<DeathEvent>(
-                EntityEventType::DeathCompleted, targetHandle, playerHandle);
+                EntityEventType::DeathCompleted, handle, playerHandle);
             deathEvent->setDeathPosition(npcPos);
             EventManager::Instance().dispatchEvent(deathEvent, EventManager::DispatchMode::Immediate);
-
-            // Fire CombatEvent for UI/sound observers
-            auto killEvent = std::make_shared<CombatEvent>(
-                CombatEventType::NPCKilled, player, npc, attackDamage);
-            EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);
         }
     }
 
-    // Update target tracking
-    if (closestHit) {
-        m_targetedNPC = closestHit;
+    // Update target tracking (using handle)
+    if (closestHandle.isValid()) {
+        m_targetedHandle = closestHandle;
         m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
     }
 }
@@ -216,7 +227,7 @@ void CombatController::updateTargetTimer(float deltaTime)
         m_targetDisplayTimer -= deltaTime;
         if (m_targetDisplayTimer <= 0.0f) {
             m_targetDisplayTimer = 0.0f;
-            m_targetedNPC.reset();
+            m_targetedHandle = EntityHandle{};  // Clear handle
             COMBAT_DEBUG("Target display timer expired");
         }
     }
@@ -224,15 +235,41 @@ void CombatController::updateTargetTimer(float deltaTime)
 
 std::shared_ptr<NPC> CombatController::getTargetedNPC() const
 {
-    // Safely lock weak_ptr and verify target is still valid (alive)
-    auto target = m_targetedNPC.lock();
-    if (!target || !target->isAlive()) {
+    // Phase 2 EDM Migration: Use handle-based lookup
+    if (!m_targetedHandle.isValid()) {
         return nullptr;
     }
-    return target;
+
+    // Check if target is still alive via EDM
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(m_targetedHandle);
+    if (idx == SIZE_MAX) {
+        return nullptr;
+    }
+
+    auto& hotData = edm.getHotDataByIndex(idx);
+    if (!hotData.isAlive()) {
+        return nullptr;
+    }
+
+    // NOTE: Returning nullptr since we can't create NPC from handle alone
+    // UI should use getTargetedHandle() + EDM for data access
+    // This method is kept for backwards compatibility but should be deprecated
+    return nullptr;
 }
 
 bool CombatController::hasActiveTarget() const
 {
-    return m_targetDisplayTimer > 0.0f && getTargetedNPC() != nullptr;
+    // Phase 2 EDM Migration: Use handle + EDM check
+    if (m_targetDisplayTimer <= 0.0f || !m_targetedHandle.isValid()) {
+        return false;
+    }
+
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(m_targetedHandle);
+    if (idx == SIZE_MAX) {
+        return false;
+    }
+
+    return edm.getHotDataByIndex(idx).isAlive();
 }

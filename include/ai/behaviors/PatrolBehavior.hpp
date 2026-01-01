@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/Entity.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
@@ -33,10 +34,10 @@ public:
   explicit PatrolBehavior(PatrolMode mode, float moveSpeed = 2.0f,
                           bool includeOffscreenPoints = false);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Add a new waypoint to the patrol route

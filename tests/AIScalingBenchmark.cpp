@@ -175,76 +175,10 @@ public:
         m_updateCount++;
     }
 
-    void executeLogic(EntityPtr entity, [[maybe_unused]] float deltaTime) override {
-        if (!entity || !entity->hasValidHandle()) return;
-
-        // DEBUG: Log first few executions
-        static std::atomic<int> callCount{0};
-        int currentCall = callCount.fetch_add(1, std::memory_order_relaxed);
-        if (currentCall < 5) {
-            std::cout << "[DEBUG] BenchmarkBehavior::executeLogic called (count=" << currentCall << ")" << std::endl;
-        }
-
-        // PERFORMANCE: Get EDM index once, then use direct access for all operations
-        // This avoids mutex locks on every accessor call
-        auto& edm = EntityDataManager::Instance();
-        size_t edmIndex = edm.getIndex(entity->getHandle());  // Single mutex acquisition
-        if (edmIndex == SIZE_MAX) return;
-
-        // Get transform reference for direct read/write (lock-free after index lookup)
-        auto& transform = edm.getTransformByIndex(edmIndex);
-        Vector2D pos = transform.position;
-
-        // === REALISTIC PRODUCTION AI BEHAVIOR PATTERNS ===
-        // Based on WanderBehavior, ChaseBehavior, PatrolBehavior production implementations
-
-        // 1. State machine update (all production behaviors have FSMs)
-        updateStateMachine(deltaTime);
-
-        // 2. Calculate movement direction based on current state (using cached position)
-        Vector2D direction = calculateDirectionDirect(pos);
-
-        // 3. Vector normalization (critical path in all production behaviors)
-        float length = std::sqrt(direction.getX() * direction.getX() +
-                                 direction.getY() * direction.getY());
-        if (length > 0.001f) {
-            direction.setX(direction.getX() / length);
-            direction.setY(direction.getY() / length);
-        }
-
-        // 4. World bounds checking and avoidance (using cached position)
-        Vector2D boundaryForce = calculateBoundaryAvoidanceDirect(pos);
-        direction.setX(direction.getX() + boundaryForce.getX());
-        direction.setY(direction.getY() + boundaryForce.getY());
-
-        // 5. Separation forces - decimated (every 3 frames like production)
-        if (m_frameCounter % 3 == 0) {
-            Vector2D separation = simulateSeparationForcesDirect(pos);
-            direction.setX(direction.getX() + separation.getX() * 0.5f);
-            direction.setY(direction.getY() + separation.getY() * 0.5f);
-        }
-
-        // 6. Path following simulation (periodic like production pathfinding)
-        if (m_hasActivePath) {
-            direction = simulatePathFollowingDirect(pos, deltaTime);
-        }
-
-        // 7. Apply velocity based on complexity - DIRECT WRITE to transform
-        float moveSpeed = 50.0f * static_cast<float>(m_complexity);
-        transform.velocity = Vector2D(direction.getX() * moveSpeed,
-                                      direction.getY() * moveSpeed);
-
-        // Update frame counter for decimation patterns
-        m_frameCounter++;
-
-        // Track behavior execution count
-        m_updateCount++;
-    }
-
-    void init(EntityPtr /* entity */) override {
+    void init(EntityHandle /* handle */) override {
         m_initialized = true;
     }
-    void clean(EntityPtr /* entity */) override { m_initialized = false; }
+    void clean(EntityHandle /* handle */) override { m_initialized = false; }
 
     std::string getName() const override {
         return "BenchmarkBehavior" + std::to_string(m_id);
@@ -256,7 +190,7 @@ public:
         return cloned;
     }
 
-    void onMessage(EntityPtr /* entity */, const std::string& /* message */) override {
+    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {
         m_messageCount++;
     }
 
@@ -571,9 +505,9 @@ struct AIScalingFixture {
             // Assign behaviors in a round-robin fashion using valid AI behavior names
             const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
             std::string behaviorName = validBehaviors[i % validBehaviors.size()];
-            AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
+            AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
             // Register entity for managed updates with maximum priority to ensure updates
-            AIManager::Instance().registerEntityForUpdates(entity, 9); // Max priority
+            AIManager::Instance().registerEntity(entity->getHandle()); // Max priority
 
         }
 
@@ -582,7 +516,7 @@ struct AIScalingFixture {
         // This tests raw AIManager throughput without production culling optimizations
         if (!entities.empty()) {
             // Explicitly clear player reference to disable distance culling
-            AIManager::Instance().setPlayerForDistanceOptimization(nullptr);
+            AIManager::Instance().setPlayerHandle(EntityHandle{});
 
             // Position entities (no clustering needed since culling is disabled)
             Vector2D playerPosition = entities[0]->getPosition();
@@ -610,7 +544,7 @@ struct AIScalingFixture {
             // Debug: Check if entities have behaviors assigned and distances calculated
             size_t entitiesWithBehaviors = 0;
             for (const auto& entity : entities) {
-                if (AIManager::Instance().entityHasBehavior(entity)) {
+                if (AIManager::Instance().hasBehavior(entity->getHandle())) {
                     entitiesWithBehaviors++;
                 }
             }
@@ -866,13 +800,13 @@ struct AIScalingFixture {
 
             // Assign behaviors in round-robin fashion
             std::string behaviorName = behaviorNames[i % numBehaviors];
-            AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
-            AIManager::Instance().registerEntityForUpdates(entity, 9); // Max priority
+            AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
+            AIManager::Instance().registerEntity(entity->getHandle()); // Max priority
         }
 
         // Set player reference and spread entities across world for realistic culling
         if (!entities.empty()) {
-            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+            AIManager::Instance().setPlayerHandle(entities[0]->getHandle());
             Vector2D playerPosition = entities[0]->getPosition();
 
             // Spread entities across realistic world distances for proper culling test
@@ -1061,8 +995,8 @@ struct AIScalingFixture {
         for (auto& entity : entities) {
             if (entity) {
                 try {
-                    AIManager::Instance().unregisterEntityFromUpdates(entity);
-                    AIManager::Instance().unassignBehaviorFromEntity(entity);
+                    AIManager::Instance().unregisterEntity(entity->getHandle());
+                    AIManager::Instance().unassignBehavior(entity->getHandle());
                 } catch (const std::exception& e) {
                     std::cerr << "Error unregistering/unassigning entity: " << e.what() << std::endl;
                 } catch (...) {
@@ -1203,12 +1137,12 @@ struct AIScalingFixture {
         for (int i = 0; i < numEntities; ++i) {
             auto entity = BenchmarkEntity::create(i, centralPosition);
             entities.push_back(entity);
-            AIManager::Instance().assignBehaviorToEntity(entity, validBehaviors[i % validBehaviors.size()]);
-            AIManager::Instance().registerEntityForUpdates(entity, 9);
+            AIManager::Instance().assignBehavior(entity->getHandle(), validBehaviors[i % validBehaviors.size()]);
+            AIManager::Instance().registerEntity(entity->getHandle());
         }
 
         if (!entities.empty()) {
-            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+            AIManager::Instance().setPlayerHandle(entities[0]->getHandle());
         }
 
         // Warmup (16 frames for SIMD distance staggering)
@@ -1362,12 +1296,12 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
             entities.push_back(entity);
             const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
             std::string behaviorName = validBehaviors[i % validBehaviors.size()];
-            AIManager::Instance().assignBehaviorToEntity(entity, behaviorName);
-            AIManager::Instance().registerEntityForUpdates(entity, 9);
+            AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
+            AIManager::Instance().registerEntity(entity->getHandle());
         }
 
         if (!entities.empty()) {
-            AIManager::Instance().setPlayerForDistanceOptimization(entities[0]);
+            AIManager::Instance().setPlayerHandle(entities[0]->getHandle());
         }
 
         // ===== WARMUP PHASE =====
@@ -1716,6 +1650,18 @@ BOOST_AUTO_TEST_CASE(TestIntegratedPerformance) {
     std::cout << "\n--- Test 4: Target Performance (" << entities2000 << " entities, " << updates2000 << " iterations) ---" << std::endl;
     runIntegratedBenchmark(entities2000, numBehaviors, updates2000);
 
+    // Test high entity count (matches synthetic benchmark coverage)
+    int entities5000 = 5000;
+    int updates5000 = calculateScaledIterations(entities5000);
+    std::cout << "\n--- Test 5: High Entity Count (" << entities5000 << " entities, " << updates5000 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities5000, numBehaviors, updates5000);
+
+    // Test stress level entity count
+    int entities10000 = 10000;
+    int updates10000 = calculateScaledIterations(entities10000);
+    std::cout << "\n--- Test 6: Stress Level (" << entities10000 << " entities, " << updates10000 << " iterations) ---" << std::endl;
+    runIntegratedBenchmark(entities10000, numBehaviors, updates10000);
+
     // Clean up after test
     cleanupEntitiesAndBehaviors();
 }
@@ -1742,7 +1688,8 @@ BOOST_AUTO_TEST_CASE(TestIntegratedScalability) {
         std::cout << "-------------|------------|----------------|-------------------|------------------" << std::endl;
 
         // Test across realistic entity counts with automatic behavior
-        std::vector<int> entityCounts = {50, 100, 200, 500, 1000, 2000};
+        // Extended to 10000 to match synthetic benchmark coverage
+        std::vector<int> entityCounts = {50, 100, 200, 500, 1000, 2000, 5000, 10000};
         const int AI_THRESHOLD = 100;  // Matches AIManager::m_threadingThreshold
 
         for (size_t i = 0; i < entityCounts.size(); ++i) {

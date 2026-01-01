@@ -24,6 +24,7 @@
 #include "ai/AIBehavior.hpp"
 #include "core/WorkerBudget.hpp"
 #include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "managers/CollisionManager.hpp"
 #include <array>
 #include <atomic>
@@ -73,16 +74,12 @@ enum class BehaviorType : uint8_t {
  */
 struct AIEntityData {
   // Hot data - accessed every frame
-  // Position removed: EntityDataManager is the single source of truth for transforms
+  // Position/distance removed: EntityDataManager is the single source of truth
   struct HotData {
-    float distanceSquared; // Cached distance to player (4 bytes)
-    uint16_t frameCounter; // Frame counter (2 bytes)
     uint8_t priority;      // Priority level (1 byte)
     uint8_t behaviorType;  // Behavior type enum (1 byte)
     bool active;           // Active flag (1 byte)
-    bool shouldUpdate;     // Update flag (1 byte)
-    // Total: 10 bytes, padding to 16 for cache alignment
-    uint8_t padding[6];
+    uint8_t padding[5];    // Pad to 8 bytes for alignment
   };
 
   // Cold data - accessed occasionally
@@ -223,95 +220,53 @@ public:
 
   /**
    * @brief Assigns a behavior to an entity immediately
-   * @param entity Pointer to the entity to assign behavior to
-   * @param behaviorName Name of the behavior to assign
    */
-  void assignBehaviorToEntity(EntityPtr entity,
-                              const std::string &behaviorName);
+  void assignBehavior(EntityHandle handle, const std::string &behaviorName);
 
   /**
    * @brief Removes behavior assignment from an entity
-   * @param entity Pointer to the entity to unassign behavior from
    */
-  void unassignBehaviorFromEntity(EntityPtr entity);
+  void unassignBehavior(EntityHandle handle);
 
   /**
    * @brief Checks if an entity has an assigned behavior
-   * @param entity Pointer to the entity to check
-   * @return true if entity has assigned behavior, false otherwise
    */
-  bool entityHasBehavior(EntityPtr entity) const;
+  bool hasBehavior(EntityHandle handle) const;
 
   /**
    * @brief Queues a behavior assignment for batch processing
-   * @param entity Pointer to the entity to assign behavior to
-   * @param behaviorName Name of the behavior to assign
-   *
-   * Assignment batching is now dynamic and thread-aware. All pending
-   * assignments are processed in optimal batches using the ThreadSystem.
    */
-  void queueBehaviorAssignment(EntityPtr entity,
-                               const std::string &behaviorName);
+  void queueBehaviorAssignment(EntityHandle handle, const std::string &behaviorName);
+
   /**
    * @brief Processes all pending behavior assignments
-   * @return Number of assignments processed
-   *
-   * This method now uses the ThreadSystem and WorkerBudget to process all
-   * assignments in optimal parallel batches. No artificial per-frame limit is
-   * imposed; all assignments are processed as fast as system resources allow.
    */
   size_t processPendingBehaviorAssignments();
-  // Player reference for AI targeting
-  void setPlayerForDistanceOptimization(EntityPtr player);
-  EntityPtr getPlayerReference() const;
+
+  // Player handle for AI targeting
+  void setPlayerHandle(EntityHandle player);
+  EntityHandle getPlayerHandle() const;
   Vector2D getPlayerPosition() const;
   bool isPlayerValid() const;
 
-  // Entity management (now unified with spatial system)
-  /**
-   * @brief Register entity for AI updates with priority-based distance
-   * optimization
-   * @param entity The entity to register
-   * @param priority Priority level (0-9):
-   *   - 0-2: Background entities (1.0x-1.2x update range)
-   *   - 3-5: Standard entities (1.3x-1.5x update range)
-   *   - 6-8: Important entities (1.6x-1.8x update range)
-   *   - 9: Critical entities (1.9x update range)
-   * Higher priority = larger update distances = more responsive AI
-   */
-  void registerEntityForUpdates(EntityPtr entity, int priority = 5);
+  // Entity registration
+  void registerEntity(EntityHandle handle);
+  void registerEntity(EntityHandle handle, const std::string &behaviorName);
+  void unregisterEntity(EntityHandle handle);
 
   /**
-   * @brief Register entity for AI updates and assign behavior in one call
-   * @param entity The entity to register
-   * @param priority Priority level (0-9) - see above for ranges
-   * @param behaviorName Name of the behavior to assign
+   * @brief Query handles within a radius
    */
-  void registerEntityForUpdates(EntityPtr entity, int priority,
-                                const std::string &behaviorName);
-  void unregisterEntityFromUpdates(EntityPtr entity);
-
-  /**
-   * @brief Query entities within a radius of a position
-   * @param center Center point for the query
-   * @param radius Radius to search within
-   * @param outEntities Output vector of entities found (cleared before populating)
-   * @param excludePlayer If true, excludes the player entity from results
-   * @note Thread-safe. Useful for combat hit detection, area effects, etc.
-   */
-  void queryEntitiesInRadius(const Vector2D& center, float radius,
-                             std::vector<EntityPtr>& outEntities,
-                             bool excludePlayer = true) const;
-
-  // Update extents for an entity if its sprite/physics size changes
-  void updateEntityExtents(EntityPtr entity, float halfW, float halfH);
+  void queryHandlesInRadius(const Vector2D& center, float radius,
+                            std::vector<EntityHandle>& outHandles,
+                            bool excludePlayer = true) const;
 
   // Global controls
   void setGlobalPause(bool paused);
   bool isGloballyPaused() const;
 
-  // Priority system utilities
-  int getEntityPriority(EntityPtr entity) const;
+  // Priority from EDM CharacterData
+  int getEntityPriority(EntityHandle handle) const;
   float getUpdateRangeMultiplier(int priority) const;
   static constexpr int AI_MIN_PRIORITY = 0;
   static constexpr int AI_MAX_PRIORITY = 9;
@@ -324,7 +279,6 @@ public:
   size_t getThreadingThreshold() const;
   void setWaitForBatchCompletion(bool wait);
   bool getWaitForBatchCompletion() const;
-  void configurePriorityMultiplier(float multiplier = 1.0f);
 
   // Performance monitoring
   size_t getBehaviorCount() const;
@@ -335,7 +289,7 @@ public:
   size_t getTotalAssignmentCount() const;
 
   // Message system
-  void sendMessageToEntity(EntityPtr entity, const std::string &message,
+  void sendMessageToEntity(EntityHandle handle, const std::string &message,
                            bool immediate = false);
   void broadcastMessage(const std::string &message, bool immediate = false);
   void processMessageQueue();
@@ -359,24 +313,19 @@ private:
   AIManager &operator=(const AIManager &) = delete;
 
   // Cache-efficient storage using Structure of Arrays (SoA)
-  // NOTE: Position/size data now lives in EntityDataManager (single source of truth)
-  // AIManager only stores AI-specific data (behaviors, priorities, distances)
+  // Position/size data lives in EntityDataManager (single source of truth)
+  // AIManager stores AI-specific data (behaviors, priorities) + cached EDM indices
   struct EntityStorage {
-    // Hot data arrays - tightly packed for cache efficiency
-    std::vector<AIEntityData::HotData> hotData;  // AI-specific: distanceSquared, priority, etc.
-
-    // Cold data arrays - accessed less frequently
-    std::vector<EntityPtr> entities;              // For behavior execution compatibility
+    std::vector<AIEntityData::HotData> hotData;
+    std::vector<EntityHandle> handles;  // 8 bytes each (vs 16 byte shared_ptr)
     std::vector<std::shared_ptr<AIBehavior>> behaviors;
     std::vector<float> lastUpdateTimes;
-    std::vector<size_t> edmIndices;               // EntityDataManager indices for lock-free batch access
+    std::vector<size_t> edmIndices;  // Cached for O(1) batch access
 
-    // NOTE: halfWidths/halfHeights REMOVED - now accessed via EntityDataManager::getHotDataByIndex()
-
-    size_t size() const { return entities.size(); }
+    size_t size() const { return handles.size(); }
     void reserve(size_t capacity) {
       hotData.reserve(capacity);
-      entities.reserve(capacity);
+      handles.reserve(capacity);
       behaviors.reserve(capacity);
       lastUpdateTimes.reserve(capacity);
       edmIndices.reserve(capacity);
@@ -384,10 +333,15 @@ private:
   };
 
   EntityStorage m_storage;
-  std::unordered_map<EntityPtr, size_t> m_entityToIndex;
+  std::unordered_map<EntityHandle, size_t> m_handleToIndex;
   std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
       m_behaviorTemplates;
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
+
+  // Shared behaviors indexed by BehaviorType for O(1) lookup in processBatch
+  // Each behavior instance handles multiple entities via internal m_entityStates map
+  std::array<std::shared_ptr<AIBehavior>, static_cast<size_t>(BehaviorType::COUNT)>
+      m_behaviorsByType{};
 
   // Performance optimization: cache frequently accessed behaviors and types
   mutable std::unordered_map<std::string, std::shared_ptr<AIBehavior>>
@@ -395,41 +349,41 @@ private:
   mutable std::unordered_map<std::string, BehaviorType> m_behaviorTypeCache;
   mutable std::shared_mutex m_behaviorCacheMutex;  // Protects m_behaviorTypeCache
 
-  // Player reference
-  EntityWeakPtr m_playerEntity;
+  // Player handle
+  EntityHandle m_playerHandle{};
 
-  // Entity management for distance optimization
+  // Entity management
   struct EntityUpdateInfo {
-    EntityWeakPtr entityWeak;
-    int priority;
-    int frameCounter;
-    uint64_t lastUpdateTime;
+    EntityHandle handle{};
+    int priority{0};
+    uint64_t lastUpdateTime{0};
 
-    EntityUpdateInfo() : priority(0), frameCounter(0), lastUpdateTime(0) {}
+    EntityUpdateInfo() = default;
+    explicit EntityUpdateInfo(EntityHandle h, int p = 0)
+        : handle(h), priority(p), lastUpdateTime(0) {}
   };
   std::vector<EntityUpdateInfo> m_managedEntities;
 
   // Batch assignment queue with deduplication
   struct PendingAssignment {
-    EntityPtr entity;
+    EntityHandle handle{};
     std::string behaviorName;
 
-    PendingAssignment(EntityPtr e, const std::string &b)
-        : entity(e), behaviorName(b) {}
+    PendingAssignment(EntityHandle h, const std::string &b)
+        : handle(h), behaviorName(b) {}
   };
   std::vector<PendingAssignment> m_pendingAssignments;
-  std::unordered_map<EntityPtr, std::string>
+  std::unordered_map<EntityHandle, std::string>
       m_pendingAssignmentIndex; // For deduplication
 
   // Message queue
   struct QueuedMessage {
-    EntityWeakPtr targetEntity; // empty for broadcast
+    EntityHandle targetHandle{}; // invalid for broadcast
     std::string message;
     uint64_t timestamp;
 
-    QueuedMessage(EntityPtr target, const std::string &msg)
-        : targetEntity(target), message(msg), timestamp(getCurrentTimeNanos()) {
-    }
+    QueuedMessage(EntityHandle target, const std::string &msg)
+        : targetHandle(target), message(msg), timestamp(getCurrentTimeNanos()) {}
   };
   std::vector<QueuedMessage> m_messageQueue;
 
@@ -447,7 +401,8 @@ private:
   std::atomic<size_t> m_totalBehaviorExecutions{0};
 
   // Active entity counter - avoids iteration every frame
-  std::atomic<size_t> m_activeEntityCount{0};
+  // Not atomic: all writes under m_entitiesMutex, reads on main thread only
+  size_t m_activeEntityCount{0};
 
   // Thread-safe assignment tracking
   std::atomic<size_t> m_totalAssignmentCount{0};
@@ -464,11 +419,7 @@ private:
   // Cleanup timing (thread-safe)
   std::atomic<uint64_t> m_lastCleanupFrame{0};
 
-  // Distance optimization settings
-  std::atomic<float> m_maxUpdateDistance{4000.0f};
-  std::atomic<float> m_mediumUpdateDistance{6000.0f};
-  std::atomic<float> m_minUpdateDistance{10000.0f};
-  std::atomic<float> m_priorityMultiplier{1.0f};
+  // Distance culling removed - EDM tier system handles this via updateSimulationTiers()
 
   // Thread synchronization
   mutable std::shared_mutex m_entitiesMutex;
@@ -518,6 +469,7 @@ private:
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
+  void assignBehaviorInternal(EntityHandle handle, const std::string &behaviorName);
 
   void processBatch(size_t start, size_t end, float deltaTime,
                     const Vector2D &playerPos,
@@ -532,7 +484,7 @@ private:
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
-    EntityWeakPtr target;
+    EntityHandle target{};  // Invalid handle for broadcast
     char message[48]; // Fixed size for lock-free queue
     std::atomic<bool> ready{false};
   };

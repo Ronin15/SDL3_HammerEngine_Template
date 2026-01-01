@@ -57,7 +57,7 @@ bool AIManager::init() {
     // Pre-allocate storage for better performance
     constexpr size_t INITIAL_CAPACITY = 1000;
     m_storage.reserve(INITIAL_CAPACITY);
-    m_entityToIndex.reserve(INITIAL_CAPACITY);
+    m_handleToIndex.reserve(INITIAL_CAPACITY);
 
     // Reserve capacity for assignment queues to prevent reallocations during
     // batch processing
@@ -116,9 +116,9 @@ void AIManager::clean() {
 
     // Clean all behaviors first (with exception handling)
     for (size_t i = 0; i < m_storage.size(); ++i) {
-      if (m_storage.behaviors[i] && m_storage.entities[i]) {
+      if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
         try {
-          m_storage.behaviors[i]->clean(m_storage.entities[i]);
+          m_storage.behaviors[i]->clean(m_storage.handles[i]);
         } catch (const std::exception &e) {
           AI_ERROR(std::format("Exception cleaning behavior during shutdown: {}", e.what()));
         } catch (...) {
@@ -129,11 +129,11 @@ void AIManager::clean() {
 
     // Clear all storage
     m_storage.hotData.clear();
-    m_storage.entities.clear();
+    m_storage.handles.clear();
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
 
-    m_entityToIndex.clear();
+    m_handleToIndex.clear();
     m_behaviorTemplates.clear();
     m_behaviorCache.clear();
     m_behaviorTypeCache.clear();
@@ -152,7 +152,7 @@ void AIManager::clean() {
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
+  m_activeEntityCount = 0;
 
   AI_INFO("AIManager shutdown complete");
 }
@@ -211,9 +211,9 @@ void AIManager::prepareForStateTransition() {
     // Clean all behaviors
     size_t cleanedCount = 0;
     for (size_t i = 0; i < m_storage.size(); ++i) {
-      if (m_storage.behaviors[i] && m_storage.entities[i]) {
+      if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
         try {
-          m_storage.behaviors[i]->clean(m_storage.entities[i]);
+          m_storage.behaviors[i]->clean(m_storage.handles[i]);
           cleanedCount++;
         } catch (const std::exception &e) {
           AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
@@ -225,11 +225,11 @@ void AIManager::prepareForStateTransition() {
 
     // Clear all storage completely
     m_storage.hotData.clear();
-    m_storage.entities.clear();
+    m_storage.handles.clear();
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
     m_storage.edmIndices.clear();  // Clear EDM indices to prevent stale data
-    m_entityToIndex.clear();
+    m_handleToIndex.clear();
 
     // Clear managed entities list
     m_managedEntities.clear();
@@ -245,12 +245,12 @@ void AIManager::prepareForStateTransition() {
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
   m_lastCleanupFrame.store(0, std::memory_order_relaxed);
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
+  m_activeEntityCount = 0;
 
   // Clear player reference completely
   {
     std::lock_guard<std::shared_mutex> lock(m_entitiesMutex);
-    m_playerEntity.reset();
+    m_playerHandle = EntityHandle{};
   }
 
   // Don't call resetBehaviors() as we've already done comprehensive cleanup
@@ -285,8 +285,8 @@ void AIManager::update(float deltaTime) {
     // Process pending assignments first so new entities are picked up this frame
     processPendingBehaviorAssignments();
 
-    // Use atomic active count - no iteration needed
-    size_t activeCount = m_activeEntityCount.load(std::memory_order_relaxed);
+    // Use cached active count - no iteration needed
+    size_t activeCount = m_activeEntityCount;
 
     // Early exit if no active entities - skip ALL work including timing and cache
     // Messages for non-existent entities are useless, so skip processMessageQueue() too
@@ -316,9 +316,8 @@ void AIManager::update(float deltaTime) {
     // Get player position for distance calculations
     // All entities get distance calculated every frame via SIMD (fast enough)
     // Staggering removed - combat system needs accurate positions for all entities
-    EntityPtr player = m_playerEntity.lock();
-    bool hasPlayer = (player != nullptr);
-    Vector2D playerPos = hasPlayer ? player->getPosition() : Vector2D(0, 0);
+    bool hasPlayer = m_playerHandle.isValid();
+    Vector2D playerPos = hasPlayer ? getPlayerPosition() : Vector2D(0, 0);
 
     // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
     // No intermediate buffer copy needed - preFetchedData is our only copy
@@ -587,10 +586,10 @@ AIManager::getBehavior(const std::string &name) const {
   return result;
 }
 
-void AIManager::assignBehaviorToEntity(EntityPtr entity,
-                                       const std::string &behaviorName) {
-  if (!entity) {
-    AI_ERROR("Cannot assign behavior to null entity");
+void AIManager::assignBehavior(EntityHandle handle,
+                               const std::string &behaviorName) {
+  if (!handle.isValid()) {
+    AI_ERROR("Cannot assign behavior to invalid handle");
     return;
   }
 
@@ -603,19 +602,21 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
 
   // Clone behavior for this entity
   auto behavior = behaviorTemplate->clone();
-  behavior->init(entity);
+  behavior->init(handle);
+
+  auto& edm = EntityDataManager::Instance();
 
   // Find or create entity entry
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-  auto indexIt = m_entityToIndex.find(entity);
-  if (indexIt != m_entityToIndex.end()) {
+  auto indexIt = m_handleToIndex.find(handle);
+  if (indexIt != m_handleToIndex.end()) {
     // Update existing entity
     size_t index = indexIt->second;
     if (index < m_storage.size()) {
       // Clean up old behavior
       if (m_storage.behaviors[index]) {
-        m_storage.behaviors[index]->clean(entity);
+        m_storage.behaviors[index]->clean(handle);
       }
 
       // Assign new behavior
@@ -626,12 +627,12 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
       // Update active state and counter
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
-        m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
+        ++m_activeEntityCount;
       }
 
-      // Refresh EDM index if needed (entity may have been re-registered with EntityDataManager)
-      if (index < m_storage.edmIndices.size() && entity->hasValidHandle()) {
-        m_storage.edmIndices[index] = EntityDataManager::Instance().getIndex(entity->getHandle());
+      // Refresh EDM index if needed
+      if (index < m_storage.edmIndices.size()) {
+        m_storage.edmIndices[index] = edm.getIndex(handle);
       }
 
       AI_INFO(std::format("Updated behavior for existing entity to: {}", behaviorName));
@@ -641,35 +642,25 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
     size_t newIndex = m_storage.size();
 
     // Add to hot data
-    // NOTE: Position data is owned by EntityDataManager (Phase 2 refactor)
-    // We read positions from Entity::getPosition() which redirects to EntityDataManager
     AIEntityData::HotData hotData{};
-    hotData.distanceSquared = 0.0f;
-    hotData.frameCounter = 0;
     hotData.priority = DEFAULT_PRIORITY;
-    hotData.behaviorType =
-        static_cast<uint8_t>(inferBehaviorType(behaviorName));
+    hotData.behaviorType = static_cast<uint8_t>(inferBehaviorType(behaviorName));
     hotData.active = true;
-    hotData.shouldUpdate = true;
 
     m_storage.hotData.push_back(hotData);
-    m_storage.entities.push_back(entity);
+    m_storage.handles.push_back(handle);
     m_storage.behaviors.push_back(behavior);
 
     // Increment active counter for new entity
-    m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
+    ++m_activeEntityCount;
     m_storage.lastUpdateTimes.push_back(0.0f);
 
     // Cache EntityDataManager index for lock-free batch access
-    // halfWidth/halfHeight now accessed via EntityDataManager::getHotDataByIndex()
-    size_t edmIndex = SIZE_MAX;
-    if (entity->hasValidHandle()) {
-      edmIndex = EntityDataManager::Instance().getIndex(entity->getHandle());
-    }
+    size_t edmIndex = edm.getIndex(handle);
     m_storage.edmIndices.push_back(edmIndex);
 
     // Update index map
-    m_entityToIndex[entity] = newIndex;
+    m_handleToIndex[handle] = newIndex;
 
     AI_INFO(std::format("Added new entity with behavior: {}", behaviorName));
   }
@@ -677,37 +668,37 @@ void AIManager::assignBehaviorToEntity(EntityPtr entity,
   m_totalAssignmentCount.fetch_add(1, std::memory_order_relaxed);
 }
 
-void AIManager::unassignBehaviorFromEntity(EntityPtr entity) {
-  if (!entity)
+void AIManager::unassignBehavior(EntityHandle handle) {
+  if (!handle.isValid())
     return;
 
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end()) {
+  auto it = m_handleToIndex.find(handle);
+  if (it != m_handleToIndex.end()) {
     size_t index = it->second;
     if (index < m_storage.size()) {
       // Decrement active counter if entity was active
       if (m_storage.hotData[index].active) {
         m_storage.hotData[index].active = false;
-        m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
+        --m_activeEntityCount;
       }
 
       if (m_storage.behaviors[index]) {
-        m_storage.behaviors[index]->clean(entity);
+        m_storage.behaviors[index]->clean(handle);
       }
     }
   }
 }
 
-bool AIManager::entityHasBehavior(EntityPtr entity) const {
-  if (!entity)
+bool AIManager::hasBehavior(EntityHandle handle) const {
+  if (!handle.isValid())
     return false;
 
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end() && it->second < m_storage.size()) {
+  auto it = m_handleToIndex.find(handle);
+  if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
     return m_storage.hotData[it->second].active &&
            m_storage.behaviors[it->second] != nullptr;
   }
@@ -715,25 +706,16 @@ bool AIManager::entityHasBehavior(EntityPtr entity) const {
   return false;
 }
 
-void AIManager::queueBehaviorAssignment(EntityPtr entity,
+void AIManager::queueBehaviorAssignment(EntityHandle handle,
                                         const std::string &behaviorName) {
-  if (!entity || behaviorName.empty()) {
+  if (!handle.isValid() || behaviorName.empty()) {
     AI_ERROR("Invalid behavior assignment request");
     return;
   }
 
-  std::lock_guard<std::mutex> lock(m_assignmentsMutex);
-
-  // Check for duplicate assignments
-  auto it = m_pendingAssignmentIndex.find(entity);
-  if (it != m_pendingAssignmentIndex.end()) {
-    // Update existing assignment
-    it->second = behaviorName;
-  } else {
-    // Add new assignment
-    m_pendingAssignments.emplace_back(entity, behaviorName);
-    m_pendingAssignmentIndex[entity] = behaviorName;
-  }
+  // Direct assignment - the queue system was removed as it caused hangs
+  // when AIManager::update() wasn't running (during state transitions)
+  assignBehavior(handle, behaviorName);
 }
 
 size_t AIManager::processPendingBehaviorAssignments() {
@@ -765,8 +747,8 @@ size_t AIManager::processPendingBehaviorAssignments() {
   if (!useThreading) {
     // Fall back to synchronous processing
     for (const auto &assignment : toProcess) {
-      if (assignment.entity) {
-        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+      if (assignment.handle.isValid()) {
+        assignBehavior(assignment.handle, assignment.behaviorName);
       }
     }
     return assignmentCount;
@@ -791,8 +773,8 @@ size_t AIManager::processPendingBehaviorAssignments() {
     AI_DEBUG(std::format("WorkerBudget recommends single-threaded processing for {} assignments",
              assignmentCount));
     for (const auto &assignment : toProcess) {
-      if (assignment.entity) {
-        assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+      if (assignment.handle.isValid()) {
+        assignBehavior(assignment.handle, assignment.behaviorName);
       }
     }
     return assignmentCount;
@@ -832,9 +814,9 @@ size_t AIManager::processPendingBehaviorAssignments() {
             // Process index range directly (no intermediate buffer)
             for (size_t idx = start; idx < end; ++idx) {
               const auto& assignment = (*toProcessShared)[idx];
-              if (assignment.entity) {
+              if (assignment.handle.isValid()) {
                 try {
-                  assignBehaviorToEntity(assignment.entity, assignment.behaviorName);
+                  assignBehavior(assignment.handle, assignment.behaviorName);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::format("Exception during async behavior assignment: {}", e.what()));
                 } catch (...) {
@@ -851,61 +833,56 @@ size_t AIManager::processPendingBehaviorAssignments() {
   return assignmentCount; // Return immediately, don't wait
 }
 
-void AIManager::setPlayerForDistanceOptimization(EntityPtr player) {
+void AIManager::setPlayerHandle(EntityHandle player) {
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-  m_playerEntity = player;
+  m_playerHandle = player;
 }
 
-EntityPtr AIManager::getPlayerReference() const {
+EntityHandle AIManager::getPlayerHandle() const {
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-  return m_playerEntity.lock();
+  return m_playerHandle;
 }
 
 Vector2D AIManager::getPlayerPosition() const {
-  if (auto player = getPlayerReference()) {
-    return player->getPosition();
+  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+  if (m_playerHandle.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t edmIndex = edm.getIndex(m_playerHandle);
+    if (edmIndex != SIZE_MAX) {
+      return edm.getTransformByIndex(edmIndex).position;
+    }
   }
   return Vector2D{0.0f, 0.0f};
 }
 
 bool AIManager::isPlayerValid() const {
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-  return !m_playerEntity.expired();
+  return m_playerHandle.isValid();
 }
 
-void AIManager::registerEntityForUpdates(EntityPtr entity, int priority) {
-  if (!entity) {
-    AI_ERROR("Cannot register null entity for updates");
+void AIManager::registerEntity(EntityHandle handle) {
+  if (!handle.isValid()) {
+    AI_ERROR("Cannot register invalid handle for updates");
     return;
   }
-
-  // Clamp priority to valid range
-  priority = std::max(AI_MIN_PRIORITY, std::min(AI_MAX_PRIORITY, priority));
 
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
   // Check if entity already exists
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end()) {
-    // Update priority for existing entity
-    size_t index = it->second;
-    if (index < m_storage.size()) {
-      m_storage.hotData[index].priority = static_cast<uint8_t>(priority);
-    }
-  } else {
-    // Add managed entity info
-    EntityUpdateInfo info;
-    info.entityWeak = entity;
-    info.priority = priority;
-    info.frameCounter = 0;
-    info.lastUpdateTime = getCurrentTimeNanos();
-
-    m_managedEntities.push_back(info);
+  auto it = m_handleToIndex.find(handle);
+  if (it != m_handleToIndex.end()) {
+    // Entity already registered, nothing to do
+    return;
   }
+
+  // Add managed entity info
+  EntityUpdateInfo info(handle, DEFAULT_PRIORITY);
+  info.lastUpdateTime = getCurrentTimeNanos();
+  m_managedEntities.push_back(info);
 }
 
-void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
-  if (!entity)
+void AIManager::unregisterEntity(EntityHandle handle) {
+  if (!handle.isValid())
     return;
 
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -913,31 +890,29 @@ void AIManager::unregisterEntityFromUpdates(EntityPtr entity) {
   // Remove from managed entities
   m_managedEntities.erase(
       std::remove_if(m_managedEntities.begin(), m_managedEntities.end(),
-                     [&entity](const EntityUpdateInfo &info) {
-                       auto e = info.entityWeak.lock();
-                       return !e || e == entity;
+                     [&handle](const EntityUpdateInfo &info) {
+                       return !info.handle.isValid() || info.handle == handle;
                      }),
       m_managedEntities.end());
 
   // Mark as inactive in main storage
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end() && it->second < m_storage.size()) {
+  auto it = m_handleToIndex.find(handle);
+  if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
     // Decrement active counter if entity was active
     if (m_storage.hotData[it->second].active) {
       m_storage.hotData[it->second].active = false;
-      m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
+      --m_activeEntityCount;
     }
   }
 }
 
-void AIManager::queryEntitiesInRadius(const Vector2D& center, float radius,
-                                      std::vector<EntityPtr>& outEntities,
-                                      bool excludePlayer) const {
-  outEntities.clear();
+void AIManager::queryHandlesInRadius(const Vector2D& center, float radius,
+                                     std::vector<EntityHandle>& outHandles,
+                                     bool excludePlayer) const {
+  outHandles.clear();
 
-  // Get player reference for exclusion check
-  EntityPtr playerRef = excludePlayer ? m_playerEntity.lock() : nullptr;
   const float radiusSq = radius * radius;
+  auto& edm = EntityDataManager::Instance();
 
   // Thread-safe read access to entity storage
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -949,25 +924,29 @@ void AIManager::queryEntitiesInRadius(const Vector2D& center, float radius,
       continue;
     }
 
-    EntityPtr entity = m_storage.entities[i];
-    if (!entity) {
+    EntityHandle handle = m_storage.handles[i];
+    if (!handle.isValid()) {
       continue;
     }
 
     // Skip player if requested
-    if (excludePlayer && entity == playerRef) {
+    if (excludePlayer && handle == m_playerHandle) {
       continue;
     }
 
-    // Check distance (squared to avoid sqrt)
-    // NOTE: Position read from Entity (Phase 2 - EntityDataManager owns transform data)
-    const Vector2D pos = entity->getPosition();
+    // Get position from EDM
+    size_t edmIndex = m_storage.edmIndices[i];
+    if (edmIndex == SIZE_MAX) {
+      continue;
+    }
+
+    const Vector2D& pos = edm.getTransformByIndex(edmIndex).position;
     const float dx = pos.getX() - center.getX();
     const float dy = pos.getY() - center.getY();
     const float distSq = dx * dx + dy * dy;
 
     if (distSq <= radiusSq) {
-      outEntities.push_back(entity);
+      outHandles.push_back(handle);
     }
   }
 }
@@ -989,23 +968,23 @@ void AIManager::resetBehaviors() {
 
   // Clean up all behaviors
   for (size_t i = 0; i < m_storage.size(); ++i) {
-    if (m_storage.behaviors[i] && m_storage.entities[i]) {
-      m_storage.behaviors[i]->clean(m_storage.entities[i]);
+    if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
+      m_storage.behaviors[i]->clean(m_storage.handles[i]);
     }
   }
 
   // Clear all data
   m_storage.hotData.clear();
-  m_storage.entities.clear();
+  m_storage.handles.clear();
   m_storage.behaviors.clear();
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();  // BUGFIX: Must clear edmIndices to prevent stale index pollution
-  m_entityToIndex.clear();
+  m_handleToIndex.clear();
   m_managedEntities.clear();
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
-  m_activeEntityCount.store(0, std::memory_order_relaxed);  // BUGFIX: Reset active count when clearing storage
+  m_activeEntityCount = 0;  // BUGFIX: Reset active count when clearing storage
 }
 
 void AIManager::enableThreading(bool enable) {
@@ -1033,9 +1012,6 @@ bool AIManager::getWaitForBatchCompletion() const {
   return m_waitForBatchCompletion.load(std::memory_order_acquire);
 }
 
-void AIManager::configurePriorityMultiplier(float multiplier) {
-  m_priorityMultiplier.store(multiplier, std::memory_order_release);
-}
 
 size_t AIManager::getBehaviorCount() const {
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
@@ -1043,9 +1019,8 @@ size_t AIManager::getBehaviorCount() const {
 }
 
 size_t AIManager::getManagedEntityCount() const {
-  // PERFORMANCE: Use atomic counter instead of O(n) iteration
-  // m_activeEntityCount is maintained in sync with entity activation/deactivation
-  return m_activeEntityCount.load(std::memory_order_relaxed);
+  // PERFORMANCE: Use cached counter instead of O(n) iteration
+  return m_activeEntityCount;
 }
 
 size_t AIManager::getBehaviorUpdateCount() const {
@@ -1056,18 +1031,18 @@ size_t AIManager::getTotalAssignmentCount() const {
   return m_totalAssignmentCount.load(std::memory_order_relaxed);
 }
 
-void AIManager::sendMessageToEntity(EntityPtr entity,
+void AIManager::sendMessageToEntity(EntityHandle handle,
                                     const std::string &message,
                                     bool immediate) {
-  if (!entity || message.empty())
+  if (!handle.isValid() || message.empty())
     return;
 
   if (immediate) {
     std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-    auto it = m_entityToIndex.find(entity);
-    if (it != m_entityToIndex.end() && it->second < m_storage.size()) {
+    auto it = m_handleToIndex.find(handle);
+    if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
       if (m_storage.behaviors[it->second]) {
-        m_storage.behaviors[it->second]->onMessage(entity, message);
+        m_storage.behaviors[it->second]->onMessage(handle, message);
       }
     }
   } else {
@@ -1077,7 +1052,7 @@ void AIManager::sendMessageToEntity(EntityPtr entity,
         MESSAGE_QUEUE_SIZE;
     auto &msg = m_lockFreeMessages[writeIndex];
 
-    msg.target = entity;
+    msg.target = handle;
     // SAFETY: Use safer string copy with explicit bounds checking
     size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
     message.copy(msg.message, copyLen);
@@ -1095,7 +1070,7 @@ void AIManager::broadcastMessage(const std::string &message, bool immediate) {
 
     for (size_t i = 0; i < m_storage.size(); ++i) {
       if (m_storage.hotData[i].active && m_storage.behaviors[i]) {
-        m_storage.behaviors[i]->onMessage(m_storage.entities[i], message);
+        m_storage.behaviors[i]->onMessage(m_storage.handles[i], message);
       }
     }
   } else {
@@ -1105,7 +1080,7 @@ void AIManager::broadcastMessage(const std::string &message, bool immediate) {
         MESSAGE_QUEUE_SIZE;
     auto &msg = m_lockFreeMessages[writeIndex];
 
-    msg.target.reset(); // No specific target for broadcast
+    msg.target = EntityHandle{}; // Invalid handle for broadcast
     // SAFETY: Use safer string copy with explicit bounds checking
     size_t copyLen = std::min(message.length(), sizeof(msg.message) - 1);
     message.copy(msg.message, copyLen);
@@ -1123,8 +1098,8 @@ void AIManager::processMessageQueue() {
     auto &msg = m_lockFreeMessages[readIndex % MESSAGE_QUEUE_SIZE];
 
     if (msg.ready.load(std::memory_order_acquire)) {
-      if (auto entity = msg.target.lock()) {
-        sendMessageToEntity(entity, msg.message, true);
+      if (msg.target.isValid()) {
+        sendMessageToEntity(msg.target, msg.message, true);
       }
 
       msg.ready.store(false, std::memory_order_release);
@@ -1161,152 +1136,74 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 }
 
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
-                             const Vector2D &playerPos,
-                             bool hasPlayer,
+                             const Vector2D& /*playerPos*/,
+                             bool /*hasPlayer*/,
                              const EntityStorage& storage) {
   size_t batchExecutions = 0;
 
-  // Pre-calculate common values once per batch to reduce per-entity overhead
-  const float maxDist = m_maxUpdateDistance.load(std::memory_order_relaxed);
-  const float maxDistSquared = maxDist * maxDist;
-
   // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
-  // Eliminates 418+ atomic loads per frame → single atomic load per batch
-  // Uses cached pointer (mp_pathfinderManager) to avoid singleton lookup
   const auto &pf = *mp_pathfinderManager;
   float worldWidth, worldHeight;
   if (!pf.getCachedWorldBounds(worldWidth, worldHeight) || worldWidth <= 0 || worldHeight <= 0) {
-    // Fallback: Use large default if PathfinderManager grid isn't ready yet
-    // This ensures entities can move even during world loading/grid rebuild
-    worldWidth = 32000.0f;  // Default world size
+    worldWidth = 32000.0f;
     worldHeight = 32000.0f;
   }
 
-  // OPTIMIZATION: Direct storage iteration - no copying overhead
-  // Caller holds shared_lock, safe for parallel read access
   auto& edm = EntityDataManager::Instance();
 
-  for (size_t i = start; i < end && i < storage.entities.size(); ++i) {
-    // Access storage directly (read-only, no allocation)
-    // PERFORMANCE: Use raw pointers to avoid atomic ref-counting overhead
-    // Safe: shared_lock ensures storage stability, parent shared_ptrs keep objects alive
-    Entity* entity = storage.entities[i].get();
+  for (size_t i = start; i < end && i < storage.handles.size(); ++i) {
+    EntityHandle handle = storage.handles[i];
     AIBehavior* behavior = storage.behaviors[i].get();
     size_t edmIndex = storage.edmIndices[i];
-    auto hotData = storage.hotData[i];  // Copy for local modification
 
-    // Skip entities without valid EDM index
-    if (edmIndex == SIZE_MAX) {
+    if (!handle.isValid() || edmIndex == SIZE_MAX || !behavior) {
       continue;
     }
 
-    // PERFORMANCE: Direct EntityDataManager access (NO mutex per access)
-    // getHotDataByIndex() and getTransformByIndex() are lock-free array access
     auto& edmHotData = edm.getHotDataByIndex(edmIndex);
     auto& transform = edm.getTransformByIndex(edmIndex);
 
-    // Get half extents from EntityDataManager (single source of truth)
-    float halfW = edmHotData.halfWidth;
-    float halfH = edmHotData.halfHeight;
-
-    // Phase 5: Skip non-Active tier entities - BackgroundSimulationManager handles them
+    // Tier-based culling - EDM handles distance calculation via updateSimulationTiers()
     if (edmHotData.tier != SimulationTier::Active) {
       continue;
     }
 
     try {
-      // SIMD distance calculation - inline using SIMDMath.hpp
-      // All entities get fresh distance every frame for accurate combat
-      // PERFORMANCE: Direct transform access (lock-free, no Entity accessor overhead)
-      if (hasPlayer) {
-        const Float4 diff = set(
-            transform.position.getX() - playerPos.getX(),
-            transform.position.getY() - playerPos.getY(),
-            0.0f, 0.0f);
-        hotData.distanceSquared = lengthSquared2D(diff);
+      // Store previous position for interpolation
+      transform.previousPosition = transform.position;
+
+      // Execute behavior logic
+      BehaviorContext ctx(transform, edmHotData, handle.getId(), deltaTime);
+      behavior->executeLogic(ctx);
+
+      // Movement integration
+      Vector2D pos = transform.position + (transform.velocity * deltaTime);
+
+      // World bounds clamping
+      float halfW = edmHotData.halfWidth;
+      float halfH = edmHotData.halfHeight;
+      Vector2D clamped(
+          std::clamp(pos.getX(), halfW, worldWidth - halfW),
+          std::clamp(pos.getY(), halfH, worldHeight - halfH)
+      );
+      transform.position = clamped;
+
+      // Stop velocity at world edges
+      if (clamped.getX() != pos.getX()) {
+        transform.velocity.setX(0.0f);
+      }
+      if (clamped.getY() != pos.getY()) {
+        transform.velocity.setY(0.0f);
       }
 
-      // Priority-based distance culling - pure distance check
-      bool shouldUpdate = true;
-      if (hasPlayer) {
-        float priorityMultiplier = 1.0f + hotData.priority * 0.1f;
-        float effectiveMaxDistSquared =
-            maxDistSquared * priorityMultiplier * priorityMultiplier;
-        shouldUpdate = (hotData.distanceSquared <= effectiveMaxDistSquared);
-      }
-
-      if (shouldUpdate) {
-        // INTERPOLATION: Store current position before any movement updates
-        // This enables smooth rendering between fixed timestep updates
-        // PERFORMANCE: Direct transform write (lock-free)
-        transform.previousPosition = transform.position;
-
-        // LOCK-FREE BEHAVIOR EXECUTION: Create BehaviorContext with direct EDM references
-        // No mutex acquisition per accessor call - behaviors read/write transform directly
-        BehaviorContext ctx(transform, edmHotData, entity->getID(), deltaTime);
-        behavior->executeLogic(ctx);
-
-        // OPTIMIZATION: Only update animations/sprites for entities near the player
-        // Off-screen entities still think (behavior logic runs) but don't animate
-        // This saves 75% of entity->update() calls for typical 4000 NPC scenarios
-        // Buffer distance: 1500 pixels (typical screen width @ 1080p)
-        constexpr float VISUAL_UPDATE_DISTANCE_SQ = 1500.0f * 1500.0f; // ~1.5 screens
-        bool isNearPlayer = (hotData.distanceSquared <= VISUAL_UPDATE_DISTANCE_SQ);
-
-        if (isNearPlayer) {
-          // Entity updates integrate their own movement AND handle animations
-          entity->update(deltaTime);
-        }
-
-        // Centralized clamp pass using cached world bounds (NO atomic loads)
-        // halfW and halfH already loaded from pre-fetched data above
-        // PERFORMANCE: Direct transform access (lock-free, no Entity accessor overhead)
-        Vector2D pos = transform.position;
-        Vector2D vel = transform.velocity;
-
-        // MOVEMENT INTEGRATION: Apply velocity to position (core physics step)
-        // AIManager is responsible for entity movement - CollisionManager only modifies
-        // positions when collision RESOLUTION occurs (pushing bodies apart)
-        pos = pos + (vel * deltaTime);
-
-        // Inline clamping - no function call, no atomic load
-        const float minX = halfW;
-        const float maxX = worldWidth - halfW;
-        const float minY = halfH;
-        const float maxY = worldHeight - halfH;
-        Vector2D clamped(
-            std::clamp(pos.getX(), minX, maxX),
-            std::clamp(pos.getY(), minY, maxY)
-        );
-
-        // Update entity position (preserves previous position for interpolation)
-        // PERFORMANCE: Direct transform write (lock-free)
-        transform.position = clamped;
-
-        // Handle boundary collisions: stop velocity at world edges
-        if (clamped.getX() != pos.getX() || clamped.getY() != pos.getY()) {
-          // Project velocity inward for boundary collisions
-          if (clamped.getX() < pos.getX() && vel.getX() < 0) vel.setX(0.0f);
-          if (clamped.getX() > pos.getX() && vel.getX() > 0) vel.setX(0.0f);
-          if (clamped.getY() < pos.getY() && vel.getY() < 0) vel.setY(0.0f);
-          if (clamped.getY() > pos.getY() && vel.getY() > 0) vel.setY(0.0f);
-          // PERFORMANCE: Direct transform write (lock-free)
-          transform.velocity = vel;
-        }
-
-        batchExecutions++;
-      }
+      ++batchExecutions;
     } catch (const std::exception &e) {
       AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
-      // NOTE: Don't decrement active counter here - entity is still active, just had an error
-      // The entity will be properly cleaned up in the next cleanup cycle
-      // Decrementing here could cause count drift and make the counter unreliable
     }
   }
 
   if (batchExecutions > 0) {
-    m_totalBehaviorExecutions.fetch_add(batchExecutions,
-                                        std::memory_order_relaxed);
+    m_totalBehaviorExecutions.fetch_add(batchExecutions, std::memory_order_relaxed);
   }
 }
 
@@ -1325,9 +1222,9 @@ void AIManager::cleanupInactiveEntities() {
   for (auto it = toRemove.rbegin(); it != toRemove.rend(); ++it) {
     size_t index = *it;
 
-    // Remove from entity map
-    if (index < m_storage.entities.size()) {
-      m_entityToIndex.erase(m_storage.entities[index]);
+    // Remove from handle map
+    if (index < m_storage.handles.size()) {
+      m_handleToIndex.erase(m_storage.handles[index]);
     }
 
     // Swap with last element and pop
@@ -1338,18 +1235,18 @@ void AIManager::cleanupInactiveEntities() {
       m_storage.hotData[index] = m_storage.hotData[lastIndex];
 
       // Update cold data
-      m_storage.entities[index] = m_storage.entities[lastIndex];
+      m_storage.handles[index] = m_storage.handles[lastIndex];
       m_storage.behaviors[index] = m_storage.behaviors[lastIndex];
       m_storage.lastUpdateTimes[index] = m_storage.lastUpdateTimes[lastIndex];
       m_storage.edmIndices[index] = m_storage.edmIndices[lastIndex];
 
       // Update index map
-      m_entityToIndex[m_storage.entities[index]] = index;
+      m_handleToIndex[m_storage.handles[index]] = index;
     }
 
     // Remove last element
     m_storage.hotData.pop_back();
-    m_storage.entities.pop_back();
+    m_storage.handles.pop_back();
     m_storage.behaviors.pop_back();
     m_storage.lastUpdateTimes.pop_back();
     m_storage.edmIndices.pop_back();
@@ -1363,9 +1260,9 @@ void AIManager::cleanupAllEntities() {
 
   // Clean all behaviors
   for (size_t i = 0; i < m_storage.size(); ++i) {
-    if (m_storage.behaviors[i] && m_storage.entities[i]) {
+    if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
       try {
-        m_storage.behaviors[i]->clean(m_storage.entities[i]);
+        m_storage.behaviors[i]->clean(m_storage.handles[i]);
       } catch (const std::exception &e) {
         AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
       }
@@ -1374,14 +1271,14 @@ void AIManager::cleanupAllEntities() {
 
   // Clear all storage
   m_storage.hotData.clear();
-  m_storage.entities.clear();
+  m_storage.handles.clear();
   m_storage.behaviors.clear();
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();
-  m_entityToIndex.clear();
+  m_handleToIndex.clear();
 
   // Reset active counter
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
+  m_activeEntityCount = 0;
 
   AI_DEBUG("Cleaned up all entities for state transition");
 }
@@ -1392,27 +1289,13 @@ uint64_t AIManager::getCurrentTimeNanos() {
       .count();
 }
 
-void AIManager::updateEntityExtents(EntityPtr entity, float halfW, float halfH) {
-  if (!entity || !entity->hasValidHandle()) return;
-
-  // Entity extents are now stored in EntityDataManager (single source of truth)
-  // Update directly via the entity's handle
-  auto& edm = EntityDataManager::Instance();
-  size_t edmIndex = edm.getIndex(entity->getHandle());
-  if (edmIndex != SIZE_MAX) {
-    auto& hotData = edm.getHotDataByIndex(edmIndex);
-    hotData.halfWidth = std::max(1.0f, halfW);
-    hotData.halfHeight = std::max(1.0f, halfH);
-  }
-}
-
-int AIManager::getEntityPriority(EntityPtr entity) const {
-  if (!entity)
+int AIManager::getEntityPriority(EntityHandle handle) const {
+  if (!handle.isValid())
     return DEFAULT_PRIORITY;
 
   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-  auto it = m_entityToIndex.find(entity);
-  if (it != m_entityToIndex.end() && it->second < m_storage.size()) {
+  auto it = m_handleToIndex.find(handle);
+  if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
     return m_storage.hotData[it->second].priority;
   }
   return DEFAULT_PRIORITY;
@@ -1423,13 +1306,11 @@ float AIManager::getUpdateRangeMultiplier(int priority) const {
   return 1.0f + (std::max(0, std::min(9, priority)) * 0.1f);
 }
 
-void AIManager::registerEntityForUpdates(EntityPtr entity, int priority,
-                                         const std::string &behaviorName) {
-  // Register for updates
-  registerEntityForUpdates(entity, priority);
-
-  // Queue behavior assignment
-  queueBehaviorAssignment(entity, behaviorName);
+void AIManager::registerEntity(EntityHandle handle,
+                               const std::string &behaviorName) {
+  // Assign behavior directly - no queue delay
+  // The queue system was causing hangs when update() wasn't running yet
+  assignBehavior(handle, behaviorName);
 }
 
 // ======================= Legacy Pathfinding Code Removed
