@@ -206,7 +206,7 @@ EntityDataManager::~EntityDataManager() {
 // INTERNAL HELPERS
 // ============================================================================
 
-size_t EntityDataManager::allocateSlot(EntityKind kind) {
+size_t EntityDataManager::allocateSlot() {
     size_t index;
 
     if (!m_freeSlots.empty()) {
@@ -289,7 +289,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
                                           float halfWidth,
                                           float halfHeight) {
 
-    size_t index = allocateSlot(EntityKind::NPC);
+    size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
@@ -340,7 +340,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
 
 EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
 
-    size_t index = allocateSlot(EntityKind::Player);
+    size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
@@ -398,7 +398,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
                                                   HammerEngine::ResourceHandle resourceHandle,
                                                   int quantity) {
 
-    size_t index = allocateSlot(EntityKind::DroppedItem);
+    size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
@@ -453,7 +453,7 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
                                                  float damage,
                                                  float lifetime) {
 
-    size_t index = allocateSlot(EntityKind::Projectile);
+    size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
@@ -509,7 +509,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
                                                  float damage,
                                                  float duration) {
 
-    size_t index = allocateSlot(EntityKind::AreaEffect);
+    size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
     uint8_t generation = nextGeneration(index);
 
@@ -628,7 +628,7 @@ EntityHandle EntityDataManager::registerNPC(EntityHandle::IDType entityId,
         return EntityHandle{entityId, EntityKind::NPC, m_generations[existingIndex]};
     }
 
-    size_t index = allocateSlot(EntityKind::NPC);
+    size_t index = allocateSlot();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data
@@ -696,7 +696,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
         return EntityHandle{entityId, EntityKind::Player, m_generations[existingIndex]};
     }
 
-    size_t index = allocateSlot(EntityKind::Player);
+    size_t index = allocateSlot();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data
@@ -766,7 +766,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         return EntityHandle{entityId, EntityKind::DroppedItem, m_generations[existingIndex]};
     }
 
-    size_t index = allocateSlot(EntityKind::DroppedItem);
+    size_t index = allocateSlot();
     uint8_t generation = nextGeneration(index);
 
     // Initialize hot data

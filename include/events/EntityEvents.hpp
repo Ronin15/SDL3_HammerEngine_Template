@@ -78,12 +78,12 @@ public:
      */
     DamageEvent(EntityEventType eventType, EntityHandle source, EntityHandle target,
                 float damage, const Vector2D& knockback = Vector2D(0.0f, 0.0f))
-        : m_eventType(eventType)
+        : m_name("DamageEvent")
+        , m_eventType(eventType)
         , m_source(source)
         , m_target(target)
         , m_damage(damage)
         , m_knockback(knockback) {
-        m_name = "DamageEvent";
     }
 
     ~DamageEvent() override = default;
@@ -147,10 +147,10 @@ public:
      */
     DeathEvent(EntityEventType eventType, EntityHandle entity,
                EntityHandle killer = EntityHandle{})
-        : m_eventType(eventType)
+        : m_name("DeathEvent")
+        , m_eventType(eventType)
         , m_entity(entity)
         , m_killer(killer) {
-        m_name = "DeathEvent";
     }
 
     ~DeathEvent() override = default;
@@ -201,10 +201,10 @@ public:
      * @param position Spawn position
      */
     SpawnEvent(EntityEventType eventType, EntityKind kind, const Vector2D& position)
-        : m_eventType(eventType)
+        : m_name("SpawnEvent")
+        , m_eventType(eventType)
         , m_kind(kind)
         , m_position(position) {
-        m_name = "SpawnEvent";
     }
 
     ~SpawnEvent() override = default;

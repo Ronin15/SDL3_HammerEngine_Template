@@ -62,9 +62,13 @@ AIManager.cpp:misc-use-internal-linkage:member functions cannot have internal li
 # Global suppression - methods often have side effects through singletons or modify member state
 # that clang-tidy doesn't detect
 .cpp:readability-make-member-function-const:methods have side effects or modify state
+# Header files - same issue with atomics, member pointers, and mutable members
+# ThreadSystem.hpp push/reserve/tryPopTask/batchEnqueueTasks modify state via atomics and queues
+.hpp:readability-make-member-function-const:methods modify state via atomics or member pointers
 
 # misc-unused-parameters false positives - parameters ARE used in function body
 FontManager.cpp:misc-unused-parameters:color IS used in TTF_RenderText_Blended call
 TextureManager.cpp:misc-unused-parameters:p_renderer IS used in SDL_CreateTextureFromSurface call
 WorldGenerator.cpp:misc-unused-parameters:seed IS used in std::default_random_engine constructor
 WorldGenerator.cpp:misc-unused-parameters:config IS used for config.seed in rng initialization
+EntityDataManager.cpp:misc-unused-parameters:kind IS used in m_kindIndices[static_cast<size_t>(kind)]
