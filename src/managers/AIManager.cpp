@@ -152,7 +152,7 @@ void AIManager::clean() {
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
-  m_activeEntityCount = 0;
+  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   AI_INFO("AIManager shutdown complete");
 }
@@ -245,7 +245,7 @@ void AIManager::prepareForStateTransition() {
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
   m_lastCleanupFrame.store(0, std::memory_order_relaxed);
-  m_activeEntityCount = 0;
+  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   // Clear player reference completely
   {
@@ -286,7 +286,7 @@ void AIManager::update(float deltaTime) {
     processPendingBehaviorAssignments();
 
     // Use cached active count - no iteration needed
-    size_t activeCount = m_activeEntityCount;
+    size_t activeCount = m_activeEntityCount.load(std::memory_order_acquire);
 
     // Early exit if no active entities - skip ALL work including timing and cache
     // Messages for non-existent entities are useless, so skip processMessageQueue() too
@@ -548,6 +548,10 @@ void AIManager::registerBehavior(const std::string &name,
 
   m_behaviorTemplates[name] = behavior;
 
+  // Pre-populate cache to ensure it's read-only during async operations
+  // This eliminates the race condition in getBehavior() cache miss path
+  m_behaviorCache[name] = behavior;
+
   AI_INFO(std::format("Registered behavior: {}", name));
 }
 
@@ -558,32 +562,20 @@ bool AIManager::hasBehavior(const std::string &name) const {
 
 std::shared_ptr<AIBehavior>
 AIManager::getBehavior(const std::string &name) const {
-  // Fast path: Check cache first for O(1) lookup (unprotected read is safe after initial population)
+  // THREADING: Cache is pre-populated by registerBehavior(), making this read-only
+  // and safe for concurrent access from worker threads during async assignment.
+  // Cache miss means the behavior was never registered.
+  std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
+
   auto cacheIt = m_behaviorCache.find(name);
   if (cacheIt != m_behaviorCache.end()) {
     return cacheIt->second;
   }
 
-  // Cache miss - use EXCLUSIVE lock for template read + cache write
-  // THREADING FIX: Changed from shared_lock to unique_lock to prevent double-free
-  // when multiple threads write to m_behaviorCache simultaneously
-  std::unique_lock<std::shared_mutex> lock(m_behaviorsMutex);
-
-  // Double-checked locking: Re-check cache after acquiring exclusive lock
-  // Another thread may have populated it while we were waiting for the lock
-  cacheIt = m_behaviorCache.find(name);
-  if (cacheIt != m_behaviorCache.end()) {
-    return cacheIt->second;
-  }
-
-  // Lookup template and cache result (now thread-safe with exclusive lock)
+  // Cache miss - check template map as fallback (shouldn't happen after
+  // registerBehavior() now pre-populates cache, but handle gracefully)
   auto it = m_behaviorTemplates.find(name);
-  std::shared_ptr<AIBehavior> result =
-      (it != m_behaviorTemplates.end()) ? it->second : nullptr;
-
-  // Cache the result (even if nullptr) - safe with exclusive lock
-  m_behaviorCache[name] = result;
-  return result;
+  return (it != m_behaviorTemplates.end()) ? it->second : nullptr;
 }
 
 void AIManager::assignBehavior(EntityHandle handle,
@@ -627,7 +619,7 @@ void AIManager::assignBehavior(EntityHandle handle,
       // Update active state and counter
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
-        ++m_activeEntityCount;
+        m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
       }
 
       // Refresh EDM index if needed
@@ -652,7 +644,7 @@ void AIManager::assignBehavior(EntityHandle handle,
     m_storage.behaviors.push_back(behavior);
 
     // Increment active counter for new entity
-    ++m_activeEntityCount;
+    m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_storage.lastUpdateTimes.push_back(0.0f);
 
     // Cache EntityDataManager index for lock-free batch access
@@ -681,7 +673,7 @@ void AIManager::unassignBehavior(EntityHandle handle) {
       // Decrement active counter if entity was active
       if (m_storage.hotData[index].active) {
         m_storage.hotData[index].active = false;
-        --m_activeEntityCount;
+        m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
       }
 
       if (m_storage.behaviors[index]) {
@@ -901,7 +893,7 @@ void AIManager::unregisterEntity(EntityHandle handle) {
     // Decrement active counter if entity was active
     if (m_storage.hotData[it->second].active) {
       m_storage.hotData[it->second].active = false;
-      --m_activeEntityCount;
+      m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
     }
   }
 }
@@ -984,7 +976,7 @@ void AIManager::resetBehaviors() {
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
-  m_activeEntityCount = 0;  // BUGFIX: Reset active count when clearing storage
+  m_activeEntityCount.store(0, std::memory_order_relaxed);
 }
 
 void AIManager::enableThreading(bool enable) {
@@ -1020,7 +1012,7 @@ size_t AIManager::getBehaviorCount() const {
 
 size_t AIManager::getManagedEntityCount() const {
   // PERFORMANCE: Use cached counter instead of O(n) iteration
-  return m_activeEntityCount;
+  return m_activeEntityCount.load(std::memory_order_relaxed);
 }
 
 size_t AIManager::getBehaviorUpdateCount() const {
@@ -1278,7 +1270,7 @@ void AIManager::cleanupAllEntities() {
   m_handleToIndex.clear();
 
   // Reset active counter
-  m_activeEntityCount = 0;
+  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   AI_DEBUG("Cleaned up all entities for state transition");
 }
