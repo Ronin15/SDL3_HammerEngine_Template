@@ -553,7 +553,7 @@ void AIManager::assignBehavior(EntityHandle handle,
   auto behavior = behaviorTemplate->clone();
   behavior->init(handle);
 
-  auto& edm = EntityDataManager::Instance();
+  const auto& edm = EntityDataManager::Instance();
 
   // Find or create entity entry
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -677,10 +677,9 @@ size_t AIManager::processPendingBehaviorAssignments() {
   }
   auto& toProcess = m_reusableToProcessBuffer;
 
+  // Note: assignmentCount > 0 guaranteed - we returned early at line 671 if empty,
+  // and std::swap preserves non-emptiness
   size_t assignmentCount = toProcess.size();
-  if (assignmentCount == 0) {
-    return 0;
-  }
 
   // Check if threading is available
   bool useThreading = m_useThreading.load(std::memory_order_acquire) &&

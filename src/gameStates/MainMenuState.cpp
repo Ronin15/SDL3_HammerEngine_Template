@@ -123,7 +123,7 @@ bool MainMenuState::exit() {
 }
 
 void MainMenuState::handleInput() {
-  auto& inputManager = InputManager::Instance();
+  const auto& inputManager = InputManager::Instance();
 
   // Keyboard shortcuts for quick navigation
   if (inputManager.wasKeyPressed(SDL_SCANCODE_RETURN)) {

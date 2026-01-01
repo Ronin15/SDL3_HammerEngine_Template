@@ -109,10 +109,10 @@ void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
   } else if (message == "reset_position") {
     auto it = m_entityStates.find(handle.getId());
     if (it != m_entityStates.end()) {
-      auto& edm = EntityDataManager::Instance();
+      const auto& edm = EntityDataManager::Instance();
       size_t idx = edm.getIndex(handle);
       if (idx != SIZE_MAX) {
-        auto& hotData = edm.getHotDataByIndex(idx);
+        const auto& hotData = edm.getHotDataByIndex(idx);
         it->second.originalPosition = hotData.transform.position;
         it->second.currentOffset = Vector2D(0, 0);
       }

@@ -100,7 +100,7 @@ void BackgroundSimulationManager::update(const Vector2D& referencePoint, float d
         m_tiersDirty.store(false, std::memory_order_release);
 
         // Update work flag based on tier results
-        auto& edm = EntityDataManager::Instance();
+        const auto& edm = EntityDataManager::Instance();
         auto backgroundSpan = edm.getBackgroundIndices();
         m_hasNonActiveEntities.store(!backgroundSpan.empty(), std::memory_order_release);
     }

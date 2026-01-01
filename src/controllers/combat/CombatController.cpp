@@ -247,7 +247,7 @@ std::shared_ptr<NPC> CombatController::getTargetedNPC() const
         return nullptr;
     }
 
-    auto& hotData = edm.getHotDataByIndex(idx);
+    const auto& hotData = edm.getHotDataByIndex(idx);
     if (!hotData.isAlive()) {
         return nullptr;
     }

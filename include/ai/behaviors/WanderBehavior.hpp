@@ -94,7 +94,7 @@ private:
   bool handleStartDelay(BehaviorContext& ctx, EntityState& state);
   float calculateMoveDistance(EntityState& state, const Vector2D& position, float baseDistance);
   void applyBoundaryAvoidance(EntityState& state, const Vector2D& position);
-  void handlePathfinding(BehaviorContext& ctx, EntityState& state, const Vector2D& dest);
+  void handlePathfinding(const BehaviorContext& ctx, EntityState& state, const Vector2D& dest);
   void handleMovement(BehaviorContext& ctx, EntityState& state);
 
   // Map to store per-entity state keyed by entityId (not EntityPtr - enables lock-free access)

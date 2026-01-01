@@ -457,9 +457,9 @@ std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
   return clone;
 }
 
-EntityHandle GuardBehavior::detectThreat(BehaviorContext& ctx,
+EntityHandle GuardBehavior::detectThreat(const BehaviorContext& ctx,
                                          const EntityState &state) const {
-  auto& aiMgr = AIManager::Instance();
+  const auto& aiMgr = AIManager::Instance();
   if (!aiMgr.isPlayerValid())
     return EntityHandle{};
 

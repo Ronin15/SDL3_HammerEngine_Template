@@ -458,7 +458,7 @@ float FollowBehavior::getDistanceToTarget() const {
   if (targetIdx == SIZE_MAX)
     return -1.0f;
 
-  auto& targetHotData = edm.getHotDataByIndex(targetIdx);
+  const auto& targetHotData = edm.getHotDataByIndex(targetIdx);
   Vector2D targetPos = targetHotData.transform.position;
 
   // Find a following entity to calculate distance

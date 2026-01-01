@@ -195,7 +195,7 @@ private:
   // bool m_useAsyncPathfinding removed
 
   // Helper methods - threat is player handle, positions from EDM
-  EntityHandle detectThreat(BehaviorContext& ctx, const EntityState &state) const;
+  EntityHandle detectThreat(const BehaviorContext& ctx, const EntityState &state) const;
   bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
   bool isThreatInFieldOfView(const Vector2D& entityPos, const Vector2D& threatPos,
                              const EntityState &state) const;

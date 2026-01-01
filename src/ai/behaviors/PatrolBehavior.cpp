@@ -255,16 +255,8 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
                   self->m_pathUpdateTimer = 0.0f;
                 }
               });
-
-          if (m_navPath.empty()) {
-            m_backoffTimer = 10.0f + (ctx.entityId % 2000) * 0.001f;
-            m_navPath.clear();
-            m_navIndex = 0;
-            if (m_waypointCooldown <= 0.0f) {
-              m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-              m_waypointCooldown = 1.5f;
-            }
-          }
+          // Note: m_navPath.empty() check removed - always false here since line 237
+          // confirms m_navPath is not empty, and the callback above is async
         }
       } else {
         m_backoffTimer = 10.0f + (ctx.entityId % 2000) * 0.001f;
