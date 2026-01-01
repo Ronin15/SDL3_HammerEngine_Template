@@ -12,6 +12,7 @@
 #include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
@@ -54,7 +55,11 @@ bool GamePlayState::enter() {
   GAMEPLAY_INFO("World already loaded - initializing gameplay");
 
   try {
+    // Cache manager references for better performance
     const auto &gameEngine = GameEngine::Instance();
+    GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
+    UIManager &ui = UIManager::Instance();
+    EventManager &eventMgr = EventManager::Instance();
 
     // Initialize resource handles first
     initializeResourceHandles();
@@ -80,19 +85,18 @@ bool GamePlayState::enter() {
     mp_combatCtrl = &m_controllers.add<CombatController>(mp_Player);
 
     // Enable automatic weather changes
-    GameTimeManager::Instance().enableAutoWeather(true);
+    gameTimeMgr.enableAutoWeather(true);
 #ifdef NDEBUG
     // Release: normal pacing
-    GameTimeManager::Instance().setWeatherCheckInterval(4.0f);
-    GameTimeManager::Instance().setTimeScale(60.0f);
+    gameTimeMgr.setWeatherCheckInterval(4.0f);
+    gameTimeMgr.setTimeScale(60.0f);
 #else
     // Debug: faster changes for testing seasons/weather
-    GameTimeManager::Instance().setWeatherCheckInterval(1.0f);
-    GameTimeManager::Instance().setTimeScale(3600.0f);
+    gameTimeMgr.setWeatherCheckInterval(1.0f);
+    gameTimeMgr.setTimeScale(3600.0f);
 #endif
 
     // Create event log for time/weather messages
-    auto& ui = UIManager::Instance();
     ui.createEventLog("gameplay_event_log",
         {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
     UIPositioning eventLogPos;
@@ -124,8 +128,6 @@ bool GamePlayState::enter() {
 
     // Pre-allocate status buffer for zero per-frame allocations
     m_statusBuffer.reserve(256);
-
-    auto& eventMgr = EventManager::Instance();
 
     // Create FPS counter label (top-left, initially hidden, toggled with F2)
     ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12}, "FPS: --");
@@ -171,6 +173,10 @@ bool GamePlayState::enter() {
 }
 
 void GamePlayState::update(float deltaTime) {
+  // Cache manager references for better performance
+  GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
+  UIManager &ui = UIManager::Instance();
+
   // Check if we need to transition to loading screen (do this in update, not enter)
   if (m_needsLoading) {
     m_needsLoading = false;  // Clear flag
@@ -201,7 +207,7 @@ void GamePlayState::update(float deltaTime) {
   }
 
   // Update game time (advances calendar, dispatches time events)
-  GameTimeManager::Instance().update(deltaTime);
+  gameTimeMgr.update(deltaTime);
 
   // Update player if it exists
   if (mp_Player) {
@@ -223,20 +229,18 @@ void GamePlayState::update(float deltaTime) {
   // Update time status bar only when events fire (event-driven, not per-frame)
   if (m_statusBarDirty) {
     m_statusBarDirty = false;
-    auto& gt = GameTimeManager::Instance();
     m_statusBuffer.clear();
     std::format_to(std::back_inserter(m_statusBuffer),
                    "Day {} {}, Year {} | {} {} | {} | {}F | {}",
-                   gt.getDayOfMonth(), gt.getCurrentMonthName(), gt.getGameYear(),
-                   gt.formatCurrentTime(), gt.getTimeOfDayName(),
-                   gt.getSeasonName(),
-                   static_cast<int>(gt.getCurrentTemperature()),
+                   gameTimeMgr.getDayOfMonth(), gameTimeMgr.getCurrentMonthName(), gameTimeMgr.getGameYear(),
+                   gameTimeMgr.formatCurrentTime(), gameTimeMgr.getTimeOfDayName(),
+                   gameTimeMgr.getSeasonName(),
+                   static_cast<int>(gameTimeMgr.getCurrentTemperature()),
                    mp_weatherCtrl->getCurrentWeatherString());
-    UIManager::Instance().setText("gameplay_time_label", m_statusBuffer);
+    ui.setText("gameplay_time_label", m_statusBuffer);
   }
 
   // Update UI
-  auto &ui = UIManager::Instance();
   if (!ui.isShutdown()) {
     ui.update(deltaTime);
   }
@@ -321,6 +325,17 @@ void GamePlayState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   mp_uiMgr->render(renderer);
 }
 bool GamePlayState::exit() {
+  // Cache manager references for better performance
+  AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
+  CollisionManager &collisionMgr = CollisionManager::Instance();
+  PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+  ParticleManager &particleMgr = ParticleManager::Instance();
+  UIManager &ui = UIManager::Instance();
+  WorldManager &worldMgr = WorldManager::Instance();
+  GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
+  EventManager &eventMgr = EventManager::Instance();
+
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
     // This prevents infinite loop when returning from LoadingState
@@ -329,20 +344,17 @@ bool GamePlayState::exit() {
     m_transitioningToLoading = false;
 
     // Clean up managers (same as full exit)
-    AIManager& aiMgr = AIManager::Instance();
     aiMgr.prepareForStateTransition();
+    edm.prepareForStateTransition();
 
-    CollisionManager& collisionMgr = CollisionManager::Instance();
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
 
-    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
     if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
       pathfinderMgr.prepareForStateTransition();
     }
 
-    ParticleManager& particleMgr = ParticleManager::Instance();
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
       particleMgr.prepareForStateTransition();
     }
@@ -351,15 +363,13 @@ bool GamePlayState::exit() {
     m_camera.reset();
 
     // Unload world (LoadingState will reload it)
-    auto& worldManager = WorldManager::Instance();
-    if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
-      worldManager.unloadWorld();
+    if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+      worldMgr.unloadWorld();
       // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
       // when LoadingState returns to this state
     }
 
     // Clean up UI
-    auto &ui = UIManager::Instance();
     ui.prepareForStateTransition();
 
     // Reset player
@@ -375,23 +385,20 @@ bool GamePlayState::exit() {
   // Full exit (going to main menu, other states, or shutting down)
 
   // Use manager prepareForStateTransition methods for deterministic cleanup
-  AIManager& aiMgr = AIManager::Instance();
   aiMgr.prepareForStateTransition();
+  edm.prepareForStateTransition();
 
   // Clean collision state before other systems
-  CollisionManager& collisionMgr = CollisionManager::Instance();
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
   }
 
   // Clean pathfinding state for fresh start
-  PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
   if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
     pathfinderMgr.prepareForStateTransition();
   }
 
   // Simple particle cleanup
-  ParticleManager& particleMgr = ParticleManager::Instance();
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
     particleMgr.prepareForStateTransition();
   }
@@ -400,16 +407,14 @@ bool GamePlayState::exit() {
   m_camera.reset();
 
   // Unload the world when fully exiting gameplay
-  auto& worldManager = WorldManager::Instance();
-  if (worldManager.isInitialized() && worldManager.hasActiveWorld()) {
-    worldManager.unloadWorld();
+  if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+    worldMgr.unloadWorld();
     // CRITICAL: Only reset m_worldLoaded when actually unloading a world
     // This prevents infinite loop when transitioning to LoadingState (no world yet)
     m_worldLoaded = false;
   }
 
   // Full UI cleanup using standard pattern
-  auto &ui = UIManager::Instance();
   ui.prepareForStateTransition();
 
   // Reset player
@@ -422,7 +427,7 @@ bool GamePlayState::exit() {
 
   // Unsubscribe all controllers at once
   m_controllers.unsubscribeAll();
-  GameTimeManager::Instance().enableAutoWeather(false);
+  gameTimeMgr.enableAutoWeather(false);
 
   // Clear cached controller pointers
   mp_weatherCtrl = nullptr;
@@ -434,13 +439,13 @@ bool GamePlayState::exit() {
 
   // Unsubscribe from TimePeriodChangedEvent
   if (m_dayNightSubscribed) {
-    EventManager::Instance().removeHandler(m_dayNightEventToken);
+    eventMgr.removeHandler(m_dayNightEventToken);
     m_dayNightSubscribed = false;
   }
 
   // Unsubscribe from WeatherChangedEvent
   if (m_weatherSubscribed) {
-    EventManager::Instance().removeHandler(m_weatherEventToken);
+    eventMgr.removeHandler(m_weatherEventToken);
     m_weatherSubscribed = false;
   }
 
@@ -520,7 +525,11 @@ void GamePlayState::resume() {
 }
 
 void GamePlayState::handleInput() {
-  const auto &inputMgr = InputManager::Instance();
+  // Cache manager references for better performance
+  const InputManager &inputMgr = InputManager::Instance();
+  UIManager &ui = UIManager::Instance();
+  GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
+  GameEngine &gameEngine = GameEngine::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_P)) {
@@ -537,7 +546,7 @@ void GamePlayState::handleInput() {
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-    auto &gameEngine = GameEngine::Instance();
+    // gameEngine already cached at top of function
     gameEngine.setRunning(false);
   }
 
@@ -549,7 +558,6 @@ void GamePlayState::handleInput() {
   // FPS counter toggle
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F2)) {
     m_fpsVisible = !m_fpsVisible;
-    auto& ui = UIManager::Instance();
     ui.setComponentVisible("gameplay_fps", m_fpsVisible);
   }
 
@@ -569,15 +577,13 @@ void GamePlayState::handleInput() {
 #ifndef NDEBUG
   // Debug time speed controls: < (comma) = normal speed, > (period) = max speed
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_COMMA)) {
-    GameTimeManager::Instance().setTimeScale(60.0f);
+    gameTimeMgr.setTimeScale(60.0f);
     GAMEPLAY_INFO("Time scale set to NORMAL (60x)");
-    auto& ui = UIManager::Instance();
     ui.addEventLogEntry("gameplay_event_log", "Time: NORMAL speed (60x)");
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_PERIOD)) {
-    GameTimeManager::Instance().setTimeScale(3600.0f);
+    gameTimeMgr.setTimeScale(3600.0f);
     GAMEPLAY_INFO("Time scale set to MAX (3600x)");
-    auto& ui = UIManager::Instance();
     ui.addEventLogEntry("gameplay_event_log", "Time: MAX speed (3600x)");
   }
 #endif
@@ -602,16 +608,15 @@ void GamePlayState::handleInput() {
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
         Vector2D const mousePos = inputMgr.getMousePosition();
-        auto& ui = UIManager::Instance();
 
         if (!ui.isClickOnUI(mousePos)) {
             Vector2D worldPos = m_camera->screenToWorld(mousePos);
             int const tileX = static_cast<int>(worldPos.getX() / HammerEngine::TILE_SIZE);
             int const tileY = static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
-            auto& worldMgr = WorldManager::Instance();
-            if (worldMgr.isValidPosition(tileX, tileY)) {
-                const auto* tile = worldMgr.getTileAt(tileX, tileY);
+            // Use cached mp_worldMgr pointer from enter()
+            if (mp_worldMgr->isValidPosition(tileX, tileY)) {
+                const auto* tile = mp_worldMgr->getTileAt(tileX, tileY);
                 // Log tile information for debugging
                 GAMEPLAY_DEBUG_IF(tile,
                     std::format("Clicked tile ({}, {}) - Biome: {}, Obstacle: {}",

@@ -53,7 +53,9 @@ AIDemoState::~AIDemoState() {
 }
 
 void AIDemoState::handleInput() {
-  InputManager  const&inputMgr = InputManager::Instance();
+  // Cache manager references for better performance
+  InputManager const &inputMgr = InputManager::Instance();
+  AIManager &aiMgr = AIManager::Instance();
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -61,7 +63,6 @@ void AIDemoState::handleInput() {
     m_aiPaused = !m_aiPaused;
 
     // Set global AI pause state in AIManager
-    AIManager &aiMgr = AIManager::Instance();
     aiMgr.setGlobalPause(m_aiPaused);
 
     // Also send messages for behaviors that need them
@@ -80,7 +81,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Wander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "Wander");
@@ -90,7 +90,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
     GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcs.size()));
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "Patrol");
@@ -105,7 +104,6 @@ void AIDemoState::handleInput() {
 
     // Chase behavior target is automatically maintained by AIManager
     // No manual target updates needed
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "Chase");
@@ -115,7 +113,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign SmallWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "SmallWander");
@@ -125,7 +122,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign LargeWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "LargeWander");
@@ -135,7 +131,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
     // Assign EventWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "EventWander");
@@ -145,7 +140,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
     // Assign RandomPatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "RandomPatrol");
@@ -155,7 +149,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
     // Assign CirclePatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "CirclePatrol");
@@ -165,7 +158,6 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
     // Assign EventTarget behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
-    AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.queueBehaviorAssignment(npc->getHandle(), "EventTarget");
@@ -274,7 +266,8 @@ bool AIDemoState::enter() {
     GAMESTATE_INFO("Chase behavior registered (will use AIManager::getPlayerHandle())");
 
     // Create simple HUD UI (matches EventDemoState spacing pattern)
-    auto &ui = UIManager::Instance();
+    // Use cached mp_uiMgr pointer from top of enter()
+    auto &ui = *mp_uiMgr;
     ui.createTitle("ai_title", {0, UIConstants::TITLE_TOP_OFFSET, gameEngine.getLogicalWidth(), UIConstants::DEFAULT_TITLE_HEIGHT},
                    "AI Demo State");
     ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
@@ -331,8 +324,13 @@ bool AIDemoState::enter() {
 bool AIDemoState::exit() {
   GAMESTATE_INFO("Exiting AIDemoState...");
 
-  // Cache AIManager reference for better performance
+  // Cache manager references for better performance
   AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
+  CollisionManager &collisionMgr = CollisionManager::Instance();
+  PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+  UIManager &ui = UIManager::Instance();
+  WorldManager &worldMgr = WorldManager::Instance();
 
   if (m_transitioningToLoading) {
     // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
@@ -343,13 +341,12 @@ bool AIDemoState::exit() {
 
     // Clean up managers (same as full exit)
     aiMgr.prepareForStateTransition();
+    edm.prepareForStateTransition();
 
-    CollisionManager &collisionMgr = CollisionManager::Instance();
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
 
-    PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
     if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
       pathfinderMgr.prepareForStateTransition();
     }
@@ -366,11 +363,9 @@ bool AIDemoState::exit() {
     m_camera.reset();
 
     // Clean up UI
-    auto &ui = UIManager::Instance();
     ui.prepareForStateTransition();
 
     // Unload world (LoadingState will reload it)
-    WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
       // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
@@ -398,15 +393,14 @@ bool AIDemoState::exit() {
 
   // Use prepareForStateTransition methods for deterministic cleanup
   aiMgr.prepareForStateTransition();
+  edm.prepareForStateTransition();
 
   // Clean collision state
-  CollisionManager &collisionMgr = CollisionManager::Instance();
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
   }
 
   // Clean pathfinding state for fresh start
-  PathfinderManager& pathfinderMgr = PathfinderManager::Instance();
   if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
     pathfinderMgr.prepareForStateTransition();
   }
@@ -423,12 +417,10 @@ bool AIDemoState::exit() {
   m_camera.reset();
 
   // Clean up UI components using simplified method
-  auto &ui = UIManager::Instance();
   ui.prepareForStateTransition();
 
   // Unload the world when fully exiting, but only if there's actually a world loaded
   // This matches EventDemoState's safety pattern and prevents crashes
-  WorldManager &worldMgr = WorldManager::Instance();
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
     worldMgr.unloadWorld();
     // Reset m_worldLoaded when doing full exit (going to main menu, etc.)

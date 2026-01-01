@@ -145,7 +145,8 @@ bool EventDemoState::enter() {
     addLogEntry("Event Demo System Initialized");
 
     // Create simple UI components using auto-detecting methods with dramatic spacing
-    auto &ui = UIManager::Instance();
+    // Use cached mp_uiMgr pointer from top of enter()
+    auto &ui = *mp_uiMgr;
     ui.createTitleAtTop("event_title", "Event Demo State", UIConstants::DEFAULT_TITLE_HEIGHT);  // Use standard title height (auto-repositions)
 
     ui.createLabel("event_phase", {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y, 300, UIConstants::INFO_LABEL_HEIGHT}, "Phase: Initialization");
@@ -301,6 +302,16 @@ bool EventDemoState::enter() {
 bool EventDemoState::exit() {
   GAMESTATE_INFO("Exiting EventDemoState...");
 
+  // Cache manager references for better performance
+  AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
+  CollisionManager &collisionMgr = CollisionManager::Instance();
+  PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
+  ParticleManager &particleMgr = ParticleManager::Instance();
+  UIManager &ui = UIManager::Instance();
+  WorldManager &worldMgr = WorldManager::Instance();
+  EventManager &eventMgr = EventManager::Instance();
+
   try {
     if (m_transitioningToLoading) {
       // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
@@ -328,23 +339,20 @@ bool EventDemoState::exit() {
       unregisterEventHandlers();
 
       // Remove all events from EventManager
-      EventManager::Instance().clearAllEvents();
+      eventMgr.clearAllEvents();
 
       // Clean up managers (same as full exit)
-      AIManager &aiMgr = AIManager::Instance();
       aiMgr.prepareForStateTransition();
+      edm.prepareForStateTransition();
 
-      CollisionManager &collisionMgr = CollisionManager::Instance();
       if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
         collisionMgr.prepareForStateTransition();
       }
 
-      PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
       if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
         pathfinderMgr.prepareForStateTransition();
       }
 
-      ParticleManager &particleMgr = ParticleManager::Instance();
       if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
         particleMgr.prepareForStateTransition();
       }
@@ -353,11 +361,9 @@ bool EventDemoState::exit() {
       m_camera.reset();
 
       // Clean up UI
-      auto &ui = UIManager::Instance();
       ui.prepareForStateTransition();
 
       // Unload world (LoadingState will reload it)
-      WorldManager &worldMgr = WorldManager::Instance();
       if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
         worldMgr.unloadWorld();
         // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
@@ -393,28 +399,25 @@ bool EventDemoState::exit() {
     unregisterEventHandlers();
 
     // Remove all events from EventManager
-    EventManager::Instance().clearAllEvents();
+    eventMgr.clearAllEvents();
 
     // Optional: leave global handlers intact for other states; no blanket clear here
 
     // Use manager prepareForStateTransition methods for deterministic cleanup
-    AIManager &aiMgr = AIManager::Instance();
     aiMgr.prepareForStateTransition();
+    edm.prepareForStateTransition();
 
     // Clean collision state before other systems
-    CollisionManager &collisionMgr = CollisionManager::Instance();
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
     }
 
     // Clean pathfinding state for fresh start
-    PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
     if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
       pathfinderMgr.prepareForStateTransition();
     }
 
     // Simple particle cleanup - let prepareForStateTransition handle everything
-    ParticleManager &particleMgr = ParticleManager::Instance();
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
       particleMgr.prepareForStateTransition(); // This handles weather effects
                                                // and cleanup
@@ -424,12 +427,10 @@ bool EventDemoState::exit() {
     m_camera.reset();
 
     // Clean up UI components before world cleanup
-    auto &ui = UIManager::Instance();
     ui.prepareForStateTransition();
 
     // Unload the world when fully exiting, but only if there's actually a world loaded
     // This matches GamePlayState's safety pattern and prevents Metal renderer crashes
-    WorldManager &worldMgr = WorldManager::Instance();
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
       // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
@@ -845,6 +846,8 @@ void EventDemoState::createTestEvents() {
 void EventDemoState::handleInput() {
   // Cache manager references for better performance
   const InputManager &inputMgr = InputManager::Instance();
+  ParticleManager &particleMgr = ParticleManager::Instance();
+  const UIManager &ui = *mp_uiMgr;
 
   // Use InputManager's new event-driven key press detection
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE)) {
@@ -964,9 +967,6 @@ void EventDemoState::handleInput() {
     addLogEntry(m_autoMode ? "Auto mode ON" : "Auto mode OFF");
   }
 
-  // Cache ParticleManager reference for better performance
-  ParticleManager &particleMgr = ParticleManager::Instance();
-
   // Fire effect toggle (F key)
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_F)) {
     particleMgr.toggleFireEffect();
@@ -1005,7 +1005,7 @@ void EventDemoState::handleInput() {
   // Mouse input for world interaction
     if (inputMgr.getMouseButtonState(LEFT) && m_camera) {
         Vector2D const mousePos = inputMgr.getMousePosition();
-        const auto& ui = UIManager::Instance();
+        // ui already cached at top of function
 
         if (!ui.isClickOnUI(mousePos)) {
             // World interaction at mouse position
@@ -1159,8 +1159,10 @@ void EventDemoState::triggerResourceDemo() {
     return;
   }
 
+  // Cache manager references for better performance
   auto *inventory = m_player->getInventory();
   const auto &templateManager = ResourceTemplateManager::Instance();
+  const EventManager &eventMgr = EventManager::Instance();
 
   if (!templateManager.isInitialized()) {
     addLogEntry("Resource: not initialized");
@@ -1277,7 +1279,7 @@ void EventDemoState::triggerResourceDemo() {
       addLogEntry(std::format("+{} {} ({} total)", quantity, resourceName, newQuantity));
 
       // Trigger resource change via EventManager (deferred by default)
-      const EventManager &eventMgr = EventManager::Instance();
+      // eventMgr already cached at top of function
       eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
                                      newQuantity, "event_demo");
     } else {
@@ -1294,7 +1296,7 @@ void EventDemoState::triggerResourceDemo() {
         addLogEntry(std::format("-{} {} ({} left)", removeQuantity, resourceName, newQuantity));
 
         // Trigger resource change via EventManager (deferred by default)
-        const EventManager &eventMgr = EventManager::Instance();
+        // eventMgr already cached at top of function
         eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
                                        newQuantity, "event_demo");
       } else {
@@ -1792,12 +1794,12 @@ void EventDemoState::updateInstructions() {
 }
 
 void EventDemoState::cleanupSpawnedNPCs() {
+  // Cache AIManager reference for better performance
+  AIManager &aiMgr = AIManager::Instance();
+
   for (const auto &npc : m_spawnedNPCs) {
     if (npc) {
       try {
-        // Cache AIManager reference for better performance
-        AIManager &aiMgr = AIManager::Instance();
-
         // Phase 2 EDM Migration: Use EntityHandle-based API
         EntityHandle handle = npc->getHandle();
         if (handle.isValid() && aiMgr.hasBehavior(handle)) {
