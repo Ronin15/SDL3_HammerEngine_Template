@@ -93,10 +93,10 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
   m_lastCrowdAnalysis += ctx.deltaTime;
   float crowdCacheInterval = 3.0f + (static_cast<float>(ctx.entityId % 200) * 0.01f); // 3-5 seconds
   if (m_lastCrowdAnalysis >= crowdCacheInterval) {
-    // TODO: Need to update GetNearbyEntitiesWithPositions to use EntityID instead of EntityPtr
-    // For now, we'll skip this optimization in the BehaviorContext path
-    m_cachedNearbyCount = 0;
-    m_cachedNearbyPositions.clear();
+    // Query nearby entities for separation steering
+    constexpr float kCrowdQueryRadius = 80.0f;
+    m_cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
+        ctx.entityId, ctx.transform.position, kCrowdQueryRadius, m_cachedNearbyPositions);
     m_lastCrowdAnalysis = 0.0f;
   }
 

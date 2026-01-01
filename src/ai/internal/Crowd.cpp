@@ -88,42 +88,9 @@ struct SpatialQueryCache {
 // Thread-local cache instance (one per worker thread)
 static thread_local SpatialQueryCache g_spatialCache;
 
-// NOTE: ApplySeparation functions removed - CollisionManager handles overlap resolution
-
-Vector2D SmoothVelocityTransition(const Vector2D &currentVel,
-                                  const Vector2D &targetVel,
-                                  float smoothingFactor,
-                                  float maxChange) {
-  Vector2D deltaVel = targetVel - currentVel;
-  float const deltaLen = deltaVel.length();
-  
-  if (deltaLen <= 0.01f) {
-    return currentVel; // No significant change needed
-  }
-  
-  // Limit maximum change per frame to prevent jitter
-  if (deltaLen > maxChange) {
-    deltaVel = deltaVel * (maxChange / deltaLen);
-  }
-  
-  // Apply smoothing - smaller factor = more smoothing
-  Vector2D const smoothedDelta = deltaVel * smoothingFactor;
-  Vector2D result = currentVel + smoothedDelta;
-  
-  // Ensure the result maintains reasonable bounds
-  float const resultLen = result.length();
-  if (resultLen > 200.0f) { // Cap maximum velocity
-    result = result * (200.0f / resultLen);
-  }
-  
-  return result;
-}
-
-int CountNearbyEntities(EntityPtr entity, const Vector2D &center, float radius) {
-  if (!entity) return 0;
-  
+int CountNearbyEntities(EntityID excludeId, const Vector2D &center, float radius) {
   const auto &cm = CollisionManager::Instance();
-  
+
   // Use thread-local vector to avoid repeated allocations
   static thread_local std::vector<EntityID> queryResults;
   queryResults.clear();
@@ -141,16 +108,15 @@ int CountNearbyEntities(EntityPtr entity, const Vector2D &center, float radius) 
 
   // Count only actual entities (dynamic/kinematic, non-trigger, excluding self)
   return std::count_if(queryResults.begin(), queryResults.end(),
-                       [entity, &cm](auto id) {
-                         return id != entity->getID() && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id);
+                       [excludeId, &cm](auto id) {
+                         return id != excludeId && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id);
                        });
 }
 
-int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, float radius, 
+int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center, float radius,
                                    std::vector<Vector2D> &outPositions) {
   outPositions.clear();
-  if (!entity) return 0;
-  
+
   const auto &cm = CollisionManager::Instance();
 
   // Use thread-local vector to avoid repeated allocations
@@ -170,14 +136,14 @@ int GetNearbyEntitiesWithPositions(EntityPtr entity, const Vector2D &center, flo
 
   // Collect positions of actual entities (dynamic/kinematic, non-trigger, excluding self)
   for (auto id : queryResults) {
-    if (id != entity->getID() && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
+    if (id != excludeId && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
       Vector2D entityPos;
       if (cm.getBodyCenter(id, entityPos)) {
         outPositions.push_back(entityPos);
       }
     }
   }
-  
+
   return static_cast<int>(outPositions.size());
 }
 

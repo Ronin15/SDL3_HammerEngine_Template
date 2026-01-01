@@ -301,6 +301,17 @@ void AIManager::update(float deltaTime) {
     bool hasPlayer = m_playerHandle.isValid();
     Vector2D playerPos = hasPlayer ? getPlayerPosition() : Vector2D(0, 0);
 
+    // OPTIMIZATION: Query world bounds ONCE per frame (not per batch)
+    float worldWidth = 32000.0f;
+    float worldHeight = 32000.0f;
+    if (mp_pathfinderManager) {
+      float w, h;
+      if (mp_pathfinderManager->getCachedWorldBounds(w, h) && w > 0 && h > 0) {
+        worldWidth = w;
+        worldHeight = h;
+      }
+    }
+
     // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
     // No intermediate buffer copy needed - preFetchedData is our only copy
     // This eliminates redundant copying and reduces cache thrashing
@@ -336,7 +347,7 @@ void AIManager::update(float deltaTime) {
         // Hold shared_lock during processing for thread-safe read access
         {
           std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
+          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
         }
       } else {
         // Use centralized WorkerBudgetManager for smart worker allocation
@@ -360,7 +371,7 @@ void AIManager::update(float deltaTime) {
           // Hold shared_lock during processing for thread-safe read access
           {
             std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-            processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
+            processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
           }
         } else {
           size_t entitiesPerBatch = entityCount / batchCount;
@@ -386,12 +397,12 @@ void AIManager::update(float deltaTime) {
             // Submit each batch with future for completion tracking
             // Each batch will acquire its own shared_lock during execution
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-              [this, start, end, deltaTime, playerPos, hasPlayer]() -> void {
+              [this, start, end, deltaTime, playerPos, hasPlayer, worldWidth, worldHeight]() -> void {
                 try {
                   // Acquire shared_lock for this batch's execution
                   // Multiple batches can hold shared_locks simultaneously (parallel reads)
                   std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-                  processBatch(start, end, deltaTime, playerPos, hasPlayer, m_storage);
+                  processBatch(start, end, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
@@ -413,7 +424,7 @@ void AIManager::update(float deltaTime) {
       // Hold shared_lock during processing for thread-safe read access
       {
         std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage);
+        processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
       }
     }
 
@@ -1054,17 +1065,9 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 void AIManager::processBatch(size_t start, size_t end, float deltaTime,
                              const Vector2D& /*playerPos*/,
                              bool /*hasPlayer*/,
-                             const EntityStorage& storage) {
+                             const EntityStorage& storage,
+                             float worldWidth, float worldHeight) {
   size_t batchExecutions = 0;
-
-  // OPTIMIZATION: Get world bounds ONCE per batch (not per entity)
-  const auto &pf = *mp_pathfinderManager;
-  float worldWidth, worldHeight;
-  if (!pf.getCachedWorldBounds(worldWidth, worldHeight) || worldWidth <= 0 || worldHeight <= 0) {
-    worldWidth = 32000.0f;
-    worldHeight = 32000.0f;
-  }
-
   auto& edm = EntityDataManager::Instance();
 
   for (size_t i = start; i < end && i < storage.handles.size(); ++i) {
