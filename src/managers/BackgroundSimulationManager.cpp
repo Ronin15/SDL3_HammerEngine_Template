@@ -76,30 +76,42 @@ void BackgroundSimulationManager::prepareForStateTransition() {
 }
 
 // ============================================================================
-// MAIN UPDATE (Accumulator Pattern - like TimestepManager)
+// MAIN UPDATE - Unified tier recalc + background entity processing
 // ============================================================================
 
-void BackgroundSimulationManager::update(float deltaTime) {
-    // Early exit checks (follows AIManager pattern)
+void BackgroundSimulationManager::update(const Vector2D& referencePoint, float deltaTime) {
+    // === CRITICAL: Early exit checks FIRST - match all other managers ===
+    // When paused: NO work at all (no frame counter, no tier check, nothing)
     if (!m_initialized.load(std::memory_order_acquire) ||
-        m_isShutdown.load(std::memory_order_acquire)) {
-        return;
+        m_isShutdown.load(std::memory_order_acquire) ||
+        m_globallyPaused.load(std::memory_order_acquire)) {
+        return;  // Complete skip - zero CPU cycles when paused
     }
 
-    // Skip processing if globally paused
-    if (m_globallyPaused.load(std::memory_order_acquire)) {
-        return;
+    // === PHASE 1: Periodic tier recalculation (every 60 frames) ===
+    m_framesSinceTierUpdate++;
+    bool needsTierUpdate = m_tiersDirty.load(std::memory_order_acquire) ||
+                           m_framesSinceTierUpdate >= TIER_UPDATE_INTERVAL;
+
+    if (needsTierUpdate) {
+        setReferencePoint(referencePoint);
+        updateTiers();
+        m_framesSinceTierUpdate = 0;
+        m_tiersDirty.store(false, std::memory_order_release);
+
+        // Update work flag based on tier results
+        auto& edm = EntityDataManager::Instance();
+        auto backgroundSpan = edm.getBackgroundIndices();
+        m_hasNonActiveEntities.store(!backgroundSpan.empty(), std::memory_order_release);
     }
 
-    // Accumulate real time passed
+    // === PHASE 2: Background entity processing (10Hz, only if work exists) ===
+    if (!m_hasNonActiveEntities.load(std::memory_order_acquire)) {
+        return;  // No background entities - skip processing entirely
+    }
+
+    // Accumulator pattern for 10Hz updates
     m_accumulator += deltaTime;
-
-    // Only process when enough time has accumulated for target update rate (e.g., 30Hz)
-    if (m_accumulator < m_updateInterval) {
-        return;  // Not time yet
-    }
-
-    // Process updates - consume accumulated time (handles catch-up for slow frames)
     while (m_accumulator >= m_updateInterval) {
         m_accumulator -= m_updateInterval;
         processBackgroundEntities(m_updateInterval);
@@ -109,24 +121,12 @@ void BackgroundSimulationManager::update(float deltaTime) {
 void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime) {
     auto t0 = std::chrono::steady_clock::now();
 
-    // Periodic tier update (still frame-based for consistency with EDM)
-    m_framesSinceTierUpdate++;
-    if (m_tiersDirty.load(std::memory_order_acquire) ||
-        m_framesSinceTierUpdate >= m_tierUpdateInterval) {
-        updateTiers();
-        m_framesSinceTierUpdate = 0;
-        m_tiersDirty.store(false, std::memory_order_release);
-    }
-
     // Get background tier indices from EntityDataManager
+    // Note: Tier updates now happen in unified update() method
     auto& edm = EntityDataManager::Instance();
     auto backgroundSpan = edm.getBackgroundIndices();
 
-    // Update work-tracking flag for hasWork() optimization
-    bool hasBackground = !backgroundSpan.empty();
-    m_hasNonActiveEntities.store(hasBackground, std::memory_order_release);
-
-    if (!hasBackground) {
+    if (backgroundSpan.empty()) {
         m_perf.lastEntitiesProcessed = 0;
         m_perf.lastUpdateMs = 0.0;
         return;
@@ -173,13 +173,15 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.updateAverage(elapsedMs);
 
-    // Periodic logging (every 300 frames, similar to other managers)
-    if (m_perf.totalUpdates % 300 == 0 && entityCount > 0) {
+#ifndef NDEBUG
+    // Rolling log every 60 seconds (600 updates at 10Hz)
+    if (m_perf.totalUpdates % 600 == 0 && entityCount > 0) {
         BGSIM_DEBUG(std::format(
-            "Background Sim - Entities: {}, Update: {:.2f}ms, Avg: {:.2f}ms [{}]",
-            entityCount, elapsedMs, m_perf.avgUpdateMs,
-            useThreading ? std::format("{} batches", batchCount) : "Single-threaded"));
+            "Entities: {}, Avg: {:.2f}ms [{}]",
+            entityCount, m_perf.avgUpdateMs,
+            useThreading ? std::format("{} batches", batchCount) : "single"));
     }
+#endif
 }
 
 void BackgroundSimulationManager::waitForAsyncCompletion() {
@@ -210,8 +212,8 @@ void BackgroundSimulationManager::setReferencePoint(const Vector2D& position) {
     float dy = position.getY() - m_referencePoint.getY();
     float distSq = dx * dx + dy * dy;
 
-    // Threshold: 100 units movement triggers tier recalculation
-    constexpr float MOVEMENT_THRESHOLD_SQ = 100.0f * 100.0f;
+    // Threshold: 32 units movement triggers tier recalculation (1-2 tiles)
+    constexpr float MOVEMENT_THRESHOLD_SQ = 32.0f * 32.0f;
 
     if (distSq > MOVEMENT_THRESHOLD_SQ) {
         m_referencePoint = position;

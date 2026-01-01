@@ -21,8 +21,8 @@
  * Threading Model (follows AIManager pattern):
  * - Uses WorkerBudget for adaptive batch sizing
  * - Submits batches to ThreadSystem for parallel processing
- * - Runs during vsync wait via processBackgroundTasks()
- * - Low priority tasks that don't block frame rendering
+ * - Called at end of GameEngine::update() for power efficiency
+ * - Handles tier updates (every 60 frames) + background entity processing (10Hz)
  */
 
 #include "entities/EntityHandle.hpp"
@@ -92,15 +92,18 @@ public:
     }
 
     /**
-     * @brief Process background tier entities (main update)
+     * @brief Main update - handles tier recalc AND background entity processing
      *
-     * Called from game loop. Uses WorkerBudget to determine threading strategy.
-     * For small entity counts: single-threaded
-     * For large counts: batched parallel processing via ThreadSystem
+     * Power-efficient single entry point called at end of GameEngine::update():
+     * - Phase 1: Tier updates every 60 frames (~1 sec at 60Hz)
+     * - Phase 2: Background entity processing at 10Hz (only if entities exist)
      *
-     * @param deltaTime Time since last update
+     * When paused: immediate return, zero CPU cycles.
+     *
+     * @param referencePoint Player/camera position for tier distance calculation
+     * @param deltaTime Frame delta time (for accumulator)
      */
-    void update(float deltaTime);
+    void update(const Vector2D& referencePoint, float deltaTime);
 
     /**
      * @brief Wait for any async background processing to complete
@@ -150,7 +153,6 @@ public:
     // Configuration
     void setActiveRadius(float radius) { m_activeRadius = radius; }
     void setBackgroundRadius(float radius) { m_backgroundRadius = radius; }
-    void setTierUpdateInterval(uint32_t frames) { m_tierUpdateInterval = frames; }
 
     /**
      * @brief Configure tier radii based on screen dimensions
@@ -170,8 +172,8 @@ public:
 
         // Active: 1.5x visible range (entities on screen + small buffer)
         m_activeRadius = halfDiagonal * 1.5f;
-        // Background: 3x visible range (pre-load zone for smooth transitions)
-        m_backgroundRadius = halfDiagonal * 3.0f;
+        // Background: 2x visible range (pre-load zone for smooth transitions)
+        m_backgroundRadius = halfDiagonal * 2.0f;
 
         // Mark tiers dirty to recalculate with new radii
         invalidateTiers();
@@ -179,7 +181,6 @@ public:
 
     [[nodiscard]] float getActiveRadius() const { return m_activeRadius; }
     [[nodiscard]] float getBackgroundRadius() const { return m_backgroundRadius; }
-    [[nodiscard]] uint32_t getTierUpdateInterval() const { return m_tierUpdateInterval; }
 
     /**
      * @brief Set the update rate for background simulation
@@ -242,11 +243,13 @@ private:
     // Default radii based on 1920x1080 logical resolution:
     // - Half-diagonal (center to corner) ≈ 1100 pixels
     // - Active: 1.5x half-diagonal = entities visible + small buffer
-    // - Background: 3x half-diagonal = pre-loading area for smooth transitions
+    // - Background: 2x half-diagonal = pre-loading area for smooth transitions
     // - Hibernated: beyond background radius (no processing)
     float m_activeRadius{1650.0f};      // ~1.5x window half-diagonal (visible + buffer)
-    float m_backgroundRadius{3300.0f};  // ~3x window half-diagonal (pre-load zone)
-    uint32_t m_tierUpdateInterval{60};  // Update tiers every N frames
+    float m_backgroundRadius{2200.0f};  // ~2x window half-diagonal (pre-load zone)
+
+    // Tier update interval - every 60 main loop frames (~1 second at 60Hz)
+    static constexpr uint32_t TIER_UPDATE_INTERVAL{60};
 
     // Timing (accumulator pattern like TimestepManager)
     // 10Hz is sufficient for off-screen entities - saves CPU while maintaining world consistency

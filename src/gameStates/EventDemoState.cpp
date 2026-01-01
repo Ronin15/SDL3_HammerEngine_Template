@@ -508,10 +508,10 @@ void EventDemoState::update(float deltaTime) {
     m_player->update(deltaTime);
   }
 
-  // Update spawned NPCs (animations and state machine)
-  // AIManager handles behavior logic, but NPC::update() handles animations
+  // Update Active tier NPCs only (animations and state machine)
+  // AIManager handles behavior logic, BackgroundSimulationManager handles non-Active
   for (auto& npc : m_spawnedNPCs) {
-    if (npc) {
+    if (npc && npc->isInActiveTier()) {
       npc->update(deltaTime);
     }
   }
@@ -695,9 +695,9 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
   }
 
-  // Render spawned NPCs using same camera offset as world (ensures sync)
+  // Render Active tier NPCs only (off-screen entities skip rendering)
   for (const auto &npc : m_spawnedNPCs) {
-    if (npc) {
+    if (npc && npc->isInActiveTier()) {
       npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
     }
   }
