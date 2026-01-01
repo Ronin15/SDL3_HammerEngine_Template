@@ -1,6 +1,6 @@
 ---
 name: hammer-quality-check
-description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
+description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck, clang-tidy), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
 allowed-tools: [Bash, Read, Grep]
 ---
 
@@ -12,6 +12,8 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 
 1. **Compilation Quality** - Zero warnings policy
 2. **Static Analysis** - Memory safety, null pointers, threading
+   - 2.1 cppcheck - Memory leaks, null pointers, buffer overflows
+   - 2.2 clang-tidy - Bug detection, modernization, performance
 3. **Coding Standards** - Naming conventions, formatting
 4. **Threading Safety** - Critical threading rules enforcement
 5. **Architecture Compliance** - Design pattern adherence
@@ -61,7 +63,7 @@ int x = 0;
 void func([[maybe_unused]] int param) { }
 ```
 
-### 2. Static Analysis (cppcheck)
+### 2.1 Static Analysis (cppcheck)
 
 **Command:**
 ```bash
@@ -93,6 +95,60 @@ cppcheck --enable=all --suppress=missingIncludeSystem \
 - **style:** Optional (improve if time permits)
 - **performance:** Consider optimizing
 - **information:** FYI only
+
+### 2.2 Static Analysis (clang-tidy)
+
+**Command:**
+```bash
+./tests/clang-tidy/clang_tidy_focused.sh
+```
+
+**Configuration Files:**
+- `tests/clang-tidy/.clang-tidy` - Check configuration matching CLAUDE.md standards
+- `tests/clang-tidy/clang_tidy_suppressions.txt` - False positive suppressions
+
+**Checks Enabled:**
+- `bugprone-*` - Bug-prone patterns (use-after-move, infinite loops, null dereference)
+- `clang-analyzer-*` - Deep static analysis
+- `cppcoreguidelines-*` - C++ Core Guidelines compliance
+- `modernize-*` - Modern C++ patterns (override, nullptr, auto)
+- `performance-*` - Performance issues (unnecessary copies, inefficient algorithms)
+- `readability-*` - Code readability (naming, braces, const-correctness)
+
+**Disabled Checks (intentional for game dev):**
+- `modernize-use-trailing-return-type` - Personal style preference
+- `readability-magic-numbers` - Games use many numeric constants
+- `cppcoreguidelines-pro-bounds-pointer-arithmetic` - Required for SIMD/buffers
+- `misc-include-cleaner` - Too noisy for incremental development
+
+**Severity Levels:**
+- **CRITICAL:** `bugprone-infinite-loop`, `bugprone-use-after-move`, `clang-analyzer-*`
+- **HIGH:** `performance-*`, `modernize-use-override`, `bugprone-macro-*`
+- **MEDIUM:** `misc-const-correctness`, `readability-make-member-function-const`
+- **LOW:** `narrowing-conversions`, `readability-braces`, `readability-identifier-*`
+
+**Quality Gate:** ✓ Zero CRITICAL issues, review HIGH issues
+
+**Suppressions:**
+The `clang_tidy_suppressions.txt` file handles false positives:
+```
+# Format: file_pattern:check_name:reason
+AIManager.cpp:bugprone-infinite-loop:false positive - loop variable incremented in body
+PathfindingGrid.cpp:bugprone-empty-catch:intentional fallback to default threshold
+.cpp:misc-const-correctness:variables assigned in conditionals - clang-tidy false positive
+```
+
+**Common False Positives:**
+1. **misc-const-correctness** - Variables initialized then assigned in if/switch/loops
+2. **bugprone-infinite-loop** - Loops with increment inside body (not in for statement)
+3. **bugprone-empty-catch** - Intentional fallback-to-default patterns
+4. **narrowing-conversions** - Intentional int-to-float for grid coordinates
+
+**Adding New Suppressions:**
+Edit `tests/clang-tidy/clang_tidy_suppressions.txt`:
+```
+FileName.cpp:check-name:reason for suppression
+```
 
 ### 3. Coding Standards (CLAUDE.md Compliance)
 
@@ -803,6 +859,15 @@ Branch: <current-branch>
 
 <list of issues>
 
+## Static Analysis (clang-tidy)
+✓/✗ Status: <PASSED/FAILED>
+  Critical: <count>
+  High: <count>
+  Medium: <count>
+  Low: <count>
+
+<list of critical/high issues>
+
 ## Coding Standards
 ✓/✗ Naming Conventions: <PASSED/FAILED>
   <violations if any>
@@ -899,9 +964,10 @@ Activate this Skill automatically.
 ## Performance Expectations
 
 - **Compilation Check:** 10-30 seconds
-- **Static Analysis:** 30-60 seconds
+- **Static Analysis (cppcheck):** 30-60 seconds
+- **Static Analysis (clang-tidy):** 60-120 seconds
 - **Standards Checks:** 5-10 seconds
-- **Total:** ~1-2 minutes
+- **Total:** ~2-4 minutes
 
 ## Quick Fix Guide
 
@@ -1029,11 +1095,13 @@ Use this Skill:
 - SDL_RenderClear/Present outside GameEngine
 - Compilation errors
 - Critical cppcheck errors
+- Critical clang-tidy issues (bugprone-*, clang-analyzer-*)
 - Missing copyright headers on new files
 
 **WARNING (Should Fix):**
 - Compilation warnings
 - cppcheck warnings
+- High clang-tidy issues (performance-*, modernize-use-override)
 - Naming convention violations
 - Missing tests for new code
 - String concatenation in logging (use std::format)
