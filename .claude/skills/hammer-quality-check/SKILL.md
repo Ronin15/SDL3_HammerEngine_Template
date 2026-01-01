@@ -23,6 +23,7 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
    - 5.6 Buffer reuse (avoid per-frame allocations)
    - 5.7 UI component positioning
    - 5.8 Rendering rules (deferred transitions)
+   - 5.9 Singleton manager caching (no duplicate Instance() calls)
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -632,6 +633,122 @@ void MyState::update(float dt) {
 
 **Quality Gate:** ✓ No SDL_RenderClear/Present outside GameEngine (BLOCKING)
 
+#### 5.9 Singleton Manager Caching (CRITICAL)
+
+**Background:**
+Calling `Manager::Instance()` repeatedly within the same function wastes CPU cycles. Each call goes through singleton lookup logic. In hot paths (update, handleInput, render), this adds measurable overhead. The fix is simple: cache manager references at the top of each function.
+
+**Check Commands:**
+```bash
+# Find duplicate Instance() calls in the same function (GameStates are hot paths)
+for file in src/gameStates/*.cpp; do
+  echo "=== $file ==="
+  awk '/^void.*::|^bool.*::/{fn=$2; sub(/\(.*/, "", fn); delete seen}
+       /::Instance\(\)/{
+         mgr=$0; sub(/.*&[[:space:]]*/, "", mgr); sub(/[[:space:]]*=.*/, "", mgr);
+         if (seen[mgr]++) print "  DUPLICATE in "fn": "mgr
+       }' "$file"
+done
+
+# Find Instance() calls not at function start (should be cached at top)
+grep -rn "::Instance()" src/gameStates/ --include="*.cpp" | grep -v "= &.*::Instance\|= .*::Instance"
+```
+
+**FORBIDDEN PATTERNS:**
+
+**Pattern 1: Duplicate Instance() Calls in Same Function**
+```cpp
+// ✗ BAD - Multiple Instance() calls for same manager
+void GameState::handleInput() {
+    if (InputManager::Instance().wasKeyPressed(KEY_A)) {
+        AIManager::Instance().doSomething();  // First call
+    }
+    if (InputManager::Instance().wasKeyPressed(KEY_B)) {
+        AIManager::Instance().doSomethingElse();  // DUPLICATE!
+    }
+}
+
+// ✓ GOOD - Cache at function start
+void GameState::handleInput() {
+    // Cache manager references for better performance
+    const InputManager& inputMgr = InputManager::Instance();
+    AIManager& aiMgr = AIManager::Instance();
+
+    if (inputMgr.wasKeyPressed(KEY_A)) {
+        aiMgr.doSomething();
+    }
+    if (inputMgr.wasKeyPressed(KEY_B)) {
+        aiMgr.doSomethingElse();
+    }
+}
+```
+
+**Pattern 2: Instance() Called in Nested Blocks Instead of Top**
+```cpp
+// ✗ BAD - Instance() called inside branches
+void GameState::update(float dt) {
+    if (condition) {
+        auto& mgr = SomeManager::Instance();  // Inside if block
+        mgr.process();
+    } else {
+        auto& mgr = SomeManager::Instance();  // DUPLICATE in else!
+        mgr.processAlternate();
+    }
+}
+
+// ✓ GOOD - Cache once at top, use in all branches
+void GameState::update(float dt) {
+    // Cache manager references for better performance
+    SomeManager& mgr = SomeManager::Instance();
+
+    if (condition) {
+        mgr.process();
+    } else {
+        mgr.processAlternate();
+    }
+}
+```
+
+**Pattern 3: Ignoring Already Cached Pointer Members**
+```cpp
+// ✗ BAD - Ignoring cached mp_uiMgr, calling Instance() again
+bool GameState::enter() {
+    mp_uiMgr = &UIManager::Instance();  // Pointer cached here
+    // ... later in same function ...
+    auto& ui = UIManager::Instance();   // REDUNDANT! Use mp_uiMgr
+    ui.createButton(...);
+}
+
+// ✓ GOOD - Use the cached pointer
+bool GameState::enter() {
+    mp_uiMgr = &UIManager::Instance();  // Pointer cached here
+    // ... later in same function ...
+    auto& ui = *mp_uiMgr;  // Use cached pointer
+    ui.createButton(...);
+}
+```
+
+**Managers to Check (Common in GameStates):**
+- `AIManager::Instance()`
+- `UIManager::Instance()`
+- `InputManager::Instance()`
+- `EventManager::Instance()`
+- `ParticleManager::Instance()`
+- `CollisionManager::Instance()`
+- `PathfinderManager::Instance()`
+- `WorldManager::Instance()`
+- `GameTimeManager::Instance()`
+- `EntityDataManager::Instance()`
+- `GameEngine::Instance()`
+
+**Performance Impact:**
+- Each redundant Instance() call: ~10-50 nanoseconds
+- In tight loops or 60Hz update paths: Adds up to measurable overhead
+- GameStates with 5-10 duplicate calls: ~0.5-1μs wasted per frame
+- At 10K entities with behaviors: Can add 1-5ms per frame
+
+**Quality Gate:** ✓ No duplicate Instance() calls within same function (BLOCKING for GameStates)
+
 ### 6. Copyright & Legal Compliance
 
 **Check Command:**
@@ -715,6 +832,8 @@ Branch: <current-branch>
   <violations if any - BLOCKING for hot paths>
 ✓/✗ UI Positioning: <PASSED/FAILED>
   <missing setComponentPositioning calls>
+✓/✗ Singleton Manager Caching: <PASSED/FAILED>
+  <duplicate Instance() calls - BLOCKING for GameStates>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -872,6 +991,26 @@ Activate this Skill automatically.
     // Use deferred: m_shouldTransition = true; // then transition in update()
     ```
 
+15. **Duplicate Manager::Instance() calls:**
+    ```cpp
+    // Instead of calling Instance() multiple times in same function:
+    void handleInput() {
+        // Cache ALL managers at function start
+        const InputManager& inputMgr = InputManager::Instance();
+        AIManager& aiMgr = AIManager::Instance();
+        UIManager& ui = UIManager::Instance();
+        // ... use cached references throughout
+    }
+    ```
+
+16. **Ignoring cached pointer members (mp_*):**
+    ```cpp
+    // If mp_uiMgr is set at top of enter():
+    mp_uiMgr = &UIManager::Instance();
+    // Later in SAME function, use the pointer, not Instance():
+    auto& ui = *mp_uiMgr;  // NOT UIManager::Instance()
+    ```
+
 ## Integration with Workflow
 
 Use this Skill:
@@ -886,6 +1025,7 @@ Use this Skill:
 - Static variables in threaded code
 - Unnecessary shared_ptr copies in hot paths (perf-critical code)
 - Per-frame allocations in hot paths (local containers in update/render)
+- Duplicate Manager::Instance() calls in GameState functions
 - SDL_RenderClear/Present outside GameEngine
 - Compilation errors
 - Critical cppcheck errors
