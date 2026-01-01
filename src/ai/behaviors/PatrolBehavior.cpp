@@ -68,14 +68,20 @@ PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
   setupModeDefaults(mode);
 }
 
-void PatrolBehavior::init(EntityPtr entity) {
-  if (!entity || m_waypoints.empty())
+void PatrolBehavior::init(EntityHandle handle) {
+  if (!handle.isValid() || m_waypoints.empty())
     return;
 
   m_currentWaypoint = 0;
 
-  if (isAtWaypoint(entity->getPosition(), m_waypoints[m_currentWaypoint])) {
-    m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+  // Get position from EDM
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx != SIZE_MAX) {
+    Vector2D position = edm.getHotDataByIndex(idx).transform.position;
+    if (isAtWaypoint(position, m_waypoints[m_currentWaypoint])) {
+      m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+    }
   }
 
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
@@ -274,27 +280,40 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   }
 }
 
-void PatrolBehavior::clean(EntityPtr entity) {
-  if (entity) {
-    entity->setVelocity(Vector2D(0, 0));
+void PatrolBehavior::clean(EntityHandle handle) {
+  if (handle.isValid()) {
+    // Reset velocity via EDM
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    }
   }
 
   m_needsReset = false;
 }
 
-void PatrolBehavior::onMessage(EntityPtr entity, const std::string &message) {
+void PatrolBehavior::onMessage(EntityHandle handle, const std::string &message) {
   if (message == "pause") {
     setActive(false);
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (handle.isValid()) {
+      auto& edm = EntityDataManager::Instance();
+      size_t idx = edm.getIndex(handle);
+      if (idx != SIZE_MAX) {
+        edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      }
     }
   } else if (message == "resume") {
     setActive(true);
   } else if (message == "reverse") {
     reverseWaypoints();
   } else if (message == "release_entities") {
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (handle.isValid()) {
+      auto& edm = EntityDataManager::Instance();
+      size_t idx = edm.getIndex(handle);
+      if (idx != SIZE_MAX) {
+        edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      }
     }
 
     m_needsReset = false;

@@ -17,6 +17,7 @@
 
 // Forward declarations
 class AIManager;
+class BackgroundSimulationManager;
 class EventManager;
 class InputManager;
 class ParticleManager;
@@ -369,6 +370,7 @@ private:
   // InputManager not cached - handled in handleEvents() for proper SDL event
   // polling architecture
   AIManager *mp_aiManager{nullptr};
+  BackgroundSimulationManager *mp_backgroundSimManager{nullptr};
   EventManager *mp_eventManager{nullptr};
   ParticleManager *mp_particleManager{nullptr};
   PathfinderManager *mp_pathfinderManager{nullptr}; // Initialized by AIManager, cached by GameEngine

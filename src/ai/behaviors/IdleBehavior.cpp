@@ -39,12 +39,17 @@ IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
   }
 }
 
-void IdleBehavior::init(EntityPtr entity) {
-  if (!entity)
+void IdleBehavior::init(EntityHandle handle) {
+  if (!handle.isValid())
     return;
 
-  auto &state = m_entityStates[entity->getID()];
-  initializeEntityState(entity->getPosition(), state);
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return;
+
+  auto& hotData = edm.getHotDataByIndex(idx);
+  auto &state = m_entityStates[handle.getId()];
+  initializeEntityState(hotData.transform.position, state);
 }
 
 void IdleBehavior::executeLogic(BehaviorContext& ctx) {
@@ -82,14 +87,14 @@ void IdleBehavior::executeLogic(BehaviorContext& ctx) {
   }
 }
 
-void IdleBehavior::clean(EntityPtr entity) {
-  if (entity) {
-    m_entityStates.erase(entity->getID());
+void IdleBehavior::clean(EntityHandle handle) {
+  if (handle.isValid()) {
+    m_entityStates.erase(handle.getId());
   }
 }
 
-void IdleBehavior::onMessage(EntityPtr entity, const std::string &message) {
-  if (!entity)
+void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
+  if (!handle.isValid())
     return;
 
   // Handle mode changes via messages
@@ -102,10 +107,15 @@ void IdleBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "idle_fidget") {
     setIdleMode(IdleMode::LIGHT_FIDGET);
   } else if (message == "reset_position") {
-    auto it = m_entityStates.find(entity->getID());
+    auto it = m_entityStates.find(handle.getId());
     if (it != m_entityStates.end()) {
-      it->second.originalPosition = entity->getPosition();
-      it->second.currentOffset = Vector2D(0, 0);
+      auto& edm = EntityDataManager::Instance();
+      size_t idx = edm.getIndex(handle);
+      if (idx != SIZE_MAX) {
+        auto& hotData = edm.getHotDataByIndex(idx);
+        it->second.originalPosition = hotData.transform.position;
+        it->second.currentOffset = Vector2D(0, 0);
+      }
     }
   }
 }

@@ -22,7 +22,7 @@
 #include "core/GameEngine.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
-#include <SDL3/SDL.h>
+#include "managers/EntityDataManager.hpp"
 
 #include <format>
 #include <cmath>
@@ -84,7 +84,7 @@ void AdvancedAIDemoState::handleInput() {
         GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc, "Idle");
+            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Idle");
         }
     }
 
@@ -93,7 +93,7 @@ void AdvancedAIDemoState::handleInput() {
         GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc, "Flee");
+            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Flee");
         }
     }
 
@@ -102,7 +102,7 @@ void AdvancedAIDemoState::handleInput() {
         GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc, "Follow");
+            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Follow");
         }
     }
 
@@ -111,7 +111,7 @@ void AdvancedAIDemoState::handleInput() {
         GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc, "Guard");
+            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Guard");
         }
     }
 
@@ -120,7 +120,7 @@ void AdvancedAIDemoState::handleInput() {
         GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
         AIManager& aiMgr = AIManager::Instance();
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc, "Attack");
+            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Attack");
         }
     }
 
@@ -209,7 +209,7 @@ bool AdvancedAIDemoState::enter() {
         // This ensures Follow/Flee/Attack behaviors can access the player target
         // Explicitly cast PlayerPtr to EntityPtr to ensure proper conversion
         EntityPtr playerAsEntity = std::static_pointer_cast<Entity>(m_player);
-        aiMgr.setPlayerForDistanceOptimization(playerAsEntity);
+        aiMgr.setPlayerHandle(playerAsEntity->getHandle());
 
         // Setup advanced AI behaviors AFTER world is initialized and player is set
         // This ensures Guard behavior uses correct world dimensions and Follow has player target
@@ -218,9 +218,6 @@ bool AdvancedAIDemoState::enter() {
         // Register CombatController (follows GamePlayState pattern)
         mp_combatCtrl = &m_controllers.add<CombatController>(m_player);
         m_controllers.subscribeAll();
-
-        // Configure priority multiplier for proper advanced behavior progression
-        aiMgr.configurePriorityMultiplier(1.2f); // Slightly higher for advanced behaviors
 
         // Create NPCs with optimized counts for behavior showcasing
         createAdvancedNPCs();
@@ -437,14 +434,19 @@ void AdvancedAIDemoState::update(float deltaTime) {
             m_player->update(deltaTime);
         }
 
+        // Update NPCs (animations and state machine)
+        // AIManager handles behavior logic, but NPC::update() handles animations
+        for (auto& npc : m_npcs) {
+            if (npc) {
+                npc->update(deltaTime);
+            }
+        }
+
         // Update camera (follows player automatically)
         updateCamera(deltaTime);
 
         // Update controllers (CombatController handles cooldowns, stamina regen)
         m_controllers.updateAll(deltaTime);
-
-        // AI Manager is updated globally by GameEngine for optimal performance
-        // Entity updates are handled by AIManager::update() in GameEngine
 
         // Update UI (moved from render path for consistent frame timing)
         if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
@@ -622,8 +624,11 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 // Set wander area to keep NPCs on screen
                 npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
 
-                // Initialize with Follow behavior by default for smooth movement demonstration
-                aiMgr.registerEntityForUpdates(npc, 5, "Follow");
+                // Phase 2 EDM Migration: Use EntityHandle-based registration
+                EntityHandle handle = npc->getHandle();
+                if (handle.isValid()) {
+                  aiMgr.registerEntity(handle, "Follow");
+                }
 
                 // Add to collection
                 m_npcs.push_back(npc);

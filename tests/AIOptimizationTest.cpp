@@ -15,24 +15,29 @@
 #include "core/ThreadSystem.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "utils/Vector2D.hpp"
 
 // Simple test entity for optimization tests
+// NOTE: Does NOT call setPosition() in constructor - position is set via registerEntity
+// which registers with EDM first, then sets position through the valid handle.
 class OptimizationTestEntity : public Entity {
 public:
-    OptimizationTestEntity(const Vector2D& pos) {
+    OptimizationTestEntity() {
         setTextureID("test");
-        setPosition(pos);
         setWidth(32);
         setHeight(32);
+        // Don't call setPosition() here - m_handle is not set yet!
     }
 
     // Factory method for proper shared_ptr initialization
-    static std::shared_ptr<OptimizationTestEntity> create(const Vector2D& pos) {
-        return std::make_shared<OptimizationTestEntity>(pos);
+    static std::shared_ptr<OptimizationTestEntity> create([[maybe_unused]] const Vector2D& pos) {
+        // pos parameter kept for API compatibility but not used in constructor
+        return std::make_shared<OptimizationTestEntity>();
     }
 
     void update(float deltaTime) override {
@@ -50,6 +55,11 @@ public:
         // Safe cleanup - we're not calling shared_from_this() here
     }
     [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
+
+    // Public wrapper for protected registerWithDataManager
+    void registerEntity(const Vector2D& pos, float halfW, float halfH) {
+        registerWithDataManager(pos, halfW, halfH, EntityKind::NPC);
+    }
 };
 
 // Global fixture for test setup and cleanup
@@ -57,6 +67,7 @@ struct AITestFixture {
     AITestFixture() {
         // Initialize dependencies required by the real AIManager
         HammerEngine::ThreadSystem::Instance().init();
+        EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
@@ -67,6 +78,7 @@ struct AITestFixture {
         AIManager::Instance().clean();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
         HammerEngine::ThreadSystem::Instance().clean();
     }
 };
@@ -81,10 +93,17 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     AIManager::Instance().registerBehavior("TestWander", wanderBehavior);
 
     // Create test entities and register them for managed updates
+    std::vector<EntityHandle> handles;
     std::vector<EntityPtr> entities;
     for (int i = 0; i < 10; ++i) {
-        entities.push_back(OptimizationTestEntity::create(Vector2D(i * 100.0f, i * 100.0f)));
-        AIManager::Instance().registerEntityForUpdates(entities.back(), 5, "TestWander");
+        Vector2D pos(i * 100.0f, i * 100.0f);
+        auto entity = OptimizationTestEntity::create(pos);
+        entities.push_back(entity);
+        // Register entity with EntityDataManager
+        entity->registerEntity(pos, 16.0f, 16.0f);
+        EntityHandle handle = entity->getHandle();
+        handles.push_back(handle);
+        AIManager::Instance().registerEntity(handle, "TestWander");
     }
 
     // Process pending assignments
@@ -97,10 +116,13 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     BOOST_CHECK_EQUAL(AIManager::Instance().getManagedEntityCount(), 10);
 
     // Cleanup - unregister entities from managed updates
-    for (auto& entity : entities) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    auto& edm = EntityDataManager::Instance();
+    for (const auto& handle : handles) {
+        AIManager::Instance().unregisterEntity(handle);
+        AIManager::Instance().unassignBehavior(handle);
+        edm.unregisterEntity(handle.getId());
     }
+    handles.clear();
     entities.clear();
     AIManager::Instance().resetBehaviors();
 }
@@ -113,11 +135,17 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     AIManager::Instance().registerBehavior("BatchWander", wanderBehavior);
 
     // Create test entities and register them for managed updates
+    std::vector<EntityHandle> handles;
     std::vector<EntityPtr> entityPtrs;
     for (int i = 0; i < 100; ++i) {
-        auto entity = OptimizationTestEntity::create(Vector2D(i * 10.0f, i * 10.0f));
+        Vector2D pos(i * 10.0f, i * 10.0f);
+        auto entity = OptimizationTestEntity::create(pos);
         entityPtrs.push_back(entity);
-        AIManager::Instance().registerEntityForUpdates(entity, 5, "BatchWander");
+        // Register entity with EntityDataManager
+        entity->registerEntity(pos, 16.0f, 16.0f);
+        EntityHandle handle = entity->getHandle();
+        handles.push_back(handle);
+        AIManager::Instance().registerEntity(handle, "BatchWander");
     }
 
     // Process pending assignments
@@ -150,10 +178,13 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     BOOST_CHECK_GT(batchDuration.count(), 0);
 
     // Cleanup - unregister entities from managed updates
-    for (auto& entity : entityPtrs) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    auto& edm = EntityDataManager::Instance();
+    for (const auto& handle : handles) {
+        AIManager::Instance().unregisterEntity(handle);
+        AIManager::Instance().unassignBehavior(handle);
+        edm.unregisterEntity(handle.getId());
     }
+    handles.clear();
     entityPtrs.clear();
     AIManager::Instance().resetBehaviors();
 }
@@ -166,8 +197,12 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
     // Create test entity and register for managed updates
-    auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().registerEntityForUpdates(entity, 5, "LazyWander");
+    Vector2D pos(100.0f, 100.0f);
+    auto entity = OptimizationTestEntity::create(pos);
+    // Register entity with EntityDataManager
+    entity->registerEntity(pos, 16.0f, 16.0f);
+    EntityHandle handle = entity->getHandle();
+    AIManager::Instance().registerEntity(handle, "LazyWander");
 
     // Process pending assignments
     AIManager::Instance().update(0.016f);
@@ -176,11 +211,12 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().waitForAssignmentCompletion();
 
     // Test that behavior is assigned
-    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Cleanup - unregister entity from managed updates
-    AIManager::Instance().unregisterEntityFromUpdates(entity);
-    AIManager::Instance().unassignBehaviorFromEntity(entity);
+    AIManager::Instance().unregisterEntity(handle);
+    AIManager::Instance().unassignBehavior(handle);
+    EntityDataManager::Instance().unregisterEntity(handle.getId());
     AIManager::Instance().resetBehaviors();
 }
 
@@ -192,8 +228,12 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
     // Create test entity and register with consolidated method
-    auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().registerEntityForUpdates(entity, 5, "MsgWander");
+    Vector2D pos(100.0f, 100.0f);
+    auto entity = OptimizationTestEntity::create(pos);
+    // Register entity with EntityDataManager
+    entity->registerEntity(pos, 16.0f, 16.0f);
+    EntityHandle handle = entity->getHandle();
+    AIManager::Instance().registerEntity(handle, "MsgWander");
 
     // Process pending assignments
     AIManager::Instance().update(0.016f);
@@ -202,26 +242,27 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().waitForAssignmentCompletion();
 
     // Queue several messages
-    AIManager::Instance().sendMessageToEntity(entity, "test1");
-    AIManager::Instance().sendMessageToEntity(entity, "test2");
-    AIManager::Instance().sendMessageToEntity(entity, "test3");
+    AIManager::Instance().sendMessageToEntity(handle, "test1");
+    AIManager::Instance().sendMessageToEntity(handle, "test2");
+    AIManager::Instance().sendMessageToEntity(handle, "test3");
 
     // Process the message queue explicitly
     AIManager::Instance().processMessageQueue();
 
     // Test immediate delivery
-    AIManager::Instance().sendMessageToEntity(entity, "immediate", true);
+    AIManager::Instance().sendMessageToEntity(handle, "immediate", true);
 
     // Test broadcast
     AIManager::Instance().broadcastMessage("broadcast");
     AIManager::Instance().processMessageQueue();
 
     // Entity should still have behavior after all messages
-    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Cleanup - unregister entity from managed updates
-    AIManager::Instance().unregisterEntityFromUpdates(entity);
-    AIManager::Instance().unassignBehaviorFromEntity(entity);
+    AIManager::Instance().unregisterEntity(handle);
+    AIManager::Instance().unassignBehavior(handle);
+    EntityDataManager::Instance().unregisterEntity(handle.getId());
     AIManager::Instance().resetBehaviors();
 }
 
@@ -234,6 +275,8 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
     auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("DistanceTestWander", wanderBehavior);
 
+    auto& edm = EntityDataManager::Instance();
+
     // Test with entity counts that stress the SIMD tail loop:
     // 1, 2, 3 (all scalar)
     // 4, 5, 6, 7 (SIMD + tail)
@@ -243,11 +286,17 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
     for (size_t count : testCounts) {
         // Create entities at known positions
         std::vector<std::shared_ptr<OptimizationTestEntity>> entities;
+        std::vector<EntityHandle> handles;
         for (size_t i = 0; i < count; ++i) {
             // Place entities at (100 * i, 100 * i) for predictable distances
-            auto entity = OptimizationTestEntity::create(Vector2D(100.0f * static_cast<float>(i), 100.0f * static_cast<float>(i)));
-            AIManager::Instance().registerEntityForUpdates(entity, 5, "DistanceTestWander");
+            Vector2D pos(100.0f * static_cast<float>(i), 100.0f * static_cast<float>(i));
+            auto entity = OptimizationTestEntity::create(pos);
             entities.push_back(entity);
+            // Register entity with EntityDataManager
+            entity->registerEntity(pos, 16.0f, 16.0f);
+            EntityHandle handle = entity->getHandle();
+            handles.push_back(handle);
+            AIManager::Instance().registerEntity(handle, "DistanceTestWander");
         }
 
         // Process assignments
@@ -275,10 +324,12 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
         }
 
         // Cleanup
-        for (auto& entity : entities) {
-            AIManager::Instance().unregisterEntityFromUpdates(entity);
-            AIManager::Instance().unassignBehaviorFromEntity(entity);
+        for (const auto& handle : handles) {
+            AIManager::Instance().unregisterEntity(handle);
+            AIManager::Instance().unassignBehavior(handle);
+            edm.unregisterEntity(handle.getId());
         }
+        handles.clear();
         entities.clear();
         AIManager::Instance().resetBehaviors();
     }

@@ -102,13 +102,13 @@ public:
         }
     }
 
-    void init(EntityPtr entity) override {
-        (void)entity;
+    void init(EntityHandle handle) override {
+        (void)handle;
         m_initialized = true;
     }
 
-    void clean(EntityPtr entity) override {
-        (void)entity;
+    void clean(EntityHandle handle) override {
+        (void)handle;
         m_initialized = false;
     }
 
@@ -120,8 +120,8 @@ public:
         return cloned;
     }
 
-    void onMessage(EntityPtr entity, const std::string& message) override {
-        (void)entity;
+    void onMessage(EntityHandle handle, const std::string& message) override {
+        (void)handle;
         if (message == "weather_rain_start") {
             m_seekingShelter.store(true);
             m_shelterPosition = Vector2D(100.0f, 100.0f);
@@ -262,7 +262,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
             0xFFFFFFFFu
         );
 
-        AIManager::Instance().registerEntityForUpdates(entity, 5, "WeatherResponse");
+        AIManager::Instance().registerEntity(entity->getHandle(), "WeatherResponse");
     }
 
     // Process collision body commands
@@ -333,7 +333,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         if (particleEventReceived.load() && worldEventReceived.load()) {
             bool anyEntitySeekingShelter = false;
             for (const auto& entity : testEntities) {
-                if (AIManager::Instance().entityHasBehavior(entity)) {
+                if (AIManager::Instance().hasBehavior(entity->getHandle())) {
                     // We can't directly access behavior state in this context,
                     // but we can verify entities are being updated
                     anyEntitySeekingShelter = true;
@@ -361,8 +361,8 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
 
     // Cleanup
     for (auto& entity : testEntities) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
+        AIManager::Instance().unregisterEntity(entity->getHandle());
+        AIManager::Instance().unassignBehavior(entity->getHandle());
         CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
     }
     testEntities.clear();
@@ -418,7 +418,7 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
             0xFFFFFFFFu
         );
 
-        AIManager::Instance().registerEntityForUpdates(entity, 5);
+        AIManager::Instance().registerEntity(entity->getHandle());
     }
 
     // Process collision body commands
@@ -457,8 +457,8 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
 
     // Cleanup old scene entities
     for (auto& entity : oldSceneEntities) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
+        AIManager::Instance().unregisterEntity(entity->getHandle());
+        AIManager::Instance().unassignBehavior(entity->getHandle());
         CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
     }
     oldSceneEntities.clear();

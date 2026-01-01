@@ -62,18 +62,9 @@ public:
         ctx.transform.position.setX(ctx.transform.position.getX() + 1.0f);
     }
 
-    void executeLogic(EntityPtr entity, float deltaTime) override {
-        if (!entity) return;
-        (void)deltaTime;
-
-        // Simulate some work
-        Vector2D pos = entity->getPosition();
-        pos.setX(pos.getX() + 1.0f);
-        entity->setPosition(pos);
-    }
-
-    void init(EntityPtr entity) override { (void)entity; }
-    void clean(EntityPtr entity) override { (void)entity; }
+    void init(EntityHandle handle) override { (void)handle; }
+    void clean(EntityHandle handle) override { (void)handle; }
+    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {}
     std::string getName() const override { return "BenchmarkBehavior"; }
     std::shared_ptr<AIBehavior> clone() const override {
         return std::make_shared<BenchmarkBehavior>(m_id);
@@ -316,8 +307,8 @@ namespace {
             // Remove all AI entities
             for (auto& entity : m_testEntities) {
                 if (entity) {
-                    AIManager::Instance().unregisterEntityFromUpdates(entity);
-                    AIManager::Instance().unassignBehaviorFromEntity(entity);
+                    AIManager::Instance().unregisterEntity(entity->getHandle());
+                    AIManager::Instance().unassignBehavior(entity->getHandle());
                 }
             }
             m_testEntities.clear();
@@ -351,13 +342,12 @@ namespace {
 
                 // Assign behavior
                 std::string behaviorName = behaviorNames[i % behaviorNames.size()];
-                aiMgr.assignBehaviorToEntity(entity, behaviorName);
-                aiMgr.registerEntityForUpdates(entity, 9);  // Max priority
+                aiMgr.registerEntity(entity->getHandle(), behaviorName);
             }
 
             // Set player for distance optimization
             if (!m_testEntities.empty()) {
-                aiMgr.setPlayerForDistanceOptimization(m_testEntities[0]);
+                aiMgr.setPlayerHandle(m_testEntities[0]->getHandle());
             }
 
             // Create particle effects
@@ -384,12 +374,11 @@ namespace {
                 auto entity = BenchmarkEntity::create(static_cast<int>(i), centralPosition);
                 m_testEntities.push_back(entity);
 
-                aiMgr.assignBehaviorToEntity(entity, "Wander");
-                aiMgr.registerEntityForUpdates(entity, 9);
+                aiMgr.registerEntity(entity->getHandle(), "Wander");
             }
 
             if (!m_testEntities.empty()) {
-                aiMgr.setPlayerForDistanceOptimization(m_testEntities[0]);
+                aiMgr.setPlayerHandle(m_testEntities[0]->getHandle());
             }
         }
 

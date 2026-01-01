@@ -8,6 +8,7 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/behaviors/AttackBehaviorConfig.hpp"
+#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
@@ -44,10 +45,10 @@ public:
   explicit AttackBehavior(AttackMode mode, float attackRange = 80.0f,
                           float attackDamage = 10.0f);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
   void executeLogic(BehaviorContext& ctx) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -152,11 +153,11 @@ private:
   // Helper methods for executeLogic refactoring
   void updateTimers(EntityState& state, float deltaTime);
   EntityState& ensureEntityState(EntityHandle::IDType entityId);
-  void updateTargetTracking(EntityPtr entity, EntityState& state, EntityPtr target);
-  void updateTargetDistance(EntityPtr entity, EntityPtr target, EntityState& state);
+  void updateTargetTracking(const Vector2D& entityPos, EntityState& state, const Vector2D& targetPos, bool hasTarget);
+  void updateTargetDistance(const Vector2D& entityPos, const Vector2D& targetPos, EntityState& state);
   void updateCombatState(EntityState& state);
   void handleNoTarget(EntityState& state);
-  void dispatchModeUpdate(EntityPtr entity, EntityState& state, float deltaTime);
+  void dispatchModeUpdate(EntityPtr entity, EntityState& state, float deltaTime, const Vector2D& targetPos);
 
   // Configuration system
   void applyConfig(const HammerEngine::AttackBehaviorConfig& config);
@@ -232,81 +233,65 @@ private:
   mutable std::uniform_real_distribution<float> m_angleVariation{-0.5f, 0.5f};
 
   // Helper methods
-  EntityPtr getTarget() const; // Gets player reference from AIManager
-  bool isTargetInRange(EntityPtr entity, EntityPtr target) const;
-  [[maybe_unused]] bool isTargetInAttackRange(EntityPtr entity,
-                                              EntityPtr target) const;
-  [[maybe_unused]] bool canReachTarget(EntityPtr entity,
-                                       EntityPtr target) const;
+  EntityHandle getTargetHandle() const; // Gets player handle from AIManager
+  Vector2D getTargetPosition() const;   // Gets player position from AIManager
+  bool isTargetInRange(const Vector2D& entityPos, const Vector2D& targetPos) const;
+  bool isTargetInAttackRange(const Vector2D& entityPos, const Vector2D& targetPos, const EntityState& state) const;
   float calculateDamage(const EntityState &state) const;
-  Vector2D calculateOptimalAttackPosition(EntityPtr entity, EntityPtr target,
+  Vector2D calculateOptimalAttackPosition(const Vector2D& entityPos, const Vector2D& targetPos,
                                           const EntityState &state) const;
-  Vector2D calculateFlankingPosition(EntityPtr entity, EntityPtr target) const;
-  Vector2D calculateStrafePosition(EntityPtr entity, EntityPtr target,
+  Vector2D calculateFlankingPosition(const Vector2D& entityPos, const Vector2D& targetPos) const;
+  Vector2D calculateStrafePosition(const Vector2D& entityPos, const Vector2D& targetPos,
                                    const EntityState &state) const;
 
   // State management
   void changeState(EntityState &state, AttackState newState);
   void updateStateTimer(EntityState &state);
   bool shouldRetreat(const EntityState &state) const;
-  bool shouldCharge(EntityPtr entity, EntityPtr target,
-                    const EntityState &state) const;
+  bool shouldCharge(float distance, const EntityState &state) const;
 
   // Attack execution
-  void executeAttack(EntityPtr entity, EntityPtr target, EntityState &state);
-  void executeSpecialAttack(EntityPtr entity, EntityPtr target,
-                            EntityState &state);
-  void executeComboAttack(EntityPtr entity, EntityPtr target,
-                          EntityState &state);
-  void applyDamage(EntityPtr target, float damage, const Vector2D &knockback);
-  void applyAreaOfEffectDamage(EntityPtr entity, EntityPtr target,
-                               float damage);
+  void executeAttack(EntityPtr entity, const Vector2D& targetPos, EntityState &state);
+  void executeSpecialAttack(EntityPtr entity, const Vector2D& targetPos, EntityState &state);
+  void executeComboAttack(EntityPtr entity, const Vector2D& targetPos, EntityState &state);
+  void applyDamageToTarget(EntityHandle targetHandle, float damage, const Vector2D& knockback);
+  void applyAreaOfEffectDamage(const Vector2D& entityPos, const Vector2D& targetPos, float damage);
 
   // Mode-specific updates
-  void updateMeleeAttack(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateRangedAttack(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateChargeAttack(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateAmbushAttack(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateCoordinatedAttack(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateHitAndRun(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateBerserkerAttack(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateMeleeAttack(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateRangedAttack(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateChargeAttack(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateAmbushAttack(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateCoordinatedAttack(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateHitAndRun(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateBerserkerAttack(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
 
   // State-specific updates
-  void updateSeeking(EntityPtr entity, EntityState &state);
-  void updateApproaching(EntityPtr entity, EntityState &state, float deltaTime);
-  void updatePositioning(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateAttacking(EntityPtr entity, EntityState &state);
-  void updateRecovering(EntityPtr entity, EntityState &state);
-  void updateRetreating(EntityPtr entity, EntityState &state);
-  void updateCooldown(EntityPtr entity, EntityState &state);
+  void updateSeeking(EntityState &state);
+  void updateApproaching(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updatePositioning(EntityPtr entity, EntityState &state, float deltaTime, const Vector2D& targetPos);
+  void updateAttacking(EntityPtr entity, EntityState &state, const Vector2D& targetPos);
+  void updateRecovering(EntityState &state);
+  void updateRetreating(EntityPtr entity, EntityState &state, const Vector2D& targetPos);
+  void updateCooldown(EntityState &state);
 
   // Movement and positioning
   void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
-  [[maybe_unused]] void maintainDistance(EntityPtr entity, EntityPtr target,
-                                         float desiredDistance, float deltaTime);
-  [[maybe_unused]] void circleStrafe(EntityPtr entity, EntityPtr target,
-                                     EntityState &state, float deltaTime);
-  [[maybe_unused]] void performFlankingManeuver(EntityPtr entity,
-                                                EntityPtr target,
-                                                EntityState &state, float deltaTime);
+  void maintainDistance(EntityPtr entity, const Vector2D& targetPos, float desiredDistance, float deltaTime);
+  void circleStrafe(EntityPtr entity, const Vector2D& targetPos, EntityState &state, float deltaTime);
+  void performFlankingManeuver(EntityPtr entity, const Vector2D& targetPos, EntityState &state, float deltaTime);
 
-  // Utility methods (most moved to base class)
-  [[maybe_unused]] bool isValidAttackPosition(const Vector2D &position,
-                                              EntityPtr target) const;
+  // Utility methods
+  bool isValidAttackPosition(const Vector2D &position, const Vector2D& targetPos) const;
 
   // Combat calculations
   float calculateEffectiveRange(const EntityState &state) const;
-  [[maybe_unused]] float
-  calculateAttackSuccessChance(EntityPtr entity, EntityPtr target,
-                               const EntityState &state) const;
-  Vector2D calculateKnockbackVector(EntityPtr attacker, EntityPtr target) const;
+  float calculateAttackSuccessChance(const Vector2D& entityPos, const Vector2D& targetPos, const EntityState &state) const;
+  Vector2D calculateKnockbackVector(const Vector2D& attackerPos, const Vector2D& targetPos) const;
 
   // Team coordination
-  void coordinateWithTeam(EntityPtr entity, const EntityState &state);
-  [[maybe_unused]] bool isFriendlyFireRisk(EntityPtr entity,
-                                           EntityPtr target) const;
-  [[maybe_unused]] std::vector<EntityPtr> getNearbyAllies(EntityPtr entity,
-                                                          float radius) const;
+  void coordinateWithTeam(const EntityState &state);
+  bool isFriendlyFireRisk(const Vector2D& entityPos, const Vector2D& targetPos) const;
 
 public:
 };

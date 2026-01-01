@@ -25,6 +25,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
 #include <cmath>
@@ -115,7 +116,7 @@ bool EventDemoState::enter() {
     AIManager &aiMgr = AIManager::Instance();
 
     // Set player reference in AIManager for distance optimization
-    aiMgr.setPlayerForDistanceOptimization(m_player);
+    aiMgr.setPlayerHandle(m_player->getHandle());
 
     // Initialize timing
 
@@ -505,6 +506,14 @@ void EventDemoState::update(float deltaTime) {
   // Update player
   if (m_player) {
     m_player->update(deltaTime);
+  }
+
+  // Update spawned NPCs (animations and state machine)
+  // AIManager handles behavior logic, but NPC::update() handles animations
+  for (auto& npc : m_spawnedNPCs) {
+    if (npc) {
+      npc->update(deltaTime);
+    }
   }
 
   // Update camera (follows player automatically)
@@ -1347,13 +1356,21 @@ void EventDemoState::triggerCustomEventDemo() {
 
   if (npc1) {
     std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-    aiMgr.registerEntityForUpdates(npc1, rand() % 9 + 1, behaviorName1);
+    // Phase 2 EDM Migration: Use EntityHandle-based registration
+    EntityHandle handle1 = npc1->getHandle();
+    if (handle1.isValid()) {
+      aiMgr.registerEntity(handle1, behaviorName1);
+    }
     addLogEntry(npcType1 + ": " + behaviorName1 + " queued");
   }
 
   if (npc2) {
     std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-    aiMgr.registerEntityForUpdates(npc2, rand() % 9 + 1, behaviorName2);
+    // Phase 2 EDM Migration: Use EntityHandle-based registration
+    EntityHandle handle2 = npc2->getHandle();
+    if (handle2.isValid()) {
+      aiMgr.registerEntity(handle2, behaviorName2);
+    }
     addLogEntry(npcType2 + ": " + behaviorName2 + " queued");
   }
 
@@ -1470,7 +1487,11 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
           std::string behavior = params.aiBehavior.empty()
                                      ? determineBehaviorForNPCType(npcType)
                                      : params.aiBehavior;
-          aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, behavior);
+          // Phase 2 EDM Migration: Use EntityHandle-based registration
+          EntityHandle handle = npc->getHandle();
+          if (handle.isValid()) {
+            aiMgr.registerEntity(handle, behavior);
+          }
           spawned++;
         }
       }
@@ -1777,10 +1798,14 @@ void EventDemoState::cleanupSpawnedNPCs() {
         // Cache AIManager reference for better performance
         AIManager &aiMgr = AIManager::Instance();
 
-        if (aiMgr.entityHasBehavior(npc)) {
-          aiMgr.unassignBehaviorFromEntity(npc);
+        // Phase 2 EDM Migration: Use EntityHandle-based API
+        EntityHandle handle = npc->getHandle();
+        if (handle.isValid() && aiMgr.hasBehavior(handle)) {
+          aiMgr.unassignBehavior(handle);
         }
-        aiMgr.unregisterEntityFromUpdates(npc);
+        if (handle.isValid()) {
+          aiMgr.unregisterEntity(handle);
+        }
       } catch (...) {
         // Ignore errors during cleanup to prevent double-free issues
       }
@@ -1817,7 +1842,11 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
 
     // Cache AIManager reference for better performance
     AIManager &aiMgr = AIManager::Instance();
-    aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, behaviorName);
+    // Phase 2 EDM Migration: Use EntityHandle-based registration
+    EntityHandle handle = npc->getHandle();
+    if (handle.isValid()) {
+      aiMgr.registerEntity(handle, behaviorName);
+    }
 
     addLogEntry(npcType + ": " + behaviorName + " queued");
 

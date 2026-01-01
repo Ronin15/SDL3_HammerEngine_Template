@@ -19,6 +19,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
 #include <memory>
@@ -81,8 +82,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "Wander");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "Wander");
     }
   }
 
@@ -91,8 +92,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcs.size()));
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "Patrol");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "Patrol");
     }
     GAMESTATE_INFO("Patrol assignments queued. Processing "
                    "instantly in parallel for optimal performance.");
@@ -106,8 +107,8 @@ void AIDemoState::handleInput() {
     // No manual target updates needed
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "Chase");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "Chase");
     }
   }
 
@@ -116,8 +117,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "SmallWander");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "SmallWander");
     }
   }
 
@@ -126,8 +127,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "LargeWander");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "LargeWander");
     }
   }
 
@@ -136,8 +137,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "EventWander");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "EventWander");
     }
   }
 
@@ -146,8 +147,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "RandomPatrol");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "RandomPatrol");
     }
   }
 
@@ -156,8 +157,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "CirclePatrol");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "CirclePatrol");
     }
   }
 
@@ -166,8 +167,8 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
     AIManager &aiMgr = AIManager::Instance();
     for (auto &npc : m_npcs) {
-      // Queue the behavior assignment for batch processing
-      aiMgr.queueBehaviorAssignment(npc, "EventTarget");
+      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+      aiMgr.queueBehaviorAssignment(npc->getHandle(), "EventTarget");
     }
   }
 
@@ -263,18 +264,14 @@ bool AIDemoState::enter() {
     // Cache AIManager reference for better performance
     AIManager &aiMgr = AIManager::Instance();
 
-    // Set player reference in AIManager for distance optimization
-    aiMgr.setPlayerForDistanceOptimization(m_player);
+    // Set player handle in AIManager for distance optimization (EntityHandle-based API)
+    aiMgr.setPlayerHandle(m_player->getHandle());
 
     // Create and register chase behavior - behaviors can get player via
-    // getPlayerReference()
+    // getPlayerHandle() or getPlayerPosition()
     auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    GAMESTATE_INFO("Chase behavior registered (will use AIManager::getPlayerReference())");
-
-    // Configure priority multiplier for proper distance progression (1.0 = full
-    // distance thresholds)
-    aiMgr.configurePriorityMultiplier(1.0f);
+    GAMESTATE_INFO("Chase behavior registered (will use AIManager::getPlayerHandle())");
 
     // Create simple HUD UI (matches EventDemoState spacing pattern)
     auto &ui = UIManager::Instance();
@@ -496,12 +493,16 @@ void AIDemoState::update(float deltaTime) {
       m_player->update(deltaTime);
     }
 
+    // Update NPCs (animations and state machine)
+    // AIManager handles behavior logic, but NPC::update() handles animations
+    for (auto& npc : m_npcs) {
+      if (npc) {
+        npc->update(deltaTime);
+      }
+    }
+
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
-
-    // AI Manager is updated globally by GameEngine for optimal performance
-    // Entity updates are handled by AIManager::update() in GameEngine
-    // No need to manually update NPCs or AIManager here
 
     // Update UI (moved from render path for consistent frame timing)
     if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
@@ -710,7 +711,11 @@ void AIDemoState::createNPCBatch(int count) {
             auto npc = NPC::create("npc", position);
             npc->initializeInventory();
             npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
-            aiMgr.registerEntityForUpdates(npc, 5, "Wander");
+            // Phase 2 EDM Migration: Use EntityHandle-based registration
+            EntityHandle handle = npc->getHandle();
+            if (handle.isValid()) {
+              aiMgr.registerEntity(handle, "Wander");
+            }
             m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
@@ -794,7 +799,11 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
 
             // Assign random behavior from the list
             std::string randomBehavior = behaviors[behaviorDist(gen)];
-            aiMgr.registerEntityForUpdates(npc, rand() % 9 + 1, randomBehavior);
+            // Phase 2 EDM Migration: Use EntityHandle-based registration
+            EntityHandle handle = npc->getHandle();
+            if (handle.isValid()) {
+              aiMgr.registerEntity(handle, randomBehavior);
+            }
 
             m_npcs.push_back(npc);
             created++;

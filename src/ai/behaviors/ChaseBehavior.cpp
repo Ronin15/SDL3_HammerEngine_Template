@@ -27,56 +27,62 @@ ChaseBehavior::ChaseBehavior(const HammerEngine::ChaseBehaviorConfig& config)
     : m_config(config), m_chaseSpeed(config.chaseSpeed), m_maxRange(1000.0f), m_minRange(50.0f),
       m_isChasing(false), m_hasLineOfSight(false), m_lastKnownTargetPos(0, 0),
       m_timeWithoutSight(0), m_maxTimeWithoutSight(60),
-      m_currentDirection(0, 0), m_cachedPlayerTarget(nullptr),
-      m_playerCacheValid(false) {}
+      m_currentDirection(0, 0) {}
 
 ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
     : m_chaseSpeed(chaseSpeed), m_maxRange(maxRange), m_minRange(minRange),
       m_isChasing(false), m_hasLineOfSight(false), m_lastKnownTargetPos(0, 0),
       m_timeWithoutSight(0), m_maxTimeWithoutSight(60),
-      m_currentDirection(0, 0), m_cachedPlayerTarget(nullptr),
-      m_playerCacheValid(false) {
+      m_currentDirection(0, 0) {
   // Update config to match legacy parameters
   m_config.chaseSpeed = chaseSpeed;
 }
 
-void ChaseBehavior::init(EntityPtr entity) {
-  if (!entity)
+void ChaseBehavior::init(EntityHandle handle) {
+  if (!handle.isValid())
     return;
+
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return;
+
+  auto& hotData = edm.getHotDataByIndex(idx);
 
   // Initialize the entity's state for chasing
   m_isChasing = false;
   m_hasLineOfSight = false;
-  m_lastKnownTargetPos = entity->getPosition();
+  m_lastKnownTargetPos = hotData.transform.position;
 
-  // Invalidate cache on initialization
-  invalidatePlayerCache();
-
-  // Get player target from cache and check if it's in range
-  auto target = getCachedPlayerTarget();
-  if (target) {
-    Vector2D entityPos = entity->getPosition();
-    Vector2D targetPos = target->getPosition();
+  // Check if player is valid and in range
+  auto& aiMgr = AIManager::Instance();
+  if (aiMgr.isPlayerValid()) {
+    Vector2D entityPos = hotData.transform.position;
+    Vector2D targetPos = aiMgr.getPlayerPosition();
     float const distance = (targetPos - entityPos).length();
 
     m_isChasing = (distance <= m_maxRange);
-    m_hasLineOfSight = checkLineOfSight(entity, target);
+    m_hasLineOfSight = (distance <= m_maxRange); // Simplified line of sight check
   }
 }
 
-EntityPtr ChaseBehavior::getCachedPlayerTarget() const {
-  if (!m_playerCacheValid || !m_cachedPlayerTarget) {
-    const AIManager &aiMgr = AIManager::Instance();
-    m_cachedPlayerTarget = aiMgr.getPlayerReference();
-    m_playerCacheValid = true;
-  }
-  return m_cachedPlayerTarget;
+EntityHandle ChaseBehavior::getTargetHandle() const {
+  return AIManager::Instance().getPlayerHandle();
 }
 
-void ChaseBehavior::invalidatePlayerCache() const {
-  m_playerCacheValid = false;
-  m_cachedPlayerTarget = nullptr;
+bool ChaseBehavior::checkLineOfSight(EntityHandle handle, const Vector2D& targetPos) const {
+  if (!handle.isValid()) return false;
+
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return false;
+
+  Vector2D entityPos = edm.getHotDataByIndex(idx).transform.position;
+  float const distanceSquared = (targetPos - entityPos).lengthSquared();
+  float const maxRangeSquared = m_maxRange * m_maxRange;
+
+  return distanceSquared <= maxRangeSquared;
 }
+
 void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
   if (!m_active) {
     return;
@@ -94,21 +100,20 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
     m_lastCrowdAnalysis = 0.0f;
   }
 
-  // Get player target from optimized cache
-  auto target = getCachedPlayerTarget();
-  if (!target) {
+  // Get player position from AIManager
+  auto& aiMgr = AIManager::Instance();
+  if (!aiMgr.isPlayerValid()) {
     // No target available - clean exit from chase state
     if (m_isChasing) {
       ctx.transform.velocity = Vector2D(0, 0);
       m_isChasing = false;
       m_hasLineOfSight = false;
-      // onTargetLost needs EntityPtr - skip for now since target is null anyway
     }
     return;
   }
 
   Vector2D entityPos = ctx.transform.position;
-  Vector2D targetPos = target->getPosition();
+  Vector2D targetPos = aiMgr.getPlayerPosition();
   float const distanceSquared = (targetPos - entityPos).lengthSquared();
 
   float const maxRangeSquared = m_maxRange * m_maxRange;
@@ -161,15 +166,11 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
         if (distanceSquared < minRangeCheckSquared) { // Already close enough
           return; // Skip pathfinding request
         }
-        
+
         // SIMPLIFIED: Basic target prediction for better performance
         Vector2D goalPosition = targetPos;
-        
-        // Light prediction only for fast-moving targets
-        Vector2D targetVel = target->getVelocity();
-        if (targetVel.length() > 30.0f) { // Only predict for fast movement
-          goalPosition = targetPos + targetVel * 0.3f; // Shorter prediction time
-        }
+
+        // Note: Target velocity prediction removed - would need to be stored in AIManager if needed
 
         // ASYNC PATHFINDING: Use high-performance background processing for chasing
         auto& pf = this->pathfinder();
@@ -311,15 +312,17 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
   }
 }
 
-void ChaseBehavior::clean(EntityPtr entity) {
+void ChaseBehavior::clean(EntityHandle handle) {
   // Stop the entity's movement when cleaning up
-  if (entity) {
-    entity->setVelocity(Vector2D(0, 0));
-    
+  if (handle.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    }
+
     // Clear pathfinding state from PathfinderManager
     // Note: Request cancellation is handled automatically by the new pathfinding architecture
-    
-    // ChaseBehavior cleanup completed
   }
 
   // Reset all state
@@ -327,7 +330,7 @@ void ChaseBehavior::clean(EntityPtr entity) {
   m_hasLineOfSight = false;
   m_lastKnownTargetPos = Vector2D(0, 0);
   m_timeWithoutSight = 0;
-  
+
   // Clear path-following state
   m_navPath.clear();
   m_navIndex = 0;
@@ -350,30 +353,30 @@ void ChaseBehavior::clean(EntityPtr entity) {
   m_cooldowns.behaviorChangeCooldown = 0.0f;
 }
 
-void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {
+void ChaseBehavior::onMessage(EntityHandle handle, const std::string &message) {
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = handle.isValid() ? edm.getIndex(handle) : SIZE_MAX;
+
   if (message == "pause") {
     setActive(false);
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
   } else if (message == "resume") {
     setActive(true);
-    // Invalidate cache on resume to refresh player reference
-    invalidatePlayerCache();
 
     // Reinitialize chase state when resuming
-    if (entity) {
-      auto target = getCachedPlayerTarget();
-      if (target) {
-        init(entity);
+    if (handle.isValid()) {
+      auto& aiMgr = AIManager::Instance();
+      if (aiMgr.isPlayerValid()) {
+        init(handle);
       }
     }
   } else if (message == "lose_target") {
     m_isChasing = false;
     m_hasLineOfSight = false;
-    invalidatePlayerCache();
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
   } else if (message == "release_entities") {
     // Reset state when asked to release entities
@@ -381,9 +384,8 @@ void ChaseBehavior::onMessage(EntityPtr entity, const std::string &message) {
     m_hasLineOfSight = false;
     m_lastKnownTargetPos = Vector2D(0, 0);
     m_timeWithoutSight = 0;
-    invalidatePlayerCache();
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
   }
 }
@@ -398,8 +400,6 @@ std::shared_ptr<AIBehavior> ChaseBehavior::clone() const {
   return cloned;
 }
 
-EntityPtr ChaseBehavior::getTarget() const { return getCachedPlayerTarget(); }
-
 void ChaseBehavior::setChaseSpeed(float speed) { m_chaseSpeed = speed; }
 
 void ChaseBehavior::setMaxRange(float range) { m_maxRange = range; }
@@ -412,35 +412,28 @@ bool ChaseBehavior::isChasing() const { return m_isChasing; }
 
 bool ChaseBehavior::hasLineOfSight() const { return m_hasLineOfSight; }
 
-void ChaseBehavior::onTargetReached(EntityPtr entity) {
+void ChaseBehavior::onTargetReached(EntityHandle handle) {
   // Base implementation does nothing
   // Override in derived behaviors for specific actions
-  (void)entity; // Mark parameter as intentionally unused
+  (void)handle; // Mark parameter as intentionally unused
 }
 
-void ChaseBehavior::onTargetLost(EntityPtr entity) {
+void ChaseBehavior::onTargetLost(EntityHandle handle) {
   // Base implementation does nothing
   // Override in derived behaviors for specific actions
-  (void)entity; // Mark parameter as intentionally unused
+  (void)handle; // Mark parameter as intentionally unused
 }
 
-bool ChaseBehavior::checkLineOfSight(EntityPtr entity, EntityPtr target) const {
-  // PERFORMANCE: Use squared distance to avoid sqrt
-  if (!entity || !target)
-    return false;
 
-  Vector2D entityPos = entity->getPosition();
-  Vector2D targetPos = target->getPosition();
-  float const distanceSquared = (targetPos - entityPos).lengthSquared();
-  float const maxRangeSquared = m_maxRange * m_maxRange;
+void ChaseBehavior::handleNoLineOfSight(EntityHandle handle) {
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return;
 
-  // Simple line of sight check - would be replaced with raycasting in a real game
-  return distanceSquared <= maxRangeSquared;
-}
+  auto& hotData = edm.getHotDataByIndex(idx);
 
-void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
   if (m_timeWithoutSight < m_maxTimeWithoutSight) {
-    Vector2D entityPos = entity->getPosition();
+    Vector2D entityPos = hotData.transform.position;
     Vector2D const toLastKnown = m_lastKnownTargetPos - entityPos;
     float const distanceSquared = toLastKnown.lengthSquared();
 
@@ -449,9 +442,9 @@ void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
       // Optimized normalization with inverse sqrt
       float invDistance = 1.0f / std::sqrt(distanceSquared);
       Vector2D const direction = toLastKnown * invDistance;
-      entity->setVelocity(direction * (m_chaseSpeed * 0.8f));
+      hotData.transform.velocity = direction * (m_chaseSpeed * 0.8f);
     } else {
-      entity->setVelocity(Vector2D(0, 0));
+      hotData.transform.velocity = Vector2D(0, 0);
     }
 
     m_timeWithoutSight++;
@@ -459,8 +452,8 @@ void ChaseBehavior::handleNoLineOfSight(EntityPtr entity) {
     // Timeout - stop chasing efficiently
     if (m_isChasing) {
       m_isChasing = false;
-      entity->setVelocity(Vector2D(0, 0));
-      onTargetLost(entity);
+      hotData.transform.velocity = Vector2D(0, 0);
+      onTargetLost(handle);
     }
   }
 }

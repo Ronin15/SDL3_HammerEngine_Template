@@ -49,12 +49,12 @@ WanderBehavior::WanderBehavior(WanderMode mode, float speed) : m_speed(speed) {
   setupModeDefaults(mode);
 }
 
-void WanderBehavior::init(EntityPtr entity) {
-  if (!entity)
+void WanderBehavior::init(EntityHandle handle) {
+  if (!handle.isValid())
     return;
 
   // Key state by entityId (not EntityPtr) for lock-free access
-  EntityHandle::IDType entityId = entity->getID();
+  EntityHandle::IDType entityId = handle.getId();
   EntityState &state = m_entityStates[entityId];
   state.directionChangeTimer = 0.0f;
   state.startDelay = s_delayDistribution(getSharedRNG()) / 1000.0f;
@@ -316,24 +316,32 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, EntityState& state) {
   state.previousVelocity = ctx.transform.velocity;
 }
 
-void WanderBehavior::clean(EntityPtr entity) {
-  if (entity) {
-    entity->setVelocity(Vector2D(0, 0));
-    m_entityStates.erase(entity->getID());
+void WanderBehavior::clean(EntityHandle handle) {
+  if (handle.isValid()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    }
+    m_entityStates.erase(handle.getId());
   } else {
     m_entityStates.clear();
   }
 }
 
-void WanderBehavior::onMessage(EntityPtr entity, const std::string &message) {
-  if (!entity)
+void WanderBehavior::onMessage(EntityHandle handle, const std::string &message) {
+  if (!handle.isValid())
     return;
 
-  EntityHandle::IDType entityId = entity->getID();
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  EntityHandle::IDType entityId = handle.getId();
 
   if (message == "pause") {
     setActive(false);
-    entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    }
   } else if (message == "resume") {
     setActive(true);
     auto stateIt = m_entityStates.find(entityId);
@@ -350,17 +358,19 @@ void WanderBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "increase_speed") {
     m_speed *= 1.5f;
     auto stateIt = m_entityStates.find(entityId);
-    if (m_active && stateIt != m_entityStates.end()) {
-      entity->setVelocity(stateIt->second.currentDirection * m_speed);
+    if (m_active && stateIt != m_entityStates.end() && idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = stateIt->second.currentDirection * m_speed;
     }
   } else if (message == "decrease_speed") {
     m_speed *= 0.75f;
     auto stateIt = m_entityStates.find(entityId);
-    if (m_active && stateIt != m_entityStates.end()) {
-      entity->setVelocity(stateIt->second.currentDirection * m_speed);
+    if (m_active && stateIt != m_entityStates.end() && idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = stateIt->second.currentDirection * m_speed;
     }
   } else if (message == "release_entities") {
-    entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    }
     m_entityStates.erase(entityId);
   }
 }

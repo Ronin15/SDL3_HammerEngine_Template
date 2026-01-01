@@ -6,7 +6,7 @@
 #ifndef AI_BEHAVIOR_HPP
 #define AI_BEHAVIOR_HPP
 
-#include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <cstddef>
@@ -55,24 +55,15 @@ public:
    */
   virtual void executeLogic(BehaviorContext& ctx) = 0;
 
-  /**
-   * @brief Legacy executeLogic for compatibility (DEPRECATED - DO NOT USE IN NEW CODE)
-   *
-   * This method triggers mutex locks per Entity accessor call.
-   * Only use for behaviors not yet migrated to BehaviorContext.
-   * Default implementation calls the new executeLogic(BehaviorContext&).
-   */
-  virtual void executeLogic(EntityPtr entity, float deltaTime);
-
-  // Initialization and cleanup (called rarely, EntityPtr is fine)
-  virtual void init(EntityPtr entity) = 0;
-  virtual void clean(EntityPtr entity) = 0;
+  // Initialization and cleanup (called when behavior assigned/unassigned)
+  virtual void init(EntityHandle handle) = 0;
+  virtual void clean(EntityHandle handle) = 0;
 
   // Behavior identification
   virtual std::string getName() const = 0;
 
   // Optional message handling for behavior communication
-  virtual void onMessage([[maybe_unused]] EntityPtr entity,
+  virtual void onMessage([[maybe_unused]] EntityHandle handle,
                          [[maybe_unused]] const std::string &message) {}
 
   // Behavior state access
@@ -80,12 +71,9 @@ public:
   virtual void setActive(bool active) { m_active = active; }
 
   // Entity range checks (behavior-specific logic)
-  virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const {
+  virtual bool isEntityInRange([[maybe_unused]] EntityHandle handle) const {
     return true;
   }
-
-  // Entity cleanup
-  virtual void cleanupEntity(EntityPtr entity);
 
   // Clone method for creating unique behavior instances
   virtual std::shared_ptr<AIBehavior> clone() const = 0;
@@ -148,28 +136,23 @@ protected:
 
   // Common utility functions for behaviors
 
-  // Move entity towards target position using pathfinding
-  // Priority: 0=Low, 1=Normal, 2=High, 3=Critical (maps to PathfinderManager::Priority)
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos,
-                     float speed, float deltaTime, AIBehaviorState &state,
-                     int priority = 1); // Default to Normal priority
-
   // Vector and angle utilities
   Vector2D normalizeDirection(const Vector2D &vector) const;
   float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;
   float normalizeAngle(float angle) const;
   Vector2D rotateVector(const Vector2D &vector, float angle) const;
 
-  // =========================================================================
-  // LOCK-FREE HELPER METHODS (use BehaviorContext instead of EntityPtr)
-  // =========================================================================
-
   /**
-   * @brief Move entity towards target using pathfinding (LOCK-FREE version)
+   * @brief Move entity towards target using pathfinding (lock-free via BehaviorContext)
+   * @param ctx BehaviorContext with direct transform access
+   * @param targetPos Target position to move towards
+   * @param speed Movement speed
+   * @param state Behavior state for pathfinding data
+   * @param priority 0=Low, 1=Normal, 2=High, 3=Critical
    */
-  void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos,
-                            float speed, AIBehaviorState &state,
-                            int priority = 1);
+  void moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
+                      float speed, AIBehaviorState &state,
+                      int priority = 1);
 };
 
 #endif // AI_BEHAVIOR_HPP

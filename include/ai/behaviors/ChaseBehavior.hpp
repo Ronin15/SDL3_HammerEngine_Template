@@ -8,6 +8,8 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <vector>
 
@@ -18,18 +20,18 @@ public:
   // Legacy constructor for backward compatibility
   explicit ChaseBehavior(float chaseSpeed, float maxRange, float minRange);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
 
   void executeLogic(BehaviorContext& ctx) override;
 
-  void clean(EntityPtr entity) override;
+  void clean(EntityHandle handle) override;
 
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
 
   std::string getName() const override;
 
-  // Get current target (returns AIManager::getPlayerReference())
-  EntityPtr getTarget() const;
+  // Get current target handle (player handle from AIManager)
+  EntityHandle getTargetHandle() const;
 
   // Set chase parameters
   void setChaseSpeed(float speed);
@@ -48,10 +50,10 @@ public:
 
 protected:
   // Called when target is reached (within minimum range)
-  virtual void onTargetReached(EntityPtr entity);
+  virtual void onTargetReached(EntityHandle handle);
 
   // Called when target is lost (out of max range)
-  virtual void onTargetLost(EntityPtr entity);
+  virtual void onTargetLost(EntityHandle handle);
 
 private:
   // Configuration
@@ -70,24 +72,11 @@ private:
   const int m_maxTimeWithoutSight{60}; // Frames to chase last known position
   Vector2D m_currentDirection{0, 0};
 
-  // Performance optimization: cache player reference to avoid repeated
-  // AIManager lookups
-  mutable EntityPtr m_cachedPlayerTarget{nullptr};
-  mutable bool m_playerCacheValid{false};
-
-  
-
-  // Get cached player reference - optimized for 60fps calls
-  EntityPtr getCachedPlayerTarget() const;
-
-  // Invalidate player cache (called on behavior switch or player changes)
-  void invalidatePlayerCache() const;
-
-  // Check if entity has line of sight to target (simplified)
-  bool checkLineOfSight(EntityPtr entity, EntityPtr target) const;
+  // Check if entity has line of sight to target position
+  bool checkLineOfSight(EntityHandle handle, const Vector2D& targetPos) const;
 
   // Handle behavior when line of sight is lost
-  void handleNoLineOfSight(EntityPtr entity);
+  void handleNoLineOfSight(EntityHandle handle);
 
   // Path-following state for chasing around obstacles
   std::vector<Vector2D> m_navPath;
