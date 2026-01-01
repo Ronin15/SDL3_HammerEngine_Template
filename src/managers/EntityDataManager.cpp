@@ -33,6 +33,13 @@ bool EntityDataManager::init() {
         m_generations.reserve(INITIAL_CAPACITY);
         m_idToIndex.reserve(INITIAL_CAPACITY);
 
+        // Static entity storage (not part of tier system)
+        constexpr size_t STATIC_CAPACITY = 10000;
+        m_staticHotData.reserve(STATIC_CAPACITY);
+        m_staticEntityIds.reserve(STATIC_CAPACITY);
+        m_staticGenerations.reserve(STATIC_CAPACITY);
+        m_staticIdToIndex.reserve(STATIC_CAPACITY);
+
         m_characterData.reserve(CHARACTER_CAPACITY);
         m_itemData.reserve(ITEM_CAPACITY);
         m_projectileData.reserve(PROJECTILE_CAPACITY);
@@ -87,6 +94,13 @@ void EntityDataManager::clean() {
         m_entityIds.clear();
         m_generations.clear();
         m_idToIndex.clear();
+
+        // Clear static entity storage
+        m_staticHotData.clear();
+        m_staticEntityIds.clear();
+        m_staticGenerations.clear();
+        m_staticIdToIndex.clear();
+        m_freeStaticSlots.clear();
 
         m_characterData.clear();
         m_itemData.clear();
@@ -144,6 +158,13 @@ void EntityDataManager::prepareForStateTransition() {
         m_hotData.clear();
         m_entityIds.clear();
         m_idToIndex.clear();
+
+        // Clear static entity storage
+        m_staticHotData.clear();
+        m_staticEntityIds.clear();
+        m_staticGenerations.clear();
+        m_staticIdToIndex.clear();
+        m_freeStaticSlots.clear();
 
         m_characterData.clear();
         m_itemData.clear();
@@ -557,12 +578,23 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
                                                   float halfHeight) {
     std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
-    size_t index = allocateSlot(EntityKind::StaticObstacle);
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    // Allocate slot in static storage (separate from dynamic m_hotData)
+    size_t index;
+    if (!m_freeStaticSlots.empty()) {
+        index = m_freeStaticSlots.back();
+        m_freeStaticSlots.pop_back();
+    } else {
+        index = m_staticHotData.size();
+        m_staticHotData.emplace_back();
+        m_staticEntityIds.push_back(0);
+        m_staticGenerations.push_back(0);
+    }
 
-    // Initialize hot data - static bodies have no velocity or type-specific data
-    auto& hot = m_hotData[index];
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = ++m_staticGenerations[index];
+
+    // Initialize static hot data
+    auto& hot = m_staticHotData[index];
     hot.transform.position = position;
     hot.transform.previousPosition = position;
     hot.transform.velocity = Vector2D{0.0f, 0.0f};
@@ -570,21 +602,17 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     hot.halfWidth = halfWidth;
     hot.halfHeight = halfHeight;
     hot.kind = EntityKind::StaticObstacle;
-    hot.tier = SimulationTier::Hibernated;  // Static bodies don't need updates
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
-    hot.typeLocalIndex = 0;  // No type-specific data for static obstacles
+    hot.typeLocalIndex = 0;
 
-    // Store ID and mapping
-    m_entityIds[index] = id;
-    m_generations[index] = generation;
-    m_idToIndex[id] = index;
+    // Store ID and mapping (separate from dynamic entities)
+    m_staticEntityIds[index] = id;
+    m_staticIdToIndex[id] = index;
 
-    // Update counters
+    // Update counters (only kind count, no tier count - statics not in tier system)
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::StaticObstacle)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Hibernated)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
 
     return EntityHandle{id, EntityKind::StaticObstacle, generation};
 }
@@ -975,6 +1003,11 @@ const TransformData& EntityDataManager::getTransformByIndex(size_t index) const 
     return m_hotData[index].transform;
 }
 
+const TransformData& EntityDataManager::getStaticTransformByIndex(size_t index) const {
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+    return m_staticHotData[index].transform;
+}
+
 // ============================================================================
 // HOT DATA ACCESS
 // ============================================================================
@@ -1003,6 +1036,30 @@ const EntityHotData& EntityDataManager::getHotDataByIndex(size_t index) const {
 
 std::span<const EntityHotData> EntityDataManager::getHotDataArray() const {
     return std::span<const EntityHotData>(m_hotData);
+}
+
+std::span<const EntityHotData> EntityDataManager::getStaticHotDataArray() const {
+    return std::span<const EntityHotData>(m_staticHotData);
+}
+
+const EntityHotData& EntityDataManager::getStaticHotDataByIndex(size_t index) const {
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+    return m_staticHotData[index];
+}
+
+size_t EntityDataManager::getStaticIndex(EntityHandle handle) const {
+    if (handle.kind != EntityKind::StaticObstacle) {
+        return SIZE_MAX;
+    }
+    auto it = m_staticIdToIndex.find(handle.id);
+    if (it == m_staticIdToIndex.end()) {
+        return SIZE_MAX;
+    }
+    size_t index = it->second;
+    if (index >= m_staticGenerations.size() || m_staticGenerations[index] != handle.generation) {
+        return SIZE_MAX;
+    }
+    return index;
 }
 
 // ============================================================================
@@ -1236,11 +1293,11 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         if (std::chrono::duration_cast<std::chrono::seconds>(now - lastLogTime).count() >= 60) {
             lastLogTime = now;
             size_t tierTotal = m_activeIndices.size() + m_backgroundIndices.size() + m_hibernatedIndices.size();
-            size_t entityCount = m_totalEntityCount.load(std::memory_order_relaxed);
+            size_t dynamicCount = m_hotData.size();  // Only dynamic entities (statics in separate vector)
             ENTITY_DEBUG(std::format(
-                "Tiers: Active={}, Background={}, Hibernated={} (Total={}, Expected={})",
+                "Tiers: Active={}, Background={}, Hibernated={} (Total={}, Dynamic={}, Statics={})",
                 m_activeIndices.size(), m_backgroundIndices.size(), m_hibernatedIndices.size(),
-                tierTotal, entityCount));
+                tierTotal, dynamicCount, m_staticHotData.size()));
         }
 #endif
     }
