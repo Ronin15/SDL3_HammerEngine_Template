@@ -565,9 +565,6 @@ struct AIScalingFixture {
             std::cout << "  [DEBUG] Positioned " << entities.size()
                       << " entities (NO distance culling - testing raw throughput)" << std::endl;
             std::cout << "  [DEBUG] Entities with behaviors: " << entitiesWithBehaviors << "/" << entities.size() << std::endl;
-            std::cout << "  [DEBUG] Managed entity count: " << AIManager::Instance().getManagedEntityCount() << std::endl;
-
-
         }
 
         // Organize entities by behavior for batch updates
