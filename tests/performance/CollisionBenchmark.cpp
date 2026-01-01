@@ -280,10 +280,10 @@ private:
             threadSystemInitialized = true;
         }
 
-        // Clear and setup
-        if (manager.getBodyCount() > 0) {
-            manager.prepareForStateTransition();
-        }
+        // Clear and setup - must clean both EDM and CollisionManager together
+        // Always clean EDM since statics accumulate even after collision bodies are removed
+        manager.prepareForStateTransition();
+        EntityDataManager::Instance().prepareForStateTransition();
         manager.prepareCollisionBuffers(testBodies.size());
 
         // Add test bodies
@@ -350,10 +350,10 @@ private:
             threadSystemInitialized = true;
         }
 
-        // Clear any existing bodies (no need to clean/init - just remove bodies)
-        if (manager.getBodyCount() > 0) {
-            manager.prepareForStateTransition();
-        }
+        // Clear any existing bodies - must clean both EDM and CollisionManager together
+        // Always clean EDM since statics accumulate even after collision bodies are removed
+        manager.prepareForStateTransition();
+        EntityDataManager::Instance().prepareForStateTransition();
 
         // Set world bounds - use realistic culling (default 1000.0f buffer)
         // Grid spans from (100,100) to roughly (100 + sqrt(count)*60, same for Y)

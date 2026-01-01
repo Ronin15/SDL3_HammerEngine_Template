@@ -12,6 +12,7 @@
 #include "collisions/TriggerTag.hpp"
 #include "collisions/HierarchicalSpatialHash.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "events/CollisionObstacleChangedEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
@@ -846,11 +847,15 @@ BOOST_AUTO_TEST_CASE(TestBodyResize)
 BOOST_AUTO_TEST_CASE(TestVelocityManagement)
 {
     // Test velocity setting and batch velocity updates
+    EntityDataManager::Instance().init();
     CollisionManager::Instance().init();
 
     EntityID bodyId = 8000;
     AABB aabb(100.0f, 100.0f, 8.0f, 8.0f);
     Vector2D velocity(15.0f, 10.0f);
+
+    // Register with EDM first (required for velocity/position updates via EDM)
+    EntityDataManager::Instance().registerNPC(bodyId, aabb.center, aabb.halfSize.getX(), aabb.halfSize.getY());
 
     CollisionManager::Instance().addCollisionBodySOA(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
 
@@ -875,6 +880,7 @@ BOOST_AUTO_TEST_CASE(TestVelocityManagement)
     // Clean up
     CollisionManager::Instance().removeCollisionBodySOA(bodyId);
     CollisionManager::Instance().clean();
+    EntityDataManager::Instance().clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

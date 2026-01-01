@@ -435,6 +435,11 @@ public:
     [[nodiscard]] TransformData& getTransformByIndex(size_t index);
     [[nodiscard]] const TransformData& getTransformByIndex(size_t index) const;
 
+    /**
+     * @brief Get static transform by index (for collision system)
+     */
+    [[nodiscard]] const TransformData& getStaticTransformByIndex(size_t index) const;
+
     // ========================================================================
     // HOT DATA ACCESS
     // ========================================================================
@@ -455,6 +460,21 @@ public:
      * @brief Get read-only span of all hot data (for batch iteration)
      */
     [[nodiscard]] std::span<const EntityHotData> getHotDataArray() const;
+
+    /**
+     * @brief Get read-only span of static hot data (for collision system)
+     */
+    [[nodiscard]] std::span<const EntityHotData> getStaticHotDataArray() const;
+
+    /**
+     * @brief Get static hot data by index
+     */
+    [[nodiscard]] const EntityHotData& getStaticHotDataByIndex(size_t index) const;
+
+    /**
+     * @brief Get static entity index from ID
+     */
+    [[nodiscard]] size_t getStaticIndex(EntityHandle handle) const;
 
     // ========================================================================
     // TYPE-SPECIFIC DATA ACCESS
@@ -589,11 +609,14 @@ private:
     // ========================================================================
 
     // Shared data (indexed by global entity index)
-    std::vector<EntityHotData> m_hotData;
+    std::vector<EntityHotData> m_hotData;           // Dynamic entities only
+    std::vector<EntityHotData> m_staticHotData;     // Static entities (separate, not tiered)
     std::vector<EntityHandle::IDType> m_entityIds;
+    std::vector<EntityHandle::IDType> m_staticEntityIds;
 
     // ID to index mapping
     std::unordered_map<EntityHandle::IDType, size_t> m_idToIndex;
+    std::unordered_map<EntityHandle::IDType, size_t> m_staticIdToIndex;
 
     // Type-specific data (indexed by typeLocalIndex in EntityHotData)
     std::vector<CharacterData> m_characterData;      // Player + NPC
@@ -627,9 +650,11 @@ private:
 
     // Free list for slot reuse
     std::vector<size_t> m_freeSlots;
+    std::vector<size_t> m_freeStaticSlots;
 
     // Generation counters per slot (for stale handle detection)
     std::vector<uint8_t> m_generations;
+    std::vector<uint8_t> m_staticGenerations;
 
     // Thread safety
     mutable std::shared_mutex m_dataMutex;

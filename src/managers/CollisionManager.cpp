@@ -1065,11 +1065,23 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
 
   // Look up EDM entry by EntityID - EDM is source of truth
   auto& edm = EntityDataManager::Instance();
-  size_t edmIdx = edm.findIndexByEntityId(id);
-  if (edmIdx == SIZE_MAX) {
-    // Not registered with EDM - create entry for collision body
-    EntityHandle handle = edm.createStaticBody(position, hw, hh);
-    edmIdx = edm.getIndex(handle);
+  size_t edmIdx = SIZE_MAX;
+  if (type == BodyType::STATIC) {
+    // Static bodies go in separate EDM storage
+    edmIdx = edm.findIndexByEntityId(id);
+    if (edmIdx == SIZE_MAX) {
+      EntityHandle handle = edm.createStaticBody(position, hw, hh);
+      edmIdx = edm.getStaticIndex(handle);
+    }
+  } else {
+    // Dynamic/Kinematic bodies: check if already registered in EDM
+    edmIdx = edm.findIndexByEntityId(id);
+    if (edmIdx == SIZE_MAX) {
+      // Not registered - create EDM entry for proper data-oriented flow
+      // This handles programmatic creation and test fixtures
+      EntityHandle handle = edm.registerNPC(id, position, hw, hh);
+      edmIdx = edm.getIndex(handle);
+    }
   }
   hotData.edmIndex = edmIdx;
 
@@ -1124,8 +1136,8 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
       float halfW, halfH;
       if (hot.edmIndex != SIZE_MAX) {
         auto& edm = EntityDataManager::Instance();
-        position = edm.getTransformByIndex(hot.edmIndex).position;
-        const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+        const auto& edmHot = edm.getStaticHotDataByIndex(hot.edmIndex);
+        position = edmHot.transform.position;
         halfW = edmHot.halfWidth;
         halfH = edmHot.halfHeight;
       } else {
@@ -1211,7 +1223,12 @@ void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2
   if (getCollisionBodySOA(id, index)) {
     auto& hot = m_storage.hotData[index];
 
-    // Write position to EDM (single source of truth)
+    // Static bodies don't move - skip EDM update
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      return;
+    }
+
+    // Write position to EDM (single source of truth) for dynamic/kinematic bodies
     if (hot.edmIndex != SIZE_MAX) {
       auto& edm = EntityDataManager::Instance();
       edm.getTransformByIndex(hot.edmIndex).position = newPosition;
@@ -1238,6 +1255,10 @@ void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     auto& hot = m_storage.hotData[index];
+    // Static bodies have no velocity
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      return;
+    }
     // Write velocity to EDM (single source of truth)
     if (hot.edmIndex != SIZE_MAX) {
       EntityDataManager::Instance().getTransformByIndex(hot.edmIndex).velocity = newVelocity;
@@ -1249,6 +1270,10 @@ Vector2D CollisionManager::getCollisionBodyVelocitySOA(EntityID id) const {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     const auto& hot = m_storage.hotData[index];
+    // Static bodies have no velocity
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      return Vector2D(0, 0);
+    }
     // Read velocity from EDM (single source of truth)
     if (hot.edmIndex != SIZE_MAX) {
       return EntityDataManager::Instance().getTransformByIndex(hot.edmIndex).velocity;
@@ -1261,7 +1286,11 @@ void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& n
   size_t index;
   if (getCollisionBodySOA(id, index)) {
     auto& hot = m_storage.hotData[index];
-    // Write halfSize to EDM (single source of truth)
+    // Static bodies don't change size at runtime
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      return;
+    }
+    // Write halfSize to EDM (single source of truth) for dynamic/kinematic bodies
     if (hot.edmIndex != SIZE_MAX) {
       auto& edm = EntityDataManager::Instance();
       auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
@@ -2758,6 +2787,12 @@ void CollisionManager::refreshCachedAABB(size_t index) {
     return;
   }
 
+  // Static bodies don't move - their AABBs are set once at creation
+  if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+    hot.aabbDirty = 0;
+    return;
+  }
+
   // Get position and half-extents from EDM (single source of truth)
   auto& edm = EntityDataManager::Instance();
   const auto& transform = edm.getTransformByIndex(hot.edmIndex);
@@ -3102,7 +3137,6 @@ void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate
         hot.aabbMaxY = py + hh;
         hot.aabbDirty = 0;
         hot.active = true;
-        // NOTE: Dynamic spatial hash update removed - broadphase uses pools.movableIndices directly
       }
     }
   }
@@ -3142,14 +3176,12 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
           float hw = edmHot.halfWidth;
           float hh = edmHot.halfHeight;
 
-          // Update cached AABB
           hot.aabbMinX = px - hw;
           hot.aabbMinY = py - hh;
           hot.aabbMaxX = px + hw;
           hot.aabbMaxY = py + hh;
           hot.aabbDirty = 0;
           hot.active = true;
-          // NOTE: Dynamic spatial hash update removed - broadphase uses pools.movableIndices directly
         }
       }
     }
@@ -3188,10 +3220,16 @@ void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t co
 void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
-    // Update EDM - it owns velocity
-    auto& edm = EntityDataManager::Instance();
-    auto& transform = edm.getTransformByIndex(m_storage.hotData[index].edmIndex);
-    transform.velocity = velocity;
+    auto& hot = m_storage.hotData[index];
+    // Static bodies have no velocity
+    if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      return;
+    }
+    // Update EDM - it owns velocity (if registered)
+    if (hot.edmIndex != SIZE_MAX) {
+      auto& transform = EntityDataManager::Instance().getTransformByIndex(hot.edmIndex);
+      transform.velocity = velocity;
+    }
   }
 }
 
