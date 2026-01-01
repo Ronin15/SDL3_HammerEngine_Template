@@ -87,46 +87,43 @@ void EntityDataManager::clean() {
 
     m_initialized.store(false, std::memory_order_release);
 
-    {
-        std::unique_lock<std::shared_mutex> lock(m_dataMutex);
+    // Clear all entity data (main thread only - no lock needed)
+    m_hotData.clear();
+    m_entityIds.clear();
+    m_generations.clear();
+    m_idToIndex.clear();
 
-        m_hotData.clear();
-        m_entityIds.clear();
-        m_generations.clear();
-        m_idToIndex.clear();
+    // Clear static entity storage
+    m_staticHotData.clear();
+    m_staticEntityIds.clear();
+    m_staticGenerations.clear();
+    m_staticIdToIndex.clear();
+    m_freeStaticSlots.clear();
 
-        // Clear static entity storage
-        m_staticHotData.clear();
-        m_staticEntityIds.clear();
-        m_staticGenerations.clear();
-        m_staticIdToIndex.clear();
-        m_freeStaticSlots.clear();
+    m_characterData.clear();
+    m_itemData.clear();
+    m_projectileData.clear();
+    m_containerData.clear();
+    m_harvestableData.clear();
+    m_areaEffectData.clear();
 
-        m_characterData.clear();
-        m_itemData.clear();
-        m_projectileData.clear();
-        m_containerData.clear();
-        m_harvestableData.clear();
-        m_areaEffectData.clear();
+    // Clear type-specific free-lists
+    m_freeCharacterSlots.clear();
+    m_freeItemSlots.clear();
+    m_freeProjectileSlots.clear();
+    m_freeContainerSlots.clear();
+    m_freeHarvestableSlots.clear();
+    m_freeAreaEffectSlots.clear();
 
-        // Clear type-specific free-lists
-        m_freeCharacterSlots.clear();
-        m_freeItemSlots.clear();
-        m_freeProjectileSlots.clear();
-        m_freeContainerSlots.clear();
-        m_freeHarvestableSlots.clear();
-        m_freeAreaEffectSlots.clear();
+    m_activeIndices.clear();
+    m_backgroundIndices.clear();
+    m_hibernatedIndices.clear();
 
-        m_activeIndices.clear();
-        m_backgroundIndices.clear();
-        m_hibernatedIndices.clear();
-
-        for (auto& kindVec : m_kindIndices) {
-            kindVec.clear();
-        }
-
-        m_freeSlots.clear();
+    for (auto& kindVec : m_kindIndices) {
+        kindVec.clear();
     }
+
+    m_freeSlots.clear();
 
     {
         std::lock_guard<std::mutex> lock(m_destructionMutex);
@@ -151,48 +148,44 @@ void EntityDataManager::prepareForStateTransition() {
     // Process any pending destructions first
     processDestructionQueue();
 
-    // Clear all entity data
-    {
-        std::unique_lock<std::shared_mutex> lock(m_dataMutex);
+    // Clear all entity data (main thread only - no lock needed)
+    m_hotData.clear();
+    m_entityIds.clear();
+    m_idToIndex.clear();
 
-        m_hotData.clear();
-        m_entityIds.clear();
-        m_idToIndex.clear();
+    // Clear static entity storage
+    m_staticHotData.clear();
+    m_staticEntityIds.clear();
+    m_staticGenerations.clear();
+    m_staticIdToIndex.clear();
+    m_freeStaticSlots.clear();
 
-        // Clear static entity storage
-        m_staticHotData.clear();
-        m_staticEntityIds.clear();
-        m_staticGenerations.clear();
-        m_staticIdToIndex.clear();
-        m_freeStaticSlots.clear();
+    m_characterData.clear();
+    m_itemData.clear();
+    m_projectileData.clear();
+    m_containerData.clear();
+    m_harvestableData.clear();
+    m_areaEffectData.clear();
 
-        m_characterData.clear();
-        m_itemData.clear();
-        m_projectileData.clear();
-        m_containerData.clear();
-        m_harvestableData.clear();
-        m_areaEffectData.clear();
+    // Clear type-specific free-lists
+    m_freeCharacterSlots.clear();
+    m_freeItemSlots.clear();
+    m_freeProjectileSlots.clear();
+    m_freeContainerSlots.clear();
+    m_freeHarvestableSlots.clear();
+    m_freeAreaEffectSlots.clear();
 
-        // Clear type-specific free-lists
-        m_freeCharacterSlots.clear();
-        m_freeItemSlots.clear();
-        m_freeProjectileSlots.clear();
-        m_freeContainerSlots.clear();
-        m_freeHarvestableSlots.clear();
-        m_freeAreaEffectSlots.clear();
+    m_activeIndices.clear();
+    m_backgroundIndices.clear();
+    m_hibernatedIndices.clear();
 
-        m_activeIndices.clear();
-        m_backgroundIndices.clear();
-        m_hibernatedIndices.clear();
-
-        for (auto& kindVec : m_kindIndices) {
-            kindVec.clear();
-        }
-
-        m_freeSlots.clear();
-        m_tierIndicesDirty = true;
-        m_kindIndicesDirty = true;
+    for (auto& kindVec : m_kindIndices) {
+        kindVec.clear();
     }
+
+    m_freeSlots.clear();
+    m_tierIndicesDirty = true;
+    m_kindIndicesDirty = true;
 
     m_totalEntityCount.store(0, std::memory_order_relaxed);
     for (auto& count : m_countByKind) {
@@ -295,7 +288,6 @@ uint8_t EntityDataManager::nextGeneration(size_t index) {
 EntityHandle EntityDataManager::createNPC(const Vector2D& position,
                                           float halfWidth,
                                           float halfHeight) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     size_t index = allocateSlot(EntityKind::NPC);
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -347,7 +339,6 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
 }
 
 EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     size_t index = allocateSlot(EntityKind::Player);
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -406,7 +397,6 @@ EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
 EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
                                                   HammerEngine::ResourceHandle resourceHandle,
                                                   int quantity) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     size_t index = allocateSlot(EntityKind::DroppedItem);
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -462,7 +452,6 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
                                                  EntityHandle owner,
                                                  float damage,
                                                  float lifetime) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     size_t index = allocateSlot(EntityKind::Projectile);
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -519,7 +508,6 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
                                                  EntityHandle owner,
                                                  float damage,
                                                  float duration) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     size_t index = allocateSlot(EntityKind::AreaEffect);
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -576,7 +564,6 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
 EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
                                                   float halfWidth,
                                                   float halfHeight) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     // Allocate slot in static storage (separate from dynamic m_hotData)
     size_t index;
@@ -632,7 +619,6 @@ EntityHandle EntityDataManager::registerNPC(EntityHandle::IDType entityId,
         return INVALID_ENTITY_HANDLE;
     }
 
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     // Check if already registered
     if (m_idToIndex.find(entityId) != m_idToIndex.end()) {
@@ -702,7 +688,6 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
         return INVALID_ENTITY_HANDLE;
     }
 
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     // Check if already registered
     if (m_idToIndex.find(entityId) != m_idToIndex.end()) {
@@ -773,7 +758,6 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         return INVALID_ENTITY_HANDLE;
     }
 
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     // Check if already registered
     if (m_idToIndex.find(entityId) != m_idToIndex.end()) {
@@ -838,7 +822,6 @@ void EntityDataManager::unregisterEntity(EntityHandle::IDType entityId) {
         return;
     }
 
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     auto it = m_idToIndex.find(entityId);
     if (it == m_idToIndex.end()) {
@@ -891,7 +874,6 @@ void EntityDataManager::processDestructionQueue() {
         return;
     }
 
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     for (const auto& handle : m_destroyBuffer) {
         auto it = m_idToIndex.find(handle.id);
@@ -941,7 +923,6 @@ bool EntityDataManager::isValidHandle(EntityHandle handle) const {
         return false;
     }
 
-    std::shared_lock<std::shared_mutex> lock(m_dataMutex);
 
     auto it = m_idToIndex.find(handle.id);
     if (it == m_idToIndex.end()) {
@@ -962,7 +943,6 @@ size_t EntityDataManager::getIndex(EntityHandle handle) const {
         return SIZE_MAX;
     }
 
-    std::shared_lock<std::shared_mutex> lock(m_dataMutex);
 
     auto it = m_idToIndex.find(handle.id);
     if (it == m_idToIndex.end()) {
@@ -1193,7 +1173,6 @@ const AreaEffectData& EntityDataManager::getAreaEffectData(EntityHandle handle) 
 // ============================================================================
 
 void EntityDataManager::setSimulationTier(EntityHandle handle, SimulationTier tier) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     auto it = m_idToIndex.find(handle.id);
     if (it == m_idToIndex.end()) {
@@ -1222,7 +1201,6 @@ void EntityDataManager::setSimulationTier(EntityHandle handle, SimulationTier ti
 void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
                                               float activeRadius,
                                               float backgroundRadius) {
-    std::unique_lock<std::shared_mutex> lock(m_dataMutex);
 
     const float activeRadiusSq = activeRadius * activeRadius;
     const float backgroundRadiusSq = backgroundRadius * backgroundRadius;
@@ -1341,7 +1319,6 @@ void EntityDataManager::queryEntitiesInRadius(const Vector2D& center,
                                               EntityKind kindFilter) const {
     outHandles.clear();
 
-    std::shared_lock<std::shared_mutex> lock(m_dataMutex);
 
     const float radiusSq = radius * radius;
 
@@ -1384,7 +1361,6 @@ size_t EntityDataManager::getEntityCount(SimulationTier tier) const noexcept {
 // ============================================================================
 
 EntityHandle::IDType EntityDataManager::getEntityId(size_t index) const {
-    std::shared_lock<std::shared_mutex> lock(m_dataMutex);
 
     if (index >= m_entityIds.size()) {
         return 0;
@@ -1393,7 +1369,6 @@ EntityHandle::IDType EntityDataManager::getEntityId(size_t index) const {
 }
 
 EntityHandle EntityDataManager::getHandle(size_t index) const {
-    std::shared_lock<std::shared_mutex> lock(m_dataMutex);
 
     if (index >= m_hotData.size() || !m_hotData[index].isAlive()) {
         return INVALID_ENTITY_HANDLE;

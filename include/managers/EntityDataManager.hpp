@@ -25,6 +25,15 @@
  * - Single source of truth (eliminates 4x position duplication)
  * - Cache-optimal SoA storage (~5MB contiguous vs ~30MB scattered)
  * - Supports 100K+ entities with tiered simulation
+ *
+ * THREADING CONTRACT:
+ * - All structural operations (create/destroy/register/getIndex) MUST be called
+ *   from the main thread only. These operations are NOT thread-safe.
+ * - Index-based accessors (getHotDataByIndex, getTransformByIndex) are lock-free
+ *   and safe for parallel batch processing with non-overlapping index ranges.
+ * - Parallel batch processing uses pre-cached indices to avoid map lookups.
+ * - GameEngine::update() sequential order guarantees no concurrent structural changes:
+ *   EventManager → GameStateManager → AIManager → CollisionManager → BackgroundSimManager
  */
 
 #include "entities/EntityHandle.hpp"
@@ -33,7 +42,6 @@
 #include <atomic>
 #include <cstdint>
 #include <mutex>
-#include <shared_mutex>
 #include <span>
 #include <vector>
 
@@ -656,8 +664,7 @@ private:
     std::vector<uint8_t> m_generations;
     std::vector<uint8_t> m_staticGenerations;
 
-    // Thread safety
-    mutable std::shared_mutex m_dataMutex;
+    // Thread safety (destruction queue only - structural ops are main-thread-only)
     std::mutex m_destructionMutex;
 
     // State
