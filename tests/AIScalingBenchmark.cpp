@@ -23,6 +23,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
 
@@ -336,6 +337,7 @@ struct GlobalFixture {
 
             // Initialize dependencies in correct order
             HammerEngine::ThreadSystem::Instance().init();
+            EntityDataManager::Instance().init();
 
             // AIManager requires these managers to be initialized first
             PathfinderManager::Instance().init();
@@ -347,6 +349,13 @@ struct GlobalFixture {
             if (!AIManager::Instance().init()) {
                 std::cerr << "FATAL: AIManager::init() failed!" << std::endl;
             }
+
+            // Initialize tier system for culling
+            BackgroundSimulationManager::Instance().init();
+            // Headless test: simulate 1920x1080 radii (half-diagonal ~1100px)
+            // Active: 1.5x = 1650, Background: 2.0x = 2200
+            BackgroundSimulationManager::Instance().setActiveRadius(1650.0f);
+            BackgroundSimulationManager::Instance().setBackgroundRadius(2200.0f);
 
             g_systemsInitialized = true;
         }
@@ -371,9 +380,13 @@ struct GlobalFixture {
                 AIManager::Instance().clean();
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
+                // Clean tier system
+                BackgroundSimulationManager::Instance().clean();
+
                 // Clean dependencies in reverse order
                 CollisionManager::Instance().clean();
                 PathfinderManager::Instance().clean();
+                EntityDataManager::Instance().clean();
 
                 // Clean ThreadSystem last
                 HammerEngine::ThreadSystem::Instance().clean();
@@ -847,9 +860,11 @@ struct AIScalingFixture {
 
         // Warmup phase (16 frames for distance staggering)
         std::cout << "  [DEBUG] Running 16 warmup frames..." << std::endl;
+        Vector2D referencePoint(5000.0f, 5000.0f);  // Player/center position for tier calc
         for (int warmup = 0; warmup < 16; ++warmup) {
             AIManager::Instance().update(0.016f);
             CollisionManager::Instance().update(0.016f);
+            BackgroundSimulationManager::Instance().update(referencePoint, 0.016f);
         }
         while (HammerEngine::ThreadSystem::Instance().isBusy()) {
             std::this_thread::sleep_for(std::chrono::microseconds(500));
@@ -869,6 +884,7 @@ struct AIScalingFixture {
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f);
                 CollisionManager::Instance().update(0.016f);  // Includes resolveSOA()
+                BackgroundSimulationManager::Instance().update(referencePoint, 0.016f);
             }
 
             auto dispatchEndTime = std::chrono::high_resolution_clock::now();

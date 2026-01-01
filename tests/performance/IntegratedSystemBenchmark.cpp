@@ -21,6 +21,7 @@
 #include "managers/AIManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/EntityDataManager.hpp" // For TransformData definition
+#include "managers/BackgroundSimulationManager.hpp"
 #include "utils/Vector2D.hpp"
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
@@ -288,12 +289,20 @@ namespace {
             AIManager::Instance().enableThreading(true);
             ParticleManager::Instance().init();  // Initialize without texture manager
             ParticleManager::Instance().registerBuiltInEffects();
+
+            // Initialize tier system for culling
+            BackgroundSimulationManager::Instance().init();
+            // Headless test: simulate 1920x1080 radii (half-diagonal ~1100px)
+            // Active: 1.5x = 1650, Background: 2.0x = 2200
+            BackgroundSimulationManager::Instance().setActiveRadius(1650.0f);
+            BackgroundSimulationManager::Instance().setBackgroundRadius(2200.0f);
         }
 
         void cleanupAllManagers() {
             // Cleanup in reverse order
             cleanupScenario();
 
+            BackgroundSimulationManager::Instance().clean();
             ParticleManager::Instance().clean();
             AIManager::Instance().clean();
             CollisionManager::Instance().clean();
@@ -332,12 +341,33 @@ namespace {
                 aiMgr.registerBehavior(behaviorNames[i], behavior);
             }
 
-            // Create AI entities
-            std::uniform_real_distribution<float> posDist(0.0f, 5000.0f);
-            Vector2D centralPosition(2500.0f, 2500.0f);
+            // Create AI entities distributed across tier zones for realistic testing
+            // Active tier: within 1650px of center (first 60%)
+            // Background tier: 1650-2200px from center (next 30%)
+            // Hibernated tier: beyond 2200px (last 10%)
+            std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+            std::uniform_real_distribution<float> distActive(0.0f, 1650.0f);
+            std::uniform_real_distribution<float> distBackground(1650.0f, 2200.0f);
+            std::uniform_real_distribution<float> distHibernated(2200.0f, 4000.0f);
 
             for (size_t i = 0; i < aiEntityCount; ++i) {
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), centralPosition);
+                float angle = angleDist(m_rng);
+                float distance;
+
+                if (i < aiEntityCount * 6 / 10) {
+                    // 60% in Active tier
+                    distance = distActive(m_rng);
+                } else if (i < aiEntityCount * 9 / 10) {
+                    // 30% in Background tier
+                    distance = distBackground(m_rng);
+                } else {
+                    // 10% in Hibernated tier
+                    distance = distHibernated(m_rng);
+                }
+
+                Vector2D pos(2500.0f + distance * std::cos(angle),
+                             2500.0f + distance * std::sin(angle));
+                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
                 // Assign behavior
@@ -368,10 +398,27 @@ namespace {
             m_behaviors.push_back(behavior);
             aiMgr.registerBehavior("Wander", behavior);
 
-            Vector2D centralPosition(2500.0f, 2500.0f);
+            // Distribute entities across tier zones (same as setupRealisticScenario)
+            std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+            std::uniform_real_distribution<float> distActive(0.0f, 1650.0f);
+            std::uniform_real_distribution<float> distBackground(1650.0f, 2200.0f);
+            std::uniform_real_distribution<float> distHibernated(2200.0f, 4000.0f);
 
             for (size_t i = 0; i < entityCount; ++i) {
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), centralPosition);
+                float angle = angleDist(m_rng);
+                float distance;
+
+                if (i < entityCount * 6 / 10) {
+                    distance = distActive(m_rng);
+                } else if (i < entityCount * 9 / 10) {
+                    distance = distBackground(m_rng);
+                } else {
+                    distance = distHibernated(m_rng);
+                }
+
+                Vector2D pos(2500.0f + distance * std::cos(angle),
+                             2500.0f + distance * std::sin(angle));
+                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
                 aiMgr.registerEntity(entity->getHandle(), "Wander");
@@ -398,6 +445,10 @@ namespace {
             AIManager::Instance().update(deltaTime);
             CollisionManager::Instance().updateSOA(deltaTime);
             ParticleManager::Instance().update(deltaTime);
+
+            // Tier culling update (reference point = center of spawn area)
+            Vector2D referencePoint(2500.0f, 2500.0f);
+            BackgroundSimulationManager::Instance().update(referencePoint, deltaTime);
         }
 
         FrameStats runFrameBenchmark(size_t frameCount, float deltaTime) {
