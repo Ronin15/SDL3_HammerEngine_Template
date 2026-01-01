@@ -782,24 +782,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 
     // Manager references are valid (assigned above)
 
-    // Verify managers are still responding after caching
-    try {
-      // Test AI Manager responsiveness
-      size_t entityCount = mp_aiManager->getManagedEntityCount();
-      GAMEENGINE_DEBUG(std::format("AIManager cached successfully, managing {} entities", entityCount));
-
-      // Test Event Manager responsiveness (just verify it's initialized)
-      GAMEENGINE_DEBUG("EventManager cached successfully and initialized");
-
-      // Test Particle Manager responsiveness
-      size_t activeParticles = mp_particleManager->getActiveParticleCount();
-      GAMEENGINE_DEBUG(std::format("ParticleManager cached successfully, {} active particles", activeParticles));
-    } catch (const std::exception &e) {
-      GAMEENGINE_CRITICAL(std::format("Manager validation failed after caching: {}", e.what()));
-      return false;
-    }
-
-    GAMEENGINE_INFO("Manager references cached and validated successfully");
+    // Manager references cached - managers handle their own logging internally
+    GAMEENGINE_INFO("Manager references cached successfully");
   } catch (const std::exception &e) {
     GAMEENGINE_ERROR(std::format("Error caching manager references: {}", e.what()));
     return false;

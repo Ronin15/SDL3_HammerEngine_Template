@@ -740,10 +740,10 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
     // Verify collision system is actually working (pairs detected)
     BOOST_CHECK_GT(collisionStats.lastPairs, 0);
 
-    // Verify entities are being managed
-    size_t managedCount = AIManager::Instance().getManagedEntityCount();
-    std::cout << "AI entities managed: " << managedCount << std::endl;
-    BOOST_CHECK_GT(managedCount, 0);
+    // Verify behaviors are registered
+    size_t behaviorCount = AIManager::Instance().getBehaviorCount();
+    std::cout << "AI behaviors registered: " << behaviorCount << std::endl;
+    BOOST_CHECK_GT(behaviorCount, 0);
 
     std::cout << "=== TEST 4: PASSED ===" << std::endl;
 }

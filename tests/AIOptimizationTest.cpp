@@ -112,9 +112,6 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     // Wait for async assignments to complete (matches production behavior)
     AIManager::Instance().waitForAssignmentCompletion();
 
-    // Verify entities are registered
-    BOOST_CHECK_EQUAL(AIManager::Instance().getManagedEntityCount(), 10);
-
     // Cleanup - unregister entities from managed updates
     auto& edm = EntityDataManager::Instance();
     for (const auto& handle : handles) {

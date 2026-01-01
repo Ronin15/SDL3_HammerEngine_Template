@@ -152,7 +152,6 @@ void AIManager::clean() {
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   AI_INFO("AIManager shutdown complete");
 }
@@ -245,7 +244,6 @@ void AIManager::prepareForStateTransition() {
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
   m_frameCounter.store(0, std::memory_order_relaxed);
   m_lastCleanupFrame.store(0, std::memory_order_relaxed);
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   // Clear player reference completely
   {
@@ -285,12 +283,14 @@ void AIManager::update(float deltaTime) {
     // Process pending assignments first so new entities are picked up this frame
     processPendingBehaviorAssignments();
 
-    // Use cached active count - no iteration needed
-    size_t activeCount = m_activeEntityCount.load(std::memory_order_acquire);
+    // Get entity count - early exit if empty (no atomic counter needed)
+    size_t entityCount;
+    {
+      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+      entityCount = m_storage.size();
+    }
 
-    // Early exit if no active entities - skip ALL work including timing and cache
-    // Messages for non-existent entities are useless, so skip processMessageQueue() too
-    if (activeCount == 0) {
+    if (entityCount == 0) {
       return;
     }
 
@@ -301,17 +301,6 @@ void AIManager::update(float deltaTime) {
     // PERFORMANCE: Invalidate spatial query cache for new frame
     // This ensures thread-local caches are fresh and don't use stale collision data
     AIInternal::InvalidateSpatialCache(currentFrame);
-
-    // Get total entity count (used for buffer sizing)
-    size_t entityCount;
-    {
-      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-      entityCount = m_storage.size();
-    }
-
-    if (entityCount == 0) {
-      return;
-    }
 
     // Get player position for distance calculations
     // All entities get distance calculated every frame via SIMD (fast enough)
@@ -616,10 +605,9 @@ void AIManager::assignBehavior(EntityHandle handle,
       m_storage.hotData[index].behaviorType =
           static_cast<uint8_t>(inferBehaviorType(behaviorName));
 
-      // Update active state and counter
+      // Update active state
       if (!m_storage.hotData[index].active) {
         m_storage.hotData[index].active = true;
-        m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
       }
 
       // Refresh EDM index if needed
@@ -642,9 +630,6 @@ void AIManager::assignBehavior(EntityHandle handle,
     m_storage.hotData.push_back(hotData);
     m_storage.handles.push_back(handle);
     m_storage.behaviors.push_back(behavior);
-
-    // Increment active counter for new entity
-    m_activeEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_storage.lastUpdateTimes.push_back(0.0f);
 
     // Cache EntityDataManager index for lock-free batch access
@@ -670,11 +655,8 @@ void AIManager::unassignBehavior(EntityHandle handle) {
   if (it != m_handleToIndex.end()) {
     size_t index = it->second;
     if (index < m_storage.size()) {
-      // Decrement active counter if entity was active
-      if (m_storage.hotData[index].active) {
-        m_storage.hotData[index].active = false;
-        m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
-      }
+      // Mark as inactive
+      m_storage.hotData[index].active = false;
 
       if (m_storage.behaviors[index]) {
         m_storage.behaviors[index]->clean(handle);
@@ -890,11 +872,8 @@ void AIManager::unregisterEntity(EntityHandle handle) {
   // Mark as inactive in main storage
   auto it = m_handleToIndex.find(handle);
   if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-    // Decrement active counter if entity was active
-    if (m_storage.hotData[it->second].active) {
-      m_storage.hotData[it->second].active = false;
-      m_activeEntityCount.fetch_sub(1, std::memory_order_relaxed);
-    }
+    // Mark as inactive
+    m_storage.hotData[it->second].active = false;
   }
 }
 
@@ -976,7 +955,6 @@ void AIManager::resetBehaviors() {
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
 }
 
 void AIManager::enableThreading(bool enable) {
@@ -1008,11 +986,6 @@ bool AIManager::getWaitForBatchCompletion() const {
 size_t AIManager::getBehaviorCount() const {
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
   return m_behaviorTemplates.size();
-}
-
-size_t AIManager::getManagedEntityCount() const {
-  // PERFORMANCE: Use cached counter instead of O(n) iteration
-  return m_activeEntityCount.load(std::memory_order_relaxed);
 }
 
 size_t AIManager::getBehaviorUpdateCount() const {
@@ -1268,9 +1241,6 @@ void AIManager::cleanupAllEntities() {
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();
   m_handleToIndex.clear();
-
-  // Reset active counter
-  m_activeEntityCount.store(0, std::memory_order_relaxed);
 
   AI_DEBUG("Cleaned up all entities for state transition");
 }

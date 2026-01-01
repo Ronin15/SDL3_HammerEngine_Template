@@ -282,7 +282,6 @@ public:
 
   // Performance monitoring
   size_t getBehaviorCount() const;
-  size_t getManagedEntityCount() const;
   size_t getBehaviorUpdateCount() const;
 
   // Thread-safe assignment tracking (atomic counter only)
@@ -399,10 +398,6 @@ private:
 
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
-
-  // Active entity counter - avoids iteration every frame
-  // Atomic: allows safe read in update() during concurrent assignBehavior calls
-  std::atomic<size_t> m_activeEntityCount{0};
 
   // Thread-safe assignment tracking
   std::atomic<size_t> m_totalAssignmentCount{0};
