@@ -143,8 +143,8 @@ message(STATUS
     "SaveGameManager using fast header-only binary serialization")
 
 # Specify the stable release tags for each SDL3 component
-# SDL3 3.3.4 includes native PNG loading (SDL_LoadPNG) - no SDL3_image needed
-set(SDL3_GIT_TAG "prerelease-3.3.6")       # SDL3 3.3.6 prerelease final 3.4.0 release candidate for mixer to get off main tag. first step.
+# SDL3 3.4.0 is first stable release - includes native PNG loading (SDL_LoadPNG)
+set(SDL3_GIT_TAG "release-3.4.0")          # SDL3 3.4.0 stable release
 set(SDL3_TTF_GIT_TAG "release-3.2.2")      # Latest stable SDL3_ttf release
 set(SDL3_MIXER_GIT_TAG "main")             # Keep on main for latest SDL3_mixer features
 
