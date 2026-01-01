@@ -603,7 +603,7 @@ void FleeBehavior::updateSeekCover(EntityPtr entity, EntityState& state, [[maybe
         coverDistance = baseCoverDistance * 1.2f;
     }
 
-    Vector2D dest = currentPos;
+    Vector2D dest;
     if (safeZoneDirection.length() > 0.001f) {
         state.fleeDirection = normalizeVector(safeZoneDirection);
         dest = currentPos + state.fleeDirection * coverDistance;

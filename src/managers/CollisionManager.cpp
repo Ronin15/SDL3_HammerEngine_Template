@@ -1135,7 +1135,7 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
       Vector2D position;
       float halfW, halfH;
       if (hot.edmIndex != SIZE_MAX) {
-        auto& edm = EntityDataManager::Instance();
+        const auto& edm = EntityDataManager::Instance();
         const auto& edmHot = edm.getStaticHotDataByIndex(hot.edmIndex);
         position = edmHot.transform.position;
         halfW = edmHot.halfWidth;
@@ -1254,7 +1254,7 @@ void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2
 void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity) {
   size_t index;
   if (getCollisionBodySOA(id, index)) {
-    auto& hot = m_storage.hotData[index];
+    const auto& hot = m_storage.hotData[index];
     // Static bodies have no velocity
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
       return;

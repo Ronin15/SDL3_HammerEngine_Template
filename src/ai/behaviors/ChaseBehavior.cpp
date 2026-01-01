@@ -42,11 +42,11 @@ void ChaseBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  auto& edm = EntityDataManager::Instance();
+  const auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX) return;
 
-  auto& hotData = edm.getHotDataByIndex(idx);
+  const auto& hotData = edm.getHotDataByIndex(idx);
 
   // Initialize the entity's state for chasing
   m_isChasing = false;
@@ -54,7 +54,7 @@ void ChaseBehavior::init(EntityHandle handle) {
   m_lastKnownTargetPos = hotData.transform.position;
 
   // Check if player is valid and in range
-  auto& aiMgr = AIManager::Instance();
+  const auto& aiMgr = AIManager::Instance();
   if (aiMgr.isPlayerValid()) {
     Vector2D entityPos = hotData.transform.position;
     Vector2D targetPos = aiMgr.getPlayerPosition();
@@ -367,7 +367,7 @@ void ChaseBehavior::onMessage(EntityHandle handle, const std::string &message) {
 
     // Reinitialize chase state when resuming
     if (handle.isValid()) {
-      auto& aiMgr = AIManager::Instance();
+      const auto& aiMgr = AIManager::Instance();
       if (aiMgr.isPlayerValid()) {
         init(handle);
       }

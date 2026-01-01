@@ -191,7 +191,7 @@ void WanderBehavior::applyBoundaryAvoidance(EntityState& state, const Vector2D& 
   }
 }
 
-void WanderBehavior::handlePathfinding(BehaviorContext& ctx, EntityState& state, const Vector2D& dest) {
+void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, EntityState& state, const Vector2D& dest) {
   Vector2D position = ctx.transform.position;
   float const distanceToGoal = (dest - position).length();
   if (distanceToGoal < 64.0f) {

@@ -235,7 +235,7 @@ void AttackBehavior::executeLogic(BehaviorContext& ctx) {
   if (targetHandle.isValid()) {
     size_t targetIdx = edm.getIndex(targetHandle);
     if (targetIdx != SIZE_MAX) {
-      auto& targetHotData = edm.getHotDataByIndex(targetIdx);
+      const auto& targetHotData = edm.getHotDataByIndex(targetIdx);
       if (targetHotData.isAlive()) {
         targetPos = targetHotData.transform.position;
         hasTarget = true;
