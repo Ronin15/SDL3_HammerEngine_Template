@@ -325,7 +325,7 @@ bool EventDemoState::exit() {
       m_player.reset();
 
       // Clear spawned NPCs vector and reset limit flag
-      m_spawnedNPCs.clear();
+      m_npcsById.clear();
       m_limitMessageShown = false;
 
       // Clear event log
@@ -385,7 +385,7 @@ bool EventDemoState::exit() {
     m_player.reset();
 
     // Clear spawned NPCs vector and reset limit flag
-    m_spawnedNPCs.clear();
+    m_npcsById.clear();
     m_limitMessageShown = false;
 
     // Clear event log
@@ -576,7 +576,7 @@ void EventDemoState::update(float deltaTime) {
 
     case DemoPhase::NPCSpawnDemo:
       if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          m_spawnedNPCs.size() < 5000) {
+          m_npcsById.size() < 5000) {
         triggerNPCSpawnDemo();
         m_lastEventTriggerTime = m_totalDemoTime;
       }
@@ -629,7 +629,7 @@ void EventDemoState::update(float deltaTime) {
     case DemoPhase::CustomEventDemo:
       if (m_phaseTimer >= 3.0f &&
           (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          m_spawnedNPCs.size() < 5000) {
+          m_npcsById.size() < 5000) {
         triggerCustomEventDemo();
         m_lastEventTriggerTime = m_totalDemoTime;
       }
@@ -753,7 +753,7 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     }
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
-    size_t npcCount = m_spawnedNPCs.size();
+    size_t npcCount = m_npcsById.size();
 
     // Update if FPS changed by more than 0.05 (avoids flicker) or other values changed
     if (std::abs(currentFPS - m_lastDisplayedFPS) > 0.05f ||
@@ -910,7 +910,7 @@ void EventDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      m_spawnedNPCs.size() < 5000) {
+      m_npcsById.size() < 5000) {
     if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
       m_phaseTimer = 0.0f;
     }
@@ -929,7 +929,7 @@ void EventDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      m_spawnedNPCs.size() < 5000) {
+      m_npcsById.size() < 5000) {
     if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
       m_phaseTimer = 0.0f;
     }
@@ -939,7 +939,7 @@ void EventDemoState::handleInput() {
   // Provide feedback when NPC cap reached
   else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
            (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-           m_spawnedNPCs.size() >= 5000) {
+           m_npcsById.size() >= 5000) {
     addLogEntry("NPC limit (R to reset)");
   }
 
@@ -1109,7 +1109,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
 
   Vector2D playerPos = m_player->getPosition();
 
-  size_t npcCount = m_spawnedNPCs.size();
+  size_t npcCount = m_npcsById.size();
   float offsetX = 200.0f + ((npcCount % 8) * 120.0f);
   float offsetY = 100.0f + ((npcCount % 5) * 80.0f);
 
@@ -1335,7 +1335,7 @@ void EventDemoState::triggerCustomEventDemo() {
 
   triggerWeatherDemoManual();
 
-  if (m_spawnedNPCs.size() >= 5000) {
+  if (m_npcsById.size() >= 5000) {
     addLogEntry("NPC limit reached (5000)");
     return;
   }
@@ -1348,7 +1348,7 @@ void EventDemoState::triggerCustomEventDemo() {
 
   Vector2D playerPos = m_player->getPosition();
 
-  size_t npcCount = m_spawnedNPCs.size();
+  size_t npcCount = m_npcsById.size();
   float offsetX1 = 150.0f + ((npcCount % 10) * 80.0f);
   float offsetY1 = 80.0f + ((npcCount % 6) * 50.0f);
   float offsetX2 = 250.0f + (((npcCount + 1) % 10) * 80.0f);
@@ -1389,7 +1389,7 @@ void EventDemoState::triggerCustomEventDemo() {
     addLogEntry(npcType2 + ": " + behaviorName2 + " queued");
   }
 
-  addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2, m_spawnedNPCs.size()));
+  addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2, m_npcsById.size()));
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
@@ -1647,7 +1647,7 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
 
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
 
-    m_spawnedNPCs.push_back(npc);
+    m_npcsById[npc->getHandle().getId()] = npc;
 
     return npc;
   } catch (const std::exception &e) {
@@ -1810,7 +1810,7 @@ void EventDemoState::cleanupSpawnedNPCs() {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 
-  for (const auto &npc : m_spawnedNPCs) {
+  for (const auto& [id, npc] : m_npcsById) {
     if (npc) {
       try {
         // Phase 2 EDM Migration: Use EntityHandle-based API
@@ -1827,7 +1827,7 @@ void EventDemoState::cleanupSpawnedNPCs() {
     }
   }
 
-  m_spawnedNPCs.clear();
+  m_npcsById.clear();
   m_limitMessageShown = false;
 }
 
@@ -1865,7 +1865,7 @@ void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
 
     addLogEntry(npcType + ": " + behaviorName + " queued");
 
-    m_spawnedNPCs.push_back(npc);
+    m_npcsById[npc->getHandle().getId()] = npc;
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPosition: {}, NPC type: {}, position: ({}, {})", e.what(), npcType, x, y));
   } catch (...) {

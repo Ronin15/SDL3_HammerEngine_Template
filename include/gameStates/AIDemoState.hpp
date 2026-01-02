@@ -53,9 +53,8 @@ private:
     void initializeCamera();
     void updateCamera(float deltaTime);
 
-    // Members
-    std::vector<NPCPtr> m_npcs{};  // Legacy storage (kept for cleanup/iteration)
-    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};  // Handle ID -> NPC for O(1) lookup
+    // Members - stored by handle ID for O(1) lookup
+    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
     PlayerPtr m_player{};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
