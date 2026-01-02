@@ -487,9 +487,16 @@ void AIDemoState::update(float deltaTime) {
 
     // Update Active tier NPCs only (animations and state machine)
     // AIManager handles behavior logic, BackgroundSimulationManager handles non-Active
-    for (auto& npc : m_npcs) {
-      if (npc && npc->isInActiveTier()) {
-        npc->update(deltaTime);
+    // Use getActiveIndices() to iterate only ~468 Active entities instead of all 50K
+    auto& edm = EntityDataManager::Instance();
+    for (size_t edmIdx : edm.getActiveIndices()) {
+      const auto& hot = edm.getHotDataByIndex(edmIdx);
+      if (hot.kind != EntityKind::NPC) continue;
+
+      EntityHandle handle = edm.getHandle(edmIdx);
+      auto it = m_npcsById.find(handle.getId());
+      if (it != m_npcsById.end() && it->second) {
+        it->second->update(deltaTime);
       }
     }
 
@@ -709,6 +716,7 @@ void AIDemoState::createNPCBatch(int count) {
             EntityHandle handle = npc->getHandle();
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, "Wander");
+              m_npcsById[handle.getId()] = npc;  // Add to handle-based lookup
             }
             m_npcs.push_back(npc);
             created++;
@@ -797,6 +805,7 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             EntityHandle handle = npc->getHandle();
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, randomBehavior);
+              m_npcsById[handle.getId()] = npc;  // Add to handle-based lookup
             }
 
             m_npcs.push_back(npc);

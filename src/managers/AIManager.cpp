@@ -59,6 +59,9 @@ bool AIManager::init() {
     m_storage.reserve(INITIAL_CAPACITY);
     m_handleToIndex.reserve(INITIAL_CAPACITY);
 
+    // Reserve sparse behavior vector (grows dynamically based on EDM indices)
+    m_behaviorsByEdmIndex.reserve(INITIAL_CAPACITY);
+
     // Reserve capacity for assignment queues to prevent reallocations during
     // batch processing
     m_pendingAssignments.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
@@ -132,9 +135,11 @@ void AIManager::clean() {
     m_storage.handles.clear();
     m_storage.behaviors.clear();
     m_storage.lastUpdateTimes.clear();
+    m_storage.edmIndices.clear();
 
     m_handleToIndex.clear();
     m_behaviorTemplates.clear();
+    m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
     m_pendingAssignments.clear();
     m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
@@ -227,6 +232,7 @@ void AIManager::prepareForStateTransition() {
     m_storage.lastUpdateTimes.clear();
     m_storage.edmIndices.clear();  // Clear EDM indices to prevent stale data
     m_handleToIndex.clear();
+    m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
 
     // Clear managed entities list
     m_managedEntities.clear();
@@ -276,16 +282,22 @@ void AIManager::update(float deltaTime) {
     // Process pending assignments first so new entities are picked up this frame
     processPendingBehaviorAssignments();
 
-    // Get entity count - early exit if empty (no atomic counter needed)
-    size_t entityCount;
-    {
-      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-      entityCount = m_storage.size();
-    }
+    // OPTIMIZATION: Use getActiveIndices() to iterate only Active tier entities
+    // This reduces iteration from 50K to ~468 (entities within active radius)
+    auto& edm = EntityDataManager::Instance();
+    auto activeSpan = edm.getActiveIndices();
 
-    if (entityCount == 0) {
+    if (activeSpan.empty()) {
       return;
     }
+
+    // Copy to local buffer (span may be invalidated during processing)
+    // Reuse buffer to avoid per-frame allocation
+    m_activeIndicesBuffer.clear();
+    m_activeIndicesBuffer.insert(m_activeIndicesBuffer.end(),
+                                  activeSpan.begin(), activeSpan.end());
+
+    const size_t entityCount = m_activeIndicesBuffer.size();
 
     // Start timing AFTER we know we have work to do
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -294,12 +306,6 @@ void AIManager::update(float deltaTime) {
     // PERFORMANCE: Invalidate spatial query cache for new frame
     // This ensures thread-local caches are fresh and don't use stale collision data
     AIInternal::InvalidateSpatialCache(currentFrame);
-
-    // Get player position for distance calculations
-    // All entities get distance calculated every frame via SIMD (fast enough)
-    // Staggering removed - combat system needs accurate positions for all entities
-    bool hasPlayer = m_playerHandle.isValid();
-    Vector2D playerPos = hasPlayer ? getPlayerPosition() : Vector2D(0, 0);
 
     // OPTIMIZATION: Query world bounds ONCE per frame (not per batch)
     float worldWidth = 32000.0f;
@@ -311,10 +317,6 @@ void AIManager::update(float deltaTime) {
         worldHeight = h;
       }
     }
-
-    // SINGLE-COPY OPTIMIZATION: Pre-fetch directly from m_storage.hotData
-    // No intermediate buffer copy needed - preFetchedData is our only copy
-    // This eliminates redundant copying and reduces cache thrashing
 
     // Determine threading strategy based on threshold and WorkerBudget
     bool useThreading = (entityCount >= m_threadingThreshold.load(std::memory_order_acquire) &&
@@ -336,19 +338,14 @@ void AIManager::update(float deltaTime) {
         queueCapacity = 1;
       }
       size_t pressureThreshold =
-          static_cast<size_t>(queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL); // Use unified threshold
+          static_cast<size_t>(queueCapacity * HammerEngine::QUEUE_PRESSURE_CRITICAL);
 
       if (queueSize > pressureThreshold) {
         // Graceful degradation: fallback to single-threaded processing
         AI_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
                              queueSize, queueCapacity));
 
-        // OPTIMIZATION: Direct storage iteration - no copying overhead
-        // Hold shared_lock during processing for thread-safe read access
-        {
-          std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-          processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
-        }
+        processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight);
       } else {
         // Use centralized WorkerBudgetManager for smart worker allocation
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -367,18 +364,10 @@ void AIManager::update(float deltaTime) {
 
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
-          // OPTIMIZATION: Direct storage iteration - no copying overhead
-          // Hold shared_lock during processing for thread-safe read access
-          {
-            std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-            processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
-          }
+          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight);
         } else {
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
-
-          // OPTIMIZATION: Direct storage iteration with per-batch locking
-          // Each batch acquires its own shared_lock - multiple batches can read in parallel
 
           // Submit batches using futures for parallel processing
           // Reuse m_batchFutures vector (clear keeps capacity, avoids allocations)
@@ -395,14 +384,11 @@ void AIManager::update(float deltaTime) {
             }
 
             // Submit each batch with future for completion tracking
-            // Each batch will acquire its own shared_lock during execution
+            // processBatch acquires shared_lock internally for thread-safe read access
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-              [this, start, end, deltaTime, playerPos, hasPlayer, worldWidth, worldHeight]() -> void {
+              [this, start, end, deltaTime, worldWidth, worldHeight]() -> void {
                 try {
-                  // Acquire shared_lock for this batch's execution
-                  // Multiple batches can hold shared_locks simultaneously (parallel reads)
-                  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-                  processBatch(start, end, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
+                  processBatch(m_activeIndicesBuffer, start, end, deltaTime, worldWidth, worldHeight);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
@@ -420,12 +406,7 @@ void AIManager::update(float deltaTime) {
 
     } else {
       // Single-threaded processing (threading disabled in config)
-      // OPTIMIZATION: Direct storage iteration - no copying overhead
-      // Hold shared_lock during processing for thread-safe read access
-      {
-        std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-        processBatch(0, entityCount, deltaTime, playerPos, hasPlayer, m_storage, worldWidth, worldHeight);
-      }
+      processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight);
     }
 
     // Process lock-free message queue
@@ -465,12 +446,12 @@ void AIManager::update(float deltaTime) {
           ? (entityCount * 1000.0 / totalUpdateTime)
           : 0.0;
       if (logWasThreaded) {
-        AI_DEBUG(std::format("AI Summary - Entities: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+        AI_DEBUG(std::format("AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
                              "[Threaded: {} batches, {}/batch]",
                              entityCount, totalUpdateTime, entitiesPerSecond,
                              logBatchCount, entityCount / logBatchCount));
       } else {
-        AI_DEBUG(std::format("AI Summary - Entities: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
+        AI_DEBUG(std::format("AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
                              "[Single-threaded]",
                              entityCount, totalUpdateTime, entitiesPerSecond));
       }
@@ -590,8 +571,17 @@ void AIManager::assignBehavior(EntityHandle handle,
       }
 
       // Refresh EDM index if needed
+      size_t edmIndex = edm.getIndex(handle);
       if (index < m_storage.edmIndices.size()) {
-        m_storage.edmIndices[index] = edm.getIndex(handle);
+        m_storage.edmIndices[index] = edmIndex;
+      }
+
+      // Update sparse behavior vector for getActiveIndices() iteration
+      if (edmIndex != SIZE_MAX) {
+        if (m_behaviorsByEdmIndex.size() <= edmIndex) {
+          m_behaviorsByEdmIndex.resize(edmIndex + 1);
+        }
+        m_behaviorsByEdmIndex[edmIndex] = behavior;
       }
 
       AI_INFO(std::format("Updated behavior for existing entity to: {}", behaviorName));
@@ -614,6 +604,14 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Cache EntityDataManager index for lock-free batch access
     size_t edmIndex = edm.getIndex(handle);
     m_storage.edmIndices.push_back(edmIndex);
+
+    // Populate sparse behavior vector for getActiveIndices() iteration
+    if (edmIndex != SIZE_MAX) {
+      if (m_behaviorsByEdmIndex.size() <= edmIndex) {
+        m_behaviorsByEdmIndex.resize(edmIndex + 1);
+      }
+      m_behaviorsByEdmIndex[edmIndex] = behavior;
+    }
 
     // Update index map
     m_handleToIndex[handle] = newIndex;
@@ -639,6 +637,12 @@ void AIManager::unassignBehavior(EntityHandle handle) {
 
       if (m_storage.behaviors[index]) {
         m_storage.behaviors[index]->clean(handle);
+      }
+
+      // Clear from sparse behavior vector
+      size_t edmIndex = m_storage.edmIndices[index];
+      if (edmIndex < m_behaviorsByEdmIndex.size()) {
+        m_behaviorsByEdmIndex[edmIndex] = nullptr;
       }
     }
   }
@@ -929,6 +933,7 @@ void AIManager::resetBehaviors() {
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();  // BUGFIX: Must clear edmIndices to prevent stale index pollution
   m_handleToIndex.clear();
+  m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
   m_managedEntities.clear();
 
   // Reset counters
@@ -1062,36 +1067,39 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
   return (it != m_behaviorTypeMap.end()) ? it->second : BehaviorType::Custom;
 }
 
-void AIManager::processBatch(size_t start, size_t end, float deltaTime,
-                             const Vector2D& /*playerPos*/,
-                             bool /*hasPlayer*/,
-                             const EntityStorage& storage,
+void AIManager::processBatch(const std::vector<size_t>& activeIndices,
+                             size_t start, size_t end,
+                             float deltaTime,
                              float worldWidth, float worldHeight) {
+  // Process batch of Active tier entities using EDM indices directly
+  // No tier check needed - getActiveIndices() already filters to Active tier
   size_t batchExecutions = 0;
   auto& edm = EntityDataManager::Instance();
 
-  for (size_t i = start; i < end && i < storage.handles.size(); ++i) {
-    EntityHandle handle = storage.handles[i];
-    AIBehavior* behavior = storage.behaviors[i].get();
-    size_t edmIndex = storage.edmIndices[i];
+  // Shared lock for reading m_behaviorsByEdmIndex during batch processing
+  // Multiple batches can read concurrently (reader lock)
+  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
 
-    if (!handle.isValid() || edmIndex == SIZE_MAX || !behavior) {
-      continue;
+  for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
+    size_t edmIdx = activeIndices[i];
+
+    // Get behavior from sparse vector - O(1) lookup
+    if (edmIdx >= m_behaviorsByEdmIndex.size() || !m_behaviorsByEdmIndex[edmIdx]) {
+      continue;  // No behavior registered for this entity (e.g., Player)
     }
 
-    auto& edmHotData = edm.getHotDataByIndex(edmIndex);
-    auto& transform = edm.getTransformByIndex(edmIndex);
+    AIBehavior* behavior = m_behaviorsByEdmIndex[edmIdx].get();
+    auto& edmHotData = edm.getHotDataByIndex(edmIdx);
+    auto& transform = edm.getTransformByIndex(edmIdx);
 
-    // Tier-based culling - EDM handles distance calculation via updateSimulationTiers()
-    if (edmHotData.tier != SimulationTier::Active) {
-      continue;
-    }
+    // No tier check - getActiveIndices() guarantees Active tier only
 
     try {
       // Store previous position for interpolation
       transform.previousPosition = transform.position;
 
-      // Execute behavior logic
+      // Execute behavior logic using handle ID from EDM
+      EntityHandle handle = edm.getHandle(edmIdx);
       BehaviorContext ctx(transform, edmHotData, handle.getId(), deltaTime);
       behavior->executeLogic(ctx);
 
@@ -1116,7 +1124,7 @@ void AIManager::processBatch(size_t start, size_t end, float deltaTime,
       }
 
       ++batchExecutions;
-    } catch (const std::exception &e) {
+    } catch (const std::exception& e) {
       AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
     }
   }

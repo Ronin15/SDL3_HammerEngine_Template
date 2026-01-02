@@ -145,10 +145,6 @@ private:
   Faction m_faction{Faction::Neutral};
   NPCType m_npcType{NPCType::Standard};
 
-  // Texture flip smoothing
-  int m_lastFlipSign{1};
-  Uint64 m_lastFlipTime{0};
-
   // Loot drop RNG (member vars to avoid static in threaded code per CLAUDE.md)
   mutable std::mt19937 m_lootRng{std::random_device{}()};
   mutable std::uniform_real_distribution<float> m_lootDist{0.0f, 1.0f};

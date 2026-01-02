@@ -16,6 +16,7 @@
 #include <algorithm>
 
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -142,6 +143,10 @@ struct AICollisionGlobalFixture {
             throw std::runtime_error("AIManager initialization failed");
         }
 
+        if (!BackgroundSimulationManager::Instance().init()) {
+            throw std::runtime_error("BackgroundSimulationManager initialization failed");
+        }
+
         // Enable threading for AI
         AIManager::Instance().enableThreading(true);
 
@@ -155,6 +160,7 @@ struct AICollisionGlobalFixture {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
         // Clean up managers in reverse order
+        BackgroundSimulationManager::Instance().clean();
         AIManager::Instance().clean();
         PathfinderManager::Instance().clean();
         WorldManager::Instance().clean();
@@ -243,7 +249,13 @@ struct AICollisionTestFixture {
 
     // Helper: Update simulation for N frames
     void updateSimulation(int frames, float deltaTime = 0.016f) {
+        // Reference point for tier calculation (center of test area)
+        Vector2D referencePoint(500.0f, 500.0f);
+
         for (int i = 0; i < frames; ++i) {
+            // Update simulation tiers first (required for AIManager to find Active entities)
+            BackgroundSimulationManager::Instance().update(referencePoint, deltaTime);
+
             // Update AI (processes entity behaviors)
             AIManager::Instance().update(deltaTime);
 
