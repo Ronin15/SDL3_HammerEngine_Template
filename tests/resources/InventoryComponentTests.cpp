@@ -17,10 +17,14 @@
 #include "entities/resources/InventoryComponent.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/EntityDataManager.hpp"
 
 class InventoryComponentTestFixture {
 public:
   InventoryComponentTestFixture() {
+    // Initialize EntityDataManager FIRST (required for MockPlayer creation in DOD)
+    EntityDataManager::Instance().init();
+
     // Initialize ResourceTemplateManager
     resourceManager = &ResourceTemplateManager::Instance();
 
@@ -58,6 +62,9 @@ public:
     if (resourceManager && resourceManager->isInitialized()) {
       resourceManager->clean();
     }
+
+    // Clean up EntityDataManager
+    EntityDataManager::Instance().clean();
   }
 
 protected:

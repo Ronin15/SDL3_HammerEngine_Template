@@ -544,6 +544,9 @@ BOOST_AUTO_TEST_CASE(TestAttackBehavior) {
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().registerEntity(handle, "Attack");
 
+    // Capture initial behavior execution count (DOD: AIManager tracks executions)
+    size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+
     // Update for longer time to allow pathfinding and movement
     for (int i = 0; i < 250; ++i) {  // Increased from 40 to 250
         AIManager::Instance().update(0.016f);
@@ -556,7 +559,11 @@ BOOST_AUTO_TEST_CASE(TestAttackBehavior) {
 
     // More lenient - just check that entity is attempting to attack (within reasonable range)
     BOOST_CHECK_LT(distanceToPlayer, 200.0f); // Relaxed from 150 to 200
-    BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
+
+    // DOD: AIManager doesn't call Entity::update() anymore - it calls behavior->executeLogic()
+    // Check that behaviors were executed by verifying AIManager's behavior execution count increased
+    size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+    BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -712,19 +719,22 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
         AIManager::Instance().unregisterEntity(handle);
     }
 
-    // Entity should have been updated during behavior execution
-    BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
+    // DOD: Check that behaviors were executed (AIManager doesn't call Entity::update() anymore)
+    size_t finalCount = AIManager::Instance().getBehaviorUpdateCount();
+    BOOST_CHECK_GT(finalCount, 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleEntitiesDifferentBehaviors) {
     // Assign different behaviors to different entities
     std::vector<std::string> behaviors = {"Idle", "Wander", "Chase", "Follow", "Guard"};
 
+    // Capture initial behavior execution count
+    size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+
     for (size_t i = 0; i < behaviors.size() && i < testEntities.size(); ++i) {
         // Phase 2 EDM Migration: Use EntityHandle-based API
         EntityHandle handle = testEntities[i]->getHandle();
         AIManager::Instance().registerEntity(handle, behaviors[i]);
-        getTestEntity(testEntities[i])->resetUpdateCount();
     }
 
     // Update all entities simultaneously
@@ -733,10 +743,10 @@ BOOST_AUTO_TEST_CASE(TestMultipleEntitiesDifferentBehaviors) {
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    // All entities should have been updated
-    for (size_t i = 0; i < behaviors.size() && i < testEntities.size(); ++i) {
-        BOOST_CHECK_GT(getTestEntity(testEntities[i])->getUpdateCount(), 0);
-    }
+    // DOD: Check that behaviors were executed
+    // AIManager doesn't call Entity::update() anymore - it calls behavior->executeLogic()
+    size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+    BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount);
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -829,7 +839,8 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().registerEntity(handle, "Patrol");
 
-    getTestEntity(entity)->resetUpdateCount();
+    // Capture initial behavior execution count (DOD: AIManager tracks executions)
+    size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
 
     // Track patrol movement
     int movementSteps = 0;
@@ -865,7 +876,9 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     BOOST_TEST_MESSAGE("Patrol test: moved " << totalDistanceMoved << "px over " << movementSteps << " steps");
 
     // Verify patrol behavior is functioning
-    BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 10);
+    // DOD: AIManager doesn't call Entity::update() - check behavior executions instead
+    size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+    BOOST_CHECK_GT(finalBehaviorCount, initialBehaviorCount + 10);
 
     // Entity should either have moved OR have velocity set (async pathfinding may delay actual movement)
     bool isPatrolling = (totalDistanceMoved > 5.0f) || hasVelocity;

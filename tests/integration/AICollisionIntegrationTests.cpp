@@ -385,6 +385,9 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
 
     std::cout << "Created " << NUM_ENTITIES << " AI entities with wander behavior" << std::endl;
 
+    // Capture initial behavior execution count (DOD: AIManager tracks executions)
+    size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+
     // Run simulation for 200 frames (3.3 seconds at 60 FPS)
     std::cout << "Running simulation for 200 frames..." << std::endl;
     updateSimulation(200, 0.016f);
@@ -406,15 +409,11 @@ BOOST_AUTO_TEST_CASE(TestAINavigatesObstacleField) {
     // This validates pathfinding is working while being realistic about edge cases
     BOOST_CHECK_LE(entitiesOverlappingObstacles, 1);
 
-    // Verify entities actually moved (pathfinding is working)
-    int entitiesUpdated = 0;
-    for (const auto& entity : m_entities) {
-        if (entity->getUpdateCount() > 0) {
-            entitiesUpdated++;
-        }
-    }
-    std::cout << "Entities updated: " << entitiesUpdated << " / " << NUM_ENTITIES << std::endl;
-    BOOST_CHECK_GT(entitiesUpdated, 0);
+    // Verify behaviors were executed (DOD: AIManager doesn't call Entity::update() anymore)
+    size_t finalBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
+    size_t behaviorExecutions = finalBehaviorCount - initialBehaviorCount;
+    std::cout << "Behavior executions: " << behaviorExecutions << std::endl;
+    BOOST_CHECK_GT(behaviorExecutions, 0);
 
     std::cout << "=== TEST 1: PASSED ===" << std::endl;
 }

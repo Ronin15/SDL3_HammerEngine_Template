@@ -12,6 +12,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "entities/Player.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <functional>
 #include <memory>
 #include <string>
@@ -20,6 +21,9 @@
 
 struct EventTypesFixture {
   EventTypesFixture() {
+    // Initialize EntityDataManager (required for Player entity creation in DOD)
+    EntityDataManager::Instance().init();
+
     // Make sure we start fresh with each test
     EventFactory::Instance().clean();
     BOOST_CHECK(EventFactory::Instance().init());
@@ -34,6 +38,8 @@ struct EventTypesFixture {
   ~EventTypesFixture() {
     // Clean up EventFactory after each test
     EventFactory::Instance().clean();
+    // Clean up EntityDataManager
+    EntityDataManager::Instance().clean();
   }
 
   // Register each creator separately for better control
@@ -766,7 +772,8 @@ BOOST_AUTO_TEST_CASE(TestEventTypeIdEnumValues) {
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Custom), 11);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Time), 12);
   BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Combat), 13);
-  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 14);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::Entity), 14);
+  BOOST_CHECK_EQUAL(static_cast<uint8_t>(EventTypeId::COUNT), 15);
 }
 
 // Test ResourceChangeEvent
