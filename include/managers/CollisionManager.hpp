@@ -312,10 +312,6 @@ private:
     static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
     static constexpr float FAST_VELOCITY_THRESHOLD = 250.0f;        // Velocity threshold for AABB expansion (pixels/frame)
 
-    // Static query cache configuration - reduces 256 hash lookups to 1 when player moves slowly
-    static constexpr float STATIC_CACHE_TOLERANCE = 100.0f;         // Re-query statics if player moves 100px from cached position
-    static constexpr float STATIC_CACHE_BUFFER = 150.0f;            // Query extra buffer to provide tolerance margin
-
     // Spatial culling support (area-based, not camera-based)
     struct CullingArea {
         float minX, minY, maxX, maxY;
@@ -482,25 +478,10 @@ private:
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
-    // Tolerance-based static query cache: Avoids 256 hash lookups per frame
-    // Only re-queries when player moves beyond STATIC_CACHE_TOLERANCE from cached position
-    struct StaticQueryCache {
-        float lastQueryX{0.0f};                      // Player X when cache was populated
-        float lastQueryY{0.0f};                      // Player Y when cache was populated
-        std::vector<size_t> cachedStaticIndices;     // Cached static body indices
-        bool valid{false};                            // Cache validity flag
-
-        void invalidate() {
-            valid = false;
-            // Keep capacity, just mark invalid
-        }
-
-        void clear() {
-            valid = false;
-            cachedStaticIndices.clear();
-        }
-    };
-    mutable StaticQueryCache m_staticQueryCache;
+    // NOTE: Redundant caches removed in Phase 3 EDM refactor:
+    // - m_coarseRegionStaticCache: Now use m_staticSpatialHash directly
+    // - m_staticSpatialGrid: Redundant with m_staticSpatialHash
+    // - m_cachedStaticIndices: Tolerance cache adds complexity without benefit
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
