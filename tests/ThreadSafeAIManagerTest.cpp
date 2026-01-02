@@ -3,17 +3,8 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
-// Define this to make Boost.Test a header-only library
-// Include necessary headers
 #define BOOST_TEST_MODULE ThreadSafeAIManagerTests
-// BOOST_TEST_NO_SIGNAL_HANDLING is defined in CMakeLists.txt
-#ifndef BOOST_TEST_DYN_LINK
-#define BOOST_TEST_DYN_LINK // Use dynamic linking for proper exit code handling
-#endif
-#define BOOST_TEST_ALTERNATIVE_INIT_API
 #include <boost/test/unit_test.hpp>
-#include <csignal> // For signal handling
-#include <cstdlib> // For atexit
 
 #include <atomic>
 #include <chrono>
@@ -32,7 +23,7 @@
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "managers/EntityDataManager.hpp" // For TransformData definition
+#include "managers/EntityDataManager.hpp"
 
 // Simple test entity - EDM Migration: checks EDM data for updates
 class TestEntity : public Entity {
@@ -195,381 +186,72 @@ public: // Make these public for test access
 // Define static member
 std::atomic<int> ThreadTestBehavior::s_sharedMessageCount{0};
 
-// Global state for ensuring proper initialization/cleanup
-namespace {
-// Remove unused mutex variable
-std::atomic<bool> g_aiManagerInitialized{false};
-std::atomic<bool> g_threadSystemInitialized{false};
-// Add global flags to track successful test completion
-std::atomic<bool> g_testsSucceeded{true};
-std::atomic<bool> g_cleanupInProgress{
-    false};                           // Flag to indicate cleanup is in progress
-std::atomic<bool> g_exitGuard{false}; // Guard against multiple destructions
-
-// Track all shared_ptr references to behaviors to ensure proper deletion
+// Track behaviors for test verification
 std::vector<std::shared_ptr<AIBehavior>> g_allBehaviors;
 std::mutex g_behaviorMutex;
 
-// Custom safe cleanup function that will be called on exit
-void performSafeCleanup() {
-  // Use atomic exchange to ensure only one thread performs cleanup
-  // This approach handles the case where we're already in cleanup properly
-  bool expected = false;
-  if (!g_exitGuard.compare_exchange_strong(expected, true)) {
-    std::cerr << "Cleanup already in progress, skipping" << std::endl;
-    return; // Already being cleaned up
-  }
-
-  std::cerr << "Performing safe cleanup before exit" << std::endl;
-
-  // Wait briefly for any in-flight operations to complete
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  // Clear behaviors first
-  {
-    std::lock_guard<std::mutex> lock(g_behaviorMutex);
-    g_allBehaviors.clear();
-  }
-
-  // Clean managers in reverse order of initialization
-  // Clean BackgroundSimulationManager first (initialized last)
-  try {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    BackgroundSimulationManager::Instance().clean();
-    std::cerr << "BackgroundSimulationManager cleaned up successfully" << std::endl;
-  } catch (const std::exception &e) {
-    std::cerr << "Exception during BackgroundSimulationManager cleanup: " << e.what()
-              << std::endl;
-  } catch (...) {
-    std::cerr << "Unknown exception during BackgroundSimulationManager cleanup" << std::endl;
-  }
-
-  if (g_aiManagerInitialized.exchange(false)) {
-    try {
-      // Additional pause to ensure AIManager is not in use
-      std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      AIManager::Instance().enableThreading(false); // Disable threading before cleanup
-      AIManager::Instance().resetBehaviors();
-      AIManager::Instance().clean();
-      std::cerr << "AIManager cleaned up successfully" << std::endl;
-    } catch (const std::exception &e) {
-      std::cerr << "Exception during AIManager cleanup: " << e.what()
-                << std::endl;
-    } catch (...) {
-      std::cerr << "Unknown exception during AIManager cleanup" << std::endl;
-    }
-  }
-
-  // Clean PathfinderManager
-  try {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    PathfinderManager::Instance().clean();
-    std::cerr << "PathfinderManager cleaned up successfully" << std::endl;
-  } catch (const std::exception &e) {
-    std::cerr << "Exception during PathfinderManager cleanup: " << e.what()
-              << std::endl;
-  } catch (...) {
-    std::cerr << "Unknown exception during PathfinderManager cleanup" << std::endl;
-  }
-
-  // Clean CollisionManager
-  try {
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-    CollisionManager::Instance().clean();
-    std::cerr << "CollisionManager cleaned up successfully" << std::endl;
-  } catch (const std::exception &e) {
-    std::cerr << "Exception during CollisionManager cleanup: " << e.what()
-              << std::endl;
-  } catch (...) {
-    std::cerr << "Unknown exception during CollisionManager cleanup" << std::endl;
-  }
-
-  // Clean ThreadSystem if initialized - do this last
-  if (g_threadSystemInitialized.exchange(false)) {
-    try {
-      // Additional pause to ensure threads can finish
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
-      HammerEngine::ThreadSystem::Instance().clean();
-      std::cerr << "ThreadSystem cleaned up successfully" << std::endl;
-    } catch (const std::exception &e) {
-      std::cerr << "Exception during ThreadSystem cleanup: " << e.what()
-                << std::endl;
-    } catch (...) {
-      std::cerr << "Unknown exception during ThreadSystem cleanup" << std::endl;
-    }
-  }
-}
-
-// Signal handler to cleanup on abnormal termination
-// Note: We don't use this for SIGSEGV (signal 11) because it can cause infinite
-// recursion
-void signalHandler(int signal) {
-  // Ignore SIGSEGV (signal 11) which is handled by Boost Test
-  if (signal == SIGSEGV) {
-    return;
-  }
-  std::cerr << "\nSignal " << signal << " caught. Cleaning up..." << std::endl;
-
-  // Only perform cleanup if not already in progress
-  if (!g_exitGuard.exchange(true)) {
-    performSafeCleanup();
-    std::cerr << "Cleanup after signal " << signal << " completed" << std::endl;
-  }
-
-  _exit(0); // Exit with success code since we've handled cleanup
-}
-
-// Register the signal handlers (called before main)
-struct SignalHandlerRegistration {
-  SignalHandlerRegistration() {
-    std::signal(SIGINT, signalHandler);
-    std::signal(SIGTERM, signalHandler);
-    std::signal(SIGABRT, signalHandler);
-    // Don't register SIGSEGV handler - let Boost.Test handle it
-    // std::signal(SIGSEGV, signalHandler);
-  }
-};
-
-// Static instance to register handlers before main runs
-static SignalHandlerRegistration g_signalHandlerRegistration;
-
-// Prevent destructors from running after program exit
-class TerminationGuard {
-public:
-  ~TerminationGuard() { g_exitGuard.store(true); }
-};
-
-// Single static instance to set the flag on program exit
-static TerminationGuard g_terminationGuard;
-} // namespace
-
-// We're not using a custom initialization function for Boost.Test
-// as it conflicts with the framework's built-in one
-
-// Capture test failures to set proper exit code
-struct FailureDetector : boost::unit_test::test_observer {
-  void test_unit_finish(boost::unit_test::test_unit const &unit,
-                        unsigned long /* elapsed */) override {
-    // Skip if we're in exit process
-    if (g_exitGuard.load()) {
-      return;
-    }
-
-    // Just check if we're a test case and it failed
-    if (unit.p_type == boost::unit_test::TUT_CASE &&
-        unit.p_run_status > 0) { // Any non-zero status indicates failure
-      g_testsSucceeded.store(false);
-    }
-  }
-
-  void assertion_result(boost::unit_test::assertion_result ar) override {
-    // Skip if we're in exit process
-    if (g_exitGuard.load()) {
-      return;
-    }
-
-    if (ar != boost::unit_test::AR_PASSED) {
-      g_testsSucceeded.store(false);
-    }
-  }
-};
-
 // Global fixture for test setup and cleanup
 struct GlobalTestFixture {
-  FailureDetector m_failureDetector;
-
-  GlobalTestFixture() {
-    // Register our observer to capture test failures
-    boost::unit_test::framework::register_observer(m_failureDetector);
-    std::cout << "Setting up global test fixture" << std::endl;
-
-    // Initialize thread system first
-    if (!g_threadSystemInitialized) {
-      std::cout << "Initializing ThreadSystem" << std::endl;
-      if (!HammerEngine::ThreadSystem::Instance().init()) {
-        std::cerr << "Failed to initialize ThreadSystem" << std::endl;
-        throw std::runtime_error("ThreadSystem initialization failed");
-      }
-      g_threadSystemInitialized = true;
+    GlobalTestFixture() {
+        HammerEngine::ThreadSystem::Instance().init();
+        EntityDataManager::Instance().init();
+        CollisionManager::Instance().init();
+        PathfinderManager::Instance().init();
+        AIManager::Instance().init();
+        BackgroundSimulationManager::Instance().init();
     }
 
-    // Initialize dependencies in proper order
-    // EntityDataManager must be first - entities need it for registration
-    std::cout << "Initializing EntityDataManager" << std::endl;
-    if (!EntityDataManager::Instance().init()) {
-      std::cerr << "Failed to initialize EntityDataManager" << std::endl;
-      throw std::runtime_error("EntityDataManager initialization failed");
+    ~GlobalTestFixture() {
+        // Clear tracked behaviors first
+        {
+            std::lock_guard<std::mutex> lock(g_behaviorMutex);
+            g_allBehaviors.clear();
+        }
+        // Clean managers in reverse order
+        BackgroundSimulationManager::Instance().clean();
+        AIManager::Instance().clean();
+        PathfinderManager::Instance().clean();
+        CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
+        HammerEngine::ThreadSystem::Instance().clean();
     }
-
-    std::cout << "Initializing CollisionManager" << std::endl;
-    if (!CollisionManager::Instance().init()) {
-      std::cerr << "Failed to initialize CollisionManager" << std::endl;
-      throw std::runtime_error("CollisionManager initialization failed");
-    }
-
-    std::cout << "Initializing PathfinderManager" << std::endl;
-    if (!PathfinderManager::Instance().init()) {
-      std::cerr << "Failed to initialize PathfinderManager" << std::endl;
-      throw std::runtime_error("PathfinderManager initialization failed");
-    }
-
-    // Then initialize AI manager
-    if (!g_aiManagerInitialized) {
-      std::cout << "Initializing AIManager" << std::endl;
-      if (!AIManager::Instance().init()) {
-        std::cerr << "Failed to initialize AIManager" << std::endl;
-        throw std::runtime_error("AIManager initialization failed");
-      }
-
-      // Enable threading
-      AIManager::Instance().enableThreading(true);
-      g_aiManagerInitialized = true;
-    }
-
-    // Initialize BackgroundSimulationManager for tier management
-    std::cout << "Initializing BackgroundSimulationManager" << std::endl;
-    if (!BackgroundSimulationManager::Instance().init()) {
-      std::cerr << "Failed to initialize BackgroundSimulationManager" << std::endl;
-      throw std::runtime_error("BackgroundSimulationManager initialization failed");
-    }
-  }
-
-  ~GlobalTestFixture() {
-    // Skip cleanup if we're already in program termination
-    if (g_exitGuard.load()) {
-      std::cerr
-          << "Skipping GlobalTestFixture destructor due to program termination"
-          << std::endl;
-      return;
-    }
-
-    std::cout << "Tearing down global test fixture" << std::endl;
-    g_cleanupInProgress.store(true);
-
-    try {
-      // Give threads a chance to finish any ongoing work
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-      // Call our safe cleanup function directly
-      performSafeCleanup();
-
-      std::cout << "Global fixture cleanup completed successfully" << std::endl;
-
-      // Use _exit(0) to skip Boost Test framework destructors which cause segfaults on macOS
-      // This prevents the destructor chain from running and avoids SIGSEGV
-      // Note: Causes SIGABRT which test script handles gracefully
-      _exit(0);
-    } catch (const std::exception &e) {
-      std::cerr << "Exception during global fixture cleanup: " << e.what()
-                << std::endl;
-      // Don't mark tests as failed just because cleanup had an issue
-    } catch (...) {
-      std::cerr << "Unknown exception during global fixture cleanup"
-                << std::endl;
-      // Don't mark tests as failed just because cleanup had an issue
-    }
-  }
 };
 
-// Individual test fixture for common test setup/teardown
-struct ThreadedAITestFixture {
-  ThreadedAITestFixture() {
-    // Each test will get a fresh setup
-    std::cout << "Setting up test fixture" << std::endl;
-
-    // Enable threading for proper messaging and behavior processing
-    AIManager::Instance().enableThreading(true);
-    std::cout << "Enabled threading with hardware threads"
-              << std::endl;
-
-    // Allow time for threading setup
-    std::this_thread::sleep_for(std::chrono::milliseconds(50));
-  }
-
-  ~ThreadedAITestFixture() {
-    // Skip cleanup if we're in program termination or global cleanup
-    if (g_exitGuard.load() || g_cleanupInProgress.load()) {
-      // Skip individual test fixture cleanup if global cleanup is in progress
-      std::cout << "Global cleanup in progress, skipping test fixture teardown"
-                << std::endl;
-      return;
-    }
-
-    std::cout << "Tearing down test fixture" << std::endl;
-
-    try {
-      // First, disable threading in AIManager to prevent new threads from being
-      // created
-      AIManager::Instance().enableThreading(false);
-
-      // Wait for any in-progress operations to complete
-      std::this_thread::sleep_for(std::chrono::milliseconds(200));
-
-      // Reset behaviors to clean state
-      AIManager::Instance().resetBehaviors();
-    } catch (const std::exception &e) {
-      std::cerr << "Exception in test fixture teardown: " << e.what()
-                << std::endl;
-    } catch (...) {
-      std::cerr << "Unknown exception in test fixture teardown" << std::endl;
-    }
-  }
-
-  // Helper method to wait for ThreadSystem tasks to complete
-  void waitForThreadSystemTasks(std::vector<std::future<void>> &futures) {
-    for (auto &future : futures) {
-      try {
-        if (future.valid()) {
-          // Use longer timeout for ThreadSystem tasks
-          std::future_status status = future.wait_for(std::chrono::seconds(10));
-          if (status == std::future_status::ready) {
-            future.get();
-          } else {
-            std::cerr
-                << "ThreadSystem task timed out after 10 seconds, continuing..."
-                << std::endl;
-          }
-        }
-      } catch (const std::exception &e) {
-        std::cerr << "Exception in ThreadSystem task: " << e.what()
-                  << std::endl;
-      } catch (...) {
-        std::cerr << "Unknown exception in ThreadSystem task" << std::endl;
-      }
-    }
-  }
-
-  // Helper method to safely unassign behaviors from entities
-  template <typename T>
-  void safelyUnassignBehaviors(std::vector<std::shared_ptr<T>> &entities) {
-    // Skip if we're in exit process
-    if (g_exitGuard.load()) {
-      return;
-    }
-
-    // First wait for any in-progress operations
-    std::this_thread::sleep_for(std::chrono::milliseconds(20));
-
-    for (auto &entity : entities) {
-      if (entity) {
-        try {
-          AIManager::Instance().unassignBehavior(entity->getHandle());
-          // Small delay between operations to avoid overwhelming the system
-          std::this_thread::sleep_for(std::chrono::milliseconds(5));
-        } catch (const std::exception &e) {
-          std::cerr << "Exception during behavior unassignment: " << e.what()
-                    << std::endl;
-        } catch (...) {
-          std::cerr << "Unknown exception during behavior unassignment"
-                    << std::endl;
-        }
-      }
-    }
-  }
-};
-
-// Apply the global fixture to the entire test module
 BOOST_GLOBAL_FIXTURE(GlobalTestFixture);
+
+// Per-test fixture
+struct ThreadedAITestFixture {
+    ThreadedAITestFixture() {
+        AIManager::Instance().enableThreading(true);
+    }
+
+    ~ThreadedAITestFixture() {
+        AIManager::Instance().enableThreading(false);
+        AIManager::Instance().resetBehaviors();
+    }
+
+    // Helper method to wait for ThreadSystem tasks to complete
+    void waitForThreadSystemTasks(std::vector<std::future<void>>& futures) {
+        for (auto& future : futures) {
+            if (future.valid()) {
+                future.wait_for(std::chrono::seconds(10));
+                if (future.valid()) {
+                    try { future.get(); } catch (...) {}
+                }
+            }
+        }
+    }
+
+    // Helper method to safely unassign behaviors from entities
+    template <typename T>
+    void safelyUnassignBehaviors(std::vector<std::shared_ptr<T>>& entities) {
+        for (auto& entity : entities) {
+            if (entity) {
+                AIManager::Instance().unassignBehavior(entity->getHandle());
+            }
+        }
+    }
+};
 
 // Helper to update AI with proper tier calculation
 // Tests create/destroy entities frequently, so we need to force tier rebuild each time
@@ -594,11 +276,6 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration,
   for (int i = 0; i < NUM_BEHAVIORS; ++i) {
     auto future =
         HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult([i]() {
-          // Skip if we're in exit process
-          if (g_exitGuard.load()) {
-            return;
-          }
-
           auto behavior = std::make_shared<ThreadTestBehavior>(i);
           {
             // Track this behavior globally to prevent premature destruction
@@ -1220,11 +897,6 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
 
   // Cleanup - perform cleanup in a specific order to avoid race conditions
   try {
-    // Skip if we're in exit process
-    if (g_exitGuard.load()) {
-      return;
-    }
-
     // First, clear entities which may reference behaviors
     safelyUnassignBehaviors(entities);
 

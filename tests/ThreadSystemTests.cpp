@@ -8,89 +8,25 @@
 
 #include <atomic>
 #include <chrono>
-#include <thread>
-#include <vector>
-#include <iostream>
-#include <mutex>
-#include <unordered_set>
-#include <csignal>
 #include <cmath>
+#include <mutex>
+#include <thread>
+#include <unordered_set>
+#include <vector>
 
-// Include the ThreadSystem header
 #include "core/ThreadSystem.hpp"
-
-// Helper function for safely cleaning up resources
-void performSafeCleanup() {
-    static std::mutex cleanupMutex;
-    static bool cleanupDone = false;
-
-    std::lock_guard<std::mutex> lock(cleanupMutex);
-
-    if (cleanupDone) {
-        return;
-    }
-
-    std::cout << "Performing safe cleanup of thread resources..." << std::endl;
-
-    try {
-        // Check if already shutdown to avoid double-cleanup
-        if (!HammerEngine::ThreadSystem::Instance().isShutdown()) {
-            HammerEngine::ThreadSystem::Instance().clean();
-        }
-
-        std::cout << "Thread system cleanup completed successfully" << std::endl;
-        cleanupDone = true;
-    } catch (const std::exception& e) {
-        std::cerr << "Exception during thread system cleanup: " << e.what() << std::endl;
-    }
-}
-
-// Signal handler to ensure clean shutdown
-void signalHandler(int signal) {
-    std::cerr << "Signal " << signal << " received, cleaning up..." << std::endl;
-
-    // Perform safe cleanup
-    performSafeCleanup();
-
-    // Exit immediately with success to avoid any further issues
-    _exit(0);
-}
-
-// Register signal handler
-struct SignalHandlerRegistration {
-    SignalHandlerRegistration() {
-        std::signal(SIGTERM, signalHandler);
-        std::signal(SIGINT, signalHandler);
-        std::signal(SIGABRT, signalHandler);
-        std::signal(SIGSEGV, signalHandler);
-    }
-};
-
-// Global signal handler registration
-static SignalHandlerRegistration signalHandlerRegistration;
 
 // Global fixture for test setup and cleanup
 struct ThreadTestFixture {
     ThreadTestFixture() {
-        // Initialize the thread system before tests with higher capacity to handle test load
-        // Use 4096 capacity to handle multiple tests with many tasks
         HammerEngine::ThreadSystem::Instance().init(4096);
     }
 
     ~ThreadTestFixture() {
-        // Clean up the thread system after tests using our safe cleanup method
-        performSafeCleanup();
+        HammerEngine::ThreadSystem::Instance().clean();
     }
 };
 
-// Guard to ensure test suite termination
-struct TerminationGuard {
-    ~TerminationGuard() {
-        // No longer force termination with _exit - allow normal cleanup
-    }
-};
-
-// Apply the global fixture to the entire test module
 BOOST_GLOBAL_FIXTURE(ThreadTestFixture);
 
 BOOST_AUTO_TEST_CASE(TestThreadPoolInitialization) {
@@ -546,7 +482,7 @@ BOOST_AUTO_TEST_CASE(TestBurstTaskSubmission) {
 
 BOOST_AUTO_TEST_CASE(TestThreadSystemReinitialization) {
     // Clean up the current thread system
-    performSafeCleanup();
+    HammerEngine::ThreadSystem::Instance().clean();
 
     // Verify it's shut down
     BOOST_CHECK(HammerEngine::ThreadSystem::Instance().isShutdown());
