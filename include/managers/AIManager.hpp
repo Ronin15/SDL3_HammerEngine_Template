@@ -91,28 +91,6 @@ struct AIEntityData {
 };
 
 /**
- * @brief Pre-fetched batch data for lock-free parallel processing
- *
- * This struct holds copies of all entity data needed for AI processing.
- * By copying all data once (single lock), batches can process in parallel
- * without any lock contention, eliminating serialized lock acquisition bottleneck.
- */
-struct PreFetchedBatchData {
-    std::vector<EntityPtr> entities;
-    std::vector<std::shared_ptr<AIBehavior>> behaviors;
-    std::vector<AIEntityData::HotData> hotDataCopy;
-    std::vector<size_t> edmIndices;  // EntityDataManager indices for lock-free batch access
-    // NOTE: halfWidths/halfHeights REMOVED - accessed via EntityDataManager::getHotDataByIndex()
-
-    void reserve(size_t capacity) {
-        entities.reserve(capacity);
-        behaviors.reserve(capacity);
-        hotDataCopy.reserve(capacity);
-        edmIndices.reserve(capacity);
-    }
-};
-
-/**
  * @brief High-performance AI Manager
  */
 class AIManager {
@@ -337,6 +315,10 @@ private:
       m_behaviorTemplates;
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
+  // Sparse behavior storage indexed by EntityDataManager index for O(1) lookup
+  // Used with getActiveIndices() to iterate only Active tier entities
+  std::vector<std::shared_ptr<AIBehavior>> m_behaviorsByEdmIndex;
+
   // Shared behaviors indexed by BehaviorType for O(1) lookup in processBatch
   // Each behavior instance handles multiple entities via internal m_entityStates map
   std::array<std::shared_ptr<AIBehavior>, static_cast<size_t>(BehaviorType::COUNT)>
@@ -429,13 +411,8 @@ private:
   // Reusable futures buffer for assignment synchronization
   mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
 
-  // Reusable pre-fetch buffer to avoid per-frame allocations (128KB for 2000 entities)
-  // Cleared each frame but capacity is retained to eliminate heap churn
-  PreFetchedBatchData m_reusablePreFetchBuffer;
-
-  // Reusable buffer for multi-threaded path (shared_ptr for lambda capture safety)
-  // Multi-threaded batches run async, so we need shared_ptr to extend lifetime
-  std::shared_ptr<PreFetchedBatchData> m_reusableMultiThreadedBuffer;
+  // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
+  std::vector<size_t> m_activeIndicesBuffer;
 
   // Reusable buffers for behavior assignment processing
   // Eliminates per-frame allocations during entity spawning
@@ -460,10 +437,11 @@ private:
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
   void assignBehaviorInternal(EntityHandle handle, const std::string &behaviorName);
 
-  void processBatch(size_t start, size_t end, float deltaTime,
-                    const Vector2D &playerPos,
-                    bool hasPlayer,
-                    const EntityStorage& storage,
+  // Process batch of Active tier entities using EDM indices directly
+  // No tier check needed - getActiveIndices() already filters to Active tier
+  void processBatch(const std::vector<size_t>& activeIndices,
+                    size_t start, size_t end,
+                    float deltaTime,
                     float worldWidth, float worldHeight);
   void cleanupInactiveEntities();
   void cleanupAllEntities();

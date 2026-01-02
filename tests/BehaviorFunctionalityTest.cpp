@@ -7,6 +7,7 @@
 #include <boost/test/unit_test.hpp>
 
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/CollisionManager.hpp"
@@ -103,6 +104,7 @@ struct BehaviorTestFixture {
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
+        BackgroundSimulationManager::Instance().init();
 
         // Load a simple test world for pathfinding
         HammerEngine::WorldGenerationConfig cfg{};
@@ -138,16 +140,28 @@ struct BehaviorTestFixture {
         // Phase 2 EDM Migration: Use EntityHandle-based API
         EntityHandle playerHandle = playerEntity->getHandle();
         AIManager::Instance().setPlayerHandle(playerHandle);
+
+        // Initial tier update to mark entities as Active
+        BackgroundSimulationManager::Instance().update(Vector2D(500.0f, 500.0f), 0.016f);
     }
-    
+
+    // Helper to update AI with proper tier management
+    void updateAI(float deltaTime, const Vector2D& referencePoint = Vector2D(500.0f, 500.0f)) {
+        // Force tier recalculation (tests create/destroy entities frequently)
+        BackgroundSimulationManager::Instance().invalidateTiers();
+        BackgroundSimulationManager::Instance().update(referencePoint, deltaTime);
+        AIManager::Instance().update(deltaTime);
+    }
+
     ~BehaviorTestFixture() {
         // Simple cleanup - just release entities
         // Managers persist across tests (singleton pattern)
         testEntities.clear();
         playerEntity.reset();
 
-        // Reset AI state for next test
+        // Reset AI and tier state for next test
         AIManager::Instance().resetBehaviors();
+        BackgroundSimulationManager::Instance().prepareForStateTransition();
     }
     
     std::vector<EntityPtr> testEntities;
@@ -218,7 +232,7 @@ BOOST_AUTO_TEST_CASE(TestIdleStationaryMode) {
     
     // Update multiple times
     for (int i = 0; i < 10; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
     }
     
     // Position should remain relatively unchanged for stationary idle
@@ -239,7 +253,7 @@ BOOST_AUTO_TEST_CASE(TestIdleFidgetMode) {
     
     // Update multiple times
     for (int i = 0; i < 20; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     
@@ -291,7 +305,7 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     // Update for longer time to account for random delays (up to 5s) and pathfinding (30s cooldown)
     // Run for ~6 seconds to ensure movement starts
     for (int i = 0; i < 360; ++i) {  // 360 * 16ms = ~6 seconds
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         CollisionManager::Instance().update(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
 
@@ -372,7 +386,7 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     // Update for longer time to allow async pathfinding to complete (3s cooldown + movement time)
     // Need at least 4-5 seconds for: path request (0s) -> cooldown (3s) -> movement (1-2s)
     for (int i = 0; i < 250; ++i) {  // Increased from 30 to 250 (~4 seconds)
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         CollisionManager::Instance().update(0.016f); // Apply position updates from AIManager
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
 
@@ -440,12 +454,12 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     AIManager::Instance().registerEntity(handle, "Flee");
 
     // Wait for async assignment to complete before starting updates
-    AIManager::Instance().update(0.016f);  // Process pending assignment
+    updateAI(0.016f);  // Process pending assignment
     AIManager::Instance().waitForAssignmentCompletion();
 
     // Update for a reasonable time
     for (int i = 0; i < 30; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         CollisionManager::Instance().update(0.016f); // Apply position updates
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
@@ -493,7 +507,7 @@ BOOST_AUTO_TEST_CASE(TestFollowBehavior) {
 
     // Increased duration to allow async pathfinding and movement
     for (int i = 0; i < 250; ++i) {  // Increased from 40 to 250
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
@@ -522,7 +536,7 @@ BOOST_AUTO_TEST_CASE(TestGuardBehavior) {
 
     // Update for longer time to allow patrol/guard behavior to stabilize
     for (int i = 0; i < 150; ++i) {  // Increased from 20 to 150
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
@@ -549,7 +563,7 @@ BOOST_AUTO_TEST_CASE(TestAttackBehavior) {
 
     // Update for longer time to allow pathfinding and movement
     for (int i = 0; i < 250; ++i) {  // Increased from 40 to 250
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
     }
 
@@ -644,7 +658,7 @@ BOOST_AUTO_TEST_CASE(TestFollowModes) {
 
         // Update a few times to ensure no crashes
         for (int i = 0; i < 5; ++i) {
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
         }
     }
 }
@@ -665,7 +679,7 @@ BOOST_AUTO_TEST_CASE(TestAttackModes) {
 
         // Update a few times to ensure no crashes
         for (int i = 0; i < 5; ++i) {
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
         }
     }
 }
@@ -686,7 +700,7 @@ BOOST_AUTO_TEST_CASE(TestWanderModes) {
 
         // Update a few times to ensure no crashes
         for (int i = 0; i < 5; ++i) {
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
         }
     }
 }
@@ -711,7 +725,7 @@ BOOST_AUTO_TEST_CASE(TestBehaviorSwitching) {
 
         // Update a few times
         for (int i = 0; i < 5; ++i) {
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
         }
 
         BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
@@ -739,7 +753,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleEntitiesDifferentBehaviors) {
 
     // Update all entities simultaneously
     for (int update = 0; update < 20; ++update) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
@@ -777,7 +791,7 @@ BOOST_AUTO_TEST_CASE(TestLargeNumberOfEntities) {
     auto startTime = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < 10; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
     }
 
     auto endTime = std::chrono::high_resolution_clock::now();
@@ -808,7 +822,7 @@ BOOST_AUTO_TEST_CASE(TestBehaviorMemoryManagement) {
             AIManager::Instance().registerEntity(handle, behavior);
 
             // Brief update
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
 
             AIManager::Instance().unregisterEntity(handle);
             AIManager::Instance().unassignBehavior(handle);
@@ -851,7 +865,7 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     // Run updates for longer to allow pathfinding (15-18s cooldown)
     // Run for ~20 seconds to ensure at least one path request completes
     for (int i = 0; i < 1250; ++i) {  // 1250 * 16ms = 20 seconds
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         CollisionManager::Instance().update(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(16));
 
@@ -908,7 +922,7 @@ BOOST_AUTO_TEST_CASE(TestGuardAlertSystem) {
     
     // Update to trigger guard behavior
     for (int i = 0; i < 30; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     

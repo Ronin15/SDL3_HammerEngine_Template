@@ -12,6 +12,7 @@
 #include "utils/Camera.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations with smart pointer types
@@ -52,7 +53,8 @@ private:
     void updateCamera(float deltaTime);
 
     // Members
-    std::vector<NPCPtr> m_npcs{};
+    std::vector<NPCPtr> m_npcs{};  // Legacy storage (kept for cleanup/iteration)
+    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};  // Handle ID -> NPC for O(1) lookup
     PlayerPtr m_player{};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory

@@ -153,16 +153,8 @@ void NPC::loadDimensionsFromTexture() {
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
-  // Skip animation for non-Active tier entities (off-screen)
-  // This saves significant CPU when scaling to 10K+ entities
-  auto& edm = EntityDataManager::Instance();
-  size_t index = edm.getIndex(m_handle);
-  if (index != SIZE_MAX) {
-    const auto& hotData = edm.getHotDataByIndex(index);
-    if (hotData.tier != SimulationTier::Active) {
-      return;  // Entity is off-screen, skip animation
-    }
-  }
+  // Tier check removed - caller (AIDemoState/AIManager) already filters by Active tier
+  // via EntityDataManager::getActiveIndices()
 
   // The AI drives velocity directly; sync to collision body
   // Let collision system handle movement integration to prevent micro-bouncing
@@ -201,21 +193,10 @@ void NPC::update(float deltaTime) {
   }
 
   // --- Flip Direction based on Velocity ---
-  // Smooth flip: require sufficient lateral speed and a minimum interval
-  const float flipSpeedThreshold = 15.0f; // px/s
-  Uint64 currentTime = SDL_GetTicks();  // Used only for flip timing
+  // AI already controls velocity smoothly, no debouncing needed
   Vector2D velocity = getVelocity();
-  if (std::abs(velocity.getX()) > flipSpeedThreshold) {
-    int newSign = (velocity.getX() < 0) ? -1 : 1;
-    if (newSign != m_lastFlipSign) {
-      if (currentTime - m_lastFlipTime >= 300) { // ms
-        m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-        m_lastFlipSign = newSign;
-        m_lastFlipTime = currentTime;
-      }
-    } else {
-      m_flip = (newSign < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-    }
+  if (std::abs(velocity.getX()) > 15.0f) {
+    m_flip = (velocity.getX() < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
   }
 
   // If the texture dimensions haven't been loaded yet, try loading them
