@@ -99,7 +99,7 @@ public:
         setSubscribed(true);
     }
 
-    void update(float deltaTime) override
+    void update([[maybe_unused]] float deltaTime) override
     {
         m_updateCount++;
     }
