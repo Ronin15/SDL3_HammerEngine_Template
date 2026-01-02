@@ -306,6 +306,15 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
+    // Initialize collision data (NPCs collide with player, environment, projectiles)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
+                        HammerEngine::CollisionLayer::Layer_Environment |
+                        HammerEngine::CollisionLayer::Layer_Projectile |
+                        HammerEngine::CollisionLayer::Layer_Enemy;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
+
     // Allocate character data (reuse freed slot if available)
     uint32_t charIndex;
     if (!m_freeCharacterSlots.empty()) {
@@ -356,6 +365,15 @@ EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
     hot.tier = SimulationTier::Active;  // Player always active
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
+
+    // Initialize collision data (Player collides with enemies, environment, triggers)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Player;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
+                        HammerEngine::CollisionLayer::Layer_Environment |
+                        HammerEngine::CollisionLayer::Layer_Trigger |
+                        HammerEngine::CollisionLayer::Layer_Default;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
 
     // Allocate character data (reuse freed slot if available)
     uint32_t charIndex;
@@ -415,6 +433,12 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
+    // Initialize collision data (DroppedItems only collide with player for pickup)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
+
     // Allocate item data (reuse freed slot if available)
     uint32_t itemIndex;
     if (!m_freeItemSlots.empty()) {
@@ -469,6 +493,13 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.tier = SimulationTier::Active;  // Projectiles always active
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
+
+    // Initialize collision data (Projectiles collide with enemies and environment)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Projectile;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
+                        HammerEngine::CollisionLayer::Layer_Environment;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
 
     // Allocate projectile data (reuse freed slot if available)
     uint32_t projIndex;

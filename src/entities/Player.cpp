@@ -98,7 +98,7 @@ void Player::loadDimensionsFromTexture() {
 
         // Sync new dimensions to collision body if already registered
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
-        CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
+        CollisionManager::Instance().updateCollisionBodySize(getID(), newHalfSize);
 
         PLAYER_DEBUG(std::format("Loaded texture dimensions: {}x{}", m_width, height));
         PLAYER_DEBUG(std::format("Frame dimensions: {}x{}", m_frameWidth, frameHeight));
@@ -199,8 +199,8 @@ void Player::update(float deltaTime) {
 
   // Update collision body with new position and velocity
   auto &cm = CollisionManager::Instance();
-  cm.updateCollisionBodyPositionSOA(m_id, newPos);
-  cm.updateCollisionBodyVelocitySOA(m_id, currentVel);
+  cm.updateCollisionBodyPosition(m_id, newPos);
+  cm.updateCollisionBodyVelocity(m_id, currentVel);
 
   // If the texture dimensions haven't been loaded yet, try loading them
   if (m_frameWidth == 0 &&
@@ -262,7 +262,7 @@ void Player::clean() {
   }
 
   // Remove collision body
-  CollisionManager::Instance().removeCollisionBodySOA(getID());
+  CollisionManager::Instance().removeCollisionBody(getID());
 }
 
 void Player::ensurePhysicsBodyRegistered() {
@@ -279,7 +279,7 @@ void Player::ensurePhysicsBodyRegistered() {
   // Add collision body, then attach entity to link EDM entry
   // Player collides with everything except pets (pets pass through player)
   uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Pet;
-  cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
+  cm.addCollisionBody(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
                         HammerEngine::CollisionLayer::Layer_Player, mask);
   cm.attachEntity(getID(), shared_this());
 }
@@ -289,7 +289,7 @@ void Player::setVelocity(const Vector2D& velocity) {
   Entity::setVelocity(velocity);
   // Also update CollisionManager's working copy
   auto& cm = CollisionManager::Instance();
-  cm.updateCollisionBodyVelocitySOA(getID(), velocity);
+  cm.updateCollisionBodyVelocity(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
@@ -297,7 +297,7 @@ void Player::setPosition(const Vector2D& position) {
   Entity::setPosition(position);
   // Also update CollisionManager's working copy
   auto& cm = CollisionManager::Instance();
-  cm.updateCollisionBodyPositionSOA(getID(), position);
+  cm.updateCollisionBodyPosition(getID(), position);
 }
 
 void Player::initializeInventory() {

@@ -157,10 +157,8 @@ void CollisionManager::prepareForStateTransition() {
   // Clear collision buffers to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();
 
-  // OPTIMIZATION: Clear persistent index tracking (regression fix for commit 768ad87)
-  m_movableBodyIndices.clear();
-  m_movableIndexSet.clear();
-  m_playerBodyIndex = std::nullopt;
+  // NOTE: Legacy m_movableBodyIndices/m_playerBodyIndex tracking removed
+  // EDM Active tier is now the source of truth for movable entities
 
   // Re-initialize vector pool (must not leave it empty to prevent divide-by-zero in getPooledVector)
   m_vectorPool.clear();
@@ -238,8 +236,8 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
   const EntityID id = HammerEngine::UniqueID::generate();
   const Vector2D center(aabb.center.getX(), aabb.center.getY());
   const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-  // addCollisionBodySOA creates EDM entry for STATIC bodies
-  addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+  // addCollisionBody creates EDM entry for STATIC bodies
+  addCollisionBody(id, center, halfSize, BodyType::STATIC,
                       layerMask, collideMask, true, static_cast<uint8_t>(tag));
   return id;
 }
@@ -311,7 +309,7 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
         const Vector2D center(aabb.center.getX(), aabb.center.getY());
         const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-        addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+        addCollisionBody(id, center, halfSize, BodyType::STATIC,
                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
                            true, static_cast<uint8_t>(tag));
         ++created;
@@ -431,7 +429,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
                       (static_cast<EntityID>(tile.buildingId) << 16);
 
         if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-          addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+          addCollisionBody(id, center, halfSize, BodyType::STATIC,
                              CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
           ++created;
 
@@ -482,7 +480,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
                           static_cast<EntityID>(subBodyIndex);
 
             if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-              addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+              addCollisionBody(id, center, halfSize, BodyType::STATIC,
                                  CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
               ++created;
               ++subBodyIndex;
@@ -586,16 +584,6 @@ bool CollisionManager::isTrigger(EntityID id) const {
 
 
 
-void CollisionManager::update(float dt) {
-  (void)dt;
-  if (!m_initialized || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire))
-    return;
-
-  // SOA collision system only
-  updateSOA(dt);
-  return;
-
-}
 
 void CollisionManager::setGlobalPause(bool paused) {
   m_globallyPaused.store(paused, std::memory_order_release);
@@ -691,7 +679,7 @@ void CollisionManager::rebuildStaticFromWorld() {
     }
   }
   for (auto id : toRemove) {
-    removeCollisionBodySOA(id);
+    removeCollisionBody(id);
   }
 
   // Create solid collision bodies for obstacles and triggers for movement
@@ -744,14 +732,14 @@ void CollisionManager::onTileChanged(int x, int y) {
     EntityID trigId = (static_cast<EntityID>(1ull) << 61) |
                       (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
                       static_cast<EntityID>(static_cast<uint32_t>(x));
-    removeCollisionBodySOA(trigId);
+    removeCollisionBody(trigId);
     if (tile.isWater) {
       float const cx = x * tileSize + tileSize * 0.5f;
       float const cy = y * tileSize + tileSize * 0.5f;
       Vector2D const center(cx, cy);
       Vector2D const halfSize(tileSize * 0.5f, tileSize * 0.5f);
       // Pass trigger properties through command queue (isTrigger=true, triggerTag=Water)
-      addCollisionBodySOA(trigId, center, halfSize, BodyType::STATIC,
+      addCollisionBody(trigId, center, halfSize, BodyType::STATIC,
                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
                          true, static_cast<uint8_t>(HammerEngine::TriggerTag::Water));
     }
@@ -762,7 +750,7 @@ void CollisionManager::onTileChanged(int x, int y) {
         (static_cast<EntityID>(2ull) << 61) |
         (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
         static_cast<EntityID>(static_cast<uint32_t>(x));
-    removeCollisionBodySOA(oldObstacleId);
+    removeCollisionBody(oldObstacleId);
 
     if (tile.obstacleType == ObstacleType::BUILDING && tile.buildingId > 0) {
       // Find all connected building tiles to create unified collision body
@@ -823,7 +811,7 @@ void CollisionManager::onTileChanged(int x, int y) {
         // First, remove OLD format single bounding box (if it exists)
         EntityID oldSingleBodyId = (static_cast<EntityID>(3ull) << 61) |
                                    static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-        removeCollisionBodySOA(oldSingleBodyId);
+        removeCollisionBody(oldSingleBodyId);
 
         // Then, remove all NEW format multi-body collision bodies
         uint16_t subBodyIndex = 0;
@@ -837,7 +825,7 @@ void CollisionManager::onTileChanged(int x, int y) {
             break; // No more sub-bodies for this building
           }
 
-          removeCollisionBodySOA(newMultiBodyId);
+          removeCollisionBody(newMultiBodyId);
           ++subBodyIndex;
         }
 
@@ -890,7 +878,7 @@ void CollisionManager::onTileChanged(int x, int y) {
                           (static_cast<EntityID>(tile.buildingId) << 16) |
                           static_cast<EntityID>(subBodyIndex);
 
-            addCollisionBodySOA(id, center, halfSize, BodyType::STATIC,
+            addCollisionBody(id, center, halfSize, BodyType::STATIC,
                                CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
             ++subBodyIndex;
 
@@ -906,7 +894,7 @@ void CollisionManager::onTileChanged(int x, int y) {
       // Remove OLD format single bounding box (if it exists)
       EntityID oldSingleBodyId = (static_cast<EntityID>(3ull) << 61) |
                                  static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-      removeCollisionBodySOA(oldSingleBodyId);
+      removeCollisionBody(oldSingleBodyId);
 
       // Remove all NEW format multi-body collision bodies
       uint16_t subBodyIndex = 0;
@@ -920,7 +908,7 @@ void CollisionManager::onTileChanged(int x, int y) {
           break; // No more sub-bodies for this building
         }
 
-        removeCollisionBodySOA(newMultiBodyId);
+        removeCollisionBody(newMultiBodyId);
         ++subBodyIndex;
       }
     }
@@ -984,7 +972,7 @@ void CollisionManager::subscribeWorldEvents() {
 
 // ========== SOA STORAGE MANAGEMENT METHODS ==========
 
-size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& position,
+size_t CollisionManager::addCollisionBody(EntityID id, const Vector2D& position,
                                               const Vector2D& halfSize, BodyType type,
                                               uint32_t layer, uint32_t collidesWith,
                                               bool isTrigger, uint8_t triggerTag) {
@@ -995,8 +983,6 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
     size_t index = it->second;
     if (index < m_storage.hotData.size()) {
       auto& hot = m_storage.hotData[index];
-      BodyType oldBodyType = static_cast<BodyType>(hot.bodyType);
-      uint32_t oldLayers = hot.layers;
 
       float px = position.getX();
       float py = position.getY();
@@ -1012,29 +998,7 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
       hot.bodyType = static_cast<uint8_t>(type);
       hot.active = true;
 
-      // Update movable tracking if body type changed
-      bool wasMovable = (oldBodyType != BodyType::STATIC);
-      bool isMovable = (type != BodyType::STATIC);
-      if (wasMovable && !isMovable) {
-        m_movableIndexSet.erase(index);
-        auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), index);
-        if (movableIt != m_movableBodyIndices.end()) {
-          *movableIt = m_movableBodyIndices.back();
-          m_movableBodyIndices.pop_back();
-        }
-      } else if (!wasMovable && isMovable) {
-        m_movableBodyIndices.push_back(index);
-        m_movableIndexSet.insert(index);
-      }
-
-      // Update player index if layer changed
-      bool wasPlayer = (oldLayers & CollisionLayer::Layer_Player) != 0;
-      bool isPlayer = (layer & CollisionLayer::Layer_Player) != 0;
-      if (!wasPlayer && isPlayer) {
-        m_playerBodyIndex = index;
-      } else if (wasPlayer && !isPlayer && m_playerBodyIndex == index) {
-        m_playerBodyIndex = std::nullopt;
-      }
+      // NOTE: Legacy movable/player tracking removed - EDM tier system is source of truth
 
       if (index < m_storage.coldData.size()) {
         m_storage.coldData[index].fullAABB = AABB(px, py, hw, hh);
@@ -1099,14 +1063,7 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
   m_storage.entityIds.push_back(id);
   m_storage.entityToIndex[id] = newIndex;
 
-  if (type != BodyType::STATIC) {
-    m_movableBodyIndices.push_back(newIndex);
-    m_movableIndexSet.insert(newIndex);
-  }
-
-  if (layer & CollisionLayer::Layer_Player) {
-    m_playerBodyIndex = newIndex;
-  }
+  // NOTE: Legacy movable/player tracking removed - EDM tier system is source of truth
 
   if (type == BodyType::STATIC) {
     float radius = std::max(hw, hh) + 16.0f;
@@ -1119,7 +1076,7 @@ size_t CollisionManager::addCollisionBodySOA(EntityID id, const Vector2D& positi
   return newIndex;
 }
 
-void CollisionManager::removeCollisionBodySOA(EntityID id) {
+void CollisionManager::removeCollisionBody(EntityID id) {
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end()) {
     return; // Entity not found
@@ -1155,20 +1112,7 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
     }
   }
 
-  // Clear player index if removing player
-  if (m_playerBodyIndex && *m_playerBodyIndex == indexToRemove) {
-    m_playerBodyIndex = std::nullopt;
-  }
-
-  // Remove from movable tracking (swap-and-pop for O(1))
-  if (m_movableIndexSet.count(indexToRemove)) {
-    m_movableIndexSet.erase(indexToRemove);
-    auto movableIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), indexToRemove);
-    if (movableIt != m_movableBodyIndices.end()) {
-      *movableIt = m_movableBodyIndices.back();
-      m_movableBodyIndices.pop_back();
-    }
-  }
+  // NOTE: Legacy movable/player tracking removed - EDM tier system is source of truth
 
   if (indexToRemove != lastIndex) {
     // Swap with last element
@@ -1178,19 +1122,6 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
 
     EntityID movedEntity = m_storage.entityIds[indexToRemove];
     m_storage.entityToIndex[movedEntity] = indexToRemove;
-
-    // Update tracking for moved element
-    if (m_playerBodyIndex && *m_playerBodyIndex == lastIndex) {
-      m_playerBodyIndex = indexToRemove;
-    }
-    if (m_movableIndexSet.count(lastIndex)) {
-      m_movableIndexSet.erase(lastIndex);
-      m_movableIndexSet.insert(indexToRemove);
-      auto movedIt = std::find(m_movableBodyIndices.begin(), m_movableBodyIndices.end(), lastIndex);
-      if (movedIt != m_movableBodyIndices.end()) {
-        *movedIt = indexToRemove;
-      }
-    }
   }
 
   m_storage.hotData.pop_back();
@@ -1209,7 +1140,7 @@ void CollisionManager::removeCollisionBodySOA(EntityID id) {
   m_triggerCooldownUntil.erase(id);
 }
 
-bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const {
+bool CollisionManager::getCollisionBody(EntityID id, size_t& outIndex) const {
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
     outIndex = it->second;
@@ -1218,9 +1149,9 @@ bool CollisionManager::getCollisionBodySOA(EntityID id, size_t& outIndex) const 
   return false;
 }
 
-void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition) {
+void CollisionManager::updateCollisionBodyPosition(EntityID id, const Vector2D& newPosition) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     auto& hot = m_storage.hotData[index];
 
     // Static bodies don't move - skip EDM update
@@ -1251,9 +1182,9 @@ void CollisionManager::updateCollisionBodyPositionSOA(EntityID id, const Vector2
   }
 }
 
-void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity) {
+void CollisionManager::updateCollisionBodyVelocity(EntityID id, const Vector2D& newVelocity) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     const auto& hot = m_storage.hotData[index];
     // Static bodies have no velocity
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
@@ -1266,9 +1197,9 @@ void CollisionManager::updateCollisionBodyVelocitySOA(EntityID id, const Vector2
   }
 }
 
-Vector2D CollisionManager::getCollisionBodyVelocitySOA(EntityID id) const {
+Vector2D CollisionManager::getCollisionBodyVelocity(EntityID id) const {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     const auto& hot = m_storage.hotData[index];
     // Static bodies have no velocity
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
@@ -1282,9 +1213,9 @@ Vector2D CollisionManager::getCollisionBodyVelocitySOA(EntityID id) const {
   return Vector2D(0, 0);
 }
 
-void CollisionManager::updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize) {
+void CollisionManager::updateCollisionBodySize(EntityID id, const Vector2D& newHalfSize) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     auto& hot = m_storage.hotData[index];
     // Static bodies don't change size at runtime
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
@@ -1348,16 +1279,18 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 // NOTE: rebuildStaticSpatialGrid() and queryStaticGridCells() removed in Phase 3
 // Static bodies are now queried directly via m_staticSpatialHash
 
-// Optimized version of buildActiveIndicesSOA - queries m_staticSpatialHash directly
-std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) const {
-  // Build indices of active bodies within culling area
-  // Phase 3 simplified: Query m_staticSpatialHash directly instead of separate grid/cache
+// EDM-CENTRIC: Build active indices from EntityDataManager Active tier
+// Movables come from EDM's Active tier entities with collision enabled
+// Statics stay in CollisionManager's m_staticSpatialHash
+std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const CullingArea& cullingArea) const {
+  auto& edm = EntityDataManager::Instance();
   auto& pools = m_collisionPool;
 
   // Store current culling area for use in broadphase queries
   m_currentCullingArea = cullingArea;
   pools.activeIndices.clear();
   pools.movableIndices.clear();
+  pools.movableAABBs.clear();
   pools.staticIndices.clear();
 
   // Track total body counts
@@ -1366,7 +1299,6 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   size_t totalKinematic = 0;
 
   // Query m_staticSpatialHash directly for statics in culling area
-  // Creates an AABB from the culling bounds for the spatial hash query
   const float cullCenterX = (cullingArea.minX + cullingArea.maxX) * 0.5f;
   const float cullCenterY = (cullingArea.minY + cullingArea.maxY) * 0.5f;
   const float cullHalfW = (cullingArea.maxX - cullingArea.minX) * 0.5f;
@@ -1378,34 +1310,48 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   }
   totalStatic = pools.staticIndices.size();
 
-  // OPTIMIZATION: Process only tracked movable bodies (O(3) instead of O(18K))
-  // Regression fix for commit 768ad87 - was iterating ALL bodies to find 3 movables
-  for (size_t i : m_movableBodyIndices) {
-    if (i >= m_storage.hotData.size()) continue;
-    const auto& hot = m_storage.hotData[i];
-    if (!hot.active) continue;
+  // EDM-CENTRIC: Get Active tier entities with collision enabled
+  // This automatically filters by tier (Active only) and avoids O(18K) iteration
+  for (size_t edmIdx : edm.getActiveIndices()) {
+    const auto& hot = edm.getHotDataByIndex(edmIdx);
 
-    // Apply culling to movable bodies using cached AABB center
+    // Skip entities without collision enabled
+    if (!hot.hasCollision()) continue;
+
+    // Get position from EDM transform
+    const auto& transform = edm.getTransformByIndex(edmIdx);
+    float posX = transform.position.getX();
+    float posY = transform.position.getY();
+
+    // Apply culling based on position
     if (cullingArea.minX != cullingArea.maxX || cullingArea.minY != cullingArea.maxY) {
-      float posX = (hot.aabbMinX + hot.aabbMaxX) * 0.5f;
-      float posY = (hot.aabbMinY + hot.aabbMaxY) * 0.5f;
       if (!cullingArea.contains(posX, posY)) {
         continue;
       }
     }
 
-    // Count movable bodies by type
-    BodyType bodyType = static_cast<BodyType>(hot.bodyType);
-    if (bodyType == BodyType::DYNAMIC) {
+    // Count by EntityKind (Player/Projectile are dynamic, others kinematic)
+    if (hot.kind == EntityKind::Player || hot.kind == EntityKind::Projectile) {
       totalDynamic++;
-    } else if (bodyType == BodyType::KINEMATIC) {
+    } else {
       totalKinematic++;
     }
 
-    pools.movableIndices.push_back(i);
+    // Store EDM index and compute AABB from EDM data
+    pools.movableIndices.push_back(edmIdx);
+
+    // Compute and cache AABB for fast broadphase access
+    CollisionPool::MovableAABB aabb;
+    aabb.minX = posX - hot.halfWidth;
+    aabb.minY = posY - hot.halfHeight;
+    aabb.maxX = posX + hot.halfWidth;
+    aabb.maxY = posY + hot.halfHeight;
+    aabb.layers = hot.collisionLayers;
+    aabb.collidesWith = hot.collisionMask;
+    pools.movableAABBs.push_back(aabb);
   }
 
-  // Combine cached statics + current movables into activeIndices
+  // Combine for activeIndices (for metrics/logging)
   pools.activeIndices.reserve(pools.staticIndices.size() + pools.movableIndices.size());
   pools.activeIndices.insert(pools.activeIndices.end(), pools.staticIndices.begin(), pools.staticIndices.end());
   pools.activeIndices.insert(pools.activeIndices.end(), pools.movableIndices.begin(), pools.movableIndices.end());
@@ -1415,16 +1361,16 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
 
 // Internal helper methods moved to private section
 
-// ========== NEW SOA-BASED BROADPHASE IMPLEMENTATION ==========
+// ========== EDM-CENTRIC BROADPHASE IMPLEMENTATION ==========
 
-void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs) {
+void CollisionManager::broadphase() {
   // Dispatcher: Choose single-threaded or multi-threaded path based on WorkerBudget
+  // Output: pools.movableMovablePairs and pools.movableStaticPairs
 
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
 
   if (movableIndices.empty()) {
-    indexPairs.clear();
     m_lastBroadphaseWasThreaded = false;
     return;
   }
@@ -1443,83 +1389,80 @@ void CollisionManager::broadphaseSOA(std::vector<std::pair<size_t, size_t>>& ind
   if (batchCount <= 1 || movableIndices.size() < MIN_MOVABLE_FOR_BROADPHASE_THREADING) {
     m_lastBroadphaseWasThreaded = false;
     m_lastBroadphaseBatchCount = 1;
-    broadphaseSingleThreaded(indexPairs);
+    broadphaseSingleThreaded();
   } else {
     m_lastBroadphaseWasThreaded = true;
     m_lastBroadphaseBatchCount = batchCount;
-    broadphaseMultiThreaded(indexPairs, batchCount, batchSize);
+    broadphaseMultiThreaded(batchCount, batchSize);
   }
 }
 
-void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs) {
-  indexPairs.clear();
+void CollisionManager::broadphaseSingleThreaded() {
+  // EDM-CENTRIC: Uses pools.movableAABBs for movables, m_storage for statics
+  // Output goes to pools.movableMovablePairs and pools.movableStaticPairs
 
-  const auto& pools = m_collisionPool;
+  auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
+  const auto& movableAABBs = pools.movableAABBs;
   const auto& staticIndices = pools.staticIndices;
 
-  // Reserve space for pairs (movable×movable/2 + movable×static)
-  indexPairs.reserve(movableIndices.size() * (movableIndices.size() / 2 + staticIndices.size()) / 4);
+  pools.movableMovablePairs.clear();
+  pools.movableStaticPairs.clear();
 
   // ========================================================================
-  // 1. MOVABLE-VS-MOVABLE: Sweep-and-Prune (SAP) algorithm
-  //    Sort by X, only check pairs with overlapping X ranges - O(M log M + M*k)
-  //    where k is average number of X-overlapping neighbors (typically small)
+  // 1. MOVABLE-VS-MOVABLE: Sweep-and-Prune using EDM-computed AABBs
+  //    Sort pool indices by minX, only check pairs with overlapping X ranges
   // ========================================================================
   if (movableIndices.size() > 1) {
-    // Copy and sort movables by minX for sweep-and-prune
-    auto& sorted = m_collisionPool.sortedMovableIndices;
-    sorted.assign(movableIndices.begin(), movableIndices.end());
-    std::sort(sorted.begin(), sorted.end(), [this](size_t a, size_t b) {
-      return m_storage.hotData[a].aabbMinX < m_storage.hotData[b].aabbMinX;
+    // Sort pool indices by minX for sweep-and-prune
+    // sortedMovableIndices now contains pool indices (0..N-1), not EDM/storage indices
+    auto& sorted = pools.sortedMovableIndices;
+    sorted.resize(movableIndices.size());
+    for (size_t i = 0; i < movableIndices.size(); ++i) {
+      sorted[i] = i;  // Pool index
+    }
+    std::sort(sorted.begin(), sorted.end(), [&movableAABBs](size_t a, size_t b) {
+      return movableAABBs[a].minX < movableAABBs[b].minX;
     });
 
     // Sweep: for each body, only check bodies that start before this one ends (X overlap)
     for (size_t i = 0; i < sorted.size(); ++i) {
-      size_t idxA = sorted[i];
-      const auto& hotA = m_storage.hotData[idxA];
-      if (!hotA.active) continue;
+      size_t poolIdxA = sorted[i];
+      const auto& aabbA = movableAABBs[poolIdxA];
 
-      const float maxXA = hotA.aabbMaxX + SPATIAL_QUERY_EPSILON;
-      const uint32_t collidesWithA = hotA.collidesWith;
+      const float maxXA = aabbA.maxX + SPATIAL_QUERY_EPSILON;
+      const uint32_t collidesWithA = aabbA.collidesWith;
 
       // Check subsequent bodies until their minX > our maxX (early exit!)
       for (size_t j = i + 1; j < sorted.size(); ++j) {
-        size_t idxB = sorted[j];
-        const auto& hotB = m_storage.hotData[idxB];
+        size_t poolIdxB = sorted[j];
+        const auto& aabbB = movableAABBs[poolIdxB];
 
         // SAP early termination: if B's minX > A's maxX, no more overlaps possible
-        if (hotB.aabbMinX > maxXA) break;
-
-        if (!hotB.active) continue;
+        if (aabbB.minX > maxXA) break;
 
         // X already overlaps (from SAP), check Y overlap
-        if (hotA.aabbMaxY + SPATIAL_QUERY_EPSILON < hotB.aabbMinY ||
-            hotA.aabbMinY - SPATIAL_QUERY_EPSILON > hotB.aabbMaxY) continue;
+        if (aabbA.maxY + SPATIAL_QUERY_EPSILON < aabbB.minY ||
+            aabbA.minY - SPATIAL_QUERY_EPSILON > aabbB.maxY) continue;
 
         // Layer mask check
-        if ((collidesWithA & hotB.layers) == 0) continue;
+        if ((collidesWithA & aabbB.layers) == 0) continue;
 
-        // Safety: skip self-pairs (shouldn't happen with unique indices)
-        if (idxA != idxB) {
-          indexPairs.emplace_back(idxA, idxB);
-        }
+        // Store pool indices for movable-movable pair
+        pools.movableMovablePairs.emplace_back(poolIdxA, poolIdxB);
       }
     }
   }
 
   // ========================================================================
   // 2. MOVABLE-VS-STATIC: Iterate each movable against statics
-  //    Uses pre-computed staticIndices from culling area
+  //    Movables use pools.movableAABBs, statics use m_storage.hotData
   // ========================================================================
   static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
 
-  for (size_t mi = 0; mi < movableIndices.size(); ++mi) {
-    size_t dynamicIdx = movableIndices[mi];
-    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
-    if (!dynamicHot.active) continue;
-
-    const uint32_t dynamicCollidesWith = dynamicHot.collidesWith;
+  for (size_t poolIdx = 0; poolIdx < movableIndices.size(); ++poolIdx) {
+    const auto& movableAABB = movableAABBs[poolIdx];
+    const uint32_t movableCollidesWith = movableAABB.collidesWith;
 
     if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
       // DIRECT PATH: Check all statics in culling area
@@ -1529,22 +1472,23 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
         if (!staticHot.active) continue;
 
         // AABB overlap test
-        if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-            dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-            dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-            dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+        if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+            movableAABB.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+            movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+            movableAABB.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
 
         // Layer mask check
-        if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
+        if ((movableCollidesWith & staticHot.layers) == 0) continue;
 
-        indexPairs.emplace_back(dynamicIdx, staticIdx);
+        // Store (poolIdx, storageIdx) for movable-static pair
+        pools.movableStaticPairs.emplace_back(poolIdx, staticIdx);
       }
     } else {
       // SPATIAL HASH PATH: Query for nearby statics only
-      float queryMinX = dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON;
-      float queryMinY = dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON;
-      float queryMaxX = dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON;
-      float queryMaxY = dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON;
+      float queryMinX = movableAABB.minX - SPATIAL_QUERY_EPSILON;
+      float queryMinY = movableAABB.minY - SPATIAL_QUERY_EPSILON;
+      float queryMaxX = movableAABB.maxX + SPATIAL_QUERY_EPSILON;
+      float queryMaxY = movableAABB.maxY + SPATIAL_QUERY_EPSILON;
 
       auto& staticCandidates = getPooledVector();
       m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates);
@@ -1553,48 +1497,41 @@ void CollisionManager::broadphaseSingleThreaded(std::vector<std::pair<size_t, si
         size_t staticIdx = staticCandidates[si];
         const auto& staticHot = m_storage.hotData[staticIdx];
         if (!staticHot.active) continue;
-        if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
-        indexPairs.emplace_back(dynamicIdx, staticIdx);
+        if ((movableCollidesWith & staticHot.layers) == 0) continue;
+        pools.movableStaticPairs.emplace_back(poolIdx, staticIdx);
       }
       returnPooledVector(staticCandidates);
     }
   }
 }
 
-void CollisionManager::broadphaseMultiThreaded(
-    std::vector<std::pair<size_t, size_t>>& indexPairs,
-    size_t batchCount,
-    size_t batchSize) {
+void CollisionManager::broadphaseMultiThreaded(size_t batchCount, size_t batchSize) {
+  // EDM-CENTRIC: Multi-threaded broadphase using pools.movableAABBs
+  // Output: Per-batch pair buffers merged into pools.movableMovablePairs/movableStaticPairs
+
   auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+  auto& pools = m_collisionPool;
+  const auto& movableIndices = pools.movableIndices;
 
-  const auto& movableIndices = m_collisionPool.movableIndices;
-
-  // NOTE: AABB caches already refreshed at start of updateSOA via refreshCachedAABBs()
-  // No per-body update needed here (prevents data races by design)
-
-  // Phase 3: Cache removed - m_staticSpatialHash queried directly (thread-safe for reads)
-
-  // Reuse per-batch buffers (avoid allocations)
-  if (!m_broadphasePairBuffers) {
-    m_broadphasePairBuffers =
-        std::make_shared<std::vector<std::vector<std::pair<size_t, size_t>>>>();
-  }
-  m_broadphasePairBuffers->resize(batchCount);
+  // Per-batch output buffers (thread-safe: each batch writes to its own buffer)
+  struct BatchBuffers {
+    std::vector<std::pair<size_t, size_t>> movableMovable;
+    std::vector<std::pair<size_t, size_t>> movableStatic;
+  };
+  auto batchBuffers = std::make_shared<std::vector<BatchBuffers>>(batchCount);
 
   // Reserve capacity for each batch
   size_t estimatedPerBatch = (movableIndices.size() / batchCount) * 4;
   for (size_t i = 0; i < batchCount; ++i) {
-    (*m_broadphasePairBuffers)[i].clear();
-    (*m_broadphasePairBuffers)[i].reserve(estimatedPerBatch);
+    (*batchBuffers)[i].movableMovable.reserve(estimatedPerBatch / 4);
+    (*batchBuffers)[i].movableStatic.reserve(estimatedPerBatch);
   }
 
-  // Submit batches (threads will only do READ-ONLY queries, no state modifications)
+  // Submit batches
   {
     std::lock_guard<std::mutex> lock(m_broadphaseFuturesMutex);
     m_broadphaseFutures.clear();
     m_broadphaseFutures.reserve(batchCount);
-
-    auto pairBuffers = m_broadphasePairBuffers;  // Capture shared_ptr by value
 
     for (size_t i = 0; i < batchCount; ++i) {
       size_t startIdx = i * batchSize;
@@ -1602,9 +1539,11 @@ void CollisionManager::broadphaseMultiThreaded(
 
       m_broadphaseFutures.push_back(
           threadSystem.enqueueTaskWithResult(
-              [this, startIdx, endIdx, pairBuffers, i]() -> void {
+              [this, startIdx, endIdx, batchBuffers, i]() -> void {
                 try {
-                  broadphaseBatch((*pairBuffers)[i], startIdx, endIdx);
+                  broadphaseBatch(startIdx, endIdx,
+                                  (*batchBuffers)[i].movableMovable,
+                                  (*batchBuffers)[i].movableStatic);
                 } catch (const std::exception& e) {
                   COLLISION_ERROR(std::format(
                       "Exception in broadphase batch {}: {}", i, e.what()));
@@ -1625,77 +1564,76 @@ void CollisionManager::broadphaseMultiThreaded(
     }
   }
 
-  // Merge results (single allocation, sequential merge)
-  indexPairs.clear();
-  size_t totalPairs = std::accumulate(
-      m_broadphasePairBuffers->begin(), m_broadphasePairBuffers->end(), size_t{0},
-      [](size_t sum, const auto& batchPairs) { return sum + batchPairs.size(); });
-  indexPairs.reserve(totalPairs);
+  // Merge results into pools
+  pools.movableMovablePairs.clear();
+  pools.movableStaticPairs.clear();
 
-  for (const auto& batchPairs : *m_broadphasePairBuffers) {
-    indexPairs.insert(indexPairs.end(),
-                     batchPairs.begin(),
-                     batchPairs.end());
+  size_t totalMM = 0, totalMS = 0;
+  for (const auto& batch : *batchBuffers) {
+    totalMM += batch.movableMovable.size();
+    totalMS += batch.movableStatic.size();
+  }
+  pools.movableMovablePairs.reserve(totalMM);
+  pools.movableStaticPairs.reserve(totalMS);
+
+  for (const auto& batch : *batchBuffers) {
+    pools.movableMovablePairs.insert(pools.movableMovablePairs.end(),
+                                     batch.movableMovable.begin(), batch.movableMovable.end());
+    pools.movableStaticPairs.insert(pools.movableStaticPairs.end(),
+                                    batch.movableStatic.begin(), batch.movableStatic.end());
   }
 
 #ifndef NDEBUG
-  // Interval stats logging - zero overhead in release (entire block compiles out)
   static thread_local uint64_t logFrameCounter = 0;
   if (++logFrameCounter % 300 == 0 && movableIndices.size() > 0) {
-    COLLISION_DEBUG(std::format("Broadphase: multi-threaded [{} batches, {} movable bodies, {} pairs]",
-                               batchCount, movableIndices.size(), indexPairs.size()));
+    COLLISION_DEBUG(std::format("Broadphase: multi-threaded [{} batches, {} movables, {} MM pairs, {} MS pairs]",
+                               batchCount, movableIndices.size(),
+                               pools.movableMovablePairs.size(), pools.movableStaticPairs.size()));
   }
 #endif
 }
 
 void CollisionManager::broadphaseBatch(
-    std::vector<std::pair<size_t, size_t>>& outIndexPairs,
-    size_t startIdx,
-    size_t endIdx) {
+    size_t startIdx, size_t endIdx,
+    std::vector<std::pair<size_t, size_t>>& outMovableMovable,
+    std::vector<std::pair<size_t, size_t>>& outMovableStatic) {
+  // EDM-CENTRIC: Uses pools.movableAABBs for movables, m_storage for statics
+  // Thread-safe: Each batch writes to its own output vectors
+
   const auto& pools = m_collisionPool;
-  const auto& movableIndices = pools.movableIndices;
+  const auto& movableAABBs = pools.movableAABBs;
   const auto& staticIndices = pools.staticIndices;
 
-  // Process each movable in this batch's range [startIdx, endIdx)
-  // All data is READ-ONLY - safe for parallel access
-  for (size_t mi = startIdx; mi < endIdx && mi < movableIndices.size(); ++mi) {
-    size_t dynamicIdx = movableIndices[mi];
-
-    if (dynamicIdx >= m_storage.hotData.size()) continue;
-    if (!m_storage.hotData[dynamicIdx].active) continue;
-
-    const auto& dynamicHot = m_storage.hotData[dynamicIdx];
-    const uint32_t dynamicCollidesWith = dynamicHot.collidesWith;
+  // Process each pool index in this batch's range [startIdx, endIdx)
+  for (size_t poolIdxA = startIdx; poolIdxA < endIdx && poolIdxA < movableAABBs.size(); ++poolIdxA) {
+    const auto& aabbA = movableAABBs[poolIdxA];
+    const uint32_t collidesWithA = aabbA.collidesWith;
 
     // Broadcast dynamic AABB for SIMD comparison (with epsilon)
-    Float4 dynMinX = broadcast(dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON);
-    Float4 dynMinY = broadcast(dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON);
-    Float4 dynMaxX = broadcast(dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON);
-    Float4 dynMaxY = broadcast(dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON);
-    const Int4 dynamicMaskVec = broadcast_int(dynamicCollidesWith);
+    Float4 dynMinX = broadcast(aabbA.minX - SPATIAL_QUERY_EPSILON);
+    Float4 dynMinY = broadcast(aabbA.minY - SPATIAL_QUERY_EPSILON);
+    Float4 dynMaxX = broadcast(aabbA.maxX + SPATIAL_QUERY_EPSILON);
+    Float4 dynMaxY = broadcast(aabbA.maxY + SPATIAL_QUERY_EPSILON);
+    const Int4 dynamicMaskVec = broadcast_int(collidesWithA);
 
     // ========================================================================
-    // 1. MOVABLE-VS-MOVABLE: Direct iteration with SIMD AABB checks
-    //    Only check movables with index > mi to avoid duplicates across batches
+    // 1. MOVABLE-VS-MOVABLE: SIMD checks using movableAABBs
+    //    Only check movables with poolIdx > poolIdxA to avoid duplicates
     // ========================================================================
-    size_t startJ = mi + 1;
-    const size_t movableSimdEnd = startJ + ((movableIndices.size() - startJ) / 4) * 4;
+    size_t startJ = poolIdxA + 1;
+    const size_t movableSimdEnd = startJ + ((movableAABBs.size() - startJ) / 4) * 4;
 
     for (size_t mj = startJ; mj < movableSimdEnd; mj += 4) {
-      size_t c0 = movableIndices[mj], c1 = movableIndices[mj+1];
-      size_t c2 = movableIndices[mj+2], c3 = movableIndices[mj+3];
+      const auto& a0 = movableAABBs[mj];
+      const auto& a1 = movableAABBs[mj+1];
+      const auto& a2 = movableAABBs[mj+2];
+      const auto& a3 = movableAABBs[mj+3];
 
-      // Load 4 candidate AABBs
-      Float4 candMinX = set(m_storage.hotData[c0].aabbMinX, m_storage.hotData[c1].aabbMinX,
-                            m_storage.hotData[c2].aabbMinX, m_storage.hotData[c3].aabbMinX);
-      Float4 candMaxX = set(m_storage.hotData[c0].aabbMaxX, m_storage.hotData[c1].aabbMaxX,
-                            m_storage.hotData[c2].aabbMaxX, m_storage.hotData[c3].aabbMaxX);
-      Float4 candMinY = set(m_storage.hotData[c0].aabbMinY, m_storage.hotData[c1].aabbMinY,
-                            m_storage.hotData[c2].aabbMinY, m_storage.hotData[c3].aabbMinY);
-      Float4 candMaxY = set(m_storage.hotData[c0].aabbMaxY, m_storage.hotData[c1].aabbMaxY,
-                            m_storage.hotData[c2].aabbMaxY, m_storage.hotData[c3].aabbMaxY);
+      Float4 candMinX = set(a0.minX, a1.minX, a2.minX, a3.minX);
+      Float4 candMaxX = set(a0.maxX, a1.maxX, a2.maxX, a3.maxX);
+      Float4 candMinY = set(a0.minY, a1.minY, a2.minY, a3.minY);
+      Float4 candMaxY = set(a0.maxY, a1.maxY, a2.maxY, a3.maxY);
 
-      // SIMD AABB overlap test
       Float4 noOverlapX1 = cmplt(dynMaxX, candMinX);
       Float4 noOverlapX2 = cmplt(candMaxX, dynMinX);
       Float4 noOverlapY1 = cmplt(dynMaxY, candMinY);
@@ -1705,46 +1643,37 @@ void CollisionManager::broadphaseBatch(
 
       if (noOverlapMask == 0xF) continue;
 
-      // Layer mask check
-      Int4 candLayers = set_int4(m_storage.hotData[c0].layers, m_storage.hotData[c1].layers,
-                                 m_storage.hotData[c2].layers, m_storage.hotData[c3].layers);
+      Int4 candLayers = set_int4(a0.layers, a1.layers, a2.layers, a3.layers);
       Int4 layerResult = bitwise_and(dynamicMaskVec, candLayers);
       Int4 layerZero = cmpeq_int(layerResult, setzero_int());
       int layerFailMask = movemask_int(layerZero);
 
       for (size_t k = 0; k < 4; ++k) {
         if (((noOverlapMask >> k) & 1) == 0 && ((layerFailMask >> (k * 4)) & 0xF) == 0) {
-          size_t candIdx = movableIndices[mj + k];
-          if (candIdx != dynamicIdx && m_storage.hotData[candIdx].active) {
-            outIndexPairs.emplace_back(dynamicIdx, candIdx);
-          }
+          outMovableMovable.emplace_back(poolIdxA, mj + k);
         }
       }
     }
 
     // Scalar tail for remaining movables
-    for (size_t mj = movableSimdEnd; mj < movableIndices.size(); ++mj) {
-      size_t candIdx = movableIndices[mj];
-      if (candIdx == dynamicIdx) continue;
-      const auto& candHot = m_storage.hotData[candIdx];
-      if (!candHot.active) continue;
-      if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < candHot.aabbMinX ||
-          dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > candHot.aabbMaxX ||
-          dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < candHot.aabbMinY ||
-          dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > candHot.aabbMaxY) continue;
-      if ((dynamicCollidesWith & candHot.layers) == 0) continue;
-      outIndexPairs.emplace_back(dynamicIdx, candIdx);
+    for (size_t mj = movableSimdEnd; mj < movableAABBs.size(); ++mj) {
+      const auto& aabbB = movableAABBs[mj];
+      if (aabbA.maxX + SPATIAL_QUERY_EPSILON < aabbB.minX ||
+          aabbA.minX - SPATIAL_QUERY_EPSILON > aabbB.maxX ||
+          aabbA.maxY + SPATIAL_QUERY_EPSILON < aabbB.minY ||
+          aabbA.minY - SPATIAL_QUERY_EPSILON > aabbB.maxY) continue;
+      if ((collidesWithA & aabbB.layers) == 0) continue;
+      outMovableMovable.emplace_back(poolIdxA, mj);
     }
 
     // ========================================================================
-    // 2. MOVABLE-VS-STATIC: Choose strategy based on static count
-    //    staticIndices is READ-ONLY - safe for parallel access
+    // 2. MOVABLE-VS-STATIC: Check against statics in m_storage
     // ========================================================================
     static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
-    const Int4 staticMaskVec = broadcast_int(dynamicCollidesWith);
+    const Int4 staticMaskVec = broadcast_int(collidesWithA);
 
     if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
-      // DIRECT PATH: Iterate all culled statics with SIMD AABB checks
+      // DIRECT PATH: Iterate all culled statics with SIMD
       size_t si = 0;
       const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
 
@@ -1779,29 +1708,30 @@ void CollisionManager::broadphaseBatch(
         for (size_t j = 0; j < 4; ++j) {
           if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
             if (m_storage.hotData[staticIndices[si + j]].active) {
-              outIndexPairs.emplace_back(dynamicIdx, staticIndices[si + j]);
+              outMovableStatic.emplace_back(poolIdxA, staticIndices[si + j]);
             }
           }
         }
       }
 
+      // Scalar tail
       for (; si < staticIndices.size(); ++si) {
         size_t staticIdx = staticIndices[si];
         const auto& staticHot = m_storage.hotData[staticIdx];
         if (!staticHot.active) continue;
-        if (dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-            dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-            dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-            dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
-        if ((dynamicCollidesWith & staticHot.layers) == 0) continue;
-        outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+        if (aabbA.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+            aabbA.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+            aabbA.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+            aabbA.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+        if ((collidesWithA & staticHot.layers) == 0) continue;
+        outMovableStatic.emplace_back(poolIdxA, staticIdx);
       }
     } else {
       // SPATIAL HASH PATH: Query for nearby statics (thread-safe)
-      float queryMinX = dynamicHot.aabbMinX - SPATIAL_QUERY_EPSILON;
-      float queryMinY = dynamicHot.aabbMinY - SPATIAL_QUERY_EPSILON;
-      float queryMaxX = dynamicHot.aabbMaxX + SPATIAL_QUERY_EPSILON;
-      float queryMaxY = dynamicHot.aabbMaxY + SPATIAL_QUERY_EPSILON;
+      float queryMinX = aabbA.minX - SPATIAL_QUERY_EPSILON;
+      float queryMinY = aabbA.minY - SPATIAL_QUERY_EPSILON;
+      float queryMaxX = aabbA.maxX + SPATIAL_QUERY_EPSILON;
+      float queryMaxY = aabbA.maxY + SPATIAL_QUERY_EPSILON;
 
       thread_local std::vector<size_t> staticCandidates;
       thread_local HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
@@ -1809,598 +1739,184 @@ void CollisionManager::broadphaseBatch(
       m_staticSpatialHash.queryRegionBoundsThreadSafe(
           queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates, queryBuffers);
 
-      size_t si = 0;
-      const size_t staticSimdEnd = (staticCandidates.size() / 4) * 4;
-
-      for (; si < staticSimdEnd; si += 4) {
-        Int4 staticLayers = set_int4(
-          m_storage.hotData[staticCandidates[si]].layers,
-          m_storage.hotData[staticCandidates[si+1]].layers,
-          m_storage.hotData[staticCandidates[si+2]].layers,
-          m_storage.hotData[staticCandidates[si+3]].layers
-        );
-        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
-        int staticFailMask = movemask_int(staticCmp);
-
-        if (staticFailMask == 0xFFFF) continue;
-
-        for (size_t j = 0; j < 4; ++j) {
-          if (((staticFailMask >> (j * 4)) & 0xF) == 0) {
-            size_t staticIdx = staticCandidates[si + j];
-            if (m_storage.hotData[staticIdx].active) {
-              outIndexPairs.emplace_back(dynamicIdx, staticIdx);
-            }
-          }
-        }
-      }
-
-      for (; si < staticCandidates.size(); ++si) {
-        size_t staticIdx = staticCandidates[si];
+      for (size_t staticIdx : staticCandidates) {
         const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (dynamicCollidesWith & staticHot.layers) == 0) continue;
-        outIndexPairs.emplace_back(dynamicIdx, staticIdx);
+        if (!staticHot.active || (collidesWithA & staticHot.layers) == 0) continue;
+        outMovableStatic.emplace_back(poolIdxA, staticIdx);
       }
     }
   }
 }
 
-void CollisionManager::narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                      std::vector<CollisionInfo>& collisions) const {
-  // Dispatcher: Choose single-threaded or multi-threaded path based on WorkerBudget
+void CollisionManager::narrowphase(std::vector<CollisionInfo>& collisions) const {
+  // EDM-CENTRIC: Process movableMovablePairs and movableStaticPairs
+  // Single-threaded for now (can add multi-threading later)
 
-  if (indexPairs.empty()) {
+  const auto& pools = m_collisionPool;
+  size_t totalPairs = pools.movableMovablePairs.size() + pools.movableStaticPairs.size();
+
+  if (totalPairs == 0) {
     collisions.clear();
     m_lastNarrowphaseWasThreaded = false;
     return;
   }
 
-  // Query WorkerBudget for optimal configuration
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  size_t optimalWorkers = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::Collision, indexPairs.size());
+  // NOTE: Multi-threaded narrowphase removed - single-threaded SIMD is sufficient
+  // WorkerBudget query retained for future if needed:
+  // auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  // auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(...);
 
-  auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::Collision,
-      indexPairs.size(),
-      optimalWorkers);
-
-  // Threshold: multi-thread only if WorkerBudget recommends it
-  if (batchCount <= 1 || indexPairs.size() < MIN_PAIRS_FOR_THREADING) {
-    m_lastNarrowphaseWasThreaded = false;
-    m_lastNarrowphaseBatchCount = 1;
-    narrowphaseSingleThreaded(indexPairs, collisions);
-  } else {
-    m_lastNarrowphaseWasThreaded = true;
-    m_lastNarrowphaseBatchCount = batchCount;
-    narrowphaseMultiThreaded(indexPairs, collisions, batchCount, batchSize);
-  }
+  // Single-threaded path (4-wide SIMD)
+  m_lastNarrowphaseWasThreaded = false;
+  m_lastNarrowphaseBatchCount = 1;
+  narrowphaseSingleThreaded(collisions);
 }
 
-void CollisionManager::narrowphaseSingleThreaded(const std::vector<std::pair<size_t, size_t>>& indexPairs,
-                                                 std::vector<CollisionInfo>& collisions) const {
+void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& collisions) const {
+  // EDM-CENTRIC: Process movableMovablePairs and movableStaticPairs
+  // movableMovablePairs: (poolIdxA, poolIdxB) - both into movableIndices/movableAABBs
+  // movableStaticPairs: (poolIdx, storageIdx) - poolIdx into movableIndices, storageIdx into m_storage
+
+  const auto& pools = m_collisionPool;
+  const auto& movableIndices = pools.movableIndices;
+  const auto& movableAABBs = pools.movableAABBs;
+  auto& edm = EntityDataManager::Instance();
+
   collisions.clear();
-  collisions.reserve(indexPairs.size() / 4); // Conservative estimate
+  collisions.reserve((pools.movableMovablePairs.size() + pools.movableStaticPairs.size()) / 4);
 
-  // PERFORMANCE: Fast velocity threshold for deep penetration correction
-  // Only trigger special handling for genuinely fast-moving bodies (250px/s @ 60fps = 4.17px/frame)
-  constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD; // 62500.0f
+  constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
 
-  // SIMDMath abstraction: Batch process AABB intersection tests (4 pairs at a time)
-  size_t i = 0;
-  const size_t simdEnd = (indexPairs.size() / 4) * 4;
+  // Helper lambda to create collision info from AABB overlap
+  auto processOverlap = [&collisions](
+      float minXA, float minYA, float maxXA, float maxYA,
+      float minXB, float minYB, float maxXB, float maxYB,
+      EntityID entityA, EntityID entityB,
+      bool isTriggerA, bool isTriggerB,
+      size_t idxA, size_t idxB,
+      bool isMovableMovable) {
 
-  for (; i < simdEnd; i += 4) {
-    // Load indices for 4 pairs
-    const auto& [aIdx0, bIdx0] = indexPairs[i];
-    const auto& [aIdx1, bIdx1] = indexPairs[i+1];
-    const auto& [aIdx2, bIdx2] = indexPairs[i+2];
-    const auto& [aIdx3, bIdx3] = indexPairs[i+3];
+    // AABB intersection test
+    if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) return;
 
-    // Bounds check
-    if (aIdx0 >= m_storage.hotData.size() || bIdx0 >= m_storage.hotData.size() ||
-        aIdx1 >= m_storage.hotData.size() || bIdx1 >= m_storage.hotData.size() ||
-        aIdx2 >= m_storage.hotData.size() || bIdx2 >= m_storage.hotData.size() ||
-        aIdx3 >= m_storage.hotData.size() || bIdx3 >= m_storage.hotData.size()) {
-      // Fall back to scalar for this batch
-      for (size_t j = i; j < i + 4; ++j) {
-        const auto& [aIdx, bIdx] = indexPairs[j];
-        if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
-        const auto& hotA = m_storage.hotData[aIdx];
-        const auto& hotB = m_storage.hotData[bIdx];
-        if (!hotA.active || !hotB.active) continue;
-
-        float minXA, minYA, maxXA, maxYA, minXB, minYB, maxXB, maxYB;
-        m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
-        m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
-
-        if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
-
-        float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
-        float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
-
-        float minPen;
-        Vector2D normal;
-        constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
-        if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
-          minPen = overlapX;
-          float const centerXA = (minXA + maxXA) * 0.5f;
-          float const centerXB = (minXB + maxXB) * 0.5f;
-          normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-        } else {
-          minPen = overlapY;
-          float const centerYA = (minYA + maxYA) * 0.5f;
-          float const centerYB = (minYB + maxYB) * 0.5f;
-          normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-        }
-        EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-        EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-        bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
-        collisions.push_back(CollisionInfo{entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx});
-      }
-      continue;
-    }
-
-    // Get AABB bounds for all 4 pairs
-    alignas(16) float minXA[4], minYA[4], maxXA[4], maxYA[4];
-    alignas(16) float minXB[4], minYB[4], maxXB[4], maxYB[4];
-
-    m_storage.getCachedAABBBounds(aIdx0, minXA[0], minYA[0], maxXA[0], maxYA[0]);
-    m_storage.getCachedAABBBounds(bIdx0, minXB[0], minYB[0], maxXB[0], maxYB[0]);
-    m_storage.getCachedAABBBounds(aIdx1, minXA[1], minYA[1], maxXA[1], maxYA[1]);
-    m_storage.getCachedAABBBounds(bIdx1, minXB[1], minYB[1], maxXB[1], maxYB[1]);
-    m_storage.getCachedAABBBounds(aIdx2, minXA[2], minYA[2], maxXA[2], maxYA[2]);
-    m_storage.getCachedAABBBounds(bIdx2, minXB[2], minYB[2], maxXB[2], maxYB[2]);
-    m_storage.getCachedAABBBounds(aIdx3, minXA[3], minYA[3], maxXA[3], maxYA[3]);
-    m_storage.getCachedAABBBounds(bIdx3, minXB[3], minYB[3], maxXB[3], maxYB[3]);
-
-    // SIMDMath intersection test for 4 pairs
-    Float4 const maxXA_v = load4(maxXA);
-    Float4 const minXB_v = load4(minXB);
-    Float4 const maxXB_v = load4(maxXB);
-    Float4 const minXA_v = load4(minXA);
-    Float4 const maxYA_v = load4(maxYA);
-    Float4 const minYB_v = load4(minYB);
-    Float4 const maxYB_v = load4(maxYB);
-    Float4 const minYA_v = load4(minYA);
-
-    // Test: maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA
-    Float4 const xFail1 = cmplt(maxXA_v, minXB_v);
-    Float4 const xFail2 = cmplt(maxXB_v, minXA_v);
-    Float4 const yFail1 = cmplt(maxYA_v, minYB_v);
-    Float4 const yFail2 = cmplt(maxYB_v, minYA_v);
-
-    Float4 const fail = bitwise_or(bitwise_or(xFail1, xFail2), bitwise_or(yFail1, yFail2));
-    int failMask = movemask(fail);
-
-    // If all 4 pairs failed intersection, skip
-    if (failMask == 0xF) continue;
-
-    // Process pairs that passed intersection test
-    const size_t indices[4] = {aIdx0, aIdx1, aIdx2, aIdx3};
-    const size_t bindices[4] = {bIdx0, bIdx1, bIdx2, bIdx3};
-
-    for (size_t j = 0; j < 4; ++j) {
-      if (failMask & (1 << j)) continue; // This pair failed intersection
-
-      size_t aIdx = indices[j];
-      size_t bIdx = bindices[j];
-      const auto& hotA = m_storage.hotData[aIdx];
-      const auto& hotB = m_storage.hotData[bIdx];
-
-      if (!hotA.active || !hotB.active) continue;
-
-      // Calculate overlap and collision details (scalar - normals are conditional)
-      float overlapX = std::min(maxXA[j], maxXB[j]) - std::max(minXA[j], minXB[j]);
-      float overlapY = std::min(maxYA[j], maxYB[j]) - std::max(minYA[j], minYB[j]);
-
-      float minPen;
-      Vector2D normal;
-      if (overlapX < overlapY) {
-        minPen = overlapX;
-        float centerXA = (minXA[j] + maxXA[j]) * 0.5f;
-        float centerXB = (minXB[j] + maxXB[j]) * 0.5f;
-        normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-      } else {
-        minPen = overlapY;
-        float centerYA = (minYA[j] + maxYA[j]) * 0.5f;
-        float centerYB = (minYB[j] + maxYB[j]) * 0.5f;
-        normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-      }
-
-      EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-      EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-      bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
-
-      collisions.push_back(CollisionInfo{entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx});
-    }
-  }
-
-  // Scalar tail for remaining pairs
-  for (; i < indexPairs.size(); ++i) {
-    const auto& [aIdx, bIdx] = indexPairs[i];
-    if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) continue;
-
-    const auto& hotA = m_storage.hotData[aIdx];
-    const auto& hotB = m_storage.hotData[bIdx];
-
-    if (!hotA.active || !hotB.active) continue;
-
-    // Get cached AABB bounds directly (more efficient than creating AABB objects)
-    float minXA, minYA, maxXA, maxYA;
-    float minXB, minYB, maxXB, maxYB;
-    m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
-    m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
-
-    // AABB intersection test using cached bounds (avoids object creation)
-    if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) continue;
-
-    // Compute collision details using cached bounds
-    // Calculate overlap on each axis (always positive when intersecting)
     float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
     float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
 
-    // NOTE: No MIN_OVERLAP threshold - AABB test above already filters non-overlapping pairs
-    // Any overlap detected here is a real collision and must be resolved
-
-    // Standard AABB resolution: separate on axis of minimum penetration
-    // Add epsilon to prefer Y-axis when penetrations are nearly equal (prevents corner ambiguity)
-    constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
     float minPen;
     Vector2D normal;
 
     if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
-      // Separate on X-axis
       minPen = overlapX;
-
-      // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
-      // Only needed for rare edge cases (reduced from 16px with cache fixes)
-      constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-      // Get velocity from EDM for deep penetration check
-      Vector2D velA = (hotA.edmIndex != SIZE_MAX)
-          ? EntityDataManager::Instance().getTransformByIndex(hotA.edmIndex).velocity
-          : Vector2D(0, 0);
-      if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
-        // Push opposite to velocity direction (player was moving INTO the collision)
-        normal = (velA.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
-      } else {
-        // Standard center comparison for shallow penetrations
-        float const centerXA = (minXA + maxXA) * 0.5f;
-        float const centerXB = (minXB + maxXB) * 0.5f;
-        normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-      }
-    } else {
-      // Separate on Y-axis
-      minPen = overlapY;
-
-      // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
-      // Only needed for rare edge cases (reduced from 16px with cache fixes)
-      constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-      // Get velocity from EDM for deep penetration check
-      Vector2D velA = (hotA.edmIndex != SIZE_MAX)
-          ? EntityDataManager::Instance().getTransformByIndex(hotA.edmIndex).velocity
-          : Vector2D(0, 0);
-      if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
-        // Push opposite to velocity direction (player was moving INTO the collision)
-        normal = (velA.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
-      } else {
-        // Standard center comparison for shallow penetrations
-        float const centerYA = (minYA + maxYA) * 0.5f;
-        float const centerYB = (minYB + maxYB) * 0.5f;
-        normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-      }
-    }
-
-    // Create collision info using EntityIDs
-    EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-    EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-
-    bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
-
-    collisions.push_back(CollisionInfo{
-        entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx
-    });
-  }
-
-  // Removed per-frame logging - collision count is included in periodic summary
-}
-
-void CollisionManager::narrowphaseMultiThreaded(
-    const std::vector<std::pair<size_t, size_t>>& indexPairs,
-    std::vector<CollisionInfo>& collisions,
-    size_t batchCount,
-    size_t batchSize) const {
-
-  auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-
-  // Reuse per-batch buffers (avoid allocations)
-  if (!m_batchCollisionBuffers) {
-    m_batchCollisionBuffers =
-        std::make_shared<std::vector<std::vector<CollisionInfo>>>();
-  }
-  m_batchCollisionBuffers->resize(batchCount);
-
-  // Reserve capacity (estimate 50% of pairs become collisions)
-  size_t estimatedPerBatch = (indexPairs.size() / batchCount) / 2;
-  for (size_t i = 0; i < batchCount; ++i) {
-    (*m_batchCollisionBuffers)[i].clear();
-    (*m_batchCollisionBuffers)[i].reserve(estimatedPerBatch);
-  }
-
-  // Submit batches to ThreadSystem
-  {
-    std::lock_guard<std::mutex> lock(m_narrowphaseFuturesMutex);
-    m_narrowphaseFutures.clear();
-    m_narrowphaseFutures.reserve(batchCount);
-
-    // Capture shared_ptr by value to keep buffers alive during async execution
-    auto batchBuffers = m_batchCollisionBuffers;
-
-    for (size_t i = 0; i < batchCount; ++i) {
-      size_t startIdx = i * batchSize;
-      size_t endIdx = std::min(startIdx + batchSize, indexPairs.size());
-
-      m_narrowphaseFutures.push_back(
-          threadSystem.enqueueTaskWithResult(
-              [this, &indexPairs, startIdx, endIdx, batchBuffers, i]() -> void {
-                try {
-                  narrowphaseBatch(indexPairs, startIdx, endIdx,
-                                 (*batchBuffers)[i]);
-                } catch (const std::exception& e) {
-                  COLLISION_ERROR(std::format(
-                      "Exception in narrowphase batch {}: {}", i, e.what()));
-                } catch (...) {
-                  COLLISION_ERROR(std::format(
-                      "Unknown exception in narrowphase batch {}", i));
-                }
-              },
-              HammerEngine::TaskPriority::High,
-              std::format("Collision_Narrowphase_Batch_{}", i)
-          )
-      );
-    }
-  }
-
-  // Wait for all batches to complete
-  {
-    std::lock_guard<std::mutex> lock(m_narrowphaseFuturesMutex);
-    for (auto& future : m_narrowphaseFutures) {
-      if (future.valid()) {
-        future.wait();
-      }
-    }
-  }
-
-  // Merge per-batch results into output buffer
-  collisions.clear();
-  size_t totalCollisions = std::accumulate(
-      m_batchCollisionBuffers->begin(), m_batchCollisionBuffers->end(), size_t{0},
-      [](size_t sum, const auto& batchCollisions) { return sum + batchCollisions.size(); });
-  collisions.reserve(totalCollisions);
-
-  for (const auto& batchCollisions : *m_batchCollisionBuffers) {
-    collisions.insert(collisions.end(),
-                     batchCollisions.begin(),
-                     batchCollisions.end());
-  }
-}
-
-void CollisionManager::narrowphaseBatch(
-    const std::vector<std::pair<size_t, size_t>>& indexPairs,
-    size_t startIdx,
-    size_t endIdx,
-    std::vector<CollisionInfo>& outCollisions) const {
-
-  // Calculate SIMD boundary for THIS batch
-  const size_t batchSize = endIdx - startIdx;
-  const size_t simdEnd = startIdx + (batchSize / 4) * 4;
-
-  // SIMD loop: Process 4 pairs at a time (from narrowphaseSingleThreaded lines 1865-1989)
-  for (size_t i = startIdx; i < simdEnd; i += 4) {
-    // Load indices for 4 pairs
-    const auto& [aIdx0, bIdx0] = indexPairs[i];
-    const auto& [aIdx1, bIdx1] = indexPairs[i+1];
-    const auto& [aIdx2, bIdx2] = indexPairs[i+2];
-    const auto& [aIdx3, bIdx3] = indexPairs[i+3];
-
-    // Bounds check
-    if (aIdx0 >= m_storage.hotData.size() || bIdx0 >= m_storage.hotData.size() ||
-        aIdx1 >= m_storage.hotData.size() || bIdx1 >= m_storage.hotData.size() ||
-        aIdx2 >= m_storage.hotData.size() || bIdx2 >= m_storage.hotData.size() ||
-        aIdx3 >= m_storage.hotData.size() || bIdx3 >= m_storage.hotData.size()) {
-      // Fall back to scalar for this batch of 4
-      for (size_t j = i; j < i + 4 && j < endIdx; ++j) {
-        processNarrowphasePairScalar(indexPairs[j], outCollisions);
-      }
-      continue;
-    }
-
-    // Get AABB bounds for all 4 pairs
-    alignas(16) float minXA[4], minYA[4], maxXA[4], maxYA[4];
-    alignas(16) float minXB[4], minYB[4], maxXB[4], maxYB[4];
-
-    m_storage.getCachedAABBBounds(aIdx0, minXA[0], minYA[0], maxXA[0], maxYA[0]);
-    m_storage.getCachedAABBBounds(bIdx0, minXB[0], minYB[0], maxXB[0], maxYB[0]);
-    m_storage.getCachedAABBBounds(aIdx1, minXA[1], minYA[1], maxXA[1], maxYA[1]);
-    m_storage.getCachedAABBBounds(bIdx1, minXB[1], minYB[1], maxXB[1], maxYB[1]);
-    m_storage.getCachedAABBBounds(aIdx2, minXA[2], minYA[2], maxXA[2], maxYA[2]);
-    m_storage.getCachedAABBBounds(bIdx2, minXB[2], minYB[2], maxXB[2], maxYB[2]);
-    m_storage.getCachedAABBBounds(aIdx3, minXA[3], minYA[3], maxXA[3], maxYA[3]);
-    m_storage.getCachedAABBBounds(bIdx3, minXB[3], minYB[3], maxXB[3], maxYB[3]);
-
-    // SIMDMath intersection test for 4 pairs
-    Float4 const maxXA_v = load4(maxXA);
-    Float4 const minXB_v = load4(minXB);
-    Float4 const maxXB_v = load4(maxXB);
-    Float4 const minXA_v = load4(minXA);
-    Float4 const maxYA_v = load4(maxYA);
-    Float4 const minYB_v = load4(minYB);
-    Float4 const maxYB_v = load4(maxYB);
-    Float4 const minYA_v = load4(minYA);
-
-    // Test: maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA
-    Float4 const xFail1 = cmplt(maxXA_v, minXB_v);
-    Float4 const xFail2 = cmplt(maxXB_v, minXA_v);
-    Float4 const yFail1 = cmplt(maxYA_v, minYB_v);
-    Float4 const yFail2 = cmplt(maxYB_v, minYA_v);
-
-    Float4 const fail = bitwise_or(bitwise_or(xFail1, xFail2), bitwise_or(yFail1, yFail2));
-    int failMask = movemask(fail);
-
-    // If all 4 pairs failed intersection, skip
-    if (failMask == 0xF) continue;
-
-    // Process pairs that passed intersection test
-    const size_t indices[4] = {aIdx0, aIdx1, aIdx2, aIdx3};
-    const size_t bindices[4] = {bIdx0, bIdx1, bIdx2, bIdx3};
-
-    for (size_t j = 0; j < 4; ++j) {
-      if (failMask & (1 << j)) continue; // This pair failed intersection
-
-      size_t aIdx = indices[j];
-      size_t bIdx = bindices[j];
-      const auto& hotA = m_storage.hotData[aIdx];
-      const auto& hotB = m_storage.hotData[bIdx];
-
-      if (!hotA.active || !hotB.active) continue;
-
-      // Calculate overlap and collision details (scalar - normals are conditional)
-      float overlapX = std::min(maxXA[j], maxXB[j]) - std::max(minXA[j], minXB[j]);
-      float overlapY = std::min(maxYA[j], maxYB[j]) - std::max(minYA[j], minYB[j]);
-
-      float minPen;
-      Vector2D normal;
-      if (overlapX < overlapY) {
-        minPen = overlapX;
-        float centerXA = (minXA[j] + maxXA[j]) * 0.5f;
-        float centerXB = (minXB[j] + maxXB[j]) * 0.5f;
-        normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-      } else {
-        minPen = overlapY;
-        float centerYA = (minYA[j] + maxYA[j]) * 0.5f;
-        float centerYB = (minYB[j] + maxYB[j]) * 0.5f;
-        normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
-      }
-
-      EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-      EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-      bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
-
-      outCollisions.push_back(CollisionInfo{entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx});
-    }
-  }
-
-  // Scalar tail for remainder (if batchSize not divisible by 4)
-  for (size_t i = simdEnd; i < endIdx; ++i) {
-    processNarrowphasePairScalar(indexPairs[i], outCollisions);
-  }
-}
-
-void CollisionManager::processNarrowphasePairScalar(
-    const std::pair<size_t, size_t>& pair,
-    std::vector<CollisionInfo>& outCollisions) const {
-
-  const auto& [aIdx, bIdx] = pair;
-
-  // Bounds check
-  if (aIdx >= m_storage.hotData.size() || bIdx >= m_storage.hotData.size()) {
-    return;
-  }
-
-  const auto& hotA = m_storage.hotData[aIdx];
-  const auto& hotB = m_storage.hotData[bIdx];
-
-  if (!hotA.active || !hotB.active) {
-    return;
-  }
-
-  // Get cached AABB bounds
-  float minXA, minYA, maxXA, maxYA;
-  float minXB, minYB, maxXB, maxYB;
-  m_storage.getCachedAABBBounds(aIdx, minXA, minYA, maxXA, maxYA);
-  m_storage.getCachedAABBBounds(bIdx, minXB, minYB, maxXB, maxYB);
-
-  // AABB intersection test using cached bounds
-  if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) {
-    return;
-  }
-
-  // Compute collision details using cached bounds
-  float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
-  float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
-
-  // Standard AABB resolution: separate on axis of minimum penetration
-  constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
-  float minPen;
-  Vector2D normal;
-
-  constexpr float FAST_VELOCITY_THRESHOLD_SQ = FAST_VELOCITY_THRESHOLD * FAST_VELOCITY_THRESHOLD;
-  constexpr float DEEP_PENETRATION_THRESHOLD = 10.0f;
-
-  // Get velocity from EDM for deep penetration check
-  Vector2D velA = (hotA.edmIndex != SIZE_MAX)
-      ? EntityDataManager::Instance().getTransformByIndex(hotA.edmIndex).velocity
-      : Vector2D(0, 0);
-
-  if (overlapX < overlapY - AXIS_PREFERENCE_EPSILON) {
-    // Separate on X-axis
-    minPen = overlapX;
-
-    // DEEP PENETRATION FIX: Use velocity direction instead of center comparison
-    if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
-      normal = (velA.getX() > 0) ? Vector2D(-1, 0) : Vector2D(1, 0);
-    } else {
-      float const centerXA = (minXA + maxXA) * 0.5f;
-      float const centerXB = (minXB + maxXB) * 0.5f;
+      float centerXA = (minXA + maxXA) * 0.5f;
+      float centerXB = (minXB + maxXB) * 0.5f;
       normal = (centerXA < centerXB) ? Vector2D(1, 0) : Vector2D(-1, 0);
-    }
-  } else {
-    // Separate on Y-axis
-    minPen = overlapY;
-
-    if (minPen > DEEP_PENETRATION_THRESHOLD && velA.lengthSquared() > FAST_VELOCITY_THRESHOLD_SQ) {
-      normal = (velA.getY() > 0) ? Vector2D(0, -1) : Vector2D(0, 1);
     } else {
-      float const centerYA = (minYA + maxYA) * 0.5f;
-      float const centerYB = (minYB + maxYB) * 0.5f;
+      minPen = overlapY;
+      float centerYA = (minYA + maxYA) * 0.5f;
+      float centerYB = (minYB + maxYB) * 0.5f;
       normal = (centerYA < centerYB) ? Vector2D(0, 1) : Vector2D(0, -1);
     }
+
+    bool isEitherTrigger = isTriggerA || isTriggerB;
+    collisions.push_back(CollisionInfo{entityA, entityB, normal, minPen, isEitherTrigger, idxA, idxB, isMovableMovable});
+  };
+
+  // ========================================================================
+  // 1. MOVABLE-VS-MOVABLE: Both indices are pool indices into movableAABBs
+  // ========================================================================
+  for (const auto& [poolIdxA, poolIdxB] : pools.movableMovablePairs) {
+    if (poolIdxA >= movableAABBs.size() || poolIdxB >= movableAABBs.size()) continue;
+
+    const auto& aabbA = movableAABBs[poolIdxA];
+    const auto& aabbB = movableAABBs[poolIdxB];
+
+    // Get EntityIDs from EDM
+    size_t edmIdxA = movableIndices[poolIdxA];
+    size_t edmIdxB = movableIndices[poolIdxB];
+    EntityID entityA = edm.getEntityId(edmIdxA);
+    EntityID entityB = edm.getEntityId(edmIdxB);
+
+    // Get trigger status from EDM
+    const auto& hotA = edm.getHotDataByIndex(edmIdxA);
+    const auto& hotB = edm.getHotDataByIndex(edmIdxB);
+
+    processOverlap(
+        aabbA.minX, aabbA.minY, aabbA.maxX, aabbA.maxY,
+        aabbB.minX, aabbB.minY, aabbB.maxX, aabbB.maxY,
+        entityA, entityB,
+        hotA.isTrigger(), hotB.isTrigger(),
+        edmIdxA, edmIdxB,
+        true);  // isMovableMovable = true
   }
 
-  // Create collision info
-  EntityID entityA = (aIdx < m_storage.entityIds.size()) ? m_storage.entityIds[aIdx] : 0;
-  EntityID entityB = (bIdx < m_storage.entityIds.size()) ? m_storage.entityIds[bIdx] : 0;
-  bool isEitherTrigger = hotA.isTrigger || hotB.isTrigger;
+  // ========================================================================
+  // 2. MOVABLE-VS-STATIC: poolIdx into movableAABBs, storageIdx into m_storage
+  // ========================================================================
+  for (const auto& [poolIdx, storageIdx] : pools.movableStaticPairs) {
+    if (poolIdx >= movableAABBs.size() || storageIdx >= m_storage.hotData.size()) continue;
 
-  outCollisions.push_back(CollisionInfo{
-      entityA, entityB, normal, minPen, isEitherTrigger, aIdx, bIdx
-  });
+    const auto& movableAABB = movableAABBs[poolIdx];
+    const auto& staticHot = m_storage.hotData[storageIdx];
+
+    if (!staticHot.active) continue;
+
+    // Get EntityID from EDM for movable
+    size_t edmIdx = movableIndices[poolIdx];
+    EntityID entityA = edm.getEntityId(edmIdx);
+
+    // Get EntityID from m_storage for static
+    EntityID entityB = (storageIdx < m_storage.entityIds.size()) ? m_storage.entityIds[storageIdx] : 0;
+
+    // Get trigger status
+    const auto& movableHot = edm.getHotDataByIndex(edmIdx);
+
+    processOverlap(
+        movableAABB.minX, movableAABB.minY, movableAABB.maxX, movableAABB.maxY,
+        staticHot.aabbMinX, staticHot.aabbMinY, staticHot.aabbMaxX, staticHot.aabbMaxY,
+        entityA, entityB,
+        movableHot.isTrigger(), staticHot.isTrigger != 0,
+        edmIdx, storageIdx,
+        false);  // isMovableMovable = false (movable-static collision)
+  }
 }
 
-// ========== NEW SOA UPDATE METHOD ==========
+// NOTE: narrowphaseMultiThreaded removed - narrowphaseSingleThreaded handles SIMD 4-wide processing
+// Multi-threading was dead code (never called from narrowphase)
 
-void CollisionManager::updateSOA(float dt) {
+// NOTE: narrowphaseBatch and processNarrowphasePairScalar removed - legacy threading code
+// Single-threaded narrowphaseSingleThreaded now handles all SIMD 4-wide processing
+
+// ========== MAIN UPDATE METHOD ==========
+
+void CollisionManager::update(float dt) {
   (void)dt;
+
+  // Early exit checks
+  if (!m_initialized || m_isShutdown || m_globallyPaused.load(std::memory_order_acquire))
+    return;
 
   using clock = std::chrono::steady_clock; // Needed for WorkerBudget timing
 #ifdef DEBUG
   auto t0 = clock::now();
 #endif
 
-  // Refresh cached AABB bounds from EntityDataManager (single source of truth)
-  // AIManager integrates movement and writes to EDM - we read from EDM here
-  refreshCachedAABBs();
+  // NOTE: AABB refresh removed - buildActiveIndices() computes movable AABBs inline from EDM
+  // Static bodies don't need refresh (set once at creation)
 
-  // Check storage state at start of update
-  size_t bodyCount = m_storage.size();
+  // Check storage state at start of update (statics only now)
+  size_t staticBodyCount = m_storage.size();
 
-  // Early exit if no bodies to process (optimization for idle states)
-  if (bodyCount == 0) {
+  // EDM-CENTRIC: Also check for active movables in EDM
+  auto& edm = EntityDataManager::Instance();
+  size_t activeMovableCount = edm.getActiveIndices().size();
+
+  // Early exit if no bodies to process (neither statics nor active movables)
+  if (staticBodyCount == 0 && activeMovableCount == 0) {
     return;
   }
 
   // Prepare collision processing for this frame
-  prepareCollisionBuffers(bodyCount); // Prepare collision buffers
+  prepareCollisionBuffers(staticBodyCount + activeMovableCount); // Prepare collision buffers
 
   // Count active dynamic bodies (with configurable culling)
   CullingArea const cullingArea = createDefaultCullingArea();
@@ -2412,20 +1928,21 @@ void CollisionManager::updateSOA(float dt) {
   }
 
   // MOVEMENT INTEGRATION: Removed redundant loop (was lines 1846-1871)
-  // AIManager now handles all position updates via updateKinematicBatchSOA() and applyBatchedKinematicUpdates()
+  // AIManager now handles all position updates via updateKinematicBatch() and applyBatchedKinematicUpdates()
   // which directly set hot.position to the final integrated position.
   // CollisionManager's job is ONLY to:
   //   1. Detect collisions using positions updated by AIManager
-  //   2. Resolve collisions (push bodies apart via resolveSOA())
+  //   2. Resolve collisions (push bodies apart via resolve())
   // This eliminates 28k+ unnecessary iterations per frame and fixes double-integration bug.
 
   // Track culling metrics
   auto cullingStart = clock::now();
 
-  // OPTIMIZATION: buildActiveIndicesSOA now returns body type counts during iteration
+  // OPTIMIZATION: buildActiveIndices now returns body type counts during iteration
   // This avoids 3 expensive std::count_if calls (83,901 iterations for 27k bodies!)
-  auto [totalStaticBodies, totalDynamicBodies, totalKinematicBodies] = buildActiveIndicesSOA(cullingArea);
+  auto [totalStaticBodies, totalDynamicBodies, totalKinematicBodies] = buildActiveIndices(cullingArea);
   size_t totalMovableBodies = totalDynamicBodies + totalKinematicBodies;
+  size_t bodyCount = staticBodyCount + activeMovableCount; // For metrics
 
   auto cullingEnd = clock::now();
 
@@ -2451,19 +1968,18 @@ void CollisionManager::updateSOA(float dt) {
   size_t dynamicBodiesCulled = (totalMovableBodies > activeMovableBodies) ?
                                (totalMovableBodies - activeMovableBodies) : 0;
 
-  // Use pooled vector for index pairs (avoids per-frame allocation)
-  auto& indexPairs = m_collisionPool.broadphaseIndexPairs;
-
   // BROADPHASE: Generate collision pairs using spatial hash
+  // Pairs stored in pools.movableMovablePairs and pools.movableStaticPairs
 #ifdef DEBUG
   auto t1 = clock::now();
 #endif
-  broadphaseSOA(indexPairs);
+  broadphase();
   auto t2 = clock::now(); // Needed for WorkerBudget timing
 
   // NARROWPHASE: Detailed collision detection and response calculation
-  const size_t pairCount = indexPairs.size();
-  narrowphaseSOA(indexPairs, m_collisionPool.collisionBuffer);
+  const size_t pairCount = m_collisionPool.movableMovablePairs.size() +
+                           m_collisionPool.movableStaticPairs.size();
+  narrowphase(m_collisionPool.collisionBuffer);
   auto t3 = clock::now();
 
   // Report batch completion for adaptive tuning (WorkerBudget integration)
@@ -2487,7 +2003,7 @@ void CollisionManager::updateSOA(float dt) {
     // Process 4 collisions in a batch
     for (size_t j = 0; j < 4; ++j) {
       const auto& collision = m_collisionPool.collisionBuffer[collIdx + j];
-      resolveSOA(collision);
+      resolve(collision);
       for (const auto& cb : m_callbacks) {
         cb(collision);
       }
@@ -2497,7 +2013,7 @@ void CollisionManager::updateSOA(float dt) {
   // Scalar tail
   for (; collIdx < m_collisionPool.collisionBuffer.size(); ++collIdx) {
     const auto& collision = m_collisionPool.collisionBuffer[collIdx];
-    resolveSOA(collision);
+    resolve(collision);
     for (const auto& cb : m_callbacks) {
       cb(collision);
     }
@@ -2506,20 +2022,20 @@ void CollisionManager::updateSOA(float dt) {
   auto t4 = clock::now();
 #endif
 
-  // NOTE: syncEntitiesToSOA() removed - resolveSOA() writes directly to EDM
+  // NOTE: syncEntitiesToEDM() removed - resolve() writes directly to EDM
   // Entity accessors (getPosition/setPosition) read from EDM as source of truth
 #ifdef DEBUG
   auto t5 = clock::now();
 #endif
 
   // TRIGGER PROCESSING: Handle trigger enter/exit events
-  processTriggerEventsSOA();
+  processTriggerEvents();
 
 #ifdef DEBUG
   auto t6 = clock::now();
 
   // Track detailed performance metrics (debug only - zero overhead in release)
-  updatePerformanceMetricsSOA(t0, t1, t2, t3, t4, t5, t6,
+  updatePerformanceMetrics(t0, t1, t2, t3, t4, t5, t6,
                                bodyCount, activeMovableBodies, pairCount, m_collisionPool.collisionBuffer.size(),
                                activeBodies, dynamicBodiesCulled, staticBodiesCulled, cullingMs,
                                totalStaticBodies, totalMovableBodies);
@@ -2560,43 +2076,33 @@ void CollisionManager::rebuildStaticSpatialHash() {
 // NOTE: updateStaticCollisionCacheForMovableBodies(), evictStaleCacheEntries(),
 // and populateCacheForRegion() removed in Phase 3 - static bodies queried directly via m_staticSpatialHash
 
-void CollisionManager::resolveSOA(const CollisionInfo& collision) {
+void CollisionManager::resolve(const CollisionInfo& collision) {
   if (collision.trigger) return; // Triggers don't need position resolution
 
-  // Use stored indices - NO MORE LINEAR LOOKUP!
-  size_t indexA = collision.indexA;
-  size_t indexB = collision.indexB;
-
-  if (indexA >= m_storage.hotData.size() || indexB >= m_storage.hotData.size()) return;
-
-  auto& hotA = m_storage.hotData[indexA];
-  auto& hotB = m_storage.hotData[indexB];
-
-  BodyType typeA = static_cast<BodyType>(hotA.bodyType);
-  BodyType typeB = static_cast<BodyType>(hotB.bodyType);
-
-  const float push = collision.penetration * 0.5f;
-
-  // Apply position corrections using SIMDMath abstraction
-  // Access positions from EDM (single source of truth)
   auto& edm = EntityDataManager::Instance();
 
-  // Skip bodies without valid EDM index (test bodies, not yet attached)
-  bool hasValidA = (hotA.edmIndex != SIZE_MAX);
-  bool hasValidB = (hotB.edmIndex != SIZE_MAX);
-  if (!hasValidA && !hasValidB) {
-    return;  // Neither body has EDM entry, skip resolution
-  }
+  // EDM-CENTRIC resolution:
+  // - isMovableMovable=true: both indexA and indexB are EDM indices
+  // - isMovableMovable=false: indexA is EDM index (movable), indexB is storage index (static - doesn't move)
 
-  if (typeA != BodyType::STATIC && typeB != BodyType::STATIC && hasValidA && hasValidB) {
-    // Both dynamic/kinematic with valid EDM - split the correction
+  if (collision.isMovableMovable) {
+    // MOVABLE-MOVABLE: Both indices are EDM indices
+    size_t edmIdxA = collision.indexA;
+    size_t edmIdxB = collision.indexB;
+
+    // Indices already validated in narrowphase
+    if (edmIdxA == SIZE_MAX || edmIdxB == SIZE_MAX) return;
+
+    const float push = collision.penetration * 0.5f;
+
+    // Both movables - split the correction
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const pushVec = broadcast(push);
     Float4 const correction = mul(normal, pushVec);
 
     // Read positions from EDM
-    auto& transformA = edm.getTransformByIndex(hotA.edmIndex);
-    auto& transformB = edm.getTransformByIndex(hotB.edmIndex);
+    auto& transformA = edm.getTransformByIndex(edmIdxA);
+    auto& transformB = edm.getTransformByIndex(edmIdxB);
     Float4 posA = set(transformA.position.getX(), transformA.position.getY(), 0, 0);
     Float4 posB = set(transformB.position.getX(), transformB.position.getY(), 0, 0);
 
@@ -2612,296 +2118,38 @@ void CollisionManager::resolveSOA(const CollisionInfo& collision) {
     transformA.position.setY(resultA[1]);
     transformB.position.setX(resultB[0]);
     transformB.position.setY(resultB[1]);
+  } else {
+    // MOVABLE-STATIC: indexA is EDM index (movable), indexB is storage index (static)
+    size_t edmIdx = collision.indexA;
 
-    // Update cached AABBs
-    const auto& edmHotA = edm.getHotDataByIndex(hotA.edmIndex);
-    const auto& edmHotB = edm.getHotDataByIndex(hotB.edmIndex);
-    hotA.aabbMinX = resultA[0] - edmHotA.halfWidth;
-    hotA.aabbMinY = resultA[1] - edmHotA.halfHeight;
-    hotA.aabbMaxX = resultA[0] + edmHotA.halfWidth;
-    hotA.aabbMaxY = resultA[1] + edmHotA.halfHeight;
-    hotB.aabbMinX = resultB[0] - edmHotB.halfWidth;
-    hotB.aabbMinY = resultB[1] - edmHotB.halfHeight;
-    hotB.aabbMaxX = resultB[0] + edmHotB.halfWidth;
-    hotB.aabbMaxY = resultB[1] + edmHotB.halfHeight;
-  } else if (typeA != BodyType::STATIC && hasValidA) {
-    // Only A moves (has valid EDM)
+    // Index already validated in narrowphase
+    if (edmIdx == SIZE_MAX) return;
+
+    // Only movable body moves - push fully away from static
     Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
     Float4 const penVec = broadcast(collision.penetration);
     Float4 const correction = mul(normal, penVec);
 
-    auto& transformA = edm.getTransformByIndex(hotA.edmIndex);
-    Float4 posA = set(transformA.position.getX(), transformA.position.getY(), 0, 0);
-    posA = sub(posA, correction);
-
-    alignas(16) float resultA[4];
-    store4(resultA, posA);
-
-    transformA.position.setX(resultA[0]);
-    transformA.position.setY(resultA[1]);
-
-    // Update cached AABB
-    const auto& edmHotA = edm.getHotDataByIndex(hotA.edmIndex);
-    hotA.aabbMinX = resultA[0] - edmHotA.halfWidth;
-    hotA.aabbMinY = resultA[1] - edmHotA.halfHeight;
-    hotA.aabbMaxX = resultA[0] + edmHotA.halfWidth;
-    hotA.aabbMaxY = resultA[1] + edmHotA.halfHeight;
-  } else if (typeB != BodyType::STATIC && hasValidB) {
-    // Only B moves (has valid EDM)
-    Float4 const normal = set(collision.normal.getX(), collision.normal.getY(), 0, 0);
-    Float4 const penVec = broadcast(collision.penetration);
-    Float4 const correction = mul(normal, penVec);
-
-    auto& transformB = edm.getTransformByIndex(hotB.edmIndex);
-    Float4 posB = set(transformB.position.getX(), transformB.position.getY(), 0, 0);
-    posB = add(posB, correction);
-
-    alignas(16) float resultB[4];
-    store4(resultB, posB);
-
-    transformB.position.setX(resultB[0]);
-    transformB.position.setY(resultB[1]);
-
-    // Update cached AABB
-    const auto& edmHotB = edm.getHotDataByIndex(hotB.edmIndex);
-    hotB.aabbMinX = resultB[0] - edmHotB.halfWidth;
-    hotB.aabbMinY = resultB[1] - edmHotB.halfHeight;
-    hotB.aabbMaxX = resultB[0] + edmHotB.halfWidth;
-    hotB.aabbMaxY = resultB[1] + edmHotB.halfHeight;
-  }
-
-  // Apply velocity damping for dynamic bodies using SIMDMath abstraction
-  auto dampenVelocitySIMD = [](Vector2D& velocity, const Vector2D& collisionNormal, float restitution, bool isStatic) {
-    // SIMD dot product
-    Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
-    Float4 const norm = set(collisionNormal.getX(), collisionNormal.getY(), 0, 0);
-    Float4 const dot_vec = mul(vel, norm);
-    float const vdotn = horizontal_add(dot_vec);
-
-    // Normal points from A to B, so vdotn > 0 means moving TOWARD collision
-    // vdotn < 0 means moving AWAY from collision
-    if (vdotn < 0) {
-      return; // Moving away - no damping needed
-    }
-
-    // SIMD velocity damping
-    Float4 const vdotnVec = broadcast(vdotn);
-    Float4 const normalVel = mul(norm, vdotnVec);
-
-    // For static collisions, zero velocity; for dynamic, use restitution
-    Float4 const dampFactor = broadcast(isStatic ? 1.0f : (1.0f + restitution));
-    Float4 const dampedVel = mul(normalVel, dampFactor);
-    vel = sub(vel, dampedVel);
+    auto& transform = edm.getTransformByIndex(edmIdx);
+    Float4 pos = set(transform.position.getX(), transform.position.getY(), 0, 0);
+    pos = sub(pos, correction);
 
     alignas(16) float result[4];
-    store4(result, vel);
+    store4(result, pos);
 
-    velocity.setX(result[0]);
-    velocity.setY(result[1]);
-  };
-
-  if (typeA == BodyType::DYNAMIC && hotA.edmIndex != SIZE_MAX) {
-    bool const staticCollision = (typeB == BodyType::STATIC);
-    auto& velA = edm.getTransformByIndex(hotA.edmIndex).velocity;
-    dampenVelocitySIMD(velA, collision.normal, m_storage.coldData[indexA].restitution, staticCollision);
+    // Write position back to EDM
+    transform.position.setX(result[0]);
+    transform.position.setY(result[1]);
   }
-  if (typeB == BodyType::DYNAMIC && hotB.edmIndex != SIZE_MAX) {
-    bool const staticCollision = (typeA == BodyType::STATIC);
-    // For entity B, flip the normal (normal points A->B, but we need B->A)
-    Vector2D const flippedNormal = collision.normal * -1.0f;
-    auto& velB = edm.getTransformByIndex(hotB.edmIndex).velocity;
-    dampenVelocitySIMD(velB, flippedNormal, m_storage.coldData[indexB].restitution, staticCollision);
-  }
-
-  // Add tangential slide for NPC-vs-NPC collisions (but not player)
-  if (typeA == BodyType::DYNAMIC && typeB == BodyType::DYNAMIC &&
-      hotA.edmIndex != SIZE_MAX && hotB.edmIndex != SIZE_MAX) {
-    bool isPlayerA = (hotA.layers & CollisionLayer::Layer_Player) != 0;
-    bool isPlayerB = (hotB.layers & CollisionLayer::Layer_Player) != 0;
-
-    if (!isPlayerA && !isPlayerB) {
-      Vector2D const tangent(-collision.normal.getY(), collision.normal.getX());
-      float slideBoost = std::min(5.0f, std::max(0.5f, collision.penetration * 5.0f));
-
-      EntityID entityA = collision.a;  // Use already-known entity IDs
-      EntityID entityB = collision.b;
-
-      auto& velA = edm.getTransformByIndex(hotA.edmIndex).velocity;
-      auto& velB = edm.getTransformByIndex(hotB.edmIndex).velocity;
-
-      if (entityA < entityB) {
-        velA += tangent * slideBoost;
-        velB -= tangent * slideBoost;
-      } else {
-        velA -= tangent * slideBoost;
-        velB += tangent * slideBoost;
-      }
-    }
-  }
-
-  // Clamp velocities to reasonable limits using SIMDMath abstraction
-  auto clampVelocitySIMD = [](Vector2D& velocity) {
-    const float maxSpeed = 300.0f;
-
-    // SIMD length calculation
-    Float4 vel = set(velocity.getX(), velocity.getY(), 0, 0);
-    Float4 const sq = mul(vel, vel);
-    float const lenSq = horizontal_add(sq);
-    float speed = std::sqrt(lenSq);
-
-    if (speed > maxSpeed && speed > 0.0f) {
-      // SIMD velocity scaling
-      Float4 const scale = broadcast(maxSpeed / speed);
-      vel = mul(vel, scale);
-
-      alignas(16) float result[4];
-      store4(result, vel);
-      velocity.setX(result[0]);
-      velocity.setY(result[1]);
-    }
-  };
-
-  // Clamp velocities in EDM (already modified above)
-  if (typeA == BodyType::DYNAMIC && hotA.edmIndex != SIZE_MAX) {
-    clampVelocitySIMD(edm.getTransformByIndex(hotA.edmIndex).velocity);
-  }
-  if (typeB == BodyType::DYNAMIC && hotB.edmIndex != SIZE_MAX) {
-    clampVelocitySIMD(edm.getTransformByIndex(hotB.edmIndex).velocity);
-  }
-
-  // NOTE: Position corrections already written to EDM above
-  // No need for redundant write-back - EDM is now the source of truth
 }
 
-// NOTE: syncEntitiesToSOA() removed in Phase 4 - Entity::setPosition/getPosition
+// NOTE: syncEntitiesToEDM() removed in Phase 4 - Entity::setPosition/getPosition
 // now read/write directly through EDM, so syncing EDM → Entity is redundant
 
-void CollisionManager::refreshCachedAABB(size_t index) {
-  // Update single body's cached AABB from EntityDataManager
-  // Following AIManager pattern: direct EDM access via edmIndex
-  auto& hot = m_storage.hotData[index];
+// NOTE: refreshCachedAABB/refreshCachedAABBs removed - buildActiveIndices() computes
+// movable AABBs inline from EDM into pools.movableAABBs. Static bodies don't need refresh.
 
-  // Skip bodies without valid EDM index (test bodies, not yet attached)
-  if (hot.edmIndex == SIZE_MAX) {
-    hot.aabbDirty = 0;  // Mark as clean even if not updated
-    return;
-  }
-
-  // Static bodies don't move - their AABBs are set once at creation
-  if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
-    hot.aabbDirty = 0;
-    return;
-  }
-
-  // Get position and half-extents from EDM (single source of truth)
-  auto& edm = EntityDataManager::Instance();
-  const auto& transform = edm.getTransformByIndex(hot.edmIndex);
-  const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
-
-  // Update cached AABB bounds
-  float posX = transform.position.getX();
-  float posY = transform.position.getY();
-  float halfW = edmHot.halfWidth;
-  float halfH = edmHot.halfHeight;
-
-  hot.aabbMinX = posX - halfW;
-  hot.aabbMinY = posY - halfH;
-  hot.aabbMaxX = posX + halfW;
-  hot.aabbMaxY = posY + halfH;
-  hot.aabbDirty = 0;
-}
-
-void CollisionManager::refreshCachedAABBs() {
-  // OPTIMIZATION: Only refresh AABBs for MOVABLE bodies (dynamic + kinematic)
-  // Static bodies don't move - their AABBs are set once at creation and never change
-  // This reduces iterations from 15K (all bodies) to ~170 (movable only)
-
-  auto& edm = EntityDataManager::Instance();
-  const auto& movableIndices = m_movableBodyIndices;
-  const size_t count = movableIndices.size();
-
-  if (count == 0) return;
-
-  // SIMD batch processing (4 bodies at a time)
-  size_t mi = 0;
-  const size_t simdEnd = (count / 4) * 4;
-
-  for (; mi < simdEnd; mi += 4) {
-    size_t i0 = movableIndices[mi], i1 = movableIndices[mi + 1];
-    size_t i2 = movableIndices[mi + 2], i3 = movableIndices[mi + 3];
-
-    // Load EDM indices
-    size_t idx0 = m_storage.hotData[i0].edmIndex;
-    size_t idx1 = m_storage.hotData[i1].edmIndex;
-    size_t idx2 = m_storage.hotData[i2].edmIndex;
-    size_t idx3 = m_storage.hotData[i3].edmIndex;
-
-    // If any index is invalid, fall back to scalar for this batch
-    if (idx0 == SIZE_MAX || idx1 == SIZE_MAX || idx2 == SIZE_MAX || idx3 == SIZE_MAX) {
-      for (size_t j = 0; j < 4; ++j) {
-        refreshCachedAABB(movableIndices[mi + j]);
-      }
-      continue;
-    }
-
-    // Fetch transforms from EDM
-    const auto& t0 = edm.getTransformByIndex(idx0);
-    const auto& t1 = edm.getTransformByIndex(idx1);
-    const auto& t2 = edm.getTransformByIndex(idx2);
-    const auto& t3 = edm.getTransformByIndex(idx3);
-
-    // Fetch half-extents from EDM
-    const auto& h0 = edm.getHotDataByIndex(idx0);
-    const auto& h1 = edm.getHotDataByIndex(idx1);
-    const auto& h2 = edm.getHotDataByIndex(idx2);
-    const auto& h3 = edm.getHotDataByIndex(idx3);
-
-    // SIMD positions
-    Float4 posX = set(t0.position.getX(), t1.position.getX(),
-                      t2.position.getX(), t3.position.getX());
-    Float4 posY = set(t0.position.getY(), t1.position.getY(),
-                      t2.position.getY(), t3.position.getY());
-
-    // SIMD half-extents
-    Float4 halfW = set(h0.halfWidth, h1.halfWidth, h2.halfWidth, h3.halfWidth);
-    Float4 halfH = set(h0.halfHeight, h1.halfHeight, h2.halfHeight, h3.halfHeight);
-
-    // Compute AABB bounds
-    Float4 minX = sub(posX, halfW);
-    Float4 minY = sub(posY, halfH);
-    Float4 maxX = add(posX, halfW);
-    Float4 maxY = add(posY, halfH);
-
-    // Extract and store results
-    alignas(16) float minXArr[4], minYArr[4], maxXArr[4], maxYArr[4];
-    store4(minXArr, minX);
-    store4(minYArr, minY);
-    store4(maxXArr, maxX);
-    store4(maxYArr, maxY);
-
-    // Store back to storage indices
-    auto& hot0 = m_storage.hotData[i0];
-    auto& hot1 = m_storage.hotData[i1];
-    auto& hot2 = m_storage.hotData[i2];
-    auto& hot3 = m_storage.hotData[i3];
-
-    hot0.aabbMinX = minXArr[0]; hot0.aabbMinY = minYArr[0];
-    hot0.aabbMaxX = maxXArr[0]; hot0.aabbMaxY = maxYArr[0]; hot0.aabbDirty = 0;
-    hot1.aabbMinX = minXArr[1]; hot1.aabbMinY = minYArr[1];
-    hot1.aabbMaxX = maxXArr[1]; hot1.aabbMaxY = maxYArr[1]; hot1.aabbDirty = 0;
-    hot2.aabbMinX = minXArr[2]; hot2.aabbMinY = minYArr[2];
-    hot2.aabbMaxX = maxXArr[2]; hot2.aabbMaxY = maxYArr[2]; hot2.aabbDirty = 0;
-    hot3.aabbMinX = minXArr[3]; hot3.aabbMinY = minYArr[3];
-    hot3.aabbMaxX = maxXArr[3]; hot3.aabbMaxY = maxYArr[3]; hot3.aabbDirty = 0;
-  }
-
-  // Scalar tail
-  for (; mi < count; ++mi) {
-    refreshCachedAABB(movableIndices[mi]);
-  }
-}
-
-void CollisionManager::processTriggerEventsSOA() {
+void CollisionManager::processTriggerEvents() {
   // Process trigger enter/exit events using SOA data
   // This is similar to the legacy trigger processing but uses SOA storage
 
@@ -3018,7 +2266,7 @@ void CollisionManager::processTriggerEventsSOA() {
   }
 }
 
-void CollisionManager::updatePerformanceMetricsSOA(
+void CollisionManager::updatePerformanceMetrics(
     std::chrono::steady_clock::time_point t0,
     std::chrono::steady_clock::time_point t1,
     std::chrono::steady_clock::time_point t2,
@@ -3107,7 +2355,7 @@ void CollisionManager::updatePerformanceMetricsSOA(
 #endif // DEBUG
 }
 
-void CollisionManager::updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates) {
+void CollisionManager::updateKinematicBatch(const std::vector<KinematicUpdate>& updates) {
   if (updates.empty()) return;
 
   // Batch update all kinematic bodies - update EDM (single source of truth)
@@ -3202,14 +2450,14 @@ void CollisionManager::applyKinematicUpdates(std::vector<KinematicUpdate>& updat
 
 void CollisionManager::setBodyEnabled(EntityID id, bool enabled) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     m_storage.hotData[index].active = enabled ? 1 : 0;
     }
 }
 
 void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     auto& hot = m_storage.hotData[index];
     hot.layers = layerMask;
     hot.collidesWith = collideMask;
@@ -3218,7 +2466,7 @@ void CollisionManager::setBodyLayer(EntityID id, uint32_t layerMask, uint32_t co
 
 void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     auto& hot = m_storage.hotData[index];
     // Static bodies have no velocity
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
@@ -3234,56 +2482,20 @@ void CollisionManager::setVelocity(EntityID id, const Vector2D& velocity) {
 
 void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
   size_t index;
-  if (getCollisionBodySOA(id, index)) {
+  if (getCollisionBody(id, index)) {
     m_storage.hotData[index].isTrigger = isTrigger ? 1 : 0;
     }
 }
 
 CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const {
+  // EDM-CENTRIC: Culling is handled by the tier system (Active/Background/Hibernated)
+  // We only process Active tier entities from EDM, which are already screen-proximity filtered
+  // Return a generous area to not over-cull static bodies
   CullingArea area;
-  Vector2D playerPos(0.0f, 0.0f);
-  bool playerFound = false;
-
-  // OPTIMIZATION: O(1) lookup using cached player index (regression fix for commit 768ad87)
-  // Was: O(18K) iteration to find player entity
-  if (m_playerBodyIndex.has_value()) {
-    size_t playerIndex = *m_playerBodyIndex;
-    if (playerIndex < m_storage.hotData.size()) {
-      const auto& hot = m_storage.hotData[playerIndex];
-      if (hot.active && (hot.layers & CollisionLayer::Layer_Player)) {
-        // Get position from EDM (single source of truth)
-        if (hot.edmIndex != SIZE_MAX) {
-          auto& edm = EntityDataManager::Instance();
-          const auto& transform = edm.getTransformByIndex(hot.edmIndex);
-          playerPos = transform.position;
-          playerFound = true;
-        }
-      }
-    }
-  }
-
-  if (playerFound) {
-    // Create player-centered culling area (use configurable buffer)
-    area.minX = playerPos.getX() - m_cullingBuffer;
-    area.minY = playerPos.getY() - m_cullingBuffer;
-    area.maxX = playerPos.getX() + m_cullingBuffer;
-    area.maxY = playerPos.getY() + m_cullingBuffer;
-  } else {
-    // Player not found - use world center with configurable culling area
-    area.minX = 0.0f - m_cullingBuffer;
-    area.minY = 0.0f - m_cullingBuffer;
-    area.maxX = 0.0f + m_cullingBuffer;
-    area.maxY = 0.0f + m_cullingBuffer;
-
-#ifdef DEBUG
-    // Log warning only once every 300 frames to avoid spam
-    static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 1) {
-      COLLISION_WARN("Player entity not found for culling area - using world center (logged every 300 frames)");
-    }
-#endif
-  }
-
+  area.minX = -m_cullingBuffer;
+  area.minY = -m_cullingBuffer;
+  area.maxX = m_cullingBuffer;
+  area.maxY = m_cullingBuffer;
   return area;
 }
 

@@ -36,6 +36,8 @@
  *   EventManager → GameStateManager → AIManager → CollisionManager → BackgroundSimManager
  */
 
+#include "collisions/CollisionBody.hpp"
+#include "collisions/TriggerTag.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -61,10 +63,22 @@ struct TransformData {
 static_assert(sizeof(TransformData) == 32, "TransformData should be 32 bytes");
 
 /**
- * @brief Hot data accessed every frame (48 bytes, cache-line friendly)
+ * @brief Hot data accessed every frame (64 bytes, one cache line)
  *
  * Packed for sequential access during batch processing.
  * All frequently-accessed data in one contiguous array.
+ *
+ * NOTE: This is for DYNAMIC entities (Player, NPC, Projectile, etc.) that:
+ * - Move around and have AI/physics
+ * - Are managed by the tier system (Active/Background/Hibernated)
+ * - Only Active tier entities participate in collision detection
+ *
+ * STATIC obstacles (walls, buildings, terrain) are NOT stored here.
+ * They live in CollisionManager's m_staticBodies storage and are always
+ * checked for collision regardless of tier. This separation allows:
+ * - Statics to never be iterated unnecessarily
+ * - Statics to be in a compact spatial hash for O(1) queries
+ * - Dynamic entities to be tier-filtered efficiently
  */
 struct EntityHotData {
     TransformData transform;        // 32 bytes
@@ -76,15 +90,32 @@ struct EntityHotData {
     uint8_t generation{0};          // 1 byte: Handle generation
     uint32_t typeLocalIndex{0};     // 4 bytes: Index into type-specific array
 
-    // Flag constants
+    // Collision data (only for entities that participate in collision)
+    uint16_t collisionLayers{HammerEngine::CollisionLayer::Layer_Default};  // 2 bytes: Which layer(s) this entity is on
+    uint16_t collisionMask{0xFFFF};  // 2 bytes: Which layers this entity collides with
+    uint8_t collisionFlags{0};       // 1 byte: COLLISION_ENABLED, IS_TRIGGER
+    uint8_t triggerTag{0};           // 1 byte: TriggerTag for trigger entities
+    uint8_t _padding[10]{};          // 10 bytes: Pad to 64-byte cache line
+
+    // Entity flag constants
     static constexpr uint8_t FLAG_ALIVE = 0x01;
     static constexpr uint8_t FLAG_DIRTY = 0x02;
     static constexpr uint8_t FLAG_PENDING_DESTROY = 0x04;
+
+    // Collision flag constants
+    static constexpr uint8_t COLLISION_ENABLED = 0x01;
+    static constexpr uint8_t IS_TRIGGER = 0x02;
 
     [[nodiscard]] bool isAlive() const noexcept { return flags & FLAG_ALIVE; }
     [[nodiscard]] bool isDirty() const noexcept { return flags & FLAG_DIRTY; }
     [[nodiscard]] bool isPendingDestroy() const noexcept {
         return flags & FLAG_PENDING_DESTROY;
+    }
+    [[nodiscard]] bool hasCollision() const noexcept {
+        return collisionFlags & COLLISION_ENABLED;
+    }
+    [[nodiscard]] bool isTrigger() const noexcept {
+        return collisionFlags & IS_TRIGGER;
     }
 
     void setAlive(bool alive) noexcept {
@@ -96,9 +127,18 @@ struct EntityHotData {
         else flags &= ~FLAG_DIRTY;
     }
     void markForDestruction() noexcept { flags |= FLAG_PENDING_DESTROY; }
+
+    void setCollisionEnabled(bool enabled) noexcept {
+        if (enabled) collisionFlags |= COLLISION_ENABLED;
+        else collisionFlags &= ~COLLISION_ENABLED;
+    }
+    void setTrigger(bool trigger) noexcept {
+        if (trigger) collisionFlags |= IS_TRIGGER;
+        else collisionFlags &= ~IS_TRIGGER;
+    }
 };
 
-static_assert(sizeof(EntityHotData) == 48, "EntityHotData should be 48 bytes");
+static_assert(sizeof(EntityHotData) == 64, "EntityHotData should be 64 bytes (one cache line)");
 
 // ============================================================================
 // TYPE-SPECIFIC DATA BLOCKS

@@ -253,7 +253,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         testEntities.push_back(entity);
 
         // Register collision body (required for AIManager's syncCollisionPositions)
-        CollisionManager::Instance().addCollisionBodySOA(
+        CollisionManager::Instance().addCollisionBody(
             entity->getID(),
             entity->getPosition(),
             Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
@@ -363,7 +363,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
     for (auto& entity : testEntities) {
         AIManager::Instance().unregisterEntity(entity->getHandle());
         AIManager::Instance().unassignBehavior(entity->getHandle());
-        CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
+        CollisionManager::Instance().removeCollisionBody(entity->getID());
     }
     testEntities.clear();
     // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
@@ -409,7 +409,7 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
         oldSceneEntities.push_back(entity);
 
         // Register collision body (required for AIManager's syncCollisionPositions)
-        CollisionManager::Instance().addCollisionBodySOA(
+        CollisionManager::Instance().addCollisionBody(
             entity->getID(),
             entity->getPosition(),
             Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
@@ -459,7 +459,7 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
     for (auto& entity : oldSceneEntities) {
         AIManager::Instance().unregisterEntity(entity->getHandle());
         AIManager::Instance().unassignBehavior(entity->getHandle());
-        CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
+        CollisionManager::Instance().removeCollisionBody(entity->getID());
     }
     oldSceneEntities.clear();
 

@@ -140,7 +140,7 @@ void NPC::loadDimensionsFromTexture() {
 
         // Sync new dimensions to collision body if already registered
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
-        CollisionManager::Instance().updateCollisionBodySizeSOA(getID(), newHalfSize);
+        CollisionManager::Instance().updateCollisionBodySize(getID(), newHalfSize);
       } else {
         NPC_ERROR(std::format("Failed to query NPC texture dimensions: {}", SDL_GetError()));
       }
@@ -276,7 +276,7 @@ void NPC::clean() {
   }
 
   // Remove from collision system
-  CollisionManager::Instance().removeCollisionBodySOA(getID());
+  CollisionManager::Instance().removeCollisionBody(getID());
 }
 
 void NPC::initializeInventory() {
@@ -513,7 +513,7 @@ void NPC::ensurePhysicsBodyRegistered() {
   }
 
   // Add collision body, then attach entity to link EDM entry
-  cm.addCollisionBodySOA(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
+  cm.addCollisionBody(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
   cm.attachEntity(getID(), shared_this());
 
   std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
