@@ -493,7 +493,7 @@ BOOST_AUTO_TEST_CASE(TestPerfStatsUpdateAfterProcessing) {
 
     const auto& stats = bgsm->getPerfStats();
     // Stats should be updated - check any activity
-    BOOST_CHECK(stats.totalUpdates > 0 || stats.lastEntitiesProcessed >= 0);
+    BOOST_CHECK(stats.totalUpdates > 0);
 
     // Clean up
     for (const auto& handle : handles) {
