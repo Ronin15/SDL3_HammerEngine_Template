@@ -14,6 +14,7 @@
 // Include real engine headers
 #include "core/ThreadSystem.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -71,10 +72,12 @@ struct AITestFixture {
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
+        BackgroundSimulationManager::Instance().init();
     }
 
     ~AITestFixture() {
         // Clean up in reverse order
+        BackgroundSimulationManager::Instance().clean();
         AIManager::Instance().clean();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
@@ -84,6 +87,14 @@ struct AITestFixture {
 };
 
 BOOST_GLOBAL_FIXTURE(AITestFixture);
+
+// Helper to update AI with proper tier calculation
+// Tests create/destroy entities frequently, so we need to invalidate tiers each time
+void updateAI(float deltaTime, const Vector2D& referencePoint = Vector2D(500.0f, 500.0f)) {
+    BackgroundSimulationManager::Instance().invalidateTiers();
+    BackgroundSimulationManager::Instance().update(referencePoint, deltaTime);
+    AIManager::Instance().update(deltaTime);
+}
 
 // Test case for entity component caching
 BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
@@ -107,7 +118,7 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     }
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete (matches production behavior)
     AIManager::Instance().waitForAssignmentCompletion();
@@ -146,21 +157,21 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     }
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete before timing updates
     AIManager::Instance().waitForAssignmentCompletion();
 
     // Time the unified entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
     auto endTime = std::chrono::high_resolution_clock::now();
     auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
     // Time multiple managed updates
     startTime = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 5; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
     }
     endTime = std::chrono::high_resolution_clock::now();
     auto individualDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
@@ -202,7 +213,7 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().registerEntity(handle, "LazyWander");
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete
     AIManager::Instance().waitForAssignmentCompletion();
@@ -233,7 +244,7 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().registerEntity(handle, "MsgWander");
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete (matches production behavior)
     AIManager::Instance().waitForAssignmentCompletion();
@@ -297,12 +308,12 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
         }
 
         // Process assignments
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
         AIManager::Instance().waitForAssignmentCompletion();
 
         // Run a few update cycles to ensure distance calculations run
         for (int frame = 0; frame < 3; ++frame) {
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
         }
 
         // Verify all entities received valid processing (no teleportation to (0,0))
