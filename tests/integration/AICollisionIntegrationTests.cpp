@@ -218,7 +218,7 @@ struct AICollisionTestFixture {
 
         // Add collision body (KINEMATIC for AI-controlled entities)
         EntityID id = entity->getID();
-        CollisionManager::Instance().addCollisionBodySOA(
+        CollisionManager::Instance().addCollisionBody(
             id,
             pos,
             Vector2D(16.0f, 16.0f), // Half-size (32x32 entity)
@@ -234,7 +234,7 @@ struct AICollisionTestFixture {
 
     // Helper: Create static obstacle
     void createObstacle(EntityID id, const Vector2D& pos, float halfW, float halfH) {
-        CollisionManager::Instance().addCollisionBodySOA(
+        CollisionManager::Instance().addCollisionBody(
             id,
             pos,
             Vector2D(halfW, halfH),
@@ -260,7 +260,7 @@ struct AICollisionTestFixture {
             AIManager::Instance().update(deltaTime);
 
             // Update collision system
-            CollisionManager::Instance().updateSOA(deltaTime);
+            CollisionManager::Instance().update(deltaTime);
 
             // Small sleep to allow async processing
             std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -708,7 +708,7 @@ BOOST_AUTO_TEST_CASE(TestAICollisionPerformanceUnderLoad) {
         AIManager::Instance().update(0.016f);
 
         // Update collision
-        CollisionManager::Instance().updateSOA(0.016f);
+        CollisionManager::Instance().update(0.016f);
 
         auto frameEnd = std::chrono::high_resolution_clock::now();
         double frameMs = std::chrono::duration<double, std::milli>(frameEnd - frameStart).count();

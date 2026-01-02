@@ -100,10 +100,6 @@ public:
     void update(float dt);
 
 
-    // NEW SOA UPDATE PATH: High-performance collision detection using SOA storage
-    void updateSOA(float dt);
-
-
     // Batch updates for performance optimization (AI entities)
     struct KinematicUpdate {
         EntityID id;
@@ -113,7 +109,7 @@ public:
         KinematicUpdate(EntityID entityId, const Vector2D& pos, const Vector2D& vel = Vector2D(0, 0))
             : id(entityId), position(pos), velocity(vel) {}
     };
-    void updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates);
+    void updateKinematicBatch(const std::vector<KinematicUpdate>& updates);
 
     // Per-batch collision updates (zero contention - each AI batch has its own buffer)
     void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
@@ -163,21 +159,21 @@ public:
     size_t getBodyCount() const { return m_storage.size(); }
     bool isSyncing() const { return m_isSyncing; }
 
-    // SOA STORAGE MANAGEMENT
+    // COLLISION BODY MANAGEMENT
     // Uses EDM as single source of truth - looks up entity by ID
-    size_t addCollisionBodySOA(EntityID id, const Vector2D& position, const Vector2D& halfSize,
+    size_t addCollisionBody(EntityID id, const Vector2D& position, const Vector2D& halfSize,
                                BodyType type, uint32_t layer = CollisionLayer::Layer_Default,
                                uint32_t collidesWith = 0xFFFFFFFFu,
                                bool isTrigger = false, uint8_t triggerTag = 0);
-    void removeCollisionBodySOA(EntityID id);
-    bool getCollisionBodySOA(EntityID id, size_t& outIndex) const;
-    void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
-    void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
-    Vector2D getCollisionBodyVelocitySOA(EntityID id) const;
-    void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
+    void removeCollisionBody(EntityID id);
+    bool getCollisionBody(EntityID id, size_t& outIndex) const;
+    void updateCollisionBodyPosition(EntityID id, const Vector2D& newPosition);
+    void updateCollisionBodyVelocity(EntityID id, const Vector2D& newVelocity);
+    Vector2D getCollisionBodyVelocity(EntityID id) const;
+    void updateCollisionBodySize(EntityID id, const Vector2D& newHalfSize);
     void attachEntity(EntityID id, EntityPtr entity);
 
-    // SOA Body Management Methods
+    // Body State Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
 
     // Configuration setters for collision culling (runtime adjustable)
@@ -192,10 +188,10 @@ public:
     // Internal buffer management (simplified public interface)
     void prepareCollisionBuffers(size_t bodyCount);
 
-    // SOA UPDATE HELPER METHODS
+    // UPDATE HELPER METHODS
     void syncSpatialHashesWithActiveIndices();
-    void resolveSOA(const CollisionInfo& collision);
-    void processTriggerEventsSOA();
+    void resolve(const CollisionInfo& collision);
+    void processTriggerEvents();
 
     // PERFORMANCE: Vector pooling for temporary allocations
     std::vector<size_t>& getPooledVector();
@@ -210,7 +206,7 @@ public:
      * for broadphase optimization, since both require collision detection against
      * static geometry and each other.
      */
-    void updatePerformanceMetricsSOA(
+    void updatePerformanceMetrics(
         std::chrono::steady_clock::time_point t0,
         std::chrono::steady_clock::time_point t1,
         std::chrono::steady_clock::time_point t2,
@@ -241,55 +237,23 @@ private:
     CollisionManager(const CollisionManager&) = delete;
     CollisionManager& operator=(const CollisionManager&) = delete;
 
-    // NEW SOA-BASED BROADPHASE: High-performance hierarchical collision detection
-    void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs);
-    void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
-                        std::vector<CollisionInfo>& collisions) const;
+    // EDM-CENTRIC BROADPHASE: Uses pools.movableAABBs + pools.movableMovablePairs/movableStaticPairs
+    void broadphase();
+    void narrowphase(std::vector<CollisionInfo>& collisions) const;
 
-    // Multi-threading support for narrowphase (WorkerBudget integrated)
-    void narrowphaseSingleThreaded(
-        const std::vector<std::pair<size_t, size_t>>& indexPairs,
-        std::vector<CollisionInfo>& collisions) const;
-
-    void narrowphaseMultiThreaded(
-        const std::vector<std::pair<size_t, size_t>>& indexPairs,
-        std::vector<CollisionInfo>& collisions,
-        size_t batchCount,
-        size_t batchSize) const;
-
-    void narrowphaseBatch(
-        const std::vector<std::pair<size_t, size_t>>& indexPairs,
-        size_t startIdx,
-        size_t endIdx,
-        std::vector<CollisionInfo>& outCollisions) const;
-
-    void processNarrowphasePairScalar(
-        const std::pair<size_t, size_t>& pair,
-        std::vector<CollisionInfo>& outCollisions) const;
+    // Narrowphase uses single-threaded path (SIMD 4-wide)
+    void narrowphaseSingleThreaded(std::vector<CollisionInfo>& collisions) const;
 
     // Multi-threading support for broadphase (WorkerBudget integrated)
-    void broadphaseSingleThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs);
-
-    void broadphaseMultiThreaded(
-        std::vector<std::pair<size_t, size_t>>& indexPairs,
-        size_t batchCount,
-        size_t batchSize);
-
-    void broadphaseBatch(
-        std::vector<std::pair<size_t, size_t>>& outIndexPairs,
-        size_t startIdx,
-        size_t endIdx);
+    void broadphaseSingleThreaded();
+    void broadphaseMultiThreaded(size_t batchCount, size_t batchSize);
+    void broadphaseBatch(size_t startIdx, size_t endIdx,
+                         std::vector<std::pair<size_t, size_t>>& outMovableMovable,
+                         std::vector<std::pair<size_t, size_t>>& outMovableStatic);
 
     // Internal helper methods for SOA buffer management
-    void swapCollisionBuffers();
-    void copyHotDataToWorkingBuffer();
-    void buildActiveIndicesSOA();
+    void buildActiveIndices();
     void prepareCollisionPools(size_t bodyCount, size_t threadCount);
-    void mergeThreadResults();
-
-    // Refresh cached AABBs from EDM position/halfSize (batch operation at start of broadphase)
-    void refreshCachedAABBs();
-    void refreshCachedAABB(size_t index);  // Single body refresh
 
     // Apply pending kinematic updates from async AI threads (called at start of update)
     void applyPendingKinematicUpdates();
@@ -323,7 +287,7 @@ private:
     };
 
     // Returns body type counts: {totalStatic, totalDynamic, totalKinematic}
-    std::tuple<size_t, size_t, size_t> buildActiveIndicesSOA(const CullingArea& cullingArea) const;
+    std::tuple<size_t, size_t, size_t> buildActiveIndices(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
 
     // NOTE: Cache functions removed in Phase 3 - m_staticSpatialHash queried directly
@@ -498,12 +462,26 @@ private:
         std::vector<EntityID> dynamicCandidates;  // For broadphase dynamic queries
         std::vector<EntityID> staticCandidates;   // For broadphase static queries
 
-        // NEW SOA-specific pools
-        std::vector<size_t> activeIndices;        // Indices of active bodies for processing
-        std::vector<size_t> movableIndices;      // Indices of non-static bodies (dynamic + kinematic)
-        std::vector<size_t> staticIndices;       // Indices of static bodies only
-        std::vector<std::pair<size_t, size_t>> broadphaseIndexPairs; // Storage index pairs from broadphase
-        std::vector<size_t> sortedMovableIndices; // Sorted by X for Sweep-and-Prune
+        // EDM-CENTRIC: Active tier indices and cached collision data
+        std::vector<size_t> activeIndices;        // All active bodies (movables + statics in culling area)
+        std::vector<size_t> movableIndices;       // EDM indices of Active tier entities with collision
+        std::vector<size_t> staticIndices;        // m_storage indices of static bodies in culling area
+        std::vector<size_t> sortedMovableIndices; // Pool indices sorted by X for Sweep-and-Prune
+
+        // EDM-CENTRIC: Cached AABBs for movables, computed from EDM each frame
+        // Parallel to movableIndices: movableAABBs[i] corresponds to movableIndices[i]
+        struct MovableAABB {
+            float minX, minY, maxX, maxY;
+            uint16_t layers;
+            uint16_t collidesWith;
+        };
+        std::vector<MovableAABB> movableAABBs;
+
+        // EDM-CENTRIC: Collision pairs from broadphase
+        // movableMovablePairs: (poolIdx_A, poolIdx_B) - both indices into movableIndices/movableAABBs
+        // movableStaticPairs: (poolIdx, storageIdx) - poolIdx into movableIndices, storageIdx into m_storage
+        std::vector<std::pair<size_t, size_t>> movableMovablePairs;
+        std::vector<std::pair<size_t, size_t>> movableStaticPairs;
 
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
@@ -529,12 +507,14 @@ private:
                 dynamicCandidates.reserve(std::min(static_cast<size_t>(64), bodyCount / 10));
                 staticCandidates.reserve(std::min(static_cast<size_t>(256), bodyCount / 5));
 
-                // SOA-specific capacity
+                // EDM-centric capacity
                 activeIndices.reserve(bodyCount);
-                movableIndices.reserve(bodyCount / 4);  // Estimate 25% movable (dynamic + kinematic)
+                movableIndices.reserve(bodyCount / 4);  // Estimate 25% Active tier with collision
+                movableAABBs.reserve(bodyCount / 4);    // Parallel to movableIndices
                 staticIndices.reserve(bodyCount);
-                broadphaseIndexPairs.reserve(expectedPairs);
                 sortedMovableIndices.reserve(bodyCount / 4);
+                movableMovablePairs.reserve(expectedPairs / 4);
+                movableStaticPairs.reserve(expectedPairs);
             }
         }
 
@@ -545,12 +525,14 @@ private:
             dynamicCandidates.clear();
             staticCandidates.clear();
 
-            // SOA-specific resets
+            // EDM-centric resets
             activeIndices.clear();
             movableIndices.clear();
+            movableAABBs.clear();
             staticIndices.clear();
-            broadphaseIndexPairs.clear();
             sortedMovableIndices.clear();
+            movableMovablePairs.clear();
+            movableStaticPairs.clear();
             // Vectors retain capacity
         }
     };
@@ -563,21 +545,11 @@ private:
 
     // PERFORMANCE: Reusable containers to avoid per-frame allocations
     // These are cleared each frame but capacity is retained to eliminate heap churn
-    mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
-    // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
+    mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEvents()
+    // Note: buildActiveIndices() uses pools.staticIndices directly (already a reusable buffer)
 
-    // OPTIMIZATION: Per-frame static query cache (avoids redundant spatial hash queries)
-    // Key: coarse cell coord packed as (x << 16 | y), Value: cached static indices for that cell
-    // Cleared each frame. Nearby movables in same coarse cell share cached results.
-    mutable std::unordered_map<uint32_t, std::vector<size_t>> m_staticCellCache;
-    mutable size_t m_staticCacheHits{0};
-    mutable size_t m_staticCacheMisses{0};
-
-    // OPTIMIZATION: Persistent index tracking (avoids O(n) iteration per frame)
-    // Regression fix for commit 768ad87 - movable body iteration was O(18K) instead of O(3)
-    std::vector<size_t> m_movableBodyIndices;       // Indices of DYNAMIC + KINEMATIC bodies
-    std::unordered_set<size_t> m_movableIndexSet;   // For O(1) removal lookup
-    std::optional<size_t> m_playerBodyIndex;        // Cached player body index (Layer_Player)
+    // NOTE: Legacy m_movableBodyIndices removed - EDM Active tier is now the source of truth
+    // NOTE: Legacy static cell cache removed - m_staticSpatialHash queried directly
 
     // Performance metrics
     struct PerfStats {

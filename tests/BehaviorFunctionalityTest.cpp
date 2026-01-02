@@ -236,7 +236,7 @@ BOOST_AUTO_TEST_CASE(TestIdleStationaryMode) {
     }
     
     // Position should remain relatively unchanged for stationary idle
-    // Note: CollisionManager may push entities apart slightly via resolveSOA()
+    // Note: CollisionManager may push entities apart slightly via resolve()
     // Stationary mode just means no active movement from the behavior
     Vector2D currentPos = entity->getPosition();
     float distanceMoved = (currentPos - initialPos).length();
@@ -285,7 +285,7 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     auto entity = std::static_pointer_cast<Entity>(TestEntity::create(640.0f, 640.0f)); // Center of 20x20 tile world
 
     // Register with collision system
-    CollisionManager::Instance().addCollisionBodySOA(
+    CollisionManager::Instance().addCollisionBody(
         entity->getID(), entity->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
 
@@ -349,10 +349,10 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     auto testPlayer = std::static_pointer_cast<Entity>(TestEntity::create(500.0f, 500.0f));
 
     // Register entities with collision system so they can receive position updates
-    CollisionManager::Instance().addCollisionBodySOA(
+    CollisionManager::Instance().addCollisionBody(
         entity->getID(), entity->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBodySOA(
+    CollisionManager::Instance().addCollisionBody(
         testPlayer->getID(), testPlayer->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
 
@@ -434,10 +434,10 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     auto entity = std::static_pointer_cast<Entity>(TestEntity::create(600.0f, 600.0f)); // Close to player
 
     // Register entities with collision system so they can receive position updates
-    CollisionManager::Instance().addCollisionBodySOA(
+    CollisionManager::Instance().addCollisionBody(
         entity->getID(), entity->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBodySOA(
+    CollisionManager::Instance().addCollisionBody(
         testPlayer->getID(), testPlayer->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
 
@@ -845,7 +845,7 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     entity->setPosition(initialPos);
 
     // Register entity with collision system
-    CollisionManager::Instance().addCollisionBodySOA(
+    CollisionManager::Instance().addCollisionBody(
         entity->getID(), entity->getPosition(), Vector2D(16, 16),
         BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
 

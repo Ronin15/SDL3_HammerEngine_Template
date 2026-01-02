@@ -433,7 +433,7 @@ struct AIScalingFixture {
      * Run standalone benchmark with automatic threading behavior using REAL production behaviors.
      *
      * This tests AIManager batch processing with real behaviors (Wander, Guard, Patrol, Follow, Chase)
-     * but WITHOUT CollisionManager.resolveSOA() in the measurement loop. Measures pure AI behavior
+     * but WITHOUT CollisionManager.resolve() in the measurement loop. Measures pure AI behavior
      * execution time without collision resolution overhead.
      *
      * IMPORTANT: This benchmark includes a 16-frame warmup phase before measurements.
@@ -880,7 +880,7 @@ struct AIScalingFixture {
 
             for (int update = 0; update < numUpdates; ++update) {
                 AIManager::Instance().update(0.016f);
-                CollisionManager::Instance().update(0.016f);  // Includes resolveSOA()
+                CollisionManager::Instance().update(0.016f);  // Includes resolve()
                 BackgroundSimulationManager::Instance().update(referencePoint, 0.016f);
             }
 

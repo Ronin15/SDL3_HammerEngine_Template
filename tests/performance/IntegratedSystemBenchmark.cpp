@@ -443,7 +443,7 @@ namespace {
             // Simulate realistic frame update order (matching GameEngine::update pattern)
             EventManager::Instance().update();
             AIManager::Instance().update(deltaTime);
-            CollisionManager::Instance().updateSOA(deltaTime);
+            CollisionManager::Instance().update(deltaTime);
             ParticleManager::Instance().update(deltaTime);
 
             // Tier culling update (reference point = center of spawn area)

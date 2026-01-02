@@ -293,7 +293,7 @@ private:
         for (size_t i = 0; i < testBodies.size(); ++i) {
             EntityID id = static_cast<EntityID>(i + 1);
             const auto& body = testBodies[i];
-            manager.addCollisionBodySOA(id, body.position, body.halfSize,
+            manager.addCollisionBody(id, body.position, body.halfSize,
                                        body.type, body.layer, body.collidesWith);
             entityIds.push_back(id);
         }
@@ -308,11 +308,11 @@ private:
                 for (size_t i = 0; i < std::min<size_t>(10, entityIds.size()); ++i) {
                     Vector2D smallMove(2.0f, 2.0f); // Small movement within cache tolerance
                     Vector2D currentPos = testBodies[i].position;
-                    manager.updateCollisionBodyPositionSOA(entityIds[i], currentPos + smallMove);
+                    manager.updateCollisionBodyPosition(entityIds[i], currentPos + smallMove);
                 }
             }
 
-            manager.updateSOA(0.016f); // Pure collision detection - uses production code paths
+            manager.update(0.016f); // Pure collision detection - uses production code paths
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -322,7 +322,7 @@ private:
 
         // Clean up
         for (EntityID id : entityIds) {
-            manager.removeCollisionBodySOA(id);
+            manager.removeCollisionBody(id);
         }
 
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
@@ -373,14 +373,14 @@ private:
             EntityID id = static_cast<EntityID>(i + 1);
             const auto& body = testBodies[i];
 
-            manager.addCollisionBodySOA(id, body.position, body.halfSize,
+            manager.addCollisionBody(id, body.position, body.halfSize,
                                         body.type, body.layer, body.collidesWith);
             entityIds.push_back(id);
         }
 
         // Reduced warmup iterations for faster benchmarking
         for (int i = 0; i < 2; ++i) {
-            manager.updateSOA(0.016f); // 60 FPS simulation
+            manager.update(0.016f); // 60 FPS simulation
         }
 
         // Optimized benchmark with fewer iterations for faster completion
@@ -388,7 +388,7 @@ private:
         auto start = std::chrono::high_resolution_clock::now();
 
         for (int i = 0; i < iterations; ++i) {
-            manager.updateSOA(0.016f); // Pure collision detection
+            manager.update(0.016f); // Pure collision detection
         }
 
         auto end = std::chrono::high_resolution_clock::now();
@@ -400,7 +400,7 @@ private:
 
         // Clean up
         for (EntityID id : entityIds) {
-            manager.removeCollisionBodySOA(id);
+            manager.removeCollisionBody(id);
         }
 
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
