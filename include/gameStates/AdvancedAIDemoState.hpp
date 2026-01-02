@@ -13,6 +13,7 @@
 #include "utils/Camera.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations with smart pointer types
@@ -23,6 +24,7 @@ class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
 // Forward declarations for cached manager pointers
+class EntityDataManager;
 class WorldManager;
 class UIManager;
 class ParticleManager;
@@ -53,7 +55,8 @@ private:
     void updateCamera(float deltaTime);
 
     // Members
-    std::vector<NPCPtr> m_npcs{};
+    std::vector<NPCPtr> m_npcs{};  // Legacy storage (kept for cleanup/iteration)
+    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};  // Handle ID -> NPC for O(1) lookup
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
 
@@ -91,6 +94,7 @@ private:
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
 
     // Cached manager pointers for render hot path (resolved in enter())
+    EntityDataManager* mp_edm{nullptr};
     WorldManager* mp_worldMgr{nullptr};
     UIManager* mp_uiMgr{nullptr};
     ParticleManager* mp_particleMgr{nullptr};
