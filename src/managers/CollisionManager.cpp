@@ -537,15 +537,15 @@ bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
   if (it == m_storage.entityToIndex.end())
     return false;
 
-  // Access position from EDM (single source of truth)
-  size_t edmIndex = m_storage.hotData[it->second].edmIndex;
-  if (edmIndex == SIZE_MAX) {
-    // Fallback: compute center from cached AABB
-    const auto& hot = m_storage.hotData[it->second];
+  const auto& hot = m_storage.hotData[it->second];
+
+  // Static bodies (including triggers): use cached AABB - they don't move
+  if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC || hot.edmIndex == SIZE_MAX) {
     outCenter = Vector2D((hot.aabbMinX + hot.aabbMaxX) * 0.5f,
                          (hot.aabbMinY + hot.aabbMaxY) * 0.5f);
   } else {
-    const auto& transform = EntityDataManager::Instance().getTransformByIndex(edmIndex);
+    // Dynamic/Kinematic: get from EDM (single source of truth)
+    const auto& transform = EntityDataManager::Instance().getTransformByIndex(hot.edmIndex);
     outCenter = transform.position;
   }
   return true;
@@ -2997,10 +2997,9 @@ void CollisionManager::processTriggerEventsSOA() {
         size_t triggerIndex = triggerIt->second;
         if (triggerIndex < m_storage.hotData.size()) {
           const auto& hot = m_storage.hotData[triggerIndex];
-          // Get position from EDM (single source of truth)
-          auto& edm = EntityDataManager::Instance();
-          const auto& transform = edm.getTransformByIndex(hot.edmIndex);
-          triggerPos = transform.position;
+          // Triggers don't move - use cached AABB center (no EDM lookup needed)
+          triggerPos = Vector2D((hot.aabbMinX + hot.aabbMaxX) * 0.5f,
+                                (hot.aabbMinY + hot.aabbMaxY) * 0.5f);
           triggerTag = static_cast<HammerEngine::TriggerTag>(hot.triggerTag);
         }
       }
