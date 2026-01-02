@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 58 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 60 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, background simulation, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -73,6 +73,10 @@ The Hammer Game Engine has the following test suites:
 10. **Entity State Machine Tests**
     - EntityStateManager Tests: State registration, transitions, lifecycle callbacks (enter/exit/update)
 
+11. **Entity Data Management Tests**
+    - EntityDataManager Tests: Data-oriented entity storage, handle validation, tier management
+    - BackgroundSimulationManager Tests: Background entity simulation, tier-based processing, pause/resume
+
 **Test Execution Categories:**
 - **Core Tests** (14 suites): Fast functional validation (~4-8 minutes total)
 - **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
@@ -102,6 +106,7 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_game_time_tests.sh               # GameTime system tests
 ./tests/test_scripts/run_controller_tests.sh              # Controller tests (Registry, Weather, DayNight)
 ./tests/test_scripts/run_entity_state_manager_tests.sh    # Entity state machine tests
+./tests/test_scripts/run_entity_data_manager_tests.sh     # EntityDataManager and BackgroundSimulationManager tests
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -157,6 +162,7 @@ tests/test_scripts/run_pathfinding_tests.bat            # Pathfinding algorithm 
 tests/test_scripts/run_game_time_tests.bat              # GameTime system tests
 tests/test_scripts/run_controller_tests.bat             # Controller tests (Registry, Weather, DayNight)
 tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine tests
+tests/test_scripts/run_entity_data_manager_tests.bat    # EntityDataManager and BackgroundSimulationManager tests
 
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
@@ -1055,6 +1061,153 @@ tests/test_scripts/run_entity_state_manager_tests.bat --update-test
 ```
 
 **Estimated Runtime:** ~1 second (18 tests)
+
+### Entity Data Management Tests
+
+Located in `tests/managers/`, these tests validate the Data-Oriented Design (DoD) entity management system:
+
+#### Test Coverage
+
+1. **EntityDataManager Tests** (`EntityDataManagerTests.cpp`) - **65 test cases**:
+
+   **Singleton & Lifecycle** (6 tests):
+   - Singleton pattern validation
+   - Init/clean lifecycle
+   - State transition handling
+   - Double init prevention
+
+   **Entity Creation** (10 tests):
+   - NPC, Player, DroppedItem, Projectile, AreaEffect, StaticBody creation
+   - Handle validity after creation
+   - Entity kind assignment
+   - Initial tier placement
+
+   **Handle Validation** (8 tests):
+   - Valid/invalid handle detection
+   - Stale handle detection after destruction
+   - Generation increment verification
+   - Index extraction from handles
+
+   **Data Access** (12 tests):
+   - Transform data access (position, velocity, rotation)
+   - HotData access (flags, kind, tier)
+   - Type-specific data (CharacterData, ItemData, ProjectileData, AreaEffectData)
+   - Static vs dynamic entity separation
+
+   **Destruction Queue** (8 tests):
+   - Entity destruction queuing
+   - Batch destruction processing
+   - Slot reuse after destruction
+   - Generation increment on reuse
+
+   **Simulation Tier System** (12 tests):
+   - Tier assignment (Active, Background, Hibernated)
+   - Distance-based tier updates
+   - Active/Background index retrieval
+   - Tier transitions based on reference point
+
+   **Queries & Lookups** (9 tests):
+   - Radius-based entity queries
+   - Entity count by kind/tier
+   - EntityId lookup
+   - Handle-to-index mapping
+
+2. **BackgroundSimulationManager Tests** (`BackgroundSimulationManagerTests.cpp`) - **32 test cases**:
+
+   **Singleton & Lifecycle** (6 tests):
+   - Singleton pattern validation
+   - Init/clean lifecycle (including state reset)
+   - Dependency verification (requires EntityDataManager)
+   - State transition preparation
+
+   **Pause/Resume** (5 tests):
+   - Global pause stops all processing
+   - Resume continues processing
+   - No frame counter updates when paused
+   - No tier calculations when paused
+
+   **Reference Point** (5 tests):
+   - Reference point setting
+   - Movement threshold (32-unit) triggering tier recalc
+   - Initial reference point always sets dirty flag
+
+   **Tier Management** (6 tests):
+   - Tier update interval (120 frames)
+   - Manual tier invalidation
+   - hasWork() reflects background entity presence
+   - Tier update delegates to EntityDataManager
+
+   **Configuration** (5 tests):
+   - Active/Background radius configuration
+   - Update rate configuration
+   - Screen-size based configuration
+   - Default values validation
+
+   **Update Processing** (3 tests):
+   - Accumulator pattern (10Hz updates)
+   - Background entity processing
+   - Performance statistics tracking
+
+   **Performance Stats** (2 tests):
+   - Stats collection and retrieval
+   - Stats reset functionality
+
+#### Running Entity Data Management Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_entity_data_manager_tests.sh              # Run all tests
+./tests/test_scripts/run_entity_data_manager_tests.sh --edm        # EntityDataManager tests only
+./tests/test_scripts/run_entity_data_manager_tests.sh --bgsm       # BackgroundSimulationManager tests only
+./tests/test_scripts/run_entity_data_manager_tests.sh --verbose    # Verbose output
+
+# Windows
+tests/test_scripts/run_entity_data_manager_tests.bat              # Run all tests
+tests/test_scripts/run_entity_data_manager_tests.bat --edm        # EntityDataManager tests only
+tests/test_scripts/run_entity_data_manager_tests.bat --bgsm       # BackgroundSimulationManager tests only
+tests/test_scripts/run_entity_data_manager_tests.bat --verbose    # Verbose output
+```
+
+**Estimated Runtime:** ~2-3 seconds (97 tests total)
+
+#### Key Testing Patterns
+
+**Explicit Radii for Deterministic Testing:**
+Tests use explicit radii rather than screen-size calculations for deterministic results:
+```cpp
+bgsm->setActiveRadius(500.0f);
+bgsm->setBackgroundRadius(1000.0f);
+// Entity at 750 units → Background tier
+// Entity at 100 units → Active tier
+```
+
+**Singleton Lifecycle in Test Fixtures:**
+```cpp
+class EntityDataManagerTestFixture {
+public:
+    EntityDataManagerTestFixture() {
+        edm = &EntityDataManager::Instance();
+        edm->init();
+    }
+
+    ~EntityDataManagerTestFixture() {
+        edm->clean();
+    }
+
+protected:
+    EntityDataManager* edm;
+};
+```
+
+**Handle Validation Pattern:**
+```cpp
+auto handle = edm->createNPC(Vector2D(100, 100), 32, 32);
+BOOST_CHECK(edm->isValidHandle(handle));
+
+edm->destroyEntity(handle);
+edm->processDestructionQueue();
+BOOST_CHECK(!edm->isValidHandle(handle));  // Now stale
+```
 
 ## Adding New Tests
 

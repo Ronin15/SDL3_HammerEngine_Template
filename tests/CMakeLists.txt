@@ -68,6 +68,8 @@ set(SIMPLE_TESTS
     game_time_manager_calendar_tests
     game_time_manager_season_tests
     entity_state_manager_tests
+    entity_data_manager_tests
+    background_simulation_manager_tests
 )
 
 # Complex tests (need mocks)
@@ -179,6 +181,10 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "managers/GameTimeManagerSeasonTests.cpp")
     elseif(${test_name} STREQUAL "entity_state_manager_tests")
         set(test_source "EntityStateManagerTests.cpp")
+    elseif(${test_name} STREQUAL "entity_data_manager_tests")
+        set(test_source "managers/EntityDataManagerTests.cpp")
+    elseif(${test_name} STREQUAL "background_simulation_manager_tests")
+        set(test_source "managers/BackgroundSimulationManagerTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})

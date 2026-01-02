@@ -34,6 +34,15 @@ bool BackgroundSimulationManager::init() {
         return false;
     }
 
+    // Reset state (clean() sets m_isShutdown=true, must reset here)
+    m_isShutdown.store(false, std::memory_order_release);
+    m_tiersDirty.store(true, std::memory_order_release);
+    m_referencePointSet = false;
+    m_framesSinceTierUpdate = 0;
+    m_accumulator = 0.0;
+    m_hasNonActiveEntities.store(false, std::memory_order_release);
+    m_globallyPaused.store(false, std::memory_order_release);
+
     // Reserve buffers
     m_backgroundIndices.reserve(10000);  // Expect up to 10K background entities
     m_batchFutures.reserve(16);          // Reasonable batch count
