@@ -23,6 +23,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "EventManagerTestAccess.hpp"
 
@@ -62,18 +63,22 @@ private:
   bool m_conditionsMet{false};
 };
 
-// Global fixture to initialize ThreadSystem once for all tests
+// Global fixture to initialize ThreadSystem and EntityDataManager once for all tests
 struct GlobalEventTestFixture {
   GlobalEventTestFixture() {
     // Initialize ThreadSystem once for all tests
     if (!HammerEngine::ThreadSystem::Exists()) {
       HammerEngine::ThreadSystem::Instance().init();
     }
+    // Initialize EntityDataManager (required for Player entity creation in DOD)
+    EntityDataManager::Instance().init();
     // Ensure benchmark mode is disabled for regular tests
     HAMMER_DISABLE_BENCHMARK_MODE();
   }
 
   ~GlobalEventTestFixture() {
+    // Clean up EntityDataManager
+    EntityDataManager::Instance().clean();
     // Clean up ThreadSystem at the very end
     if (HammerEngine::ThreadSystem::Exists()) {
       HammerEngine::ThreadSystem::Instance().clean();

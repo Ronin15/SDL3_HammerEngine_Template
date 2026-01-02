@@ -397,6 +397,9 @@ BOOST_FIXTURE_TEST_SUITE(AIIntegrationTests, AIIntegrationTestFixture)
 
 // Test that updates work properly
 BOOST_AUTO_TEST_CASE(TestConcurrentUpdates) {
+    // Get initial behavior execution count
+    size_t initialCount = AIManager::Instance().getBehaviorUpdateCount();
+
     // Update the AI system multiple times - with shorter sleep time
     for (int i = 0; i < NUM_UPDATES; ++i) {
         AIManager::Instance().update(0.016f); // ~60 FPS
@@ -405,23 +408,18 @@ BOOST_AUTO_TEST_CASE(TestConcurrentUpdates) {
         std::this_thread::sleep_for(std::chrono::milliseconds(2));
     }
 
-    // Verify all entities were updated
-    bool allUpdated = true;
-    {
-        std::lock_guard<std::mutex> lock(m_entityMutex);
-        for (const auto& entity : entities) {
-            if (entity->getUpdateCount() == 0) {
-                allUpdated = false;
-                break;
-            }
-        }
-    }
+    // Verify behaviors were executed (DOD pattern: AIManager calls behavior->executeLogic(),
+    // not entity->update(), so we check AIManager's behavior execution count)
+    size_t finalCount = AIManager::Instance().getBehaviorUpdateCount();
+    bool behaviorsExecuted = (finalCount > initialCount);
 
-    BOOST_CHECK(allUpdated);
+    BOOST_CHECK_MESSAGE(behaviorsExecuted,
+        "Expected behavior executions to increase. Initial: " << initialCount
+        << ", Final: " << finalCount);
 
-    // Note: Individual behavior instances (not templates) are updated via executeLogic()
-    // Template behaviors stored in 'behaviors' vector are not directly updated
-    // The entity updates above confirm the system is working correctly
+    // Note: In DOD architecture, AIManager doesn't call Entity::update().
+    // Instead, it calls behavior->executeLogic(ctx) which operates on EntityDataManager data.
+    // The getBehaviorUpdateCount() tracks these executions.
 }
 
 // Test concurrent assignment and update

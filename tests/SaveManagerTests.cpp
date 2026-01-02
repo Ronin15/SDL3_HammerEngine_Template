@@ -8,6 +8,7 @@
 #include <boost/test/unit_test.hpp>
 #include "utils/BinarySerializer.hpp"
 #include "mocks/MockPlayer.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <filesystem>
 #include <csignal>
 #include <chrono>
@@ -81,12 +82,16 @@ public:
 // Global fixture for test setup and cleanup
 struct TestFixture {
     TestFixture() {
-        // Initialize test environment
+        // Initialize EntityDataManager (required for MockPlayer creation in DOD)
+        EntityDataManager::Instance().init();
     }
 
     ~TestFixture() {
         // Cleanup is handled by individual test cleanup
         performSafeCleanup();
+
+        // Clean up EntityDataManager
+        EntityDataManager::Instance().clean();
 
         // Ensure clean exit
         _exit(0);

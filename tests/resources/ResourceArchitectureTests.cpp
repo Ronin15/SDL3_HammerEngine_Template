@@ -9,6 +9,7 @@
 #include "entities/DroppedItem.hpp"
 #include "entities/Resource.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
 
 /**
@@ -24,6 +25,9 @@
 class ResourceArchitectureTestFixture {
 public:
   ResourceArchitectureTestFixture() {
+    // Initialize EntityDataManager FIRST (required for DroppedItem creation in DOD)
+    EntityDataManager::Instance().init();
+
     // Initialize ResourceTemplateManager
     resourceManager = &ResourceTemplateManager::Instance();
     if (!resourceManager->isInitialized()) {
@@ -42,6 +46,8 @@ public:
   ~ResourceArchitectureTestFixture() {
     // Explicitly clean up the ResourceTemplateManager to avoid static destruction order issues
     resourceManager->clean();
+    // Clean up EntityDataManager
+    EntityDataManager::Instance().clean();
   }
 
 protected:
