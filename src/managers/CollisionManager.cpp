@@ -154,9 +154,6 @@ void CollisionManager::prepareForStateTransition() {
   m_staticSpatialHash.clear();
   m_dynamicSpatialHash.clear();
 
-  // Clear static query cache (tolerance-based optimization)
-  m_staticQueryCache.clear();
-
   // Clear collision buffers to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();
 
@@ -1354,7 +1351,7 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 // Optimized version of buildActiveIndicesSOA - queries m_staticSpatialHash directly
 std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const CullingArea& cullingArea) const {
   // Build indices of active bodies within culling area
-  // Uses tolerance-based cache for static bodies to avoid 256 hash lookups per frame
+  // Phase 3 simplified: Query m_staticSpatialHash directly instead of separate grid/cache
   auto& pools = m_collisionPool;
 
   // Store current culling area for use in broadphase queries
@@ -1368,39 +1365,16 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndicesSOA(const
   size_t totalDynamic = 0;
   size_t totalKinematic = 0;
 
-  // Calculate culling area center (player position)
+  // Query m_staticSpatialHash directly for statics in culling area
+  // Creates an AABB from the culling bounds for the spatial hash query
   const float cullCenterX = (cullingArea.minX + cullingArea.maxX) * 0.5f;
   const float cullCenterY = (cullingArea.minY + cullingArea.maxY) * 0.5f;
   const float cullHalfW = (cullingArea.maxX - cullingArea.minX) * 0.5f;
   const float cullHalfH = (cullingArea.maxY - cullingArea.minY) * 0.5f;
 
-  // OPTIMIZATION: Tolerance-based static query cache
-  // Only re-query static spatial hash if player moved beyond tolerance threshold
   if (cullHalfW > 0.0f && cullHalfH > 0.0f) {
-    const float dx = cullCenterX - m_staticQueryCache.lastQueryX;
-    const float dy = cullCenterY - m_staticQueryCache.lastQueryY;
-    const float distSquared = dx * dx + dy * dy;
-    const float toleranceSquared = STATIC_CACHE_TOLERANCE * STATIC_CACHE_TOLERANCE;
-
-    if (!m_staticQueryCache.valid || distSquared > toleranceSquared) {
-      // Cache miss: Query with expanded area to provide tolerance buffer
-      const float expandedHalfW = cullHalfW + STATIC_CACHE_BUFFER;
-      const float expandedHalfH = cullHalfH + STATIC_CACHE_BUFFER;
-      AABB expandedAABB(cullCenterX, cullCenterY, expandedHalfW, expandedHalfH);
-
-      m_staticQueryCache.cachedStaticIndices.clear();  // Retains capacity
-      m_staticSpatialHash.queryRegion(expandedAABB, m_staticQueryCache.cachedStaticIndices);
-      m_staticQueryCache.lastQueryX = cullCenterX;
-      m_staticQueryCache.lastQueryY = cullCenterY;
-      m_staticQueryCache.valid = true;
-    }
-
-    // Use cached static indices (zero-allocation copy - pools vector retains capacity)
-    const auto& cached = m_staticQueryCache.cachedStaticIndices;
-    if (pools.staticIndices.capacity() < cached.size()) {
-      pools.staticIndices.reserve(cached.size());  // Rare: only on first use or growth
-    }
-    pools.staticIndices.assign(cached.begin(), cached.end());
+    AABB cullAABB(cullCenterX, cullCenterY, cullHalfW, cullHalfH);
+    m_staticSpatialHash.queryRegion(cullAABB, pools.staticIndices);
   }
   totalStatic = pools.staticIndices.size();
 
@@ -2581,9 +2555,6 @@ void CollisionManager::rebuildStaticSpatialHash() {
       m_staticSpatialHash.insert(i, aabb);
     }
   }
-
-  // Invalidate static query cache since static bodies changed
-  m_staticQueryCache.invalidate();
 }
 
 // NOTE: updateStaticCollisionCacheForMovableBodies(), evictStaleCacheEntries(),
