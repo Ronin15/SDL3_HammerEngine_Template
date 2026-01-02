@@ -29,6 +29,7 @@
 #include "core/ThreadSystem.hpp"
 #include "entities/Entity.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp" // For TransformData definition
@@ -231,6 +232,18 @@ void performSafeCleanup() {
   }
 
   // Clean managers in reverse order of initialization
+  // Clean BackgroundSimulationManager first (initialized last)
+  try {
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    BackgroundSimulationManager::Instance().clean();
+    std::cerr << "BackgroundSimulationManager cleaned up successfully" << std::endl;
+  } catch (const std::exception &e) {
+    std::cerr << "Exception during BackgroundSimulationManager cleanup: " << e.what()
+              << std::endl;
+  } catch (...) {
+    std::cerr << "Unknown exception during BackgroundSimulationManager cleanup" << std::endl;
+  }
+
   if (g_aiManagerInitialized.exchange(false)) {
     try {
       // Additional pause to ensure AIManager is not in use
@@ -412,6 +425,13 @@ struct GlobalTestFixture {
       AIManager::Instance().enableThreading(true);
       g_aiManagerInitialized = true;
     }
+
+    // Initialize BackgroundSimulationManager for tier management
+    std::cout << "Initializing BackgroundSimulationManager" << std::endl;
+    if (!BackgroundSimulationManager::Instance().init()) {
+      std::cerr << "Failed to initialize BackgroundSimulationManager" << std::endl;
+      throw std::runtime_error("BackgroundSimulationManager initialization failed");
+    }
   }
 
   ~GlobalTestFixture() {
@@ -550,6 +570,17 @@ struct ThreadedAITestFixture {
 
 // Apply the global fixture to the entire test module
 BOOST_GLOBAL_FIXTURE(GlobalTestFixture);
+
+// Helper to update AI with proper tier calculation
+// Tests create/destroy entities frequently, so we need to force tier rebuild each time
+// FIXED: Use large active radius (3000) to ensure all test entities at (0,0) to (1990,1990)
+// are within Active tier from reference point (500,500). Max distance ~2107 < 3000.
+void updateAI(float deltaTime, const Vector2D& referencePoint = Vector2D(500.0f, 500.0f)) {
+    // Direct EDM call - bypasses BSM frame counting that can skip tier updates
+    auto& edm = EntityDataManager::Instance();
+    edm.updateSimulationTiers(referencePoint, 3000.0f, 5000.0f);
+    AIManager::Instance().update(deltaTime);
+}
 
 // Test case for thread-safe behavior registration
 BOOST_FIXTURE_TEST_CASE(TestThreadSafeBehaviorRegistration,
@@ -731,7 +762,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
   // NOTE: update() is designed to be called from a single thread (main game loop)
   // It internally spawns worker threads for parallel entity processing
   for (int j = 0; j < UPDATES_PER_BEHAVIOR * NUM_BEHAVIORS; ++j) {
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
     std::this_thread::sleep_for(std::chrono::milliseconds(2));
   }
 
@@ -936,7 +967,7 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeCacheInvalidation,
   // 
   // Instead, we call update() once from the main thread while other operations continue
   std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Let operations start
-  AIManager::Instance().update(0.016f); // Single update call as designed
+  updateAI(0.016f); // Single update call as designed
 
   // Wait for all operations to complete
   waitForThreadSystemTasks(futures);
@@ -999,7 +1030,7 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing,
   // Run multiple concurrent updates
   const int NUM_UPDATES = 20;
   for (int i = 0; i < NUM_UPDATES; ++i) {
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
@@ -1169,7 +1200,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
 
     // SINGLE-THREADED UPDATE SECTION - Only after all multi-threaded operations complete
     // This reflects the real engine design where update() is called from one thread only
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Verify the system is still in a consistent state
     // Just check that we can still query entity-behavior associations
@@ -1179,7 +1210,7 @@ BOOST_FIXTURE_TEST_CASE(StressTestThreadSafeAIManager, ThreadedAITestFixture) {
     }
 
     // Check that we can still update without crashing
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Pass the test if we got this far without crashes
     BOOST_CHECK(true);
@@ -1260,7 +1291,7 @@ BOOST_FIXTURE_TEST_CASE(TestWaitForAsyncBatchCompletion, ThreadedAITestFixture) 
 
   // Trigger several updates to start batch processing
   for (int i = 0; i < 5; ++i) {
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
   }
 
   // Test 1: Fast path - should complete quickly when no pending batches
@@ -1373,7 +1404,7 @@ BOOST_FIXTURE_TEST_CASE(TestPrepareForStateTransition, ThreadedAITestFixture) {
 
   // Run a few updates to ensure system is active
   for (int i = 0; i < 5; ++i) {
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
     std::this_thread::sleep_for(std::chrono::milliseconds(5));
   }
 
