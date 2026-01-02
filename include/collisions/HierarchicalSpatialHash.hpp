@@ -38,7 +38,7 @@ namespace HammerEngine {
 class HierarchicalSpatialHash {
 public:
     // Configuration constants - OPTIMIZED FOR 10K+ ENTITY PERFORMANCE
-    static constexpr float COARSE_CELL_SIZE = 128.0f;    // Smaller for better distribution with 10K entities
+    static constexpr float COARSE_CELL_SIZE = 256.0f;    // Larger cells = fewer hash lookups (64 vs 256 for 2000px query)
     static constexpr float FINE_CELL_SIZE = 32.0f;       // Better granularity for collision detection
     static constexpr float MOVEMENT_THRESHOLD = 8.0f;    // Not used for dynamic bodies (rebuilt every frame), only for static hash updates
     static constexpr size_t REGION_ACTIVE_THRESHOLD = 16; // PERFORMANCE OPTIMIZATION: Increased from 8 (20-30% improvement)
