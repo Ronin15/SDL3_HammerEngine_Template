@@ -225,7 +225,7 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAssignmentAndUpdate) {
     auto entity = entities[0];
 
     // Queue a behavior assignment and process it
-    AIManager::Instance().queueBehaviorAssignment(entity->getHandle(), "Behavior0");
+    AIManager::Instance().assignBehavior(entity->getHandle(), "Behavior0");
     updateAI(0.016f);
 
     // Success criteria is simply not crashing

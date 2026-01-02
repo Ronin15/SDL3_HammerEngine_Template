@@ -62,11 +62,6 @@ bool AIManager::init() {
     // Reserve sparse behavior vector (grows dynamically based on EDM indices)
     m_behaviorsByEdmIndex.reserve(INITIAL_CAPACITY);
 
-    // Reserve capacity for assignment queues to prevent reallocations during
-    // batch processing
-    m_pendingAssignments.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
-    m_pendingAssignmentIndex.reserve(AIConfig::ASSIGNMENT_QUEUE_RESERVE);
-
     // Initialize lock-free message queue
     for (auto &msg : m_lockFreeMessages) {
       msg.ready.store(false, std::memory_order_relaxed);
@@ -107,14 +102,9 @@ void AIManager::clean() {
   // CRITICAL: Wait for any pending async batches to complete before cleanup
   waitForAsyncBatchCompletion();
 
-  // DETERMINISTIC: Wait for any pending assignments to complete
-  AI_INFO("Waiting for async assignments to complete...");
-  waitForAssignmentCompletion();
-
   {
     std::unique_lock<std::shared_mutex> entitiesLock(m_entitiesMutex);
     std::unique_lock<std::shared_mutex> behaviorsLock(m_behaviorsMutex);
-    std::lock_guard<std::mutex> assignmentsLock(m_assignmentsMutex);
     std::lock_guard<std::mutex> messagesLock(m_messagesMutex);
 
     // Clean all behaviors first (with exception handling)
@@ -140,8 +130,6 @@ void AIManager::clean() {
     m_handleToIndex.clear();
     m_behaviorTemplates.clear();
     m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
-    m_pendingAssignments.clear();
-    m_pendingAssignmentIndex.clear();
     m_messageQueue.clear();
   }
 
@@ -174,16 +162,6 @@ void AIManager::prepareForStateTransition() {
   // This ensures all async assignment tasks complete before state transition clears
   // entity data, preventing use-after-free and race conditions.
   //
-  // History: Previously used 100ms sleep (empirically tested with 2000 entities).
-  // - 10ms: Frequent crashes
-  // - 50ms: Occasional crashes
-  // - 100ms: Stable but not deterministic
-  //
-  // Current approach: Blocks on std::future::wait() for each assignment batch.
-  // Scalable to any entity count, deterministic completion guarantee.
-  AI_DEBUG("Waiting for all AI assignment tasks to complete...");
-  waitForAssignmentCompletion();
-
   // Process and clear any pending messages
   processMessageQueue();
 
@@ -199,14 +177,7 @@ void AIManager::prepareForStateTransition() {
     }
   }
 
-  // Clear assignment queues
-  {
-    std::lock_guard<std::mutex> lock(m_assignmentsMutex);
-    m_pendingAssignments.clear();
-    m_pendingAssignmentIndex.clear();
-  }
-
-  // Clean up all entities safely and clear managed entities list
+  // Clean up all entities safely
   {
     std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
 
@@ -233,9 +204,6 @@ void AIManager::prepareForStateTransition() {
     m_storage.edmIndices.clear();  // Clear EDM indices to prevent stale data
     m_handleToIndex.clear();
     m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
-
-    // Clear managed entities list
-    m_managedEntities.clear();
 
     AI_DEBUG("Cleaned up all entities for state transition");
   }
@@ -278,9 +246,6 @@ void AIManager::update(float deltaTime) {
     // Do not carry over AI update futures across frames to avoid races with
     // render. Any previous frame's update work must be completed within its
     // frame.
-
-    // Process pending assignments first so new entities are picked up this frame
-    processPendingBehaviorAssignments();
 
     // OPTIMIZATION: Use getActiveIndices() to iterate only Active tier entities
     // This reduces iteration from 50K to ~468 (entities within active radius)
@@ -476,31 +441,6 @@ void AIManager::waitForAsyncBatchCompletion() {
   // EntityDataManager transforms (lock-free). CollisionManager reads from EDM.
 }
 
-void AIManager::waitForAssignmentCompletion() {
-  // ASSIGNMENT SYNCHRONIZATION: Wait for all async assignment batches to complete
-  // This ensures no dangling references to entity data during state transitions.
-  //
-  // DETERMINISTIC COMPLETION: Replaces empirical 100ms sleep with future.wait()
-  //   - Old approach: sleep_for(100ms) - works empirically but not scalable
-  //   - New approach: Block on futures until all assignments complete
-  //   - Result: Deterministic completion, scalable to any entity count
-
-  // Reuse member buffer instead of creating local vector (eliminates ~60 alloc/sec)
-  m_reusableAssignmentFutures.clear();
-
-  {
-    std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
-    m_reusableAssignmentFutures = std::move(m_assignmentFutures);
-  }
-
-  // Wait for all assignment futures to complete
-  for (auto& future : m_reusableAssignmentFutures) {
-    if (future.valid()) {
-      future.wait();  // Block until assignment batch completes
-    }
-  }
-}
-
 void AIManager::registerBehavior(const std::string &name,
                                  std::shared_ptr<AIBehavior> behavior) {
   if (!behavior) {
@@ -663,132 +603,6 @@ bool AIManager::hasBehavior(EntityHandle handle) const {
   return false;
 }
 
-void AIManager::queueBehaviorAssignment(EntityHandle handle,
-                                        const std::string &behaviorName) {
-  if (!handle.isValid() || behaviorName.empty()) {
-    AI_ERROR("Invalid behavior assignment request");
-    return;
-  }
-
-  // Direct assignment - the queue system was removed as it caused hangs
-  // when AIManager::update() wasn't running (during state transitions)
-  assignBehavior(handle, behaviorName);
-}
-
-size_t AIManager::processPendingBehaviorAssignments() {
-  // FUTURES-BASED: Deterministic completion tracking with m_assignmentFutures
-  // Assignments use std::future<void> for safe state transition synchronization
-
-  // OPTIMIZATION: Reuse buffer to avoid per-frame allocation during spawning
-  m_reusableToProcessBuffer.clear();
-  {
-    std::lock_guard<std::mutex> lock(m_assignmentsMutex);
-    if (m_pendingAssignments.empty()) {
-      return 0;
-    }
-    // Swap to reusable buffer - moves content, preserves capacity
-    std::swap(m_reusableToProcessBuffer, m_pendingAssignments);
-    m_pendingAssignmentIndex.clear();
-  }
-  auto& toProcess = m_reusableToProcessBuffer;
-
-  // Note: assignmentCount > 0 guaranteed - we returned early at line 671 if empty,
-  // and std::swap preserves non-emptiness
-  size_t assignmentCount = toProcess.size();
-
-  // Check if threading is available
-  bool useThreading = m_useThreading.load(std::memory_order_acquire) &&
-                      HammerEngine::ThreadSystem::Exists();
-
-  if (!useThreading) {
-    // Fall back to synchronous processing
-    for (const auto &assignment : toProcess) {
-      if (assignment.handle.isValid()) {
-        assignBehavior(assignment.handle, assignment.behaviorName);
-      }
-    }
-    return assignmentCount;
-  }
-
-  // Async processing for large batches
-  auto &threadSystem = HammerEngine::ThreadSystem::Instance();
-
-  // Calculate optimal batching using centralized WorkerBudgetManager
-  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-
-  // Get optimal workers (WorkerBudget determines everything dynamically)
-  size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-      HammerEngine::SystemType::AI, assignmentCount);
-
-  // Get adaptive batch strategy
-  auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-      HammerEngine::SystemType::AI, assignmentCount, optimalWorkerCount);
-
-  // If WorkerBudget recommends single-threaded execution, process synchronously
-  if (batchCount <= 1) {
-    AI_DEBUG(std::format("WorkerBudget recommends single-threaded processing for {} assignments",
-             assignmentCount));
-    for (const auto &assignment : toProcess) {
-      if (assignment.handle.isValid()) {
-        assignBehavior(assignment.handle, assignment.behaviorName);
-      }
-    }
-    return assignmentCount;
-  }
-
-  // Submit batches using futures for deterministic completion tracking
-  {
-    std::lock_guard<std::mutex> lock(m_assignmentFuturesMutex);
-    m_assignmentFutures.clear();  // Clear old futures, keeps capacity
-
-    // Calculate actual needed batches (avoid submitting empty tasks)
-    size_t actualBatchesNeeded = (assignmentCount + batchSize - 1) / batchSize;
-    size_t tasksToSubmit = std::min(batchCount, actualBatchesNeeded);
-
-    m_assignmentFutures.reserve(tasksToSubmit);
-
-    // OPTIMIZATION: Reuse shared_ptr to avoid allocation per batch
-    if (!m_reusableAssignmentBatch) {
-      m_reusableAssignmentBatch = std::make_shared<std::vector<PendingAssignment>>();
-    }
-    m_reusableAssignmentBatch->clear();
-    std::swap(*m_reusableAssignmentBatch, toProcess);
-    auto toProcessShared = m_reusableAssignmentBatch;
-
-    // Submit tasks with index ranges (deterministic task count, no buffer pool needed)
-    for (size_t i = 0; i < tasksToSubmit; ++i) {
-      size_t start = i * batchSize;
-      size_t end = std::min(start + batchSize, assignmentCount);
-
-      m_assignmentFutures.push_back(threadSystem.enqueueTaskWithResult(
-          [this, toProcessShared, start, end]() -> void {
-            // Check if AIManager is shutting down
-            if (m_isShutdown) {
-              return; // Don't process assignments during shutdown
-            }
-
-            // Process index range directly (no intermediate buffer)
-            for (size_t idx = start; idx < end; ++idx) {
-              const auto& assignment = (*toProcessShared)[idx];
-              if (assignment.handle.isValid()) {
-                try {
-                  assignBehavior(assignment.handle, assignment.behaviorName);
-                } catch (const std::exception &e) {
-                  AI_ERROR(std::format("Exception during async behavior assignment: {}", e.what()));
-                } catch (...) {
-                  AI_ERROR("Unknown exception during async behavior assignment");
-                }
-              }
-            }
-          },
-          HammerEngine::TaskPriority::High, "AI_AssignmentBatch"));
-    }
-  }
-
-  // Async assignment processing statistics are now tracked in periodic summary
-  return assignmentCount; // Return immediately, don't wait
-}
-
 void AIManager::setPlayerHandle(EntityHandle player) {
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
   m_playerHandle = player;
@@ -830,11 +644,6 @@ void AIManager::registerEntity(EntityHandle handle) {
     // Entity already registered, nothing to do
     return;
   }
-
-  // Add managed entity info
-  EntityUpdateInfo info(handle, DEFAULT_PRIORITY);
-  info.lastUpdateTime = getCurrentTimeNanos();
-  m_managedEntities.push_back(info);
 }
 
 void AIManager::unregisterEntity(EntityHandle handle) {
@@ -842,14 +651,6 @@ void AIManager::unregisterEntity(EntityHandle handle) {
     return;
 
   std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-  // Remove from managed entities
-  m_managedEntities.erase(
-      std::remove_if(m_managedEntities.begin(), m_managedEntities.end(),
-                     [&handle](const EntityUpdateInfo &info) {
-                       return !info.handle.isValid() || info.handle == handle;
-                     }),
-      m_managedEntities.end());
 
   // Mark as inactive in main storage
   auto it = m_handleToIndex.find(handle);
@@ -934,7 +735,6 @@ void AIManager::resetBehaviors() {
   m_storage.edmIndices.clear();  // BUGFIX: Must clear edmIndices to prevent stale index pollution
   m_handleToIndex.clear();
   m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
-  m_managedEntities.clear();
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
@@ -1076,9 +876,10 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
   size_t batchExecutions = 0;
   auto& edm = EntityDataManager::Instance();
 
-  // Shared lock for reading m_behaviorsByEdmIndex during batch processing
-  // Multiple batches can read concurrently (reader lock)
-  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+  // No lock needed: m_behaviorsByEdmIndex is read-only during batch window
+  // - Behavior assignments happen synchronously via assignBehavior() before batch processing
+  // - Entity removals only mark inactive (don't modify vector structure)
+  // - cleanupInactiveEntities() runs on background thread when no batches active
 
   for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
     size_t edmIdx = activeIndices[i];

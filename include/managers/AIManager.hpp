@@ -156,17 +156,6 @@ public:
    */
   void waitForAsyncBatchCompletion();
 
-  /**
-   * @brief Wait for all pending behavior assignment batches to complete
-   *
-   * Provides deterministic synchronization for state transitions.
-   * Blocks until all assignment futures complete, ensuring no dangling references
-   * to entity data that may be cleared during state changes.
-   *
-   * Fast path: ~1ns check if no assignments running
-   * Slow path: blocks until all assignment batches complete
-   */
-  void waitForAssignmentCompletion();
 
   /**
    * @brief Checks if AIManager has been shut down
@@ -211,15 +200,6 @@ public:
    */
   bool hasBehavior(EntityHandle handle) const;
 
-  /**
-   * @brief Queues a behavior assignment for batch processing
-   */
-  void queueBehaviorAssignment(EntityHandle handle, const std::string &behaviorName);
-
-  /**
-   * @brief Processes all pending behavior assignments
-   */
-  size_t processPendingBehaviorAssignments();
 
   // Player handle for AI targeting
   void setPlayerHandle(EntityHandle player);
@@ -333,30 +313,6 @@ private:
   // Player handle
   EntityHandle m_playerHandle{};
 
-  // Entity management
-  struct EntityUpdateInfo {
-    EntityHandle handle{};
-    int priority{0};
-    uint64_t lastUpdateTime{0};
-
-    EntityUpdateInfo() = default;
-    explicit EntityUpdateInfo(EntityHandle h, int p = 0)
-        : handle(h), priority(p), lastUpdateTime(0) {}
-  };
-  std::vector<EntityUpdateInfo> m_managedEntities;
-
-  // Batch assignment queue with deduplication
-  struct PendingAssignment {
-    EntityHandle handle{};
-    std::string behaviorName;
-
-    PendingAssignment(EntityHandle h, const std::string &b)
-        : handle(h), behaviorName(b) {}
-  };
-  std::vector<PendingAssignment> m_pendingAssignments;
-  std::unordered_map<EntityHandle, std::string>
-      m_pendingAssignmentIndex; // For deduplication
-
   // Message queue
   struct QueuedMessage {
     EntityHandle targetHandle{}; // invalid for broadcast
@@ -395,7 +351,6 @@ private:
   // Thread synchronization
   mutable std::shared_mutex m_entitiesMutex;
   mutable std::shared_mutex m_behaviorsMutex;
-  mutable std::mutex m_assignmentsMutex;
   mutable std::mutex m_messagesMutex;
 
   // Cached manager references (avoid singleton lookups in hot paths)
@@ -404,20 +359,8 @@ private:
   // Batch futures for parallel processing - reused via clear() each frame
   std::vector<std::future<void>> m_batchFutures;
 
-  // Async assignment tracking for deterministic synchronization (replaces m_assignmentInProgress)
-  std::vector<std::future<void>> m_assignmentFutures;
-  std::mutex m_assignmentFuturesMutex;  // Protect assignment futures vector
-
-  // Reusable futures buffer for assignment synchronization
-  mutable std::vector<std::future<void>> m_reusableAssignmentFutures;
-
   // Reusable buffer for Active tier EDM indices (avoids per-frame allocation)
   std::vector<size_t> m_activeIndicesBuffer;
-
-  // Reusable buffers for behavior assignment processing
-  // Eliminates per-frame allocations during entity spawning
-  mutable std::vector<PendingAssignment> m_reusableToProcessBuffer;
-  mutable std::shared_ptr<std::vector<PendingAssignment>> m_reusableAssignmentBatch;
 
   // Camera bounds cache for entity update culling
   // Only update animations/sprites for entities within camera view + buffer

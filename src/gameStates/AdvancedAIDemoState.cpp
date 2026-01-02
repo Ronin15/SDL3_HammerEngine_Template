@@ -84,7 +84,7 @@ void AdvancedAIDemoState::handleInput() {
         // Assign Idle behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Idle");
+            aiMgr.assignBehavior(npc->getHandle(), "Idle");
         }
     }
 
@@ -92,7 +92,7 @@ void AdvancedAIDemoState::handleInput() {
         // Assign Flee behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Flee");
+            aiMgr.assignBehavior(npc->getHandle(), "Flee");
         }
     }
 
@@ -100,7 +100,7 @@ void AdvancedAIDemoState::handleInput() {
         // Assign Follow behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Follow");
+            aiMgr.assignBehavior(npc->getHandle(), "Follow");
         }
     }
 
@@ -108,7 +108,7 @@ void AdvancedAIDemoState::handleInput() {
         // Assign Guard behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Guard");
+            aiMgr.assignBehavior(npc->getHandle(), "Guard");
         }
     }
 
@@ -116,7 +116,7 @@ void AdvancedAIDemoState::handleInput() {
         // Assign Attack behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
         for (auto& npc : m_npcs) {
-            aiMgr.queueBehaviorAssignment(npc->getHandle(), "Attack");
+            aiMgr.assignBehavior(npc->getHandle(), "Attack");
         }
     }
 

@@ -455,7 +455,7 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
 
     // Wait for async assignment to complete before starting updates
     updateAI(0.016f);  // Process pending assignment
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Update for a reasonable time
     for (int i = 0; i < 30; ++i) {

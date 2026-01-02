@@ -83,7 +83,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "Wander");
+      aiMgr.assignBehavior(npc->getHandle(), "Wander");
     }
   }
 
@@ -92,7 +92,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcs.size()));
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "Patrol");
+      aiMgr.assignBehavior(npc->getHandle(), "Patrol");
     }
     GAMESTATE_INFO("Patrol assignments queued. Processing "
                    "instantly in parallel for optimal performance.");
@@ -106,7 +106,7 @@ void AIDemoState::handleInput() {
     // No manual target updates needed
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "Chase");
+      aiMgr.assignBehavior(npc->getHandle(), "Chase");
     }
   }
 
@@ -115,7 +115,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "SmallWander");
+      aiMgr.assignBehavior(npc->getHandle(), "SmallWander");
     }
   }
 
@@ -124,7 +124,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "LargeWander");
+      aiMgr.assignBehavior(npc->getHandle(), "LargeWander");
     }
   }
 
@@ -133,7 +133,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "EventWander");
+      aiMgr.assignBehavior(npc->getHandle(), "EventWander");
     }
   }
 
@@ -142,7 +142,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "RandomPatrol");
+      aiMgr.assignBehavior(npc->getHandle(), "RandomPatrol");
     }
   }
 
@@ -151,7 +151,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "CirclePatrol");
+      aiMgr.assignBehavior(npc->getHandle(), "CirclePatrol");
     }
   }
 
@@ -160,7 +160,7 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
     for (auto &npc : m_npcs) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
-      aiMgr.queueBehaviorAssignment(npc->getHandle(), "EventTarget");
+      aiMgr.assignBehavior(npc->getHandle(), "EventTarget");
     }
   }
 

@@ -988,65 +988,6 @@ BOOST_FIXTURE_TEST_CASE(TestWaitForAsyncBatchCompletion, ThreadedAITestFixture) 
   std::cout << "TestWaitForAsyncBatchCompletion completed" << std::endl;
 }
 
-// Test case for waitForAssignmentCompletion() synchronization
-BOOST_FIXTURE_TEST_CASE(TestWaitForAssignmentCompletion, ThreadedAITestFixture) {
-  std::cout << "Starting TestWaitForAssignmentCompletion..." << std::endl;
-  const int NUM_ENTITIES = 50;
-  const int NUM_ASSIGNMENTS = 20;
-
-  // Register a behavior
-  auto behavior = std::make_shared<ThreadTestBehavior>(0);
-  {
-    std::lock_guard<std::mutex> lock(g_behaviorMutex);
-    g_allBehaviors.push_back(behavior);
-  }
-  AIManager::Instance().registerBehavior("AssignTest", behavior);
-
-  // Create entities
-  std::vector<std::shared_ptr<TestEntity>> entities;
-  entities.reserve(NUM_ENTITIES);
-  for (int i = 0; i < NUM_ENTITIES; ++i) {
-    auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
-    entities.push_back(entity);
-    AIManager::Instance().registerEntity(entity->getHandle());
-  }
-
-  // Start multiple concurrent assignments
-  std::atomic<int> completedAssignments{0};
-  for (int i = 0; i < NUM_ASSIGNMENTS; ++i) {
-    HammerEngine::ThreadSystem::Instance().enqueueTask(
-        [&entities, &completedAssignments, i]() {
-          int idx = i % entities.size();
-          AIManager::Instance().assignBehavior(entities[idx]->getHandle(), "AssignTest");
-          completedAssignments++;
-        });
-  }
-
-  // Wait for all assignments to complete
-  AIManager::Instance().waitForAssignmentCompletion();
-
-  // Verify: After wait, all assignments should be reflected
-  std::this_thread::sleep_for(std::chrono::milliseconds(10)); // Brief wait for atomic update
-
-  // Test fast path - calling again should be very fast
-  auto start = std::chrono::high_resolution_clock::now();
-  AIManager::Instance().waitForAssignmentCompletion();
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-  BOOST_CHECK_LT(duration.count(), 1000); // Less than 1ms for fast path
-
-  // Cleanup
-  for (auto &entity : entities) {
-    AIManager::Instance().unregisterEntity(entity->getHandle());
-    AIManager::Instance().unassignBehavior(entity->getHandle());
-  }
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-  AIManager::Instance().resetBehaviors();
-  std::this_thread::sleep_for(std::chrono::milliseconds(20));
-
-  std::cout << "TestWaitForAssignmentCompletion completed" << std::endl;
-}
-
 // Test case for prepareForStateTransition() cleanup pattern
 BOOST_FIXTURE_TEST_CASE(TestPrepareForStateTransition, ThreadedAITestFixture) {
   std::cout << "Starting TestPrepareForStateTransition..." << std::endl;
