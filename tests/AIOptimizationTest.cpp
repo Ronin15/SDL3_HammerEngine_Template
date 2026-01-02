@@ -121,7 +121,7 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     updateAI(0.016f);
 
     // Wait for async assignments to complete (matches production behavior)
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Cleanup - unregister entities from managed updates
     auto& edm = EntityDataManager::Instance();
@@ -160,7 +160,7 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     updateAI(0.016f);
 
     // Wait for async assignments to complete before timing updates
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Time the unified entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
@@ -216,7 +216,7 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     updateAI(0.016f);
 
     // Wait for async assignments to complete
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Test that behavior is assigned
     BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
@@ -247,7 +247,7 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     updateAI(0.016f);
 
     // Wait for async assignments to complete (matches production behavior)
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Queue several messages
     AIManager::Instance().sendMessageToEntity(handle, "test1");
@@ -309,7 +309,7 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
 
         // Process assignments
         updateAI(0.016f);
-        AIManager::Instance().waitForAssignmentCompletion();
+        // Assignments are now synchronous - no wait needed
 
         // Run a few update cycles to ensure distance calculations run
         for (int frame = 0; frame < 3; ++frame) {
