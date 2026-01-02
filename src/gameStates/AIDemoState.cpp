@@ -39,7 +39,7 @@ AIDemoState::~AIDemoState() {
     // Reset AI behaviors first to clear entity references
     // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
     // Clear NPCs without calling clean() on them
-    m_npcs.clear();
+    m_npcsById.clear();
 
     // Clean up player
     m_player.reset();
@@ -81,7 +81,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Wander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "Wander");
     }
@@ -89,8 +89,8 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcs.size()));
-    for (auto &npc : m_npcs) {
+    GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcsById.size()));
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "Patrol");
     }
@@ -104,7 +104,7 @@ void AIDemoState::handleInput() {
 
     // Chase behavior target is automatically maintained by AIManager
     // No manual target updates needed
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "Chase");
     }
@@ -113,7 +113,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign SmallWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "SmallWander");
     }
@@ -122,7 +122,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign LargeWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "LargeWander");
     }
@@ -131,7 +131,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
     // Assign EventWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "EventWander");
     }
@@ -140,7 +140,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
     // Assign RandomPatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "RandomPatrol");
     }
@@ -149,7 +149,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
     // Assign CirclePatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "CirclePatrol");
     }
@@ -158,7 +158,7 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
     // Assign EventTarget behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
-    for (auto &npc : m_npcs) {
+    for (auto& [id, npc] : m_npcsById) {
       // Queue the behavior assignment for batch processing (EntityHandle-based API)
       aiMgr.assignBehavior(npc->getHandle(), "EventTarget");
     }
@@ -188,11 +188,11 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
     // Spawn 2000 NPCs with random behaviors (like EventDemoState)
-    int previousCount = m_npcs.size();
+    int previousCount = m_npcsById.size();
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
-    int actualSpawned = m_npcs.size() - previousCount;
-    GAMESTATE_INFO(std::format("Spawned {} NPCs with random behaviors (Total: {})", actualSpawned, m_npcs.size()));
+    int actualSpawned = m_npcsById.size() - previousCount;
+    GAMESTATE_INFO(std::format("Spawned {} NPCs with random behaviors (Total: {})", actualSpawned, m_npcsById.size()));
   }
 }
 
@@ -340,7 +340,14 @@ bool AIDemoState::exit() {
     // Reset the flag after using it
     m_transitioningToLoading = false;
 
-    // Clean up managers (same as full exit)
+    // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
+    // NPCs hold EDM indices - must be destroyed while EDM data is still valid
+    m_npcsById.clear();
+    if (m_player) {
+      m_player.reset();
+    }
+
+    // Now safe to clear manager state
     aiMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
@@ -350,14 +357,6 @@ bool AIDemoState::exit() {
 
     if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
       pathfinderMgr.prepareForStateTransition();
-    }
-
-    // Clear NPCs
-    m_npcs.clear();
-
-    // Clean up player
-    if (m_player) {
-      m_player.reset();
     }
 
     // Clean up camera
@@ -392,7 +391,14 @@ bool AIDemoState::exit() {
 
   // Full exit (going to main menu, other states, or shutting down)
 
-  // Use prepareForStateTransition methods for deterministic cleanup
+  // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
+  // NPCs hold EDM indices - must be destroyed while EDM data is still valid
+  m_npcsById.clear();
+  if (m_player) {
+    m_player.reset();
+  }
+
+  // Now safe to clear manager state
   aiMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
 
@@ -404,14 +410,6 @@ bool AIDemoState::exit() {
   // Clean pathfinding state for fresh start
   if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
     pathfinderMgr.prepareForStateTransition();
-  }
-
-  // Clear NPCs (AIManager::prepareForStateTransition already handled cleanup)
-  m_npcs.clear();
-
-  // Clean up player
-  if (m_player) {
-    m_player.reset();
   }
 
   // Clean up camera first to stop world rendering
@@ -576,7 +574,7 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     // Update status only when values change (C++20 type-safe, zero allocations)
     // Use m_aiPaused member instead of polling AIManager::isGloballyPaused() every frame
     int currentFPS = static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t entityCount = m_npcs.size();
+    size_t entityCount = m_npcsById.size();
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
@@ -722,9 +720,8 @@ void AIDemoState::createNPCBatch(int count) {
             EntityHandle handle = npc->getHandle();
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, "Wander");
-              m_npcsById[handle.getId()] = npc;  // Add to handle-based lookup
+              m_npcsById[handle.getId()] = npc;
             }
-            m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
             GAMESTATE_ERROR(std::format("Exception creating NPC: {}", e.what()));
@@ -811,10 +808,8 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             EntityHandle handle = npc->getHandle();
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, randomBehavior);
-              m_npcsById[handle.getId()] = npc;  // Add to handle-based lookup
+              m_npcsById[handle.getId()] = npc;
             }
-
-            m_npcs.push_back(npc);
             created++;
           } catch (const std::exception &e) {
             GAMESTATE_ERROR(std::format("Exception creating NPC with random behavior: {}", e.what()));

@@ -41,7 +41,7 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
         aiMgr.resetBehaviors();
 
         // Clear NPCs without calling clean() on them
-        m_npcs.clear();
+        m_npcsById.clear();
 
         // Clean up player
         m_player.reset();
@@ -83,7 +83,7 @@ void AdvancedAIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
         // Assign Idle behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
-        for (auto& npc : m_npcs) {
+        for (auto& [id, npc] : m_npcsById) {
             aiMgr.assignBehavior(npc->getHandle(), "Idle");
         }
     }
@@ -91,7 +91,7 @@ void AdvancedAIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
         // Assign Flee behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
-        for (auto& npc : m_npcs) {
+        for (auto& [id, npc] : m_npcsById) {
             aiMgr.assignBehavior(npc->getHandle(), "Flee");
         }
     }
@@ -99,7 +99,7 @@ void AdvancedAIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
         // Assign Follow behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
-        for (auto& npc : m_npcs) {
+        for (auto& [id, npc] : m_npcsById) {
             aiMgr.assignBehavior(npc->getHandle(), "Follow");
         }
     }
@@ -107,7 +107,7 @@ void AdvancedAIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
         // Assign Guard behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
-        for (auto& npc : m_npcs) {
+        for (auto& [id, npc] : m_npcsById) {
             aiMgr.assignBehavior(npc->getHandle(), "Guard");
         }
     }
@@ -115,7 +115,7 @@ void AdvancedAIDemoState::handleInput() {
     if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
         // Assign Attack behavior to all NPCs
         GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
-        for (auto& npc : m_npcs) {
+        for (auto& [id, npc] : m_npcsById) {
             aiMgr.assignBehavior(npc->getHandle(), "Attack");
         }
     }
@@ -252,7 +252,7 @@ bool AdvancedAIDemoState::enter() {
         ui.setComponentPositioning("advanced_ai_status", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT});
 
         // Log status
-        GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors", m_npcs.size()));
+        GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors", m_npcsById.size()));
         GAMESTATE_INFO("CombatController registered");
 
         // Pre-allocate status buffer to avoid per-frame allocations
@@ -289,7 +289,14 @@ bool AdvancedAIDemoState::exit() {
         // Reset the flag after using it
         m_transitioningToLoading = false;
 
-        // Clean up managers (same as full exit)
+        // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
+        // NPCs hold EDM indices - must be destroyed while EDM data is still valid
+        m_npcsById.clear();
+        if (m_player) {
+            m_player.reset();
+        }
+
+        // Now safe to clear manager state
         aiMgr.prepareForStateTransition();
         edm.prepareForStateTransition();
 
@@ -299,14 +306,6 @@ bool AdvancedAIDemoState::exit() {
 
         if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
           pathfinderMgr.prepareForStateTransition();
-        }
-
-        // Clear NPCs
-        m_npcs.clear();
-
-        // Clean up player
-        if (m_player) {
-            m_player.reset();
         }
 
         // Clean up camera
@@ -341,7 +340,14 @@ bool AdvancedAIDemoState::exit() {
 
     // Full exit (going to main menu, other states, or shutting down)
 
-    // Use prepareForStateTransition methods for deterministic cleanup
+    // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
+    // NPCs hold EDM indices - must be destroyed while EDM data is still valid
+    m_npcsById.clear();
+    if (m_player) {
+        m_player.reset();
+    }
+
+    // Now safe to clear manager state
     aiMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
@@ -353,14 +359,6 @@ bool AdvancedAIDemoState::exit() {
     // Clean pathfinding state for fresh start
     if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
       pathfinderMgr.prepareForStateTransition();
-    }
-
-    // Clear NPCs (AIManager::prepareForStateTransition already handled cleanup)
-    m_npcs.clear();
-
-    // Clean up player
-    if (m_player) {
-        m_player.reset();
     }
 
     // Clean up camera first to stop world rendering
@@ -527,7 +525,7 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         // Update status only when values change (C++20 type-safe, zero allocations)
         // Use m_aiPaused member instead of polling AIManager::isGloballyPaused() every frame
         int currentFPS = static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-        size_t npcCount = m_npcs.size();
+        size_t npcCount = m_npcsById.size();
 
         if (currentFPS != m_lastDisplayedFPS ||
             npcCount != m_lastDisplayedNPCCount ||
@@ -641,14 +639,14 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 }
 
                 // Add to collection
-                m_npcs.push_back(npc);
+                m_npcsById[npc->getHandle().getId()] = npc;
             } catch (const std::exception& e) {
                 GAMESTATE_ERROR(std::format("Exception creating advanced NPC {}: {}", i, e.what()));
                 continue;
             }
         }
 
-        GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs", m_npcs.size()));
+        GAMESTATE_INFO(std::format("AdvancedAIDemoState: Created {} NPCs", m_npcsById.size()));
     } catch (const std::exception& e) {
         GAMESTATE_ERROR(std::format("Exception in createAdvancedNPCs(): {}", e.what()));
     } catch (...) {

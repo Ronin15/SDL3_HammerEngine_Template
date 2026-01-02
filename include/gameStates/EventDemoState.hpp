@@ -95,9 +95,8 @@ private:
   float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
   bool m_autoMode{true}; // Auto-advance through demos - enabled by default
 
-  // Entities
-  std::vector<NPCPtr> m_spawnedNPCs{};  // Legacy storage (kept for cleanup/iteration)
-  std::unordered_map<uint32_t, NPCPtr> m_npcsById{};  // Handle ID -> NPC for O(1) lookup
+  // Entities - stored by handle ID for O(1) lookup
+  std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
   PlayerPtr m_player{};
   
   // Camera for world navigation
