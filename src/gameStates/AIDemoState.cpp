@@ -198,6 +198,7 @@ void AIDemoState::handleInput() {
 
 bool AIDemoState::enter() {
   // Cache manager pointers for render hot path (always valid after GameEngine init)
+  mp_edm = &EntityDataManager::Instance();
   mp_particleMgr = &ParticleManager::Instance();
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
@@ -488,12 +489,11 @@ void AIDemoState::update(float deltaTime) {
     // Update Active tier NPCs only (animations and state machine)
     // AIManager handles behavior logic, BackgroundSimulationManager handles non-Active
     // Use getActiveIndices() to iterate only ~468 Active entities instead of all 50K
-    auto& edm = EntityDataManager::Instance();
-    for (size_t edmIdx : edm.getActiveIndices()) {
-      const auto& hot = edm.getHotDataByIndex(edmIdx);
+    for (size_t edmIdx : mp_edm->getActiveIndices()) {
+      const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
       if (hot.kind != EntityKind::NPC) continue;
 
-      EntityHandle handle = edm.getHandle(edmIdx);
+      EntityHandle handle = mp_edm->getHandle(edmIdx);
       auto it = m_npcsById.find(handle.getId());
       if (it != m_npcsById.end() && it->second) {
         it->second->update(deltaTime);
@@ -545,10 +545,16 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
   }
 
-  // Render Active tier NPCs only (off-screen entities skip rendering)
-  for (auto &npc : m_npcs) {
-    if (npc->isInActiveTier()) {
-      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+  // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
+  // This iterates ~500 Active entities instead of 50K+ total NPCs
+  for (size_t edmIdx : mp_edm->getActiveIndices()) {
+    const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
+    if (hot.kind != EntityKind::NPC) continue;
+
+    EntityHandle handle = mp_edm->getHandle(edmIdx);
+    auto it = m_npcsById.find(handle.getId());
+    if (it != m_npcsById.end() && it->second) {
+      it->second->render(renderer, renderCamX, renderCamY, interpolationAlpha);
     }
   }
 

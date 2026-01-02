@@ -23,6 +23,7 @@ class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
 // Forward declarations for cached manager pointers
+class EntityDataManager;
 class WorldManager;
 class UIManager;
 class ParticleManager;
@@ -90,6 +91,7 @@ private:
     int m_framesSinceLastSpawn{0}; // Frame counter for spawn timing
 
     // Cached manager pointers for render hot path (resolved in enter())
+    EntityDataManager* mp_edm{nullptr};
     WorldManager* mp_worldMgr{nullptr};
     UIManager* mp_uiMgr{nullptr};
     ParticleManager* mp_particleMgr{nullptr};

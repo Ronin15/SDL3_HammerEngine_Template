@@ -28,6 +28,7 @@ class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
 // Forward declarations for cached manager pointers
+class EntityDataManager;
 class WorldManager;
 class UIManager;
 
@@ -95,7 +96,8 @@ private:
   bool m_autoMode{true}; // Auto-advance through demos - enabled by default
 
   // Entities
-  std::vector<NPCPtr> m_spawnedNPCs{};
+  std::vector<NPCPtr> m_spawnedNPCs{};  // Legacy storage (kept for cleanup/iteration)
+  std::unordered_map<uint32_t, NPCPtr> m_npcsById{};  // Handle ID -> NPC for O(1) lookup
   PlayerPtr m_player{};
   
   // Camera for world navigation
@@ -235,6 +237,7 @@ private:
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
 
   // Cached manager pointers for render hot path (resolved in enter())
+  EntityDataManager* mp_edm{nullptr};
   ParticleManager* mp_particleMgr{nullptr};
   WorldManager* mp_worldMgr{nullptr};
   UIManager* mp_uiMgr{nullptr};
