@@ -1305,6 +1305,7 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
 
   if (cullingChanged) {
     pools.staticIndices.clear();
+    pools.staticAABBs.clear();
     const float cullCenterX = (cullingArea.minX + cullingArea.maxX) * 0.5f;
     const float cullCenterY = (cullingArea.minY + cullingArea.maxY) * 0.5f;
     const float cullHalfW = (cullingArea.maxX - cullingArea.minX) * 0.5f;
@@ -1313,11 +1314,26 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
     if (cullHalfW > 0.0f && cullHalfH > 0.0f) {
       AABB cullAABB(cullCenterX, cullCenterY, cullHalfW, cullHalfH);
       m_staticSpatialHash.queryRegion(cullAABB, pools.staticIndices);
+
+      // Cache static AABBs for contiguous memory access in broadphase
+      // This avoids scattered m_storage.hotData[idx] access in SIMD loops
+      pools.staticAABBs.reserve(pools.staticIndices.size());
+      for (size_t storageIdx : pools.staticIndices) {
+        const auto& staticHot = m_storage.hotData[storageIdx];
+        CollisionPool::StaticAABB aabb;
+        aabb.minX = staticHot.aabbMinX;
+        aabb.minY = staticHot.aabbMinY;
+        aabb.maxX = staticHot.aabbMaxX;
+        aabb.maxY = staticHot.aabbMaxY;
+        aabb.layers = staticHot.layers;
+        aabb.active = staticHot.active;
+        pools.staticAABBs.push_back(aabb);
+      }
     }
     m_lastStaticQueryCullingArea = cullingArea;
     m_staticQueryCacheDirty = false;
   }
-  // else: reuse pools.staticIndices from previous frame
+  // else: reuse pools.staticIndices and pools.staticAABBs from previous frame
   totalStatic = pools.staticIndices.size();
 
   // EDM-CENTRIC: Get Active tier entities with collision enabled
@@ -1348,7 +1364,8 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
     // Store EDM index and compute AABB from EDM data
     pools.movableIndices.push_back(edmIdx);
 
-    // Compute and cache AABB for fast broadphase access
+    // Compute and cache AABB + entity data for fast broadphase/narrowphase access
+    // Caching entityId and isTrigger here avoids EDM calls in narrowphase
     CollisionPool::MovableAABB aabb;
     aabb.minX = posX - hot.halfWidth;
     aabb.minY = posY - hot.halfHeight;
@@ -1356,6 +1373,8 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
     aabb.maxY = posY + hot.halfHeight;
     aabb.layers = hot.collisionLayers;
     aabb.collidesWith = hot.collisionMask;
+    aabb.entityId = edm.getEntityId(edmIdx);  // Cache to avoid EDM call in narrowphase
+    aabb.isTrigger = hot.isTrigger();         // Cache to avoid EDM call in narrowphase
     pools.movableAABBs.push_back(aabb);
   }
 
@@ -1459,35 +1478,36 @@ void CollisionManager::broadphaseSingleThreaded() {
 
   // ========================================================================
   // 2. MOVABLE-VS-STATIC: Iterate each movable against statics
-  //    Movables use pools.movableAABBs, statics use m_storage.hotData
+  //    Movables use pools.movableAABBs, statics use cached pools.staticAABBs
   // ========================================================================
-  // DYNAMIC THRESHOLD: Spatial hash query costs ~30μs overhead per movable.
-  // Direct iteration costs ~2.5ns per static. Breakeven at ~12K statics.
-  // Use direct path unless we have massive static counts where spatial queries filter significantly.
-  const bool useDirectPath = (staticIndices.size() < 5000);
+  // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
+  // Direct path: O(movables × statics) comparisons but no query overhead.
+  // Spatial hash: O(movables × nearby_statics) but with query overhead.
+  // With 475 statics, direct = 233×475 = 110K comparisons. Spatial hash should be much faster.
+  const bool useDirectPath = (staticIndices.size() < 100);
+  const auto& staticAABBs = pools.staticAABBs;
 
   for (size_t poolIdx = 0; poolIdx < movableIndices.size(); ++poolIdx) {
     const auto& movableAABB = movableAABBs[poolIdx];
     const uint32_t movableCollidesWith = movableAABB.collidesWith;
 
     if (useDirectPath) {
-      // DIRECT PATH: Check all statics in culling area
-      for (size_t si = 0; si < staticIndices.size(); ++si) {
-        size_t staticIdx = staticIndices[si];
-        const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active) continue;
+      // DIRECT PATH: Check cached staticAABBs (contiguous memory access)
+      for (size_t si = 0; si < staticAABBs.size(); ++si) {
+        const auto& staticAABB = staticAABBs[si];
+        if (!staticAABB.active) continue;
 
         // AABB overlap test
-        if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-            movableAABB.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-            movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-            movableAABB.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
+        if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticAABB.minX ||
+            movableAABB.minX - SPATIAL_QUERY_EPSILON > staticAABB.maxX ||
+            movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticAABB.minY ||
+            movableAABB.minY - SPATIAL_QUERY_EPSILON > staticAABB.maxY) continue;
 
         // Layer mask check
-        if ((movableCollidesWith & staticHot.layers) == 0) continue;
+        if ((movableCollidesWith & staticAABB.layers) == 0) continue;
 
         // Store (poolIdx, storageIdx) for movable-static pair
-        pools.movableStaticPairs.emplace_back(poolIdx, staticIdx);
+        pools.movableStaticPairs.emplace_back(poolIdx, staticIndices[si]);
       }
     } else {
       // SPATIAL HASH PATH: Query for nearby statics only
@@ -1670,29 +1690,29 @@ void CollisionManager::broadphaseBatch(
     // ========================================================================
     // 2. MOVABLE-VS-STATIC: Check against statics in m_storage
     // ========================================================================
-    // DYNAMIC THRESHOLD: Spatial hash query costs ~30μs overhead per movable.
-    // Direct SIMD costs ~2.5ns per static. Breakeven at ~12K statics.
-    // Use direct SIMD unless we have massive static counts where queries filter significantly.
-    const bool useDirectPath = (staticIndices.size() < 5000);
+    // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
+    // Direct path: O(batch × statics) SIMD comparisons but no query overhead.
+    // Spatial hash: O(batch × nearby_statics) but with query overhead.
+    const bool useDirectPath = (staticIndices.size() < 100);
     const Int4 staticMaskVec = broadcast_int(collidesWithA);
+    const auto& staticAABBs = pools.staticAABBs;
 
     if (useDirectPath) {
-      // DIRECT PATH: Iterate all culled statics with SIMD
+      // DIRECT PATH: Iterate cached staticAABBs with SIMD (contiguous memory access)
       size_t si = 0;
-      const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
+      const size_t staticSimdEnd = (staticAABBs.size() / 4) * 4;
 
       for (; si < staticSimdEnd; si += 4) {
-        size_t s0 = staticIndices[si], s1 = staticIndices[si+1];
-        size_t s2 = staticIndices[si+2], s3 = staticIndices[si+3];
+        // Contiguous access to cached staticAABBs - no scattered memory reads
+        const auto& a0 = staticAABBs[si];
+        const auto& a1 = staticAABBs[si+1];
+        const auto& a2 = staticAABBs[si+2];
+        const auto& a3 = staticAABBs[si+3];
 
-        Float4 statMinX = set(m_storage.hotData[s0].aabbMinX, m_storage.hotData[s1].aabbMinX,
-                              m_storage.hotData[s2].aabbMinX, m_storage.hotData[s3].aabbMinX);
-        Float4 statMaxX = set(m_storage.hotData[s0].aabbMaxX, m_storage.hotData[s1].aabbMaxX,
-                              m_storage.hotData[s2].aabbMaxX, m_storage.hotData[s3].aabbMaxX);
-        Float4 statMinY = set(m_storage.hotData[s0].aabbMinY, m_storage.hotData[s1].aabbMinY,
-                              m_storage.hotData[s2].aabbMinY, m_storage.hotData[s3].aabbMinY);
-        Float4 statMaxY = set(m_storage.hotData[s0].aabbMaxY, m_storage.hotData[s1].aabbMaxY,
-                              m_storage.hotData[s2].aabbMaxY, m_storage.hotData[s3].aabbMaxY);
+        Float4 statMinX = set(a0.minX, a1.minX, a2.minX, a3.minX);
+        Float4 statMaxX = set(a0.maxX, a1.maxX, a2.maxX, a3.maxX);
+        Float4 statMinY = set(a0.minY, a1.minY, a2.minY, a3.minY);
+        Float4 statMaxY = set(a0.maxY, a1.maxY, a2.maxY, a3.maxY);
 
         Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
         Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
@@ -1703,32 +1723,30 @@ void CollisionManager::broadphaseBatch(
 
         if (noOverlapMask == 0xF) continue;
 
-        Int4 staticLayers = set_int4(m_storage.hotData[s0].layers, m_storage.hotData[s1].layers,
-                                     m_storage.hotData[s2].layers, m_storage.hotData[s3].layers);
+        Int4 staticLayers = set_int4(a0.layers, a1.layers, a2.layers, a3.layers);
         Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
         Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
         int layerFailMask = movemask_int(staticCmp);
 
         for (size_t j = 0; j < 4; ++j) {
           if (((noOverlapMask >> j) & 1) == 0 && ((layerFailMask >> (j * 4)) & 0xF) == 0) {
-            if (m_storage.hotData[staticIndices[si + j]].active) {
+            if (staticAABBs[si + j].active) {
               outMovableStatic.emplace_back(poolIdxA, staticIndices[si + j]);
             }
           }
         }
       }
 
-      // Scalar tail
-      for (; si < staticIndices.size(); ++si) {
-        size_t staticIdx = staticIndices[si];
-        const auto& staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active) continue;
-        if (aabbA.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-            aabbA.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-            aabbA.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-            aabbA.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
-        if ((collidesWithA & staticHot.layers) == 0) continue;
-        outMovableStatic.emplace_back(poolIdxA, staticIdx);
+      // Scalar tail using cached AABBs
+      for (; si < staticAABBs.size(); ++si) {
+        const auto& staticAABB = staticAABBs[si];
+        if (!staticAABB.active) continue;
+        if (aabbA.maxX + SPATIAL_QUERY_EPSILON < staticAABB.minX ||
+            aabbA.minX - SPATIAL_QUERY_EPSILON > staticAABB.maxX ||
+            aabbA.maxY + SPATIAL_QUERY_EPSILON < staticAABB.minY ||
+            aabbA.minY - SPATIAL_QUERY_EPSILON > staticAABB.maxY) continue;
+        if ((collidesWithA & staticAABB.layers) == 0) continue;
+        outMovableStatic.emplace_back(poolIdxA, staticIndices[si]);
       }
     } else {
       // SPATIAL HASH PATH: Query for nearby statics (thread-safe)
@@ -1780,11 +1798,11 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
   // EDM-CENTRIC: Process movableMovablePairs and movableStaticPairs
   // movableMovablePairs: (poolIdxA, poolIdxB) - both into movableIndices/movableAABBs
   // movableStaticPairs: (poolIdx, storageIdx) - poolIdx into movableIndices, storageIdx into m_storage
+  // NOTE: EntityId and isTrigger are cached in MovableAABB - no EDM calls needed here
 
   const auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
   const auto& movableAABBs = pools.movableAABBs;
-  auto& edm = EntityDataManager::Instance();
 
   collisions.clear();
   collisions.reserve((pools.movableMovablePairs.size() + pools.movableStaticPairs.size()) / 4);
@@ -1826,6 +1844,7 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
 
   // ========================================================================
   // 1. MOVABLE-VS-MOVABLE: Both indices are pool indices into movableAABBs
+  // Uses cached entityId and isTrigger - no EDM calls needed
   // ========================================================================
   for (const auto& [poolIdxA, poolIdxB] : pools.movableMovablePairs) {
     if (poolIdxA >= movableAABBs.size() || poolIdxB >= movableAABBs.size()) continue;
@@ -1833,27 +1852,22 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
     const auto& aabbA = movableAABBs[poolIdxA];
     const auto& aabbB = movableAABBs[poolIdxB];
 
-    // Get EntityIDs from EDM
+    // Use cached values from MovableAABB (populated in buildActiveIndices)
     size_t edmIdxA = movableIndices[poolIdxA];
     size_t edmIdxB = movableIndices[poolIdxB];
-    EntityID entityA = edm.getEntityId(edmIdxA);
-    EntityID entityB = edm.getEntityId(edmIdxB);
-
-    // Get trigger status from EDM
-    const auto& hotA = edm.getHotDataByIndex(edmIdxA);
-    const auto& hotB = edm.getHotDataByIndex(edmIdxB);
 
     processOverlap(
         aabbA.minX, aabbA.minY, aabbA.maxX, aabbA.maxY,
         aabbB.minX, aabbB.minY, aabbB.maxX, aabbB.maxY,
-        entityA, entityB,
-        hotA.isTrigger(), hotB.isTrigger(),
+        aabbA.entityId, aabbB.entityId,  // Cached in MovableAABB
+        aabbA.isTrigger, aabbB.isTrigger, // Cached in MovableAABB
         edmIdxA, edmIdxB,
         true);  // isMovableMovable = true
   }
 
   // ========================================================================
   // 2. MOVABLE-VS-STATIC: poolIdx into movableAABBs, storageIdx into m_storage
+  // Uses cached entityId and isTrigger for movable - no EDM calls needed
   // ========================================================================
   for (const auto& [poolIdx, storageIdx] : pools.movableStaticPairs) {
     if (poolIdx >= movableAABBs.size() || storageIdx >= m_storage.hotData.size()) continue;
@@ -1862,21 +1876,17 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
     const auto& staticHot = m_storage.hotData[storageIdx];
     // NOTE: No active check needed - broadphase already filtered inactive statics
 
-    // Get EntityID from EDM for movable
+    // Use cached values from MovableAABB (populated in buildActiveIndices)
     size_t edmIdx = movableIndices[poolIdx];
-    EntityID entityA = edm.getEntityId(edmIdx);
 
-    // Get EntityID from m_storage for static
+    // Get EntityID from m_storage for static (already accessed for AABB)
     EntityID entityB = (storageIdx < m_storage.entityIds.size()) ? m_storage.entityIds[storageIdx] : 0;
-
-    // Get trigger status
-    const auto& movableHot = edm.getHotDataByIndex(edmIdx);
 
     processOverlap(
         movableAABB.minX, movableAABB.minY, movableAABB.maxX, movableAABB.maxY,
         staticHot.aabbMinX, staticHot.aabbMinY, staticHot.aabbMaxX, staticHot.aabbMaxY,
-        entityA, entityB,
-        movableHot.isTrigger(), staticHot.isTrigger != 0,
+        movableAABB.entityId, entityB,              // Movable uses cached entityId
+        movableAABB.isTrigger, staticHot.isTrigger != 0, // Movable uses cached isTrigger
         edmIdx, storageIdx,
         false);  // isMovableMovable = false (movable-static collision)
   }

@@ -474,12 +474,25 @@ private:
 
         // EDM-CENTRIC: Cached AABBs for movables, computed from EDM each frame
         // Parallel to movableIndices: movableAABBs[i] corresponds to movableIndices[i]
+        // Caches entityId and isTrigger to avoid EDM calls in narrowphase
         struct MovableAABB {
             float minX, minY, maxX, maxY;
-            uint16_t layers;
-            uint16_t collidesWith;
+            uint32_t layers;
+            uint32_t collidesWith;
+            EntityID entityId;      // Cached to avoid edm.getEntityId() in narrowphase
+            bool isTrigger;         // Cached to avoid edm.getHotDataByIndex() in narrowphase
         };
         std::vector<MovableAABB> movableAABBs;
+
+        // Cached AABBs for statics, populated when culling area changes
+        // Parallel to staticIndices: staticAABBs[i] corresponds to staticIndices[i]
+        // Avoids scattered memory access in broadphase SIMD loops
+        struct StaticAABB {
+            float minX, minY, maxX, maxY;
+            uint32_t layers;
+            bool active;
+        };
+        std::vector<StaticAABB> staticAABBs;
 
         // EDM-CENTRIC: Collision pairs from broadphase
         // movableMovablePairs: (poolIdx_A, poolIdx_B) - both indices into movableIndices/movableAABBs
