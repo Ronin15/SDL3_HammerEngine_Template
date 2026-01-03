@@ -63,11 +63,11 @@ All paths below are relative to project root.
    - Duration: ~20 minutes
    - **Status: CRITICAL - Engine core performance benchmark**
 
-2. **Collision System Benchmark** (`./bin/debug/collision_benchmark`) **[REQUIRED]**
-   - Script: `./tests/test_scripts/run_collision_benchmark.sh`
-   - Tests: Spatial hash performance, AABB detection, SOA storage
-   - Metrics: Collision checks/sec, query time, hash efficiency
-   - Duration: ~3 minutes
+2. **Collision Scaling Benchmark** (`./bin/debug/collision_scaling_benchmark`) **[REQUIRED]**
+   - Script: `./tests/test_scripts/run_collision_scaling_benchmark.sh`
+   - Tests: SAP (Sweep-and-Prune) for MM, Spatial Hash for MS, scaling behavior
+   - Metrics: MM/MS time, throughput, pair counts, sub-quadratic scaling
+   - Duration: ~2 minutes
 
 3. **Pathfinder Benchmark** (`./bin/debug/pathfinder_benchmark`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_pathfinder_benchmark.sh`
@@ -143,8 +143,8 @@ fi
 # NOTE: Dual benchmark system (synthetic + integrated)
 ./tests/test_scripts/run_ai_benchmark.sh --both
 
-# 2. Collision System Benchmark (REQUIRED - 3 minutes)
-./tests/test_scripts/run_collision_benchmark.sh
+# 2. Collision Scaling Benchmark (REQUIRED - 2 minutes)
+./tests/test_scripts/run_collision_scaling_benchmark.sh
 
 # 3. Pathfinder Benchmark (REQUIRED - 5 minutes)
 ./tests/test_scripts/run_pathfinder_benchmark.sh
@@ -170,7 +170,7 @@ If timeout occurs, flag as potential infinite loop or performance catastrophe.
 ```
 Running benchmarks (this will take ~33 minutes)...
 [1/6] AI Scaling Benchmark (Synthetic + Integrated)... ✓ (20m 15s) - CRITICAL
-[2/6] Collision System Benchmark... ✓ (3m 12s)
+[2/6] Collision Scaling Benchmark... ✓ (2m 05s)
 [3/6] Pathfinder Benchmark... ✓ (5m 05s)
 [4/6] Event Manager Scaling... ✓ (2m 10s)
 [5/6] Particle Manager Benchmark... ✓ (2m 05s)
@@ -235,18 +235,45 @@ INTEGRATED SCALABILITY:
 - Synthetic: `Synthetic_Entity_<count>_UpdatesPerSec`
 - Integrated: `Integrated_Entity_<count>_UpdatesPerSec`
 
-#### Collision System Metrics
+#### Collision Scaling Metrics
 ```bash
-grep -E "Collision Checks:|Query Time:|Hash Efficiency:" test_results/collision_benchmark/performance_metrics.txt
+# Extract metrics from collision scaling benchmark
+grep -E "Movables|Statics|Time \(ms\)|Throughput|Scenario" test_results/collision_scaling_current.txt
 ```
 
 **Example Output:**
 ```
-Collision Checks: 125000/sec
-Query Time: 0.08ms
-Hash Efficiency: 94.2%
-AABB Tests: 250000/sec
+--- MM Scaling (SAP) ---
+  Movables   Time (ms)    MM Pairs    Throughput
+       100        0.02           5        5151/ms
+       500        0.14          31        3559/ms
+      1000        0.22          59        4596/ms
+      2000        0.41          97        4893/ms
+      5000        1.11         282        4509/ms
+     10000        2.26         527        4434/ms
+
+--- MS Scaling (Spatial Hash) ---
+   Statics    Movables   Time (ms)    MS Pairs          Mode
+       100         200        0.15         155          hash
+       500         200        0.14          93          hash
+      2000         200        0.15          83          hash
+      5000         200        0.15          79          hash
+     10000         200        0.15          70          hash
+     20000         200        0.15          72          hash
+
+--- Combined Scaling ---
+       Scenario   Time (ms)        MM        MS      Total
+    Small (500)        0.11        14        15          29
+  Medium (1500)        0.19        35        36          71
+   Large (3000)        0.34        64        65         129
+      XL (6000)        0.65       164       164         328
+    XXL (12000)        1.31       305       305         610
 ```
+
+**Key Metrics:**
+- MM SAP: O(n log n) - time grows sub-quadratically with movable count
+- MS Hash: O(n) - time stays FLAT as static count increases (spatial hash effectiveness)
+- Combined: Sub-quadratic scaling verified up to 12K entities
 
 #### Pathfinder Metrics **[ASYNC THROUGHPUT ONLY]**
 
@@ -533,18 +560,22 @@ With the split between Synthetic and Integrated benchmarks, regression source id
 
 ---
 
-### Collision System
+### Collision Scaling System
 
-| Metric | Baseline | Current | Change | Status |
-|--------|----------|---------|--------|--------|
-| Collision Checks/sec | 125000 | 134000 | +7.2% | 🟢 Improvement |
-| Query Time | 0.08ms | 0.07ms | -12.5% | 🟢 Improvement |
-| Hash Efficiency | 94.2% | 95.1% | +1.0% | ⚪ Stable |
-| AABB Tests/sec | 250000 | 265000 | +6.0% | 🟢 Improvement |
+| Scenario | Baseline (ms) | Current (ms) | Change | Throughput | Status |
+|----------|---------------|--------------|--------|------------|--------|
+| MM 1000 movables | 0.25 | 0.22 | -12% | 4596/ms | 🟢 Improvement |
+| MM 5000 movables | 1.20 | 1.11 | -8% | 4509/ms | 🟢 Improvement |
+| MM 10000 movables | 2.50 | 2.26 | -10% | 4434/ms | 🟢 Improvement |
+| MS 10K statics | 0.16 | 0.15 | -6% | FLAT | ⚪ Stable |
+| MS 20K statics | 0.16 | 0.15 | -6% | FLAT | ⚪ Stable |
+| Combined XL (6K) | 0.70 | 0.65 | -7% | N/A | 🟢 Improvement |
+| Combined XXL (12K) | 1.40 | 1.31 | -6% | N/A | 🟢 Improvement |
 
 **Status:** 🟢 **IMPROVEMENT**
-- Spatial hash optimization successful
-- Query performance improved significantly
+- SAP (Sweep-and-Prune) for MM: O(n log n) scaling confirmed up to 10K movables
+- Spatial Hash for MS: O(n) scaling confirmed - time stays FLAT from 100 to 20K statics
+- Combined: Sub-quadratic scaling verified up to 12K entities
 
 ---
 
