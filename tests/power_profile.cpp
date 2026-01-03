@@ -184,8 +184,7 @@ int main(int argc, char* argv[]) {
         for (int i = 0; i < config.entityCount; ++i) {
             auto entity = BenchmarkEntity::create(i, centralPos);
             entities.push_back(entity);
-            // Register without behavior assignment - behavior system not initialized in headless mode
-            AIManager::Instance().registerEntity(entity->getHandle());
+            // Entity created without AI behavior for headless power profiling
         }
 
         if (config.verbose) {

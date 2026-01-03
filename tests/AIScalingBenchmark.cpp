@@ -519,9 +519,6 @@ struct AIScalingFixture {
             const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
             std::string behaviorName = validBehaviors[i % validBehaviors.size()];
             AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
-            // Register entity for managed updates with maximum priority to ensure updates
-            AIManager::Instance().registerEntity(entity->getHandle()); // Max priority
-
         }
 
 
@@ -816,7 +813,6 @@ struct AIScalingFixture {
             // Assign behaviors in round-robin fashion
             std::string behaviorName = behaviorNames[i % numBehaviors];
             AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
-            AIManager::Instance().registerEntity(entity->getHandle()); // Max priority
         }
 
         // Set player reference and spread entities across world for realistic culling
@@ -1160,7 +1156,6 @@ struct AIScalingFixture {
             auto entity = BenchmarkEntity::create(i, centralPosition);
             entities.push_back(entity);
             AIManager::Instance().assignBehavior(entity->getHandle(), validBehaviors[i % validBehaviors.size()]);
-            AIManager::Instance().registerEntity(entity->getHandle());
         }
 
         if (!entities.empty()) {
@@ -1323,7 +1318,6 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
             const std::vector<std::string> validBehaviors = {"Wander", "Guard", "Patrol", "Follow", "Chase"};
             std::string behaviorName = validBehaviors[i % validBehaviors.size()];
             AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
-            AIManager::Instance().registerEntity(entity->getHandle());
         }
 
         if (!entities.empty()) {

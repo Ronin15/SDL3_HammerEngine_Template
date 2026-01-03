@@ -431,8 +431,6 @@ BOOST_FIXTURE_TEST_CASE(TestThreadSafeBatchUpdates, ThreadedAITestFixture) {
     entities.push_back(entity);
     std::string behaviorName = "Behavior" + std::to_string(i % NUM_BEHAVIORS);
     AIManager::Instance().assignBehavior(entity->getHandle(), behaviorName);
-    // Register entity for managed updates
-    AIManager::Instance().registerEntity(entity->getHandle());
   }
 
   // Run managed entity updates sequentially (update() internally uses worker threads)
@@ -700,8 +698,6 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentBehaviorProcessing,
     auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
     AIManager::Instance().assignBehavior(entity->getHandle(), "ConcurrentTest");
-    // Register entity for managed updates
-    AIManager::Instance().registerEntity(entity->getHandle());
   }
 
   // Run multiple concurrent updates
@@ -957,7 +953,6 @@ BOOST_FIXTURE_TEST_CASE(TestWaitForAsyncBatchCompletion, ThreadedAITestFixture) 
   for (int i = 0; i < NUM_ENTITIES; ++i) {
     auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
-    AIManager::Instance().registerEntity(entity->getHandle());
     AIManager::Instance().assignBehavior(entity->getHandle(), "BatchTest");
   }
 
@@ -1011,7 +1006,6 @@ BOOST_FIXTURE_TEST_CASE(TestPrepareForStateTransition, ThreadedAITestFixture) {
   for (int i = 0; i < NUM_ENTITIES; ++i) {
     auto entity = std::make_shared<TestEntity>(Vector2D(i * 10.0f, i * 10.0f));
     entities.push_back(entity);
-    AIManager::Instance().registerEntity(entity->getHandle());
     AIManager::Instance().assignBehavior(entity->getHandle(), "TransitionTest");
   }
 

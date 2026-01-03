@@ -421,8 +421,6 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
                 hot.setCollisionEnabled(true);
             }
         }
-
-        AIManager::Instance().registerEntity(entity->getHandle());
     }
 
     // Process collision body commands

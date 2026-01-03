@@ -207,8 +207,7 @@ public:
   Vector2D getPlayerPosition() const;
   bool isPlayerValid() const;
 
-  // Entity registration
-  void registerEntity(EntityHandle handle);
+  // Entity registration (requires behavior - use assignBehavior() or registerEntity with behavior)
   void registerEntity(EntityHandle handle, const std::string &behaviorName);
   void unregisterEntity(EntityHandle handle);
 
@@ -235,8 +234,6 @@ public:
   void enableThreading(bool enable);
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
-  void setWaitForBatchCompletion(bool wait);
-  bool getWaitForBatchCompletion() const;
 
   // Performance monitoring
   size_t getBehaviorCount() const;
@@ -327,12 +324,8 @@ private:
   // Threading and state
   std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_useThreading{true};
-  std::atomic<bool> m_waitForBatchCompletion{false}; // Default: non-blocking for smooth frames
   std::atomic<bool> m_globallyPaused{false};
   std::atomic<bool> m_processingMessages{false};
-
-  // Legacy pathfinding state removed - all pathfinding handled by
-  // PathfinderManager
 
   // Behavior execution tracking
   std::atomic<size_t> m_totalBehaviorExecutions{0};
@@ -378,7 +371,6 @@ private:
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
-  void assignBehaviorInternal(EntityHandle handle, const std::string &behaviorName);
 
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
@@ -386,12 +378,7 @@ private:
                     size_t start, size_t end,
                     float deltaTime,
                     float worldWidth, float worldHeight);
-  void cleanupInactiveEntities();
-  void cleanupAllEntities();
-  void updateDistancesScalar(const Vector2D &playerPos);
   static uint64_t getCurrentTimeNanos();
-
-  // Legacy pathfinding methods removed - use PathfinderManager instead
 
   // Lock-free message queue
   struct alignas(CACHE_LINE_SIZE) LockFreeMessage {
@@ -406,8 +393,6 @@ private:
 
   // Shutdown state
   bool m_isShutdown{false};
-
-  // All pathfinding functionality moved to PathfinderManager
 };
 
 #endif // AI_MANAGER_HPP

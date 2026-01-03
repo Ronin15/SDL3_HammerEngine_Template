@@ -207,9 +207,6 @@ void AIManager::prepareForStateTransition() {
     AI_DEBUG("Cleaned up all entities for state transition");
   }
 
-  // Legacy pathfinding state cleared - all pathfinding now handled by
-  // PathfinderManager
-
   // Reset all counters and stats
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
   m_totalAssignmentCount.store(0, std::memory_order_relaxed);
@@ -396,9 +393,8 @@ void AIManager::update(float deltaTime) {
           HammerEngine::SystemType::AI, entityCount, logBatchCount, totalUpdateTime);
     }
 
-    // Periodic cleanup tracking (balanced frequency)
+    // Periodic frame tracking (balanced frequency)
     if (currentFrame % 300 == 0) {
-      // cleanupInactiveEntities() moved to GameEngine background processing
       m_lastCleanupFrame.store(currentFrame, std::memory_order_relaxed);
     }
 
@@ -629,22 +625,6 @@ bool AIManager::isPlayerValid() const {
   return m_playerHandle.isValid();
 }
 
-void AIManager::registerEntity(EntityHandle handle) {
-  if (!handle.isValid()) {
-    AI_ERROR("Cannot register invalid handle for updates");
-    return;
-  }
-
-  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-  // Check if entity already exists
-  auto it = m_handleToIndex.find(handle);
-  if (it != m_handleToIndex.end()) {
-    // Entity already registered, nothing to do
-    return;
-  }
-}
-
 void AIManager::unregisterEntity(EntityHandle handle) {
   if (!handle.isValid())
     return;
@@ -753,17 +733,6 @@ void AIManager::setThreadingThreshold(size_t threshold) {
 size_t AIManager::getThreadingThreshold() const {
   return m_threadingThreshold.load(std::memory_order_acquire);
 }
-
-void AIManager::setWaitForBatchCompletion(bool wait) {
-  m_waitForBatchCompletion.store(wait, std::memory_order_release);
-  AI_INFO(std::format("AI batch completion wait {} (smooth frames: {})",
-                      wait ? "enabled" : "disabled", wait ? "no" : "yes"));
-}
-
-bool AIManager::getWaitForBatchCompletion() const {
-  return m_waitForBatchCompletion.load(std::memory_order_acquire);
-}
-
 
 size_t AIManager::getBehaviorCount() const {
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);
@@ -892,7 +861,6 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
   // No lock needed: m_behaviorsByEdmIndex is read-only during batch window
   // - Behavior assignments happen synchronously via assignBehavior() before batch processing
   // - Entity removals only mark inactive (don't modify vector structure)
-  // - cleanupInactiveEntities() runs on background thread when no batches active
 
   for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
     size_t edmIdx = activeIndices[i];
@@ -948,79 +916,6 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
   }
 }
 
-void AIManager::cleanupInactiveEntities() {
-  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-  // Find all inactive entities
-  std::vector<size_t> toRemove;
-  for (size_t i = 0; i < m_storage.size(); ++i) {
-    if (!m_storage.hotData[i].active) {
-      toRemove.push_back(i);
-    }
-  }
-
-  // Remove in reverse order to maintain indices
-  for (auto it = toRemove.rbegin(); it != toRemove.rend(); ++it) {
-    size_t index = *it;
-
-    // Remove from handle map
-    if (index < m_storage.handles.size()) {
-      m_handleToIndex.erase(m_storage.handles[index]);
-    }
-
-    // Swap with last element and pop
-    if (index < m_storage.size() - 1) {
-      size_t lastIndex = m_storage.size() - 1;
-
-      // Update hot data
-      m_storage.hotData[index] = m_storage.hotData[lastIndex];
-
-      // Update cold data
-      m_storage.handles[index] = m_storage.handles[lastIndex];
-      m_storage.behaviors[index] = m_storage.behaviors[lastIndex];
-      m_storage.lastUpdateTimes[index] = m_storage.lastUpdateTimes[lastIndex];
-      m_storage.edmIndices[index] = m_storage.edmIndices[lastIndex];
-
-      // Update index map
-      m_handleToIndex[m_storage.handles[index]] = index;
-    }
-
-    // Remove last element
-    m_storage.hotData.pop_back();
-    m_storage.handles.pop_back();
-    m_storage.behaviors.pop_back();
-    m_storage.lastUpdateTimes.pop_back();
-    m_storage.edmIndices.pop_back();
-  }
-
-  AI_DEBUG(std::format("Cleaned up {} inactive entities", toRemove.size()));
-}
-
-void AIManager::cleanupAllEntities() {
-  std::unique_lock<std::shared_mutex> lock(m_entitiesMutex);
-
-  // Clean all behaviors
-  for (size_t i = 0; i < m_storage.size(); ++i) {
-    if (m_storage.behaviors[i] && m_storage.handles[i].isValid()) {
-      try {
-        m_storage.behaviors[i]->clean(m_storage.handles[i]);
-      } catch (const std::exception &e) {
-        AI_ERROR(std::format("Exception cleaning behavior: {}", e.what()));
-      }
-    }
-  }
-
-  // Clear all storage
-  m_storage.hotData.clear();
-  m_storage.handles.clear();
-  m_storage.behaviors.clear();
-  m_storage.lastUpdateTimes.clear();
-  m_storage.edmIndices.clear();
-  m_handleToIndex.clear();
-
-  AI_DEBUG("Cleaned up all entities for state transition");
-}
-
 uint64_t AIManager::getCurrentTimeNanos() {
   return std::chrono::duration_cast<std::chrono::nanoseconds>(
              std::chrono::high_resolution_clock::now().time_since_epoch())
@@ -1051,32 +946,12 @@ void AIManager::registerEntity(EntityHandle handle,
   assignBehavior(handle, behaviorName);
 }
 
-// ======================= Legacy Pathfinding Code Removed
-// ======================= All pathfinding functionality is now handled by
-// PathfinderManager. Use PathfinderManager::Instance() to access pathfinding
-// services.
-
 AIManager::~AIManager() {
   if (!m_isShutdown) {
     clean();
   }
 }
 
-// processScheduledPathfinding method removed - all pathfinding now handled by
-// PathfinderManager
-
-// All pathfinding functionality has been moved to PathfinderManager
-// This section previously contained orphaned pathfinding methods that are no
-// longer needed
-
-// Centralized async request state management (replaces g_asyncStates static
-// map) Legacy pathfinding state management methods removed All pathfinding
-// functionality now handled by PathfinderManager
-
-// Direct PathfinderManager access for optimal performance
 PathfinderManager &AIManager::getPathfinderManager() const {
   return PathfinderManager::Instance();
 }
-
-
-// All pathfinding components are now managed by PathfinderManager
