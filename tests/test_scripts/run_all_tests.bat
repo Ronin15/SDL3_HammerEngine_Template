@@ -192,7 +192,7 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_ai_benchmark.bat" true
     call :run_single_test "run_ui_stress_tests.bat" true
     call :run_single_test "run_particle_manager_benchmark.bat" true
-    call :run_single_test "run_collision_benchmark.bat" true
+    call :run_single_test "run_collision_scaling_benchmark.bat" true
     call :run_single_test "run_pathfinder_benchmark.bat" true
     call :run_single_test "run_simd_benchmark.bat" true
     call :run_single_test "run_integrated_benchmark.bat" true
