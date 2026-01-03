@@ -70,6 +70,7 @@ set(SIMPLE_TESTS
     entity_state_manager_tests
     entity_data_manager_tests
     background_simulation_manager_tests
+    collision_manager_edm_integration_tests
 )
 
 # Complex tests (need mocks)
@@ -96,6 +97,7 @@ set(MOCK_TESTS
     weather_controller_tests
     day_night_controller_tests
     controller_registry_tests
+    ai_manager_edm_integration_tests
 )
 
 # Tests that need special mock combinations
@@ -185,6 +187,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "managers/EntityDataManagerTests.cpp")
     elseif(${test_name} STREQUAL "background_simulation_manager_tests")
         set(test_source "managers/BackgroundSimulationManagerTests.cpp")
+    elseif(${test_name} STREQUAL "collision_manager_edm_integration_tests")
+        set(test_source "collisions/CollisionManagerEDMIntegrationTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -243,6 +247,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/DayNightControllerTests.cpp")
     elseif(${test_name} STREQUAL "controller_registry_tests")
         set(test_source "controllers/ControllerRegistryTests.cpp")
+    elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
+        set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})

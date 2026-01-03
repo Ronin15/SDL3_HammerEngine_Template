@@ -1,0 +1,89 @@
+@echo off
+rem CollisionManager EDM Integration Test Runner
+rem Copyright 2025 Hammer Forged Games
+
+setlocal enabledelayedexpansion
+
+rem Color codes for Windows
+set "RED=[91m"
+set "GREEN=[92m"
+set "YELLOW=[93m"
+set "BLUE=[94m"
+set "NC=[0m"
+
+rem Process command line arguments
+set VERBOSE=false
+
+:parse_args
+if "%~1"=="" goto done_parsing
+if /i "%~1"=="--verbose" (
+    set VERBOSE=true
+    shift
+    goto parse_args
+)
+if /i "%~1"=="--help" (
+    echo !BLUE!CollisionManager EDM Integration Test Runner!NC!
+    echo Usage: run_collision_manager_edm_integration_tests.bat [options]
+    echo.
+    echo Options:
+    echo   --verbose      Run tests with verbose output
+    echo   --help         Show this help message
+    exit /b 0
+)
+shift
+goto parse_args
+
+:done_parsing
+
+echo !BLUE!Running CollisionManager EDM Integration Tests!NC!
+
+rem Track overall result
+set OVERALL_RESULT=0
+
+rem Check if test executable exists
+set "TEST_EXECUTABLE=..\..\bin\debug\collision_manager_edm_integration_tests.exe"
+if not exist "!TEST_EXECUTABLE!" (
+    set "TEST_EXECUTABLE=..\..\bin\debug\collision_manager_edm_integration_tests"
+    if not exist "!TEST_EXECUTABLE!" (
+        echo !RED!Error: Test executable not found: collision_manager_edm_integration_tests!NC!
+        echo !YELLOW!Please build the project first with: cmake -B build -G Ninja ^&^& ninja -C build!NC!
+        exit /b 1
+    )
+)
+
+rem Set test options
+set TEST_OPTS=--log_level=test_suite --catch_system_errors=no
+if "%VERBOSE%"=="true" (
+    set TEST_OPTS=--log_level=all --report_level=detailed
+)
+
+rem Create test results directory
+if not exist "..\..\test_results" mkdir "..\..\test_results"
+
+rem Run the test
+echo Running collision_manager_edm_integration_tests...
+if "%VERBOSE%"=="true" (
+    "!TEST_EXECUTABLE!" !TEST_OPTS!
+) else (
+    "!TEST_EXECUTABLE!" !TEST_OPTS! > "..\..\test_results\collision_manager_edm_integration_tests_output.txt" 2>&1
+)
+
+set TEST_RESULT=!ERRORLEVEL!
+
+if !TEST_RESULT! neq 0 (
+    echo !RED!collision_manager_edm_integration_tests failed with exit code !TEST_RESULT!!NC!
+    set OVERALL_RESULT=1
+) else (
+    echo !GREEN!collision_manager_edm_integration_tests completed successfully!NC!
+)
+
+rem Show summary
+if !OVERALL_RESULT! neq 0 (
+    echo.
+    echo !RED!CollisionManager EDM Integration tests failed!!NC!
+    exit /b 1
+) else (
+    echo.
+    echo !GREEN!All CollisionManager EDM Integration tests completed successfully!!NC!
+    exit /b 0
+)
