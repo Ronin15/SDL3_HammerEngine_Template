@@ -287,8 +287,8 @@ set(ALL_TESTS ${SIMPLE_TESTS} ${MOCK_TESTS} ${INVENTORY_TESTS})
 foreach(test_name ${ALL_TESTS})
     # Benchmark tests need specific test filters to avoid running all (slow) tests
     if(${test_name} STREQUAL "ai_scaling_benchmark")
-        # Only run the fast integrated performance test by default
-        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=AIScalingTests/TestIntegratedPerformance)
+        # Only run the primary scaling test by default
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=AIScalingTests/AIEntityScaling)
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
         # Only run MM scaling test by default (fast representative test)
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/MMScaling)

@@ -37,7 +37,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] UI Stress Tests completed
 
 **Metrics Extraction Verification (MANDATORY):**
-- [ ] AI: Synthetic AND Integrated metrics extracted
+- [ ] AI: Entity scaling metrics and updates/sec extracted
 - [ ] **Pathfinding: Async throughput metrics extracted (NOT immediate timing)** ← PRODUCTION METRIC ONLY!
 - [ ] Collision: SOA timing and efficiency extracted
 - [ ] **Trigger Detection: Detector count, overlaps, method (spatial/sweep) extracted**
@@ -55,13 +55,11 @@ All paths below are relative to project root.
 **IMPORTANT: All 6 benchmarks MUST be run for complete regression analysis.**
 
 1. **AI Scaling Benchmark** (`./bin/debug/ai_scaling_benchmark`) **[REQUIRED - CRITICAL]**
-   - Script: `./tests/test_scripts/run_ai_benchmark.sh --both`
-   - Tests: Dual benchmark system (synthetic + integrated)
-     - **Synthetic**: AIManager infrastructure with BenchmarkBehavior (isolated)
-     - **Integrated**: Production behaviors with PathfinderManager/CollisionManager
-   - Metrics: Entity updates/sec, threading efficiency, integration overhead
-   - Target: Synthetic 1M+ updates/sec, Integrated 1.5M+ updates/sec @ 2K entities
-   - Duration: ~20 minutes
+   - Script: `./tests/test_scripts/run_ai_benchmark.sh`
+   - Tests: Entity scaling (100-10000), threading comparison, behavior mix
+   - Metrics: Entity updates/sec, time per update, threading speedup
+   - Target: 100K+ updates/sec at 10000 entities
+   - Duration: ~3 minutes
    - **Status: CRITICAL - Engine core performance benchmark**
 
 2. **Collision Scaling Benchmark** (`./bin/debug/collision_scaling_benchmark`) **[REQUIRED]**
@@ -96,7 +94,7 @@ All paths below are relative to project root.
    - Metrics: Processing throughput, iteration time, layout calc/sec
    - Duration: ~1 minute
 
-### Total Benchmark Duration: ~33 minutes
+### Total Benchmark Duration: ~15 minutes
 
 ## Execution Steps
 
@@ -141,9 +139,8 @@ fi
 # IMPORTANT: Set PROJECT_ROOT and run from project directory
 # Example: cd /path/to/SDL3_HammerEngine_Template && export PROJECT_ROOT=$(pwd)
 
-# 1. AI Scaling Benchmark (REQUIRED - 20 minutes)
-# NOTE: Dual benchmark system (synthetic + integrated)
-./tests/test_scripts/run_ai_benchmark.sh --both
+# 1. AI Scaling Benchmark (REQUIRED - 3 minutes)
+./tests/test_scripts/run_ai_benchmark.sh
 
 # 2. Collision Scaling Benchmark (REQUIRED - 2 minutes)
 ./tests/test_scripts/run_collision_scaling_benchmark.sh
@@ -170,8 +167,8 @@ If timeout occurs, flag as potential infinite loop or performance catastrophe.
 
 **Progress Tracking:**
 ```
-Running benchmarks (this will take ~33 minutes)...
-[1/6] AI Scaling Benchmark (Synthetic + Integrated)... ✓ (20m 15s) - CRITICAL
+Running benchmarks (this will take ~15 minutes)...
+[1/6] AI Scaling Benchmark... ✓ (3m 00s) - CRITICAL
 [2/6] Collision Scaling Benchmark... ✓ (2m 05s)
 [3/6] Pathfinder Benchmark... ✓ (5m 05s)
 [4/6] Event Manager Scaling... ✓ (2m 10s)
@@ -187,55 +184,44 @@ Run benchmarks in the order listed above. AI benchmark should always be run firs
 
 **Metrics Extraction Patterns:**
 
-#### AI System Metrics (Dual Benchmark System)
+#### AI System Metrics
 
-**IMPORTANT**: The AI benchmark now separates Synthetic and Integrated tests.
-
-**Synthetic Benchmarks** (AIManager infrastructure):
+**Extract scaling performance:**
 ```bash
-# Extract synthetic performance from TestSyntheticPerformance and TestSyntheticScalability
-grep -B 5 -A 10 "TestSynthetic" test_results/ai_scaling_benchmark_*.txt | \
-  grep -E "Entity updates per second:|Threading mode:|entities"
+# Parse tabular output from AIEntityScaling test
+grep -A 20 "AI Entity Scaling" test_results/ai_scaling_benchmark_*.txt | \
+  grep -E "^\s+[0-9]+\s+[0-9.]+"
 
-# Parse SYNTHETIC SCALABILITY SUMMARY table
-grep -A 10 "SYNTHETIC.*SCALABILITY.*SUMMARY" test_results/ai_scaling_benchmark_*.txt | \
-  grep -E "^[[:space:]]*[0-9]+"
-```
+# Extract summary metrics (primary regression detection)
+grep -E "Entity updates per second:|Threading mode:|Threading threshold" \
+  test_results/ai_scaling_benchmark_*.txt
 
-**Integrated Benchmarks** (Production behaviors with PathfinderManager):
-```bash
-# Extract integrated performance from TestIntegratedPerformance and TestIntegratedScalability
-grep -B 5 -A 10 "TestIntegrated" test_results/ai_scaling_benchmark_*.txt | \
-  grep -E "Entity updates per second:|Threading mode:|entities"
-
-# Parse INTEGRATED SCALABILITY SUMMARY results
-grep -A 10 "INTEGRATED.*SCALABILITY.*SUMMARY" test_results/ai_scaling_benchmark_*.txt | \
-  grep -E "Entity updates per second"
+# Or use the current run file
+cat test_results/ai_scaling_current.txt | grep -A 5 "SCALABILITY SUMMARY"
 ```
 
 **Example Output:**
 ```
-=== SYNTHETIC BENCHMARKS ===
---- Test 4: Target Performance (5000 entities) ---
-  Entity updates per second: 26665482
-  Threading mode: WorkerBudget Multi-threaded
+--- AI Entity Scaling ---
+  Entities   Time (ms)   Updates/sec   Threading     Status
+       100        0.85        117647       single          OK
+       500        1.23        406504       multi           OK
+      1000        1.89        529100       multi           OK
+      2000        3.21        623053       multi           OK
+      5000        7.12        702247       multi           OK
+     10000       13.45        743494       multi           OK
 
-SYNTHETIC SCALABILITY SUMMARY:
-        5000 |  Auto-Threaded |            925000 |             5.44x
-       10000 |  Auto-Threaded |            995000 |             5.85x
-
-=== INTEGRATED BENCHMARKS ===
---- Test 4: Target Performance (2000 entities) ---
-  Entity updates per second: 5077323
-  Threading mode: WorkerBudget Multi-threaded
-
-INTEGRATED SCALABILITY:
-        2000 |  Auto-Threaded |           1587491 |             2.79x
+SCALABILITY SUMMARY:
+Entity updates per second: 743494 (at 10000 entities)
+Threading mode: WorkerBudget Multi-threaded
 ```
 
-**Baseline Key Format:**
-- Synthetic: `Synthetic_Entity_<count>_UpdatesPerSec`
-- Integrated: `Integrated_Entity_<count>_UpdatesPerSec`
+**Baseline Key Format:** `Entity_<count>_UpdatesPerSec`
+
+**Key Metrics:**
+- **Updates/sec:** Primary performance metric (higher is better)
+- **Threading threshold:** Currently 500 entities (single-threaded below, multi above)
+- **Scaling efficiency:** Updates/sec should increase sub-linearly with entity count
 
 #### Collision Scaling Metrics
 ```bash
@@ -471,33 +457,31 @@ def classify_change(metric_name, baseline, current, is_lower_better=False):
         return "STABLE", f"{abs(change_pct):.1f}% variance (acceptable)"
 ```
 
-**Dual Benchmark Regression Detection Strategy:**
+**AI Benchmark Regression Detection Strategy:**
 
-With the split between Synthetic and Integrated benchmarks, regression source identification is more precise:
+1. **Scaling Regression (Low Entity Counts):**
+   - 100-500 entity performance regresses more than larger counts
+   - **Root Cause:** Single-threaded path overhead, behavior initialization
+   - **Action:** Profile single-threaded update path, check behavior creation costs
+   - **Impact:** Small-world performance degraded
 
-1. **Synthetic-Only Regression:**
-   - Synthetic benchmarks regress, Integrated stable
-   - **Root Cause:** AIManager infrastructure (batch processing, SIMD, threading)
-   - **Action:** Profile AIManager core systems, check ThreadSystem
-   - **Impact:** Core infrastructure degraded
+2. **Scaling Regression (High Entity Counts):**
+   - 5000-10000 entity performance regresses
+   - **Root Cause:** Threading overhead, batch processing, WorkerBudget tuning
+   - **Action:** Profile ThreadSystem, check batch sizes, validate WorkerBudget
+   - **Impact:** Large-world performance degraded
 
-2. **Integrated-Only Regression:**
-   - Integrated benchmarks regress, Synthetic stable
-   - **Root Cause:** PathfinderManager, CollisionManager, or production behaviors
-   - **Action:** Profile pathfinding, collision queries, behavior execution
-   - **Impact:** Production workload degraded
+3. **Threading Speedup Degraded:**
+   - Single-threaded time stable but multi-threaded time increases
+   - **Root Cause:** Thread contention, lock overhead, false sharing
+   - **Action:** Profile thread synchronization, check mutex usage
+   - **Impact:** Threading efficiency degraded
 
-3. **Both Regress:**
-   - Both Synthetic and Integrated benchmarks regress
-   - **Root Cause:** Foundational infrastructure (ThreadSystem, memory allocator)
-   - **Action:** Profile system-wide performance, check for threading issues
+4. **Uniform Regression:**
+   - All entity counts regress proportionally
+   - **Root Cause:** Core update loop changes, behavior execution overhead
+   - **Action:** Profile behavior update(), check per-entity costs
    - **Impact:** System-wide performance degradation
-
-4. **Integration Overhead Growing:**
-   - Synthetic stable, Integrated regressing more than expected
-   - Overhead % increasing beyond 20-40% range
-   - **Root Cause:** Integration efficiency degrading
-   - **Action:** Check PathfinderManager cache efficiency, CollisionManager query optimization
 
 ### Step 6: Generate Report
 
@@ -520,75 +504,31 @@ With the split between Synthetic and Integrated benchmarks, regression source id
 
 ## 📊 Performance Summary
 
-### AI System - Synthetic Benchmarks (Isolated AIManager Infrastructure)
+### AI System - Entity Scaling
 
-**Purpose:** Tests AIManager core systems without integration overhead
+**Purpose:** Tests AIManager performance with production behaviors
 
-| Entity Count | Baseline | Current | Change | Status |
-|--------------|----------|---------|--------|--------|
-| 100 (Single) | 170K/s | 165K/s | -2.9% | ⚪ Stable |
-| 200 (Multi) | 750K/s | 730K/s | -2.7% | ⚪ Stable |
-| 1000 (Multi) | 975K/s | 920K/s | -5.6% | 🟡 MINOR |
-| 5000 (Multi) | 925K/s | 880K/s | -4.9% | ⚪ Stable |
-| 10000 (Multi) | 995K/s | 950K/s | -4.5% | ⚪ Stable |
+| Entities | Baseline | Current | Change | Threading | Status |
+|----------|----------|---------|--------|-----------|--------|
+| 100 | 120K/s | 117K/s | -2.5% | single | ⚪ Stable |
+| 500 | 410K/s | 406K/s | -1.0% | multi | ⚪ Stable |
+| 1000 | 535K/s | 529K/s | -1.1% | multi | ⚪ Stable |
+| 2000 | 630K/s | 623K/s | -1.1% | multi | ⚪ Stable |
+| 5000 | 710K/s | 702K/s | -1.1% | multi | ⚪ Stable |
+| 10000 | 750K/s | 743K/s | -0.9% | multi | ⚪ Stable |
 
 **Status:** ⚪ **STABLE**
 - All metrics within acceptable variance (<6%)
-- No AIManager infrastructure regressions
-- Batch processing and threading performing as expected
+- Scaling efficiency maintained across entity counts
+- Threading speedup consistent above threshold
 
-**Threading Efficiency:** 5.4x speedup maintained
-
----
-
-### AI System - Integrated Benchmarks (Production Workload)
-
-**Purpose:** Tests AIManager with PathfinderManager/CollisionManager integration
-
-| Entity Count | Baseline | Current | Change | Status |
-|--------------|----------|---------|--------|--------|
-| 100 (Single) | 569K/s | 540K/s | -5.1% | 🟡 MINOR |
-| 200 (Multi) | 580K/s | 530K/s | -8.6% | 🟡 MINOR |
-| 500 (Multi) | 611K/s | 555K/s | -9.2% | 🟡 MINOR |
-| 1000 (Multi) | 1193K/s | 1050K/s | -12.0% | 🟠 WARNING |
-| 2000 (Multi) | 1587K/s | 1380K/s | -13.0% | 🟠 WARNING |
-
-**Status:** 🟠 **WARNING - Integration Regression**
-- Consistent degradation across all entity counts (~10%)
-- Synthetic benchmarks stable → Points to integration issue
-- PathfinderManager or CollisionManager likely cause
-
-**Threading Efficiency:** 2.8x → 2.5x (degraded)
-
-**Likely Causes:**
-- PathfinderManager: Increased pathfinding overhead or cache inefficiency
-- CollisionManager: Spatial hash query slowdown
-- Production behaviors: Added computational complexity
-- Integration points: Increased overhead in manager communication
-
-**Recommended Actions:**
-1. Profile PathfinderManager::requestPath() and cache hit rates
-2. Check CollisionManager::queryNearbyEntities() performance
-3. Review recent changes to WanderBehavior, ChaseBehavior, etc.
-4. Verify thread coordination between AIManager and PathfinderManager
-5. Check for increased mutex contention at integration points
-
----
-
-### AI System - Integration Overhead Analysis
-
-**Overhead Comparison** (Synthetic vs Integrated):
-
-| Entity Count | Synthetic | Integrated | Overhead | Change |
-|--------------|-----------|------------|----------|--------|
-| 100 | 165K/s | 540K/s | -70% | -2% ⚪ |
-| 200 | 730K/s | 530K/s | +27% | -5% 🟡 |
-| 1000 | 920K/s | 1050K/s | -14% | -6% 🟡 |
-| 2000 | N/A | 1380K/s | N/A | -10% 🟠 |
-
-**Note:** Negative overhead indicates data inconsistency (synthetic uses estimates).
-**Expected:** Integrated should be 20-40% slower due to PathfinderManager overhead.
-**Actual:** Overhead growing trend suggests integration efficiency degrading.
+**Threading Mode Comparison:**
+| Entities | Single (ms) | Multi (ms) | Speedup |
+|----------|-------------|------------|---------|
+| 500 | 2.45 | 1.23 | 1.99x |
+| 1000 | 4.12 | 1.89 | 2.18x |
+| 2000 | 7.85 | 3.21 | 2.44x |
+| 5000 | 18.50 | 7.12 | 2.60x |
 
 ---
 
@@ -854,7 +794,7 @@ Before finalizing any regression report, confirm ALL of the following:
 
 ### Benchmark Execution
 - [ ] All 6 benchmarks completed successfully (no timeouts/crashes)
-- [ ] AI Scaling: Both Synthetic AND Integrated results present
+- [ ] AI Scaling: Entity scaling results present with updates/sec metrics
 - [ ] **Pathfinding: Path length scaling data extracted** ← CRITICAL!
 - [ ] Collision: SOA timing data extracted
 - [ ] Event Manager: Throughput data extracted
@@ -863,7 +803,7 @@ Before finalizing any regression report, confirm ALL of the following:
 
 ### Report Completeness
 - [ ] **Pathfinding System section included in report** ← DO NOT SKIP!
-- [ ] AI System: Synthetic + Integrated sections present
+- [ ] AI System: Entity scaling and threading comparison sections present
 - [ ] Collision System: Performance table present
 - [ ] Event Manager: Metrics table present
 - [ ] Particle Manager: Performance data present
