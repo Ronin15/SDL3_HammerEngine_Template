@@ -565,6 +565,11 @@ struct AIScalingFixture {
             std::cout << "  [DEBUG] Positioned " << entities.size()
                       << " entities (NO distance culling - testing raw throughput)" << std::endl;
             std::cout << "  [DEBUG] Entities with behaviors: " << entitiesWithBehaviors << "/" << entities.size() << std::endl;
+
+            // CRITICAL: Force tier index rebuild so getActiveIndices() returns our entities
+            // Without this, AIManager::update() will see empty active indices and skip all updates
+            auto& edm = EntityDataManager::Instance();
+            edm.updateSimulationTiers(playerPosition, 100000.0f, 200000.0f);  // Large radius to include all
         }
 
         // Organize entities by behavior for batch updates
@@ -853,6 +858,10 @@ struct AIScalingFixture {
 
             std::cout << "  [DEBUG] Spread " << entities.size()
                       << " entities across world (40% near, 30% mid, 30% far) for culling test" << std::endl;
+
+            // Force tier index rebuild so getActiveIndices() returns our entities
+            auto& edm = EntityDataManager::Instance();
+            edm.updateSimulationTiers(playerPosition, 4000.0f, 8000.0f);  // Realistic game culling radii
         }
 
         // Warmup phase (16 frames for distance staggering)
@@ -1156,6 +1165,10 @@ struct AIScalingFixture {
 
         if (!entities.empty()) {
             AIManager::Instance().setPlayerHandle(entities[0]->getHandle());
+
+            // Force tier index rebuild so getActiveIndices() returns our entities
+            auto& edm = EntityDataManager::Instance();
+            edm.updateSimulationTiers(centralPosition, 100000.0f, 200000.0f);
         }
 
         // Warmup (16 frames for SIMD distance staggering)
@@ -1315,6 +1328,10 @@ BOOST_AUTO_TEST_CASE(TestLegacyComparison) {
 
         if (!entities.empty()) {
             AIManager::Instance().setPlayerHandle(entities[0]->getHandle());
+
+            // Force tier index rebuild so getActiveIndices() returns our entities
+            auto& edm = EntityDataManager::Instance();
+            edm.updateSimulationTiers(centralPosition, 100000.0f, 200000.0f);
         }
 
         // ===== WARMUP PHASE =====
