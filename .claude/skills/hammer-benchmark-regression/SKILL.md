@@ -40,6 +40,7 @@ The AI System is the most performance-critical component. Always run `./tests/te
 - [ ] AI: Synthetic AND Integrated metrics extracted
 - [ ] **Pathfinding: Async throughput metrics extracted (NOT immediate timing)** ← PRODUCTION METRIC ONLY!
 - [ ] Collision: SOA timing and efficiency extracted
+- [ ] **Trigger Detection: Detector count, overlaps, method (spatial/sweep) extracted**
 - [ ] Event: Throughput and latency extracted
 - [ ] Particle: Update time extracted
 - [ ] UI: Processing throughput extracted
@@ -65,8 +66,9 @@ All paths below are relative to project root.
 
 2. **Collision Scaling Benchmark** (`./bin/debug/collision_scaling_benchmark`) **[REQUIRED]**
    - Script: `./tests/test_scripts/run_collision_scaling_benchmark.sh`
-   - Tests: SAP (Sweep-and-Prune) for MM, Spatial Hash for MS, scaling behavior
-   - Metrics: MM/MS time, throughput, pair counts, sub-quadratic scaling
+   - Tests: SAP (Sweep-and-Prune) for MM, Spatial Hash for MS, Trigger Detection scaling
+   - Metrics: MM/MS time, throughput, pair counts, trigger detection overlaps, sub-quadratic scaling
+   - **Trigger Detection:** Tests spatial query (<50 entities) and sweep-and-prune (>=50 entities) paths
    - Duration: ~2 minutes
 
 3. **Pathfinder Benchmark** (`./bin/debug/pathfinder_benchmark`) **[REQUIRED]**
@@ -274,6 +276,36 @@ grep -E "Movables|Statics|Time \(ms\)|Throughput|Scenario" test_results/collisio
 - MM SAP: O(n log n) - time grows sub-quadratically with movable count
 - MS Hash: O(n) - time stays FLAT as static count increases (spatial hash effectiveness)
 - Combined: Sub-quadratic scaling verified up to 12K entities
+
+#### Trigger Detection Metrics
+```bash
+# Extract trigger detection scaling from collision benchmark
+grep -E "Detectors|Triggers|Overlaps|Method" test_results/collision_scaling_current.txt | \
+  grep -v "^--"
+```
+
+**Example Output:**
+```
+--- Trigger Detection Scaling ---
+   Detectors    Triggers   Time (ms)    Overlaps        Method
+           1         100       0.143           0        spatial
+           1         400       0.138           0        spatial
+          10         200       0.145           1        spatial
+          25         200       0.148           4        spatial
+          50         200       0.228           3          sweep
+         100         200       0.255           9          sweep
+         200         400       0.433          44          sweep
+```
+
+**Key Metrics:**
+- **Detectors:** Entities with NEEDS_TRIGGER_DETECTION flag (Player + enabled NPCs)
+- **Triggers:** EventOnly triggers in the world (water, area markers, etc.)
+- **Method:** Spatial query (<50 entities) or sweep-and-prune (>=50 entities)
+- **Performance Target:** <0.5ms for typical scenarios (1-50 detectors, 100-400 triggers)
+
+**Adaptive Strategy Thresholds:**
+- < 50 entities: Spatial queries O(N × ~k nearby triggers)
+- ≥ 50 entities: Sweep-and-prune O((N+T) log (N+T))
 
 #### Pathfinder Metrics **[ASYNC THROUGHPUT ONLY]**
 
@@ -576,6 +608,32 @@ With the split between Synthetic and Integrated benchmarks, regression source id
 - SAP (Sweep-and-Prune) for MM: O(n log n) scaling confirmed up to 10K movables
 - Spatial Hash for MS: O(n) scaling confirmed - time stays FLAT from 100 to 20K statics
 - Combined: Sub-quadratic scaling verified up to 12K entities
+
+---
+
+### Trigger Detection System (EventOnly Triggers)
+
+**Purpose:** Tests detection of EventOnly triggers (water, area markers, etc.) by entities with NEEDS_TRIGGER_DETECTION flag.
+
+| Detectors | Triggers | Baseline (ms) | Current (ms) | Change | Method | Status |
+|-----------|----------|---------------|--------------|--------|--------|--------|
+| 1 (Player) | 100 | 0.15 | 0.14 | -7% | spatial | ⚪ Stable |
+| 1 (Player) | 400 | 0.15 | 0.14 | -7% | spatial | ⚪ Stable |
+| 10 (NPCs) | 200 | 0.16 | 0.15 | -6% | spatial | ⚪ Stable |
+| 25 (NPCs) | 200 | 0.16 | 0.15 | -6% | spatial | ⚪ Stable |
+| 50 (threshold) | 200 | 0.25 | 0.23 | -8% | sweep | ⚪ Stable |
+| 100 (NPCs) | 200 | 0.28 | 0.26 | -7% | sweep | ⚪ Stable |
+| 200 (NPCs) | 400 | 0.45 | 0.43 | -4% | sweep | ⚪ Stable |
+
+**Status:** ⚪ **STABLE**
+- Adaptive strategy working correctly (spatial <50, sweep >=50)
+- Performance within targets (<0.5ms for typical scenarios)
+- Flag-based filtering eliminates unnecessary AABB tests
+
+**Notes:**
+- Only entities with NEEDS_TRIGGER_DETECTION flag are processed
+- Player has flag by default; NPCs can opt-in via setTriggerDetection(true)
+- Replaced O(movables × triggers) brute-force with adaptive O(N × k) or O((N+T) log (N+T))
 
 ---
 

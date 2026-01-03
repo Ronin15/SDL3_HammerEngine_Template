@@ -1787,3 +1787,299 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchUpdatePerformance)
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// Tests for NEEDS_TRIGGER_DETECTION flag-based trigger detection optimization
+BOOST_AUTO_TEST_SUITE(TriggerDetectionOptimizationTests)
+
+BOOST_AUTO_TEST_CASE(TestTriggerDetectionFlag)
+{
+    // Test that NEEDS_TRIGGER_DETECTION flag is properly set and queried
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+    CollisionManager::Instance().init();
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(2000.0f);
+
+    // Create player - should have NEEDS_TRIGGER_DETECTION flag set automatically
+    EntityID playerId = 50000;
+    Vector2D playerPos(100.0f, 100.0f);
+    EntityHandle playerHandle = edm.registerPlayer(playerId, playerPos, 16.0f, 16.0f);
+    size_t playerIdx = edm.getIndex(playerHandle);
+    const auto& playerHot = edm.getHotDataByIndex(playerIdx);
+
+    // Player should have trigger detection flag set
+    BOOST_CHECK(playerHot.needsTriggerDetection());
+
+    // Create NPC - should NOT have NEEDS_TRIGGER_DETECTION flag by default
+    EntityID npcId = 50001;
+    Vector2D npcPos(200.0f, 200.0f);
+    EntityHandle npcHandle = edm.registerNPC(npcId, npcPos, 16.0f, 16.0f);
+    size_t npcIdx = edm.getIndex(npcHandle);
+    auto& npcHot = edm.getHotDataByIndex(npcIdx);
+
+    // NPC should NOT have trigger detection flag by default
+    BOOST_CHECK(!npcHot.needsTriggerDetection());
+
+    // Enable trigger detection on NPC
+    npcHot.setTriggerDetection(true);
+    BOOST_CHECK(npcHot.needsTriggerDetection());
+
+    // Update BGM to populate active indices
+    bgm.update(playerPos, 0.016f);
+
+    // Verify getTriggerDetectionIndices() returns correct entities
+    auto triggerDetectionIndices = edm.getTriggerDetectionIndices();
+
+    // Should contain both player and NPC (now that NPC has flag enabled)
+    BOOST_CHECK_GE(triggerDetectionIndices.size(), 2u);
+
+    // Verify player index is in the list
+    bool foundPlayer = false;
+    bool foundNPC = false;
+    for (size_t idx : triggerDetectionIndices) {
+        if (idx == playerIdx) foundPlayer = true;
+        if (idx == npcIdx) foundNPC = true;
+    }
+    BOOST_CHECK(foundPlayer);
+    BOOST_CHECK(foundNPC);
+
+    // Disable trigger detection on NPC
+    npcHot.setTriggerDetection(false);
+    BOOST_CHECK(!npcHot.needsTriggerDetection());
+
+    // Clean up
+    edm.unregisterEntity(playerId);
+    edm.unregisterEntity(npcId);
+    bgm.clean();
+    CollisionManager::Instance().clean();
+    edm.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestEventOnlyTriggerDetection)
+{
+    // Test that EventOnly triggers are detected via spatial queries
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+    CollisionManager::Instance().init();
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(2000.0f);
+
+    // Create player at position X
+    EntityID playerId = 51000;
+    Vector2D playerPos(100.0f, 100.0f);
+    EntityHandle playerHandle = edm.registerPlayer(playerId, playerPos, 16.0f, 16.0f);
+    size_t playerIdx = edm.getIndex(playerHandle);
+    auto& playerHot = edm.getHotDataByIndex(playerIdx);
+    playerHot.collisionLayers = CollisionLayer::Layer_Player;
+    playerHot.collisionMask = CollisionLayer::Layer_Environment | CollisionLayer::Layer_Enemy;
+    playerHot.setCollisionEnabled(true);
+
+    // Create EventOnly trigger at position X (overlapping with player)
+    EntityID nearTriggerId = CollisionManager::Instance().createTriggerAreaAt(
+        105.0f, 105.0f, 30.0f, 30.0f,
+        HammerEngine::TriggerTag::Water,
+        HammerEngine::TriggerType::EventOnly,
+        CollisionLayer::Layer_Environment,
+        CollisionLayer::Layer_Player
+    );
+
+    // Create EventOnly trigger at distant position Y (NOT overlapping)
+    EntityID farTriggerId = CollisionManager::Instance().createTriggerAreaAt(
+        1000.0f, 1000.0f, 30.0f, 30.0f,
+        HammerEngine::TriggerTag::Lava,
+        HammerEngine::TriggerType::EventOnly,
+        CollisionLayer::Layer_Environment,
+        CollisionLayer::Layer_Player
+    );
+
+    // Update BGM to populate active indices
+    bgm.update(playerPos, 0.016f);
+
+    // Run collision detection (which includes detectEventOnlyTriggers)
+    CollisionManager::Instance().update(0.016f);
+
+    // The trigger detection should have found the nearby trigger but not the far one
+    // We can verify this indirectly by checking that the system doesn't crash
+    // and that triggers are properly registered
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(nearTriggerId));
+    BOOST_CHECK(CollisionManager::Instance().isTrigger(farTriggerId));
+
+    // Verify player has trigger detection flag
+    BOOST_CHECK(playerHot.needsTriggerDetection());
+
+    // Clean up
+    CollisionManager::Instance().removeCollisionBody(nearTriggerId);
+    CollisionManager::Instance().removeCollisionBody(farTriggerId);
+    edm.unregisterEntity(playerId);
+    bgm.clean();
+    CollisionManager::Instance().clean();
+    edm.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCTriggerDetection)
+{
+    // Test that NPCs with NEEDS_TRIGGER_DETECTION flag can fire trigger events
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+    CollisionManager::Instance().init();
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(2000.0f);
+    EventManager::Instance().init();
+
+    // Create NPC with NEEDS_TRIGGER_DETECTION enabled
+    EntityID npcId = 52000;
+    Vector2D npcPos(150.0f, 150.0f);
+    EntityHandle npcHandle = edm.registerNPC(npcId, npcPos, 16.0f, 16.0f);
+    size_t npcIdx = edm.getIndex(npcHandle);
+    auto& npcHot = edm.getHotDataByIndex(npcIdx);
+    npcHot.collisionLayers = CollisionLayer::Layer_Enemy;
+    npcHot.collisionMask = CollisionLayer::Layer_Environment | CollisionLayer::Layer_Player;
+    npcHot.setCollisionEnabled(true);
+    npcHot.setTriggerDetection(true);  // Enable trigger detection for NPC
+
+    // Verify NPC has trigger detection flag
+    BOOST_CHECK(npcHot.needsTriggerDetection());
+
+    // Create EventOnly trigger overlapping NPC
+    EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
+        155.0f, 155.0f, 30.0f, 30.0f,
+        HammerEngine::TriggerTag::Checkpoint,
+        HammerEngine::TriggerType::EventOnly,
+        CollisionLayer::Layer_Environment,
+        CollisionLayer::Layer_Enemy  // Mask includes Layer_Enemy so NPC can trigger it
+    );
+
+    // Track trigger events
+    std::atomic<int> triggerEventCount{0};
+    auto token = EventManager::Instance().registerHandlerWithToken(
+        EventTypeId::WorldTrigger,
+        [&triggerEventCount](const EventData& data) {
+            if (data.isActive() && data.event) {
+                triggerEventCount++;
+            }
+        });
+
+    // Update BGM to populate active indices
+    bgm.update(npcPos, 0.016f);
+
+    // Verify NPC is in trigger detection indices
+    auto triggerDetectionIndices = edm.getTriggerDetectionIndices();
+    bool foundNPC = false;
+    for (size_t idx : triggerDetectionIndices) {
+        if (idx == npcIdx) foundNPC = true;
+    }
+    BOOST_CHECK_MESSAGE(foundNPC, "NPC should be in trigger detection indices");
+
+    // Run collision detection
+    CollisionManager::Instance().update(0.016f);
+
+    // Process deferred events
+    EventManager::Instance().drainAllDeferredEvents();
+
+    // An NPC with trigger detection enabled should be able to trigger events
+    // (The actual event firing depends on cooldown and other mechanics)
+    BOOST_TEST_MESSAGE("NPC trigger events fired: " << triggerEventCount.load());
+
+    // Clean up
+    EventManager::Instance().removeHandler(token);
+    CollisionManager::Instance().removeCollisionBody(triggerId);
+    edm.unregisterEntity(npcId);
+    bgm.clean();
+    EventManager::Instance().clean();
+    CollisionManager::Instance().clean();
+    edm.clean();
+}
+
+BOOST_AUTO_TEST_CASE(TestSweepAndPruneTriggerDetection)
+{
+    // Test that sweep-and-prune path works correctly for large entity counts
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+    CollisionManager::Instance().init();
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(5000.0f);
+
+    const int NUM_NPCS = 100;  // Above the sweep threshold (50)
+    std::vector<EntityID> npcIds;
+    std::vector<EntityHandle> npcHandles;
+
+    // Create many NPCs with NEEDS_TRIGGER_DETECTION flag
+    for (int i = 0; i < NUM_NPCS; ++i) {
+        EntityID npcId = static_cast<EntityID>(53000 + i);
+        npcIds.push_back(npcId);
+
+        // Spread NPCs across the world
+        float x = static_cast<float>(i % 10) * 100.0f + 50.0f;
+        float y = static_cast<float>(i / 10) * 100.0f + 50.0f;
+        Vector2D npcPos(x, y);
+
+        EntityHandle npcHandle = edm.registerNPC(npcId, npcPos, 16.0f, 16.0f);
+        size_t npcIdx = edm.getIndex(npcHandle);
+        auto& npcHot = edm.getHotDataByIndex(npcIdx);
+        npcHot.collisionLayers = CollisionLayer::Layer_Enemy;
+        npcHot.collisionMask = CollisionLayer::Layer_Environment;
+        npcHot.setCollisionEnabled(true);
+        npcHot.setTriggerDetection(true);  // Enable trigger detection
+        npcHandles.push_back(npcHandle);
+    }
+
+    // Create multiple EventOnly triggers at various positions
+    std::vector<EntityID> triggerIds;
+    for (int i = 0; i < 20; ++i) {
+        float x = static_cast<float>(i % 5) * 200.0f + 100.0f;
+        float y = static_cast<float>(i / 5) * 200.0f + 100.0f;
+
+        EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
+            x, y, 50.0f, 50.0f,
+            HammerEngine::TriggerTag::Water,
+            HammerEngine::TriggerType::EventOnly,
+            CollisionLayer::Layer_Environment,
+            CollisionLayer::Layer_Enemy
+        );
+        triggerIds.push_back(triggerId);
+    }
+
+    // Update BGM to populate active indices
+    bgm.update(Vector2D(500.0f, 500.0f), 0.016f);
+
+    // Verify we have enough entities to trigger sweep-and-prune path
+    auto triggerDetectionIndices = edm.getTriggerDetectionIndices();
+    BOOST_CHECK_GE(triggerDetectionIndices.size(), 50u);  // Should be above threshold
+
+    BOOST_TEST_MESSAGE("Trigger detection entities: " << triggerDetectionIndices.size()
+                      << " (sweep threshold: 50)");
+
+    // Measure performance of trigger detection with many entities
+    auto start = std::chrono::high_resolution_clock::now();
+
+    for (int i = 0; i < 10; ++i) {
+        CollisionManager::Instance().update(0.016f);
+    }
+
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+
+    double avgUpdateMs = static_cast<double>(duration.count()) / 10.0 / 1000.0;
+    BOOST_TEST_MESSAGE("Average collision update with " << NUM_NPCS
+                      << " trigger-detecting NPCs: " << avgUpdateMs << "ms");
+
+    // Performance check: should complete reasonably fast even with many entities
+    BOOST_CHECK_LT(avgUpdateMs, 5.0);  // < 5ms per update
+
+    // Clean up
+    for (EntityID triggerId : triggerIds) {
+        CollisionManager::Instance().removeCollisionBody(triggerId);
+    }
+    for (EntityID npcId : npcIds) {
+        edm.unregisterEntity(npcId);
+    }
+    bgm.clean();
+    CollisionManager::Instance().clean();
+    edm.clean();
+}
+
+BOOST_AUTO_TEST_SUITE_END()

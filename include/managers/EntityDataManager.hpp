@@ -106,6 +106,7 @@ struct EntityHotData {
     // Collision flag constants
     static constexpr uint8_t COLLISION_ENABLED = 0x01;
     static constexpr uint8_t IS_TRIGGER = 0x02;
+    static constexpr uint8_t NEEDS_TRIGGER_DETECTION = 0x04;
 
     [[nodiscard]] bool isAlive() const noexcept { return flags & FLAG_ALIVE; }
     [[nodiscard]] bool isDirty() const noexcept { return flags & FLAG_DIRTY; }
@@ -117,6 +118,9 @@ struct EntityHotData {
     }
     [[nodiscard]] bool isTrigger() const noexcept {
         return collisionFlags & IS_TRIGGER;
+    }
+    [[nodiscard]] bool needsTriggerDetection() const noexcept {
+        return collisionFlags & NEEDS_TRIGGER_DETECTION;
     }
 
     void setAlive(bool alive) noexcept {
@@ -136,6 +140,10 @@ struct EntityHotData {
     void setTrigger(bool trigger) noexcept {
         if (trigger) collisionFlags |= IS_TRIGGER;
         else collisionFlags &= ~IS_TRIGGER;
+    }
+    void setTriggerDetection(bool enabled) noexcept {
+        if (enabled) collisionFlags |= NEEDS_TRIGGER_DETECTION;
+        else collisionFlags &= ~NEEDS_TRIGGER_DETECTION;
     }
 
     [[nodiscard]] bool isEventOnlyTrigger() const noexcept {
@@ -617,6 +625,18 @@ public:
     [[nodiscard]] std::span<const size_t> getActiveIndicesWithCollision() const;
 
     /**
+     * @brief Get indices of Active tier entities that need trigger detection
+     * Cached and rebuilt when trigger detection flag changes.
+     * Used by CollisionManager for EventOnly trigger detection.
+     */
+    [[nodiscard]] std::span<const size_t> getTriggerDetectionIndices() const;
+
+    /**
+     * @brief Mark trigger detection indices as needing rebuild
+     */
+    void markTriggerDetectionDirty() noexcept { m_triggerDetectionDirty = true; }
+
+    /**
      * @brief Get indices of all Background tier entities
      */
     [[nodiscard]] std::span<const size_t> getBackgroundIndices() const;
@@ -722,6 +742,10 @@ private:
     // Collision-enabled active indices (cached for CollisionManager optimization)
     mutable std::vector<size_t> m_activeCollisionIndices;
     mutable bool m_activeCollisionDirty{true};
+
+    // Trigger detection indices (cached for CollisionManager optimization)
+    mutable std::vector<size_t> m_triggerDetectionIndices;
+    mutable bool m_triggerDetectionDirty{true};
 
     // Kind indices
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;

@@ -17,6 +17,7 @@
 #include <chrono>
 #include <array>
 #include <optional>
+#include <span>
 
 #include "entities/Entity.hpp" // EntityID
 #include "collisions/CollisionBody.hpp"
@@ -197,15 +198,23 @@ public:
     void processTriggerEvents();
 
     /**
-     * @brief Detect EventOnly trigger overlaps without going through broadphase
+     * @brief Detect EventOnly trigger overlaps via per-entity spatial query
      *
-     * PHASE 3.2: Lightweight AABB test for EventOnly triggers
-     * These triggers (water, area markers) don't need collision resolution,
-     * just event firing when entities overlap them.
+     * Adaptive strategy:
+     * - <50 entities: Spatial queries O(N × ~k nearby triggers)
+     * - >=50 entities: Sweep-and-prune O((N+T) log (N+T))
      *
      * Populates m_collisionPool.eventOnlyOverlaps with (movablePoolIdx, triggerStorageIdx) pairs.
      */
     void detectEventOnlyTriggers();
+
+    // Helper functions for EventOnly trigger detection
+    void detectEventOnlyTriggersSpatial(std::span<const size_t> triggerIndices);
+    void detectEventOnlyTriggersSweep(std::span<const size_t> triggerIndices);
+    void testTriggerOverlapAndRecord(size_t edmIdx, size_t storageIdx);
+    [[nodiscard]] size_t findPoolIndex(size_t edmIdx) const;
+    [[nodiscard]] bool isEventOnlyTriggerOverlap(size_t storageIdx, float px, float py,
+                                                  float hw, float hh, uint16_t mask) const;
 
     // PERFORMANCE: Vector pooling for temporary allocations
     std::vector<size_t>& getPooledVector();
@@ -508,10 +517,7 @@ private:
         };
         std::vector<StaticAABB> staticAABBs;
 
-        // PHASE 3: EventOnly triggers filtered from broadphase, detected separately
-        std::vector<size_t> eventOnlyTriggerIndices;  // Storage indices of EventOnly triggers in culling area
-
-        // EventOnly trigger overlaps detected via lightweight AABB test
+        // EventOnly trigger overlaps detected via per-entity spatial query
         struct EventOnlyTriggerOverlap {
             size_t movablePoolIdx;   // Index into movableIndices/movableAABBs
             size_t triggerStorageIdx; // Index into m_storage.hotData
@@ -556,8 +562,7 @@ private:
                 movableMovablePairs.reserve(expectedPairs / 4);
                 movableStaticPairs.reserve(expectedPairs);
 
-                // EventOnly triggers - typically small relative to total statics
-                eventOnlyTriggerIndices.reserve(bodyCount / 4);
+                // EventOnly overlaps - typically small
                 eventOnlyOverlaps.reserve(bodyCount / 8);
             }
         }
@@ -573,7 +578,6 @@ private:
             movableIndices.clear();
             movableAABBs.clear();
             // NOTE: staticIndices is cached and cleared only when culling area changes
-            // NOTE: eventOnlyTriggerIndices is cached alongside staticIndices
             sortedMovableIndices.clear();
             movableMovablePairs.clear();
             movableStaticPairs.clear();
@@ -591,6 +595,7 @@ private:
     // PERFORMANCE: Reusable containers to avoid per-frame allocations
     // These are cleared each frame but capacity is retained to eliminate heap churn
     mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEvents()
+    mutable std::vector<size_t> m_triggerCandidates;  // For detectEventOnlyTriggers() spatial queries
     // Note: buildActiveIndices() uses pools.staticIndices directly (already a reusable buffer)
 
     // NOTE: Legacy m_movableBodyIndices removed - EDM Active tier is now the source of truth
@@ -617,6 +622,10 @@ private:
         size_t totalMovableBodies{0};         // Total dynamic+kinematic bodies before culling
         double lastCullingMs{0.0};            // Time spent on culling operations
         double avgBroadphaseMs{0.0};          // Average broadphase time
+
+        // TRIGGER DETECTION METRICS: Track EventOnly trigger detection
+        size_t lastTriggerDetectors{0};       // Entities with NEEDS_TRIGGER_DETECTION flag
+        size_t lastTriggerOverlaps{0};        // EventOnly trigger overlaps detected
 
         // CACHE PERFORMANCE METRICS: Track coarse-grid static cache effectiveness
         size_t cacheEntriesActive{0};         // Number of active cache entries

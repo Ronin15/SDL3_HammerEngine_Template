@@ -1344,21 +1344,19 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
 
       // Cache static AABBs for contiguous memory access in broadphase
       // This avoids scattered m_storage.hotData[idx] access in SIMD loops
-      // PHASE 3.1: Filter EventOnly triggers from broadphase - they get separate detection
+      // Filter EventOnly triggers from broadphase - they get separate detection via spatial query
       pools.staticAABBs.reserve(pools.staticIndices.size());
-      pools.eventOnlyTriggerIndices.clear();
 
-      // Two-pass: filter indices and build AABBs for physics bodies only
+      // Filter indices and build AABBs for physics bodies only
       std::vector<size_t> physicsIndices;
       physicsIndices.reserve(pools.staticIndices.size());
 
       for (size_t storageIdx : pools.staticIndices) {
         const auto& staticHot = m_storage.hotData[storageIdx];
 
-        // EventOnly triggers skip broadphase entirely - handled separately
+        // EventOnly triggers skip broadphase entirely - detected via per-entity spatial query
         if (staticHot.isTrigger != 0 &&
             staticHot.triggerType == static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
-          pools.eventOnlyTriggerIndices.push_back(storageIdx);
           continue;
         }
 
@@ -2222,60 +2220,185 @@ void CollisionManager::resolve(const CollisionInfo& collision) {
 // movable AABBs inline from EDM into pools.movableAABBs. Static bodies don't need refresh.
 
 void CollisionManager::detectEventOnlyTriggers() {
-  // PHASE 3.2: Lightweight AABB test for EventOnly triggers
-  // These bypass broadphase entirely for performance, but still need event detection
-  //
-  // This is O(movables × eventOnlyTriggers) but both sets are typically small:
-  // - movables: ~50-150 in culling area
-  // - eventOnlyTriggers: typically ~20-100 water tiles
+  // Detect EventOnly trigger overlaps via per-entity spatial query
+  // Adaptive strategy based on entity count:
+  // - <50 entities: Spatial queries O(N × ~k nearby triggers)
+  // - >=50 entities: Sweep-and-prune O((N+T) log (N+T))
 
   auto& pools = m_collisionPool;
   pools.eventOnlyOverlaps.clear();
 
-  if (pools.eventOnlyTriggerIndices.empty() || pools.movableAABBs.empty()) {
+  auto& edm = EntityDataManager::Instance();
+  auto triggerIndices = edm.getTriggerDetectionIndices();
+
+  if (triggerIndices.empty() || pools.movableAABBs.empty()) {
     return;
   }
 
-  // Pre-cache trigger AABBs for better locality during inner loop
-  struct TriggerAABB {
-    float minX, minY, maxX, maxY;
-    size_t storageIdx;
-  };
+  // ADAPTIVE STRATEGY: Switch at 50 entities (tunable threshold)
+  constexpr size_t SWEEP_THRESHOLD = 50;
 
-  std::vector<TriggerAABB> triggerAABBs;
-  triggerAABBs.reserve(pools.eventOnlyTriggerIndices.size());
-
-  for (size_t storageIdx : pools.eventOnlyTriggerIndices) {
-    const auto& hot = m_storage.hotData[storageIdx];
-    if (!hot.active) continue;
-
-    triggerAABBs.push_back({
-        hot.aabbMinX,
-        hot.aabbMinY,
-        hot.aabbMaxX,
-        hot.aabbMaxY,
-        storageIdx});
+  if (triggerIndices.size() < SWEEP_THRESHOLD) {
+    // SPATIAL QUERY PATH: O(N × ~k nearby triggers)
+    detectEventOnlyTriggersSpatial(triggerIndices);
+  } else {
+    // SWEEP-AND-PRUNE PATH: O((N+T) log (N+T))
+    detectEventOnlyTriggersSweep(triggerIndices);
   }
+}
 
-  // Test each movable against each trigger
-  // Layer filtering: check if movable's collidesWith includes trigger's layer
-  for (size_t movablePoolIdx = 0; movablePoolIdx < pools.movableAABBs.size(); ++movablePoolIdx) {
-    const auto& movable = pools.movableAABBs[movablePoolIdx];
+// Path A: Spatial queries for small entity counts
+void CollisionManager::detectEventOnlyTriggersSpatial(std::span<const size_t> triggerIndices) {
+  auto& edm = EntityDataManager::Instance();
+  auto& pools = m_collisionPool;
 
-    for (const auto& trigger : triggerAABBs) {
-      // Simple AABB overlap test
-      bool overlaps = !(movable.maxX < trigger.minX || movable.minX > trigger.maxX ||
-                        movable.maxY < trigger.minY || movable.minY > trigger.maxY);
+  for (size_t edmIdx : triggerIndices) {
+    const auto& hot = edm.getHotDataByIndex(edmIdx);
+    const auto& transform = edm.getTransformByIndex(edmIdx);
 
-      if (overlaps) {
-        // Check layer mask compatibility
-        const auto& triggerHot = m_storage.hotData[trigger.storageIdx];
-        if ((movable.collidesWith & triggerHot.layers) != 0) {
-          pools.eventOnlyOverlaps.push_back({movablePoolIdx, trigger.storageIdx});
-        }
+    float px = transform.position.getX();
+    float py = transform.position.getY();
+    float hw = hot.halfWidth;
+    float hh = hot.halfHeight;
+    AABB entityAABB(px, py, hw, hh);
+
+    m_triggerCandidates.clear();
+    m_staticSpatialHash.queryRegion(entityAABB, m_triggerCandidates);
+
+    // Find pool index
+    size_t poolIdx = findPoolIndex(edmIdx);
+    if (poolIdx == SIZE_MAX) continue;
+
+    // Filter for EventOnly triggers
+    for (size_t storageIdx : m_triggerCandidates) {
+      if (isEventOnlyTriggerOverlap(storageIdx, px, py, hw, hh, hot.collisionMask)) {
+        pools.eventOnlyOverlaps.push_back({poolIdx, storageIdx});
       }
     }
   }
+}
+
+// Path B: Sweep-and-prune for large entity counts
+void CollisionManager::detectEventOnlyTriggersSweep(std::span<const size_t> triggerIndices) {
+  auto& edm = EntityDataManager::Instance();
+  auto& pools = m_collisionPool;
+
+  // Build sorted edge list (entities + eventOnly triggers)
+  struct Edge {
+    float x;
+    size_t idx;       // edmIdx for entities, storageIdx for triggers
+    bool isStart;
+    bool isTrigger;
+  };
+  std::vector<Edge> edges;
+  edges.reserve((triggerIndices.size() + m_storage.size()) * 2);
+
+  // Add entity edges
+  for (size_t edmIdx : triggerIndices) {
+    const auto& hot = edm.getHotDataByIndex(edmIdx);
+    const auto& transform = edm.getTransformByIndex(edmIdx);
+    float px = transform.position.getX();
+    float hw = hot.halfWidth;
+    edges.push_back({px - hw, edmIdx, true, false});
+    edges.push_back({px + hw, edmIdx, false, false});
+  }
+
+  // Add EventOnly trigger edges (scan storage once)
+  for (size_t i = 0; i < m_storage.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (!hot.active || hot.isTrigger == 0 ||
+        hot.triggerType != static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
+      continue;
+    }
+    edges.push_back({hot.aabbMinX, i, true, true});
+    edges.push_back({hot.aabbMaxX, i, false, true});
+  }
+
+  // Sort by X coordinate
+  std::sort(edges.begin(), edges.end(), [](const Edge& a, const Edge& b) {
+    return a.x < b.x || (a.x == b.x && a.isStart > b.isStart);
+  });
+
+  // Sweep: track active entities and triggers
+  std::unordered_set<size_t> activeEntities;
+  std::unordered_set<size_t> activeTriggers;
+
+  for (const auto& edge : edges) {
+    if (edge.isStart) {
+      if (edge.isTrigger) {
+        // Trigger starting - test against all active entities
+        for (size_t edmIdx : activeEntities) {
+          testTriggerOverlapAndRecord(edmIdx, edge.idx);
+        }
+        activeTriggers.insert(edge.idx);
+      } else {
+        // Entity starting - test against all active triggers
+        for (size_t storageIdx : activeTriggers) {
+          testTriggerOverlapAndRecord(edge.idx, storageIdx);
+        }
+        activeEntities.insert(edge.idx);
+      }
+    } else {
+      // Edge ending - remove from active set
+      if (edge.isTrigger) activeTriggers.erase(edge.idx);
+      else activeEntities.erase(edge.idx);
+    }
+  }
+}
+
+// Helper: Test Y overlap and layer mask, record if valid
+void CollisionManager::testTriggerOverlapAndRecord(size_t edmIdx, size_t storageIdx) {
+  auto& edm = EntityDataManager::Instance();
+  const auto& entityHot = edm.getHotDataByIndex(edmIdx);
+  const auto& entityTransform = edm.getTransformByIndex(edmIdx);
+  const auto& triggerHot = m_storage.hotData[storageIdx];
+
+  float py = entityTransform.position.getY();
+  float hh = entityHot.halfHeight;
+
+  // Y overlap check
+  if (py + hh < triggerHot.aabbMinY || py - hh > triggerHot.aabbMaxY) return;
+
+  // Layer check
+  if ((entityHot.collisionMask & triggerHot.layers) == 0) return;
+
+  // Find pool index and record
+  size_t poolIdx = findPoolIndex(edmIdx);
+  if (poolIdx != SIZE_MAX) {
+    m_collisionPool.eventOnlyOverlaps.push_back({poolIdx, storageIdx});
+  }
+}
+
+// Helper: Find the pool index for a given EDM index
+size_t CollisionManager::findPoolIndex(size_t edmIdx) const {
+  const auto& pools = m_collisionPool;
+  for (size_t i = 0; i < pools.movableIndices.size(); ++i) {
+    if (pools.movableIndices[i] == edmIdx) {
+      return i;
+    }
+  }
+  return SIZE_MAX;
+}
+
+// Helper: Check if storage index is an EventOnly trigger overlapping the given AABB
+bool CollisionManager::isEventOnlyTriggerOverlap(size_t storageIdx, float px, float py,
+                                                  float hw, float hh, uint16_t mask) const {
+  const auto& hot = m_storage.hotData[storageIdx];
+
+  // Must be an active EventOnly trigger
+  if (!hot.active || hot.isTrigger == 0 ||
+      hot.triggerType != static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
+    return false;
+  }
+
+  // AABB overlap test
+  if (px + hw < hot.aabbMinX || px - hw > hot.aabbMaxX ||
+      py + hh < hot.aabbMinY || py - hh > hot.aabbMaxY) {
+    return false;
+  }
+
+  // Layer mask check
+  return (mask & hot.layers) != 0;
 }
 
 void CollisionManager::processTriggerEvents() {
@@ -2357,8 +2480,8 @@ void CollisionManager::processTriggerEvents() {
     }
   }
 
-  // PHASE 3.3: Process EventOnly trigger overlaps (bypassed broadphase)
-  // These are detected via lightweight AABB test in detectEventOnlyTriggers()
+  // Process EventOnly trigger overlaps (detected via per-entity spatial query)
+  // Only entities with NEEDS_TRIGGER_DETECTION flag are in eventOnlyOverlaps
   for (const auto& overlap : m_collisionPool.eventOnlyOverlaps) {
     size_t movablePoolIdx = overlap.movablePoolIdx;
     size_t storageIdx = overlap.triggerStorageIdx;
@@ -2372,19 +2495,12 @@ void CollisionManager::processTriggerEvents() {
     const auto& movableAABB = m_collisionPool.movableAABBs[movablePoolIdx];
     const auto& staticHot = m_storage.hotData[storageIdx];
 
-    // Get movable data from EDM
-    const auto& movableHot = edm.getHotDataByIndex(edmIdx);
+    // Entity already has NEEDS_TRIGGER_DETECTION flag (filtered in detectEventOnlyTriggers)
 
-    // Check for player-trigger interaction (for now, only player fires events)
-    bool isPlayer = (movableHot.collisionLayers & CollisionLayer::Layer_Player) != 0;
-    if (!isPlayer) {
-      continue; // TODO: Generalize to any entity in future phase
-    }
-
-    EntityID playerId = movableAABB.entityId;
+    EntityID entityId = movableAABB.entityId;
     EntityID triggerId = m_storage.entityIds[storageIdx];
 
-    uint64_t key = makeKey(playerId, triggerId);
+    uint64_t key = makeKey(entityId, triggerId);
     m_currentTriggerPairsBuffer.insert(key);
 
     if (!m_activeTriggerPairs.count(key)) {
@@ -2394,16 +2510,16 @@ void CollisionManager::processTriggerEvents() {
 
       if (cooled) {
         HammerEngine::TriggerTag triggerTag = static_cast<HammerEngine::TriggerTag>(staticHot.triggerTag);
-        // Get player position from EDM (single source of truth)
-        const auto& playerTransform = edm.getTransformByIndex(edmIdx);
-        Vector2D playerPos = playerTransform.position;
+        // Get entity position from EDM (single source of truth)
+        const auto& entityTransform = edm.getTransformByIndex(edmIdx);
+        Vector2D entityPos = entityTransform.position;
 
-        WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerPos, TriggerPhase::Enter);
+        WorldTriggerEvent evt(entityId, triggerId, triggerTag, entityPos, TriggerPhase::Enter);
         EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-        COLLISION_DEBUG(std::format("Player {} ENTERED EventOnly trigger {} (tag: {}) at position ({}, {})",
-                                    playerId, triggerId, static_cast<int>(triggerTag),
-                                    playerPos.getX(), playerPos.getY()));
+        COLLISION_DEBUG(std::format("Entity {} ENTERED EventOnly trigger {} (tag: {}) at position ({}, {})",
+                                    entityId, triggerId, static_cast<int>(triggerTag),
+                                    entityPos.getX(), entityPos.getY()));
 
         if (m_defaultTriggerCooldownSec > 0.0f) {
           m_triggerCooldownUntil[triggerId] = now +
@@ -2412,14 +2528,14 @@ void CollisionManager::processTriggerEvents() {
         }
       }
 
-      m_activeTriggerPairs.emplace(key, std::make_pair(playerId, triggerId));
+      m_activeTriggerPairs.emplace(key, std::make_pair(entityId, triggerId));
     }
   }
 
   // Remove stale pairs (trigger exits)
   for (auto it = m_activeTriggerPairs.begin(); it != m_activeTriggerPairs.end();) {
     if (!m_currentTriggerPairsBuffer.count(it->first)) {
-      EntityID playerId = it->second.first;
+      EntityID entityId = it->second.first;
       EntityID triggerId = it->second.second;
 
       // Find trigger hot data for position - use hash lookup instead of linear search
@@ -2437,11 +2553,11 @@ void CollisionManager::processTriggerEvents() {
         }
       }
 
-      WorldTriggerEvent evt(playerId, triggerId, triggerTag, triggerPos, TriggerPhase::Exit);
+      WorldTriggerEvent evt(entityId, triggerId, triggerTag, triggerPos, TriggerPhase::Exit);
       EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
-      COLLISION_DEBUG(std::format("Player {} EXITED trigger {} (tag: {}) at position ({}, {})",
-                                  playerId, triggerId, static_cast<int>(triggerTag),
+      COLLISION_DEBUG(std::format("Entity {} EXITED trigger {} (tag: {}) at position ({}, {})",
+                                  entityId, triggerId, static_cast<int>(triggerTag),
                                   triggerPos.getX(), triggerPos.getY()));
 
       it = m_activeTriggerPairs.erase(it);
@@ -2477,6 +2593,10 @@ void CollisionManager::updatePerformanceMetrics(
   m_perf.frames += 1;
 
 #ifdef DEBUG
+  // TRIGGER DETECTION METRICS: Debug/benchmark only
+  m_perf.lastTriggerDetectors = EntityDataManager::Instance().getTriggerDetectionIndices().size();
+  m_perf.lastTriggerOverlaps = m_collisionPool.eventOnlyOverlaps.size();
+
   // Detailed timing metrics and logging - zero overhead in release builds
   auto d12 = std::chrono::duration<double, std::milli>(t2 - t1).count(); // Broadphase
   auto d23 = std::chrono::duration<double, std::milli>(t3 - t2).count(); // Narrowphase
@@ -2514,14 +2634,14 @@ void CollisionManager::updatePerformanceMetrics(
   // Periodic statistics (every 300 frames) - concise format with phase breakdown
   if (logFrameCounter % 300 == 0 && bodyCount > 0) {
     size_t staticsInBroadphase = m_collisionPool.staticIndices.size();
-    size_t eventOnlyTriggers = m_collisionPool.eventOnlyTriggerIndices.size();
+    size_t triggerDetectionEntities = EntityDataManager::Instance().getTriggerDetectionIndices().size();
     size_t eventOnlyOverlaps = m_collisionPool.eventOnlyOverlaps.size();
     auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Pre-broadphase setup
-    COLLISION_DEBUG(std::format("Collision: {} movable, {} static (broadphase), {} eventOnly (filtered), {:.2f}ms (pairs:{}, hits:{})",
-                                activeMovableBodies, staticsInBroadphase, eventOnlyTriggers, m_perf.lastTotalMs,
+    COLLISION_DEBUG(std::format("Collision: {} movable, {} static (broadphase), {:.2f}ms (pairs:{}, hits:{})",
+                                activeMovableBodies, staticsInBroadphase, m_perf.lastTotalMs,
                                 pairCount, collisionCount));
-    COLLISION_DEBUG(std::format("  Phases: setup:{:.2f}ms, broad:{:.2f}ms, narrow:{:.2f}ms, resolve:{:.2f}ms | eventOnly overlaps: {}",
-                                d01, d12, d23, d34, eventOnlyOverlaps));
+    COLLISION_DEBUG(std::format("  Phases: setup:{:.2f}ms, broad:{:.2f}ms, narrow:{:.2f}ms, resolve:{:.2f}ms | triggerDetect:{} overlaps:{}",
+                                d01, d12, d23, d34, triggerDetectionEntities, eventOnlyOverlaps));
   }
 #endif // DEBUG
 }
