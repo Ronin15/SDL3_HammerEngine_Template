@@ -17,7 +17,6 @@
 #include <algorithm>
 #include <cstring>
 #include <format>
-#include <iostream>
 
 // Use SIMD abstraction layer
 using namespace HammerEngine::SIMD;
@@ -795,6 +794,13 @@ void AIManager::sendMessageToEntity(EntityHandle handle,
     }
   } else {
     // Use lock-free queue for non-immediate messages
+    // Check capacity to prevent overflow (2 relaxed loads, ~1ns)
+    size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
+                     m_messageReadIndex.load(std::memory_order_relaxed);
+    if (pending >= MESSAGE_QUEUE_SIZE) {
+      return;  // Queue full - silently drop (pathological case: 60K+ msg/sec)
+    }
+
     size_t writeIndex =
         m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
         MESSAGE_QUEUE_SIZE;
@@ -823,6 +829,13 @@ void AIManager::broadcastMessage(const std::string &message, bool immediate) {
     }
   } else {
     // Queue broadcast for processing in next update
+    // Check capacity to prevent overflow (2 relaxed loads, ~1ns)
+    size_t pending = m_messageWriteIndex.load(std::memory_order_relaxed) -
+                     m_messageReadIndex.load(std::memory_order_relaxed);
+    if (pending >= MESSAGE_QUEUE_SIZE) {
+      return;  // Queue full - silently drop (pathological case: 60K+ msg/sec)
+    }
+
     size_t writeIndex =
         m_messageWriteIndex.fetch_add(1, std::memory_order_relaxed) %
         MESSAGE_QUEUE_SIZE;

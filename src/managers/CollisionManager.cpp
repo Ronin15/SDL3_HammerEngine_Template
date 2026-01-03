@@ -6,23 +6,21 @@
 /* ARCHITECTURAL NOTE: CollisionManager Threading Strategy
  *
  * CollisionManager uses HYBRID threading:
- * - Broadphase: Single-threaded (complex spatial hash queries)
- * - Narrowphase: Multi-threaded via WorkerBudget (pure computation, 4-wide SIMD)
+ * - Broadphase: Multi-threaded via WorkerBudget (when >150 movables)
+ * - Narrowphase: Single-threaded scalar processing
  *
- * Narrowphase parallelization rationale:
- * - Pure computation (AABB intersection tests, no shared state)
- * - Read-only input (indexPairs from broadphase)
+ * Broadphase parallelization:
+ * - Sweep-and-prune with early termination
  * - Per-batch output buffers eliminate lock contention
- * - Nested 4-wide SIMD processing preserved within each batch
- * - Threshold (MIN_PAIRS_FOR_THREADING) prevents overhead for small workloads
+ * - SIMD used for movable-vs-static checks (4-wide)
+ * - Threshold (MIN_MOVABLE_FOR_BROADPHASE_THREADING) prevents overhead
  *
- * Broadphase remains single-threaded because:
- * - Complex spatial hash synchronization overhead
- * - Already highly optimized (SIMD, spatial hashing, culling, cache hits)
- * - Broadphase is not the bottleneck (narrowphase is computational)
+ * Narrowphase is single-threaded because:
+ * - Observed workloads don't benefit from threading overhead
+ * - Scalar pair processing is sufficient for current entity counts
+ * - SIMD is used in resolve() for position correction, not narrowphase
  *
  * Performance: Handles 27K+ bodies @ 60 FPS on Apple Silicon.
- * Narrowphase threading provides 2-4x speedup for large workloads (10K+ bodies).
  */
 
 #include "managers/CollisionManager.hpp"
@@ -196,9 +194,6 @@ void CollisionManager::prepareForStateTransition() {
 
   // Reset world bounds to minimal (will be set by WorldLoadedEvent/WorldGeneratedEvent)
   m_worldBounds = AABB(0.0f, 0.0f, 0.0f, 0.0f);
-
-  // Reset syncing state
-  m_isSyncing = false;
 
   // Reset verbose logging to default
   m_verboseLogs = false;
@@ -1788,7 +1783,7 @@ void CollisionManager::narrowphase(std::vector<CollisionInfo>& collisions) const
   // auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
   // auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(...);
 
-  // Single-threaded path (4-wide SIMD)
+  // Single-threaded scalar path
   m_lastNarrowphaseWasThreaded = false;
   m_lastNarrowphaseBatchCount = 1;
   narrowphaseSingleThreaded(collisions);
