@@ -372,7 +372,7 @@ EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
                         HammerEngine::CollisionLayer::Layer_Environment |
                         HammerEngine::CollisionLayer::Layer_Trigger |
                         HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::NEEDS_TRIGGER_DETECTION;
     hot.triggerTag = 0;
 
     // Allocate character data (reuse freed slot if available)
@@ -810,7 +810,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
                         HammerEngine::CollisionLayer::Layer_Environment |
                         HammerEngine::CollisionLayer::Layer_Trigger |
                         HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::NEEDS_TRIGGER_DETECTION;
     hot.triggerTag = 0;
 
     // Allocate character data with player defaults (reuse freed slot if available)
@@ -1364,7 +1364,8 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         }
 
         m_tierIndicesDirty = false;
-        m_activeCollisionDirty = true; // Collision indices need rebuild when tiers change
+        m_activeCollisionDirty = true;     // Collision indices need rebuild when tiers change
+        m_triggerDetectionDirty = true;    // Trigger detection indices need rebuild when tiers change
 
 #ifndef NDEBUG
         // Rolling log every 60 seconds using time-based check
@@ -1401,6 +1402,23 @@ std::span<const size_t> EntityDataManager::getActiveIndicesWithCollision() const
         m_activeCollisionDirty = false;
     }
     return std::span<const size_t>(m_activeCollisionIndices);
+}
+
+std::span<const size_t> EntityDataManager::getTriggerDetectionIndices() const {
+    // Lazy rebuild when dirty (tier changes or trigger detection flag changes)
+    if (m_triggerDetectionDirty) {
+        m_triggerDetectionIndices.clear();
+        // Only Player has this flag by default, but NPCs can enable it too
+        m_triggerDetectionIndices.reserve(16);
+
+        for (size_t idx : m_activeIndices) {
+            if (m_hotData[idx].needsTriggerDetection()) {
+                m_triggerDetectionIndices.push_back(idx);
+            }
+        }
+        m_triggerDetectionDirty = false;
+    }
+    return std::span<const size_t>(m_triggerDetectionIndices);
 }
 
 std::span<const size_t> EntityDataManager::getBackgroundIndices() const {

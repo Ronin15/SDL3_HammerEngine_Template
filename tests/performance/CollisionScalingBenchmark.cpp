@@ -121,6 +121,45 @@ public:
         }
     }
 
+    // Create EventOnly triggers in CollisionManager
+    void createEventOnlyTriggers(size_t count, float spread) {
+        auto& cm = CollisionManager::Instance();
+        std::uniform_real_distribution<float> posDist(-spread, spread);
+
+        for (size_t i = 0; i < count; ++i) {
+            Vector2D pos(posDist(m_rng) + spread, posDist(m_rng) + spread);
+
+            // Create EventOnly trigger (water, area markers, etc.)
+            EntityID id = cm.createTriggerAreaAt(
+                pos.getX(), pos.getY(), 32.0f, 32.0f,
+                HammerEngine::TriggerTag::Water,
+                HammerEngine::TriggerType::EventOnly,
+                CollisionLayer::Layer_Environment,
+                CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
+            );
+            m_triggerIds.push_back(id);
+        }
+    }
+
+    // Enable trigger detection on a subset of movables
+    void enableTriggerDetection(size_t count) {
+        auto& edm = EntityDataManager::Instance();
+        size_t enabled = 0;
+        for (size_t i = 0; i < m_movableHandles.size() && enabled < count; ++i) {
+            size_t idx = edm.getIndex(m_movableHandles[i]);
+            if (idx != SIZE_MAX) {
+                auto& hot = edm.getHotDataByIndex(idx);
+                hot.setTriggerDetection(true);
+                ++enabled;
+            }
+        }
+    }
+
+    // Get trigger detection stats
+    size_t getTriggerDetectionCount() {
+        return EntityDataManager::Instance().getTriggerDetectionIndices().size();
+    }
+
     // Set up world bounds and culling
     void setupWorld(float size) {
         auto& cm = CollisionManager::Instance();
@@ -169,8 +208,12 @@ public:
         for (EntityID id : m_staticIds) {
             cm.removeCollisionBody(id);
         }
+        for (EntityID id : m_triggerIds) {
+            cm.removeCollisionBody(id);
+        }
         m_entityIds.clear();
         m_staticIds.clear();
+        m_triggerIds.clear();
         m_movableHandles.clear();
         m_nextId = 1;
     }
@@ -180,6 +223,7 @@ private:
     std::vector<EntityHandle> m_movableHandles;
     std::vector<EntityID> m_entityIds;
     std::vector<EntityID> m_staticIds;
+    std::vector<EntityID> m_triggerIds;
     EntityID m_nextId = 1;
     static bool s_initialized;
 };
@@ -388,6 +432,75 @@ BOOST_AUTO_TEST_CASE(EntityDensityTest)
 }
 
 // ---------------------------------------------------------------------------
+// Trigger Detection Scaling (Spatial Query vs Sweep-and-Prune)
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(TriggerDetectionScaling)
+{
+    std::cout << "--- Trigger Detection Scaling ---\n";
+    std::cout << std::setw(12) << "Detectors"
+              << std::setw(12) << "Triggers"
+              << std::setw(12) << "Time (ms)"
+              << std::setw(12) << "Overlaps"
+              << std::setw(15) << "Method\n";
+
+    // Test cases: varying number of entities with NEEDS_TRIGGER_DETECTION flag
+    // Threshold is 50: < 50 uses spatial queries, >= 50 uses sweep-and-prune
+    struct TriggerTest {
+        size_t detectors;   // Entities with NEEDS_TRIGGER_DETECTION
+        size_t triggers;    // EventOnly triggers
+        const char* method; // Expected method
+    };
+
+    std::vector<TriggerTest> tests = {
+        {1, 100, "spatial"},      // Player only - spatial query
+        {1, 400, "spatial"},      // Player only, many triggers
+        {10, 200, "spatial"},     // Few NPCs - spatial query
+        {25, 200, "spatial"},     // More NPCs - still spatial
+        {50, 200, "sweep"},       // At threshold - sweep-and-prune
+        {100, 200, "sweep"},      // Many NPCs - sweep-and-prune
+        {200, 400, "sweep"},      // Large scale - sweep-and-prune
+    };
+
+    constexpr float WORLD_SIZE = 2000.0f;
+    constexpr size_t TOTAL_MOVABLES = 500;  // Background NPCs without trigger detection
+
+    for (const auto& test : tests) {
+        prepareForTest();
+
+        // Create movables (only some will have trigger detection)
+        createMovables(TOTAL_MOVABLES, WORLD_SIZE);
+
+        // Enable trigger detection on subset
+        enableTriggerDetection(test.detectors);
+
+        // Create EventOnly triggers
+        createEventOnlyTriggers(test.triggers, WORLD_SIZE);
+
+        setupWorld(WORLD_SIZE * 2.0f);
+
+        // Verify trigger detection count
+        size_t actualDetectors = getTriggerDetectionCount();
+
+        // Run benchmark
+        int iterations = 50;
+        double avgMs = runBenchmark(iterations);
+
+        // Get overlap count from perf stats
+        const auto& stats = CollisionManager::Instance().getPerfStats();
+        size_t overlaps = stats.lastTriggerOverlaps;
+
+        std::cout << std::setw(12) << actualDetectors
+                  << std::setw(12) << test.triggers
+                  << std::setw(12) << std::fixed << std::setprecision(3) << avgMs
+                  << std::setw(12) << overlaps
+                  << std::setw(15) << test.method << "\n";
+
+        cleanup();
+    }
+    std::cout << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(PrintSummary)
@@ -395,6 +508,7 @@ BOOST_AUTO_TEST_CASE(PrintSummary)
     std::cout << "SUMMARY:\n";
     std::cout << "  MM SAP: O(n log n) scaling - early termination reduces comparisons\n";
     std::cout << "  MS Hash: O(n) scaling - spatial hash queries nearby statics only\n";
+    std::cout << "  Trigger Detection: Adaptive - spatial (<50) or sweep (>=50)\n";
     std::cout << "  Combined: Sub-quadratic scaling achieved\n";
     std::cout << std::endl;
 }
