@@ -157,7 +157,6 @@ public:
 
     // Metrics
     size_t getBodyCount() const { return m_storage.size(); }
-    bool isSyncing() const { return m_isSyncing; }
 
     // STATIC BODY MANAGEMENT
     // EDM-CENTRIC: Only static bodies (buildings, triggers, obstacles) go in m_storage
@@ -635,9 +634,6 @@ public:
 private:
     PerfStats m_perf{};
     bool m_verboseLogs{false};
-
-    // Guard to avoid feedback when syncing entity transforms
-    bool m_isSyncing{false};
 
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
