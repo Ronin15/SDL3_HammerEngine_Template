@@ -2,7 +2,7 @@
 
 This document provides a comprehensive guide to the testing framework used in the Hammer Game Engine project. All tests use the Boost Test Framework for consistency and are organized by component.
 
-**Current Test Coverage:** 60 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, background simulation, and utility components with both functional validation and performance benchmarking.
+**Current Test Coverage:** 62 test executables covering AI systems, AI behaviors, UI performance, core systems, collision detection, pathfinding, WorkerBudget coordination, event management, particle systems, buffer management, rendering pipeline, SIMD correctness, camera systems, input handling, loading states, GameTime simulation, controller systems, entity state management, entity data management, background simulation, EDM integration tests, and utility components with both functional validation and performance benchmarking.
 
 ## Test Suites Overview
 
@@ -15,6 +15,7 @@ The Hammer Game Engine has the following test suites:
    - AI Benchmark Tests: Measure performance characteristics and scaling capabilities
    - Behavior Functionality Tests: Comprehensive validation of all 8 AI behaviors and their modes
    - ThreadSystem Queue Load Tests: Defensive monitoring to prevent ThreadSystem overload
+   - AIManager EDM Integration Tests: Validate AIManager's integration with EntityDataManager (sparse behavior vector, batch processing, state transitions)
 
 2. **UI System Tests**
    - UI Stress Tests: Validate UI performance and scalability in headless mode
@@ -43,6 +44,7 @@ The Hammer Game Engine has the following test suites:
    - Collision Performance Tests: Benchmark insertion, query, and update operations with up to 10K entities
    - Collision Stress Tests: High-density collision detection and boundary condition testing
    - AI Collision Integration Tests: Integration tests for AI pathfinding with collision system
+   - CollisionManager EDM Integration Tests: Validate CollisionManager's integration with EntityDataManager (active tier filtering, dual index semantics, static/dynamic separation)
 
 5. **Pathfinding System Tests**
    - PathfindingGrid Tests: Validate A* pathfinding algorithm with grid coordinate conversion
@@ -77,10 +79,14 @@ The Hammer Game Engine has the following test suites:
     - EntityDataManager Tests: Data-oriented entity storage, handle validation, tier management
     - BackgroundSimulationManager Tests: Background entity simulation, tier-based processing, pause/resume
 
+12. **EDM Integration Tests**
+    - AIManager EDM Integration Tests: Sparse behavior vector, batch processing with EDM indices, state transitions
+    - CollisionManager EDM Integration Tests: Active tier filtering, dual index semantics, static/dynamic separation
+
 **Test Execution Categories:**
-- **Core Tests** (14 suites): Fast functional validation (~4-8 minutes total)
+- **Core Tests** (16 suites): Fast functional validation (~4-8 minutes total)
 - **Benchmarks** (5 suites): Performance and scalability testing (~8-20 minutes total)
-- **Total Coverage**: 59 test executables with comprehensive automation scripts
+- **Total Coverage**: 62 test executables with comprehensive automation scripts
 
 ## Running Tests
 
@@ -107,6 +113,8 @@ Each test suite has dedicated scripts in the `tests/test_scripts/` directory:
 ./tests/test_scripts/run_controller_tests.sh              # Controller tests (Registry, Weather, DayNight)
 ./tests/test_scripts/run_entity_state_manager_tests.sh    # Entity state machine tests
 ./tests/test_scripts/run_entity_data_manager_tests.sh     # EntityDataManager and BackgroundSimulationManager tests
+./tests/test_scripts/run_ai_manager_edm_integration_tests.sh      # AIManager EDM integration tests
+./tests/test_scripts/run_collision_manager_edm_integration_tests.sh  # CollisionManager EDM integration tests
 
 # Performance scaling benchmarks (slow execution)
 ./tests/test_scripts/run_event_scaling_benchmark.sh     # Event manager scaling benchmark
@@ -163,6 +171,8 @@ tests/test_scripts/run_game_time_tests.bat              # GameTime system tests
 tests/test_scripts/run_controller_tests.bat             # Controller tests (Registry, Weather, DayNight)
 tests/test_scripts/run_entity_state_manager_tests.bat   # Entity state machine tests
 tests/test_scripts/run_entity_data_manager_tests.bat    # EntityDataManager and BackgroundSimulationManager tests
+tests/test_scripts/run_ai_manager_edm_integration_tests.bat      # AIManager EDM integration tests
+tests/test_scripts/run_collision_manager_edm_integration_tests.bat  # CollisionManager EDM integration tests
 
 tests/test_scripts/run_json_reader_tests.bat            # JSON parser validation tests
 
@@ -1169,6 +1179,84 @@ tests/test_scripts/run_entity_data_manager_tests.bat --verbose    # Verbose outp
 ```
 
 **Estimated Runtime:** ~2-3 seconds (97 tests total)
+
+### EDM Integration Tests
+
+Located in `tests/managers/` and `tests/collisions/`, these tests validate manager-specific integration with the EntityDataManager:
+
+#### AIManager EDM Integration Tests
+
+**File:** `tests/managers/AIManagerEDMIntegrationTests.cpp` (~400 lines, 12 test cases)
+
+**Test Coverage:**
+
+1. **Sparse Behavior Vector Tests** (4 tests):
+   - Behavior assignment creates EDM index mapping
+   - Sparse vector handles gaps correctly
+   - Behavior unassignment clears sparse behavior
+   - Behavior reassignment updates sparse behavior
+
+2. **Batch Processing EDM Tests** (2 tests):
+   - Batch processing writes to EDM transform
+   - Multiple entities processed via batch
+
+3. **State Transition Tests** (3 tests):
+   - prepareForStateTransition clears AI data
+   - State transition while batch processing
+   - AIManager reinit after state transition
+
+4. **EDM Index Caching Tests** (2 tests):
+   - EDM index cached on behavior assignment
+   - Entity destruction doesn't affect other entities
+
+5. **Behavior Cloning Tests** (1 test):
+   - Each entity gets separate behavior instance
+
+#### CollisionManager EDM Integration Tests
+
+**File:** `tests/collisions/CollisionManagerEDMIntegrationTests.cpp` (~480 lines, 17 test cases)
+
+**Test Coverage:**
+
+1. **Active Tier Filtering Tests** (3 tests):
+   - Only Active tier entities participate in collision
+   - Entities with collision disabled not in active list
+   - Background tier entities not in collision
+
+2. **Static vs Dynamic Separation Tests** (3 tests):
+   - Static body added to storage (not EDM)
+   - Dynamic entity in EDM not in static storage
+   - Static bodies always checked for collision
+
+3. **Position Reading Tests** (2 tests):
+   - Collision uses EDM position
+   - AABB computed from EDM half-size
+
+4. **Index Semantics Tests** (2 tests):
+   - Movable-movable pair indices are EDM indices
+   - Movable-static pair uses mixed indices
+
+5. **State Transition Tests** (2 tests):
+   - prepareForStateTransition clears dynamic data
+   - Static bodies preserved after dynamic clear
+
+6. **Layer Filtering Tests** (2 tests):
+   - Collision layers read from EDM
+   - Trigger flag read from EDM
+
+#### Running EDM Integration Tests
+
+```bash
+# Linux/macOS
+./tests/test_scripts/run_ai_manager_edm_integration_tests.sh [--verbose]
+./tests/test_scripts/run_collision_manager_edm_integration_tests.sh [--verbose]
+
+# Windows
+tests/test_scripts/run_ai_manager_edm_integration_tests.bat [--verbose]
+tests/test_scripts/run_collision_manager_edm_integration_tests.bat [--verbose]
+```
+
+**Estimated Runtime:** ~1-2 seconds per test suite
 
 #### Key Testing Patterns
 
