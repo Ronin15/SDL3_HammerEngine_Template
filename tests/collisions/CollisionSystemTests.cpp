@@ -459,11 +459,14 @@ BOOST_AUTO_TEST_CASE(TestStaticMovableSeparation)
     bgm.setActiveRadius(2000.0f);
 
     // Create static body via CollisionManager (buildings, obstacles)
-    EntityID staticId = 10000;
     Vector2D testPos(100.0f, 100.0f);
     AABB testAABB(testPos.getX(), testPos.getY(), 32.0f, 32.0f);
+    EntityHandle staticHandle = edm.createStaticBody(testAABB.center, testAABB.halfSize.getX(), testAABB.halfSize.getY());
+    size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
+    EntityID staticId = staticHandle.getId();
     CollisionManager::Instance().addStaticBody(staticId, testAABB.center, testAABB.halfSize,
-                                                CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+                                                CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
 
     // Create movable entity via EDM (NPCs)
     Vector2D npcPos(150.0f, 150.0f);
@@ -508,12 +511,15 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
 
     // Add many static bodies (world tiles) via CollisionManager
     for (int i = 0; i < NUM_STATIC_BODIES; ++i) {
-        EntityID id = 20000 + i;
         float x = static_cast<float>(i % 20) * 64.0f; // Grid layout
         float y = static_cast<float>(i / 20) * 64.0f;
         AABB aabb(x, y, 32.0f, 32.0f);
 
-        CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        EntityHandle staticHandle = edm.createStaticBody(aabb.center, aabb.halfSize.getX(), aabb.halfSize.getY());
+        size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
+        EntityID id = staticHandle.getId();
+        CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                    false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
         staticBodies.push_back(id);
     }
 
@@ -666,9 +672,12 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     bgm.setActiveRadius(2000.0f);
 
     // Add a static body
-    EntityID staticId = 40000;
     AABB staticAABB(200.0f, 200.0f, 32.0f, 32.0f);
-    CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle staticHandle = edm.createStaticBody(staticAABB.center, staticAABB.halfSize.getX(), staticAABB.halfSize.getY());
+    size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
+    EntityID staticId = staticHandle.getId();
+    CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
 
     // Add a movable body near the static body via EDM
     EntityID movableId = 40001;
@@ -687,9 +696,12 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     CollisionManager::Instance().update(0.016f);
 
     // Add another static body that could affect collision detection
-    EntityID staticId2 = 40002;
     AABB staticAABB2(240.0f, 240.0f, 32.0f, 32.0f);
-    CollisionManager::Instance().addStaticBody(staticId2, staticAABB2.center, staticAABB2.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle staticHandle2 = edm.createStaticBody(staticAABB2.center, staticAABB2.halfSize.getX(), staticAABB2.halfSize.getY());
+    size_t staticEdmIndex2 = edm.getStaticIndex(staticHandle2);
+    EntityID staticId2 = staticHandle2.getId();
+    CollisionManager::Instance().addStaticBody(staticId2, staticAABB2.center, staticAABB2.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex2);
 
     // Verify cache invalidation by checking that static body count is correct
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 2);
@@ -719,6 +731,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
     EntityID triggerId = CollisionManager::Instance().createTriggerArea(
         triggerAABB,
         HammerEngine::TriggerTag::Water,
+        HammerEngine::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy
     );
@@ -730,6 +743,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
     EntityID triggerId2 = CollisionManager::Instance().createTriggerAreaAt(
         200.0f, 200.0f, 25.0f, 25.0f,
         HammerEngine::TriggerTag::Lava,
+        HammerEngine::TriggerType::EventOnly,
         CollisionLayer::Layer_Environment,
         CollisionLayer::Layer_Player
     );
@@ -760,7 +774,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerCooldowns)
     // Create a trigger
     EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
         50.0f, 50.0f, 20.0f, 20.0f,
-        HammerEngine::TriggerTag::Portal
+        HammerEngine::TriggerTag::Portal,
+        HammerEngine::TriggerType::EventOnly
     );
 
     // Set specific cooldown for this trigger
@@ -784,7 +799,6 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
     // Create movable entities with different layers via EDM
     EntityID playerId = 5000;
     EntityID npcId = 5001;
-    EntityID environmentId = 5002;
 
     Vector2D pos(100.0f, 100.0f);
 
@@ -808,7 +822,11 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
 
     // Add static environment body via CollisionManager
     AABB aabb(pos.getX(), pos.getY(), 16.0f, 16.0f);
-    CollisionManager::Instance().addStaticBody(environmentId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle envHandle = edm.createStaticBody(aabb.center, aabb.halfSize.getX(), aabb.halfSize.getY());
+    size_t envEdmIndex = edm.getStaticIndex(envHandle);
+    EntityID environmentId = envHandle.getId();
+    CollisionManager::Instance().addStaticBody(environmentId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), envEdmIndex);
 
     // Verify layer settings on EDM entities
     BOOST_CHECK(playerHot.hasCollision());
@@ -1096,11 +1114,17 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
         });
     
     // Test 1: Adding a static body should trigger an event
-    EntityID staticId = 1000;
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+
     Vector2D staticPos(100.0f, 200.0f);
     AABB staticAABB(staticPos.getX(), staticPos.getY(), 32.0f, 32.0f);
+    EntityHandle staticHandle = edm.createStaticBody(staticAABB.center, staticAABB.halfSize.getX(), staticAABB.halfSize.getY());
+    size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
+    EntityID staticId = staticHandle.getId();
 
-    CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
 
     // Process deferred events - CollisionManager fires events in Deferred mode
     // so we need to drain all events to ensure deterministic test behavior
@@ -1115,9 +1139,6 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     
     // Test 2: Adding a movable body via EDM should NOT trigger a CollisionObstacleChanged event
     // (Movables don't fire these events - only static obstacles do)
-    auto& edm = EntityDataManager::Instance();
-    edm.init();
-
     EntityID movableId = 1001;
     Vector2D movablePos(150.0f, 250.0f);
     int previousEventCount = eventCount.load();
@@ -1164,12 +1185,16 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
         });
     
     // Test different sized obstacles produce appropriate radii
-    EntityID smallId = 2000;
-    EntityID largeId = 2001;
-    
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+
     // Small obstacle: 10x10
     AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
-    CollisionManager::Instance().addStaticBody(smallId, smallAABB.center, smallAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle smallHandle = edm.createStaticBody(smallAABB.center, smallAABB.halfSize.getX(), smallAABB.halfSize.getY());
+    size_t smallEdmIndex = edm.getStaticIndex(smallHandle);
+    EntityID smallId = smallHandle.getId();
+    CollisionManager::Instance().addStaticBody(smallId, smallAABB.center, smallAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), smallEdmIndex);
     EventManager::Instance().drainAllDeferredEvents();
 
     float smallRadius = lastEventRadius;
@@ -1178,7 +1203,11 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
 
     // Large obstacle: 100x100
     AABB largeAABB(200.0f, 200.0f, 50.0f, 50.0f);
-    CollisionManager::Instance().addStaticBody(largeId, largeAABB.center, largeAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle largeHandle = edm.createStaticBody(largeAABB.center, largeAABB.halfSize.getX(), largeAABB.halfSize.getY());
+    size_t largeEdmIndex = edm.getStaticIndex(largeHandle);
+    EntityID largeId = largeHandle.getId();
+    CollisionManager::Instance().addStaticBody(largeId, largeAABB.center, largeAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), largeEdmIndex);
     EventManager::Instance().drainAllDeferredEvents();
 
     float largeRadius = lastEventRadius;
@@ -1188,6 +1217,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     // Clean up
     CollisionManager::Instance().removeCollisionBody(smallId);
     CollisionManager::Instance().removeCollisionBody(largeId);
+    edm.clean();
     EventManager::Instance().removeHandler(token);
 }
 
@@ -1207,14 +1237,20 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     
     const int numBodies = 100;
     std::vector<EntityID> bodies;
-    
+
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+
     // Measure time to add many static bodies (which trigger events)
     auto start = std::chrono::high_resolution_clock::now();
-    
+
     for (int i = 0; i < numBodies; ++i) {
-        EntityID id = 3000 + i;
         AABB aabb(i * 10.0f, i * 10.0f, 16.0f, 16.0f);
-        CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        EntityHandle staticHandle = edm.createStaticBody(aabb.center, aabb.halfSize.getX(), aabb.halfSize.getY());
+        size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
+        EntityID id = staticHandle.getId();
+        CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                    false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
         bodies.push_back(id);
     }
 
@@ -1251,6 +1287,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     for (EntityID id : bodies) {
         CollisionManager::Instance().removeCollisionBody(id);
     }
+    edm.clean();
     EventManager::Instance().removeHandler(token);
 }
 
@@ -1280,7 +1317,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerEventNotifications)
     // Create a trigger
     EntityID triggerId = CollisionManager::Instance().createTriggerAreaAt(
         300.0f, 300.0f, 30.0f, 30.0f,
-        HammerEngine::TriggerTag::Water
+        HammerEngine::TriggerTag::Water,
+        HammerEngine::TriggerType::EventOnly
     );
 
     BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
@@ -1378,7 +1416,6 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     edm.init();
     CollisionManager::Instance().init();
 
-    EntityID staticId = 11000;
     EntityID movableId = 11001;
     EntityID triggerId = 11002;
 
@@ -1386,7 +1423,11 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     AABB aabb(position.getX(), position.getY(), 25.0f, 25.0f);
 
     // Add static body via CollisionManager
-    CollisionManager::Instance().addStaticBody(staticId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle staticHandle = edm.createStaticBody(aabb.center, aabb.halfSize.getX(), aabb.halfSize.getY());
+    size_t staticEdmIndex = edm.getStaticIndex(staticHandle);
+    EntityID staticId = staticHandle.getId();
+    CollisionManager::Instance().addStaticBody(staticId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                                                false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
 
     // Add movable body via EDM
     EntityHandle movableHandle = edm.registerNPC(movableId, position, 25.0f, 25.0f);
@@ -1399,7 +1440,8 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
     // Add trigger via CollisionManager
     triggerId = CollisionManager::Instance().createTriggerAreaAt(
         position.getX(), position.getY(), 25.0f, 25.0f,
-        HammerEngine::TriggerTag::Checkpoint
+        HammerEngine::TriggerTag::Checkpoint,
+        HammerEngine::TriggerType::EventOnly
     );
 
     // Verify static body type in CollisionManager
@@ -1439,16 +1481,21 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
         HammerEngine::ThreadSystem::Instance().init();
     }
 
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     // Test 1: Static bodies exactly at grid boundaries
-    EntityID boundaryId = 40000;
     float cellBoundary = 128.0f;
     AABB boundaryAABB(cellBoundary, cellBoundary, 10.0f, 10.0f);
+    EntityHandle boundaryHandle = edm.createStaticBody(boundaryAABB.center, boundaryAABB.halfSize.getX(), boundaryAABB.halfSize.getY());
+    size_t boundaryEdmIndex = edm.getStaticIndex(boundaryHandle);
+    EntityID boundaryId = boundaryHandle.getId();
 
     CollisionManager::Instance().addStaticBody(
         boundaryId, boundaryAABB.center, boundaryAABB.halfSize,
-        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), boundaryEdmIndex
     );
 
     // Should be findable via area query
@@ -1457,12 +1504,15 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     BOOST_CHECK(std::find(results.begin(), results.end(), boundaryId) != results.end());
 
     // Test 2: Very large static bodies spanning multiple cells
-    EntityID largeId = 40001;
     AABB largeAABB(200.0f, 200.0f, 300.0f, 300.0f); // 600x600 body spanning many cells
+    EntityHandle largeHandle = edm.createStaticBody(largeAABB.center, largeAABB.halfSize.getX(), largeAABB.halfSize.getY());
+    size_t largeEdmIndex = edm.getStaticIndex(largeHandle);
+    EntityID largeId = largeHandle.getId();
 
     CollisionManager::Instance().addStaticBody(
         largeId, largeAABB.center, largeAABB.halfSize,
-        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), largeEdmIndex
     );
 
     // Should be findable from multiple query regions
@@ -1481,12 +1531,15 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     BOOST_CHECK(foundInBottomRight);
 
     // Test 3: Static bodies at extreme coordinates
-    EntityID extremeId = 40002;
     AABB extremeAABB(-1000000.0f, -1000000.0f, 50.0f, 50.0f);
+    EntityHandle extremeHandle = edm.createStaticBody(extremeAABB.center, extremeAABB.halfSize.getX(), extremeAABB.halfSize.getY());
+    size_t extremeEdmIndex = edm.getStaticIndex(extremeHandle);
+    EntityID extremeId = extremeHandle.getId();
 
     CollisionManager::Instance().addStaticBody(
         extremeId, extremeAABB.center, extremeAABB.halfSize,
-        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), extremeEdmIndex
     );
 
     // Should still be queryable
@@ -1495,12 +1548,15 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     BOOST_CHECK(std::find(results.begin(), results.end(), extremeId) != results.end());
 
     // Test 4: Zero-sized static bodies (degenerate case)
-    EntityID zeroId = 40003;
     AABB zeroAABB(100.0f, 100.0f, 0.0f, 0.0f); // Zero size
+    EntityHandle zeroHandle = edm.createStaticBody(zeroAABB.center, zeroAABB.halfSize.getX(), zeroAABB.halfSize.getY());
+    size_t zeroEdmIndex = edm.getStaticIndex(zeroHandle);
+    EntityID zeroId = zeroHandle.getId();
 
     CollisionManager::Instance().addStaticBody(
         zeroId, zeroAABB.center, zeroAABB.halfSize,
-        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), zeroEdmIndex
     );
 
     // Should still be tracked and queryable
@@ -1510,13 +1566,16 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     BOOST_CHECK(std::find(results.begin(), results.end(), zeroId) != results.end());
 
     // Test 5: Static bodies that update position (e.g., moving platforms)
-    EntityID movingId = 40004;
     Vector2D startPos(64.0f, 64.0f);
     AABB movingAABB(startPos.getX(), startPos.getY(), 15.0f, 15.0f);
+    EntityHandle movingHandle = edm.createStaticBody(movingAABB.center, movingAABB.halfSize.getX(), movingAABB.halfSize.getY());
+    size_t movingEdmIndex = edm.getStaticIndex(movingHandle);
+    EntityID movingId = movingHandle.getId();
 
     CollisionManager::Instance().addStaticBody(
         movingId, movingAABB.center, movingAABB.halfSize,
-        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+        false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), movingEdmIndex
     );
 
     // Move across fine cell boundaries multiple times
@@ -1543,6 +1602,7 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().removeCollisionBody(zeroId);
     CollisionManager::Instance().removeCollisionBody(movingId);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

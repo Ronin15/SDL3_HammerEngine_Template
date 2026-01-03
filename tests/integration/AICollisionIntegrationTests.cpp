@@ -230,18 +230,25 @@ struct AICollisionTestFixture {
         return entity;
     }
 
-    // Helper: Create static obstacle
-    void createObstacle(EntityID id, const Vector2D& pos, float halfW, float halfH) {
+    // Helper: Create static obstacle with proper EDM routing
+    void createObstacle([[maybe_unused]] EntityID id, const Vector2D& pos, float halfW, float halfH) {
+        auto& edm = EntityDataManager::Instance();
+        EntityHandle handle = edm.createStaticBody(pos, halfW, halfH);
+        size_t edmIndex = edm.getStaticIndex(handle);
+        EntityID edmId = handle.getId();
+
         CollisionManager::Instance().addStaticBody(
-            id,
+            edmId,
             pos,
             Vector2D(halfW, halfH),
             HammerEngine::CollisionLayer::Layer_Environment,
             0xFFFFFFFFu,
             false,
-            0
+            0,
+            1,
+            edmIndex
         );
-        m_obstacleIds.push_back(id);
+        m_obstacleIds.push_back(edmId);
     }
 
     // Helper: Update simulation for N frames

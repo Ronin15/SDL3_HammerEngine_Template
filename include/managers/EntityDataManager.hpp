@@ -95,7 +95,8 @@ struct EntityHotData {
     uint16_t collisionMask{0xFFFF};  // 2 bytes: Which layers this entity collides with
     uint8_t collisionFlags{0};       // 1 byte: COLLISION_ENABLED, IS_TRIGGER
     uint8_t triggerTag{0};           // 1 byte: TriggerTag for trigger entities
-    uint8_t _padding[10]{};          // 10 bytes: Pad to 64-byte cache line
+    uint8_t triggerType{0};          // 1 byte: TriggerType (EventOnly, Physical)
+    uint8_t _padding[9]{};           // 9 bytes: Pad to 64-byte cache line
 
     // Entity flag constants
     static constexpr uint8_t FLAG_ALIVE = 0x01;
@@ -135,6 +136,10 @@ struct EntityHotData {
     void setTrigger(bool trigger) noexcept {
         if (trigger) collisionFlags |= IS_TRIGGER;
         else collisionFlags &= ~IS_TRIGGER;
+    }
+
+    [[nodiscard]] bool isEventOnlyTrigger() const noexcept {
+        return isTrigger() && triggerType == static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly);
     }
 };
 
@@ -417,6 +422,25 @@ public:
     EntityHandle createStaticBody(const Vector2D& position,
                                   float halfWidth,
                                   float halfHeight);
+
+    /**
+     * @brief Create a trigger entity for detecting entity overlap
+     * @param position Center position
+     * @param halfWidth Collision half-width
+     * @param halfHeight Collision half-height
+     * @param tag Semantic tag (Water, BossArea, etc.)
+     * @param type EventOnly (skip broadphase) or Physical (full collision)
+     * @return Handle to the created trigger entity
+     *
+     * Triggers are stored in static storage (don't move).
+     * EventOnly triggers skip physics broadphase, only detect player overlap.
+     * Physical triggers participate in full broadphase + resolution.
+     */
+    EntityHandle createTrigger(const Vector2D& position,
+                               float halfWidth,
+                               float halfHeight,
+                               HammerEngine::TriggerTag tag,
+                               HammerEngine::TriggerType type);
 
     /**
      * @brief Mark an entity for destruction (processed at end of frame)

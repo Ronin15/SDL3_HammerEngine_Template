@@ -8,6 +8,12 @@
 
 namespace HammerEngine {
 
+// Trigger behavior type - determines collision processing path
+enum class TriggerType : uint8_t {
+  EventOnly = 0,  // Water, area triggers - skip broadphase, events only
+  Physical = 1    // Bombs, pushables - full broadphase + resolution + events
+};
+
 // Enum tags for world trigger volumes. Extend as needed.
 enum class TriggerTag : uint8_t {
   None = 0,
