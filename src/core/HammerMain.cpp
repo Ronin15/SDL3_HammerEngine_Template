@@ -89,8 +89,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   static constexpr size_t PERF_SAMPLE_COUNT = 10;
   std::array<double, PERF_SAMPLE_COUNT> updateSamples{};
   size_t sampleIndex = 0;
-  uint64_t frameCount = 0;
-  static constexpr uint64_t PERF_LOG_INTERVAL = 1800;  // Every 30s @ 60fps
+  auto lastPerfLogTime = std::chrono::high_resolution_clock::now();
 #endif
 
   // Main game loop - classic fixed timestep pattern
@@ -115,9 +114,10 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     auto updateEnd = std::chrono::high_resolution_clock::now();
     double updateMs = std::chrono::duration<double, std::milli>(updateEnd - updateStart).count();
     updateSamples[sampleIndex++ % PERF_SAMPLE_COUNT] = updateMs;
-    ++frameCount;
 
-    if (frameCount % PERF_LOG_INTERVAL == 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
+    double secondsSinceLastLog = std::chrono::duration<double>(updateEnd - lastPerfLogTime).count();
+    if (secondsSinceLastLog >= TimestepManager::PERF_LOG_INTERVAL_SECONDS) {
+      lastPerfLogTime = updateEnd;
       double avgMs = std::accumulate(updateSamples.begin(), updateSamples.end(), 0.0) / PERF_SAMPLE_COUNT;
       double frameBudgetMs = 1000.0 / ts.getTargetFPS();
       double utilizationPercent = (avgMs / frameBudgetMs) * 100.0;

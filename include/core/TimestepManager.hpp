@@ -21,6 +21,9 @@
  */
 class TimestepManager {
 public:
+    // Performance logging interval (seconds) - used by HammerMain debug logging
+    static constexpr double PERF_LOG_INTERVAL_SECONDS = 30.0;
+
     /**
      * Constructor
      * @param targetFPS Target frames per second for rendering (e.g., 60.0f)
