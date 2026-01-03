@@ -290,8 +290,8 @@ foreach(test_name ${ALL_TESTS})
         # Only run the fast integrated performance test by default
         add_test(NAME ${test_name} COMMAND ${test_name} --run_test=AIScalingTests/TestIntegratedPerformance)
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
-        # Only run basic scaling test by default
-        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/TestBasicScaling)
+        # Only run MM scaling test by default (fast representative test)
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/MMScaling)
     else()
         add_test(NAME ${test_name} COMMAND ${test_name})
     endif()
