@@ -1543,6 +1543,20 @@ void CollisionManager::broadphaseMultiThreaded(size_t batchCount, size_t batchSi
   auto& threadSystem = HammerEngine::ThreadSystem::Instance();
   auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
+  const auto& movableAABBs = pools.movableAABBs;
+
+  // ========================================================================
+  // SWEEP-AND-PRUNE SETUP: Sort movables by minX for early termination in MM
+  // This reduces MM from O(n²) to O(n log n + n×k) where k << n
+  // ========================================================================
+  auto& sorted = pools.sortedMovableIndices;
+  sorted.resize(movableIndices.size());
+  for (size_t i = 0; i < movableIndices.size(); ++i) {
+    sorted[i] = i;  // Pool index
+  }
+  std::sort(sorted.begin(), sorted.end(), [&movableAABBs](size_t a, size_t b) {
+    return movableAABBs[a].minX < movableAABBs[b].minX;
+  });
 
   // Resize batch buffers if needed (keeps capacity, avoids allocations)
   if (m_broadphaseBatchBuffers.size() < batchCount) {
@@ -1624,71 +1638,42 @@ void CollisionManager::broadphaseBatch(
     std::vector<std::pair<size_t, size_t>>& outMovableStatic) {
   // EDM-CENTRIC: Uses pools.movableAABBs for movables, m_storage for statics
   // Thread-safe: Each batch writes to its own output vectors
+  // Uses Sweep-and-Prune (SAP) for MM: sorted indices with early termination
 
   const auto& pools = m_collisionPool;
   const auto& movableAABBs = pools.movableAABBs;
   const auto& staticIndices = pools.staticIndices;
+  const auto& sorted = pools.sortedMovableIndices;  // Pre-sorted by minX
 
-  // Process each pool index in this batch's range [startIdx, endIdx)
-  for (size_t poolIdxA = startIdx; poolIdxA < endIdx && poolIdxA < movableAABBs.size(); ++poolIdxA) {
+  // ========================================================================
+  // Process each SORTED position in this batch's range [startIdx, endIdx)
+  // ========================================================================
+  for (size_t sortedI = startIdx; sortedI < endIdx && sortedI < sorted.size(); ++sortedI) {
+    size_t poolIdxA = sorted[sortedI];  // Actual pool index from sorted order
     const auto& aabbA = movableAABBs[poolIdxA];
     const uint32_t collidesWithA = aabbA.collidesWith;
-
-    // Broadcast dynamic AABB for SIMD comparison (with epsilon)
-    Float4 dynMinX = broadcast(aabbA.minX - SPATIAL_QUERY_EPSILON);
-    Float4 dynMinY = broadcast(aabbA.minY - SPATIAL_QUERY_EPSILON);
-    Float4 dynMaxX = broadcast(aabbA.maxX + SPATIAL_QUERY_EPSILON);
-    Float4 dynMaxY = broadcast(aabbA.maxY + SPATIAL_QUERY_EPSILON);
-    const Int4 dynamicMaskVec = broadcast_int(collidesWithA);
+    const float maxXA = aabbA.maxX + SPATIAL_QUERY_EPSILON;
 
     // ========================================================================
-    // 1. MOVABLE-VS-MOVABLE: SIMD checks using movableAABBs
-    //    Only check movables with poolIdx > poolIdxA to avoid duplicates
+    // 1. MOVABLE-VS-MOVABLE: Sweep-and-Prune with early termination
+    //    Check subsequent sorted movables until minX > maxX (SAP exit)
     // ========================================================================
-    size_t startJ = poolIdxA + 1;
-    const size_t movableSimdEnd = startJ + ((movableAABBs.size() - startJ) / 4) * 4;
+    for (size_t sortedJ = sortedI + 1; sortedJ < sorted.size(); ++sortedJ) {
+      size_t poolIdxB = sorted[sortedJ];
+      const auto& aabbB = movableAABBs[poolIdxB];
 
-    for (size_t mj = startJ; mj < movableSimdEnd; mj += 4) {
-      const auto& a0 = movableAABBs[mj];
-      const auto& a1 = movableAABBs[mj+1];
-      const auto& a2 = movableAABBs[mj+2];
-      const auto& a3 = movableAABBs[mj+3];
+      // SAP early termination: if B's minX > A's maxX, no more overlaps possible
+      if (aabbB.minX > maxXA) break;
 
-      Float4 candMinX = set(a0.minX, a1.minX, a2.minX, a3.minX);
-      Float4 candMaxX = set(a0.maxX, a1.maxX, a2.maxX, a3.maxX);
-      Float4 candMinY = set(a0.minY, a1.minY, a2.minY, a3.minY);
-      Float4 candMaxY = set(a0.maxY, a1.maxY, a2.maxY, a3.maxY);
-
-      Float4 noOverlapX1 = cmplt(dynMaxX, candMinX);
-      Float4 noOverlapX2 = cmplt(candMaxX, dynMinX);
-      Float4 noOverlapY1 = cmplt(dynMaxY, candMinY);
-      Float4 noOverlapY2 = cmplt(candMaxY, dynMinY);
-      Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2), bitwise_or(noOverlapY1, noOverlapY2));
-      int noOverlapMask = movemask(noOverlap);
-
-      if (noOverlapMask == 0xF) continue;
-
-      Int4 candLayers = set_int4(a0.layers, a1.layers, a2.layers, a3.layers);
-      Int4 layerResult = bitwise_and(dynamicMaskVec, candLayers);
-      Int4 layerZero = cmpeq_int(layerResult, setzero_int());
-      int layerFailMask = movemask_int(layerZero);
-
-      for (size_t k = 0; k < 4; ++k) {
-        if (((noOverlapMask >> k) & 1) == 0 && ((layerFailMask >> (k * 4)) & 0xF) == 0) {
-          outMovableMovable.emplace_back(poolIdxA, mj + k);
-        }
-      }
-    }
-
-    // Scalar tail for remaining movables
-    for (size_t mj = movableSimdEnd; mj < movableAABBs.size(); ++mj) {
-      const auto& aabbB = movableAABBs[mj];
-      if (aabbA.maxX + SPATIAL_QUERY_EPSILON < aabbB.minX ||
-          aabbA.minX - SPATIAL_QUERY_EPSILON > aabbB.maxX ||
-          aabbA.maxY + SPATIAL_QUERY_EPSILON < aabbB.minY ||
+      // X already overlaps (from SAP), check Y overlap
+      if (aabbA.maxY + SPATIAL_QUERY_EPSILON < aabbB.minY ||
           aabbA.minY - SPATIAL_QUERY_EPSILON > aabbB.maxY) continue;
+
+      // Layer mask check
       if ((collidesWithA & aabbB.layers) == 0) continue;
-      outMovableMovable.emplace_back(poolIdxA, mj);
+
+      // Store pool indices for movable-movable pair
+      outMovableMovable.emplace_back(poolIdxA, poolIdxB);
     }
 
     // ========================================================================
@@ -1698,11 +1683,17 @@ void CollisionManager::broadphaseBatch(
     // Direct path: O(batch × statics) SIMD comparisons but no query overhead.
     // Spatial hash: O(batch × nearby_statics) with query + overlap test.
     const bool useDirectPath = (staticIndices.size() < 100);
-    const Int4 staticMaskVec = broadcast_int(collidesWithA);
     const auto& staticAABBs = pools.staticAABBs;
 
     if (useDirectPath) {
       // DIRECT PATH: Iterate cached staticAABBs with SIMD (contiguous memory access)
+      // Setup SIMD broadcasts for this movable
+      Float4 dynMinX = broadcast(aabbA.minX - SPATIAL_QUERY_EPSILON);
+      Float4 dynMinY = broadcast(aabbA.minY - SPATIAL_QUERY_EPSILON);
+      Float4 dynMaxX = broadcast(aabbA.maxX + SPATIAL_QUERY_EPSILON);
+      Float4 dynMaxY = broadcast(aabbA.maxY + SPATIAL_QUERY_EPSILON);
+      const Int4 staticMaskVec = broadcast_int(collidesWithA);
+
       size_t si = 0;
       const size_t staticSimdEnd = (staticAABBs.size() / 4) * 4;
 
