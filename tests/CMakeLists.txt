@@ -285,9 +285,18 @@ target_include_directories(save_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 # --- CTest Registration ---
 set(ALL_TESTS ${SIMPLE_TESTS} ${MOCK_TESTS} ${INVENTORY_TESTS})
 foreach(test_name ${ALL_TESTS})
-    add_test(NAME ${test_name} COMMAND ${test_name})
+    # Benchmark tests need specific test filters to avoid running all (slow) tests
+    if(${test_name} STREQUAL "ai_scaling_benchmark")
+        # Only run the fast integrated performance test by default
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=AIScalingTests/TestIntegratedPerformance)
+    elseif(${test_name} STREQUAL "collision_scaling_benchmark")
+        # Only run basic scaling test by default
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/TestBasicScaling)
+    else()
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endif()
     # Set working directory to project root so tests can find res/data/
-    set_tests_properties(${test_name} PROPERTIES 
+    set_tests_properties(${test_name} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
 # resource_factory_tests uses test access helper from tests/resources
