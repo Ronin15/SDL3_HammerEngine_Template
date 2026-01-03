@@ -485,39 +485,32 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
 }
 
 void NPC::ensurePhysicsBodyRegistered() {
-  // Register collision body (requires shared_from_this, can't be in constructor)
-  // EntityDataManager registration already done in constructor
-  auto &cm = CollisionManager::Instance();
-  const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
-  const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
+  // EDM-CENTRIC: Set collision layers directly in EDM
+  // Movables are managed entirely by EDM - no CollisionManager storage entry needed
+  if (!hasValidHandle()) return;
 
-  // Get current position from EntityDataManager (already registered in constructor)
-  Vector2D pos = getPosition();
-  HammerEngine::AABB aabb(pos.getX(), pos.getY(), halfW, halfH);
+  auto& edm = EntityDataManager::Instance();
+  size_t edmIdx = edm.getIndex(getHandle());
+  if (edmIdx == SIZE_MAX) return;
 
-  NPC_DEBUG(std::format("Registering collision body - ID: {}, Position: ({},{}), Size: {}x{}",
-                         getID(), pos.getX(), pos.getY(), halfW * 2, halfH * 2));
+  auto& hot = edm.getHotDataByIndex(edmIdx);
 
   // Configure collision layers based on NPC type
-  uint32_t layer, mask;
   if (m_npcType == NPCType::Pet) {
     // Pets use Layer_Pet and don't collide with Layer_Player or other Pets
-    layer = HammerEngine::CollisionLayer::Layer_Pet;
-    mask = 0xFFFFFFFFu & ~(HammerEngine::CollisionLayer::Layer_Player |
-                           HammerEngine::CollisionLayer::Layer_Pet);
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Pet;
+    hot.collisionMask = 0xFFFF & ~(HammerEngine::CollisionLayer::Layer_Player |
+                                    HammerEngine::CollisionLayer::Layer_Pet);
   } else {
-    // Standard NPCs use Layer_Enemy and collide with everything except other NPCs and Pets
-    layer = HammerEngine::CollisionLayer::Layer_Enemy;
-    mask = 0xFFFFFFFFu & ~(HammerEngine::CollisionLayer::Layer_Enemy |
-                           HammerEngine::CollisionLayer::Layer_Pet);
+    // Standard NPCs use Layer_Enemy (default set in registerNPC)
+    // Override mask to not collide with other NPCs and Pets
+    hot.collisionMask = 0xFFFF & ~(HammerEngine::CollisionLayer::Layer_Enemy |
+                                    HammerEngine::CollisionLayer::Layer_Pet);
   }
+  hot.setCollisionEnabled(true);
 
-  // Add collision body, then attach entity to link EDM entry
-  cm.addCollisionBody(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::KINEMATIC, layer, mask);
-  cm.attachEntity(getID(), shared_this());
-
-  std::string layerName = (m_npcType == NPCType::Pet) ? "Layer_Pet" : "Layer_Enemy";
-  NPC_DEBUG(std::format("Collision body registered successfully - KINEMATIC type with {}", layerName));
+  NPC_DEBUG(std::format("Collision enabled in EDM - ID: {}, Layer: {}, Mask: {}",
+                         getID(), hot.collisionLayers, hot.collisionMask));
 }
 
 void NPC::setFaction(Faction f) {

@@ -22,6 +22,7 @@ HierarchicalSpatialHash::HierarchicalSpatialHash() {
 }
 
 void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
+    // SINGLE-THREADED: No locks needed - collision runs on main thread only
 
     // Get the coarse regions this body overlaps
     std::vector<CoarseCoord> regions;
@@ -29,11 +30,8 @@ void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
 
     // Insert into all overlapping regions
     for (const auto& regionCoord : regions) {
-        // THREAD SAFETY: Unique lock for exclusive write access to regions
-        std::unique_lock<std::shared_mutex> lock(m_regionsMutex);
         Region& region = m_regions[regionCoord];
         region.coord = regionCoord;
-        lock.unlock(); // Release lock before calling insertIntoRegion
         insertIntoRegion(region, bodyIndex, aabb);
     }
 
@@ -56,6 +54,7 @@ void HierarchicalSpatialHash::insert(size_t bodyIndex, const AABB& aabb) {
 }
 
 void HierarchicalSpatialHash::remove(size_t bodyIndex) {
+    // SINGLE-THREADED: No locks needed - collision runs on main thread only
 
     auto locationIt = m_bodyLocations.find(bodyIndex);
     if (locationIt == m_bodyLocations.end()) {
@@ -71,18 +70,12 @@ void HierarchicalSpatialHash::remove(size_t bodyIndex) {
 
     // Remove from all regions
     for (const auto& regionCoord : regions) {
-        // THREAD SAFETY: Unique lock for exclusive write access to regions
-        std::unique_lock<std::shared_mutex> lock(m_regionsMutex);
         auto regionIt = m_regions.find(regionCoord);
         if (regionIt != m_regions.end()) {
-            lock.unlock(); // Release lock before calling removeFromRegion
             removeFromRegion(regionIt->second, bodyIndex, aabb);
 
-            // Re-acquire lock for potential erase
-            lock.lock();
-            // Clean up empty regions - need to re-find in case it changed
-            regionIt = m_regions.find(regionCoord);
-            if (regionIt != m_regions.end() && regionIt->second.bodyCount == 0) {
+            // Clean up empty regions
+            if (regionIt->second.bodyCount == 0) {
                 m_regions.erase(regionIt);
             }
         }
@@ -170,11 +163,9 @@ void HierarchicalSpatialHash::update(size_t bodyIndex, const AABB& oldAABB, cons
 }
 
 void HierarchicalSpatialHash::clear() {
-    // THREAD SAFETY: Unique lock for exclusive write access to regions
-    std::unique_lock<std::shared_mutex> lock(m_regionsMutex);
+    // SINGLE-THREADED: No locks needed - collision runs on main thread only
     m_regions.clear();
     m_bodyLocations.clear();
-    lock.unlock();
 }
 
 void HierarchicalSpatialHash::reserve(size_t expectedBodyCount) {

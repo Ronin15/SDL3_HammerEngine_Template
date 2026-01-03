@@ -159,12 +159,13 @@ public:
     size_t getBodyCount() const { return m_storage.size(); }
     bool isSyncing() const { return m_isSyncing; }
 
-    // COLLISION BODY MANAGEMENT
-    // Uses EDM as single source of truth - looks up entity by ID
-    size_t addCollisionBody(EntityID id, const Vector2D& position, const Vector2D& halfSize,
-                               BodyType type, uint32_t layer = CollisionLayer::Layer_Default,
-                               uint32_t collidesWith = 0xFFFFFFFFu,
-                               bool isTrigger = false, uint8_t triggerTag = 0);
+    // STATIC BODY MANAGEMENT
+    // EDM-CENTRIC: Only static bodies (buildings, triggers, obstacles) go in m_storage
+    // Movables (players, NPCs) are managed entirely by EDM - no m_storage entry
+    size_t addStaticBody(EntityID id, const Vector2D& position, const Vector2D& halfSize,
+                         uint32_t layer = CollisionLayer::Layer_Default,
+                         uint32_t collidesWith = 0xFFFFFFFFu,
+                         bool isTrigger = false, uint8_t triggerTag = 0);
     void removeCollisionBody(EntityID id);
     bool getCollisionBody(EntityID id, size_t& outIndex) const;
     void updateCollisionBodyPosition(EntityID id, const Vector2D& newPosition);
@@ -442,6 +443,10 @@ private:
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
+    // Static query caching - skip re-query when culling area unchanged
+    mutable CullingArea m_lastStaticQueryCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
+    mutable bool m_staticQueryCacheDirty{true};
+
     // NOTE: Redundant caches removed in Phase 3 EDM refactor:
     // - m_coarseRegionStaticCache: Now use m_staticSpatialHash directly
     // - m_staticSpatialGrid: Redundant with m_staticSpatialHash
@@ -463,7 +468,6 @@ private:
         std::vector<EntityID> staticCandidates;   // For broadphase static queries
 
         // EDM-CENTRIC: Active tier indices and cached collision data
-        std::vector<size_t> activeIndices;        // All active bodies (movables + statics in culling area)
         std::vector<size_t> movableIndices;       // EDM indices of Active tier entities with collision
         std::vector<size_t> staticIndices;        // m_storage indices of static bodies in culling area
         std::vector<size_t> sortedMovableIndices; // Pool indices sorted by X for Sweep-and-Prune
@@ -508,7 +512,6 @@ private:
                 staticCandidates.reserve(std::min(static_cast<size_t>(256), bodyCount / 5));
 
                 // EDM-centric capacity
-                activeIndices.reserve(bodyCount);
                 movableIndices.reserve(bodyCount / 4);  // Estimate 25% Active tier with collision
                 movableAABBs.reserve(bodyCount / 4);    // Parallel to movableIndices
                 staticIndices.reserve(bodyCount);
@@ -526,10 +529,9 @@ private:
             staticCandidates.clear();
 
             // EDM-centric resets
-            activeIndices.clear();
             movableIndices.clear();
             movableAABBs.clear();
-            staticIndices.clear();
+            // NOTE: staticIndices is cached and cleared only when culling area changes
             sortedMovableIndices.clear();
             movableMovablePairs.clear();
             movableStaticPairs.clear();
@@ -636,9 +638,14 @@ private:
     mutable std::mutex m_narrowphaseFuturesMutex;
 
     // Multi-threading support for broadphase (WorkerBudget integrated)
+    // Matches AIManager pattern: reusable member vectors, no mutex (futures are thread-safe)
     mutable std::vector<std::future<void>> m_broadphaseFutures;
-    mutable std::shared_ptr<std::vector<std::vector<std::pair<size_t, size_t>>>> m_broadphasePairBuffers;
-    mutable std::mutex m_broadphaseFuturesMutex;
+    struct BroadphaseBatchBuffer {
+        std::vector<std::pair<size_t, size_t>> movableMovable;
+        std::vector<std::pair<size_t, size_t>> movableStatic;
+        void clear() { movableMovable.clear(); movableStatic.clear(); }
+    };
+    mutable std::vector<BroadphaseBatchBuffer> m_broadphaseBatchBuffers;
 
     // Threading config and metrics
     // Narrowphase: 100+ pairs worth threading (each pair = AABB test + layer check + collision info)

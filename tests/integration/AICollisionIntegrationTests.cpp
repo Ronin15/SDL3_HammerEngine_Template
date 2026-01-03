@@ -216,29 +216,26 @@ struct AICollisionTestFixture {
         auto entity = CollisionTestEntity::create(pos);
         m_entities.push_back(entity);
 
-        // Add collision body (KINEMATIC for AI-controlled entities)
-        EntityID id = entity->getID();
-        CollisionManager::Instance().addCollisionBody(
-            id,
-            pos,
-            Vector2D(16.0f, 16.0f), // Half-size (32x32 entity)
-            HammerEngine::BodyType::KINEMATIC,
-            HammerEngine::CollisionLayer::Layer_Default,
-            0xFFFFFFFFu,
-            false,
-            0
-        );
+        // EDM-CENTRIC: Entity is already registered with EDM via NPC constructor
+        // Just set collision layers on EDM hot data
+        auto& edm = EntityDataManager::Instance();
+        size_t idx = edm.getIndex(entity->getHandle());
+        if (idx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(idx);
+            hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
 
         return entity;
     }
 
     // Helper: Create static obstacle
     void createObstacle(EntityID id, const Vector2D& pos, float halfW, float halfH) {
-        CollisionManager::Instance().addCollisionBody(
+        CollisionManager::Instance().addStaticBody(
             id,
             pos,
             Vector2D(halfW, halfH),
-            HammerEngine::BodyType::STATIC,
             HammerEngine::CollisionLayer::Layer_Environment,
             0xFFFFFFFFu,
             false,

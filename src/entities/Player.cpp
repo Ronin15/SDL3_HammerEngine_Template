@@ -260,44 +260,37 @@ void Player::clean() {
   if (edm.isInitialized()) {
     edm.unregisterEntity(getID());
   }
-
-  // Remove collision body
-  CollisionManager::Instance().removeCollisionBody(getID());
+  // EDM-CENTRIC: No collision body in m_storage to remove
+  // Entity removal from EDM handles all cleanup
 }
 
 void Player::ensurePhysicsBodyRegistered() {
-  // Register collision body (requires shared_from_this, can't be in constructor)
-  // EntityDataManager registration already done in constructor
-  auto &cm = CollisionManager::Instance();
-  const float halfW = m_frameWidth > 0 ? m_frameWidth * 0.5f : 16.0f;
-  const float halfH = m_height > 0 ? m_height * 0.5f : 16.0f;
+  // EDM-CENTRIC: Set collision layers directly in EDM
+  // Movables are managed entirely by EDM - no CollisionManager storage entry needed
+  if (!hasValidHandle()) return;
 
-  // Get current position from EntityDataManager (already registered in constructor)
-  Vector2D pos = getPosition();
-  HammerEngine::AABB aabb(pos.getX(), pos.getY(), halfW, halfH);
+  auto& edm = EntityDataManager::Instance();
+  size_t edmIdx = edm.getIndex(getHandle());
+  if (edmIdx == SIZE_MAX) return;
 
-  // Add collision body, then attach entity to link EDM entry
+  auto& hot = edm.getHotDataByIndex(edmIdx);
+
   // Player collides with everything except pets (pets pass through player)
-  uint32_t mask = 0xFFFFFFFFu & ~HammerEngine::CollisionLayer::Layer_Pet;
-  cm.addCollisionBody(getID(), aabb.center, aabb.halfSize, HammerEngine::BodyType::DYNAMIC,
-                        HammerEngine::CollisionLayer::Layer_Player, mask);
-  cm.attachEntity(getID(), shared_this());
+  // Layer_Player is already set in registerPlayer(), just set mask
+  hot.collisionMask = 0xFFFF & ~HammerEngine::CollisionLayer::Layer_Pet;
+  hot.setCollisionEnabled(true);
 }
 
 void Player::setVelocity(const Vector2D& velocity) {
   // Update EntityDataManager (single source of truth) via base class
+  // EDM-CENTRIC: No CollisionManager entry for movables
   Entity::setVelocity(velocity);
-  // Also update CollisionManager's working copy
-  auto& cm = CollisionManager::Instance();
-  cm.updateCollisionBodyVelocity(getID(), velocity);
 }
 
 void Player::setPosition(const Vector2D& position) {
   // Update EntityDataManager (single source of truth) via base class
+  // EDM-CENTRIC: No CollisionManager entry for movables
   Entity::setPosition(position);
-  // Also update CollisionManager's working copy
-  auto& cm = CollisionManager::Instance();
-  cm.updateCollisionBodyPosition(getID(), position);
 }
 
 void Player::initializeInventory() {

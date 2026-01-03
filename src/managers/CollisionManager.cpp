@@ -31,6 +31,7 @@
 #include "core/WorkerBudget.hpp"
 #include "events/WorldEvent.hpp"
 #include "events/WorldTriggerEvent.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/WorldManager.hpp"
@@ -236,8 +237,8 @@ EntityID CollisionManager::createTriggerArea(const AABB &aabb,
   const EntityID id = HammerEngine::UniqueID::generate();
   const Vector2D center(aabb.center.getX(), aabb.center.getY());
   const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-  // addCollisionBody creates EDM entry for STATIC bodies
-  addCollisionBody(id, center, halfSize, BodyType::STATIC,
+  // addStaticBody handles static collision bodies (buildings, obstacles)
+  addStaticBody(id, center, halfSize,
                       layerMask, collideMask, true, static_cast<uint8_t>(tag));
   return id;
 }
@@ -309,7 +310,7 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
       if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
         const Vector2D center(aabb.center.getX(), aabb.center.getY());
         const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-        addCollisionBody(id, center, halfSize, BodyType::STATIC,
+        addStaticBody(id, center, halfSize,
                            CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
                            true, static_cast<uint8_t>(tag));
         ++created;
@@ -429,7 +430,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
                       (static_cast<EntityID>(tile.buildingId) << 16);
 
         if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-          addCollisionBody(id, center, halfSize, BodyType::STATIC,
+          addStaticBody(id, center, halfSize,
                              CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
           ++created;
 
@@ -480,7 +481,7 @@ size_t CollisionManager::createStaticObstacleBodies() {
                           static_cast<EntityID>(subBodyIndex);
 
             if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-              addCollisionBody(id, center, halfSize, BodyType::STATIC,
+              addStaticBody(id, center, halfSize,
                                  CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
               ++created;
               ++subBodyIndex;
@@ -739,9 +740,9 @@ void CollisionManager::onTileChanged(int x, int y) {
       Vector2D const center(cx, cy);
       Vector2D const halfSize(tileSize * 0.5f, tileSize * 0.5f);
       // Pass trigger properties through command queue (isTrigger=true, triggerTag=Water)
-      addCollisionBody(trigId, center, halfSize, BodyType::STATIC,
-                         CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                         true, static_cast<uint8_t>(HammerEngine::TriggerTag::Water));
+      addStaticBody(trigId, center, halfSize,
+                    CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                    true, static_cast<uint8_t>(HammerEngine::TriggerTag::Water));
     }
 
     // Update solid obstacle collision body for this tile (BUILDING only)
@@ -878,7 +879,7 @@ void CollisionManager::onTileChanged(int x, int y) {
                           (static_cast<EntityID>(tile.buildingId) << 16) |
                           static_cast<EntityID>(subBodyIndex);
 
-            addCollisionBody(id, center, halfSize, BodyType::STATIC,
+            addStaticBody(id, center, halfSize,
                                CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
             ++subBodyIndex;
 
@@ -918,6 +919,7 @@ void CollisionManager::onTileChanged(int x, int y) {
 
     // Mark static hash as needing rebuild since tile changed
     m_staticHashDirty = true;
+    m_staticQueryCacheDirty = true;
   }
 }
 
@@ -970,16 +972,18 @@ void CollisionManager::subscribeWorldEvents() {
   m_handlerTokens.push_back(token);
 }
 
-// ========== SOA STORAGE MANAGEMENT METHODS ==========
+// ========== STATIC BODY STORAGE MANAGEMENT ==========
+// EDM-CENTRIC: Static bodies (buildings, triggers, obstacles) are stored in m_storage
+// Movables (players, NPCs) are managed entirely by EDM - no m_storage entry
 
-size_t CollisionManager::addCollisionBody(EntityID id, const Vector2D& position,
-                                              const Vector2D& halfSize, BodyType type,
-                                              uint32_t layer, uint32_t collidesWith,
-                                              bool isTrigger, uint8_t triggerTag) {
+size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
+                                       const Vector2D& halfSize,
+                                       uint32_t layer, uint32_t collidesWith,
+                                       bool isTrigger, uint8_t triggerTag) {
   // Check if entity already exists
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
-    // Update existing entity
+    // Update existing static body
     size_t index = it->second;
     if (index < m_storage.hotData.size()) {
       auto& hot = m_storage.hotData[index];
@@ -995,10 +999,7 @@ size_t CollisionManager::addCollisionBody(EntityID id, const Vector2D& position,
       hot.aabbDirty = 0;
       hot.layers = layer;
       hot.collidesWith = collidesWith;
-      hot.bodyType = static_cast<uint8_t>(type);
       hot.active = true;
-
-      // NOTE: Legacy movable/player tracking removed - EDM tier system is source of truth
 
       if (index < m_storage.coldData.size()) {
         m_storage.coldData[index].fullAABB = AABB(px, py, hw, hh);
@@ -1007,7 +1008,7 @@ size_t CollisionManager::addCollisionBody(EntityID id, const Vector2D& position,
     return it->second;
   }
 
-  // Add new entity
+  // Add new static body
   size_t newIndex = m_storage.size();
   float px = position.getX();
   float py = position.getY();
@@ -1022,32 +1023,11 @@ size_t CollisionManager::addCollisionBody(EntityID id, const Vector2D& position,
   hotData.aabbDirty = 0;
   hotData.layers = layer;
   hotData.collidesWith = collidesWith;
-  hotData.bodyType = static_cast<uint8_t>(type);
+  hotData.bodyType = static_cast<uint8_t>(BodyType::STATIC);
   hotData.triggerTag = triggerTag;
   hotData.active = true;
   hotData.isTrigger = isTrigger;
-
-  // Look up EDM entry by EntityID - EDM is source of truth
-  auto& edm = EntityDataManager::Instance();
-  size_t edmIdx = SIZE_MAX;
-  if (type == BodyType::STATIC) {
-    // Static bodies go in separate EDM storage
-    edmIdx = edm.findIndexByEntityId(id);
-    if (edmIdx == SIZE_MAX) {
-      EntityHandle handle = edm.createStaticBody(position, hw, hh);
-      edmIdx = edm.getStaticIndex(handle);
-    }
-  } else {
-    // Dynamic/Kinematic bodies: check if already registered in EDM
-    edmIdx = edm.findIndexByEntityId(id);
-    if (edmIdx == SIZE_MAX) {
-      // Not registered - create EDM entry for proper data-oriented flow
-      // This handles programmatic creation and test fixtures
-      EntityHandle handle = edm.registerNPC(id, position, hw, hh);
-      edmIdx = edm.getIndex(handle);
-    }
-  }
-  hotData.edmIndex = edmIdx;
+  hotData.edmIndex = SIZE_MAX;  // Static bodies don't have EDM entries
 
   // Initialize coarse cell coords for cache optimization
   AABB initialAABB(px, py, hw, hh);
@@ -1063,15 +1043,13 @@ size_t CollisionManager::addCollisionBody(EntityID id, const Vector2D& position,
   m_storage.entityIds.push_back(id);
   m_storage.entityToIndex[id] = newIndex;
 
-  // NOTE: Legacy movable/player tracking removed - EDM tier system is source of truth
-
-  if (type == BodyType::STATIC) {
-    float radius = std::max(hw, hh) + 16.0f;
-    std::string description = std::format("Static obstacle added at ({}, {})", px, py);
-    EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
-                                                            EventManager::DispatchMode::Deferred);
-    m_staticHashDirty = true;
-  }
+  // Fire event and mark hash dirty for static bodies
+  float radius = std::max(hw, hh) + 16.0f;
+  std::string description = std::format("Static obstacle added at ({}, {})", px, py);
+  EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
+                                                           EventManager::DispatchMode::Deferred);
+  m_staticHashDirty = true;
+  m_staticQueryCacheDirty = true;
 
   return newIndex;
 }
@@ -1109,6 +1087,7 @@ void CollisionManager::removeCollisionBody(EntityID id) {
       EventManager::Instance().triggerCollisionObstacleChanged(position, radius, description,
                                                               EventManager::DispatchMode::Deferred);
       m_staticHashDirty = true;
+      m_staticQueryCacheDirty = true;
     }
   }
 
@@ -1154,8 +1133,27 @@ void CollisionManager::updateCollisionBodyPosition(EntityID id, const Vector2D& 
   if (getCollisionBody(id, index)) {
     auto& hot = m_storage.hotData[index];
 
-    // Static bodies don't move - skip EDM update
+    // Static bodies (including moving platforms) update AABB directly in m_storage
     if (static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      // Calculate half-size from current AABB
+      float halfW = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
+      float halfH = (hot.aabbMaxY - hot.aabbMinY) * 0.5f;
+
+      // Update AABB position
+      hot.aabbMinX = newPosition.getX() - halfW;
+      hot.aabbMinY = newPosition.getY() - halfH;
+      hot.aabbMaxX = newPosition.getX() + halfW;
+      hot.aabbMaxY = newPosition.getY() + halfH;
+      hot.aabbDirty = 0;
+
+      // Update cold data AABB
+      if (index < m_storage.coldData.size()) {
+        m_storage.coldData[index].fullAABB = AABB(newPosition.getX(), newPosition.getY(), halfW, halfH);
+      }
+
+      // Mark static hash dirty for rebuild
+      m_staticHashDirty = true;
+      m_staticQueryCacheDirty = true;
       return;
     }
 
@@ -1288,35 +1286,45 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
 
   // Store current culling area for use in broadphase queries
   m_currentCullingArea = cullingArea;
-  pools.activeIndices.clear();
   pools.movableIndices.clear();
   pools.movableAABBs.clear();
-  pools.staticIndices.clear();
+  // NOTE: staticIndices NOT cleared here - cached and only cleared inside cullingChanged block
 
   // Track total body counts
   size_t totalStatic = 0;
   size_t totalDynamic = 0;
   size_t totalKinematic = 0;
 
-  // Query m_staticSpatialHash directly for statics in culling area
-  const float cullCenterX = (cullingArea.minX + cullingArea.maxX) * 0.5f;
-  const float cullCenterY = (cullingArea.minY + cullingArea.maxY) * 0.5f;
-  const float cullHalfW = (cullingArea.maxX - cullingArea.minX) * 0.5f;
-  const float cullHalfH = (cullingArea.maxY - cullingArea.minY) * 0.5f;
+  // Query m_staticSpatialHash for statics in culling area
+  // OPTIMIZATION: Cache result when culling area unchanged
+  bool cullingChanged = m_staticQueryCacheDirty ||
+                        cullingArea.minX != m_lastStaticQueryCullingArea.minX ||
+                        cullingArea.maxX != m_lastStaticQueryCullingArea.maxX ||
+                        cullingArea.minY != m_lastStaticQueryCullingArea.minY ||
+                        cullingArea.maxY != m_lastStaticQueryCullingArea.maxY;
 
-  if (cullHalfW > 0.0f && cullHalfH > 0.0f) {
-    AABB cullAABB(cullCenterX, cullCenterY, cullHalfW, cullHalfH);
-    m_staticSpatialHash.queryRegion(cullAABB, pools.staticIndices);
+  if (cullingChanged) {
+    pools.staticIndices.clear();
+    const float cullCenterX = (cullingArea.minX + cullingArea.maxX) * 0.5f;
+    const float cullCenterY = (cullingArea.minY + cullingArea.maxY) * 0.5f;
+    const float cullHalfW = (cullingArea.maxX - cullingArea.minX) * 0.5f;
+    const float cullHalfH = (cullingArea.maxY - cullingArea.minY) * 0.5f;
+
+    if (cullHalfW > 0.0f && cullHalfH > 0.0f) {
+      AABB cullAABB(cullCenterX, cullCenterY, cullHalfW, cullHalfH);
+      m_staticSpatialHash.queryRegion(cullAABB, pools.staticIndices);
+    }
+    m_lastStaticQueryCullingArea = cullingArea;
+    m_staticQueryCacheDirty = false;
   }
+  // else: reuse pools.staticIndices from previous frame
   totalStatic = pools.staticIndices.size();
 
   // EDM-CENTRIC: Get Active tier entities with collision enabled
-  // This automatically filters by tier (Active only) and avoids O(18K) iteration
-  for (size_t edmIdx : edm.getActiveIndices()) {
+  // Uses cached filtered indices - avoids O(18K) iteration and in-loop filtering
+  for (size_t edmIdx : edm.getActiveIndicesWithCollision()) {
     const auto& hot = edm.getHotDataByIndex(edmIdx);
-
-    // Skip entities without collision enabled
-    if (!hot.hasCollision()) continue;
+    // No hasCollision() check needed - already filtered by EDM
 
     // Get position from EDM transform
     const auto& transform = edm.getTransformByIndex(edmIdx);
@@ -1350,11 +1358,6 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
     aabb.collidesWith = hot.collisionMask;
     pools.movableAABBs.push_back(aabb);
   }
-
-  // Combine for activeIndices (for metrics/logging)
-  pools.activeIndices.reserve(pools.staticIndices.size() + pools.movableIndices.size());
-  pools.activeIndices.insert(pools.activeIndices.end(), pools.staticIndices.begin(), pools.staticIndices.end());
-  pools.activeIndices.insert(pools.activeIndices.end(), pools.movableIndices.begin(), pools.movableIndices.end());
 
   return {totalStatic, totalDynamic, totalKinematic};
 }
@@ -1458,13 +1461,16 @@ void CollisionManager::broadphaseSingleThreaded() {
   // 2. MOVABLE-VS-STATIC: Iterate each movable against statics
   //    Movables use pools.movableAABBs, statics use m_storage.hotData
   // ========================================================================
-  static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
+  // DYNAMIC THRESHOLD: Spatial hash query costs ~30μs overhead per movable.
+  // Direct iteration costs ~2.5ns per static. Breakeven at ~12K statics.
+  // Use direct path unless we have massive static counts where spatial queries filter significantly.
+  const bool useDirectPath = (staticIndices.size() < 5000);
 
   for (size_t poolIdx = 0; poolIdx < movableIndices.size(); ++poolIdx) {
     const auto& movableAABB = movableAABBs[poolIdx];
     const uint32_t movableCollidesWith = movableAABB.collidesWith;
 
-    if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
+    if (useDirectPath) {
       // DIRECT PATH: Check all statics in culling area
       for (size_t si = 0; si < staticIndices.size(); ++si) {
         size_t staticIdx = staticIndices[si];
@@ -1508,59 +1514,52 @@ void CollisionManager::broadphaseSingleThreaded() {
 void CollisionManager::broadphaseMultiThreaded(size_t batchCount, size_t batchSize) {
   // EDM-CENTRIC: Multi-threaded broadphase using pools.movableAABBs
   // Output: Per-batch pair buffers merged into pools.movableMovablePairs/movableStaticPairs
+  // Matches AIManager pattern: reusable member buffers, no mutex overhead
 
   auto& threadSystem = HammerEngine::ThreadSystem::Instance();
   auto& pools = m_collisionPool;
   const auto& movableIndices = pools.movableIndices;
 
-  // Per-batch output buffers (thread-safe: each batch writes to its own buffer)
-  struct BatchBuffers {
-    std::vector<std::pair<size_t, size_t>> movableMovable;
-    std::vector<std::pair<size_t, size_t>> movableStatic;
-  };
-  auto batchBuffers = std::make_shared<std::vector<BatchBuffers>>(batchCount);
+  // Resize batch buffers if needed (keeps capacity, avoids allocations)
+  if (m_broadphaseBatchBuffers.size() < batchCount) {
+    m_broadphaseBatchBuffers.resize(batchCount);
+  }
 
-  // Reserve capacity for each batch
-  size_t estimatedPerBatch = (movableIndices.size() / batchCount) * 4;
+  // Clear batch buffers (keeps capacity from previous frames)
   for (size_t i = 0; i < batchCount; ++i) {
-    (*batchBuffers)[i].movableMovable.reserve(estimatedPerBatch / 4);
-    (*batchBuffers)[i].movableStatic.reserve(estimatedPerBatch);
+    m_broadphaseBatchBuffers[i].clear();
   }
 
-  // Submit batches
-  {
-    std::lock_guard<std::mutex> lock(m_broadphaseFuturesMutex);
-    m_broadphaseFutures.clear();
-    m_broadphaseFutures.reserve(batchCount);
+  // Submit batches (no mutex - futures are thread-safe)
+  m_broadphaseFutures.clear();
+  m_broadphaseFutures.reserve(batchCount);
 
-    for (size_t i = 0; i < batchCount; ++i) {
-      size_t startIdx = i * batchSize;
-      size_t endIdx = std::min(startIdx + batchSize, movableIndices.size());
+  for (size_t i = 0; i < batchCount; ++i) {
+    size_t startIdx = i * batchSize;
+    size_t endIdx = std::min(startIdx + batchSize, movableIndices.size());
 
-      m_broadphaseFutures.push_back(
-          threadSystem.enqueueTaskWithResult(
-              [this, startIdx, endIdx, batchBuffers, i]() -> void {
-                try {
-                  broadphaseBatch(startIdx, endIdx,
-                                  (*batchBuffers)[i].movableMovable,
-                                  (*batchBuffers)[i].movableStatic);
-                } catch (const std::exception& e) {
-                  COLLISION_ERROR(std::format(
-                      "Exception in broadphase batch {}: {}", i, e.what()));
-                }
-              },
-              HammerEngine::TaskPriority::High,
-              std::format("Collision_Broadphase_Batch_{}", i)
-          )
-      );
-    }
+    m_broadphaseFutures.push_back(
+        threadSystem.enqueueTaskWithResult(
+            [this, startIdx, endIdx, i]() -> void {
+              try {
+                broadphaseBatch(startIdx, endIdx,
+                                m_broadphaseBatchBuffers[i].movableMovable,
+                                m_broadphaseBatchBuffers[i].movableStatic);
+              } catch (const std::exception& e) {
+                COLLISION_ERROR(std::format(
+                    "Exception in broadphase batch {}: {}", i, e.what()));
+              }
+            },
+            HammerEngine::TaskPriority::High,
+            "Collision_Broadphase"
+        )
+    );
   }
 
-  // Wait for completion
-  {
-    std::lock_guard<std::mutex> lock(m_broadphaseFuturesMutex);
-    for (auto& future : m_broadphaseFutures) {
-      future.wait();
+  // Wait for completion (no mutex - matches AIManager pattern)
+  for (auto& future : m_broadphaseFutures) {
+    if (future.valid()) {
+      future.get();
     }
   }
 
@@ -1569,18 +1568,20 @@ void CollisionManager::broadphaseMultiThreaded(size_t batchCount, size_t batchSi
   pools.movableStaticPairs.clear();
 
   size_t totalMM = 0, totalMS = 0;
-  for (const auto& batch : *batchBuffers) {
-    totalMM += batch.movableMovable.size();
-    totalMS += batch.movableStatic.size();
+  for (size_t i = 0; i < batchCount; ++i) {
+    totalMM += m_broadphaseBatchBuffers[i].movableMovable.size();
+    totalMS += m_broadphaseBatchBuffers[i].movableStatic.size();
   }
   pools.movableMovablePairs.reserve(totalMM);
   pools.movableStaticPairs.reserve(totalMS);
 
-  for (const auto& batch : *batchBuffers) {
+  for (size_t i = 0; i < batchCount; ++i) {
     pools.movableMovablePairs.insert(pools.movableMovablePairs.end(),
-                                     batch.movableMovable.begin(), batch.movableMovable.end());
+                                     m_broadphaseBatchBuffers[i].movableMovable.begin(),
+                                     m_broadphaseBatchBuffers[i].movableMovable.end());
     pools.movableStaticPairs.insert(pools.movableStaticPairs.end(),
-                                    batch.movableStatic.begin(), batch.movableStatic.end());
+                                    m_broadphaseBatchBuffers[i].movableStatic.begin(),
+                                    m_broadphaseBatchBuffers[i].movableStatic.end());
   }
 
 #ifndef NDEBUG
@@ -1669,10 +1670,13 @@ void CollisionManager::broadphaseBatch(
     // ========================================================================
     // 2. MOVABLE-VS-STATIC: Check against statics in m_storage
     // ========================================================================
-    static constexpr size_t STATIC_DIRECT_THRESHOLD = 500;
+    // DYNAMIC THRESHOLD: Spatial hash query costs ~30μs overhead per movable.
+    // Direct SIMD costs ~2.5ns per static. Breakeven at ~12K statics.
+    // Use direct SIMD unless we have massive static counts where queries filter significantly.
+    const bool useDirectPath = (staticIndices.size() < 5000);
     const Int4 staticMaskVec = broadcast_int(collidesWithA);
 
-    if (staticIndices.size() <= STATIC_DIRECT_THRESHOLD) {
+    if (useDirectPath) {
       // DIRECT PATH: Iterate all culled statics with SIMD
       size_t si = 0;
       const size_t staticSimdEnd = (staticIndices.size() / 4) * 4;
@@ -1788,6 +1792,7 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
   constexpr float AXIS_PREFERENCE_EPSILON = 0.01f;
 
   // Helper lambda to create collision info from AABB overlap
+  // NOTE: Broadphase already confirmed AABB overlap - no need to re-test here
   auto processOverlap = [&collisions](
       float minXA, float minYA, float maxXA, float maxYA,
       float minXB, float minYB, float maxXB, float maxYB,
@@ -1796,9 +1801,7 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
       size_t idxA, size_t idxB,
       bool isMovableMovable) {
 
-    // AABB intersection test
-    if (maxXA < minXB || maxXB < minXA || maxYA < minYB || maxYB < minYA) return;
-
+    // Compute overlap (broadphase guarantees intersection)
     float overlapX = std::min(maxXA, maxXB) - std::max(minXA, minXB);
     float overlapY = std::min(maxYA, maxYB) - std::max(minYA, minYB);
 
@@ -1857,8 +1860,7 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
 
     const auto& movableAABB = movableAABBs[poolIdx];
     const auto& staticHot = m_storage.hotData[storageIdx];
-
-    if (!staticHot.active) continue;
+    // NOTE: No active check needed - broadphase already filtered inactive statics
 
     // Get EntityID from EDM for movable
     size_t edmIdx = movableIndices[poolIdx];
@@ -1957,8 +1959,8 @@ void CollisionManager::update(float dt) {
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
   size_t activeMovableBodies = m_collisionPool.movableIndices.size();
-  size_t activeBodies = m_collisionPool.activeIndices.size();
   size_t activeStaticBodies = m_collisionPool.staticIndices.size();
+  size_t activeBodies = activeMovableBodies + activeStaticBodies;
 
   // CULLING METRICS: Calculate accurate counts of culled bodies
 
@@ -1974,7 +1976,18 @@ void CollisionManager::update(float dt) {
   auto t1 = clock::now();
 #endif
   broadphase();
-  auto t2 = clock::now(); // Needed for WorkerBudget timing
+  auto t2 = clock::now();
+
+  // Report broadphase batch completion for adaptive tuning (WorkerBudget hill climb)
+  if (m_lastBroadphaseWasThreaded && activeMovableBodies > 0) {
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    double broadphaseMs = std::chrono::duration<double, std::milli>(t2 - t1).count();
+    budgetMgr.reportBatchCompletion(
+        HammerEngine::SystemType::Collision,
+        activeMovableBodies,
+        m_lastBroadphaseBatchCount,
+        broadphaseMs);
+  }
 
   // NARROWPHASE: Detailed collision detection and response calculation
   const size_t pairCount = m_collisionPool.movableMovablePairs.size() +
@@ -2150,8 +2163,9 @@ void CollisionManager::resolve(const CollisionInfo& collision) {
 // movable AABBs inline from EDM into pools.movableAABBs. Static bodies don't need refresh.
 
 void CollisionManager::processTriggerEvents() {
-  // Process trigger enter/exit events using SOA data
-  // This is similar to the legacy trigger processing but uses SOA storage
+  // EDM-CENTRIC: Process trigger events with correct index semantics
+  // - Movable-movable (isMovableMovable=true): both indices are EDM indices (skip - movables aren't triggers)
+  // - Movable-static (isMovableMovable=false): indexA is EDM index, indexB is m_storage index
 
   auto makeKey = [](EntityID a, EntityID b) -> uint64_t {
     uint64_t x = static_cast<uint64_t>(a);
@@ -2161,42 +2175,39 @@ void CollisionManager::processTriggerEvents() {
   };
 
   auto now = std::chrono::steady_clock::now();
+  auto& edm = EntityDataManager::Instance();
+
   // Reuse member buffer to avoid per-frame hash table allocation
   m_currentTriggerPairsBuffer.clear();
 
   for (const auto& collision : m_collisionPool.collisionBuffer) {
-    // Use stored indices - NO MORE LINEAR LOOKUP!
-    size_t indexA = collision.indexA;
-    size_t indexB = collision.indexB;
+    // EDM-CENTRIC: Skip movable-movable collisions (neither can be a trigger)
+    if (collision.isMovableMovable) {
+      continue;
+    }
 
-    if (indexA >= m_storage.hotData.size() || indexB >= m_storage.hotData.size()) continue;
+    // Movable-static collision: indexA = EDM index (movable), indexB = m_storage index (static)
+    size_t edmIdx = collision.indexA;
+    size_t storageIdx = collision.indexB;
 
-    const auto& hotA = m_storage.hotData[indexA];
-    const auto& hotB = m_storage.hotData[indexB];
+    // Validate indices
+    if (storageIdx >= m_storage.hotData.size()) continue;
 
-    // Check for player-trigger interactions
-    bool isPlayerA = (hotA.layers & CollisionLayer::Layer_Player) != 0;
-    bool isPlayerB = (hotB.layers & CollisionLayer::Layer_Player) != 0;
-    bool isTriggerA = hotA.isTrigger;
-    bool isTriggerB = hotB.isTrigger;
+    // Get movable data from EDM, static data from m_storage
+    const auto& movableHot = edm.getHotDataByIndex(edmIdx);
+    const auto& staticHot = m_storage.hotData[storageIdx];
 
-    const CollisionStorage::HotData* playerHot = nullptr;
-    const CollisionStorage::HotData* triggerHot = nullptr;
-    EntityID playerId = 0, triggerId = 0;
+    // Check for player-trigger interaction
+    // Player is always the movable (indexA/EDM), trigger is always static (indexB/m_storage)
+    bool isPlayer = (movableHot.collisionLayers & CollisionLayer::Layer_Player) != 0;
+    bool isTrigger = staticHot.isTrigger;
 
-    if (isPlayerA && isTriggerB) {
-      playerHot = &hotA;
-      triggerHot = &hotB;
-      playerId = collision.a;
-      triggerId = collision.b;
-    } else if (isPlayerB && isTriggerA) {
-      playerHot = &hotB;
-      triggerHot = &hotA;
-      playerId = collision.b;
-      triggerId = collision.a;
-    } else {
+    if (!isPlayer || !isTrigger) {
       continue; // Not a player-trigger interaction
     }
+
+    EntityID playerId = collision.a;
+    EntityID triggerId = collision.b;
 
     uint64_t key = makeKey(playerId, triggerId);
     m_currentTriggerPairsBuffer.insert(key);
@@ -2207,10 +2218,9 @@ void CollisionManager::processTriggerEvents() {
       bool cooled = (cdIt == m_triggerCooldownUntil.end()) || (now >= cdIt->second);
 
       if (cooled) {
-        HammerEngine::TriggerTag triggerTag = static_cast<HammerEngine::TriggerTag>(triggerHot->triggerTag);
-        // Get player position from EDM (single source of truth)
-        auto& edm = EntityDataManager::Instance();
-        const auto& playerTransform = edm.getTransformByIndex(playerHot->edmIndex);
+        HammerEngine::TriggerTag triggerTag = static_cast<HammerEngine::TriggerTag>(staticHot.triggerTag);
+        // Get player position from EDM (single source of truth) using EDM index directly
+        const auto& playerTransform = edm.getTransformByIndex(edmIdx);
         Vector2D playerPos = playerTransform.position;
 
         WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerPos, TriggerPhase::Enter);
@@ -2326,31 +2336,15 @@ void CollisionManager::updatePerformanceMetrics(
       std::format("Slow frame: {:.2f}ms (broad:{:.2f}, narrow:{:.2f}, pairs:{})",
                   m_perf.lastTotalMs, d12, d23, pairCount));
 
-  // Periodic statistics (every 300 frames) - concise format matching AIManager style
+  // Periodic statistics (every 300 frames) - concise format with phase breakdown
   if (logFrameCounter % 300 == 0 && bodyCount > 0) {
-    // Threading status
-    std::string threadingStatus;
-    if (m_lastBroadphaseWasThreaded || m_lastNarrowphaseWasThreaded) {
-      threadingStatus = std::format(" [Threaded: Broad:{} Narrow:{}]",
-          m_lastBroadphaseWasThreaded ? std::format("{} batches", m_lastBroadphaseBatchCount) : "no",
-          m_lastNarrowphaseWasThreaded ? std::format("{} batches", m_lastNarrowphaseBatchCount) : "no");
-    } else {
-      threadingStatus = " [Single-threaded]";
-    }
-
-    // Calculate effective world size from AABB (center + halfSize format)
-    float worldW = m_worldBounds.halfSize.getX() * 2.0f;
-    float worldH = m_worldBounds.halfSize.getY() * 2.0f;
-
-    size_t culledStatics = m_collisionPool.staticIndices.size();
-    auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Pre-broadphase
-    COLLISION_DEBUG(std::format("Collision Summary - Bodies: {} ({} movable, {} statics in cull), "
-                                "Total: {:.2f}ms, Pre: {:.2f}ms, Broad: {:.2f}ms, Narrow: {:.2f}ms, "
-                                "Pairs: {}, Collisions: {}{}, Bounds: {}x{}",
-                                bodyCount, activeMovableBodies, culledStatics,
-                                m_perf.lastTotalMs, d01, d12, d23,
-                                pairCount, collisionCount, threadingStatus,
-                                static_cast<int>(worldW), static_cast<int>(worldH)));
+    size_t staticsInRange = m_collisionPool.staticIndices.size();
+    auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Pre-broadphase setup
+    COLLISION_DEBUG(std::format("Collision: {} movable, {} static in range, {:.2f}ms (pairs:{}, hits:{})",
+                                activeMovableBodies, staticsInRange, m_perf.lastTotalMs,
+                                pairCount, collisionCount));
+    COLLISION_DEBUG(std::format("  Phases: setup:{:.2f}ms, broad:{:.2f}ms, narrow:{:.2f}ms, resolve:{:.2f}ms",
+                                d01, d12, d23, d34));
   }
 #endif // DEBUG
 }
@@ -2488,14 +2482,17 @@ void CollisionManager::setBodyTrigger(EntityID id, bool isTrigger) {
 }
 
 CollisionManager::CullingArea CollisionManager::createDefaultCullingArea() const {
-  // EDM-CENTRIC: Culling is handled by the tier system (Active/Background/Hibernated)
-  // We only process Active tier entities from EDM, which are already screen-proximity filtered
-  // Return a generous area to not over-cull static bodies
+  // EDM-CENTRIC: Center culling on player position (reference point from BGM)
+  // This matches the tier system's proximity filtering used by AIManager
+  auto& bgm = BackgroundSimulationManager::Instance();
+  Vector2D refPoint = bgm.getReferencePoint();
+  float radius = bgm.getActiveRadius();
+
   CullingArea area;
-  area.minX = -m_cullingBuffer;
-  area.minY = -m_cullingBuffer;
-  area.maxX = m_cullingBuffer;
-  area.maxY = m_cullingBuffer;
+  area.minX = refPoint.getX() - radius;
+  area.minY = refPoint.getY() - radius;
+  area.maxX = refPoint.getX() + radius;
+  area.maxY = refPoint.getY() + radius;
   return area;
 }
 

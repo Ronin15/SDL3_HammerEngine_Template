@@ -443,228 +443,270 @@ BOOST_AUTO_TEST_CASE(TestBoundaryConditions)
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Dual Spatial Hash System Tests for CollisionManager
-BOOST_AUTO_TEST_SUITE(DualSpatialHashTests)
+// EDM-Centric Collision Tests
+// Statics (buildings, triggers) go in CollisionManager m_storage
+// Movables (NPCs, players) are managed by EntityDataManager only
+BOOST_AUTO_TEST_SUITE(EDMCentricCollisionTests)
 
-BOOST_AUTO_TEST_CASE(TestStaticDynamicHashSeparation)
+BOOST_AUTO_TEST_CASE(TestStaticMovableSeparation)
 {
-    // Initialize CollisionManager for testing
+    // Initialize managers
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
-    
-    // Test that static and dynamic bodies are correctly separated into different spatial hashes
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(2000.0f);
+
+    // Create static body via CollisionManager (buildings, obstacles)
     EntityID staticId = 10000;
-    EntityID kinematicId = 10002;  // Use only kinematic for simpler test
-    
     Vector2D testPos(100.0f, 100.0f);
     AABB testAABB(testPos.getX(), testPos.getY(), 32.0f, 32.0f);
-    
-    // Add bodies of different types
-    CollisionManager::Instance().addCollisionBody(staticId, testAABB.center, testAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(kinematicId, testAABB.center, testAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(staticId, testAABB.center, testAABB.halfSize,
+                                                CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
 
-    // Verify body count includes all types
-    BOOST_CHECK_EQUAL(CollisionManager::Instance().getBodyCount(), 2);
-    
-    // Test that static body count is tracked separately
-    BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
-    BOOST_CHECK_EQUAL(CollisionManager::Instance().getKinematicBodyCount(), 1); // Only kinematic body
-    
-    // Verify type checking methods work correctly
-    BOOST_CHECK(CollisionManager::Instance().isKinematic(kinematicId));
-    BOOST_CHECK(!CollisionManager::Instance().isDynamic(staticId));
-    BOOST_CHECK(!CollisionManager::Instance().isKinematic(staticId));
-    
-    // Test with a dynamic body as well
-    EntityID dynamicId = 10001;
-    CollisionManager::Instance().addCollisionBody(dynamicId, testAABB.center, testAABB.halfSize, BodyType::DYNAMIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    // Create movable entity via EDM (NPCs)
+    Vector2D npcPos(150.0f, 150.0f);
+    EntityHandle npcHandle = edm.registerNPC(20000, npcPos, 16.0f, 16.0f);
+    size_t npcIdx = edm.getIndex(npcHandle);
+    auto& npcHot = edm.getHotDataByIndex(npcIdx);
+    npcHot.setCollisionEnabled(true);
 
-    BOOST_CHECK_EQUAL(CollisionManager::Instance().getBodyCount(), 3);
+    // Update BGM to populate active indices
+    bgm.update(testPos, 0.016f);
+
+    // Verify static is in CollisionManager storage
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
-    BOOST_CHECK_EQUAL(CollisionManager::Instance().getKinematicBodyCount(), 1); // Still only 1 kinematic
-    BOOST_CHECK(CollisionManager::Instance().isDynamic(dynamicId));
-    
-    // Note: Both DYNAMIC and KINEMATIC bodies use the dynamic spatial hash internally
-    // but are counted separately by type
-    
+
+    // Verify movable is in EDM active tier (not in CM storage)
+    BOOST_CHECK_GE(edm.getActiveIndices().size(), 1u);
+    BOOST_CHECK(npcHot.hasCollision());
+
     // Clean up
     CollisionManager::Instance().removeCollisionBody(staticId);
-    CollisionManager::Instance().removeCollisionBody(kinematicId);
-    CollisionManager::Instance().removeCollisionBody(dynamicId);
+    edm.unregisterEntity(20000);
     CollisionManager::Instance().clean();
+    bgm.clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
 {
-    // Test that broadphase performance is improved with separate static/dynamic hashes
+    // Test that broadphase performance is improved with separate static/movable storage
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
-    
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(2000.0f);
+
     const int NUM_STATIC_BODIES = 200; // Simulate world tiles
-    const int NUM_DYNAMIC_BODIES = 20;  // Simulate NPCs
-    
+    const int NUM_MOVABLE_BODIES = 20;  // Simulate NPCs
+
     std::vector<EntityID> staticBodies;
-    std::vector<EntityID> dynamicBodies;
-    
-    // Add many static bodies (world tiles)
+    std::vector<EntityHandle> movableHandles;
+
+    // Add many static bodies (world tiles) via CollisionManager
     for (int i = 0; i < NUM_STATIC_BODIES; ++i) {
         EntityID id = 20000 + i;
         float x = static_cast<float>(i % 20) * 64.0f; // Grid layout
         float y = static_cast<float>(i / 20) * 64.0f;
         AABB aabb(x, y, 32.0f, 32.0f);
 
-        CollisionManager::Instance().addCollisionBody(id, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         staticBodies.push_back(id);
     }
 
-    // Add dynamic bodies (NPCs)
-    for (int i = 0; i < NUM_DYNAMIC_BODIES; ++i) {
+    // Add movable bodies (NPCs) via EDM
+    for (int i = 0; i < NUM_MOVABLE_BODIES; ++i) {
         EntityID id = 25000 + i;
         float x = 500.0f + static_cast<float>(i % 5) * 32.0f;
         float y = 500.0f + static_cast<float>(i / 5) * 32.0f;
-        AABB aabb(x, y, 16.0f, 16.0f);
+        Vector2D pos(x, y);
 
-        CollisionManager::Instance().addCollisionBody(id, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-        dynamicBodies.push_back(id);
+        EntityHandle handle = edm.registerNPC(id, pos, 16.0f, 16.0f);
+        size_t idx = edm.getIndex(handle);
+        auto& hot = edm.getHotDataByIndex(idx);
+        hot.collisionLayers = CollisionLayer::Layer_Enemy;
+        hot.collisionMask = 0xFFFF;
+        hot.setCollisionEnabled(true);
+        movableHandles.push_back(handle);
     }
+
+    // Update BGM to populate active indices
+    bgm.update(Vector2D(500.0f, 500.0f), 0.016f);
 
     // Reset performance stats before measurement
     CollisionManager::Instance().resetPerfStats();
-    
+
     // Run several collision detection cycles
     const int NUM_CYCLES = 10;
     auto start = std::chrono::high_resolution_clock::now();
-    
+
     for (int cycle = 0; cycle < NUM_CYCLES; ++cycle) {
         CollisionManager::Instance().update(0.016f); // 60 FPS simulation
     }
-    
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    
+
     // Get performance statistics
     auto perfStats = CollisionManager::Instance().getPerfStats();
-    
-    // Performance assertions - broadphase should be fast with dual hashes
+
+    // Performance assertions - broadphase should be fast with dual storage
     BOOST_CHECK_LT(perfStats.lastBroadphaseMs, 0.5); // < 0.5ms broadphase
     BOOST_CHECK_LT(perfStats.lastTotalMs, 2.0);     // < 2ms total collision time
-    
+
     // Average cycle time should be reasonable
     double avgCycleTimeMs = duration.count() / 1000.0 / NUM_CYCLES;
     BOOST_CHECK_LT(avgCycleTimeMs, 1.0); // < 1ms per collision cycle
-    
-    BOOST_TEST_MESSAGE("Dual hash broadphase: " << perfStats.lastBroadphaseMs << "ms, "
+
+    BOOST_TEST_MESSAGE("Dual storage broadphase: " << perfStats.lastBroadphaseMs << "ms, "
                       << "Total: " << perfStats.lastTotalMs << "ms, "
                       << "Avg cycle: " << avgCycleTimeMs << "ms");
-    
+
     // Clean up
     for (EntityID id : staticBodies) {
         CollisionManager::Instance().removeCollisionBody(id);
     }
-    for (EntityID id : dynamicBodies) {
-        CollisionManager::Instance().removeCollisionBody(id);
+    for (const auto& handle : movableHandles) {
+        edm.unregisterEntity(handle.getId());
     }
     CollisionManager::Instance().clean();
+    bgm.clean();
+    edm.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestKinematicBatchUpdateWithDualHashes)
+BOOST_AUTO_TEST_CASE(TestMovableBatchUpdateWithEDM)
 {
-    // Test that batch kinematic updates work correctly with dual spatial hash system
+    // Test that batch movable updates work correctly with EDM-centric system
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
-    
-    const int NUM_KINEMATIC_BODIES = 50;
-    std::vector<EntityID> kinematicBodies;
-    
-    // Add kinematic bodies
-    for (int i = 0; i < NUM_KINEMATIC_BODIES; ++i) {
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(5000.0f);
+
+    const int NUM_MOVABLE_BODIES = 50;
+    std::vector<EntityHandle> movableHandles;
+    std::vector<EntityID> movableIds;
+
+    // Add movable bodies via EDM
+    for (int i = 0; i < NUM_MOVABLE_BODIES; ++i) {
         EntityID id = 30000 + i;
-        AABB aabb(i * 20.0f, i * 20.0f, 8.0f, 8.0f);
+        Vector2D pos(i * 20.0f, i * 20.0f);
 
-        CollisionManager::Instance().addCollisionBody(id, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-        kinematicBodies.push_back(id);
+        EntityHandle handle = edm.registerNPC(id, pos, 8.0f, 8.0f);
+        size_t idx = edm.getIndex(handle);
+        auto& hot = edm.getHotDataByIndex(idx);
+        hot.collisionLayers = CollisionLayer::Layer_Enemy;
+        hot.collisionMask = 0xFFFF;
+        hot.setCollisionEnabled(true);
+        movableHandles.push_back(handle);
+        movableIds.push_back(id);
     }
 
-    // Prepare batch update data
-    std::vector<CollisionManager::KinematicUpdate> updates;
-    for (int i = 0; i < NUM_KINEMATIC_BODIES; ++i) {
-        EntityID id = kinematicBodies[i];
-        Vector2D newPos(i * 25.0f + 100.0f, i * 25.0f + 100.0f); // Move all bodies
-        Vector2D velocity(10.0f, 5.0f);
-        updates.emplace_back(id, newPos, velocity);
-    }
-    
-    // Measure batch update performance
+    // Update BGM to populate active indices
+    bgm.update(Vector2D(500.0f, 500.0f), 0.016f);
+
+    // Measure batch update performance via direct EDM position updates
     auto start = std::chrono::high_resolution_clock::now();
-    
-    CollisionManager::Instance().updateKinematicBatch(updates);
-    
+
+    for (int i = 0; i < NUM_MOVABLE_BODIES; ++i) {
+        Vector2D newPos(i * 25.0f + 100.0f, i * 25.0f + 100.0f);
+        size_t idx = edm.getIndex(movableHandles[i]);
+        auto& hot = edm.getHotDataByIndex(idx);
+        hot.transform.position.setX(newPos.getX());
+        hot.transform.position.setY(newPos.getY());
+        hot.transform.velocity.setX(10.0f);
+        hot.transform.velocity.setY(5.0f);
+    }
+
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    
-    // Verify bodies were updated by checking position and that velocity was set
-    Vector2D center;
-    bool found = CollisionManager::Instance().getBodyCenter(kinematicBodies[0], center);
-    BOOST_CHECK(found);
-    BOOST_CHECK_CLOSE(center.getX(), 100.0f, 1.0f);
-    BOOST_CHECK_CLOSE(center.getY(), 100.0f, 1.0f);
+
+    // Verify positions were updated
+    size_t idx0 = edm.getIndex(movableHandles[0]);
+    const auto& hot0 = edm.getHotDataByIndex(idx0);
+    BOOST_CHECK_CLOSE(hot0.transform.position.getX(), 100.0f, 1.0f);
+    BOOST_CHECK_CLOSE(hot0.transform.position.getY(), 100.0f, 1.0f);
 
     // Verify last body was also updated correctly
-    found = CollisionManager::Instance().getBodyCenter(kinematicBodies[NUM_KINEMATIC_BODIES-1], center);
-    BOOST_CHECK(found);
-    float expectedX = (NUM_KINEMATIC_BODIES-1) * 25.0f + 100.0f;
-    float expectedY = (NUM_KINEMATIC_BODIES-1) * 25.0f + 100.0f;
-    BOOST_CHECK_CLOSE(center.getX(), expectedX, 1.0f);
-    BOOST_CHECK_CLOSE(center.getY(), expectedY, 1.0f);
-    
+    size_t idxLast = edm.getIndex(movableHandles[NUM_MOVABLE_BODIES-1]);
+    const auto& hotLast = edm.getHotDataByIndex(idxLast);
+    float expectedX = (NUM_MOVABLE_BODIES-1) * 25.0f + 100.0f;
+    float expectedY = (NUM_MOVABLE_BODIES-1) * 25.0f + 100.0f;
+    BOOST_CHECK_CLOSE(hotLast.transform.position.getX(), expectedX, 1.0f);
+    BOOST_CHECK_CLOSE(hotLast.transform.position.getY(), expectedY, 1.0f);
+
     // Performance check - batch update should be fast
-    double avgUpdateTimeUs = static_cast<double>(duration.count()) / NUM_KINEMATIC_BODIES;
+    double avgUpdateTimeUs = static_cast<double>(duration.count()) / NUM_MOVABLE_BODIES;
     BOOST_CHECK_LT(avgUpdateTimeUs, 20.0); // < 20μs per body update
-    
-    BOOST_TEST_MESSAGE("Batch updated " << NUM_KINEMATIC_BODIES << " kinematic bodies in "
+
+    BOOST_TEST_MESSAGE("Batch updated " << NUM_MOVABLE_BODIES << " movable bodies in "
                       << duration.count() << "μs (" << avgUpdateTimeUs << "μs/body)");
-    
+
     // Clean up
-    for (EntityID id : kinematicBodies) {
-        CollisionManager::Instance().removeCollisionBody(id);
+    for (EntityID id : movableIds) {
+        edm.unregisterEntity(id);
     }
     CollisionManager::Instance().clean();
+    bgm.clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
 {
     // Test that static body cache is properly invalidated when static bodies change
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
-    
+    auto& bgm = BackgroundSimulationManager::Instance();
+    bgm.init();
+    bgm.setActiveRadius(2000.0f);
+
     // Add a static body
     EntityID staticId = 40000;
     AABB staticAABB(200.0f, 200.0f, 32.0f, 32.0f);
-    CollisionManager::Instance().addCollisionBody(staticId, staticAABB.center, staticAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
 
-    // Add a kinematic body near the static body
-    EntityID kinematicId = 40001;
-    AABB kinematicAABB(220.0f, 220.0f, 16.0f, 16.0f);
-    CollisionManager::Instance().addCollisionBody(kinematicId, kinematicAABB.center, kinematicAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    // Add a movable body near the static body via EDM
+    EntityID movableId = 40001;
+    Vector2D movablePos(220.0f, 220.0f);
+    EntityHandle movableHandle = edm.registerNPC(movableId, movablePos, 16.0f, 16.0f);
+    size_t movableIdx = edm.getIndex(movableHandle);
+    auto& movableHot = edm.getHotDataByIndex(movableIdx);
+    movableHot.collisionLayers = CollisionLayer::Layer_Enemy;
+    movableHot.collisionMask = 0xFFFF;
+    movableHot.setCollisionEnabled(true);
+
+    // Update BGM to populate active indices
+    bgm.update(movablePos, 0.016f);
 
     // Run collision detection to populate any caches
     CollisionManager::Instance().update(0.016f);
-    
+
     // Add another static body that could affect collision detection
     EntityID staticId2 = 40002;
     AABB staticAABB2(240.0f, 240.0f, 32.0f, 32.0f);
-    CollisionManager::Instance().addCollisionBody(staticId2, staticAABB2.center, staticAABB2.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(staticId2, staticAABB2.center, staticAABB2.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
 
     // Verify cache invalidation by checking that static body count is correct
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 2);
-    
+
     // Run collision detection again - should handle the new static body correctly
     CollisionManager::Instance().update(0.016f);
-    
+
     // Remove static body and verify cache invalidation
     CollisionManager::Instance().removeCollisionBody(staticId);
     BOOST_CHECK_EQUAL(CollisionManager::Instance().getStaticBodyCount(), 1);
-    
+
     // Clean up
     CollisionManager::Instance().removeCollisionBody(staticId2);
-    CollisionManager::Instance().removeCollisionBody(kinematicId);
+    edm.unregisterEntity(movableId);
     CollisionManager::Instance().clean();
+    bgm.clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestTriggerSystemCreation)
@@ -734,154 +776,175 @@ BOOST_AUTO_TEST_CASE(TestTriggerCooldowns)
 
 BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
 {
-    // Test collision layer filtering functionality
+    // Test collision layer filtering functionality via EDM
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
-    // Create bodies with different layers
+    // Create movable entities with different layers via EDM
     EntityID playerId = 5000;
     EntityID npcId = 5001;
     EntityID environmentId = 5002;
 
-    AABB aabb(100.0f, 100.0f, 16.0f, 16.0f);
+    Vector2D pos(100.0f, 100.0f);
 
-    // Add bodies
-    CollisionManager::Instance().addCollisionBody(playerId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(npcId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(environmentId, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    // Add movables via EDM
+    EntityHandle playerHandle = edm.registerPlayer(playerId, pos, 16.0f, 16.0f);
+    EntityHandle npcHandle = edm.registerNPC(npcId, pos, 16.0f, 16.0f);
 
-    // Set layers - Player collides with NPCs and environment
-    CollisionManager::Instance().setBodyLayer(
-        playerId,
-        CollisionLayer::Layer_Player,
-        CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment
-    );
+    // Set layers on EDM hot data - Player collides with NPCs and environment
+    size_t playerIdx = edm.getIndex(playerHandle);
+    auto& playerHot = edm.getHotDataByIndex(playerIdx);
+    playerHot.collisionLayers = CollisionLayer::Layer_Player;
+    playerHot.collisionMask = CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment;
+    playerHot.setCollisionEnabled(true);
 
     // NPC collides with players and environment, but not other NPCs
-    CollisionManager::Instance().setBodyLayer(
-        npcId,
-        CollisionLayer::Layer_Enemy,
-        CollisionLayer::Layer_Player | CollisionLayer::Layer_Environment
-    );
+    size_t npcIdx = edm.getIndex(npcHandle);
+    auto& npcHot = edm.getHotDataByIndex(npcIdx);
+    npcHot.collisionLayers = CollisionLayer::Layer_Enemy;
+    npcHot.collisionMask = CollisionLayer::Layer_Player | CollisionLayer::Layer_Environment;
+    npcHot.setCollisionEnabled(true);
 
-    // Environment collides with everything
-    const auto Layer_All = CollisionLayer::Layer_Default | CollisionLayer::Layer_Player | CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment | CollisionLayer::Layer_Projectile | CollisionLayer::Layer_Trigger;
-    CollisionManager::Instance().setBodyLayer(
-        environmentId,
-        CollisionLayer::Layer_Environment,
-        Layer_All
-    );
+    // Add static environment body via CollisionManager
+    AABB aabb(pos.getX(), pos.getY(), 16.0f, 16.0f);
+    CollisionManager::Instance().addStaticBody(environmentId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
 
-    // Test that bodies exist
-    BOOST_CHECK(CollisionManager::Instance().isKinematic(playerId));
-    BOOST_CHECK(CollisionManager::Instance().isKinematic(npcId));
-    BOOST_CHECK(!CollisionManager::Instance().isKinematic(environmentId));
+    // Verify layer settings on EDM entities
+    BOOST_CHECK(playerHot.hasCollision());
+    BOOST_CHECK(npcHot.hasCollision());
+    BOOST_CHECK_EQUAL(playerHot.collisionLayers, CollisionLayer::Layer_Player);
+    BOOST_CHECK_EQUAL(npcHot.collisionLayers, CollisionLayer::Layer_Enemy);
 
     // Clean up
-    CollisionManager::Instance().removeCollisionBody(playerId);
-    CollisionManager::Instance().removeCollisionBody(npcId);
+    edm.unregisterEntity(playerId);
+    edm.unregisterEntity(npcId);
     CollisionManager::Instance().removeCollisionBody(environmentId);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
 {
-    // Test body enable/disable functionality
+    // Test body enable/disable functionality via EDM
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     EntityID bodyId = 6000;
-    AABB aabb(150.0f, 150.0f, 20.0f, 20.0f);
+    Vector2D pos(150.0f, 150.0f);
 
-    CollisionManager::Instance().addCollisionBody(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    // Create movable via EDM
+    EntityHandle handle = edm.registerNPC(bodyId, pos, 20.0f, 20.0f);
+    size_t idx = edm.getIndex(handle);
+    auto& hot = edm.getHotDataByIndex(idx);
+    hot.collisionLayers = CollisionLayer::Layer_Player;
+    hot.collisionMask = 0xFFFF;
+    hot.setCollisionEnabled(true);
 
-    // Body should exist and be queryable
-    std::vector<EntityID> results;
-    CollisionManager::Instance().queryArea(aabb, results);
-    BOOST_CHECK(std::find(results.begin(), results.end(), bodyId) != results.end());
+    // Body should have collision enabled
+    BOOST_CHECK(hot.hasCollision());
 
-    // Disable the body
-    CollisionManager::Instance().setBodyEnabled(bodyId, false);
+    // Disable collision on the body
+    hot.setCollisionEnabled(false);
+    BOOST_CHECK(!hot.hasCollision());
 
-    // Re-enable the body
-    CollisionManager::Instance().setBodyEnabled(bodyId, true);
-
-    // Should still be queryable after re-enabling
-    results.clear();
-    CollisionManager::Instance().queryArea(aabb, results);
-    BOOST_CHECK(std::find(results.begin(), results.end(), bodyId) != results.end());
+    // Re-enable collision
+    hot.setCollisionEnabled(true);
+    BOOST_CHECK(hot.hasCollision());
 
     // Clean up
-    CollisionManager::Instance().removeCollisionBody(bodyId);
+    edm.unregisterEntity(bodyId);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestBodyResize)
 {
-    // Test body resize functionality
+    // Test body resize functionality via EDM
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     EntityID bodyId = 7000;
-    AABB originalAABB(200.0f, 200.0f, 10.0f, 10.0f);
+    Vector2D originalPos(200.0f, 200.0f);
+    float originalHalfW = 10.0f;
+    float originalHalfH = 10.0f;
 
-    CollisionManager::Instance().addCollisionBody(bodyId, originalAABB.center, originalAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    // Create movable via EDM
+    EntityHandle handle = edm.registerNPC(bodyId, originalPos, originalHalfW, originalHalfH);
+    size_t idx = edm.getIndex(handle);
+    auto& hot = edm.getHotDataByIndex(idx);
+    hot.collisionLayers = CollisionLayer::Layer_Player;
+    hot.collisionMask = 0xFFFF;
+    hot.setCollisionEnabled(true);
 
     // Verify original position
-    Vector2D center;
-    bool found = CollisionManager::Instance().getBodyCenter(bodyId, center);
-    BOOST_CHECK(found);
-    BOOST_CHECK_CLOSE(center.getX(), 200.0f, 0.01f);
-    BOOST_CHECK_CLOSE(center.getY(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.position.getX(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.position.getY(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.halfWidth, 10.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.halfHeight, 10.0f, 0.01f);
 
-    // Resize the body
-    CollisionManager::Instance().updateCollisionBodySize(bodyId, Vector2D(25.0f, 15.0f));
+    // Resize the body via EDM
+    hot.halfWidth = 25.0f;
+    hot.halfHeight = 15.0f;
 
     // Position should remain the same, but size should change
-    found = CollisionManager::Instance().getBodyCenter(bodyId, center);
-    BOOST_CHECK(found);
-    BOOST_CHECK_CLOSE(center.getX(), 200.0f, 0.01f);
-    BOOST_CHECK_CLOSE(center.getY(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.position.getX(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.position.getY(), 200.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.halfWidth, 25.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.halfHeight, 15.0f, 0.01f);
 
     // Clean up
-    CollisionManager::Instance().removeCollisionBody(bodyId);
+    edm.unregisterEntity(bodyId);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestVelocityManagement)
 {
-    // Test velocity setting and batch velocity updates
-    EntityDataManager::Instance().init();
+    // Test velocity setting via EDM
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     EntityID bodyId = 8000;
-    AABB aabb(100.0f, 100.0f, 8.0f, 8.0f);
+    Vector2D pos(100.0f, 100.0f);
     Vector2D velocity(15.0f, 10.0f);
 
-    // Register with EDM first (required for velocity/position updates via EDM)
-    EntityDataManager::Instance().registerNPC(bodyId, aabb.center, aabb.halfSize.getX(), aabb.halfSize.getY());
+    // Register with EDM (the single source of truth for movables)
+    EntityHandle handle = edm.registerNPC(bodyId, pos, 8.0f, 8.0f);
+    size_t idx = edm.getIndex(handle);
+    auto& hot = edm.getHotDataByIndex(idx);
+    hot.collisionLayers = CollisionLayer::Layer_Player;
+    hot.collisionMask = 0xFFFF;
+    hot.setCollisionEnabled(true);
 
-    CollisionManager::Instance().addCollisionBody(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    // Set velocity on EDM hot data
+    hot.transform.velocity.setX(velocity.getX());
+    hot.transform.velocity.setY(velocity.getY());
 
-    // Set velocity individually
-    CollisionManager::Instance().setVelocity(bodyId, velocity);
+    BOOST_CHECK_CLOSE(hot.transform.velocity.getX(), 15.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.velocity.getY(), 10.0f, 0.01f);
 
-    // Test batch update with velocity
-    std::vector<CollisionManager::KinematicUpdate> updates;
+    // Update position and velocity
     Vector2D newPosition(120.0f, 110.0f);
     Vector2D newVelocity(20.0f, 5.0f);
-    updates.emplace_back(bodyId, newPosition, newVelocity);
+    hot.transform.position.setX(newPosition.getX());
+    hot.transform.position.setY(newPosition.getY());
+    hot.transform.velocity.setX(newVelocity.getX());
+    hot.transform.velocity.setY(newVelocity.getY());
 
-    CollisionManager::Instance().updateKinematicBatch(updates);
-
-    // Verify position was updated
-    Vector2D center;
-    bool found = CollisionManager::Instance().getBodyCenter(bodyId, center);
-    BOOST_CHECK(found);
-    BOOST_CHECK_CLOSE(center.getX(), 120.0f, 0.01f);
-    BOOST_CHECK_CLOSE(center.getY(), 110.0f, 0.01f);
+    // Verify position and velocity were updated
+    BOOST_CHECK_CLOSE(hot.transform.position.getX(), 120.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.position.getY(), 110.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.velocity.getX(), 20.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.velocity.getY(), 5.0f, 0.01f);
 
     // Clean up
-    CollisionManager::Instance().removeCollisionBody(bodyId);
+    edm.unregisterEntity(bodyId);
     CollisionManager::Instance().clean();
-    EntityDataManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -1037,7 +1100,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     Vector2D staticPos(100.0f, 200.0f);
     AABB staticAABB(staticPos.getX(), staticPos.getY(), 32.0f, 32.0f);
 
-    CollisionManager::Instance().addCollisionBody(staticId, staticAABB.center, staticAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(staticId, staticAABB.center, staticAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
 
     // Process deferred events - CollisionManager fires events in Deferred mode
     // so we need to drain all events to ensure deterministic test behavior
@@ -1050,17 +1113,27 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     BOOST_CHECK_GT(lastEventRadius, 32.0f); // Should be radius + safety margin
     BOOST_CHECK(lastEventDescription.find("Static obstacle added") != std::string::npos);
     
-    // Test 2: Adding a kinematic body should NOT trigger an event
-    EntityID kinematicId = 1001;
-    AABB kinematicAABB(150.0f, 250.0f, 16.0f, 16.0f);
+    // Test 2: Adding a movable body via EDM should NOT trigger a CollisionObstacleChanged event
+    // (Movables don't fire these events - only static obstacles do)
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
+
+    EntityID movableId = 1001;
+    Vector2D movablePos(150.0f, 250.0f);
     int previousEventCount = eventCount.load();
 
-    CollisionManager::Instance().addCollisionBody(kinematicId, kinematicAABB.center, kinematicAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    EventManager::Instance().drainAllDeferredEvents();  // Process any events (should be none for kinematic)
+    EntityHandle handle = edm.registerNPC(movableId, movablePos, 16.0f, 16.0f);
+    size_t idx = edm.getIndex(handle);
+    auto& hot = edm.getHotDataByIndex(idx);
+    hot.collisionLayers = CollisionLayer::Layer_Enemy;
+    hot.collisionMask = 0xFFFF;
+    hot.setCollisionEnabled(true);
+
+    EventManager::Instance().drainAllDeferredEvents();  // Process any events (should be none for movable)
 
     // Event count should not have changed
     BOOST_CHECK_EQUAL(eventCount.load(), previousEventCount);
-    
+
     // Test 3: Removing a static body should trigger an event
     CollisionManager::Instance().removeCollisionBody(staticId);
     EventManager::Instance().drainAllDeferredEvents();
@@ -1068,8 +1141,10 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     // Should have received another event for removal
     BOOST_CHECK_EQUAL(eventCount.load(), 2);
     BOOST_CHECK(lastEventDescription.find("Static obstacle removed") != std::string::npos);
-    
+
     // Clean up
+    edm.unregisterEntity(movableId);
+    edm.clean();
     EventManager::Instance().removeHandler(token);
 }
 
@@ -1094,7 +1169,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
     
     // Small obstacle: 10x10
     AABB smallAABB(0.0f, 0.0f, 5.0f, 5.0f);
-    CollisionManager::Instance().addCollisionBody(smallId, smallAABB.center, smallAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(smallId, smallAABB.center, smallAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
     EventManager::Instance().drainAllDeferredEvents();
 
     float smallRadius = lastEventRadius;
@@ -1103,7 +1178,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventRadiusCalculation, CollisionIntegratio
 
     // Large obstacle: 100x100
     AABB largeAABB(200.0f, 200.0f, 50.0f, 50.0f);
-    CollisionManager::Instance().addCollisionBody(largeId, largeAABB.center, largeAABB.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    CollisionManager::Instance().addStaticBody(largeId, largeAABB.center, largeAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
     EventManager::Instance().drainAllDeferredEvents();
 
     float largeRadius = lastEventRadius;
@@ -1139,7 +1214,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionEventPerformanceImpact, CollisionIntegratio
     for (int i = 0; i < numBodies; ++i) {
         EntityID id = 3000 + i;
         AABB aabb(i * 10.0f, i * 10.0f, 16.0f, 16.0f);
-        CollisionManager::Instance().addCollisionBody(id, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+        CollisionManager::Instance().addStaticBody(id, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
         bodies.push_back(id);
     }
 
@@ -1221,6 +1296,8 @@ BOOST_AUTO_TEST_CASE(TestTriggerEventNotifications)
 BOOST_AUTO_TEST_CASE(TestWorldBounds)
 {
     // Test world bounds functionality
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     // Set world bounds
@@ -1228,110 +1305,125 @@ BOOST_AUTO_TEST_CASE(TestWorldBounds)
     float maxX = 1000.0f, maxY = 800.0f;
     CollisionManager::Instance().setWorldBounds(minX, minY, maxX, maxY);
 
-    // Create a body within bounds
+    // Create a movable body within bounds via EDM
     EntityID bodyId = 9000;
     Vector2D validPosition(500.0f, 400.0f);
-    AABB aabb(validPosition.getX(), validPosition.getY(), 20.0f, 20.0f);
 
-    CollisionManager::Instance().addCollisionBody(bodyId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    EntityHandle handle = edm.registerNPC(bodyId, validPosition, 20.0f, 20.0f);
+    size_t idx = edm.getIndex(handle);
+    auto& hot = edm.getHotDataByIndex(idx);
+    hot.collisionLayers = CollisionLayer::Layer_Player;
+    hot.collisionMask = 0xFFFF;
+    hot.setCollisionEnabled(true);
 
-    // Verify body was created successfully
-    Vector2D center;
-    bool found = CollisionManager::Instance().getBodyCenter(bodyId, center);
-    BOOST_CHECK(found);
-    BOOST_CHECK_CLOSE(center.getX(), validPosition.getX(), 0.01f);
-    BOOST_CHECK_CLOSE(center.getY(), validPosition.getY(), 0.01f);
+    // Verify body was created successfully in EDM
+    BOOST_CHECK_CLOSE(hot.transform.position.getX(), validPosition.getX(), 0.01f);
+    BOOST_CHECK_CLOSE(hot.transform.position.getY(), validPosition.getY(), 0.01f);
 
     // Clean up
-    CollisionManager::Instance().removeCollisionBody(bodyId);
+    edm.unregisterEntity(bodyId);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
 {
-    // Test that collision detection respects layer filtering
+    // Test that collision detection respects layer filtering via EDM
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
-    // Create two bodies that should NOT collide due to layer filtering
+    // Create two movable bodies that should NOT collide due to layer filtering
     EntityID player1Id = 10000;
     EntityID player2Id = 10001;
-    AABB overlappingAABB(400.0f, 400.0f, 16.0f, 16.0f);
+    Vector2D overlappingPos(400.0f, 400.0f);
 
-    CollisionManager::Instance().addCollisionBody(player1Id, overlappingAABB.center, overlappingAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(player2Id, overlappingAABB.center, overlappingAABB.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    EntityHandle handle1 = edm.registerPlayer(player1Id, overlappingPos, 16.0f, 16.0f);
+    EntityHandle handle2 = edm.registerNPC(player2Id, overlappingPos, 16.0f, 16.0f);
 
-    // Set both as players - players don't collide with other players
-    CollisionManager::Instance().setBodyLayer(
-        player1Id,
-        CollisionLayer::Layer_Player,
-        CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment  // No Layer_Player
-    );
+    // Set both as players with masks that exclude Layer_Player
+    size_t idx1 = edm.getIndex(handle1);
+    auto& hot1 = edm.getHotDataByIndex(idx1);
+    hot1.collisionLayers = CollisionLayer::Layer_Player;
+    hot1.collisionMask = CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment;  // No Layer_Player
+    hot1.setCollisionEnabled(true);
 
-    CollisionManager::Instance().setBodyLayer(
-        player2Id,
-        CollisionLayer::Layer_Player,
-        CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment  // No Layer_Player
-    );
+    size_t idx2 = edm.getIndex(handle2);
+    auto& hot2 = edm.getHotDataByIndex(idx2);
+    hot2.collisionLayers = CollisionLayer::Layer_Player;
+    hot2.collisionMask = CollisionLayer::Layer_Enemy | CollisionLayer::Layer_Environment;  // No Layer_Player
+    hot2.setCollisionEnabled(true);
 
-    // Even though AABBs overlap, layer filtering should prevent collision
-    BOOST_CHECK(CollisionManager::Instance().isKinematic(player1Id));
-    BOOST_CHECK(CollisionManager::Instance().isKinematic(player2Id));
+    // Verify both have collision enabled but won't collide with each other
+    BOOST_CHECK(hot1.hasCollision());
+    BOOST_CHECK(hot2.hasCollision());
+    BOOST_CHECK_EQUAL(hot1.collisionLayers, CollisionLayer::Layer_Player);
+    BOOST_CHECK_EQUAL(hot2.collisionLayers, CollisionLayer::Layer_Player);
 
-    // Test overlap query - both should be found in same area
-    std::vector<EntityID> results;
-    CollisionManager::Instance().queryArea(overlappingAABB, results);
-    BOOST_CHECK_GE(results.size(), 2);
+    // The mask excludes Layer_Player, so they shouldn't collide with each other
+    BOOST_CHECK_EQUAL(hot1.collisionMask & CollisionLayer::Layer_Player, 0u);
+    BOOST_CHECK_EQUAL(hot2.collisionMask & CollisionLayer::Layer_Player, 0u);
 
     // Clean up
-    CollisionManager::Instance().removeCollisionBody(player1Id);
-    CollisionManager::Instance().removeCollisionBody(player2Id);
+    edm.unregisterEntity(player1Id);
+    edm.unregisterEntity(player2Id);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
 {
     // Test interactions between different body types
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     EntityID staticId = 11000;
-    EntityID kinematicId = 11001;
+    EntityID movableId = 11001;
     EntityID triggerId = 11002;
 
     Vector2D position(500.0f, 500.0f);
     AABB aabb(position.getX(), position.getY(), 25.0f, 25.0f);
 
-    // Add different body types
-    CollisionManager::Instance().addCollisionBody(staticId, aabb.center, aabb.halfSize, BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(kinematicId, aabb.center, aabb.halfSize, BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    // Add static body via CollisionManager
+    CollisionManager::Instance().addStaticBody(staticId, aabb.center, aabb.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
 
+    // Add movable body via EDM
+    EntityHandle movableHandle = edm.registerNPC(movableId, position, 25.0f, 25.0f);
+    size_t movableIdx = edm.getIndex(movableHandle);
+    auto& movableHot = edm.getHotDataByIndex(movableIdx);
+    movableHot.collisionLayers = CollisionLayer::Layer_Enemy;
+    movableHot.collisionMask = 0xFFFF;
+    movableHot.setCollisionEnabled(true);
+
+    // Add trigger via CollisionManager
     triggerId = CollisionManager::Instance().createTriggerAreaAt(
         position.getX(), position.getY(), 25.0f, 25.0f,
         HammerEngine::TriggerTag::Checkpoint
     );
 
-    // Verify body types
-    BOOST_CHECK(!CollisionManager::Instance().isKinematic(staticId));
-    BOOST_CHECK(!CollisionManager::Instance().isDynamic(staticId));
+    // Verify static body type in CollisionManager
     BOOST_CHECK(!CollisionManager::Instance().isTrigger(staticId));
 
-    BOOST_CHECK(CollisionManager::Instance().isKinematic(kinematicId));
-    BOOST_CHECK(!CollisionManager::Instance().isDynamic(kinematicId));
-    BOOST_CHECK(!CollisionManager::Instance().isTrigger(kinematicId));
-
+    // Verify trigger is a trigger
     BOOST_CHECK(CollisionManager::Instance().isTrigger(triggerId));
-    BOOST_CHECK(!CollisionManager::Instance().isKinematic(triggerId));
-    BOOST_CHECK(!CollisionManager::Instance().isDynamic(triggerId));
 
-    // All should be queryable in the same area
+    // Verify movable body in EDM
+    BOOST_CHECK(movableHot.hasCollision());
+    BOOST_CHECK_EQUAL(movableHot.collisionLayers, CollisionLayer::Layer_Enemy);
+
+    // Static and trigger should be queryable via CollisionManager
     std::vector<EntityID> results;
     CollisionManager::Instance().queryArea(aabb, results);
-    BOOST_CHECK_GE(results.size(), 3);
+    BOOST_CHECK(std::find(results.begin(), results.end(), staticId) != results.end());
+    BOOST_CHECK(std::find(results.begin(), results.end(), triggerId) != results.end());
 
     // Clean up
     CollisionManager::Instance().removeCollisionBody(staticId);
-    CollisionManager::Instance().removeCollisionBody(kinematicId);
     CollisionManager::Instance().removeCollisionBody(triggerId);
+    edm.unregisterEntity(movableId);
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()
@@ -1341,23 +1433,22 @@ BOOST_AUTO_TEST_SUITE(CollisionSpatialHashTests)
 
 BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
 {
-    // Test spatial partitioning edge cases that could cause problems
-    // Initialize ThreadSystem first (following established pattern)
+    // Test spatial partitioning edge cases for static bodies in CollisionManager
+    // Note: Movables are now in EDM, so these tests focus on static body spatial hashing
     if (!HammerEngine::ThreadSystem::Exists()) {
-        HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
+        HammerEngine::ThreadSystem::Instance().init();
     }
 
     CollisionManager::Instance().init();
 
-    // Test 1: Bodies exactly at grid boundaries
+    // Test 1: Static bodies exactly at grid boundaries
     EntityID boundaryId = 40000;
-    // Use exact cell boundary positions based on COARSE_CELL_SIZE = 128.0f
     float cellBoundary = 128.0f;
     AABB boundaryAABB(cellBoundary, cellBoundary, 10.0f, 10.0f);
 
-    CollisionManager::Instance().addCollisionBody(
+    CollisionManager::Instance().addStaticBody(
         boundaryId, boundaryAABB.center, boundaryAABB.halfSize,
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
     );
 
     // Should be findable via area query
@@ -1365,13 +1456,13 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().queryArea(boundaryAABB, results);
     BOOST_CHECK(std::find(results.begin(), results.end(), boundaryId) != results.end());
 
-    // Test 2: Very large bodies spanning multiple cells
+    // Test 2: Very large static bodies spanning multiple cells
     EntityID largeId = 40001;
     AABB largeAABB(200.0f, 200.0f, 300.0f, 300.0f); // 600x600 body spanning many cells
 
-    CollisionManager::Instance().addCollisionBody(
+    CollisionManager::Instance().addStaticBody(
         largeId, largeAABB.center, largeAABB.halfSize,
-        BodyType::STATIC, CollisionLayer::Layer_Environment, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
     );
 
     // Should be findable from multiple query regions
@@ -1389,13 +1480,13 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     BOOST_CHECK(foundInTopLeft);
     BOOST_CHECK(foundInBottomRight);
 
-    // Test 3: Bodies at extreme coordinates
+    // Test 3: Static bodies at extreme coordinates
     EntityID extremeId = 40002;
     AABB extremeAABB(-1000000.0f, -1000000.0f, 50.0f, 50.0f);
 
-    CollisionManager::Instance().addCollisionBody(
+    CollisionManager::Instance().addStaticBody(
         extremeId, extremeAABB.center, extremeAABB.halfSize,
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
     );
 
     // Should still be queryable
@@ -1403,29 +1494,29 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
     CollisionManager::Instance().queryArea(extremeAABB, results);
     BOOST_CHECK(std::find(results.begin(), results.end(), extremeId) != results.end());
 
-    // Test 4: Zero-sized bodies (degenerate case)
+    // Test 4: Zero-sized static bodies (degenerate case)
     EntityID zeroId = 40003;
     AABB zeroAABB(100.0f, 100.0f, 0.0f, 0.0f); // Zero size
 
-    CollisionManager::Instance().addCollisionBody(
+    CollisionManager::Instance().addStaticBody(
         zeroId, zeroAABB.center, zeroAABB.halfSize,
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
     );
 
     // Should still be tracked and queryable
     results.clear();
-    AABB zeroQuery(99.0f, 99.0f, 2.0f, 2.0f); // Small area around zero-sized body
+    AABB zeroQuery(99.0f, 99.0f, 2.0f, 2.0f);
     CollisionManager::Instance().queryArea(zeroQuery, results);
     BOOST_CHECK(std::find(results.begin(), results.end(), zeroId) != results.end());
 
-    // Test 5: Bodies moving between fine/coarse grid transitions
+    // Test 5: Static bodies that update position (e.g., moving platforms)
     EntityID movingId = 40004;
-    Vector2D startPos(64.0f, 64.0f); // Start in one fine cell
+    Vector2D startPos(64.0f, 64.0f);
     AABB movingAABB(startPos.getX(), startPos.getY(), 15.0f, 15.0f);
 
-    CollisionManager::Instance().addCollisionBody(
+    CollisionManager::Instance().addStaticBody(
         movingId, movingAABB.center, movingAABB.halfSize,
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
+        CollisionLayer::Layer_Environment, 0xFFFFFFFFu
     );
 
     // Move across fine cell boundaries multiple times
@@ -1456,216 +1547,183 @@ BOOST_AUTO_TEST_CASE(TestGridHashEdgeCases)
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// Tests for KinematicUpdate batch API - critical for AI entity movement optimization
-BOOST_AUTO_TEST_SUITE(KinematicBatchTests)
+// Tests for EDM batch position updates - critical for AI entity movement optimization
+BOOST_AUTO_TEST_SUITE(EDMBatchUpdateTests)
 
-BOOST_AUTO_TEST_CASE(TestUpdateKinematicBatchSOA)
+BOOST_AUTO_TEST_CASE(TestEDMBatchPositionUpdate)
 {
-    // Initialize collision manager
+    // EDM-CENTRIC: Test batch position updates via EntityDataManager
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     const int NUM_ENTITIES = 50;
+    std::vector<EntityHandle> handles;
     std::vector<EntityID> entityIds;
 
-    // Create kinematic bodies
+    // Create movable bodies via EDM
     for (int i = 0; i < NUM_ENTITIES; ++i) {
         EntityID id = static_cast<EntityID>(1000 + i);
         entityIds.push_back(id);
         Vector2D pos(100.0f + i * 10.0f, 100.0f + i * 10.0f);
-        Vector2D halfSize(8.0f, 8.0f);
 
-        CollisionManager::Instance().addCollisionBody(
-            id, pos, halfSize,
-            BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
-        );
+        EntityHandle handle = edm.registerNPC(id, pos, 8.0f, 8.0f);
+        size_t idx = edm.getIndex(handle);
+        auto& hot = edm.getHotDataByIndex(idx);
+        hot.collisionLayers = CollisionLayer::Layer_Enemy;
+        hot.collisionMask = 0xFFFF;
+        hot.setCollisionEnabled(true);
+        handles.push_back(handle);
     }
 
-    // Build batch updates
-    std::vector<CollisionManager::KinematicUpdate> updates;
-    updates.reserve(NUM_ENTITIES);
+    // Batch update positions via direct EDM access
     for (int i = 0; i < NUM_ENTITIES; ++i) {
         Vector2D newPos(200.0f + i * 10.0f, 200.0f + i * 10.0f);
-        Vector2D velocity(1.0f, 0.5f);
-        updates.emplace_back(entityIds[i], newPos, velocity);
+        size_t idx = edm.getIndex(handles[i]);
+        auto& hot = edm.getHotDataByIndex(idx);
+        hot.transform.position.setX(newPos.getX());
+        hot.transform.position.setY(newPos.getY());
+        hot.transform.velocity.setX(1.0f);
+        hot.transform.velocity.setY(0.5f);
     }
 
-    // Apply batch update
-    CollisionManager::Instance().updateKinematicBatch(updates);
-
-    // Verify positions updated - query around new positions
+    // Verify positions updated
     for (int i = 0; i < NUM_ENTITIES; ++i) {
-        Vector2D expectedPos(200.0f + i * 10.0f, 200.0f + i * 10.0f);
-        AABB queryArea(expectedPos.getX(), expectedPos.getY(), 20.0f, 20.0f);
-        std::vector<EntityID> results;
-        CollisionManager::Instance().queryArea(queryArea, results);
-        BOOST_CHECK(std::find(results.begin(), results.end(), entityIds[i]) != results.end());
+        size_t idx = edm.getIndex(handles[i]);
+        const auto& hot = edm.getHotDataByIndex(idx);
+        float expectedX = 200.0f + i * 10.0f;
+        float expectedY = 200.0f + i * 10.0f;
+        BOOST_CHECK_CLOSE(hot.transform.position.getX(), expectedX, 0.01f);
+        BOOST_CHECK_CLOSE(hot.transform.position.getY(), expectedY, 0.01f);
     }
 
     // Cleanup
-    for (auto id : entityIds) {
-        CollisionManager::Instance().removeCollisionBody(id);
+    for (EntityID id : entityIds) {
+        edm.unregisterEntity(id);
     }
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestApplyBatchedKinematicUpdates)
+BOOST_AUTO_TEST_CASE(TestEDMMultiBatchUpdates)
 {
-    // Initialize collision manager
+    // EDM-CENTRIC: Test multiple batch updates (like AIManager does per-thread)
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     const int NUM_BATCHES = 4;
     const int ENTITIES_PER_BATCH = 25;
+    std::vector<std::vector<EntityHandle>> batchHandles(NUM_BATCHES);
     std::vector<std::vector<EntityID>> batchEntityIds(NUM_BATCHES);
 
-    // Create kinematic bodies for each batch
+    // Create movable bodies for each batch via EDM
     for (int batch = 0; batch < NUM_BATCHES; ++batch) {
         for (int i = 0; i < ENTITIES_PER_BATCH; ++i) {
             EntityID id = static_cast<EntityID>(2000 + batch * 100 + i);
             batchEntityIds[batch].push_back(id);
             Vector2D pos(50.0f + batch * 200.0f + i * 5.0f, 50.0f + i * 5.0f);
-            Vector2D halfSize(6.0f, 6.0f);
 
-            CollisionManager::Instance().addCollisionBody(
-                id, pos, halfSize,
-                BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
-            );
+            EntityHandle handle = edm.registerNPC(id, pos, 6.0f, 6.0f);
+            size_t idx = edm.getIndex(handle);
+            auto& hot = edm.getHotDataByIndex(idx);
+            hot.collisionLayers = CollisionLayer::Layer_Enemy;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+            batchHandles[batch].push_back(handle);
         }
     }
 
-    // Build batched updates (like AIManager does per-thread)
-    std::vector<std::vector<CollisionManager::KinematicUpdate>> batchUpdates(NUM_BATCHES);
+    // Apply batch updates to each batch
     for (int batch = 0; batch < NUM_BATCHES; ++batch) {
-        batchUpdates[batch].reserve(ENTITIES_PER_BATCH);
         for (int i = 0; i < ENTITIES_PER_BATCH; ++i) {
             Vector2D newPos(100.0f + batch * 200.0f + i * 5.0f, 150.0f + i * 5.0f);
-            batchUpdates[batch].emplace_back(batchEntityIds[batch][i], newPos);
+            size_t idx = edm.getIndex(batchHandles[batch][i]);
+            auto& hot = edm.getHotDataByIndex(idx);
+            hot.transform.position.setX(newPos.getX());
+            hot.transform.position.setY(newPos.getY());
         }
     }
 
-    // Apply all batches at once (zero contention pattern)
-    CollisionManager::Instance().applyBatchedKinematicUpdates(batchUpdates);
-
     // Verify all entities moved correctly
-    int entitiesFound = 0;
+    int entitiesVerified = 0;
     for (int batch = 0; batch < NUM_BATCHES; ++batch) {
         for (int i = 0; i < ENTITIES_PER_BATCH; ++i) {
-            Vector2D expectedPos(100.0f + batch * 200.0f + i * 5.0f, 150.0f + i * 5.0f);
-            AABB queryArea(expectedPos.getX(), expectedPos.getY(), 15.0f, 15.0f);
-            std::vector<EntityID> results;
-            CollisionManager::Instance().queryArea(queryArea, results);
-            if (std::find(results.begin(), results.end(), batchEntityIds[batch][i]) != results.end()) {
-                entitiesFound++;
+            float expectedX = 100.0f + batch * 200.0f + i * 5.0f;
+            float expectedY = 150.0f + i * 5.0f;
+            size_t idx = edm.getIndex(batchHandles[batch][i]);
+            const auto& hot = edm.getHotDataByIndex(idx);
+            if (std::abs(hot.transform.position.getX() - expectedX) < 0.01f && std::abs(hot.transform.position.getY() - expectedY) < 0.01f) {
+                entitiesVerified++;
             }
         }
     }
-    BOOST_CHECK_EQUAL(entitiesFound, NUM_BATCHES * ENTITIES_PER_BATCH);
+    BOOST_CHECK_EQUAL(entitiesVerified, NUM_BATCHES * ENTITIES_PER_BATCH);
 
     // Cleanup
     for (int batch = 0; batch < NUM_BATCHES; ++batch) {
-        for (auto id : batchEntityIds[batch]) {
-            CollisionManager::Instance().removeCollisionBody(id);
+        for (EntityID id : batchEntityIds[batch]) {
+            edm.unregisterEntity(id);
         }
     }
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
-BOOST_AUTO_TEST_CASE(TestApplyKinematicUpdatesSingleVector)
+BOOST_AUTO_TEST_CASE(TestEDMBatchUpdatePerformance)
 {
-    // Initialize collision manager
-    CollisionManager::Instance().init();
-
-    const int NUM_ENTITIES = 30;
-    std::vector<EntityID> entityIds;
-
-    // Create kinematic bodies
-    for (int i = 0; i < NUM_ENTITIES; ++i) {
-        EntityID id = static_cast<EntityID>(3000 + i);
-        entityIds.push_back(id);
-        Vector2D pos(300.0f + i * 8.0f, 300.0f);
-        Vector2D halfSize(5.0f, 5.0f);
-
-        CollisionManager::Instance().addCollisionBody(
-            id, pos, halfSize,
-            BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu
-        );
-    }
-
-    // Build single vector of updates (convenience API)
-    std::vector<CollisionManager::KinematicUpdate> updates;
-    updates.reserve(NUM_ENTITIES);
-    for (int i = 0; i < NUM_ENTITIES; ++i) {
-        Vector2D newPos(400.0f + i * 8.0f, 400.0f);
-        updates.emplace_back(entityIds[i], newPos);
-    }
-
-    // Apply updates using single-vector overload
-    CollisionManager::Instance().applyKinematicUpdates(updates);
-
-    // Verify positions updated
-    for (int i = 0; i < NUM_ENTITIES; ++i) {
-        Vector2D expectedPos(400.0f + i * 8.0f, 400.0f);
-        AABB queryArea(expectedPos.getX(), expectedPos.getY(), 12.0f, 12.0f);
-        std::vector<EntityID> results;
-        CollisionManager::Instance().queryArea(queryArea, results);
-        BOOST_CHECK(std::find(results.begin(), results.end(), entityIds[i]) != results.end());
-    }
-
-    // Cleanup
-    for (auto id : entityIds) {
-        CollisionManager::Instance().removeCollisionBody(id);
-    }
-    CollisionManager::Instance().clean();
-}
-
-BOOST_AUTO_TEST_CASE(TestKinematicBatchPerformance)
-{
-    // Initialize collision manager
+    // EDM-CENTRIC: Measure performance of batch position updates via EDM
+    auto& edm = EntityDataManager::Instance();
+    edm.init();
     CollisionManager::Instance().init();
 
     const int NUM_ENTITIES = 500;
+    std::vector<EntityHandle> handles;
     std::vector<EntityID> entityIds;
 
-    // Create many kinematic bodies
+    // Create many movable bodies
     for (int i = 0; i < NUM_ENTITIES; ++i) {
         EntityID id = static_cast<EntityID>(4000 + i);
         entityIds.push_back(id);
         Vector2D pos(static_cast<float>(i % 50) * 20.0f, static_cast<float>(i / 50) * 20.0f);
-        Vector2D halfSize(8.0f, 8.0f);
 
-        CollisionManager::Instance().addCollisionBody(
-            id, pos, halfSize,
-            BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu
-        );
-    }
-
-    // Build batch updates
-    std::vector<CollisionManager::KinematicUpdate> updates;
-    updates.reserve(NUM_ENTITIES);
-    for (int i = 0; i < NUM_ENTITIES; ++i) {
-        Vector2D newPos(static_cast<float>(i % 50) * 20.0f + 5.0f, static_cast<float>(i / 50) * 20.0f + 5.0f);
-        updates.emplace_back(entityIds[i], newPos);
+        EntityHandle handle = edm.registerNPC(id, pos, 8.0f, 8.0f);
+        size_t idx = edm.getIndex(handle);
+        auto& hot = edm.getHotDataByIndex(idx);
+        hot.collisionLayers = CollisionLayer::Layer_Enemy;
+        hot.collisionMask = 0xFFFF;
+        hot.setCollisionEnabled(true);
+        handles.push_back(handle);
     }
 
     // Measure batch update performance
     auto start = std::chrono::high_resolution_clock::now();
     for (int iter = 0; iter < 100; ++iter) {
-        CollisionManager::Instance().updateKinematicBatch(updates);
+        for (int i = 0; i < NUM_ENTITIES; ++i) {
+            float newX = static_cast<float>(i % 50) * 20.0f + 5.0f;
+            float newY = static_cast<float>(i / 50) * 20.0f + 5.0f;
+            size_t idx = edm.getIndex(handles[i]);
+            auto& hot = edm.getHotDataByIndex(idx);
+            hot.transform.position.setX(newX);
+            hot.transform.position.setY(newY);
+        }
     }
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
 
-    BOOST_TEST_MESSAGE("Batch update of " << NUM_ENTITIES << " entities x 100 iterations: "
+    BOOST_TEST_MESSAGE("EDM batch update of " << NUM_ENTITIES << " entities x 100 iterations: "
                       << duration.count() << " μs ("
                       << (duration.count() / 100) << " μs per batch)");
 
-    // Performance requirement: batch update should be fast
-    BOOST_CHECK_LT(duration.count() / 100, 5000); // Less than 5ms per batch of 500 entities
+    // Performance requirement: batch update should be fast (< 1ms per batch of 500)
+    BOOST_CHECK_LT(duration.count() / 100, 1000);
 
     // Cleanup
-    for (auto id : entityIds) {
-        CollisionManager::Instance().removeCollisionBody(id);
+    for (EntityID id : entityIds) {
+        edm.unregisterEntity(id);
     }
     CollisionManager::Instance().clean();
+    edm.clean();
 }
 
 BOOST_AUTO_TEST_SUITE_END()

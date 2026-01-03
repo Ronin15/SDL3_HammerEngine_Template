@@ -586,6 +586,13 @@ public:
     [[nodiscard]] std::span<const size_t> getActiveIndices() const;
 
     /**
+     * @brief Get indices of Active tier entities with collision enabled
+     * Cached and rebuilt when tiers change or collision is enabled/disabled.
+     * Used by CollisionManager to avoid filtering in hot loop.
+     */
+    [[nodiscard]] std::span<const size_t> getActiveIndicesWithCollision() const;
+
+    /**
      * @brief Get indices of all Background tier entities
      */
     [[nodiscard]] std::span<const size_t> getBackgroundIndices() const;
@@ -687,6 +694,10 @@ private:
     std::vector<size_t> m_backgroundIndices;
     std::vector<size_t> m_hibernatedIndices;
     bool m_tierIndicesDirty{true};
+
+    // Collision-enabled active indices (cached for CollisionManager optimization)
+    mutable std::vector<size_t> m_activeCollisionIndices;
+    mutable bool m_activeCollisionDirty{true};
 
     // Kind indices
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
