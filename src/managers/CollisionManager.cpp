@@ -1482,8 +1482,7 @@ void CollisionManager::broadphaseSingleThreaded() {
   // ========================================================================
   // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
   // Direct path: O(movables × statics) comparisons but no query overhead.
-  // Spatial hash: O(movables × nearby_statics) but with query overhead.
-  // With 475 statics, direct = 233×475 = 110K comparisons. Spatial hash should be much faster.
+  // Spatial hash: O(movables × nearby_statics) with query + overlap test.
   const bool useDirectPath = (staticIndices.size() < 100);
   const auto& staticAABBs = pools.staticAABBs;
 
@@ -1524,6 +1523,11 @@ void CollisionManager::broadphaseSingleThreaded() {
         const auto& staticHot = m_storage.hotData[staticIdx];
         if (!staticHot.active) continue;
         if ((movableCollidesWith & staticHot.layers) == 0) continue;
+        // AABB overlap test - spatial hash returns region candidates, not guaranteed overlaps
+        if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+            movableAABB.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+            movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+            movableAABB.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
         pools.movableStaticPairs.emplace_back(poolIdx, staticIdx);
       }
       returnPooledVector(staticCandidates);
@@ -1692,7 +1696,7 @@ void CollisionManager::broadphaseBatch(
     // ========================================================================
     // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
     // Direct path: O(batch × statics) SIMD comparisons but no query overhead.
-    // Spatial hash: O(batch × nearby_statics) but with query overhead.
+    // Spatial hash: O(batch × nearby_statics) with query + overlap test.
     const bool useDirectPath = (staticIndices.size() < 100);
     const Int4 staticMaskVec = broadcast_int(collidesWithA);
     const auto& staticAABBs = pools.staticAABBs;
@@ -1764,6 +1768,11 @@ void CollisionManager::broadphaseBatch(
       for (size_t staticIdx : staticCandidates) {
         const auto& staticHot = m_storage.hotData[staticIdx];
         if (!staticHot.active || (collidesWithA & staticHot.layers) == 0) continue;
+        // AABB overlap test - spatial hash returns region candidates, not guaranteed overlaps
+        if (aabbA.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
+            aabbA.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
+            aabbA.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
+            aabbA.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY) continue;
         outMovableStatic.emplace_back(poolIdxA, staticIdx);
       }
     }
