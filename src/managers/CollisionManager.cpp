@@ -227,23 +227,34 @@ void CollisionManager::setWorldBounds(float minX, float minY, float maxX,
 
 EntityID CollisionManager::createTriggerArea(const AABB &aabb,
                                              HammerEngine::TriggerTag tag,
+                                             HammerEngine::TriggerType type,
                                              uint32_t layerMask,
                                              uint32_t collideMask) {
-  const EntityID id = HammerEngine::UniqueID::generate();
   const Vector2D center(aabb.center.getX(), aabb.center.getY());
-  const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-  // addStaticBody handles static collision bodies (buildings, obstacles)
-  addStaticBody(id, center, halfSize,
-                      layerMask, collideMask, true, static_cast<uint8_t>(tag));
+  const float halfW = aabb.halfSize.getX();
+  const float halfH = aabb.halfSize.getY();
+
+  // Register trigger with EDM first (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  EntityHandle handle = edm.createTrigger(center, halfW, halfH, tag, type);
+  EntityID id = handle.getId();
+  size_t edmIndex = edm.getStaticIndex(handle);
+
+  // Create collision body in m_storage with EDM reference
+  const Vector2D halfSize(halfW, halfH);
+  addStaticBody(id, center, halfSize, layerMask, collideMask,
+                true, static_cast<uint8_t>(tag),
+                static_cast<uint8_t>(type), edmIndex);
   return id;
 }
 
 EntityID CollisionManager::createTriggerAreaAt(float cx, float cy, float halfW,
                                                float halfH,
                                                HammerEngine::TriggerTag tag,
+                                               HammerEngine::TriggerType type,
                                                uint32_t layerMask,
                                                uint32_t collideMask) {
-  return createTriggerArea(AABB(cx, cy, halfW, halfH), tag, layerMask,
+  return createTriggerArea(AABB(cx, cy, halfW, halfH), tag, type, layerMask,
                            collideMask);
 }
 
@@ -295,21 +306,11 @@ CollisionManager::createTriggersForWaterTiles(HammerEngine::TriggerTag tag) {
 
       const float cx = x * tileSize + tileSize * 0.5f;
       const float cy = y * tileSize + tileSize * 0.5f;
-      const AABB aabb(cx, cy, tileSize * 0.5f, tileSize * 0.5f);
-      // Use a distinct prefix for triggers to avoid id collisions with static
-      // colliders
-      EntityID id = (static_cast<EntityID>(1ull) << 61) |
-                    (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
-                    static_cast<EntityID>(static_cast<uint32_t>(x));
-      // Check if this water trigger already exists in SOA storage
-      if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-        const Vector2D center(aabb.center.getX(), aabb.center.getY());
-        const Vector2D halfSize(aabb.halfSize.getX(), aabb.halfSize.getY());
-        addStaticBody(id, center, halfSize,
-                           CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                           true, static_cast<uint8_t>(tag));
-        ++created;
-      }
+      // Water triggers are EventOnly - skip broadphase, detect player overlap only
+      createTriggerAreaAt(cx, cy, tileSize * 0.5f, tileSize * 0.5f,
+                          tag, HammerEngine::TriggerType::EventOnly,
+                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+      ++created;
     }
   }
 
@@ -405,6 +406,8 @@ size_t CollisionManager::createStaticObstacleBodies() {
                                   tile.buildingId, minX, minY, maxX, maxY,
                                   buildingTiles.size(), expectedTiles, isRectangle ? "YES" : "NO"));
 
+      auto& edm = EntityDataManager::Instance();
+
       if (isRectangle) {
         // SIMPLE CASE: Single collision body for entire rectangular building
         const float worldMinX = minX * tileSize;
@@ -420,21 +423,23 @@ size_t CollisionManager::createStaticObstacleBodies() {
         const Vector2D center(cx, cy);
         const Vector2D halfSize(halfWidth, halfHeight);
 
-        // Single body: subBodyIndex = 0
-        EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                      (static_cast<EntityID>(tile.buildingId) << 16);
+        // Register with EDM first (single source of truth)
+        EntityHandle handle = edm.createStaticBody(center, halfWidth, halfHeight);
+        EntityID id = handle.getId();
+        size_t edmIndex = edm.getStaticIndex(handle);
 
-        if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-          addStaticBody(id, center, halfSize,
-                             CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-          ++created;
+        // Create collision body with EDM reference
+        addStaticBody(id, center, halfSize,
+                      CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                      false, 0,
+                      static_cast<uint8_t>(HammerEngine::TriggerType::Physical), edmIndex);
+        ++created;
 
-          COLLISION_INFO(std::format("Building {}: created 1 collision body (rectangle {}x{} tiles) "
-                                     "at center({},{}) halfSize({},{}) AABB[{},{} to {},{}]",
-                                     tile.buildingId, maxX - minX + 1, maxY - minY + 1,
-                                     cx, cy, halfWidth, halfHeight,
-                                     worldMinX, worldMinY, worldMaxX, worldMaxY));
-        }
+        COLLISION_INFO(std::format("Building {}: created 1 collision body (rectangle {}x{} tiles) "
+                                   "at center({},{}) halfSize({},{}) AABB[{},{} to {},{}]",
+                                   tile.buildingId, maxX - minX + 1, maxY - minY + 1,
+                                   cx, cy, halfWidth, halfHeight,
+                                   worldMinX, worldMinY, worldMaxX, worldMaxY));
       } else {
         // COMPLEX CASE: Non-rectangular building - use row decomposition
         std::map<int, std::vector<int>> rowToColumns;
@@ -471,16 +476,18 @@ size_t CollisionManager::createStaticObstacleBodies() {
             Vector2D center(cx, cy);
             Vector2D halfSize(halfWidth, halfHeight);
 
-            EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                          (static_cast<EntityID>(tile.buildingId) << 16) |
-                          static_cast<EntityID>(subBodyIndex);
+            // Register with EDM first
+            EntityHandle handle = edm.createStaticBody(center, halfWidth, halfHeight);
+            EntityID id = handle.getId();
+            size_t edmIndex = edm.getStaticIndex(handle);
 
-            if (m_storage.entityToIndex.find(id) == m_storage.entityToIndex.end()) {
-              addStaticBody(id, center, halfSize,
-                                 CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
-              ++created;
-              ++subBodyIndex;
-            }
+            // Create collision body with EDM reference
+            addStaticBody(id, center, halfSize,
+                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                          false, 0,
+                          static_cast<uint8_t>(HammerEngine::TriggerType::Physical), edmIndex);
+            ++created;
+            ++subBodyIndex;
 
             ++i;
           }
@@ -600,9 +607,31 @@ void CollisionManager::logCollisionStatistics() const {
   size_t kinematicBodies = getKinematicBodyCount();
   size_t dynamicBodies = getDynamicBodyCount();
 
+  // Count trigger types for Phase 3 optimization visibility
+  size_t eventOnlyTriggers = 0;
+  size_t physicalTriggers = 0;
+  size_t solidObstacles = 0;
+  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+    const auto& hot = m_storage.hotData[i];
+    if (hot.active && static_cast<BodyType>(hot.bodyType) == BodyType::STATIC) {
+      if (hot.isTrigger != 0) {
+        if (hot.triggerType == static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
+          ++eventOnlyTriggers;
+        } else {
+          ++physicalTriggers;
+        }
+      } else {
+        ++solidObstacles;
+      }
+    }
+  }
+
   COLLISION_INFO("Collision Statistics:");
   COLLISION_INFO(std::format("  Total Bodies: {}", getBodyCount()));
   COLLISION_INFO(std::format("  Static Bodies: {} (obstacles + triggers)", staticBodies));
+  COLLISION_INFO(std::format("    - Solid obstacles: {} (broadphase)", solidObstacles));
+  COLLISION_INFO(std::format("    - Physical triggers: {} (broadphase + events)", physicalTriggers));
+  COLLISION_INFO(std::format("    - EventOnly triggers: {} (events only, skip broadphase)", eventOnlyTriggers));
   COLLISION_INFO(std::format("  Kinematic Bodies: {} (NPCs)", kinematicBodies));
   COLLISION_INFO(std::format("  Dynamic Bodies: {} (player, projectiles)", dynamicBodies));
 
@@ -724,20 +753,17 @@ void CollisionManager::onTileChanged(int x, int y) {
       x < static_cast<int>(world->grid[y].size())) {
     const auto &tile = world->grid[y][x];
 
-    // Update water trigger for this tile using SOA system
-    EntityID trigId = (static_cast<EntityID>(1ull) << 61) |
-                      (static_cast<EntityID>(static_cast<uint32_t>(y)) << 31) |
-                      static_cast<EntityID>(static_cast<uint32_t>(x));
-    removeCollisionBody(trigId);
+    // Update water trigger for this tile
+    // For dynamic tile changes, we still track by tile coordinates
+    // TODO: Consider storing tile->entityID mapping for better cleanup
     if (tile.isWater) {
       float const cx = x * tileSize + tileSize * 0.5f;
       float const cy = y * tileSize + tileSize * 0.5f;
-      Vector2D const center(cx, cy);
-      Vector2D const halfSize(tileSize * 0.5f, tileSize * 0.5f);
-      // Pass trigger properties through command queue (isTrigger=true, triggerTag=Water)
-      addStaticBody(trigId, center, halfSize,
-                    CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
-                    true, static_cast<uint8_t>(HammerEngine::TriggerTag::Water));
+      // Water triggers are EventOnly - skip broadphase, detect player overlap only
+      createTriggerAreaAt(cx, cy, tileSize * 0.5f, tileSize * 0.5f,
+                          HammerEngine::TriggerTag::Water,
+                          HammerEngine::TriggerType::EventOnly,
+                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
     }
 
     // Update solid obstacle collision body for this tile (BUILDING only)
@@ -868,14 +894,16 @@ void CollisionManager::onTileChanged(int x, int y) {
             Vector2D center(cx, cy);
             Vector2D halfSize(halfWidth, halfHeight);
 
-            // Encode building ID and sub-body index in EntityID
-            // Format: (3ull << 61) | (buildingId << 16) | subBodyIndex
-            EntityID id = (static_cast<EntityID>(3ull) << 61) |
-                          (static_cast<EntityID>(tile.buildingId) << 16) |
-                          static_cast<EntityID>(subBodyIndex);
+            // Register with EDM first (single source of truth)
+            auto& edm = EntityDataManager::Instance();
+            EntityHandle handle = edm.createStaticBody(center, halfWidth, halfHeight);
+            EntityID id = handle.getId();
+            size_t edmIndex = edm.getStaticIndex(handle);
 
             addStaticBody(id, center, halfSize,
-                               CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+                          CollisionLayer::Layer_Environment, 0xFFFFFFFFu,
+                          false, 0,
+                          static_cast<uint8_t>(HammerEngine::TriggerType::Physical), edmIndex);
             ++subBodyIndex;
 
             ++i; // Move to next potential span
@@ -974,7 +1002,8 @@ void CollisionManager::subscribeWorldEvents() {
 size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
                                        const Vector2D& halfSize,
                                        uint32_t layer, uint32_t collidesWith,
-                                       bool isTrigger, uint8_t triggerTag) {
+                                       bool isTrigger, uint8_t triggerTag,
+                                       uint8_t triggerType, size_t edmIndex) {
   // Check if entity already exists
   auto it = m_storage.entityToIndex.find(id);
   if (it != m_storage.entityToIndex.end()) {
@@ -995,6 +1024,8 @@ size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
       hot.layers = layer;
       hot.collidesWith = collidesWith;
       hot.active = true;
+      hot.triggerType = triggerType;
+      hot.edmIndex = edmIndex;
 
       if (index < m_storage.coldData.size()) {
         m_storage.coldData[index].fullAABB = AABB(px, py, hw, hh);
@@ -1020,9 +1051,10 @@ size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
   hotData.collidesWith = collidesWith;
   hotData.bodyType = static_cast<uint8_t>(BodyType::STATIC);
   hotData.triggerTag = triggerTag;
+  hotData.triggerType = triggerType;
   hotData.active = true;
   hotData.isTrigger = isTrigger;
-  hotData.edmIndex = SIZE_MAX;  // Static bodies don't have EDM entries
+  hotData.edmIndex = edmIndex;
 
   // Initialize coarse cell coords for cache optimization
   AABB initialAABB(px, py, hw, hh);
@@ -1312,9 +1344,26 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
 
       // Cache static AABBs for contiguous memory access in broadphase
       // This avoids scattered m_storage.hotData[idx] access in SIMD loops
+      // PHASE 3.1: Filter EventOnly triggers from broadphase - they get separate detection
       pools.staticAABBs.reserve(pools.staticIndices.size());
+      pools.eventOnlyTriggerIndices.clear();
+
+      // Two-pass: filter indices and build AABBs for physics bodies only
+      std::vector<size_t> physicsIndices;
+      physicsIndices.reserve(pools.staticIndices.size());
+
       for (size_t storageIdx : pools.staticIndices) {
         const auto& staticHot = m_storage.hotData[storageIdx];
+
+        // EventOnly triggers skip broadphase entirely - handled separately
+        if (staticHot.isTrigger != 0 &&
+            staticHot.triggerType == static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
+          pools.eventOnlyTriggerIndices.push_back(storageIdx);
+          continue;
+        }
+
+        // Physical bodies (obstacles, physical triggers) go to broadphase
+        physicsIndices.push_back(storageIdx);
         CollisionPool::StaticAABB aabb;
         aabb.minX = staticHot.aabbMinX;
         aabb.minY = staticHot.aabbMinY;
@@ -1324,6 +1373,9 @@ std::tuple<size_t, size_t, size_t> CollisionManager::buildActiveIndices(const Cu
         aabb.active = staticHot.active;
         pools.staticAABBs.push_back(aabb);
       }
+
+      // Replace staticIndices with filtered physics-only indices
+      pools.staticIndices = std::move(physicsIndices);
     }
     m_lastStaticQueryCullingArea = cullingArea;
     m_staticQueryCacheDirty = false;
@@ -2047,6 +2099,8 @@ void CollisionManager::update(float dt) {
 #endif
 
   // TRIGGER PROCESSING: Handle trigger enter/exit events
+  // PHASE 3.2: Detect EventOnly triggers (bypassed broadphase)
+  detectEventOnlyTriggers();
   processTriggerEvents();
 
 #ifdef DEBUG
@@ -2167,6 +2221,63 @@ void CollisionManager::resolve(const CollisionInfo& collision) {
 // NOTE: refreshCachedAABB/refreshCachedAABBs removed - buildActiveIndices() computes
 // movable AABBs inline from EDM into pools.movableAABBs. Static bodies don't need refresh.
 
+void CollisionManager::detectEventOnlyTriggers() {
+  // PHASE 3.2: Lightweight AABB test for EventOnly triggers
+  // These bypass broadphase entirely for performance, but still need event detection
+  //
+  // This is O(movables × eventOnlyTriggers) but both sets are typically small:
+  // - movables: ~50-150 in culling area
+  // - eventOnlyTriggers: typically ~20-100 water tiles
+
+  auto& pools = m_collisionPool;
+  pools.eventOnlyOverlaps.clear();
+
+  if (pools.eventOnlyTriggerIndices.empty() || pools.movableAABBs.empty()) {
+    return;
+  }
+
+  // Pre-cache trigger AABBs for better locality during inner loop
+  struct TriggerAABB {
+    float minX, minY, maxX, maxY;
+    size_t storageIdx;
+  };
+
+  std::vector<TriggerAABB> triggerAABBs;
+  triggerAABBs.reserve(pools.eventOnlyTriggerIndices.size());
+
+  for (size_t storageIdx : pools.eventOnlyTriggerIndices) {
+    const auto& hot = m_storage.hotData[storageIdx];
+    if (!hot.active) continue;
+
+    triggerAABBs.push_back({
+        hot.aabbMinX,
+        hot.aabbMinY,
+        hot.aabbMaxX,
+        hot.aabbMaxY,
+        storageIdx});
+  }
+
+  // Test each movable against each trigger
+  // Layer filtering: check if movable's collidesWith includes trigger's layer
+  for (size_t movablePoolIdx = 0; movablePoolIdx < pools.movableAABBs.size(); ++movablePoolIdx) {
+    const auto& movable = pools.movableAABBs[movablePoolIdx];
+
+    for (const auto& trigger : triggerAABBs) {
+      // Simple AABB overlap test
+      bool overlaps = !(movable.maxX < trigger.minX || movable.minX > trigger.maxX ||
+                        movable.maxY < trigger.minY || movable.minY > trigger.maxY);
+
+      if (overlaps) {
+        // Check layer mask compatibility
+        const auto& triggerHot = m_storage.hotData[trigger.storageIdx];
+        if ((movable.collidesWith & triggerHot.layers) != 0) {
+          pools.eventOnlyOverlaps.push_back({movablePoolIdx, trigger.storageIdx});
+        }
+      }
+    }
+  }
+}
+
 void CollisionManager::processTriggerEvents() {
   // EDM-CENTRIC: Process trigger events with correct index semantics
   // - Movable-movable (isMovableMovable=true): both indices are EDM indices (skip - movables aren't triggers)
@@ -2232,6 +2343,65 @@ void CollisionManager::processTriggerEvents() {
         EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
 
         COLLISION_DEBUG(std::format("Player {} ENTERED trigger {} (tag: {}) at position ({}, {})",
+                                    playerId, triggerId, static_cast<int>(triggerTag),
+                                    playerPos.getX(), playerPos.getY()));
+
+        if (m_defaultTriggerCooldownSec > 0.0f) {
+          m_triggerCooldownUntil[triggerId] = now +
+              std::chrono::duration_cast<std::chrono::steady_clock::duration>(
+                  std::chrono::duration<double>(m_defaultTriggerCooldownSec));
+        }
+      }
+
+      m_activeTriggerPairs.emplace(key, std::make_pair(playerId, triggerId));
+    }
+  }
+
+  // PHASE 3.3: Process EventOnly trigger overlaps (bypassed broadphase)
+  // These are detected via lightweight AABB test in detectEventOnlyTriggers()
+  for (const auto& overlap : m_collisionPool.eventOnlyOverlaps) {
+    size_t movablePoolIdx = overlap.movablePoolIdx;
+    size_t storageIdx = overlap.triggerStorageIdx;
+
+    // Validate indices
+    if (movablePoolIdx >= m_collisionPool.movableAABBs.size()) continue;
+    if (storageIdx >= m_storage.hotData.size()) continue;
+
+    // Get EDM index from pool index
+    size_t edmIdx = m_collisionPool.movableIndices[movablePoolIdx];
+    const auto& movableAABB = m_collisionPool.movableAABBs[movablePoolIdx];
+    const auto& staticHot = m_storage.hotData[storageIdx];
+
+    // Get movable data from EDM
+    const auto& movableHot = edm.getHotDataByIndex(edmIdx);
+
+    // Check for player-trigger interaction (for now, only player fires events)
+    bool isPlayer = (movableHot.collisionLayers & CollisionLayer::Layer_Player) != 0;
+    if (!isPlayer) {
+      continue; // TODO: Generalize to any entity in future phase
+    }
+
+    EntityID playerId = movableAABB.entityId;
+    EntityID triggerId = m_storage.entityIds[storageIdx];
+
+    uint64_t key = makeKey(playerId, triggerId);
+    m_currentTriggerPairsBuffer.insert(key);
+
+    if (!m_activeTriggerPairs.count(key)) {
+      // Check cooldown
+      auto cdIt = m_triggerCooldownUntil.find(triggerId);
+      bool cooled = (cdIt == m_triggerCooldownUntil.end()) || (now >= cdIt->second);
+
+      if (cooled) {
+        HammerEngine::TriggerTag triggerTag = static_cast<HammerEngine::TriggerTag>(staticHot.triggerTag);
+        // Get player position from EDM (single source of truth)
+        const auto& playerTransform = edm.getTransformByIndex(edmIdx);
+        Vector2D playerPos = playerTransform.position;
+
+        WorldTriggerEvent evt(playerId, triggerId, triggerTag, playerPos, TriggerPhase::Enter);
+        EventManager::Instance().triggerWorldTrigger(evt, EventManager::DispatchMode::Deferred);
+
+        COLLISION_DEBUG(std::format("Player {} ENTERED EventOnly trigger {} (tag: {}) at position ({}, {})",
                                     playerId, triggerId, static_cast<int>(triggerTag),
                                     playerPos.getX(), playerPos.getY()));
 
@@ -2343,13 +2513,15 @@ void CollisionManager::updatePerformanceMetrics(
 
   // Periodic statistics (every 300 frames) - concise format with phase breakdown
   if (logFrameCounter % 300 == 0 && bodyCount > 0) {
-    size_t staticsInRange = m_collisionPool.staticIndices.size();
+    size_t staticsInBroadphase = m_collisionPool.staticIndices.size();
+    size_t eventOnlyTriggers = m_collisionPool.eventOnlyTriggerIndices.size();
+    size_t eventOnlyOverlaps = m_collisionPool.eventOnlyOverlaps.size();
     auto d01 = std::chrono::duration<double, std::milli>(t1 - t0).count(); // Pre-broadphase setup
-    COLLISION_DEBUG(std::format("Collision: {} movable, {} static in range, {:.2f}ms (pairs:{}, hits:{})",
-                                activeMovableBodies, staticsInRange, m_perf.lastTotalMs,
+    COLLISION_DEBUG(std::format("Collision: {} movable, {} static (broadphase), {} eventOnly (filtered), {:.2f}ms (pairs:{}, hits:{})",
+                                activeMovableBodies, staticsInBroadphase, eventOnlyTriggers, m_perf.lastTotalMs,
                                 pairCount, collisionCount));
-    COLLISION_DEBUG(std::format("  Phases: setup:{:.2f}ms, broad:{:.2f}ms, narrow:{:.2f}ms, resolve:{:.2f}ms",
-                                d01, d12, d23, d34));
+    COLLISION_DEBUG(std::format("  Phases: setup:{:.2f}ms, broad:{:.2f}ms, narrow:{:.2f}ms, resolve:{:.2f}ms | eventOnly overlaps: {}",
+                                d01, d12, d23, d34, eventOnlyOverlaps));
   }
 #endif // DEBUG
 }

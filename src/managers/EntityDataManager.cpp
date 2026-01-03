@@ -635,6 +635,58 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     return EntityHandle{id, EntityKind::StaticObstacle, generation};
 }
 
+EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
+                                               float halfWidth,
+                                               float halfHeight,
+                                               HammerEngine::TriggerTag tag,
+                                               HammerEngine::TriggerType type) {
+    // Allocate slot in static storage (triggers don't move)
+    size_t index;
+    if (!m_freeStaticSlots.empty()) {
+        index = m_freeStaticSlots.back();
+        m_freeStaticSlots.pop_back();
+    } else {
+        index = m_staticHotData.size();
+        m_staticHotData.emplace_back();
+        m_staticEntityIds.push_back(0);
+        m_staticGenerations.push_back(0);
+    }
+
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = ++m_staticGenerations[index];
+
+    // Initialize trigger hot data
+    auto& hot = m_staticHotData[index];
+    hot.transform.position = position;
+    hot.transform.previousPosition = position;
+    hot.transform.velocity = Vector2D{0.0f, 0.0f};
+    hot.transform.acceleration = Vector2D{0.0f, 0.0f};
+    hot.halfWidth = halfWidth;
+    hot.halfHeight = halfHeight;
+    hot.kind = EntityKind::Trigger;
+    hot.flags = EntityHotData::FLAG_ALIVE;
+    hot.generation = generation;
+    hot.typeLocalIndex = 0;
+
+    // Set collision data for trigger
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Environment;
+    hot.collisionMask = 0xFFFF;  // Collides with all layers
+    hot.setCollisionEnabled(true);
+    hot.setTrigger(true);
+    hot.triggerTag = static_cast<uint8_t>(tag);
+    hot.triggerType = static_cast<uint8_t>(type);
+
+    // Store ID and mapping
+    m_staticEntityIds[index] = id;
+    m_staticIdToIndex[id] = index;
+
+    // Update counters
+    m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
+    m_countByKind[static_cast<size_t>(EntityKind::Trigger)].fetch_add(1, std::memory_order_relaxed);
+
+    return EntityHandle{id, EntityKind::Trigger, generation};
+}
+
 // ============================================================================
 // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
 // ============================================================================

@@ -8,6 +8,7 @@
 #include <boost/test/tools/old/interface.hpp>
 
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "collisions/AABB.hpp"
 #include "collisions/CollisionBody.hpp"
@@ -77,24 +78,31 @@ struct CollisionPathfindingFixture {
 
     void setupTestWorld() {
         // Add static collision bodies that should affect pathfinding
+        auto& edm = EntityDataManager::Instance();
 
         // Wall across middle of world
         for (int i = 5; i <= 15; ++i) {
-            EntityID wallId = 1000 + i;
             AABB wallAABB(i * 64.0f, 320.0f, 32.0f, 32.0f);
-            CollisionManager::Instance().addStaticBody(wallId, wallAABB.center, wallAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            EntityHandle handle = edm.createStaticBody(wallAABB.center, wallAABB.halfSize.getX(), wallAABB.halfSize.getY());
+            EntityID wallId = handle.getId();
+            size_t edmIndex = edm.getStaticIndex(handle);
+            CollisionManager::Instance().addStaticBody(wallId, wallAABB.center, wallAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu, false, 0, 1, edmIndex);
         }
 
         // L-shaped obstacle
         for (int i = 0; i < 3; ++i) {
-            EntityID obstacleId = 2000 + i;
             AABB obstacleAABB(800.0f + i * 64.0f, 200.0f, 32.0f, 32.0f);
-            CollisionManager::Instance().addStaticBody(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            EntityHandle handle = edm.createStaticBody(obstacleAABB.center, obstacleAABB.halfSize.getX(), obstacleAABB.halfSize.getY());
+            EntityID obstacleId = handle.getId();
+            size_t edmIndex = edm.getStaticIndex(handle);
+            CollisionManager::Instance().addStaticBody(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu, false, 0, 1, edmIndex);
         }
         for (int i = 0; i < 3; ++i) {
-            EntityID obstacleId = 2010 + i;
             AABB obstacleAABB(800.0f, 200.0f + i * 64.0f, 32.0f, 32.0f);
-            CollisionManager::Instance().addStaticBody(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+            EntityHandle handle = edm.createStaticBody(obstacleAABB.center, obstacleAABB.halfSize.getX(), obstacleAABB.halfSize.getY());
+            EntityID obstacleId = handle.getId();
+            size_t edmIndex = edm.getStaticIndex(handle);
+            CollisionManager::Instance().addStaticBody(obstacleId, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu, false, 0, 1, edmIndex);
         }
     }
 
@@ -125,13 +133,17 @@ struct CollisionPathfindingFixture {
     // Helper: Check if a point would collide using CollisionManager
     bool wouldCollideAt(const Vector2D& position, float radius = 16.0f) {
         // Create a temporary test body
-        EntityID testId = 99998;
+        auto& edm = EntityDataManager::Instance();
         AABB testAABB(position.getX(), position.getY(), radius, radius);
+        EntityHandle handle = edm.createStaticBody(testAABB.center, testAABB.halfSize.getX(), testAABB.halfSize.getY());
+        EntityID testId = handle.getId();
+        size_t edmIndex = edm.getStaticIndex(handle);
 
         // Use static body for collision query test (EDM for actual movables at runtime)
         CollisionManager::Instance().addStaticBody(
             testId, testAABB.center, testAABB.halfSize,
-            CollisionLayer::Layer_Player, CollisionLayer::Layer_Environment
+            CollisionLayer::Layer_Player, CollisionLayer::Layer_Environment,
+            false, 0, 1, edmIndex
         );
 
         // Check for collisions using queryArea (use actual radius, not 2x)
@@ -237,9 +249,12 @@ BOOST_FIXTURE_TEST_CASE(TestDynamicObstacleIntegration, CollisionPathfindingFixt
     BOOST_REQUIRE(callback1Executed);
 
     // Add dynamic obstacle
-    EntityID dynamicObstacle = 5001;
+    auto& edm = EntityDataManager::Instance();
     AABB obstacleAABB(300.0f, 300.0f, 48.0f, 48.0f);
-    CollisionManager::Instance().addStaticBody(dynamicObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    EntityHandle dynamicHandle = edm.createStaticBody(obstacleAABB.center, obstacleAABB.halfSize.getX(), obstacleAABB.halfSize.getY());
+    EntityID dynamicObstacle = dynamicHandle.getId();
+    size_t dynamicEdmIndex = edm.getStaticIndex(dynamicHandle);
+    CollisionManager::Instance().addStaticBody(dynamicObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu, false, 0, 1, dynamicEdmIndex);
 
     // Event-driven: PathfinderManager automatically updates via CollisionObstacleChanged events
     EventManager::Instance().update();
@@ -307,9 +322,12 @@ BOOST_FIXTURE_TEST_CASE(TestEventDrivenPathInvalidation, CollisionPathfindingFix
     BOOST_CHECK_GE(initialPath.size(), 2);
 
     // Add new obstacle that should invalidate cached paths
-    EntityID newObstacle = 6001;
+    auto& edm = EntityDataManager::Instance();
     AABB newObstacleAABB(300.0f, 300.0f, 64.0f, 64.0f);
-    CollisionManager::Instance().addStaticBody(newObstacle, newObstacleAABB.center, newObstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle newObstacleHandle = edm.createStaticBody(newObstacleAABB.center, newObstacleAABB.halfSize.getX(), newObstacleAABB.halfSize.getY());
+    EntityID newObstacle = newObstacleHandle.getId();
+    size_t newObstacleEdmIndex = edm.getStaticIndex(newObstacleHandle);
+    CollisionManager::Instance().addStaticBody(newObstacle, newObstacleAABB.center, newObstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu, false, 0, 1, newObstacleEdmIndex);
 
     // Process events and allow grid rebuild
     EventManager::Instance().update();
@@ -369,11 +387,14 @@ BOOST_FIXTURE_TEST_CASE(TestConcurrentCollisionPathfindingOperations, CollisionP
     }
 
     // Simultaneously add collision bodies while paths are being computed
+    auto& edm = EntityDataManager::Instance();
     std::vector<EntityID> tempBodies;
     for (int i = 0; i < 5; ++i) {
-        EntityID bodyId = 7100 + i;
         AABB bodyAABB(300.0f + i * 100.0f, 250.0f, 32.0f, 32.0f);
-        CollisionManager::Instance().addStaticBody(bodyId, bodyAABB.center, bodyAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+        EntityHandle handle = edm.createStaticBody(bodyAABB.center, bodyAABB.halfSize.getX(), bodyAABB.halfSize.getY());
+        EntityID bodyId = handle.getId();
+        size_t edmIndex = edm.getStaticIndex(handle);
+        CollisionManager::Instance().addStaticBody(bodyId, bodyAABB.center, bodyAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu, false, 0, 1, edmIndex);
         tempBodies.push_back(bodyId);
     }
 
@@ -402,16 +423,19 @@ BOOST_FIXTURE_TEST_CASE(TestPerformanceUnderLoad, CollisionPathfindingFixture)
     const int NUM_COLLISION_BODIES = 50;
     const int NUM_PATH_REQUESTS = 20;
 
+    auto& edm = EntityDataManager::Instance();
     std::vector<EntityID> bodies;
 
     // Add many collision bodies
     for (int i = 0; i < NUM_COLLISION_BODIES; ++i) {
-        EntityID bodyId = 8000 + i;
         float x = 200.0f + static_cast<float>(i % 10) * 80.0f;
         float y = 200.0f + static_cast<float>(i / 10) * 80.0f;
         AABB bodyAABB(x, y, 16.0f, 16.0f);
 
-        CollisionManager::Instance().addStaticBody(bodyId, bodyAABB.center, bodyAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+        EntityHandle handle = edm.createStaticBody(bodyAABB.center, bodyAABB.halfSize.getX(), bodyAABB.halfSize.getY());
+        EntityID bodyId = handle.getId();
+        size_t edmIndex = edm.getStaticIndex(handle);
+        CollisionManager::Instance().addStaticBody(bodyId, bodyAABB.center, bodyAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu, false, 0, 1, edmIndex);
         bodies.push_back(bodyId);
     }
 
@@ -467,15 +491,24 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionLayerPathfindingInteraction, CollisionPathf
     // Test that collision layers properly affect pathfinding
 
     // Add bodies with different collision layers
-    EntityID playerObstacle = 10000;
-    EntityID enemyObstacle = 10001;
-    EntityID environmentObstacle = 10002;
-
+    auto& edm = EntityDataManager::Instance();
     AABB obstacleAABB(350.0f, 350.0f, 32.0f, 32.0f);
 
-    CollisionManager::Instance().addStaticBody(playerObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
-    CollisionManager::Instance().addStaticBody(enemyObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().addStaticBody(environmentObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu);
+    EntityHandle playerHandle = edm.createStaticBody(obstacleAABB.center, obstacleAABB.halfSize.getX(), obstacleAABB.halfSize.getY());
+    EntityID playerObstacle = playerHandle.getId();
+    size_t playerEdmIndex = edm.getStaticIndex(playerHandle);
+
+    EntityHandle enemyHandle = edm.createStaticBody(obstacleAABB.center, obstacleAABB.halfSize.getX(), obstacleAABB.halfSize.getY());
+    EntityID enemyObstacle = enemyHandle.getId();
+    size_t enemyEdmIndex = edm.getStaticIndex(enemyHandle);
+
+    EntityHandle envHandle = edm.createStaticBody(obstacleAABB.center, obstacleAABB.halfSize.getX(), obstacleAABB.halfSize.getY());
+    EntityID environmentObstacle = envHandle.getId();
+    size_t envEdmIndex = edm.getStaticIndex(envHandle);
+
+    CollisionManager::Instance().addStaticBody(playerObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Player, 0xFFFFFFFFu, false, 0, 1, playerEdmIndex);
+    CollisionManager::Instance().addStaticBody(enemyObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu, false, 0, 1, enemyEdmIndex);
+    CollisionManager::Instance().addStaticBody(environmentObstacle, obstacleAABB.center, obstacleAABB.halfSize, CollisionLayer::Layer_Environment, 0xFFFFFFFFu, false, 0, 1, envEdmIndex);
 
     // Set different collision layers
     CollisionManager::Instance().setBodyLayer(
@@ -564,14 +597,19 @@ BOOST_FIXTURE_TEST_CASE(TestEntityMovementAlongPath, CollisionPathfindingFixture
     BOOST_REQUIRE_GE(path.size(), 2);
 
     // Create a test entity with collision body
-    EntityID entityId = 11001;
+    auto& edm = EntityDataManager::Instance();
     float entityRadius = 16.0f;
     AABB entityAABB(start.getX(), start.getY(), entityRadius, entityRadius);
+
+    EntityHandle entityHandle = edm.createStaticBody(entityAABB.center, entityAABB.halfSize.getX(), entityAABB.halfSize.getY());
+    EntityID entityId = entityHandle.getId();
+    size_t entityEdmIndex = edm.getStaticIndex(entityHandle);
 
     // Use static body for collision testing (EDM for actual movables at runtime)
     CollisionManager::Instance().addStaticBody(
         entityId, entityAABB.center, entityAABB.halfSize,
-        CollisionLayer::Layer_Player, CollisionLayer::Layer_Environment
+        CollisionLayer::Layer_Player, CollisionLayer::Layer_Environment,
+        false, 0, 1, entityEdmIndex
     );
 
     // Simulate movement along the path

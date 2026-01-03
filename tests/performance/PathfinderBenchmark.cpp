@@ -21,6 +21,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
@@ -58,6 +59,9 @@ public:
 
         // Initialize EventManager for event-driven architecture
         EventManager::Instance().init();
+
+        // Initialize EntityDataManager before collision manager (EDM owns static body data)
+        EntityDataManager::Instance().init();
 
         // Initialize world and collision managers
         WorldManager::Instance().init();
@@ -117,18 +121,25 @@ private:
 
         // Add 5% collision obstacles (separate from world terrain obstacles)
         int numObstacles = static_cast<int>((config.width * config.height) * 0.05f);
+        auto& edm = EntityDataManager::Instance();
         for (int i = 0; i < numObstacles; ++i) {
             int x = posDist(rng);
             int y = posDist(rng);
 
-            // Add obstacle to collision system
-            EntityID obstacleId = static_cast<EntityID>(1000 + i);
+            // Create static body through EDM and get its index
+            Vector2D center(x * HammerEngine::TILE_SIZE, y * HammerEngine::TILE_SIZE);
+            EntityHandle handle = edm.createStaticBody(center, 16.0f, 16.0f);
+            size_t edmIndex = edm.getStaticIndex(handle);
+            EntityID obstacleId = handle.getId();
+
+            // Add obstacle to collision system with proper EDM routing
             CollisionManager::Instance().addStaticBody(
                 obstacleId,
-                Vector2D(x * HammerEngine::TILE_SIZE, y * HammerEngine::TILE_SIZE),
+                center,
                 Vector2D(16.0f, 16.0f),
                 CollisionLayer::Layer_Environment,
-                CollisionLayer::Layer_Environment
+                CollisionLayer::Layer_Environment,
+                false, 0, 1, edmIndex
             );
         }
 
@@ -567,6 +578,7 @@ struct BenchmarkGlobalFixture {
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
         WorldManager::Instance().clean();
+        EntityDataManager::Instance().clean();
         EventManager::Instance().clean();
         WorldResourceManager::Instance().clean();
         ResourceTemplateManager::Instance().clean();

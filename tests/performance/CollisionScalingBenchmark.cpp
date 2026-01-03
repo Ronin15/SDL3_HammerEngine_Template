@@ -92,10 +92,10 @@ public:
     // Create static bodies in CollisionManager
     void createStatics(size_t count, float spread, float clusterRadius = 0.0f) {
         auto& cm = CollisionManager::Instance();
+        auto& edm = EntityDataManager::Instance();
         std::uniform_real_distribution<float> posDist(-spread, spread);
 
         for (size_t i = 0; i < count; ++i) {
-            EntityID id = static_cast<EntityID>(m_nextId++);
             Vector2D pos;
 
             if (clusterRadius > 0.0f) {
@@ -109,8 +109,14 @@ public:
                 pos = Vector2D(posDist(m_rng) + spread, posDist(m_rng) + spread);
             }
 
+            // Register with EDM first (single source of truth)
+            EntityHandle handle = edm.createStaticBody(pos, 16.0f, 16.0f);
+            EntityID id = handle.getId();
+            size_t edmIndex = edm.getStaticIndex(handle);
+
             cm.addStaticBody(id, pos, Vector2D(16.0f, 16.0f),
-                            CollisionLayer::Layer_Environment, 0xFFFFFFFF);
+                            CollisionLayer::Layer_Environment, 0xFFFFFFFF,
+                            false, 0, 1, edmIndex);
             m_staticIds.push_back(id);
         }
     }

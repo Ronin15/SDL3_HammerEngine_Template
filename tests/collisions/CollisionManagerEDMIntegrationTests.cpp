@@ -205,24 +205,34 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(StaticDynamicSeparationTests, CollisionEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestStaticBodyAddedToStorage) {
-    // Add static body directly to CollisionManager
+    // Create static body via EDM first (single source of truth)
+    auto& edm = EntityDataManager::Instance();
+    Vector2D center(500.0f, 500.0f);
+    float halfWidth = 32.0f;
+    float halfHeight = 32.0f;
+    EntityHandle handle = edm.createStaticBody(center, halfWidth, halfHeight);
+    EntityID id = handle.getId();
+    size_t edmIndex = edm.getStaticIndex(handle);
+
+    // Add static body to CollisionManager with proper EDM routing
     size_t staticIdx = CollisionManager::Instance().addStaticBody(
-        123456,  // entityId
-        Vector2D(500.0f, 500.0f),  // position
-        Vector2D(32.0f, 32.0f),    // halfSize
+        id,  // entityId from handle
+        center,  // position
+        Vector2D(halfWidth, halfHeight),    // halfSize
         CollisionLayer::Layer_Environment,  // layer
         0xFFFF,  // collidesWith
         false,   // isTrigger
-        0        // triggerTag
+        0,       // triggerTag
+        1,       // triggerType
+        edmIndex // EDM index for static body
     );
 
     BOOST_CHECK(staticIdx != SIZE_MAX);
 
-    // Static bodies should NOT be in EDM (they use separate storage)
-    // The entityId 123456 should not have an EDM entry
-    auto& edm = EntityDataManager::Instance();
-    size_t edmIndex = edm.findIndexByEntityId(123456);
-    BOOST_CHECK_EQUAL(edmIndex, SIZE_MAX);
+    // Static bodies are now routed through EDM (static storage)
+    // The handle should be valid and the static index should be valid
+    BOOST_CHECK(handle.isValid());
+    BOOST_CHECK(edmIndex != SIZE_MAX);
 }
 
 BOOST_AUTO_TEST_CASE(TestDynamicEntityInEDMNotInStaticStorage) {
@@ -237,15 +247,26 @@ BOOST_AUTO_TEST_CASE(TestDynamicEntityInEDMNotInStaticStorage) {
 }
 
 BOOST_AUTO_TEST_CASE(TestStaticBodyAlwaysCheckedForCollision) {
-    // Add static obstacle
+    // Create static obstacle via EDM first
+    auto& edm = EntityDataManager::Instance();
+    Vector2D center(500.0f, 500.0f);
+    float halfWidth = 50.0f;
+    float halfHeight = 50.0f;
+    EntityHandle handle = edm.createStaticBody(center, halfWidth, halfHeight);
+    EntityID id = handle.getId();
+    size_t edmIndex = edm.getStaticIndex(handle);
+
+    // Add static obstacle to CollisionManager with EDM routing
     CollisionManager::Instance().addStaticBody(
-        111111,
-        Vector2D(500.0f, 500.0f),
-        Vector2D(50.0f, 50.0f),
+        id,
+        center,
+        Vector2D(halfWidth, halfHeight),
         CollisionLayer::Layer_Environment,
         0xFFFF,
         false,
-        0
+        0,
+        1,
+        edmIndex
     );
 
     // Create dynamic entity near the static obstacle
@@ -351,24 +372,34 @@ BOOST_AUTO_TEST_CASE(TestMovableMovablePairIndicesAreEDMIndices) {
 }
 
 BOOST_AUTO_TEST_CASE(TestMovableStaticPairMixedIndices) {
-    // Add static body
+    // Create static body via EDM first
+    auto& edm = EntityDataManager::Instance();
+    Vector2D center(200.0f, 200.0f);
+    float halfWidth = 30.0f;
+    float halfHeight = 30.0f;
+    EntityHandle staticHandle = edm.createStaticBody(center, halfWidth, halfHeight);
+    EntityID id = staticHandle.getId();
+    size_t edmIndex = edm.getStaticIndex(staticHandle);
+
+    // Add static body to CollisionManager with EDM routing
     size_t staticStorageIdx = CollisionManager::Instance().addStaticBody(
-        222222,
-        Vector2D(200.0f, 200.0f),
-        Vector2D(30.0f, 30.0f),
+        id,
+        center,
+        Vector2D(halfWidth, halfHeight),
         CollisionLayer::Layer_Environment,
         0xFFFF,
         false,
-        0
+        0,
+        1,
+        edmIndex
     );
     BOOST_REQUIRE(staticStorageIdx != SIZE_MAX);
 
     // Create dynamic entity near static
     auto entity = CollisionTestEntity::create(Vector2D(210.0f, 210.0f));
-    EntityHandle handle = entity->getHandle();
+    EntityHandle dynamicHandle = entity->getHandle();
 
-    auto& edm = EntityDataManager::Instance();
-    size_t edmIdx = edm.getIndex(handle);
+    size_t edmIdx = edm.getIndex(dynamicHandle);
     BOOST_REQUIRE(edmIdx != SIZE_MAX);
 
     // Update tiers
@@ -408,15 +439,26 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsDynamicData) {
 }
 
 BOOST_AUTO_TEST_CASE(TestStaticBodiesPreservedAfterDynamicClear) {
-    // Add static body
+    // Create static body via EDM first
+    auto& edm = EntityDataManager::Instance();
+    Vector2D center(500.0f, 500.0f);
+    float halfWidth = 50.0f;
+    float halfHeight = 50.0f;
+    EntityHandle handle = edm.createStaticBody(center, halfWidth, halfHeight);
+    EntityID id = handle.getId();
+    size_t edmIndex = edm.getStaticIndex(handle);
+
+    // Add static body to CollisionManager with EDM routing
     CollisionManager::Instance().addStaticBody(
-        333333,
-        Vector2D(500.0f, 500.0f),
-        Vector2D(50.0f, 50.0f),
+        id,
+        center,
+        Vector2D(halfWidth, halfHeight),
         CollisionLayer::Layer_Environment,
         0xFFFF,
         false,
-        0
+        0,
+        1,
+        edmIndex
     );
 
     // Create dynamic entity

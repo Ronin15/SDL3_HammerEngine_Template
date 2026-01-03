@@ -118,12 +118,15 @@ public:
     void applyKinematicUpdates(std::vector<KinematicUpdate>& updates);
 
     // Convenience methods for triggers
+    // Routes through EDM::createTrigger() for single source of truth
     EntityID createTriggerArea(const AABB& aabb,
                                HammerEngine::TriggerTag tag,
+                               HammerEngine::TriggerType type,
                                uint32_t layerMask = CollisionLayer::Layer_Environment,
                                uint32_t collideMask = 0xFFFFFFFFu);
     EntityID createTriggerAreaAt(float cx, float cy, float halfW, float halfH,
                                  HammerEngine::TriggerTag tag,
+                                 HammerEngine::TriggerType type,
                                  uint32_t layerMask = CollisionLayer::Layer_Environment,
                                  uint32_t collideMask = 0xFFFFFFFFu);
     void setTriggerCooldown(EntityID triggerId, float seconds);
@@ -162,9 +165,9 @@ public:
     // EDM-CENTRIC: Only static bodies (buildings, triggers, obstacles) go in m_storage
     // Movables (players, NPCs) are managed entirely by EDM - no m_storage entry
     size_t addStaticBody(EntityID id, const Vector2D& position, const Vector2D& halfSize,
-                         uint32_t layer = CollisionLayer::Layer_Default,
-                         uint32_t collidesWith = 0xFFFFFFFFu,
-                         bool isTrigger = false, uint8_t triggerTag = 0);
+                         uint32_t layer, uint32_t collidesWith,
+                         bool isTrigger, uint8_t triggerTag,
+                         uint8_t triggerType, size_t edmIndex);
     void removeCollisionBody(EntityID id);
     bool getCollisionBody(EntityID id, size_t& outIndex) const;
     void updateCollisionBodyPosition(EntityID id, const Vector2D& newPosition);
@@ -192,6 +195,17 @@ public:
     void syncSpatialHashesWithActiveIndices();
     void resolve(const CollisionInfo& collision);
     void processTriggerEvents();
+
+    /**
+     * @brief Detect EventOnly trigger overlaps without going through broadphase
+     *
+     * PHASE 3.2: Lightweight AABB test for EventOnly triggers
+     * These triggers (water, area markers) don't need collision resolution,
+     * just event firing when entities overlap them.
+     *
+     * Populates m_collisionPool.eventOnlyOverlaps with (movablePoolIdx, triggerStorageIdx) pairs.
+     */
+    void detectEventOnlyTriggers();
 
     // PERFORMANCE: Vector pooling for temporary allocations
     std::vector<size_t>& getPooledVector();
@@ -317,6 +331,7 @@ private:
             uint16_t collidesWith;       // 2 bytes: Collision mask
             uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
             uint8_t triggerTag;          // 1 byte: TriggerTag enum for triggers
+            uint8_t triggerType;         // 1 byte: TriggerType (EventOnly, Physical)
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
             mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
@@ -326,7 +341,7 @@ private:
             int16_t coarseCellY;         // 2 bytes: Cached coarse grid Y coordinate
 
             // Padding to 64 bytes (one cache line)
-            // Layout: 16 (floats) + 8 (size_t) + 4 (uint16_t) + 5 (uint8_t) + 1 (implicit pad) + 4 (int16_t) = 38
+            // Layout: 16 (floats) + 8 (size_t) + 4 (uint16_t) + 6 (uint8_t) + 4 (int16_t) = 38
             uint8_t _reserved[26];       // 26 bytes: Future expansion (38 + 26 = 64)
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
@@ -493,6 +508,16 @@ private:
         };
         std::vector<StaticAABB> staticAABBs;
 
+        // PHASE 3: EventOnly triggers filtered from broadphase, detected separately
+        std::vector<size_t> eventOnlyTriggerIndices;  // Storage indices of EventOnly triggers in culling area
+
+        // EventOnly trigger overlaps detected via lightweight AABB test
+        struct EventOnlyTriggerOverlap {
+            size_t movablePoolIdx;   // Index into movableIndices/movableAABBs
+            size_t triggerStorageIdx; // Index into m_storage.hotData
+        };
+        std::vector<EventOnlyTriggerOverlap> eventOnlyOverlaps;
+
         // EDM-CENTRIC: Collision pairs from broadphase
         // movableMovablePairs: (poolIdx_A, poolIdx_B) - both indices into movableIndices/movableAABBs
         // movableStaticPairs: (poolIdx, storageIdx) - poolIdx into movableIndices, storageIdx into m_storage
@@ -530,6 +555,10 @@ private:
                 sortedMovableIndices.reserve(bodyCount / 4);
                 movableMovablePairs.reserve(expectedPairs / 4);
                 movableStaticPairs.reserve(expectedPairs);
+
+                // EventOnly triggers - typically small relative to total statics
+                eventOnlyTriggerIndices.reserve(bodyCount / 4);
+                eventOnlyOverlaps.reserve(bodyCount / 8);
             }
         }
 
@@ -544,9 +573,11 @@ private:
             movableIndices.clear();
             movableAABBs.clear();
             // NOTE: staticIndices is cached and cleared only when culling area changes
+            // NOTE: eventOnlyTriggerIndices is cached alongside staticIndices
             sortedMovableIndices.clear();
             movableMovablePairs.clear();
             movableStaticPairs.clear();
+            eventOnlyOverlaps.clear();
             // Vectors retain capacity
         }
     };
