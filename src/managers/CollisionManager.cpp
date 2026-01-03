@@ -156,9 +156,6 @@ void CollisionManager::prepareForStateTransition() {
   // Clear collision buffers to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();
 
-  // NOTE: Legacy m_movableBodyIndices/m_playerBodyIndex tracking removed
-  // EDM Active tier is now the source of truth for movable entities
-
   // Re-initialize vector pool (must not leave it empty to prevent divide-by-zero in getPooledVector)
   m_vectorPool.clear();
   m_vectorPool.reserve(32);
@@ -740,8 +737,6 @@ void CollisionManager::rebuildStaticFromWorld() {
   }
 }
 
-// NOTE: populateStaticCache() removed in Phase 3 - m_staticSpatialHash queried directly
-
 void CollisionManager::onTileChanged(int x, int y) {
   const auto &wm = WorldManager::Instance();
   const auto *world = wm.getWorldData();
@@ -1020,16 +1015,11 @@ size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
       hot.aabbMinY = py - hh;
       hot.aabbMaxX = px + hw;
       hot.aabbMaxY = py + hh;
-      hot.aabbDirty = 0;
       hot.layers = layer;
       hot.collidesWith = collidesWith;
       hot.active = true;
       hot.triggerType = triggerType;
       hot.edmIndex = edmIndex;
-
-      if (index < m_storage.coldData.size()) {
-        m_storage.coldData[index].fullAABB = AABB(px, py, hw, hh);
-      }
     }
     return it->second;
   }
@@ -1046,7 +1036,6 @@ size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
   hotData.aabbMinY = py - hh;
   hotData.aabbMaxX = px + hw;
   hotData.aabbMaxY = py + hh;
-  hotData.aabbDirty = 0;
   hotData.layers = layer;
   hotData.collidesWith = collidesWith;
   hotData.bodyType = static_cast<uint8_t>(BodyType::STATIC);
@@ -1063,7 +1052,6 @@ size_t CollisionManager::addStaticBody(EntityID id, const Vector2D& position,
   hotData.coarseCellY = static_cast<int16_t>(initialCoarseCell.y);
 
   CollisionStorage::ColdData coldData{};
-  coldData.fullAABB = AABB(px, py, hw, hh);
 
   m_storage.hotData.push_back(hotData);
   m_storage.coldData.push_back(coldData);
@@ -1118,8 +1106,6 @@ void CollisionManager::removeCollisionBody(EntityID id) {
     }
   }
 
-  // NOTE: Legacy movable/player tracking removed - EDM tier system is source of truth
-
   if (indexToRemove != lastIndex) {
     // Swap with last element
     m_storage.hotData[indexToRemove] = m_storage.hotData[lastIndex];
@@ -1171,12 +1157,6 @@ void CollisionManager::updateCollisionBodyPosition(EntityID id, const Vector2D& 
       hot.aabbMinY = newPosition.getY() - halfH;
       hot.aabbMaxX = newPosition.getX() + halfW;
       hot.aabbMaxY = newPosition.getY() + halfH;
-      hot.aabbDirty = 0;
-
-      // Update cold data AABB
-      if (index < m_storage.coldData.size()) {
-        m_storage.coldData[index].fullAABB = AABB(newPosition.getX(), newPosition.getY(), halfW, halfH);
-      }
 
       // Mark static hash dirty for rebuild
       m_staticHashDirty = true;
@@ -1197,12 +1177,6 @@ void CollisionManager::updateCollisionBodyPosition(EntityID id, const Vector2D& 
       hot.aabbMinY = newPosition.getY() - halfH;
       hot.aabbMaxX = newPosition.getX() + halfW;
       hot.aabbMaxY = newPosition.getY() + halfH;
-      hot.aabbDirty = 0;
-
-      // Update full AABB in cold data
-      if (index < m_storage.coldData.size()) {
-        m_storage.coldData[index].fullAABB = AABB(newPosition.getX(), newPosition.getY(), halfW, halfH);
-      }
     }
   }
 }
@@ -1261,7 +1235,6 @@ void CollisionManager::updateCollisionBodySize(EntityID id, const Vector2D& newH
       hot.aabbMinY = py - newHalfSize.getY();
       hot.aabbMaxX = px + newHalfSize.getX();
       hot.aabbMaxY = py + newHalfSize.getY();
-      hot.aabbDirty = 0;
     }
   }
 }
@@ -1299,10 +1272,6 @@ void CollisionManager::prepareCollisionBuffers(size_t bodyCount) {
 
   // Prepared collision buffers
 }
-
-
-// NOTE: rebuildStaticSpatialGrid() and queryStaticGridCells() removed in Phase 3
-// Static bodies are now queried directly via m_staticSpatialHash
 
 // EDM-CENTRIC: Build active indices from EntityDataManager Active tier
 // Movables come from EDM's Active tier entities with collision enabled
@@ -1817,25 +1786,15 @@ void CollisionManager::broadphaseBatch(
 
 void CollisionManager::narrowphase(std::vector<CollisionInfo>& collisions) const {
   // EDM-CENTRIC: Process movableMovablePairs and movableStaticPairs
-  // Single-threaded for now (can add multi-threading later)
-
   const auto& pools = m_collisionPool;
   size_t totalPairs = pools.movableMovablePairs.size() + pools.movableStaticPairs.size();
 
   if (totalPairs == 0) {
     collisions.clear();
-    m_lastNarrowphaseWasThreaded = false;
     return;
   }
 
-  // NOTE: Multi-threaded narrowphase removed - single-threaded SIMD is sufficient
-  // WorkerBudget query retained for future if needed:
-  // auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-  // auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(...);
-
-  // Single-threaded scalar path
-  m_lastNarrowphaseWasThreaded = false;
-  m_lastNarrowphaseBatchCount = 1;
+  // Single-threaded narrowphase (sufficient for current workloads)
   narrowphaseSingleThreaded(collisions);
 }
 
@@ -1937,12 +1896,6 @@ void CollisionManager::narrowphaseSingleThreaded(std::vector<CollisionInfo>& col
   }
 }
 
-// NOTE: narrowphaseMultiThreaded removed - narrowphaseSingleThreaded handles SIMD 4-wide processing
-// Multi-threading was dead code (never called from narrowphase)
-
-// NOTE: narrowphaseBatch and processNarrowphasePairScalar removed - legacy threading code
-// Single-threaded narrowphaseSingleThreaded now handles all SIMD 4-wide processing
-
 // ========== MAIN UPDATE METHOD ==========
 
 void CollisionManager::update(float dt) {
@@ -1956,9 +1909,6 @@ void CollisionManager::update(float dt) {
 #ifdef DEBUG
   auto t0 = clock::now();
 #endif
-
-  // NOTE: AABB refresh removed - buildActiveIndices() computes movable AABBs inline from EDM
-  // Static bodies don't need refresh (set once at creation)
 
   // Check storage state at start of update (statics only now)
   size_t staticBodyCount = m_storage.size();
@@ -2009,8 +1959,6 @@ void CollisionManager::update(float dt) {
   // Reset static culling counter for this frame
   m_perf.lastStaticBodiesCulled = 0;
 
-  // NOTE: Coarse region cache removed in Phase 3 - static bodies queried directly via m_staticSpatialHash
-
   double cullingMs = std::chrono::duration<double, std::milli>(cullingEnd - cullingStart).count();
 
   size_t activeMovableBodies = m_collisionPool.movableIndices.size();
@@ -2050,18 +1998,6 @@ void CollisionManager::update(float dt) {
   narrowphase(m_collisionPool.collisionBuffer);
   auto t3 = clock::now();
 
-  // Report batch completion for adaptive tuning (WorkerBudget integration)
-  if (m_lastNarrowphaseWasThreaded && pairCount > 0) {
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    double narrowphaseMs = std::chrono::duration<double, std::milli>(t3 - t2).count();
-    budgetMgr.reportBatchCompletion(
-        HammerEngine::SystemType::Collision,
-        pairCount,
-        m_lastNarrowphaseBatchCount,
-        narrowphaseMs
-    );
-  }
-
   // RESOLUTION: Apply collision responses and update positions
   // Batch resolution: Process 4 collisions at a time for cache efficiency
   size_t collIdx = 0;
@@ -2090,8 +2026,6 @@ void CollisionManager::update(float dt) {
   auto t4 = clock::now();
 #endif
 
-  // NOTE: syncEntitiesToEDM() removed - resolve() writes directly to EDM
-  // Entity accessors (getPosition/setPosition) read from EDM as source of truth
 #ifdef DEBUG
   auto t5 = clock::now();
 #endif
@@ -2213,12 +2147,6 @@ void CollisionManager::resolve(const CollisionInfo& collision) {
   }
 }
 
-// NOTE: syncEntitiesToEDM() removed in Phase 4 - Entity::setPosition/getPosition
-// now read/write directly through EDM, so syncing EDM → Entity is redundant
-
-// NOTE: refreshCachedAABB/refreshCachedAABBs removed - buildActiveIndices() computes
-// movable AABBs inline from EDM into pools.movableAABBs. Static bodies don't need refresh.
-
 void CollisionManager::detectEventOnlyTriggers() {
   // Detect EventOnly trigger overlaps via per-entity spatial query
   // Adaptive strategy based on entity count:
@@ -2281,7 +2209,6 @@ void CollisionManager::detectEventOnlyTriggersSpatial(std::span<const size_t> tr
 // Path B: Sweep-and-prune for large entity counts
 void CollisionManager::detectEventOnlyTriggersSweep(std::span<const size_t> triggerIndices) {
   auto& edm = EntityDataManager::Instance();
-  auto& pools = m_collisionPool;
 
   // Build sorted edge list (entities + eventOnly triggers)
   struct Edge {
@@ -2673,8 +2600,7 @@ void CollisionManager::updateKinematicBatch(const std::vector<KinematicUpdate>& 
         hot.aabbMinY = py - hh;
         hot.aabbMaxX = px + hw;
         hot.aabbMaxY = py + hh;
-        hot.aabbDirty = 0;
-        hot.active = true;
+          hot.active = true;
       }
     }
   }
@@ -2718,8 +2644,7 @@ void CollisionManager::applyBatchedKinematicUpdates(const std::vector<std::vecto
           hot.aabbMinY = py - hh;
           hot.aabbMaxX = px + hw;
           hot.aabbMaxY = py + hh;
-          hot.aabbDirty = 0;
-          hot.active = true;
+              hot.active = true;
         }
       }
     }

@@ -288,16 +288,9 @@ private:
 
     void subscribeWorldEvents(); // hook to world events
 
-    // Collision culling configuration - adjustable constants
+    // Collision culling configuration
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
-    static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
-    static constexpr float CACHE_EVICTION_MULTIPLIER = 3.0f;        // Cache entries beyond 3x culling buffer are marked stale
-    static constexpr size_t CACHE_EVICTION_INTERVAL = 300;          // Check for stale cache entries every 300 frames (5 seconds at 60 FPS)
-    static constexpr uint8_t CACHE_STALE_THRESHOLD = 3;             // Remove cache entries after 3 consecutive eviction cycles without access
-
-    // Collision prediction configuration - prevents diagonal tunneling through corners
-    static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
-    static constexpr float FAST_VELOCITY_THRESHOLD = 250.0f;        // Velocity threshold for AABB expansion (pixels/frame)
+    static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection
 
     // Spatial culling support (area-based, not camera-based)
     struct CullingArea {
@@ -312,9 +305,6 @@ private:
     // Returns body type counts: {totalStatic, totalDynamic, totalKinematic}
     std::tuple<size_t, size_t, size_t> buildActiveIndices(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
-
-    // NOTE: Cache functions removed in Phase 3 - m_staticSpatialHash queried directly
-
 
     // Configurable collision culling parameters (runtime adjustable)
     float m_cullingBuffer{COLLISION_CULLING_BUFFER};
@@ -343,14 +333,13 @@ private:
             uint8_t triggerType;         // 1 byte: TriggerType (EventOnly, Physical)
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
-            mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
 
             // OPTIMIZATION: Cached coarse grid coords (eliminates m_bodyCoarseCell map lookup)
             int16_t coarseCellX;         // 2 bytes: Cached coarse grid X coordinate
             int16_t coarseCellY;         // 2 bytes: Cached coarse grid Y coordinate
 
             // Padding to 64 bytes (one cache line)
-            // Layout: 16 (floats) + 8 (size_t) + 4 (uint16_t) + 6 (uint8_t) + 4 (int16_t) = 38
+            // Layout: 16 (floats) + 8 (size_t) + 4 (uint16_t) + 5 (uint8_t) + 1 (implicit) + 4 (int16_t) = 38
             uint8_t _reserved[26];       // 26 bytes: Future expansion (38 + 26 = 64)
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
@@ -360,7 +349,6 @@ private:
         // All collision bodies must have valid EDM entries (statics via createStaticBody)
         struct ColdData {
             EntityWeakPtr entityWeak;    // Back-reference to entity
-            AABB fullAABB;              // Full AABB (computed from EDM position + halfSize)
             float restitution;           // Bounce coefficient (0.0-1.0)
             float friction;              // Surface friction (0.0-1.0)
             float mass;                  // Mass (kg) - for future physics
@@ -469,11 +457,6 @@ private:
     // Static query caching - skip re-query when culling area unchanged
     mutable CullingArea m_lastStaticQueryCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
     mutable bool m_staticQueryCacheDirty{true};
-
-    // NOTE: Redundant caches removed in Phase 3 EDM refactor:
-    // - m_coarseRegionStaticCache: Now use m_staticSpatialHash directly
-    // - m_staticSpatialGrid: Redundant with m_staticSpatialHash
-    // - m_cachedStaticIndices: Tolerance cache adds complexity without benefit
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
@@ -598,9 +581,6 @@ private:
     mutable std::vector<size_t> m_triggerCandidates;  // For detectEventOnlyTriggers() spatial queries
     // Note: buildActiveIndices() uses pools.staticIndices directly (already a reusable buffer)
 
-    // NOTE: Legacy m_movableBodyIndices removed - EDM Active tier is now the source of truth
-    // NOTE: Legacy static cell cache removed - m_staticSpatialHash queried directly
-
     // Performance metrics
     struct PerfStats {
         double lastBroadphaseMs{0.0};
@@ -626,11 +606,6 @@ private:
         // TRIGGER DETECTION METRICS: Track EventOnly trigger detection
         size_t lastTriggerDetectors{0};       // Entities with NEEDS_TRIGGER_DETECTION flag
         size_t lastTriggerOverlaps{0};        // EventOnly trigger overlaps detected
-
-        // CACHE PERFORMANCE METRICS: Track coarse-grid static cache effectiveness
-        size_t cacheEntriesActive{0};         // Number of active cache entries
-        size_t cacheEntriesEvicted{0};        // Cache entries evicted this frame
-        size_t totalCacheEvictions{0};        // Total evictions since start
 
         // High-performance exponential moving average (no loops, O(1))
         static constexpr double ALPHA = 0.01; // ~100 frame average, much faster than windowing
@@ -678,14 +653,6 @@ private:
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
 
-    // Cache eviction: Track frame count for periodic eviction
-    size_t m_framesSinceLastEviction{0};
-
-    // Multi-threading support for narrowphase (WorkerBudget integrated)
-    mutable std::vector<std::future<void>> m_narrowphaseFutures;
-    mutable std::shared_ptr<std::vector<std::vector<CollisionInfo>>> m_batchCollisionBuffers;
-    mutable std::mutex m_narrowphaseFuturesMutex;
-
     // Multi-threading support for broadphase (WorkerBudget integrated)
     // Matches AIManager pattern: reusable member vectors, no mutex (futures are thread-safe)
     mutable std::vector<std::future<void>> m_broadphaseFutures;
@@ -696,14 +663,10 @@ private:
     };
     mutable std::vector<BroadphaseBatchBuffer> m_broadphaseBatchBuffers;
 
-    // Threading config and metrics
-    // Narrowphase: 100+ pairs worth threading (each pair = AABB test + layer check + collision info)
+    // Threading config for broadphase
     // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
     //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
-    static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;        // Narrowphase: min pairs before threading
     static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 150;  // Broadphase: min movable bodies
-    mutable bool m_lastNarrowphaseWasThreaded{false};
-    mutable size_t m_lastNarrowphaseBatchCount{1};
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
 
