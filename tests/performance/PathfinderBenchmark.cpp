@@ -123,11 +123,10 @@ private:
 
             // Add obstacle to collision system
             EntityID obstacleId = static_cast<EntityID>(1000 + i);
-            CollisionManager::Instance().addCollisionBody(
+            CollisionManager::Instance().addStaticBody(
                 obstacleId,
                 Vector2D(x * HammerEngine::TILE_SIZE, y * HammerEngine::TILE_SIZE),
                 Vector2D(16.0f, 16.0f),
-                BodyType::STATIC,
                 CollisionLayer::Layer_Environment,
                 CollisionLayer::Layer_Environment
             );

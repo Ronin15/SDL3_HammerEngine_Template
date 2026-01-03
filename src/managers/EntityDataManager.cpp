@@ -675,6 +675,15 @@ EntityHandle EntityDataManager::registerNPC(EntityHandle::IDType entityId,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
+    // Initialize collision data (NPCs collide with player, environment, other NPCs)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
+                        HammerEngine::CollisionLayer::Layer_Environment |
+                        HammerEngine::CollisionLayer::Layer_Projectile |
+                        HammerEngine::CollisionLayer::Layer_Enemy;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
+
     // Allocate character data with provided health values (reuse freed slot if available)
     uint32_t charIndex;
     if (!m_freeCharacterSlots.empty()) {
@@ -742,6 +751,15 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.tier = SimulationTier::Active;  // Player always active
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
+
+    // Initialize collision data (Player collides with enemies, environment, triggers)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Player;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
+                        HammerEngine::CollisionLayer::Layer_Environment |
+                        HammerEngine::CollisionLayer::Layer_Trigger |
+                        HammerEngine::CollisionLayer::Layer_Default;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
 
     // Allocate character data with player defaults (reuse freed slot if available)
     uint32_t charIndex;
@@ -1294,6 +1312,7 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         }
 
         m_tierIndicesDirty = false;
+        m_activeCollisionDirty = true; // Collision indices need rebuild when tiers change
 
 #ifndef NDEBUG
         // Rolling log every 60 seconds using time-based check
@@ -1314,6 +1333,22 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
 
 std::span<const size_t> EntityDataManager::getActiveIndices() const {
     return std::span<const size_t>(m_activeIndices);
+}
+
+std::span<const size_t> EntityDataManager::getActiveIndicesWithCollision() const {
+    // Lazy rebuild when dirty (tier changes or collision flag changes)
+    if (m_activeCollisionDirty) {
+        m_activeCollisionIndices.clear();
+        m_activeCollisionIndices.reserve(m_activeIndices.size() / 4); // ~25% have collision
+
+        for (size_t idx : m_activeIndices) {
+            if (m_hotData[idx].hasCollision()) {
+                m_activeCollisionIndices.push_back(idx);
+            }
+        }
+        m_activeCollisionDirty = false;
+    }
+    return std::span<const size_t>(m_activeCollisionIndices);
 }
 
 std::span<const size_t> EntityDataManager::getBackgroundIndices() const {

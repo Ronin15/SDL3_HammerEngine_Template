@@ -284,10 +284,18 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     // Create fresh entity for this test to avoid interference
     auto entity = std::static_pointer_cast<Entity>(TestEntity::create(640.0f, 640.0f)); // Center of 20x20 tile world
 
-    // Register with collision system
-    CollisionManager::Instance().addCollisionBody(
-        entity->getID(), entity->getPosition(), Vector2D(16, 16),
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    // EDM-CENTRIC: Set collision layers directly on EDM hot data
+    // Entity is already registered with EDM via TestEntity constructor
+    {
+        auto& edm = EntityDataManager::Instance();
+        size_t idx = edm.getIndex(entity->getHandle());
+        if (idx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(idx);
+            hot.collisionLayers = CollisionLayer::Layer_Enemy;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
+    }
 
     Vector2D initialPos = entity->getPosition();
     getTestEntity(entity)->resetUpdateCount();
@@ -348,13 +356,24 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     auto entity = std::static_pointer_cast<Entity>(TestEntity::create(200.0f, 200.0f));
     auto testPlayer = std::static_pointer_cast<Entity>(TestEntity::create(500.0f, 500.0f));
 
-    // Register entities with collision system so they can receive position updates
-    CollisionManager::Instance().addCollisionBody(
-        entity->getID(), entity->getPosition(), Vector2D(16, 16),
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(
-        testPlayer->getID(), testPlayer->getPosition(), Vector2D(16, 16),
-        BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    // EDM-CENTRIC: Set collision layers directly on EDM hot data
+    {
+        auto& edm = EntityDataManager::Instance();
+        size_t entityIdx = edm.getIndex(entity->getHandle());
+        if (entityIdx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(entityIdx);
+            hot.collisionLayers = CollisionLayer::Layer_Enemy;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
+        size_t playerIdx = edm.getIndex(testPlayer->getHandle());
+        if (playerIdx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(playerIdx);
+            hot.collisionLayers = CollisionLayer::Layer_Player;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
+    }
 
     // Phase 2 EDM Migration: Use EntityHandle-based API for player reference
     EntityHandle playerHandle = testPlayer->getHandle();
@@ -433,13 +452,24 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     auto testPlayer = std::static_pointer_cast<Entity>(TestEntity::create(500.0f, 500.0f));
     auto entity = std::static_pointer_cast<Entity>(TestEntity::create(600.0f, 600.0f)); // Close to player
 
-    // Register entities with collision system so they can receive position updates
-    CollisionManager::Instance().addCollisionBody(
-        entity->getID(), entity->getPosition(), Vector2D(16, 16),
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
-    CollisionManager::Instance().addCollisionBody(
-        testPlayer->getID(), testPlayer->getPosition(), Vector2D(16, 16),
-        BodyType::KINEMATIC, CollisionLayer::Layer_Player, 0xFFFFFFFFu);
+    // EDM-CENTRIC: Set collision layers directly on EDM hot data
+    {
+        auto& edm = EntityDataManager::Instance();
+        size_t entityIdx = edm.getIndex(entity->getHandle());
+        if (entityIdx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(entityIdx);
+            hot.collisionLayers = CollisionLayer::Layer_Enemy;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
+        size_t playerIdx = edm.getIndex(testPlayer->getHandle());
+        if (playerIdx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(playerIdx);
+            hot.collisionLayers = CollisionLayer::Layer_Player;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
+    }
 
     // Phase 2 EDM Migration: Use EntityHandle-based API for player reference
     EntityHandle playerHandle = testPlayer->getHandle();
@@ -844,10 +874,17 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     Vector2D initialPos(150, 150);
     entity->setPosition(initialPos);
 
-    // Register entity with collision system
-    CollisionManager::Instance().addCollisionBody(
-        entity->getID(), entity->getPosition(), Vector2D(16, 16),
-        BodyType::KINEMATIC, CollisionLayer::Layer_Enemy, 0xFFFFFFFFu);
+    // EDM-CENTRIC: Set collision layers directly on EDM hot data
+    {
+        auto& edm = EntityDataManager::Instance();
+        size_t idx = edm.getIndex(entity->getHandle());
+        if (idx != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(idx);
+            hot.collisionLayers = CollisionLayer::Layer_Enemy;
+            hot.collisionMask = 0xFFFF;
+            hot.setCollisionEnabled(true);
+        }
+    }
 
     // Assign Patrol behavior - Phase 2 EDM Migration: Use EntityHandle-based API
     EntityHandle handle = entity->getHandle();

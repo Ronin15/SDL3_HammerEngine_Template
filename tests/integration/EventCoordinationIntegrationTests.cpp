@@ -252,15 +252,17 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         auto entity = TestEntity::create(i, Vector2D(50.0f + i * 10.0f, 50.0f));
         testEntities.push_back(entity);
 
-        // Register collision body (required for AIManager's syncCollisionPositions)
-        CollisionManager::Instance().addCollisionBody(
-            entity->getID(),
-            entity->getPosition(),
-            Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
-            BodyType::KINEMATIC,
-            Layer_Enemy, // Using Enemy layer for AI test entities
-            0xFFFFFFFFu
-        );
+        // EDM-CENTRIC: Set collision layers directly on EDM hot data
+        {
+            auto& edm = EntityDataManager::Instance();
+            size_t idx = edm.getIndex(entity->getHandle());
+            if (idx != SIZE_MAX) {
+                auto& hot = edm.getHotDataByIndex(idx);
+                hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+                hot.collisionMask = 0xFFFF;
+                hot.setCollisionEnabled(true);
+            }
+        }
 
         AIManager::Instance().registerEntity(entity->getHandle(), "WeatherResponse");
     }
@@ -408,15 +410,17 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
         auto entity = TestEntity::create(i, Vector2D(i * 20.0f, i * 20.0f));
         oldSceneEntities.push_back(entity);
 
-        // Register collision body (required for AIManager's syncCollisionPositions)
-        CollisionManager::Instance().addCollisionBody(
-            entity->getID(),
-            entity->getPosition(),
-            Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
-            BodyType::KINEMATIC,
-            Layer_Enemy, // Using Enemy layer for AI test entities
-            0xFFFFFFFFu
-        );
+        // EDM-CENTRIC: Set collision layers directly on EDM hot data
+        {
+            auto& edm = EntityDataManager::Instance();
+            size_t idx = edm.getIndex(entity->getHandle());
+            if (idx != SIZE_MAX) {
+                auto& hot = edm.getHotDataByIndex(idx);
+                hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+                hot.collisionMask = 0xFFFF;
+                hot.setCollisionEnabled(true);
+            }
+        }
 
         AIManager::Instance().registerEntity(entity->getHandle());
     }

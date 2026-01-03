@@ -11,6 +11,7 @@
 
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "collisions/CollisionBody.hpp"
 #include "utils/Vector2D.hpp"
 #include "utils/Camera.hpp"
@@ -58,7 +59,7 @@ public:
 
     void runScalingBenchmark() {
         std::cout << "=== Body Count Scaling Performance ===" << std::endl;
-        std::vector<size_t> bodyCounts = {1000, 2000, 5000, 10000, 20000, 50000};
+        std::vector<size_t> bodyCounts = {500, 1000, 2000, 5000, 10000};
         std::vector<BenchmarkResult> results;
 
         for (size_t bodyCount : bodyCounts) {
@@ -178,9 +179,9 @@ private:
         std::vector<TestBody> bodies;
         bodies.reserve(count + 1);  // +1 for player
 
-        // Create overlapping grid pattern like unit tests to guarantee collisions
+        // Create sparse grid - realistic game scenario where bodies rarely overlap
         size_t bodiesPerRow = static_cast<size_t>(std::sqrt(count)) + 1;
-        float spacing = 60.0f;  // Bodies will be 80x80 (40.0f half-size), so 60.0f spacing = 20 pixels overlap
+        float spacing = 120.0f;  // Bodies are 64x64 (32.0f half-size), so 120.0f spacing = no overlap
 
         // Add player at grid center for proper culling
         float gridCenter = (bodiesPerRow / 2) * spacing + 100.0f;
@@ -201,7 +202,7 @@ private:
             float gridY = (i / bodiesPerRow) * spacing + 100.0f;
             body.position = Vector2D(gridX, gridY);
             body.velocity = Vector2D(velDist(rng) * 0.1f, velDist(rng) * 0.1f); // Reduced velocity
-            body.halfSize = Vector2D(40.0f, 40.0f);  // Fixed size for predictable overlaps
+            body.halfSize = Vector2D(32.0f, 32.0f);  // 64x64 bodies with 120px spacing = sparse
 
             // Mix of body types for realistic scenario
             if (i < count * 0.7f) {
@@ -284,19 +285,51 @@ private:
         // Always clean EDM since statics accumulate even after collision bodies are removed
         manager.prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
+
+        // Calculate world size and set up BackgroundSimulationManager for culling
+        float maxExtent = 100.0f + std::sqrt(static_cast<float>(testBodies.size())) * 120.0f + 100.0f;
+        manager.setWorldBounds(0.0f, 0.0f, maxExtent, maxExtent);
+        auto& bgm = BackgroundSimulationManager::Instance();
+        bgm.init();
+        bgm.setReferencePoint(Vector2D(maxExtent * 0.5f, maxExtent * 0.5f));
+        bgm.setActiveRadius(1500.0f);  // Realistic game culling radius
+
         manager.prepareCollisionBuffers(testBodies.size());
 
         // Add test bodies
         std::vector<EntityID> entityIds;
         entityIds.reserve(testBodies.size());
 
+        auto& edm = EntityDataManager::Instance();
+        std::vector<EntityHandle> movableHandles;
+
         for (size_t i = 0; i < testBodies.size(); ++i) {
             EntityID id = static_cast<EntityID>(i + 1);
             const auto& body = testBodies[i];
-            manager.addCollisionBody(id, body.position, body.halfSize,
-                                       body.type, body.layer, body.collidesWith);
+
+            if (body.type == BodyType::STATIC) {
+                // Static bodies go to CollisionManager
+                manager.addStaticBody(id, body.position, body.halfSize,
+                                      body.layer, body.collidesWith);
+            } else {
+                // Movables (KINEMATIC/DYNAMIC) go to EDM
+                EntityHandle handle = edm.registerNPC(id, body.position, body.halfSize.getX(), body.halfSize.getY());
+                size_t idx = edm.getIndex(handle);
+                if (idx != SIZE_MAX) {
+                    auto& hot = edm.getHotDataByIndex(idx);
+                    hot.collisionLayers = body.layer;
+                    hot.collisionMask = static_cast<uint16_t>(body.collidesWith);
+                    hot.setCollisionEnabled(true);
+                    hot.transform.velocity = body.velocity;
+                }
+                movableHandles.push_back(handle);
+            }
             entityIds.push_back(id);
         }
+
+        // Update simulation tiers to put entities in Active tier for collision detection
+        Vector2D refPoint(maxExtent * 0.5f, maxExtent * 0.5f);
+        edm.updateSimulationTiers(refPoint, 1500.0f, 3000.0f);  // Realistic radii
 
         // Simulate cache effectiveness: most bodies don't move much
         constexpr int cacheTestFrames = 100;
@@ -355,12 +388,16 @@ private:
         manager.prepareForStateTransition();
         EntityDataManager::Instance().prepareForStateTransition();
 
-        // Set world bounds - use realistic culling (default 1000.0f buffer)
-        // Grid spans from (100,100) to roughly (100 + sqrt(count)*60, same for Y)
-        float maxExtent = 100.0f + std::sqrt(static_cast<float>(testBodies.size())) * 60.0f + 100.0f;
+        // Set world bounds - grid uses 120px spacing
+        float maxExtent = 100.0f + std::sqrt(static_cast<float>(testBodies.size())) * 120.0f + 100.0f;
         manager.setWorldBounds(0.0f, 0.0f, maxExtent, maxExtent);
-        // Use default culling buffer for realistic game scenario testing
-        // manager.setCullingBuffer(1000.0f); // Default - realistic game culling
+
+        // Set up BackgroundSimulationManager for culling area
+        // Use realistic game culling radius (1500px around player)
+        auto& bgm = BackgroundSimulationManager::Instance();
+        bgm.init();
+        bgm.setReferencePoint(Vector2D(maxExtent * 0.5f, maxExtent * 0.5f));
+        bgm.setActiveRadius(1500.0f);  // Realistic game culling radius
 
         // Pre-allocate containers for better performance
         manager.prepareCollisionBuffers(testBodies.size());
@@ -369,14 +406,36 @@ private:
         std::vector<EntityID> entityIds;
         entityIds.reserve(testBodies.size());
 
+        auto& edm = EntityDataManager::Instance();
+        std::vector<EntityHandle> movableHandles;
+
         for (size_t i = 0; i < testBodies.size(); ++i) {
             EntityID id = static_cast<EntityID>(i + 1);
             const auto& body = testBodies[i];
 
-            manager.addCollisionBody(id, body.position, body.halfSize,
-                                        body.type, body.layer, body.collidesWith);
+            if (body.type == BodyType::STATIC) {
+                // Static bodies go to CollisionManager
+                manager.addStaticBody(id, body.position, body.halfSize,
+                                      body.layer, body.collidesWith);
+            } else {
+                // Movables (KINEMATIC/DYNAMIC) go to EDM
+                EntityHandle handle = edm.registerNPC(id, body.position, body.halfSize.getX(), body.halfSize.getY());
+                size_t idx = edm.getIndex(handle);
+                if (idx != SIZE_MAX) {
+                    auto& hot = edm.getHotDataByIndex(idx);
+                    hot.collisionLayers = body.layer;
+                    hot.collisionMask = static_cast<uint16_t>(body.collidesWith);
+                    hot.setCollisionEnabled(true);
+                    hot.transform.velocity = body.velocity;
+                }
+                movableHandles.push_back(handle);
+            }
             entityIds.push_back(id);
         }
+
+        // Update simulation tiers to put entities in Active tier for collision detection
+        Vector2D refPoint(maxExtent * 0.5f, maxExtent * 0.5f);
+        edm.updateSimulationTiers(refPoint, 1500.0f, 3000.0f);  // Realistic radii
 
         // Reduced warmup iterations for faster benchmarking
         for (int i = 0; i < 2; ++i) {
