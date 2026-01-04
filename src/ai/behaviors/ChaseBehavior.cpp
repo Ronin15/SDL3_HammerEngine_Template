@@ -100,9 +100,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
     m_lastCrowdAnalysis = 0.0f;
   }
 
-  // Get player position from AIManager
-  auto& aiMgr = AIManager::Instance();
-  if (!aiMgr.isPlayerValid()) {
+  // Use cached player info from context (lock-free, cached once per frame)
+  if (!ctx.playerValid) {
     // No target available - clean exit from chase state
     if (m_isChasing) {
       ctx.transform.velocity = Vector2D(0, 0);
@@ -113,7 +112,7 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   Vector2D entityPos = ctx.transform.position;
-  Vector2D targetPos = aiMgr.getPlayerPosition();
+  Vector2D targetPos = ctx.playerPosition;
   float const distanceSquared = (targetPos - entityPos).lengthSquared();
 
   float const maxRangeSquared = m_maxRange * m_maxRange;

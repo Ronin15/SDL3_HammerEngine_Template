@@ -317,9 +317,6 @@ uint64_t PathfinderManager::requestPathToEDM(
         return 0;
     }
 
-    // EDM reference for path data access
-    auto& edm = EntityDataManager::Instance();
-
     // Get grid snapshot ONCE at start - avoid repeated atomic accesses
     auto gridSnapshot = getGridSnapshot();
     if (!gridSnapshot) {
@@ -337,44 +334,54 @@ uint64_t PathfinderManager::requestPathToEDM(
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
 
-    // SYNCHRONOUS: Execute inline to avoid nested parallelism
-    std::vector<Vector2D> path;
-    bool cacheHit = false;
+    // ASYNC: Enqueue to ThreadSystem and return immediately (non-blocking)
+    // This allows AI threads to continue processing while paths compute in background
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
-    // Cache lookup (shared_lock allows concurrent readers - no contention for reads)
-    {
-        std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
-        auto it = m_pathCache.find(cacheKey);
-        if (it != m_pathCache.end()) {
-            path = it->second.path;
-            cacheHit = true;
-        }
-    }
+    auto work = [this, edmIndex, nStart, nGoal, cacheKey, gridSnapshot]() {
+        std::vector<Vector2D> path;
+        bool cacheHit = false;
 
-    // Compute path if not cached (pass grid to avoid re-fetching)
-    if (!cacheHit) {
-        findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
-
-        // Store in cache (unique_lock for write, try_lock to avoid blocking)
-        if (!path.empty()) {
-            std::unique_lock<std::shared_mutex> lock(m_cacheMutex, std::try_to_lock);
-            if (lock.owns_lock()) {
-                if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                    evictOldestCacheEntry();
-                }
-                PathCacheEntry entry;
-                entry.path = path;
-                entry.lastUsed = std::chrono::steady_clock::now();
-                entry.useCount = 1;
-                m_pathCache[cacheKey] = std::move(entry);
+        // Cache lookup (shared_lock allows concurrent readers)
+        {
+            std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
+            auto it = m_pathCache.find(cacheKey);
+            if (it != m_pathCache.end()) {
+                path = it->second.path;
+                cacheHit = true;
             }
         }
-    }
 
-    // Write to EDM
-    edm.getPathData(edmIndex).setPath(path);
+        // Compute path if not cached (pass grid to avoid re-fetching)
+        if (!cacheHit) {
+            findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
-    return requestId;
+            // Store in cache (try_lock to avoid blocking other workers)
+            if (!path.empty()) {
+                std::unique_lock<std::shared_mutex> lock(m_cacheMutex, std::try_to_lock);
+                if (lock.owns_lock()) {
+                    if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                        evictOldestCacheEntry();
+                    }
+                    PathCacheEntry entry;
+                    entry.path = path;
+                    entry.lastUsed = std::chrono::steady_clock::now();
+                    entry.useCount = 1;
+                    m_pathCache[cacheKey] = std::move(entry);
+                }
+            }
+        }
+
+        // Write to EDM (per-entity slot, no contention with other entities)
+        auto& edm = EntityDataManager::Instance();
+        if (edm.hasPathData(edmIndex)) {
+            edm.getPathData(edmIndex).setPath(path);
+        }
+    };
+
+    threadSystem.enqueueTask(work, mapEnumToTaskPriority(priority), "PathToEDM");
+
+    return requestId;  // Returns immediately - path computed asynchronously
 }
 
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
