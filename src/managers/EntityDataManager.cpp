@@ -47,6 +47,9 @@ bool EntityDataManager::init() {
         m_harvestableData.reserve(500);
         m_areaEffectData.reserve(EFFECT_CAPACITY);
 
+        // Path data (indexed by edmIndex, sparse for non-AI entities)
+        m_pathData.reserve(CHARACTER_CAPACITY);
+
         m_activeIndices.reserve(INITIAL_CAPACITY);
         m_backgroundIndices.reserve(INITIAL_CAPACITY);
         m_hibernatedIndices.reserve(INITIAL_CAPACITY);
@@ -106,6 +109,7 @@ void EntityDataManager::clean() {
     m_containerData.clear();
     m_harvestableData.clear();
     m_areaEffectData.clear();
+    m_pathData.clear();
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -166,6 +170,7 @@ void EntityDataManager::prepareForStateTransition() {
     m_containerData.clear();
     m_harvestableData.clear();
     m_areaEffectData.clear();
+    m_pathData.clear();
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -233,6 +238,9 @@ void EntityDataManager::freeSlot(size_t index) {
     // Capture type info BEFORE clearing (for type-specific free-list)
     EntityKind kind = m_hotData[index].kind;
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Clear path data for AI entities
+    clearPathData(index);
 
     // Clear the slot
     m_hotData[index] = EntityHotData{};
@@ -1267,6 +1275,37 @@ const AreaEffectData& EntityDataManager::getAreaEffectData(EntityHandle handle) 
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
     assert(typeIndex < m_areaEffectData.size() && "Type index out of bounds");
     return m_areaEffectData[typeIndex];
+}
+
+// ============================================================================
+// PATH DATA ACCESS
+// ============================================================================
+
+PathData& EntityDataManager::getPathData(size_t index) {
+    ensurePathData(index);
+    return m_pathData[index];
+}
+
+const PathData& EntityDataManager::getPathData(size_t index) const {
+    assert(index < m_pathData.size() && "Path data index out of bounds");
+    return m_pathData[index];
+}
+
+bool EntityDataManager::hasPathData(size_t index) const noexcept {
+    return index < m_pathData.size();
+}
+
+void EntityDataManager::ensurePathData(size_t index) {
+    if (index >= m_pathData.size()) {
+        // Grow to accommodate index, leaving room for future entities
+        m_pathData.resize(std::max(index + 1, m_pathData.size() * 2 + 16));
+    }
+}
+
+void EntityDataManager::clearPathData(size_t index) {
+    if (index < m_pathData.size()) {
+        m_pathData[index].clear();
+    }
 }
 
 // ============================================================================

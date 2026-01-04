@@ -132,6 +132,10 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
     // State: APPROACHING_TARGET - Move toward target if not too close
     if (distanceSquared > minRangeSquared) {
       // CACHE-AWARE CHASE: Smart pathfinding with target tracking
+      // Read path state from EDM (single source of truth, per-entity isolation)
+      auto& edm = EntityDataManager::Instance();
+      auto& pathData = edm.getPathData(ctx.edmIndex);
+
       bool needsNewPath = false;
 
       // OPTIMIZED: Further reduced pathfinding frequency for better performance
@@ -139,77 +143,62 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       // 1. No current path exists, OR
       // 2. Target moved very significantly (>300px), OR
       // 3. Path is getting quite stale (>8 seconds old)
-      const float PATH_INVALIDATION_DISTANCE = m_config.pathInvalidationDistance; // Distance target must move to invalidate path
-      const float PATH_REFRESH_INTERVAL = m_config.pathRefreshInterval; // Seconds between path recalculations
+      const float PATH_INVALIDATION_DISTANCE = m_config.pathInvalidationDistance;
+      const float PATH_REFRESH_INTERVAL = m_config.pathRefreshInterval;
 
-      if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
+      if (!pathData.hasPath || pathData.navIndex >= pathData.navPath.size()) {
         needsNewPath = true;
-      } else if (m_pathUpdateTimer > PATH_REFRESH_INTERVAL) {
+      } else if (pathData.pathUpdateTimer > PATH_REFRESH_INTERVAL) {
         needsNewPath = true;
       } else {
         // Check if target moved significantly from when path was computed
-        Vector2D pathGoal = m_navPath.back();
+        Vector2D pathGoal = pathData.navPath.back();
         float const targetMovementSquared = (targetPos - pathGoal).lengthSquared();
         needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
       }
 
       // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
-      bool const stuckOnObstacle = (m_progressTimer > 3.0f); // Stuck if no progress for 3 seconds
+      bool const stuckOnObstacle = (pathData.progressTimer > 3.0f);
       if (stuckOnObstacle) {
-        m_navPath.clear(); // Clear path to force refresh
-        m_navIndex = 0;
+        pathData.clear();
       }
 
       if ((needsNewPath || stuckOnObstacle) && m_cooldowns.canRequestPath()) {
         // PERFORMANCE: Use squared distance to avoid expensive sqrt
         float const minRangeCheckSquared = (m_minRange * 1.5f) * (m_minRange * 1.5f);
-        if (distanceSquared < minRangeCheckSquared) { // Already close enough
-          return; // Skip pathfinding request
+        if (distanceSquared < minRangeCheckSquared) {
+          return; // Already close enough, skip pathfinding
         }
 
-        // SIMPLIFIED: Basic target prediction for better performance
         Vector2D goalPosition = targetPos;
 
-        // Note: Target velocity prediction removed - would need to be stored in AIManager if needed
-
-        // ASYNC PATHFINDING: Use high-performance background processing for chasing
-        auto& pf = this->pathfinder();
-        auto self = std::static_pointer_cast<ChaseBehavior>(shared_from_this());
-        pf.requestPath(ctx.entityId, entityPos, goalPosition,
-                              PathfinderManager::Priority::High,
-                              [self](EntityID, const std::vector<Vector2D>& path) {
-                                // Update path when received (may be from background thread)
-                                self->m_navPath = path;
-                                self->m_navIndex = 0;
-                                self->m_pathUpdateTimer = 0.0f;
-                              });
-        m_cooldowns.applyPathCooldown(m_config.pathRequestCooldown); // Cooldown for better performance
+        // EDM-integrated async pathfinding - result written directly to EDM
+        pathfinder().requestPathToEDM(ctx.edmIndex, entityPos, goalPosition,
+                                      PathfinderManager::Priority::High);
+        m_cooldowns.applyPathCooldown(m_config.pathRequestCooldown);
       }
 
-      // State: PATH_FOLLOWING - inline path following logic
-      if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-        // Inline path following to avoid EntityPtr dependency
-        Vector2D waypoint = m_navPath[m_navIndex];
+      // State: PATH_FOLLOWING - inline path following logic using EDM
+      if (pathData.isFollowingPath()) {
+        Vector2D waypoint = pathData.getCurrentWaypoint();
         Vector2D toWaypoint = waypoint - entityPos;
         float dist = toWaypoint.length();
 
-        // Check if reached current waypoint
         if (dist < m_navRadius) {
-          m_navIndex++;
-          if (m_navIndex < m_navPath.size()) {
-            waypoint = m_navPath[m_navIndex];
+          pathData.advanceWaypoint();
+          if (pathData.isFollowingPath()) {
+            waypoint = pathData.getCurrentWaypoint();
             toWaypoint = waypoint - entityPos;
             dist = toWaypoint.length();
           }
         }
 
-        bool following = (m_navIndex < m_navPath.size() && dist > 0.001f);
+        bool following = (pathData.isFollowingPath() && dist > 0.001f);
 
         if (following) {
-          // Move towards waypoint
           Vector2D direction = toWaypoint / dist;
           ctx.transform.velocity = direction * m_chaseSpeed;
-          m_progressTimer = 0.0f; // Reset progress timer
+          pathData.progressTimer = 0.0f;
 
           // Simple crowd management - use cached chaser count for lateral spreading
           m_crowdCheckTimer += ctx.deltaTime;
@@ -263,15 +252,13 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       // SIMPLIFIED: Basic stall detection without complex variance tracking
       float currentSpeed = ctx.transform.velocity.length();
       const float stallThreshold = std::max(1.0f, m_chaseSpeed * m_config.stallSpeedMultiplier);
-      const float stallTimeLimit = m_config.stallTimeout; // Timeout before triggering recovery
+      const float stallTimeLimit = m_config.stallTimeout;
 
       if (currentSpeed < stallThreshold) {
         m_stallTimer += ctx.deltaTime;
         if (m_stallTimer >= stallTimeLimit) {
-          // Simple stall recovery: clear path and request new one
-          m_navPath.clear();
-          m_navIndex = 0;
-          m_pathUpdateTimer = 0.0f;
+          // Simple stall recovery: clear path in EDM and request new one
+          pathData.clear();
           m_stallTimer = 0.0f;
 
           // Light jitter to avoid deadlock (thread-safe)
@@ -292,7 +279,6 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       if (m_isChasing) {
         ctx.transform.velocity = Vector2D(0, 0);
         m_isChasing = false;
-        // onTargetReached needs EntityPtr - skip for now in hot path
       }
     }
   } else {
@@ -302,40 +288,29 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       m_hasLineOfSight = false;
       ctx.transform.velocity = Vector2D(0, 0);
 
-      // Clear pathfinding state
-      m_navPath.clear();
-      m_navIndex = 0;
-      m_pathUpdateTimer = 0.0f;
-
-      // onTargetLost needs EntityPtr - skip for now in hot path
+      // Clear pathfinding state in EDM
+      auto& edm = EntityDataManager::Instance();
+      edm.getPathData(ctx.edmIndex).clear();
     }
   }
 }
 
 void ChaseBehavior::clean(EntityHandle handle) {
-  // Stop the entity's movement when cleaning up
+  // Stop the entity's movement and clear EDM path data when cleaning up
   if (handle.isValid()) {
     auto& edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      edm.clearPathData(idx);  // Clear path state in EDM
     }
-
-    // Clear pathfinding state from PathfinderManager
-    // Note: Request cancellation is handled automatically by the new pathfinding architecture
   }
 
-  // Reset all state
+  // Reset behavior-specific state
   m_isChasing = false;
   m_hasLineOfSight = false;
   m_lastKnownTargetPos = Vector2D(0, 0);
   m_timeWithoutSight = 0;
-
-  // Clear path-following state
-  m_navPath.clear();
-  m_navIndex = 0;
-  m_pathUpdateTimer = 0.0f;
-  m_progressTimer = 0.0f;
   m_stallTimer = 0.0f;
   m_stallPositionVariance = 0.0f;
   m_unstickTimer = 0.0f;

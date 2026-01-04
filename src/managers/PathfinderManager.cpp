@@ -4,6 +4,7 @@
  */
 
 #include "managers/PathfinderManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "ai/pathfinding/PathfindingGrid.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/EventManager.hpp" // Must include for HandlerToken definition
@@ -306,7 +307,99 @@ uint64_t PathfinderManager::requestPath(
     return requestId;
 }
 
-// (Backward-compat overload removed to keep public API minimal during development)
+uint64_t PathfinderManager::requestPathToEDM(
+    size_t edmIndex,
+    const Vector2D& start,
+    const Vector2D& goal,
+    Priority priority
+) {
+    if (!m_initialized.load() || m_isShutdown) {
+        return 0;
+    }
+
+    // Mark path request as pending in EDM (prevents duplicate requests)
+    auto& edm = EntityDataManager::Instance();
+    if (edm.hasPathData(edmIndex)) {
+        auto& pathData = edm.getPathData(edmIndex);
+        if (pathData.pathRequestPending) {
+            // Request already in flight, don't spam
+            return 0;
+        }
+        pathData.pathRequestPending = true;
+    }
+
+    // Compute cache key from RAW coordinates BEFORE normalization
+    const uint64_t cacheKey = computeStableCacheKey(start, goal);
+
+    // Normalize endpoints for pathfinding accuracy
+    Vector2D nStart = start;
+    Vector2D nGoal = goal;
+    normalizeEndpoints(nStart, nGoal);
+
+    // Generate unique request ID (atomic, lock-free)
+    const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
+    m_enqueuedRequests.fetch_add(1, std::memory_order_relaxed);
+
+    // LOCK-FREE: Submit directly to ThreadSystem
+    // Result written directly to EDM - no callback needed
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+
+    auto work = [this, edmIndex, nStart, nGoal, cacheKey]() {
+        std::vector<Vector2D> path;
+        bool cacheHit = false;
+
+        // Cache lookup (brief lock, shared across all pathfinding tasks)
+        {
+            std::lock_guard<std::mutex> lock(m_cacheMutex);
+            auto it = m_pathCache.find(cacheKey);
+            if (it != m_pathCache.end()) {
+                path = it->second.path;
+                it->second.lastUsed = std::chrono::steady_clock::now();
+                it->second.useCount++;
+                cacheHit = true;
+                m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        // Compute path if not cached
+        if (!cacheHit) {
+            findPathImmediate(nStart, nGoal, path, true);
+
+            // Store in cache
+            if (!path.empty()) {
+                std::lock_guard<std::mutex> lock(m_cacheMutex);
+                if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                    evictOldestCacheEntry();
+                }
+                PathCacheEntry entry;
+                entry.path = path;
+                entry.lastUsed = std::chrono::steady_clock::now();
+                entry.useCount = 1;
+                m_pathCache[cacheKey] = std::move(entry);
+            }
+        }
+
+        // Update stats
+        if (!path.empty()) {
+            m_completedRequests.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            m_failedRequests.fetch_add(1, std::memory_order_relaxed);
+        }
+        m_processedCount.fetch_add(1, std::memory_order_relaxed);
+
+        // Write result directly to EDM - no callback overhead
+        auto& edm = EntityDataManager::Instance();
+        if (edm.hasPathData(edmIndex)) {
+            edm.getPathData(edmIndex).setPath(std::move(path));
+        }
+    };
+
+    threadSystem.enqueueTask(work, mapEnumToTaskPriority(priority), "PathToEDM");
+
+    return requestId;
+}
 
 HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     const Vector2D& start,

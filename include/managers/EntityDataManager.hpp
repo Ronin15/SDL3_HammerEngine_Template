@@ -43,6 +43,7 @@
 #include "utils/Vector2D.hpp"
 #include <atomic>
 #include <cstdint>
+#include <limits>
 #include <mutex>
 #include <span>
 #include <vector>
@@ -251,6 +252,80 @@ struct AreaEffectData {
     float elapsed{0.0f};        // Time since creation
     float lastTick{0.0f};       // Time since last damage tick
     uint8_t effectType{0};      // Poison, Fire, Heal, Slow
+};
+
+/**
+ * @brief Path state for AI entities (indexed by edmIndex)
+ *
+ * Stores pathfinding state for AI entities. PathfinderManager writes directly
+ * to this structure after computing paths - no callbacks needed.
+ *
+ * Threading: Safe for parallel reads during AI batch processing.
+ * PathfinderManager writes are done after AI batches complete (single-threaded).
+ */
+struct PathData {
+    std::vector<Vector2D> navPath;     // Current path waypoints
+    size_t navIndex{0};                 // Current waypoint index
+    float pathUpdateTimer{0.0f};        // Time since last path update
+    float progressTimer{0.0f};          // Time since last progress
+    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float stallTimer{0.0f};             // Stall detection
+    float pathRequestCooldown{0.0f};    // Prevent request spam
+    bool hasPath{false};                // Quick check if path is valid
+    bool pathRequestPending{false};     // Path request in flight
+
+    void clear() noexcept {
+        navPath.clear();
+        navIndex = 0;
+        pathUpdateTimer = 0.0f;
+        progressTimer = 0.0f;
+        lastNodeDistance = std::numeric_limits<float>::infinity();
+        stallTimer = 0.0f;
+        pathRequestCooldown = 0.0f;
+        hasPath = false;
+        pathRequestPending = false;
+    }
+
+    void setPath(std::vector<Vector2D>&& path) noexcept {
+        navPath = std::move(path);
+        navIndex = 0;
+        pathUpdateTimer = 0.0f;
+        progressTimer = 0.0f;
+        lastNodeDistance = std::numeric_limits<float>::infinity();
+        stallTimer = 0.0f;
+        hasPath = !navPath.empty();
+        pathRequestPending = false;
+    }
+
+    void setPath(const std::vector<Vector2D>& path) {
+        navPath = path;
+        navIndex = 0;
+        pathUpdateTimer = 0.0f;
+        progressTimer = 0.0f;
+        lastNodeDistance = std::numeric_limits<float>::infinity();
+        stallTimer = 0.0f;
+        hasPath = !navPath.empty();
+        pathRequestPending = false;
+    }
+
+    [[nodiscard]] bool isFollowingPath() const noexcept {
+        return hasPath && navIndex < navPath.size();
+    }
+
+    [[nodiscard]] Vector2D getCurrentWaypoint() const noexcept {
+        if (navIndex < navPath.size()) {
+            return navPath[navIndex];
+        }
+        return Vector2D{0.0f, 0.0f};
+    }
+
+    void advanceWaypoint() noexcept {
+        if (navIndex < navPath.size()) {
+            ++navIndex;
+            progressTimer = 0.0f;
+            stallTimer = 0.0f;
+        }
+    }
 };
 
 // ============================================================================
@@ -592,6 +667,39 @@ public:
     [[nodiscard]] const CharacterData& getCharacterDataByIndex(size_t index) const;
 
     // ========================================================================
+    // PATH DATA ACCESS (for AI pathfinding - indexed by edmIndex)
+    // ========================================================================
+
+    /**
+     * @brief Get path data by EDM index
+     * @param index EDM index from getActiveIndices()
+     * @return PathData for the entity
+     * @note Path data grows lazily - accessing an index will ensure storage exists
+     */
+    [[nodiscard]] PathData& getPathData(size_t index);
+    [[nodiscard]] const PathData& getPathData(size_t index) const;
+
+    /**
+     * @brief Check if path data exists for an entity
+     * @param index EDM index
+     * @return true if path data storage exists and index is valid
+     */
+    [[nodiscard]] bool hasPathData(size_t index) const noexcept;
+
+    /**
+     * @brief Ensure path data storage exists for an entity
+     * @param index EDM index
+     * Called automatically when AI behavior is assigned
+     */
+    void ensurePathData(size_t index);
+
+    /**
+     * @brief Clear path data for an entity (called on destruction)
+     * @param index EDM index
+     */
+    void clearPathData(size_t index);
+
+    // ========================================================================
     // SIMULATION TIER MANAGEMENT
     // ========================================================================
 
@@ -724,6 +832,9 @@ private:
     std::vector<ContainerData> m_containerData;      // Container
     std::vector<HarvestableData> m_harvestableData;  // Harvestable
     std::vector<AreaEffectData> m_areaEffectData;    // AreaEffect
+
+    // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
+    std::vector<PathData> m_pathData;
 
     // Type-specific free-lists (reuse indices when entities are destroyed)
     std::vector<uint32_t> m_freeCharacterSlots;

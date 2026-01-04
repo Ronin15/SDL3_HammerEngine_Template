@@ -85,14 +85,9 @@ private:
     int zigzagDirection{1}; // For evasive maneuvers
     float zigzagTimer{0.0f};
 
-    // Optional path-following state for strategic/seek-cover modes
-    std::vector<Vector2D> pathPoints;
-    size_t currentPathIndex{0};
-    float pathUpdateTimer{0.0f};
-    float progressTimer{0.0f};
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    // Path-following uses EDM PathData (per-entity isolation, no race conditions)
+    // NavRadius kept here for waypoint arrival detection
     float navRadius{18.0f};
-    float pathCooldown{0.0f};
     float backoffTimer{0.0f};
     // Separation decimation
     float separationTimer{0.0f};
@@ -108,10 +103,8 @@ private:
           lastKnownSafeDirection(0, 0), fleeTimer(0.0f),
           directionChangeTimer(0.0f), panicTimer(0.0f), currentStamina(100.0f),
           isFleeing(false), isInPanic(false), hasValidThreat(false),
-          zigzagDirection(1), zigzagTimer(0.0f), pathPoints(),
-          currentPathIndex(0), pathUpdateTimer(0.0f), progressTimer(0.0f),
-          lastNodeDistance(std::numeric_limits<float>::infinity()),
-          navRadius(18.0f), pathCooldown(0.0f), backoffTimer(0.0f),
+          zigzagDirection(1), zigzagTimer(0.0f),
+          navRadius(18.0f), backoffTimer(0.0f),
           separationTimer(0.0f), lastSepVelocity(0, 0) {}
   };
 

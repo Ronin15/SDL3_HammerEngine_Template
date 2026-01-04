@@ -83,6 +83,7 @@ public:
         Normal   = 2,
         Low      = 3
     };
+
     /**
      * @brief Gets the singleton instance of PathfinderManager
      * @return Reference to the PathfinderManager instance
@@ -178,6 +179,25 @@ public:
      * @return true if there are pending requests, false otherwise
      */
     bool hasPendingWork() const;
+
+    // ===== EDM-Integrated Async Pathfinding (No Callbacks) =====
+
+    /**
+     * @brief Request a path asynchronously with result written to EDM
+     *
+     * Same async performance as requestPath() but writes result directly to
+     * EntityDataManager::PathData instead of invoking a callback.
+     * Eliminates shared_from_this() and lambda allocation overhead.
+     *
+     * @param edmIndex Entity's EDM index (result written to EDM::getPathData(edmIndex))
+     * @param start Starting position in world coordinates
+     * @param goal Goal position in world coordinates
+     * @param priority Request priority (default: Normal)
+     * @return Request ID for tracking (0 if failed)
+     */
+    uint64_t requestPathToEDM(size_t edmIndex, const Vector2D& start,
+                              const Vector2D& goal,
+                              Priority priority = Priority::Normal);
 
     // ===== Grid Management =====
 
