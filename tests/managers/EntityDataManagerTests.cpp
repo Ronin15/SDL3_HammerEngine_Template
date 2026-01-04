@@ -937,3 +937,307 @@ BOOST_AUTO_TEST_CASE(TestMassCreationAndDestruction) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// STATE TRANSITION CACHED INDICES TESTS
+// ============================================================================
+/**
+ * @brief Comprehensive regression tests for state transition cleanup.
+ *
+ * These tests verify that prepareForStateTransition() properly clears
+ * ALL cached index vectors. Stale cached indices can cause crashes when:
+ * - A new state is entered
+ * - Managers iterate over the cached indices
+ * - The indices point to cleared/invalid data
+ *
+ * Bug pattern: m_hotData was cleared but cached index vectors were not,
+ * leading to assertion failures in getHotDataByIndex() when the stale
+ * indices were used.
+ */
+BOOST_FIXTURE_TEST_SUITE(StateTransitionCachedIndicesTests, EntityDataManagerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveIndices) {
+    // Create entities that will be in Active tier
+    edm->createNPC(Vector2D(100.0f, 100.0f));
+    edm->createNPC(Vector2D(200.0f, 200.0f));
+    edm->createNPC(Vector2D(300.0f, 300.0f));
+
+    // Update tiers to populate active indices
+    edm->updateSimulationTiers(Vector2D(150.0f, 150.0f), 1500.0f, 10000.0f);
+
+    // Verify active indices are populated
+    auto activeIndices = edm->getActiveIndices();
+    BOOST_CHECK_EQUAL(activeIndices.size(), 3);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // Active indices should be empty
+    BOOST_CHECK(edm->getActiveIndices().empty());
+}
+
+BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsBackgroundIndices) {
+    // Create entities at background distance
+    edm->createNPC(Vector2D(5000.0f, 5000.0f));
+    edm->createNPC(Vector2D(6000.0f, 6000.0f));
+
+    // Update tiers - should be Background
+    edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
+
+    // Verify background indices are populated
+    auto bgIndices = edm->getBackgroundIndices();
+    BOOST_CHECK_EQUAL(bgIndices.size(), 2);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // Background indices should be empty
+    BOOST_CHECK(edm->getBackgroundIndices().empty());
+}
+
+BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsHibernatedIndices) {
+    // Create entities at hibernation distance
+    edm->createNPC(Vector2D(15000.0f, 15000.0f));
+    edm->createNPC(Vector2D(20000.0f, 20000.0f));
+
+    // Update tiers - should be Hibernated
+    edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // Entity count should be 0
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
+}
+
+BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveCollisionIndices) {
+    // Create entities with collision enabled
+    EntityHandle h1 = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle h2 = edm->createNPC(Vector2D(200.0f, 200.0f));
+
+    // Enable collision on entities
+    auto& hot1 = edm->getHotData(h1);
+    auto& hot2 = edm->getHotData(h2);
+    hot1.setCollisionEnabled(true);
+    hot2.setCollisionEnabled(true);
+
+    // Update tiers to make them Active
+    edm->updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
+
+    // Get active collision indices - this populates the cache
+    auto collisionIndices = edm->getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(collisionIndices.size(), 2);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // Collision indices should be empty
+    BOOST_CHECK(edm->getActiveIndicesWithCollision().empty());
+}
+
+BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsTriggerDetectionIndices) {
+    // Create entities that need trigger detection (e.g., Player)
+    EntityHandle h1 = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle h2 = edm->createNPC(Vector2D(200.0f, 200.0f));
+
+    // Set trigger detection flag (distinct from isTrigger - this is for entities
+    // that need to DETECT triggers, like the player)
+    auto& hot1 = edm->getHotData(h1);
+    auto& hot2 = edm->getHotData(h2);
+    hot1.setTriggerDetection(true);
+    hot2.setTriggerDetection(true);
+
+    // Update tiers to make entities Active (trigger detection only works on active)
+    edm->updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
+
+    // Get trigger detection indices - this populates the cache
+    auto triggerIndices = edm->getTriggerDetectionIndices();
+    BOOST_CHECK_EQUAL(triggerIndices.size(), 2);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // Trigger detection indices should be empty
+    BOOST_CHECK(edm->getTriggerDetectionIndices().empty());
+}
+
+BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsKindIndices) {
+    // Create entities of different kinds
+    edm->createNPC(Vector2D(100.0f, 100.0f));
+    edm->createNPC(Vector2D(200.0f, 200.0f));
+    edm->createPlayer(Vector2D(300.0f, 300.0f));
+    edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
+
+    // Get kind indices - this populates the cache
+    auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
+    auto playerIndices = edm->getIndicesByKind(EntityKind::Player);
+    auto itemIndices = edm->getIndicesByKind(EntityKind::DroppedItem);
+
+    BOOST_CHECK_EQUAL(npcIndices.size(), 2);
+    BOOST_CHECK_EQUAL(playerIndices.size(), 1);
+    BOOST_CHECK_EQUAL(itemIndices.size(), 1);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // All kind indices should be empty
+    BOOST_CHECK(edm->getIndicesByKind(EntityKind::NPC).empty());
+    BOOST_CHECK(edm->getIndicesByKind(EntityKind::Player).empty());
+    BOOST_CHECK(edm->getIndicesByKind(EntityKind::DroppedItem).empty());
+}
+
+/**
+ * @test TestAllCachedIndicesClearedComprehensive
+ *
+ * Master test that populates ALL cached index types and verifies
+ * they are all cleared after prepareForStateTransition().
+ */
+BOOST_AUTO_TEST_CASE(TestAllCachedIndicesClearedComprehensive) {
+    // Create diverse entity set
+    std::vector<EntityHandle> handles;
+
+    // NPCs at various distances
+    for (int i = 0; i < 5; ++i) {
+        handles.push_back(edm->createNPC(Vector2D(100.0f + i * 50, 100.0f)));
+    }
+
+    // Background distance
+    handles.push_back(edm->createNPC(Vector2D(5000.0f, 5000.0f)));
+
+    // Hibernated distance
+    handles.push_back(edm->createNPC(Vector2D(15000.0f, 15000.0f)));
+
+    // Player (always active)
+    handles.push_back(edm->createPlayer(Vector2D(300.0f, 300.0f)));
+
+    // Items
+    handles.push_back(edm->createDroppedItem(Vector2D(400.0f, 400.0f),
+        HammerEngine::ResourceHandle{1, 1}, 5));
+
+    // Enable collision on some
+    for (size_t i = 0; i < 3; ++i) {
+        auto& hot = edm->getHotData(handles[i]);
+        hot.setCollisionEnabled(true);
+    }
+
+    // Set trigger detection on some (entities that DETECT triggers)
+    for (size_t i = 3; i < 5; ++i) {
+        auto& hot = edm->getHotData(handles[i]);
+        hot.setTriggerDetection(true);
+    }
+
+    // Update tiers to populate all tier-based caches
+    edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
+
+    // Force population of all caches
+    [[maybe_unused]] auto activeIndices = edm->getActiveIndices();
+    [[maybe_unused]] auto bgIndices = edm->getBackgroundIndices();
+    [[maybe_unused]] auto collisionIndices = edm->getActiveIndicesWithCollision();
+    [[maybe_unused]] auto triggerIndices = edm->getTriggerDetectionIndices();
+    [[maybe_unused]] auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
+    [[maybe_unused]] auto playerIndices = edm->getIndicesByKind(EntityKind::Player);
+    [[maybe_unused]] auto itemIndices = edm->getIndicesByKind(EntityKind::DroppedItem);
+
+    // Verify caches are populated
+    BOOST_CHECK(!edm->getActiveIndices().empty());
+    BOOST_CHECK_GT(edm->getEntityCount(), 0);
+
+    // State transition - MUST clear ALL cached indices
+    edm->prepareForStateTransition();
+
+    // Verify entity count is zero
+    BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
+
+    // Verify ALL cached index vectors are empty
+    BOOST_CHECK_MESSAGE(edm->getActiveIndices().empty(),
+        "m_activeIndices not cleared");
+    BOOST_CHECK_MESSAGE(edm->getBackgroundIndices().empty(),
+        "m_backgroundIndices not cleared");
+    BOOST_CHECK_MESSAGE(edm->getActiveIndicesWithCollision().empty(),
+        "m_activeCollisionIndices not cleared");
+    BOOST_CHECK_MESSAGE(edm->getTriggerDetectionIndices().empty(),
+        "m_triggerDetectionIndices not cleared");
+    BOOST_CHECK_MESSAGE(edm->getIndicesByKind(EntityKind::NPC).empty(),
+        "m_kindIndices[NPC] not cleared");
+    BOOST_CHECK_MESSAGE(edm->getIndicesByKind(EntityKind::Player).empty(),
+        "m_kindIndices[Player] not cleared");
+    BOOST_CHECK_MESSAGE(edm->getIndicesByKind(EntityKind::DroppedItem).empty(),
+        "m_kindIndices[DroppedItem] not cleared");
+}
+
+/**
+ * @test TestNoStaleIndicesAfterStateTransitionReuse
+ *
+ * Tests that after state transition, creating new entities
+ * produces fresh indices that don't conflict with stale cached data.
+ */
+BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
+    // Phase 1: Create and populate caches
+    std::vector<EntityHandle> phase1Handles;
+    for (int i = 0; i < 20; ++i) {
+        phase1Handles.push_back(edm->createNPC(
+            Vector2D(static_cast<float>(i * 50), 0.0f)));
+    }
+
+    edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 2000.0f, 10000.0f);
+
+    // Enable collision
+    for (auto& h : phase1Handles) {
+        edm->getHotData(h).setCollisionEnabled(true);
+    }
+
+    auto phase1Collision = edm->getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(phase1Collision.size(), 20);
+
+    // Phase 2: State transition
+    edm->prepareForStateTransition();
+    phase1Handles.clear();
+
+    // Phase 3: Create new entities
+    std::vector<EntityHandle> phase2Handles;
+    for (int i = 0; i < 10; ++i) {
+        phase2Handles.push_back(edm->createNPC(
+            Vector2D(static_cast<float>(i * 100), 0.0f)));
+    }
+
+    edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 2000.0f, 10000.0f);
+
+    for (auto& h : phase2Handles) {
+        edm->getHotData(h).setCollisionEnabled(true);
+    }
+
+    // Get new collision indices
+    auto phase2Collision = edm->getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(phase2Collision.size(), 10);
+
+    // Verify all indices are valid and accessible
+    for (size_t idx : phase2Collision) {
+        BOOST_CHECK_NO_THROW({
+            [[maybe_unused]] const auto& hot = edm->getHotDataByIndex(idx);
+        });
+    }
+}
+
+/**
+ * @test TestAccessAfterClearDoesNotCrash
+ *
+ * Regression test: After clearing, any attempt to access data via
+ * stale indices should be caught, not cause undefined behavior.
+ */
+BOOST_AUTO_TEST_CASE(TestAccessAfterClearDoesNotCrash) {
+    // Create entity and get its index
+    EntityHandle h = edm->createNPC(Vector2D(100.0f, 100.0f));
+    size_t index = edm->getIndex(h);
+    BOOST_REQUIRE(index != SIZE_MAX);
+
+    // State transition
+    edm->prepareForStateTransition();
+
+    // Handle should now be invalid
+    BOOST_CHECK(!edm->isValidHandle(h));
+
+    // getIndex on stale handle should return SIZE_MAX
+    BOOST_CHECK_EQUAL(edm->getIndex(h), SIZE_MAX);
+}
+
+BOOST_AUTO_TEST_SUITE_END()

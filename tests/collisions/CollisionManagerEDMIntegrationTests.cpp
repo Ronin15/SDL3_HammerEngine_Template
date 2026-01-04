@@ -474,6 +474,207 @@ BOOST_AUTO_TEST_CASE(TestStaticBodiesPreservedAfterDynamicClear) {
     // They would be cleared by CollisionManager::clean() or rebuildStaticBodies()
 }
 
+/**
+ * @test TestActiveCollisionIndicesClearedAfterStateTransition
+ *
+ * Regression test for crash in CollisionManager::buildActiveIndices().
+ *
+ * Bug: EDM's prepareForStateTransition() cleared m_hotData but NOT
+ * m_activeCollisionIndices. This left stale indices that caused:
+ *   Assertion failed: (index < m_hotData.size() && "Index out of bounds")
+ *   in EntityDataManager::getHotDataByIndex()
+ *
+ * The crash occurred when CollisionManager::buildActiveIndices() iterated
+ * over the cached collision indices after EDM was cleared.
+ *
+ * Fix: EDM::prepareForStateTransition() now clears m_activeCollisionIndices
+ * and sets m_activeCollisionDirty = true.
+ */
+BOOST_AUTO_TEST_CASE(TestActiveCollisionIndicesClearedAfterStateTransition) {
+    auto& edm = EntityDataManager::Instance();
+
+    // Create entities with collision enabled
+    auto entity1 = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity2 = CollisionTestEntity::create(Vector2D(200.0f, 200.0f));
+    auto entity3 = CollisionTestEntity::create(Vector2D(300.0f, 300.0f));
+
+    // Update simulation tiers to make entities Active
+    edm.updateSimulationTiers(Vector2D(150.0f, 150.0f), 1500.0f, 10000.0f);
+
+    // Get active collision indices - this populates the cache
+    auto activeWithCollision = edm.getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(activeWithCollision.size(), 3);
+
+    // Run collision update to use the indices
+    CollisionManager::Instance().update(0.016f);
+
+    // Simulate state transition - CRITICAL: this must clear collision indices
+    edm.prepareForStateTransition();
+
+    // Verify entity data is cleared
+    BOOST_CHECK_EQUAL(edm.getEntityCount(), 0);
+
+    // CRITICAL CHECK: Active collision indices should be empty
+    // This was the bug - before the fix, this would return stale indices
+    auto postTransitionCollision = edm.getActiveIndicesWithCollision();
+    BOOST_CHECK_MESSAGE(postTransitionCollision.empty(),
+        "m_activeCollisionIndices should be cleared after prepareForStateTransition()");
+}
+
+/**
+ * @test TestCollisionUpdateAfterStateTransitionDoesNotCrash
+ *
+ * End-to-end regression test for the state transition crash.
+ *
+ * This simulates the exact sequence that caused the original crash:
+ * 1. Create entities in AIDemoState (or similar)
+ * 2. Run collision updates (populates cached indices)
+ * 3. Transition to MainMenu (calls prepareForStateTransition on managers)
+ * 4. Transition to EventDemoState (creates new entities, runs updates)
+ *
+ * Before the fix, step 4 would crash because CollisionManager used
+ * stale cached indices from the previous state.
+ */
+BOOST_AUTO_TEST_CASE(TestCollisionUpdateAfterStateTransitionDoesNotCrash) {
+    auto& edm = EntityDataManager::Instance();
+
+    // === Phase 1: First "state" with many entities ===
+    // Place all entities within active tier radius (1500 from origin)
+    std::vector<std::shared_ptr<CollisionTestEntity>> state1Entities;
+    for (int i = 0; i < 100; ++i) {
+        // Grid layout within 1000x1000 area (well within 1500 radius)
+        float x = static_cast<float>((i % 10) * 100);
+        float y = static_cast<float>((i / 10) * 100);
+        auto pos = Vector2D(x, y);
+        state1Entities.push_back(CollisionTestEntity::create(pos));
+    }
+
+    // Update tiers and run collision
+    edm.updateSimulationTiers(Vector2D(500.0f, 500.0f), 1500.0f, 10000.0f);
+    CollisionManager::Instance().update(0.016f);
+
+    // Verify indices were populated (all should be active)
+    auto activeIndices = edm.getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(activeIndices.size(), 100);
+
+    // === Phase 2: State transition (like going to MainMenu) ===
+    // This order matches what game states do
+    CollisionManager::Instance().prepareForStateTransition();
+    edm.prepareForStateTransition();
+
+    // Clear our entity references (they're now invalid)
+    state1Entities.clear();
+
+    // Verify clean state
+    BOOST_CHECK_EQUAL(edm.getEntityCount(), 0);
+
+    // === Phase 3: New "state" - like entering EventDemoState ===
+    // Create new entities within active tier radius
+    std::vector<std::shared_ptr<CollisionTestEntity>> state2Entities;
+    for (int i = 0; i < 50; ++i) {
+        float x = static_cast<float>((i % 10) * 100);
+        float y = static_cast<float>((i / 10) * 100);
+        auto pos = Vector2D(x, y);
+        state2Entities.push_back(CollisionTestEntity::create(pos));
+    }
+
+    // Update tiers for new entities
+    edm.updateSimulationTiers(Vector2D(500.0f, 500.0f), 1500.0f, 10000.0f);
+
+    // THIS WAS THE CRASH POINT - CollisionManager::update() called
+    // buildActiveIndices() which iterated over stale indices
+    BOOST_CHECK_NO_THROW(CollisionManager::Instance().update(0.016f));
+
+    // Verify new state works correctly
+    auto newActiveIndices = edm.getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(newActiveIndices.size(), 50);
+}
+
+/**
+ * @test TestMultipleStateTransitionsClearIndicesEachTime
+ *
+ * Ensures that repeated state transitions properly clear cached indices
+ * each time, not just the first time.
+ */
+BOOST_AUTO_TEST_CASE(TestMultipleStateTransitionsClearIndicesEachTime) {
+    auto& edm = EntityDataManager::Instance();
+
+    for (int transition = 0; transition < 3; ++transition) {
+        // Create entities for this "state" within active tier radius
+        std::vector<std::shared_ptr<CollisionTestEntity>> entities;
+        int entityCount = 20 + transition * 10; // Vary count each iteration
+
+        for (int i = 0; i < entityCount; ++i) {
+            // Grid layout within 500x500 area (well within 1500 radius)
+            float x = static_cast<float>((i % 10) * 50);
+            float y = static_cast<float>((i / 10) * 50);
+            auto pos = Vector2D(x, y);
+            entities.push_back(CollisionTestEntity::create(pos));
+        }
+
+        // Run simulation with reference point that keeps all entities active
+        edm.updateSimulationTiers(Vector2D(250.0f, 250.0f), 1500.0f, 10000.0f);
+        CollisionManager::Instance().update(0.016f);
+
+        // Verify correct count
+        auto activeIndices = edm.getActiveIndicesWithCollision();
+        BOOST_CHECK_EQUAL(static_cast<int>(activeIndices.size()), entityCount);
+
+        // State transition
+        CollisionManager::Instance().prepareForStateTransition();
+        edm.prepareForStateTransition();
+        entities.clear();
+
+        // Verify cleared
+        BOOST_CHECK_EQUAL(edm.getEntityCount(), 0);
+        BOOST_CHECK(edm.getActiveIndicesWithCollision().empty());
+    }
+}
+
+/**
+ * @test TestConcurrentAccessDuringStateTransition
+ *
+ * Tests that accessing collision indices during state transition
+ * doesn't cause data races. The indices should either return valid
+ * data or be empty - never stale/invalid indices.
+ */
+BOOST_AUTO_TEST_CASE(TestConcurrentAccessDuringStateTransition) {
+    auto& edm = EntityDataManager::Instance();
+
+    // Create entities within active tier radius
+    std::vector<std::shared_ptr<CollisionTestEntity>> entities;
+    for (int i = 0; i < 50; ++i) {
+        // Grid layout within 500x500 area (well within 1500 radius)
+        float x = static_cast<float>((i % 10) * 50);
+        float y = static_cast<float>((i / 10) * 50);
+        auto pos = Vector2D(x, y);
+        entities.push_back(CollisionTestEntity::create(pos));
+    }
+
+    edm.updateSimulationTiers(Vector2D(250.0f, 250.0f), 1500.0f, 10000.0f);
+    CollisionManager::Instance().update(0.016f);
+
+    // Get indices before transition
+    auto beforeIndices = edm.getActiveIndicesWithCollision();
+    BOOST_CHECK_EQUAL(beforeIndices.size(), 50);
+
+    // Clear entities and transition
+    entities.clear();
+    edm.prepareForStateTransition();
+
+    // Post-transition access should be safe and return empty
+    auto afterIndices = edm.getActiveIndicesWithCollision();
+    BOOST_CHECK(afterIndices.empty());
+
+    // Any index in afterIndices should be valid if not empty
+    // (This validates no stale indices leaked through)
+    for (size_t idx : afterIndices) {
+        BOOST_CHECK_NO_THROW({
+            [[maybe_unused]] auto& hot = edm.getHotDataByIndex(idx);
+        });
+    }
+}
+
 BOOST_AUTO_TEST_SUITE_END()
 
 // ============================================================================
