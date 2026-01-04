@@ -256,6 +256,22 @@ void EventManager::clean() {
 void EventManager::prepareForStateTransition() {
   EVENT_INFO("Preparing EventManager for state transition...");
 
+  // Wait for any pending async batches to complete before cleanup
+  {
+    std::vector<std::future<void>> localFutures;
+    {
+      std::lock_guard<std::mutex> lock(m_batchFuturesMutex);
+      localFutures = std::move(m_batchFutures);
+    }
+
+    // Wait for all batch futures to complete
+    for (auto& future : localFutures) {
+      if (future.valid()) {
+        future.wait();
+      }
+    }
+  }
+
   // Clear all event handlers first to prevent callbacks during cleanup
   clearAllHandlers();
 
