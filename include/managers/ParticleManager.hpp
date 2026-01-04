@@ -612,19 +612,12 @@ public:
    */
   void setCameraViewport(float x, float y, float width, float height);
 
-  // Threading and Performance
-  /**
-   * @brief Configures threading behavior
-   * @param enable Whether to enable multi-threading
-   */
+#ifndef NDEBUG
+  // Threading configuration (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
-
-  /**
-   * @brief Sets the threading threshold (minimum particles to use threading)
-   * @param threshold Particle count threshold
-   */
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
+#endif
 
   /**
    * @brief Enables WorkerBudget-aware threading with intelligent resource

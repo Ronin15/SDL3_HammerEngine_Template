@@ -348,11 +348,6 @@ private:
         m_grid = std::move(newGrid);
     }
 
-    // Pending request coalescing
-    mutable std::mutex m_pendingMutex;
-    struct PendingCallbacks { std::vector<PathCallback> callbacks; };
-    std::unordered_map<uint64_t, PendingCallbacks> m_pending;
-
     // Helpers
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
 
@@ -441,27 +436,12 @@ private:
     std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
     // No mutex needed: update and state transitions never run concurrently
 
-    // Deferred batch timing for WorkerBudget feedback (non-blocking)
-    size_t m_lastBatchCount{0};
-    size_t m_lastWorkloadSize{0};
-    std::chrono::steady_clock::time_point m_lastBatchSubmitTime{};
-
     // Incremental update configuration
     static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty
 
-    // Request buffer for batching (instead of immediate submission)
-    struct BufferedRequest {
-        EntityID entityId;
-        Vector2D start;
-        Vector2D goal;
-        Priority priority;
-        PathCallback callback;
-        uint64_t requestId;
-        uint64_t cacheKey;  // Pre-computed from RAW coords before normalization
-        std::chrono::steady_clock::time_point enqueueTime;
-    };
-    std::vector<BufferedRequest> m_requestBuffer;
-    mutable std::mutex m_requestBufferMutex;
+    // DIRECT THREADSYSTEM SUBMISSION (no intermediate buffer needed)
+    // Requests are submitted directly to ThreadSystem in requestPath()
+    // This eliminates the mutex contention that was serializing AI batch threads
 
     // Internal methods - simplified
     void reportStatistics() const;
@@ -478,8 +458,7 @@ private:
     void calculateOptimalCacheSettings(); // Calculate dynamic parameters based on world size
     void prewarmPathCache(); // Seed cache with sector-based paths for fast warmup
 
-    // WorkerBudget batch processing (NEW)
-    void processPendingRequests(); // Process buffered requests with WorkerBudget coordination
+    // Batch completion synchronization
     void waitForBatchCompletion(); // Wait for all pending batch futures to complete
 
     // Event handlers

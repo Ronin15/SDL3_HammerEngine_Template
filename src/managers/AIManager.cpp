@@ -719,6 +719,7 @@ void AIManager::resetBehaviors() {
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
 }
 
+#ifndef NDEBUG
 void AIManager::enableThreading(bool enable) {
   m_useThreading.store(enable, std::memory_order_release);
   AI_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
@@ -733,6 +734,7 @@ void AIManager::setThreadingThreshold(size_t threshold) {
 size_t AIManager::getThreadingThreshold() const {
   return m_threadingThreshold.load(std::memory_order_acquire);
 }
+#endif
 
 size_t AIManager::getBehaviorCount() const {
   std::shared_lock<std::shared_mutex> lock(m_behaviorsMutex);

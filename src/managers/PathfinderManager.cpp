@@ -96,17 +96,15 @@ void PathfinderManager::update() {
         return;
     }
 
-    // Process buffered path requests with WorkerBudget coordination
-    processPendingRequests();
+    // Requests are submitted directly to ThreadSystem in requestPath() - no processing needed here
 
-    // Event-driven architecture: Grid updates happen via World events (no polling needed)
-    // Only report statistics periodically for monitoring
-
-    // Statistics every 10 seconds (600 frames at 60 FPS)
+#ifndef NDEBUG
+    // Interval stats logging - zero overhead in release (entire block compiles out)
     if (++m_statsFrameCounter >= 600) {
         m_statsFrameCounter = 0;
         reportStatistics();
     }
+#endif
 }
 
 void PathfinderManager::setGlobalPause(bool paused) {
@@ -129,12 +127,6 @@ void PathfinderManager::clean() {
 
     // Wait for batch processing to complete before shutdown
     waitForBatchCompletion();
-
-    // Clear request buffer
-    {
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        m_requestBuffer.clear();
-    }
 
     // Unsubscribe from events
     unsubscribeFromEvents();
@@ -170,15 +162,6 @@ void PathfinderManager::prepareForStateTransition() {
     // Wait for batch processing to complete before clearing data
     waitForBatchCompletion();
 
-    // Clear request buffer
-    {
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        size_t bufferSize = m_requestBuffer.size();
-        m_requestBuffer.clear();
-        PATHFIND_DEBUG_IF(bufferSize > 0,
-            std::format("Cleared {} buffered requests", bufferSize));
-    }
-
     // Clear path cache completely for fresh state
     {
         std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
@@ -188,15 +171,6 @@ void PathfinderManager::prepareForStateTransition() {
             std::format("Cleared {} cached paths for state transition", cacheSize));
     }
 
-    // Clear pending requests to avoid callbacks to old game state
-    {
-        std::lock_guard<std::mutex> lock(m_pendingMutex);
-        size_t pendingSize = m_pending.size();
-        m_pending.clear();
-        PATHFIND_DEBUG_IF(pendingSize > 0,
-            std::format("Cleared {} pending requests", pendingSize));
-    }
-    
     // Reset statistics for clean slate
     m_enqueuedRequests.store(0);
     m_enqueueFailures.store(0);
@@ -260,32 +234,74 @@ uint64_t PathfinderManager::requestPath(
     }
 
     // Compute cache key from RAW coordinates BEFORE normalization
-    // This ensures pre-warmed sector paths can be hit by nearby NPC requests
     const uint64_t cacheKey = computeStableCacheKey(start, goal);
 
-    // Normalize endpoints (clamp/snap/quantize) - modifies coords for pathfinding accuracy
+    // Normalize endpoints for pathfinding accuracy
     Vector2D nStart = start;
     Vector2D nGoal = goal;
     normalizeEndpoints(nStart, nGoal);
 
-    // Generate unique request ID
-    const uint64_t requestId = m_nextRequestId.fetch_add(1);
+    // Generate unique request ID (atomic, lock-free)
+    const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
     m_enqueuedRequests.fetch_add(1, std::memory_order_relaxed);
 
-    // Buffer request for batch processing with WorkerBudget coordination
-    {
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        m_requestBuffer.push_back({
-            entityId,
-            nStart,
-            nGoal,
-            priority,
-            callback,
-            requestId,
-            cacheKey,
-            std::chrono::steady_clock::now()
-        });
-    }
+    // LOCK-FREE: Submit directly to ThreadSystem
+    // Callback is captured and called when task completes
+    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+
+    // Capture callback by value for async execution
+    auto work = [this, entityId, nStart, nGoal, cacheKey, callback]() {
+        std::vector<Vector2D> path;
+        bool cacheHit = false;
+
+        // Cache lookup (brief lock, shared across all pathfinding tasks)
+        {
+            std::lock_guard<std::mutex> lock(m_cacheMutex);
+            auto it = m_pathCache.find(cacheKey);
+            if (it != m_pathCache.end()) {
+                path = it->second.path;
+                it->second.lastUsed = std::chrono::steady_clock::now();
+                it->second.useCount++;
+                cacheHit = true;
+                m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
+            }
+        }
+
+        // Compute path if not cached
+        if (!cacheHit) {
+            findPathImmediate(nStart, nGoal, path, true);
+
+            // Store in cache
+            if (!path.empty()) {
+                std::lock_guard<std::mutex> lock(m_cacheMutex);
+                if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                    evictOldestCacheEntry();
+                }
+                PathCacheEntry entry;
+                entry.path = path;
+                entry.lastUsed = std::chrono::steady_clock::now();
+                entry.useCount = 1;
+                m_pathCache[cacheKey] = std::move(entry);
+            }
+        }
+
+        // Update stats
+        if (!path.empty()) {
+            m_completedRequests.fetch_add(1, std::memory_order_relaxed);
+        } else {
+            m_failedRequests.fetch_add(1, std::memory_order_relaxed);
+        }
+        m_processedCount.fetch_add(1, std::memory_order_relaxed);
+
+        // Fire callback directly (ThreadSystem completion mechanism)
+        if (callback) {
+            callback(entityId, path);
+        }
+    };
+
+    threadSystem.enqueueTask(work, mapEnumToTaskPriority(priority), "Pathfinding");
 
     return requestId;
 }
@@ -1408,271 +1424,6 @@ void PathfinderManager::waitForGridRebuildCompletion() {
 
         PATHFIND_INFO("Grid rebuild synchronization complete - safe to proceed with state transition");
     }
-}
-
-// WorkerBudget Batch Processing Implementation
-
-void PathfinderManager::processPendingRequests() {
-    // Report previous frame's batch completion (deferred, non-blocking)
-    if (m_lastBatchCount > 0 && m_lastWorkloadSize > 0) {
-        auto now = std::chrono::steady_clock::now();
-        double elapsed = std::chrono::duration<double, std::milli>(
-            now - m_lastBatchSubmitTime).count();
-        HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-            HammerEngine::SystemType::Pathfinding, m_lastWorkloadSize, m_lastBatchCount, elapsed);
-        m_lastBatchCount = 0;
-        m_lastWorkloadSize = 0;
-    }
-
-    // Swap out buffered requests to avoid holding lock during processing
-    std::vector<BufferedRequest> requests;
-    {
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        if (m_requestBuffer.empty()) {
-            return; // No work to do
-        }
-        requests.swap(m_requestBuffer);
-    }
-
-    const size_t requestCount = requests.size();
-    if (requestCount == 0) {
-        return;
-    }
-
-    // Let WorkerBudget decide everything - it handles queue pressure internally
-    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-    size_t optimalWorkerCount = budgetMgr.getOptimalWorkers(
-        HammerEngine::SystemType::Pathfinding, requestCount);
-
-    // If WorkerBudget returns 0, queue pressure is too high - defer to next frame
-    if (optimalWorkerCount == 0) {
-        std::lock_guard<std::mutex> lock(m_requestBufferMutex);
-        m_requestBuffer.insert(m_requestBuffer.begin(), requests.begin(), requests.end());
-        return;
-    }
-
-    // Get batch strategy from WorkerBudget
-    auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
-        HammerEngine::SystemType::Pathfinding, requestCount, optimalWorkerCount);
-
-    // Determine if threading is beneficial (more than 1 batch)
-    const bool useThreading = (batchCount > 1);
-
-#ifndef NDEBUG
-    // Interval stats logging - zero overhead in release (entire block compiles out)
-    static thread_local uint64_t logFrameCounter = 0;
-    if (++logFrameCounter % 300 == 0 && requestCount > 0) {
-        if (useThreading) {
-            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} "
-                          "[Threaded: {} batches, {}/batch]",
-                          requestCount, batchCount, requestCount / batchCount));
-        } else {
-            PATHFIND_DEBUG(std::format("Pathfinding Summary - Requests: {} [Single-threaded]",
-                          requestCount));
-        }
-    }
-#endif
-
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
-
-    if (!useThreading) {
-        // Process sequentially on main thread (low request count or high queue pressure)
-        for (size_t i = 0; i < requests.size(); ++i) {
-            const auto& req = requests[i];
-            // Use pre-computed cache key from RAW coordinates (computed before normalization)
-            uint64_t cacheKey = req.cacheKey;
-
-            // Coalesce with pending requests
-            {
-                std::lock_guard<std::mutex> lock(m_pendingMutex);
-                auto it = m_pending.find(cacheKey);
-                if (it != m_pending.end()) {
-                    if (req.callback) it->second.callbacks.push_back(req.callback);
-                    continue; // Already in flight
-                } else {
-                    PendingCallbacks pc;
-                    if (req.callback) pc.callbacks.push_back(req.callback);
-                    m_pending.emplace(cacheKey, std::move(pc));
-                }
-            }
-
-            // Submit single task to ThreadSystem
-            auto work = [this, req, cacheKey]() {
-                std::vector<Vector2D> path;
-                bool cacheHit = false;
-
-                // Cache lookup
-                {
-                    std::lock_guard<std::mutex> lock(m_cacheMutex);
-                    auto it = m_pathCache.find(cacheKey);
-                    if (it != m_pathCache.end()) {
-                        path = it->second.path;
-                        it->second.lastUsed = std::chrono::steady_clock::now();
-                        it->second.useCount++;
-                        cacheHit = true;
-                        m_cacheHits.fetch_add(1, std::memory_order_relaxed);
-                    } else {
-                        m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
-                    }
-                }
-
-                // Compute path if needed
-                if (!cacheHit) {
-                    findPathImmediate(req.start, req.goal, path, true);
-                }
-
-                // Cache result
-                if (!path.empty()) {
-                    {
-                        std::lock_guard<std::mutex> lock(m_cacheMutex);
-                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                            evictOldestCacheEntry();
-                        }
-                        PathCacheEntry entry;
-                        entry.path = path;
-                        entry.lastUsed = std::chrono::steady_clock::now();
-                        entry.useCount = 1;
-                        m_pathCache[cacheKey] = std::move(entry);
-                    }
-                    m_completedRequests.fetch_add(1, std::memory_order_relaxed);
-                } else {
-                    m_failedRequests.fetch_add(1, std::memory_order_relaxed);
-                }
-
-                m_processedCount.fetch_add(1, std::memory_order_relaxed);
-
-                // Fire callbacks (inline to avoid per-completion vector allocation)
-                {
-                    std::lock_guard<std::mutex> lock(m_pendingMutex);
-                    auto it = m_pending.find(cacheKey);
-                    if (it != m_pending.end()) {
-                        for (const auto &cb : it->second.callbacks) {
-                            if (cb) cb(req.entityId, path);
-                        }
-                        m_pending.erase(it);
-                    }
-                }
-            };
-
-            const auto taskPri = mapEnumToTaskPriority(req.priority);
-            const auto priLabel = priorityLabel(req.priority);
-            std::string taskDesc = std::format("PathfindingComputation/{}", priLabel);
-
-            threadSystem.enqueueTask(work, taskPri, taskDesc);
-        }
-
-        return;
-    }
-
-    // Batch processing with WorkerBudget coordination (non-blocking)
-    // batchCount and batchSize already computed above
-
-    PATHFIND_DEBUG(std::format("Processing {} requests in {} batches (size: {}), workers: {}",
-                  requestCount, batchCount, batchSize, optimalWorkerCount));
-
-    // Reuse member buffer instead of creating local vector (eliminates per-frame allocation)
-    // No lock needed: processPendingRequests runs on update thread only,
-    // waitForBatchCompletion only runs during state transitions when update is paused
-    m_reusableBatchFutures.clear();  // Clear old content, keep capacity
-    std::swap(m_reusableBatchFutures, m_batchFutures);  // Swap preserves both capacities
-
-    // Submit batches
-    for (size_t i = 0; i < batchCount; ++i) {
-        size_t start = i * batchSize;
-        size_t end = std::min(start + batchSize, requestCount);
-
-        auto batchWork = [this, requests, start, end]() {
-            for (size_t idx = start; idx < end; ++idx) {
-                const auto& req = requests[idx];
-                // Use pre-computed cache key from RAW coordinates (computed before normalization)
-                uint64_t cacheKey = req.cacheKey;
-
-                // Coalesce
-                {
-                    std::lock_guard<std::mutex> lock(m_pendingMutex);
-                    auto it = m_pending.find(cacheKey);
-                    if (it != m_pending.end()) {
-                        if (req.callback) it->second.callbacks.push_back(req.callback);
-                        continue;
-                    } else {
-                        PendingCallbacks pc;
-                        if (req.callback) pc.callbacks.push_back(req.callback);
-                        m_pending.emplace(cacheKey, std::move(pc));
-                    }
-                }
-
-                // Process request
-                std::vector<Vector2D> path;
-                bool cacheHit = false;
-
-                {
-                    std::lock_guard<std::mutex> lock(m_cacheMutex);
-                    auto it = m_pathCache.find(cacheKey);
-                    if (it != m_pathCache.end()) {
-                        path = it->second.path;
-                        it->second.lastUsed = std::chrono::steady_clock::now();
-                        it->second.useCount++;
-                        cacheHit = true;
-                        m_cacheHits.fetch_add(1, std::memory_order_relaxed);
-                    } else {
-                        m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
-                    }
-                }
-
-                if (!cacheHit) {
-                    findPathImmediate(req.start, req.goal, path, true);
-                }
-
-                if (!path.empty()) {
-                    {
-                        std::lock_guard<std::mutex> lock(m_cacheMutex);
-                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                            evictOldestCacheEntry();
-                        }
-                        PathCacheEntry entry;
-                        entry.path = path;
-                        entry.lastUsed = std::chrono::steady_clock::now();
-                        entry.useCount = 1;
-                        m_pathCache[cacheKey] = std::move(entry);
-                    }
-                    m_completedRequests.fetch_add(1, std::memory_order_relaxed);
-                } else {
-                    m_failedRequests.fetch_add(1, std::memory_order_relaxed);
-                }
-
-                m_processedCount.fetch_add(1, std::memory_order_relaxed);
-
-                // Fire callbacks (inline to avoid per-completion vector allocation)
-                {
-                    std::lock_guard<std::mutex> lock(m_pendingMutex);
-                    auto it = m_pending.find(cacheKey);
-                    if (it != m_pending.end()) {
-                        for (const auto &cb : it->second.callbacks) {
-                            if (cb) cb(req.entityId, path);
-                        }
-                        m_pending.erase(it);
-                    }
-                }
-            }
-        };
-
-        m_reusableBatchFutures.push_back(threadSystem.enqueueTaskWithResult(
-            batchWork,
-            HammerEngine::TaskPriority::High,
-            std::format("Pathfinding_Batch_{}", i)
-        ));
-    }
-
-    // Store futures for shutdown synchronization (swap back preserves both capacities)
-    std::swap(m_batchFutures, m_reusableBatchFutures);
-
-    // Track for deferred reporting next frame (non-blocking)
-    m_lastBatchSubmitTime = std::chrono::steady_clock::now();
-    m_lastBatchCount = batchCount;
-    m_lastWorkloadSize = requestCount;
-
-    // Batches submitted asynchronously - callbacks will fire when paths complete
-    // waitForBatchCompletion() is only called during cleanup/state transitions
 }
 
 void PathfinderManager::waitForBatchCompletion() {
