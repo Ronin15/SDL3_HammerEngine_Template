@@ -2642,6 +2642,7 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
   updateParticlesThreaded(deltaTime, particleCount, outThreadingInfo);
 }
 
+#ifndef NDEBUG
 void ParticleManager::enableThreading(bool enable) {
   m_useThreading.store(enable, std::memory_order_release);
   PARTICLE_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
@@ -2655,6 +2656,7 @@ void ParticleManager::setThreadingThreshold(size_t threshold) {
 size_t ParticleManager::getThreadingThreshold() const {
   return m_threadingThreshold;
 }
+#endif
 
 // Helper methods for enum-based classification system
 ParticleEffectType

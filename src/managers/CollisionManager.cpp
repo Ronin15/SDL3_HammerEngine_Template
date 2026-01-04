@@ -1975,9 +1975,7 @@ void CollisionManager::update(float dt) {
 
   // BROADPHASE: Generate collision pairs using spatial hash
   // Pairs stored in pools.movableMovablePairs and pools.movableStaticPairs
-#ifdef DEBUG
   auto t1 = clock::now();
-#endif
   broadphase();
   auto t2 = clock::now();
 

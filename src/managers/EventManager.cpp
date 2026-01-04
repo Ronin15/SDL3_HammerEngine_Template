@@ -68,6 +68,7 @@ bool EventManager::isShutdown() const
   return m_isShutdown;
 }
 
+#ifndef NDEBUG
 void EventManager::enableThreading(bool enable)
 {
   m_threadingEnabled.store(enable);
@@ -87,6 +88,7 @@ size_t EventManager::getThreadingThreshold() const
 {
   return m_threadingThreshold;
 }
+#endif
 
 void EventManager::setGlobalPause(bool paused)
 {

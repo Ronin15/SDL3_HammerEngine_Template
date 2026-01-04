@@ -230,10 +230,12 @@ public:
   static constexpr int DEFAULT_PRIORITY = 5;
   void resetBehaviors();
 
-  // Threading configuration
+#ifndef NDEBUG
+  // Threading configuration (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
+#endif
 
   // Performance monitoring
   size_t getBehaviorCount() const;
@@ -361,9 +363,9 @@ private:
       256; // Larger batches for better throughput
   // Threading threshold: Entities below this use single-threaded processing.
   // WorkerBudget hill climb tunes batch count for optimal throughput.
-  // Default 2000 - balance between threading overhead and parallelism benefit.
-  // Hill-climb auto-tunes batch sizing for optimal throughput.
-  std::atomic<size_t> m_threadingThreshold{2000};
+  // Default 500 - post-contention fix shows 1.21x+ speedup at all entity counts.
+  // Benchmark results: 500=1.21x, 1000=1.32x, 2000=1.41x, 5000=1.36x, 10000=1.34x
+  std::atomic<size_t> m_threadingThreshold{500};
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

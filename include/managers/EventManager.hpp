@@ -430,11 +430,13 @@ public:
   void updateHarvestEvents();
   void updateCustomEvents();
 
-  // Threading control
+#ifndef NDEBUG
+  // Threading control (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
   bool isThreadingEnabled() const;
   void setThreadingThreshold(size_t threshold);
   size_t getThreadingThreshold() const;
+#endif
 
   // Global pause control (for menu states)
   void setGlobalPause(bool paused);
