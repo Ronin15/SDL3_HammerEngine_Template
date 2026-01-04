@@ -11,8 +11,7 @@
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
     : m_idleMode(mode), m_idleRadius(idleRadius) {
-  // Pre-reserve for large entity counts to avoid reallocations during gameplay
-  m_entityStatesByIndex.reserve(16384);
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
 
   // Initialize parameters based on mode with mode-specific radii
   switch (mode) {
@@ -47,64 +46,57 @@ void IdleBehavior::init(EntityHandle handle) {
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX) return;
 
-  // Ensure vector is large enough for this index
-  if (idx >= m_entityStatesByIndex.size()) {
-    m_entityStatesByIndex.resize(idx + 1);
-  }
-
+  // Initialize behavior data in EDM (pre-allocated alongside hotData)
+  edm.initBehaviorData(idx, BehaviorType::Idle);
+  auto& data = edm.getBehaviorData(idx);
   auto& hotData = edm.getHotDataByIndex(idx);
-  auto &state = m_entityStatesByIndex[idx];
-  state.valid = true;
-  initializeEntityState(hotData.transform.position, state);
+
+  initializeIdleState(hotData.transform.position, data);
+  data.setInitialized(true);
 }
 
 void IdleBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  // Get state by EDM index (contention-free vector access)
-  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
-    return;
-  }
-  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
-  if (!state.valid) {
+  // Get behavior data from EDM (indexed by edmIndex, contention-free)
+  auto& edm = EntityDataManager::Instance();
+  auto& data = edm.getBehaviorData(ctx.edmIndex);
+  if (!data.isValid()) {
     return;
   }
 
-  if (!state.initialized) {
-    initializeEntityState(ctx.transform.position, state);
+  if (!data.isInitialized()) {
+    initializeIdleState(ctx.transform.position, data);
+    data.setInitialized(true);
   }
 
   // Execute behavior based on current mode
   switch (m_idleMode) {
   case IdleMode::STATIONARY:
-    updateStationary(ctx, state);
+    updateStationary(ctx);
     break;
   case IdleMode::SUBTLE_SWAY:
-    updateSubtleSway(ctx, state);
+    updateSubtleSway(ctx, data);
     break;
   case IdleMode::OCCASIONAL_TURN:
-    updateOccasionalTurn(ctx, state);
+    updateOccasionalTurn(ctx, data);
     break;
   case IdleMode::LIGHT_FIDGET:
-    updateLightFidget(ctx, state);
+    updateLightFidget(ctx, data);
     break;
   }
 }
 
 void IdleBehavior::clean(EntityHandle handle) {
+  auto& edm = EntityDataManager::Instance();
   if (handle.isValid()) {
-    auto& edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
-    if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size()) {
-      m_entityStatesByIndex[idx].valid = false;
-    }
-  } else {
-    // Clear all states
-    for (auto& state : m_entityStatesByIndex) {
-      state.valid = false;
+    if (idx != SIZE_MAX) {
+      edm.clearBehaviorData(idx);
     }
   }
+  // Note: Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
 void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
@@ -123,11 +115,13 @@ void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
   } else if (message == "reset_position") {
     auto& edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
-    if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
-      auto& state = m_entityStatesByIndex[idx];
-      const auto& hotData = edm.getHotDataByIndex(idx);
-      state.originalPosition = hotData.transform.position;
-      state.currentOffset = Vector2D(0, 0);
+    if (idx != SIZE_MAX) {
+      auto& data = edm.getBehaviorData(idx);
+      if (data.isValid()) {
+        const auto& hotData = edm.getHotDataByIndex(idx);
+        data.state.idle.originalPosition = hotData.transform.position;
+        data.state.idle.currentOffset = Vector2D(0, 0);
+      }
     }
   }
 }
@@ -186,76 +180,79 @@ std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
   return cloned;
 }
 
-void IdleBehavior::initializeEntityState(const Vector2D& position, EntityState &state) const {
-  state.originalPosition = position;
-  state.currentOffset = Vector2D(0, 0);
-  state.movementTimer = 0.0f;
-  state.turnTimer = 0.0f;
-  state.movementInterval = getRandomMovementInterval();
-  state.turnInterval = getRandomTurnInterval();
-  state.currentAngle = 0.0f;
-  state.initialized = true;
+void IdleBehavior::initializeIdleState(const Vector2D& position, BehaviorData& data) const {
+  auto& idle = data.state.idle;
+  idle.originalPosition = position;
+  idle.currentOffset = Vector2D(0, 0);
+  idle.movementTimer = 0.0f;
+  idle.turnTimer = 0.0f;
+  idle.movementInterval = getRandomMovementInterval();
+  idle.turnInterval = getRandomTurnInterval();
+  idle.currentAngle = 0.0f;
+  idle.initialized = true;
 }
 
-void IdleBehavior::updateStationary(BehaviorContext& ctx,
-                                    EntityState & /* state */) {
+void IdleBehavior::updateStationary(BehaviorContext& ctx) {
   // Keep entity stationary with zero velocity
   ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateSubtleSway(BehaviorContext& ctx, EntityState &state) const {
-  state.movementTimer += ctx.deltaTime;
+void IdleBehavior::updateSubtleSway(BehaviorContext& ctx, BehaviorData& data) const {
+  auto& idle = data.state.idle;
+  idle.movementTimer += ctx.deltaTime;
 
-  if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
+  if (m_movementFrequency > 0.0f && idle.movementTimer >= idle.movementInterval) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
     ctx.transform.velocity = swayDirection * 35.0f; // Increased from 20px for world-scale movement
-    state.movementTimer = 0.0f;
-    state.movementInterval = getRandomMovementInterval();
+    idle.movementTimer = 0.0f;
+    idle.movementInterval = getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation
   // CollisionManager handles overlap resolution
 }
 
-void IdleBehavior::updateOccasionalTurn(BehaviorContext& ctx, EntityState &state) const {
-  state.turnTimer += ctx.deltaTime;
+void IdleBehavior::updateOccasionalTurn(BehaviorContext& ctx, BehaviorData& data) const {
+  auto& idle = data.state.idle;
+  idle.turnTimer += ctx.deltaTime;
 
-  if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
+  if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
     // Change facing direction
-    state.currentAngle = m_angleDistribution(m_rng);
-    state.turnTimer = 0.0f;
-    state.turnInterval = getRandomTurnInterval();
+    idle.currentAngle = m_angleDistribution(m_rng);
+    idle.turnTimer = 0.0f;
+    idle.turnInterval = getRandomTurnInterval();
 
     // Note: In a full implementation, you might set entity rotation here
-    // entity->setRotation(state.currentAngle);
+    // entity->setRotation(idle.currentAngle);
   }
 
   // Stay at original position with zero velocity
   ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateLightFidget(BehaviorContext& ctx, EntityState &state) const {
-  state.movementTimer += ctx.deltaTime;
-  state.turnTimer += ctx.deltaTime;
+void IdleBehavior::updateLightFidget(BehaviorContext& ctx, BehaviorData& data) const {
+  auto& idle = data.state.idle;
+  idle.movementTimer += ctx.deltaTime;
+  idle.turnTimer += ctx.deltaTime;
 
   // Handle movement fidgeting
-  if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
+  if (m_movementFrequency > 0.0f && idle.movementTimer >= idle.movementInterval) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
     ctx.transform.velocity = fidgetDirection * 40.0f; // Increased from 25px for world-scale fidgeting
-    state.movementTimer = 0.0f;
-    state.movementInterval = getRandomMovementInterval();
+    idle.movementTimer = 0.0f;
+    idle.movementInterval = getRandomMovementInterval();
   }
   // Keep velocity applied for smooth animation
   // CollisionManager handles overlap resolution
 
   // Handle turning
-  if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
-    state.currentAngle = m_angleDistribution(m_rng);
-    state.turnTimer = 0.0f;
-    state.turnInterval = getRandomTurnInterval();
+  if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
+    idle.currentAngle = m_angleDistribution(m_rng);
+    idle.turnTimer = 0.0f;
+    idle.turnInterval = getRandomTurnInterval();
   }
 }
 

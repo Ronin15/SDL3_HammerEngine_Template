@@ -26,6 +26,7 @@
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <array>
 #include <atomic>
 #include <future>
@@ -47,21 +48,7 @@ constexpr size_t ASSIGNMENT_QUEUE_RESERVE =
     1000; // Reserve capacity for assignment queue
 } // namespace AIConfig
 
-/**
- * @brief Behavior type enumeration for fast dispatch
- */
-enum class BehaviorType : uint8_t {
-  Wander = 0,
-  Guard = 1,
-  Patrol = 2,
-  Follow = 3,
-  Chase = 4,
-  Attack = 5,
-  Flee = 6,
-  Idle = 7,
-  Custom = 8,
-  COUNT = 9
-};
+// BehaviorType enum is defined in EntityDataManager.hpp
 
 /**
  * @brief Cache-efficient AI entity data using Structure of Arrays (SoA)
