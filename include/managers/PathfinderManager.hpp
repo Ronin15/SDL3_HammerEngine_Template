@@ -368,8 +368,12 @@ private:
         m_grid = std::move(newGrid);
     }
 
-    // Helpers
+    // Helpers - grid-passing overloads to avoid repeated getGridSnapshot() calls in hot path
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
+    void normalizeEndpoints(Vector2D& start, Vector2D& goal,
+                           const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const;
+    Vector2D clampToWorldBounds(const Vector2D& position, float margin,
+                                const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const;
 
     // INTERNAL ONLY: Synchronous pathfinding computation (used by async system)
     // DO NOT use directly - use requestPath() instead
@@ -377,6 +381,15 @@ private:
         const Vector2D& start,
         const Vector2D& goal,
         std::vector<Vector2D>& outPath,
+        bool skipNormalization = false
+    );
+
+    // Grid-passing overload for hot path optimization
+    HammerEngine::PathfindingResult findPathImmediate(
+        const Vector2D& start,
+        const Vector2D& goal,
+        std::vector<Vector2D>& outPath,
+        const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
         bool skipNormalization = false
     );
 
@@ -428,7 +441,7 @@ private:
     };
     
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
-    mutable std::mutex m_cacheMutex;
+    mutable std::shared_mutex m_cacheMutex;  // shared_mutex for concurrent reads
 
     // Optimized for high entity counts (2000-10K+ entities in demo states)
     // At 32K entries: ~3.5MB memory (acceptable overhead for large-scale scenarios)
