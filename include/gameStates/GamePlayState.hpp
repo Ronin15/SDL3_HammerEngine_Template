@@ -66,6 +66,7 @@ private:
   bool m_needsLoading{false};
 
   // Cached manager pointers for render hot path (resolved in enter())
+  EventManager* mp_eventMgr{nullptr};
   ParticleManager* mp_particleMgr{nullptr};
   WorldManager* mp_worldMgr{nullptr};
   UIManager* mp_uiMgr{nullptr};
