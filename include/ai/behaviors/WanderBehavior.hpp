@@ -94,7 +94,7 @@ private:
   };
 
   // Helper methods for executeLogic refactoring (use BehaviorContext for lock-free access)
-  void updateTimers(EntityState& state, float deltaTime);
+  void updateTimers(EntityState& state, float deltaTime, size_t edmIndex);
   bool handleStartDelay(BehaviorContext& ctx, EntityState& state);
   float calculateMoveDistance(EntityState& state, const Vector2D& position, float baseDistance);
   void applyBoundaryAvoidance(EntityState& state, const Vector2D& position);

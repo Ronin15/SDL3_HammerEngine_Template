@@ -163,6 +163,7 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
 
   // Phase 2 EDM Migration: Use handle-based target lookup
   auto& edm = EntityDataManager::Instance();
+  auto& pathData = edm.getPathData(ctx.edmIndex);  // Path state from EDM
   EntityHandle targetHandle = getTargetHandle();
 
   if (!targetHandle.isValid()) {
@@ -203,7 +204,7 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
       // Close enough - stop to prevent path spam
       ctx.transform.velocity = Vector2D(0, 0);
       ctx.transform.acceleration = Vector2D(0, 0);
-      state.progressTimer = 0.0f; // Reset progress timer
+      pathData.progressTimer = 0.0f; // Reset progress timer in EDM
       return;
     }
     // Else: too far, keep following to catch up even though player stopped
@@ -212,9 +213,9 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   // ALWAYS follow like a pet/party member - no range limits, never stop
   state.isFollowing = true;
 
-  // Increment timers (deltaTime in seconds, timers in seconds)
-  state.pathUpdateTimer += ctx.deltaTime;
-  state.progressTimer += ctx.deltaTime;
+  // Increment path timers in EDM (single source of truth)
+  pathData.pathUpdateTimer += ctx.deltaTime;
+  pathData.progressTimer += ctx.deltaTime;
   if (state.backoffTimer > 0.0f) {
     state.backoffTimer -= ctx.deltaTime; // Countdown timer
   }
@@ -223,18 +224,18 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
 
   // Stall detection: only check when not actively following a fresh path AND not intentionally stopped
   // Prevents false positives when NPCs naturally slow down near waypoints or are stopped at personal space
-  bool hasActivePath = !state.pathPoints.empty() && state.pathUpdateTimer < 2.0f;
+  bool hasActivePath = pathData.hasPath && pathData.pathUpdateTimer < 2.0f;
 
   if (!hasActivePath && !state.isStopped) {
     float speedNow = ctx.transform.velocity.length();
     const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
     const float stallTime = 0.6f; // 600ms
     if (speedNow < stallSpeed) {
-      if (state.progressTimer > stallTime) {
+      if (pathData.progressTimer > stallTime) {
         // Enter a brief backoff to reduce clumping; vary per-entity
         state.backoffTimer = 0.25f + (ctx.entityId % 400) * 0.001f; // 250-650ms
-        // Clear path and small micro-jitter to yield
-        state.pathPoints.clear(); state.currentPathIndex = 0; state.pathUpdateTimer = 0.0f;
+        // Clear path in EDM and small micro-jitter to yield
+        pathData.clear();
         std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
         float jitter = jitterDist(getThreadLocalRNG()); // ~±17deg (thread-safe)
         Vector2D v = ctx.transform.velocity; if (v.length() < 0.01f) v = Vector2D(1,0);
@@ -242,10 +243,10 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
         Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
         // Use reduced speed for stall recovery to prevent shooting off at high speed
         rotated.normalize(); ctx.transform.velocity = rotated * (m_followSpeed * 0.5f);
-        state.progressTimer = 0.0f;
+        pathData.progressTimer = 0.0f;
       }
     } else {
-      state.progressTimer = 0.0f;
+      pathData.progressTimer = 0.0f;
     }
   }
 
@@ -268,10 +269,9 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   if (distanceToDesired < ARRIVAL_RADIUS && !state.isStopped) {
     ctx.transform.velocity = Vector2D(0, 0);
     ctx.transform.acceleration = Vector2D(0, 0);
-    state.progressTimer = 0.0f;
+    pathData.progressTimer = 0.0f;
     state.isStopped = true;
-    state.pathPoints.clear();
-    state.currentPathIndex = 0;
+    pathData.clear();
     return;
   }
 
@@ -282,23 +282,21 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
     if (distanceToPlayer < m_resumeDistance) {
       ctx.transform.velocity = Vector2D(0, 0);
       ctx.transform.acceleration = Vector2D(0, 0); // Clear acceleration too
-      state.progressTimer = 0.0f;
+      pathData.progressTimer = 0.0f;
       return;
     }
     // Resuming - clear the stopped flag and any old path data
     state.isStopped = false;
-    state.pathPoints.clear();
-    state.currentPathIndex = 0;
+    pathData.clear();
   } else {
     // Moving - check if we should stop based on distance to PLAYER
     if (distanceToPlayer < m_stopDistance) {
       ctx.transform.velocity = Vector2D(0, 0);
       ctx.transform.acceleration = Vector2D(0, 0); // Clear acceleration too
-      state.progressTimer = 0.0f;
+      pathData.progressTimer = 0.0f;
       state.isStopped = true;
       // Clear path to prevent any residual path-following
-      state.pathPoints.clear();
-      state.currentPathIndex = 0;
+      pathData.clear();
       return;
     }
   }
@@ -664,57 +662,50 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& stat
 
   Vector2D currentPos = ctx.transform.position;
 
+  // Read path state from EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  auto& pathData = edm.getPathData(ctx.edmIndex);
+
   // Check if path is stale
-  bool const stale = state.pathUpdateTimer > pathTTL;
+  bool const stale = pathData.pathUpdateTimer > pathTTL;
 
   // Check if goal changed significantly
   bool goalChanged = true;
-  if (!state.pathPoints.empty()) {
-    Vector2D lastGoal = state.pathPoints.back();
+  if (pathData.hasPath && !pathData.navPath.empty()) {
+    Vector2D lastGoal = pathData.navPath.back();
     // Use squared distance for performance
     goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
   }
 
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
-  bool const stuckOnObstacle = (state.progressTimer > 0.8f);
+  bool const stuckOnObstacle = (pathData.progressTimer > 0.8f);
 
-  // Request new path if needed
+  // Request new path if needed - result written directly to EDM
   if (stale || goalChanged || stuckOnObstacle) {
-    auto& pf = this->pathfinder();
-    size_t edmIndex = ctx.edmIndex;
-    pf.requestPath(ctx.entityId, currentPos, desiredPos, PathfinderManager::Priority::Normal,
-      [this, edmIndex](EntityID, const std::vector<Vector2D>& path) {
-        // Use captured edmIndex for contention-free vector access
-        if (edmIndex < m_entityStatesByIndex.size() &&
-            m_entityStatesByIndex[edmIndex].valid && !path.empty()) {
-          auto& state = m_entityStatesByIndex[edmIndex];
-          state.pathPoints = path;
-          state.currentPathIndex = 0;
-          state.pathUpdateTimer = 0.0f;
-        }
-      });
+    pathfinder().requestPathToEDM(ctx.edmIndex, currentPos, desiredPos,
+                                  PathfinderManager::Priority::Normal);
   }
 
-  // Try to follow the path (inline path-following logic to avoid EntityPtr dependency)
+  // Try to follow the path from EDM
   bool pathStep = false;
-  if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-    Vector2D waypoint = state.pathPoints[state.currentPathIndex];
+  if (pathData.isFollowingPath()) {
+    Vector2D waypoint = pathData.getCurrentWaypoint();
     Vector2D toWaypoint = waypoint - currentPos;
     float dist = toWaypoint.length();
 
     if (dist < nodeRadius) {
-      state.currentPathIndex++;
-      if (state.currentPathIndex < state.pathPoints.size()) {
-        waypoint = state.pathPoints[state.currentPathIndex];
+      pathData.advanceWaypoint();
+      if (pathData.isFollowingPath()) {
+        waypoint = pathData.getCurrentWaypoint();
         toWaypoint = waypoint - currentPos;
         dist = toWaypoint.length();
       }
     }
 
-    if (state.currentPathIndex < state.pathPoints.size() && dist > 0.001f) {
+    if (pathData.isFollowingPath() && dist > 0.001f) {
       Vector2D direction = toWaypoint / dist;
       ctx.transform.velocity = direction * speed;
-      state.progressTimer = 0.0f;
+      pathData.progressTimer = 0.0f;
       pathStep = true;
     }
   }

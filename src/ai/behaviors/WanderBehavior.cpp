@@ -76,7 +76,6 @@ void WanderBehavior::init(EntityHandle handle) {
   state.startDelay = s_delayDistribution(getSharedRNG()) / 1000.0f;
   state.movementStarted = false;
 
-  state.baseState.pathPoints.reserve(20);
   state.baseState.cachedNearbyPositions.reserve(50);
 
   // Initialize direction
@@ -98,8 +97,8 @@ void WanderBehavior::executeLogic(BehaviorContext& ctx) {
     return;
   }
 
-  // Update all timers
-  updateTimers(state, ctx.deltaTime);
+  // Update all timers (including EDM path timers)
+  updateTimers(state, ctx.deltaTime, ctx.edmIndex);
 
   // Check if we need to start movement after delay
   if (!handleStartDelay(ctx, state)) {
@@ -112,16 +111,19 @@ void WanderBehavior::executeLogic(BehaviorContext& ctx) {
   }
 }
 
-void WanderBehavior::updateTimers(EntityState& state, float deltaTime) {
+void WanderBehavior::updateTimers(EntityState& state, float deltaTime, size_t edmIndex) {
   state.directionChangeTimer += deltaTime;
   state.lastDirectionFlip += deltaTime;
-  state.baseState.pathUpdateTimer += deltaTime;
-  state.baseState.progressTimer += deltaTime;
   state.stallTimer += deltaTime;
   state.unstickTimer += deltaTime;
-  state.baseState.lastCrowdAnalysis += deltaTime;
-  if (state.baseState.pathRequestCooldown > 0.0f) {
-    state.baseState.pathRequestCooldown -= deltaTime;
+
+  // Update path timers in EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  auto& pathData = edm.getPathData(edmIndex);
+  pathData.pathUpdateTimer += deltaTime;
+  pathData.progressTimer += deltaTime;
+  if (pathData.pathRequestCooldown > 0.0f) {
+    pathData.pathRequestCooldown -= deltaTime;
   }
 }
 
@@ -216,42 +218,34 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, EntityState& 
     return;
   }
 
-  bool needsNewPath = state.baseState.pathPoints.empty() ||
-                     state.baseState.currentPathIndex >= state.baseState.pathPoints.size() ||
-                     state.baseState.pathUpdateTimer > 15.0f;
+  // Read path state from EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  auto& pathData = edm.getPathData(ctx.edmIndex);
 
-  bool stuckOnObstacle = state.baseState.progressTimer > 0.8f;
+  bool needsNewPath = !pathData.hasPath ||
+                     pathData.navIndex >= pathData.navPath.size() ||
+                     pathData.pathUpdateTimer > 15.0f;
+
+  bool stuckOnObstacle = pathData.progressTimer > 0.8f;
   if (stuckOnObstacle) {
-    state.baseState.pathPoints.clear();
-    state.baseState.currentPathIndex = 0;
+    pathData.clear();
   }
 
-  if ((needsNewPath || stuckOnObstacle) && state.baseState.pathRequestCooldown <= 0.0f) {
+  if ((needsNewPath || stuckOnObstacle) && pathData.pathRequestCooldown <= 0.0f) {
     const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance;
     bool goalChanged = true;
-    if (!state.baseState.pathPoints.empty()) {
-      Vector2D lastGoal = state.baseState.pathPoints.back();
+    if (pathData.hasPath && !pathData.navPath.empty()) {
+      Vector2D lastGoal = pathData.navPath.back();
       float const goalDistanceSquared = (dest - lastGoal).lengthSquared();
       goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);
     }
 
     if (goalChanged) {
-      auto self = std::static_pointer_cast<WanderBehavior>(shared_from_this());
-      size_t edmIndex = ctx.edmIndex;
-      pathfinder().requestPath(
-          ctx.entityId, position, dest,
-          PathfinderManager::Priority::Normal,
-          [self, edmIndex](EntityID, const std::vector<Vector2D>& path) {
-            // Use captured edmIndex for contention-free vector access
-            if (edmIndex < self->m_entityStatesByIndex.size() &&
-                self->m_entityStatesByIndex[edmIndex].valid && !path.empty()) {
-              auto& state = self->m_entityStatesByIndex[edmIndex];
-              state.baseState.pathPoints = path;
-              state.baseState.currentPathIndex = 0;
-              state.baseState.pathUpdateTimer = 0.0f;
-            }
-          });
-      state.baseState.pathRequestCooldown = m_config.pathRequestCooldown;
+      // Use EDM-integrated async pathfinding - no callback needed
+      // Result written directly to EDM::getPathData(edmIndex)
+      pathfinder().requestPathToEDM(ctx.edmIndex, position, dest,
+                                    PathfinderManager::Priority::Normal);
+      pathData.pathRequestCooldown = m_config.pathRequestCooldown;
     }
   }
 }
@@ -271,16 +265,20 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, EntityState& state) {
 
   handlePathfinding(ctx, state, dest);
 
+  // Read path state from EDM (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  auto& pathData = edm.getPathData(ctx.edmIndex);
+
   // Follow path or apply base movement - write directly to transform
-  if (!state.baseState.pathPoints.empty() && state.baseState.currentPathIndex < state.baseState.pathPoints.size()) {
-    Vector2D waypoint = state.baseState.pathPoints[state.baseState.currentPathIndex];
+  if (pathData.isFollowingPath()) {
+    Vector2D waypoint = pathData.getCurrentWaypoint();
     Vector2D toWaypoint = waypoint - position;
     float dist = toWaypoint.length();
 
-    if (dist < state.baseState.navRadius) {
-      state.baseState.currentPathIndex++;
-      if (state.baseState.currentPathIndex < state.baseState.pathPoints.size()) {
-        waypoint = state.baseState.pathPoints[state.baseState.currentPathIndex];
+    if (dist < 64.0f) {  // navRadius
+      pathData.advanceWaypoint();
+      if (pathData.isFollowingPath()) {
+        waypoint = pathData.getCurrentWaypoint();
         toWaypoint = waypoint - position;
         dist = toWaypoint.length();
       }
@@ -301,11 +299,9 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, EntityState& state) {
 
   if (speed < stallSpeed) {
     if (state.stallTimer >= stallSeconds) {
-      state.baseState.pathPoints.clear();
-      state.baseState.currentPathIndex = 0;
-      state.baseState.pathUpdateTimer = 0.0f;
+      pathData.clear();
       chooseNewDirection(ctx, state);
-      state.baseState.pathRequestCooldown = 0.6f;
+      pathData.pathRequestCooldown = 0.6f;
       state.stallTimer = 0.0f;
       return;
     }

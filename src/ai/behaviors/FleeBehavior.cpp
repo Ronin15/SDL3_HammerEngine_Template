@@ -103,6 +103,9 @@ void FleeBehavior::init(EntityHandle handle) {
 void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     if (!isActive()) return;
 
+    // Get EDM reference early for path state and threat lookups
+    auto& edm = EntityDataManager::Instance();
+
     // Get state by EDM index (contention-free vector access)
     if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
         return;
@@ -117,11 +120,14 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     state.directionChangeTimer += ctx.deltaTime;
     if (state.panicTimer > 0.0f) state.panicTimer -= ctx.deltaTime;
     state.zigzagTimer += ctx.deltaTime;
-    state.pathUpdateTimer += ctx.deltaTime;
-    state.progressTimer += ctx.deltaTime;
-    if (state.pathCooldown > 0.0f) state.pathCooldown -= ctx.deltaTime;
     if (state.backoffTimer > 0.0f) state.backoffTimer -= ctx.deltaTime;
     state.lastCrowdAnalysis += ctx.deltaTime;
+
+    // Update EDM path timers (single source of truth for path state)
+    auto& pathData = edm.getPathData(ctx.edmIndex);
+    pathData.pathUpdateTimer += ctx.deltaTime;
+    pathData.progressTimer += ctx.deltaTime;
+    if (pathData.pathRequestCooldown > 0.0f) pathData.pathRequestCooldown -= ctx.deltaTime;
 
     // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
     // Reduces CollisionManager queries significantly for fleeing entities
@@ -133,9 +139,6 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
           ctx.entityId, position, queryRadius, state.cachedNearbyPositions);
       state.lastCrowdAnalysis = 0.0f; // Reset timer
     }
-
-    // Phase 2 EDM Migration: Use handle-based threat lookup
-    auto& edm = EntityDataManager::Instance();
     EntityHandle threatHandle = getThreatHandle();
 
     if (!threatHandle.isValid()) {
@@ -228,8 +231,13 @@ void FleeBehavior::clean(EntityHandle handle) {
     if (handle.isValid()) {
         auto& edm = EntityDataManager::Instance();
         size_t idx = edm.getIndex(handle);
-        if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size()) {
-            m_entityStatesByIndex[idx].valid = false;
+        if (idx != SIZE_MAX) {
+            // Clear EDM path state
+            edm.clearPathData(idx);
+
+            if (idx < m_entityStatesByIndex.size()) {
+                m_entityStatesByIndex[idx].valid = false;
+            }
         }
     } else {
         // Clear all states
@@ -665,7 +673,7 @@ float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
     return modifier;
 }
 
-// OPTIMIZATION: Extracted from lambda for better compiler optimization
+// OPTIMIZATION: Uses EDM path state for per-entity isolation and no shared_from_this() overhead
 // This method handles path-following logic with TTL and no-progress checks
 bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& goal, float speed) {
     // PERFORMANCE: Increase TTL to reduce pathfinding frequency
@@ -675,67 +683,56 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state,
 
     Vector2D currentPos = ctx.transform.position;
 
+    // Read path state from EDM (single source of truth, per-entity isolation)
+    auto& edm = EntityDataManager::Instance();
+    auto& pathData = edm.getPathData(ctx.edmIndex);
+
     // Check if path needs refresh
-    bool needRefresh = state.pathPoints.empty() || state.currentPathIndex >= state.pathPoints.size();
+    bool needRefresh = !pathData.hasPath || pathData.navIndex >= pathData.navPath.size();
 
     // Check for progress towards current waypoint
-    if (!needRefresh && state.currentPathIndex < state.pathPoints.size()) {
-        float d = (state.pathPoints[state.currentPathIndex] - currentPos).length();
-        if (d + 1.0f < state.lastNodeDistance) {
-            state.lastNodeDistance = d;
-            state.progressTimer = 0.0f;
-        } else if (state.progressTimer > noProgressWindow) {
+    if (!needRefresh && pathData.isFollowingPath()) {
+        float d = (pathData.navPath[pathData.navIndex] - currentPos).length();
+        if (d + 1.0f < pathData.lastNodeDistance) {
+            pathData.lastNodeDistance = d;
+            pathData.progressTimer = 0.0f;
+        } else if (pathData.progressTimer > noProgressWindow) {
             needRefresh = true;
         }
     }
 
     // Check if path is stale
-    if (state.pathUpdateTimer > pathTTL) {
+    if (pathData.pathUpdateTimer > pathTTL) {
         needRefresh = true;
     }
 
     // Request new path if needed and cooldown allows
-    if (needRefresh && state.pathCooldown <= 0.0f) {
+    if (needRefresh && pathData.pathRequestCooldown <= 0.0f) {
         // Gate refresh on significant goal change to avoid thrash
         bool goalChanged = true;
-        if (!state.pathPoints.empty()) {
-            Vector2D lastGoal = state.pathPoints.back();
+        if (pathData.hasPath && !pathData.navPath.empty()) {
+            Vector2D lastGoal = pathData.navPath.back();
             goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
         }
 
         // Only request new path if goal changed significantly
         if (goalChanged) {
-            // Use PathfinderManager for pathfinding requests
+            // EDM-integrated async pathfinding - result written directly to EDM
             auto& pf = this->pathfinder();
-            auto self = std::static_pointer_cast<FleeBehavior>(shared_from_this());
-            size_t edmIndex = ctx.edmIndex;
-            pf.requestPath(
-                ctx.entityId,
+            pf.requestPathToEDM(
+                ctx.edmIndex,
                 pf.clampToWorldBounds(currentPos, 100.0f),
                 goal,
-                PathfinderManager::Priority::High,
-                [self, edmIndex](EntityID, const std::vector<Vector2D>& path) {
-                    // Use captured edmIndex for contention-free vector access
-                    if (edmIndex < self->m_entityStatesByIndex.size() &&
-                        self->m_entityStatesByIndex[edmIndex].valid && !path.empty()) {
-                        auto& state = self->m_entityStatesByIndex[edmIndex];
-                        state.pathPoints = path;
-                        state.currentPathIndex = 0;
-                        state.pathUpdateTimer = 0.0f;
-                        state.lastNodeDistance = std::numeric_limits<float>::infinity();
-                        state.progressTimer = 0.0f;
-                        state.pathCooldown = 0.8f;
-                    }
-                });
+                PathfinderManager::Priority::High);
 
-            // Apply cooldown to prevent spam (async path not ready yet)
-            state.pathCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
+            // Apply cooldown to prevent spam
+            pathData.pathRequestCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
         }
     }
 
-    // Follow existing path if available
-    if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
-        Vector2D node = state.pathPoints[state.currentPathIndex];
+    // Follow existing path if available (using EDM path state)
+    if (pathData.isFollowingPath()) {
+        Vector2D node = pathData.getCurrentWaypoint();
         Vector2D dir = node - currentPos;
         float const len = dir.length();
 
@@ -745,10 +742,8 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state,
         }
 
         // Check if reached current waypoint
-        if ((node - currentPos).length() <= state.navRadius) {
-            ++state.currentPathIndex;
-            state.lastNodeDistance = std::numeric_limits<float>::infinity();
-            state.progressTimer = 0.0f;
+        if (len <= state.navRadius) {
+            pathData.advanceWaypoint();
         }
 
         return true;
