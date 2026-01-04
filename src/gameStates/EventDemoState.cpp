@@ -312,7 +312,6 @@ bool EventDemoState::exit() {
   ParticleManager &particleMgr = ParticleManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
-  EventManager &eventMgr = *mp_eventMgr;
 
   try {
     if (m_transitioningToLoading) {
@@ -341,7 +340,7 @@ bool EventDemoState::exit() {
       unregisterEventHandlers();
 
       // Remove all events from EventManager
-      eventMgr.clearAllEvents();
+      mp_eventMgr->clearAllEvents();
 
       // Clean up managers (same as full exit)
       aiMgr.prepareForStateTransition();
@@ -401,7 +400,7 @@ bool EventDemoState::exit() {
     unregisterEventHandlers();
 
     // Remove all events from EventManager
-    eventMgr.clearAllEvents();
+    mp_eventMgr->clearAllEvents();
 
     // Optional: leave global handlers intact for other states; no blanket clear here
 
