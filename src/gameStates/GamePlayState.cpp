@@ -342,15 +342,18 @@ bool GamePlayState::exit() {
     m_transitioningToLoading = false;
 
     // Clean up managers (same as full exit)
+    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
+    // Pending path tasks hold captured edmIndex values - they must complete or
+    // see the transition flag before EDM clears its data
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
     aiMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
-    }
-
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
     }
 
     if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -383,17 +386,19 @@ bool GamePlayState::exit() {
   // Full exit (going to main menu, other states, or shutting down)
 
   // Use manager prepareForStateTransition methods for deterministic cleanup
+  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
+  // Pending path tasks hold captured edmIndex values - they must complete or
+  // see the transition flag before EDM clears its data
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
   aiMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
 
   // Clean collision state before other systems
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
-  }
-
-  // Clean pathfinding state for fresh start
-  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-    pathfinderMgr.prepareForStateTransition();
   }
 
   // Simple particle cleanup
