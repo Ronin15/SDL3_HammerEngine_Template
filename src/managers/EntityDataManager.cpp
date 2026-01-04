@@ -222,6 +222,8 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
+        // Pre-allocate PathData to match - avoids concurrent resize during AI processing
+        m_pathData.emplace_back();
     }
 
     m_tierIndicesDirty = true;
@@ -1296,10 +1298,9 @@ bool EntityDataManager::hasPathData(size_t index) const noexcept {
 }
 
 void EntityDataManager::ensurePathData(size_t index) {
-    if (index >= m_pathData.size()) {
-        // Grow to accommodate index, leaving room for future entities
-        m_pathData.resize(std::max(index + 1, m_pathData.size() * 2 + 16));
-    }
+    // PathData is pre-allocated in allocateSlot() to avoid concurrent resize issues.
+    // This check should never trigger during normal operation.
+    assert(index < m_pathData.size() && "PathData not pre-allocated for index - allocation bug");
 }
 
 void EntityDataManager::clearPathData(size_t index) {
