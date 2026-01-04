@@ -118,6 +118,7 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_entity_data_manager_tests.sh"
   "$SCRIPT_DIR/run_ai_manager_edm_integration_tests.sh"
   "$SCRIPT_DIR/run_collision_manager_edm_integration_tests.sh"
+  "$SCRIPT_DIR/run_pathfinder_manager_edm_integration_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)

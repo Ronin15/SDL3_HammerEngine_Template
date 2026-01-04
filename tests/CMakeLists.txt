@@ -98,6 +98,7 @@ set(MOCK_TESTS
     day_night_controller_tests
     controller_registry_tests
     ai_manager_edm_integration_tests
+    pathfinder_manager_edm_integration_tests
 )
 
 # Tests that need special mock combinations
@@ -249,6 +250,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/ControllerRegistryTests.cpp")
     elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
         set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")
+        set(test_source "managers/PathfinderManagerEDMIntegrationTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
