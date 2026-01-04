@@ -490,11 +490,11 @@ std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
 
 EntityHandle GuardBehavior::detectThreat(const BehaviorContext& ctx,
                                          const EntityState &state) const {
-  const auto& aiMgr = AIManager::Instance();
-  if (!aiMgr.isPlayerValid())
+  // Use cached player info from context (lock-free, cached once per frame)
+  if (!ctx.playerValid)
     return EntityHandle{};
 
-  Vector2D threatPos = aiMgr.getPlayerPosition();
+  Vector2D threatPos = ctx.playerPosition;
 
   // Check if threat is in detection range
   float distance = (ctx.transform.position - threatPos).length();
@@ -512,7 +512,7 @@ EntityHandle GuardBehavior::detectThreat(const BehaviorContext& ctx,
     }
   }
 
-  return aiMgr.getPlayerHandle();
+  return ctx.playerHandle;
 }
 
 bool GuardBehavior::isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const {
@@ -582,8 +582,8 @@ void GuardBehavior::handleThreatDetection(BehaviorContext& ctx, EntityState &sta
   if (!threat.isValid())
     return;
 
-  // Get threat position from AIManager (which reads from EDM)
-  Vector2D threatPos = AIManager::Instance().getPlayerPosition();
+  // Use cached player position from context (lock-free)
+  Vector2D threatPos = ctx.playerPosition;
   state.lastKnownThreatPosition = threatPos;
 
   // React based on alert level

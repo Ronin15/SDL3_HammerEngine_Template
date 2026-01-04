@@ -161,19 +161,17 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
     return;
   }
 
-  // Phase 2 EDM Migration: Use handle-based target lookup
+  // Use cached player info from context (lock-free, cached once per frame)
   auto& edm = EntityDataManager::Instance();
   auto& pathData = edm.getPathData(ctx.edmIndex);  // Path state from EDM
-  EntityHandle targetHandle = getTargetHandle();
 
-  if (!targetHandle.isValid()) {
+  if (!ctx.playerValid) {
     // No target, stop following
-    AI_ERROR(std::format("FollowBehavior: No target found for entity {}", ctx.entityId));
     state.isFollowing = false;
     return;
   }
 
-  size_t targetIdx = edm.getIndex(targetHandle);
+  size_t targetIdx = edm.getIndex(ctx.playerHandle);
   if (targetIdx == SIZE_MAX) {
     state.isFollowing = false;
     return;
@@ -181,7 +179,7 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
 
   auto& targetHotData = edm.getHotDataByIndex(targetIdx);
   Vector2D currentPos = ctx.transform.position;
-  Vector2D targetPos = targetHotData.transform.position;
+  Vector2D targetPos = ctx.playerPosition;  // Use cached position
 
   // Update target movement tracking (velocity-based, no delay)
   Vector2D targetVel = targetHotData.transform.velocity;

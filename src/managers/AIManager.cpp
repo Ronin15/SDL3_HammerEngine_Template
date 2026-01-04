@@ -279,6 +279,23 @@ void AIManager::update(float deltaTime) {
       }
     }
 
+    // OPTIMIZATION: Cache player info ONCE per frame (not per behavior call)
+    // This eliminates shared_lock contention in getPlayerHandle()/getPlayerPosition()
+    EntityHandle cachedPlayerHandle;
+    Vector2D cachedPlayerPosition;
+    bool cachedPlayerValid = false;
+    {
+      std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
+      cachedPlayerHandle = m_playerHandle;
+      cachedPlayerValid = m_playerHandle.isValid();
+      if (cachedPlayerValid) {
+        size_t playerIdx = edm.getIndex(m_playerHandle);
+        if (playerIdx != SIZE_MAX) {
+          cachedPlayerPosition = edm.getTransformByIndex(playerIdx).position;
+        }
+      }
+    }
+
     // Determine threading strategy based on threshold and WorkerBudget
     bool useThreading = (entityCount >= m_threadingThreshold.load(std::memory_order_acquire) &&
                          m_useThreading.load(std::memory_order_acquire) &&
@@ -306,7 +323,8 @@ void AIManager::update(float deltaTime) {
         AI_DEBUG(std::format("Queue pressure detected ({}/{}), using single-threaded processing",
                              queueSize, queueCapacity));
 
-        processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight);
+        processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight,
+                     cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
       } else {
         // Use centralized WorkerBudgetManager for smart worker allocation
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -325,7 +343,8 @@ void AIManager::update(float deltaTime) {
 
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
-          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight);
+          processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight,
+                       cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
         } else {
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
@@ -347,9 +366,11 @@ void AIManager::update(float deltaTime) {
             // Submit each batch with future for completion tracking
             // processBatch acquires shared_lock internally for thread-safe read access
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
-              [this, start, end, deltaTime, worldWidth, worldHeight]() -> void {
+              [this, start, end, deltaTime, worldWidth, worldHeight,
+               cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid]() -> void {
                 try {
-                  processBatch(m_activeIndicesBuffer, start, end, deltaTime, worldWidth, worldHeight);
+                  processBatch(m_activeIndicesBuffer, start, end, deltaTime, worldWidth, worldHeight,
+                               cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
@@ -367,7 +388,8 @@ void AIManager::update(float deltaTime) {
 
     } else {
       // Single-threaded processing (threading disabled in config)
-      processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight);
+      processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight,
+                   cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
     }
 
     // Process lock-free message queue
@@ -854,7 +876,8 @@ AIManager::inferBehaviorType(const std::string &behaviorName) const {
 void AIManager::processBatch(const std::vector<size_t>& activeIndices,
                              size_t start, size_t end,
                              float deltaTime,
-                             float worldWidth, float worldHeight) {
+                             float worldWidth, float worldHeight,
+                             EntityHandle playerHandle, const Vector2D& playerPos, bool playerValid) {
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
   size_t batchExecutions = 0;
@@ -884,7 +907,8 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
 
       // Execute behavior logic using handle ID and EDM index for contention-free state access
       EntityHandle handle = edm.getHandle(edmIdx);
-      BehaviorContext ctx(transform, edmHotData, handle.getId(), edmIdx, deltaTime);
+      BehaviorContext ctx(transform, edmHotData, handle.getId(), edmIdx, deltaTime,
+                          playerHandle, playerPos, playerValid);
       behavior->executeLogic(ctx);
 
       // Movement integration

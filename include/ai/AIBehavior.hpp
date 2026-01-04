@@ -32,8 +32,18 @@ struct BehaviorContext {
     size_t edmIndex;               // EDM index for vector-based state storage (contention-free)
     float deltaTime;
 
+    // Player info cached once per update batch - avoids lock contention in behaviors
+    EntityHandle playerHandle;     // Cached player handle (no lock needed)
+    Vector2D playerPosition;       // Cached player position (no lock needed)
+    bool playerValid{false};       // Whether player is valid this frame
+
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
+
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
+                    EntityHandle pHandle, const Vector2D& pPos, bool pValid)
+        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
+          playerHandle(pHandle), playerPosition(pPos), playerValid(pValid) {}
 };
 
 #include <string>

@@ -139,9 +139,9 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
           ctx.entityId, position, queryRadius, state.cachedNearbyPositions);
       state.lastCrowdAnalysis = 0.0f; // Reset timer
     }
-    EntityHandle threatHandle = getThreatHandle();
 
-    if (!threatHandle.isValid()) {
+    // Use cached player info from context (lock-free, cached once per frame)
+    if (!ctx.playerValid) {
         // No threat detected, stop fleeing and recover stamina
         if (state.isFleeing) {
             state.isFleeing = false;
@@ -155,19 +155,8 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
         return;
     }
 
-    size_t threatIdx = edm.getIndex(threatHandle);
-    if (threatIdx == SIZE_MAX) {
-        if (state.isFleeing) {
-            state.isFleeing = false;
-            state.isInPanic = false;
-            state.hasValidThreat = false;
-        }
-        return;
-    }
-
-    auto& threatHotData = edm.getHotDataByIndex(threatIdx);
-    // Check if threat is in detection range
-    Vector2D threatPos = threatHotData.transform.position;
+    // Check if threat is in detection range (use cached player position)
+    Vector2D threatPos = ctx.playerPosition;
     float distanceToThreatSquared = (ctx.transform.position - threatPos).lengthSquared();
     float const detectionRangeSquared = m_detectionRange * m_detectionRange;
     bool threatInRange = (distanceToThreatSquared <= detectionRangeSquared);

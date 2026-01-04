@@ -375,7 +375,8 @@ private:
   void processBatch(const std::vector<size_t>& activeIndices,
                     size_t start, size_t end,
                     float deltaTime,
-                    float worldWidth, float worldHeight);
+                    float worldWidth, float worldHeight,
+                    EntityHandle playerHandle, const Vector2D& playerPos, bool playerValid);
   static uint64_t getCurrentTimeNanos();
 
   // Lock-free message queue
