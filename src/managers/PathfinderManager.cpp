@@ -156,7 +156,7 @@ void PathfinderManager::prepareForStateTransition() {
         return;
     }
 
-    // CRITICAL: Wait for any running grid rebuild tasks to complete BEFORE clearing data
+    // Wait for any running grid rebuild tasks to complete BEFORE clearing data
     // This prevents async tasks from accessing deleted world data during state transitions
     waitForGridRebuildCompletion();
 
@@ -188,18 +188,18 @@ void PathfinderManager::prepareForStateTransition() {
 
     // Reset collision version tracking
     m_lastCollisionVersion.store(0);
-    
+
     // Keep grid instance but invalidate any cached data within it
     // Grid will be rebuilt when needed by new state
     if (getGridSnapshot()) {
         // Clear any temporary weight fields that might be state-specific
         clearWeightFields();
     }
-    
+
     // Re-subscribe to events to ensure fresh event handlers for new state
     unsubscribeFromEvents();
     subscribeToEvents();
-    
+
     PATHFIND_INFO("PathfinderManager state transition complete - cleared transient data, kept manager initialized");
 }
 
@@ -351,7 +351,7 @@ uint64_t PathfinderManager::requestPathToEDM(
         // Cache lookup (shared_lock allows concurrent readers)
         {
             std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
-            if (m_isShutdown) return;  // Double-check after acquiring lock
+            if (m_isShutdown) return;
             auto it = m_pathCache.find(cacheKey);
             if (it != m_pathCache.end()) {
                 path = it->second.path;

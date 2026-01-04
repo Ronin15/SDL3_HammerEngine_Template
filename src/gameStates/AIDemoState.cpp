@@ -348,15 +348,18 @@ bool AIDemoState::exit() {
     }
 
     // Now safe to clear manager state
+    // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
+    // Pending path tasks hold captured edmIndex values - they must complete or
+    // see the transition flag before EDM clears its data
+    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+      pathfinderMgr.prepareForStateTransition();
+    }
+
     aiMgr.prepareForStateTransition();
     edm.prepareForStateTransition();
 
     if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
       collisionMgr.prepareForStateTransition();
-    }
-
-    if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-      pathfinderMgr.prepareForStateTransition();
     }
 
     // Clean up camera
@@ -399,17 +402,19 @@ bool AIDemoState::exit() {
   }
 
   // Now safe to clear manager state
+  // CRITICAL: PathfinderManager MUST be cleaned BEFORE EDM
+  // Pending path tasks hold captured edmIndex values - they must complete or
+  // see the transition flag before EDM clears its data
+  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
+    pathfinderMgr.prepareForStateTransition();
+  }
+
   aiMgr.prepareForStateTransition();
   edm.prepareForStateTransition();
 
   // Clean collision state
   if (collisionMgr.isInitialized() && !collisionMgr.isShutdown()) {
     collisionMgr.prepareForStateTransition();
-  }
-
-  // Clean pathfinding state for fresh start
-  if (pathfinderMgr.isInitialized() && !pathfinderMgr.isShutdown()) {
-    pathfinderMgr.prepareForStateTransition();
   }
 
   // Clean up camera first to stop world rendering

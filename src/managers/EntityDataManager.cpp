@@ -184,6 +184,14 @@ void EntityDataManager::prepareForStateTransition() {
     m_backgroundIndices.clear();
     m_hibernatedIndices.clear();
 
+    // CRITICAL: Clear ALL cached indices to prevent stale access
+    // Each cached index vector can cause crashes if not cleared
+    m_activeCollisionIndices.clear();
+    m_activeCollisionDirty = true;
+
+    m_triggerDetectionIndices.clear();
+    m_triggerDetectionDirty = true;
+
     for (auto& kindVec : m_kindIndices) {
         kindVec.clear();
     }
