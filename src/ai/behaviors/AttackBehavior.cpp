@@ -19,6 +19,8 @@ AttackBehavior::AttackBehavior(float attackRange, float attackDamage,
                                float attackSpeed)
     : m_attackRange(attackRange), m_attackDamage(attackDamage),
       m_attackSpeed(attackSpeed) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   m_optimalRange = attackRange * 0.8f;
   m_minimumRange = attackRange * 0.4f;
 }
@@ -67,6 +69,8 @@ void AttackBehavior::applyConfig(const HammerEngine::AttackBehaviorConfig& confi
 AttackBehavior::AttackBehavior(AttackMode mode, float attackRange,
                                float attackDamage)
     : m_attackMode(mode) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   // Create mode-specific configuration
   HammerEngine::AttackBehaviorConfig config;
 
@@ -107,13 +111,21 @@ void AttackBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  EntityHandle::IDType entityId = handle.getId();
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return;
+
+  // Ensure vector is large enough for this index
+  if (idx >= m_entityStatesByIndex.size()) {
+    m_entityStatesByIndex.resize(idx + 1);
+  }
 
   // NOTE: EntityPtr cache is populated by AIManager when behavior is assigned
   // The cache is needed for helper methods during migration - will be removed later
 
-  auto &state = m_entityStates[entityId];
+  auto &state = m_entityStatesByIndex[idx];
   state = EntityState(); // Reset to default state
+  state.valid = true;
   state.currentState = AttackState::SEEKING;
   state.stateChangeTimer = 0.0f;
   state.currentHealth = state.maxHealth;
@@ -139,20 +151,12 @@ void AttackBehavior::updateTimers(EntityState& state, float deltaTime) {
   }
 }
 
-AttackBehavior::EntityState& AttackBehavior::ensureEntityState(EntityHandle::IDType entityId) {
-  auto it = m_entityStates.find(entityId);
-  if (it == m_entityStates.end()) {
-    // Create default state if not found
-    auto [insertIt, inserted] = m_entityStates.emplace(entityId, EntityState{});
-    if (!inserted) {
-      // This should never happen, but provide fallback
-      AI_ERROR("Failed to initialize entity state for AttackBehavior");
-      static EntityState fallbackState;
-      return fallbackState;
-    }
-    return insertIt->second;
-  }
-  return it->second;
+// NOTE: ensureEntityState is no longer needed - state is accessed via ctx.edmIndex
+// Keeping for compatibility but returning static fallback (should not be called on hot path)
+AttackBehavior::EntityState& AttackBehavior::ensureEntityState(EntityHandle::IDType /* entityId */) {
+  AI_ERROR("ensureEntityState called - should use ctx.edmIndex instead");
+  static EntityState fallbackState;
+  return fallbackState;
 }
 
 void AttackBehavior::updateTargetDistance(const Vector2D& entityPos, const Vector2D& targetPos, EntityState& state) {
@@ -219,9 +223,17 @@ void AttackBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  EntityState &state = ensureEntityState(ctx.entityId);
+  // Get state by EDM index (contention-free vector access)
+  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
+    return;
+  }
+  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
+  if (!state.valid) {
+    return;
+  }
 
   // Get cached EntityPtr for helper methods that still use it (attack execution, movement)
+  // TODO: Planned refactor to remove EntityPtr dependency
   auto it = m_entityPtrCache.find(ctx.entityId);
   if (it == m_entityPtrCache.end()) return;
   EntityPtr entity = it->second;
@@ -280,11 +292,17 @@ void AttackBehavior::clean(EntityHandle handle) {
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      if (idx < m_entityStatesByIndex.size()) {
+        m_entityStatesByIndex[idx].valid = false;
+      }
     }
-
-    EntityHandle::IDType entityId = handle.getId();
-    m_entityStates.erase(entityId);
-    m_entityPtrCache.erase(entityId);
+    m_entityPtrCache.erase(handle.getId());
+  } else {
+    // Clear all states
+    for (auto& state : m_entityStatesByIndex) {
+      state.valid = false;
+    }
+    m_entityPtrCache.clear();
   }
 }
 
@@ -292,11 +310,12 @@ void AttackBehavior::onMessage(EntityHandle handle, const std::string &message) 
   if (!handle.isValid())
     return;
 
-  auto it = m_entityStates.find(handle.getId());
-  if (it == m_entityStates.end())
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX || idx >= m_entityStatesByIndex.size() || !m_entityStatesByIndex[idx].valid)
     return;
 
-  EntityState &state = it->second;
+  EntityState &state = m_entityStatesByIndex[idx];
 
   if (message == "attack_target") {
     if (state.canAttack && state.hasTarget) {
@@ -420,25 +439,25 @@ void AttackBehavior::setChargeDamageMultiplier(float multiplier) {
 }
 
 bool AttackBehavior::isInCombat() const {
-  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto& pair) { return pair.second.inCombat; });
+  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto& state) { return state.valid && state.inCombat; });
 }
 
 bool AttackBehavior::isAttacking() const {
-  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto& pair) { return pair.second.currentState == AttackState::ATTACKING; });
+  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto& state) { return state.valid && state.currentState == AttackState::ATTACKING; });
 }
 
 bool AttackBehavior::canAttack() const {
-  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto& pair) { return pair.second.canAttack; });
+  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto& state) { return state.valid && state.canAttack; });
 }
 
 AttackBehavior::AttackState AttackBehavior::getCurrentAttackState() const {
-  auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
-                         [](const auto &pair) { return pair.second.inCombat; });
-  return (it != m_entityStates.end()) ? it->second.currentState
-                                      : AttackState::SEEKING;
+  auto it = std::find_if(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                         [](const auto &state) { return state.valid && state.inCombat; });
+  return (it != m_entityStatesByIndex.end()) ? it->currentState
+                                             : AttackState::SEEKING;
 }
 
 AttackBehavior::AttackMode AttackBehavior::getAttackMode() const {
@@ -446,33 +465,31 @@ AttackBehavior::AttackMode AttackBehavior::getAttackMode() const {
 }
 
 float AttackBehavior::getDistanceToTarget() const {
-  auto it = std::find_if(m_entityStates.begin(), m_entityStates.end(),
-                         [](const auto &pair) {
-                           return pair.second.hasTarget && pair.second.inCombat;
+  auto it = std::find_if(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                         [](const auto &state) {
+                           return state.valid && state.hasTarget && state.inCombat;
                          });
-  return (it != m_entityStates.end()) ? it->second.targetDistance : -1.0f;
+  return (it != m_entityStatesByIndex.end()) ? it->targetDistance : -1.0f;
 }
 
 float AttackBehavior::getLastAttackTime() const {
-  if (m_entityStates.empty())
-    return 0.0f;
-  auto it = std::max_element(m_entityStates.begin(), m_entityStates.end(),
-                             [](const auto &a, const auto &b) {
-                               return a.second.attackTimer <
-                                      b.second.attackTimer;
-                             });
-  return it->second.attackTimer;
+  float maxTime = 0.0f;
+  for (const auto& state : m_entityStatesByIndex) {
+    if (state.valid && state.attackTimer > maxTime) {
+      maxTime = state.attackTimer;
+    }
+  }
+  return maxTime;
 }
 
 int AttackBehavior::getCurrentCombo() const {
-  if (m_entityStates.empty())
-    return 0;
-  auto it =
-      std::max_element(m_entityStates.begin(), m_entityStates.end(),
-                       [](const auto &a, const auto &b) {
-                         return a.second.currentCombo < b.second.currentCombo;
-                       });
-  return it->second.currentCombo;
+  int maxCombo = 0;
+  for (const auto& state : m_entityStatesByIndex) {
+    if (state.valid && state.currentCombo > maxCombo) {
+      maxCombo = state.currentCombo;
+    }
+  }
+  return maxCombo;
 }
 
 std::shared_ptr<AIBehavior> AttackBehavior::clone() const {

@@ -60,7 +60,11 @@ public:
 
 private:
   // Entity-specific state data (must be defined before helper methods that use it)
+  // Stored in vector indexed by EDM index for contention-free multi-threaded access
   struct EntityState {
+    // Validity flag - true if this slot is in use
+    bool valid{false};
+
     // Base AI behavior state (pathfinding, separation, cooldowns, crowd cache)
     AIBehaviorState baseState;
 
@@ -97,8 +101,9 @@ private:
   void handlePathfinding(const BehaviorContext& ctx, EntityState& state, const Vector2D& dest);
   void handleMovement(BehaviorContext& ctx, EntityState& state);
 
-  // Map to store per-entity state keyed by entityId (not EntityPtr - enables lock-free access)
-  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
+  // Each thread accesses distinct indices, eliminating cache line contention
+  std::vector<EntityState> m_entityStatesByIndex;
 
   // Configuration
   HammerEngine::WanderBehaviorConfig m_config;

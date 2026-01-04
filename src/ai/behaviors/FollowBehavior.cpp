@@ -35,11 +35,15 @@ FollowBehavior::FollowBehavior(float followSpeed, float followDistance,
                                float maxDistance)
     : m_followSpeed(followSpeed), m_followDistance(followDistance),
       m_maxDistance(maxDistance) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   initializeFormationOffsets();
 }
 
 FollowBehavior::FollowBehavior(FollowMode mode, float followSpeed)
     : m_followMode(mode), m_followSpeed(followSpeed) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   initializeFormationOffsets();
 
   // Adjust parameters based on mode
@@ -79,6 +83,8 @@ FollowBehavior::FollowBehavior(const HammerEngine::FollowBehaviorConfig& config,
     , m_followDistance(config.followDistance)
     , m_maxDistance(config.catchupRange)
 {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   initializeFormationOffsets();
 
   // Mode-specific adjustments using config values
@@ -113,9 +119,15 @@ void FollowBehavior::init(EntityHandle handle) {
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX) return;
 
+  // Ensure vector is large enough for this index
+  if (idx >= m_entityStatesByIndex.size()) {
+    m_entityStatesByIndex.resize(idx + 1);
+  }
+
   auto& hotData = edm.getHotDataByIndex(idx);
-  auto &state = m_entityStates[handle.getId()];
+  auto &state = m_entityStatesByIndex[idx];
   state = EntityState(); // Reset to default state
+  state.valid = true;
 
   // Phase 2 EDM Migration: Use handle-based target lookup
   EntityHandle targetHandle = getTargetHandle();
@@ -140,14 +152,14 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  auto it = m_entityStates.find(ctx.entityId);
-  if (it == m_entityStates.end()) {
-    // State not found - this shouldn't happen as init() should be called first
-    AI_ERROR(std::format("FollowBehavior: No state found for entity {}", ctx.entityId));
+  // Get state by EDM index (contention-free vector access)
+  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
     return;
   }
-
-  EntityState &state = it->second;
+  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
+  if (!state.valid) {
+    return;
+  }
 
   // Phase 2 EDM Migration: Use handle-based target lookup
   auto& edm = EntityDataManager::Instance();
@@ -319,13 +331,22 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
 
 void FollowBehavior::clean(EntityHandle handle) {
   if (handle.isValid()) {
-    auto it = m_entityStates.find(handle.getId());
-    if (it != m_entityStates.end()) {
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
       // Release formation slot if using escort formation
       if (m_followMode == FollowMode::ESCORT_FORMATION) {
-        releaseFormationSlot(it->second.formationSlot);
+        releaseFormationSlot(m_entityStatesByIndex[idx].formationSlot);
       }
-      m_entityStates.erase(it);
+      m_entityStatesByIndex[idx].valid = false;
+    }
+  } else {
+    // Clear all states - reset valid flags
+    for (auto& state : m_entityStatesByIndex) {
+      if (state.valid && m_followMode == FollowMode::ESCORT_FORMATION) {
+        releaseFormationSlot(state.formationSlot);
+      }
+      state.valid = false;
     }
   }
 }
@@ -334,11 +355,12 @@ void FollowBehavior::onMessage(EntityHandle handle, const std::string &message) 
   if (!handle.isValid())
     return;
 
-  auto it = m_entityStates.find(handle.getId());
-  if (it == m_entityStates.end())
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX || idx >= m_entityStatesByIndex.size() || !m_entityStatesByIndex[idx].valid)
     return;
 
-  EntityState &state = it->second;
+  EntityState &state = m_entityStatesByIndex[idx];
 
   if (message == "follow_close") {
     setFollowMode(FollowMode::CLOSE_FOLLOW);
@@ -381,8 +403,8 @@ void FollowBehavior::setFollowMode(FollowMode mode) {
   m_followMode = mode;
 
   // Update all entity states for new mode
-  for (auto &pair : m_entityStates) {
-    EntityState &state = pair.second;
+  for (auto &state : m_entityStatesByIndex) {
+    if (!state.valid) continue;
     if (mode == FollowMode::ESCORT_FORMATION && state.formationSlot == 0) {
       state.formationSlot = assignFormationSlot();
     } else if (mode != FollowMode::ESCORT_FORMATION &&
@@ -403,8 +425,10 @@ void FollowBehavior::setFormationOffset(const Vector2D &offset) {
 
   // Update non-escort formation entities
   if (m_followMode != FollowMode::ESCORT_FORMATION) {
-    for (auto &pair : m_entityStates) {
-      pair.second.formationOffset = offset;
+    for (auto &state : m_entityStatesByIndex) {
+      if (state.valid) {
+        state.formationOffset = offset;
+      }
     }
   }
 }
@@ -436,15 +460,15 @@ void FollowBehavior::setPredictiveFollowing(bool enabled,
 }
 
 bool FollowBehavior::isFollowing() const {
-  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto &pair) { return pair.second.isFollowing; });
+  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto &state) { return state.valid && state.isFollowing; });
 }
 
 bool FollowBehavior::isInFormation() const {
   if (m_followMode != FollowMode::ESCORT_FORMATION)
     return true;
-  return std::all_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto &pair) { return pair.second.inFormation; });
+  return std::all_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto &state) { return !state.valid || state.inFormation; });
 }
 
 float FollowBehavior::getDistanceToTarget() const {
@@ -463,10 +487,10 @@ float FollowBehavior::getDistanceToTarget() const {
 
   // Find a following entity to calculate distance
   auto it =
-      std::find_if(m_entityStates.begin(), m_entityStates.end(),
-                   [](const auto &pair) { return pair.second.isFollowing; });
-  if (it != m_entityStates.end()) {
-    Vector2D entityDesiredPos = it->second.desiredPosition;
+      std::find_if(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                   [](const auto &state) { return state.valid && state.isFollowing; });
+  if (it != m_entityStatesByIndex.end()) {
+    Vector2D entityDesiredPos = it->desiredPosition;
     float distSquared = (entityDesiredPos - targetPos).lengthSquared();
     return std::sqrt(distSquared);
   }
@@ -657,14 +681,16 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& stat
   // Request new path if needed
   if (stale || goalChanged || stuckOnObstacle) {
     auto& pf = this->pathfinder();
+    size_t edmIndex = ctx.edmIndex;
     pf.requestPath(ctx.entityId, currentPos, desiredPos, PathfinderManager::Priority::Normal,
-      [this, entityId = ctx.entityId](EntityID, const std::vector<Vector2D>& path) {
-        // Safely look up state when callback executes
-        auto it = m_entityStates.find(entityId);
-        if (it != m_entityStates.end()) {
-          it->second.pathPoints = path;
-          it->second.currentPathIndex = 0;
-          it->second.pathUpdateTimer = 0.0f;
+      [this, edmIndex](EntityID, const std::vector<Vector2D>& path) {
+        // Use captured edmIndex for contention-free vector access
+        if (edmIndex < m_entityStatesByIndex.size() &&
+            m_entityStatesByIndex[edmIndex].valid && !path.empty()) {
+          auto& state = m_entityStatesByIndex[edmIndex];
+          state.pathPoints = path;
+          state.currentPathIndex = 0;
+          state.pathUpdateTimer = 0.0f;
         }
       });
   }

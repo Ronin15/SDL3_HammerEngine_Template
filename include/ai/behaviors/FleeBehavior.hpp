@@ -68,6 +68,9 @@ public:
 private:
   
   struct EntityState {
+    // Validity flag - true if this slot is in use
+    bool valid{false};
+
     EntityHandle handle;  // Stored for EDM lookups
     Vector2D lastThreatPosition{0, 0};
     Vector2D fleeDirection{0, 0};
@@ -119,8 +122,8 @@ private:
     SafeZone(const Vector2D &c, float r) : center(c), radius(r) {}
   };
 
-  // Map to store per-entity state
-  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
+  std::vector<EntityState> m_entityStatesByIndex;
 
   // Configuration
   HammerEngine::FleeBehaviorConfig m_config;

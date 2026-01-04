@@ -77,6 +77,9 @@ public:
 private:
   
   struct EntityState {
+    // Validity flag - true if this slot is in use
+    bool valid{false};
+
     Vector2D lastTargetPosition{0, 0};
     Vector2D currentVelocity{0, 0};
     Vector2D desiredPosition{0, 0};
@@ -109,8 +112,8 @@ private:
           separationTimer(0.0f) {}
   };
 
-  // Map to store per-entity state
-  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
+  std::vector<EntityState> m_entityStatesByIndex;
 
   // Configuration
   HammerEngine::FollowBehaviorConfig m_config;

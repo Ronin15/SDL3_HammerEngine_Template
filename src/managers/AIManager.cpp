@@ -880,9 +880,9 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
       // Store previous position for interpolation
       transform.previousPosition = transform.position;
 
-      // Execute behavior logic using handle ID from EDM
+      // Execute behavior logic using handle ID and EDM index for contention-free state access
       EntityHandle handle = edm.getHandle(edmIdx);
-      BehaviorContext ctx(transform, edmHotData, handle.getId(), deltaTime);
+      BehaviorContext ctx(transform, edmHotData, handle.getId(), edmIdx, deltaTime);
       behavior->executeLogic(ctx);
 
       // Movement integration

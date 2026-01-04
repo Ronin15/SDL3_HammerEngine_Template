@@ -15,22 +15,25 @@
 
 GuardBehavior::GuardBehavior(const Vector2D &guardPosition, float guardRadius,
                              float alertRadius)
-    : m_entityStates(),
-      m_guardMode(GuardMode::STATIC_GUARD), m_guardPosition(guardPosition),
+    : m_guardMode(GuardMode::STATIC_GUARD), m_guardPosition(guardPosition),
       m_guardRadius(guardRadius), m_alertRadius(alertRadius),
       m_movementSpeed(1.5f), m_alertSpeed(3.0f), m_patrolWaypoints(),
       m_patrolReverse(false), m_areaCenter(guardPosition), m_areaTopLeft(),
       m_areaBottomRight(), m_areaRadius(guardRadius), m_useCircularArea(false) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
 }
 
 GuardBehavior::GuardBehavior(GuardMode mode, const Vector2D &guardPosition,
                              float guardRadius)
-    : m_entityStates(), m_guardMode(mode),
+    : m_guardMode(mode),
       m_guardPosition(guardPosition), m_guardRadius(guardRadius),
       m_alertRadius(guardRadius * 1.5f), m_movementSpeed(1.5f),
       m_alertSpeed(3.0f), m_patrolWaypoints(), m_patrolReverse(false),
       m_areaCenter(guardPosition), m_areaTopLeft(), m_areaBottomRight(),
       m_areaRadius(guardRadius), m_useCircularArea(false) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   // Adjust parameters based on mode
   switch (mode) {
   case GuardMode::STATIC_GUARD:
@@ -72,6 +75,8 @@ GuardBehavior::GuardBehavior(const HammerEngine::GuardBehaviorConfig& config,
     , m_areaCenter(guardPosition)
     , m_areaRadius(config.guardRadius)
 {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   // Mode-specific adjustments using config values
   switch (mode) {
   case GuardMode::STATIC_GUARD:
@@ -102,8 +107,18 @@ void GuardBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  auto &state = m_entityStates[handle.getId()];
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX) return;
+
+  // Ensure vector is large enough for this index
+  if (idx >= m_entityStatesByIndex.size()) {
+    m_entityStatesByIndex.resize(idx + 1);
+  }
+
+  auto &state = m_entityStatesByIndex[idx];
   state = EntityState(); // Reset to default state
+  state.valid = true;
   state.assignedPosition = m_guardPosition;
   state.currentMode = m_guardMode;
   state.onDuty = true;
@@ -122,13 +137,14 @@ void GuardBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  auto it = m_entityStates.find(ctx.entityId);
-  if (it == m_entityStates.end()) {
-    // Need EntityPtr for init - this is rare (first frame only)
+  // Get state by EDM index (contention-free vector access)
+  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
     return;
   }
-
-  EntityState &state = it->second;
+  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
+  if (!state.valid) {
+    return;
+  }
 
   if (!state.onDuty) {
     return; // Guard is off duty
@@ -198,8 +214,15 @@ void GuardBehavior::clean(EntityHandle handle) {
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      if (idx < m_entityStatesByIndex.size()) {
+        m_entityStatesByIndex[idx].valid = false;
+      }
     }
-    m_entityStates.erase(handle.getId());
+  } else {
+    // Clear all states
+    for (auto& state : m_entityStatesByIndex) {
+      state.valid = false;
+    }
   }
 }
 
@@ -207,11 +230,12 @@ void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
   if (!handle.isValid())
     return;
 
-  auto it = m_entityStates.find(handle.getId());
-  if (it == m_entityStates.end())
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX || idx >= m_entityStatesByIndex.size() || !m_entityStatesByIndex[idx].valid)
     return;
 
-  EntityState &state = it->second;
+  EntityState &state = m_entityStatesByIndex[idx];
 
   if (message == "go_on_duty") {
     state.onDuty = true;
@@ -256,8 +280,10 @@ void GuardBehavior::setGuardPosition(const Vector2D &position) {
   m_areaCenter = position;
 
   // Update all entity states
-  for (auto &pair : m_entityStates) {
-    pair.second.assignedPosition = position;
+  for (auto &state : m_entityStatesByIndex) {
+    if (state.valid) {
+      state.assignedPosition = position;
+    }
   }
 }
 
@@ -276,8 +302,10 @@ void GuardBehavior::setGuardMode(GuardMode mode) {
   m_guardMode = mode;
 
   // Update all entity states
-  for (auto &pair : m_entityStates) {
-    pair.second.currentMode = mode;
+  for (auto &state : m_entityStatesByIndex) {
+    if (state.valid) {
+      state.currentMode = mode;
+    }
   }
 }
 
@@ -320,10 +348,12 @@ void GuardBehavior::setGuardArea(const Vector2D &topLeft,
 }
 
 void GuardBehavior::setAlertLevel(AlertLevel level) {
-  for (auto &pair : m_entityStates) {
-    pair.second.currentAlertLevel = level;
-    if (level > AlertLevel::CALM) {
-      pair.second.alertTimer = 0.0f;
+  for (auto &state : m_entityStatesByIndex) {
+    if (state.valid) {
+      state.currentAlertLevel = level;
+      if (level > AlertLevel::CALM) {
+        state.alertTimer = 0.0f;
+      }
     }
   }
 }
@@ -333,9 +363,10 @@ void GuardBehavior::raiseAlert(EntityHandle handle,
   if (!handle.isValid())
     return;
 
-  auto it = m_entityStates.find(handle.getId());
-  if (it != m_entityStates.end()) {
-    EntityState &state = it->second;
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
+    EntityState &state = m_entityStatesByIndex[idx];
     state.currentAlertLevel = AlertLevel::HOSTILE;
     state.alertTimer = 0.0f;
     state.lastKnownThreatPosition = alertPosition;
@@ -352,9 +383,10 @@ void GuardBehavior::clearAlert(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  auto it = m_entityStates.find(handle.getId());
-  if (it != m_entityStates.end()) {
-    EntityState &state = it->second;
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
+    EntityState &state = m_entityStatesByIndex[idx];
     state.currentAlertLevel = AlertLevel::CALM;
     state.hasActiveThreat = false;
     state.isInvestigating = false;
@@ -390,32 +422,31 @@ void GuardBehavior::setHelpCallRadius(float radius) {
 void GuardBehavior::setGuardGroup(int groupId) { m_guardGroup = groupId; }
 
 bool GuardBehavior::isOnDuty() const {
-  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto &pair) { return pair.second.onDuty; });
+  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto &state) { return state.valid && state.onDuty; });
 }
 
 bool GuardBehavior::isAlerted() const {
-  return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                     [](const auto &pair) {
-                       return pair.second.currentAlertLevel > AlertLevel::CALM;
+  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                     [](const auto &state) {
+                       return state.valid && state.currentAlertLevel > AlertLevel::CALM;
                      });
 }
 
 bool GuardBehavior::isInvestigating() const {
   return std::any_of(
-      m_entityStates.begin(), m_entityStates.end(),
-      [](const auto &pair) { return pair.second.isInvestigating; });
+      m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+      [](const auto &state) { return state.valid && state.isInvestigating; });
 }
 
 GuardBehavior::AlertLevel GuardBehavior::getCurrentAlertLevel() const {
-  if (m_entityStates.empty())
-    return AlertLevel::CALM;
-  auto it = std::max_element(m_entityStates.begin(), m_entityStates.end(),
-                             [](const auto &a, const auto &b) {
-                               return a.second.currentAlertLevel <
-                                      b.second.currentAlertLevel;
-                             });
-  return it->second.currentAlertLevel;
+  AlertLevel maxLevel = AlertLevel::CALM;
+  for (const auto& state : m_entityStatesByIndex) {
+    if (state.valid && state.currentAlertLevel > maxLevel) {
+      maxLevel = state.currentAlertLevel;
+    }
+  }
+  return maxLevel;
 }
 
 GuardBehavior::GuardMode GuardBehavior::getGuardMode() const {

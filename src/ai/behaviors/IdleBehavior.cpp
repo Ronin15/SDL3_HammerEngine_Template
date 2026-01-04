@@ -10,9 +10,9 @@
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
-    : m_entityStates(), m_idleMode(mode), m_idleRadius(idleRadius) {
-  // m_movementFrequency, m_turnFrequency, m_rng, m_angleDistribution,
-  // m_radiusDistribution, m_frequencyVariation use default initializers
+    : m_idleMode(mode), m_idleRadius(idleRadius) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
 
   // Initialize parameters based on mode with mode-specific radii
   switch (mode) {
@@ -47,8 +47,14 @@ void IdleBehavior::init(EntityHandle handle) {
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX) return;
 
+  // Ensure vector is large enough for this index
+  if (idx >= m_entityStatesByIndex.size()) {
+    m_entityStatesByIndex.resize(idx + 1);
+  }
+
   auto& hotData = edm.getHotDataByIndex(idx);
-  auto &state = m_entityStates[handle.getId()];
+  auto &state = m_entityStatesByIndex[idx];
+  state.valid = true;
   initializeEntityState(hotData.transform.position, state);
 }
 
@@ -56,15 +62,14 @@ void IdleBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  auto it = m_entityStates.find(ctx.entityId);
-  if (it == m_entityStates.end()) {
-    // Initialize state for new entity
-    auto& state = m_entityStates[ctx.entityId];
-    initializeEntityState(ctx.transform.position, state);
-    it = m_entityStates.find(ctx.entityId);
+  // Get state by EDM index (contention-free vector access)
+  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
+    return;
   }
-
-  EntityState &state = it->second;
+  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
+  if (!state.valid) {
+    return;
+  }
 
   if (!state.initialized) {
     initializeEntityState(ctx.transform.position, state);
@@ -89,7 +94,16 @@ void IdleBehavior::executeLogic(BehaviorContext& ctx) {
 
 void IdleBehavior::clean(EntityHandle handle) {
   if (handle.isValid()) {
-    m_entityStates.erase(handle.getId());
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size()) {
+      m_entityStatesByIndex[idx].valid = false;
+    }
+  } else {
+    // Clear all states
+    for (auto& state : m_entityStatesByIndex) {
+      state.valid = false;
+    }
   }
 }
 
@@ -107,15 +121,13 @@ void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
   } else if (message == "idle_fidget") {
     setIdleMode(IdleMode::LIGHT_FIDGET);
   } else if (message == "reset_position") {
-    auto it = m_entityStates.find(handle.getId());
-    if (it != m_entityStates.end()) {
-      const auto& edm = EntityDataManager::Instance();
-      size_t idx = edm.getIndex(handle);
-      if (idx != SIZE_MAX) {
-        const auto& hotData = edm.getHotDataByIndex(idx);
-        it->second.originalPosition = hotData.transform.position;
-        it->second.currentOffset = Vector2D(0, 0);
-      }
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
+      auto& state = m_entityStatesByIndex[idx];
+      const auto& hotData = edm.getHotDataByIndex(idx);
+      state.originalPosition = hotData.transform.position;
+      state.currentOffset = Vector2D(0, 0);
     }
   }
 }
