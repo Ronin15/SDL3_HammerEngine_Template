@@ -10,10 +10,10 @@
 #include "ai/BehaviorConfig.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
-#include <unordered_map>
 #include <vector>
 
 class GuardBehavior : public AIBehavior {
@@ -99,50 +99,6 @@ public:
 
 
 private:
-  
-  struct EntityState {
-    // Validity flag - true if this slot is in use
-    bool valid{false};
-
-    // Base AI behavior state (pathfinding, separation, cooldowns)
-    AIBehaviorState baseState;
-
-    // Guard-specific state
-    Vector2D assignedPosition{0, 0};
-    Vector2D lastKnownThreatPosition{0, 0};
-    Vector2D investigationTarget{0, 0};
-    Vector2D currentPatrolTarget{0, 0};
-
-    AlertLevel currentAlertLevel{AlertLevel::CALM};
-    GuardMode currentMode{GuardMode::STATIC_GUARD};
-
-    float threatSightingTimer{0.0f};
-    float alertTimer{0.0f};
-    float investigationTimer{0.0f};
-    float positionCheckTimer{0.0f};
-    float patrolMoveTimer{0.0f};
-    float alertDecayTimer{0.0f};
-
-    size_t currentPatrolIndex{0};
-    float currentHeading{0.0f};
-    bool hasActiveThreat{false};
-    bool isInvestigating{false};
-    bool returningToPost{false};
-    bool onDuty{true};
-    bool alertRaised{false};
-    bool helpCalled{false};
-
-    // Roaming state
-    Vector2D roamTarget{0, 0};
-    float roamTimer{0.0f};
-
-    EntityState() {
-      baseState.navRadius = 18.0f; // Guard-specific nav radius
-    }
-  };
-
-  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
-  std::vector<EntityState> m_entityStatesByIndex;
 
   // Configuration
   HammerEngine::GuardBehaviorConfig m_config;
@@ -197,31 +153,31 @@ private:
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed
 
-  // Helper methods - threat is player handle, positions from EDM
-  EntityHandle detectThreat(const BehaviorContext& ctx, const EntityState &state) const;
+  // Helper methods - all entity state stored in EDM BehaviorData (indexed by edmIndex)
+  EntityHandle detectThreat(const BehaviorContext& ctx, const BehaviorData& data) const;
   bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
   bool isThreatInFieldOfView(const Vector2D& entityPos, const Vector2D& threatPos,
-                             const EntityState &state) const;
+                             const BehaviorData& data) const;
   bool hasLineOfSight(const Vector2D& entityPos, const Vector2D& threatPos) const;
   float calculateThreatDistance(const Vector2D& entityPos, const Vector2D& threatPos) const;
 
-  void updateAlertLevel(EntityState &state, bool threatPresent) const;
-  void handleThreatDetection(BehaviorContext& ctx, EntityState &state, EntityHandle threat);
-  void handleInvestigation(BehaviorContext& ctx, EntityState &state);
-  void handleReturnToPost(BehaviorContext& ctx, EntityState &state);
+  void updateAlertLevel(BehaviorData& data, bool threatPresent) const;
+  void handleThreatDetection(BehaviorContext& ctx, BehaviorData& data, EntityHandle threat);
+  void handleInvestigation(BehaviorContext& ctx, BehaviorData& data);
+  void handleReturnToPost(BehaviorContext& ctx, BehaviorData& data);
 
   // Mode-specific updates
-  void updateStaticGuard(BehaviorContext& ctx, EntityState &state);
-  void updatePatrolGuard(BehaviorContext& ctx, EntityState &state);
-  void updateAreaGuard(BehaviorContext& ctx, EntityState &state);
-  void updateRoamingGuard(BehaviorContext& ctx, EntityState &state);
-  void updateAlertGuard(BehaviorContext& ctx, EntityState &state);
+  void updateStaticGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updatePatrolGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateAreaGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateRoamingGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateAlertGuard(BehaviorContext& ctx, BehaviorData& data);
 
   // Movement and positioning
   void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos, float speed,
-                           AIBehaviorState &state, int priority = 1);
-  Vector2D getNextPatrolWaypoint(const EntityState &state) const;
-  Vector2D generateRoamTarget(const EntityState &state) const;
+                           size_t edmIndex, int priority = 1);
+  Vector2D getNextPatrolWaypoint(const BehaviorData& data) const;
+  Vector2D generateRoamTarget() const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,
                     float threshold = 25.0f) const;
   bool isWithinGuardArea(const Vector2D &position) const;

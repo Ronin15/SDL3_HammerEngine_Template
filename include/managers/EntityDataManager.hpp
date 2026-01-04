@@ -328,6 +328,210 @@ struct PathData {
     }
 };
 
+/**
+ * @brief Behavior type identifiers for AI behaviors
+ */
+enum class BehaviorType : uint8_t {
+    Wander = 0,
+    Guard = 1,
+    Patrol = 2,
+    Follow = 3,
+    Chase = 4,
+    Attack = 5,
+    Flee = 6,
+    Idle = 7,
+    Custom = 8,
+    COUNT = 9,
+    None = 0xFF  // Invalid/uninitialized
+};
+
+/**
+ * @brief Compact behavior-specific state (indexed by edmIndex like PathData)
+ *
+ * Uses tagged union - only ONE behavior can be active per entity at a time.
+ * All pathfinding state is in PathData - this stores behavior-specific state only.
+ *
+ * Threading: Safe for parallel reads during AI batch processing.
+ * Each thread accesses distinct edmIndex ranges.
+ */
+struct BehaviorData {
+    // Common header (all behaviors)
+    BehaviorType behaviorType{BehaviorType::None};
+    uint8_t flags{0};
+    uint8_t _pad[2]{};
+
+    // Common separation state (used by most behaviors)
+    float separationTimer{0.0f};
+    Vector2D lastSepVelocity;
+
+    // Common crowd analysis cache
+    float lastCrowdAnalysis{0.0f};
+    int cachedNearbyCount{0};
+    Vector2D cachedClusterCenter;
+
+    static constexpr uint8_t FLAG_VALID = 0x01;
+    static constexpr uint8_t FLAG_INITIALIZED = 0x02;
+
+    // Behavior-specific state union (largest is AttackState ~140 bytes)
+    // Note: Union requires explicit constructor due to non-trivial Vector2D
+    union StateUnion {
+        // Default constructor initializes raw bytes to zero
+        StateUnion() : raw{} {}
+        struct { // WanderState (~64 bytes)
+            Vector2D currentDirection;
+            Vector2D previousVelocity;
+            Vector2D lastStallPosition;
+            float directionChangeTimer;
+            float lastDirectionFlip;
+            float startDelay;
+            float stallTimer;
+            float stallPositionVariance;
+            float unstickTimer;
+            bool movementStarted;
+            uint8_t _pad[3];
+        } wander;
+
+        struct { // IdleState (~48 bytes)
+            Vector2D originalPosition;
+            Vector2D currentOffset;
+            float movementTimer;
+            float turnTimer;
+            float movementInterval;
+            float turnInterval;
+            float currentAngle;
+            bool initialized;
+            uint8_t _pad[3];
+        } idle;
+
+        struct { // GuardState (~112 bytes)
+            Vector2D assignedPosition;
+            Vector2D lastKnownThreatPosition;
+            Vector2D investigationTarget;
+            Vector2D currentPatrolTarget;
+            Vector2D roamTarget;
+            float threatSightingTimer;
+            float alertTimer;
+            float investigationTimer;
+            float positionCheckTimer;
+            float patrolMoveTimer;
+            float alertDecayTimer;
+            float currentHeading;
+            float roamTimer;
+            uint32_t currentPatrolIndex;
+            uint8_t currentAlertLevel;  // 0=Calm, 1=Suspicious, 2=Alert, 3=Combat
+            uint8_t currentMode;
+            bool hasActiveThreat;
+            bool isInvestigating;
+            bool returningToPost;
+            bool onDuty;
+            bool alertRaised;
+            bool helpCalled;
+        } guard;
+
+        struct { // FollowState (~72 bytes)
+            Vector2D lastTargetPosition;
+            Vector2D currentVelocity;
+            Vector2D desiredPosition;
+            Vector2D formationOffset;
+            Vector2D lastSepForce;
+            float currentSpeed;
+            float currentHeading;
+            float backoffTimer;
+            int formationSlot;
+            bool isFollowing;
+            bool targetMoving;
+            bool inFormation;
+            bool isStopped;
+        } follow;
+
+        struct { // FleeState (~80 bytes)
+            Vector2D lastThreatPosition;
+            Vector2D fleeDirection;
+            Vector2D lastKnownSafeDirection;
+            float fleeTimer;
+            float directionChangeTimer;
+            float panicTimer;
+            float currentStamina;
+            float zigzagTimer;
+            float navRadius;
+            float backoffTimer;
+            int zigzagDirection;
+            bool isFleeing;
+            bool isInPanic;
+            bool hasValidThreat;
+            uint8_t _pad;
+        } flee;
+
+        struct { // AttackState (~140 bytes)
+            Vector2D lastTargetPosition;
+            Vector2D attackPosition;
+            Vector2D retreatPosition;
+            Vector2D strafeVector;
+            float attackTimer;
+            float stateChangeTimer;
+            float damageTimer;
+            float comboTimer;
+            float strafeTimer;
+            float currentHealth;
+            float maxHealth;
+            float currentStamina;
+            float targetDistance;
+            float attackChargeTime;
+            float recoveryTimer;
+            float preferredAttackAngle;
+            int currentCombo;
+            int attacksInCombo;
+            int strafeDirectionInt;
+            uint8_t currentState;  // 0=Seeking, 1=Approaching, 2=Attacking, 3=Recovering, 4=Retreating, 5=Circling
+            bool inCombat;
+            bool hasTarget;
+            bool isCharging;
+            bool isRetreating;
+            bool canAttack;
+            bool lastAttackHit;
+            bool specialAttackReady;
+            bool circleStrafing;
+            bool flanking;
+            uint8_t _pad[2];
+        } attack;
+
+        uint8_t raw[144]; // Ensure union is large enough
+    };
+
+    StateUnion state;
+
+    // Default constructor
+    BehaviorData() = default;
+
+    void clear() noexcept {
+        behaviorType = BehaviorType::None;
+        flags = 0;
+        separationTimer = 0.0f;
+        lastSepVelocity = Vector2D{};
+        lastCrowdAnalysis = 0.0f;
+        cachedNearbyCount = 0;
+        cachedClusterCenter = Vector2D{};
+        state = StateUnion{};
+    }
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+
+    void setValid(bool v) noexcept {
+        if (v) flags |= FLAG_VALID;
+        else flags &= ~FLAG_VALID;
+    }
+
+    [[nodiscard]] bool isInitialized() const noexcept { return flags & FLAG_INITIALIZED; }
+
+    void setInitialized(bool v) noexcept {
+        if (v) flags |= FLAG_INITIALIZED;
+        else flags &= ~FLAG_INITIALIZED;
+    }
+};
+
+// Ensure BehaviorData fits in ~200 bytes (3 cache lines)
+static_assert(sizeof(BehaviorData) <= 200, "BehaviorData exceeds 200 bytes");
+
 // ============================================================================
 // ENTITY DATA MANAGER
 // ============================================================================
@@ -700,6 +904,38 @@ public:
     void clearPathData(size_t index);
 
     // ========================================================================
+    // BEHAVIOR DATA ACCESS (for AI behaviors - indexed by edmIndex)
+    // ========================================================================
+
+    /**
+     * @brief Get behavior data by EDM index
+     * @param index EDM index from getActiveIndices()
+     * @return BehaviorData for the entity
+     */
+    [[nodiscard]] BehaviorData& getBehaviorData(size_t index);
+    [[nodiscard]] const BehaviorData& getBehaviorData(size_t index) const;
+
+    /**
+     * @brief Check if behavior data exists and is valid for an entity
+     * @param index EDM index
+     * @return true if behavior data exists and is valid
+     */
+    [[nodiscard]] bool hasBehaviorData(size_t index) const noexcept;
+
+    /**
+     * @brief Initialize behavior data for a specific behavior type
+     * @param index EDM index
+     * @param type The BehaviorType to initialize
+     */
+    void initBehaviorData(size_t index, BehaviorType type);
+
+    /**
+     * @brief Clear behavior data for an entity (called on behavior change/destruction)
+     * @param index EDM index
+     */
+    void clearBehaviorData(size_t index);
+
+    // ========================================================================
     // SIMULATION TIER MANAGEMENT
     // ========================================================================
 
@@ -835,6 +1071,9 @@ private:
 
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;
+
+    // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
+    std::vector<BehaviorData> m_behaviorData;
 
     // Type-specific free-lists (reuse indices when entities are destroyed)
     std::vector<uint32_t> m_freeCharacterSlots;
