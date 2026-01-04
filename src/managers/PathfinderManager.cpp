@@ -339,12 +339,19 @@ uint64_t PathfinderManager::requestPathToEDM(
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
     auto work = [this, edmIndex, nStart, nGoal, cacheKey, gridSnapshot]() {
+        // CRITICAL: Check shutdown before accessing any member data
+        // This prevents use-after-free when PathfinderManager is destroyed while tasks pending
+        if (m_isShutdown) {
+            return;
+        }
+
         std::vector<Vector2D> path;
         bool cacheHit = false;
 
         // Cache lookup (shared_lock allows concurrent readers)
         {
             std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
+            if (m_isShutdown) return;  // Double-check after acquiring lock
             auto it = m_pathCache.find(cacheKey);
             if (it != m_pathCache.end()) {
                 path = it->second.path;
@@ -354,12 +361,13 @@ uint64_t PathfinderManager::requestPathToEDM(
 
         // Compute path if not cached (pass grid to avoid re-fetching)
         if (!cacheHit) {
+            if (m_isShutdown) return;
             findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
             // Store in cache (try_lock to avoid blocking other workers)
-            if (!path.empty()) {
+            if (!path.empty() && !m_isShutdown) {
                 std::unique_lock<std::shared_mutex> lock(m_cacheMutex, std::try_to_lock);
-                if (lock.owns_lock()) {
+                if (lock.owns_lock() && !m_isShutdown) {
                     if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
                         evictOldestCacheEntry();
                     }
@@ -373,9 +381,11 @@ uint64_t PathfinderManager::requestPathToEDM(
         }
 
         // Write to EDM (per-entity slot, no contention with other entities)
-        auto& edm = EntityDataManager::Instance();
-        if (edm.hasPathData(edmIndex)) {
-            edm.getPathData(edmIndex).setPath(path);
+        if (!m_isShutdown) {
+            auto& edm = EntityDataManager::Instance();
+            if (edm.hasPathData(edmIndex)) {
+                edm.getPathData(edmIndex).setPath(path);
+            }
         }
     };
 
