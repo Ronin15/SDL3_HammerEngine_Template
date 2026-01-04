@@ -134,7 +134,7 @@ void PathfinderManager::clean() {
 
     // Clear cache (shutdown - can clear all at once since frame timing doesn't matter)
     {
-        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
         m_pathCache.clear();
     }
 
@@ -165,7 +165,7 @@ void PathfinderManager::prepareForStateTransition() {
 
     // Clear path cache completely for fresh state
     {
-        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
         size_t cacheSize = m_pathCache.size();
         m_pathCache.clear();
         PATHFIND_INFO_IF(cacheSize > 0,
@@ -257,7 +257,7 @@ uint64_t PathfinderManager::requestPath(
 
         // Cache lookup (brief lock, shared across all pathfinding tasks)
         {
-            std::lock_guard<std::mutex> lock(m_cacheMutex);
+            std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
             auto it = m_pathCache.find(cacheKey);
             if (it != m_pathCache.end()) {
                 path = it->second.path;
@@ -276,7 +276,7 @@ uint64_t PathfinderManager::requestPath(
 
             // Store in cache
             if (!path.empty()) {
-                std::lock_guard<std::mutex> lock(m_cacheMutex);
+                std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
                 if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
                     evictOldestCacheEntry();
                 }
@@ -317,59 +317,48 @@ uint64_t PathfinderManager::requestPathToEDM(
         return 0;
     }
 
-    // Mark path request as pending in EDM (prevents duplicate requests)
+    // EDM reference for path data access
     auto& edm = EntityDataManager::Instance();
-    if (edm.hasPathData(edmIndex)) {
-        auto& pathData = edm.getPathData(edmIndex);
-        if (pathData.pathRequestPending) {
-            // Request already in flight, don't spam
-            return 0;
-        }
-        pathData.pathRequestPending = true;
+
+    // Get grid snapshot ONCE at start - avoid repeated atomic accesses
+    auto gridSnapshot = getGridSnapshot();
+    if (!gridSnapshot) {
+        return 0;  // No grid available
     }
 
     // Compute cache key from RAW coordinates BEFORE normalization
     const uint64_t cacheKey = computeStableCacheKey(start, goal);
 
-    // Normalize endpoints for pathfinding accuracy
+    // Normalize endpoints for pathfinding accuracy (pass grid to avoid re-fetching)
     Vector2D nStart = start;
     Vector2D nGoal = goal;
-    normalizeEndpoints(nStart, nGoal);
+    normalizeEndpoints(nStart, nGoal, gridSnapshot);
 
-    // Generate unique request ID (atomic, lock-free)
+    // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
-    m_enqueuedRequests.fetch_add(1, std::memory_order_relaxed);
 
-    // LOCK-FREE: Submit directly to ThreadSystem
-    // Result written directly to EDM - no callback needed
-    auto& threadSystem = HammerEngine::ThreadSystem::Instance();
+    // SYNCHRONOUS: Execute inline to avoid nested parallelism
+    std::vector<Vector2D> path;
+    bool cacheHit = false;
 
-    auto work = [this, edmIndex, nStart, nGoal, cacheKey]() {
-        std::vector<Vector2D> path;
-        bool cacheHit = false;
-
-        // Cache lookup (brief lock, shared across all pathfinding tasks)
-        {
-            std::lock_guard<std::mutex> lock(m_cacheMutex);
-            auto it = m_pathCache.find(cacheKey);
-            if (it != m_pathCache.end()) {
-                path = it->second.path;
-                it->second.lastUsed = std::chrono::steady_clock::now();
-                it->second.useCount++;
-                cacheHit = true;
-                m_cacheHits.fetch_add(1, std::memory_order_relaxed);
-            } else {
-                m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
-            }
+    // Cache lookup (shared_lock allows concurrent readers - no contention for reads)
+    {
+        std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
+        auto it = m_pathCache.find(cacheKey);
+        if (it != m_pathCache.end()) {
+            path = it->second.path;
+            cacheHit = true;
         }
+    }
 
-        // Compute path if not cached
-        if (!cacheHit) {
-            findPathImmediate(nStart, nGoal, path, true);
+    // Compute path if not cached (pass grid to avoid re-fetching)
+    if (!cacheHit) {
+        findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
-            // Store in cache
-            if (!path.empty()) {
-                std::lock_guard<std::mutex> lock(m_cacheMutex);
+        // Store in cache (unique_lock for write, try_lock to avoid blocking)
+        if (!path.empty()) {
+            std::unique_lock<std::shared_mutex> lock(m_cacheMutex, std::try_to_lock);
+            if (lock.owns_lock()) {
                 if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
                     evictOldestCacheEntry();
                 }
@@ -380,23 +369,10 @@ uint64_t PathfinderManager::requestPathToEDM(
                 m_pathCache[cacheKey] = std::move(entry);
             }
         }
+    }
 
-        // Update stats
-        if (!path.empty()) {
-            m_completedRequests.fetch_add(1, std::memory_order_relaxed);
-        } else {
-            m_failedRequests.fetch_add(1, std::memory_order_relaxed);
-        }
-        m_processedCount.fetch_add(1, std::memory_order_relaxed);
-
-        // Write result directly to EDM - no callback overhead
-        auto& edm = EntityDataManager::Instance();
-        if (edm.hasPathData(edmIndex)) {
-            edm.getPathData(edmIndex).setPath(std::move(path));
-        }
-    };
-
-    threadSystem.enqueueTask(work, mapEnumToTaskPriority(priority), "PathToEDM");
+    // Write to EDM
+    edm.getPathData(edmIndex).setPath(path);
 
     return requestId;
 }
@@ -466,7 +442,47 @@ HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
     auto endTime = std::chrono::steady_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
     m_totalProcessingTimeMs.fetch_add(duration.count() / 1000.0, std::memory_order_relaxed);
-    
+
+    return result;
+}
+
+// Grid-passing overload - avoids repeated getGridSnapshot() calls in hot path
+HammerEngine::PathfindingResult PathfinderManager::findPathImmediate(
+    const Vector2D& start,
+    const Vector2D& goal,
+    std::vector<Vector2D>& outPath,
+    const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
+    bool skipNormalization
+) {
+    if (!m_initialized.load() || m_isShutdown || !grid) {
+        return HammerEngine::PathfindingResult::NO_PATH_FOUND;
+    }
+
+    // Normalize endpoints if needed (pass grid to avoid re-fetching)
+    Vector2D nStart = start;
+    Vector2D nGoal = goal;
+    if (!skipNormalization) {
+        normalizeEndpoints(nStart, nGoal, grid);
+    }
+
+    // Determine which pathfinding algorithm to use
+    HammerEngine::PathfindingResult result;
+
+    if (grid->shouldUseHierarchicalPathfinding(nStart, nGoal)) {
+        result = grid->findPathHierarchical(nStart, nGoal, outPath);
+
+        if (result != HammerEngine::PathfindingResult::SUCCESS || outPath.empty()) {
+            std::vector<Vector2D> directPath;
+            auto directResult = grid->findPath(nStart, nGoal, directPath);
+            if (directResult == HammerEngine::PathfindingResult::SUCCESS && !directPath.empty()) {
+                outPath = std::move(directPath);
+                result = directResult;
+            }
+        }
+    } else {
+        result = grid->findPath(nStart, nGoal, outPath);
+    }
+
     return result;
 }
 
@@ -581,7 +597,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                     setGrid(newGrid);
 
                     if (m_initialized.load(std::memory_order_acquire)) {
-                        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                        std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
                         clearOldestCacheEntries(0.5f);
                         calculateOptimalCacheSettings();
                         prewarmPathCache();
@@ -653,7 +669,7 @@ void PathfinderManager::rebuildGrid(bool allowIncremental) {
                 PATHFIND_DEBUG("Parallel grid rebuild: Grid stored atomically");
 
                 if (m_initialized.load(std::memory_order_acquire)) {
-                    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+                    std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
                     clearOldestCacheEntries(0.5f);
                     calculateOptimalCacheSettings();
                     prewarmPathCache();
@@ -773,7 +789,7 @@ PathfinderManager::PathfinderStats PathfinderManager::getStats() const {
 
     // Cache size statistics
     {
-        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
         stats.cacheSize = m_pathCache.size();
         stats.segmentCacheSize = 0; // Segment cache removed for performance
     }
@@ -818,7 +834,7 @@ void PathfinderManager::resetStats() {
     
     // Fast cache clear - unordered_map::clear() is O(1) for small caches
     {
-        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
         m_pathCache.clear(); // Fast operation for cache entries
     }
     
@@ -846,6 +862,21 @@ Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float m
     }
 
     // No grid available - world not loaded yet, return position as-is (valid fallback)
+    return position;
+}
+
+// Grid-passing overload - avoids getGridSnapshot() in hot path
+Vector2D PathfinderManager::clampToWorldBounds(const Vector2D& position, float margin,
+                                               const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const {
+    if (grid) {
+        const float gridCellSize = 64.0f;
+        const float worldWidth = grid->getWidth() * gridCellSize;
+        const float worldHeight = grid->getHeight() * gridCellSize;
+        return Vector2D(
+            std::clamp(position.getX(), margin, worldWidth - margin),
+            std::clamp(position.getY(), margin, worldHeight - margin)
+        );
+    }
     return position;
 }
 
@@ -1006,6 +1037,28 @@ void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal) cons
     goal = clampToWorldBounds(goal, EDGE_MARGIN);
 }
 
+// Grid-passing overload - avoids getGridSnapshot() calls in hot path
+void PathfinderManager::normalizeEndpoints(Vector2D& start, Vector2D& goal,
+                                           const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const {
+    constexpr float EDGE_MARGIN = 96.0f;
+    start = clampToWorldBounds(start, EDGE_MARGIN, grid);
+    goal = clampToWorldBounds(goal, EDGE_MARGIN, grid);
+
+    if (grid) {
+        float r = grid->getCellSize() * 2.0f;
+        start = grid->snapToNearestOpenWorld(start, r);
+        goal = grid->snapToNearestOpenWorld(goal, r);
+    }
+
+    start = Vector2D(std::round(start.getX() / m_endpointQuantization) * m_endpointQuantization,
+                     std::round(start.getY() / m_endpointQuantization) * m_endpointQuantization);
+    goal = Vector2D(std::round(goal.getX() / m_endpointQuantization) * m_endpointQuantization,
+                    std::round(goal.getY() / m_endpointQuantization) * m_endpointQuantization);
+
+    start = clampToWorldBounds(start, EDGE_MARGIN, grid);
+    goal = clampToWorldBounds(goal, EDGE_MARGIN, grid);
+}
+
 bool PathfinderManager::followPathStep(EntityPtr entity, const Vector2D& currentPos,
                                      std::vector<Vector2D>& path, size_t& pathIndex,
                                      float speed, float nodeRadius) const {
@@ -1143,7 +1196,7 @@ void PathfinderManager::clearOldestCacheEntries(float percentage) {
 }
 
 void PathfinderManager::clearAllCache() {
-    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
     size_t clearedCount = m_pathCache.size();
     m_pathCache.clear();
     PATHFIND_INFO(std::format("Cleared all cache entries: {} paths removed", clearedCount));
@@ -1367,7 +1420,7 @@ void PathfinderManager::onCollisionObstacleChanged(const Vector2D& position, flo
     
     // Selective cache invalidation: remove paths that pass through the affected area
     {
-        std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+        std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
         
         size_t removedCount = 0;
         for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ) {
@@ -1448,7 +1501,7 @@ void PathfinderManager::onTileChanged(int x, int y) {
     // Use slightly larger radius than tile size to catch paths that pass nearby
     constexpr float INVALIDATION_RADIUS = HammerEngine::TILE_SIZE * 1.5f;
 
-    std::lock_guard<std::mutex> cacheLock(m_cacheMutex);
+    std::unique_lock<std::shared_mutex> cacheLock(m_cacheMutex);
     size_t removedCount = 0;
 
     for (auto it = m_pathCache.begin(); it != m_pathCache.end(); ) {
