@@ -93,7 +93,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=38
+set CORE_TEST_COUNT=39
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=8
 
@@ -184,6 +184,7 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_entity_data_manager_tests.bat" false
     call :run_single_test "run_ai_manager_edm_integration_tests.bat" false
     call :run_single_test "run_collision_manager_edm_integration_tests.bat" false
+    call :run_single_test "run_pathfinder_manager_edm_integration_tests.bat" false
 )
 
 :: Run benchmark tests last
