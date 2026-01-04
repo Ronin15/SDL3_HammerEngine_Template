@@ -337,14 +337,19 @@ void EventManager::update() {
 
   // Helper lambda to decide threading per type (uses cached counts - no mutex!)
   auto updateEventType = [this, useThreadingGlobal, &eventCountsByType, &threadingInfo](EventTypeId typeId) {
+    // Early exit for empty event types - avoids lock acquisition and iteration overhead
+    size_t typeEventCount = eventCountsByType[static_cast<size_t>(typeId)];
+    if (typeEventCount == 0) {
+      return;
+    }
+
     if (!useThreadingGlobal) {
       // Global threshold not met - use single-threaded for all types
       updateEventTypeBatch(typeId);
       return;
     }
 
-    // Global threshold met - check per-type threshold using cached count
-    size_t typeEventCount = eventCountsByType[static_cast<size_t>(typeId)];
+    // Global threshold met - check per-type threshold
     if (typeEventCount >= PER_TYPE_THREAD_THRESHOLD) {
       // This type has enough events to benefit from threading
       updateEventTypeBatchThreaded(typeId, threadingInfo);

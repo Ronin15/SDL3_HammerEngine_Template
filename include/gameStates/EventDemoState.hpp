@@ -237,6 +237,7 @@ private:
 
   // Cached manager pointers for render hot path (resolved in enter())
   EntityDataManager* mp_edm{nullptr};
+  EventManager* mp_eventMgr{nullptr};
   ParticleManager* mp_particleMgr{nullptr};
   WorldManager* mp_worldMgr{nullptr};
   UIManager* mp_uiMgr{nullptr};

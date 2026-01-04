@@ -58,6 +58,7 @@ EventDemoState::~EventDemoState() {
 bool EventDemoState::enter() {
   // Cache manager pointers for render hot path (always valid after GameEngine init)
   mp_edm = &EntityDataManager::Instance();
+  mp_eventMgr = &EventManager::Instance();
   mp_particleMgr = &ParticleManager::Instance();
   mp_worldMgr = &WorldManager::Instance();
   mp_uiMgr = &UIManager::Instance();
@@ -311,7 +312,7 @@ bool EventDemoState::exit() {
   ParticleManager &particleMgr = ParticleManager::Instance();
   UIManager &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
-  EventManager &eventMgr = EventManager::Instance();
+  EventManager &eventMgr = *mp_eventMgr;
 
   try {
     if (m_transitioningToLoading) {
@@ -439,6 +440,7 @@ bool EventDemoState::exit() {
     }
 
     // Clear cached manager pointers
+    mp_eventMgr = nullptr;
     mp_particleMgr = nullptr;
     mp_worldMgr = nullptr;
     mp_uiMgr = nullptr;
@@ -460,9 +462,8 @@ bool EventDemoState::exit() {
 
 void EventDemoState::unregisterEventHandlers() {
   try {
-    EventManager &eventMgr = EventManager::Instance();
     for (const auto &tok : m_handlerTokens) {
-      (void)eventMgr.removeHandler(tok);
+      (void)mp_eventMgr->removeHandler(tok);
     }
     m_handlerTokens.clear();
   } catch (...) {
@@ -779,31 +780,26 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
 
 void EventDemoState::setupEventSystem() {
   GAMESTATE_INFO("EventDemoState: EventManager instance obtained");
-
-  // Cache EventManager reference for better performance
-  // Note: EventManager is already initialized by GameEngine
-  EventManager &eventMgr = EventManager::Instance();
-
   GAMESTATE_INFO("EventDemoState: Using pre-initialized EventManager");
 
   // Register event handlers using token-based API for easy removal
   m_handlerTokens.push_back(
-      eventMgr.registerHandlerWithToken(EventTypeId::Weather, [this](const EventData &data) {
+      mp_eventMgr->registerHandlerWithToken(EventTypeId::Weather, [this](const EventData &data) {
         if (data.isActive()) onWeatherChanged("weather_changed");
       }));
 
   m_handlerTokens.push_back(
-      eventMgr.registerHandlerWithToken(EventTypeId::NPCSpawn, [this](const EventData &data) {
+      mp_eventMgr->registerHandlerWithToken(EventTypeId::NPCSpawn, [this](const EventData &data) {
         if (data.isActive()) onNPCSpawned(data);
       }));
 
   m_handlerTokens.push_back(
-      eventMgr.registerHandlerWithToken(EventTypeId::SceneChange, [this](const EventData &data) {
+      mp_eventMgr->registerHandlerWithToken(EventTypeId::SceneChange, [this](const EventData &data) {
         if (data.isActive()) onSceneChanged("scene_changed");
       }));
 
   m_handlerTokens.push_back(
-      eventMgr.registerHandlerWithToken(EventTypeId::ResourceChange, [this](const EventData &data) {
+      mp_eventMgr->registerHandlerWithToken(EventTypeId::ResourceChange, [this](const EventData &data) {
         if (data.isActive()) onResourceChanged(data);
       }));
 
@@ -812,36 +808,32 @@ void EventDemoState::setupEventSystem() {
 }
 
 void EventDemoState::createTestEvents() {
-
-  // Cache EventManager reference for better performance
-  EventManager &eventMgr = EventManager::Instance();
-
-  // Create and register weather events using new convenience methods
+  // Create and register weather events using convenience methods
   bool success1 =
-      eventMgr.createWeatherEvent("demo_clear", "Clear", 1.0f, 2.0f);
+      mp_eventMgr->createWeatherEvent("demo_clear", "Clear", 1.0f, 2.0f);
   bool success2 =
-      eventMgr.createWeatherEvent("demo_rainy", "Rainy", 0.1f, 3.0f);
+      mp_eventMgr->createWeatherEvent("demo_rainy", "Rainy", 0.1f, 3.0f);
   bool success3 =
-      eventMgr.createWeatherEvent("demo_stormy", "Stormy", 0.9f, 1.5f);
+      mp_eventMgr->createWeatherEvent("demo_stormy", "Stormy", 0.9f, 1.5f);
   bool success4 =
-      eventMgr.createWeatherEvent("demo_foggy", "Foggy", 0.6f, 4.0f);
+      mp_eventMgr->createWeatherEvent("demo_foggy", "Foggy", 0.6f, 4.0f);
 
-  // Create and register NPC spawn events using new convenience methods
+  // Create and register NPC spawn events using convenience methods
   bool success5 =
-      eventMgr.createNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 20.0f);
+      mp_eventMgr->createNPCSpawnEvent("demo_guard_spawn", "Guard", 1, 20.0f);
   bool success6 =
-      eventMgr.createNPCSpawnEvent("demo_villager_spawn", "Villager", 2, 15.0f);
+      mp_eventMgr->createNPCSpawnEvent("demo_villager_spawn", "Villager", 2, 15.0f);
   bool success7 =
-      eventMgr.createNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
+      mp_eventMgr->createNPCSpawnEvent("demo_merchant_spawn", "Merchant", 1, 25.0f);
   bool success8 =
-      eventMgr.createNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 30.0f);
+      mp_eventMgr->createNPCSpawnEvent("demo_warrior_spawn", "Warrior", 1, 30.0f);
 
-  // Create and register scene change events using new convenience methods
+  // Create and register scene change events using convenience methods
   bool success9 =
-      eventMgr.createSceneChangeEvent("demo_forest", "Forest", "fade", 2.0f);
+      mp_eventMgr->createSceneChangeEvent("demo_forest", "Forest", "fade", 2.0f);
   bool success10 =
-      eventMgr.createSceneChangeEvent("demo_village", "Village", "slide", 1.5f);
-  bool success11 = eventMgr.createSceneChangeEvent("demo_castle", "Castle",
+      mp_eventMgr->createSceneChangeEvent("demo_village", "Village", "slide", 1.5f);
+  bool success11 = mp_eventMgr->createSceneChangeEvent("demo_castle", "Castle",
                                                    "dissolve", 2.5f);
 
   // Report creation results
@@ -1044,11 +1036,10 @@ void EventDemoState::triggerWeatherDemoAuto() {
       (m_currentWeatherIndex + 1) % m_weatherSequence.size();
 
   // Use EventManager hub to change weather
-  const EventManager &eventMgr = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
     // Custom type by string
-    eventMgr.changeWeather(customType, m_weatherTransitionTime,
-                           EventManager::DispatchMode::Deferred);
+    mp_eventMgr->changeWeather(customType, m_weatherTransitionTime,
+                               EventManager::DispatchMode::Deferred);
   } else {
     // Map enum to string name
     const char *wt =
@@ -1059,8 +1050,8 @@ void EventDemoState::triggerWeatherDemoAuto() {
         (newWeather == WeatherType::Foggy)   ? "Foggy" :
         (newWeather == WeatherType::Snowy)   ? "Snowy" :
         (newWeather == WeatherType::Windy)   ? "Windy" : "Custom";
-    eventMgr.changeWeather(wt, m_weatherTransitionTime,
-                           EventManager::DispatchMode::Deferred);
+    mp_eventMgr->changeWeather(wt, m_weatherTransitionTime,
+                               EventManager::DispatchMode::Deferred);
   }
 
   m_currentWeather = newWeather;
@@ -1080,10 +1071,9 @@ void EventDemoState::triggerWeatherDemoManual() {
   m_manualWeatherIndex = (m_manualWeatherIndex + 1) % m_weatherSequence.size();
 
   // Use EventManager hub to change weather
-  const EventManager &eventMgr2 = EventManager::Instance();
   if (newWeather == WeatherType::Custom && !customType.empty()) {
-    eventMgr2.changeWeather(customType, m_weatherTransitionTime,
-                            EventManager::DispatchMode::Deferred);
+    mp_eventMgr->changeWeather(customType, m_weatherTransitionTime,
+                               EventManager::DispatchMode::Deferred);
   } else {
     const char *wt =
         (newWeather == WeatherType::Clear)   ? "Clear" :
@@ -1093,8 +1083,8 @@ void EventDemoState::triggerWeatherDemoManual() {
         (newWeather == WeatherType::Foggy)   ? "Foggy" :
         (newWeather == WeatherType::Snowy)   ? "Snowy" :
         (newWeather == WeatherType::Windy)   ? "Windy" : "Custom";
-    eventMgr2.changeWeather(wt, m_weatherTransitionTime,
-                            EventManager::DispatchMode::Deferred);
+    mp_eventMgr->changeWeather(wt, m_weatherTransitionTime,
+                               EventManager::DispatchMode::Deferred);
   }
 
   m_currentWeather = newWeather;
@@ -1120,8 +1110,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
   spawnY = std::max(100.0f, std::min(spawnY, m_worldHeight - 100.0f));
 
   // Use EventManager to spawn NPC via the unified event hub
-  const EventManager &eventMgr = EventManager::Instance();
-  eventMgr.spawnNPC(npcType, spawnX, spawnY);
+  mp_eventMgr->spawnNPC(npcType, spawnX, spawnY);
   addLogEntry(std::format("Spawned: {}", npcType));
 }
 
@@ -1139,9 +1128,8 @@ void EventDemoState::triggerSceneTransitionDemo() {
       (t == TransitionType::Slide)      ? "slide" :
       (t == TransitionType::Dissolve)   ? "dissolve" : "wipe";
 
-  const EventManager &eventMgr3 = EventManager::Instance();
-  eventMgr3.changeScene(sceneName, transitionName, 2.0f,
-                        EventManager::DispatchMode::Deferred);
+  mp_eventMgr->changeScene(sceneName, transitionName, 2.0f,
+                           EventManager::DispatchMode::Deferred);
 
   addLogEntry("Scene: " + sceneName + " (" + std::string(transitionName) + ")");
 }
@@ -1152,9 +1140,8 @@ void EventDemoState::triggerParticleEffectDemo() {
   Vector2D position = m_particleEffectPositions[m_particlePositionIndex];
 
   // Trigger particle effect via EventManager (deferred by default)
-  const EventManager &eventMgr = EventManager::Instance();
-  bool queued = eventMgr.triggerParticleEffect(effectName, position,
-                                               1.2f, 5.0f, "demo_effects");
+  bool queued = mp_eventMgr->triggerParticleEffect(effectName, position,
+                                                   1.2f, 5.0f, "demo_effects");
   if (queued) {
     addLogEntry("Particle: " + effectName);
   } else {
@@ -1175,7 +1162,6 @@ void EventDemoState::triggerResourceDemo() {
   // Cache manager references for better performance
   auto *inventory = m_player->getInventory();
   const auto &templateManager = ResourceTemplateManager::Instance();
-  const EventManager &eventMgr = EventManager::Instance();
 
   if (!templateManager.isInitialized()) {
     addLogEntry("Resource: not initialized");
@@ -1292,9 +1278,8 @@ void EventDemoState::triggerResourceDemo() {
       addLogEntry(std::format("+{} {} ({} total)", quantity, resourceName, newQuantity));
 
       // Trigger resource change via EventManager (deferred by default)
-      // eventMgr already cached at top of function
-      eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
-                                     newQuantity, "event_demo");
+      mp_eventMgr->triggerResourceChange(m_player, handle, currentQuantity,
+                                         newQuantity, "event_demo");
     } else {
       addLogEntry("Failed: " + resourceName + " (full)");
     }
@@ -1309,9 +1294,8 @@ void EventDemoState::triggerResourceDemo() {
         addLogEntry(std::format("-{} {} ({} left)", removeQuantity, resourceName, newQuantity));
 
         // Trigger resource change via EventManager (deferred by default)
-        // eventMgr already cached at top of function
-        eventMgr.triggerResourceChange(m_player, handle, currentQuantity,
-                                       newQuantity, "event_demo");
+        mp_eventMgr->triggerResourceChange(m_player, handle, currentQuantity,
+                                           newQuantity, "event_demo");
       } else {
         addLogEntry("Failed: remove " + resourceName);
       }
@@ -1397,21 +1381,18 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
 
   m_convenienceDemoCounter++;
 
-  // Cache EventManager reference for better performance
-  EventManager &eventMgr = EventManager::Instance();
-
   bool success1 =
-      eventMgr.createWeatherEvent(std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f, 2.5f);
+      mp_eventMgr->createWeatherEvent(std::format("conv_fog_{}", m_convenienceDemoCounter), "Foggy", 0.7f, 2.5f);
   bool success2 =
-      eventMgr.createWeatherEvent(std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f, 1.5f);
-  bool success3 = eventMgr.createSceneChangeEvent(
+      mp_eventMgr->createWeatherEvent(std::format("conv_storm_{}", m_convenienceDemoCounter), "Stormy", 0.9f, 1.5f);
+  bool success3 = mp_eventMgr->createSceneChangeEvent(
       std::format("conv_dungeon_{}", m_convenienceDemoCounter), "DungeonDemo", "dissolve", 2.0f);
-  bool success4 = eventMgr.createSceneChangeEvent(std::format("conv_town_{}", m_convenienceDemoCounter),
-                                                  "TownDemo", "slide", 1.0f);
+  bool success4 = mp_eventMgr->createSceneChangeEvent(std::format("conv_town_{}", m_convenienceDemoCounter),
+                                                      "TownDemo", "slide", 1.0f);
   bool success5 =
-      eventMgr.createNPCSpawnEvent(std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2, 30.0f);
-  bool success6 = eventMgr.createNPCSpawnEvent(std::format("conv_merchants_{}", m_convenienceDemoCounter),
-                                               "Merchant", 1, 15.0f);
+      mp_eventMgr->createNPCSpawnEvent(std::format("conv_guards_{}", m_convenienceDemoCounter), "Guard", 2, 30.0f);
+  bool success6 = mp_eventMgr->createNPCSpawnEvent(std::format("conv_merchants_{}", m_convenienceDemoCounter),
+                                                   "Merchant", 1, 15.0f);
 
   int const successCount =
       success1 + success2 + success3 + success4 + success5 + success6;
@@ -1419,7 +1400,7 @@ void EventDemoState::triggerConvenienceMethodsDemo() {
     addLogEntry("Created 6 events successfully");
 
     // Trigger via EventManager for demonstration
-    eventMgr.changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
+    mp_eventMgr->changeWeather("Foggy", 2.5f, EventManager::DispatchMode::Deferred);
 
     m_currentWeather = WeatherType::Foggy;
     addLogEntry("Weather: Foggy (demo)");
@@ -1432,12 +1413,11 @@ void EventDemoState::resetAllEvents() {
   cleanupSpawnedNPCs();
 
   // Remove all events from EventManager
-  EventManager &eventMgr = EventManager::Instance();
-  eventMgr.clearAllEvents();
+  mp_eventMgr->clearAllEvents();
 
   // Trigger clear weather via EventManager
-  eventMgr.changeWeather("Clear", 1.0f,
-                         EventManager::DispatchMode::Deferred);
+  mp_eventMgr->changeWeather("Clear", 1.0f,
+                             EventManager::DispatchMode::Deferred);
 
   m_currentWeather = WeatherType::Clear;
 
