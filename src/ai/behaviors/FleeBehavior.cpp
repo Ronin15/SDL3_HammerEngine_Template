@@ -20,6 +20,8 @@ FleeBehavior::FleeBehavior(float fleeSpeed, float detectionRange, float safeDist
     , m_detectionRange(detectionRange)
     , m_safeDistance(safeDistance)
 {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
 }
 
 FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
@@ -27,6 +29,8 @@ FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
     , m_fleeSpeed(fleeSpeed)
     , m_detectionRange(detectionRange)
 {
+    // Pre-reserve for large entity counts to avoid reallocations during gameplay
+    m_entityStatesByIndex.reserve(16384);
     // Adjust parameters based on mode
     switch (mode) {
         case FleeMode::PANIC_FLEE:
@@ -54,6 +58,8 @@ FleeBehavior::FleeBehavior(const HammerEngine::FleeBehaviorConfig& config, FleeM
     , m_safeDistance(config.safeDistance)
     , m_boundaryPadding(config.worldPadding)
 {
+    // Pre-reserve for large entity counts to avoid reallocations during gameplay
+    m_entityStatesByIndex.reserve(16384);
     // Mode-specific adjustments using config values
     switch (mode) {
         case FleeMode::PANIC_FLEE:
@@ -80,10 +86,15 @@ void FleeBehavior::init(EntityHandle handle) {
     size_t idx = edm.getIndex(handle);
     if (idx == SIZE_MAX) return;
 
+    // Ensure vector is large enough for this index
+    if (idx >= m_entityStatesByIndex.size()) {
+      m_entityStatesByIndex.resize(idx + 1);
+    }
+
     auto& hotData = edm.getHotDataByIndex(idx);
-    EntityID entityId = handle.getId();
-    auto& state = m_entityStates[entityId];
+    auto& state = m_entityStatesByIndex[idx];
     state = EntityState(); // Reset to default state
+    state.valid = true;
     state.handle = handle;  // Store handle for EDM lookups
     state.currentStamina = m_maxStamina;
     state.lastThreatPosition = hotData.transform.position;
@@ -92,13 +103,14 @@ void FleeBehavior::init(EntityHandle handle) {
 void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     if (!isActive()) return;
 
-    auto it = m_entityStates.find(ctx.entityId);
-    if (it == m_entityStates.end()) {
-        // State not initialized - skip this frame (init will be called separately)
+    // Get state by EDM index (contention-free vector access)
+    if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
         return;
     }
-
-    EntityState& state = it->second;
+    EntityState& state = m_entityStatesByIndex[ctx.edmIndex];
+    if (!state.valid) {
+        return;
+    }
 
     // Update all timers
     state.fleeTimer += ctx.deltaTime;
@@ -214,17 +226,28 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
 
 void FleeBehavior::clean(EntityHandle handle) {
     if (handle.isValid()) {
-        m_entityStates.erase(handle.getId());
+        auto& edm = EntityDataManager::Instance();
+        size_t idx = edm.getIndex(handle);
+        if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size()) {
+            m_entityStatesByIndex[idx].valid = false;
+        }
+    } else {
+        // Clear all states
+        for (auto& state : m_entityStatesByIndex) {
+            state.valid = false;
+        }
     }
 }
 
 void FleeBehavior::onMessage(EntityHandle handle, const std::string& message) {
     if (!handle.isValid()) return;
 
-    auto it = m_entityStates.find(handle.getId());
-    if (it == m_entityStates.end()) return;
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx == SIZE_MAX || idx >= m_entityStatesByIndex.size() || !m_entityStatesByIndex[idx].valid)
+        return;
 
-    EntityState& state = it->second;
+    EntityState& state = m_entityStatesByIndex[idx];
 
     if (message == "panic") {
         state.isInPanic = true;
@@ -277,13 +300,13 @@ void FleeBehavior::clearSafeZones() {
 }
 
 bool FleeBehavior::isFleeing() const {
-    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                      [](const auto& pair) { return pair.second.isFleeing; });
+    return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                      [](const auto& state) { return state.valid && state.isFleeing; });
 }
 
 bool FleeBehavior::isInPanic() const {
-    return std::any_of(m_entityStates.begin(), m_entityStates.end(),
-                      [](const auto& pair) { return pair.second.isInPanic; });
+    return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
+                      [](const auto& state) { return state.valid && state.isInPanic; });
 }
 
 float FleeBehavior::getDistanceToThreat() const {
@@ -298,8 +321,8 @@ float FleeBehavior::getDistanceToThreat() const {
     Vector2D threatPos = edm.getHotDataByIndex(threatIdx).transform.position;
 
     // Find a fleeing entity and get its position from EDM
-    for (const auto& [entityId, state] : m_entityStates) {
-        if (!state.isFleeing) continue;
+    for (const auto& state : m_entityStatesByIndex) {
+        if (!state.valid || !state.isFleeing) continue;
         if (!state.handle.isValid()) continue;
 
         size_t entityIdx = edm.getIndex(state.handle);
@@ -685,21 +708,23 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state,
             // Use PathfinderManager for pathfinding requests
             auto& pf = this->pathfinder();
             auto self = std::static_pointer_cast<FleeBehavior>(shared_from_this());
-            EntityID entityId = ctx.entityId;
+            size_t edmIndex = ctx.edmIndex;
             pf.requestPath(
-                entityId,
+                ctx.entityId,
                 pf.clampToWorldBounds(currentPos, 100.0f),
                 goal,
                 PathfinderManager::Priority::High,
-                [self, entityId](EntityID, const std::vector<Vector2D>& path) {
-                    auto it = self->m_entityStates.find(entityId);
-                    if (it != self->m_entityStates.end() && !path.empty()) {
-                        it->second.pathPoints = path;
-                        it->second.currentPathIndex = 0;
-                        it->second.pathUpdateTimer = 0.0f;
-                        it->second.lastNodeDistance = std::numeric_limits<float>::infinity();
-                        it->second.progressTimer = 0.0f;
-                        it->second.pathCooldown = 0.8f;
+                [self, edmIndex](EntityID, const std::vector<Vector2D>& path) {
+                    // Use captured edmIndex for contention-free vector access
+                    if (edmIndex < self->m_entityStatesByIndex.size() &&
+                        self->m_entityStatesByIndex[edmIndex].valid && !path.empty()) {
+                        auto& state = self->m_entityStatesByIndex[edmIndex];
+                        state.pathPoints = path;
+                        state.currentPathIndex = 0;
+                        state.pathUpdateTimer = 0.0f;
+                        state.lastNodeDistance = std::numeric_limits<float>::infinity();
+                        state.progressTimer = 0.0f;
+                        state.pathCooldown = 0.8f;
                     }
                 });
 

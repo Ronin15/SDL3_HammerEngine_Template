@@ -101,6 +101,9 @@ public:
 private:
   
   struct EntityState {
+    // Validity flag - true if this slot is in use
+    bool valid{false};
+
     // Base AI behavior state (pathfinding, separation, cooldowns)
     AIBehaviorState baseState;
 
@@ -138,8 +141,8 @@ private:
     }
   };
 
-  // Map to store per-entity state
-  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
+  std::vector<EntityState> m_entityStatesByIndex;
 
   // Configuration
   HammerEngine::GuardBehaviorConfig m_config;

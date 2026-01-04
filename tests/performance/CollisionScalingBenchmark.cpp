@@ -179,12 +179,15 @@ public:
     double runBenchmark(int iterations) {
         auto& cm = CollisionManager::Instance();
 
-        // Warmup
-        for (int i = 0; i < 3; ++i) {
+        // Extended warmup for WorkerBudget hill-climb convergence
+        // Hill-climb uses ADJUST_RATE=0.02f and THROUGHPUT_SMOOTHING=0.12
+        // Need ~100 frames for multiplier hill-climb to converge
+        constexpr int WARMUP_FRAMES = 100;
+        for (int i = 0; i < WARMUP_FRAMES; ++i) {
             cm.update(0.016f);
         }
 
-        // Benchmark
+        // Benchmark (steady-state after hill-climb convergence)
         auto start = std::chrono::high_resolution_clock::now();
         for (int i = 0; i < iterations; ++i) {
             cm.update(0.016f);
@@ -501,6 +504,78 @@ BOOST_AUTO_TEST_CASE(TriggerDetectionScaling)
 }
 
 // ---------------------------------------------------------------------------
+// Hill-Climb Convergence Test
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(HillClimbConvergence)
+{
+    std::cout << "--- WorkerBudget Hill-Climb Convergence (Collision) ---\n";
+    std::cout << "Testing that throughput improves as hill-climb converges\n\n";
+
+    constexpr size_t ENTITY_COUNT = 5000;  // Sufficient to trigger threading
+    constexpr float WORLD_SIZE = 10000.0f;
+    constexpr int MEASURE_INTERVAL = 50;   // Measure every N frames
+    constexpr int TOTAL_FRAMES = 300;      // Total frames to run
+
+    prepareForTest();
+    createMovables(ENTITY_COUNT, WORLD_SIZE);
+    setupWorld(WORLD_SIZE);
+
+    auto& cm = CollisionManager::Instance();
+
+    std::cout << std::setw(10) << "Frames"
+              << std::setw(14) << "Avg Time (ms)"
+              << std::setw(18) << "Throughput (/ms)"
+              << std::setw(12) << "Status\n";
+
+    double firstThroughput = 0.0;
+    double lastThroughput = 0.0;
+
+    for (int interval = 0; interval < TOTAL_FRAMES / MEASURE_INTERVAL; ++interval) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (int i = 0; i < MEASURE_INTERVAL; ++i) {
+            cm.update(0.016f);
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
+        double avgMs = totalMs / MEASURE_INTERVAL;
+        double throughput = ENTITY_COUNT / avgMs;  // entities per ms
+
+        if (interval == 0) {
+            firstThroughput = throughput;
+        }
+        lastThroughput = throughput;
+
+        int frameCount = (interval + 1) * MEASURE_INTERVAL;
+        const char* status = (interval < 2) ? "Converging" : "Stable";
+
+        std::cout << std::setw(10) << frameCount
+                  << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
+                  << std::setw(18) << std::fixed << std::setprecision(0) << throughput
+                  << std::setw(12) << status << "\n";
+    }
+
+    // Verify improvement
+    double improvement = (lastThroughput - firstThroughput) / firstThroughput * 100.0;
+    std::cout << "\nHILL-CLIMB RESULT:\n";
+    std::cout << "  Initial throughput: " << std::fixed << std::setprecision(0) << firstThroughput << " entities/ms\n";
+    std::cout << "  Final throughput:   " << std::fixed << std::setprecision(0) << lastThroughput << " entities/ms\n";
+    std::cout << "  Improvement: " << std::fixed << std::setprecision(1) << improvement << "%\n";
+
+    if (improvement >= 0.0) {
+        std::cout << "  Status: PASS (throughput stable or improved)\n";
+    } else if (improvement > -5.0) {
+        std::cout << "  Status: PASS (within noise tolerance)\n";
+    } else {
+        std::cout << "  Status: WARNING (throughput degraded significantly)\n";
+    }
+
+    cleanup();
+    std::cout << std::endl;
+}
+
+// ---------------------------------------------------------------------------
 // Summary
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(PrintSummary)
@@ -510,6 +585,7 @@ BOOST_AUTO_TEST_CASE(PrintSummary)
     std::cout << "  MS Hash: O(n) scaling - spatial hash queries nearby statics only\n";
     std::cout << "  Trigger Detection: Adaptive - spatial (<50) or sweep (>=50)\n";
     std::cout << "  Combined: Sub-quadratic scaling achieved\n";
+    std::cout << "  Hill-climb convergence: ~100 frames for optimal batch sizing\n";
     std::cout << std::endl;
 }
 

@@ -29,10 +29,11 @@ struct BehaviorContext {
     TransformData& transform;      // Direct read/write access (lock-free)
     EntityHotData& hotData;        // Entity metadata (halfWidth, halfHeight, etc.)
     EntityHandle::IDType entityId; // For staggering calculations
+    size_t edmIndex;               // EDM index for vector-based state storage (contention-free)
     float deltaTime;
 
-    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, float dt)
-        : transform(t), hotData(h), entityId(id), deltaTime(dt) {}
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
+        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
 };
 
 #include <string>

@@ -106,6 +106,9 @@ public:
 private:
   
   struct EntityState {
+    // Validity flag - true if this slot is in use
+    bool valid{false};
+
     // Base AI behavior state (pathfinding, separation, cooldowns)
     AIBehaviorState baseState;
 
@@ -162,10 +165,11 @@ private:
   // Configuration system
   void applyConfig(const HammerEngine::AttackBehaviorConfig& config);
 
-  // Map to store per-entity state
-  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
+  std::vector<EntityState> m_entityStatesByIndex;
 
   // Cache EntityPtr for helper methods that still use it (temporary during migration)
+  // TODO: Planned refactor to remove EntityPtr dependency
   std::unordered_map<EntityHandle::IDType, EntityPtr> m_entityPtrCache;
 
   // Attack parameters

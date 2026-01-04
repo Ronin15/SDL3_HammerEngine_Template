@@ -48,6 +48,9 @@ public:
 private:
   // Entity-specific state data
   struct EntityState {
+    // Validity flag - true if this slot is in use
+    bool valid{false};
+
     Vector2D originalPosition{0, 0};
     Vector2D currentOffset{0, 0};
     float movementTimer{0.0f};
@@ -66,8 +69,8 @@ private:
           currentAngle(0.0f), initialized(false) {}
   };
 
-  // Map to store per-entity state
-  std::unordered_map<EntityHandle::IDType, EntityState> m_entityStates;
+  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
+  std::vector<EntityState> m_entityStatesByIndex;
 
   // Behavior parameters
   IdleMode m_idleMode{IdleMode::STATIONARY};

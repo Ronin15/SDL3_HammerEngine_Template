@@ -29,6 +29,8 @@ WanderBehavior::WanderBehavior(const HammerEngine::WanderBehaviorConfig& config)
     : m_config(config), m_speed(config.speed),
       m_changeDirectionInterval(config.changeDirectionIntervalMin),
       m_areaRadius(300.0f) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
 }
 
 WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,
@@ -38,6 +40,8 @@ WanderBehavior::WanderBehavior(float speed, float changeDirectionInterval,
   m_config.speed = speed;
   m_config.changeDirectionIntervalMin = changeDirectionInterval;
   m_config.changeDirectionIntervalMax = changeDirectionInterval + 5000.0f;
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
 }
 
 WanderBehavior::WanderMode
@@ -46,6 +50,8 @@ getDefaultModeForFrequency(WanderBehavior::WanderMode mode) {
 }
 
 WanderBehavior::WanderBehavior(WanderMode mode, float speed) : m_speed(speed) {
+  // Pre-reserve for large entity counts to avoid reallocations during gameplay
+  m_entityStatesByIndex.reserve(16384);
   setupModeDefaults(mode);
 }
 
@@ -53,9 +59,19 @@ void WanderBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  // Key state by entityId (not EntityPtr) for lock-free access
-  EntityHandle::IDType entityId = handle.getId();
-  EntityState &state = m_entityStates[entityId];
+  // Get EDM index for vector-based storage (contention-free)
+  auto& edm = EntityDataManager::Instance();
+  size_t edmIndex = edm.getIndex(handle);
+  if (edmIndex == SIZE_MAX)
+    return;
+
+  // Ensure vector is large enough for this index
+  if (edmIndex >= m_entityStatesByIndex.size()) {
+    m_entityStatesByIndex.resize(edmIndex + 1);
+  }
+
+  EntityState &state = m_entityStatesByIndex[edmIndex];
+  state.valid = true;
   state.directionChangeTimer = 0.0f;
   state.startDelay = s_delayDistribution(getSharedRNG()) / 1000.0f;
   state.movementStarted = false;
@@ -73,12 +89,14 @@ void WanderBehavior::executeLogic(BehaviorContext& ctx) {
   if (!m_active)
     return;
 
-  // Get state by entityId (lock-free lookup)
-  auto stateIt = m_entityStates.find(ctx.entityId);
-  if (stateIt == m_entityStates.end()) {
+  // Get state by EDM index (contention-free vector access)
+  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
     return;
   }
-  EntityState &state = stateIt->second;
+  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
+  if (!state.valid) {
+    return;
+  }
 
   // Update all timers
   updateTimers(state, ctx.deltaTime);
@@ -219,16 +237,18 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, EntityState& 
 
     if (goalChanged) {
       auto self = std::static_pointer_cast<WanderBehavior>(shared_from_this());
-      EntityHandle::IDType entityId = ctx.entityId;
+      size_t edmIndex = ctx.edmIndex;
       pathfinder().requestPath(
-          entityId, position, dest,
+          ctx.entityId, position, dest,
           PathfinderManager::Priority::Normal,
-          [self, entityId](EntityID, const std::vector<Vector2D>& path) {
-            auto stateIt = self->m_entityStates.find(entityId);
-            if (stateIt != self->m_entityStates.end() && !path.empty()) {
-              stateIt->second.baseState.pathPoints = path;
-              stateIt->second.baseState.currentPathIndex = 0;
-              stateIt->second.baseState.pathUpdateTimer = 0.0f;
+          [self, edmIndex](EntityID, const std::vector<Vector2D>& path) {
+            // Use captured edmIndex for contention-free vector access
+            if (edmIndex < self->m_entityStatesByIndex.size() &&
+                self->m_entityStatesByIndex[edmIndex].valid && !path.empty()) {
+              auto& state = self->m_entityStatesByIndex[edmIndex];
+              state.baseState.pathPoints = path;
+              state.baseState.currentPathIndex = 0;
+              state.baseState.pathUpdateTimer = 0.0f;
             }
           });
       state.baseState.pathRequestCooldown = m_config.pathRequestCooldown;
@@ -322,10 +342,16 @@ void WanderBehavior::clean(EntityHandle handle) {
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      // Mark state as invalid (contention-free)
+      if (idx < m_entityStatesByIndex.size()) {
+        m_entityStatesByIndex[idx].valid = false;
+      }
     }
-    m_entityStates.erase(handle.getId());
   } else {
-    m_entityStates.clear();
+    // Clear all states - reset valid flags
+    for (auto& state : m_entityStatesByIndex) {
+      state.valid = false;
+    }
   }
 }
 
@@ -335,43 +361,44 @@ void WanderBehavior::onMessage(EntityHandle handle, const std::string &message) 
 
   auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  EntityHandle::IDType entityId = handle.getId();
+  if (idx == SIZE_MAX)
+    return;
+
+  // Get state by EDM index (contention-free)
+  EntityState* statePtr = nullptr;
+  if (idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
+    statePtr = &m_entityStatesByIndex[idx];
+  }
 
   if (message == "pause") {
     setActive(false);
-    if (idx != SIZE_MAX) {
-      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
-    }
+    edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
   } else if (message == "resume") {
     setActive(true);
-    auto stateIt = m_entityStates.find(entityId);
-    if (stateIt != m_entityStates.end()) {
+    if (statePtr) {
       float angle = s_angleDistribution(getSharedRNG());
-      stateIt->second.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
+      statePtr->currentDirection = Vector2D(std::cos(angle), std::sin(angle));
     }
   } else if (message == "new_direction") {
-    auto stateIt = m_entityStates.find(entityId);
-    if (stateIt != m_entityStates.end()) {
+    if (statePtr) {
       float angle = s_angleDistribution(getSharedRNG());
-      stateIt->second.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
+      statePtr->currentDirection = Vector2D(std::cos(angle), std::sin(angle));
     }
   } else if (message == "increase_speed") {
     m_speed *= 1.5f;
-    auto stateIt = m_entityStates.find(entityId);
-    if (m_active && stateIt != m_entityStates.end() && idx != SIZE_MAX) {
-      edm.getHotDataByIndex(idx).transform.velocity = stateIt->second.currentDirection * m_speed;
+    if (m_active && statePtr) {
+      edm.getHotDataByIndex(idx).transform.velocity = statePtr->currentDirection * m_speed;
     }
   } else if (message == "decrease_speed") {
     m_speed *= 0.75f;
-    auto stateIt = m_entityStates.find(entityId);
-    if (m_active && stateIt != m_entityStates.end() && idx != SIZE_MAX) {
-      edm.getHotDataByIndex(idx).transform.velocity = stateIt->second.currentDirection * m_speed;
+    if (m_active && statePtr) {
+      edm.getHotDataByIndex(idx).transform.velocity = statePtr->currentDirection * m_speed;
     }
   } else if (message == "release_entities") {
-    if (idx != SIZE_MAX) {
-      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+    if (statePtr) {
+      statePtr->valid = false;
     }
-    m_entityStates.erase(entityId);
   }
 }
 
