@@ -423,12 +423,6 @@ bool GamePlayState::exit() {
   // Reset player
   mp_Player = nullptr;
 
-  // Clear cached manager pointers
-  mp_eventMgr = nullptr;
-  mp_particleMgr = nullptr;
-  mp_worldMgr = nullptr;
-  mp_uiMgr = nullptr;
-
   // Unsubscribe all controllers at once
   m_controllers.unsubscribeAll();
   gameTimeMgr.enableAutoWeather(false);
@@ -441,7 +435,7 @@ bool GamePlayState::exit() {
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
 
-  // Unsubscribe from TimePeriodChangedEvent
+  // Unsubscribe from TimePeriodChangedEvent (must happen before clearing mp_eventMgr)
   if (m_dayNightSubscribed) {
     mp_eventMgr->removeHandler(m_dayNightEventToken);
     m_dayNightSubscribed = false;
@@ -452,6 +446,12 @@ bool GamePlayState::exit() {
     mp_eventMgr->removeHandler(m_weatherEventToken);
     m_weatherSubscribed = false;
   }
+
+  // Clear cached manager pointers (after all usage)
+  mp_eventMgr = nullptr;
+  mp_particleMgr = nullptr;
+  mp_worldMgr = nullptr;
+  mp_uiMgr = nullptr;
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
