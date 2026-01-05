@@ -307,7 +307,7 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   bool usingPathfinding = false;
 
   // Try pathfinding first for all modes
-  usingPathfinding = tryFollowPathToGoal(ctx, state, desiredPos, dynamicSpeed);
+  usingPathfinding = tryFollowPathToGoal(ctx, desiredPos, dynamicSpeed);
 
   // If pathfinding isn't active, fall back to direct movement toward desired position
   if (!usingPathfinding) {
@@ -653,7 +653,7 @@ void FollowBehavior::releaseFormationSlot(int /*slot*/) {
 // OPTIMIZATION: Extracted from lambda for better compiler optimization
 // This method handles path-following logic with TTL, goal change detection, and obstacle handling
 // LOCK-FREE VERSION: Uses BehaviorContext instead of EntityPtr
-bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& desiredPos, float speed) {
+bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& desiredPos, float speed) {
   const float nodeRadius = 20.0f; // Increased for faster path following
   const float pathTTL = 10.0f; // 10 seconds - reduce path churn when stationary
   const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate

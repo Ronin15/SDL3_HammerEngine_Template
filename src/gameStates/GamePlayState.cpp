@@ -924,7 +924,6 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
     return;  // No change, particles already running for this period
   }
 
-  auto& pm = ParticleManager::Instance();
   const auto& gameEngine = GameEngine::Instance();
   Vector2D screenCenter(gameEngine.getLogicalWidth() / 2.0f,
                         gameEngine.getLogicalHeight() / 2.0f);
@@ -934,29 +933,29 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
     stopAmbientParticles();
   }
 
-  // Start appropriate particles for the new period
+  // Start appropriate particles for the new period (use cached mp_particleMgr)
   switch (period) {
     case TimePeriod::Morning:
       // Light dust motes in morning sunlight
-      m_ambientDustEffectId = pm.playIndependentEffect(
+      m_ambientDustEffectId = mp_particleMgr->playIndependentEffect(
           ParticleEffectType::AmbientDust, screenCenter, 0.6f, -1.0f, "ambient");
       break;
 
     case TimePeriod::Day:
       // Subtle dust particles during the day
-      m_ambientDustEffectId = pm.playIndependentEffect(
+      m_ambientDustEffectId = mp_particleMgr->playIndependentEffect(
           ParticleEffectType::AmbientDust, screenCenter, 0.4f, -1.0f, "ambient");
       break;
 
     case TimePeriod::Evening:
       // Golden dust in evening light
-      m_ambientDustEffectId = pm.playIndependentEffect(
+      m_ambientDustEffectId = mp_particleMgr->playIndependentEffect(
           ParticleEffectType::AmbientDust, screenCenter, 0.8f, -1.0f, "ambient");
       break;
 
     case TimePeriod::Night:
       // Fireflies at night
-      m_ambientFireflyEffectId = pm.playIndependentEffect(
+      m_ambientFireflyEffectId = mp_particleMgr->playIndependentEffect(
           ParticleEffectType::AmbientFirefly, screenCenter, 1.0f, -1.0f, "ambient");
       break;
   }
@@ -966,15 +965,14 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
 }
 
 void GamePlayState::stopAmbientParticles() {
-  auto& pm = ParticleManager::Instance();
-
+  // Use cached mp_particleMgr pointer
   if (m_ambientDustEffectId != 0) {
-    pm.stopIndependentEffect(m_ambientDustEffectId);
+    mp_particleMgr->stopIndependentEffect(m_ambientDustEffectId);
     m_ambientDustEffectId = 0;
   }
 
   if (m_ambientFireflyEffectId != 0) {
-    pm.stopIndependentEffect(m_ambientFireflyEffectId);
+    mp_particleMgr->stopIndependentEffect(m_ambientFireflyEffectId);
     m_ambientFireflyEffectId = 0;
   }
 

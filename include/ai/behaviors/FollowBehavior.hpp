@@ -173,7 +173,7 @@ private:
   Vector2D normalizeVector(const Vector2D &vector) const;
 
   // OPTIMIZATION: Extracted lambda for better compiler optimization
-  bool tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& desiredPos, float speed);
+  bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& desiredPos, float speed);
 
   // Formation setup
   void initializeFormationOffsets();
