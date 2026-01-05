@@ -351,7 +351,6 @@ uint64_t PathfinderManager::requestPathToEDM(
         // Cache lookup (shared_lock allows concurrent readers)
         {
             std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
-            if (m_isShutdown) return;
             auto it = m_pathCache.find(cacheKey);
             if (it != m_pathCache.end()) {
                 path = it->second.path;

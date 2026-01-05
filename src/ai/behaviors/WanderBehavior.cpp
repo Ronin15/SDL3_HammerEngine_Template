@@ -211,7 +211,7 @@ void WanderBehavior::applyBoundaryAvoidance(EntityState& state, const Vector2D& 
   }
 }
 
-void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, EntityState& state, const Vector2D& dest) {
+void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest) {
   Vector2D position = ctx.transform.position;
   float const distanceToGoal = (dest - position).length();
   if (distanceToGoal < 64.0f) {
@@ -263,7 +263,7 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, EntityState& state) {
   dest.setX(std::clamp(dest.getX(), state.cachedBounds.minX + MARGIN, state.cachedBounds.maxX - MARGIN));
   dest.setY(std::clamp(dest.getY(), state.cachedBounds.minY + MARGIN, state.cachedBounds.maxY - MARGIN));
 
-  handlePathfinding(ctx, state, dest);
+  handlePathfinding(ctx, dest);
 
   // Read path state from EDM (single source of truth)
   auto& edm = EntityDataManager::Instance();
