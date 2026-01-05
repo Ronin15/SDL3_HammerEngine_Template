@@ -274,28 +274,23 @@ void PatrolBehavior::clean(EntityHandle handle) {
 }
 
 void PatrolBehavior::onMessage(EntityHandle handle, const std::string &message) {
+  // Cache EDM index once for messages that need velocity access
+  auto& edm = EntityDataManager::Instance();
+  size_t idx = handle.isValid() ? edm.getIndex(handle) : SIZE_MAX;
+
   if (message == "pause") {
     setActive(false);
-    if (handle.isValid()) {
-      auto& edm = EntityDataManager::Instance();
-      size_t idx = edm.getIndex(handle);
-      if (idx != SIZE_MAX) {
-        edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
-      }
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
   } else if (message == "resume") {
     setActive(true);
   } else if (message == "reverse") {
     reverseWaypoints();
   } else if (message == "release_entities") {
-    if (handle.isValid()) {
-      auto& edm = EntityDataManager::Instance();
-      size_t idx = edm.getIndex(handle);
-      if (idx != SIZE_MAX) {
-        edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
-      }
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
-
     m_needsReset = false;
   }
 }

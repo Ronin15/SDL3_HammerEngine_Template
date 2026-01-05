@@ -940,8 +940,10 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
 
       // Execute behavior logic using cached handle ID and EDM index for contention-free state access
       // Use cached handle from storage to avoid redundant getHandle() call (3 vector accesses)
+      // World bounds: minX=0, minY=0, maxX=worldWidth, maxY=worldHeight
       BehaviorContext ctx(transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx, deltaTime,
-                          playerHandle, playerPos, playerVel, playerValid, behaviorData, pathData);
+                          playerHandle, playerPos, playerVel, playerValid, behaviorData, pathData,
+                          0.0f, 0.0f, worldWidth, worldHeight, true);
       behavior->executeLogic(ctx);
 
       // Movement integration
