@@ -111,14 +111,16 @@ void FleeBehavior::init(EntityHandle handle) {
 void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     if (!isActive()) return;
 
-    // Get behavior data from EDM (indexed by edmIndex, contention-free)
-    auto& edm = EntityDataManager::Instance();
-    auto& data = edm.getBehaviorData(ctx.edmIndex);
-    if (!data.isValid()) {
+    // Use pre-fetched BehaviorData and PathData from context (no Instance() calls needed)
+    if (!ctx.behaviorData || !ctx.behaviorData->isValid()) {
         return;
     }
+    if (!ctx.pathData) {
+        return;
+    }
+    auto& data = *ctx.behaviorData;
     auto& flee = data.state.flee;
-    auto& pathData = edm.getPathData(ctx.edmIndex);
+    auto& pathData = *ctx.pathData;
 
     // Update all timers
     flee.fleeTimer += ctx.deltaTime;
@@ -646,9 +648,9 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
 
     Vector2D currentPos = ctx.transform.position;
 
-    // Read path state from EDM (single source of truth, per-entity isolation)
-    auto& edm = EntityDataManager::Instance();
-    auto& pathData = edm.getPathData(ctx.edmIndex);
+    // Use pre-fetched path state from context (no Instance() call needed)
+    if (!ctx.pathData) return false;
+    auto& pathData = *ctx.pathData;
 
     // Check if path needs refresh
     bool needRefresh = !pathData.hasPath || pathData.navIndex >= pathData.navPath.size();

@@ -462,6 +462,24 @@ struct BehaviorData {
             uint8_t _pad;
         } flee;
 
+        struct { // ChaseState (~64 bytes)
+            Vector2D lastKnownTargetPos;      // Last known target position
+            Vector2D currentDirection;         // Current movement direction
+            Vector2D lastStallPosition;        // Position when stall was detected
+            float timeWithoutSight;            // Time since last line of sight
+            float stallPositionVariance;       // Variance for stall detection
+            float unstickTimer;                // Timer for unstick behavior
+            float crowdCheckTimer;             // Throttle crowd detection
+            float pathRequestCooldown;         // Cooldown between path requests
+            float stallRecoveryCooldown;       // Cooldown after stall recovery
+            float behaviorChangeCooldown;      // Cooldown for behavior state changes
+            int recalcCounter;                 // Path recalculation counter
+            int cachedChaserCount;             // Cached number of chasers nearby
+            bool isChasing;                    // Currently in chase mode
+            bool hasLineOfSight;               // Has line of sight to target
+            uint8_t _pad[2];                   // Padding for alignment
+        } chase;
+
         struct { // AttackState (~140 bytes)
             Vector2D lastTargetPosition;
             Vector2D attackPosition;

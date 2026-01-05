@@ -522,8 +522,6 @@ void AIManager::assignBehavior(EntityHandle handle,
 
       // Assign new behavior
       m_storage.behaviors[index] = behavior;
-      m_storage.hotData[index].behaviorType =
-          static_cast<uint8_t>(inferBehaviorType(behaviorName));
 
       // Update active state
       if (!m_storage.hotData[index].active) {
@@ -532,6 +530,12 @@ void AIManager::assignBehavior(EntityHandle handle,
 
       // Refresh EDM index if needed
       size_t edmIndex = edm.getIndex(handle);
+
+      // Initialize BehaviorData in EDM (single source of truth for behaviorType)
+      if (edmIndex != SIZE_MAX) {
+        BehaviorType btype = inferBehaviorType(behaviorName);
+        EntityDataManager::Instance().initBehaviorData(edmIndex, btype);
+      }
       if (index < m_storage.edmIndices.size()) {
         m_storage.edmIndices[index] = edmIndex;
       }
@@ -550,10 +554,8 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Add new entity
     size_t newIndex = m_storage.size();
 
-    // Add to hot data
+    // Add to hot data (priority/behaviorType now in EDM)
     AIEntityData::HotData hotData{};
-    hotData.priority = DEFAULT_PRIORITY;
-    hotData.behaviorType = static_cast<uint8_t>(inferBehaviorType(behaviorName));
     hotData.active = true;
 
     m_storage.hotData.push_back(hotData);
@@ -564,6 +566,12 @@ void AIManager::assignBehavior(EntityHandle handle,
     // Cache EntityDataManager index for lock-free batch access
     size_t edmIndex = edm.getIndex(handle);
     m_storage.edmIndices.push_back(edmIndex);
+
+    // Initialize BehaviorData in EDM (single source of truth for behaviorType)
+    if (edmIndex != SIZE_MAX) {
+      BehaviorType btype = inferBehaviorType(behaviorName);
+      EntityDataManager::Instance().initBehaviorData(edmIndex, btype);
+    }
 
     // Populate EDM-to-storage reverse mapping for O(1) lookup in processBatch
     if (edmIndex != SIZE_MAX) {
@@ -914,12 +922,14 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
     auto& transform = edmHotData.transform;  // Direct access, avoid redundant getTransformByIndex()
 
     // Pre-fetch BehaviorData and PathData once - avoids repeated Instance() calls in behaviors
+    // BehaviorType is read from EDM BehaviorData (single source of truth)
     BehaviorData* behaviorData = nullptr;
     PathData* pathData = nullptr;
-    BehaviorType btype = static_cast<BehaviorType>(m_storage.hotData[storageIdx].behaviorType);
-    if (btype != BehaviorType::None && btype != BehaviorType::COUNT) {
+    if (edm.hasBehaviorData(edmIdx)) {
       behaviorData = &edm.getBehaviorData(edmIdx);
-      if (behaviorData->isValid()) {
+      if (behaviorData->isValid() &&
+          behaviorData->behaviorType != BehaviorType::None &&
+          behaviorData->behaviorType != BehaviorType::COUNT) {
         pathData = &edm.getPathData(edmIdx);
       }
     }
@@ -975,10 +985,12 @@ int AIManager::getEntityPriority(EntityHandle handle) const {
   if (!handle.isValid())
     return DEFAULT_PRIORITY;
 
-  std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
-  auto it = m_handleToIndex.find(handle);
-  if (it != m_handleToIndex.end() && it->second < m_storage.size()) {
-    return m_storage.hotData[it->second].priority;
+  // Read priority from EDM CharacterData (single source of truth)
+  auto& edm = EntityDataManager::Instance();
+  size_t edmIndex = edm.getIndex(handle);
+  if (edmIndex != SIZE_MAX) {
+    const auto& charData = edm.getCharacterDataByIndex(edmIndex);
+    return charData.priority;
   }
   return DEFAULT_PRIORITY;
 }
