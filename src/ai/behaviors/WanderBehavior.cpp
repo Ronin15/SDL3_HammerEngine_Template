@@ -90,18 +90,17 @@ void WanderBehavior::init(EntityHandle handle) {
 
 // LOCK-FREE HOT PATH: Uses BehaviorContext for direct EDM access
 void WanderBehavior::executeLogic(BehaviorContext& ctx) {
-  if (!m_active)
+  if (!m_active || !ctx.behaviorData)
     return;
 
-  // Get behavior data from EDM (indexed by edmIndex, contention-free)
-  auto& edm = EntityDataManager::Instance();
-  auto& data = edm.getBehaviorData(ctx.edmIndex);
+  // Use pre-fetched behavior data from context (no Instance() call needed)
+  auto& data = *ctx.behaviorData;
   if (!data.isValid()) {
     return;
   }
 
-  // Update all timers (including EDM path timers)
-  updateTimers(data, ctx.deltaTime, ctx.edmIndex);
+  // Update all timers (including EDM path timers) - pass pathData directly
+  updateTimers(data, ctx.deltaTime, ctx.pathData);
 
   // Check if we need to start movement after delay
   if (!handleStartDelay(ctx, data)) {
@@ -114,20 +113,20 @@ void WanderBehavior::executeLogic(BehaviorContext& ctx) {
   }
 }
 
-void WanderBehavior::updateTimers(BehaviorData& data, float deltaTime, size_t edmIndex) {
+void WanderBehavior::updateTimers(BehaviorData& data, float deltaTime, PathData* pathData) {
   auto& wander = data.state.wander;
   wander.directionChangeTimer += deltaTime;
   wander.lastDirectionFlip += deltaTime;
   wander.stallTimer += deltaTime;
   wander.unstickTimer += deltaTime;
 
-  // Update path timers in EDM (single source of truth)
-  auto& edm = EntityDataManager::Instance();
-  auto& pathData = edm.getPathData(edmIndex);
-  pathData.pathUpdateTimer += deltaTime;
-  pathData.progressTimer += deltaTime;
-  if (pathData.pathRequestCooldown > 0.0f) {
-    pathData.pathRequestCooldown -= deltaTime;
+  // Update path timers in EDM (single source of truth) - no Instance() call needed
+  if (pathData) {
+    pathData->pathUpdateTimer += deltaTime;
+    pathData->progressTimer += deltaTime;
+    if (pathData->pathRequestCooldown > 0.0f) {
+      pathData->pathRequestCooldown -= deltaTime;
+    }
   }
 }
 
@@ -223,13 +222,12 @@ void WanderBehavior::applyBoundaryAvoidance(BehaviorData& data, const Vector2D& 
 void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest) {
   Vector2D position = ctx.transform.position;
   float const distanceToGoal = (dest - position).length();
-  if (distanceToGoal < 64.0f) {
+  if (distanceToGoal < 64.0f || !ctx.pathData) {
     return;
   }
 
-  // Read path state from EDM (single source of truth)
-  auto& edm = EntityDataManager::Instance();
-  auto& pathData = edm.getPathData(ctx.edmIndex);
+  // Use pre-fetched path data from context (no Instance() call needed)
+  auto& pathData = *ctx.pathData;
 
   bool needsNewPath = !pathData.hasPath ||
                      pathData.navIndex >= pathData.navPath.size() ||
@@ -278,9 +276,12 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
 
   handlePathfinding(ctx, dest);
 
-  // Read path state from EDM (single source of truth)
-  auto& edm = EntityDataManager::Instance();
-  auto& pathData = edm.getPathData(ctx.edmIndex);
+  // Use pre-fetched path data from context (no Instance() call needed)
+  if (!ctx.pathData) {
+    ctx.transform.velocity = wander.currentDirection * m_speed;
+    return;
+  }
+  auto& pathData = *ctx.pathData;
 
   // Follow path or apply base movement - write directly to transform
   if (pathData.isFollowingPath()) {

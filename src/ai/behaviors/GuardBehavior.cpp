@@ -146,12 +146,11 @@ void GuardBehavior::init(EntityHandle handle) {
 }
 
 void GuardBehavior::executeLogic(BehaviorContext& ctx) {
-  if (!isActive())
+  if (!isActive() || !ctx.behaviorData)
     return;
 
-  // Get behavior data from EDM (indexed by edmIndex, contention-free)
-  auto& edm = EntityDataManager::Instance();
-  auto& data = edm.getBehaviorData(ctx.edmIndex);
+  // Use pre-fetched behavior data from context (no Instance() call needed)
+  auto& data = *ctx.behaviorData;
   if (!data.isValid()) {
     return;
   }
@@ -170,8 +169,9 @@ void GuardBehavior::executeLogic(BehaviorContext& ctx) {
   guard.alertDecayTimer += ctx.deltaTime;
   guard.roamTimer -= ctx.deltaTime;
 
-  // Update path timers in EDM
-  auto& pathData = edm.getPathData(ctx.edmIndex);
+  // Update path timers from context (no Instance() call needed)
+  if (!ctx.pathData) return;
+  auto& pathData = *ctx.pathData;
   pathData.pathUpdateTimer += ctx.deltaTime;
   pathData.progressTimer += ctx.deltaTime;
 
@@ -586,7 +586,7 @@ void GuardBehavior::handleThreatDetection(BehaviorContext& ctx, BehaviorData& da
     guard.isInvestigating = true;
     guard.investigationTarget = threatPos;
     guard.investigationTimer = 0.0f;
-    moveToPositionDirect(ctx, threatPos, m_movementSpeed, ctx.edmIndex);
+    moveToPositionDirect(ctx, threatPos, m_movementSpeed);
     break;
 
   case 3:  // HOSTILE
@@ -596,12 +596,12 @@ void GuardBehavior::handleThreatDetection(BehaviorContext& ctx, BehaviorData& da
       guard.helpCalled = true;
     }
     // Move towards threat at alert speed
-    moveToPositionDirect(ctx, threatPos, m_alertSpeed, ctx.edmIndex, 2);
+    moveToPositionDirect(ctx, threatPos, m_alertSpeed, 2);
     break;
 
   case 4:  // ALARM
     // Maximum response - could switch to combat behavior
-    moveToPositionDirect(ctx, threatPos, m_alertSpeed * 1.2f, ctx.edmIndex, 3);
+    moveToPositionDirect(ctx, threatPos, m_alertSpeed * 1.2f, 3);
     break;
 
   default:
@@ -621,7 +621,7 @@ void GuardBehavior::handleInvestigation(BehaviorContext& ctx, BehaviorData& data
 
   // Move to investigation target
   if (!isAtPosition(ctx.transform.position, guard.investigationTarget)) {
-    moveToPositionDirect(ctx, guard.investigationTarget, m_movementSpeed, ctx.edmIndex);
+    moveToPositionDirect(ctx, guard.investigationTarget, m_movementSpeed);
   }
 }
 
@@ -630,7 +630,7 @@ void GuardBehavior::handleReturnToPost(BehaviorContext& ctx, BehaviorData& data)
 
   // Return to assigned position
   if (!isAtPosition(ctx.transform.position, guard.assignedPosition)) {
-    moveToPositionDirect(ctx, guard.assignedPosition, m_movementSpeed, ctx.edmIndex);
+    moveToPositionDirect(ctx, guard.assignedPosition, m_movementSpeed);
   } else {
     guard.returningToPost = false;
     guard.currentAlertLevel = 0;  // CALM
@@ -642,7 +642,7 @@ void GuardBehavior::updateStaticGuard(BehaviorContext& ctx, BehaviorData& data) 
 
   // Stay at assigned position
   if (!isAtPosition(ctx.transform.position, guard.assignedPosition, 10.0f)) {
-    moveToPositionDirect(ctx, guard.assignedPosition, m_movementSpeed, ctx.edmIndex);
+    moveToPositionDirect(ctx, guard.assignedPosition, m_movementSpeed);
   }
 
   // Update heading to scan area
@@ -675,7 +675,7 @@ void GuardBehavior::updatePatrolGuard(BehaviorContext& ctx, BehaviorData& data) 
 
     guard.currentPatrolTarget = getNextPatrolWaypoint(data);
   } else {
-    moveToPositionDirect(ctx, guard.currentPatrolTarget, m_movementSpeed, ctx.edmIndex);
+    moveToPositionDirect(ctx, guard.currentPatrolTarget, m_movementSpeed);
   }
 }
 
@@ -685,7 +685,7 @@ void GuardBehavior::updateAreaGuard(BehaviorContext& ctx, BehaviorData& data) {
   // Ensure we're within the guard area
   if (!isWithinGuardArea(ctx.transform.position)) {
     Vector2D const clampedPos = clampToGuardArea(ctx.transform.position);
-    moveToPositionDirect(ctx, clampedPos, m_movementSpeed, ctx.edmIndex);
+    moveToPositionDirect(ctx, clampedPos, m_movementSpeed);
   } else {
     // Patrol within the area
     if (guard.roamTimer <= 0.0f) {
@@ -694,7 +694,7 @@ void GuardBehavior::updateAreaGuard(BehaviorContext& ctx, BehaviorData& data) {
     }
 
     if (!isAtPosition(ctx.transform.position, guard.roamTarget)) {
-      moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed, ctx.edmIndex);
+      moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed);
     }
   }
 }
@@ -709,7 +709,7 @@ void GuardBehavior::updateRoamingGuard(BehaviorContext& ctx, BehaviorData& data)
   }
 
   // Move to roam target
-  moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed, ctx.edmIndex);
+  moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed);
 }
 
 void GuardBehavior::updateAlertGuard(BehaviorContext& ctx, BehaviorData& data) {
@@ -719,7 +719,7 @@ void GuardBehavior::updateAlertGuard(BehaviorContext& ctx, BehaviorData& data) {
   if (guard.currentAlertLevel >= 2) {  // INVESTIGATING or higher
     // Move towards last known threat position
     if (guard.lastKnownThreatPosition.length() > 0) {
-      moveToPositionDirect(ctx, guard.lastKnownThreatPosition, m_alertSpeed, ctx.edmIndex, 2);
+      moveToPositionDirect(ctx, guard.lastKnownThreatPosition, m_alertSpeed, 2);
     }
   } else {
     // Patrol more aggressively
@@ -728,22 +728,73 @@ void GuardBehavior::updateAlertGuard(BehaviorContext& ctx, BehaviorData& data) {
 }
 
 // Lock-free version for BehaviorContext hot path
+// Uses EDM PathData directly - path data persists across frames
 void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos,
-                                         float speed, size_t edmIndex,
-                                         int priority) {
-  if (speed <= 0.0f)
+                                         float speed, int priority) {
+  if (speed <= 0.0f || !ctx.pathData)
     return;
 
-  // Get AIBehaviorState from EDM for base class moveToPosition
-  // Create temporary state for base class call
-  AIBehaviorState tempState;
-  auto& edm = EntityDataManager::Instance();
-  auto& pathData = edm.getPathData(edmIndex);
-  tempState.pathUpdateTimer = pathData.pathUpdateTimer;
-  tempState.progressTimer = pathData.progressTimer;
-  tempState.navRadius = 18.0f;
+  // Use EDM PathData directly - persists across frames (fixes path data loss bug)
+  PathData& pathData = *ctx.pathData;
+  Vector2D currentPos = ctx.transform.position;
 
-  AIBehavior::moveToPosition(ctx, targetPos, speed, tempState, priority);
+  // Check if we need a new path
+  constexpr float PATH_TTL = 3.0f;
+  constexpr float NAV_RADIUS = 18.0f;
+
+  bool needsPath = !pathData.hasPath ||
+                   pathData.navIndex >= pathData.navPath.size() ||
+                   pathData.pathUpdateTimer > PATH_TTL;
+
+  // Check if goal changed significantly
+  if (!needsPath && pathData.hasPath && !pathData.navPath.empty()) {
+    constexpr float GOAL_CHANGE_THRESH_SQ = 100.0f * 100.0f;
+    Vector2D lastGoal = pathData.navPath.back();
+    if ((targetPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQ) {
+      needsPath = true;
+    }
+  }
+
+  // Request new path if needed (with cooldown to prevent spam)
+  if (needsPath && pathData.pathRequestCooldown <= 0.0f) {
+    auto priorityEnum = static_cast<PathfinderManager::Priority>(priority);
+    pathfinder().requestPathToEDM(ctx.edmIndex, currentPos, targetPos, priorityEnum);
+    pathData.pathRequestCooldown = 0.3f + (ctx.entityId % 200) * 0.001f; // Stagger requests
+  }
+
+  // Follow path if available
+  if (pathData.isFollowingPath()) {
+    Vector2D waypoint = pathData.getCurrentWaypoint();
+    Vector2D toWaypoint = waypoint - currentPos;
+    float dist = toWaypoint.length();
+
+    // Advance to next waypoint if close enough
+    if (dist < NAV_RADIUS) {
+      pathData.advanceWaypoint();
+      if (pathData.isFollowingPath()) {
+        waypoint = pathData.getCurrentWaypoint();
+        toWaypoint = waypoint - currentPos;
+        dist = toWaypoint.length();
+      }
+    }
+
+    // Move towards waypoint
+    if (dist > 0.001f) {
+      Vector2D direction = toWaypoint / dist;
+      ctx.transform.velocity = direction * speed;
+      pathData.progressTimer = 0.0f;
+    }
+  } else {
+    // Direct movement fallback (no path available yet)
+    Vector2D toTarget = targetPos - currentPos;
+    float dist = toTarget.length();
+    if (dist > NAV_RADIUS && dist > 0.001f) {
+      Vector2D direction = toTarget / dist;
+      ctx.transform.velocity = direction * speed;
+    } else {
+      ctx.transform.velocity = Vector2D(0, 0);
+    }
+  }
 }
 
 Vector2D GuardBehavior::getNextPatrolWaypoint(const BehaviorData& data) const {

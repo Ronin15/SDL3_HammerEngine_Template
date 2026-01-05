@@ -88,7 +88,7 @@ void PatrolBehavior::init(EntityHandle handle) {
 }
 
 void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
-  if (!m_active || m_waypoints.empty()) {
+  if (!m_active || m_waypoints.empty() || !ctx.pathData) {
     return;
   }
 
@@ -100,9 +100,8 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   Vector2D position = ctx.transform.position;
   float deltaTime = ctx.deltaTime;
 
-  // Get EDM reference and path state (single source of truth, per-entity isolation)
-  auto& edm = EntityDataManager::Instance();
-  auto& pathData = edm.getPathData(ctx.edmIndex);
+  // Use pre-fetched path data from context (no Instance() call needed)
+  auto& pathData = *ctx.pathData;
 
   // Update EDM path timers
   pathData.pathUpdateTimer += deltaTime;

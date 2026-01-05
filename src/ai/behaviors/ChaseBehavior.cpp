@@ -129,11 +129,10 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
     m_lastKnownTargetPos = targetPos;
 
     // State: APPROACHING_TARGET - Move toward target if not too close
-    if (distanceSquared > minRangeSquared) {
+    if (distanceSquared > minRangeSquared && ctx.pathData) {
       // CACHE-AWARE CHASE: Smart pathfinding with target tracking
-      // Read path state from EDM (single source of truth, per-entity isolation)
-      auto& edm = EntityDataManager::Instance();
-      auto& pathData = edm.getPathData(ctx.edmIndex);
+      // Use pre-fetched path data from context (no Instance() call needed)
+      auto& pathData = *ctx.pathData;
 
       bool needsNewPath = false;
 
@@ -287,9 +286,10 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       m_hasLineOfSight = false;
       ctx.transform.velocity = Vector2D(0, 0);
 
-      // Clear pathfinding state in EDM
-      auto& edm = EntityDataManager::Instance();
-      edm.getPathData(ctx.edmIndex).clear();
+      // Clear pathfinding state from context (no Instance() call needed)
+      if (ctx.pathData) {
+        ctx.pathData->clear();
+      }
     }
   }
 }
