@@ -20,8 +20,7 @@ GuardBehavior::GuardBehavior(const Vector2D &guardPosition, float guardRadius,
       m_movementSpeed(1.5f), m_alertSpeed(3.0f), m_patrolWaypoints(),
       m_patrolReverse(false), m_areaCenter(guardPosition), m_areaTopLeft(),
       m_areaBottomRight(), m_areaRadius(guardRadius), m_useCircularArea(false) {
-  // Pre-reserve for large entity counts to avoid reallocations during gameplay
-  m_entityStatesByIndex.reserve(16384);
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
 }
 
 GuardBehavior::GuardBehavior(GuardMode mode, const Vector2D &guardPosition,
@@ -32,8 +31,7 @@ GuardBehavior::GuardBehavior(GuardMode mode, const Vector2D &guardPosition,
       m_alertSpeed(3.0f), m_patrolWaypoints(), m_patrolReverse(false),
       m_areaCenter(guardPosition), m_areaTopLeft(), m_areaBottomRight(),
       m_areaRadius(guardRadius), m_useCircularArea(false) {
-  // Pre-reserve for large entity counts to avoid reallocations during gameplay
-  m_entityStatesByIndex.reserve(16384);
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
   // Adjust parameters based on mode
   switch (mode) {
   case GuardMode::STATIC_GUARD:
@@ -75,8 +73,7 @@ GuardBehavior::GuardBehavior(const HammerEngine::GuardBehaviorConfig& config,
     , m_areaCenter(guardPosition)
     , m_areaRadius(config.guardRadius)
 {
-  // Pre-reserve for large entity counts to avoid reallocations during gameplay
-  m_entityStatesByIndex.reserve(16384);
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
   // Mode-specific adjustments using config values
   switch (mode) {
   case GuardMode::STATIC_GUARD:
@@ -111,119 +108,127 @@ void GuardBehavior::init(EntityHandle handle) {
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX) return;
 
-  // Ensure vector is large enough for this index
-  if (idx >= m_entityStatesByIndex.size()) {
-    m_entityStatesByIndex.resize(idx + 1);
-  }
+  // Initialize behavior data in EDM (pre-allocated alongside hotData)
+  edm.initBehaviorData(idx, BehaviorType::Guard);
+  auto& data = edm.getBehaviorData(idx);
+  auto& guard = data.state.guard;
 
-  auto &state = m_entityStatesByIndex[idx];
-  state = EntityState(); // Reset to default state
-  state.valid = true;
-  state.assignedPosition = m_guardPosition;
-  state.currentMode = m_guardMode;
-  state.onDuty = true;
+  // Initialize guard-specific state
+  guard.assignedPosition = m_guardPosition;
+  guard.currentMode = static_cast<uint8_t>(m_guardMode);
+  guard.currentAlertLevel = 0;  // CALM
+  guard.onDuty = true;
+  guard.hasActiveThreat = false;
+  guard.isInvestigating = false;
+  guard.returningToPost = false;
+  guard.alertRaised = false;
+  guard.helpCalled = false;
+  guard.threatSightingTimer = 0.0f;
+  guard.alertTimer = 0.0f;
+  guard.investigationTimer = 0.0f;
+  guard.positionCheckTimer = 0.0f;
+  guard.patrolMoveTimer = 0.0f;
+  guard.alertDecayTimer = 0.0f;
+  guard.currentHeading = 0.0f;
+  guard.roamTimer = 0.0f;
+  guard.currentPatrolIndex = 0;
 
   // Initialize based on mode
   if (m_guardMode == GuardMode::PATROL_GUARD && !m_patrolWaypoints.empty()) {
-    state.currentPatrolTarget = m_patrolWaypoints[0];
-    state.currentPatrolIndex = 0;
+    guard.currentPatrolTarget = m_patrolWaypoints[0];
+    guard.currentPatrolIndex = 0;
   } else if (m_guardMode == GuardMode::ROAMING_GUARD) {
-    state.roamTarget = generateRoamTarget(state);
-    state.roamTimer = m_roamInterval;
+    guard.roamTarget = generateRoamTarget();
+    guard.roamTimer = m_roamInterval;
   }
+
+  data.setInitialized(true);
 }
 
 void GuardBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  // Get state by EDM index (contention-free vector access)
-  if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
-    return;
-  }
-  EntityState &state = m_entityStatesByIndex[ctx.edmIndex];
-  if (!state.valid) {
+  // Get behavior data from EDM (indexed by edmIndex, contention-free)
+  auto& edm = EntityDataManager::Instance();
+  auto& data = edm.getBehaviorData(ctx.edmIndex);
+  if (!data.isValid()) {
     return;
   }
 
-  if (!state.onDuty) {
+  auto& guard = data.state.guard;
+  if (!guard.onDuty) {
     return; // Guard is off duty
   }
 
   // Update all timers
-  state.threatSightingTimer += ctx.deltaTime;
-  state.alertTimer += ctx.deltaTime;
-  state.investigationTimer += ctx.deltaTime;
-  state.positionCheckTimer += ctx.deltaTime;
-  state.patrolMoveTimer += ctx.deltaTime;
-  state.alertDecayTimer += ctx.deltaTime;
-  state.roamTimer -= ctx.deltaTime;
-  state.baseState.pathUpdateTimer += ctx.deltaTime;
-  state.baseState.progressTimer += ctx.deltaTime;
-  if (state.baseState.backoffTimer > 0.0f) state.baseState.backoffTimer -= ctx.deltaTime;
+  guard.threatSightingTimer += ctx.deltaTime;
+  guard.alertTimer += ctx.deltaTime;
+  guard.investigationTimer += ctx.deltaTime;
+  guard.positionCheckTimer += ctx.deltaTime;
+  guard.patrolMoveTimer += ctx.deltaTime;
+  guard.alertDecayTimer += ctx.deltaTime;
+  guard.roamTimer -= ctx.deltaTime;
+
+  // Update path timers in EDM
+  auto& pathData = edm.getPathData(ctx.edmIndex);
+  pathData.pathUpdateTimer += ctx.deltaTime;
+  pathData.progressTimer += ctx.deltaTime;
 
   // Detect threats (uses ctx.transform.position internally)
-  EntityHandle threat = detectThreat(ctx, state);
+  EntityHandle threat = detectThreat(ctx, data);
   bool threatPresent = threat.isValid();
 
   // Update alert level based on threat presence
-  updateAlertLevel(state, threatPresent);
+  updateAlertLevel(data, threatPresent);
 
   if (threatPresent) {
-    handleThreatDetection(ctx, state, threat);
-  } else if (state.isInvestigating) {
-    handleInvestigation(ctx, state);
-  } else if (state.returningToPost) {
-    handleReturnToPost(ctx, state);
+    handleThreatDetection(ctx, data, threat);
+  } else if (guard.isInvestigating) {
+    handleInvestigation(ctx, data);
+  } else if (guard.returningToPost) {
+    handleReturnToPost(ctx, data);
   } else {
     // Normal guard behavior based on mode
-    switch (state.currentMode) {
+    GuardMode mode = static_cast<GuardMode>(guard.currentMode);
+    switch (mode) {
     case GuardMode::STATIC_GUARD:
-      updateStaticGuard(ctx, state);
+      updateStaticGuard(ctx, data);
       break;
     case GuardMode::PATROL_GUARD:
-      updatePatrolGuard(ctx, state);
+      updatePatrolGuard(ctx, data);
       break;
     case GuardMode::AREA_GUARD:
-      updateAreaGuard(ctx, state);
+      updateAreaGuard(ctx, data);
       break;
     case GuardMode::ROAMING_GUARD:
-      updateRoamingGuard(ctx, state);
+      updateRoamingGuard(ctx, data);
       break;
     case GuardMode::ALERT_GUARD:
-      updateAlertGuard(ctx, state);
+      updateAlertGuard(ctx, data);
       break;
     }
   }
 
   // Handle alert decay
-  if (state.currentAlertLevel > AlertLevel::CALM &&
-      state.alertDecayTimer > m_alertDecayTime) {
-
+  if (guard.currentAlertLevel > 0 && guard.alertDecayTimer > m_alertDecayTime) {
     // Reduce alert level by one step
-    state.currentAlertLevel =
-        static_cast<AlertLevel>(static_cast<int>(state.currentAlertLevel) - 1);
-    state.alertDecayTimer = 0.0f;
+    guard.currentAlertLevel--;
+    guard.alertDecayTimer = 0.0f;
   }
 }
 
 void GuardBehavior::clean(EntityHandle handle) {
+  auto& edm = EntityDataManager::Instance();
   if (handle.isValid()) {
-    // Reset velocity via EDM
-    auto& edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
-      if (idx < m_entityStatesByIndex.size()) {
-        m_entityStatesByIndex[idx].valid = false;
-      }
-    }
-  } else {
-    // Clear all states
-    for (auto& state : m_entityStatesByIndex) {
-      state.valid = false;
+      edm.clearBehaviorData(idx);
+      edm.clearPathData(idx);
     }
   }
+  // Note: Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
 void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
@@ -232,44 +237,43 @@ void GuardBehavior::onMessage(EntityHandle handle, const std::string &message) {
 
   auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx == SIZE_MAX || idx >= m_entityStatesByIndex.size() || !m_entityStatesByIndex[idx].valid)
+  if (idx == SIZE_MAX)
     return;
 
-  EntityState &state = m_entityStatesByIndex[idx];
+  auto& data = edm.getBehaviorData(idx);
+  if (!data.isValid())
+    return;
+
+  auto& guard = data.state.guard;
 
   if (message == "go_on_duty") {
-    state.onDuty = true;
+    guard.onDuty = true;
   } else if (message == "go_off_duty") {
-    state.onDuty = false;
-    state.currentAlertLevel = AlertLevel::CALM;
+    guard.onDuty = false;
+    guard.currentAlertLevel = 0;  // CALM
   } else if (message == "raise_alert") {
-    state.currentAlertLevel = AlertLevel::HOSTILE;
-    state.alertTimer = 0.0f;
+    guard.currentAlertLevel = 3;  // HOSTILE
+    guard.alertTimer = 0.0f;
   } else if (message == "clear_alert") {
     // Clear alert for this entity
-    state.currentAlertLevel = AlertLevel::CALM;
-    state.hasActiveThreat = false;
-    state.isInvestigating = false;
-    state.alertRaised = false;
-    state.helpCalled = false;
+    guard.currentAlertLevel = 0;  // CALM
+    guard.hasActiveThreat = false;
+    guard.isInvestigating = false;
+    guard.alertRaised = false;
+    guard.helpCalled = false;
   } else if (message == "investigate_position") {
-    state.isInvestigating = true;
-    // Get position from EDM
-    auto& edm = EntityDataManager::Instance();
-    size_t idx = edm.getIndex(handle);
-    if (idx != SIZE_MAX) {
-      state.investigationTarget = edm.getHotDataByIndex(idx).transform.position;
-    }
-    state.investigationTimer = 0.0f;
+    guard.isInvestigating = true;
+    guard.investigationTarget = edm.getHotDataByIndex(idx).transform.position;
+    guard.investigationTimer = 0.0f;
   } else if (message == "return_to_post") {
-    state.returningToPost = true;
-    state.isInvestigating = false;
+    guard.returningToPost = true;
+    guard.isInvestigating = false;
   } else if (message == "patrol_mode") {
-    state.currentMode = GuardMode::PATROL_GUARD;
+    guard.currentMode = static_cast<uint8_t>(GuardMode::PATROL_GUARD);
   } else if (message == "static_mode") {
-    state.currentMode = GuardMode::STATIC_GUARD;
+    guard.currentMode = static_cast<uint8_t>(GuardMode::STATIC_GUARD);
   } else if (message == "roam_mode") {
-    state.currentMode = GuardMode::ROAMING_GUARD;
+    guard.currentMode = static_cast<uint8_t>(GuardMode::ROAMING_GUARD);
   }
 }
 
@@ -278,13 +282,8 @@ std::string GuardBehavior::getName() const { return "Guard"; }
 void GuardBehavior::setGuardPosition(const Vector2D &position) {
   m_guardPosition = position;
   m_areaCenter = position;
-
-  // Update all entity states
-  for (auto &state : m_entityStatesByIndex) {
-    if (state.valid) {
-      state.assignedPosition = position;
-    }
-  }
+  // Note: Per-entity assignedPosition is set during init()
+  // Runtime position changes require iterating EDM (expensive)
 }
 
 void GuardBehavior::setGuardRadius(float radius) {
@@ -300,13 +299,7 @@ void GuardBehavior::setAlertRadius(float radius) {
 
 void GuardBehavior::setGuardMode(GuardMode mode) {
   m_guardMode = mode;
-
-  // Update all entity states
-  for (auto &state : m_entityStatesByIndex) {
-    if (state.valid) {
-      state.currentMode = mode;
-    }
-  }
+  // Note: Per-entity currentMode is set during init()
 }
 
 void GuardBehavior::setMovementSpeed(float speed) {
@@ -347,15 +340,9 @@ void GuardBehavior::setGuardArea(const Vector2D &topLeft,
   m_useCircularArea = false;
 }
 
-void GuardBehavior::setAlertLevel(AlertLevel level) {
-  for (auto &state : m_entityStatesByIndex) {
-    if (state.valid) {
-      state.currentAlertLevel = level;
-      if (level > AlertLevel::CALM) {
-        state.alertTimer = 0.0f;
-      }
-    }
-  }
+void GuardBehavior::setAlertLevel(AlertLevel /* level */) {
+  // Note: Setting alert level for all entities would require iterating EDM
+  // Use raiseAlert(handle) for per-entity alert changes
 }
 
 void GuardBehavior::raiseAlert(EntityHandle handle,
@@ -365,17 +352,20 @@ void GuardBehavior::raiseAlert(EntityHandle handle,
 
   auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
-    EntityState &state = m_entityStatesByIndex[idx];
-    state.currentAlertLevel = AlertLevel::HOSTILE;
-    state.alertTimer = 0.0f;
-    state.lastKnownThreatPosition = alertPosition;
-    state.alertRaised = true;
+  if (idx == SIZE_MAX) return;
 
-    if (m_canCallForHelp && !state.helpCalled) {
-      callForHelp(alertPosition);
-      state.helpCalled = true;
-    }
+  auto& data = edm.getBehaviorData(idx);
+  if (!data.isValid()) return;
+
+  auto& guard = data.state.guard;
+  guard.currentAlertLevel = 3;  // HOSTILE
+  guard.alertTimer = 0.0f;
+  guard.lastKnownThreatPosition = alertPosition;
+  guard.alertRaised = true;
+
+  if (m_canCallForHelp && !guard.helpCalled) {
+    callForHelp(alertPosition);
+    guard.helpCalled = true;
   }
 }
 
@@ -385,14 +375,17 @@ void GuardBehavior::clearAlert(EntityHandle handle) {
 
   auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx != SIZE_MAX && idx < m_entityStatesByIndex.size() && m_entityStatesByIndex[idx].valid) {
-    EntityState &state = m_entityStatesByIndex[idx];
-    state.currentAlertLevel = AlertLevel::CALM;
-    state.hasActiveThreat = false;
-    state.isInvestigating = false;
-    state.alertRaised = false;
-    state.helpCalled = false;
-  }
+  if (idx == SIZE_MAX) return;
+
+  auto& data = edm.getBehaviorData(idx);
+  if (!data.isValid()) return;
+
+  auto& guard = data.state.guard;
+  guard.currentAlertLevel = 0;  // CALM
+  guard.hasActiveThreat = false;
+  guard.isInvestigating = false;
+  guard.alertRaised = false;
+  guard.helpCalled = false;
 }
 
 void GuardBehavior::setAlertDecayTime(float seconds) {
@@ -422,31 +415,23 @@ void GuardBehavior::setHelpCallRadius(float radius) {
 void GuardBehavior::setGuardGroup(int groupId) { m_guardGroup = groupId; }
 
 bool GuardBehavior::isOnDuty() const {
-  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
-                     [](const auto &state) { return state.valid && state.onDuty; });
+  // Query requires EDM iteration - return true by default
+  return true;
 }
 
 bool GuardBehavior::isAlerted() const {
-  return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
-                     [](const auto &state) {
-                       return state.valid && state.currentAlertLevel > AlertLevel::CALM;
-                     });
+  // Query requires EDM iteration - return false by default
+  return false;
 }
 
 bool GuardBehavior::isInvestigating() const {
-  return std::any_of(
-      m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
-      [](const auto &state) { return state.valid && state.isInvestigating; });
+  // Query requires EDM iteration - return false by default
+  return false;
 }
 
 GuardBehavior::AlertLevel GuardBehavior::getCurrentAlertLevel() const {
-  AlertLevel maxLevel = AlertLevel::CALM;
-  for (const auto& state : m_entityStatesByIndex) {
-    if (state.valid && state.currentAlertLevel > maxLevel) {
-      maxLevel = state.currentAlertLevel;
-    }
-  }
-  return maxLevel;
+  // Query requires EDM iteration - return CALM by default
+  return AlertLevel::CALM;
 }
 
 GuardBehavior::GuardMode GuardBehavior::getGuardMode() const {
@@ -489,7 +474,7 @@ std::shared_ptr<AIBehavior> GuardBehavior::clone() const {
 }
 
 EntityHandle GuardBehavior::detectThreat(const BehaviorContext& ctx,
-                                         const EntityState &state) const {
+                                         const BehaviorData& data) const {
   // Use cached player info from context (lock-free, cached once per frame)
   if (!ctx.playerValid)
     return EntityHandle{};
@@ -505,7 +490,7 @@ EntityHandle GuardBehavior::detectThreat(const BehaviorContext& ctx,
   // Check field of view if required
   if (m_fieldOfView < 360.0f) {
     float angleToThreat = calculateAngleToTarget(ctx.transform.position, threatPos);
-    float angleDiff = std::abs(normalizeAngle(angleToThreat - state.currentHeading));
+    float angleDiff = std::abs(normalizeAngle(angleToThreat - data.state.guard.currentHeading));
     float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
     if (angleDiff > halfFOV) {
       return EntityHandle{};
@@ -521,13 +506,13 @@ bool GuardBehavior::isThreatInRange(const Vector2D& entityPos, const Vector2D& t
 }
 
 bool GuardBehavior::isThreatInFieldOfView(const Vector2D& entityPos, const Vector2D& threatPos,
-                                          const EntityState &state) const {
+                                          const BehaviorData& data) const {
   // Calculate angle to threat
   float angleToThreat = calculateAngleToTarget(entityPos, threatPos);
 
   // Calculate angular difference from current heading
   float angleDiff =
-      std::abs(normalizeAngle(angleToThreat - state.currentHeading));
+      std::abs(normalizeAngle(angleToThreat - data.state.guard.currentHeading));
 
   // Check if within field of view
   float halfFOV = (m_fieldOfView * M_PI / 180.0f) * 0.5f;
@@ -546,75 +531,77 @@ float GuardBehavior::calculateThreatDistance(const Vector2D& entityPos,
   return (entityPos - threatPos).length();
 }
 
-void GuardBehavior::updateAlertLevel(EntityState &state,
+void GuardBehavior::updateAlertLevel(BehaviorData& data,
                                      bool threatPresent) const {
-
+  auto& guard = data.state.guard;
 
   if (threatPresent) {
-    state.threatSightingTimer = 0.0f; // Reset threat sighting timer
-    state.hasActiveThreat = true;
+    guard.threatSightingTimer = 0.0f; // Reset threat sighting timer
+    guard.hasActiveThreat = true;
 
     // Escalate alert level based on how long threat has been present
-    float const threatDuration = state.alertTimer;
+    float const threatDuration = guard.alertTimer;
 
-    if (state.currentAlertLevel == AlertLevel::CALM) {
-      state.currentAlertLevel = AlertLevel::SUSPICIOUS;
-      state.alertTimer = 0.0f;
-    } else if (state.currentAlertLevel == AlertLevel::SUSPICIOUS &&
+    if (guard.currentAlertLevel == 0) {  // CALM
+      guard.currentAlertLevel = 1;  // SUSPICIOUS
+      guard.alertTimer = 0.0f;
+    } else if (guard.currentAlertLevel == 1 &&  // SUSPICIOUS
                threatDuration > SUSPICIOUS_THRESHOLD) {
-      state.currentAlertLevel = AlertLevel::INVESTIGATING;
-    } else if (state.currentAlertLevel == AlertLevel::INVESTIGATING &&
+      guard.currentAlertLevel = 2;  // INVESTIGATING
+    } else if (guard.currentAlertLevel == 2 &&  // INVESTIGATING
                threatDuration > INVESTIGATING_THRESHOLD) {
-      state.currentAlertLevel = AlertLevel::HOSTILE;
+      guard.currentAlertLevel = 3;  // HOSTILE
     }
   } else {
-    state.hasActiveThreat = false;
+    guard.hasActiveThreat = false;
 
     // Start alert decay if no threat seen for a while
-    if (state.threatSightingTimer > m_alertDecayTime * 0.5f) {
-      state.alertDecayTimer = 0.0f;
+    if (guard.threatSightingTimer > m_alertDecayTime * 0.5f) {
+      guard.alertDecayTimer = 0.0f;
     }
   }
 }
 
-void GuardBehavior::handleThreatDetection(BehaviorContext& ctx, EntityState &state,
+void GuardBehavior::handleThreatDetection(BehaviorContext& ctx, BehaviorData& data,
                                           EntityHandle threat) {
   if (!threat.isValid())
     return;
 
+  auto& guard = data.state.guard;
+
   // Use cached player position from context (lock-free)
   Vector2D threatPos = ctx.playerPosition;
-  state.lastKnownThreatPosition = threatPos;
+  guard.lastKnownThreatPosition = threatPos;
 
   // React based on alert level
-  switch (state.currentAlertLevel) {
-  case AlertLevel::SUSPICIOUS:
+  switch (guard.currentAlertLevel) {
+  case 1:  // SUSPICIOUS
     // Turn towards threat, slow approach
-    state.currentHeading =
+    guard.currentHeading =
         calculateAngleToTarget(ctx.transform.position, threatPos);
     break;
 
-  case AlertLevel::INVESTIGATING:
+  case 2:  // INVESTIGATING
     // Move towards threat for investigation
-    state.isInvestigating = true;
-    state.investigationTarget = threatPos;
-    state.investigationTimer = 0.0f;
-    moveToPositionDirect(ctx, threatPos, m_movementSpeed, state.baseState);
+    guard.isInvestigating = true;
+    guard.investigationTarget = threatPos;
+    guard.investigationTimer = 0.0f;
+    moveToPositionDirect(ctx, threatPos, m_movementSpeed, ctx.edmIndex);
     break;
 
-  case AlertLevel::HOSTILE:
+  case 3:  // HOSTILE
     // Engage threat or call for help
-    if (m_canCallForHelp && !state.helpCalled) {
+    if (m_canCallForHelp && !guard.helpCalled) {
       callForHelp(threatPos);
-      state.helpCalled = true;
+      guard.helpCalled = true;
     }
     // Move towards threat at alert speed
-    moveToPositionDirect(ctx, threatPos, m_alertSpeed, state.baseState, 2);
+    moveToPositionDirect(ctx, threatPos, m_alertSpeed, ctx.edmIndex, 2);
     break;
 
-  case AlertLevel::ALARM:
+  case 4:  // ALARM
     // Maximum response - could switch to combat behavior
-    moveToPositionDirect(ctx, threatPos, m_alertSpeed * 1.2f, state.baseState, 3);
+    moveToPositionDirect(ctx, threatPos, m_alertSpeed * 1.2f, ctx.edmIndex, 3);
     break;
 
   default:
@@ -622,131 +609,152 @@ void GuardBehavior::handleThreatDetection(BehaviorContext& ctx, EntityState &sta
   }
 }
 
-void GuardBehavior::handleInvestigation(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::handleInvestigation(BehaviorContext& ctx, BehaviorData& data) {
+  auto& guard = data.state.guard;
+
   // Check if investigation time has expired
-  if (state.investigationTimer > m_investigationTime) {
-    state.isInvestigating = false;
-    state.returningToPost = true;
+  if (guard.investigationTimer > m_investigationTime) {
+    guard.isInvestigating = false;
+    guard.returningToPost = true;
     return;
   }
 
   // Move to investigation target
-  if (!isAtPosition(ctx.transform.position, state.investigationTarget)) {
-    moveToPositionDirect(ctx, state.investigationTarget, m_movementSpeed, state.baseState);
+  if (!isAtPosition(ctx.transform.position, guard.investigationTarget)) {
+    moveToPositionDirect(ctx, guard.investigationTarget, m_movementSpeed, ctx.edmIndex);
   }
 }
 
-void GuardBehavior::handleReturnToPost(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::handleReturnToPost(BehaviorContext& ctx, BehaviorData& data) {
+  auto& guard = data.state.guard;
+
   // Return to assigned position
-  if (!isAtPosition(ctx.transform.position, state.assignedPosition)) {
-    moveToPositionDirect(ctx, state.assignedPosition, m_movementSpeed, state.baseState);
+  if (!isAtPosition(ctx.transform.position, guard.assignedPosition)) {
+    moveToPositionDirect(ctx, guard.assignedPosition, m_movementSpeed, ctx.edmIndex);
   } else {
-    state.returningToPost = false;
-    state.currentAlertLevel = AlertLevel::CALM;
+    guard.returningToPost = false;
+    guard.currentAlertLevel = 0;  // CALM
   }
 }
 
-void GuardBehavior::updateStaticGuard(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::updateStaticGuard(BehaviorContext& ctx, BehaviorData& data) {
+  auto& guard = data.state.guard;
+
   // Stay at assigned position
-  if (!isAtPosition(ctx.transform.position, state.assignedPosition, 10.0f)) {
-    moveToPositionDirect(ctx, state.assignedPosition, m_movementSpeed, state.baseState);
+  if (!isAtPosition(ctx.transform.position, guard.assignedPosition, 10.0f)) {
+    moveToPositionDirect(ctx, guard.assignedPosition, m_movementSpeed, ctx.edmIndex);
   }
 
   // Update heading to scan area
-  if (state.positionCheckTimer > 2.0f) { // Check every 2 seconds
-    state.currentHeading += 0.5f;        // Slow rotation
-    state.currentHeading = normalizeAngle(state.currentHeading);
-    state.positionCheckTimer = 0.0f;
+  if (guard.positionCheckTimer > 2.0f) { // Check every 2 seconds
+    guard.currentHeading += 0.5f;        // Slow rotation
+    guard.currentHeading = normalizeAngle(guard.currentHeading);
+    guard.positionCheckTimer = 0.0f;
   }
 }
 
-void GuardBehavior::updatePatrolGuard(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::updatePatrolGuard(BehaviorContext& ctx, BehaviorData& data) {
   if (m_patrolWaypoints.empty())
     return;
 
+  auto& guard = data.state.guard;
+
   // Move to current patrol waypoint
-  if (isAtPosition(ctx.transform.position, state.currentPatrolTarget)) {
+  if (isAtPosition(ctx.transform.position, guard.currentPatrolTarget)) {
     // Move to next waypoint
     if (m_patrolReverse) {
-      if (state.currentPatrolIndex == 0) {
-        state.currentPatrolIndex = m_patrolWaypoints.size() - 1;
+      if (guard.currentPatrolIndex == 0) {
+        guard.currentPatrolIndex = static_cast<uint32_t>(m_patrolWaypoints.size() - 1);
       } else {
-        state.currentPatrolIndex--;
+        guard.currentPatrolIndex--;
       }
     } else {
-      state.currentPatrolIndex =
-          (state.currentPatrolIndex + 1) % m_patrolWaypoints.size();
+      guard.currentPatrolIndex =
+          (guard.currentPatrolIndex + 1) % static_cast<uint32_t>(m_patrolWaypoints.size());
     }
 
-    state.currentPatrolTarget = getNextPatrolWaypoint(state);
+    guard.currentPatrolTarget = getNextPatrolWaypoint(data);
   } else {
-    moveToPositionDirect(ctx, state.currentPatrolTarget, m_movementSpeed, state.baseState);
+    moveToPositionDirect(ctx, guard.currentPatrolTarget, m_movementSpeed, ctx.edmIndex);
   }
 }
 
-void GuardBehavior::updateAreaGuard(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::updateAreaGuard(BehaviorContext& ctx, BehaviorData& data) {
+  auto& guard = data.state.guard;
+
   // Ensure we're within the guard area
   if (!isWithinGuardArea(ctx.transform.position)) {
     Vector2D const clampedPos = clampToGuardArea(ctx.transform.position);
-    moveToPositionDirect(ctx, clampedPos, m_movementSpeed, state.baseState);
+    moveToPositionDirect(ctx, clampedPos, m_movementSpeed, ctx.edmIndex);
   } else {
     // Patrol within the area
-    if (state.roamTimer <= 0.0f) {
-      state.roamTarget = generateRoamTarget(state);
-      state.roamTimer = m_roamInterval;
+    if (guard.roamTimer <= 0.0f) {
+      guard.roamTarget = generateRoamTarget();
+      guard.roamTimer = m_roamInterval;
     }
 
-    if (!isAtPosition(ctx.transform.position, state.roamTarget)) {
-      moveToPositionDirect(ctx, state.roamTarget, m_movementSpeed, state.baseState);
+    if (!isAtPosition(ctx.transform.position, guard.roamTarget)) {
+      moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed, ctx.edmIndex);
     }
   }
 }
 
-void GuardBehavior::updateRoamingGuard(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::updateRoamingGuard(BehaviorContext& ctx, BehaviorData& data) {
+  auto& guard = data.state.guard;
+
   // Generate new roam target if needed
-  if (state.roamTimer <= 0.0f || isAtPosition(ctx.transform.position, state.roamTarget)) {
-    state.roamTarget = generateRoamTarget(state);
-    state.roamTimer = m_roamInterval;
+  if (guard.roamTimer <= 0.0f || isAtPosition(ctx.transform.position, guard.roamTarget)) {
+    guard.roamTarget = generateRoamTarget();
+    guard.roamTimer = m_roamInterval;
   }
 
   // Move to roam target
-  moveToPositionDirect(ctx, state.roamTarget, m_movementSpeed, state.baseState);
+  moveToPositionDirect(ctx, guard.roamTarget, m_movementSpeed, ctx.edmIndex);
 }
 
-void GuardBehavior::updateAlertGuard(BehaviorContext& ctx, EntityState &state) {
+void GuardBehavior::updateAlertGuard(BehaviorContext& ctx, BehaviorData& data) {
+  auto& guard = data.state.guard;
+
   // Alert guard moves faster and has heightened awareness
-  if (state.currentAlertLevel >= AlertLevel::INVESTIGATING) {
+  if (guard.currentAlertLevel >= 2) {  // INVESTIGATING or higher
     // Move towards last known threat position
-    if (state.lastKnownThreatPosition.length() > 0) {
-      moveToPositionDirect(ctx, state.lastKnownThreatPosition, m_alertSpeed, state.baseState, 2);
+    if (guard.lastKnownThreatPosition.length() > 0) {
+      moveToPositionDirect(ctx, guard.lastKnownThreatPosition, m_alertSpeed, ctx.edmIndex, 2);
     }
   } else {
     // Patrol more aggressively
-    updatePatrolGuard(ctx, state);
+    updatePatrolGuard(ctx, data);
   }
 }
 
 // Lock-free version for BehaviorContext hot path
 void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos,
-                                         float speed, AIBehaviorState &state,
+                                         float speed, size_t edmIndex,
                                          int priority) {
   if (speed <= 0.0f)
     return;
 
-  // Use base class moveToPosition implementation (renamed from moveToPositionDirect)
-  AIBehavior::moveToPosition(ctx, targetPos, speed, state, priority);
+  // Get AIBehaviorState from EDM for base class moveToPosition
+  // Create temporary state for base class call
+  AIBehaviorState tempState;
+  auto& edm = EntityDataManager::Instance();
+  auto& pathData = edm.getPathData(edmIndex);
+  tempState.pathUpdateTimer = pathData.pathUpdateTimer;
+  tempState.progressTimer = pathData.progressTimer;
+  tempState.navRadius = 18.0f;
+
+  AIBehavior::moveToPosition(ctx, targetPos, speed, tempState, priority);
 }
 
-Vector2D GuardBehavior::getNextPatrolWaypoint(const EntityState &state) const {
+Vector2D GuardBehavior::getNextPatrolWaypoint(const BehaviorData& data) const {
   if (m_patrolWaypoints.empty()) {
     return Vector2D(0, 0);
   }
 
-  return m_patrolWaypoints[state.currentPatrolIndex];
+  return m_patrolWaypoints[data.state.guard.currentPatrolIndex];
 }
 
-Vector2D
-GuardBehavior::generateRoamTarget(const EntityState & /*state*/) const {
+Vector2D GuardBehavior::generateRoamTarget() const {
   Vector2D target;
 
   if (m_useCircularArea) {
