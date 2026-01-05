@@ -251,12 +251,11 @@ BOOST_AUTO_TEST_CASE(TestIdleFidgetMode) {
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().registerEntity(handle, "IdleFidget");
     
-    // Update multiple times
+    // Update multiple times (no sleep_for needed - idle behavior has no cooldowns)
     for (int i = 0; i < 20; ++i) {
         updateAI(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    
+
     // Should have some movement for fidget mode
     BOOST_CHECK_GT(getTestEntity(entity)->getUpdateCount(), 0);
 }
@@ -310,12 +309,13 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
     float totalDistanceMoved = 0.0f;
     bool hasVelocity = false;
 
-    // Update for longer time to account for random delays (up to 5s) and pathfinding (30s cooldown)
-    // Run for ~6 seconds to ensure movement starts
-    for (int i = 0; i < 360; ++i) {  // 360 * 16ms = ~6 seconds
-        updateAI(0.016f);
-        CollisionManager::Instance().update(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Use larger deltaTime to advance cooldowns faster (30s wander cooldown)
+    // 70 iterations * 0.5f = 35s of simulated time (enough to pass 30s cooldown)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.5f;
+    for (int i = 0; i < 70; ++i) {
+        updateAI(testDeltaTime);
+        CollisionManager::Instance().update(testDeltaTime);
 
         Vector2D pos = entity->getPosition();
         Vector2D vel = entity->getVelocity();
@@ -330,7 +330,7 @@ BOOST_AUTO_TEST_CASE(TestWanderBehavior) {
         }
         lastPos = pos;
 
-        if (i % 90 == 0) {
+        if (i % 14 == 0) {
             BOOST_TEST_MESSAGE("Wander Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=" << vel.length() << " moved=" << totalDistanceMoved);
         }
     }
@@ -402,12 +402,13 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
     Vector2D lastPos = initialPos;
     float totalDistanceMoved = 0.0f;
 
-    // Update for longer time to allow async pathfinding to complete (3s cooldown + movement time)
-    // Need at least 4-5 seconds for: path request (0s) -> cooldown (3s) -> movement (1-2s)
-    for (int i = 0; i < 250; ++i) {  // Increased from 30 to 250 (~4 seconds)
-        updateAI(0.016f);
-        CollisionManager::Instance().update(0.016f); // Apply position updates from AIManager
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Use larger deltaTime to advance cooldowns faster (3s chase cooldown)
+    // 50 iterations * 0.1f = 5s of simulated time (enough to pass 3s cooldown + movement)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.1f;
+    for (int i = 0; i < 50; ++i) {
+        updateAI(testDeltaTime);
+        CollisionManager::Instance().update(testDeltaTime); // Apply position updates from AIManager
 
         // Track movement progress
         Vector2D pos = entity->getPosition();
@@ -419,7 +420,7 @@ BOOST_AUTO_TEST_CASE(TestChaseBehavior) {
         lastPos = pos;
 
         // Sample positions periodically
-        if (i % 50 == 0) {
+        if (i % 10 == 0) {
             Vector2D vel = entity->getVelocity();
             BOOST_TEST_MESSAGE("Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=(" << vel.getX() << ", " << vel.getY() << ") moved=" << totalDistanceMoved);
         }
@@ -487,13 +488,14 @@ BOOST_AUTO_TEST_CASE(TestFleeBehavior) {
     updateAI(0.016f);  // Process pending assignment
     // Assignments are now synchronous - no wait needed
 
-    // Update for a reasonable time
+    // Use larger deltaTime for flee behavior (pathTTL = 2.5s, noProgressWindow = 0.4s)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.1f;
     for (int i = 0; i < 30; ++i) {
-        updateAI(0.016f);
-        CollisionManager::Instance().update(0.016f); // Apply position updates
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        updateAI(testDeltaTime);
+        CollisionManager::Instance().update(testDeltaTime); // Apply position updates
     }
-    
+
     // Entity should move away from player (or at least have velocity set)
     Vector2D currentPos = entity->getPosition();
     Vector2D currentVel = entity->getVelocity();
@@ -535,10 +537,11 @@ BOOST_AUTO_TEST_CASE(TestFollowBehavior) {
     Vector2D newPlayerPos(playerPos.getX() + 150, playerPos.getY() + 150);
     testPlayer->setPosition(newPlayerPos);
 
-    // Increased duration to allow async pathfinding and movement
-    for (int i = 0; i < 250; ++i) {  // Increased from 40 to 250
-        updateAI(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Use larger deltaTime to advance pathfinding (pathTTL = 10s, goalChangeThreshold = 200)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.25f;
+    for (int i = 0; i < 50; ++i) {  // 50 * 0.25 = 12.5s of simulated time
+        updateAI(testDeltaTime);
     }
 
     // Entity should move closer to player but maintain some distance
@@ -564,10 +567,11 @@ BOOST_AUTO_TEST_CASE(TestGuardBehavior) {
     EntityHandle handle = entity->getHandle();
     AIManager::Instance().registerEntity(handle, "Guard");
 
-    // Update for longer time to allow patrol/guard behavior to stabilize
-    for (int i = 0; i < 150; ++i) {  // Increased from 20 to 150
-        updateAI(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Use larger deltaTime to allow guard behavior to stabilize (pathTTL = 1.8s)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.1f;
+    for (int i = 0; i < 30; ++i) {  // 30 * 0.1 = 3s of simulated time
+        updateAI(testDeltaTime);
     }
 
     // Guard should stay reasonably near post (more lenient for patrol behavior)
@@ -591,10 +595,11 @@ BOOST_AUTO_TEST_CASE(TestAttackBehavior) {
     // Capture initial behavior execution count (DOD: AIManager tracks executions)
     size_t initialBehaviorCount = AIManager::Instance().getBehaviorUpdateCount();
 
-    // Update for longer time to allow pathfinding and movement
-    for (int i = 0; i < 250; ++i) {  // Increased from 40 to 250
-        updateAI(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Use larger deltaTime for attack behavior (reuses chase-like pathfinding)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.1f;
+    for (int i = 0; i < 50; ++i) {  // 50 * 0.1 = 5s of simulated time
+        updateAI(testDeltaTime);
     }
 
     // Entity should approach for attack (more lenient check)
@@ -781,10 +786,9 @@ BOOST_AUTO_TEST_CASE(TestMultipleEntitiesDifferentBehaviors) {
         AIManager::Instance().registerEntity(handle, behaviors[i]);
     }
 
-    // Update all entities simultaneously
+    // Update all entities simultaneously (no sleep_for needed)
     for (int update = 0; update < 20; ++update) {
         updateAI(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
     // DOD: Check that behaviors were executed
@@ -899,12 +903,13 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
     float totalDistanceMoved = 0.0f;
     bool hasVelocity = false;
 
-    // Run updates for longer to allow pathfinding (15-18s cooldown)
-    // Run for ~20 seconds to ensure at least one path request completes
-    for (int i = 0; i < 1250; ++i) {  // 1250 * 16ms = 20 seconds
-        updateAI(0.016f);
-        CollisionManager::Instance().update(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(16));
+    // Use larger deltaTime to advance cooldowns faster (15s patrol cooldown)
+    // 40 iterations * 0.5f = 20s of simulated time (enough to pass 15s cooldown + movement)
+    // No sleep_for needed - cooldowns use deltaTime, not wall-clock time
+    const float testDeltaTime = 0.5f;
+    for (int i = 0; i < 40; ++i) {
+        updateAI(testDeltaTime);
+        CollisionManager::Instance().update(testDeltaTime);
 
         Vector2D pos = entity->getPosition();
         Vector2D vel = entity->getVelocity();
@@ -919,7 +924,7 @@ BOOST_AUTO_TEST_CASE(TestPatrolBehaviorWithWaypoints) {
         }
         lastPos = pos;
 
-        if (i % 250 == 0) {
+        if (i % 8 == 0) {
             BOOST_TEST_MESSAGE("Patrol Update " << i << ": pos=(" << pos.getX() << ", " << pos.getY() << ") vel=" << vel.length() << " moved=" << totalDistanceMoved);
         }
     }
@@ -957,12 +962,11 @@ BOOST_AUTO_TEST_CASE(TestGuardAlertSystem) {
     Vector2D threatPos(guardPos.getX() + 100, guardPos.getY());
     playerEntity->setPosition(threatPos);
     
-    // Update to trigger guard behavior
+    // Update to trigger guard behavior (no sleep_for needed - just testing no crashes)
     for (int i = 0; i < 30; ++i) {
         updateAI(0.016f);
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    
+
     // Guard should respond to nearby threat
     // Guard might move toward threat or stay alert at post
     BOOST_CHECK(true); // Main test is that no crashes occur
