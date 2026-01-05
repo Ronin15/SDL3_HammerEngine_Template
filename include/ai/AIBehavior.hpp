@@ -44,15 +44,25 @@ struct BehaviorContext {
     BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
     PathData* pathData{nullptr};          // nullptr if entity has no path data
 
+    // World bounds cached once per frame - avoids WorldManager::Instance() calls in behaviors
+    float worldMinX{0.0f};
+    float worldMinY{0.0f};
+    float worldMaxX{0.0f};
+    float worldMaxY{0.0f};
+    bool worldBoundsValid{false};         // Whether world bounds are available
+
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
                     EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
-                    BehaviorData* bData = nullptr, PathData* pData = nullptr)
+                    BehaviorData* bData, PathData* pData,
+                    float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
           playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
-          behaviorData(bData), pathData(pData) {}
+          behaviorData(bData), pathData(pData),
+          worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
+          worldBoundsValid(wBoundsValid) {}
 };
 
 #include <string>

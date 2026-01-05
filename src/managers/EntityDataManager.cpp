@@ -1382,20 +1382,31 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         }
     }
 
-    // Rebuild tier indices if dirty
+    // Rebuild tier indices if dirty - single pass builds all derived indices
     if (m_tierIndicesDirty) {
         m_activeIndices.clear();
         m_backgroundIndices.clear();
         m_hibernatedIndices.clear();
+        // Build collision/trigger indices in same pass (avoid separate lazy rebuilds)
+        m_activeCollisionIndices.clear();
+        m_triggerDetectionIndices.clear();
 
         for (size_t i = 0; i < m_hotData.size(); ++i) {
-            if (!m_hotData[i].isAlive()) {
+            const auto& hot = m_hotData[i];
+            if (!hot.isAlive()) {
                 continue;
             }
 
-            switch (m_hotData[i].tier) {
+            switch (hot.tier) {
                 case SimulationTier::Active:
                     m_activeIndices.push_back(i);
+                    // Build collision/trigger indices while iterating active entities
+                    if (hot.hasCollision()) {
+                        m_activeCollisionIndices.push_back(i);
+                    }
+                    if (hot.needsTriggerDetection()) {
+                        m_triggerDetectionIndices.push_back(i);
+                    }
                     break;
                 case SimulationTier::Background:
                     m_backgroundIndices.push_back(i);
@@ -1407,8 +1418,8 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
         }
 
         m_tierIndicesDirty = false;
-        m_activeCollisionDirty = true;     // Collision indices need rebuild when tiers change
-        m_triggerDetectionDirty = true;    // Trigger detection indices need rebuild when tiers change
+        m_activeCollisionDirty = false;    // Built in same pass
+        m_triggerDetectionDirty = false;   // Built in same pass
 
 #ifndef NDEBUG
         // Rolling log every 60 seconds using time-based check

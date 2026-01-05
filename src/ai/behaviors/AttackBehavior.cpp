@@ -232,12 +232,11 @@ void AttackBehavior::executeLogic(BehaviorContext& ctx) {
   if (!isActive())
     return;
 
-  // Get behavior data from EDM (indexed by edmIndex, contention-free)
-  auto& edm = EntityDataManager::Instance();
-  auto& data = edm.getBehaviorData(ctx.edmIndex);
-  if (!data.isValid()) {
+  // Use pre-fetched behavior data from context (avoids redundant EDM lookup)
+  if (!ctx.behaviorData || !ctx.behaviorData->isValid()) {
     return;
   }
+  auto& data = *ctx.behaviorData;
   auto& attack = data.state.attack;
 
   // Get cached EntityPtr for helper methods that still use it (attack execution, movement)
@@ -252,6 +251,7 @@ void AttackBehavior::executeLogic(BehaviorContext& ctx) {
   bool hasTarget = false;
 
   if (targetHandle.isValid()) {
+    auto& edm = EntityDataManager::Instance();
     size_t targetIdx = edm.getIndex(targetHandle);
     if (targetIdx != SIZE_MAX) {
       const auto& targetHotData = edm.getHotDataByIndex(targetIdx);
