@@ -8,10 +8,10 @@
 
 #include "ai/AIBehavior.hpp"
 #include "entities/EntityHandle.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
-#include <unordered_map>
 
 class IdleBehavior : public AIBehavior {
 public:
@@ -46,32 +46,6 @@ public:
   std::shared_ptr<AIBehavior> clone() const override;
 
 private:
-  // Entity-specific state data
-  struct EntityState {
-    // Validity flag - true if this slot is in use
-    bool valid{false};
-
-    Vector2D originalPosition{0, 0};
-    Vector2D currentOffset{0, 0};
-    float movementTimer{0.0f};
-    float turnTimer{0.0f};
-    float movementInterval{0.0f};
-    float turnInterval{0.0f};
-    float currentAngle{0.0f};
-    bool initialized{false};
-    // Separation decimation (for idle crowding)
-    float separationTimer{0.0f};
-    Vector2D lastSepVelocity{0, 0};
-
-    EntityState()
-        : originalPosition(0, 0), currentOffset(0, 0), movementTimer(0.0f),
-          turnTimer(0.0f), movementInterval(0.0f), turnInterval(0.0f),
-          currentAngle(0.0f), initialized(false) {}
-  };
-
-  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
-  std::vector<EntityState> m_entityStatesByIndex;
-
   // Behavior parameters
   IdleMode m_idleMode{IdleMode::STATIONARY};
   float m_idleRadius{20.0f};
@@ -87,12 +61,12 @@ private:
   mutable std::uniform_real_distribution<float> m_frequencyVariation{0.5f,
                                                                      1.5f};
 
-  // Helper methods
-  void initializeEntityState(const Vector2D& position, EntityState &state) const;
-  void updateStationary(BehaviorContext& ctx, EntityState &state);
-  void updateSubtleSway(BehaviorContext& ctx, EntityState &state) const;
-  void updateOccasionalTurn(BehaviorContext& ctx, EntityState &state) const;
-  void updateLightFidget(BehaviorContext& ctx, EntityState &state) const;
+  // Helper methods (all entity state stored in EDM BehaviorData)
+  void initializeIdleState(const Vector2D& position, BehaviorData& data) const;
+  void updateStationary(BehaviorContext& ctx);
+  void updateSubtleSway(BehaviorContext& ctx, BehaviorData& data) const;
+  void updateOccasionalTurn(BehaviorContext& ctx, BehaviorData& data) const;
+  void updateLightFidget(BehaviorContext& ctx, BehaviorData& data) const;
 
   Vector2D generateRandomOffset() const;
   float getRandomMovementInterval() const;

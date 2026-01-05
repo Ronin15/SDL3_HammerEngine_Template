@@ -10,10 +10,10 @@
 #include "ai/BehaviorConfig.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
-#include <unordered_map>
 
 class FleeBehavior : public AIBehavior {
 public:
@@ -66,47 +66,8 @@ public:
 
 
 private:
-  
-  struct EntityState {
-    // Validity flag - true if this slot is in use
-    bool valid{false};
-
-    EntityHandle handle;  // Stored for EDM lookups
-    Vector2D lastThreatPosition{0, 0};
-    Vector2D fleeDirection{0, 0};
-    Vector2D lastKnownSafeDirection{0, 0};
-    float fleeTimer{0.0f};
-    float directionChangeTimer{0.0f};
-    float panicTimer{0.0f};
-    float currentStamina{100.0f};
-    bool isFleeing{false};
-    bool isInPanic{false};
-    bool hasValidThreat{false};
-    int zigzagDirection{1}; // For evasive maneuvers
-    float zigzagTimer{0.0f};
-
-    // Path-following uses EDM PathData (per-entity isolation, no race conditions)
-    // NavRadius kept here for waypoint arrival detection
-    float navRadius{18.0f};
-    float backoffTimer{0.0f};
-    // Separation decimation
-    float separationTimer{0.0f};
-    Vector2D lastSepVelocity{0, 0};
-
-    // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
-    int cachedNearbyCount{0};
-    std::vector<Vector2D> cachedNearbyPositions;
-    float lastCrowdAnalysis{0.0f};
-
-    EntityState()
-        : lastThreatPosition(0, 0), fleeDirection(0, 0),
-          lastKnownSafeDirection(0, 0), fleeTimer(0.0f),
-          directionChangeTimer(0.0f), panicTimer(0.0f), currentStamina(100.0f),
-          isFleeing(false), isInPanic(false), hasValidThreat(false),
-          zigzagDirection(1), zigzagTimer(0.0f),
-          navRadius(18.0f), backoffTimer(0.0f),
-          separationTimer(0.0f), lastSepVelocity(0, 0) {}
-  };
+  // Entity state now stored in EDM BehaviorData (indexed by edmIndex)
+  // No local m_entityStatesByIndex needed - eliminates sparse array memory waste
 
   // Safe zone structure
   struct SafeZone {
@@ -114,9 +75,6 @@ private:
     float radius;
     SafeZone(const Vector2D &c, float r) : center(c), radius(r) {}
   };
-
-  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
-  std::vector<EntityState> m_entityStatesByIndex;
 
   // Configuration
   HammerEngine::FleeBehaviorConfig m_config;
@@ -152,31 +110,29 @@ private:
   // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
   // (removed m_useAsyncPathfinding flag as it's no longer needed)
 
-  // Helper methods
+  // Helper methods (all entity state stored in EDM BehaviorData)
   EntityHandle getThreatHandle() const; // Gets player handle from AIManager
   Vector2D getThreatPosition() const;   // Gets player position from AIManager
   bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
   Vector2D calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threatPos,
-                                  const EntityState &state) const;
+                                  const BehaviorData& data) const;
   Vector2D findNearestSafeZone(const Vector2D &position) const;
   bool isPositionSafe(const Vector2D &position) const;
   bool isNearBoundary(const Vector2D &position) const;
   Vector2D avoidBoundaries(const Vector2D &position,
                            const Vector2D &direction) const;
 
-  void updatePanicFlee(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
-  void updateStrategicRetreat(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
-  void updateEvasiveManeuver(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
-  void updateSeekCover(BehaviorContext& ctx, EntityState &state, const Vector2D& threatPos);
+  void updatePanicFlee(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
+  void updateStrategicRetreat(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
+  void updateEvasiveManeuver(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
+  void updateSeekCover(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos);
 
-  void updateStamina(EntityState &state, float deltaTime, bool fleeing);
+  void updateStamina(BehaviorData& data, float deltaTime, bool fleeing);
   Vector2D normalizeVector(const Vector2D &direction) const;
-  float calculateFleeSpeedModifier(const EntityState &state) const;
+  float calculateFleeSpeedModifier(const BehaviorData& data) const;
 
   // OPTIMIZATION: Extracted lambda for better compiler optimization
-  bool tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& goal, float speed);
-
-public:
+  bool tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data, const Vector2D& goal, float speed);
 };
 
 #endif // FLEE_BEHAVIOR_HPP

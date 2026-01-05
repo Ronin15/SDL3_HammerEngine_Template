@@ -20,8 +20,7 @@ FleeBehavior::FleeBehavior(float fleeSpeed, float detectionRange, float safeDist
     , m_detectionRange(detectionRange)
     , m_safeDistance(safeDistance)
 {
-  // Pre-reserve for large entity counts to avoid reallocations during gameplay
-  m_entityStatesByIndex.reserve(16384);
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
 }
 
 FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
@@ -29,8 +28,7 @@ FleeBehavior::FleeBehavior(FleeMode mode, float fleeSpeed, float detectionRange)
     , m_fleeSpeed(fleeSpeed)
     , m_detectionRange(detectionRange)
 {
-    // Pre-reserve for large entity counts to avoid reallocations during gameplay
-    m_entityStatesByIndex.reserve(16384);
+    // Entity state now stored in EDM BehaviorData - no local allocation needed
     // Adjust parameters based on mode
     switch (mode) {
         case FleeMode::PANIC_FLEE:
@@ -58,8 +56,7 @@ FleeBehavior::FleeBehavior(const HammerEngine::FleeBehaviorConfig& config, FleeM
     , m_safeDistance(config.safeDistance)
     , m_boundaryPadding(config.worldPadding)
 {
-    // Pre-reserve for large entity counts to avoid reallocations during gameplay
-    m_entityStatesByIndex.reserve(16384);
+    // Entity state now stored in EDM BehaviorData - no local allocation needed
     // Mode-specific adjustments using config values
     switch (mode) {
         case FleeMode::PANIC_FLEE:
@@ -86,71 +83,67 @@ void FleeBehavior::init(EntityHandle handle) {
     size_t idx = edm.getIndex(handle);
     if (idx == SIZE_MAX) return;
 
-    // Ensure vector is large enough for this index
-    if (idx >= m_entityStatesByIndex.size()) {
-      m_entityStatesByIndex.resize(idx + 1);
-    }
-
+    // Initialize behavior data in EDM (pre-allocated alongside hotData)
+    edm.initBehaviorData(idx, BehaviorType::Flee);
+    auto& data = edm.getBehaviorData(idx);
+    auto& flee = data.state.flee;
     auto& hotData = edm.getHotDataByIndex(idx);
-    auto& state = m_entityStatesByIndex[idx];
-    state = EntityState(); // Reset to default state
-    state.valid = true;
-    state.handle = handle;  // Store handle for EDM lookups
-    state.currentStamina = m_maxStamina;
-    state.lastThreatPosition = hotData.transform.position;
+
+    // Initialize flee state
+    flee.lastThreatPosition = hotData.transform.position;
+    flee.fleeDirection = Vector2D(0, 0);
+    flee.lastKnownSafeDirection = Vector2D(0, 0);
+    flee.fleeTimer = 0.0f;
+    flee.directionChangeTimer = 0.0f;
+    flee.panicTimer = 0.0f;
+    flee.currentStamina = m_maxStamina;
+    flee.zigzagTimer = 0.0f;
+    flee.navRadius = 18.0f;
+    flee.backoffTimer = 0.0f;
+    flee.zigzagDirection = 1;
+    flee.isFleeing = false;
+    flee.isInPanic = false;
+    flee.hasValidThreat = false;
+
+    data.setInitialized(true);
 }
 
 void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     if (!isActive()) return;
 
-    // Get EDM reference early for path state and threat lookups
+    // Get behavior data from EDM (indexed by edmIndex, contention-free)
     auto& edm = EntityDataManager::Instance();
-
-    // Get state by EDM index (contention-free vector access)
-    if (ctx.edmIndex >= m_entityStatesByIndex.size()) {
+    auto& data = edm.getBehaviorData(ctx.edmIndex);
+    if (!data.isValid()) {
         return;
     }
-    EntityState& state = m_entityStatesByIndex[ctx.edmIndex];
-    if (!state.valid) {
-        return;
-    }
+    auto& flee = data.state.flee;
+    auto& pathData = edm.getPathData(ctx.edmIndex);
 
     // Update all timers
-    state.fleeTimer += ctx.deltaTime;
-    state.directionChangeTimer += ctx.deltaTime;
-    if (state.panicTimer > 0.0f) state.panicTimer -= ctx.deltaTime;
-    state.zigzagTimer += ctx.deltaTime;
-    if (state.backoffTimer > 0.0f) state.backoffTimer -= ctx.deltaTime;
-    state.lastCrowdAnalysis += ctx.deltaTime;
+    flee.fleeTimer += ctx.deltaTime;
+    flee.directionChangeTimer += ctx.deltaTime;
+    if (flee.panicTimer > 0.0f) flee.panicTimer -= ctx.deltaTime;
+    flee.zigzagTimer += ctx.deltaTime;
+    if (flee.backoffTimer > 0.0f) flee.backoffTimer -= ctx.deltaTime;
+    data.lastCrowdAnalysis += ctx.deltaTime;
 
     // Update EDM path timers (single source of truth for path state)
-    auto& pathData = edm.getPathData(ctx.edmIndex);
     pathData.pathUpdateTimer += ctx.deltaTime;
     pathData.progressTimer += ctx.deltaTime;
     if (pathData.pathRequestCooldown > 0.0f) pathData.pathRequestCooldown -= ctx.deltaTime;
 
-    // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
-    // Reduces CollisionManager queries significantly for fleeing entities
-    float crowdCacheInterval = 3.0f + (ctx.entityId % 200) * 0.01f; // 3-5 seconds
-    if (state.lastCrowdAnalysis >= crowdCacheInterval) {
-      Vector2D position = ctx.transform.position;
-      float queryRadius = 100.0f; // Smaller radius for flee (lighter separation)
-      state.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
-          ctx.entityId, position, queryRadius, state.cachedNearbyPositions);
-      state.lastCrowdAnalysis = 0.0f; // Reset timer
-    }
-
     // Use cached player info from context (lock-free, cached once per frame)
     if (!ctx.playerValid) {
         // No threat detected, stop fleeing and recover stamina
-        if (state.isFleeing) {
-            state.isFleeing = false;
-            state.isInPanic = false;
-            state.hasValidThreat = false;
+        if (flee.isFleeing) {
+            flee.isFleeing = false;
+            flee.isInPanic = false;
+            flee.hasValidThreat = false;
         }
 
         if (m_useStamina) {
-            updateStamina(state, ctx.deltaTime, false);
+            updateStamina(data, ctx.deltaTime, false);
         }
         return;
     }
@@ -161,79 +154,70 @@ void FleeBehavior::executeLogic(BehaviorContext& ctx) {
     float const detectionRangeSquared = m_detectionRange * m_detectionRange;
     bool threatInRange = (distanceToThreatSquared <= detectionRangeSquared);
 
-
     if (threatInRange) {
         // Start fleeing if not already
-        if (!state.isFleeing) {
-            state.isFleeing = true;
-            state.fleeTimer = 0.0f;
-            state.lastThreatPosition = threatPos;
+        if (!flee.isFleeing) {
+            flee.isFleeing = true;
+            flee.fleeTimer = 0.0f;
+            flee.lastThreatPosition = threatPos;
 
             // Determine if this should trigger panic
             if (m_fleeMode == FleeMode::PANIC_FLEE) {
-                state.isInPanic = true;
-                state.panicTimer = m_panicDuration * m_panicVariation(m_rng);
+                flee.isInPanic = true;
+                flee.panicTimer = m_panicDuration * m_panicVariation(m_rng);
             }
         }
 
-        state.hasValidThreat = true;
-        state.lastThreatPosition = threatPos;
-    } else if (state.isFleeing) {
+        flee.hasValidThreat = true;
+        flee.lastThreatPosition = threatPos;
+    } else if (flee.isFleeing) {
         // PERFORMANCE: Use squared distance for comparison
         float const safeDistanceSquared = m_safeDistance * m_safeDistance;
         if (distanceToThreatSquared >= safeDistanceSquared) {
-            state.isFleeing = false;
-            state.isInPanic = false;
-            state.hasValidThreat = false;
+            flee.isFleeing = false;
+            flee.isInPanic = false;
+            flee.hasValidThreat = false;
         }
     }
 
     // Update panic state
-    if (state.isInPanic && state.panicTimer <= 0.0f) {
-        state.isInPanic = false;
+    if (flee.isInPanic && flee.panicTimer <= 0.0f) {
+        flee.isInPanic = false;
     }
 
     // Execute appropriate flee behavior
-    if (state.isFleeing) {
+    if (flee.isFleeing) {
         switch (m_fleeMode) {
             case FleeMode::PANIC_FLEE:
-                updatePanicFlee(ctx, state, threatPos);
+                updatePanicFlee(ctx, data, threatPos);
                 break;
             case FleeMode::STRATEGIC_RETREAT:
-                updateStrategicRetreat(ctx, state, threatPos);
+                updateStrategicRetreat(ctx, data, threatPos);
                 break;
             case FleeMode::EVASIVE_MANEUVER:
-                updateEvasiveManeuver(ctx, state, threatPos);
+                updateEvasiveManeuver(ctx, data, threatPos);
                 break;
             case FleeMode::SEEK_COVER:
-                updateSeekCover(ctx, state, threatPos);
+                updateSeekCover(ctx, data, threatPos);
                 break;
         }
 
         if (m_useStamina) {
-            updateStamina(state, ctx.deltaTime, true);
+            updateStamina(data, ctx.deltaTime, true);
         }
     }
 }
 
 void FleeBehavior::clean(EntityHandle handle) {
+    auto& edm = EntityDataManager::Instance();
     if (handle.isValid()) {
-        auto& edm = EntityDataManager::Instance();
         size_t idx = edm.getIndex(handle);
         if (idx != SIZE_MAX) {
-            // Clear EDM path state
+            edm.clearBehaviorData(idx);
             edm.clearPathData(idx);
-
-            if (idx < m_entityStatesByIndex.size()) {
-                m_entityStatesByIndex[idx].valid = false;
-            }
-        }
-    } else {
-        // Clear all states
-        for (auto& state : m_entityStatesByIndex) {
-            state.valid = false;
         }
     }
+    // Note: Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
 void FleeBehavior::onMessage(EntityHandle handle, const std::string& message) {
@@ -241,22 +225,23 @@ void FleeBehavior::onMessage(EntityHandle handle, const std::string& message) {
 
     auto& edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
-    if (idx == SIZE_MAX || idx >= m_entityStatesByIndex.size() || !m_entityStatesByIndex[idx].valid)
-        return;
+    if (idx == SIZE_MAX) return;
 
-    EntityState& state = m_entityStatesByIndex[idx];
+    auto& data = edm.getBehaviorData(idx);
+    if (!data.isValid()) return;
+    auto& flee = data.state.flee;
 
     if (message == "panic") {
-        state.isInPanic = true;
-        state.panicTimer = m_panicDuration;
+        flee.isInPanic = true;
+        flee.panicTimer = m_panicDuration;
     } else if (message == "calm_down") {
-        state.isInPanic = false;
+        flee.isInPanic = false;
     } else if (message == "stop_fleeing") {
-        state.isFleeing = false;
-        state.isInPanic = false;
-        state.hasValidThreat = false;
+        flee.isFleeing = false;
+        flee.isInPanic = false;
+        flee.hasValidThreat = false;
     } else if (message == "recover_stamina") {
-        state.currentStamina = m_maxStamina;
+        flee.currentStamina = m_maxStamina;
     }
 }
 
@@ -297,38 +282,18 @@ void FleeBehavior::clearSafeZones() {
 }
 
 bool FleeBehavior::isFleeing() const {
-    return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
-                      [](const auto& state) { return state.valid && state.isFleeing; });
+    // Note: Would require EDM iteration to check all entities - return false as default
+    return false;
 }
 
 bool FleeBehavior::isInPanic() const {
-    return std::any_of(m_entityStatesByIndex.begin(), m_entityStatesByIndex.end(),
-                      [](const auto& state) { return state.valid && state.isInPanic; });
+    // Note: Would require EDM iteration to check all entities - return false as default
+    return false;
 }
 
 float FleeBehavior::getDistanceToThreat() const {
-    // Phase 2 EDM Migration: Use handle-based lookup
-    EntityHandle threatHandle = getThreatHandle();
-    if (!threatHandle.isValid()) return -1.0f;
-
-    auto& edm = EntityDataManager::Instance();
-    size_t threatIdx = edm.getIndex(threatHandle);
-    if (threatIdx == SIZE_MAX) return -1.0f;
-
-    Vector2D threatPos = edm.getHotDataByIndex(threatIdx).transform.position;
-
-    // Find a fleeing entity and get its position from EDM
-    for (const auto& state : m_entityStatesByIndex) {
-        if (!state.valid || !state.isFleeing) continue;
-        if (!state.handle.isValid()) continue;
-
-        size_t entityIdx = edm.getIndex(state.handle);
-        if (entityIdx == SIZE_MAX) continue;
-
-        Vector2D entityPos = edm.getHotDataByIndex(entityIdx).transform.position;
-        float distSquared = (entityPos - threatPos).lengthSquared();
-        return std::sqrt(distSquared);
-    }
+    // This method would require knowing which entity to check
+    // Returns -1 as caller should use per-entity distance in executeLogic
     return -1.0f;
 }
 
@@ -362,14 +327,16 @@ bool FleeBehavior::isThreatInRange(const Vector2D& entityPos, const Vector2D& th
     return distanceSquared <= detectionRangeSquared;
 }
 
-Vector2D FleeBehavior::calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threatPos, const EntityState& state) const {
+Vector2D FleeBehavior::calculateFleeDirection(const Vector2D& entityPos, const Vector2D& threatPos, const BehaviorData& data) const {
+    const auto& flee = data.state.flee;
+
     // Basic flee direction (away from threat)
     Vector2D fleeDir = entityPos - threatPos;
 
     if (fleeDir.length() < 0.001f) {
         // If too close, use last known direction or random
-        if (state.fleeDirection.length() > 0.001f) {
-            fleeDir = state.fleeDirection;
+        if (flee.fleeDirection.length() > 0.001f) {
+            fleeDir = flee.fleeDirection;
         } else {
             // Random direction
             float angle = m_angleVariation(m_rng) * 2.0f * M_PI;
@@ -470,12 +437,13 @@ Vector2D FleeBehavior::avoidBoundaries(const Vector2D& position, const Vector2D&
     return adjustedDir;
 }
 
-void FleeBehavior::updatePanicFlee(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+void FleeBehavior::updatePanicFlee(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos) {
+    auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
     // In panic mode, change direction more frequently and use longer distances
-    if (state.directionChangeTimer > 0.2f || state.fleeDirection.length() < 0.001f) {
-        state.fleeDirection = calculateFleeDirection(currentPos, threatPos, state);
+    if (flee.directionChangeTimer > 0.2f || flee.fleeDirection.length() < 0.001f) {
+        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data);
 
         // Add more randomness to panic movement for world-scale escape
         float randomAngle = m_angleVariation(m_rng) * 0.8f; // Increased randomness
@@ -483,40 +451,41 @@ void FleeBehavior::updatePanicFlee(BehaviorContext& ctx, EntityState& state, con
         float sin_a = std::sin(randomAngle);
 
         Vector2D const rotated(
-            state.fleeDirection.getX() * cos_a - state.fleeDirection.getY() * sin_a,
-            state.fleeDirection.getX() * sin_a + state.fleeDirection.getY() * cos_a
+            flee.fleeDirection.getX() * cos_a - flee.fleeDirection.getY() * sin_a,
+            flee.fleeDirection.getX() * sin_a + flee.fleeDirection.getY() * cos_a
         );
 
-        state.fleeDirection = rotated;
-        state.directionChangeTimer = 0.0f;
+        flee.fleeDirection = rotated;
+        flee.directionChangeTimer = 0.0f;
 
         // In panic, try to flee much further to break out of small areas
-        Vector2D panicDest = currentPos + state.fleeDirection * 1000.0f; // Much longer panic flee distance
+        Vector2D panicDest = currentPos + flee.fleeDirection * 1000.0f; // Much longer panic flee distance
 
         // Clamp to world bounds with larger margin for panic mode
         panicDest = pathfinder().clampToWorldBounds(panicDest, 100.0f);
     }
 
-    float const speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D const intended = state.fleeDirection * m_fleeSpeed * speedModifier;
+    float const speedModifier = calculateFleeSpeedModifier(data);
+    Vector2D const intended = flee.fleeDirection * m_fleeSpeed * speedModifier;
     // Set velocity directly - CollisionManager handles overlap resolution
     ctx.transform.velocity = intended;
 }
 
-void FleeBehavior::updateStrategicRetreat(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+void FleeBehavior::updateStrategicRetreat(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos) {
+    auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
     // Strategic retreat: aim for a point away from threat (or toward nearest safe zone)
-    if (state.directionChangeTimer > 1.0f || state.fleeDirection.length() < 0.001f) {
-        state.fleeDirection = calculateFleeDirection(currentPos, threatPos, state);
+    if (flee.directionChangeTimer > 1.0f || flee.fleeDirection.length() < 0.001f) {
+        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data);
 
         // Blend with nearest safe zone direction if exists
         Vector2D const safeZoneDirection = findNearestSafeZone(currentPos);
         if (safeZoneDirection.length() > 0.001f) {
-            Vector2D const blended = (state.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
-            state.fleeDirection = normalizeVector(blended);
+            Vector2D const blended = (flee.fleeDirection * 0.6f + normalizeVector(safeZoneDirection) * 0.4f);
+            flee.fleeDirection = normalizeVector(blended);
         }
-        state.directionChangeTimer = 0.0f;
+        flee.directionChangeTimer = 0.0f;
     }
 
     // Dynamic retreat distance based on local entity density
@@ -532,41 +501,42 @@ void FleeBehavior::updateStrategicRetreat(BehaviorContext& ctx, EntityState& sta
         retreatDistance = baseRetreatDistance * 1.8f; // Up to 1440px retreat
 
         // Also add lateral bias to prevent all entities fleeing in same direction
-        Vector2D const lateral(-state.fleeDirection.getY(), state.fleeDirection.getX());
+        Vector2D const lateral(-flee.fleeDirection.getY(), flee.fleeDirection.getX());
         float lateralBias = ((float)(ctx.entityId % 5) - 2.0f) * 0.3f; // -0.6 to +0.6
-        state.fleeDirection = (state.fleeDirection + lateral * lateralBias).normalized();
+        flee.fleeDirection = (flee.fleeDirection + lateral * lateralBias).normalized();
     } else if (nearbyCount > 0) {
         // Medium density: moderate expansion
         retreatDistance = baseRetreatDistance * 1.3f;
     }
 
     // Compute a retreat destination further ahead and clamp to world bounds
-    Vector2D dest = pathfinder().clampToWorldBounds(currentPos + state.fleeDirection * retreatDistance, 100.0f);
+    Vector2D dest = pathfinder().clampToWorldBounds(currentPos + flee.fleeDirection * retreatDistance, 100.0f);
 
     // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
-    float const speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPathToGoal(ctx, state, dest, m_fleeSpeed * speedModifier)) {
+    float const speedModifier = calculateFleeSpeedModifier(data);
+    if (!tryFollowPathToGoal(ctx, data, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to direct flee when no path available
-        Vector2D const intended2 = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Vector2D const intended2 = flee.fleeDirection * m_fleeSpeed * speedModifier;
         // Set velocity directly - CollisionManager handles overlap resolution
         ctx.transform.velocity = intended2;
     }
 }
 
-void FleeBehavior::updateEvasiveManeuver(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+void FleeBehavior::updateEvasiveManeuver(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos) {
+    auto& flee = data.state.flee;
     Vector2D currentPos = ctx.transform.position;
 
     // Zigzag pattern
-    if (state.zigzagTimer > m_zigzagInterval) {
-        state.zigzagDirection *= -1; // Flip direction
-        state.zigzagTimer = 0.0f;
+    if (flee.zigzagTimer > m_zigzagInterval) {
+        flee.zigzagDirection *= -1; // Flip direction
+        flee.zigzagTimer = 0.0f;
     }
 
     // Base flee direction
-    Vector2D baseFleeDir = calculateFleeDirection(currentPos, threatPos, state);
+    Vector2D baseFleeDir = calculateFleeDirection(currentPos, threatPos, data);
 
     // Apply zigzag
-    float zigzagAngleRad = (m_zigzagAngle * M_PI / 180.0f) * state.zigzagDirection;
+    float zigzagAngleRad = (m_zigzagAngle * M_PI / 180.0f) * flee.zigzagDirection;
     float cos_z = std::cos(zigzagAngleRad);
     float sin_z = std::sin(zigzagAngleRad);
 
@@ -575,15 +545,16 @@ void FleeBehavior::updateEvasiveManeuver(BehaviorContext& ctx, EntityState& stat
         baseFleeDir.getX() * sin_z + baseFleeDir.getY() * cos_z
     );
 
-    state.fleeDirection = normalizeVector(zigzagDir);
+    flee.fleeDirection = normalizeVector(zigzagDir);
 
-    float const speedModifier = calculateFleeSpeedModifier(state);
-    Vector2D const intended3 = state.fleeDirection * m_fleeSpeed * speedModifier;
+    float const speedModifier = calculateFleeSpeedModifier(data);
+    Vector2D const intended3 = flee.fleeDirection * m_fleeSpeed * speedModifier;
     // Set velocity directly - CollisionManager handles overlap resolution
     ctx.transform.velocity = intended3;
 }
 
-void FleeBehavior::updateSeekCover(BehaviorContext& ctx, EntityState& state, const Vector2D& threatPos) {
+void FleeBehavior::updateSeekCover(BehaviorContext& ctx, BehaviorData& data, const Vector2D& threatPos) {
+    auto& flee = data.state.flee;
     // Move toward nearest safe zone using pathfinding when possible
     Vector2D currentPos = ctx.transform.position;
     Vector2D const safeZoneDirection = findNearestSafeZone(currentPos);
@@ -606,34 +577,35 @@ void FleeBehavior::updateSeekCover(BehaviorContext& ctx, EntityState& state, con
 
     Vector2D dest;
     if (safeZoneDirection.length() > 0.001f) {
-        state.fleeDirection = normalizeVector(safeZoneDirection);
-        dest = currentPos + state.fleeDirection * coverDistance;
+        flee.fleeDirection = normalizeVector(safeZoneDirection);
+        dest = currentPos + flee.fleeDirection * coverDistance;
     } else {
         // No safe zones, move away from threat with larger distance
-        state.fleeDirection = calculateFleeDirection(currentPos, threatPos, state);
-        dest = currentPos + state.fleeDirection * coverDistance;
+        flee.fleeDirection = calculateFleeDirection(currentPos, threatPos, data);
+        dest = currentPos + flee.fleeDirection * coverDistance;
     }
 
     // Clamp destination within world bounds
     dest = pathfinder().clampToWorldBounds(dest, 100.0f);
 
     // OPTIMIZATION: Use extracted method instead of lambda for better compiler optimization
-    float const speedModifier = calculateFleeSpeedModifier(state);
-    if (!tryFollowPathToGoal(ctx, state, dest, m_fleeSpeed * speedModifier)) {
+    float const speedModifier = calculateFleeSpeedModifier(data);
+    if (!tryFollowPathToGoal(ctx, data, dest, m_fleeSpeed * speedModifier)) {
         // Fallback to straight-line movement
-        Vector2D const intended4 = state.fleeDirection * m_fleeSpeed * speedModifier;
+        Vector2D const intended4 = flee.fleeDirection * m_fleeSpeed * speedModifier;
         // Set velocity directly - CollisionManager handles overlap resolution
         ctx.transform.velocity = intended4;
     }
 }
 
-void FleeBehavior::updateStamina(EntityState& state, float deltaTime, bool fleeing) {
+void FleeBehavior::updateStamina(BehaviorData& data, float deltaTime, bool fleeing) {
+    auto& flee = data.state.flee;
     if (fleeing) {
-        state.currentStamina -= m_staminaDrain * deltaTime;
-        state.currentStamina = std::max(0.0f, state.currentStamina);
+        flee.currentStamina -= m_staminaDrain * deltaTime;
+        flee.currentStamina = std::max(0.0f, flee.currentStamina);
     } else {
-        state.currentStamina += m_staminaRecovery * deltaTime;
-        state.currentStamina = std::min(m_maxStamina, state.currentStamina);
+        flee.currentStamina += m_staminaRecovery * deltaTime;
+        flee.currentStamina = std::min(m_maxStamina, flee.currentStamina);
     }
 }
 
@@ -645,17 +617,18 @@ Vector2D FleeBehavior::normalizeVector(const Vector2D& direction) const {
     return direction / magnitude;
 }
 
-float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
+float FleeBehavior::calculateFleeSpeedModifier(const BehaviorData& data) const {
+    const auto& flee = data.state.flee;
     float modifier = 1.0f;
 
     // Panic increases speed
-    if (state.isInPanic) {
+    if (flee.isInPanic) {
         modifier *= 1.3f;
     }
 
     // Stamina affects speed
     if (m_useStamina) {
-        float const staminaRatio = state.currentStamina / m_maxStamina;
+        float const staminaRatio = flee.currentStamina / m_maxStamina;
         modifier *= (0.3f + 0.7f * staminaRatio); // Speed ranges from 30% to 100%
     }
 
@@ -664,7 +637,8 @@ float FleeBehavior::calculateFleeSpeedModifier(const EntityState& state) const {
 
 // OPTIMIZATION: Uses EDM path state for per-entity isolation and no shared_from_this() overhead
 // This method handles path-following logic with TTL and no-progress checks
-bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state, const Vector2D& goal, float speed) {
+bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data, const Vector2D& goal, float speed) {
+    const auto& flee = data.state.flee;
     // PERFORMANCE: Increase TTL to reduce pathfinding frequency
     constexpr float pathTTL = 2.5f;
     constexpr float noProgressWindow = 0.4f;
@@ -731,7 +705,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, EntityState& state,
         }
 
         // Check if reached current waypoint
-        if (len <= state.navRadius) {
+        if (len <= flee.navRadius) {
             pathData.advanceWaypoint();
         }
 

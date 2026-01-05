@@ -50,6 +50,9 @@ bool EntityDataManager::init() {
         // Path data (indexed by edmIndex, sparse for non-AI entities)
         m_pathData.reserve(CHARACTER_CAPACITY);
 
+        // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
+        m_behaviorData.reserve(CHARACTER_CAPACITY);
+
         m_activeIndices.reserve(INITIAL_CAPACITY);
         m_backgroundIndices.reserve(INITIAL_CAPACITY);
         m_hibernatedIndices.reserve(INITIAL_CAPACITY);
@@ -110,6 +113,7 @@ void EntityDataManager::clean() {
     m_harvestableData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
+    m_behaviorData.clear();
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -171,6 +175,7 @@ void EntityDataManager::prepareForStateTransition() {
     m_harvestableData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
+    m_behaviorData.clear();
 
     // Clear type-specific free-lists
     m_freeCharacterSlots.clear();
@@ -230,8 +235,9 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
-        // Pre-allocate PathData to match - avoids concurrent resize during AI processing
+        // Pre-allocate PathData and BehaviorData to match - avoids concurrent resize during AI processing
         m_pathData.emplace_back();
+        m_behaviorData.emplace_back();
     }
 
     m_tierIndicesDirty = true;
@@ -249,8 +255,9 @@ void EntityDataManager::freeSlot(size_t index) {
     EntityKind kind = m_hotData[index].kind;
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
 
-    // Clear path data for AI entities
+    // Clear path and behavior data for AI entities
     clearPathData(index);
+    clearBehaviorData(index);
 
     // Clear the slot
     m_hotData[index] = EntityHotData{};
@@ -1314,6 +1321,38 @@ void EntityDataManager::ensurePathData(size_t index) {
 void EntityDataManager::clearPathData(size_t index) {
     if (index < m_pathData.size()) {
         m_pathData[index].clear();
+    }
+}
+
+// ============================================================================
+// BEHAVIOR DATA ACCESS
+// ============================================================================
+
+BehaviorData& EntityDataManager::getBehaviorData(size_t index) {
+    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
+    return m_behaviorData[index];
+}
+
+const BehaviorData& EntityDataManager::getBehaviorData(size_t index) const {
+    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
+    return m_behaviorData[index];
+}
+
+bool EntityDataManager::hasBehaviorData(size_t index) const noexcept {
+    return index < m_behaviorData.size() && m_behaviorData[index].isValid();
+}
+
+void EntityDataManager::initBehaviorData(size_t index, BehaviorType behaviorType) {
+    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
+    auto& data = m_behaviorData[index];
+    data.clear();
+    data.behaviorType = behaviorType;
+    data.setValid(true);
+}
+
+void EntityDataManager::clearBehaviorData(size_t index) {
+    if (index < m_behaviorData.size()) {
+        m_behaviorData[index].clear();
     }
 }
 
