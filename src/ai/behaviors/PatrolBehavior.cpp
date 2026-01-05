@@ -78,6 +78,11 @@ void PatrolBehavior::init(EntityHandle handle) {
   auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
   if (idx != SIZE_MAX) {
+    // Initialize behavior data in EDM (required for pathData access in executeLogic)
+    edm.initBehaviorData(idx, BehaviorType::Patrol);
+    auto& data = edm.getBehaviorData(idx);
+    data.setInitialized(true);
+
     Vector2D position = edm.getHotDataByIndex(idx).transform.position;
     if (isAtWaypoint(position, m_waypoints[m_currentWaypoint])) {
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();

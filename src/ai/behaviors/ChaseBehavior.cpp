@@ -42,9 +42,14 @@ void ChaseBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  const auto& edm = EntityDataManager::Instance();
+  auto& edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX) return;
+
+  // Initialize behavior data in EDM (required for pathData access in executeLogic)
+  edm.initBehaviorData(idx, BehaviorType::Chase);
+  auto& data = edm.getBehaviorData(idx);
+  data.setInitialized(true);
 
   const auto& hotData = edm.getHotDataByIndex(idx);
 
@@ -165,7 +170,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
         // PERFORMANCE: Use squared distance to avoid expensive sqrt
         float const minRangeCheckSquared = (m_minRange * 1.5f) * (m_minRange * 1.5f);
         if (distanceSquared < minRangeCheckSquared) {
-          return; // Already close enough, skip pathfinding
+          ctx.transform.velocity = Vector2D(0, 0);  // Stop movement when close enough
+          return;
         }
 
         Vector2D goalPosition = targetPos;
