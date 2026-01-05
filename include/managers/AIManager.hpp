@@ -62,11 +62,10 @@ constexpr size_t ASSIGNMENT_QUEUE_RESERVE =
 struct AIEntityData {
   // Hot data - accessed every frame
   // Position/distance removed: EntityDataManager is the single source of truth
+  // priority/behaviorType removed: CharacterData/BehaviorData in EDM are source of truth
   struct HotData {
-    uint8_t priority;      // Priority level (1 byte)
-    uint8_t behaviorType;  // Behavior type enum (1 byte)
     bool active;           // Active flag (1 byte)
-    uint8_t padding[5];    // Pad to 8 bytes for alignment
+    uint8_t padding[7];    // Pad to 8 bytes for alignment
   };
 
   // Cold data - accessed occasionally

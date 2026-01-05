@@ -56,84 +56,35 @@ protected:
   virtual void onTargetLost(EntityHandle handle);
 
 private:
-  // Configuration
+  // Configuration (per-template, not per-entity)
   HammerEngine::ChaseBehaviorConfig m_config;
 
   // Note: Target is now obtained via AIManager::getPlayerReference()
   float m_chaseSpeed{10.0f}; // Increased to 10.0 for very visible movement
-  float m_maxRange{
-      1000.0f}; // Maximum distance to chase target - increased to 1000
-  float m_minRange{50.0f}; // Minimum distance to maintain from target
+  float m_maxRange{1000.0f}; // Maximum distance to chase target
+  float m_minRange{50.0f};   // Minimum distance to maintain from target
+  float m_navRadius{18.0f};  // Waypoint arrival threshold
+  int m_maxTimeWithoutSight{60}; // Frames to chase last known position
 
-  bool m_isChasing{false};
-  bool m_hasLineOfSight{false};
-  Vector2D m_lastKnownTargetPos{0, 0};
-  int m_timeWithoutSight{0};
-  const int m_maxTimeWithoutSight{60}; // Frames to chase last known position
-  Vector2D m_currentDirection{0, 0};
+  // All per-entity runtime state is now stored in EDM:
+  // - BehaviorData.state.chase: isChasing, hasLineOfSight, lastKnownTargetPos, timeWithoutSight,
+  //                             currentDirection, cooldowns, etc.
+  // - PathData: navPath, navIndex, stallTimer, progressTimer, pathUpdateTimer
+  // - BehaviorData common: lastCrowdAnalysis, cachedNearbyCount, cachedClusterCenter
 
   // Check if entity has line of sight to target position
   bool checkLineOfSight(EntityHandle handle, const Vector2D& targetPos) const;
 
   // Handle behavior when line of sight is lost
-  void handleNoLineOfSight(EntityHandle handle);
+  void handleNoLineOfSight(EntityHandle handle, BehaviorData& data);
 
-  // Path-following state for chasing around obstacles
-  std::vector<Vector2D> m_navPath;
-  size_t m_navIndex{0};
-  float m_navRadius{18.0f};
-  int m_recalcCounter{0};
-  int m_recalcInterval{15}; // frames between path recalcs
-  // Improved stall detection
-  float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
-  float m_progressTimer{0.0f};
-  float m_pathUpdateTimer{0.0f};
-  float m_stallTimer{0.0f};
-  Vector2D m_lastStallPosition{0, 0};
-  float m_stallPositionVariance{0.0f};
-  float m_unstickTimer{0.0f};
-  // Separation decimation
-  float m_separationTimer{0.0f};
-  Vector2D m_lastSepVelocity{0, 0};
-  // Unified cooldown management
-  struct {
-      float pathRequestCooldown{0.0f};
-      float stallRecoveryCooldown{0.0f};
-      float behaviorChangeCooldown{0.0f};
-
-      bool canRequestPath() const {
-          return pathRequestCooldown <= 0.0f && stallRecoveryCooldown <= 0.0f;
-      }
-
-      void applyPathCooldown(float cooldownSeconds = 0.6f) {
-          pathRequestCooldown = cooldownSeconds;
-      }
-
-      void applyStallCooldown(float baseSeconds = 0.2f, uint32_t stallId = 0) {
-          stallRecoveryCooldown = baseSeconds + (stallId % 300) * 0.001f;
-      }
-
-      void update(float deltaTime) {
-          if (pathRequestCooldown > 0.0f) pathRequestCooldown -= deltaTime;
-          if (stallRecoveryCooldown > 0.0f) stallRecoveryCooldown -= deltaTime;
-          if (behaviorChangeCooldown > 0.0f) behaviorChangeCooldown -= deltaTime;
-      }
-  } m_cooldowns;
-
-  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
-  // bool m_useAsyncPathfinding removed
-
-  // PERFORMANCE OPTIMIZATIONS: Crowd detection throttling
-  mutable float m_crowdCheckTimer{0.0f};
-  mutable int m_cachedChaserCount{0};
-
-  // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
-  int m_cachedNearbyCount{0};
-  std::vector<Vector2D> m_cachedNearbyPositions;
-  float m_lastCrowdAnalysis{0.0f};
+  // Cooldown helper - uses EDM chase state
+  bool canRequestPath(const BehaviorData& data) const;
+  void applyPathCooldown(BehaviorData& data, float cooldownSeconds = 0.6f);
+  void updateCooldowns(BehaviorData& data, float deltaTime);
 
 public:
-  
+
 };
 
 #endif // CHASE_BEHAVIOR_HPP
