@@ -1099,15 +1099,7 @@ const TransformData& EntityDataManager::getTransform(EntityHandle handle) const 
     return m_hotData[index].transform;
 }
 
-TransformData& EntityDataManager::getTransformByIndex(size_t index) {
-    assert(index < m_hotData.size() && "Index out of bounds");
-    return m_hotData[index].transform;
-}
-
-const TransformData& EntityDataManager::getTransformByIndex(size_t index) const {
-    assert(index < m_hotData.size() && "Index out of bounds");
-    return m_hotData[index].transform;
-}
+// getTransformByIndex() is now inline in EntityDataManager.hpp
 
 const TransformData& EntityDataManager::getStaticTransformByIndex(size_t index) const {
     assert(index < m_staticHotData.size() && "Static index out of bounds");
@@ -1130,15 +1122,7 @@ const EntityHotData& EntityDataManager::getHotData(EntityHandle handle) const {
     return m_hotData[index];
 }
 
-EntityHotData& EntityDataManager::getHotDataByIndex(size_t index) {
-    assert(index < m_hotData.size() && "Index out of bounds");
-    return m_hotData[index];
-}
-
-const EntityHotData& EntityDataManager::getHotDataByIndex(size_t index) const {
-    assert(index < m_hotData.size() && "Index out of bounds");
-    return m_hotData[index];
-}
+// getHotDataByIndex() is now inline in EntityDataManager.hpp
 
 std::span<const EntityHotData> EntityDataManager::getHotDataArray() const {
     return std::span<const EntityHotData>(m_hotData);
@@ -1190,19 +1174,7 @@ const CharacterData& EntityDataManager::getCharacterData(EntityHandle handle) co
     return m_characterData[typeIndex];
 }
 
-CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) {
-    assert(index < m_hotData.size() && "Index out of bounds");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
-    assert(typeIndex < m_characterData.size() && "Type index out of bounds");
-    return m_characterData[typeIndex];
-}
-
-const CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) const {
-    assert(index < m_hotData.size() && "Index out of bounds");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
-    assert(typeIndex < m_characterData.size() && "Type index out of bounds");
-    return m_characterData[typeIndex];
-}
+// getCharacterDataByIndex() is now inline in EntityDataManager.hpp
 
 ItemData& EntityDataManager::getItemData(EntityHandle handle) {
     size_t index = getIndex(handle);
@@ -1298,15 +1270,7 @@ const AreaEffectData& EntityDataManager::getAreaEffectData(EntityHandle handle) 
 // PATH DATA ACCESS
 // ============================================================================
 
-PathData& EntityDataManager::getPathData(size_t index) {
-    ensurePathData(index);
-    return m_pathData[index];
-}
-
-const PathData& EntityDataManager::getPathData(size_t index) const {
-    assert(index < m_pathData.size() && "Path data index out of bounds");
-    return m_pathData[index];
-}
+// getPathData() is now inline in EntityDataManager.hpp
 
 bool EntityDataManager::hasPathData(size_t index) const noexcept {
     return index < m_pathData.size();
@@ -1328,15 +1292,7 @@ void EntityDataManager::clearPathData(size_t index) {
 // BEHAVIOR DATA ACCESS
 // ============================================================================
 
-BehaviorData& EntityDataManager::getBehaviorData(size_t index) {
-    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
-    return m_behaviorData[index];
-}
-
-const BehaviorData& EntityDataManager::getBehaviorData(size_t index) const {
-    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
-    return m_behaviorData[index];
-}
+// getBehaviorData() is now inline in EntityDataManager.hpp
 
 bool EntityDataManager::hasBehaviorData(size_t index) const noexcept {
     return index < m_behaviorData.size() && m_behaviorData[index].isValid();
