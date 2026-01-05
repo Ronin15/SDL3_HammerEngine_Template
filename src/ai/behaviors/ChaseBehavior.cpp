@@ -220,7 +220,7 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           Vector2D direction = (targetPos - entityPos);
           direction.normalize();
           ctx.transform.velocity = direction * m_chaseSpeed;
-          m_progressTimer = 0.0f;
+          pathData.progressTimer = 0.0f;  // Reset EDM timer for stall detection
         }
       } else {
         // Direct movement toward target with crowd awareness
@@ -241,7 +241,7 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
 
         // Set velocity directly - CollisionManager handles overlap resolution
         ctx.transform.velocity = direction * m_chaseSpeed;
-        m_progressTimer = 0.0f;
+        pathData.progressTimer = 0.0f;  // Reset EDM timer for stall detection
       }
 
       // Update chase state
