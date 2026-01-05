@@ -11,6 +11,8 @@
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 
+struct BehaviorData;
+
 #include <SDL3/SDL.h>
 #include <memory>
 #include <random>
@@ -59,51 +61,21 @@ public:
   std::shared_ptr<AIBehavior> clone() const override;
 
 private:
-  // Entity-specific state data (must be defined before helper methods that use it)
-  // Stored in vector indexed by EDM index for contention-free multi-threaded access
-  struct EntityState {
-    // Validity flag - true if this slot is in use
-    bool valid{false};
-
-    // Base AI behavior state (pathfinding, separation, cooldowns, crowd cache)
-    AIBehaviorState baseState;
-
-    // Wander-specific state
-    Vector2D currentDirection{0, 0};
-    Vector2D previousVelocity{0, 0}; // Store previous frame velocity for flip detection
-    float directionChangeTimer{0.0f}; // Accumulates deltaTime
-    float lastDirectionFlip{0.0f};    // Time since last flip
-    float startDelay{0.0f};           // Random delay before entity starts moving
-    bool movementStarted{false};      // Flag to track if movement has started
-
-    // Improved stall detection
-    float stallTimer{0.0f};
-    Vector2D lastStallPosition{0, 0};
-    float stallPositionVariance{0.0f};
-    float unstickTimer{0.0f};
-
-    // Performance optimization: cached world bounds to avoid repeated WorldManager calls
-    struct {
-      float minX{0.0f}, minY{0.0f}, maxX{0.0f}, maxY{0.0f};
-    } cachedBounds;
-
-    // Constructor to ensure proper initialization
-    EntityState() {
-      baseState.navRadius = 18.0f; // Wander-specific nav radius
-    }
+  // Static world bounds cache (shared by all wander entities)
+  struct WorldBoundsCache {
+    float minX{0.0f}, minY{0.0f}, maxX{0.0f}, maxY{0.0f};
+    bool initialized{false};
   };
+  static WorldBoundsCache s_worldBounds;
 
   // Helper methods for executeLogic refactoring (use BehaviorContext for lock-free access)
-  void updateTimers(EntityState& state, float deltaTime, size_t edmIndex);
-  bool handleStartDelay(BehaviorContext& ctx, EntityState& state);
-  float calculateMoveDistance(EntityState& state, const Vector2D& position, float baseDistance);
-  void applyBoundaryAvoidance(EntityState& state, const Vector2D& position);
+  // State is stored in EDM BehaviorData, not locally
+  void updateTimers(BehaviorData& data, float deltaTime, size_t edmIndex);
+  bool handleStartDelay(BehaviorContext& ctx, BehaviorData& data);
+  float calculateMoveDistance(const BehaviorData& data, const Vector2D& position, float baseDistance);
+  void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position);
   void handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest);
-  void handleMovement(BehaviorContext& ctx, EntityState& state);
-
-  // Vector to store per-entity state indexed by EDM index (contention-free multi-threaded access)
-  // Each thread accesses distinct indices, eliminating cache line contention
-  std::vector<EntityState> m_entityStatesByIndex;
+  void handleMovement(BehaviorContext& ctx, BehaviorData& data);
 
   // Configuration
   HammerEngine::WanderBehaviorConfig m_config;
@@ -125,7 +97,7 @@ private:
   static thread_local std::uniform_int_distribution<Uint64> s_delayDistribution;
 
   // Choose a new random direction for the entity (lock-free version)
-  void chooseNewDirection(BehaviorContext& ctx, EntityState& state);
+  void chooseNewDirection(BehaviorContext& ctx, BehaviorData& data);
 
   // Mode setup helper
   void setupModeDefaults(WanderMode mode);

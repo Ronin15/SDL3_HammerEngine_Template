@@ -11,6 +11,9 @@
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
+
+struct BehaviorData;
+
 #include <SDL3/SDL.h>
 #include <atomic>
 #include <mutex>
