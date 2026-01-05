@@ -169,6 +169,7 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
     // GOAL VALIDATION: Don't request path if already at waypoint
     float const distanceSquared = (targetWaypoint - position).lengthSquared();
     if (distanceSquared < (m_waypointRadius * m_waypointRadius)) {
+      ctx.transform.velocity = Vector2D(0, 0);  // Stop movement when at waypoint
       return;
     }
 

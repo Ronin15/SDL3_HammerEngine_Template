@@ -147,7 +147,7 @@ bool WanderBehavior::handleStartDelay(BehaviorContext& ctx, BehaviorData& data) 
   // Set velocity directly - CollisionManager handles overlap resolution
   ctx.transform.velocity = intended;
 
-  return false;
+  return true;  // Movement started - continue to handleMovement()
 }
 
 float WanderBehavior::calculateMoveDistance(const BehaviorData& data,
