@@ -911,7 +911,7 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
       continue;
     }
     auto& edmHotData = edm.getHotDataByIndex(edmIdx);
-    auto& transform = edm.getTransformByIndex(edmIdx);
+    auto& transform = edmHotData.transform;  // Direct access, avoid redundant getTransformByIndex()
 
     // Pre-fetch BehaviorData and PathData once - avoids repeated Instance() calls in behaviors
     BehaviorData* behaviorData = nullptr;
@@ -928,9 +928,9 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
       // Store previous position for interpolation
       transform.previousPosition = transform.position;
 
-      // Execute behavior logic using handle ID and EDM index for contention-free state access
-      EntityHandle handle = edm.getHandle(edmIdx);
-      BehaviorContext ctx(transform, edmHotData, handle.getId(), edmIdx, deltaTime,
+      // Execute behavior logic using cached handle ID and EDM index for contention-free state access
+      // Use cached handle from storage to avoid redundant getHandle() call (3 vector accesses)
+      BehaviorContext ctx(transform, edmHotData, m_storage.handles[storageIdx].getId(), edmIdx, deltaTime,
                           playerHandle, playerPos, playerVel, playerValid, behaviorData, pathData);
       behavior->executeLogic(ctx);
 
