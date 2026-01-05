@@ -75,6 +75,19 @@ class Manager {
 ```
 Always `reserve()` when size known.
 
+## EDM (EntityDataManager) Patterns
+
+Behaviors access EDM via context: `ctx.behaviorData` (state), `ctx.pathData` (navigation). Both pre-fetched in `processBatch()`.
+
+**CRITICAL:** Data surviving between frames (paths, timers) MUST use EDM, never local variables:
+```cpp
+// BAD - temp destroyed each frame = infinite path recomputation
+AIBehaviorState temp; temp.pathPoints = compute(); // LOST!
+
+// GOOD - use EDM directly
+PathData& pd = *ctx.pathData; pathfinder().requestPathToEDM(ctx.edmIndex, ...);
+```
+
 ## SIMD
 
 Cross-platform: `include/utils/SIMDMath.hpp` (SSE2/NEON). Process 4 elements/iteration + scalar tail. Always provide scalar fallback. Reference: `AIManager::calculateDistancesSIMD()`.

@@ -40,17 +40,6 @@ namespace {
             default:                                    return HammerEngine::TaskPriority::Normal;
         }
     }
-
-    inline std::string_view priorityLabel(PathfinderManager::Priority p) {
-        using namespace std::literals;
-        switch (p) {
-            case PathfinderManager::Priority::Critical: return "Critical"sv;
-            case PathfinderManager::Priority::High:     return "High"sv;
-            case PathfinderManager::Priority::Normal:   return "Normal"sv;
-            case PathfinderManager::Priority::Low:      return "Low"sv;
-            default:                                    return "Normal"sv;
-        }
-    }
 }
 
 bool PathfinderManager::init() {
