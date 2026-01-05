@@ -12,6 +12,7 @@
 #include "utils/Vector2D.hpp"
 
 struct BehaviorData;
+struct PathData;
 
 #include <SDL3/SDL.h>
 #include <memory>
@@ -70,7 +71,7 @@ private:
 
   // Helper methods for executeLogic refactoring (use BehaviorContext for lock-free access)
   // State is stored in EDM BehaviorData, not locally
-  void updateTimers(BehaviorData& data, float deltaTime, size_t edmIndex);
+  void updateTimers(BehaviorData& data, float deltaTime, PathData* pathData);
   bool handleStartDelay(BehaviorContext& ctx, BehaviorData& data);
   float calculateMoveDistance(const BehaviorData& data, const Vector2D& position, float baseDistance);
   void applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position);

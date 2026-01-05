@@ -58,8 +58,8 @@ bool AIManager::init() {
     m_storage.reserve(INITIAL_CAPACITY);
     m_handleToIndex.reserve(INITIAL_CAPACITY);
 
-    // Reserve sparse behavior vector (grows dynamically based on EDM indices)
-    m_behaviorsByEdmIndex.reserve(INITIAL_CAPACITY);
+    // Reserve EDM-to-storage reverse mapping (grows dynamically based on EDM indices)
+    m_edmToStorageIndex.reserve(INITIAL_CAPACITY);
 
     // Initialize lock-free message queue
     for (auto &msg : m_lockFreeMessages) {
@@ -128,7 +128,7 @@ void AIManager::clean() {
 
     m_handleToIndex.clear();
     m_behaviorTemplates.clear();
-    m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
+    m_edmToStorageIndex.clear();  // Clear EDM-to-storage reverse mapping
     m_messageQueue.clear();
   }
 
@@ -202,7 +202,7 @@ void AIManager::prepareForStateTransition() {
     m_storage.lastUpdateTimes.clear();
     m_storage.edmIndices.clear();  // Clear EDM indices to prevent stale data
     m_handleToIndex.clear();
-    m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
+    m_edmToStorageIndex.clear();  // Clear EDM-to-storage reverse mapping
 
     AI_DEBUG("Cleaned up all entities for state transition");
   }
@@ -283,6 +283,7 @@ void AIManager::update(float deltaTime) {
     // This eliminates shared_lock contention in getPlayerHandle()/getPlayerPosition()
     EntityHandle cachedPlayerHandle;
     Vector2D cachedPlayerPosition;
+    Vector2D cachedPlayerVelocity;
     bool cachedPlayerValid = false;
     {
       std::shared_lock<std::shared_mutex> lock(m_entitiesMutex);
@@ -291,7 +292,9 @@ void AIManager::update(float deltaTime) {
       if (cachedPlayerValid) {
         size_t playerIdx = edm.getIndex(m_playerHandle);
         if (playerIdx != SIZE_MAX) {
-          cachedPlayerPosition = edm.getTransformByIndex(playerIdx).position;
+          auto& playerTransform = edm.getTransformByIndex(playerIdx);
+          cachedPlayerPosition = playerTransform.position;
+          cachedPlayerVelocity = playerTransform.velocity;
         }
       }
     }
@@ -324,7 +327,7 @@ void AIManager::update(float deltaTime) {
                              queueSize, queueCapacity));
 
         processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight,
-                     cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
+                     cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity, cachedPlayerValid);
       } else {
         // Use centralized WorkerBudgetManager for smart worker allocation
         auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
@@ -344,7 +347,7 @@ void AIManager::update(float deltaTime) {
         // Single batch optimization: avoid thread overhead
         if (batchCount <= 1) {
           processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight,
-                       cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
+                       cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity, cachedPlayerValid);
         } else {
           size_t entitiesPerBatch = entityCount / batchCount;
           size_t remainingEntities = entityCount % batchCount;
@@ -367,10 +370,10 @@ void AIManager::update(float deltaTime) {
             // processBatch acquires shared_lock internally for thread-safe read access
             m_batchFutures.push_back(threadSystem.enqueueTaskWithResult(
               [this, start, end, deltaTime, worldWidth, worldHeight,
-               cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid]() -> void {
+               cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity, cachedPlayerValid]() -> void {
                 try {
                   processBatch(m_activeIndicesBuffer, start, end, deltaTime, worldWidth, worldHeight,
-                               cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
+                               cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity, cachedPlayerValid);
                 } catch (const std::exception &e) {
                   AI_ERROR(std::format("Exception in AI batch: {}", e.what()));
                 } catch (...) {
@@ -389,7 +392,7 @@ void AIManager::update(float deltaTime) {
     } else {
       // Single-threaded processing (threading disabled in config)
       processBatch(m_activeIndicesBuffer, 0, entityCount, deltaTime, worldWidth, worldHeight,
-                   cachedPlayerHandle, cachedPlayerPosition, cachedPlayerValid);
+                   cachedPlayerHandle, cachedPlayerPosition, cachedPlayerVelocity, cachedPlayerValid);
     }
 
     // Process lock-free message queue
@@ -533,12 +536,12 @@ void AIManager::assignBehavior(EntityHandle handle,
         m_storage.edmIndices[index] = edmIndex;
       }
 
-      // Update sparse behavior vector for getActiveIndices() iteration
+      // Update EDM-to-storage reverse mapping for O(1) lookup in processBatch
       if (edmIndex != SIZE_MAX) {
-        if (m_behaviorsByEdmIndex.size() <= edmIndex) {
-          m_behaviorsByEdmIndex.resize(edmIndex + 1);
+        if (m_edmToStorageIndex.size() <= edmIndex) {
+          m_edmToStorageIndex.resize(edmIndex + 1, SIZE_MAX);
         }
-        m_behaviorsByEdmIndex[edmIndex] = behavior;
+        m_edmToStorageIndex[edmIndex] = index;
       }
 
       AI_INFO(std::format("Updated behavior for existing entity to: {}", behaviorName));
@@ -562,12 +565,12 @@ void AIManager::assignBehavior(EntityHandle handle,
     size_t edmIndex = edm.getIndex(handle);
     m_storage.edmIndices.push_back(edmIndex);
 
-    // Populate sparse behavior vector for getActiveIndices() iteration
+    // Populate EDM-to-storage reverse mapping for O(1) lookup in processBatch
     if (edmIndex != SIZE_MAX) {
-      if (m_behaviorsByEdmIndex.size() <= edmIndex) {
-        m_behaviorsByEdmIndex.resize(edmIndex + 1);
+      if (m_edmToStorageIndex.size() <= edmIndex) {
+        m_edmToStorageIndex.resize(edmIndex + 1, SIZE_MAX);
       }
-      m_behaviorsByEdmIndex[edmIndex] = behavior;
+      m_edmToStorageIndex[edmIndex] = newIndex;
     }
 
     // Update index map
@@ -596,10 +599,10 @@ void AIManager::unassignBehavior(EntityHandle handle) {
         m_storage.behaviors[index]->clean(handle);
       }
 
-      // Clear from sparse behavior vector
+      // Clear from EDM-to-storage reverse mapping
       size_t edmIndex = m_storage.edmIndices[index];
-      if (edmIndex < m_behaviorsByEdmIndex.size()) {
-        m_behaviorsByEdmIndex[edmIndex] = nullptr;
+      if (edmIndex < m_edmToStorageIndex.size()) {
+        m_edmToStorageIndex[edmIndex] = SIZE_MAX;
       }
     }
   }
@@ -735,7 +738,7 @@ void AIManager::resetBehaviors() {
   m_storage.lastUpdateTimes.clear();
   m_storage.edmIndices.clear();  // BUGFIX: Must clear edmIndices to prevent stale index pollution
   m_handleToIndex.clear();
-  m_behaviorsByEdmIndex.clear();  // Clear sparse behavior vector
+  m_edmToStorageIndex.clear();  // Clear EDM-to-storage reverse mapping
 
   // Reset counters
   m_totalBehaviorExecutions.store(0, std::memory_order_relaxed);
@@ -877,29 +880,49 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
                              size_t start, size_t end,
                              float deltaTime,
                              float worldWidth, float worldHeight,
-                             EntityHandle playerHandle, const Vector2D& playerPos, bool playerValid) {
+                             EntityHandle playerHandle, const Vector2D& playerPos,
+                             const Vector2D& playerVel, bool playerValid) {
   // Process batch of Active tier entities using EDM indices directly
   // No tier check needed - getActiveIndices() already filters to Active tier
   size_t batchExecutions = 0;
   auto& edm = EntityDataManager::Instance();
 
-  // No lock needed: m_behaviorsByEdmIndex is read-only during batch window
+  // No lock needed: m_edmToStorageIndex is read-only during batch window
   // - Behavior assignments happen synchronously via assignBehavior() before batch processing
   // - Entity removals only mark inactive (don't modify vector structure)
 
   for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
     size_t edmIdx = activeIndices[i];
 
-    // Get behavior from sparse vector - O(1) lookup
-    if (edmIdx >= m_behaviorsByEdmIndex.size() || !m_behaviorsByEdmIndex[edmIdx]) {
+    // Get storage index from reverse mapping - O(1) lookup, no atomic overhead
+    if (edmIdx >= m_edmToStorageIndex.size()) {
       continue;  // No behavior registered for this entity (e.g., Player)
     }
+    size_t storageIdx = m_edmToStorageIndex[edmIdx];
+    if (storageIdx == SIZE_MAX || storageIdx >= m_storage.size()) {
+      continue;  // Invalid storage index
+    }
+    if (!m_storage.hotData[storageIdx].active) {
+      continue;  // Entity marked inactive
+    }
 
-    AIBehavior* behavior = m_behaviorsByEdmIndex[edmIdx].get();
+    AIBehavior* behavior = m_storage.behaviors[storageIdx].get();
+    if (!behavior) {
+      continue;
+    }
     auto& edmHotData = edm.getHotDataByIndex(edmIdx);
     auto& transform = edm.getTransformByIndex(edmIdx);
 
-    // No tier check - getActiveIndices() guarantees Active tier only
+    // Pre-fetch BehaviorData and PathData once - avoids repeated Instance() calls in behaviors
+    BehaviorData* behaviorData = nullptr;
+    PathData* pathData = nullptr;
+    BehaviorType btype = static_cast<BehaviorType>(m_storage.hotData[storageIdx].behaviorType);
+    if (btype != BehaviorType::None && btype != BehaviorType::COUNT) {
+      behaviorData = &edm.getBehaviorData(edmIdx);
+      if (behaviorData->isValid()) {
+        pathData = &edm.getPathData(edmIdx);
+      }
+    }
 
     try {
       // Store previous position for interpolation
@@ -908,7 +931,7 @@ void AIManager::processBatch(const std::vector<size_t>& activeIndices,
       // Execute behavior logic using handle ID and EDM index for contention-free state access
       EntityHandle handle = edm.getHandle(edmIdx);
       BehaviorContext ctx(transform, edmHotData, handle.getId(), edmIdx, deltaTime,
-                          playerHandle, playerPos, playerValid);
+                          playerHandle, playerPos, playerVel, playerValid, behaviorData, pathData);
       behavior->executeLogic(ctx);
 
       // Movement integration

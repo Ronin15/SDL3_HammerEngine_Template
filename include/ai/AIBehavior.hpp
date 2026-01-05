@@ -18,6 +18,8 @@
 class PathfinderManager;
 struct TransformData;
 struct EntityHotData;
+struct BehaviorData;
+struct PathData;
 
 /**
  * @brief Context for behavior execution - provides lock-free access to entity data
@@ -35,15 +37,22 @@ struct BehaviorContext {
     // Player info cached once per update batch - avoids lock contention in behaviors
     EntityHandle playerHandle;     // Cached player handle (no lock needed)
     Vector2D playerPosition;       // Cached player position (no lock needed)
+    Vector2D playerVelocity;       // Cached player velocity (for movement detection)
     bool playerValid{false};       // Whether player is valid this frame
+
+    // Pre-fetched EDM data - avoids repeated Instance() calls in behaviors
+    BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
+    PathData* pathData{nullptr};          // nullptr if entity has no path data
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
 
     BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
-                    EntityHandle pHandle, const Vector2D& pPos, bool pValid)
+                    EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
+                    BehaviorData* bData = nullptr, PathData* pData = nullptr)
         : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
-          playerHandle(pHandle), playerPosition(pPos), playerValid(pValid) {}
+          playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
+          behaviorData(bData), pathData(pData) {}
 };
 
 #include <string>

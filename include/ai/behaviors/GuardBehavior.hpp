@@ -175,7 +175,7 @@ private:
 
   // Movement and positioning
   void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos, float speed,
-                           size_t edmIndex, int priority = 1);
+                           int priority = 1);
   Vector2D getNextPatrolWaypoint(const BehaviorData& data) const;
   Vector2D generateRoamTarget() const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,

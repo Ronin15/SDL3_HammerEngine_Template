@@ -56,12 +56,11 @@ void IdleBehavior::init(EntityHandle handle) {
 }
 
 void IdleBehavior::executeLogic(BehaviorContext& ctx) {
-  if (!isActive())
+  if (!isActive() || !ctx.behaviorData)
     return;
 
-  // Get behavior data from EDM (indexed by edmIndex, contention-free)
-  auto& edm = EntityDataManager::Instance();
-  auto& data = edm.getBehaviorData(ctx.edmIndex);
+  // Use pre-fetched behavior data from context (no Instance() call needed)
+  auto& data = *ctx.behaviorData;
   if (!data.isValid()) {
     return;
   }

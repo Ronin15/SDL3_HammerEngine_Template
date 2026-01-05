@@ -281,9 +281,9 @@ private:
       m_behaviorTemplates;
   std::unordered_map<std::string, BehaviorType> m_behaviorTypeMap;
 
-  // Sparse behavior storage indexed by EntityDataManager index for O(1) lookup
-  // Used with getActiveIndices() to iterate only Active tier entities
-  std::vector<std::shared_ptr<AIBehavior>> m_behaviorsByEdmIndex;
+  // Reverse mapping: EDM index -> dense storage index for O(1) lookup in processBatch
+  // SIZE_MAX = no behavior assigned. Much cheaper than shared_ptr (8 bytes vs 16, no atomic ops)
+  std::vector<size_t> m_edmToStorageIndex;
 
   // Shared behaviors indexed by BehaviorType for O(1) lookup in processBatch
   // Each behavior instance handles multiple entities via internal m_entityStates map
@@ -363,7 +363,8 @@ private:
                     size_t start, size_t end,
                     float deltaTime,
                     float worldWidth, float worldHeight,
-                    EntityHandle playerHandle, const Vector2D& playerPos, bool playerValid);
+                    EntityHandle playerHandle, const Vector2D& playerPos,
+                    const Vector2D& playerVel, bool playerValid);
   static uint64_t getCurrentTimeNanos();
 
   // Lock-free message queue
