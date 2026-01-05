@@ -42,6 +42,7 @@
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <atomic>
+#include <cassert>
 #include <cstdint>
 #include <limits>
 #include <mutex>
@@ -1142,5 +1143,68 @@ private:
     std::array<std::atomic<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_countByKind{};
     std::array<std::atomic<size_t>, 3> m_countByTier{};  // Active, Background, Hibernated
 };
+
+// ============================================================================
+// INLINE HOT-PATH ACCESSORS
+// ============================================================================
+// These accessors are inlined for zero-overhead access in hot loops.
+// They are called thousands of times per frame in AIManager::processBatch(),
+// CollisionManager, and PathfinderManager. Inlining eliminates ~5-20 cycles
+// of function call overhead per access.
+
+inline EntityHotData& EntityDataManager::getHotDataByIndex(size_t index) {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    return m_hotData[index];
+}
+
+inline const EntityHotData& EntityDataManager::getHotDataByIndex(size_t index) const {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    return m_hotData[index];
+}
+
+inline TransformData& EntityDataManager::getTransformByIndex(size_t index) {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    return m_hotData[index].transform;
+}
+
+inline const TransformData& EntityDataManager::getTransformByIndex(size_t index) const {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    return m_hotData[index].transform;
+}
+
+inline BehaviorData& EntityDataManager::getBehaviorData(size_t index) {
+    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
+    return m_behaviorData[index];
+}
+
+inline const BehaviorData& EntityDataManager::getBehaviorData(size_t index) const {
+    assert(index < m_behaviorData.size() && "BehaviorData index out of bounds");
+    return m_behaviorData[index];
+}
+
+inline PathData& EntityDataManager::getPathData(size_t index) {
+    // PathData is pre-allocated in allocateSlot(), no lazy resize needed
+    assert(index < m_pathData.size() && "PathData not pre-allocated for index");
+    return m_pathData[index];
+}
+
+inline const PathData& EntityDataManager::getPathData(size_t index) const {
+    assert(index < m_pathData.size() && "Path data index out of bounds");
+    return m_pathData[index];
+}
+
+inline CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    assert(typeIndex < m_characterData.size() && "Type index out of bounds");
+    return m_characterData[typeIndex];
+}
+
+inline const CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) const {
+    assert(index < m_hotData.size() && "Index out of bounds");
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    assert(typeIndex < m_characterData.size() && "Type index out of bounds");
+    return m_characterData[typeIndex];
+}
 
 #endif // ENTITY_DATA_MANAGER_HPP
