@@ -186,7 +186,6 @@ private:
   std::string getCurrentWeatherString() const;
   void updateInstructions();
   void cleanupSpawnedNPCs();
-  void createNPCAtPosition(const std::string &npcType, float x, float y);
   void setupResourceAchievements(); // Setup achievement demonstration
 
   // Inventory UI methods
@@ -199,10 +198,10 @@ private:
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
-  // Helper methods for NPC creation with global batched behavior assignment
+  // Unified NPC creation - always assigns behavior before making NPC available
   std::shared_ptr<NPC>
-  createNPCAtPositionWithoutBehavior(const std::string &npcType, float x,
-                                     float y);
+  createNPC(const std::string &npcType, float x, float y,
+            const std::string &behaviorOverride = "");
   std::string determineBehaviorForNPCType(const std::string &npcType);
 
   // AI behavior integration methods

@@ -1351,31 +1351,9 @@ void EventDemoState::triggerCustomEventDemo() {
   float spawnY2 = std::max(
       100.0f, std::min(playerPos.getY() + offsetY2, m_worldHeight - 100.0f));
 
-  auto npc1 = createNPCAtPositionWithoutBehavior(npcType1, spawnX1, spawnY1);
-  auto npc2 = createNPCAtPositionWithoutBehavior(npcType2, spawnX2, spawnY2);
-
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-
-  if (npc1) {
-    std::string behaviorName1 = determineBehaviorForNPCType(npcType1);
-    // Phase 2 EDM Migration: Use EntityHandle-based registration
-    EntityHandle handle1 = npc1->getHandle();
-    if (handle1.isValid()) {
-      aiMgr.registerEntity(handle1, behaviorName1);
-    }
-    addLogEntry(npcType1 + ": " + behaviorName1 + " queued");
-  }
-
-  if (npc2) {
-    std::string behaviorName2 = determineBehaviorForNPCType(npcType2);
-    // Phase 2 EDM Migration: Use EntityHandle-based registration
-    EntityHandle handle2 = npc2->getHandle();
-    if (handle2.isValid()) {
-      aiMgr.registerEntity(handle2, behaviorName2);
-    }
-    addLogEntry(npcType2 + ": " + behaviorName2 + " queued");
-  }
+  // createNPC() handles behavior assignment internally
+  createNPC(npcType1, spawnX1, spawnY1);
+  createNPC(npcType2, spawnX2, spawnY2);
 
   addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2, m_npcsById.size()));
 }
@@ -1471,7 +1449,6 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
     float const stepY = 0.4f * base + 15.0f;
 
     int spawned = 0;
-    AIManager &aiMgr = AIManager::Instance();
 
     for (const auto &anchor : anchors) {
       for (int i = 0; i < count; ++i) {
@@ -1481,16 +1458,9 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
         float x = std::clamp(anchor.getX() + offX, 100.0f, m_worldWidth - 100.0f);
         float y = std::clamp(anchor.getY() + offY, 100.0f, m_worldHeight - 100.0f);
 
-        auto npc = createNPCAtPositionWithoutBehavior(npcType, x, y);
+        // createNPC() handles behavior assignment internally
+        auto npc = createNPC(npcType, x, y, params.aiBehavior);
         if (npc) {
-          std::string behavior = params.aiBehavior.empty()
-                                     ? determineBehaviorForNPCType(npcType)
-                                     : params.aiBehavior;
-          // Phase 2 EDM Migration: Use EntityHandle-based registration
-          EntityHandle handle = npc->getHandle();
-          if (handle.isValid()) {
-            aiMgr.registerEntity(handle, behavior);
-          }
           spawned++;
         }
       }
@@ -1609,8 +1579,8 @@ void EventDemoState::setupAIBehaviors() {
 }
 
 std::shared_ptr<NPC>
-EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
-                                                   float x, float y) {
+EventDemoState::createNPC(const std::string &npcType, float x, float y,
+                          const std::string &behaviorOverride) {
   try {
     std::string textureID;
     if (npcType == "Guard") {
@@ -1627,18 +1597,34 @@ EventDemoState::createNPCAtPositionWithoutBehavior(const std::string &npcType,
 
     Vector2D position(x, y);
     auto npc = NPC::create(textureID, position);
-    npc->initializeInventory(); // Initialize inventory after construction
+    if (!npc) {
+      GAMESTATE_ERROR(std::format("Failed to create NPC of type: {}", npcType));
+      return nullptr;
+    }
 
+    npc->initializeInventory();
     npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
 
-    m_npcsById[npc->getHandle().getId()] = npc;
+    // Determine and assign behavior BEFORE storing in map
+    std::string behavior = behaviorOverride.empty()
+                               ? determineBehaviorForNPCType(npcType)
+                               : behaviorOverride;
+
+    EntityHandle handle = npc->getHandle();
+    if (handle.isValid()) {
+      AIManager::Instance().registerEntity(handle, behavior);
+      m_npcsById[handle.getId()] = npc;
+    } else {
+      GAMESTATE_ERROR(std::format("Invalid handle for NPC type: {}", npcType));
+      return nullptr;
+    }
 
     return npc;
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPositionWithoutBehavior: {}", e.what()));
+    GAMESTATE_ERROR(std::format("EXCEPTION in createNPC: {}", e.what()));
     return nullptr;
   } catch (...) {
-    GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPCAtPositionWithoutBehavior");
+    GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPC");
     return nullptr;
   }
 }
@@ -1813,48 +1799,6 @@ void EventDemoState::cleanupSpawnedNPCs() {
 
   m_npcsById.clear();
   m_limitMessageShown = false;
-}
-
-void EventDemoState::createNPCAtPosition(const std::string &npcType, float x,
-                                         float y) {
-  try {
-    std::string textureID;
-    if (npcType == "Guard") {
-      textureID = "guard";
-    } else if (npcType == "Villager") {
-      textureID = "villager";
-    } else if (npcType == "Merchant") {
-      textureID = "merchant";
-    } else if (npcType == "Warrior") {
-      textureID = "warrior";
-    } else {
-      textureID = "npc";
-    }
-
-    Vector2D position(x, y);
-    auto npc = NPC::create(textureID, position);
-    npc->initializeInventory(); // Initialize inventory after construction
-
-    npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-
-    std::string behaviorName = determineBehaviorForNPCType(npcType);
-
-    // Cache AIManager reference for better performance
-    AIManager &aiMgr = AIManager::Instance();
-    // Phase 2 EDM Migration: Use EntityHandle-based registration
-    EntityHandle handle = npc->getHandle();
-    if (handle.isValid()) {
-      aiMgr.registerEntity(handle, behaviorName);
-    }
-
-    addLogEntry(npcType + ": " + behaviorName + " queued");
-
-    m_npcsById[npc->getHandle().getId()] = npc;
-  } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("EXCEPTION in createNPCAtPosition: {}, NPC type: {}, position: ({}, {})", e.what(), npcType, x, y));
-  } catch (...) {
-    GAMESTATE_ERROR(std::format("UNKNOWN EXCEPTION in createNPCAtPosition, NPC type: {}, position: ({}, {})", npcType, x, y));
-  }
 }
 
 void EventDemoState::setupResourceAchievements() {
