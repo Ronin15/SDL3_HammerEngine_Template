@@ -205,7 +205,7 @@ struct EntityHandle {
     // Comparison operators
     [[nodiscard]] constexpr bool
     operator==(const EntityHandle& other) const noexcept {
-        return id == other.id && generation == other.generation;
+        return id == other.id && generation == other.generation && kind == other.kind;
     }
 
     [[nodiscard]] constexpr bool
@@ -216,7 +216,8 @@ struct EntityHandle {
     [[nodiscard]] constexpr bool
     operator<(const EntityHandle& other) const noexcept {
         if (id != other.id) return id < other.id;
-        return generation < other.generation;
+        if (generation != other.generation) return generation < other.generation;
+        return static_cast<uint8_t>(kind) < static_cast<uint8_t>(other.kind);
     }
 
     // Hash support for containers

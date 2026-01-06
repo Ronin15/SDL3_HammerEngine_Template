@@ -1418,42 +1418,7 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
 
     // Rebuild tier indices if dirty - single pass builds all derived indices
     if (m_tierIndicesDirty) {
-        m_activeIndices.clear();
-        m_backgroundIndices.clear();
-        m_hibernatedIndices.clear();
-        // Build collision/trigger indices in same pass (avoid separate lazy rebuilds)
-        m_activeCollisionIndices.clear();
-        m_triggerDetectionIndices.clear();
-
-        for (size_t i = 0; i < m_hotData.size(); ++i) {
-            const auto& hot = m_hotData[i];
-            if (!hot.isAlive()) {
-                continue;
-            }
-
-            switch (hot.tier) {
-                case SimulationTier::Active:
-                    m_activeIndices.push_back(i);
-                    // Build collision/trigger indices while iterating active entities
-                    if (hot.hasCollision()) {
-                        m_activeCollisionIndices.push_back(i);
-                    }
-                    if (hot.needsTriggerDetection()) {
-                        m_triggerDetectionIndices.push_back(i);
-                    }
-                    break;
-                case SimulationTier::Background:
-                    m_backgroundIndices.push_back(i);
-                    break;
-                case SimulationTier::Hibernated:
-                    m_hibernatedIndices.push_back(i);
-                    break;
-            }
-        }
-
-        m_tierIndicesDirty = false;
-        m_activeCollisionDirty = false;    // Built in same pass
-        m_triggerDetectionDirty = false;   // Built in same pass
+        rebuildTierIndicesFromHotData();
 
 #ifndef NDEBUG
         // Rolling log every 60 seconds using time-based check
@@ -1472,11 +1437,58 @@ void EntityDataManager::updateSimulationTiers(const Vector2D& referencePoint,
     }
 }
 
+void EntityDataManager::rebuildTierIndicesFromHotData() {
+    m_activeIndices.clear();
+    m_backgroundIndices.clear();
+    m_hibernatedIndices.clear();
+    // Build collision/trigger indices in same pass (avoid separate lazy rebuilds)
+    m_activeCollisionIndices.clear();
+    m_triggerDetectionIndices.clear();
+
+    for (size_t i = 0; i < m_hotData.size(); ++i) {
+        const auto& hot = m_hotData[i];
+        if (!hot.isAlive()) {
+            continue;
+        }
+
+        switch (hot.tier) {
+            case SimulationTier::Active:
+                m_activeIndices.push_back(i);
+                // Build collision/trigger indices while iterating active entities
+                if (hot.hasCollision()) {
+                    m_activeCollisionIndices.push_back(i);
+                }
+                if (hot.needsTriggerDetection()) {
+                    m_triggerDetectionIndices.push_back(i);
+                }
+                break;
+            case SimulationTier::Background:
+                m_backgroundIndices.push_back(i);
+                break;
+            case SimulationTier::Hibernated:
+                m_hibernatedIndices.push_back(i);
+                break;
+        }
+    }
+
+    m_tierIndicesDirty = false;
+    m_activeCollisionDirty = false;    // Built in same pass
+    m_triggerDetectionDirty = false;   // Built in same pass
+}
+
 std::span<const size_t> EntityDataManager::getActiveIndices() const {
+    if (m_tierIndicesDirty) {
+        auto& self = const_cast<EntityDataManager&>(*this);
+        self.rebuildTierIndicesFromHotData();
+    }
     return std::span<const size_t>(m_activeIndices);
 }
 
 std::span<const size_t> EntityDataManager::getActiveIndicesWithCollision() const {
+    if (m_tierIndicesDirty) {
+        auto& self = const_cast<EntityDataManager&>(*this);
+        self.rebuildTierIndicesFromHotData();
+    }
     // Lazy rebuild when dirty (tier changes or collision flag changes)
     if (m_activeCollisionDirty) {
         m_activeCollisionIndices.clear();
@@ -1493,6 +1505,10 @@ std::span<const size_t> EntityDataManager::getActiveIndicesWithCollision() const
 }
 
 std::span<const size_t> EntityDataManager::getTriggerDetectionIndices() const {
+    if (m_tierIndicesDirty) {
+        auto& self = const_cast<EntityDataManager&>(*this);
+        self.rebuildTierIndicesFromHotData();
+    }
     // Lazy rebuild when dirty (tier changes or trigger detection flag changes)
     if (m_triggerDetectionDirty) {
         m_triggerDetectionIndices.clear();
@@ -1510,6 +1526,10 @@ std::span<const size_t> EntityDataManager::getTriggerDetectionIndices() const {
 }
 
 std::span<const size_t> EntityDataManager::getBackgroundIndices() const {
+    if (m_tierIndicesDirty) {
+        auto& self = const_cast<EntityDataManager&>(*this);
+        self.rebuildTierIndicesFromHotData();
+    }
     return std::span<const size_t>(m_backgroundIndices);
 }
 

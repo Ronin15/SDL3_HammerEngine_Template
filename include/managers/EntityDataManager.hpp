@@ -1145,6 +1145,7 @@ private:
     size_t allocateSlot();
     void freeSlot(size_t index);
     uint8_t nextGeneration(size_t index);
+    void rebuildTierIndicesFromHotData();
 
     // ========================================================================
     // STORAGE (Structure of Arrays)
