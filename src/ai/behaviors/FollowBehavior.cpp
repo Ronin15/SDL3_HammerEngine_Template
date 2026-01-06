@@ -613,9 +613,11 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& d
   bool const stuckOnObstacle = (pathData.progressTimer > 0.8f);
 
   // Request new path if needed - result written directly to EDM
-  if (stale || goalChanged || stuckOnObstacle) {
+  // Check cooldown to prevent path request spam
+  if ((stale || goalChanged || stuckOnObstacle) && pathData.pathRequestCooldown <= 0.0f) {
     pathfinder().requestPathToEDM(ctx.edmIndex, currentPos, desiredPos,
                                   PathfinderManager::Priority::Normal);
+    pathData.pathRequestCooldown = 0.5f;  // Prevent spam for 500ms
   }
 
   // Try to follow the path from EDM
