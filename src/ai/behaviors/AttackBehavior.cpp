@@ -246,7 +246,6 @@ void AttackBehavior::executeLogic(BehaviorContext& ctx) {
   EntityPtr entity = it->second;
 
   // Use cached player info from context (lock-free, cached once per frame)
-  EntityHandle targetHandle = ctx.playerHandle;
   Vector2D targetPos = ctx.playerPosition;
   bool hasTarget = ctx.playerValid;
 

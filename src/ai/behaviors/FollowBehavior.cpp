@@ -587,7 +587,7 @@ void FollowBehavior::releaseFormationSlot(int /*slot*/) {
 // LOCK-FREE VERSION: Uses BehaviorContext instead of EntityPtr
 bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& desiredPos, float speed) {
   const float nodeRadius = 20.0f; // Increased for faster path following
-  const float pathTTL = 10.0f; // 10 seconds - reduce path churn when stationary
+  const float pathTTL = 14.0f; // 14 seconds - reduce path churn when stationary
   const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate
 
   // Use pre-fetched path data from context (no Instance() call needed)
@@ -597,13 +597,16 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& d
   auto& pathData = *ctx.pathData;
   Vector2D currentPos = ctx.transform.position;
 
+  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
+                            pathData.isFollowingPath() &&
+                            pathData.progressTimer < 0.8f);
   // Check if path is stale
-  bool const stale = pathData.pathUpdateTimer > pathTTL;
+  bool const stale = (!skipRefresh && pathData.pathUpdateTimer > pathTTL);
 
   // Check if goal changed significantly
   auto& edm = EntityDataManager::Instance();
   bool goalChanged = true;
-  if (pathData.hasPath && pathData.pathLength > 0) {
+  if (!skipRefresh && pathData.hasPath && pathData.pathLength > 0) {
     Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
     // Use squared distance for performance
     goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);

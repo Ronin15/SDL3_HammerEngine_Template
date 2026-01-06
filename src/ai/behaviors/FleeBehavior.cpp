@@ -642,7 +642,7 @@ float FleeBehavior::calculateFleeSpeedModifier(const BehaviorData& data) const {
 bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data, const Vector2D& goal, float speed) {
     const auto& flee = data.state.flee;
     // PERFORMANCE: Increase TTL to reduce pathfinding frequency
-    constexpr float pathTTL = 2.5f;
+    constexpr float pathTTL = 3.5f;
     constexpr float noProgressWindow = 0.4f;
     constexpr float GOAL_CHANGE_THRESH_SQUARED = 180.0f * 180.0f; // Increased from 96px
 
@@ -652,12 +652,15 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
     if (!ctx.pathData) return false;
     auto& pathData = *ctx.pathData;
 
+    const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
+                              pathData.isFollowingPath() &&
+                              pathData.progressTimer < noProgressWindow);
     // Check if path needs refresh
     auto& edm = EntityDataManager::Instance();
     bool needRefresh = !pathData.hasPath || pathData.navIndex >= pathData.pathLength;
 
     // Check for progress towards current waypoint
-    if (!needRefresh && pathData.isFollowingPath()) {
+    if (!skipRefresh && !needRefresh && pathData.isFollowingPath()) {
         float d = (edm.getWaypoint(ctx.edmIndex, pathData.navIndex) - currentPos).length();
         if (d + 1.0f < pathData.lastNodeDistance) {
             pathData.lastNodeDistance = d;
@@ -668,7 +671,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
     }
 
     // Check if path is stale
-    if (pathData.pathUpdateTimer > pathTTL) {
+    if (!skipRefresh && pathData.pathUpdateTimer > pathTTL) {
         needRefresh = true;
     }
 
@@ -676,7 +679,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
     if (needRefresh && pathData.pathRequestCooldown <= 0.0f) {
         // Gate refresh on significant goal change to avoid thrash
         bool goalChanged = true;
-        if (pathData.hasPath && pathData.pathLength > 0) {
+        if (!skipRefresh && pathData.hasPath && pathData.pathLength > 0) {
             Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
             goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
         }
@@ -692,7 +695,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
                 PathfinderManager::Priority::High);
 
             // Apply cooldown to prevent spam
-            pathData.pathRequestCooldown = 0.6f; // Shorter cooldown for flee (more urgent)
+            pathData.pathRequestCooldown = 0.8f; // Shorter cooldown for flee (more urgent)
         }
     }
 

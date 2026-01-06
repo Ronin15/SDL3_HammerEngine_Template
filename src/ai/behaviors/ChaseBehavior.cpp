@@ -182,6 +182,9 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       // Update path timer using PathData
       pathData.pathUpdateTimer += ctx.deltaTime;
 
+      const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
+                                pathData.isFollowingPath() &&
+                                pathData.progressTimer < 0.8f);
       bool needsNewPath = false;
 
       // OPTIMIZED: Further reduced pathfinding frequency for better performance
@@ -192,16 +195,18 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       const float PATH_INVALIDATION_DISTANCE = m_config.pathInvalidationDistance;
       const float PATH_REFRESH_INTERVAL = m_config.pathRefreshInterval;
 
-      if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
-        needsNewPath = true;
-      } else if (pathData.pathUpdateTimer > PATH_REFRESH_INTERVAL) {
-        needsNewPath = true;
-      } else {
-        // Check if target moved significantly from when path was computed
-        auto& edm = EntityDataManager::Instance();
-        Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
-        float const targetMovementSquared = (targetPos - pathGoal).lengthSquared();
-        needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
+      if (!skipRefresh) {
+        if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
+          needsNewPath = true;
+        } else if (pathData.pathUpdateTimer > PATH_REFRESH_INTERVAL) {
+          needsNewPath = true;
+        } else {
+          // Check if target moved significantly from when path was computed
+          auto& edm = EntityDataManager::Instance();
+          Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
+          float const targetMovementSquared = (targetPos - pathGoal).lengthSquared();
+          needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
+        }
       }
 
       // OBSTACLE DETECTION: Force path refresh if stuck on obstacle
