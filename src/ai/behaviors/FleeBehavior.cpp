@@ -698,7 +698,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
 
     // Follow existing path if available (using EDM path state)
     if (pathData.isFollowingPath()) {
-        Vector2D node = edm.getCurrentWaypoint(ctx.edmIndex);
+        Vector2D node = ctx.pathData->currentWaypoint;
         Vector2D dir = node - currentPos;
         float const len = dir.length();
 
@@ -709,7 +709,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
 
         // Check if reached current waypoint
         if (len <= flee.navRadius) {
-            pathData.advanceWaypoint();
+            edm.advanceWaypointWithCache(ctx.edmIndex);
         }
 
         return true;

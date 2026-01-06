@@ -331,6 +331,7 @@ struct PathData {
     float lastNodeDistance{std::numeric_limits<float>::max()};
     float stallTimer{0.0f};             // Stall detection
     float pathRequestCooldown{0.0f};    // Prevent request spam
+    Vector2D currentWaypoint{0, 0};     // Cached current waypoint for fast access
     bool hasPath{false};                // Quick check if path is valid
     bool pathRequestPending{false};     // Path request in flight
 
@@ -343,6 +344,7 @@ struct PathData {
         lastNodeDistance = std::numeric_limits<float>::max();
         stallTimer = 0.0f;
         pathRequestCooldown = 0.0f;
+        currentWaypoint = Vector2D{0, 0};
         hasPath = false;
         pathRequestPending = false;
     }
@@ -961,6 +963,13 @@ public:
      * @param path Path waypoints (copied into pool)
      */
     void setPath(size_t index, const std::vector<Vector2D>& path);
+
+    /**
+     * @brief Advance waypoint and update cached currentWaypoint
+     * @param index EDM index
+     * Call this instead of PathData::advanceWaypoint() to keep cache in sync.
+     */
+    void advanceWaypointWithCache(size_t index);
 
     /**
      * @brief Get waypoint from entity's path
