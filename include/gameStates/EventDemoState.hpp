@@ -97,6 +97,7 @@ private:
 
   // Entities - stored by handle ID for O(1) lookup
   std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
+  std::vector<NPCPtr> m_npcsByEdmIndex{};
   PlayerPtr m_player{};
   
   // Camera for world navigation
