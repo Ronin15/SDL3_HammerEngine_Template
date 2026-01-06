@@ -283,6 +283,7 @@ private:
 
     // Spatial hash optimization methods
     void rebuildStaticSpatialHash();
+    void rebuildStaticSpatialHashUnlocked();
 
     // Building collision validation
 
@@ -416,6 +417,7 @@ private:
     };
 
     CollisionStorage m_storage;
+    mutable std::mutex m_staticRebuildMutex;
 
     /* ========== DUAL SPATIAL HASH ARCHITECTURE ==========
      *
