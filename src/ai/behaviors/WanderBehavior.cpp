@@ -229,9 +229,15 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
   // Use pre-fetched path data from context (no Instance() call needed)
   auto& pathData = *ctx.pathData;
 
-  bool needsNewPath = !pathData.hasPath ||
-                     pathData.navIndex >= pathData.pathLength ||
-                     pathData.pathUpdateTimer > 15.0f;
+  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
+                            pathData.isFollowingPath() &&
+                            pathData.progressTimer < 0.8f);
+  bool needsNewPath = false;
+  if (!skipRefresh) {
+    needsNewPath = !pathData.hasPath ||
+                   pathData.navIndex >= pathData.pathLength ||
+                   pathData.pathUpdateTimer > 25.0f;
+  }
 
   bool stuckOnObstacle = pathData.progressTimer > 0.8f;
   if (stuckOnObstacle) {
@@ -242,7 +248,7 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
     const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance;
     bool goalChanged = true;
     auto& edm = EntityDataManager::Instance();
-    if (pathData.hasPath && pathData.pathLength > 0) {
+    if (!skipRefresh && pathData.hasPath && pathData.pathLength > 0) {
       Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
       float const goalDistanceSquared = (dest - lastGoal).lengthSquared();
       goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);

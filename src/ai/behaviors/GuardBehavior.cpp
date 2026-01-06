@@ -739,16 +739,22 @@ void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &t
   Vector2D currentPos = ctx.transform.position;
 
   // Check if we need a new path
-  constexpr float PATH_TTL = 3.0f;
+  constexpr float PATH_TTL = 5.0f;
   constexpr float NAV_RADIUS = 18.0f;
 
-  bool needsPath = !pathData.hasPath ||
-                   pathData.navIndex >= pathData.pathLength ||
-                   pathData.pathUpdateTimer > PATH_TTL;
+  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
+                            pathData.isFollowingPath() &&
+                            pathData.progressTimer < 0.8f);
+  bool needsPath = false;
+  if (!skipRefresh) {
+    needsPath = !pathData.hasPath ||
+                pathData.navIndex >= pathData.pathLength ||
+                pathData.pathUpdateTimer > PATH_TTL;
+  }
 
   // Check if goal changed significantly
   auto& edm = EntityDataManager::Instance();
-  if (!needsPath && pathData.hasPath && pathData.pathLength > 0) {
+  if (!skipRefresh && !needsPath && pathData.hasPath && pathData.pathLength > 0) {
     constexpr float GOAL_CHANGE_THRESH_SQ = 100.0f * 100.0f;
     Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
     if ((targetPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQ) {

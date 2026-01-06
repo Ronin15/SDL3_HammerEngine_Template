@@ -145,6 +145,9 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
+  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
+                            pathData.isFollowingPath() &&
+                            pathData.progressTimer < 0.8f);
   bool needsNewPath = false;
 
   // Only request new path if:
@@ -152,16 +155,18 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   // 2. Path is completed, OR
   // 3. Path is stale (>5 seconds), OR
   // 4. We changed waypoints
-  if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
-    needsNewPath = true;
-  } else if (pathData.pathUpdateTimer > 5.0f) { // Path older than 5 seconds
-    needsNewPath = true;
-  } else {
-    // Check if we're targeting a different waypoint than when path was computed
-    auto& edm = EntityDataManager::Instance();
-    Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
-    float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
-    needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
+  if (!skipRefresh) {
+    if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
+      needsNewPath = true;
+    } else if (pathData.pathUpdateTimer > 8.0f) { // Path older than 8 seconds
+      needsNewPath = true;
+    } else {
+      // Check if we're targeting a different waypoint than when path was computed
+      auto& edm = EntityDataManager::Instance();
+      Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
+      float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
+      needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
+    }
   }
 
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)

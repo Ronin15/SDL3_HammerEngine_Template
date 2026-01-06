@@ -54,8 +54,8 @@ struct ChaseBehaviorConfig
 
     // Pathfinding parameters
     float pathInvalidationDistance = 300.0f;      // Distance target must move to invalidate path
-    float pathRefreshInterval = 8.0f;             // Seconds between path recalculations
-    float pathRequestCooldown = 3.0f;             // Minimum seconds between path requests
+    float pathRefreshInterval = 12.0f;            // Seconds between path recalculations
+    float pathRequestCooldown = 5.0f;             // Minimum seconds between path requests
 
     // Crowd awareness
     float crowdCheckInterval = 2.0f;              // Seconds between crowd density checks
