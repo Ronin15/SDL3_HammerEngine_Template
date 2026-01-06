@@ -141,6 +141,7 @@ public:
     // Queries
     bool overlaps(EntityID a, EntityID b) const;
     void queryArea(const AABB& area, std::vector<EntityID>& out) const;
+    bool queryAreaHasStaticOverlap(const AABB& area) const;
     // Query a body's center by id; returns true if found
     bool getBodyCenter(EntityID id, Vector2D& outCenter) const;
     // Type/flags helpers for filtering

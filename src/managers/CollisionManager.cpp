@@ -558,6 +558,50 @@ void CollisionManager::queryArea(const AABB &area,
   }
 }
 
+bool CollisionManager::queryAreaHasStaticOverlap(const AABB& area) const {
+  // If static hash is dirty (not yet rebuilt after add/remove), fall back to linear scan
+  if (m_staticHashDirty) {
+    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+      const auto& hot = m_storage.hotData[i];
+      if (!hot.active) continue;
+      if (static_cast<BodyType>(hot.bodyType) != BodyType::STATIC) continue;
+
+      AABB bodyAABB = m_storage.computeAABB(i);
+      if (bodyAABB.intersects(area)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // PERFORMANCE: Use spatial hash for O(log n) query (production path)
+  thread_local std::vector<size_t> staticIndices;
+  thread_local HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
+
+  staticIndices.clear();
+
+  float minX = area.left();
+  float minY = area.top();
+  float maxX = area.right();
+  float maxY = area.bottom();
+
+  m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, staticIndices, queryBuffers);
+
+  for (size_t idx : staticIndices) {
+    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
+      const auto& hot = m_storage.hotData[idx];
+      if (static_cast<BodyType>(hot.bodyType) != BodyType::STATIC) continue;
+
+      AABB bodyAABB = m_storage.computeAABB(idx);
+      if (bodyAABB.intersects(area)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
 bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
   auto it = m_storage.entityToIndex.find(id);
   if (it == m_storage.entityToIndex.end())
