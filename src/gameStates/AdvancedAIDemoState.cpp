@@ -26,6 +26,7 @@
 
 #include <format>
 #include <cmath>
+#include <cstddef>
 
 
 
@@ -42,6 +43,7 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
 
         // Clear NPCs without calling clean() on them
         m_npcsById.clear();
+        m_npcsByEdmIndex.clear();
 
         // Clean up player
         m_player.reset();
@@ -292,6 +294,7 @@ bool AdvancedAIDemoState::exit() {
         // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
         // NPCs hold EDM indices - must be destroyed while EDM data is still valid
         m_npcsById.clear();
+        m_npcsByEdmIndex.clear();
         if (m_player) {
             m_player.reset();
         }
@@ -346,6 +349,7 @@ bool AdvancedAIDemoState::exit() {
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
     m_npcsById.clear();
+    m_npcsByEdmIndex.clear();
     if (m_player) {
         m_player.reset();
     }
@@ -441,10 +445,11 @@ void AdvancedAIDemoState::update(float deltaTime) {
             const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
             if (hot.kind != EntityKind::NPC) continue;
 
-            EntityHandle handle = mp_edm->getHandle(edmIdx);
-            auto it = m_npcsById.find(handle.getId());
-            if (it != m_npcsById.end() && it->second) {
-                it->second->update(deltaTime);
+            NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                             ? m_npcsByEdmIndex[edmIdx]
+                             : nullptr;
+            if (npc) {
+                npc->update(deltaTime);
             }
         }
 
@@ -502,10 +507,11 @@ void AdvancedAIDemoState::render(SDL_Renderer* renderer, float interpolationAlph
         const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
         if (hot.kind != EntityKind::NPC) continue;
 
-        EntityHandle handle = mp_edm->getHandle(edmIdx);
-        auto it = m_npcsById.find(handle.getId());
-        if (it != m_npcsById.end() && it->second) {
-            it->second->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+        NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                         ? m_npcsByEdmIndex[edmIdx]
+                         : nullptr;
+        if (npc) {
+            npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
             // TODO: Health bar rendering using npc->getHealth() / npc->getMaxHealth()
         }
     }
@@ -641,10 +647,15 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
                 EntityHandle handle = npc->getHandle();
                 if (handle.isValid()) {
                   aiMgr.registerEntity(handle, "Follow");
+                  m_npcsById[handle.getId()] = npc;
+                  size_t edmIdx = mp_edm->getIndex(handle);
+                  if (edmIdx != SIZE_MAX) {
+                    if (edmIdx >= m_npcsByEdmIndex.size()) {
+                      m_npcsByEdmIndex.resize(edmIdx + 1);
+                    }
+                    m_npcsByEdmIndex[edmIdx] = npc;
+                  }
                 }
-
-                // Add to collection
-                m_npcsById[npc->getHandle().getId()] = npc;
             } catch (const std::exception& e) {
                 GAMESTATE_ERROR(std::format("Exception creating advanced NPC {}: {}", i, e.what()));
                 continue;

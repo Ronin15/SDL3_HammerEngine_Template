@@ -27,6 +27,7 @@
 #include <format>
 #include <cmath>
 #include <ctime>
+#include <cstddef>
 
 
 
@@ -40,6 +41,7 @@ AIDemoState::~AIDemoState() {
     // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
     // Clear NPCs without calling clean() on them
     m_npcsById.clear();
+    m_npcsByEdmIndex.clear();
 
     // Clean up player
     m_player.reset();
@@ -397,6 +399,7 @@ bool AIDemoState::exit() {
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
   m_npcsById.clear();
+  m_npcsByEdmIndex.clear();
   if (m_player) {
     m_player.reset();
   }
@@ -496,10 +499,11 @@ void AIDemoState::update(float deltaTime) {
       const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
       if (hot.kind != EntityKind::NPC) continue;
 
-      EntityHandle handle = mp_edm->getHandle(edmIdx);
-      auto it = m_npcsById.find(handle.getId());
-      if (it != m_npcsById.end() && it->second) {
-        it->second->update(deltaTime);
+      NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                       ? m_npcsByEdmIndex[edmIdx]
+                       : nullptr;
+      if (npc) {
+        npc->update(deltaTime);
       }
     }
 
@@ -554,10 +558,11 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
     if (hot.kind != EntityKind::NPC) continue;
 
-    EntityHandle handle = mp_edm->getHandle(edmIdx);
-    auto it = m_npcsById.find(handle.getId());
-    if (it != m_npcsById.end() && it->second) {
-      it->second->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                     ? m_npcsByEdmIndex[edmIdx]
+                     : nullptr;
+    if (npc) {
+      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
     }
   }
 
@@ -726,6 +731,13 @@ void AIDemoState::createNPCBatch(int count) {
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, "Wander");
               m_npcsById[handle.getId()] = npc;
+              size_t edmIdx = mp_edm->getIndex(handle);
+              if (edmIdx != SIZE_MAX) {
+                if (edmIdx >= m_npcsByEdmIndex.size()) {
+                  m_npcsByEdmIndex.resize(edmIdx + 1);
+                }
+                m_npcsByEdmIndex[edmIdx] = npc;
+              }
             }
             created++;
           } catch (const std::exception &e) {
@@ -814,6 +826,13 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, randomBehavior);
               m_npcsById[handle.getId()] = npc;
+              size_t edmIdx = mp_edm->getIndex(handle);
+              if (edmIdx != SIZE_MAX) {
+                if (edmIdx >= m_npcsByEdmIndex.size()) {
+                  m_npcsByEdmIndex.resize(edmIdx + 1);
+                }
+                m_npcsByEdmIndex[edmIdx] = npc;
+              }
             }
             created++;
           } catch (const std::exception &e) {

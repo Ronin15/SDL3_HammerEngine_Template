@@ -31,6 +31,7 @@
 #include <cmath>
 #include <ctime>
 #include <format>
+#include <cstddef>
 
 
 EventDemoState::EventDemoState() {
@@ -326,6 +327,7 @@ bool EventDemoState::exit() {
 
       // Clear spawned NPCs vector and reset limit flag
       m_npcsById.clear();
+      m_npcsByEdmIndex.clear();
       m_limitMessageShown = false;
 
       // Clear event log
@@ -389,6 +391,7 @@ bool EventDemoState::exit() {
 
     // Clear spawned NPCs vector and reset limit flag
     m_npcsById.clear();
+    m_npcsByEdmIndex.clear();
     m_limitMessageShown = false;
 
     // Clear event log
@@ -522,10 +525,11 @@ void EventDemoState::update(float deltaTime) {
     const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
     if (hot.kind != EntityKind::NPC) continue;
 
-    EntityHandle handle = mp_edm->getHandle(edmIdx);
-    auto it = m_npcsById.find(handle.getId());
-    if (it != m_npcsById.end() && it->second) {
-      it->second->update(deltaTime);
+    NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                     ? m_npcsByEdmIndex[edmIdx]
+                     : nullptr;
+    if (npc) {
+      npc->update(deltaTime);
     }
   }
 
@@ -714,10 +718,11 @@ void EventDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
     const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
     if (hot.kind != EntityKind::NPC) continue;
 
-    EntityHandle handle = mp_edm->getHandle(edmIdx);
-    auto it = m_npcsById.find(handle.getId());
-    if (it != m_npcsById.end() && it->second) {
-      it->second->render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                     ? m_npcsByEdmIndex[edmIdx]
+                     : nullptr;
+    if (npc) {
+      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
     }
   }
 
@@ -1614,6 +1619,13 @@ EventDemoState::createNPC(const std::string &npcType, float x, float y,
     if (handle.isValid()) {
       AIManager::Instance().registerEntity(handle, behavior);
       m_npcsById[handle.getId()] = npc;
+      size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
+      if (edmIdx != SIZE_MAX) {
+        if (edmIdx >= m_npcsByEdmIndex.size()) {
+          m_npcsByEdmIndex.resize(edmIdx + 1);
+        }
+        m_npcsByEdmIndex[edmIdx] = npc;
+      }
     } else {
       GAMESTATE_ERROR(std::format("Invalid handle for NPC type: {}", npcType));
       return nullptr;
@@ -1798,6 +1810,7 @@ void EventDemoState::cleanupSpawnedNPCs() {
   }
 
   m_npcsById.clear();
+  m_npcsByEdmIndex.clear();
   m_limitMessageShown = false;
 }
 
