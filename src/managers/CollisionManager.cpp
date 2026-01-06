@@ -716,6 +716,7 @@ size_t CollisionManager::getDynamicBodyCount() const {
 }
 
 void CollisionManager::rebuildStaticFromWorld() {
+  std::lock_guard<std::mutex> lock(m_staticRebuildMutex);
   const WorldManager &wm = WorldManager::Instance();
   const auto *world = wm.getWorldData();
   if (!world)
@@ -770,7 +771,7 @@ void CollisionManager::rebuildStaticFromWorld() {
 #endif
 
     // Force immediate static spatial hash rebuild for world changes
-    rebuildStaticSpatialHash();
+    rebuildStaticSpatialHashUnlocked();
   }
 }
 
@@ -2097,6 +2098,11 @@ void CollisionManager::syncSpatialHashesWithActiveIndices() {
 
 
 void CollisionManager::rebuildStaticSpatialHash() {
+  std::lock_guard<std::mutex> lock(m_staticRebuildMutex);
+  rebuildStaticSpatialHashUnlocked();
+}
+
+void CollisionManager::rebuildStaticSpatialHashUnlocked() {
   // Only called when static objects are added/removed
   m_staticSpatialHash.clear();
 
@@ -2784,4 +2790,3 @@ void CollisionManager::returnPooledVector(std::vector<size_t>& vec) {
   // Just clear it to avoid holding onto data
   vec.clear();
 }
-
