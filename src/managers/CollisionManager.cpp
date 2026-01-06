@@ -522,16 +522,16 @@ void CollisionManager::queryArea(const AABB &area,
 
   thread_local std::vector<size_t> staticIndices;
   thread_local std::vector<size_t> dynamicIndices;
-  thread_local HierarchicalSpatialHash::QueryBuffers queryBuffers;
+  thread_local HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
 
   staticIndices.clear();
   dynamicIndices.clear();
 
   // Query both spatial hashes using thread-safe API
-  float minX = area.minX;
-  float minY = area.minY;
-  float maxX = area.maxX;
-  float maxY = area.maxY;
+  float minX = area.left();
+  float minY = area.top();
+  float maxX = area.right();
+  float maxY = area.bottom();
 
   m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, staticIndices, queryBuffers);
   m_dynamicSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, dynamicIndices, queryBuffers);
