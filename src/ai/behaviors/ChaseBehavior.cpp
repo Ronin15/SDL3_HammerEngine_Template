@@ -192,13 +192,14 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       const float PATH_INVALIDATION_DISTANCE = m_config.pathInvalidationDistance;
       const float PATH_REFRESH_INTERVAL = m_config.pathRefreshInterval;
 
-      if (!pathData.hasPath || pathData.navIndex >= pathData.navPath.size()) {
+      if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
         needsNewPath = true;
       } else if (pathData.pathUpdateTimer > PATH_REFRESH_INTERVAL) {
         needsNewPath = true;
       } else {
         // Check if target moved significantly from when path was computed
-        Vector2D pathGoal = pathData.navPath.back();
+        auto& edm = EntityDataManager::Instance();
+        Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
         float const targetMovementSquared = (targetPos - pathGoal).lengthSquared();
         needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
       }
@@ -225,16 +226,17 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
         applyPathCooldown(data, m_config.pathRequestCooldown);
       }
 
-      // State: PATH_FOLLOWING - inline path following logic using EDM
+      // State: PATH_FOLLOWING - inline path following logic using EDM waypoint pool
       if (pathData.isFollowingPath()) {
-        Vector2D waypoint = pathData.getCurrentWaypoint();
+        auto& edm = EntityDataManager::Instance();
+        Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
         Vector2D toWaypoint = waypoint - entityPos;
         float dist = toWaypoint.length();
 
         if (dist < m_navRadius) {
           pathData.advanceWaypoint();
           if (pathData.isFollowingPath()) {
-            waypoint = pathData.getCurrentWaypoint();
+            waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
             toWaypoint = waypoint - entityPos;
             dist = toWaypoint.length();
           }

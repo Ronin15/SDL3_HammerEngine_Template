@@ -230,7 +230,7 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
   auto& pathData = *ctx.pathData;
 
   bool needsNewPath = !pathData.hasPath ||
-                     pathData.navIndex >= pathData.navPath.size() ||
+                     pathData.navIndex >= pathData.pathLength ||
                      pathData.pathUpdateTimer > 15.0f;
 
   bool stuckOnObstacle = pathData.progressTimer > 0.8f;
@@ -241,8 +241,9 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
   if ((needsNewPath || stuckOnObstacle) && pathData.pathRequestCooldown <= 0.0f) {
     const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance;
     bool goalChanged = true;
-    if (pathData.hasPath && !pathData.navPath.empty()) {
-      Vector2D lastGoal = pathData.navPath.back();
+    auto& edm = EntityDataManager::Instance();
+    if (pathData.hasPath && pathData.pathLength > 0) {
+      Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
       float const goalDistanceSquared = (dest - lastGoal).lengthSquared();
       goalChanged = (goalDistanceSquared >= MIN_GOAL_CHANGE * MIN_GOAL_CHANGE);
     }
@@ -284,15 +285,16 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
   auto& pathData = *ctx.pathData;
 
   // Follow path or apply base movement - write directly to transform
+  auto& edm = EntityDataManager::Instance();
   if (pathData.isFollowingPath()) {
-    Vector2D waypoint = pathData.getCurrentWaypoint();
+    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
     Vector2D toWaypoint = waypoint - position;
     float dist = toWaypoint.length();
 
     if (dist < 64.0f) {  // navRadius
       pathData.advanceWaypoint();
       if (pathData.isFollowingPath()) {
-        waypoint = pathData.getCurrentWaypoint();
+        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
         toWaypoint = waypoint - position;
         dist = toWaypoint.length();
       }

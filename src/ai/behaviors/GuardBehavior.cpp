@@ -743,13 +743,14 @@ void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &t
   constexpr float NAV_RADIUS = 18.0f;
 
   bool needsPath = !pathData.hasPath ||
-                   pathData.navIndex >= pathData.navPath.size() ||
+                   pathData.navIndex >= pathData.pathLength ||
                    pathData.pathUpdateTimer > PATH_TTL;
 
   // Check if goal changed significantly
-  if (!needsPath && pathData.hasPath && !pathData.navPath.empty()) {
+  auto& edm = EntityDataManager::Instance();
+  if (!needsPath && pathData.hasPath && pathData.pathLength > 0) {
     constexpr float GOAL_CHANGE_THRESH_SQ = 100.0f * 100.0f;
-    Vector2D lastGoal = pathData.navPath.back();
+    Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
     if ((targetPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQ) {
       needsPath = true;
     }
@@ -764,7 +765,7 @@ void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &t
 
   // Follow path if available
   if (pathData.isFollowingPath()) {
-    Vector2D waypoint = pathData.getCurrentWaypoint();
+    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
     Vector2D toWaypoint = waypoint - currentPos;
     float dist = toWaypoint.length();
 
@@ -772,7 +773,7 @@ void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &t
     if (dist < NAV_RADIUS) {
       pathData.advanceWaypoint();
       if (pathData.isFollowingPath()) {
-        waypoint = pathData.getCurrentWaypoint();
+        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
         toWaypoint = waypoint - currentPos;
         dist = toWaypoint.length();
       }

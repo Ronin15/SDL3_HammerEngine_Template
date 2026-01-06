@@ -601,9 +601,10 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& d
   bool const stale = pathData.pathUpdateTimer > pathTTL;
 
   // Check if goal changed significantly
+  auto& edm = EntityDataManager::Instance();
   bool goalChanged = true;
-  if (pathData.hasPath && !pathData.navPath.empty()) {
-    Vector2D lastGoal = pathData.navPath.back();
+  if (pathData.hasPath && pathData.pathLength > 0) {
+    Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
     // Use squared distance for performance
     goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
   }
@@ -620,14 +621,14 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& d
   // Try to follow the path from EDM
   bool pathStep = false;
   if (pathData.isFollowingPath()) {
-    Vector2D waypoint = pathData.getCurrentWaypoint();
+    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
     Vector2D toWaypoint = waypoint - currentPos;
     float dist = toWaypoint.length();
 
     if (dist < nodeRadius) {
       pathData.advanceWaypoint();
       if (pathData.isFollowingPath()) {
-        waypoint = pathData.getCurrentWaypoint();
+        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
         toWaypoint = waypoint - currentPos;
         dist = toWaypoint.length();
       }

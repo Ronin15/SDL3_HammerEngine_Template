@@ -653,11 +653,12 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
     auto& pathData = *ctx.pathData;
 
     // Check if path needs refresh
-    bool needRefresh = !pathData.hasPath || pathData.navIndex >= pathData.navPath.size();
+    auto& edm = EntityDataManager::Instance();
+    bool needRefresh = !pathData.hasPath || pathData.navIndex >= pathData.pathLength;
 
     // Check for progress towards current waypoint
     if (!needRefresh && pathData.isFollowingPath()) {
-        float d = (pathData.navPath[pathData.navIndex] - currentPos).length();
+        float d = (edm.getWaypoint(ctx.edmIndex, pathData.navIndex) - currentPos).length();
         if (d + 1.0f < pathData.lastNodeDistance) {
             pathData.lastNodeDistance = d;
             pathData.progressTimer = 0.0f;
@@ -675,8 +676,8 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
     if (needRefresh && pathData.pathRequestCooldown <= 0.0f) {
         // Gate refresh on significant goal change to avoid thrash
         bool goalChanged = true;
-        if (pathData.hasPath && !pathData.navPath.empty()) {
-            Vector2D lastGoal = pathData.navPath.back();
+        if (pathData.hasPath && pathData.pathLength > 0) {
+            Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
             goalChanged = ((goal - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
         }
 
@@ -697,7 +698,7 @@ bool FleeBehavior::tryFollowPathToGoal(BehaviorContext& ctx, BehaviorData& data,
 
     // Follow existing path if available (using EDM path state)
     if (pathData.isFollowingPath()) {
-        Vector2D node = pathData.getCurrentWaypoint();
+        Vector2D node = edm.getCurrentWaypoint(ctx.edmIndex);
         Vector2D dir = node - currentPos;
         float const len = dir.length();
 
