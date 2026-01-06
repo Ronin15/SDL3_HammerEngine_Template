@@ -50,6 +50,9 @@ bool EntityDataManager::init() {
         // Path data (indexed by edmIndex, sparse for non-AI entities)
         m_pathData.reserve(CHARACTER_CAPACITY);
 
+        // Per-entity waypoint slots (parallel to pathData)
+        m_waypointSlots.reserve(CHARACTER_CAPACITY);
+
         // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
         m_behaviorData.reserve(CHARACTER_CAPACITY);
 
@@ -113,7 +116,7 @@ void EntityDataManager::clean() {
     m_harvestableData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
-    m_waypointPool.reset();  // Reclaim all waypoint memory for reuse
+    m_waypointSlots.clear();  // Clear per-entity waypoint slots
     m_behaviorData.clear();
 
     // Clear type-specific free-lists
@@ -176,7 +179,7 @@ void EntityDataManager::prepareForStateTransition() {
     m_harvestableData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
-    m_waypointPool.reset();  // Reclaim all waypoint memory for reuse
+    m_waypointSlots.clear();  // Clear per-entity waypoint slots
     m_behaviorData.clear();
 
     // Clear type-specific free-lists
@@ -237,8 +240,9 @@ size_t EntityDataManager::allocateSlot() {
         m_hotData.emplace_back();
         m_entityIds.emplace_back(0);
         m_generations.emplace_back(0);
-        // Pre-allocate PathData and BehaviorData to match - avoids concurrent resize during AI processing
+        // Pre-allocate PathData, WaypointSlot, BehaviorData to match - avoids concurrent resize during AI processing
         m_pathData.emplace_back();
+        m_waypointSlots.emplace_back();  // Per-entity waypoint slot (256 bytes)
         m_behaviorData.emplace_back();
     }
 
@@ -1290,18 +1294,13 @@ void EntityDataManager::clearPathData(size_t index) {
     }
 }
 
-void EntityDataManager::setPath(size_t index, const std::vector<Vector2D>& path) {
-    if (index >= m_pathData.size()) {
-        ensurePathData(index);
-    }
+void EntityDataManager::finalizePath(size_t index, uint16_t length) noexcept {
     auto& pd = m_pathData[index];
-    if (path.empty()) {
+    if (length == 0) {
         pd.clear();
         return;
     }
-    // Allocate from waypoint pool
-    pd.poolOffset = static_cast<uint32_t>(m_waypointPool.allocate(path.size()));
-    pd.pathLength = static_cast<uint16_t>(std::min(path.size(), size_t{65535}));
+    pd.pathLength = std::min(length, static_cast<uint16_t>(FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY));
     pd.navIndex = 0;
     pd.hasPath = true;
     pd.pathUpdateTimer = 0.0f;
@@ -1309,19 +1308,16 @@ void EntityDataManager::setPath(size_t index, const std::vector<Vector2D>& path)
     pd.lastNodeDistance = std::numeric_limits<float>::max();
     pd.stallTimer = 0.0f;
     pd.pathRequestPending = false;
-    pd.currentWaypoint = path[0];  // Cache first waypoint for fast access
-    // Copy waypoints to pool
-    auto slice = m_waypointPool.getSlice(pd.poolOffset, pd.pathLength);
-    std::copy(path.begin(), path.begin() + pd.pathLength, slice.begin());
+    pd.currentWaypoint = m_waypointSlots[index][0];
 }
 
 void EntityDataManager::advanceWaypointWithCache(size_t index) {
     if (index >= m_pathData.size()) return;
     auto& pd = m_pathData[index];
     pd.advanceWaypoint();
-    // Update cached waypoint if still following path
+    // Update cached waypoint from per-entity slot
     if (pd.navIndex < pd.pathLength) {
-        pd.currentWaypoint = m_waypointPool[pd.poolOffset + pd.navIndex];
+        pd.currentWaypoint = m_waypointSlots[index][pd.navIndex];
     }
 }
 

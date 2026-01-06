@@ -368,11 +368,16 @@ uint64_t PathfinderManager::requestPathToEDM(
             }
         }
 
-        // Write to EDM waypoint pool (per-entity slot, no contention with other entities)
-        if (!m_isShutdown) {
+        // Write to EDM per-entity slot (zero contention - each entity owns its slot)
+        if (!m_isShutdown && !path.empty()) {
             auto& edm = EntityDataManager::Instance();
             if (edm.hasPathData(edmIndex)) {
-                edm.setPath(edmIndex, path);
+                Vector2D* slot = edm.getWaypointSlot(edmIndex);
+                uint16_t len = static_cast<uint16_t>(std::min(path.size(), size_t{32}));
+                for (uint16_t i = 0; i < len; ++i) {
+                    slot[i] = path[i];
+                }
+                edm.finalizePath(edmIndex, len);
             }
         }
     };
