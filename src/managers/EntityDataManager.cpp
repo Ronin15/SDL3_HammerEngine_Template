@@ -1309,9 +1309,20 @@ void EntityDataManager::setPath(size_t index, const std::vector<Vector2D>& path)
     pd.lastNodeDistance = std::numeric_limits<float>::max();
     pd.stallTimer = 0.0f;
     pd.pathRequestPending = false;
+    pd.currentWaypoint = path[0];  // Cache first waypoint for fast access
     // Copy waypoints to pool
     auto slice = m_waypointPool.getSlice(pd.poolOffset, pd.pathLength);
     std::copy(path.begin(), path.begin() + pd.pathLength, slice.begin());
+}
+
+void EntityDataManager::advanceWaypointWithCache(size_t index) {
+    if (index >= m_pathData.size()) return;
+    auto& pd = m_pathData[index];
+    pd.advanceWaypoint();
+    // Update cached waypoint if still following path
+    if (pd.navIndex < pd.pathLength) {
+        pd.currentWaypoint = m_waypointPool[pd.poolOffset + pd.navIndex];
+    }
 }
 
 // ============================================================================

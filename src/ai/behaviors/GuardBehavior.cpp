@@ -765,15 +765,15 @@ void GuardBehavior::moveToPositionDirect(BehaviorContext& ctx, const Vector2D &t
 
   // Follow path if available
   if (pathData.isFollowingPath()) {
-    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+    Vector2D waypoint = ctx.pathData->currentWaypoint;
     Vector2D toWaypoint = waypoint - currentPos;
     float dist = toWaypoint.length();
 
     // Advance to next waypoint if close enough
     if (dist < NAV_RADIUS) {
-      pathData.advanceWaypoint();
+      edm.advanceWaypointWithCache(ctx.edmIndex);
       if (pathData.isFollowingPath()) {
-        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+        waypoint = ctx.pathData->currentWaypoint;
         toWaypoint = waypoint - currentPos;
         dist = toWaypoint.length();
       }

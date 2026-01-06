@@ -228,15 +228,15 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
 
       // State: PATH_FOLLOWING - inline path following logic using EDM waypoint pool
       if (pathData.isFollowingPath()) {
-        auto& edm = EntityDataManager::Instance();
-        Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+        Vector2D waypoint = ctx.pathData->currentWaypoint;
         Vector2D toWaypoint = waypoint - entityPos;
         float dist = toWaypoint.length();
 
         if (dist < m_navRadius) {
-          pathData.advanceWaypoint();
+          auto& edm = EntityDataManager::Instance();
+          edm.advanceWaypointWithCache(ctx.edmIndex);
           if (pathData.isFollowingPath()) {
-            waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+            waypoint = ctx.pathData->currentWaypoint;
             toWaypoint = waypoint - entityPos;
             dist = toWaypoint.length();
           }

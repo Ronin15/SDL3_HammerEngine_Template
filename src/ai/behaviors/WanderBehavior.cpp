@@ -285,16 +285,16 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
   auto& pathData = *ctx.pathData;
 
   // Follow path or apply base movement - write directly to transform
-  auto& edm = EntityDataManager::Instance();
   if (pathData.isFollowingPath()) {
-    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+    Vector2D waypoint = ctx.pathData->currentWaypoint;
     Vector2D toWaypoint = waypoint - position;
     float dist = toWaypoint.length();
 
     if (dist < 64.0f) {  // navRadius
-      pathData.advanceWaypoint();
+      auto& edm = EntityDataManager::Instance();
+      edm.advanceWaypointWithCache(ctx.edmIndex);
       if (pathData.isFollowingPath()) {
-        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+        waypoint = ctx.pathData->currentWaypoint;
         toWaypoint = waypoint - position;
         dist = toWaypoint.length();
       }

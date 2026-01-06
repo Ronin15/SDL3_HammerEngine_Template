@@ -621,14 +621,14 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& d
   // Try to follow the path from EDM
   bool pathStep = false;
   if (pathData.isFollowingPath()) {
-    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+    Vector2D waypoint = ctx.pathData->currentWaypoint;
     Vector2D toWaypoint = waypoint - currentPos;
     float dist = toWaypoint.length();
 
     if (dist < nodeRadius) {
-      pathData.advanceWaypoint();
+      edm.advanceWaypointWithCache(ctx.edmIndex);
       if (pathData.isFollowingPath()) {
-        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
+        waypoint = ctx.pathData->currentWaypoint;
         toWaypoint = waypoint - currentPos;
         dist = toWaypoint.length();
       }
