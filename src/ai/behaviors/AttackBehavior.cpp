@@ -245,22 +245,10 @@ void AttackBehavior::executeLogic(BehaviorContext& ctx) {
   if (it == m_entityPtrCache.end()) return;
   EntityPtr entity = it->second;
 
-  // Phase 2 EDM Migration: Use handle-based target lookup
-  EntityHandle targetHandle = getTargetHandle();
-  Vector2D targetPos;
-  bool hasTarget = false;
-
-  if (targetHandle.isValid()) {
-    auto& edm = EntityDataManager::Instance();
-    size_t targetIdx = edm.getIndex(targetHandle);
-    if (targetIdx != SIZE_MAX) {
-      const auto& targetHotData = edm.getHotDataByIndex(targetIdx);
-      if (targetHotData.isAlive()) {
-        targetPos = targetHotData.transform.position;
-        hasTarget = true;
-      }
-    }
-  }
+  // Use cached player info from context (lock-free, cached once per frame)
+  EntityHandle targetHandle = ctx.playerHandle;
+  Vector2D targetPos = ctx.playerPosition;
+  bool hasTarget = ctx.playerValid;
 
   Vector2D entityPos = ctx.transform.position;
 
