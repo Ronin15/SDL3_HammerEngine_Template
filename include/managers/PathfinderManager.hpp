@@ -398,7 +398,7 @@ private:
     
     // Configuration
     bool m_allowDiagonal{true};
-    int m_maxIterations{60000};
+    int m_maxIterations{40000};
     float m_cellSize{64.0f}; // Optimized for 4x fewer pathfinding nodes
     size_t m_maxRequestsPerUpdate{10}; // Max requests to process per update
     float m_cacheExpirationTime{5.0f}; // Cache expiration time in seconds

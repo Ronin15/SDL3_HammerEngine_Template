@@ -1291,6 +1291,7 @@ void EntityDataManager::ensurePathData(size_t index) {
 void EntityDataManager::clearPathData(size_t index) {
     if (index < m_pathData.size()) {
         m_pathData[index].clear();
+        m_pathData[index].pathRequestPending.store(0, std::memory_order_relaxed);
     }
 }
 
@@ -1307,7 +1308,7 @@ void EntityDataManager::finalizePath(size_t index, uint16_t length) noexcept {
     pd.progressTimer = 0.0f;
     pd.lastNodeDistance = std::numeric_limits<float>::max();
     pd.stallTimer = 0.0f;
-    pd.pathRequestPending = false;
+    pd.pathRequestPending.store(0, std::memory_order_release);
     pd.currentWaypoint = m_waypointSlots[index][0];
 }
 

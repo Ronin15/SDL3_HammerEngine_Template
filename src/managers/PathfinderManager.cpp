@@ -14,6 +14,7 @@
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include <chrono>
+#include <array>
 #include <algorithm>
 #include <cmath>
 #include <format>
@@ -323,8 +324,14 @@ uint64_t PathfinderManager::requestPathToEDM(
     // Generate unique request ID
     const uint64_t requestId = m_nextRequestId.fetch_add(1, std::memory_order_relaxed);
 
+    {
+        auto& edm = EntityDataManager::Instance();
+        if (edm.hasPathData(edmIndex)) {
+            edm.getPathData(edmIndex).pathRequestPending.store(1, std::memory_order_release);
+        }
+    }
+
     // ASYNC: Enqueue to ThreadSystem and return immediately (non-blocking)
-    // This allows AI threads to continue processing while paths compute in background
     auto& threadSystem = HammerEngine::ThreadSystem::Instance();
 
     auto work = [this, edmIndex, nStart, nGoal, cacheKey, gridSnapshot]() {
@@ -334,16 +341,27 @@ uint64_t PathfinderManager::requestPathToEDM(
             return;
         }
 
-        std::vector<Vector2D> path;
+        std::array<Vector2D, FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY> cachedWaypoints;
+        uint16_t cachedLen = 0;
         bool cacheHit = false;
+        thread_local std::vector<Vector2D> path;
+        path.clear();
 
         // Cache lookup (shared_lock allows concurrent readers)
         {
             std::shared_lock<std::shared_mutex> lock(m_cacheMutex);
             auto it = m_pathCache.find(cacheKey);
             if (it != m_pathCache.end()) {
-                path = it->second.path;
+                size_t len = std::min(it->second.path.size(),
+                                      FixedWaypointSlot::MAX_WAYPOINTS_PER_ENTITY);
+                for (size_t i = 0; i < len; ++i) {
+                    cachedWaypoints[i] = it->second.path[i];
+                }
+                cachedLen = static_cast<uint16_t>(len);
                 cacheHit = true;
+                m_cacheHits.fetch_add(1, std::memory_order_relaxed);
+            } else {
+                m_cacheMisses.fetch_add(1, std::memory_order_relaxed);
             }
         }
 
@@ -352,34 +370,64 @@ uint64_t PathfinderManager::requestPathToEDM(
             if (m_isShutdown) return;
             findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
-            // Store in cache (try_lock to avoid blocking other workers)
+            // Store in cache (write lock to ensure cache fills on EDM requests)
             if (!path.empty() && !m_isShutdown) {
-                std::unique_lock<std::shared_mutex> lock(m_cacheMutex, std::try_to_lock);
-                if (lock.owns_lock() && !m_isShutdown) {
-                    if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
-                        evictOldestCacheEntry();
+                std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
+                if (!m_isShutdown) {
+                    auto now = std::chrono::steady_clock::now();
+                    auto it = m_pathCache.find(cacheKey);
+                    if (it != m_pathCache.end()) {
+                        it->second.path = path;
+                        it->second.lastUsed = now;
+                        it->second.useCount++;
+                    } else {
+                        if (m_pathCache.size() >= MAX_CACHE_ENTRIES) {
+                            evictOldestCacheEntry();
+                        }
+                        PathCacheEntry entry;
+                        entry.path = path;
+                        entry.lastUsed = now;
+                        entry.useCount = 1;
+                        m_pathCache[cacheKey] = std::move(entry);
                     }
-                    PathCacheEntry entry;
-                    entry.path = path;
-                    entry.lastUsed = std::chrono::steady_clock::now();
-                    entry.useCount = 1;
-                    m_pathCache[cacheKey] = std::move(entry);
                 }
             }
         }
 
-        // Write to EDM per-entity slot (zero contention - each entity owns its slot)
-        if (!m_isShutdown && !path.empty()) {
-            auto& edm = EntityDataManager::Instance();
-            if (edm.hasPathData(edmIndex)) {
-                Vector2D* slot = edm.getWaypointSlot(edmIndex);
-                uint16_t len = static_cast<uint16_t>(std::min(path.size(), size_t{32}));
-                for (uint16_t i = 0; i < len; ++i) {
-                    slot[i] = path[i];
+        if (cacheHit) {
+            std::unique_lock<std::shared_mutex> lock(m_cacheMutex, std::try_to_lock);
+            if (lock.owns_lock()) {
+                auto it = m_pathCache.find(cacheKey);
+                if (it != m_pathCache.end()) {
+                    it->second.lastUsed = std::chrono::steady_clock::now();
+                    it->second.useCount++;
                 }
-                edm.finalizePath(edmIndex, len);
             }
         }
+
+        // Write directly to EDM active slot (legacy path)
+        if (!m_isShutdown) {
+            auto& edm = EntityDataManager::Instance();
+            if (edm.hasPathData(edmIndex)) {
+                if (cacheHit && cachedLen > 0) {
+                    Vector2D* slot = edm.getWaypointSlot(edmIndex);
+                    for (uint16_t i = 0; i < cachedLen; ++i) {
+                        slot[i] = cachedWaypoints[i];
+                    }
+                    edm.finalizePath(edmIndex, cachedLen);
+                } else if (!path.empty()) {
+                    Vector2D* slot = edm.getWaypointSlot(edmIndex);
+                    uint16_t len = static_cast<uint16_t>(std::min(path.size(), size_t{32}));
+                    for (uint16_t i = 0; i < len; ++i) {
+                        slot[i] = path[i];
+                    }
+                    edm.finalizePath(edmIndex, len);
+                } else {
+                    edm.getPathData(edmIndex).pathRequestPending.store(0, std::memory_order_release);
+                }
+            }
+        }
+
     };
 
     threadSystem.enqueueTask(work, mapEnumToTaskPriority(priority), "PathToEDM");
@@ -1250,12 +1298,12 @@ void PathfinderManager::calculateOptimalCacheSettings() {
     int const N = m_prewarmSectorCount;
     m_prewarmPathCount = 2 * N * (N - 1) + 2 * (N - 1) * (N - 1);
 
-    // Cache key quantization based on sector size for pre-warming effectiveness
+    // Cache key quantization based on sector size for higher reuse
     // With RAW coord cache key (computed before normalization), coarser quantization is safe
     // because paths are stored/retrieved by bucket, and the actual path follows normalized coords.
-    // Set to half sector size so NPCs anywhere in a sector can hit pre-warmed paths.
+    // Use full sector size to maximize cache hits for NPCs within the same sector.
     float const sectorSize = worldW / static_cast<float>(m_prewarmSectorCount);
-    m_cacheKeyQuantization = sectorSize / 2.0f;  // Half sector = 4 buckets per sector
+    m_cacheKeyQuantization = sectorSize;
 
     // Calculate expected cache bucket count for logging
     int const bucketsX = static_cast<int>(worldW / m_cacheKeyQuantization);
