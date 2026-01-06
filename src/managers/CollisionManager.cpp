@@ -516,16 +516,38 @@ bool CollisionManager::overlaps(EntityID a, EntityID b) const {
 
 void CollisionManager::queryArea(const AABB &area,
                                  std::vector<EntityID> &out) const {
-  // Query SOA storage for bodies that intersect with the area
+  // PERFORMANCE: Use spatial hashes instead of linear scan (O(log n) vs O(n))
+  // Thread-safe: uses thread-local buffers to avoid contention
   out.clear();
 
-  for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
-    const auto& hot = m_storage.hotData[i];
-    if (!hot.active) continue;
+  thread_local std::vector<size_t> staticIndices;
+  thread_local std::vector<size_t> dynamicIndices;
+  thread_local HierarchicalSpatialHash::QueryBuffers queryBuffers;
 
-    AABB bodyAABB = m_storage.computeAABB(i);
-    if (bodyAABB.intersects(area)) {
-      out.push_back(m_storage.entityIds[i]);
+  staticIndices.clear();
+  dynamicIndices.clear();
+
+  // Query both spatial hashes using thread-safe API
+  float minX = area.minX;
+  float minY = area.minY;
+  float maxX = area.maxX;
+  float maxY = area.maxY;
+
+  m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, staticIndices, queryBuffers);
+  m_dynamicSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, dynamicIndices, queryBuffers);
+
+  // Convert storage indices to EntityIDs
+  out.reserve(staticIndices.size() + dynamicIndices.size());
+
+  for (size_t idx : staticIndices) {
+    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
+      out.push_back(m_storage.entityIds[idx]);
+    }
+  }
+
+  for (size_t idx : dynamicIndices) {
+    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
+      out.push_back(m_storage.entityIds[idx]);
     }
   }
 }
