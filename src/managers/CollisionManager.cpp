@@ -720,6 +720,15 @@ void CollisionManager::rebuildStaticFromWorld() {
   const auto *world = wm.getWorldData();
   if (!world)
     return;
+
+  // PRE-RESERVE CAPACITY: Prevent vector reallocations during rebuild
+  // This eliminates race condition with background queryArea() calls from PathfindingGrid
+  // Conservative estimate: 25% of tiles could become water edge triggers + building bodies
+  const int gridH = static_cast<int>(world->grid.size());
+  const int gridW = gridH > 0 ? static_cast<int>(world->grid[0].size()) : 0;
+  size_t estimatedBodies = static_cast<size_t>(gridH * gridW) / 4;
+  m_storage.ensureCapacity(m_storage.size() + estimatedBodies);
+
   // Remove any existing STATIC world bodies from SOA storage
   std::vector<EntityID> toRemove;
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
