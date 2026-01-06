@@ -256,77 +256,110 @@ struct AreaEffectData {
 };
 
 /**
+ * @brief Contiguous storage pool for all entity path waypoints
+ *
+ * Replaces per-entity std::vector<Vector2D> with a single contiguous pool.
+ * Each PathData stores (offset, length) into this pool for O(1) access.
+ *
+ * Benefits:
+ * - Perfect cache locality when iterating waypoints
+ * - O(1) bump allocation (no per-entity heap allocations)
+ * - Memory reused on state transitions via reset()
+ * - No fragmentation during steady-state gameplay
+ *
+ * Threading: Pool writes are single-threaded (PathfinderManager callbacks).
+ * Reads during AI batch processing are lock-free via pre-cached offsets.
+ */
+class WaypointPool {
+    std::vector<Vector2D> m_storage;
+    size_t m_writeHead{0};
+    static constexpr size_t INITIAL_CAPACITY = 32768;  // 32K waypoints = 256KB
+
+public:
+    WaypointPool() { m_storage.reserve(INITIAL_CAPACITY); }
+
+    /**
+     * @brief Allocate space for N waypoints
+     * @param count Number of waypoints to allocate
+     * @return Starting offset in pool
+     */
+    size_t allocate(size_t count) {
+        size_t offset = m_writeHead;
+        size_t newHead = m_writeHead + count;
+        if (newHead > m_storage.size()) {
+            m_storage.resize(std::max(m_storage.size() * 2, newHead));
+        }
+        m_writeHead = newHead;
+        return offset;
+    }
+
+    /** @brief Reset pool for memory reuse (call on state transitions) */
+    void reset() noexcept { m_writeHead = 0; }
+
+    [[nodiscard]] size_t capacity() const noexcept { return m_storage.size(); }
+    [[nodiscard]] size_t used() const noexcept { return m_writeHead; }
+
+    Vector2D& operator[](size_t idx) { return m_storage[idx]; }
+    const Vector2D& operator[](size_t idx) const { return m_storage[idx]; }
+
+    /** @brief Get writable slice for copying waypoints into pool */
+    std::span<Vector2D> getSlice(size_t offset, size_t length) {
+        return std::span<Vector2D>(m_storage.data() + offset, length);
+    }
+
+    /** @brief Get read-only slice for iteration */
+    [[nodiscard]] std::span<const Vector2D> getSlice(size_t offset, size_t length) const {
+        return std::span<const Vector2D>(m_storage.data() + offset, length);
+    }
+};
+
+/**
  * @brief Path state for AI entities (indexed by edmIndex)
  *
- * Stores pathfinding state for AI entities. PathfinderManager writes directly
- * to this structure after computing paths - no callbacks needed.
+ * Stores pathfinding state for AI entities. Uses WaypointPool for waypoint
+ * storage instead of per-entity vectors for better cache locality.
  *
  * Threading: Safe for parallel reads during AI batch processing.
  * PathfinderManager writes are done after AI batches complete (single-threaded).
  */
 struct PathData {
-    std::vector<Vector2D> navPath;     // Current path waypoints
-    size_t navIndex{0};                 // Current waypoint index
+    uint32_t poolOffset{0};             // Start index in WaypointPool
+    uint16_t pathLength{0};             // Number of waypoints (max 65K)
+    uint16_t navIndex{0};               // Current waypoint index
     float pathUpdateTimer{0.0f};        // Time since last path update
     float progressTimer{0.0f};          // Time since last progress
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
+    float lastNodeDistance{std::numeric_limits<float>::max()};
     float stallTimer{0.0f};             // Stall detection
     float pathRequestCooldown{0.0f};    // Prevent request spam
     bool hasPath{false};                // Quick check if path is valid
     bool pathRequestPending{false};     // Path request in flight
 
     void clear() noexcept {
-        navPath.clear();
+        poolOffset = 0;
+        pathLength = 0;
         navIndex = 0;
         pathUpdateTimer = 0.0f;
         progressTimer = 0.0f;
-        lastNodeDistance = std::numeric_limits<float>::infinity();
+        lastNodeDistance = std::numeric_limits<float>::max();
         stallTimer = 0.0f;
         pathRequestCooldown = 0.0f;
         hasPath = false;
         pathRequestPending = false;
     }
 
-    void setPath(std::vector<Vector2D>&& path) noexcept {
-        navPath = std::move(path);
-        navIndex = 0;
-        pathUpdateTimer = 0.0f;
-        progressTimer = 0.0f;
-        lastNodeDistance = std::numeric_limits<float>::infinity();
-        stallTimer = 0.0f;
-        hasPath = !navPath.empty();
-        pathRequestPending = false;
-    }
-
-    void setPath(const std::vector<Vector2D>& path) {
-        navPath = path;
-        navIndex = 0;
-        pathUpdateTimer = 0.0f;
-        progressTimer = 0.0f;
-        lastNodeDistance = std::numeric_limits<float>::infinity();
-        stallTimer = 0.0f;
-        hasPath = !navPath.empty();
-        pathRequestPending = false;
-    }
-
     [[nodiscard]] bool isFollowingPath() const noexcept {
-        return hasPath && navIndex < navPath.size();
-    }
-
-    [[nodiscard]] Vector2D getCurrentWaypoint() const noexcept {
-        if (navIndex < navPath.size()) {
-            return navPath[navIndex];
-        }
-        return Vector2D{0.0f, 0.0f};
+        return hasPath && navIndex < pathLength;
     }
 
     void advanceWaypoint() noexcept {
-        if (navIndex < navPath.size()) {
+        if (navIndex < pathLength) {
             ++navIndex;
             progressTimer = 0.0f;
             stallTimer = 0.0f;
         }
     }
+
+    [[nodiscard]] size_t size() const noexcept { return pathLength; }
 };
 
 /**
@@ -922,6 +955,40 @@ public:
      */
     void clearPathData(size_t index);
 
+    /**
+     * @brief Set path for an entity using waypoint pool storage
+     * @param index EDM index
+     * @param path Path waypoints (copied into pool)
+     */
+    void setPath(size_t index, const std::vector<Vector2D>& path);
+
+    /**
+     * @brief Get waypoint from entity's path
+     * @param entityIdx EDM index
+     * @param waypointIdx Index within the path
+     * @return Waypoint position (inline for hot-path access)
+     */
+    [[nodiscard]] Vector2D getWaypoint(size_t entityIdx, size_t waypointIdx) const;
+
+    /**
+     * @brief Get current waypoint for entity's path
+     * @param entityIdx EDM index
+     * @return Current waypoint position (inline for hot-path access)
+     */
+    [[nodiscard]] Vector2D getCurrentWaypoint(size_t entityIdx) const;
+
+    /**
+     * @brief Get goal (last waypoint) of entity's path
+     * @param entityIdx EDM index
+     * @return Goal position (inline for hot-path access)
+     */
+    [[nodiscard]] Vector2D getPathGoal(size_t entityIdx) const;
+
+    /**
+     * @brief Reset waypoint pool (call on state transitions to reclaim memory)
+     */
+    void resetWaypointPool() noexcept { m_waypointPool.reset(); }
+
     // ========================================================================
     // BEHAVIOR DATA ACCESS (for AI behaviors - indexed by edmIndex)
     // ========================================================================
@@ -1091,6 +1158,9 @@ private:
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;
 
+    // Contiguous waypoint storage for all paths (replaces per-PathData vectors)
+    WaypointPool m_waypointPool;
+
     // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
     std::vector<BehaviorData> m_behaviorData;
 
@@ -1191,6 +1261,25 @@ inline PathData& EntityDataManager::getPathData(size_t index) {
 inline const PathData& EntityDataManager::getPathData(size_t index) const {
     assert(index < m_pathData.size() && "Path data index out of bounds");
     return m_pathData[index];
+}
+
+// Waypoint pool accessors - O(1) access to path waypoints from contiguous pool
+inline Vector2D EntityDataManager::getWaypoint(size_t entityIdx, size_t waypointIdx) const {
+    const auto& pd = m_pathData[entityIdx];
+    assert(waypointIdx < pd.pathLength && "Waypoint index out of bounds");
+    return m_waypointPool[pd.poolOffset + waypointIdx];
+}
+
+inline Vector2D EntityDataManager::getCurrentWaypoint(size_t entityIdx) const {
+    const auto& pd = m_pathData[entityIdx];
+    assert(pd.navIndex < pd.pathLength && "Current waypoint out of bounds");
+    return m_waypointPool[pd.poolOffset + pd.navIndex];
+}
+
+inline Vector2D EntityDataManager::getPathGoal(size_t entityIdx) const {
+    const auto& pd = m_pathData[entityIdx];
+    assert(pd.pathLength > 0 && "Cannot get goal of empty path");
+    return m_waypointPool[pd.poolOffset + pd.pathLength - 1];
 }
 
 inline CharacterData& EntityDataManager::getCharacterDataByIndex(size_t index) {

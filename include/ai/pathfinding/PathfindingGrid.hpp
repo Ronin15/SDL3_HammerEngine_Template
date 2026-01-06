@@ -168,8 +168,8 @@ private:
             while (!openQueue.empty()) openQueue.pop();
             // Only reset if buffers are properly sized
             if (!gScoreBuffer.empty()) {
-                std::fill(gScoreBuffer.begin(), gScoreBuffer.end(), std::numeric_limits<float>::infinity());
-                std::fill(fScoreBuffer.begin(), fScoreBuffer.end(), std::numeric_limits<float>::infinity());
+                std::fill(gScoreBuffer.begin(), gScoreBuffer.end(), std::numeric_limits<float>::max());
+                std::fill(fScoreBuffer.begin(), fScoreBuffer.end(), std::numeric_limits<float>::max());
                 std::fill(parentBuffer.begin(), parentBuffer.end(), -1);
                 std::fill(closedBuffer.begin(), closedBuffer.end(), 0);
             }

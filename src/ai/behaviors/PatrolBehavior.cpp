@@ -152,13 +152,14 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   // 2. Path is completed, OR
   // 3. Path is stale (>5 seconds), OR
   // 4. We changed waypoints
-  if (!pathData.hasPath || pathData.navIndex >= pathData.navPath.size()) {
+  if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
     needsNewPath = true;
   } else if (pathData.pathUpdateTimer > 5.0f) { // Path older than 5 seconds
     needsNewPath = true;
   } else {
     // Check if we're targeting a different waypoint than when path was computed
-    Vector2D pathGoal = pathData.navPath.back();
+    auto& edm = EntityDataManager::Instance();
+    Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
     float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
     needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
   }
@@ -188,15 +189,16 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT (using EDM path state)
   if (pathData.isFollowingPath()) {
-    // Following computed path - lock-free path following
-    Vector2D waypoint = pathData.getCurrentWaypoint();
+    // Following computed path - lock-free path following via waypoint pool
+    auto& edm = EntityDataManager::Instance();
+    Vector2D waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
     Vector2D toWaypoint = waypoint - position;
     float dist = toWaypoint.length();
 
     if (dist < m_navRadius) {
       pathData.advanceWaypoint();
       if (pathData.isFollowingPath()) {
-        waypoint = pathData.getCurrentWaypoint();
+        waypoint = edm.getCurrentWaypoint(ctx.edmIndex);
         toWaypoint = waypoint - position;
         dist = toWaypoint.length();
       }
@@ -231,7 +233,8 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
     if (pathData.stallTimer > 2.0f) {
       // Apply stall recovery: try sidestep maneuver or advance waypoint
       if (pathData.isFollowingPath()) {
-        Vector2D toNode = pathData.getCurrentWaypoint() - position;
+        auto& edm = EntityDataManager::Instance();
+        Vector2D toNode = edm.getCurrentWaypoint(ctx.edmIndex) - position;
         float const len = toNode.length();
         if (len > 0.01f) {
           Vector2D const dir = toNode * (1.0f / len);

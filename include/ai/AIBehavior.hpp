@@ -125,7 +125,7 @@ protected:
     float navRadius = 64.0f;
     float pathUpdateTimer = 0.0f;
     float progressTimer = 0.0f;
-    float lastNodeDistance = std::numeric_limits<float>::infinity();
+    float lastNodeDistance = std::numeric_limits<float>::max();
 
     // Separation state
     float separationTimer = 0.0f;

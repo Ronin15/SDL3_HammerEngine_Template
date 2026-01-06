@@ -368,11 +368,11 @@ uint64_t PathfinderManager::requestPathToEDM(
             }
         }
 
-        // Write to EDM (per-entity slot, no contention with other entities)
+        // Write to EDM waypoint pool (per-entity slot, no contention with other entities)
         if (!m_isShutdown) {
             auto& edm = EntityDataManager::Instance();
             if (edm.hasPathData(edmIndex)) {
-                edm.getPathData(edmIndex).setPath(path);
+                edm.setPath(edmIndex, path);
             }
         }
     };

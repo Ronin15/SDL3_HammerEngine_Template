@@ -113,6 +113,7 @@ void EntityDataManager::clean() {
     m_harvestableData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
+    m_waypointPool.reset();  // Reclaim all waypoint memory for reuse
     m_behaviorData.clear();
 
     // Clear type-specific free-lists
@@ -175,6 +176,7 @@ void EntityDataManager::prepareForStateTransition() {
     m_harvestableData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
+    m_waypointPool.reset();  // Reclaim all waypoint memory for reuse
     m_behaviorData.clear();
 
     // Clear type-specific free-lists
@@ -1286,6 +1288,30 @@ void EntityDataManager::clearPathData(size_t index) {
     if (index < m_pathData.size()) {
         m_pathData[index].clear();
     }
+}
+
+void EntityDataManager::setPath(size_t index, const std::vector<Vector2D>& path) {
+    if (index >= m_pathData.size()) {
+        ensurePathData(index);
+    }
+    auto& pd = m_pathData[index];
+    if (path.empty()) {
+        pd.clear();
+        return;
+    }
+    // Allocate from waypoint pool
+    pd.poolOffset = static_cast<uint32_t>(m_waypointPool.allocate(path.size()));
+    pd.pathLength = static_cast<uint16_t>(std::min(path.size(), size_t{65535}));
+    pd.navIndex = 0;
+    pd.hasPath = true;
+    pd.pathUpdateTimer = 0.0f;
+    pd.progressTimer = 0.0f;
+    pd.lastNodeDistance = std::numeric_limits<float>::max();
+    pd.stallTimer = 0.0f;
+    pd.pathRequestPending = false;
+    // Copy waypoints to pool
+    auto slice = m_waypointPool.getSlice(pd.poolOffset, pd.pathLength);
+    std::copy(path.begin(), path.begin() + pd.pathLength, slice.begin());
 }
 
 // ============================================================================

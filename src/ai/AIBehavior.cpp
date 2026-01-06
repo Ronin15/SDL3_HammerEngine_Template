@@ -107,7 +107,7 @@ void AIBehavior::moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
             state.pathPoints = path;
             state.currentPathIndex = 0;
             state.pathUpdateTimer = 0.0f;
-            state.lastNodeDistance = std::numeric_limits<float>::infinity();
+            state.lastNodeDistance = std::numeric_limits<float>::max();
             state.progressTimer = 0.0f;
           }
         });
