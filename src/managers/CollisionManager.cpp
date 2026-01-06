@@ -516,36 +516,42 @@ bool CollisionManager::overlaps(EntityID a, EntityID b) const {
 
 void CollisionManager::queryArea(const AABB &area,
                                  std::vector<EntityID> &out) const {
-  // PERFORMANCE: Use spatial hashes instead of linear scan (O(log n) vs O(n))
-  // Thread-safe: uses thread-local buffers to avoid contention
   out.clear();
 
+  // If static hash is dirty (not yet rebuilt after add/remove), fall back to linear scan
+  // This ensures correctness in tests and edge cases while providing O(log n) in production
+  // (production always runs update() before AI queries, which rebuilds the hash)
+  if (m_staticHashDirty) {
+    // Linear scan fallback - always correct
+    for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
+      const auto& hot = m_storage.hotData[i];
+      if (!hot.active) continue;
+
+      AABB bodyAABB = m_storage.computeAABB(i);
+      if (bodyAABB.intersects(area)) {
+        out.push_back(m_storage.entityIds[i]);
+      }
+    }
+    return;
+  }
+
+  // PERFORMANCE: Use spatial hash for O(log n) query (production path)
+  // Thread-safe: uses thread-local buffers to avoid contention
   thread_local std::vector<size_t> staticIndices;
-  thread_local std::vector<size_t> dynamicIndices;
   thread_local HammerEngine::HierarchicalSpatialHash::QueryBuffers queryBuffers;
 
   staticIndices.clear();
-  dynamicIndices.clear();
 
-  // Query both spatial hashes using thread-safe API
   float minX = area.left();
   float minY = area.top();
   float maxX = area.right();
   float maxY = area.bottom();
 
   m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, staticIndices, queryBuffers);
-  m_dynamicSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY, dynamicIndices, queryBuffers);
 
-  // Convert storage indices to EntityIDs
-  out.reserve(staticIndices.size() + dynamicIndices.size());
+  out.reserve(staticIndices.size());
 
   for (size_t idx : staticIndices) {
-    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
-      out.push_back(m_storage.entityIds[idx]);
-    }
-  }
-
-  for (size_t idx : dynamicIndices) {
     if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
       out.push_back(m_storage.entityIds[idx]);
     }
