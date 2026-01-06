@@ -210,13 +210,7 @@ void PathfindingGrid::rebuildFromWorld(int rowStart, int rowEnd) {
                 AABB const cellAABB(x0 + m_cell * 0.5f, y0 + m_cell * 0.5f,
                              m_cell * 0.5f + ENTITY_CLEARANCE,
                              m_cell * 0.5f + ENTITY_CLEARANCE);
-                std::vector<EntityID> bodiesInCell;
-                CollisionManager::Instance().queryArea(cellAABB, bodiesInCell);
-
-                // Filter to only STATIC bodies (buildings, world obstacles)
-                // KINEMATIC (NPCs) and DYNAMIC (player, projectiles) should NOT permanently block paths
-                if (std::any_of(bodiesInCell.begin(), bodiesInCell.end(),
-                    [](EntityID bodyId) { return CollisionManager::Instance().isStatic(bodyId); })) {
+                if (CollisionManager::Instance().queryAreaHasStaticOverlap(cellAABB)) {
                     cellBlocked = true;
                     collisionBlockedCount++;
                 }
