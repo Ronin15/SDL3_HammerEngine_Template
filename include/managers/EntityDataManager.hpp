@@ -311,7 +311,30 @@ struct PathData {
     float pathRequestCooldown{0.0f};    // Prevent request spam
     Vector2D currentWaypoint{0, 0};     // Cached current waypoint for fast access
     bool hasPath{false};                // Quick check if path is valid
-    bool pathRequestPending{false};     // Path request in flight
+    std::atomic<uint8_t> pathRequestPending{0}; // Path request in flight (release/acquire)
+
+    PathData() = default;
+    PathData(const PathData&) = delete;
+    PathData& operator=(const PathData&) = delete;
+    PathData(PathData&& other) noexcept { *this = std::move(other); }
+    PathData& operator=(PathData&& other) noexcept {
+        if (this != &other) {
+            pathLength = other.pathLength;
+            navIndex = other.navIndex;
+            pathUpdateTimer = other.pathUpdateTimer;
+            progressTimer = other.progressTimer;
+            lastNodeDistance = other.lastNodeDistance;
+            stallTimer = other.stallTimer;
+            pathRequestCooldown = other.pathRequestCooldown;
+            currentWaypoint = other.currentWaypoint;
+            hasPath = other.hasPath;
+            pathRequestPending.store(
+                other.pathRequestPending.load(std::memory_order_relaxed),
+                std::memory_order_relaxed);
+            other.pathRequestPending.store(0, std::memory_order_relaxed);
+        }
+        return *this;
+    }
 
     void clear() noexcept {
         pathLength = 0;
@@ -323,7 +346,7 @@ struct PathData {
         pathRequestCooldown = 0.0f;
         currentWaypoint = Vector2D{0, 0};
         hasPath = false;
-        pathRequestPending = false;
+        pathRequestPending.store(0, std::memory_order_relaxed);
     }
 
     [[nodiscard]] bool isFollowingPath() const noexcept {
@@ -1151,7 +1174,6 @@ private:
     // Per-entity waypoint slots (indexed parallel to m_pathData)
     // Each entity owns one 256-byte slot for lock-free writes
     std::vector<FixedWaypointSlot> m_waypointSlots;
-
     // Behavior data (indexed by edmIndex, pre-allocated alongside hotData)
     std::vector<BehaviorData> m_behaviorData;
 
