@@ -4,14 +4,11 @@
  */
 
 #include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/internal/Crowd.hpp"
-#include "managers/PathfinderManager.hpp"
-#include "managers/EntityDataManager.hpp" // For TransformData definition
-#include "ai/internal/SpatialPriority.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"
-#include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
+#include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <chrono>
@@ -31,8 +28,9 @@ std::mt19937 &getSharedRNG() {
 }
 } // namespace
 
-PatrolBehavior::PatrolBehavior(const HammerEngine::PatrolBehaviorConfig& config)
-    : m_config(config), m_waypoints(), m_currentWaypoint(0), m_moveSpeed(config.moveSpeed),
+PatrolBehavior::PatrolBehavior(const HammerEngine::PatrolBehaviorConfig &config)
+    : m_config(config), m_waypoints(), m_currentWaypoint(0),
+      m_moveSpeed(config.moveSpeed),
       m_waypointRadius(config.waypointReachedRadius),
       m_includeOffscreenPoints(false), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
@@ -75,12 +73,13 @@ void PatrolBehavior::init(EntityHandle handle) {
   m_currentWaypoint = 0;
 
   // Get position from EDM
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
   if (idx != SIZE_MAX) {
-    // Initialize behavior data in EDM (required for pathData access in executeLogic)
+    // Initialize behavior data in EDM (required for pathData access in
+    // executeLogic)
     edm.initBehaviorData(idx, BehaviorType::Patrol);
-    auto& data = edm.getBehaviorData(idx);
+    auto &data = edm.getBehaviorData(idx);
     data.setInitialized(true);
 
     Vector2D position = edm.getHotDataByIndex(idx).transform.position;
@@ -92,7 +91,7 @@ void PatrolBehavior::init(EntityHandle handle) {
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
-void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
+void PatrolBehavior::executeLogic(BehaviorContext &ctx) {
   if (!m_active || m_waypoints.empty() || !ctx.pathData) {
     return;
   }
@@ -106,7 +105,7 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   float deltaTime = ctx.deltaTime;
 
   // Use pre-fetched path data from context (no Instance() call needed)
-  auto& pathData = *ctx.pathData;
+  auto &pathData = *ctx.pathData;
 
   // Update EDM path timers
   pathData.pathUpdateTimer += deltaTime;
@@ -115,16 +114,20 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
     pathData.pathRequestCooldown -= deltaTime;
   }
   if (m_waypointCooldown > 0.0f) {
-    m_waypointCooldown -= deltaTime; // Countdown (waypoint cooldown stays per-behavior for shared routes)
+    m_waypointCooldown -= deltaTime; // Countdown (waypoint cooldown stays
+                                     // per-behavior for shared routes)
   }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
-    // Enforce minimum time between waypoint transitions to prevent oscillation (750ms)
+    // Enforce minimum time between waypoint transitions to prevent oscillation
+    // (750ms)
     if (m_waypointCooldown <= 0.0f) {
-      m_waypointCooldown = m_config.waypointCooldown; // Cooldown before advancing to next waypoint
+      m_waypointCooldown =
+          m_config
+              .waypointCooldown; // Cooldown before advancing to next waypoint
 
       // Advance to next waypoint
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
@@ -145,9 +148,9 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
-  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
-                            pathData.isFollowingPath() &&
-                            pathData.progressTimer < 0.8f);
+  const bool skipRefresh =
+      (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
+       pathData.progressTimer < 0.8f);
   bool needsNewPath = false;
 
   // Only request new path if:
@@ -161,10 +164,12 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
     } else if (pathData.pathUpdateTimer > 8.0f) { // Path older than 8 seconds
       needsNewPath = true;
     } else {
-      // Check if we're targeting a different waypoint than when path was computed
-      auto& edm = EntityDataManager::Instance();
+      // Check if we're targeting a different waypoint than when path was
+      // computed
+      auto &edm = EntityDataManager::Instance();
       Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
-      float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
+      float const waypointChangeSquared =
+          (targetWaypoint - pathGoal).lengthSquared();
       needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
     }
   }
@@ -176,20 +181,23 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   // Per-entity cooldown via pathData.pathRequestCooldown
-  if ((needsNewPath || stuckOnObstacle) && pathData.pathRequestCooldown <= 0.0f) {
+  if ((needsNewPath || stuckOnObstacle) &&
+      pathData.pathRequestCooldown <= 0.0f) {
     // GOAL VALIDATION: Don't request path if already at waypoint
     float const distanceSquared = (targetWaypoint - position).lengthSquared();
     if (distanceSquared < (m_waypointRadius * m_waypointRadius)) {
-      ctx.transform.velocity = Vector2D(0, 0);  // Stop movement when at waypoint
+      ctx.transform.velocity = Vector2D(0, 0); // Stop movement when at waypoint
       return;
     }
 
     // EDM-integrated async pathfinding - result written directly to EDM
-    pathfinder().requestPathToEDM(
-        ctx.edmIndex, position, targetWaypoint,
-        PathfinderManager::Priority::Normal);
-    pathData.pathRequestCooldown = m_config.pathRequestCooldown +
-        (ctx.entityId % static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) * 0.001f;
+    pathfinder().requestPathToEDM(ctx.edmIndex, position, targetWaypoint,
+                                  PathfinderManager::Priority::Normal);
+    pathData.pathRequestCooldown =
+        m_config.pathRequestCooldown +
+        (ctx.entityId %
+         static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) *
+            0.001f;
   }
 
   // State: FOLLOWING_PATH or DIRECT_MOVEMENT (using EDM path state)
@@ -200,7 +208,7 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
     float dist = toWaypoint.length();
 
     if (dist < m_navRadius) {
-      auto& edm = EntityDataManager::Instance();
+      auto &edm = EntityDataManager::Instance();
       edm.advanceWaypointWithCache(ctx.edmIndex);
       if (pathData.isFollowingPath()) {
         waypoint = ctx.pathData->currentWaypoint;
@@ -230,7 +238,8 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
 
   // State: STALL_DETECTION - Handle entities that get stuck
   float currentSpeedSquared = ctx.transform.velocity.lengthSquared();
-  const float stallThreshold = std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
+  const float stallThreshold =
+      std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
   const float stallThresholdSquared = stallThreshold * stallThreshold;
 
   if (currentSpeedSquared < stallThresholdSquared) {
@@ -249,8 +258,8 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
 
           // EDM-integrated async pathfinding for sidestep recovery
           pathfinder().requestPathToEDM(
-              ctx.edmIndex, pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
-              PathfinderManager::Priority::Normal);
+              ctx.edmIndex, pathfinder().clampToWorldBounds(position, 100.0f),
+              sidestep, PathfinderManager::Priority::Normal);
         }
       } else {
         pathData.pathRequestCooldown = 10.0f + (ctx.entityId % 2000) * 0.001f;
@@ -269,20 +278,21 @@ void PatrolBehavior::executeLogic(BehaviorContext& ctx) {
 void PatrolBehavior::clean(EntityHandle handle) {
   if (handle.isValid()) {
     // Reset velocity and clear path state via EDM
-    auto& edm = EntityDataManager::Instance();
+    auto &edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
-      edm.clearPathData(idx);  // Clear path state in EDM
+      edm.clearPathData(idx); // Clear path state in EDM
     }
   }
 
   m_needsReset = false;
 }
 
-void PatrolBehavior::onMessage(EntityHandle handle, const std::string &message) {
+void PatrolBehavior::onMessage(EntityHandle handle,
+                               const std::string &message) {
   // Cache EDM index once for messages that need velocity access
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = handle.isValid() ? edm.getIndex(handle) : SIZE_MAX;
 
   if (message == "pause") {
@@ -598,11 +608,13 @@ void PatrolBehavior::ensureRandomSeed() const {}
 void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   m_patrolMode = mode;
 
-  // Use world bounds instead of screen dimensions for true world-scale patrolling
+  // Use world bounds instead of screen dimensions for true world-scale
+  // patrolling
   float minX, minY, maxX, maxY;
   if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
     // No world loaded - use fallback defaults and log warning
-    AI_WARN("PatrolBehavior: World bounds unavailable, using fallback waypoints");
+    AI_WARN(
+        "PatrolBehavior: World bounds unavailable, using fallback waypoints");
     m_waypoints.clear();
     m_waypoints.reserve(2);
     m_waypoints.emplace_back(100.0f, 100.0f);

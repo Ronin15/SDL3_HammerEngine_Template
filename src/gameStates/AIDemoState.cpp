@@ -4,32 +4,29 @@
  */
 
 #include "gameStates/AIDemoState.hpp"
-#include "gameStates/LoadingState.hpp"
-#include "SDL3/SDL_scancode.h"
 #include "ai/behaviors/ChaseBehavior.hpp"
 #include "ai/behaviors/PatrolBehavior.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
+#include "gameStates/LoadingState.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/GameStateManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
-#include "managers/EntityDataManager.hpp"
 #include "utils/Camera.hpp"
 #include "world/WorldData.hpp"
+#include <cmath>
+#include <cstddef>
+#include <ctime>
+#include <format>
 #include <memory>
 #include <random>
-#include <format>
-#include <cmath>
-#include <ctime>
-#include <cstddef>
-
-
 
 AIDemoState::~AIDemoState() {
   // Don't call virtual functions from destructors
@@ -48,7 +45,8 @@ AIDemoState::~AIDemoState() {
 
     GAMESTATE_INFO("Exiting AIDemoState in destructor...");
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("Exception in AIDemoState destructor: {}", e.what()));
+    GAMESTATE_ERROR(
+        std::format("Exception in AIDemoState destructor: {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState destructor");
   }
@@ -83,17 +81,21 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Wander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "Wander");
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Patrol behavior to all NPCs
-    GAMESTATE_INFO(std::format("Switching {} NPCs to PATROL behavior (batched processing)...", m_npcsById.size()));
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    GAMESTATE_INFO(std::format(
+        "Switching {} NPCs to PATROL behavior (batched processing)...",
+        m_npcsById.size()));
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "Patrol");
     }
     GAMESTATE_INFO("Patrol assignments queued. Processing "
@@ -106,8 +108,9 @@ void AIDemoState::handleInput() {
 
     // Chase behavior target is automatically maintained by AIManager
     // No manual target updates needed
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "Chase");
     }
   }
@@ -115,8 +118,9 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign SmallWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "SmallWander");
     }
   }
@@ -124,8 +128,9 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign LargeWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "LargeWander");
     }
   }
@@ -133,8 +138,9 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
     // Assign EventWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "EventWander");
     }
   }
@@ -142,8 +148,9 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
     // Assign RandomPatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "RandomPatrol");
     }
   }
@@ -151,8 +158,9 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
     // Assign CirclePatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "CirclePatrol");
     }
   }
@@ -160,18 +168,19 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
     // Assign EventTarget behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
-    for (auto& [id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based API)
+    for (auto &[id, npc] : m_npcsById) {
+      // Queue the behavior assignment for batch processing (EntityHandle-based
+      // API)
       aiMgr.assignBehavior(npc->getHandle(), "EventTarget");
     }
   }
 
   // Camera zoom controls
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
-    m_camera->zoomIn();  // [ key = zoom in (objects larger)
+    m_camera->zoomIn(); // [ key = zoom in (objects larger)
   }
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_RIGHTBRACKET) && m_camera) {
-    m_camera->zoomOut();  // ] key = zoom out (objects smaller)
+    m_camera->zoomOut(); // ] key = zoom out (objects smaller)
   }
 
   // NPC spawning controls
@@ -179,12 +188,15 @@ void AIDemoState::handleInput() {
     // Spawn all NPCs up to m_npcCount with standard behavior (Wander)
     if (m_npcsSpawned < m_npcCount) {
       int const npcsToSpawn = m_npcCount - m_npcsSpawned;
-      GAMESTATE_INFO(std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
+      GAMESTATE_INFO(
+          std::format("Spawning {} NPCs with Wander behavior...", npcsToSpawn));
       createNPCBatch(npcsToSpawn);
       m_npcsSpawned += npcsToSpawn;
-      GAMESTATE_INFO(std::format("Spawned {} / {} NPCs (Standard behavior)", m_npcsSpawned, m_npcCount));
+      GAMESTATE_INFO(std::format("Spawned {} / {} NPCs (Standard behavior)",
+                                 m_npcsSpawned, m_npcCount));
     } else {
-      GAMESTATE_INFO(std::format("Already spawned {} NPCs (max reached)", m_npcCount));
+      GAMESTATE_INFO(
+          std::format("Already spawned {} NPCs (max reached)", m_npcCount));
     }
   }
 
@@ -194,12 +206,15 @@ void AIDemoState::handleInput() {
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
     int actualSpawned = m_npcsById.size() - previousCount;
-    GAMESTATE_INFO(std::format("Spawned {} NPCs with random behaviors (Total: {})", actualSpawned, m_npcsById.size()));
+    GAMESTATE_INFO(
+        std::format("Spawned {} NPCs with random behaviors (Total: {})",
+                    actualSpawned, m_npcsById.size()));
   }
 }
 
 bool AIDemoState::enter() {
-  // Cache manager pointers for render hot path (always valid after GameEngine init)
+  // Cache manager pointers for render hot path (always valid after GameEngine
+  // init)
   mp_edm = &EntityDataManager::Instance();
   mp_particleMgr = &ParticleManager::Instance();
   mp_worldMgr = &WorldManager::Instance();
@@ -216,15 +231,16 @@ bool AIDemoState::enter() {
   // Check if already initialized (resuming after LoadingState)
   if (m_initialized) {
     GAMESTATE_INFO("Already initialized - resuming AIDemoState");
-    return true;  // Skip all loading logic
+    return true; // Skip all loading logic
   }
 
   // Check if world needs to be loaded
   if (!m_worldLoaded) {
-    GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on first update");
+    GAMESTATE_INFO("World not loaded yet - will transition to LoadingState on "
+                   "first update");
     m_needsLoading = true;
-    m_worldLoaded = true;  // Mark as loaded to prevent loop on re-entry
-    return true;  // Will transition to loading screen in update()
+    m_worldLoaded = true; // Mark as loaded to prevent loop on re-entry
+    return true;          // Will transition to loading screen in update()
   }
 
   // World is loaded - proceed with normal initialization
@@ -233,14 +249,15 @@ bool AIDemoState::enter() {
   try {
     // Cache GameEngine reference for better performance
     const GameEngine &gameEngine = GameEngine::Instance();
-    auto& worldManager = WorldManager::Instance();
+    auto &worldManager = WorldManager::Instance();
 
     // Update world dimensions from loaded world
     float minX = 0.0f, minY = 0.0f, maxX = 0.0f, maxY = 0.0f;
     if (worldManager.getWorldBounds(minX, minY, maxX, maxY)) {
       m_worldWidth = std::max(0.0f, maxX - minX);
       m_worldHeight = std::max(0.0f, maxY - minY);
-      GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels", m_worldWidth, m_worldHeight));
+      GAMESTATE_INFO(std::format("World dimensions: {} x {} pixels",
+                                 m_worldWidth, m_worldHeight));
     } else {
       // Fallback to screen dimensions if world bounds unavailable
       m_worldWidth = gameEngine.getLogicalWidth();
@@ -259,48 +276,76 @@ bool AIDemoState::enter() {
     // Cache AIManager reference for better performance
     AIManager &aiMgr = AIManager::Instance();
 
-    // Set player handle in AIManager for distance optimization (EntityHandle-based API)
+    // Set player handle in AIManager for distance optimization
+    // (EntityHandle-based API)
     aiMgr.setPlayerHandle(m_player->getHandle());
 
     // Create and register chase behavior - behaviors can get player via
     // getPlayerHandle() or getPlayerPosition()
     auto chaseBehavior = std::make_unique<ChaseBehavior>(90.0f, 500.0f, 50.0f);
     aiMgr.registerBehavior("Chase", std::move(chaseBehavior));
-    GAMESTATE_INFO("Chase behavior registered (will use AIManager::getPlayerHandle())");
+    GAMESTATE_INFO(
+        "Chase behavior registered (will use AIManager::getPlayerHandle())");
 
     // Create simple HUD UI (matches EventDemoState spacing pattern)
     // Use cached mp_uiMgr pointer from top of enter()
     auto &ui = *mp_uiMgr;
-    ui.createTitle("ai_title", {0, UIConstants::TITLE_TOP_OFFSET, gameEngine.getLogicalWidth(), UIConstants::DEFAULT_TITLE_HEIGHT},
+    ui.createTitle("ai_title",
+                   {0, UIConstants::TITLE_TOP_OFFSET,
+                    gameEngine.getLogicalWidth(),
+                    UIConstants::DEFAULT_TITLE_HEIGHT},
                    "AI Demo State");
     ui.setTitleAlignment("ai_title", UIAlignment::CENTER_CENTER);
     // Set auto-repositioning: top-aligned, full width
-    ui.setComponentPositioning("ai_title", {UIPositionMode::TOP_ALIGNED, 0, UIConstants::TITLE_TOP_OFFSET, -1, UIConstants::DEFAULT_TITLE_HEIGHT});
+    ui.setComponentPositioning("ai_title", {UIPositionMode::TOP_ALIGNED, 0,
+                                            UIConstants::TITLE_TOP_OFFSET, -1,
+                                            UIConstants::DEFAULT_TITLE_HEIGHT});
 
-    ui.createLabel("ai_instructions_line1",
-                   {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
-                    gameEngine.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT},
-                   "Controls: [B] Exit | [SPACE] Pause/Resume | [N] Spawn 2K Standard | "
-                   "[M] Spawn 2K Random | [ ] Zoom");
+    ui.createLabel(
+        "ai_instructions_line1",
+        {UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
+         gameEngine.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
+         UIConstants::INFO_LABEL_HEIGHT},
+        "Controls: [B] Exit | [SPACE] Pause/Resume | [N] Spawn 2K Standard | "
+        "[M] Spawn 2K Random | [ ] Zoom");
     // Set auto-repositioning: top-aligned, full width minus margins
-    ui.setComponentPositioning("ai_instructions_line1", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_FIRST_LINE_Y,
-                                                         -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
+    ui.setComponentPositioning(
+        "ai_instructions_line1",
+        {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X,
+         UIConstants::INFO_FIRST_LINE_Y, -2 * UIConstants::INFO_LABEL_MARGIN_X,
+         UIConstants::INFO_LABEL_HEIGHT});
 
-    const int line2Y = UIConstants::INFO_FIRST_LINE_Y + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING;
-    ui.createLabel("ai_instructions_line2",
-                   {UIConstants::INFO_LABEL_MARGIN_X, line2Y,
-                    gameEngine.getLogicalWidth() - 2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT},
-                   "Behaviors: [1] Wander | [2] Patrol | [3] Chase | [4] Small | [5] Large | "
-                   "[6] Event | [7] Random | [8] Circle | [9] Target");
+    const int line2Y = UIConstants::INFO_FIRST_LINE_Y +
+                       UIConstants::INFO_LABEL_HEIGHT +
+                       UIConstants::INFO_LINE_SPACING;
+    ui.createLabel(
+        "ai_instructions_line2",
+        {UIConstants::INFO_LABEL_MARGIN_X, line2Y,
+         gameEngine.getLogicalWidth() - 2 * UIConstants::INFO_LABEL_MARGIN_X,
+         UIConstants::INFO_LABEL_HEIGHT},
+        "Behaviors: [1] Wander | [2] Patrol | [3] Chase | [4] Small | [5] "
+        "Large | "
+        "[6] Event | [7] Random | [8] Circle | [9] Target");
     // Set auto-repositioning: top-aligned, full width minus margins
-    ui.setComponentPositioning("ai_instructions_line2", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, line2Y,
-                                                         -2*UIConstants::INFO_LABEL_MARGIN_X, UIConstants::INFO_LABEL_HEIGHT});
+    ui.setComponentPositioning("ai_instructions_line2",
+                               {UIPositionMode::TOP_ALIGNED,
+                                UIConstants::INFO_LABEL_MARGIN_X, line2Y,
+                                -2 * UIConstants::INFO_LABEL_MARGIN_X,
+                                UIConstants::INFO_LABEL_HEIGHT});
 
-    const int statusY = line2Y + UIConstants::INFO_LABEL_HEIGHT + UIConstants::INFO_LINE_SPACING + UIConstants::INFO_STATUS_SPACING;
-    ui.createLabel("ai_status", {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT},
+    const int statusY = line2Y + UIConstants::INFO_LABEL_HEIGHT +
+                        UIConstants::INFO_LINE_SPACING +
+                        UIConstants::INFO_STATUS_SPACING;
+    ui.createLabel("ai_status",
+                   {UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
+                    UIConstants::INFO_LABEL_HEIGHT},
                    "FPS: -- | Entities: -- | AI: RUNNING");
-    // Set auto-repositioning: top-aligned with calculated position (fixes fullscreen transition)
-    ui.setComponentPositioning("ai_status", {UIPositionMode::TOP_ALIGNED, UIConstants::INFO_LABEL_MARGIN_X, statusY, 400, UIConstants::INFO_LABEL_HEIGHT});
+    // Set auto-repositioning: top-aligned with calculated position (fixes
+    // fullscreen transition)
+    ui.setComponentPositioning("ai_status",
+                               {UIPositionMode::TOP_ALIGNED,
+                                UIConstants::INFO_LABEL_MARGIN_X, statusY, 400,
+                                UIConstants::INFO_LABEL_HEIGHT});
 
     // Initialize camera (world is already loaded by LoadingState)
     initializeCamera();
@@ -308,7 +353,8 @@ bool AIDemoState::enter() {
     // Pre-allocate status buffer to avoid per-frame allocations
     m_statusBuffer.reserve(64);
 
-    // NPCs can be spawned using keyboard triggers (N for standard, M for random behaviors)
+    // NPCs can be spawned using keyboard triggers (N for standard, M for random
+    // behaviors)
     m_npcsSpawned = 0;
 
     // Mark as fully initialized to prevent re-entering loading logic
@@ -316,7 +362,8 @@ bool AIDemoState::enter() {
 
     return true;
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("Exception in AIDemoState::enter(): {}", e.what()));
+    GAMESTATE_ERROR(
+        std::format("Exception in AIDemoState::enter(): {}", e.what()));
     return false;
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::enter()");
@@ -336,8 +383,8 @@ bool AIDemoState::exit() {
   WorldManager &worldMgr = WorldManager::Instance();
 
   if (m_transitioningToLoading) {
-    // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded flag
-    // This prevents infinite loop when returning from LoadingState
+    // Transitioning to LoadingState - do cleanup but preserve m_worldLoaded
+    // flag This prevents infinite loop when returning from LoadingState
 
     // Reset the flag after using it
     m_transitioningToLoading = false;
@@ -373,8 +420,8 @@ bool AIDemoState::exit() {
     // Unload world (LoadingState will reload it)
     if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
       worldMgr.unloadWorld();
-      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent infinite loop
-      // when LoadingState returns to this state
+      // CRITICAL: DO NOT reset m_worldLoaded here - keep it true to prevent
+      // infinite loop when LoadingState returns to this state
     }
 
     // Restore AI to unpaused state
@@ -426,8 +473,8 @@ bool AIDemoState::exit() {
   // Clean up UI components using simplified method
   ui.prepareForStateTransition();
 
-  // Unload the world when fully exiting, but only if there's actually a world loaded
-  // This matches EventDemoState's safety pattern and prevents crashes
+  // Unload the world when fully exiting, but only if there's actually a world
+  // loaded This matches EventDemoState's safety pattern and prevents crashes
   if (worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
     worldMgr.unloadWorld();
     // Reset m_worldLoaded when doing full exit (going to main menu, etc.)
@@ -453,15 +500,16 @@ bool AIDemoState::exit() {
 
 void AIDemoState::update(float deltaTime) {
   try {
-    // Check if we need to transition to loading screen (do this in update, not enter)
+    // Check if we need to transition to loading screen (do this in update, not
+    // enter)
     if (m_needsLoading) {
-      m_needsLoading = false;  // Clear flag
+      m_needsLoading = false; // Clear flag
 
       GAMESTATE_INFO("Transitioning to LoadingState for world generation");
 
       // Create world configuration for AI demo
       HammerEngine::WorldGenerationConfig config;
-      config.width = 500;  // Massive world matching EventDemoState
+      config.width = 500; // Massive world matching EventDemoState
       config.height = 500;
       config.seed = static_cast<int>(std::time(nullptr));
       config.elevationFrequency = 0.1f;
@@ -470,7 +518,8 @@ void AIDemoState::update(float deltaTime) {
       config.mountainLevel = 0.75f;
 
       // Configure LoadingState and transition to it
-      auto* loadingState = dynamic_cast<LoadingState*>(mp_stateManager->getState("LoadingState").get());
+      auto *loadingState = dynamic_cast<LoadingState *>(
+          mp_stateManager->getState("LoadingState").get());
       if (loadingState) {
         loadingState->configure("AIDemoState", config);
         // Set flag before transitioning to preserve m_worldLoaded in exit()
@@ -481,11 +530,12 @@ void AIDemoState::update(float deltaTime) {
         GAMESTATE_ERROR("LoadingState not found in GameStateManager");
       }
 
-      return;  // Don't continue with rest of update
+      return; // Don't continue with rest of update
     }
 
-    // Auto-spawning disabled - use keyboard triggers instead (N key for standard spawn, M key for random behaviors)
-    // Collision bounds are set on first spawn via keyboard trigger
+    // Auto-spawning disabled - use keyboard triggers instead (N key for
+    // standard spawn, M key for random behaviors) Collision bounds are set on
+    // first spawn via keyboard trigger
 
     // Update player
     if (m_player) {
@@ -493,15 +543,16 @@ void AIDemoState::update(float deltaTime) {
     }
 
     // Update Active tier NPCs only (animations and state machine)
-    // AIManager handles behavior logic, BackgroundSimulationManager handles non-Active
-    // Use getActiveIndices() to iterate only ~468 Active entities instead of all 50K
+    // AIManager handles behavior logic, BackgroundSimulationManager handles
+    // non-Active Use getActiveIndices() to iterate only ~468 Active entities
+    // instead of all 50K
     for (size_t edmIdx : mp_edm->getActiveIndices()) {
-      const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
-      if (hot.kind != EntityKind::NPC) continue;
+      const auto &hot = mp_edm->getHotDataByIndex(edmIdx);
+      if (hot.kind != EntityKind::NPC)
+        continue;
 
-      NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
-                       ? m_npcsByEdmIndex[edmIdx]
-                       : nullptr;
+      NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx]
+                                                      : nullptr;
       if (npc) {
         npc->update(deltaTime);
       }
@@ -516,51 +567,57 @@ void AIDemoState::update(float deltaTime) {
     }
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("Exception in AIDemoState::update(): {}", e.what()));
+    GAMESTATE_ERROR(
+        std::format("Exception in AIDemoState::update(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in AIDemoState::update()");
   }
 }
 
-void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
+void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
   float zoom = 1.0f;
   float viewWidth = 0.0f;
   float viewHeight = 0.0f;
-  Vector2D playerInterpPos;  // Position synced with camera
+  Vector2D playerInterpPos; // Position synced with camera
 
   if (m_camera) {
     zoom = m_camera->getZoom();
     // Returns the position used for offset - use it for player rendering
-    playerInterpPos = m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
+    playerInterpPos =
+        m_camera->getRenderOffset(renderCamX, renderCamY, interpolationAlpha);
 
     // Derive view dimensions from viewport/zoom (no per-frame GameEngine calls)
     viewWidth = m_camera->getViewport().width / zoom;
     viewHeight = m_camera->getViewport().height / zoom;
   }
 
-  // Set render scale for zoom only when changed (avoids GPU state change overhead)
+  // Set render scale for zoom only when changed (avoids GPU state change
+  // overhead)
   if (zoom != m_lastRenderedZoom) {
     SDL_SetRenderScale(renderer, zoom, zoom);
     m_lastRenderedZoom = zoom;
   }
 
-  // Render world first (background layer) using pixel-snapped camera - use cached pointer
-  if (m_camera && mp_worldMgr->isInitialized() && mp_worldMgr->hasActiveWorld()) {
-    mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
+  // Render world first (background layer) using pixel-snapped camera - use
+  // cached pointer
+  if (m_camera && mp_worldMgr->isInitialized() &&
+      mp_worldMgr->hasActiveWorld()) {
+    mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth,
+                        viewHeight);
   }
 
   // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
   // This iterates ~500 Active entities instead of 50K+ total NPCs
   for (size_t edmIdx : mp_edm->getActiveIndices()) {
-    const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
-    if (hot.kind != EntityKind::NPC) continue;
+    const auto &hot = mp_edm->getHotDataByIndex(edmIdx);
+    if (hot.kind != EntityKind::NPC)
+      continue;
 
-    NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
-                     ? m_npcsByEdmIndex[edmIdx]
-                     : nullptr;
+    NPCPtr npc =
+        (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx] : nullptr;
     if (npc) {
       npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
     }
@@ -569,45 +626,52 @@ void AIDemoState::render(SDL_Renderer* renderer, float interpolationAlpha) {
   // Render player at the position camera used for offset calculation
   if (m_player) {
     // Use position camera returned - no separate atomic read
-    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX, renderCamY);
+    m_player->renderAtPosition(renderer, playerInterpPos, renderCamX,
+                               renderCamY);
   }
 
-  // Reset render scale to 1.0 for UI rendering only when needed (UI should not be zoomed)
+  // Reset render scale to 1.0 for UI rendering only when needed (UI should not
+  // be zoomed)
   if (m_lastRenderedZoom != 1.0f) {
     SDL_SetRenderScale(renderer, 1.0f, 1.0f);
     m_lastRenderedZoom = 1.0f;
   }
 
-  // Render UI components through cached pointer (update moved to update() for consistent frame timing)
-  // mp_uiMgr guaranteed valid between enter() and exit()
+  // Render UI components through cached pointer (update moved to update() for
+  // consistent frame timing) mp_uiMgr guaranteed valid between enter() and
+  // exit()
   if (!mp_uiMgr->isShutdown()) {
     // Update status only when values change (C++20 type-safe, zero allocations)
-    // Use m_aiPaused member instead of polling AIManager::isGloballyPaused() every frame
-    int currentFPS = static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
+    // Use m_aiPaused member instead of polling AIManager::isGloballyPaused()
+    // every frame
+    int currentFPS =
+        static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
     size_t entityCount = m_npcsById.size();
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
         m_aiPaused != m_lastDisplayedPauseState) {
 
-        m_statusBuffer.clear();  // Keeps reserved capacity
-        std::format_to(std::back_inserter(m_statusBuffer),
-                       "FPS: {} | Entities: {} | AI: {}",
-                       currentFPS, entityCount, m_aiPaused ? "PAUSED" : "RUNNING");
-        mp_uiMgr->setText("ai_status", m_statusBuffer);
+      m_statusBuffer.clear(); // Keeps reserved capacity
+      std::format_to(std::back_inserter(m_statusBuffer),
+                     "FPS: {} | Entities: {} | AI: {}", currentFPS, entityCount,
+                     m_aiPaused ? "PAUSED" : "RUNNING");
+      mp_uiMgr->setText("ai_status", m_statusBuffer);
 
-        m_lastDisplayedFPS = currentFPS;
-        m_lastDisplayedEntityCount = entityCount;
-        m_lastDisplayedPauseState = m_aiPaused;
+      m_lastDisplayedFPS = currentFPS;
+      m_lastDisplayedEntityCount = entityCount;
+      m_lastDisplayedPauseState = m_aiPaused;
     }
   }
   mp_uiMgr->render(renderer);
 }
 
 void AIDemoState::setupAIBehaviors() {
-  GAMESTATE_INFO("AIDemoState: Setting up AI behaviors using EventDemoState implementation...");
-  //TODO: need to move all availible behaviors into the AIManager and Event Manager NPC creation with behavior
-  // Cache AIManager reference for better performance
+  GAMESTATE_INFO("AIDemoState: Setting up AI behaviors using EventDemoState "
+                 "implementation...");
+  // TODO: need to move all availible behaviors into the AIManager and Event
+  // Manager NPC creation with behavior
+  //  Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
 
   if (!aiMgr.hasBehavior("Wander")) {
@@ -675,7 +739,7 @@ void AIDemoState::setupAIBehaviors() {
 void AIDemoState::createNPCBatch(int count) {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
-  WorldManager  const&worldMgr = WorldManager::Instance();
+  WorldManager const &worldMgr = WorldManager::Instance();
   const auto *worldData = worldMgr.getWorldData();
 
   if (!worldData) {
@@ -690,16 +754,19 @@ void AIDemoState::createNPCBatch(int count) {
     constexpr float tileSize = HammerEngine::TILE_SIZE;
 
     // Calculate tile range
-    int const maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
+    int const maxTileX =
+        static_cast<int>(m_worldWidth / tileSize) - 2; // -2 for margin
     int const maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
 
-    std::uniform_int_distribution<int> tileDistX(1, maxTileX);  // Start at 1 for margin
+    std::uniform_int_distribution<int> tileDistX(
+        1, maxTileX); // Start at 1 for margin
     std::uniform_int_distribution<int> tileDistY(1, maxTileY);
 
     // Create batch of NPCs
     int attempts = 0;
     int created = 0;
-    const int maxAttempts = count * 10;  // Allow multiple attempts to find valid positions
+    const int maxAttempts =
+        count * 10; // Allow multiple attempts to find valid positions
 
     while (created < count && attempts < maxAttempts) {
       attempts++;
@@ -710,12 +777,14 @@ void AIDemoState::createNPCBatch(int count) {
 
       // Check if tile is valid (not water, not a building)
       if (tileY >= 0 && tileY < static_cast<int>(worldData->grid.size()) &&
-          tileX >= 0 && tileX < static_cast<int>(worldData->grid[tileY].size())) {
+          tileX >= 0 &&
+          tileX < static_cast<int>(worldData->grid[tileY].size())) {
 
         const auto &tile = worldData->grid[tileY][tileX];
 
         // Only spawn on walkable ground (not water, not buildings)
-        if (!tile.isWater && tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+        if (!tile.isWater &&
+            tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
           // Random position within the tile
           std::uniform_real_distribution<float> offsetDist(0.0f, tileSize);
           float x = tileX * tileSize + offsetDist(gen);
@@ -741,14 +810,17 @@ void AIDemoState::createNPCBatch(int count) {
             }
             created++;
           } catch (const std::exception &e) {
-            GAMESTATE_ERROR(std::format("Exception creating NPC: {}", e.what()));
+            GAMESTATE_ERROR(
+                std::format("Exception creating NPC: {}", e.what()));
           }
         }
       }
     }
 
-    GAMESTATE_WARN_IF(created < count,
-        std::format("Only created {} of {} requested NPCs after {} attempts", created, count, attempts));
+    GAMESTATE_WARN_IF(
+        created < count,
+        std::format("Only created {} of {} requested NPCs after {} attempts",
+                    created, count, attempts));
 
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("Exception in createNPCBatch(): {}", e.what()));
@@ -760,11 +832,12 @@ void AIDemoState::createNPCBatch(int count) {
 void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
   // Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
-  WorldManager  const&worldMgr = WorldManager::Instance();
+  WorldManager const &worldMgr = WorldManager::Instance();
   const auto *worldData = worldMgr.getWorldData();
 
   if (!worldData) {
-    GAMESTATE_ERROR("Cannot create NPCs with random behaviors - world data not available");
+    GAMESTATE_ERROR(
+        "Cannot create NPCs with random behaviors - world data not available");
     return;
   }
 
@@ -775,23 +848,26 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
     constexpr float tileSize = HammerEngine::TILE_SIZE;
 
     // Calculate tile range
-    int const maxTileX = static_cast<int>(m_worldWidth / tileSize) - 2;  // -2 for margin
+    int const maxTileX =
+        static_cast<int>(m_worldWidth / tileSize) - 2; // -2 for margin
     int const maxTileY = static_cast<int>(m_worldHeight / tileSize) - 2;
 
-    std::uniform_int_distribution<int> tileDistX(1, maxTileX);  // Start at 1 for margin
+    std::uniform_int_distribution<int> tileDistX(
+        1, maxTileX); // Start at 1 for margin
     std::uniform_int_distribution<int> tileDistY(1, maxTileY);
 
-    // Available behaviors for random assignment (matching EventDemoState variety)
+    // Available behaviors for random assignment (matching EventDemoState
+    // variety)
     std::vector<std::string> behaviors = {
-        "Wander", "SmallWander", "LargeWander", "EventWander",
-        "Patrol", "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"
-    };
+        "Wander",       "SmallWander",  "LargeWander", "EventWander", "Patrol",
+        "RandomPatrol", "CirclePatrol", "EventTarget", "Chase"};
     std::uniform_int_distribution<size_t> behaviorDist(0, behaviors.size() - 1);
 
     // Create batch of NPCs
     int attempts = 0;
     int created = 0;
-    const int maxAttempts = count * 10;  // Allow multiple attempts to find valid positions
+    const int maxAttempts =
+        count * 10; // Allow multiple attempts to find valid positions
 
     while (created < count && attempts < maxAttempts) {
       attempts++;
@@ -802,12 +878,14 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
 
       // Check if tile is valid (not water, not a building)
       if (tileY >= 0 && tileY < static_cast<int>(worldData->grid.size()) &&
-          tileX >= 0 && tileX < static_cast<int>(worldData->grid[tileY].size())) {
+          tileX >= 0 &&
+          tileX < static_cast<int>(worldData->grid[tileY].size())) {
 
         const auto &tile = worldData->grid[tileY][tileX];
 
         // Only spawn on walkable ground (not water, not buildings)
-        if (!tile.isWater && tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
+        if (!tile.isWater &&
+            tile.obstacleType != HammerEngine::ObstacleType::BUILDING) {
           // Random position within the tile
           std::uniform_real_distribution<float> offsetDist(0.0f, tileSize);
           float x = tileX * tileSize + offsetDist(gen);
@@ -836,17 +914,21 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             }
             created++;
           } catch (const std::exception &e) {
-            GAMESTATE_ERROR(std::format("Exception creating NPC with random behavior: {}", e.what()));
+            GAMESTATE_ERROR(std::format(
+                "Exception creating NPC with random behavior: {}", e.what()));
           }
         }
       }
     }
 
     GAMESTATE_WARN_IF(created < count,
-        std::format("Only created {} of {} requested NPCs with random behaviors after {} attempts", created, count, attempts));
+                      std::format("Only created {} of {} requested NPCs with "
+                                  "random behaviors after {} attempts",
+                                  created, count, attempts));
 
   } catch (const std::exception &e) {
-    GAMESTATE_ERROR(std::format("Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));
+    GAMESTATE_ERROR(std::format(
+        "Exception in createNPCBatchWithRandomBehaviors(): {}", e.what()));
   } catch (...) {
     GAMESTATE_ERROR("Unknown exception in createNPCBatchWithRandomBehaviors()");
   }
@@ -860,10 +942,9 @@ void AIDemoState::initializeCamera() {
 
   // Create camera starting at player position
   m_camera = std::make_unique<HammerEngine::Camera>(
-    playerPosition.getX(), playerPosition.getY(), // Start at player position
-    static_cast<float>(gameEngine.getLogicalWidth()),
-    static_cast<float>(gameEngine.getLogicalHeight())
-  );
+      playerPosition.getX(), playerPosition.getY(), // Start at player position
+      static_cast<float>(gameEngine.getLogicalWidth()),
+      static_cast<float>(gameEngine.getLogicalHeight()));
 
   // Configure camera to follow player
   if (m_player) {
@@ -871,17 +952,18 @@ void AIDemoState::initializeCamera() {
     m_camera->setEventFiringEnabled(false);
 
     // Set target and enable follow mode
-    std::weak_ptr<Entity> playerAsEntity = std::static_pointer_cast<Entity>(m_player);
+    std::weak_ptr<Entity> playerAsEntity =
+        std::static_pointer_cast<Entity>(m_player);
     m_camera->setTarget(playerAsEntity);
     m_camera->setMode(HammerEngine::Camera::Mode::Follow);
 
     // Set up camera configuration for fast, smooth following
     // Using exponential smoothing for smooth, responsive follow
     HammerEngine::Camera::Config config;
-    config.followSpeed = 5.0f;         // Speed of camera interpolation
-    config.deadZoneRadius = 0.0f;      // No dead zone - always follow
-    config.smoothingFactor = 0.85f;    // Smoothing factor (0-1, higher = smoother)
-    config.clampToWorldBounds = true;  // Keep camera within world
+    config.followSpeed = 5.0f;      // Speed of camera interpolation
+    config.deadZoneRadius = 0.0f;   // No dead zone - always follow
+    config.smoothingFactor = 0.85f; // Smoothing factor (0-1, higher = smoother)
+    config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
 
     // Camera auto-synchronizes world bounds on update
