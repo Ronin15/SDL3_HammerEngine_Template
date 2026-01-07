@@ -27,11 +27,6 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-// Forward declarations for cached manager pointers
-class EntityDataManager;
-class WorldManager;
-class UIManager;
-
 class EventDemoState : public GameState {
 public:
   EventDemoState();
@@ -234,13 +229,6 @@ private:
 
   // Registered handler tokens for cleanup
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
-
-  // Cached manager pointers for render hot path (resolved in enter())
-  EntityDataManager* mp_edm{nullptr};
-  EventManager* mp_eventMgr{nullptr};
-  ParticleManager* mp_particleMgr{nullptr};
-  WorldManager* mp_worldMgr{nullptr};
-  UIManager* mp_uiMgr{nullptr};
 
   // Status display optimization - zero per-frame allocations (C++20 type-safe)
   std::string m_phaseBuffer{};

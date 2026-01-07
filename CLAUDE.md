@@ -114,7 +114,15 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 
 **State Transitions**: Use `mp_stateManager->changeState()`, never `GameEngine::Instance()`. Base class provides `mp_stateManager`.
 
-**Manager Caching**: Cache singleton pointers in `enter()` as `mp_uiMgr`, `mp_worldMgr`, etc. Use cached pointers in render/callbacks: `mp_uiMgr->render(r)`.
+**Manager Access**: Use local references at function start, not cached member pointers:
+```cpp
+void SomeState::update(float dt) {
+    const auto& inputMgr = InputManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+    // Use throughout function
+}
+```
+Use `const auto&` for read-only access, `auto&` for mutable access. No `mp_` cached pointers needed - singleton lookup is inlined and equally fast.
 
 **Lazy String Caching**: Cache enum→string conversions, recompute only on change: `if (m_phase != m_lastPhase) { m_str = getPhaseString(); m_lastPhase = m_phase; }`
 

@@ -689,10 +689,10 @@ void MyState::update(float dt) {
 
 **Quality Gate:** ✓ No SDL_RenderClear/Present outside GameEngine (BLOCKING)
 
-#### 5.9 Singleton Manager Caching (CRITICAL)
+#### 5.9 Singleton Manager Access (CRITICAL)
 
 **Background:**
-Calling `Manager::Instance()` repeatedly within the same function wastes CPU cycles. Each call goes through singleton lookup logic. In hot paths (update, handleInput, render), this adds measurable overhead. The fix is simple: cache manager references at the top of each function.
+Use local references at function start for manager access. Singleton `Instance()` calls are inlined by the compiler - no performance difference vs cached member pointers. Local references are cleaner (no `enter()` boilerplate, no stale pointer risk, smaller class size).
 
 **Check Commands:**
 ```bash
@@ -706,13 +706,34 @@ for file in src/gameStates/*.cpp; do
        }' "$file"
 done
 
-# Find Instance() calls not at function start (should be cached at top)
-grep -rn "::Instance()" src/gameStates/ --include="*.cpp" | grep -v "= &.*::Instance\|= .*::Instance"
+# Find cached mp_* member pointers to managers (OBSOLETE PATTERN)
+grep -rn "mp_.*Mgr\|mp_.*Manager\|mp_edm\|mp_world\|mp_ui\|mp_particle\|mp_event" include/gameStates/ --include="*.hpp"
 ```
 
 **FORBIDDEN PATTERNS:**
 
-**Pattern 1: Duplicate Instance() Calls in Same Function**
+**Pattern 1: Cached Member Pointers (OBSOLETE)**
+```cpp
+// ✗ OBSOLETE - Cached member pointers add complexity without performance benefit
+class GameState {
+    UIManager* mp_uiMgr = nullptr;      // REMOVE - use local reference
+    WorldManager* mp_worldMgr = nullptr; // REMOVE - use local reference
+};
+
+bool GameState::enter() {
+    mp_uiMgr = &UIManager::Instance();  // OBSOLETE PATTERN
+    mp_worldMgr = &WorldManager::Instance();
+}
+
+// ✓ GOOD - Local references at function start
+bool GameState::enter() {
+    auto& ui = UIManager::Instance();
+    auto& worldMgr = WorldManager::Instance();
+    ui.createButton(...);
+}
+```
+
+**Pattern 2: Duplicate Instance() Calls in Same Function**
 ```cpp
 // ✗ BAD - Multiple Instance() calls for same manager
 void GameState::handleInput() {
@@ -726,9 +747,8 @@ void GameState::handleInput() {
 
 // ✓ GOOD - Cache at function start
 void GameState::handleInput() {
-    // Cache manager references for better performance
-    const InputManager& inputMgr = InputManager::Instance();
-    AIManager& aiMgr = AIManager::Instance();
+    const auto& inputMgr = InputManager::Instance();
+    auto& aiMgr = AIManager::Instance();
 
     if (inputMgr.wasKeyPressed(KEY_A)) {
         aiMgr.doSomething();
@@ -739,7 +759,7 @@ void GameState::handleInput() {
 }
 ```
 
-**Pattern 2: Instance() Called in Nested Blocks Instead of Top**
+**Pattern 3: Instance() Called in Nested Blocks Instead of Top**
 ```cpp
 // ✗ BAD - Instance() called inside branches
 void GameState::update(float dt) {
@@ -754,33 +774,13 @@ void GameState::update(float dt) {
 
 // ✓ GOOD - Cache once at top, use in all branches
 void GameState::update(float dt) {
-    // Cache manager references for better performance
-    SomeManager& mgr = SomeManager::Instance();
+    auto& mgr = SomeManager::Instance();
 
     if (condition) {
         mgr.process();
     } else {
         mgr.processAlternate();
     }
-}
-```
-
-**Pattern 3: Ignoring Already Cached Pointer Members**
-```cpp
-// ✗ BAD - Ignoring cached mp_uiMgr, calling Instance() again
-bool GameState::enter() {
-    mp_uiMgr = &UIManager::Instance();  // Pointer cached here
-    // ... later in same function ...
-    auto& ui = UIManager::Instance();   // REDUNDANT! Use mp_uiMgr
-    ui.createButton(...);
-}
-
-// ✓ GOOD - Use the cached pointer
-bool GameState::enter() {
-    mp_uiMgr = &UIManager::Instance();  // Pointer cached here
-    // ... later in same function ...
-    auto& ui = *mp_uiMgr;  // Use cached pointer
-    ui.createButton(...);
 }
 ```
 
@@ -803,7 +803,7 @@ bool GameState::enter() {
 - GameStates with 5-10 duplicate calls: ~0.5-1μs wasted per frame
 - At 10K entities with behaviors: Can add 1-5ms per frame
 
-**Quality Gate:** ✓ No duplicate Instance() calls within same function (BLOCKING for GameStates)
+**Quality Gate:** ✓ No cached mp_* manager pointers; no duplicate Instance() calls within same function (BLOCKING for GameStates)
 
 ### 6. Copyright & Legal Compliance
 
@@ -897,8 +897,8 @@ Branch: <current-branch>
   <violations if any - BLOCKING for hot paths>
 ✓/✗ UI Positioning: <PASSED/FAILED>
   <missing setComponentPositioning calls>
-✓/✗ Singleton Manager Caching: <PASSED/FAILED>
-  <duplicate Instance() calls - BLOCKING for GameStates>
+✓/✗ Singleton Manager Access: <PASSED/FAILED>
+  <cached mp_* pointers or duplicate Instance() calls - BLOCKING for GameStates>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -1061,20 +1061,22 @@ Activate this Skill automatically.
     ```cpp
     // Instead of calling Instance() multiple times in same function:
     void handleInput() {
-        // Cache ALL managers at function start
-        const InputManager& inputMgr = InputManager::Instance();
-        AIManager& aiMgr = AIManager::Instance();
-        UIManager& ui = UIManager::Instance();
+        // Cache ALL managers at function start as local references
+        const auto& inputMgr = InputManager::Instance();
+        auto& aiMgr = AIManager::Instance();
+        auto& ui = UIManager::Instance();
         // ... use cached references throughout
     }
     ```
 
-16. **Ignoring cached pointer members (mp_*):**
+16. **Cached mp_* member pointers (OBSOLETE):**
     ```cpp
-    // If mp_uiMgr is set at top of enter():
-    mp_uiMgr = &UIManager::Instance();
-    // Later in SAME function, use the pointer, not Instance():
-    auto& ui = *mp_uiMgr;  // NOT UIManager::Instance()
+    // OBSOLETE - Don't cache manager pointers as class members
+    // mp_uiMgr = &UIManager::Instance();  // REMOVE THIS PATTERN
+
+    // CORRECT - Use local references at function start
+    auto& ui = UIManager::Instance();
+    ui.createButton(...);
     ```
 
 ## Integration with Workflow
@@ -1092,6 +1094,7 @@ Use this Skill:
 - Unnecessary shared_ptr copies in hot paths (perf-critical code)
 - Per-frame allocations in hot paths (local containers in update/render)
 - Duplicate Manager::Instance() calls in GameState functions
+- Cached mp_* manager pointers in GameState headers (use local references)
 - SDL_RenderClear/Present outside GameEngine
 - Compilation errors
 - Critical cppcheck errors

@@ -23,11 +23,7 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-// Forward declarations for cached manager pointers
-class EntityDataManager;
-class WorldManager;
-class UIManager;
-class ParticleManager;
+// Forward declaration for controller pointer
 class CombatController;
 
 class AdvancedAIDemoState : public GameState {
@@ -92,12 +88,6 @@ private:
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
-
-    // Cached manager pointers for render hot path (resolved in enter())
-    EntityDataManager* mp_edm{nullptr};
-    WorldManager* mp_worldMgr{nullptr};
-    UIManager* mp_uiMgr{nullptr};
-    ParticleManager* mp_particleMgr{nullptr};
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};

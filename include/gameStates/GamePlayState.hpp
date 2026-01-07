@@ -18,10 +18,6 @@
 #include <memory>
 #include <string>
 
-// Forward declarations for cached manager pointers
-class WorldManager;
-class UIManager;
-
 // Forward declarations for cached controller pointers
 class WeatherController;
 class DayNightController;
@@ -64,12 +60,6 @@ private:
 
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
-
-  // Cached manager pointers for render hot path (resolved in enter())
-  EventManager* mp_eventMgr{nullptr};
-  ParticleManager* mp_particleMgr{nullptr};
-  WorldManager* mp_worldMgr{nullptr};
-  UIManager* mp_uiMgr{nullptr};
 
   // Render scale caching - avoid GPU state changes when zoom unchanged
   float m_lastRenderedZoom{1.0f};
