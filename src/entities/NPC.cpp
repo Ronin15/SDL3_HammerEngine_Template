@@ -9,14 +9,13 @@
 #include "core/Logger.hpp"
 
 // NPC Animation States
-#include "entities/npcStates/NPCIdleState.hpp"
-#include "entities/npcStates/NPCWalkingState.hpp"
 #include "entities/npcStates/NPCAttackingState.hpp"
-#include "entities/npcStates/NPCRecoveringState.hpp"
-#include "entities/npcStates/NPCHurtState.hpp"
 #include "entities/npcStates/NPCDyingState.hpp"
+#include "entities/npcStates/NPCHurtState.hpp"
+#include "entities/npcStates/NPCIdleState.hpp"
+#include "entities/npcStates/NPCRecoveringState.hpp"
+#include "entities/npcStates/NPCWalkingState.hpp"
 
-#include "managers/AIManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
@@ -30,16 +29,14 @@
 
 NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
          int frameWidth, int frameHeight, NPCType type)
-    : Entity()
-    , m_frameWidth(frameWidth)
-    , m_frameHeight(frameHeight)
-    , m_npcType(type)
-    , m_initialPosition(startPosition) {
-  m_textureID = textureID;  // Base class member, must be assigned in body
+    : Entity(), m_frameWidth(frameWidth), m_frameHeight(frameHeight),
+      m_npcType(type), m_initialPosition(startPosition) {
+  m_textureID = textureID; // Base class member, must be assigned in body
 
-  // Register with EntityDataManager FIRST - data must exist before any state setup
-  // Use default half-sizes, will be updated in ensurePhysicsBodyRegistered
-  auto& edm = EntityDataManager::Instance();
+  // Register with EntityDataManager FIRST - data must exist before any state
+  // setup Use default half-sizes, will be updated in
+  // ensurePhysicsBodyRegistered
+  auto &edm = EntityDataManager::Instance();
   if (edm.isInitialized()) {
     EntityHandle handle = edm.registerNPC(getID(), startPosition, 16.0f, 16.0f);
     setHandle(handle);
@@ -51,8 +48,8 @@ NPC::NPC(const std::string &textureID, const Vector2D &startPosition,
   m_numFrames = 2;       // Default to 2 frames for simple animation
   m_animSpeed = 100;     // Default animation speed in milliseconds
   m_spriteSheetRows = 1; // Default number of rows in the sprite sheet
-  m_animationAccumulator = 0.0f;  // deltaTime accumulator for animation timing
-  m_flip = SDL_FLIP_NONE; // Default flip direction
+  m_animationAccumulator = 0.0f; // deltaTime accumulator for animation timing
+  m_flip = SDL_FLIP_NONE;        // Default flip direction
 
   // Load dimensions from texture if not provided
   if (m_frameWidth <= 0 || m_frameHeight <= 0) {
@@ -140,28 +137,32 @@ void NPC::loadDimensionsFromTexture() {
 
         // Sync new dimensions to collision body if already registered
         Vector2D newHalfSize(m_frameWidth * 0.5f, m_height * 0.5f);
-        CollisionManager::Instance().updateCollisionBodySize(getID(), newHalfSize);
+        CollisionManager::Instance().updateCollisionBodySize(getID(),
+                                                             newHalfSize);
       } else {
-        NPC_ERROR(std::format("Failed to query NPC texture dimensions: {}", SDL_GetError()));
+        NPC_ERROR(std::format("Failed to query NPC texture dimensions: {}",
+                              SDL_GetError()));
       }
     }
   } else {
-    NPC_ERROR(std::format("NPC texture '{}' not found in TextureManager", m_textureID));
+    NPC_ERROR(std::format("NPC texture '{}' not found in TextureManager",
+                          m_textureID));
   }
 }
 
 // State management removed - handled by AI Manager
 
 void NPC::update(float deltaTime) {
-  // Tier check removed - caller (AIDemoState/AIManager) already filters by Active tier
-  // via EntityDataManager::getActiveIndices()
+  // Tier check removed - caller (AIDemoState/AIManager) already filters by
+  // Active tier via EntityDataManager::getActiveIndices()
 
   // The AI drives velocity directly; sync to collision body
   // Let collision system handle movement integration to prevent micro-bouncing
 
   // AIManager batch processing handles collision updates for AI-managed NPCs
-  // Direct collision update removed to prevent race conditions with async AI threads
-  // Collision updates are batched and submitted via submitPendingKinematicUpdates()
+  // Direct collision update removed to prevent race conditions with async AI
+  // threads Collision updates are batched and submitted via
+  // submitPendingKinematicUpdates()
   setAcceleration(Vector2D(0, 0));
 
   // Update animation state machine
@@ -176,7 +177,7 @@ void NPC::update(float deltaTime) {
 
   // --- Animation Frame Updates using deltaTime accumulator ---
   m_animationAccumulator += deltaTime;
-  float frameTime = m_animSpeed / 1000.0f;  // ms to seconds
+  float frameTime = m_animSpeed / 1000.0f; // ms to seconds
 
   // Advance animation frames based on accumulated time
   if (m_animationAccumulator >= frameTime) {
@@ -189,7 +190,8 @@ void NPC::update(float deltaTime) {
         m_currentFrame++;
       }
     }
-    m_animationAccumulator -= frameTime;  // Preserve excess time for smooth timing
+    m_animationAccumulator -=
+        frameTime; // Preserve excess time for smooth timing
   }
 
   // --- Flip Direction based on Velocity ---
@@ -206,24 +208,28 @@ void NPC::update(float deltaTime) {
   }
 }
 
-void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha) {
+void NPC::render(SDL_Renderer *renderer, float cameraX, float cameraY,
+                 float interpolationAlpha) {
   // Skip rendering for non-Active tier entities (off-screen)
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t index = edm.getIndex(m_handle);
   if (index != SIZE_MAX) {
-    const auto& hotData = edm.getHotDataByIndex(index);
+    const auto &hotData = edm.getHotDataByIndex(index);
     if (hotData.tier != SimulationTier::Active) {
-      return;  // Entity is off-screen, skip render
+      return; // Entity is off-screen, skip render
     }
   }
 
-  // Cache texture on first render (like WorldManager pattern - no hash lookup per frame)
+  // Cache texture on first render (like WorldManager pattern - no hash lookup
+  // per frame)
   if (!m_cachedTexture) {
     m_cachedTexture = TextureManager::Instance().getTexturePtr(m_textureID);
-    if (!m_cachedTexture) return;
+    if (!m_cachedTexture)
+      return;
   }
 
-  // Get interpolated position for smooth rendering between fixed timestep updates
+  // Get interpolated position for smooth rendering between fixed timestep
+  // updates
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
   // Convert world coords to screen coords using passed camera offset
@@ -232,22 +238,21 @@ void NPC::render(SDL_Renderer* renderer, float cameraX, float cameraY, float int
   float renderY = interpPos.getY() - cameraY - (m_height / 2.0f);
 
   // Direct SDL call with cached texture - no hash lookup!
-  SDL_FRect srcRect = {
-      static_cast<float>(m_frameWidth * m_currentFrame),
-      static_cast<float>(m_height * (m_currentRow - 1)),
-      static_cast<float>(m_frameWidth),
-      static_cast<float>(m_height)
-  };
-  SDL_FRect destRect = {renderX, renderY,
-                        static_cast<float>(m_frameWidth),
+  SDL_FRect srcRect = {static_cast<float>(m_frameWidth * m_currentFrame),
+                       static_cast<float>(m_height * (m_currentRow - 1)),
+                       static_cast<float>(m_frameWidth),
+                       static_cast<float>(m_height)};
+  SDL_FRect destRect = {renderX, renderY, static_cast<float>(m_frameWidth),
                         static_cast<float>(m_height)};
   SDL_FPoint center = {m_frameWidth / 2.0f, m_height / 2.0f};
 
-  SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0, &center, m_flip);
+  SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0,
+                           &center, m_flip);
 }
 
 void NPC::clean() {
-  // Prevent double-cleanup (uses member flag instead of thread_local set that leaked memory)
+  // Prevent double-cleanup (uses member flag instead of thread_local set that
+  // leaked memory)
   if (m_cleaned) {
     return;
   }
@@ -270,7 +275,7 @@ void NPC::clean() {
   }
 
   // Unregister from EntityDataManager (Phase 1 parallel storage)
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   if (edm.isInitialized()) {
     edm.unregisterEntity(getID());
   }
@@ -290,7 +295,8 @@ void NPC::initializeInventory() {
         onResourceChanged(resourceHandle, oldQuantity, newQuantity);
       });
 
-  NPC_DEBUG(std::format("NPC inventory initialized with {} slots", m_inventory->getMaxSlots()));
+  NPC_DEBUG(std::format("NPC inventory initialized with {} slots",
+                        m_inventory->getMaxSlots()));
 }
 
 void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
@@ -300,8 +306,9 @@ void NPC::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
   EventManager::Instance().triggerResourceChange(
       shared_this(), resourceHandle, oldQuantity, newQuantity, "npc_action",
       EventManager::DispatchMode::Deferred);
-  NPC_DEBUG(std::format("Resource changed: {} from {} to {} - change triggered via EventManager",
-                         resourceId, oldQuantity, newQuantity));
+  NPC_DEBUG(std::format(
+      "Resource changed: {} from {} to {} - change triggered via EventManager",
+      resourceId, oldQuantity, newQuantity));
 }
 
 // Resource management methods - removed, use getInventory() directly with
@@ -339,7 +346,8 @@ bool NPC::tradeWithPlayer(HammerEngine::ResourceHandle resourceHandle,
   }
 
   if (quantity <= 0) {
-    NPC_ERROR(std::format("NPC::tradeWithPlayer - Invalid quantity: {}", quantity));
+    NPC_ERROR(
+        std::format("NPC::tradeWithPlayer - Invalid quantity: {}", quantity));
     return false;
   }
 
@@ -347,7 +355,7 @@ bool NPC::tradeWithPlayer(HammerEngine::ResourceHandle resourceHandle,
   // currency exchange)
   if (m_inventory->transferTo(playerInventory, resourceHandle, quantity)) {
     NPC_DEBUG(std::format("NPC traded {} resources (handle: {}) to player",
-                           quantity, resourceHandle.toString()));
+                          quantity, resourceHandle.toString()));
     return true;
   }
 
@@ -418,7 +426,8 @@ void NPC::initializeLootDrops() {
         0.15f; // 15% chance to drop oak wood
   }
 
-  NPC_DEBUG(std::format("NPC loot drops initialized with {} possible drops", m_dropRates.size()));
+  NPC_DEBUG(std::format("NPC loot drops initialized with {} possible drops",
+                        m_dropRates.size()));
 }
 
 void NPC::dropLoot() {
@@ -452,7 +461,8 @@ void NPC::dropSpecificItem(HammerEngine::ResourceHandle itemHandle,
                            int quantity) {
   // In a real implementation, you would create a physical item drop in the
   // world For now, we'll just log the drop
-  NPC_DEBUG(std::format("NPC dropped {} items (handle: {})", quantity, itemHandle.toString()));
+  NPC_DEBUG(std::format("NPC dropped {} items (handle: {})", quantity,
+                        itemHandle.toString()));
 
   // You could add the items to a world container, create pickup entities, etc.
   // This would integrate with your game's item pickup system
@@ -466,14 +476,16 @@ void NPC::setLootDropRate(HammerEngine::ResourceHandle itemHandle,
   }
 
   if (dropRate < 0.0f || dropRate > 1.0f) {
-    NPC_ERROR(
-        std::format("NPC::setLootDropRate - Drop rate must be between 0.0 and 1.0, got: {}", dropRate));
+    NPC_ERROR(std::format(
+        "NPC::setLootDropRate - Drop rate must be between 0.0 and 1.0, got: {}",
+        dropRate));
     return;
   }
 
   m_dropRates[itemHandle] = dropRate;
   m_hasLootDrops = !m_dropRates.empty();
-  NPC_DEBUG(std::format("Set drop rate for item (handle: {}) to {}", itemHandle.toString(), dropRate));
+  NPC_DEBUG(std::format("Set drop rate for item (handle: {}) to {}",
+                        itemHandle.toString(), dropRate));
 }
 // Animation handling removed - TextureManager handles this functionality
 
@@ -486,31 +498,35 @@ void NPC::setWanderArea(float minX, float minY, float maxX, float maxY) {
 
 void NPC::ensurePhysicsBodyRegistered() {
   // EDM-CENTRIC: Set collision layers directly in EDM
-  // Movables are managed entirely by EDM - no CollisionManager storage entry needed
-  if (!hasValidHandle()) return;
+  // Movables are managed entirely by EDM - no CollisionManager storage entry
+  // needed
+  if (!hasValidHandle())
+    return;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t edmIdx = edm.getIndex(getHandle());
-  if (edmIdx == SIZE_MAX) return;
+  if (edmIdx == SIZE_MAX)
+    return;
 
-  auto& hot = edm.getHotDataByIndex(edmIdx);
+  auto &hot = edm.getHotDataByIndex(edmIdx);
 
   // Configure collision layers based on NPC type
   if (m_npcType == NPCType::Pet) {
     // Pets use Layer_Pet and don't collide with Layer_Player or other Pets
     hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Pet;
     hot.collisionMask = 0xFFFF & ~(HammerEngine::CollisionLayer::Layer_Player |
-                                    HammerEngine::CollisionLayer::Layer_Pet);
+                                   HammerEngine::CollisionLayer::Layer_Pet);
   } else {
     // Standard NPCs use Layer_Enemy (default set in registerNPC)
     // Override mask to not collide with other NPCs and Pets
     hot.collisionMask = 0xFFFF & ~(HammerEngine::CollisionLayer::Layer_Enemy |
-                                    HammerEngine::CollisionLayer::Layer_Pet);
+                                   HammerEngine::CollisionLayer::Layer_Pet);
   }
   hot.setCollisionEnabled(true);
 
-  NPC_DEBUG(std::format("Collision enabled in EDM - ID: {}, Layer: {}, Mask: {}",
-                         getID(), hot.collisionLayers, hot.collisionMask));
+  NPC_DEBUG(
+      std::format("Collision enabled in EDM - ID: {}, Layer: {}, Mask: {}",
+                  getID(), hot.collisionLayers, hot.collisionMask));
 }
 
 void NPC::setFaction(Faction f) {
@@ -524,12 +540,12 @@ void NPC::initializeAnimationMap() {
   // Default animation configuration mapping names to sprite sheet details
   // Can be overridden for NPCs with different sprite sheet layouts
   m_animationMap = {
-      {"idle",       {0, 2, 150, true}},   // Row 0, 2 frames, 150ms, looping
-      {"walking",    {1, 4, 100, true}},   // Row 1, 4 frames, 100ms, looping
-      {"attacking",  {2, 3, 80, false}},   // Row 2, 3 frames, 80ms, play once
-      {"recovering", {3, 2, 120, false}},  // Row 3, 2 frames, 120ms, play once
-      {"hurt",       {4, 2, 100, false}},  // Row 4, 2 frames, 100ms, play once
-      {"dying",      {5, 4, 120, false}}   // Row 5, 4 frames, 120ms, play once
+      {"idle", {0, 2, 150, true}},        // Row 0, 2 frames, 150ms, looping
+      {"walking", {1, 4, 100, true}},     // Row 1, 4 frames, 100ms, looping
+      {"attacking", {2, 3, 80, false}},   // Row 2, 3 frames, 80ms, play once
+      {"recovering", {3, 2, 120, false}}, // Row 3, 2 frames, 120ms, play once
+      {"hurt", {4, 2, 100, false}},       // Row 4, 2 frames, 100ms, play once
+      {"dying", {5, 4, 120, false}}       // Row 5, 4 frames, 120ms, play once
   };
 }
 
@@ -537,13 +553,15 @@ void NPC::setupAnimationStates() {
   // Create and add animation states to the state manager
   m_stateManager.addState("Idle", std::make_unique<NPCIdleState>(*this));
   m_stateManager.addState("Walking", std::make_unique<NPCWalkingState>(*this));
-  m_stateManager.addState("Attacking", std::make_unique<NPCAttackingState>(*this));
-  m_stateManager.addState("Recovering", std::make_unique<NPCRecoveringState>(*this));
+  m_stateManager.addState("Attacking",
+                          std::make_unique<NPCAttackingState>(*this));
+  m_stateManager.addState("Recovering",
+                          std::make_unique<NPCRecoveringState>(*this));
   m_stateManager.addState("Hurt", std::make_unique<NPCHurtState>(*this));
   m_stateManager.addState("Dying", std::make_unique<NPCDyingState>(*this));
 }
 
-void NPC::setAnimationState(const std::string& stateName) {
+void NPC::setAnimationState(const std::string &stateName) {
   if (m_stateManager.hasState(stateName)) {
     m_stateManager.setState(stateName);
   } else {
@@ -551,7 +569,7 @@ void NPC::setAnimationState(const std::string& stateName) {
   }
 }
 
-void NPC::playAnimation(const std::string& animName) {
+void NPC::playAnimation(const std::string &animName) {
   // Skip if already playing this animation - prevents jitter on state re-entry
   if (m_currentAnimationName == animName) {
     return;
@@ -559,14 +577,14 @@ void NPC::playAnimation(const std::string& animName) {
 
   auto it = m_animationMap.find(animName);
   if (it != m_animationMap.end()) {
-    const auto& config = it->second;
-    m_currentRow = config.row + 1;  // TextureManager uses 1-based rows
+    const auto &config = it->second;
+    m_currentRow = config.row + 1; // TextureManager uses 1-based rows
     m_numFrames = config.frameCount;
     m_animSpeed = config.speed;
     m_animationLoops = config.loop;
     m_currentFrame = 0;
-    m_animationAccumulator = 0.0f;  // Reset deltaTime accumulator
-    m_currentAnimationName = animName;  // Track current animation
+    m_animationAccumulator = 0.0f;     // Reset deltaTime accumulator
+    m_currentAnimationName = animName; // Track current animation
   } else {
     NPC_WARN(std::format("NPC animation not found: {}", animName));
   }
@@ -604,18 +622,18 @@ bool NPC::isAlive() const {
   return EntityDataManager::Instance().getCharacterData(m_handle).health > 0.0f;
 }
 
-void NPC::takeDamage(float damage, const Vector2D& knockback) {
-  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+void NPC::takeDamage(float damage, const Vector2D &knockback) {
+  auto &charData = EntityDataManager::Instance().getCharacterData(m_handle);
 
   if (charData.health <= 0.0f) {
-    return;  // Already dead
+    return; // Already dead
   }
 
   charData.health = std::max(0.0f, charData.health - damage);
 
   // Apply knockback via transform
   if (knockback.length() > 0.001f) {
-    auto& transform = EntityDataManager::Instance().getTransform(m_handle);
+    auto &transform = EntityDataManager::Instance().getTransform(m_handle);
     transform.position = transform.position + knockback;
   }
 
@@ -626,26 +644,29 @@ void NPC::takeDamage(float damage, const Vector2D& knockback) {
     setAnimationState("Hurt");
   }
 
-  NPC_DEBUG(std::format("NPC took {} damage, health: {}/{}", damage, charData.health, charData.maxHealth));
+  NPC_DEBUG(std::format("NPC took {} damage, health: {}/{}", damage,
+                        charData.health, charData.maxHealth));
 }
 
 void NPC::heal(float amount) {
-  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  auto &charData = EntityDataManager::Instance().getCharacterData(m_handle);
 
   if (charData.health <= 0.0f) {
-    return;  // Can't heal dead NPC
+    return; // Can't heal dead NPC
   }
 
   float oldHealth = charData.health;
   charData.health = std::min(charData.maxHealth, charData.health + amount);
 
-  NPC_DEBUG(std::format("NPC healed {} HP: {}/{} -> {}/{}",
-            amount, oldHealth, charData.maxHealth, charData.health, charData.maxHealth));
+  NPC_DEBUG(std::format("NPC healed {} HP: {}/{} -> {}/{}", amount, oldHealth,
+                        charData.maxHealth, charData.health,
+                        charData.maxHealth));
 }
 
 void NPC::die() {
   Vector2D pos = getPosition();
-  NPC_INFO(std::format("NPC died at position ({}, {})", pos.getX(), pos.getY()));
+  NPC_INFO(
+      std::format("NPC died at position ({}, {})", pos.getX(), pos.getY()));
 
   setAnimationState("Dying");
   dropLoot();
@@ -655,13 +676,13 @@ void NPC::die() {
 }
 
 void NPC::setMaxHealth(float maxHealth) {
-  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  auto &charData = EntityDataManager::Instance().getCharacterData(m_handle);
   charData.maxHealth = maxHealth;
   charData.health = std::min(charData.health, charData.maxHealth);
 }
 
 void NPC::setMaxStamina(float maxStamina) {
-  auto& charData = EntityDataManager::Instance().getCharacterData(m_handle);
+  auto &charData = EntityDataManager::Instance().getCharacterData(m_handle);
   charData.maxStamina = maxStamina;
   charData.stamina = std::min(charData.stamina, charData.maxStamina);
 }

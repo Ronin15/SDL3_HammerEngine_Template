@@ -1,7 +1,7 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * All rights reserved.
  * Licensed under the MIT License - see LICENSE file for details
-*/
+ */
 
 #include "managers/SettingsManager.hpp"
 #include "core/Logger.hpp"
@@ -9,244 +9,258 @@
 #include <algorithm>
 #include <format>
 #include <fstream>
-#include <sstream>
 
 namespace HammerEngine {
 
-bool SettingsManager::loadFromFile(const std::string& filepath) {
-    JsonReader reader;
-    if (!reader.loadFromFile(filepath)) {
-        SETTINGS_ERROR(std::format("Failed to load settings from file: {} - {}", filepath, reader.getLastError()));
-        return false;
+bool SettingsManager::loadFromFile(const std::string &filepath) {
+  JsonReader reader;
+  if (!reader.loadFromFile(filepath)) {
+    SETTINGS_ERROR(std::format("Failed to load settings from file: {} - {}",
+                               filepath, reader.getLastError()));
+    return false;
+  }
+
+  const JsonValue &root = reader.getRoot();
+  if (!root.isObject()) {
+    SETTINGS_ERROR(
+        std::format("Settings file root is not a JSON object: {}", filepath));
+    return false;
+  }
+
+  std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
+
+  // Parse each category
+  const JsonObject &rootObj = root.asObject();
+  for (const auto &[categoryName, categoryValue] : rootObj) {
+    if (!categoryValue.isObject()) {
+      SETTINGS_WARNING(std::format("Category '{}' is not an object, skipping",
+                                   categoryName));
+      continue;
     }
 
-    const JsonValue& root = reader.getRoot();
-    if (!root.isObject()) {
-        SETTINGS_ERROR(std::format("Settings file root is not a JSON object: {}", filepath));
-        return false;
-    }
+    const JsonObject &categoryObj = categoryValue.asObject();
+    for (const auto &[key, value] : categoryObj) {
+      SettingValue settingValue;
 
-    std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
-
-    // Parse each category
-    const JsonObject& rootObj = root.asObject();
-    for (const auto& [categoryName, categoryValue] : rootObj) {
-        if (!categoryValue.isObject()) {
-            SETTINGS_WARNING(std::format("Category '{}' is not an object, skipping", categoryName));
-            continue;
+      // Convert JSON value to SettingValue variant
+      if (value.isBool()) {
+        settingValue = value.asBool();
+      } else if (value.isNumber()) {
+        double numValue = value.asNumber();
+        // Check if it's an integer value
+        if (numValue == static_cast<int>(numValue)) {
+          settingValue = static_cast<int>(numValue);
+        } else {
+          settingValue = static_cast<float>(numValue);
         }
+      } else if (value.isString()) {
+        settingValue = value.asString();
+      } else {
+        SETTINGS_WARNING(
+            std::format("Unsupported value type for setting '{}.{}', skipping",
+                        categoryName, key));
+        continue;
+      }
 
-        const JsonObject& categoryObj = categoryValue.asObject();
-        for (const auto& [key, value] : categoryObj) {
-            SettingValue settingValue;
+      m_settings[categoryName][key] = settingValue;
+    }
+  }
 
-            // Convert JSON value to SettingValue variant
-            if (value.isBool()) {
-                settingValue = value.asBool();
-            } else if (value.isNumber()) {
-                double numValue = value.asNumber();
-                // Check if it's an integer value
-                if (numValue == static_cast<int>(numValue)) {
-                    settingValue = static_cast<int>(numValue);
-                } else {
-                    settingValue = static_cast<float>(numValue);
-                }
-            } else if (value.isString()) {
-                settingValue = value.asString();
-            } else {
-                SETTINGS_WARNING(std::format("Unsupported value type for setting '{}.{}', skipping", categoryName, key));
-                continue;
+  SETTINGS_INFO(std::format("Loaded settings from file: {}", filepath));
+  return true;
+}
+
+bool SettingsManager::saveToFile(const std::string &filepath) {
+  std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
+
+  std::ofstream file(filepath);
+  if (!file.is_open()) {
+    SETTINGS_ERROR(
+        std::format("Failed to open settings file for writing: {}", filepath));
+    return false;
+  }
+
+  // Build JSON manually for formatting control
+  file << "{\n";
+
+  size_t categoryIndex = 0;
+  for (const auto &[categoryName, categorySettings] : m_settings) {
+    file << "  \"" << categoryName << "\": {\n";
+
+    size_t keyIndex = 0;
+    for (const auto &[key, value] : categorySettings) {
+      file << "    \"" << key << "\": ";
+
+      // Write value based on type
+      std::visit(
+          [&file](auto &&arg) {
+            using T = std::decay_t<decltype(arg)>;
+            if constexpr (std::is_same_v<T, bool>) {
+              file << (arg ? "true" : "false");
+            } else if constexpr (std::is_same_v<T, int>) {
+              file << arg;
+            } else if constexpr (std::is_same_v<T, float>) {
+              file << arg;
+            } else if constexpr (std::is_same_v<T, std::string>) {
+              file << "\"" << arg << "\"";
             }
+          },
+          value);
 
-            m_settings[categoryName][key] = settingValue;
-        }
+      if (keyIndex < categorySettings.size() - 1) {
+        file << ",";
+      }
+      file << "\n";
+      keyIndex++;
     }
 
-    SETTINGS_INFO(std::format("Loaded settings from file: {}", filepath));
-    return true;
+    file << "  }";
+    if (categoryIndex < m_settings.size() - 1) {
+      file << ",";
+    }
+    file << "\n";
+    categoryIndex++;
+  }
+
+  file << "}\n";
+  file.close();
+
+  SETTINGS_INFO(std::format("Saved settings to file: {}", filepath));
+  return true;
 }
 
-bool SettingsManager::saveToFile(const std::string& filepath) {
-    std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
+bool SettingsManager::has(const std::string &category,
+                          const std::string &key) const {
+  std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
 
-    std::ofstream file(filepath);
-    if (!file.is_open()) {
-        SETTINGS_ERROR(std::format("Failed to open settings file for writing: {}", filepath));
-        return false;
-    }
+  auto categoryIt = m_settings.find(category);
+  if (categoryIt == m_settings.end()) {
+    return false;
+  }
 
-    // Build JSON manually for formatting control
-    file << "{\n";
-
-    size_t categoryIndex = 0;
-    for (const auto& [categoryName, categorySettings] : m_settings) {
-        file << "  \"" << categoryName << "\": {\n";
-
-        size_t keyIndex = 0;
-        for (const auto& [key, value] : categorySettings) {
-            file << "    \"" << key << "\": ";
-
-            // Write value based on type
-            std::visit([&file](auto&& arg) {
-                using T = std::decay_t<decltype(arg)>;
-                if constexpr (std::is_same_v<T, bool>) {
-                    file << (arg ? "true" : "false");
-                } else if constexpr (std::is_same_v<T, int>) {
-                    file << arg;
-                } else if constexpr (std::is_same_v<T, float>) {
-                    file << arg;
-                } else if constexpr (std::is_same_v<T, std::string>) {
-                    file << "\"" << arg << "\"";
-                }
-            }, value);
-
-            if (keyIndex < categorySettings.size() - 1) {
-                file << ",";
-            }
-            file << "\n";
-            keyIndex++;
-        }
-
-        file << "  }";
-        if (categoryIndex < m_settings.size() - 1) {
-            file << ",";
-        }
-        file << "\n";
-        categoryIndex++;
-    }
-
-    file << "}\n";
-    file.close();
-
-    SETTINGS_INFO(std::format("Saved settings to file: {}", filepath));
-    return true;
+  return categoryIt->second.find(key) != categoryIt->second.end();
 }
 
-bool SettingsManager::has(const std::string& category, const std::string& key) const {
-    std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
+bool SettingsManager::remove(const std::string &category,
+                             const std::string &key) {
+  std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
 
-    auto categoryIt = m_settings.find(category);
-    if (categoryIt == m_settings.end()) {
-        return false;
-    }
+  auto categoryIt = m_settings.find(category);
+  if (categoryIt == m_settings.end()) {
+    return false;
+  }
 
-    return categoryIt->second.find(key) != categoryIt->second.end();
-}
+  auto keyIt = categoryIt->second.find(key);
+  if (keyIt == categoryIt->second.end()) {
+    return false;
+  }
 
-bool SettingsManager::remove(const std::string& category, const std::string& key) {
-    std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
+  categoryIt->second.erase(keyIt);
 
-    auto categoryIt = m_settings.find(category);
-    if (categoryIt == m_settings.end()) {
-        return false;
-    }
-
-    auto keyIt = categoryIt->second.find(key);
-    if (keyIt == categoryIt->second.end()) {
-        return false;
-    }
-
-    categoryIt->second.erase(keyIt);
-
-    // Remove category if empty
-    if (categoryIt->second.empty()) {
-        m_settings.erase(categoryIt);
-    }
-
-    return true;
-}
-
-bool SettingsManager::clearCategory(const std::string& category) {
-    std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
-
-    auto categoryIt = m_settings.find(category);
-    if (categoryIt == m_settings.end()) {
-        return false;
-    }
-
+  // Remove category if empty
+  if (categoryIt->second.empty()) {
     m_settings.erase(categoryIt);
-    return true;
+  }
+
+  return true;
+}
+
+bool SettingsManager::clearCategory(const std::string &category) {
+  std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
+
+  auto categoryIt = m_settings.find(category);
+  if (categoryIt == m_settings.end()) {
+    return false;
+  }
+
+  m_settings.erase(categoryIt);
+  return true;
 }
 
 void SettingsManager::clearAll() {
-    std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
-    m_settings.clear();
+  std::unique_lock<std::shared_mutex> lock(m_settingsMutex);
+  m_settings.clear();
 }
 
-size_t SettingsManager::registerChangeListener(const std::string& category, ChangeCallback callback) {
-    std::lock_guard<std::mutex> lock(m_listenersMutex);
+size_t SettingsManager::registerChangeListener(const std::string &category,
+                                               ChangeCallback callback) {
+  std::lock_guard<std::mutex> lock(m_listenersMutex);
 
-    size_t id = m_nextCallbackId++;
-    m_listeners.push_back({id, category, std::move(callback)});
+  size_t id = m_nextCallbackId++;
+  m_listeners.push_back({id, category, std::move(callback)});
 
-    return id;
+  return id;
 }
 
 void SettingsManager::unregisterChangeListener(size_t callbackId) {
-    std::lock_guard<std::mutex> lock(m_listenersMutex);
+  std::lock_guard<std::mutex> lock(m_listenersMutex);
 
-    m_listeners.erase(
-        std::remove_if(m_listeners.begin(), m_listeners.end(),
-            [callbackId](const ListenerInfo& info) {
-                return info.id == callbackId;
-            }),
-        m_listeners.end()
-    );
+  m_listeners.erase(std::remove_if(m_listeners.begin(), m_listeners.end(),
+                                   [callbackId](const ListenerInfo &info) {
+                                     return info.id == callbackId;
+                                   }),
+                    m_listeners.end());
 }
 
-void SettingsManager::getCategories(std::vector<std::string>& outCategories) const {
-    std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
+void SettingsManager::getCategories(
+    std::vector<std::string> &outCategories) const {
+  std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
 
-    outCategories.clear();
-    outCategories.reserve(m_settings.size());
+  outCategories.clear();
+  outCategories.reserve(m_settings.size());
 
-    for (const auto& [category, _] : m_settings) {
-        outCategories.push_back(category);
-    }
+  for (const auto &[category, _] : m_settings) {
+    outCategories.push_back(category);
+  }
 }
 
-void SettingsManager::getKeys(const std::string& category, std::vector<std::string>& outKeys) const {
-    std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
+void SettingsManager::getKeys(const std::string &category,
+                              std::vector<std::string> &outKeys) const {
+  std::shared_lock<std::shared_mutex> lock(m_settingsMutex);
 
-    outKeys.clear();
+  outKeys.clear();
 
-    auto categoryIt = m_settings.find(category);
-    if (categoryIt == m_settings.end()) {
-        return;
-    }
+  auto categoryIt = m_settings.find(category);
+  if (categoryIt == m_settings.end()) {
+    return;
+  }
 
-    outKeys.reserve(categoryIt->second.size());
+  outKeys.reserve(categoryIt->second.size());
 
-    for (const auto& [key, _] : categoryIt->second) {
-        outKeys.push_back(key);
-    }
+  for (const auto &[key, _] : categoryIt->second) {
+    outKeys.push_back(key);
+  }
 }
 
-void SettingsManager::notifyListeners(const std::string& category, const std::string& key, const SettingValue& newValue) {
-    std::lock_guard<std::mutex> lock(m_listenersMutex);
+void SettingsManager::notifyListeners(const std::string &category,
+                                      const std::string &key,
+                                      const SettingValue &newValue) {
+  std::lock_guard<std::mutex> lock(m_listenersMutex);
 
-    for (const auto& listener : m_listeners) {
-        // Call listener if it's watching all categories or this specific category
-        if (listener.category.empty() || listener.category == category) {
-            listener.callback(category, key, newValue);
-        }
+  for (const auto &listener : m_listeners) {
+    // Call listener if it's watching all categories or this specific category
+    if (listener.category.empty() || listener.category == category) {
+      listener.callback(category, key, newValue);
     }
+  }
 }
 
-std::string SettingsManager::variantToString(const SettingValue& value) const {
-    return std::visit([](auto&& arg) -> std::string {
+std::string SettingsManager::variantToString(const SettingValue &value) const {
+  return std::visit(
+      [](auto &&arg) -> std::string {
         using T = std::decay_t<decltype(arg)>;
         if constexpr (std::is_same_v<T, bool>) {
-            return arg ? "true" : "false";
+          return arg ? "true" : "false";
         } else if constexpr (std::is_same_v<T, int>) {
-            return std::to_string(arg);
+          return std::to_string(arg);
         } else if constexpr (std::is_same_v<T, float>) {
-            return std::to_string(arg);
+          return std::to_string(arg);
         } else if constexpr (std::is_same_v<T, std::string>) {
-            return arg;
+          return arg;
         }
         return "";
-    }, value);
+      },
+      value);
 }
 
 } // namespace HammerEngine

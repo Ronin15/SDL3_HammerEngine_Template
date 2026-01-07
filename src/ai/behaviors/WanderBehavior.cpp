@@ -4,15 +4,12 @@
  */
 
 #include "ai/behaviors/WanderBehavior.hpp"
-#include "ai/internal/Crowd.hpp"
 #include "managers/AIManager.hpp"
-#include "managers/WorldManager.hpp"
-#include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp"
-#include "ai/internal/SpatialPriority.hpp"
+#include "managers/PathfinderManager.hpp"
+#include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <cmath>
-#include <numeric>
 
 // Static thread-local RNG pool for memory optimization
 thread_local std::uniform_real_distribution<float>
@@ -28,7 +25,7 @@ std::mt19937 &WanderBehavior::getSharedRNG() {
   return rng;
 }
 
-WanderBehavior::WanderBehavior(const HammerEngine::WanderBehaviorConfig& config)
+WanderBehavior::WanderBehavior(const HammerEngine::WanderBehaviorConfig &config)
     : m_config(config), m_speed(config.speed),
       m_changeDirectionInterval(config.changeDirectionIntervalMin),
       m_areaRadius(300.0f) {
@@ -60,15 +57,15 @@ void WanderBehavior::init(EntityHandle handle) {
     return;
 
   // Get EDM index for centralized storage
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t edmIndex = edm.getIndex(handle);
   if (edmIndex == SIZE_MAX)
     return;
 
   // Initialize behavior data in EDM (pre-allocated alongside hotData)
   edm.initBehaviorData(edmIndex, BehaviorType::Wander);
-  auto& data = edm.getBehaviorData(edmIndex);
-  auto& wander = data.state.wander;
+  auto &data = edm.getBehaviorData(edmIndex);
+  auto &wander = data.state.wander;
 
   // Initialize wander-specific state
   wander.directionChangeTimer = 0.0f;
@@ -89,12 +86,12 @@ void WanderBehavior::init(EntityHandle handle) {
 }
 
 // LOCK-FREE HOT PATH: Uses BehaviorContext for direct EDM access
-void WanderBehavior::executeLogic(BehaviorContext& ctx) {
+void WanderBehavior::executeLogic(BehaviorContext &ctx) {
   if (!m_active || !ctx.behaviorData)
     return;
 
   // Use pre-fetched behavior data from context (no Instance() call needed)
-  auto& data = *ctx.behaviorData;
+  auto &data = *ctx.behaviorData;
   if (!data.isValid()) {
     return;
   }
@@ -113,14 +110,16 @@ void WanderBehavior::executeLogic(BehaviorContext& ctx) {
   }
 }
 
-void WanderBehavior::updateTimers(BehaviorData& data, float deltaTime, PathData* pathData) {
-  auto& wander = data.state.wander;
+void WanderBehavior::updateTimers(BehaviorData &data, float deltaTime,
+                                  PathData *pathData) {
+  auto &wander = data.state.wander;
   wander.directionChangeTimer += deltaTime;
   wander.lastDirectionFlip += deltaTime;
   wander.stallTimer += deltaTime;
   wander.unstickTimer += deltaTime;
 
-  // Update path timers in EDM (single source of truth) - no Instance() call needed
+  // Update path timers in EDM (single source of truth) - no Instance() call
+  // needed
   if (pathData) {
     pathData->pathUpdateTimer += deltaTime;
     pathData->progressTimer += deltaTime;
@@ -130,8 +129,9 @@ void WanderBehavior::updateTimers(BehaviorData& data, float deltaTime, PathData*
   }
 }
 
-bool WanderBehavior::handleStartDelay(BehaviorContext& ctx, BehaviorData& data) {
-  auto& wander = data.state.wander;
+bool WanderBehavior::handleStartDelay(BehaviorContext &ctx,
+                                      BehaviorData &data) {
+  auto &wander = data.state.wander;
   if (wander.movementStarted) {
     return true;
   }
@@ -147,13 +147,14 @@ bool WanderBehavior::handleStartDelay(BehaviorContext& ctx, BehaviorData& data) 
   // Set velocity directly - CollisionManager handles overlap resolution
   ctx.transform.velocity = intended;
 
-  return true;  // Movement started - continue to handleMovement()
+  return true; // Movement started - continue to handleMovement()
 }
 
-float WanderBehavior::calculateMoveDistance(const BehaviorData& data,
-                                           const Vector2D& position, float baseDistance) {
+float WanderBehavior::calculateMoveDistance(const BehaviorData &data,
+                                            const Vector2D &position,
+                                            float baseDistance) {
   int nearbyCount = data.cachedNearbyCount;
-  auto& wander = const_cast<BehaviorData&>(data).state.wander;
+  auto &wander = const_cast<BehaviorData &>(data).state.wander;
 
   // Dynamic distance adjustment based on crowding
   float moveDistance = baseDistance;
@@ -162,7 +163,8 @@ float WanderBehavior::calculateMoveDistance(const BehaviorData& data,
     moveDistance = baseDistance * m_config.crowdEscapeDistanceMultiplier;
 
     if (nearbyCount > 0) {
-      Vector2D escapeDirection = (position - data.cachedClusterCenter).normalized();
+      Vector2D escapeDirection =
+          (position - data.cachedClusterCenter).normalized();
       float randomOffset = (nearbyCount % 60 - 30) * 0.01f;
       escapeDirection.setX(escapeDirection.getX() + randomOffset);
       escapeDirection.setY(escapeDirection.getY() + randomOffset);
@@ -179,7 +181,8 @@ float WanderBehavior::calculateMoveDistance(const BehaviorData& data,
   return moveDistance;
 }
 
-void WanderBehavior::applyBoundaryAvoidance(BehaviorData& data, const Vector2D& position) {
+void WanderBehavior::applyBoundaryAvoidance(BehaviorData &data,
+                                            const Vector2D &position) {
   // Use static world bounds cache (same for all entities)
   if (!s_worldBounds.initialized) {
     float minX, minY, maxX, maxY;
@@ -194,32 +197,39 @@ void WanderBehavior::applyBoundaryAvoidance(BehaviorData& data, const Vector2D& 
     }
   }
 
-  auto& wander = data.state.wander;
+  auto &wander = data.state.wander;
   const float EDGE_THRESHOLD = m_config.edgeThreshold;
   Vector2D boundaryForce(0, 0);
 
   if (position.getX() < s_worldBounds.minX + EDGE_THRESHOLD) {
-    float const strength = 1.0f - ((position.getX() - s_worldBounds.minX) / EDGE_THRESHOLD);
+    float const strength =
+        1.0f - ((position.getX() - s_worldBounds.minX) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(strength, 0);
   } else if (position.getX() > s_worldBounds.maxX - EDGE_THRESHOLD) {
-    float const strength = 1.0f - ((s_worldBounds.maxX - position.getX()) / EDGE_THRESHOLD);
+    float const strength =
+        1.0f - ((s_worldBounds.maxX - position.getX()) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(-strength, 0);
   }
 
   if (position.getY() < s_worldBounds.minY + EDGE_THRESHOLD) {
-    float const strength = 1.0f - ((position.getY() - s_worldBounds.minY) / EDGE_THRESHOLD);
+    float const strength =
+        1.0f - ((position.getY() - s_worldBounds.minY) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(0, strength);
   } else if (position.getY() > s_worldBounds.maxY - EDGE_THRESHOLD) {
-    float const strength = 1.0f - ((s_worldBounds.maxY - position.getY()) / EDGE_THRESHOLD);
+    float const strength =
+        1.0f - ((s_worldBounds.maxY - position.getY()) / EDGE_THRESHOLD);
     boundaryForce = boundaryForce + Vector2D(0, -strength);
   }
 
   if (boundaryForce.lengthSquared() > 0.01f) {
-    wander.currentDirection = (wander.currentDirection * 0.4f + boundaryForce.normalized() * 0.6f).normalized();
+    wander.currentDirection =
+        (wander.currentDirection * 0.4f + boundaryForce.normalized() * 0.6f)
+            .normalized();
   }
 }
 
-void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2D& dest) {
+void WanderBehavior::handlePathfinding(const BehaviorContext &ctx,
+                                       const Vector2D &dest) {
   Vector2D position = ctx.transform.position;
   float const distanceToGoal = (dest - position).length();
   if (distanceToGoal < 64.0f || !ctx.pathData) {
@@ -227,11 +237,11 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
   }
 
   // Use pre-fetched path data from context (no Instance() call needed)
-  auto& pathData = *ctx.pathData;
+  auto &pathData = *ctx.pathData;
 
-  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
-                            pathData.isFollowingPath() &&
-                            pathData.progressTimer < 0.8f);
+  const bool skipRefresh =
+      (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
+       pathData.progressTimer < 0.8f);
   bool needsNewPath = false;
   if (!skipRefresh) {
     needsNewPath = !pathData.hasPath ||
@@ -244,10 +254,11 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
     pathData.clear();
   }
 
-  if ((needsNewPath || stuckOnObstacle) && pathData.pathRequestCooldown <= 0.0f) {
+  if ((needsNewPath || stuckOnObstacle) &&
+      pathData.pathRequestCooldown <= 0.0f) {
     const float MIN_GOAL_CHANGE = m_config.minGoalChangeDistance;
     bool goalChanged = true;
-    auto& edm = EntityDataManager::Instance();
+    auto &edm = EntityDataManager::Instance();
     if (!skipRefresh && pathData.hasPath && pathData.pathLength > 0) {
       Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
       float const goalDistanceSquared = (dest - lastGoal).lengthSquared();
@@ -264,8 +275,8 @@ void WanderBehavior::handlePathfinding(const BehaviorContext& ctx, const Vector2
   }
 }
 
-void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
-  auto& wander = data.state.wander;
+void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
+  auto &wander = data.state.wander;
   float baseDistance = std::min(600.0f, m_areaRadius * 1.5f);
   Vector2D position = ctx.transform.position;
 
@@ -277,8 +288,10 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
   // Clamp destination to world bounds (use static cache)
   if (s_worldBounds.initialized) {
     const float MARGIN = m_config.worldPaddingMargin;
-    dest.setX(std::clamp(dest.getX(), s_worldBounds.minX + MARGIN, s_worldBounds.maxX - MARGIN));
-    dest.setY(std::clamp(dest.getY(), s_worldBounds.minY + MARGIN, s_worldBounds.maxY - MARGIN));
+    dest.setX(std::clamp(dest.getX(), s_worldBounds.minX + MARGIN,
+                         s_worldBounds.maxX - MARGIN));
+    dest.setY(std::clamp(dest.getY(), s_worldBounds.minY + MARGIN,
+                         s_worldBounds.maxY - MARGIN));
   }
 
   handlePathfinding(ctx, dest);
@@ -288,7 +301,7 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
     ctx.transform.velocity = wander.currentDirection * m_speed;
     return;
   }
-  auto& pathData = *ctx.pathData;
+  auto &pathData = *ctx.pathData;
 
   // Follow path or apply base movement - write directly to transform
   if (pathData.isFollowingPath()) {
@@ -296,8 +309,8 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
     Vector2D toWaypoint = waypoint - position;
     float dist = toWaypoint.length();
 
-    if (dist < 64.0f) {  // navRadius
-      auto& edm = EntityDataManager::Instance();
+    if (dist < 64.0f) { // navRadius
+      auto &edm = EntityDataManager::Instance();
       edm.advanceWaypointWithCache(ctx.edmIndex);
       if (pathData.isFollowingPath()) {
         waypoint = ctx.pathData->currentWaypoint;
@@ -340,10 +353,12 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
 
   // Micro-jitter to break small jams
   if (speed < (m_speed * 1.5f) && speed >= stallSpeed) {
-    float jitter = (s_angleDistribution(getSharedRNG()) - static_cast<float>(M_PI)) * 0.1f;
+    float jitter =
+        (s_angleDistribution(getSharedRNG()) - static_cast<float>(M_PI)) * 0.1f;
     Vector2D dir = wander.currentDirection;
     float c = std::cos(jitter), s = std::sin(jitter);
-    Vector2D rotated(dir.getX() * c - dir.getY() * s, dir.getX() * s + dir.getY() * c);
+    Vector2D rotated(dir.getX() * c - dir.getY() * s,
+                     dir.getX() * s + dir.getY() * c);
     if (rotated.length() > 0.001f) {
       rotated.normalize();
       wander.currentDirection = rotated;
@@ -355,7 +370,7 @@ void WanderBehavior::handleMovement(BehaviorContext& ctx, BehaviorData& data) {
 }
 
 void WanderBehavior::clean(EntityHandle handle) {
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   if (handle.isValid()) {
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
@@ -367,16 +382,17 @@ void WanderBehavior::clean(EntityHandle handle) {
   // Note: Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
-void WanderBehavior::onMessage(EntityHandle handle, const std::string &message) {
+void WanderBehavior::onMessage(EntityHandle handle,
+                               const std::string &message) {
   if (!handle.isValid())
     return;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX)
     return;
 
-  auto& data = edm.getBehaviorData(idx);
+  auto &data = edm.getBehaviorData(idx);
   bool hasValidData = data.isValid();
 
   if (message == "pause") {
@@ -386,22 +402,26 @@ void WanderBehavior::onMessage(EntityHandle handle, const std::string &message) 
     setActive(true);
     if (hasValidData) {
       float angle = s_angleDistribution(getSharedRNG());
-      data.state.wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
+      data.state.wander.currentDirection =
+          Vector2D(std::cos(angle), std::sin(angle));
     }
   } else if (message == "new_direction") {
     if (hasValidData) {
       float angle = s_angleDistribution(getSharedRNG());
-      data.state.wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
+      data.state.wander.currentDirection =
+          Vector2D(std::cos(angle), std::sin(angle));
     }
   } else if (message == "increase_speed") {
     m_speed *= 1.5f;
     if (m_active && hasValidData) {
-      edm.getHotDataByIndex(idx).transform.velocity = data.state.wander.currentDirection * m_speed;
+      edm.getHotDataByIndex(idx).transform.velocity =
+          data.state.wander.currentDirection * m_speed;
     }
   } else if (message == "decrease_speed") {
     m_speed *= 0.75f;
     if (m_active && hasValidData) {
-      edm.getHotDataByIndex(idx).transform.velocity = data.state.wander.currentDirection * m_speed;
+      edm.getHotDataByIndex(idx).transform.velocity =
+          data.state.wander.currentDirection * m_speed;
     }
   } else if (message == "release_entities") {
     edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
@@ -431,8 +451,9 @@ void WanderBehavior::setChangeDirectionInterval(float interval) {
   m_changeDirectionInterval = interval;
 }
 
-void WanderBehavior::chooseNewDirection(BehaviorContext& ctx, BehaviorData& data) {
-  auto& wander = data.state.wander;
+void WanderBehavior::chooseNewDirection(BehaviorContext &ctx,
+                                        BehaviorData &data) {
+  auto &wander = data.state.wander;
   float angle = s_angleDistribution(getSharedRNG());
   wander.currentDirection = Vector2D(std::cos(angle), std::sin(angle));
 

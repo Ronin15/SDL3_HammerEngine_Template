@@ -1,31 +1,30 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * All rights reserved.
  * Licensed under the MIT License - see LICENSE file for details
-*/
+ */
 
 #include "ai/AIBehavior.hpp"
-#include "ai/internal/Crowd.hpp"
-#include "managers/PathfinderManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include <chrono>
 #include <cmath>
 #include <random>
 
 namespace {
 // Thread-safe RNG for stall recovery jitter
-std::mt19937& getThreadLocalRNG() {
-    static thread_local std::mt19937 rng(
-        static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
-    return rng;
+std::mt19937 &getThreadLocalRNG() {
+  static thread_local std::mt19937 rng(static_cast<unsigned>(
+      std::chrono::steady_clock::now().time_since_epoch().count()));
+  return rng;
 }
 } // namespace
 
 AIBehavior::~AIBehavior() = default;
 
-PathfinderManager& AIBehavior::pathfinder() const {
-    // Static reference cached on first use - eliminates repeated Instance() calls
-    static PathfinderManager& pf = PathfinderManager::Instance();
-    return pf;
+PathfinderManager &AIBehavior::pathfinder() const {
+  // Static reference cached on first use - eliminates repeated Instance() calls
+  static PathfinderManager &pf = PathfinderManager::Instance();
+  return pf;
 }
 
 // Common utility function implementations
@@ -39,7 +38,7 @@ Vector2D AIBehavior::normalizeDirection(const Vector2D &vector) const {
 }
 
 float AIBehavior::calculateAngleToTarget(const Vector2D &from,
-                                        const Vector2D &to) const {
+                                         const Vector2D &to) const {
   Vector2D direction = to - from;
   return std::atan2(direction.getY(), direction.getX());
 }
@@ -60,10 +59,11 @@ Vector2D AIBehavior::rotateVector(const Vector2D &vector, float angle) const {
                   vector.getX() * sin_a + vector.getY() * cos_a);
 }
 
-void AIBehavior::moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
+void AIBehavior::moveToPosition(BehaviorContext &ctx, const Vector2D &targetPos,
                                 float speed, AIBehaviorState &state,
                                 int priority) {
-  if (speed <= 0.0f) return;
+  if (speed <= 0.0f)
+    return;
 
   auto priorityEnum = static_cast<PathfinderManager::Priority>(priority);
   Vector2D currentPos = ctx.transform.position;
@@ -85,14 +85,16 @@ void AIBehavior::moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
     }
   }
 
-  if (state.pathUpdateTimer > pathTTL) needRefresh = true;
+  if (state.pathUpdateTimer > pathTTL)
+    needRefresh = true;
 
   // Check if goal changed significantly
   if (!needRefresh && !state.pathPoints.empty()) {
     const float GOAL_CHANGE_THRESH_SQUARED = 150.0f * 150.0f;
     Vector2D lastGoal = state.pathPoints.back();
     float goalDeltaSquared = (targetPos - lastGoal).lengthSquared();
-    if (goalDeltaSquared > GOAL_CHANGE_THRESH_SQUARED) needRefresh = true;
+    if (goalDeltaSquared > GOAL_CHANGE_THRESH_SQUARED)
+      needRefresh = true;
   }
 
   // Request new path if needed
@@ -117,7 +119,8 @@ void AIBehavior::moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
 
   // Follow path - need to update velocity directly
   bool following = false;
-  if (!state.pathPoints.empty() && state.currentPathIndex < state.pathPoints.size()) {
+  if (!state.pathPoints.empty() &&
+      state.currentPathIndex < state.pathPoints.size()) {
     Vector2D waypoint = state.pathPoints[state.currentPathIndex];
     Vector2D toWaypoint = waypoint - currentPos;
     float dist = toWaypoint.length();
@@ -166,7 +169,8 @@ void AIBehavior::moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
       std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
       float jitter = jitterDist(getThreadLocalRNG());
       Vector2D v = ctx.transform.velocity;
-      if (v.length() < 0.01f) v = Vector2D(1, 0);
+      if (v.length() < 0.01f)
+        v = Vector2D(1, 0);
       float c = std::cos(jitter), s = std::sin(jitter);
       Vector2D rotated(v.getX() * c - v.getY() * s,
                        v.getX() * s + v.getY() * c);

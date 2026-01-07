@@ -4,9 +4,7 @@
  */
 
 #include "ai/behaviors/IdleBehavior.hpp"
-#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
-#include "ai/internal/Crowd.hpp"
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
@@ -42,25 +40,26 @@ void IdleBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx == SIZE_MAX) return;
+  if (idx == SIZE_MAX)
+    return;
 
   // Initialize behavior data in EDM (pre-allocated alongside hotData)
   edm.initBehaviorData(idx, BehaviorType::Idle);
-  auto& data = edm.getBehaviorData(idx);
-  auto& hotData = edm.getHotDataByIndex(idx);
+  auto &data = edm.getBehaviorData(idx);
+  auto &hotData = edm.getHotDataByIndex(idx);
 
   initializeIdleState(hotData.transform.position, data);
   data.setInitialized(true);
 }
 
-void IdleBehavior::executeLogic(BehaviorContext& ctx) {
+void IdleBehavior::executeLogic(BehaviorContext &ctx) {
   if (!isActive() || !ctx.behaviorData)
     return;
 
   // Use pre-fetched behavior data from context (no Instance() call needed)
-  auto& data = *ctx.behaviorData;
+  auto &data = *ctx.behaviorData;
   if (!data.isValid()) {
     return;
   }
@@ -88,7 +87,7 @@ void IdleBehavior::executeLogic(BehaviorContext& ctx) {
 }
 
 void IdleBehavior::clean(EntityHandle handle) {
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   if (handle.isValid()) {
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
@@ -112,12 +111,12 @@ void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
   } else if (message == "idle_fidget") {
     setIdleMode(IdleMode::LIGHT_FIDGET);
   } else if (message == "reset_position") {
-    auto& edm = EntityDataManager::Instance();
+    auto &edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
-      auto& data = edm.getBehaviorData(idx);
+      auto &data = edm.getBehaviorData(idx);
       if (data.isValid()) {
-        const auto& hotData = edm.getHotDataByIndex(idx);
+        const auto &hotData = edm.getHotDataByIndex(idx);
         data.state.idle.originalPosition = hotData.transform.position;
         data.state.idle.currentOffset = Vector2D(0, 0);
       }
@@ -135,22 +134,22 @@ void IdleBehavior::setIdleMode(IdleMode mode) {
   case IdleMode::STATIONARY:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 0.0f;
-    m_idleRadius = 0.0f;        // No movement radius
+    m_idleRadius = 0.0f; // No movement radius
     break;
   case IdleMode::SUBTLE_SWAY:
     m_movementFrequency = 2.0f;
     m_turnFrequency = 8.0f;
-    m_idleRadius = 30.0f;       // ~1 tile subtle sway
+    m_idleRadius = 30.0f; // ~1 tile subtle sway
     break;
   case IdleMode::OCCASIONAL_TURN:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 4.0f;
-    m_idleRadius = 0.0f;        // No movement radius
+    m_idleRadius = 0.0f; // No movement radius
     break;
   case IdleMode::LIGHT_FIDGET:
     m_movementFrequency = 1.5f;
     m_turnFrequency = 3.0f;
-    m_idleRadius = 50.0f;       // ~1.5 tiles moderate fidget
+    m_idleRadius = 50.0f; // ~1.5 tiles moderate fidget
     break;
   }
 }
@@ -179,8 +178,9 @@ std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
   return cloned;
 }
 
-void IdleBehavior::initializeIdleState(const Vector2D& position, BehaviorData& data) const {
-  auto& idle = data.state.idle;
+void IdleBehavior::initializeIdleState(const Vector2D &position,
+                                       BehaviorData &data) const {
+  auto &idle = data.state.idle;
   idle.originalPosition = position;
   idle.currentOffset = Vector2D(0, 0);
   idle.movementTimer = 0.0f;
@@ -191,20 +191,23 @@ void IdleBehavior::initializeIdleState(const Vector2D& position, BehaviorData& d
   idle.initialized = true;
 }
 
-void IdleBehavior::updateStationary(BehaviorContext& ctx) {
+void IdleBehavior::updateStationary(BehaviorContext &ctx) {
   // Keep entity stationary with zero velocity
   ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateSubtleSway(BehaviorContext& ctx, BehaviorData& data) const {
-  auto& idle = data.state.idle;
+void IdleBehavior::updateSubtleSway(BehaviorContext &ctx,
+                                    BehaviorData &data) const {
+  auto &idle = data.state.idle;
   idle.movementTimer += ctx.deltaTime;
 
-  if (m_movementFrequency > 0.0f && idle.movementTimer >= idle.movementInterval) {
+  if (m_movementFrequency > 0.0f &&
+      idle.movementTimer >= idle.movementInterval) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
-    ctx.transform.velocity = swayDirection * 35.0f; // Increased from 20px for world-scale movement
+    ctx.transform.velocity =
+        swayDirection * 35.0f; // Increased from 20px for world-scale movement
     idle.movementTimer = 0.0f;
     idle.movementInterval = getRandomMovementInterval();
   }
@@ -212,8 +215,9 @@ void IdleBehavior::updateSubtleSway(BehaviorContext& ctx, BehaviorData& data) co
   // CollisionManager handles overlap resolution
 }
 
-void IdleBehavior::updateOccasionalTurn(BehaviorContext& ctx, BehaviorData& data) const {
-  auto& idle = data.state.idle;
+void IdleBehavior::updateOccasionalTurn(BehaviorContext &ctx,
+                                        BehaviorData &data) const {
+  auto &idle = data.state.idle;
   idle.turnTimer += ctx.deltaTime;
 
   if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
@@ -230,17 +234,21 @@ void IdleBehavior::updateOccasionalTurn(BehaviorContext& ctx, BehaviorData& data
   ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateLightFidget(BehaviorContext& ctx, BehaviorData& data) const {
-  auto& idle = data.state.idle;
+void IdleBehavior::updateLightFidget(BehaviorContext &ctx,
+                                     BehaviorData &data) const {
+  auto &idle = data.state.idle;
   idle.movementTimer += ctx.deltaTime;
   idle.turnTimer += ctx.deltaTime;
 
   // Handle movement fidgeting
-  if (m_movementFrequency > 0.0f && idle.movementTimer >= idle.movementInterval) {
+  if (m_movementFrequency > 0.0f &&
+      idle.movementTimer >= idle.movementInterval) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
-    ctx.transform.velocity = fidgetDirection * 40.0f; // Increased from 25px for world-scale fidgeting
+    ctx.transform.velocity =
+        fidgetDirection *
+        40.0f; // Increased from 25px for world-scale fidgeting
     idle.movementTimer = 0.0f;
     idle.movementInterval = getRandomMovementInterval();
   }

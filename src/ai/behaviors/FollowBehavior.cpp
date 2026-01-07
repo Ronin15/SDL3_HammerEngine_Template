@@ -5,24 +5,18 @@
 
 #include "ai/behaviors/FollowBehavior.hpp"
 #include "managers/AIManager.hpp"
-#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
-#include "ai/internal/Crowd.hpp"
 #include "managers/PathfinderManager.hpp"
-#include "ai/internal/SpatialPriority.hpp"  // For PathPriority enum
-#include "core/Logger.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <format>
-#include "managers/WorldManager.hpp"
 
 namespace {
 // Thread-safe RNG for stall recovery jitter
-std::mt19937& getThreadLocalRNG() {
-    static thread_local std::mt19937 rng(
-        static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
-    return rng;
+std::mt19937 &getThreadLocalRNG() {
+  static thread_local std::mt19937 rng(static_cast<unsigned>(
+      std::chrono::steady_clock::now().time_since_epoch().count()));
+  return rng;
 }
 } // namespace
 
@@ -74,13 +68,11 @@ FollowBehavior::FollowBehavior(FollowMode mode, float followSpeed)
   }
 }
 
-FollowBehavior::FollowBehavior(const HammerEngine::FollowBehaviorConfig& config, FollowMode mode)
-    : m_config(config)
-    , m_followMode(mode)
-    , m_followSpeed(config.followSpeed)
-    , m_followDistance(config.followDistance)
-    , m_maxDistance(config.catchupRange)
-{
+FollowBehavior::FollowBehavior(const HammerEngine::FollowBehaviorConfig &config,
+                               FollowMode mode)
+    : m_config(config), m_followMode(mode), m_followSpeed(config.followSpeed),
+      m_followDistance(config.followDistance),
+      m_maxDistance(config.catchupRange) {
   // Entity state now stored in EDM BehaviorData - no local allocation needed
   initializeFormationOffsets();
 
@@ -112,22 +104,23 @@ void FollowBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx == SIZE_MAX) return;
+  if (idx == SIZE_MAX)
+    return;
 
   // Initialize behavior data in EDM (pre-allocated alongside hotData)
   edm.initBehaviorData(idx, BehaviorType::Follow);
-  auto& data = edm.getBehaviorData(idx);
-  auto& follow = data.state.follow;
-  auto& hotData = edm.getHotDataByIndex(idx);
+  auto &data = edm.getBehaviorData(idx);
+  auto &follow = data.state.follow;
+  auto &hotData = edm.getHotDataByIndex(idx);
 
   // Initialize follow-specific state
   EntityHandle targetHandle = getTargetHandle();
   if (targetHandle.isValid()) {
     size_t targetIdx = edm.getIndex(targetHandle);
     if (targetIdx != SIZE_MAX) {
-      auto& targetHotData = edm.getHotDataByIndex(targetIdx);
+      auto &targetHotData = edm.getHotDataByIndex(targetIdx);
       follow.lastTargetPosition = targetHotData.transform.position;
       follow.desiredPosition = hotData.transform.position;
       follow.isFollowing = true;
@@ -142,18 +135,18 @@ void FollowBehavior::init(EntityHandle handle) {
   data.setInitialized(true);
 }
 
-void FollowBehavior::executeLogic(BehaviorContext& ctx) {
+void FollowBehavior::executeLogic(BehaviorContext &ctx) {
   if (!isActive() || !ctx.behaviorData || !ctx.pathData)
     return;
 
   // Use pre-fetched behavior data from context (no Instance() call needed)
-  auto& data = *ctx.behaviorData;
+  auto &data = *ctx.behaviorData;
   if (!data.isValid()) {
     return;
   }
 
-  auto& follow = data.state.follow;
-  auto& pathData = *ctx.pathData;
+  auto &follow = data.state.follow;
+  auto &pathData = *ctx.pathData;
 
   // Use cached player info from context (lock-free, cached once per frame)
   if (!ctx.playerValid) {
@@ -163,7 +156,7 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   Vector2D currentPos = ctx.transform.position;
-  Vector2D targetPos = ctx.playerPosition;  // Use cached position
+  Vector2D targetPos = ctx.playerPosition; // Use cached position
 
   // Update target movement tracking (velocity-based, no delay)
   // Use cached player velocity from context (no Instance() call needed)
@@ -173,10 +166,12 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   follow.targetMoving = targetMoved;
   follow.lastTargetPosition = targetPos;
 
-  // If target is stationary, only stop if already in range (prevent path spam but allow catch-up)
+  // If target is stationary, only stop if already in range (prevent path spam
+  // but allow catch-up)
   if (!follow.targetMoving) {
     float const distanceToPlayer = (currentPos - targetPos).length();
-    const float CATCHUP_RANGE = 200.0f; // Let distant followers catch up before stopping
+    const float CATCHUP_RANGE =
+        200.0f; // Let distant followers catch up before stopping
 
     if (distanceToPlayer < CATCHUP_RANGE) {
       // Close enough - stop to prevent path spam
@@ -198,8 +193,9 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
     follow.backoffTimer -= ctx.deltaTime; // Countdown timer
   }
 
-  // Stall detection: only check when not actively following a fresh path AND not intentionally stopped
-  // Prevents false positives when NPCs naturally slow down near waypoints or are stopped at personal space
+  // Stall detection: only check when not actively following a fresh path AND
+  // not intentionally stopped Prevents false positives when NPCs naturally slow
+  // down near waypoints or are stopped at personal space
   bool hasActivePath = pathData.hasPath && pathData.pathUpdateTimer < 2.0f;
 
   if (!hasActivePath && !follow.isStopped) {
@@ -209,16 +205,22 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
     if (speedNow < stallSpeed) {
       if (pathData.progressTimer > stallTime) {
         // Enter a brief backoff to reduce clumping; vary per-entity
-        follow.backoffTimer = 0.25f + (ctx.entityId % 400) * 0.001f; // 250-650ms
+        follow.backoffTimer =
+            0.25f + (ctx.entityId % 400) * 0.001f; // 250-650ms
         // Clear path in EDM and small micro-jitter to yield
         pathData.clear();
         std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
         float jitter = jitterDist(getThreadLocalRNG()); // ~±17deg (thread-safe)
-        Vector2D v = ctx.transform.velocity; if (v.length() < 0.01f) v = Vector2D(1,0);
+        Vector2D v = ctx.transform.velocity;
+        if (v.length() < 0.01f)
+          v = Vector2D(1, 0);
         float c = std::cos(jitter), s = std::sin(jitter);
-        Vector2D rotated(v.getX()*c - v.getY()*s, v.getX()*s + v.getY()*c);
-        // Use reduced speed for stall recovery to prevent shooting off at high speed
-        rotated.normalize(); ctx.transform.velocity = rotated * (m_followSpeed * 0.5f);
+        Vector2D rotated(v.getX() * c - v.getY() * s,
+                         v.getX() * s + v.getY() * c);
+        // Use reduced speed for stall recovery to prevent shooting off at high
+        // speed
+        rotated.normalize();
+        ctx.transform.velocity = rotated * (m_followSpeed * 0.5f);
         pathData.progressTimer = 0.0f;
       }
     } else {
@@ -230,7 +232,8 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   Vector2D targetPosAdjusted = targetPos;
   if (m_predictiveFollowing && follow.targetMoving) {
     // Predictive following: estimate where target will be
-    Vector2D const velocity = (targetPos - follow.lastTargetPosition) / 0.016f; // Assume 60 FPS
+    Vector2D const velocity =
+        (targetPos - follow.lastTargetPosition) / 0.016f; // Assume 60 FPS
     targetPosAdjusted = targetPos + velocity * m_predictionTime;
   }
   Vector2D desiredPos = targetPosAdjusted + follow.formationOffset;
@@ -239,7 +242,8 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   // CRITICAL: Check distance to PLAYER for stop (prevent pushing)
   float const distanceToPlayer = (currentPos - targetPos).length();
 
-  // ARRIVAL RADIUS: If very close to desired formation position, stop (prevent micro-oscillations)
+  // ARRIVAL RADIUS: If very close to desired formation position, stop (prevent
+  // micro-oscillations)
   const float ARRIVAL_RADIUS = 25.0f;
   if (distanceToDesired < ARRIVAL_RADIUS && !follow.isStopped) {
     ctx.transform.velocity = Vector2D(0, 0);
@@ -251,7 +255,8 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   }
 
   // Hysteresis to prevent jittering at boundary
-  // Stop at 40px from PLAYER (not formation), resume at 55px (prevents pushing player)
+  // Stop at 40px from PLAYER (not formation), resume at 55px (prevents pushing
+  // player)
   if (follow.isStopped) {
     // Already stopped - only resume if beyond resume distance FROM PLAYER
     if (distanceToPlayer < m_resumeDistance) {
@@ -281,25 +286,26 @@ void FollowBehavior::executeLogic(BehaviorContext& ctx) {
   // Try pathfinding first for all modes
   bool usingPathfinding = tryFollowPathToGoal(ctx, desiredPos, dynamicSpeed);
 
-  // If pathfinding isn't active, fall back to direct movement toward desired position
+  // If pathfinding isn't active, fall back to direct movement toward desired
+  // position
   if (!usingPathfinding) {
     // Simple direct movement - just move toward desiredPos
     Vector2D direction = desiredPos - currentPos;
     float const length = direction.length();
 
     if (length > 0.1f) {
-      direction = direction * (1.0f / length);  // Normalize
+      direction = direction * (1.0f / length); // Normalize
       ctx.transform.velocity = direction * dynamicSpeed;
     }
   }
 }
 
 void FollowBehavior::clean(EntityHandle handle) {
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   if (handle.isValid()) {
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
-      auto& data = edm.getBehaviorData(idx);
+      auto &data = edm.getBehaviorData(idx);
       if (data.isValid()) {
         // Release formation slot if using escort formation
         if (m_followMode == FollowMode::ESCORT_FORMATION) {
@@ -314,20 +320,21 @@ void FollowBehavior::clean(EntityHandle handle) {
   // Note: Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
-void FollowBehavior::onMessage(EntityHandle handle, const std::string &message) {
+void FollowBehavior::onMessage(EntityHandle handle,
+                               const std::string &message) {
   if (!handle.isValid())
     return;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
   if (idx == SIZE_MAX)
     return;
 
-  auto& data = edm.getBehaviorData(idx);
+  auto &data = edm.getBehaviorData(idx);
   if (!data.isValid())
     return;
 
-  auto& follow = data.state.follow;
+  auto &follow = data.state.follow;
 
   if (message == "follow_close") {
     setFollowMode(FollowMode::CLOSE_FOLLOW);
@@ -368,8 +375,8 @@ void FollowBehavior::setMaxDistance(float maxDistance) {
 
 void FollowBehavior::setFollowMode(FollowMode mode) {
   m_followMode = mode;
-  // Entity formation offsets updated lazily in executeLogic() via EDM BehaviorData
-  // No need to iterate - each entity recalculates on next update
+  // Entity formation offsets updated lazily in executeLogic() via EDM
+  // BehaviorData No need to iterate - each entity recalculates on next update
 }
 
 void FollowBehavior::setCatchUpSpeed(float speedMultiplier) {
@@ -421,8 +428,8 @@ bool FollowBehavior::isInFormation() const {
 }
 
 float FollowBehavior::getDistanceToTarget() const {
-  // Returns -1.0f as this shared behavior instance doesn't track specific entities
-  // Per-entity distance available in EDM BehaviorData when needed
+  // Returns -1.0f as this shared behavior instance doesn't track specific
+  // entities Per-entity distance available in EDM BehaviorData when needed
   // Callers needing specific entity distance should query EDM directly
   return -1.0f;
 }
@@ -433,7 +440,7 @@ FollowBehavior::FollowMode FollowBehavior::getFollowMode() const {
 
 Vector2D FollowBehavior::getTargetPosition() const {
   // Phase 2 EDM Migration: Use handle-based target lookup
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   EntityHandle targetHandle = getTargetHandle();
   if (!targetHandle.isValid())
     return Vector2D(0, 0);
@@ -459,7 +466,8 @@ std::shared_ptr<AIBehavior> FollowBehavior::clone() const {
   clone->m_stopWhenTargetStops = m_stopWhenTargetStops;
   clone->m_predictiveFollowing = m_predictiveFollowing;
   clone->m_predictionTime = m_predictionTime;
-  // PATHFINDING CONSOLIDATION: Removed async flag - always uses PathfindingScheduler now
+  // PATHFINDING CONSOLIDATION: Removed async flag - always uses
+  // PathfindingScheduler now
   return clone;
 }
 
@@ -475,20 +483,24 @@ Vector2D FollowBehavior::calculateFormationOffset(int formationSlot) const {
   case FollowMode::LOOSE_FOLLOW:
     // First 3 NPCs: tight pet formation, stay very close
     if (formationSlot < 3) {
-      float angle = (formationSlot * 2.0f * M_PI / 3.0f) + (M_PI / 2.0f); // Spread behind (90-270 degrees)
-      float const distance = 40.0f + (formationSlot * 15.0f); // 40px, 55px, 70px
+      float angle = (formationSlot * 2.0f * M_PI / 3.0f) +
+                    (M_PI / 2.0f); // Spread behind (90-270 degrees)
+      float const distance =
+          40.0f + (formationSlot * 15.0f); // 40px, 55px, 70px
       return Vector2D(std::cos(angle) * distance, std::sin(angle) * distance);
     }
     // Next 3 NPCs: medium formation ring
     else if (formationSlot < 6) {
       float angle = ((formationSlot - 3) * 2.0f * M_PI / 3.0f) + (M_PI / 6.0f);
-      float const distance = 85.0f + ((formationSlot - 3) * 15.0f); // 85px, 100px, 115px
+      float const distance =
+          85.0f + ((formationSlot - 3) * 15.0f); // 85px, 100px, 115px
       return Vector2D(std::cos(angle) * distance, std::sin(angle) * distance);
     }
     // Additional NPCs: wide spread using golden angle for even distribution
     else {
       float angle = (formationSlot * 0.618f * 2.0f * M_PI); // Golden angle
-      float const distance = 130.0f + ((formationSlot % 4) * 20.0f); // 130-190px range
+      float const distance =
+          130.0f + ((formationSlot % 4) * 20.0f); // 130-190px range
       return Vector2D(std::cos(angle) * distance, std::sin(angle) * distance);
     }
 
@@ -560,7 +572,6 @@ Vector2D FollowBehavior::normalizeVector(const Vector2D &vector) const {
   return vector / magnitude;
 }
 
-
 void FollowBehavior::initializeFormationOffsets() {
   std::call_once(s_formationInitFlag, []() {
     s_escortFormationOffsets.reserve(8);
@@ -583,33 +594,38 @@ void FollowBehavior::releaseFormationSlot(int /*slot*/) {
 }
 
 // OPTIMIZATION: Extracted from lambda for better compiler optimization
-// This method handles path-following logic with TTL, goal change detection, and obstacle handling
-// LOCK-FREE VERSION: Uses BehaviorContext instead of EntityPtr
-bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& desiredPos, float speed) {
+// This method handles path-following logic with TTL, goal change detection, and
+// obstacle handling LOCK-FREE VERSION: Uses BehaviorContext instead of
+// EntityPtr
+bool FollowBehavior::tryFollowPathToGoal(BehaviorContext &ctx,
+                                         const Vector2D &desiredPos,
+                                         float speed) {
   const float nodeRadius = 20.0f; // Increased for faster path following
   const float pathTTL = 14.0f; // 14 seconds - reduce path churn when stationary
-  const float GOAL_CHANGE_THRESH_SQUARED = 200.0f * 200.0f; // Require 200px goal change to recalculate
+  const float GOAL_CHANGE_THRESH_SQUARED =
+      200.0f * 200.0f; // Require 200px goal change to recalculate
 
   // Use pre-fetched path data from context (no Instance() call needed)
   if (!ctx.pathData) {
     return false;
   }
-  auto& pathData = *ctx.pathData;
+  auto &pathData = *ctx.pathData;
   Vector2D currentPos = ctx.transform.position;
 
-  const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
-                            pathData.isFollowingPath() &&
-                            pathData.progressTimer < 0.8f);
+  const bool skipRefresh =
+      (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
+       pathData.progressTimer < 0.8f);
   // Check if path is stale
   bool const stale = (!skipRefresh && pathData.pathUpdateTimer > pathTTL);
 
   // Check if goal changed significantly
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   bool goalChanged = true;
   if (!skipRefresh && pathData.hasPath && pathData.pathLength > 0) {
     Vector2D lastGoal = edm.getPathGoal(ctx.edmIndex);
     // Use squared distance for performance
-    goalChanged = ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
+    goalChanged =
+        ((desiredPos - lastGoal).lengthSquared() > GOAL_CHANGE_THRESH_SQUARED);
   }
 
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
@@ -617,10 +633,11 @@ bool FollowBehavior::tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& d
 
   // Request new path if needed - result written directly to EDM
   // Check cooldown to prevent path request spam
-  if ((stale || goalChanged || stuckOnObstacle) && pathData.pathRequestCooldown <= 0.0f) {
+  if ((stale || goalChanged || stuckOnObstacle) &&
+      pathData.pathRequestCooldown <= 0.0f) {
     pathfinder().requestPathToEDM(ctx.edmIndex, currentPos, desiredPos,
                                   PathfinderManager::Priority::Normal);
-    pathData.pathRequestCooldown = 0.5f;  // Prevent spam for 500ms
+    pathData.pathRequestCooldown = 0.5f; // Prevent spam for 500ms
   }
 
   // Try to follow the path from EDM

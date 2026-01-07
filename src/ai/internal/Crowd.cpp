@@ -1,19 +1,19 @@
 /* Copyright (c) 2025 Hammer Forged Games
  * All rights reserved.
  * Licensed under the MIT License - see LICENSE file for details
-*/
+ */
 
 #include "ai/internal/Crowd.hpp"
 #include "managers/CollisionManager.hpp"
 #include <algorithm>
 #include <array>
-#include <cmath>
 
 namespace AIInternal {
 
 // PERFORMANCE OPTIMIZATION: Spatial query cache to reduce CollisionManager load
-// Caches queryArea results within the same frame to eliminate redundant spatial queries
-// Key insight: Many nearby entities query the same spatial regions each frame
+// Caches queryArea results within the same frame to eliminate redundant spatial
+// queries Key insight: Many nearby entities query the same spatial regions each
+// frame
 //
 // MEMORY MANAGEMENT: Uses buffer reuse pattern to avoid per-frame allocations
 // - Pre-allocated fixed-size array (no dynamic allocation per frame)
@@ -22,7 +22,7 @@ namespace AIInternal {
 struct SpatialQueryCache {
   struct CacheEntry {
     uint64_t frameNumber;
-    uint64_t queryKey;  // Store hash for fast validation (cheap integer compare)
+    uint64_t queryKey; // Store hash for fast validation (cheap integer compare)
     std::vector<EntityID> results;
   };
 
@@ -32,7 +32,7 @@ struct SpatialQueryCache {
 
   SpatialQueryCache() {
     // Pre-allocate capacity for all vectors to avoid per-frame reallocations
-    for (auto& entry : entries) {
+    for (auto &entry : entries) {
       entry.results.reserve(32); // Typical query returns ~10-30 entities
       entry.frameNumber = 0;
       entry.queryKey = 0;
@@ -40,7 +40,7 @@ struct SpatialQueryCache {
   }
 
   // Simple hash for position+radius (quantize to reduce unique keys)
-  static uint64_t hashQuery(const Vector2D& center, float radius) {
+  static uint64_t hashQuery(const Vector2D &center, float radius) {
     // Quantize position to 8-pixel grid to increase cache hits
     int32_t const qx = static_cast<int32_t>(center.getX() / 8.0f);
     int32_t const qy = static_cast<int32_t>(center.getY() / 8.0f);
@@ -52,11 +52,12 @@ struct SpatialQueryCache {
     return hash;
   }
 
-  bool lookup(const Vector2D& center, float radius, std::vector<EntityID>& outResults) {
+  bool lookup(const Vector2D &center, float radius,
+              std::vector<EntityID> &outResults) {
     uint64_t key = hashQuery(center, radius);
     size_t index = key % CACHE_SIZE;
 
-    const CacheEntry& entry = entries[index];
+    const CacheEntry &entry = entries[index];
     // Frame-based validation: entry is valid only if frame matches
     // No need to check 'valid' flag - frame comparison is sufficient
     if (entry.frameNumber == currentFrame && entry.queryKey == key) {
@@ -66,11 +67,12 @@ struct SpatialQueryCache {
     return false;
   }
 
-  void store(const Vector2D& center, float radius, const std::vector<EntityID>& results) {
+  void store(const Vector2D &center, float radius,
+             const std::vector<EntityID> &results) {
     uint64_t key = hashQuery(center, radius);
     size_t index = key % CACHE_SIZE;
 
-    CacheEntry& entry = entries[index];
+    CacheEntry &entry = entries[index];
     entry.frameNumber = currentFrame;
     entry.queryKey = key;
     entry.results = results; // Reuses existing capacity when possible
@@ -88,7 +90,8 @@ struct SpatialQueryCache {
 // Thread-local cache instance (one per worker thread)
 static thread_local SpatialQueryCache g_spatialCache;
 
-int CountNearbyEntities(EntityID excludeId, const Vector2D &center, float radius) {
+int CountNearbyEntities(EntityID excludeId, const Vector2D &center,
+                        float radius) {
   const auto &cm = CollisionManager::Instance();
 
   // Use thread-local vector to avoid repeated allocations
@@ -107,13 +110,15 @@ int CountNearbyEntities(EntityID excludeId, const Vector2D &center, float radius
   }
 
   // Count only actual entities (dynamic/kinematic, non-trigger, excluding self)
-  return std::count_if(queryResults.begin(), queryResults.end(),
-                       [excludeId, &cm](auto id) {
-                         return id != excludeId && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id);
-                       });
+  return std::count_if(
+      queryResults.begin(), queryResults.end(), [excludeId, &cm](auto id) {
+        return id != excludeId && (cm.isDynamic(id) || cm.isKinematic(id)) &&
+               !cm.isTrigger(id);
+      });
 }
 
-int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center, float radius,
+int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center,
+                                   float radius,
                                    std::vector<Vector2D> &outPositions) {
   outPositions.clear();
 
@@ -134,9 +139,11 @@ int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center, f
     g_spatialCache.store(center, radius, queryResults);
   }
 
-  // Collect positions of actual entities (dynamic/kinematic, non-trigger, excluding self)
+  // Collect positions of actual entities (dynamic/kinematic, non-trigger,
+  // excluding self)
   for (auto id : queryResults) {
-    if (id != excludeId && (cm.isDynamic(id) || cm.isKinematic(id)) && !cm.isTrigger(id)) {
+    if (id != excludeId && (cm.isDynamic(id) || cm.isKinematic(id)) &&
+        !cm.isTrigger(id)) {
       Vector2D entityPos;
       if (cm.getBodyCenter(id, entityPos)) {
         outPositions.push_back(entityPos);

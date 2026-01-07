@@ -4,27 +4,25 @@
  */
 
 #include "ai/behaviors/ChaseBehavior.hpp"
-#include "managers/AIManager.hpp"
-#include "managers/PathfinderManager.hpp"
-#include "managers/EntityDataManager.hpp"
-#include "ai/internal/SpatialPriority.hpp"
-#include "managers/CollisionManager.hpp"
 #include "ai/internal/Crowd.hpp"
-#include "core/Logger.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp"
+#include "managers/PathfinderManager.hpp"
 #include <chrono>
 #include <random>
 
 namespace {
 // Thread-safe RNG for stall recovery jitter
-std::mt19937& getThreadLocalRNG() {
-    static thread_local std::mt19937 rng(
-        static_cast<unsigned>(std::chrono::steady_clock::now().time_since_epoch().count()));
-    return rng;
+std::mt19937 &getThreadLocalRNG() {
+  static thread_local std::mt19937 rng(static_cast<unsigned>(
+      std::chrono::steady_clock::now().time_since_epoch().count()));
+  return rng;
 }
 } // namespace
 
-ChaseBehavior::ChaseBehavior(const HammerEngine::ChaseBehaviorConfig& config)
-    : m_config(config), m_chaseSpeed(config.chaseSpeed), m_maxRange(1000.0f), m_minRange(50.0f) {}
+ChaseBehavior::ChaseBehavior(const HammerEngine::ChaseBehaviorConfig &config)
+    : m_config(config), m_chaseSpeed(config.chaseSpeed), m_maxRange(1000.0f),
+      m_minRange(50.0f) {}
 
 ChaseBehavior::ChaseBehavior(float chaseSpeed, float maxRange, float minRange)
     : m_chaseSpeed(chaseSpeed), m_maxRange(maxRange), m_minRange(minRange) {
@@ -36,17 +34,19 @@ void ChaseBehavior::init(EntityHandle handle) {
   if (!handle.isValid())
     return;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx == SIZE_MAX) return;
+  if (idx == SIZE_MAX)
+    return;
 
-  // Initialize behavior data in EDM (required for pathData access in executeLogic)
+  // Initialize behavior data in EDM (required for pathData access in
+  // executeLogic)
   edm.initBehaviorData(idx, BehaviorType::Chase);
-  auto& data = edm.getBehaviorData(idx);
+  auto &data = edm.getBehaviorData(idx);
   data.setInitialized(true);
 
   // Initialize chase-specific state in EDM
-  auto& chase = data.state.chase;
+  auto &chase = data.state.chase;
   chase.isChasing = false;
   chase.hasLineOfSight = false;
   chase.timeWithoutSight = 0.0f;
@@ -59,20 +59,21 @@ void ChaseBehavior::init(EntityHandle handle) {
   chase.stallPositionVariance = 0.0f;
   chase.unstickTimer = 0.0f;
 
-  const auto& hotData = edm.getHotDataByIndex(idx);
+  const auto &hotData = edm.getHotDataByIndex(idx);
   chase.lastKnownTargetPos = hotData.transform.position;
   chase.currentDirection = Vector2D{0, 0};
   chase.lastStallPosition = Vector2D{0, 0};
 
   // Check if player is valid and in range
-  const auto& aiMgr = AIManager::Instance();
+  const auto &aiMgr = AIManager::Instance();
   if (aiMgr.isPlayerValid()) {
     Vector2D entityPos = hotData.transform.position;
     Vector2D targetPos = aiMgr.getPlayerPosition();
     float const distance = (targetPos - entityPos).length();
 
     chase.isChasing = (distance <= m_maxRange);
-    chase.hasLineOfSight = (distance <= m_maxRange); // Simplified line of sight check
+    chase.hasLineOfSight =
+        (distance <= m_maxRange); // Simplified line of sight check
   }
 }
 
@@ -80,12 +81,15 @@ EntityHandle ChaseBehavior::getTargetHandle() const {
   return AIManager::Instance().getPlayerHandle();
 }
 
-bool ChaseBehavior::checkLineOfSight(EntityHandle handle, const Vector2D& targetPos) const {
-  if (!handle.isValid()) return false;
+bool ChaseBehavior::checkLineOfSight(EntityHandle handle,
+                                     const Vector2D &targetPos) const {
+  if (!handle.isValid())
+    return false;
 
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx == SIZE_MAX) return false;
+  if (idx == SIZE_MAX)
+    return false;
 
   Vector2D entityPos = edm.getHotDataByIndex(idx).transform.position;
   float const distanceSquared = (targetPos - entityPos).lengthSquared();
@@ -95,23 +99,28 @@ bool ChaseBehavior::checkLineOfSight(EntityHandle handle, const Vector2D& target
 }
 
 // Cooldown helpers using EDM chase state
-bool ChaseBehavior::canRequestPath(const BehaviorData& data) const {
-  const auto& chase = data.state.chase;
-  return chase.pathRequestCooldown <= 0.0f && chase.stallRecoveryCooldown <= 0.0f;
+bool ChaseBehavior::canRequestPath(const BehaviorData &data) const {
+  const auto &chase = data.state.chase;
+  return chase.pathRequestCooldown <= 0.0f &&
+         chase.stallRecoveryCooldown <= 0.0f;
 }
 
-void ChaseBehavior::applyPathCooldown(BehaviorData& data, float cooldownSeconds) {
+void ChaseBehavior::applyPathCooldown(BehaviorData &data,
+                                      float cooldownSeconds) {
   data.state.chase.pathRequestCooldown = cooldownSeconds;
 }
 
-void ChaseBehavior::updateCooldowns(BehaviorData& data, float deltaTime) {
-  auto& chase = data.state.chase;
-  if (chase.pathRequestCooldown > 0.0f) chase.pathRequestCooldown -= deltaTime;
-  if (chase.stallRecoveryCooldown > 0.0f) chase.stallRecoveryCooldown -= deltaTime;
-  if (chase.behaviorChangeCooldown > 0.0f) chase.behaviorChangeCooldown -= deltaTime;
+void ChaseBehavior::updateCooldowns(BehaviorData &data, float deltaTime) {
+  auto &chase = data.state.chase;
+  if (chase.pathRequestCooldown > 0.0f)
+    chase.pathRequestCooldown -= deltaTime;
+  if (chase.stallRecoveryCooldown > 0.0f)
+    chase.stallRecoveryCooldown -= deltaTime;
+  if (chase.behaviorChangeCooldown > 0.0f)
+    chase.behaviorChangeCooldown -= deltaTime;
 }
 
-void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
+void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
   if (!m_active) {
     return;
   }
@@ -121,27 +130,31 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
     return;
   }
 
-  auto& data = *ctx.behaviorData;
-  auto& chase = data.state.chase;
+  auto &data = *ctx.behaviorData;
+  auto &chase = data.state.chase;
 
   // PERFORMANCE OPTIMIZATION: Cache crowd analysis results every 3-5 seconds
   // Uses BehaviorData common fields (lastCrowdAnalysis, cachedNearbyCount)
   data.lastCrowdAnalysis += ctx.deltaTime;
-  float crowdCacheInterval = 3.0f + (static_cast<float>(ctx.entityId % 200) * 0.01f); // 3-5 seconds
+  float crowdCacheInterval =
+      3.0f + (static_cast<float>(ctx.entityId % 200) * 0.01f); // 3-5 seconds
   if (data.lastCrowdAnalysis >= crowdCacheInterval) {
-    // Query nearby entities for separation steering - result stored in BehaviorData common
+    // Query nearby entities for separation steering - result stored in
+    // BehaviorData common
     constexpr float kCrowdQueryRadius = 80.0f;
     std::vector<Vector2D> nearbyPositions;
     data.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
-        ctx.entityId, ctx.transform.position, kCrowdQueryRadius, nearbyPositions);
+        ctx.entityId, ctx.transform.position, kCrowdQueryRadius,
+        nearbyPositions);
 
     // Store cluster center (can't store full vector in union)
     if (!nearbyPositions.empty()) {
       Vector2D sum{0, 0};
-      for (const auto& pos : nearbyPositions) {
+      for (const auto &pos : nearbyPositions) {
         sum = sum + pos;
       }
-      data.cachedClusterCenter = sum * (1.0f / static_cast<float>(nearbyPositions.size()));
+      data.cachedClusterCenter =
+          sum * (1.0f / static_cast<float>(nearbyPositions.size()));
     }
     data.lastCrowdAnalysis = 0.0f;
   }
@@ -169,7 +182,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
 
   // State: TARGET_IN_RANGE - Check if target is within chase range
   if (distanceSquared <= maxRangeSquared) {
-    // Update line of sight (simplified - just distance check in BehaviorContext path)
+    // Update line of sight (simplified - just distance check in BehaviorContext
+    // path)
     chase.hasLineOfSight = (distanceSquared <= maxRangeSquared);
     chase.lastKnownTargetPos = targetPos;
 
@@ -177,14 +191,14 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
     if (distanceSquared > minRangeSquared && ctx.pathData) {
       // CACHE-AWARE CHASE: Smart pathfinding with target tracking
       // Use pre-fetched path data from context (no Instance() call needed)
-      auto& pathData = *ctx.pathData;
+      auto &pathData = *ctx.pathData;
 
       // Update path timer using PathData
       pathData.pathUpdateTimer += ctx.deltaTime;
 
-      const bool skipRefresh = (pathData.pathRequestCooldown > 0.0f &&
-                                pathData.isFollowingPath() &&
-                                pathData.progressTimer < 0.8f);
+      const bool skipRefresh =
+          (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
+           pathData.progressTimer < 0.8f);
       bool needsNewPath = false;
 
       // OPTIMIZED: Further reduced pathfinding frequency for better performance
@@ -192,7 +206,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
       // 1. No current path exists, OR
       // 2. Target moved very significantly (>300px), OR
       // 3. Path is getting quite stale (>8 seconds old)
-      const float PATH_INVALIDATION_DISTANCE = m_config.pathInvalidationDistance;
+      const float PATH_INVALIDATION_DISTANCE =
+          m_config.pathInvalidationDistance;
       const float PATH_REFRESH_INTERVAL = m_config.pathRefreshInterval;
 
       if (!skipRefresh) {
@@ -202,10 +217,13 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           needsNewPath = true;
         } else {
           // Check if target moved significantly from when path was computed
-          auto& edm = EntityDataManager::Instance();
+          auto &edm = EntityDataManager::Instance();
           Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
-          float const targetMovementSquared = (targetPos - pathGoal).lengthSquared();
-          needsNewPath = (targetMovementSquared > PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
+          float const targetMovementSquared =
+              (targetPos - pathGoal).lengthSquared();
+          needsNewPath =
+              (targetMovementSquared >
+               PATH_INVALIDATION_DISTANCE * PATH_INVALIDATION_DISTANCE);
         }
       }
 
@@ -217,9 +235,11 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
 
       if ((needsNewPath || stuckOnObstacle) && canRequestPath(data)) {
         // PERFORMANCE: Use squared distance to avoid expensive sqrt
-        float const minRangeCheckSquared = (m_minRange * 1.5f) * (m_minRange * 1.5f);
+        float const minRangeCheckSquared =
+            (m_minRange * 1.5f) * (m_minRange * 1.5f);
         if (distanceSquared < minRangeCheckSquared) {
-          ctx.transform.velocity = Vector2D(0, 0);  // Stop movement when close enough
+          ctx.transform.velocity =
+              Vector2D(0, 0); // Stop movement when close enough
           return;
         }
 
@@ -231,14 +251,15 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
         applyPathCooldown(data, m_config.pathRequestCooldown);
       }
 
-      // State: PATH_FOLLOWING - inline path following logic using EDM waypoint pool
+      // State: PATH_FOLLOWING - inline path following logic using EDM waypoint
+      // pool
       if (pathData.isFollowingPath()) {
         Vector2D waypoint = ctx.pathData->currentWaypoint;
         Vector2D toWaypoint = waypoint - entityPos;
         float dist = toWaypoint.length();
 
         if (dist < m_navRadius) {
-          auto& edm = EntityDataManager::Instance();
+          auto &edm = EntityDataManager::Instance();
           edm.advanceWaypointWithCache(ctx.edmIndex);
           if (pathData.isFollowingPath()) {
             waypoint = ctx.pathData->currentWaypoint;
@@ -254,7 +275,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           ctx.transform.velocity = direction * m_chaseSpeed;
           pathData.progressTimer = 0.0f;
 
-          // Simple crowd management - use cached chaser count for lateral spreading
+          // Simple crowd management - use cached chaser count for lateral
+          // spreading
           chase.crowdCheckTimer += ctx.deltaTime;
           if (chase.crowdCheckTimer >= m_config.crowdCheckInterval) {
             chase.crowdCheckTimer = 0.0f;
@@ -264,7 +286,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           if (chase.cachedChaserCount > 3) {
             Vector2D const toTarget = (targetPos - entityPos).normalized();
             Vector2D const lateral(-toTarget.getY(), toTarget.getX());
-            float lateralBias = ((float)(ctx.entityId % 3) - 1.0f) * 15.0f; // -15, 0, or +15
+            float lateralBias =
+                ((float)(ctx.entityId % 3) - 1.0f) * 15.0f; // -15, 0, or +15
             Vector2D const adjustedTarget = targetPos + lateral * lateralBias;
             Vector2D const newDir = (adjustedTarget - entityPos).normalized();
             ctx.transform.velocity = newDir * m_chaseSpeed;
@@ -276,7 +299,7 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           Vector2D direction = (targetPos - entityPos);
           direction.normalize();
           ctx.transform.velocity = direction * m_chaseSpeed;
-          pathData.progressTimer = 0.0f;  // Reset EDM timer for stall detection
+          pathData.progressTimer = 0.0f; // Reset EDM timer for stall detection
         }
       } else {
         // Direct movement toward target with crowd awareness
@@ -287,16 +310,19 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
         int const nearbyCount = data.cachedNearbyCount;
 
         if (nearbyCount > 1) {
-          // Add minimal lateral offset to reduce perfect stacking while maintaining chase
+          // Add minimal lateral offset to reduce perfect stacking while
+          // maintaining chase
           Vector2D const lateral(-direction.getY(), direction.getX());
-          float offset = ((float)(ctx.entityId % 3) - 1.0f) * 20.0f; // Small spread: -20 to +20
-          direction = direction + lateral * (offset / 400.0f); // Very small lateral bias
+          float offset = ((float)(ctx.entityId % 3) - 1.0f) *
+                         20.0f; // Small spread: -20 to +20
+          direction = direction +
+                      lateral * (offset / 400.0f); // Very small lateral bias
           direction.normalize();
         }
 
         // Set velocity directly - CollisionManager handles overlap resolution
         ctx.transform.velocity = direction * m_chaseSpeed;
-        pathData.progressTimer = 0.0f;  // Reset EDM timer for stall detection
+        pathData.progressTimer = 0.0f; // Reset EDM timer for stall detection
       }
 
       // Update chase state in EDM
@@ -304,7 +330,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
 
       // SIMPLIFIED: Basic stall detection using PathData.stallTimer
       float currentSpeed = ctx.transform.velocity.length();
-      const float stallThreshold = std::max(1.0f, m_chaseSpeed * m_config.stallSpeedMultiplier);
+      const float stallThreshold =
+          std::max(1.0f, m_chaseSpeed * m_config.stallSpeedMultiplier);
       const float stallTimeLimit = m_config.stallTimeout;
 
       if (currentSpeed < stallThreshold) {
@@ -319,8 +346,8 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
           float jitter = jitterDist(getThreadLocalRNG());
           Vector2D const dir = (targetPos - entityPos).normalized();
           float c = std::cos(jitter), s = std::sin(jitter);
-          Vector2D const rotated(dir.getX()*c - dir.getY()*s,
-                         dir.getX()*s + dir.getY()*c);
+          Vector2D const rotated(dir.getX() * c - dir.getY() * s,
+                                 dir.getX() * s + dir.getY() * c);
           ctx.transform.velocity = rotated * m_chaseSpeed;
         }
       } else {
@@ -352,25 +379,26 @@ void ChaseBehavior::executeLogic(BehaviorContext& ctx) {
 void ChaseBehavior::clean(EntityHandle handle) {
   // Stop the entity's movement and clear EDM path data when cleaning up
   if (handle.isValid()) {
-    auto& edm = EntityDataManager::Instance();
+    auto &edm = EntityDataManager::Instance();
     size_t idx = edm.getIndex(handle);
     if (idx != SIZE_MAX) {
       edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
-      edm.clearPathData(idx);  // Clear path state in EDM
-      edm.clearBehaviorData(idx);  // Clear behavior state in EDM
+      edm.clearPathData(idx);     // Clear path state in EDM
+      edm.clearBehaviorData(idx); // Clear behavior state in EDM
     }
   }
 }
 
 void ChaseBehavior::onMessage(EntityHandle handle, const std::string &message) {
-  auto& edm = EntityDataManager::Instance();
+  auto &edm = EntityDataManager::Instance();
   size_t idx = handle.isValid() ? edm.getIndex(handle) : SIZE_MAX;
-  if (idx == SIZE_MAX) return;
+  if (idx == SIZE_MAX)
+    return;
 
-  auto& hotData = edm.getHotDataByIndex(idx);
+  auto &hotData = edm.getHotDataByIndex(idx);
 
   // Get behavior data for state updates
-  BehaviorData* behaviorData = nullptr;
+  BehaviorData *behaviorData = nullptr;
   if (edm.hasBehaviorData(idx)) {
     behaviorData = &edm.getBehaviorData(idx);
   }
@@ -383,7 +411,7 @@ void ChaseBehavior::onMessage(EntityHandle handle, const std::string &message) {
 
     // Reinitialize chase state when resuming
     if (handle.isValid()) {
-      const auto& aiMgr = AIManager::Instance();
+      const auto &aiMgr = AIManager::Instance();
       if (aiMgr.isPlayerValid()) {
         init(handle);
       }
@@ -448,14 +476,15 @@ void ChaseBehavior::onTargetLost(EntityHandle handle) {
   (void)handle; // Mark parameter as intentionally unused
 }
 
-
-void ChaseBehavior::handleNoLineOfSight(EntityHandle handle, BehaviorData& data) {
-  auto& edm = EntityDataManager::Instance();
+void ChaseBehavior::handleNoLineOfSight(EntityHandle handle,
+                                        BehaviorData &data) {
+  auto &edm = EntityDataManager::Instance();
   size_t idx = edm.getIndex(handle);
-  if (idx == SIZE_MAX) return;
+  if (idx == SIZE_MAX)
+    return;
 
-  auto& hotData = edm.getHotDataByIndex(idx);
-  auto& chase = data.state.chase;
+  auto &hotData = edm.getHotDataByIndex(idx);
+  auto &chase = data.state.chase;
 
   if (chase.timeWithoutSight < static_cast<float>(m_maxTimeWithoutSight)) {
     Vector2D entityPos = hotData.transform.position;
@@ -472,7 +501,7 @@ void ChaseBehavior::handleNoLineOfSight(EntityHandle handle, BehaviorData& data)
       hotData.transform.velocity = Vector2D(0, 0);
     }
 
-    chase.timeWithoutSight += 1.0f;  // Increment as float
+    chase.timeWithoutSight += 1.0f; // Increment as float
   } else {
     // Timeout - stop chasing efficiently
     if (chase.isChasing) {
