@@ -55,22 +55,34 @@ m_animationMap["walking"] = AnimationConfig{1, 4, 100, true};  // Row 1, 4 frame
 
 **Data-driven usage:** Pass AnimationConfig at spawn time → values extracted into NPCRenderData.
 
-### NPCRenderData Struct (32 bytes, cache-friendly)
+**Note:** NPC/Entity `playAnimation()` adds +1 to `row` for `TextureManager`'s 1-based rows.  
+`NPCRenderController` renders via SDL directly, so keep rows 0-based.
+
+### NPCRenderData Struct (cache-friendly, no strings in hot path)
+
+**Note:** `std::string` makes the struct much larger than 32 bytes. Keep render data POD-like and store debug strings separately (e.g., `m_npcDebugNames` or `#ifndef NDEBUG`).
 
 ```cpp
 struct NPCRenderData {
-    SDL_Texture* cachedTexture{nullptr};  // 8 bytes - Cached at spawn, used for rendering
-    uint16_t frameWidth{32};              // 2 bytes - Single frame width (from texture)
-    uint16_t frameHeight{32};             // 2 bytes - Single frame height (from texture)
-    uint8_t currentFrame{0};              // 1 byte - Current animation frame index
-    uint8_t numIdleFrames{2};             // 1 byte - FROM AnimationConfig (idleConfig.frameCount)
-    uint8_t numMoveFrames{4};             // 1 byte - FROM AnimationConfig (moveConfig.frameCount)
-    uint8_t idleSpeed{150};               // 1 byte - FROM AnimationConfig (idleConfig.speed)
-    uint8_t moveSpeed{100};               // 1 byte - FROM AnimationConfig (moveConfig.speed)
-    uint8_t flipMode{0};                  // 1 byte - SDL_FLIP_NONE or SDL_FLIP_HORIZONTAL
-    uint8_t padding[6]{};                 // 6 bytes - Align to 32 bytes
-    float animationAccumulator{0.0f};     // 4 bytes - Time accumulator for frame advancement
-    std::string textureID;                // For debugging only - NOT used in render
+    SDL_Texture* cachedTexture{nullptr};  // Cached at spawn, used for rendering
+    uint16_t frameWidth{32};              // Single frame width (from texture)
+    uint16_t frameHeight{32};             // Single frame height (from texture)
+    uint16_t idleSpeedMs{150};            // FROM AnimationConfig (idleConfig.speed)
+    uint16_t moveSpeedMs{100};            // FROM AnimationConfig (moveConfig.speed)
+    uint8_t currentFrame{0};              // Current animation frame index
+    uint8_t numIdleFrames{2};             // FROM AnimationConfig (idleConfig.frameCount)
+    uint8_t numMoveFrames{4};             // FROM AnimationConfig (moveConfig.frameCount)
+    uint8_t idleRow{0};                   // FROM AnimationConfig (idleConfig.row)
+    uint8_t moveRow{1};                   // FROM AnimationConfig (moveConfig.row)
+    uint8_t flipMode{0};                  // SDL_FLIP_NONE or SDL_FLIP_HORIZONTAL
+    uint8_t padding[3]{};                 // Align to 4 bytes
+    float animationAccumulator{0.0f};     // Time accumulator for frame advancement
+};
+
+// Optional debug/meta storage (avoid in hot path)
+struct NPCMetaData {
+    std::string textureID;
+    std::string displayName;
 };
 ```
 
@@ -84,11 +96,15 @@ struct NPCRenderData {
 - [ ] **1.2** Add storage vector: `std::vector<NPCRenderData> m_npcRenderData;`
 - [ ] **1.3** Add accessor: `NPCRenderData& getNPCRenderData(size_t index);`
 - [ ] **1.4** Add const accessor: `const NPCRenderData& getNPCRenderData(size_t index) const;`
-- [ ] **1.5** Reserve capacity in constructor to match entity capacity
-- [ ] **1.6** Add `createDataDrivenNPC(position, textureID, idleConfig, moveConfig)` method
-- [ ] **1.7** Implement texture caching in createDataDrivenNPC (lookup from TextureManager)
-- [ ] **1.8** Add `destroyDataDrivenNPC(EntityHandle handle)` method for cleanup
-- [ ] **1.9** Compile and verify no errors
+- [ ] **1.5** Reserve capacity in `EntityDataManager::init()` alongside `m_hotData`
+- [ ] **1.6** Ensure `allocateSlot()` also `emplace_back()` NPCRenderData so arrays stay parallel
+- [ ] **1.7** Clear NPCRenderData in `freeSlot()` and `clean()` (no stale pointers)
+- [ ] **1.8** Add `createDataDrivenNPC(position, textureID, idleConfig, moveConfig)`:
+  - Use `TextureManager::getTexturePtr()` + `SDL_GetTextureSize()` to compute frame dims
+  - Call existing `createNPC(position, halfWidth, halfHeight)` to set EDM hot data
+  - Fill `NPCRenderData` at `edmIndex` (idle/move rows, frame counts, speeds)
+- [ ] **1.9** Optional: store `textureID` / display name in a separate debug vector or meta struct
+- [ ] **1.10** Compile and verify no errors
 
 ---
 
@@ -106,6 +122,8 @@ struct NPCRenderData {
 - **Renderer passed in** from GameState::render() (not stored)
 - **Uses getActiveIndices()** for active tier filtering
 - **Velocity threshold** of 15.0f for Moving/Idle determination
+- **Controller owns NPC spawn bookkeeping + UI/debug metadata** (EDM remains source of truth)
+- **Fast render path**: cache EDM indices per frame to avoid handle lookups
 
 ### Header Implementation
 
@@ -130,9 +148,13 @@ public:
 
     // Called from GameState::render() - renderer passed in
     void renderNPCs(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha);
+    void clearSpawnedNPCs();  // Demo-state cleanup via EDM queries
 
 private:
     static constexpr float MOVEMENT_THRESHOLD = 15.0f;
+    std::vector<size_t> m_activeNpcIndices;  // Cached EDM indices for fast update/render
+    std::vector<NPCMetaData> m_npcMetaData;  // Optional UI/debug (keyed by EDM index)
+    size_t m_spawnedCount{0};
 };
 
 #endif
@@ -145,27 +167,32 @@ private:
 - [ ] **2.3** Create `NPCRenderController.hpp` with header above
 - [ ] **2.4** Create `NPCRenderController.cpp`
 - [ ] **2.5** Implement `update(float deltaTime)`:
-  - [ ] Get `getActiveIndices()` from EntityDataManager
-  - [ ] Filter by `EntityKind::NPC`
+  - [ ] Refresh cached NPC indices from `getActiveIndices()` (filter NPCs once per frame)
   - [ ] Update animation frame based on velocity
   - [ ] Update flip mode based on velocity.getX()
 - [ ] **2.6** Implement `renderNPCs(renderer, camX, camY, alpha)`:
-  - [ ] Get `getActiveIndices()` from EntityDataManager
-  - [ ] Filter by `EntityKind::NPC`
+  - [ ] Use cached NPC indices (no handle lookup)
   - [ ] Interpolate position using alpha
-  - [ ] Compute row from velocity (0=Idle, 1=Moving)
+  - [ ] Compute row from velocity (idleRow/moveRow)
   - [ ] Render using SDL_RenderTextureRotated
-- [ ] **2.7** Add to CMakeLists.txt (src files)
-- [ ] **2.8** Compile and verify no errors
+- [ ] **2.7** Implement `clearSpawnedNPCs()`:
+  - [ ] Query EDM NPC indices (e.g., `getIndicesByKind(EntityKind::NPC)`)
+  - [ ] Unregister from AI, destroy via EDM
+  - [ ] Reset spawn counters/metadata
+- [ ] **2.8** Add to CMakeLists.txt (src files)
+- [ ] **2.9** Compile and verify no errors
 
 ### Animation Logic Reference
 
 ```cpp
 // In update():
-float velocityMag = hotData.velocity.length();
+const auto& transform = hotData.transform;
+float velocityMag = transform.velocity.length();
 bool isMoving = velocityMag > MOVEMENT_THRESHOLD;
 uint8_t targetFrames = isMoving ? renderData.numMoveFrames : renderData.numIdleFrames;
-float speed = (isMoving ? renderData.moveSpeed : renderData.idleSpeed) / 1000.0f;
+float speed = static_cast<float>(isMoving ? renderData.moveSpeedMs : renderData.idleSpeedMs) / 1000.0f;
+if (speed <= 0.0f) speed = 0.001f;  // Avoid divide-by-zero
+if (targetFrames == 0) targetFrames = 1;
 
 renderData.animationAccumulator += deltaTime;
 if (renderData.animationAccumulator >= speed) {
@@ -174,8 +201,8 @@ if (renderData.animationAccumulator >= speed) {
 }
 
 // Flip based on velocity X
-if (std::abs(hotData.velocity.getX()) > MOVEMENT_THRESHOLD) {
-    renderData.flipMode = (hotData.velocity.getX() < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+if (std::abs(transform.velocity.getX()) > MOVEMENT_THRESHOLD) {
+    renderData.flipMode = (transform.velocity.getX() < 0) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
 }
 ```
 
@@ -184,11 +211,14 @@ if (std::abs(hotData.velocity.getX()) > MOVEMENT_THRESHOLD) {
 ```cpp
 // In renderNPCs():
 // Interpolate position
-Vector2D pos = hotData.previousPosition +
-    (hotData.position - hotData.previousPosition) * alpha;
+const auto& transform = hotData.transform;
+Vector2D pos = transform.previousPosition +
+    (transform.position - transform.previousPosition) * alpha;
 
-// Velocity determines row: 0=Idle, 1=Moving
-int row = (hotData.velocity.length() > MOVEMENT_THRESHOLD) ? 1 : 0;
+// Velocity determines row: idleRow vs moveRow
+int row = (transform.velocity.length() > MOVEMENT_THRESHOLD)
+    ? renderData.moveRow
+    : renderData.idleRow;
 
 SDL_FRect srcRect = {
     static_cast<float>(renderData.currentFrame * renderData.frameWidth),
@@ -217,7 +247,7 @@ SDL_RenderTextureRotated(renderer, renderData.cachedTexture,
 - `include/ai/behaviors/AttackBehavior.hpp`
 - `src/ai/behaviors/AttackBehavior.cpp`
 
-### Design: Lunge Attack
+### Design: Lunge Attack (BehaviorData-driven)
 
 - **Velocity burst** toward target (2x normal speed)
 - **Existing cooldown** system remains
@@ -227,30 +257,31 @@ SDL_RenderTextureRotated(renderer, renderData.cachedTexture,
 ### Lunge Implementation
 
 ```cpp
-void AttackBehavior::executeLungeAttack(BehaviorContext& ctx, const Vector2D& targetPos) {
-    auto& state = m_entityStates[ctx.entityId];
-    if (state.attackTimer > 0) return;  // Use existing cooldown
+void AttackBehavior::executeLungeAttack(BehaviorContext& ctx, BehaviorData& data,
+                                        const Vector2D& targetPos) {
+    auto& attack = data.state.attack;
+    if (attack.attackTimer > 0.0f) return;  // Use existing cooldown
 
     // Calculate lunge direction
     Vector2D direction = (targetPos - ctx.transform.position).normalized();
 
-    // Apply velocity burst
+    // Apply velocity burst directly to EDM-backed transform
     ctx.transform.velocity = direction * m_movementSpeed * 2.0f;
 
     // Start cooldown
-    state.attackTimer = m_attackCooldown;
-    state.isLunging = true;
+    attack.attackTimer = m_attackCooldown;
+    attack.isCharging = true; // Reuse existing flag or add isLunging if clarity needed
 }
 ```
 
 ### Implementation Checklist
 
-- [ ] **3.1** Add `bool isLunging{false};` to EntityState struct
-- [ ] **3.2** Add `float m_lungeSpeed{4.0f};` member variable
-- [ ] **3.3** Simplify `executeAttack()` to just call lunge
-- [ ] **3.4** Remove `notifyAnimationStateChange()` calls
-- [ ] **3.5** Remove EntityPtr dependencies where possible
-- [ ] **3.6** Keep existing cooldown and damage calculation
+- [ ] **3.1** Add `bool isLunging` (or reuse `isCharging`) in `BehaviorData::state.attack`
+- [ ] **3.2** Add `float m_lungeSpeed{...};` member variable
+- [ ] **3.3** Simplify `executeAttack()`/`updateAttacking()` to call lunge only
+- [ ] **3.4** Remove `notifyAnimationStateChange()` + NPC dynamic_cast paths
+- [ ] **3.5** Remove `EntityPtr` usage in AttackBehavior (use `BehaviorContext` + EDM)
+- [ ] **3.6** Keep existing cooldown/damage logic, update `attack.attackTimer`
 - [ ] **3.7** Compile and verify AI tests pass
 
 ---
@@ -271,18 +302,17 @@ void AttackBehavior::executeLungeAttack(BehaviorContext& ctx, const Vector2D& ta
 // Add member (direct, not pointer):
 NPCRenderController m_npcRenderCtrl;
 
-// Change spawned NPCs storage:
-// OLD: std::vector<std::shared_ptr<NPC>> m_spawnedNPCs;
-// NEW: std::vector<EntityHandle> m_spawnedNPCHandles;
+// Remove spawned NPC storage from GameState (moves into NPCRenderController cache/metadata).
 ```
 
 **Spawning:**
 ```cpp
 // OLD:
 auto npc = NPC::create(textureID, position);
-npc->setNavRadius(18.0f);
-npc->setBehavior(behaviorName);
-m_spawnedNPCs.push_back(npc);
+npc->initializeInventory();
+// ... AIManager::registerEntity(npc->getHandle(), behaviorName);
+m_npcsById[handle.getId()] = npc;
+m_npcsByEdmIndex[edmIdx] = npc;
 
 // NEW:
 AnimationConfig idleConfig{0, 2, 150, true};
@@ -291,15 +321,14 @@ AnimationConfig moveConfig{1, 4, 100, true};
 EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
     position, textureID, idleConfig, moveConfig);
 
-// Collision halfSize derived from frame dimensions (frameWidth/2, frameHeight/2)
-Vector2D halfSize(16.0f, 16.0f);  // Or compute from renderData.frameWidth/2
-CollisionManager::Instance().addCollisionBodySOA(
-    handle.getId(), position, halfSize, CollisionType::DYNAMIC, false);
+// Collision: dynamic bodies live in EntityDataManager (no CollisionManager add)
+// Use createDataDrivenNPC() to compute frame sizes and pass halfWidth/halfHeight to createNPC().
+// If needed, update EDM hotData half sizes after spawn.
 
 // Register with AI (navRadius now set via behavior or AIManager)
 AIManager::Instance().registerEntity(handle, behaviorName);
 
-m_spawnedNPCHandles.push_back(handle);
+// NPCRenderController bookkeeping (optional): register meta/spawn counters if needed
 ```
 
 **Update:**
@@ -310,13 +339,7 @@ m_npcRenderCtrl.update(deltaTime);
 
 **Render:**
 ```cpp
-// OLD:
-for (const auto& npc : m_spawnedNPCs) {
-    if (npc && npc->isInActiveTier()) {
-        npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-    }
-}
-
+// OLD: (manual NPC iteration in GameState)
 // NEW:
 m_npcRenderCtrl.renderNPCs(renderer, renderCamX, renderCamY, interpolationAlpha);
 ```
@@ -325,31 +348,27 @@ m_npcRenderCtrl.renderNPCs(renderer, renderCamX, renderCamY, interpolationAlpha)
 
 - [ ] **4.1** Add NPCRenderController include to EventDemoState.hpp
 - [ ] **4.2** Add `NPCRenderController m_npcRenderCtrl;` member
-- [ ] **4.3** Change `m_spawnedNPCs` to `std::vector<EntityHandle> m_spawnedNPCHandles`
-- [ ] **4.4** Update spawning code to use `createDataDrivenNPC()`
-- [ ] **4.5** Add `m_npcRenderCtrl.update(deltaTime)` in update()
-- [ ] **4.6** Replace NPC render loop with `m_npcRenderCtrl.renderNPCs(...)`
-- [ ] **4.7** Update cleanup code for EntityHandles (see Cleanup section below)
-- [ ] **4.8** Test: Spawn 10 NPCs, verify rendering and animation
-- [ ] **4.9** Test: Spawn 100 NPCs, verify performance
+- [ ] **4.3** Remove NPC storage from EventDemoState (controller owns cache/metadata)
+- [ ] **4.4** Decide on NPC inventory/trading: move to data-driven component or remove demo calls (`initializeInventory()`)
+- [ ] **4.5** Update spawning code to use `createDataDrivenNPC()`
+- [ ] **4.6** Add `m_npcRenderCtrl.update(deltaTime)` in update()
+- [ ] **4.7** Replace NPC render loop with `m_npcRenderCtrl.renderNPCs(...)`
+- [ ] **4.8** Update cleanup to delegate to NPCRenderController (see Cleanup section below)
+- [ ] **4.9** Update UI/status text to use NPCRenderController counters or EDM counts
+- [ ] **4.10** Test: Spawn 10 NPCs, verify rendering and animation
+- [ ] **4.11** Test: Spawn 100 NPCs, verify performance
 
 ### NPC Cleanup (Destruction)
 
 ```cpp
 // OLD (NPC class cleanup):
-m_spawnedNPCs.clear();  // shared_ptr destructor handles everything
+m_npcsById.clear();
+m_npcsByEdmIndex.clear();
 
 // NEW (Data-driven cleanup):
-for (auto& handle : m_spawnedNPCHandles) {
-    if (handle.isValid()) {
-        // Unregister from managers (order matters)
-        AIManager::Instance().unregisterEntity(handle);
-        CollisionManager::Instance().removeBody(handle.getId());
-        EntityDataManager::Instance().destroyEntity(handle);
-        // NPCRenderData cleared automatically when entity destroyed
-    }
-}
-m_spawnedNPCHandles.clear();
+// Delegate to NPCRenderController which owns spawn bookkeeping.
+// clearSpawnedNPCs() should query EDM NPC indices and destroy via EDM.
+m_npcRenderCtrl.clearSpawnedNPCs();
 ```
 
 ### NavRadius Handling
@@ -381,10 +400,10 @@ When an NPC dies during gameplay (not state cleanup):
 void onNPCDeath(EntityHandle handle) {
     // 1. Mark as dead in EDM (stops AI updates, render skips dead entities)
     auto& hotData = EntityDataManager::Instance().getHotData(handle);
-    hotData.isAlive = false;
+    hotData.setAlive(false);
 
-    // 2. Remove from collision (no more physics)
-    CollisionManager::Instance().removeBody(handle.getId());
+    // 2. Remove from collision (dynamic bodies are EDM-only)
+    CollisionManager::Instance().removeCollisionBody(handle.getId());  // No-op for dynamics
 
     // 3. Unregister from AI (no more behavior updates)
     AIManager::Instance().unregisterEntity(handle);
@@ -396,8 +415,8 @@ void onNPCDeath(EntityHandle handle) {
 }
 ```
 
-**Key point:** Setting `isAlive = false` causes:
-- `NPCRenderController::renderNPCs()` skips the entity (checks `hotData.isAlive`)
+**Key point:** Calling `hotData.setAlive(false)` causes:
+- `NPCRenderController::renderNPCs()` skips the entity (checks `hotData.isAlive()`)
 - `NPCRenderController::update()` skips animation updates
 - AIManager skips behavior updates for dead entities
 
@@ -410,21 +429,23 @@ void onNPCDeath(EntityHandle handle) {
 ```
 src/gameStates/GamePlayState.cpp       ← Primary gameplay state
 src/gameStates/EventDemoState.cpp      ← Demo state (covered in Phase 4)
-src/controllers/combat/CombatController.cpp  ← Return EntityHandle
+src/controllers/combat/CombatController.cpp  ← Remove NPC include; return handle data
 src/events/NPCSpawnEvent.cpp           ← Update spawn event
 src/ai/behaviors/AttackBehavior.cpp    ← Already simplified (Phase 3)
 src/ai/behaviors/PatrolBehavior.cpp    ← Check for NPC dependencies
+src/gameStates/GamePlayState.cpp       ← Use EntityHandle + EDM for target UI
 ```
 
 ### Implementation Checklist
 
 - [ ] **5.1** Search for all `#include "entities/NPC.hpp"` references
 - [ ] **5.2** Convert `GamePlayState.cpp` following Phase 4 pattern
-- [ ] **5.3** Update `NPCSpawnEvent.cpp` to use data-driven spawning
-- [ ] **5.4** Update `PatrolBehavior.cpp` if it has NPC-specific code
-- [ ] **5.5** Update `CombatController.cpp` to use EntityHandle (Phase 6)
-- [ ] **5.6** Verify each file compiles
-- [ ] **5.7** Test each state manually
+- [ ] **5.3** Update `NPCSpawnEvent.cpp` + EventManager APIs to use EntityHandle (or delegate spawning to GameStates only)
+- [ ] **5.4** Update `PatrolBehavior.cpp` to remove unused NPC include
+- [ ] **5.5** Update `CombatController.cpp` to expose target handle data for UI
+- [ ] **5.6** Update `GamePlayState.cpp` target UI to read EDM/metadata
+- [ ] **5.7** Verify each file compiles
+- [ ] **5.8** Test each state manually
 
 ---
 
@@ -460,11 +481,12 @@ src/events/NPCSpawnEvent.cpp     ← Update or remove
 - [ ] **6.1** Verify all GameStates converted (no NPC.hpp includes remain)
 - [ ] **6.2** Update CombatController to return EntityHandle instead of NPCPtr
 - [ ] **6.3** Remove `NPCPtr` type alias from Entity.hpp or related files
-- [ ] **6.4** Delete NPC.hpp and NPC.cpp
-- [ ] **6.5** Delete all npcStates/*.hpp and *.cpp files
-- [ ] **6.6** Update CMakeLists.txt to remove deleted files
-- [ ] **6.7** Full rebuild to verify clean compilation
-- [ ] **6.8** Run all tests: `./tests/test_scripts/run_all_tests.sh --core-only`
+- [ ] **6.4** Review `Entity::registerWithDataManager()` usage of `registerNPC` (keep for tests or replace with createNPC path)
+- [ ] **6.5** Delete NPC.hpp and NPC.cpp
+- [ ] **6.6** Delete all npcStates/*.hpp and *.cpp files
+- [ ] **6.7** Update CMakeLists.txt to remove deleted files
+- [ ] **6.8** Full rebuild to verify clean compilation
+- [ ] **6.9** Run all tests: `./tests/test_scripts/run_all_tests.sh --core-only`
 
 ---
 
@@ -488,7 +510,7 @@ src/events/NPCSpawnEvent.cpp     ← Update or remove
 | File | Action |
 |------|--------|
 | `include/managers/EntityDataManager.hpp` | Add NPCRenderData struct, storage, accessor |
-| `src/managers/EntityDataManager.cpp` | Implement createDataDrivenNPC(), clearNPCRenderData() |
+| `src/managers/EntityDataManager.cpp` | Implement createDataDrivenNPC(), integrate NPCRenderData in allocateSlot/freeSlot/clean |
 | `include/controllers/render/NPCRenderController.hpp` | NEW - velocity-based animation + render |
 | `src/controllers/render/NPCRenderController.cpp` | NEW - implements update() and renderNPCs() |
 | `include/ai/behaviors/AttackBehavior.hpp` | Simplify to lunge-only |
@@ -496,7 +518,7 @@ src/events/NPCSpawnEvent.cpp     ← Update or remove
 | `include/gameStates/EventDemoState.hpp` | Add NPCRenderController member |
 | `src/gameStates/EventDemoState.cpp` | Use data-driven spawning, use controller |
 | `src/gameStates/GamePlayState.cpp` | Convert to data-driven NPCs |
-| `src/controllers/combat/CombatController.cpp` | Return EntityHandle instead of NPCPtr |
+| `src/controllers/combat/CombatController.cpp` | Expose target handle for UI (no NPCPtr) |
 | `src/events/NPCSpawnEvent.cpp` | Update to use data-driven spawning |
 | `CMakeLists.txt` | Add NPCRenderController, remove NPC files |
 | `include/entities/NPC.hpp` | DELETE |
@@ -515,13 +537,18 @@ Player keeps full class implementation:
 - Input handling
 - Equipment/inventory systems
 
+### NPC Inventory/Trading/Loot
+NPC class currently owns inventory, trading, and loot-drop logic.
+If NPC class is removed, move this into a data-driven component or explicitly
+drop these features (EventDemoState currently calls `initializeInventory()`).
+
 ### Velocity Threshold
 - 15.0f is the threshold for Moving vs Idle
 - Matches existing animation patterns in the codebase
 
 ### Sprite Sheet Layout
-- Row 0: Idle frames
-- Row 1: Moving frames
+- Defaults: row 0 = idle, row 1 = moving
+- Configurable via `AnimationConfig.row` (stored in `NPCRenderData::idleRow/moveRow`)
 - Flip determined by velocity.getX() direction
 
 ---
@@ -535,21 +562,21 @@ Player keeps full class implementation:
 | NPC Functionality | Data-Driven Replacement |
 |-------------------|------------------------|
 | `NPC::create()` - Factory method | `EntityDataManager::createDataDrivenNPC()` |
-| `m_textureID` storage | `NPCRenderData::textureID` (debug only) |
+| `m_textureID` storage | `NPCMetaData::textureID` (separate debug/meta storage) |
 | `mp_cachedTexture` pointer | `NPCRenderData::cachedTexture` |
 | `m_frameWidth/Height` | `NPCRenderData::frameWidth/Height` |
 | `m_animationMap` (idle, walking, etc) | `AnimationConfig` passed at spawn |
 | `initializeAnimationMap()` | Config values passed to `createDataDrivenNPC()` |
 | `m_currentAnimation` state | `NPCRenderData::currentFrame` + velocity-based row |
 | `playAnimation()` / `stopAnimation()` | Velocity-based (no explicit calls needed) |
-| `setAnimationSpeed()` | `NPCRenderData::idleSpeed/moveSpeed` |
+| `setAnimationSpeed()` | `NPCRenderData::idleSpeedMs/moveSpeedMs` |
 | `render()` | `NPCRenderController::renderNPCs()` |
 | `update()` | AIManager + `NPCRenderController::update()` |
 | `setBehavior()` / `m_behaviorName` | `AIManager::registerEntity()` |
 | `setNavRadius()` | `AIBehaviorState::navRadius` in behaviors |
 | `isInActiveTier()` | `getActiveIndices()` filtering |
-| `getPosition()` / `setPosition()` | `EntityHotData::position` |
-| `getVelocity()` / `setVelocity()` | `EntityHotData::velocity` |
+| `getPosition()` / `setPosition()` | `EntityHotData::transform.position` |
+| `getVelocity()` / `setVelocity()` | `EntityHotData::transform.velocity` |
 | `m_entityStateManager` | **REMOVED** - velocity-based animation only |
 | NPC state classes (Idle, Wandering, etc) | **REMOVED** - behaviors handle all states |
 | `takeDamage()` / combat | `CombatController` + events |
@@ -586,9 +613,9 @@ bool isTextureInMap(const std::string& textureID);         // Check existence
 **Location:** `include/managers/AIManager.hpp`, `src/managers/AIManager.cpp`
 
 AIManager already handles all movement:
-1. `updateBehaviors(deltaTime)` called each frame
+1. `AIManager::update()` called by GameEngine each frame
 2. Behaviors (WanderBehavior, ChaseBehavior, FleeBehavior, AttackBehavior) set velocity
-3. Velocity stored in `EntityHotData::velocity`
+3. Velocity stored in `EntityHotData::transform.velocity`
 
 **NPCRenderController does NOT calculate movement** - it reads velocity that AI already set.
 
@@ -598,12 +625,12 @@ AIManager already handles all movement:
 
 ```cpp
 struct EntityHotData {
-    Vector2D position{0, 0};           // Current position
-    Vector2D previousPosition{0, 0};   // For interpolation
-    Vector2D velocity{0, 0};           // Set by AIManager behaviors
-    EntityKind kind{EntityKind::UNKNOWN};
+    TransformData transform;           // position/previous/velocity/accel
+    float halfWidth{16.0f};
+    float halfHeight{16.0f};
+    EntityKind kind{EntityKind::NPC};
     SimulationTier tier{SimulationTier::Active};
-    bool isAlive{true};
+    uint8_t flags{0};                  // use isAlive() / setAlive()
     // ... other fields
 };
 ```
@@ -620,10 +647,14 @@ struct EntityHotData {
 [[nodiscard]] const EntityHotData& getHotDataByIndex(size_t index) const;
 
 // Create entity
-[[nodiscard]] EntityHandle createEntity(EntityKind kind, const Vector2D& position);
+[[nodiscard]] EntityHandle createNPC(const Vector2D& position, float halfWidth, float halfHeight);
+[[nodiscard]] EntityHandle createDataDrivenNPC(const Vector2D& position,
+                                              const std::string& textureID,
+                                              const AnimationConfig& idleConfig,
+                                              const AnimationConfig& moveConfig);
 
 // Get index from handle
-[[nodiscard]] size_t getIndexFromHandle(EntityHandle handle) const;
+[[nodiscard]] size_t getIndex(EntityHandle handle) const;
 ```
 
 ### GameState Update/Render Flow
@@ -634,10 +665,8 @@ struct EntityHotData {
 void EventDemoState::update(float deltaTime) {
     // ... other updates ...
 
-    // AIManager updates behaviors, sets velocities
-    AIManager::Instance().updateBehaviors(deltaTime);
-
-    // NPCRenderController reads velocities, advances animation frames
+    // AIManager updates behaviors in GameEngine (after GameState update).
+    // NPCRenderController uses last-frame velocities unless moved later in the pipeline.
     m_npcRenderCtrl.update(deltaTime);
 }
 
@@ -673,15 +702,16 @@ that `NPC::isInActiveTier()` currently does.
 ```cpp
 // Current pattern:
 auto npc = NPC::create(textureID, position);
-npc->setNavRadius(18.0f);
-npc->setBehavior(behaviorName);
-m_spawnedNPCs.push_back(npc);
+npc->initializeInventory();
+// Behavior is registered via AIManager (using handle)
+m_npcsById[handle.getId()] = npc;
+m_npcsByEdmIndex[edmIdx] = npc;
 
 // What this does internally:
-// 1. Creates Entity with EntityDataManager
-// 2. Sets up texture/animation
-// 3. Registers with CollisionManager
-// 4. Registers with AIManager
+// 1. Registers NPC with EntityDataManager (registerNPC)
+// 2. Sets up texture/animation + NPC state machine
+// 3. Sets collision flags in EDM (no dynamic bodies in CollisionManager)
+// 4. AIManager registration handled separately in GameState
 ```
 
 ### Current NPC Render Pattern
@@ -690,10 +720,13 @@ m_spawnedNPCs.push_back(npc);
 
 ```cpp
 // Current pattern to replace:
-for (const auto &npc : m_spawnedNPCs) {
-    if (npc && npc->isInActiveTier()) {
-        npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-    }
+for (size_t edmIdx : mp_edm->getActiveIndices()) {
+    const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
+    if (hot.kind != EntityKind::NPC) continue;
+    NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                     ? m_npcsByEdmIndex[edmIdx]
+                     : nullptr;
+    if (npc) npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
 }
 ```
 
@@ -726,19 +759,22 @@ void NPCRenderController::update(float deltaTime) {
         const auto& hotData = edm.getHotDataByIndex(idx);
 
         // Filter to NPCs only
-        if (hotData.kind != EntityKind::NPC || !hotData.isAlive) {
+        if (hotData.kind != EntityKind::NPC || !hotData.isAlive()) {
             continue;
         }
 
         auto& renderData = edm.getNPCRenderData(idx);
 
         // AIManager already set velocity via behaviors - just read it
-        float velocityMag = hotData.velocity.length();
+        const auto& transform = hotData.transform;
+        float velocityMag = transform.velocity.length();
         bool isMoving = velocityMag > MOVEMENT_THRESHOLD;
 
         // Select animation parameters based on velocity
         uint8_t targetFrames = isMoving ? renderData.numMoveFrames : renderData.numIdleFrames;
-        float speed = static_cast<float>(isMoving ? renderData.moveSpeed : renderData.idleSpeed) / 1000.0f;
+        float speed = static_cast<float>(isMoving ? renderData.moveSpeedMs : renderData.idleSpeedMs) / 1000.0f;
+        if (speed <= 0.0f) speed = 0.001f;
+        if (targetFrames == 0) targetFrames = 1;
 
         // Advance frame
         renderData.animationAccumulator += deltaTime;
@@ -748,8 +784,8 @@ void NPCRenderController::update(float deltaTime) {
         }
 
         // Update flip based on velocity X (already calculated by AI)
-        if (std::abs(hotData.velocity.getX()) > MOVEMENT_THRESHOLD) {
-            renderData.flipMode = (hotData.velocity.getX() < 0)
+        if (std::abs(transform.velocity.getX()) > MOVEMENT_THRESHOLD) {
+            renderData.flipMode = (transform.velocity.getX() < 0)
                 ? static_cast<uint8_t>(SDL_FLIP_HORIZONTAL)
                 : static_cast<uint8_t>(SDL_FLIP_NONE);
         }
@@ -764,7 +800,7 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
         const auto& hotData = edm.getHotDataByIndex(idx);
 
         // Filter to NPCs only
-        if (hotData.kind != EntityKind::NPC || !hotData.isAlive) {
+        if (hotData.kind != EntityKind::NPC || !hotData.isAlive()) {
             continue;
         }
 
@@ -774,11 +810,14 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
         }
 
         // Interpolate position for smooth rendering
-        Vector2D pos = hotData.previousPosition +
-            (hotData.position - hotData.previousPosition) * alpha;
+        const auto& transform = hotData.transform;
+        Vector2D pos = transform.previousPosition +
+            (transform.position - transform.previousPosition) * alpha;
 
         // Velocity determines animation row: 0=Idle, 1=Moving
-        int row = (hotData.velocity.length() > MOVEMENT_THRESHOLD) ? 1 : 0;
+        int row = (transform.velocity.length() > MOVEMENT_THRESHOLD)
+            ? renderData.moveRow
+            : renderData.idleRow;
 
         // Source rect (from sprite sheet)
         SDL_FRect srcRect = {
@@ -822,15 +861,16 @@ struct NPCRenderData {
     SDL_Texture* cachedTexture{nullptr};  // Cached at spawn from TextureManager - used for rendering
     uint16_t frameWidth{32};              // Single frame width
     uint16_t frameHeight{32};             // Single frame height
+    uint16_t idleSpeedMs{150};            // ms per frame for idle
+    uint16_t moveSpeedMs{100};            // ms per frame for moving
     uint8_t currentFrame{0};              // Current animation frame index
-    uint8_t numIdleFrames{2};             // Frames in idle animation (row 0)
-    uint8_t numMoveFrames{4};             // Frames in move animation (row 1)
-    uint8_t idleSpeed{150};               // ms per frame for idle
-    uint8_t moveSpeed{100};               // ms per frame for moving
+    uint8_t numIdleFrames{2};             // Frames in idle animation
+    uint8_t numMoveFrames{4};             // Frames in move animation
+    uint8_t idleRow{0};                   // Idle animation row (0-based)
+    uint8_t moveRow{1};                   // Move animation row (0-based)
     uint8_t flipMode{0};                  // SDL_FLIP_NONE or SDL_FLIP_HORIZONTAL
-    uint8_t padding[6]{};                 // Align to 32 bytes
+    uint8_t padding[3]{};                 // Align to 4 bytes
     float animationAccumulator{0.0f};     // Time accumulator for frame advancement
-    std::string textureID;                // For debugging/logging only - not used in render
 };
 ```
 
@@ -838,6 +878,8 @@ struct NPCRenderData {
 
 ```cpp
 std::vector<NPCRenderData> m_npcRenderData;
+std::vector<NPCMetaData> m_npcMetaData;  // Optional: UI/debug only
+// Keep m_npcMetaData in sync with allocateSlot/freeSlot if used.
 ```
 
 **In EntityDataManager class - Public section:**
@@ -856,8 +898,6 @@ std::vector<NPCRenderData> m_npcRenderData;
     const AnimationConfig& moveConfig    // {1, 4, 100, true} - row 1
 );
 
-// Cleanup NPC render data when entity destroyed
-void clearNPCRenderData(size_t index);
 ```
 
 **In EntityDataManager.cpp - Implementation:**
@@ -882,19 +922,10 @@ EntityHandle EntityDataManager::createDataDrivenNPC(
     const AnimationConfig& idleConfig,
     const AnimationConfig& moveConfig)
 {
-    // Create entity via existing mechanism (sets up EntityHotData)
-    EntityHandle handle = createEntity(EntityKind::NPC, position);
-    size_t index = getIndexFromHandle(handle);
-
-    // Ensure render data vector is sized properly
-    if (index >= m_npcRenderData.size()) {
-        m_npcRenderData.resize(index + 1);
-    }
-
     // Cache texture pointer from TextureManager (one-time lookup at spawn)
     SDL_Texture* texture = TextureManager::Instance().getTexturePtr(textureID);
     if (!texture) {
-        LOG_WARN("EntityDataManager", "Texture not found: {}", textureID);
+        ENTITY_WARN(std::format("Texture not found: {}", textureID));
     }
 
     // Calculate frame dimensions from texture size
@@ -906,20 +937,35 @@ EntityHandle EntityDataManager::createDataDrivenNPC(
         texHeight = static_cast<int>(h);
     }
 
+    uint16_t maxFrames = static_cast<uint16_t>(std::max(idleConfig.frameCount, moveConfig.frameCount));
+    uint16_t rowCount = static_cast<uint16_t>(std::max(idleConfig.row, moveConfig.row) + 1);
+    uint16_t frameWidth = (maxFrames > 0 && texWidth > 0)
+        ? static_cast<uint16_t>(texWidth / maxFrames)
+        : 32;
+    uint16_t frameHeight = (rowCount > 0 && texHeight > 0)
+        ? static_cast<uint16_t>(texHeight / rowCount)
+        : 32;
+
+    // Create entity via existing mechanism (sets up EntityHotData)
+    EntityHandle handle = createNPC(position, frameWidth * 0.5f, frameHeight * 0.5f);
+    size_t index = getIndex(handle);
+
     // Setup render data - VALUES COME FROM AnimationConfig
     NPCRenderData& renderData = m_npcRenderData[index];
-    renderData.textureID = textureID;
     renderData.cachedTexture = texture;
-
-    // Frame dimensions from texture (divide by frame count for width, rows for height)
-    renderData.frameWidth = static_cast<uint16_t>(texWidth / moveConfig.frameCount);
-    renderData.frameHeight = static_cast<uint16_t>(texHeight / 2);  // 2 rows: idle, move
+    renderData.frameWidth = frameWidth;
+    renderData.frameHeight = frameHeight;
 
     // Animation parameters FROM AnimationConfig (same source as NPC class)
     renderData.numIdleFrames = static_cast<uint8_t>(idleConfig.frameCount);
     renderData.numMoveFrames = static_cast<uint8_t>(moveConfig.frameCount);
-    renderData.idleSpeed = static_cast<uint8_t>(idleConfig.speed);
-    renderData.moveSpeed = static_cast<uint8_t>(moveConfig.speed);
+    renderData.idleSpeedMs = static_cast<uint16_t>(idleConfig.speed);
+    renderData.moveSpeedMs = static_cast<uint16_t>(moveConfig.speed);
+    renderData.idleRow = static_cast<uint8_t>(idleConfig.row);
+    renderData.moveRow = static_cast<uint8_t>(moveConfig.row);
+
+    // Optional meta/debug (UI name, texture ID)
+    // m_npcMetaData[index] = {textureID, /*displayName*/};
 
     // Reset runtime state
     renderData.currentFrame = 0;
@@ -928,16 +974,8 @@ EntityHandle EntityDataManager::createDataDrivenNPC(
 
     return handle;
 }
-
-void EntityDataManager::clearNPCRenderData(size_t index) {
-    if (index < m_npcRenderData.size()) {
-        // Reset to default state (texture pointer becomes stale but won't be used)
-        m_npcRenderData[index] = NPCRenderData{};
-    }
-}
 ```
-
-**Note:** Call `clearNPCRenderData()` from `destroyEntity()` when entity kind is NPC, or integrate into existing entity destruction flow.
+**Note:** Clear `m_npcRenderData[index]` from `freeSlot()` to keep arrays in sync.
 
 ### Complete NPC Spawning Replacement
 
@@ -945,10 +983,10 @@ void EntityDataManager::clearNPCRenderData(size_t index) {
 
 ```cpp
 // Current NPC::create() does approximately:
-1. EntityDataManager::createEntity(EntityKind::NPC, position)
-2. CollisionManager::addCollisionBodySOA(entityId, position, halfSize, ...)
-3. AIManager::registerEntity(handle, behaviorName)
-4. Setup texture/animation via initializeAnimationMap()
+1. EntityDataManager::registerNPC(entityId, position, halfSize, halfSize)
+2. Sets up texture/animation + NPC state machine
+3. Collision flags live in EDM (no CollisionManager dynamic storage)
+4. AIManager::registerEntity(handle, behaviorName) done by GameState
 ```
 
 **New spawning pattern in GameState using AnimationConfig:**
@@ -968,20 +1006,13 @@ EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
     moveConfig
 );
 
-// Register with CollisionManager (NPC::create did this internally)
-CollisionManager::Instance().addCollisionBodySOA(
-    handle.getId(),
-    position,
-    Vector2D(16.0f, 16.0f),  // halfSize
-    CollisionType::DYNAMIC,
-    false  // not trigger
-);
+// Collision is EDM-owned for dynamic entities; no CollisionManager add needed
 
 // Register with AIManager (NPC::setBehavior did this)
 AIManager::Instance().registerEntity(handle, behaviorName);
 
-// Store handle for tracking
-m_spawnedNPCHandles.push_back(handle);
+// NPCRenderController bookkeeping (optional)
+// increment spawn counters or store debug metadata as needed
 ```
 
 **Alternative: Predefined NPC Types (for cleaner code):**
@@ -1066,10 +1097,13 @@ public:
 
 ```cpp
 // Current pattern to replace:
-for (const auto &npc : m_spawnedNPCs) {
-    if (npc && npc->isInActiveTier()) {
-        npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-    }
+for (size_t edmIdx : mp_edm->getActiveIndices()) {
+    const auto& hot = mp_edm->getHotDataByIndex(edmIdx);
+    if (hot.kind != EntityKind::NPC) continue;
+    NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size())
+                     ? m_npcsByEdmIndex[edmIdx]
+                     : nullptr;
+    if (npc) npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
 }
 ```
 
@@ -1120,7 +1154,7 @@ if (!renderData.cachedTexture) {
 
 ### Cache Efficiency
 
-- NPCRenderData is 32 bytes (fits in half a cache line)
+- NPCRenderData is kept POD-like and cache-friendly (no strings in hot path)
 - Iterating activeIndices is O(active NPCs), not O(all NPCs)
 - Texture pointer cached, no per-frame lookup
 
@@ -1133,8 +1167,8 @@ if (!renderData.cachedTexture) {
 ### Memory
 
 - `m_npcRenderData` grows with entity count
-- Reserve capacity in constructor for expected NPC count
-- Clear render data when entity destroyed
+- Reserve capacity in `EntityDataManager::init()` alongside hot data
+- Clear render data in `freeSlot()` when entities are destroyed
 
 ---
 
