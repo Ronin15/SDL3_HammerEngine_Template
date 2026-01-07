@@ -90,6 +90,10 @@ struct SpatialQueryCache {
 // Thread-local cache instance (one per worker thread)
 static thread_local SpatialQueryCache g_spatialCache;
 
+// Thread-local position buffer for GetNearbyEntitiesWithPositions callers
+// Avoids per-call allocations when callers use GetNearbyPositionBuffer()
+static thread_local std::vector<Vector2D> g_nearbyPositionBuffer;
+
 int CountNearbyEntities(EntityID excludeId, const Vector2D &center,
                         float radius) {
   const auto &cm = CollisionManager::Instance();
@@ -157,5 +161,7 @@ int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center,
 void InvalidateSpatialCache(uint64_t frameNumber) {
   g_spatialCache.newFrame(frameNumber);
 }
+
+std::vector<Vector2D> &GetNearbyPositionBuffer() { return g_nearbyPositionBuffer; }
 
 } // namespace AIInternal
