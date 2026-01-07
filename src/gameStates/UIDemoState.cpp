@@ -22,9 +22,7 @@ UIExampleState::UIExampleState() {
 bool UIExampleState::enter() {
     GAMESTATE_INFO("Entering UI Example State");
 
-    // Cache manager pointer for use in callbacks and helper methods
-    mp_uiMgr = &UIManager::Instance();
-    auto& ui = *mp_uiMgr;
+    auto& ui = UIManager::Instance();
 
     // Calculate relative positioning for cross-resolution compatibility
     int leftColumnX = 50;
@@ -156,18 +154,21 @@ void UIExampleState::update(float deltaTime) {
 }
 
 void UIExampleState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Update and render UI components through UIManager using cached pointer
+    // Cache manager reference for better performance
+    UIManager &ui = UIManager::Instance();
+
+    // Update and render UI components
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
-    mp_uiMgr->update(m_lastDeltaTime);
-    mp_uiMgr->render(renderer);
+    ui.update(m_lastDeltaTime);
+    ui.render(renderer);
 }
 
 bool UIExampleState::exit() {
     GAMESTATE_INFO("Exiting UI Example State");
 
     // Clean up UI components using simplified method
-    mp_uiMgr->prepareForStateTransition();
+    UIManager::Instance().prepareForStateTransition();
 
     return true;
 }
@@ -190,19 +191,22 @@ void UIExampleState::handleInputChange(const std::string& text) {
 }
 
 void UIExampleState::handleListSelection() {
-    m_selectedListItem = mp_uiMgr->getSelectedListItem("uiexample_demo_list");
+    m_selectedListItem = UIManager::Instance().getSelectedListItem("uiexample_demo_list");
     GAMESTATE_DEBUG(std::format("List item selected: {}", m_selectedListItem));
 }
 
 void UIExampleState::handleAnimation() {
+    // Cache manager reference for better performance
+    UIManager &ui = UIManager::Instance();
+
     // Animate the animation button
-    UIRect currentBounds = mp_uiMgr->getBounds("uiexample_animate_btn");
+    UIRect currentBounds = ui.getBounds("uiexample_animate_btn");
     UIRect targetBounds = currentBounds;
     targetBounds.x += 50;
 
-    mp_uiMgr->animateMove("uiexample_animate_btn", targetBounds, 0.5f, [this, currentBounds]() {
-        // Animate back to original position
-        mp_uiMgr->animateMove("uiexample_animate_btn", currentBounds, 0.5f);
+    ui.animateMove("uiexample_animate_btn", targetBounds, 0.5f, [currentBounds]() {
+        // Animate back to original position (callback uses Instance() since it runs later)
+        UIManager::Instance().animateMove("uiexample_animate_btn", currentBounds, 0.5f);
     });
 
     GAMESTATE_DEBUG("Animation triggered");
@@ -241,7 +245,7 @@ void UIExampleState::updateProgressBar(float deltaTime) {
     }
 
     // UIManager now has built-in caching, so calling setValue() every frame is safe
-    mp_uiMgr->setValue("uiexample_demo_progress", m_progressValue);
+    UIManager::Instance().setValue("uiexample_demo_progress", m_progressValue);
 }
 
 
@@ -249,23 +253,26 @@ void UIExampleState::updateProgressBar(float deltaTime) {
 void UIExampleState::updateSliderLabel(float value) {
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2) << "Slider: " << value;
-    mp_uiMgr->setText("uiexample_slider_label", oss.str());
+    UIManager::Instance().setText("uiexample_slider_label", oss.str());
 }
 
 void UIExampleState::updateInputLabel(const std::string& text) {
     std::string labelText = "Input: " + (text.empty() ? "(empty)" : text);
-    mp_uiMgr->setText("uiexample_input_label", labelText);
+    UIManager::Instance().setText("uiexample_input_label", labelText);
 }
 
 void UIExampleState::applyDarkTheme(bool dark) {
+    // Cache manager reference for better performance
+    UIManager &ui = UIManager::Instance();
+
     if (dark) {
         // Use centralized dark theme
-        mp_uiMgr->setThemeMode("dark");
-        mp_uiMgr->setText("uiexample_theme_btn", "Light Theme");
+        ui.setThemeMode("dark");
+        ui.setText("uiexample_theme_btn", "Light Theme");
     } else {
         // Use centralized light theme
-        mp_uiMgr->setThemeMode("light");
-        mp_uiMgr->setText("uiexample_theme_btn", "Dark Theme");
+        ui.setThemeMode("light");
+        ui.setText("uiexample_theme_btn", "Dark Theme");
     }
 
     // Title styling is handled automatically by UIManager's TITLE component type

@@ -213,13 +213,6 @@ void AIDemoState::handleInput() {
 }
 
 bool AIDemoState::enter() {
-  // Cache manager pointers for render hot path (always valid after GameEngine
-  // init)
-  mp_edm = &EntityDataManager::Instance();
-  mp_particleMgr = &ParticleManager::Instance();
-  mp_worldMgr = &WorldManager::Instance();
-  mp_uiMgr = &UIManager::Instance();
-
   // Resume all game managers (may be paused from menu states)
   GameEngine::Instance().setGlobalPause(false);
 
@@ -288,8 +281,7 @@ bool AIDemoState::enter() {
         "Chase behavior registered (will use AIManager::getPlayerHandle())");
 
     // Create simple HUD UI (matches EventDemoState spacing pattern)
-    // Use cached mp_uiMgr pointer from top of enter()
-    auto &ui = *mp_uiMgr;
+    auto &ui = UIManager::Instance();
     ui.createTitle("ai_title",
                    {0, UIConstants::TITLE_TOP_OFFSET,
                     gameEngine.getLogicalWidth(),
@@ -428,11 +420,6 @@ bool AIDemoState::exit() {
     aiMgr.setGlobalPause(false);
     m_aiPaused = false;
 
-    // Clear cached manager pointers
-    mp_worldMgr = nullptr;
-    mp_uiMgr = nullptr;
-    mp_particleMgr = nullptr;
-
     // Reset initialized flag so state re-initializes after loading
     m_initialized = false;
 
@@ -486,11 +473,6 @@ bool AIDemoState::exit() {
   aiMgr.setGlobalPause(false);
   m_aiPaused = false;
 
-  // Clear cached manager pointers
-  mp_worldMgr = nullptr;
-  mp_uiMgr = nullptr;
-  mp_particleMgr = nullptr;
-
   // Reset initialization flag for next fresh start
   m_initialized = false;
 
@@ -542,12 +524,16 @@ void AIDemoState::update(float deltaTime) {
       m_player->update(deltaTime);
     }
 
+    // Cache manager references for better performance
+    EntityDataManager &edm = EntityDataManager::Instance();
+    UIManager &ui = UIManager::Instance();
+
     // Update Active tier NPCs only (animations and state machine)
     // AIManager handles behavior logic, BackgroundSimulationManager handles
     // non-Active Use getActiveIndices() to iterate only ~468 Active entities
     // instead of all 50K
-    for (size_t edmIdx : mp_edm->getActiveIndices()) {
-      const auto &hot = mp_edm->getHotDataByIndex(edmIdx);
+    for (size_t edmIdx : edm.getActiveIndices()) {
+      const auto &hot = edm.getHotDataByIndex(edmIdx);
       if (hot.kind != EntityKind::NPC)
         continue;
 
@@ -562,8 +548,8 @@ void AIDemoState::update(float deltaTime) {
     updateCamera(deltaTime);
 
     // Update UI (moved from render path for consistent frame timing)
-    if (mp_uiMgr && !mp_uiMgr->isShutdown()) {
-      mp_uiMgr->update(deltaTime);
+    if (!ui.isShutdown()) {
+      ui.update(deltaTime);
     }
 
   } catch (const std::exception &e) {
@@ -575,6 +561,11 @@ void AIDemoState::update(float deltaTime) {
 }
 
 void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
+  // Cache manager references for better performance
+  WorldManager &worldMgr = WorldManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
+  UIManager &ui = UIManager::Instance();
+
   // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
@@ -601,18 +592,15 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     m_lastRenderedZoom = zoom;
   }
 
-  // Render world first (background layer) using pixel-snapped camera - use
-  // cached pointer
-  if (m_camera && mp_worldMgr->isInitialized() &&
-      mp_worldMgr->hasActiveWorld()) {
-    mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth,
-                        viewHeight);
+  // Render world first (background layer) using pixel-snapped camera
+  if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
   }
 
   // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
   // This iterates ~500 Active entities instead of 50K+ total NPCs
-  for (size_t edmIdx : mp_edm->getActiveIndices()) {
-    const auto &hot = mp_edm->getHotDataByIndex(edmIdx);
+  for (size_t edmIdx : edm.getActiveIndices()) {
+    const auto &hot = edm.getHotDataByIndex(edmIdx);
     if (hot.kind != EntityKind::NPC)
       continue;
 
@@ -637,10 +625,8 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     m_lastRenderedZoom = 1.0f;
   }
 
-  // Render UI components through cached pointer (update moved to update() for
-  // consistent frame timing) mp_uiMgr guaranteed valid between enter() and
-  // exit()
-  if (!mp_uiMgr->isShutdown()) {
+  // Render UI components (update moved to update() for consistent frame timing)
+  if (!ui.isShutdown()) {
     // Update status only when values change (C++20 type-safe, zero allocations)
     // Use m_aiPaused member instead of polling AIManager::isGloballyPaused()
     // every frame
@@ -656,14 +642,14 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
       std::format_to(std::back_inserter(m_statusBuffer),
                      "FPS: {} | Entities: {} | AI: {}", currentFPS, entityCount,
                      m_aiPaused ? "PAUSED" : "RUNNING");
-      mp_uiMgr->setText("ai_status", m_statusBuffer);
+      ui.setText("ai_status", m_statusBuffer);
 
       m_lastDisplayedFPS = currentFPS;
       m_lastDisplayedEntityCount = entityCount;
       m_lastDisplayedPauseState = m_aiPaused;
     }
   }
-  mp_uiMgr->render(renderer);
+  ui.render(renderer);
 }
 
 void AIDemoState::setupAIBehaviors() {
@@ -800,7 +786,7 @@ void AIDemoState::createNPCBatch(int count) {
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, "Wander");
               m_npcsById[handle.getId()] = npc;
-              size_t edmIdx = mp_edm->getIndex(handle);
+              size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
               if (edmIdx != SIZE_MAX) {
                 if (edmIdx >= m_npcsByEdmIndex.size()) {
                   m_npcsByEdmIndex.resize(edmIdx + 1);
@@ -904,7 +890,7 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, randomBehavior);
               m_npcsById[handle.getId()] = npc;
-              size_t edmIdx = mp_edm->getIndex(handle);
+              size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
               if (edmIdx != SIZE_MAX) {
                 if (edmIdx >= m_npcsByEdmIndex.size()) {
                   m_npcsByEdmIndex.resize(edmIdx + 1);

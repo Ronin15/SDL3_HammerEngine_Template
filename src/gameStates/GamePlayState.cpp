@@ -31,13 +31,6 @@
 #include <format>
 
 bool GamePlayState::enter() {
-  // Cache manager pointers for render hot path (always valid after GameEngine
-  // init)
-  mp_eventMgr = &EventManager::Instance();
-  mp_particleMgr = &ParticleManager::Instance();
-  mp_worldMgr = &WorldManager::Instance();
-  mp_uiMgr = &UIManager::Instance();
-
   // Resume all game managers (may be paused from menu states)
   GameEngine::Instance().setGlobalPause(false);
 
@@ -97,31 +90,31 @@ bool GamePlayState::enter() {
     gameTimeMgr.setTimeScale(3600.0f);
 #endif
 
+    // Cache UI manager reference for better performance
+    auto &ui = UIManager::Instance();
+
     // Create event log for time/weather messages
-    mp_uiMgr->createEventLog("gameplay_event_log",
-                             {10, mp_uiMgr->getLogicalHeight() - 200, 730, 180},
-                             7);
+    ui.createEventLog("gameplay_event_log",
+                      {10, ui.getLogicalHeight() - 200, 730, 180}, 7);
     UIPositioning eventLogPos;
     eventLogPos.mode = UIPositionMode::BOTTOM_ALIGNED;
     eventLogPos.offsetX = 10;
     eventLogPos.offsetY = 20;
     eventLogPos.fixedHeight = 180;
     eventLogPos.widthPercent = UIConstants::EVENT_LOG_WIDTH_PERCENT;
-    mp_uiMgr->setComponentPositioning("gameplay_event_log", eventLogPos);
+    ui.setComponentPositioning("gameplay_event_log", eventLogPos);
 
     // Create time status label at top-right of screen (no panel, just label)
     int const barHeight = UIConstants::STATUS_BAR_HEIGHT;
     int labelPadding = UIConstants::STATUS_BAR_LABEL_PADDING;
 
-    mp_uiMgr->createLabel("gameplay_time_label",
-                          {labelPadding, 6,
-                           mp_uiMgr->getLogicalWidth() - 2 * labelPadding,
-                           barHeight - 12},
-                          "");
+    ui.createLabel("gameplay_time_label",
+                   {labelPadding, 6, ui.getLogicalWidth() - 2 * labelPadding,
+                    barHeight - 12},
+                   "");
 
     // Right-align the text within the label
-    mp_uiMgr->setLabelAlignment("gameplay_time_label",
-                                UIAlignment::CENTER_RIGHT);
+    ui.setLabelAlignment("gameplay_time_label", UIAlignment::CENTER_RIGHT);
 
     // Full-width positioning for resize handling
     UIPositioning labelPos;
@@ -130,22 +123,22 @@ bool GamePlayState::enter() {
     labelPos.offsetY = 6;                    // Small vertical offset from top
     labelPos.fixedWidth = -2 * labelPadding; // Full width minus margins
     labelPos.fixedHeight = barHeight - 12;
-    mp_uiMgr->setComponentPositioning("gameplay_time_label", labelPos);
+    ui.setComponentPositioning("gameplay_time_label", labelPos);
 
     // Pre-allocate status buffer for zero per-frame allocations
     m_statusBuffer.reserve(256);
 
     // Create FPS counter label (top-left, initially hidden, toggled with F2)
-    mp_uiMgr->createLabel("gameplay_fps",
-                          {labelPadding, 6, 120, barHeight - 12}, "FPS: --");
-    mp_uiMgr->setComponentVisible("gameplay_fps", false);
+    ui.createLabel("gameplay_fps", {labelPadding, 6, 120, barHeight - 12},
+                   "FPS: --");
+    ui.setComponentVisible("gameplay_fps", false);
     UIPositioning fpsPos;
     fpsPos.mode = UIPositionMode::TOP_ALIGNED;
     fpsPos.offsetX = labelPadding;
     fpsPos.offsetY = 6;
     fpsPos.fixedWidth = 120;
     fpsPos.fixedHeight = barHeight - 12;
-    mp_uiMgr->setComponentPositioning("gameplay_fps", fpsPos);
+    ui.setComponentPositioning("gameplay_fps", fpsPos);
 
     // Subscribe all controllers at once
     m_controllers.subscribeAll();
@@ -154,13 +147,13 @@ bool GamePlayState::enter() {
     initializeCombatHUD();
 
     // Subscribe to TimePeriodChangedEvent for day/night overlay rendering
-    m_dayNightEventToken = mp_eventMgr->registerHandlerWithToken(
+    m_dayNightEventToken = EventManager::Instance().registerHandlerWithToken(
         EventTypeId::Time,
         [this](const EventData &data) { onTimePeriodChanged(data); });
     m_dayNightSubscribed = true;
 
     // Subscribe to WeatherChangedEvent for ambient particle management
-    m_weatherEventToken = mp_eventMgr->registerHandlerWithToken(
+    m_weatherEventToken = EventManager::Instance().registerHandlerWithToken(
         EventTypeId::Weather,
         [this](const EventData &data) { onWeatherChanged(data); });
     m_weatherSubscribed = true;
@@ -181,7 +174,7 @@ bool GamePlayState::enter() {
 void GamePlayState::update(float deltaTime) {
   // Cache manager references for better performance
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
 
   // Check if we need to transition to loading screen (do this in update, not
   // enter)
@@ -258,6 +251,11 @@ void GamePlayState::update(float deltaTime) {
 }
 
 void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
+  // Cache manager references for better performance
+  ParticleManager &particleMgr = ParticleManager::Instance();
+  WorldManager &worldMgr = WorldManager::Instance();
+  UIManager &ui = UIManager::Instance();
+
   // Camera offset with unified interpolation (single atomic read for sync)
   float renderCamX = 0.0f;
   float renderCamY = 0.0f;
@@ -284,15 +282,13 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     m_lastRenderedZoom = zoom;
   }
 
-  if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->renderBackground(renderer, renderCamX, renderCamY,
-                                     interpolationAlpha);
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.renderBackground(renderer, renderCamX, renderCamY,
+                                 interpolationAlpha);
   }
 
-  if (m_camera && mp_worldMgr->isInitialized() &&
-      mp_worldMgr->hasActiveWorld()) {
-    mp_worldMgr->render(renderer, renderCamX, renderCamY, viewWidth,
-                        viewHeight);
+  if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
+    worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
   }
 
   if (mp_Player) {
@@ -302,13 +298,11 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
                                 renderCamY);
   }
 
-  // Render world-space and foreground particles (after player) - use cached
-  // pointer
-  if (mp_particleMgr->isInitialized() && !mp_particleMgr->isShutdown()) {
-    mp_particleMgr->render(renderer, renderCamX, renderCamY,
-                           interpolationAlpha);
-    mp_particleMgr->renderForeground(renderer, renderCamX, renderCamY,
-                                     interpolationAlpha);
+  // Render world-space and foreground particles (after player)
+  if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
+    particleMgr.render(renderer, renderCamX, renderCamY, interpolationAlpha);
+    particleMgr.renderForeground(renderer, renderCamX, renderCamY,
+                                 interpolationAlpha);
   }
 
   // Reset render scale to 1.0 BEFORE overlay and UI (neither should be zoomed)
@@ -334,13 +328,13 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
       m_fpsBuffer.clear();
       std::format_to(std::back_inserter(m_fpsBuffer), "FPS: {:.1f}",
                      currentFPS);
-      mp_uiMgr->setText("gameplay_fps", m_fpsBuffer);
+      ui.setText("gameplay_fps", m_fpsBuffer);
       m_lastDisplayedFPS = currentFPS;
     }
   }
 
-  // Render UI components (no camera transformation) - use cached pointer
-  mp_uiMgr->render(renderer);
+  // Render UI components (no camera transformation)
+  ui.render(renderer);
 }
 bool GamePlayState::exit() {
   // Cache manager references for better performance
@@ -349,7 +343,7 @@ bool GamePlayState::exit() {
   CollisionManager &collisionMgr = CollisionManager::Instance();
   PathfinderManager &pathfinderMgr = PathfinderManager::Instance();
   ParticleManager &particleMgr = ParticleManager::Instance();
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
   WorldManager &worldMgr = WorldManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
 
@@ -455,24 +449,17 @@ bool GamePlayState::exit() {
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
 
-  // Unsubscribe from TimePeriodChangedEvent (must happen before clearing
-  // mp_eventMgr)
+  // Unsubscribe from TimePeriodChangedEvent
   if (m_dayNightSubscribed) {
-    mp_eventMgr->removeHandler(m_dayNightEventToken);
+    EventManager::Instance().removeHandler(m_dayNightEventToken);
     m_dayNightSubscribed = false;
   }
 
   // Unsubscribe from WeatherChangedEvent
   if (m_weatherSubscribed) {
-    mp_eventMgr->removeHandler(m_weatherEventToken);
+    EventManager::Instance().removeHandler(m_weatherEventToken);
     m_weatherSubscribed = false;
   }
-
-  // Clear cached manager pointers (after all usage)
-  mp_eventMgr = nullptr;
-  mp_particleMgr = nullptr;
-  mp_worldMgr = nullptr;
-  mp_uiMgr = nullptr;
 
   // Reset initialization flag for next fresh start
   m_initialized = false;
@@ -484,7 +471,7 @@ std::string GamePlayState::getName() const { return "GamePlayState"; }
 
 void GamePlayState::pause() {
   // Hide gameplay UI when paused (PauseState overlays on top)
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
   ui.setComponentVisible("gameplay_event_log", false);
   ui.setComponentVisible("gameplay_time_label", false);
   ui.setComponentVisible("gameplay_fps", false);
@@ -519,7 +506,7 @@ void GamePlayState::pause() {
 
 void GamePlayState::resume() {
   // Show gameplay UI when resuming from pause
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
   ui.setComponentVisible("gameplay_event_log", true);
   ui.setComponentVisible("gameplay_time_label", true);
 
@@ -553,7 +540,7 @@ void GamePlayState::resume() {
 void GamePlayState::handleInput() {
   // Cache manager references for better performance
   const InputManager &inputMgr = InputManager::Instance();
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
   GameTimeManager &gameTimeMgr = GameTimeManager::Instance();
   GameEngine &gameEngine = GameEngine::Instance();
 
@@ -642,9 +629,8 @@ void GamePlayState::handleInput() {
       int const tileY =
           static_cast<int>(worldPos.getY() / HammerEngine::TILE_SIZE);
 
-      // Use cached mp_worldMgr pointer from enter()
-      if (mp_worldMgr->isValidPosition(tileX, tileY)) {
-        const auto *tile = mp_worldMgr->getTileAt(tileX, tileY);
+      if (WorldManager::Instance().isValidPosition(tileX, tileY)) {
+        const auto *tile = WorldManager::Instance().getTileAt(tileX, tileY);
         // Log tile information for debugging
         GAMEPLAY_DEBUG_IF(
             tile,
@@ -657,7 +643,7 @@ void GamePlayState::handleInput() {
 }
 
 void GamePlayState::initializeInventoryUI() {
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
   const auto &gameEngine = GameEngine::Instance();
   int const windowWidth = gameEngine.getLogicalWidth();
 
@@ -767,7 +753,7 @@ void GamePlayState::initializeInventoryUI() {
 }
 
 void GamePlayState::toggleInventoryDisplay() {
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
   m_inventoryVisible = !m_inventoryVisible;
 
   ui.setComponentVisible("gameplay_inventory_panel", m_inventoryVisible);
@@ -908,7 +894,7 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
   updateAmbientParticles(m_currentTimePeriod);
 
   // Add event log entry for the time period change
-  mp_uiMgr->addEventLogEntry(
+  UIManager::Instance().addEventLogEntry(
       "gameplay_event_log",
       std::string(mp_dayNightCtrl->getCurrentPeriodDescription()));
 
@@ -971,29 +957,29 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
     stopAmbientParticles();
   }
 
-  // Start appropriate particles for the new period (use cached mp_particleMgr)
+  // Start appropriate particles for the new period
   switch (period) {
   case TimePeriod::Morning:
     // Light dust motes in morning sunlight
-    m_ambientDustEffectId = mp_particleMgr->playIndependentEffect(
+    m_ambientDustEffectId = ParticleManager::Instance().playIndependentEffect(
         ParticleEffectType::AmbientDust, screenCenter, 0.6f, -1.0f, "ambient");
     break;
 
   case TimePeriod::Day:
     // Subtle dust particles during the day
-    m_ambientDustEffectId = mp_particleMgr->playIndependentEffect(
+    m_ambientDustEffectId = ParticleManager::Instance().playIndependentEffect(
         ParticleEffectType::AmbientDust, screenCenter, 0.4f, -1.0f, "ambient");
     break;
 
   case TimePeriod::Evening:
     // Golden dust in evening light
-    m_ambientDustEffectId = mp_particleMgr->playIndependentEffect(
+    m_ambientDustEffectId = ParticleManager::Instance().playIndependentEffect(
         ParticleEffectType::AmbientDust, screenCenter, 0.8f, -1.0f, "ambient");
     break;
 
   case TimePeriod::Night:
     // Fireflies at night
-    m_ambientFireflyEffectId = mp_particleMgr->playIndependentEffect(
+    m_ambientFireflyEffectId = ParticleManager::Instance().playIndependentEffect(
         ParticleEffectType::AmbientFirefly, screenCenter, 1.0f, -1.0f,
         "ambient");
     break;
@@ -1004,14 +990,13 @@ void GamePlayState::updateAmbientParticles(TimePeriod period) {
 }
 
 void GamePlayState::stopAmbientParticles() {
-  // Use cached mp_particleMgr pointer
   if (m_ambientDustEffectId != 0) {
-    mp_particleMgr->stopIndependentEffect(m_ambientDustEffectId);
+    ParticleManager::Instance().stopIndependentEffect(m_ambientDustEffectId);
     m_ambientDustEffectId = 0;
   }
 
   if (m_ambientFireflyEffectId != 0) {
-    mp_particleMgr->stopIndependentEffect(m_ambientFireflyEffectId);
+    ParticleManager::Instance().stopIndependentEffect(m_ambientFireflyEffectId);
     m_ambientFireflyEffectId = 0;
   }
 
@@ -1039,7 +1024,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
   updateAmbientParticles(m_currentTimePeriod);
 
   // Add event log entry for the weather change
-  mp_uiMgr->addEventLogEntry(
+  UIManager::Instance().addEventLogEntry(
       "gameplay_event_log",
       std::string(mp_weatherCtrl->getCurrentWeatherDescription()));
 
@@ -1047,7 +1032,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
 }
 
 void GamePlayState::initializeCombatHUD() {
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
 
   // Combat HUD layout constants (top-left positioning)
   constexpr int hudMarginLeft = 20;
@@ -1188,7 +1173,7 @@ void GamePlayState::updateCombatHUD() {
     return;
   }
 
-  auto &ui = *mp_uiMgr;
+  auto &ui = UIManager::Instance();
 
   // Update player health and stamina bars
   ui.setValue("hud_health_bar", mp_Player->getHealth());
