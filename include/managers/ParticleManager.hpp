@@ -22,14 +22,10 @@
  * - Thread-safe design with minimal lock contention
  */
 
-#include "core/WorkerBudget.hpp"
 #include "utils/Vector2D.hpp"
-#include "utils/SIMDMath.hpp"
 #include <SDL3/SDL.h>
 #include <array>
 #include <atomic>
-#include <cmath>
-#include <condition_variable>
 #include <future>
 #include <mutex>
 #include <new>

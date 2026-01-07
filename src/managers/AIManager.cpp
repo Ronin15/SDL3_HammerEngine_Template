@@ -12,6 +12,7 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
 #include "utils/SIMDMath.hpp"
+#include <array>
 #include <algorithm>
 #include <cstring>
 #include <format>
@@ -928,6 +929,104 @@ void AIManager::processBatch(const std::vector<size_t> &activeIndices,
   // batch processing
   // - Entity removals only mark inactive (don't modify vector structure)
 
+  auto updateMovementScalar = [&](TransformData &transform,
+                                  const EntityHotData &edmHotData) {
+    Vector2D pos = transform.position + (transform.velocity * deltaTime);
+
+    float halfW = edmHotData.halfWidth;
+    float halfH = edmHotData.halfHeight;
+    Vector2D clamped(std::clamp(pos.getX(), halfW, worldWidth - halfW),
+                     std::clamp(pos.getY(), halfH, worldHeight - halfH));
+    transform.position = clamped;
+
+    if (clamped.getX() != pos.getX()) {
+      transform.velocity.setX(0.0f);
+    }
+    if (clamped.getY() != pos.getY()) {
+      transform.velocity.setY(0.0f);
+    }
+  };
+
+  std::array<TransformData *, 4> batchTransforms{};
+  std::array<const EntityHotData *, 4> batchHotData{};
+  size_t batchCount = 0;
+
+  auto flushMovementBatch = [&]() {
+    if (batchCount == 0) {
+      return;
+    }
+    if (batchCount < 4) {
+      for (size_t lane = 0; lane < batchCount; ++lane) {
+        updateMovementScalar(*batchTransforms[lane], *batchHotData[lane]);
+      }
+      batchCount = 0;
+      return;
+    }
+
+    alignas(16) float posX[4];
+    alignas(16) float posY[4];
+    alignas(16) float velX[4];
+    alignas(16) float velY[4];
+    alignas(16) float minX[4];
+    alignas(16) float maxX[4];
+    alignas(16) float minY[4];
+    alignas(16) float maxY[4];
+
+    for (size_t lane = 0; lane < 4; ++lane) {
+      TransformData *transform = batchTransforms[lane];
+      const EntityHotData *hotData = batchHotData[lane];
+      posX[lane] = transform->position.getX();
+      posY[lane] = transform->position.getY();
+      velX[lane] = transform->velocity.getX();
+      velY[lane] = transform->velocity.getY();
+      minX[lane] = hotData->halfWidth;
+      maxX[lane] = worldWidth - hotData->halfWidth;
+      minY[lane] = hotData->halfHeight;
+      maxY[lane] = worldHeight - hotData->halfHeight;
+    }
+
+    const Float4 deltaTimeVec = broadcast(deltaTime);
+    Float4 posXv = load4_aligned(posX);
+    Float4 posYv = load4_aligned(posY);
+    const Float4 velXv = load4_aligned(velX);
+    const Float4 velYv = load4_aligned(velY);
+
+    posXv = madd(velXv, deltaTimeVec, posXv);
+    posYv = madd(velYv, deltaTimeVec, posYv);
+
+    const Float4 minXv = load4_aligned(minX);
+    const Float4 maxXv = load4_aligned(maxX);
+    const Float4 minYv = load4_aligned(minY);
+    const Float4 maxYv = load4_aligned(maxY);
+    const Float4 clampedXv = clamp(posXv, minXv, maxXv);
+    const Float4 clampedYv = clamp(posYv, minYv, maxYv);
+
+    const Float4 xDiff =
+        bitwise_or(cmplt(clampedXv, posXv), cmplt(posXv, clampedXv));
+    const Float4 yDiff =
+        bitwise_or(cmplt(clampedYv, posYv), cmplt(posYv, clampedYv));
+    const int clampXMask = movemask(xDiff);
+    const int clampYMask = movemask(yDiff);
+
+    store4_aligned(posX, clampedXv);
+    store4_aligned(posY, clampedYv);
+
+    for (size_t lane = 0; lane < 4; ++lane) {
+      TransformData *transform = batchTransforms[lane];
+      transform->position.setX(posX[lane]);
+      transform->position.setY(posY[lane]);
+
+      if ((clampXMask >> lane) & 0x1) {
+        transform->velocity.setX(0.0f);
+      }
+      if ((clampYMask >> lane) & 0x1) {
+        transform->velocity.setY(0.0f);
+      }
+    }
+
+    batchCount = 0;
+  };
+
   for (size_t i = start; i < end && i < activeIndices.size(); ++i) {
     size_t edmIdx = activeIndices[i];
 
@@ -980,22 +1079,11 @@ void AIManager::processBatch(const std::vector<size_t> &activeIndices,
           behaviorData, pathData, 0.0f, 0.0f, worldWidth, worldHeight, true);
       behavior->executeLogic(ctx);
 
-      // Movement integration
-      Vector2D pos = transform.position + (transform.velocity * deltaTime);
-
-      // World bounds clamping
-      float halfW = edmHotData.halfWidth;
-      float halfH = edmHotData.halfHeight;
-      Vector2D clamped(std::clamp(pos.getX(), halfW, worldWidth - halfW),
-                       std::clamp(pos.getY(), halfH, worldHeight - halfH));
-      transform.position = clamped;
-
-      // Stop velocity at world edges
-      if (clamped.getX() != pos.getX()) {
-        transform.velocity.setX(0.0f);
-      }
-      if (clamped.getY() != pos.getY()) {
-        transform.velocity.setY(0.0f);
+      batchTransforms[batchCount] = &transform;
+      batchHotData[batchCount] = &edmHotData;
+      ++batchCount;
+      if (batchCount == 4) {
+        flushMovementBatch();
       }
 
       ++batchExecutions;
@@ -1003,6 +1091,8 @@ void AIManager::processBatch(const std::vector<size_t> &activeIndices,
       AI_ERROR(std::format("Error in batch processing entity: {}", e.what()));
     }
   }
+
+  flushMovementBatch();
 
   if (batchExecutions > 0) {
     m_totalBehaviorExecutions.fetch_add(batchExecutions,
