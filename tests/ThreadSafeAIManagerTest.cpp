@@ -319,25 +319,27 @@ BOOST_FIXTURE_TEST_CASE(TestAsyncPathRequestsUnderWorkerLoad,
   PathfinderManager &pf = PathfinderManager::Instance();
   BOOST_REQUIRE(pf.init());
 
-  std::atomic<int> callbacks{0};
+  auto callbacks = std::make_shared<std::atomic<int>>(0);
   const int REQUESTS = 24;
   for (int i = 0; i < REQUESTS; ++i) {
     Vector2D start(16.0f + i, 20.0f + i);
     Vector2D goal(220.0f + i, 180.0f + i);
     pf.requestPath(static_cast<EntityID>(5000 + i), start, goal,
                    PathfinderManager::Priority::Normal,
-                   [&callbacks](EntityID, const std::vector<Vector2D>&) {
-                     callbacks.fetch_add(1, std::memory_order_relaxed);
+                   [callbacks](EntityID, const std::vector<Vector2D>&) {
+                     callbacks->fetch_add(1, std::memory_order_relaxed);
                    });
   }
 
-  // Wait briefly for callbacks to arrive under load
-  for (int i = 0; i < 25 && callbacks.load(std::memory_order_relaxed) == 0; ++i) {
+  // Wait for callbacks to arrive under load
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (std::chrono::steady_clock::now() < deadline &&
+         callbacks->load(std::memory_order_relaxed) < REQUESTS) {
     PathfinderManager::Instance().update(); // Process buffered requests
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
   }
 
-  BOOST_CHECK(callbacks.load(std::memory_order_relaxed) > 0);
+  BOOST_CHECK(callbacks->load(std::memory_order_relaxed) == REQUESTS);
 
   // Let the fixture/global fixture handle cleanup ordering for managers
 }

@@ -3,7 +3,7 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-#include "managers/EntityStateManager.hpp"
+#include "entities/EntityStateManager.hpp"
 #include "entities/EntityState.hpp"
 #include "core/Logger.hpp"
 #include <algorithm>

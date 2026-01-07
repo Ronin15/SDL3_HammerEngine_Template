@@ -6,6 +6,8 @@
 #ifndef TRIGGER_TAG_HPP
 #define TRIGGER_TAG_HPP
 
+#include <cstdint>
+
 namespace HammerEngine {
 
 // Trigger behavior type - determines collision processing path
@@ -33,4 +35,3 @@ enum class TriggerTag : uint8_t {
 } // namespace HammerEngine
 
 #endif // TRIGGER_TAG_HPP
-

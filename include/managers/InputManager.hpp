@@ -10,7 +10,6 @@
 #include <utility>
 #include <memory>
 #include <vector>
-#include <functional>
 #include "utils/Vector2D.hpp"
 
 enum mouse_buttons { LEFT = 0, MIDDLE = 1, RIGHT = 2 };
@@ -88,7 +87,7 @@ class InputManager {
     // Mouse specific
     std::vector<bool> m_mouseButtonStates{};
     std::unique_ptr<Vector2D> m_mousePosition{nullptr};
-    
+
     // Initialization and shutdown state
     bool m_isInitialized{false};
     bool m_isShutdown{false};

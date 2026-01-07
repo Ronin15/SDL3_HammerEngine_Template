@@ -8,10 +8,9 @@
 
 #include "entities/Entity.hpp"
 #include "entities/resources/InventoryComponent.hpp"
-#include "managers/EntityStateManager.hpp"
+#include "entities/EntityStateManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL_render.h>
 #include <memory>
 #include <random>
 #include <string>

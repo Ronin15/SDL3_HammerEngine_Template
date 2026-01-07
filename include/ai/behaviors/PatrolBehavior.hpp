@@ -10,7 +10,6 @@
 #include "ai/BehaviorConfig.hpp"
 #include "entities/Entity.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
 #include <random>
 #include <vector>
 
@@ -156,7 +155,7 @@ private:
   // Separation decimation
   float m_separationTimer{0.0f};      // Timer for separation updates
   Vector2D m_lastSepVelocity{0, 0};
-  
+
   // Async pathfinding control
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed

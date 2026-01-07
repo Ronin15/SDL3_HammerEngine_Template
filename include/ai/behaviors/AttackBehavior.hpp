@@ -7,7 +7,7 @@
 #define ATTACK_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
-#include "ai/behaviors/AttackBehaviorConfig.hpp"
+#include "ai/BehaviorConfig.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"

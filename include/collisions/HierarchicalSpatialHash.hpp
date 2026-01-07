@@ -10,12 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
-#include <atomic>
-#include <memory>
-#include <array>
-#include <functional>
 #include "collisions/AABB.hpp"
-#include "entities/Entity.hpp"
 
 namespace HammerEngine {
 

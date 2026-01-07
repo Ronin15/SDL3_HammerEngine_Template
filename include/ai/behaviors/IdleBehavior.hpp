@@ -10,7 +10,6 @@
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
 #include <random>
 
 class IdleBehavior : public AIBehavior {

@@ -18,13 +18,11 @@
  * - Direct function calls to minimize overhead
  */
 
-#include "core/WorkerBudget.hpp"
 #include "events/EventTypeId.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <array>
 #include <atomic>
-#include <condition_variable>
 #include <deque>
 #include <functional>
 #include <future>

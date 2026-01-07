@@ -56,7 +56,6 @@
 #include <unordered_map>
 #include <mutex>
 #include <shared_mutex>
-#include <cmath>
 
 // Forward declarations
 namespace HammerEngine {
@@ -146,13 +145,13 @@ public:
 
     /**
      * @brief Request a path asynchronously (ULTRA-HIGH-PERFORMANCE)
-     * @param entityId The entity requesting the path  
+     * @param entityId The entity requesting the path
      * @param start Starting position in world coordinates
      * @param goal Goal position in world coordinates
      * @param priority PathPriority level for request scheduling
      * @param callback Callback when path is ready (called from background thread)
      * @return Request ID for tracking (0 if failed)
-     * 
+     *
      * This method completes in <0.001ms with zero blocking operations:
      * - Lock-free request queue enqueue only
      * - No mutex locks, no hash operations, no complex math
@@ -321,10 +320,10 @@ public:
         size_t queueCapacity{0};
         bool processorActive{true};
         float cacheHitRate{0.0f};
-        
+
         // Simplified cache metrics
         float totalHitRate{0.0f};
-        
+
         // Cache memory usage
         size_t cacheSize{0};
         size_t segmentCacheSize{0};
@@ -395,7 +394,7 @@ private:
 
     // Request management - simplified
     std::atomic<uint64_t> m_nextRequestId{1};
-    
+
     // Configuration
     bool m_allowDiagonal{true};
     int m_maxIterations{40000};
@@ -417,8 +416,8 @@ private:
     bool m_isShutdown{false};
     std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
     std::atomic<bool> m_prewarming{false}; // Track if cache pre-warming is in progress
-    
-    // Statistics tracking 
+
+    // Statistics tracking
     mutable std::atomic<uint64_t> m_enqueuedRequests{0};
     mutable std::atomic<uint64_t> m_enqueueFailures{0};
     mutable std::atomic<uint64_t> m_completedRequests{0};
@@ -426,20 +425,20 @@ private:
     mutable std::atomic<uint64_t> m_cacheHits{0};
     mutable std::atomic<uint64_t> m_cacheMisses{0};
     mutable std::atomic<uint64_t> m_processedCount{0};
-    
+
     // Lightweight timing statistics (minimal overhead)
     mutable std::atomic<double> m_totalProcessingTimeMs{0.0};
     mutable std::chrono::steady_clock::time_point m_lastStatsUpdate{std::chrono::steady_clock::now()};
     mutable double m_lastRequestsPerSecond{0.0};
     mutable uint64_t m_lastTotalRequests{0};
-    
+
     // High-performance single-tier cache with smart quantization
     struct PathCacheEntry {
         std::vector<Vector2D> path;
         std::chrono::steady_clock::time_point lastUsed;
         uint32_t useCount{1};
     };
-    
+
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
     mutable std::shared_mutex m_cacheMutex;  // shared_mutex for concurrent reads
 
@@ -448,14 +447,14 @@ private:
     // Combined with coarser quantization (512px+), provides 70-85% cache hit rates
     static constexpr size_t MAX_CACHE_ENTRIES = 32768;
 
-    
+
 
     // Collision version tracking for cache invalidation
     std::atomic<uint64_t> m_lastCollisionVersion{0};
 
     // Statistics reporting frame counter
     int m_statsFrameCounter{0};
-    
+
     // Event subscription tracking
     std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 

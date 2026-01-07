@@ -17,8 +17,6 @@ struct PathData;
 #include <SDL3/SDL.h>
 #include <memory>
 #include <random>
-#include <unordered_map>
-#include <vector>
 
 class WanderBehavior : public AIBehavior {
 public:
@@ -102,7 +100,7 @@ private:
 
   // Mode setup helper
   void setupModeDefaults(WanderMode mode);
-  
+
   // PATHFINDING CONSOLIDATION: All pathfinding now uses PathfindingScheduler pathway
   // (removed m_useAsyncPathfinding flag as it's no longer needed)
 
