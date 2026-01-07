@@ -114,15 +114,17 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 
 **State Transitions**: Use `mp_stateManager->changeState()`, never `GameEngine::Instance()`. Base class provides `mp_stateManager`.
 
-**Manager Access**: Use local references at function start, not cached member pointers:
+**Manager/Controller Access**: Local references, not cached member pointers. Cache at function top when used **multiple times**, otherwise call directly.
 ```cpp
 void SomeState::update(float dt) {
-    const auto& inputMgr = InputManager::Instance();
-    auto& aiMgr = AIManager::Instance();
-    // Use throughout function
+    const auto& inputMgr = InputManager::Instance();  // Manager (singleton)
+    auto& combatCtrl = *m_controllers.get<CombatController>();  // Controller (registry)
+    // Use with dot notation throughout function
 }
+// Single use - no caching needed
+m_controllers.get<WeatherController>()->getCurrentWeather();
 ```
-Use `const auto&` for read-only access, `auto&` for mutable access. No `mp_` cached pointers needed - singleton lookup is inlined and equally fast.
+`const auto&` for read-only, `auto&` for mutable. Controllers: `m_controllers.add<T>()` in enter(), no cached `mp_*Ctrl` pointers.
 
 **Lazy String Caching**: Cache enum→string conversions, recompute only on change: `if (m_phase != m_lastPhase) { m_str = getPhaseString(); m_lastPhase = m_phase; }`
 

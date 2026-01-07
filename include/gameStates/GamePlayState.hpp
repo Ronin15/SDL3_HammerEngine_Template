@@ -18,11 +18,6 @@
 #include <memory>
 #include <string>
 
-// Forward declarations for cached controller pointers
-class WeatherController;
-class DayNightController;
-class CombatController;
-
 class GamePlayState : public GameState {
 public:
   GamePlayState()
@@ -71,11 +66,6 @@ private:
 
   // --- Controllers (owned by ControllerRegistry) ---
   ControllerRegistry m_controllers;
-
-  // Cached controller pointers for frequent access (resolved in enter())
-  WeatherController* mp_weatherCtrl{nullptr};
-  DayNightController* mp_dayNightCtrl{nullptr};
-  CombatController* mp_combatCtrl{nullptr};
 
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)

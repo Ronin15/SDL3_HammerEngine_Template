@@ -23,9 +23,6 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-// Forward declaration for controller pointer
-class CombatController;
-
 class AdvancedAIDemoState : public GameState {
 public:
 
@@ -83,7 +80,6 @@ private:
 
     // Controller registry (follows GamePlayState pattern)
     ControllerRegistry m_controllers;
-    CombatController* mp_combatCtrl{nullptr};
 
     // AI pause state
     bool m_aiPaused{false};

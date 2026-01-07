@@ -212,7 +212,7 @@ bool AdvancedAIDemoState::enter() {
     setupAdvancedAIBehaviors();
 
     // Register CombatController (follows GamePlayState pattern)
-    mp_combatCtrl = &m_controllers.add<CombatController>(m_player);
+    m_controllers.add<CombatController>(m_player);
     m_controllers.subscribeAll();
 
     // Create NPCs with optimized counts for behavior showcasing

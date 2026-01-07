@@ -25,7 +25,8 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
    - 5.6 Buffer reuse (avoid per-frame allocations)
    - 5.7 UI component positioning
    - 5.8 Rendering rules (deferred transitions)
-   - 5.9 Singleton manager caching (no duplicate Instance() calls)
+   - 5.9 Singleton manager access (no cached pointers, cache when multiple uses)
+   - 5.10 Controller access (no cached pointers, cache when multiple uses)
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -804,6 +805,81 @@ void GameState::update(float dt) {
 - At 10K entities with behaviors: Can add 1-5ms per frame
 
 **Quality Gate:** ✓ No cached mp_* manager pointers; no duplicate Instance() calls within same function (BLOCKING for GameStates)
+
+#### 5.10 Controller Access Pattern (CRITICAL)
+
+**Background:**
+Controllers are state-scoped objects owned by `ControllerRegistry`, not singletons. Access via `m_controllers.get<T>()`. Cache reference at function top only when used **multiple times** in the same function. Single use → call directly.
+
+**Check Commands:**
+```bash
+# Find cached mp_*Ctrl member pointers (OBSOLETE PATTERN)
+grep -rn "mp_.*Ctrl" include/gameStates/ --include="*.hpp"
+
+# Find duplicate get<Controller>() calls in same function
+for file in src/gameStates/*.cpp; do
+  echo "=== $file ==="
+  awk '/^void.*::|^bool.*::/{fn=$2; sub(/\(.*/, "", fn); delete seen}
+       /m_controllers\.get</{
+         ctrl=$0; sub(/.*get</, "", ctrl); sub(/>.*/, "", ctrl);
+         if (seen[ctrl]++) print "  DUPLICATE in "fn": "ctrl
+       }' "$file"
+done
+```
+
+**FORBIDDEN PATTERNS:**
+
+**Pattern 1: Cached Controller Member Pointers (OBSOLETE)**
+```cpp
+// ✗ OBSOLETE - No cached controller pointers
+class GamePlayState {
+    CombatController* mp_combatCtrl{nullptr};  // REMOVE
+};
+
+bool GamePlayState::enter() {
+    mp_combatCtrl = &m_controllers.add<CombatController>(m_player);  // OBSOLETE
+}
+
+// ✓ GOOD - Just add, no cached pointer
+bool GamePlayState::enter() {
+    m_controllers.add<CombatController>(m_player);
+}
+```
+
+**Pattern 2: Duplicate get<T>() Calls in Same Function**
+```cpp
+// ✗ BAD - Multiple get<>() calls for same controller
+void GamePlayState::updateCombatHUD() {
+    if (m_controllers.get<CombatController>()->hasActiveTarget()) {
+        auto target = m_controllers.get<CombatController>()->getTargetedNPC();  // DUPLICATE!
+    }
+}
+
+// ✓ GOOD - Cache reference at top when used multiple times
+void GamePlayState::updateCombatHUD() {
+    auto& combatCtrl = *m_controllers.get<CombatController>();
+
+    if (combatCtrl.hasActiveTarget()) {
+        auto target = combatCtrl.getTargetedNPC();  // dot notation
+    }
+}
+```
+
+**Pattern 3: Single Use - No Caching Needed**
+```cpp
+// ✓ GOOD - Single use, call directly (no need to cache)
+void GamePlayState::update(float dt) {
+    m_controllers.get<WeatherController>()->getCurrentWeather();  // OK - only used once
+}
+```
+
+**Caching Rule Summary:**
+| Usage Count | Pattern |
+|-------------|---------|
+| Single use | `m_controllers.get<T>()->method()` |
+| Multiple uses | `auto& ctrl = *m_controllers.get<T>(); ctrl.method1(); ctrl.method2();` |
+
+**Quality Gate:** ✓ No cached mp_*Ctrl pointers; cache reference when used multiple times (BLOCKING for GameStates)
 
 ### 6. Copyright & Legal Compliance
 
