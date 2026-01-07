@@ -351,7 +351,7 @@ private:
   // WorkerBudget hill climb tunes batch count for optimal throughput.
   // Default 500 - post-contention fix shows 1.21x+ speedup at all entity counts.
   // Benchmark results: 500=1.21x, 1000=1.32x, 2000=1.41x, 5000=1.36x, 10000=1.34x
-  std::atomic<size_t> m_threadingThreshold{500};
+  std::atomic<size_t> m_threadingThreshold{200};
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;
