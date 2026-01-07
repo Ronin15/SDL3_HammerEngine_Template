@@ -74,9 +74,9 @@ bool GamePlayState::enter() {
     initializeCamera();
 
     // Register controllers with the registry
-    mp_weatherCtrl = &m_controllers.add<WeatherController>();
-    mp_dayNightCtrl = &m_controllers.add<DayNightController>();
-    mp_combatCtrl = &m_controllers.add<CombatController>(mp_Player);
+    m_controllers.add<WeatherController>();
+    m_controllers.add<DayNightController>();
+    m_controllers.add<CombatController>(mp_Player);
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);
@@ -238,7 +238,7 @@ void GamePlayState::update(float deltaTime) {
                    gameTimeMgr.formatCurrentTime(),
                    gameTimeMgr.getTimeOfDayName(), gameTimeMgr.getSeasonName(),
                    static_cast<int>(gameTimeMgr.getCurrentTemperature()),
-                   mp_weatherCtrl->getCurrentWeatherString());
+                   m_controllers.get<WeatherController>()->getCurrentWeatherString());
     ui.setText("gameplay_time_label", m_statusBuffer);
   }
 
@@ -441,11 +441,6 @@ bool GamePlayState::exit() {
   m_controllers.unsubscribeAll();
   gameTimeMgr.enableAutoWeather(false);
 
-  // Clear cached controller pointers
-  mp_weatherCtrl = nullptr;
-  mp_dayNightCtrl = nullptr;
-  mp_combatCtrl = nullptr;
-
   // Stop ambient particles before unsubscribing
   stopAmbientParticles();
 
@@ -576,7 +571,7 @@ void GamePlayState::handleInput() {
 
   // Combat - spacebar to attack
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_SPACE) && mp_Player) {
-    mp_combatCtrl->tryAttack();
+    m_controllers.get<CombatController>()->tryAttack();
   }
 
   // Camera zoom controls
@@ -896,7 +891,7 @@ void GamePlayState::onTimePeriodChanged(const EventData &data) {
   // Add event log entry for the time period change
   UIManager::Instance().addEventLogEntry(
       "gameplay_event_log",
-      std::string(mp_dayNightCtrl->getCurrentPeriodDescription()));
+      std::string(m_controllers.get<DayNightController>()->getCurrentPeriodDescription()));
 
   GAMEPLAY_DEBUG("Day/night transition started to period: " +
                  std::string(periodEvent->getPeriodName()));
@@ -935,7 +930,7 @@ void GamePlayState::renderDayNightOverlay(SDL_Renderer *renderer, int width,
 
 void GamePlayState::updateAmbientParticles(TimePeriod period) {
   // Only spawn ambient particles during clear weather
-  if (mp_weatherCtrl->getCurrentWeather() != WeatherType::Clear) {
+  if (m_controllers.get<WeatherController>()->getCurrentWeather() != WeatherType::Clear) {
     if (m_ambientParticlesActive) {
       stopAmbientParticles();
     }
@@ -1026,7 +1021,7 @@ void GamePlayState::onWeatherChanged(const EventData &data) {
   // Add event log entry for the weather change
   UIManager::Instance().addEventLogEntry(
       "gameplay_event_log",
-      std::string(mp_weatherCtrl->getCurrentWeatherDescription()));
+      std::string(m_controllers.get<WeatherController>()->getCurrentWeatherDescription()));
 
   GAMEPLAY_DEBUG(weatherEvent->getWeatherTypeString());
 }
@@ -1174,14 +1169,15 @@ void GamePlayState::updateCombatHUD() {
   }
 
   auto &ui = UIManager::Instance();
+  auto &combatCtrl = *m_controllers.get<CombatController>();
 
   // Update player health and stamina bars
   ui.setValue("hud_health_bar", mp_Player->getHealth());
   ui.setValue("hud_stamina_bar", mp_Player->getStamina());
 
   // Update target frame visibility and content
-  if (mp_combatCtrl->hasActiveTarget()) {
-    auto target = mp_combatCtrl->getTargetedNPC();
+  if (combatCtrl.hasActiveTarget()) {
+    auto target = combatCtrl.getTargetedNPC();
     if (target) {
       ui.setComponentVisible("hud_target_panel", true);
       ui.setComponentVisible("hud_target_name", true);
