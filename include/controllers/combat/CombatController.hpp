@@ -26,7 +26,6 @@
 #include "controllers/IUpdatable.hpp"
 #include "entities/EntityHandle.hpp"
 #include <memory>
-#include <vector>
 
 // Forward declarations
 class Player;

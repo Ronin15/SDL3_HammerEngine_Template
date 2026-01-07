@@ -8,17 +8,14 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
-#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 
 struct BehaviorData;
 
-#include <SDL3/SDL.h>
 #include <atomic>
 #include <mutex>
 #include <random>
-#include <unordered_map>
 #include <vector>
 
 class FollowBehavior : public AIBehavior {

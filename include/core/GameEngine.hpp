@@ -9,9 +9,6 @@
 #include "managers/GameStateManager.hpp"
 #include "core/TimestepManager.hpp"
 #include <SDL3/SDL.h>
-#include <array>
-#include <atomic>
-#include <chrono>
 #include <memory>
 #include <string_view>
 

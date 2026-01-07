@@ -8,10 +8,8 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
-#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
-#include <vector>
 
 class ChaseBehavior : public AIBehavior {
 public:
@@ -46,7 +44,7 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-  
+
 
 protected:
   // Called when target is reached (within minimum range)

@@ -6,7 +6,6 @@
 #ifndef COLLISION_MANAGER_HPP
 #define COLLISION_MANAGER_HPP
 
-#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <atomic>
@@ -15,8 +14,6 @@
 #include <functional>
 #include <cstddef>
 #include <chrono>
-#include <array>
-#include <optional>
 #include <span>
 
 #include "entities/Entity.hpp" // EntityID
@@ -466,7 +463,7 @@ private:
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;
     float m_defaultTriggerCooldownSec{0.0f};
-    
+
     // ENHANCED OBJECT POOLS: Zero-allocation collision processing
     struct CollisionPool {
         // Primary collision processing buffers

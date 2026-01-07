@@ -9,7 +9,6 @@
 #include "entities/Entity.hpp"
 #include "events/Event.hpp"
 #include "utils/ResourceHandle.hpp"
-#include <memory>
 #include <string>
 
 /**

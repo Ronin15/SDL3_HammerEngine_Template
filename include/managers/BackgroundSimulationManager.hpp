@@ -25,14 +25,11 @@
  * - Handles tier updates (every 60 frames) + background entity processing (10Hz)
  */
 
-#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <atomic>
-#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <future>
-#include <memory>
 #include <mutex>
 #include <vector>
 

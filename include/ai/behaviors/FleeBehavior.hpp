@@ -8,7 +8,6 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
-#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"

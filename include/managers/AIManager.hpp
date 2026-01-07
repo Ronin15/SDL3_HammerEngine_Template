@@ -22,10 +22,8 @@
  */
 
 #include "ai/AIBehavior.hpp"
-#include "core/WorkerBudget.hpp"
 #include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
-#include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <array>
 #include <atomic>
