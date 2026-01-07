@@ -346,17 +346,23 @@ BOOST_AUTO_TEST_CASE(TestSIMDMovementIntegrationClamp)
     updateAI(1.0f, Vector2D(0.0f, 0.0f));
 
     {
+        // Entity 0: pos (10, 10), vel (-50, 0) -> after 1s: (-40, 10)
+        // Both axes clamped to min=16 (halfWidth/halfHeight), velocity zeroed
         size_t idx = edm.getIndex(handles[0]);
         const auto& transform = edm.getHotDataByIndex(idx).transform;
         BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
-        BOOST_CHECK_CLOSE(transform.position.getY(), 10.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
         BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
     }
     {
+        // Entity 1: pos (10, 10), vel (0, -50) -> after 1s: (10, -40)
+        // Both axes clamped to min=16 (halfWidth/halfHeight), velocity zeroed
         size_t idx = edm.getIndex(handles[1]);
         const auto& transform = edm.getHotDataByIndex(idx).transform;
-        BOOST_CHECK_CLOSE(transform.position.getX(), 10.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
         BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
         BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
     }
     {

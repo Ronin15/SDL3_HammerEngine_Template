@@ -35,6 +35,10 @@ int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center, f
 // - frameNumber: current frame number for cache invalidation
 void InvalidateSpatialCache(uint64_t frameNumber);
 
+// Returns reference to thread-local position buffer for crowd queries
+// Caller must call clear() before use. Avoids per-call allocations.
+std::vector<Vector2D> &GetNearbyPositionBuffer();
+
 } // namespace AIInternal
 
 #endif // AI_INTERNAL_CROWD_HPP

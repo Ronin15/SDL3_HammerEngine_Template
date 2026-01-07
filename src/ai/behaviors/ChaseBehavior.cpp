@@ -142,7 +142,8 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
     // Query nearby entities for separation steering - result stored in
     // BehaviorData common
     constexpr float kCrowdQueryRadius = 80.0f;
-    std::vector<Vector2D> nearbyPositions;
+    auto &nearbyPositions = AIInternal::GetNearbyPositionBuffer();
+    nearbyPositions.clear();
     data.cachedNearbyCount = AIInternal::GetNearbyEntitiesWithPositions(
         ctx.entityId, ctx.transform.position, kCrowdQueryRadius,
         nearbyPositions);
