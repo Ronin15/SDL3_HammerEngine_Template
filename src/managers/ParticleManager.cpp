@@ -11,6 +11,7 @@
 #include "managers/EventManager.hpp"
 #include "events/ParticleEffectEvent.hpp"
 #include "events/WeatherEvent.hpp"
+#include "utils/SIMDMath.hpp"
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -2784,17 +2785,23 @@ void ParticleManager::updateParticlePhysicsSIMD(
 
   // Scalar pre-loop to align to 4-float boundary for aligned loads
   size_t i = startIdx;
-  while (i < endIdx && (i & 0x3) != 0) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+  auto updateScalarParticle = [&](size_t idx) {
+    if (particles.flags[idx] & UnifiedParticle::FLAG_ACTIVE) {
       // Store previous position for interpolation before physics update
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
+      particles.prevPosX[idx] = particles.posX[idx];
+      particles.prevPosY[idx] = particles.posY[idx];
       // Physics update
-      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
-      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
+      particles.velX[idx] =
+          (particles.velX[idx] + particles.accX[idx] * deltaTime) * 0.98f;
+      particles.velY[idx] =
+          (particles.velY[idx] + particles.accY[idx] * deltaTime) * 0.98f;
+      particles.posX[idx] = particles.posX[idx] + particles.velX[idx] * deltaTime;
+      particles.posY[idx] = particles.posY[idx] + particles.velY[idx] * deltaTime;
     }
+  };
+
+  while (i < endIdx && (i & 0x3) != 0) {
+    updateScalarParticle(i);
     ++i;
   }
 
@@ -2806,36 +2813,52 @@ void ParticleManager::updateParticlePhysicsSIMD(
   for (; i < simdEnd; i += 4) {
     // SIMD flag check for 4 particles: skip if none active
     // Only use SIMD flag load when we have at least 16 elements available
-    bool anyActive = false;
+    int maskBits = 0;
     if (i < simdFlagSafeEnd) {
       // Safe to load 16 bytes
       const Byte16 flagsv = load_byte16(&particles.flags[i]);
       const Byte16 activeMask = broadcast_byte(static_cast<uint8_t>(UnifiedParticle::FLAG_ACTIVE));
       const Byte16 activev = bitwise_and_byte(flagsv, activeMask);
       const Byte16 gt0 = cmpgt_byte(activev, setzero_byte());
-      const int maskBits = movemask_byte(gt0);
-      anyActive = (maskBits & 0xF) != 0;
+      maskBits = movemask_byte(gt0) & 0xF;
     } else {
       // Scalar flag check for safety near array end
-      anyActive = (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) ||
-                  (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) ||
-                  (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) ||
-                  (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE));
+      if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
+        maskBits |= 0x1;
+      }
+      if (i + 1 < particleCount && (particles.flags[i + 1] & UnifiedParticle::FLAG_ACTIVE)) {
+        maskBits |= 0x2;
+      }
+      if (i + 2 < particleCount && (particles.flags[i + 2] & UnifiedParticle::FLAG_ACTIVE)) {
+        maskBits |= 0x4;
+      }
+      if (i + 3 < particleCount && (particles.flags[i + 3] & UnifiedParticle::FLAG_ACTIVE)) {
+        maskBits |= 0x8;
+      }
     }
-    if (!anyActive) continue;
+    if (maskBits == 0) continue;
+    if (maskBits != 0xF) {
+      // Mixed active/inactive lanes: fall back to scalar updates for correctness.
+      for (size_t lane = 0; lane < 4; ++lane) {
+        const size_t idx = i + lane;
+        if (idx >= endIdx) break;
+        updateScalarParticle(idx);
+      }
+      continue;
+    }
 
     // Use aligned loads - AlignedAllocator guarantees 16-byte alignment
-    Float4 posXv = load4(&particles.posX[i]);
-    Float4 posYv = load4(&particles.posY[i]);
+    Float4 posXv = load4_aligned(&particles.posX[i]);
+    Float4 posYv = load4_aligned(&particles.posY[i]);
 
     // Store previous positions for interpolation BEFORE physics update (fused optimization)
-    store4(&particles.prevPosX[i], posXv);
-    store4(&particles.prevPosY[i], posYv);
+    store4_aligned(&particles.prevPosX[i], posXv);
+    store4_aligned(&particles.prevPosY[i], posYv);
 
-    Float4 velXv = load4(&particles.velX[i]);
-    Float4 velYv = load4(&particles.velY[i]);
-    const Float4 accXv = load4(&particles.accX[i]);
-    const Float4 accYv = load4(&particles.accY[i]);
+    Float4 velXv = load4_aligned(&particles.velX[i]);
+    Float4 velYv = load4_aligned(&particles.velY[i]);
+    const Float4 accXv = load4_aligned(&particles.accX[i]);
+    const Float4 accYv = load4_aligned(&particles.accY[i]);
 
     // SIMD physics update: vel = (vel + acc * dt) * drag
     velXv = mul(madd(accXv, deltaTimeVec, velXv), atmosphericDragVec);
@@ -2846,24 +2869,15 @@ void ParticleManager::updateParticlePhysicsSIMD(
     posYv = madd(velYv, deltaTimeVec, posYv);
 
     // Store results back to SIMD arrays
-    store4(&particles.velX[i], velXv);
-    store4(&particles.velY[i], velYv);
-    store4(&particles.posX[i], posXv);
-    store4(&particles.posY[i], posYv);
+    store4_aligned(&particles.velX[i], velXv);
+    store4_aligned(&particles.velY[i], velYv);
+    store4_aligned(&particles.posX[i], posXv);
+    store4_aligned(&particles.posY[i], posYv);
   }
 
   // Scalar tail
   for (; i < endIdx; ++i) {
-    if (particles.flags[i] & UnifiedParticle::FLAG_ACTIVE) {
-      // Store previous position for interpolation before physics update
-      particles.prevPosX[i] = particles.posX[i];
-      particles.prevPosY[i] = particles.posY[i];
-      // Physics update
-      particles.velX[i] = (particles.velX[i] + particles.accX[i] * deltaTime) * 0.98f;
-      particles.velY[i] = (particles.velY[i] + particles.accY[i] * deltaTime) * 0.98f;
-      particles.posX[i] = particles.posX[i] + particles.velX[i] * deltaTime;
-      particles.posY[i] = particles.posY[i] + particles.velY[i] * deltaTime;
-    }
+    updateScalarParticle(i);
   }
 
 }

@@ -2330,8 +2330,8 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     posB = add(posB, correction);
 
     alignas(16) float resultA[4], resultB[4];
-    store4(resultA, posA);
-    store4(resultB, posB);
+    store4_aligned(resultA, posA);
+    store4_aligned(resultB, posB);
 
     // Write positions back to EDM
     transformA.position.setX(resultA[0]);
@@ -2359,7 +2359,7 @@ void CollisionManager::resolve(const CollisionInfo &collision) {
     pos = sub(pos, correction);
 
     alignas(16) float result[4];
-    store4(result, pos);
+    store4_aligned(result, pos);
 
     // Write position back to EDM
     transform.position.setX(result[0]);
