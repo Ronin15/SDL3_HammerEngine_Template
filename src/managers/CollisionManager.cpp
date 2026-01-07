@@ -598,20 +598,19 @@ bool CollisionManager::queryAreaHasStaticOverlap(const AABB &area) const {
   m_staticSpatialHash.queryRegionBoundsThreadSafe(minX, minY, maxX, maxY,
                                                   staticIndices, queryBuffers);
 
-  for (size_t idx : staticIndices) {
-    if (idx < m_storage.hotData.size() && m_storage.hotData[idx].active) {
-      const auto &hot = m_storage.hotData[idx];
-      if (static_cast<BodyType>(hot.bodyType) != BodyType::STATIC)
-        continue;
-
-      AABB bodyAABB = m_storage.computeAABB(idx);
-      if (bodyAABB.intersects(area)) {
-        return true;
-      }
-    }
-  }
-
-  return false;
+  return std::any_of(staticIndices.begin(), staticIndices.end(),
+                     [this, &area](size_t idx) {
+                       if (idx >= m_storage.hotData.size() ||
+                           !m_storage.hotData[idx].active) {
+                         return false;
+                       }
+                       const auto &hot = m_storage.hotData[idx];
+                       if (static_cast<BodyType>(hot.bodyType) != BodyType::STATIC) {
+                         return false;
+                       }
+                       AABB bodyAABB = m_storage.computeAABB(idx);
+                       return bodyAABB.intersects(area);
+                     });
 }
 
 bool CollisionManager::getBodyCenter(EntityID id, Vector2D &outCenter) const {
@@ -2376,7 +2375,7 @@ void CollisionManager::detectEventOnlyTriggers() {
   auto &pools = m_collisionPool;
   pools.eventOnlyOverlaps.clear();
 
-  auto &edm = EntityDataManager::Instance();
+  const auto &edm = EntityDataManager::Instance();
   auto triggerIndices = edm.getTriggerDetectionIndices();
 
   if (triggerIndices.empty() || pools.movableAABBs.empty()) {
@@ -2606,9 +2605,9 @@ void CollisionManager::processTriggerEvents() {
     // (indexB/m_storage)
     bool isPlayer =
         (movableHot.collisionLayers & CollisionLayer::Layer_Player) != 0;
-    bool isTrigger = staticHot.isTrigger;
+    bool staticIsTrigger = staticHot.isTrigger;
 
-    if (!isPlayer || !isTrigger) {
+    if (!isPlayer || !staticIsTrigger) {
       continue; // Not a player-trigger interaction
     }
 
@@ -2990,7 +2989,7 @@ CollisionManager::CullingArea
 CollisionManager::createDefaultCullingArea() const {
   // EDM-CENTRIC: Center culling on player position (reference point from BGM)
   // This matches the tier system's proximity filtering used by AIManager
-  auto &bgm = BackgroundSimulationManager::Instance();
+  const auto &bgm = BackgroundSimulationManager::Instance();
   Vector2D refPoint = bgm.getReferencePoint();
   float radius = bgm.getActiveRadius();
 

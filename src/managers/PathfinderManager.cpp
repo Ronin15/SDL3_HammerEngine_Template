@@ -371,9 +371,11 @@ uint64_t PathfinderManager::requestPathToEDM(
             findPathImmediate(nStart, nGoal, path, gridSnapshot, true);
 
             // Store in cache (write lock to ensure cache fills on EDM requests)
+            // Double-check shutdown: first check avoids lock acquisition,
+            // second check ensures shutdown didn't occur while waiting for lock
             if (!path.empty() && !m_isShutdown) {
                 std::unique_lock<std::shared_mutex> lock(m_cacheMutex);
-                if (!m_isShutdown) {
+                if (!m_isShutdown) {  // NOLINT(bugprone-redundant-branch-condition)
                     auto now = std::chrono::steady_clock::now();
                     auto it = m_pathCache.find(cacheKey);
                     if (it != m_pathCache.end()) {
