@@ -149,12 +149,19 @@ bool GameEngine::init(std::string_view title, int width, int height, bool fullsc
 #### macOS Optimizations
 - Borderless fullscreen desktop mode for compatibility
 - Display content scale detection for proper DPI handling
-- Logical presentation with letterbox mode (1920x1080 target resolution)
+- High pixel density (Retina) support with native resolution rendering
 - Spaces integration for fullscreen mode
 
 #### Wayland/Linux Support
 - Automatic Wayland detection with VSync fallback
 - Software frame rate limiting for timing consistency
+
+#### Window Occlusion Handling (All Platforms)
+When the application window loses focus, is minimized, hidden, or occluded:
+- Automatically switches to software frame limiting to prevent CPU spin
+- Handles `SDL_EVENT_WINDOW_OCCLUDED`, `SDL_EVENT_WINDOW_FOCUS_LOST`, `SDL_EVENT_WINDOW_HIDDEN`
+- Restores VSync when window regains focus (`SDL_EVENT_WINDOW_FOCUS_GAINED`, `SDL_EVENT_WINDOW_RESTORED`)
+- Prevents render CPU spin on macOS when app loses focus
 - Native resolution rendering to eliminate scaling blur
 
 #### Multi-threaded Initialization
@@ -435,16 +442,19 @@ private:
 
 #### Platform-Specific Rendering Strategies
 
-**macOS Approach:**
-- Uses logical presentation with letterbox mode
-- Target resolution: 1920x1080 for consistent UI layout
+**All Platforms (Unified Approach):**
+- Native resolution rendering for pixel-perfect graphics
+- Disabled logical presentation (`SDL_LOGICAL_PRESENTATION_DISABLED`)
+- Direct pixel coordinate system
+
+**macOS-Specific:**
+- High pixel density (Retina) with `SDL_WINDOW_HIGH_PIXEL_DENSITY`
 - Display content scale for proper DPI handling
 - Borderless fullscreen desktop mode
 
-**Linux/Windows Approach:**
-- Native resolution rendering to eliminate scaling blur
-- Disabled logical presentation for pixel-perfect rendering
-- Direct pixel coordinate system
+**Linux-Specific:**
+- Wayland detection with VSync fallback
+- Software frame rate limiting when VSync unavailable
 
 #### Coordinate System Benefits
 
@@ -734,16 +744,15 @@ void setupRenderer() {
     }
 }
 
-void optimizeForPlatform() {
+// All platforms now use native resolution for pixel-perfect rendering
+void initializeRendering() {
     GameEngine& engine = GameEngine::Instance();
 
-    #ifdef __APPLE__
-    // macOS uses letterbox mode for consistent UI
-    engine.setLogicalPresentationMode(SDL_LOGICAL_PRESENTATION_LETTERBOX);
-    #else
-    // Other platforms use native resolution
+    // Native resolution rendering (no letterbox scaling)
     engine.setLogicalPresentationMode(SDL_LOGICAL_PRESENTATION_DISABLED);
-    #endif
+
+    // VSync with automatic software fallback
+    engine.setVSync(true);  // Falls back to software limiting if unavailable
 }
 ```
 
