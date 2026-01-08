@@ -20,13 +20,21 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 
 ## Testing
 
-Boost.Test (68+ executables). Use targeted tests during development.
+Boost.Test (58 executables). Use targeted tests during development. See `tests/TESTING.md` for comprehensive documentation.
 
 ```bash
-./run_all_tests.sh --core-only --errors-only
-./tests/test_scripts/run_save_tests.sh --verbose
-./bin/debug/SaveManagerTests --run_test="TestSaveAndLoad*"
+# Use test scripts (preferred - handles output properly)
+./tests/test_scripts/run_all_tests.sh --core-only --errors-only
+./tests/test_scripts/run_controller_tests.sh --verbose
+./tests/test_scripts/run_ai_benchmark.sh
+
+# Direct test execution - list tests first, then run
+./bin/debug/<test_executable> --list_content       # List available tests
+./bin/debug/<test_executable> --run_test="TestCase*"  # Run specific test
+./bin/debug/save_manager_tests --run_test="TestSaveAndLoad*"
 ```
+
+**Boost.Test Notes**: Test names use the BOOST_AUTO_TEST_CASE name directly (e.g., `ThreadingModeComparison`, not `TestThreadingModeComparison`). Suite prefix is optional. Use `--list_content` to verify exact names.
 
 ## Architecture
 
@@ -67,6 +75,19 @@ class Manager {
 ```
 Always `reserve()` when size known.
 
+## EDM (EntityDataManager) Patterns
+
+Behaviors access EDM via context: `ctx.behaviorData` (state), `ctx.pathData` (navigation). Both pre-fetched in `processBatch()`.
+
+**CRITICAL:** Data surviving between frames (paths, timers) MUST use EDM, never local variables:
+```cpp
+// BAD - temp destroyed each frame = infinite path recomputation
+AIBehaviorState temp; temp.pathPoints = compute(); // LOST!
+
+// GOOD - use EDM directly
+PathData& pd = *ctx.pathData; pathfinder().requestPathToEDM(ctx.edmIndex, ...);
+```
+
 ## SIMD
 
 Cross-platform: `include/utils/SIMDMath.hpp` (SSE2/NEON). Process 4 elements/iteration + scalar tail. Always provide scalar fallback. Reference: `AIManager::calculateDistancesSIMD()`.
@@ -88,6 +109,26 @@ Modes: TOP_ALIGNED, BOTTOM_ALIGNED, LEFT/RIGHT_ALIGNED, BOTTOM_RIGHT, CENTERED_H
 **Loading**: Use `LoadingState` with async ThreadSystem ops, not blocking manual rendering.
 
 **Deferred transitions**: Set flag in `enter()`, transition in `update()` to avoid timing issues.
+
+## GameState Architecture
+
+**State Transitions**: Use `mp_stateManager->changeState()`, never `GameEngine::Instance()`. Base class provides `mp_stateManager`.
+
+**Manager/Controller Access**: Local references, not cached member pointers. Cache at function top when used **multiple times**, otherwise call directly.
+```cpp
+void SomeState::update(float dt) {
+    const auto& inputMgr = InputManager::Instance();  // Manager (singleton)
+    auto& combatCtrl = *m_controllers.get<CombatController>();  // Controller (registry)
+    // Use with dot notation throughout function
+}
+// Single use - no caching needed
+m_controllers.get<WeatherController>()->getCurrentWeather();
+```
+`const auto&` for read-only, `auto&` for mutable. Controllers: `m_controllers.add<T>()` in enter(), no cached `mp_*Ctrl` pointers.
+
+**Lazy String Caching**: Cache enum→string conversions, recompute only on change: `if (m_phase != m_lastPhase) { m_str = getPhaseString(); m_lastPhase = m_phase; }`
+
+**Layout Caching**: Compute static positions (LogoState) in `enter()`, use cached values in `render()`.
 
 ## Workflow
 

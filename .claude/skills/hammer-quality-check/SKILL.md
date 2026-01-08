@@ -1,6 +1,6 @@
 ---
 name: hammer-quality-check
-description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
+description: Runs comprehensive code quality checks for SDL3 HammerEngine including compilation warnings, static analysis (cppcheck, clang-tidy), coding standards validation, threading safety verification, and architecture compliance. Use before commits, pull requests, or when the user wants to verify code meets project quality standards.
 allowed-tools: [Bash, Read, Grep]
 ---
 
@@ -12,6 +12,8 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
 
 1. **Compilation Quality** - Zero warnings policy
 2. **Static Analysis** - Memory safety, null pointers, threading
+   - 2.1 cppcheck - Memory leaks, null pointers, buffer overflows
+   - 2.2 clang-tidy - Bug detection, modernization, performance
 3. **Coding Standards** - Naming conventions, formatting
 4. **Threading Safety** - Critical threading rules enforcement
 5. **Architecture Compliance** - Design pattern adherence
@@ -23,6 +25,8 @@ This Skill enforces SDL3 HammerEngine's quality standards as defined in `CLAUDE.
    - 5.6 Buffer reuse (avoid per-frame allocations)
    - 5.7 UI component positioning
    - 5.8 Rendering rules (deferred transitions)
+   - 5.9 Singleton manager access (no cached pointers, cache when multiple uses)
+   - 5.10 Controller access (no cached pointers, cache when multiple uses)
 6. **Copyright & Legal** - License header validation
 7. **Test Coverage** - Verify tests exist for modified code
 
@@ -60,7 +64,7 @@ int x = 0;
 void func([[maybe_unused]] int param) { }
 ```
 
-### 2. Static Analysis (cppcheck)
+### 2.1 Static Analysis (cppcheck)
 
 **Command:**
 ```bash
@@ -92,6 +96,60 @@ cppcheck --enable=all --suppress=missingIncludeSystem \
 - **style:** Optional (improve if time permits)
 - **performance:** Consider optimizing
 - **information:** FYI only
+
+### 2.2 Static Analysis (clang-tidy)
+
+**Command:**
+```bash
+./tests/clang-tidy/clang_tidy_focused.sh
+```
+
+**Configuration Files:**
+- `tests/clang-tidy/.clang-tidy` - Check configuration matching CLAUDE.md standards
+- `tests/clang-tidy/clang_tidy_suppressions.txt` - False positive suppressions
+
+**Checks Enabled:**
+- `bugprone-*` - Bug-prone patterns (use-after-move, infinite loops, null dereference)
+- `clang-analyzer-*` - Deep static analysis
+- `cppcoreguidelines-*` - C++ Core Guidelines compliance
+- `modernize-*` - Modern C++ patterns (override, nullptr, auto)
+- `performance-*` - Performance issues (unnecessary copies, inefficient algorithms)
+- `readability-*` - Code readability (naming, braces, const-correctness)
+
+**Disabled Checks (intentional for game dev):**
+- `modernize-use-trailing-return-type` - Personal style preference
+- `readability-magic-numbers` - Games use many numeric constants
+- `cppcoreguidelines-pro-bounds-pointer-arithmetic` - Required for SIMD/buffers
+- `misc-include-cleaner` - Too noisy for incremental development
+
+**Severity Levels:**
+- **CRITICAL:** `bugprone-infinite-loop`, `bugprone-use-after-move`, `clang-analyzer-*`
+- **HIGH:** `performance-*`, `modernize-use-override`, `bugprone-macro-*`
+- **MEDIUM:** `misc-const-correctness`, `readability-make-member-function-const`
+- **LOW:** `narrowing-conversions`, `readability-braces`, `readability-identifier-*`
+
+**Quality Gate:** ✓ Zero CRITICAL issues, review HIGH issues
+
+**Suppressions:**
+The `clang_tidy_suppressions.txt` file handles false positives:
+```
+# Format: file_pattern:check_name:reason
+AIManager.cpp:bugprone-infinite-loop:false positive - loop variable incremented in body
+PathfindingGrid.cpp:bugprone-empty-catch:intentional fallback to default threshold
+.cpp:misc-const-correctness:variables assigned in conditionals - clang-tidy false positive
+```
+
+**Common False Positives:**
+1. **misc-const-correctness** - Variables initialized then assigned in if/switch/loops
+2. **bugprone-infinite-loop** - Loops with increment inside body (not in for statement)
+3. **bugprone-empty-catch** - Intentional fallback-to-default patterns
+4. **narrowing-conversions** - Intentional int-to-float for grid coordinates
+
+**Adding New Suppressions:**
+Edit `tests/clang-tidy/clang_tidy_suppressions.txt`:
+```
+FileName.cpp:check-name:reason for suppression
+```
 
 ### 3. Coding Standards (CLAUDE.md Compliance)
 
@@ -632,6 +690,197 @@ void MyState::update(float dt) {
 
 **Quality Gate:** ✓ No SDL_RenderClear/Present outside GameEngine (BLOCKING)
 
+#### 5.9 Singleton Manager Access (CRITICAL)
+
+**Background:**
+Use local references at function start for manager access. Singleton `Instance()` calls are inlined by the compiler - no performance difference vs cached member pointers. Local references are cleaner (no `enter()` boilerplate, no stale pointer risk, smaller class size).
+
+**Check Commands:**
+```bash
+# Find duplicate Instance() calls in the same function (GameStates are hot paths)
+for file in src/gameStates/*.cpp; do
+  echo "=== $file ==="
+  awk '/^void.*::|^bool.*::/{fn=$2; sub(/\(.*/, "", fn); delete seen}
+       /::Instance\(\)/{
+         mgr=$0; sub(/.*&[[:space:]]*/, "", mgr); sub(/[[:space:]]*=.*/, "", mgr);
+         if (seen[mgr]++) print "  DUPLICATE in "fn": "mgr
+       }' "$file"
+done
+
+# Find cached mp_* member pointers to managers (OBSOLETE PATTERN)
+grep -rn "mp_.*Mgr\|mp_.*Manager\|mp_edm\|mp_world\|mp_ui\|mp_particle\|mp_event" include/gameStates/ --include="*.hpp"
+```
+
+**FORBIDDEN PATTERNS:**
+
+**Pattern 1: Cached Member Pointers (OBSOLETE)**
+```cpp
+// ✗ OBSOLETE - Cached member pointers add complexity without performance benefit
+class GameState {
+    UIManager* mp_uiMgr = nullptr;      // REMOVE - use local reference
+    WorldManager* mp_worldMgr = nullptr; // REMOVE - use local reference
+};
+
+bool GameState::enter() {
+    mp_uiMgr = &UIManager::Instance();  // OBSOLETE PATTERN
+    mp_worldMgr = &WorldManager::Instance();
+}
+
+// ✓ GOOD - Local references at function start
+bool GameState::enter() {
+    auto& ui = UIManager::Instance();
+    auto& worldMgr = WorldManager::Instance();
+    ui.createButton(...);
+}
+```
+
+**Pattern 2: Duplicate Instance() Calls in Same Function**
+```cpp
+// ✗ BAD - Multiple Instance() calls for same manager
+void GameState::handleInput() {
+    if (InputManager::Instance().wasKeyPressed(KEY_A)) {
+        AIManager::Instance().doSomething();  // First call
+    }
+    if (InputManager::Instance().wasKeyPressed(KEY_B)) {
+        AIManager::Instance().doSomethingElse();  // DUPLICATE!
+    }
+}
+
+// ✓ GOOD - Cache at function start
+void GameState::handleInput() {
+    const auto& inputMgr = InputManager::Instance();
+    auto& aiMgr = AIManager::Instance();
+
+    if (inputMgr.wasKeyPressed(KEY_A)) {
+        aiMgr.doSomething();
+    }
+    if (inputMgr.wasKeyPressed(KEY_B)) {
+        aiMgr.doSomethingElse();
+    }
+}
+```
+
+**Pattern 3: Instance() Called in Nested Blocks Instead of Top**
+```cpp
+// ✗ BAD - Instance() called inside branches
+void GameState::update(float dt) {
+    if (condition) {
+        auto& mgr = SomeManager::Instance();  // Inside if block
+        mgr.process();
+    } else {
+        auto& mgr = SomeManager::Instance();  // DUPLICATE in else!
+        mgr.processAlternate();
+    }
+}
+
+// ✓ GOOD - Cache once at top, use in all branches
+void GameState::update(float dt) {
+    auto& mgr = SomeManager::Instance();
+
+    if (condition) {
+        mgr.process();
+    } else {
+        mgr.processAlternate();
+    }
+}
+```
+
+**Managers to Check (Common in GameStates):**
+- `AIManager::Instance()`
+- `UIManager::Instance()`
+- `InputManager::Instance()`
+- `EventManager::Instance()`
+- `ParticleManager::Instance()`
+- `CollisionManager::Instance()`
+- `PathfinderManager::Instance()`
+- `WorldManager::Instance()`
+- `GameTimeManager::Instance()`
+- `EntityDataManager::Instance()`
+- `GameEngine::Instance()`
+
+**Performance Impact:**
+- Each redundant Instance() call: ~10-50 nanoseconds
+- In tight loops or 60Hz update paths: Adds up to measurable overhead
+- GameStates with 5-10 duplicate calls: ~0.5-1μs wasted per frame
+- At 10K entities with behaviors: Can add 1-5ms per frame
+
+**Quality Gate:** ✓ No cached mp_* manager pointers; no duplicate Instance() calls within same function (BLOCKING for GameStates)
+
+#### 5.10 Controller Access Pattern (CRITICAL)
+
+**Background:**
+Controllers are state-scoped objects owned by `ControllerRegistry`, not singletons. Access via `m_controllers.get<T>()`. Cache reference at function top only when used **multiple times** in the same function. Single use → call directly.
+
+**Check Commands:**
+```bash
+# Find cached mp_*Ctrl member pointers (OBSOLETE PATTERN)
+grep -rn "mp_.*Ctrl" include/gameStates/ --include="*.hpp"
+
+# Find duplicate get<Controller>() calls in same function
+for file in src/gameStates/*.cpp; do
+  echo "=== $file ==="
+  awk '/^void.*::|^bool.*::/{fn=$2; sub(/\(.*/, "", fn); delete seen}
+       /m_controllers\.get</{
+         ctrl=$0; sub(/.*get</, "", ctrl); sub(/>.*/, "", ctrl);
+         if (seen[ctrl]++) print "  DUPLICATE in "fn": "ctrl
+       }' "$file"
+done
+```
+
+**FORBIDDEN PATTERNS:**
+
+**Pattern 1: Cached Controller Member Pointers (OBSOLETE)**
+```cpp
+// ✗ OBSOLETE - No cached controller pointers
+class GamePlayState {
+    CombatController* mp_combatCtrl{nullptr};  // REMOVE
+};
+
+bool GamePlayState::enter() {
+    mp_combatCtrl = &m_controllers.add<CombatController>(m_player);  // OBSOLETE
+}
+
+// ✓ GOOD - Just add, no cached pointer
+bool GamePlayState::enter() {
+    m_controllers.add<CombatController>(m_player);
+}
+```
+
+**Pattern 2: Duplicate get<T>() Calls in Same Function**
+```cpp
+// ✗ BAD - Multiple get<>() calls for same controller
+void GamePlayState::updateCombatHUD() {
+    if (m_controllers.get<CombatController>()->hasActiveTarget()) {
+        auto target = m_controllers.get<CombatController>()->getTargetedNPC();  // DUPLICATE!
+    }
+}
+
+// ✓ GOOD - Cache reference at top when used multiple times
+void GamePlayState::updateCombatHUD() {
+    auto& combatCtrl = *m_controllers.get<CombatController>();
+
+    if (combatCtrl.hasActiveTarget()) {
+        auto target = combatCtrl.getTargetedNPC();  // dot notation
+    }
+}
+```
+
+**Pattern 3: Single Use - No Caching Needed**
+```cpp
+// ✓ GOOD - Single use, call directly (no need to cache)
+void GamePlayState::update(float dt) {
+    m_controllers.get<WeatherController>()->getCurrentWeather();  // OK - only used once
+}
+```
+
+**Caching Rule Summary:**
+| Usage Count | Pattern |
+|-------------|---------|
+| Single use | `m_controllers.get<T>()->method()` |
+| Multiple uses | `auto& ctrl = *m_controllers.get<T>(); ctrl.method1(); ctrl.method2();` |
+
+**Quality Gate:** ✓ No cached mp_*Ctrl pointers; cache reference when used multiple times (BLOCKING for GameStates)
+
 ### 6. Copyright & Legal Compliance
 
 **Check Command:**
@@ -686,6 +935,15 @@ Branch: <current-branch>
 
 <list of issues>
 
+## Static Analysis (clang-tidy)
+✓/✗ Status: <PASSED/FAILED>
+  Critical: <count>
+  High: <count>
+  Medium: <count>
+  Low: <count>
+
+<list of critical/high issues>
+
 ## Coding Standards
 ✓/✗ Naming Conventions: <PASSED/FAILED>
   <violations if any>
@@ -715,6 +973,8 @@ Branch: <current-branch>
   <violations if any - BLOCKING for hot paths>
 ✓/✗ UI Positioning: <PASSED/FAILED>
   <missing setComponentPositioning calls>
+✓/✗ Singleton Manager Access: <PASSED/FAILED>
+  <cached mp_* pointers or duplicate Instance() calls - BLOCKING for GameStates>
 
 ## Legal Compliance
 ✓/✗ Copyright Headers: <PASSED/FAILED>
@@ -780,9 +1040,10 @@ Activate this Skill automatically.
 ## Performance Expectations
 
 - **Compilation Check:** 10-30 seconds
-- **Static Analysis:** 30-60 seconds
+- **Static Analysis (cppcheck):** 30-60 seconds
+- **Static Analysis (clang-tidy):** 60-120 seconds
 - **Standards Checks:** 5-10 seconds
-- **Total:** ~1-2 minutes
+- **Total:** ~2-4 minutes
 
 ## Quick Fix Guide
 
@@ -872,6 +1133,28 @@ Activate this Skill automatically.
     // Use deferred: m_shouldTransition = true; // then transition in update()
     ```
 
+15. **Duplicate Manager::Instance() calls:**
+    ```cpp
+    // Instead of calling Instance() multiple times in same function:
+    void handleInput() {
+        // Cache ALL managers at function start as local references
+        const auto& inputMgr = InputManager::Instance();
+        auto& aiMgr = AIManager::Instance();
+        auto& ui = UIManager::Instance();
+        // ... use cached references throughout
+    }
+    ```
+
+16. **Cached mp_* member pointers (OBSOLETE):**
+    ```cpp
+    // OBSOLETE - Don't cache manager pointers as class members
+    // mp_uiMgr = &UIManager::Instance();  // REMOVE THIS PATTERN
+
+    // CORRECT - Use local references at function start
+    auto& ui = UIManager::Instance();
+    ui.createButton(...);
+    ```
+
 ## Integration with Workflow
 
 Use this Skill:
@@ -886,14 +1169,18 @@ Use this Skill:
 - Static variables in threaded code
 - Unnecessary shared_ptr copies in hot paths (perf-critical code)
 - Per-frame allocations in hot paths (local containers in update/render)
+- Duplicate Manager::Instance() calls in GameState functions
+- Cached mp_* manager pointers in GameState headers (use local references)
 - SDL_RenderClear/Present outside GameEngine
 - Compilation errors
 - Critical cppcheck errors
+- Critical clang-tidy issues (bugprone-*, clang-analyzer-*)
 - Missing copyright headers on new files
 
 **WARNING (Should Fix):**
 - Compilation warnings
 - cppcheck warnings
+- High clang-tidy issues (performance-*, modernize-use-override)
 - Naming convention violations
 - Missing tests for new code
 - String concatenation in logging (use std::format)

@@ -39,9 +39,15 @@ public:
 
     /**
      * @brief Subscribe to time events and start tracking time periods
-     * @note Called when a world state enters, NOT in GameEngine::init()
+     * @note Called by ControllerRegistry::subscribeAll()
      */
-    void subscribe();
+    void subscribe() override;
+
+    /**
+     * @brief Get controller name for debugging
+     * @return "DayNightController"
+     */
+    [[nodiscard]] std::string_view getName() const override { return "DayNightController"; }
 
     /**
      * @brief Get the current time period

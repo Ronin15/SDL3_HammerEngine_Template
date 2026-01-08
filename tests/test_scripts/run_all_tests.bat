@@ -69,7 +69,7 @@ if /i "%~1"=="--help" (
     echo.
     echo Test Categories:
     echo   Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, WeatherEvent, GameTimeManager, Controllers,
-    echo                     ParticleManager, Collision, Pathfinding, GameEngine, Camera, InputManager, SIMD, BufferReuse,
+    echo                     ParticleManager, Collision, Pathfinding, Camera, InputManager, SIMD, BufferReuse,
     echo                     Rendering, LoadingState, UIManager, AI-Collision Integration, Event Coordination Integration
     echo   Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision, Pathfinder, SIMD, and Integrated system benchmarks
     echo.
@@ -93,7 +93,7 @@ goto :parse_args
 
 :: Define test categories
 :: Core functionality tests (fast execution)
-set CORE_TEST_COUNT=36
+set CORE_TEST_COUNT=39
 :: Performance scaling benchmarks (slow execution)
 set BENCHMARK_TEST_COUNT=8
 
@@ -171,7 +171,6 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_pathfinding_tests.bat" false
     call :run_single_test "run_collision_pathfinding_integration_tests.bat" false
     call :run_single_test "run_pathfinder_ai_contention_tests.bat" false
-    call :run_single_test "run_game_engine_tests.bat" false
     call :run_single_test "run_camera_tests.bat" false
     call :run_single_test "run_input_manager_tests.bat" false
     call :run_single_test "run_simd_correctness_tests.bat" false
@@ -182,6 +181,10 @@ if "%RUN_CORE%"=="true" (
     call :run_single_test "run_ai_collision_integration_tests.bat" false
     call :run_single_test "run_event_coordination_integration_tests.bat" false
     call :run_single_test "run_entity_state_manager_tests.bat" false
+    call :run_single_test "run_entity_data_manager_tests.bat" false
+    call :run_single_test "run_ai_manager_edm_integration_tests.bat" false
+    call :run_single_test "run_collision_manager_edm_integration_tests.bat" false
+    call :run_single_test "run_pathfinder_manager_edm_integration_tests.bat" false
 )
 
 :: Run benchmark tests last
@@ -192,7 +195,7 @@ if "%RUN_BENCHMARKS%"=="true" (
     call :run_single_test "run_ai_benchmark.bat" true
     call :run_single_test "run_ui_stress_tests.bat" true
     call :run_single_test "run_particle_manager_benchmark.bat" true
-    call :run_single_test "run_collision_benchmark.bat" true
+    call :run_single_test "run_collision_scaling_benchmark.bat" true
     call :run_single_test "run_pathfinder_benchmark.bat" true
     call :run_single_test "run_simd_benchmark.bat" true
     call :run_single_test "run_integrated_benchmark.bat" true

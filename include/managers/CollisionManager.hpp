@@ -6,7 +6,6 @@
 #ifndef COLLISION_MANAGER_HPP
 #define COLLISION_MANAGER_HPP
 
-#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <atomic>
@@ -15,8 +14,7 @@
 #include <functional>
 #include <cstddef>
 #include <chrono>
-#include <array>
-#include <optional>
+#include <span>
 
 #include "entities/Entity.hpp" // EntityID
 #include "collisions/CollisionBody.hpp"
@@ -100,10 +98,6 @@ public:
     void update(float dt);
 
 
-    // NEW SOA UPDATE PATH: High-performance collision detection using SOA storage
-    void updateSOA(float dt);
-
-
     // Batch updates for performance optimization (AI entities)
     struct KinematicUpdate {
         EntityID id;
@@ -113,7 +107,7 @@ public:
         KinematicUpdate(EntityID entityId, const Vector2D& pos, const Vector2D& vel = Vector2D(0, 0))
             : id(entityId), position(pos), velocity(vel) {}
     };
-    void updateKinematicBatchSOA(const std::vector<KinematicUpdate>& updates);
+    void updateKinematicBatch(const std::vector<KinematicUpdate>& updates);
 
     // Per-batch collision updates (zero contention - each AI batch has its own buffer)
     void applyBatchedKinematicUpdates(const std::vector<std::vector<KinematicUpdate>>& batchUpdates);
@@ -122,12 +116,15 @@ public:
     void applyKinematicUpdates(std::vector<KinematicUpdate>& updates);
 
     // Convenience methods for triggers
+    // Routes through EDM::createTrigger() for single source of truth
     EntityID createTriggerArea(const AABB& aabb,
                                HammerEngine::TriggerTag tag,
+                               HammerEngine::TriggerType type,
                                uint32_t layerMask = CollisionLayer::Layer_Environment,
                                uint32_t collideMask = 0xFFFFFFFFu);
     EntityID createTriggerAreaAt(float cx, float cy, float halfW, float halfH,
                                  HammerEngine::TriggerTag tag,
+                                 HammerEngine::TriggerType type,
                                  uint32_t layerMask = CollisionLayer::Layer_Environment,
                                  uint32_t collideMask = 0xFFFFFFFFu);
     void setTriggerCooldown(EntityID triggerId, float seconds);
@@ -141,6 +138,7 @@ public:
     // Queries
     bool overlaps(EntityID a, EntityID b) const;
     void queryArea(const AABB& area, std::vector<EntityID>& out) const;
+    bool queryAreaHasStaticOverlap(const AABB& area) const;
     // Query a body's center by id; returns true if found
     bool getBodyCenter(EntityID id, Vector2D& outCenter) const;
     // Type/flags helpers for filtering
@@ -151,7 +149,6 @@ public:
 
     // World coupling
     void rebuildStaticFromWorld();                // build colliders from WorldManager grid
-    void populateStaticCache();                   // populate static collision cache after world load
     void onTileChanged(int x, int y);             // update a specific cell
     void setWorldBounds(float minX, float minY, float maxX, float maxY);
 
@@ -162,36 +159,30 @@ public:
 
     // Metrics
     size_t getBodyCount() const { return m_storage.size(); }
-    bool isSyncing() const { return m_isSyncing; }
 
-    // NEW SOA STORAGE MANAGEMENT METHODS
-    size_t addCollisionBodySOA(EntityID id, const Vector2D& position, const Vector2D& halfSize,
-                               BodyType type, uint32_t layer = CollisionLayer::Layer_Default,
-                               uint32_t collidesWith = 0xFFFFFFFFu,
-                               bool isTrigger = false, uint8_t triggerTag = 0);
-    void removeCollisionBodySOA(EntityID id);
-    bool getCollisionBodySOA(EntityID id, size_t& outIndex) const;
-    void updateCollisionBodyPositionSOA(EntityID id, const Vector2D& newPosition);
-    void updateCollisionBodyVelocitySOA(EntityID id, const Vector2D& newVelocity);
-    Vector2D getCollisionBodyVelocitySOA(EntityID id) const;
-    void updateCollisionBodySizeSOA(EntityID id, const Vector2D& newHalfSize);
+    // STATIC BODY MANAGEMENT
+    // EDM-CENTRIC: Only static bodies (buildings, triggers, obstacles) go in m_storage
+    // Movables (players, NPCs) are managed entirely by EDM - no m_storage entry
+    size_t addStaticBody(EntityID id, const Vector2D& position, const Vector2D& halfSize,
+                         uint32_t layer, uint32_t collidesWith,
+                         bool isTrigger, uint8_t triggerTag,
+                         uint8_t triggerType, size_t edmIndex);
+    void removeCollisionBody(EntityID id);
+    bool getCollisionBody(EntityID id, size_t& outIndex) const;
+    void updateCollisionBodyPosition(EntityID id, const Vector2D& newPosition);
+    void updateCollisionBodyVelocity(EntityID id, const Vector2D& newVelocity);
+    Vector2D getCollisionBodyVelocity(EntityID id) const;
+    void updateCollisionBodySize(EntityID id, const Vector2D& newHalfSize);
     void attachEntity(EntityID id, EntityPtr entity);
-    void processPendingCommands(); // Process queued collision body commands (for tests/immediate processing)
 
-    // SOA Body Management Methods
+    // Body State Management Methods
     void setBodyEnabled(EntityID id, bool enabled);
 
     // Configuration setters for collision culling (runtime adjustable)
     void setCullingBuffer(float buffer) { m_cullingBuffer = buffer; }
-    void setCacheEvictionMultiplier(float multiplier) { m_cacheEvictionMultiplier = multiplier; }
-    void setCacheEvictionInterval(size_t interval) { m_cacheEvictionInterval = interval; }
-    void setCacheStaleThreshold(uint8_t threshold) { m_cacheStaleThreshold = threshold; }
 
     // Configuration getters
     float getCullingBuffer() const { return m_cullingBuffer; }
-    float getCacheEvictionMultiplier() const { return m_cacheEvictionMultiplier; }
-    size_t getCacheEvictionInterval() const { return m_cacheEvictionInterval; }
-    uint8_t getCacheStaleThreshold() const { return m_cacheStaleThreshold; }
     void setBodyLayer(EntityID id, uint32_t layerMask, uint32_t collideMask);
     void setVelocity(EntityID id, const Vector2D& velocity);
     void setBodyTrigger(EntityID id, bool isTrigger);
@@ -199,11 +190,29 @@ public:
     // Internal buffer management (simplified public interface)
     void prepareCollisionBuffers(size_t bodyCount);
 
-    // SOA UPDATE HELPER METHODS
+    // UPDATE HELPER METHODS
     void syncSpatialHashesWithActiveIndices();
-    void resolveSOA(const CollisionInfo& collision);
-    void syncEntitiesToSOA();
-    void processTriggerEventsSOA();
+    void resolve(const CollisionInfo& collision);
+    void processTriggerEvents();
+
+    /**
+     * @brief Detect EventOnly trigger overlaps via per-entity spatial query
+     *
+     * Adaptive strategy:
+     * - <50 entities: Spatial queries O(N × ~k nearby triggers)
+     * - >=50 entities: Sweep-and-prune O((N+T) log (N+T))
+     *
+     * Populates m_collisionPool.eventOnlyOverlaps with (movablePoolIdx, triggerStorageIdx) pairs.
+     */
+    void detectEventOnlyTriggers();
+
+    // Helper functions for EventOnly trigger detection
+    void detectEventOnlyTriggersSpatial(std::span<const size_t> triggerIndices);
+    void detectEventOnlyTriggersSweep(std::span<const size_t> triggerIndices);
+    void testTriggerOverlapAndRecord(size_t edmIdx, size_t storageIdx);
+    [[nodiscard]] size_t findPoolIndex(size_t edmIdx) const;
+    [[nodiscard]] bool isEventOnlyTriggerOverlap(size_t storageIdx, float px, float py,
+                                                  float hw, float hh, uint16_t mask) const;
 
     // PERFORMANCE: Vector pooling for temporary allocations
     std::vector<size_t>& getPooledVector();
@@ -218,7 +227,7 @@ public:
      * for broadphase optimization, since both require collision detection against
      * static geometry and each other.
      */
-    void updatePerformanceMetricsSOA(
+    void updatePerformanceMetrics(
         std::chrono::steady_clock::time_point t0,
         std::chrono::steady_clock::time_point t1,
         std::chrono::steady_clock::time_point t2,
@@ -249,92 +258,38 @@ private:
     CollisionManager(const CollisionManager&) = delete;
     CollisionManager& operator=(const CollisionManager&) = delete;
 
-    // NEW SOA-BASED BROADPHASE: High-performance hierarchical collision detection
-    void broadphaseSOA(std::vector<std::pair<size_t, size_t>>& indexPairs);
-    void narrowphaseSOA(const std::vector<std::pair<size_t, size_t>>& indexPairs,
-                        std::vector<CollisionInfo>& collisions) const;
+    // EDM-CENTRIC BROADPHASE: Uses pools.movableAABBs + pools.movableMovablePairs/movableStaticPairs
+    void broadphase();
+    void narrowphase(std::vector<CollisionInfo>& collisions) const;
 
-    // Multi-threading support for narrowphase (WorkerBudget integrated)
-    void narrowphaseSingleThreaded(
-        const std::vector<std::pair<size_t, size_t>>& indexPairs,
-        std::vector<CollisionInfo>& collisions) const;
-
-    void narrowphaseMultiThreaded(
-        const std::vector<std::pair<size_t, size_t>>& indexPairs,
-        std::vector<CollisionInfo>& collisions,
-        size_t batchCount,
-        size_t batchSize) const;
-
-    void narrowphaseBatch(
-        const std::vector<std::pair<size_t, size_t>>& indexPairs,
-        size_t startIdx,
-        size_t endIdx,
-        std::vector<CollisionInfo>& outCollisions) const;
-
-    void processNarrowphasePairScalar(
-        const std::pair<size_t, size_t>& pair,
-        std::vector<CollisionInfo>& outCollisions) const;
+    // Narrowphase uses single-threaded path (SIMD 4-wide)
+    void narrowphaseSingleThreaded(std::vector<CollisionInfo>& collisions) const;
 
     // Multi-threading support for broadphase (WorkerBudget integrated)
-    void broadphaseSingleThreaded(std::vector<std::pair<size_t, size_t>>& indexPairs);
-
-    void broadphaseMultiThreaded(
-        std::vector<std::pair<size_t, size_t>>& indexPairs,
-        size_t batchCount,
-        size_t batchSize);
-
-    void broadphaseBatch(
-        std::vector<std::pair<size_t, size_t>>& outIndexPairs,
-        size_t startIdx,
-        size_t endIdx);
+    void broadphaseSingleThreaded();
+    void broadphaseMultiThreaded(size_t batchCount, size_t batchSize);
+    void broadphaseBatch(size_t startIdx, size_t endIdx,
+                         std::vector<std::pair<size_t, size_t>>& outMovableMovable,
+                         std::vector<std::pair<size_t, size_t>>& outMovableStatic);
 
     // Internal helper methods for SOA buffer management
-    void swapCollisionBuffers();
-    void copyHotDataToWorkingBuffer();
-    void buildActiveIndicesSOA();
+    void buildActiveIndices();
     void prepareCollisionPools(size_t bodyCount, size_t threadCount);
-    void mergeThreadResults();
 
     // Apply pending kinematic updates from async AI threads (called at start of update)
     void applyPendingKinematicUpdates();
 
     // Spatial hash optimization methods
     void rebuildStaticSpatialHash();
-    void updateStaticCollisionCacheForMovableBodies();
+    void rebuildStaticSpatialHashUnlocked();
 
     // Building collision validation
 
     void subscribeWorldEvents(); // hook to world events
 
-    // Thread-safe command queue system for collision body management
-    enum class CommandType {
-        Add,
-        Remove,
-        Modify
-    };
-
-    struct PendingCommand {
-        CommandType type = CommandType::Add;
-        EntityID id = 0;
-        Vector2D position{};
-        Vector2D halfSize{};
-        BodyType bodyType = BodyType::DYNAMIC;
-        uint32_t layer = 0;
-        uint32_t collideMask = 0;
-        bool isTrigger = false;
-        uint8_t triggerTag = 0;
-    };
-
-    // Collision culling configuration - adjustable constants
+    // Collision culling configuration
     static constexpr float COLLISION_CULLING_BUFFER = 1000.0f;      // Buffer around culling area (1200x1200 total area)
-    static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection (reduced from 2.0f)
-    static constexpr float CACHE_EVICTION_MULTIPLIER = 3.0f;        // Cache entries beyond 3x culling buffer are marked stale
-    static constexpr size_t CACHE_EVICTION_INTERVAL = 300;          // Check for stale cache entries every 300 frames (5 seconds at 60 FPS)
-    static constexpr uint8_t CACHE_STALE_THRESHOLD = 3;             // Remove cache entries after 3 consecutive eviction cycles without access
-
-    // Collision prediction configuration - prevents diagonal tunneling through corners
-    static constexpr float VELOCITY_PREDICTION_FACTOR = 1.15f;      // Expand AABBs by velocity*dt*factor to predict collisions
-    static constexpr float FAST_VELOCITY_THRESHOLD = 250.0f;        // Velocity threshold for AABB expansion (pixels/frame)
+    static constexpr float SPATIAL_QUERY_EPSILON = 0.5f;            // AABB expansion for cell boundary overlap protection
 
     // Spatial culling support (area-based, not camera-based)
     struct CullingArea {
@@ -347,20 +302,11 @@ private:
     };
 
     // Returns body type counts: {totalStatic, totalDynamic, totalKinematic}
-    std::tuple<size_t, size_t, size_t> buildActiveIndicesSOA(const CullingArea& cullingArea) const;
+    std::tuple<size_t, size_t, size_t> buildActiveIndices(const CullingArea& cullingArea) const;
     CullingArea createDefaultCullingArea() const;
-    void evictStaleCacheEntries(const CullingArea& cullingArea);
-
-    // OPTIMIZATION HELPERS: Static spatial grid and frame decimation
-    void rebuildStaticSpatialGrid();
-    void queryStaticGridCells(const CullingArea& area, std::vector<size_t>& outIndices) const;
-
 
     // Configurable collision culling parameters (runtime adjustable)
     float m_cullingBuffer{COLLISION_CULLING_BUFFER};
-    float m_cacheEvictionMultiplier{CACHE_EVICTION_MULTIPLIER};
-    size_t m_cacheEvictionInterval{CACHE_EVICTION_INTERVAL};
-    uint8_t m_cacheStaleThreshold{CACHE_STALE_THRESHOLD};
 
     bool m_initialized{false};
     bool m_isShutdown{false};
@@ -368,47 +314,44 @@ private:
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
+    // REFACTORED: Position/velocity/halfSize removed - accessed via EntityDataManager
     struct CollisionStorage {
         // Hot data: Accessed every frame during collision detection
-        // OPTIMIZED: Reduced from 64 bytes with wasted space to efficient 64-byte layout
+        // AIManager pattern: Only collision-specific data + EDM index for position access
         struct HotData {
-            Vector2D position;           // 8 bytes: Current position (center of AABB)
-            Vector2D velocity;           // 8 bytes: Current velocity
-            Vector2D halfSize;           // 8 bytes: Half-width and half-height
-            
-            // Cached AABB for performance - exactly 16 bytes (4 floats)
-            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;
-            
+            // Cached AABB for performance - computed from EDM position + halfSize
+            mutable float aabbMinX, aabbMinY, aabbMaxX, aabbMaxY;  // 16 bytes
+
+            // EDM reference for accessing position/halfSize (moved from ColdData for cache locality)
+            size_t edmIndex;             // 8 bytes: EntityDataManager index
+
             uint16_t layers;             // 2 bytes: Layer mask (supports 16 layers, 7 currently defined)
             uint16_t collidesWith;       // 2 bytes: Collision mask
             uint8_t bodyType;            // 1 byte: BodyType enum (STATIC, KINEMATIC, DYNAMIC)
             uint8_t triggerTag;          // 1 byte: TriggerTag enum for triggers
+            uint8_t triggerType;         // 1 byte: TriggerType (EventOnly, Physical)
             uint8_t active;              // 1 byte: Whether this body participates in collision detection
             uint8_t isTrigger;           // 1 byte: Whether this is a trigger body
-            mutable uint8_t aabbDirty;   // 1 byte: Whether cached AABB needs updating
-            
+
             // OPTIMIZATION: Cached coarse grid coords (eliminates m_bodyCoarseCell map lookup)
             int16_t coarseCellX;         // 2 bytes: Cached coarse grid X coordinate
             int16_t coarseCellY;         // 2 bytes: Cached coarse grid Y coordinate
-            
-            // Reserved for future optimizations (e.g., collision flags, frame counters)
-            uint8_t _reserved[5];        // 5 bytes: Future expansion space
-            
-            // Padding to exactly 64 bytes (current size: 62, need 2 more)
-            uint8_t _padding[2];
 
+            // Padding to 64 bytes (one cache line)
+            // Layout: 16 (floats) + 8 (size_t) + 4 (uint16_t) + 5 (uint8_t) + 1 (implicit) + 4 (int16_t) = 38
+            uint8_t _reserved[26];       // 26 bytes: Future expansion (38 + 26 = 64)
         };
         static_assert(sizeof(HotData) == 64, "HotData should be exactly 64 bytes for cache alignment");
 
         // Cold data: Rarely accessed, separated to avoid cache pollution
+        // NOTE: Position/velocity/halfSize owned by EntityDataManager
+        // All collision bodies must have valid EDM entries (statics via createStaticBody)
         struct ColdData {
             EntityWeakPtr entityWeak;    // Back-reference to entity
-            Vector2D acceleration;       // Acceleration (rarely used)
-            Vector2D lastPosition;       // Previous position for optimization
-            AABB fullAABB;              // Full AABB (computed from position + halfSize)
-            float restitution;           // Bounce coefficient (0.0-1.0) - moved from HotData for cache optimization
-            float friction;              // Surface friction (0.0-1.0) - for future physics implementation
-            float mass;                  // Mass (kg) - for future physics implementation
+            float restitution;           // Bounce coefficient (0.0-1.0)
+            float friction;              // Surface friction (0.0-1.0)
+            float mass;                  // Mass (kg) - for future physics
+            // NOTE: edmIndex moved to HotData for cache locality during AABB updates
         };
 
         // Primary storage arrays (SOA layout)
@@ -448,21 +391,11 @@ private:
             return hotData[index];
         }
 
-        // Update cached AABB bounds if dirty
-        void updateCachedAABB(size_t index) const {
-            auto& hot = hotData[index];
-            if (hot.aabbDirty) {
-                hot.aabbMinX = hot.position.getX() - hot.halfSize.getX();
-                hot.aabbMinY = hot.position.getY() - hot.halfSize.getY();
-                hot.aabbMaxX = hot.position.getX() + hot.halfSize.getX();
-                hot.aabbMaxY = hot.position.getY() + hot.halfSize.getY();
-                hot.aabbDirty = 0;
-            }
-        }
+        // NOTE: updateCachedAABB moved to CollisionManager (needs EDM access)
+        // Call refreshCachedAABBs() at start of broadphase to batch-update all AABBs
 
-        // Get cached AABB bounds directly (more efficient for simple tests)
+        // Get cached AABB bounds directly (assumes AABB already refreshed)
         void getCachedAABBBounds(size_t index, float& minX, float& minY, float& maxX, float& maxY) const {
-            updateCachedAABB(index);
             const auto& hot = hotData[index];
             minX = hot.aabbMinX;
             minY = hot.aabbMinY;
@@ -470,11 +403,9 @@ private:
             maxY = hot.aabbMaxY;
         }
 
-        // Compute AABB from hot data (with caching)
+        // Compute AABB from cached bounds (assumes AABB already refreshed)
         AABB computeAABB(size_t index) const {
-            updateCachedAABB(index);
             const auto& hot = hotData[index];
-            // Use cached values to construct AABB - center and half-size from cached bounds
             float centerX = (hot.aabbMinX + hot.aabbMaxX) * 0.5f;
             float centerY = (hot.aabbMinY + hot.aabbMaxY) * 0.5f;
             float halfWidth = (hot.aabbMaxX - hot.aabbMinX) * 0.5f;
@@ -484,6 +415,7 @@ private:
     };
 
     CollisionStorage m_storage;
+    mutable std::mutex m_staticRebuildMutex;
 
     /* ========== DUAL SPATIAL HASH ARCHITECTURE ==========
      *
@@ -519,63 +451,19 @@ private:
     HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static world geometry
     HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash;  // Moving entities
 
-    // STATIC COLLISION CACHE: Coarse-grid region cache for static bodies
-    // Bodies in the same 128×128 coarse cell share the same cached static query results
-    // This replaces the old per-body cache for better memory efficiency
-    struct CoarseRegionStaticCache {
-        std::vector<size_t> staticIndices;
-        bool valid{false};
-        uint64_t lastAccessFrame{0};  // Frame number when this cache entry was last accessed
-        uint8_t staleCount{0};         // Number of consecutive eviction cycles without access
-    };
-    std::unordered_map<HammerEngine::HierarchicalSpatialHash::CoarseCoord,
-                       CoarseRegionStaticCache,
-                       HammerEngine::HierarchicalSpatialHash::CoarseCoordHash,
-                       HammerEngine::HierarchicalSpatialHash::CoarseCoordEq> m_coarseRegionStaticCache;
-
-    // Pre-populate cache for a specific coarse region (thread-safe: single-threaded population)
-    void populateCacheForRegion(const HammerEngine::HierarchicalSpatialHash::CoarseCoord& region,
-                                CoarseRegionStaticCache& cache);
-
-    // Cache statistics
-    mutable size_t m_cacheHits{0};
-    mutable size_t m_cacheMisses{0};
-
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
 
-    // OPTIMIZATION: Static Spatial Grid for efficient culling queries
-    // Grid (128×128 cells) to quickly filter static bodies by culling area
-    // Grid is rebuilt only on world events (statics added/removed), not every frame
-    static constexpr float STATIC_GRID_CELL_SIZE = 128.0f;
-    struct StaticGridCell {
-        int32_t x;
-        int32_t y;
-        bool operator==(const StaticGridCell& other) const {
-            return x == other.x && y == other.y;
-        }
-    };
-    struct StaticGridCellHash {
-        size_t operator()(const StaticGridCell& cell) const {
-            // Simple hash combining x and y
-            return std::hash<int32_t>()(cell.x) ^ (std::hash<int32_t>()(cell.y) << 1);
-        }
-    };
-    std::unordered_map<StaticGridCell, std::vector<size_t>, StaticGridCellHash> m_staticSpatialGrid;
-    bool m_staticGridDirty{true};  // Rebuild grid when statics added/removed
-
-    // Tolerance-based static index cache - avoids requerying when camera moves small distances
-    static constexpr float STATIC_CACHE_TOLERANCE = STATIC_GRID_CELL_SIZE;  // 128px
-    mutable std::vector<size_t> m_cachedStaticIndices;
-    mutable CullingArea m_cachedStaticCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
-    mutable bool m_staticIndexCacheValid{false};
+    // Static query caching - skip re-query when culling area unchanged
+    mutable CullingArea m_lastStaticQueryCullingArea{0.0f, 0.0f, 0.0f, 0.0f};
+    mutable bool m_staticQueryCacheDirty{true};
 
     std::vector<CollisionCB> m_callbacks;
     std::vector<EventManager::HandlerToken> m_handlerTokens;
     std::unordered_map<uint64_t, std::pair<EntityID,EntityID>> m_activeTriggerPairs; // OnEnter/Exit filtering
     std::unordered_map<EntityID, std::chrono::steady_clock::time_point> m_triggerCooldownUntil;
     float m_defaultTriggerCooldownSec{0.0f};
-    
+
     // ENHANCED OBJECT POOLS: Zero-allocation collision processing
     struct CollisionPool {
         // Primary collision processing buffers
@@ -585,10 +473,45 @@ private:
         std::vector<EntityID> dynamicCandidates;  // For broadphase dynamic queries
         std::vector<EntityID> staticCandidates;   // For broadphase static queries
 
-        // NEW SOA-specific pools
-        std::vector<size_t> activeIndices;        // Indices of active bodies for processing
-        std::vector<size_t> movableIndices;      // Indices of non-static bodies (dynamic + kinematic)
-        std::vector<size_t> staticIndices;       // Indices of static bodies only
+        // EDM-CENTRIC: Active tier indices and cached collision data
+        std::vector<size_t> movableIndices;       // EDM indices of Active tier entities with collision
+        std::vector<size_t> staticIndices;        // m_storage indices of static bodies in culling area
+        std::vector<size_t> sortedMovableIndices; // Pool indices sorted by X for Sweep-and-Prune
+
+        // EDM-CENTRIC: Cached AABBs for movables, computed from EDM each frame
+        // Parallel to movableIndices: movableAABBs[i] corresponds to movableIndices[i]
+        // Caches entityId and isTrigger to avoid EDM calls in narrowphase
+        struct MovableAABB {
+            float minX, minY, maxX, maxY;
+            uint32_t layers;
+            uint32_t collidesWith;
+            EntityID entityId;      // Cached to avoid edm.getEntityId() in narrowphase
+            bool isTrigger;         // Cached to avoid edm.getHotDataByIndex() in narrowphase
+        };
+        std::vector<MovableAABB> movableAABBs;
+
+        // Cached AABBs for statics, populated when culling area changes
+        // Parallel to staticIndices: staticAABBs[i] corresponds to staticIndices[i]
+        // Avoids scattered memory access in broadphase SIMD loops
+        struct StaticAABB {
+            float minX, minY, maxX, maxY;
+            uint32_t layers;
+            bool active;
+        };
+        std::vector<StaticAABB> staticAABBs;
+
+        // EventOnly trigger overlaps detected via per-entity spatial query
+        struct EventOnlyTriggerOverlap {
+            size_t movablePoolIdx;   // Index into movableIndices/movableAABBs
+            size_t triggerStorageIdx; // Index into m_storage.hotData
+        };
+        std::vector<EventOnlyTriggerOverlap> eventOnlyOverlaps;
+
+        // EDM-CENTRIC: Collision pairs from broadphase
+        // movableMovablePairs: (poolIdx_A, poolIdx_B) - both indices into movableIndices/movableAABBs
+        // movableStaticPairs: (poolIdx, storageIdx) - poolIdx into movableIndices, storageIdx into m_storage
+        std::vector<std::pair<size_t, size_t>> movableMovablePairs;
+        std::vector<std::pair<size_t, size_t>> movableStaticPairs;
 
         void ensureCapacity(size_t bodyCount) {
             // OPTIMIZED ESTIMATES: Based on actual benchmark results
@@ -614,10 +537,16 @@ private:
                 dynamicCandidates.reserve(std::min(static_cast<size_t>(64), bodyCount / 10));
                 staticCandidates.reserve(std::min(static_cast<size_t>(256), bodyCount / 5));
 
-                // SOA-specific capacity
-                activeIndices.reserve(bodyCount);
-                movableIndices.reserve(bodyCount / 4);  // Estimate 25% movable (dynamic + kinematic)
+                // EDM-centric capacity
+                movableIndices.reserve(bodyCount / 4);  // Estimate 25% Active tier with collision
+                movableAABBs.reserve(bodyCount / 4);    // Parallel to movableIndices
                 staticIndices.reserve(bodyCount);
+                sortedMovableIndices.reserve(bodyCount / 4);
+                movableMovablePairs.reserve(expectedPairs / 4);
+                movableStaticPairs.reserve(expectedPairs);
+
+                // EventOnly overlaps - typically small
+                eventOnlyOverlaps.reserve(bodyCount / 8);
             }
         }
 
@@ -628,10 +557,14 @@ private:
             dynamicCandidates.clear();
             staticCandidates.clear();
 
-            // SOA-specific resets
-            activeIndices.clear();
+            // EDM-centric resets
             movableIndices.clear();
-            staticIndices.clear();
+            movableAABBs.clear();
+            // NOTE: staticIndices is cached and cleared only when culling area changes
+            sortedMovableIndices.clear();
+            movableMovablePairs.clear();
+            movableStaticPairs.clear();
+            eventOnlyOverlaps.clear();
             // Vectors retain capacity
         }
     };
@@ -644,15 +577,9 @@ private:
 
     // PERFORMANCE: Reusable containers to avoid per-frame allocations
     // These are cleared each frame but capacity is retained to eliminate heap churn
-    mutable std::unordered_set<EntityID> m_collidedEntitiesBuffer;      // For syncEntitiesToSOA()
-    mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEventsSOA()
-    // Note: buildActiveIndicesSOA() uses pools.staticIndices directly (already a reusable buffer)
-
-    // OPTIMIZATION: Persistent index tracking (avoids O(n) iteration per frame)
-    // Regression fix for commit 768ad87 - movable body iteration was O(18K) instead of O(3)
-    std::vector<size_t> m_movableBodyIndices;       // Indices of DYNAMIC + KINEMATIC bodies
-    std::unordered_set<size_t> m_movableIndexSet;   // For O(1) removal lookup
-    std::optional<size_t> m_playerBodyIndex;        // Cached player body index (Layer_Player)
+    mutable std::unordered_set<uint64_t> m_currentTriggerPairsBuffer;   // For processTriggerEvents()
+    mutable std::vector<size_t> m_triggerCandidates;  // For detectEventOnlyTriggers() spatial queries
+    // Note: buildActiveIndices() uses pools.staticIndices directly (already a reusable buffer)
 
     // Performance metrics
     struct PerfStats {
@@ -676,10 +603,9 @@ private:
         double lastCullingMs{0.0};            // Time spent on culling operations
         double avgBroadphaseMs{0.0};          // Average broadphase time
 
-        // CACHE PERFORMANCE METRICS: Track coarse-grid static cache effectiveness
-        size_t cacheEntriesActive{0};         // Number of active cache entries
-        size_t cacheEntriesEvicted{0};        // Cache entries evicted this frame
-        size_t totalCacheEvictions{0};        // Total evictions since start
+        // TRIGGER DETECTION METRICS: Track EventOnly trigger detection
+        size_t lastTriggerDetectors{0};       // Entities with NEEDS_TRIGGER_DETECTION flag
+        size_t lastTriggerOverlaps{0};        // EventOnly trigger overlaps detected
 
         // High-performance exponential moving average (no loops, O(1))
         static constexpr double ALPHA = 0.01; // ~100 frame average, much faster than windowing
@@ -724,34 +650,23 @@ private:
     PerfStats m_perf{};
     bool m_verboseLogs{false};
 
-    // Guard to avoid feedback when syncing entity transforms
-    bool m_isSyncing{false};
-
     // Optimization: Track when static spatial hash needs rebuilding
     bool m_staticHashDirty{false};
 
-    // Cache eviction: Track frame count for periodic eviction
-    size_t m_framesSinceLastEviction{0};
-
-    // Thread-safe command queue for deferred collision body operations
-    std::vector<PendingCommand> m_pendingCommands;
-    mutable std::mutex m_commandQueueMutex;
-
-    // Multi-threading support for narrowphase (WorkerBudget integrated)
-    mutable std::vector<std::future<void>> m_narrowphaseFutures;
-    mutable std::shared_ptr<std::vector<std::vector<CollisionInfo>>> m_batchCollisionBuffers;
-    mutable std::mutex m_narrowphaseFuturesMutex;
-
     // Multi-threading support for broadphase (WorkerBudget integrated)
+    // Matches AIManager pattern: reusable member vectors, no mutex (futures are thread-safe)
     mutable std::vector<std::future<void>> m_broadphaseFutures;
-    mutable std::shared_ptr<std::vector<std::vector<std::pair<size_t, size_t>>>> m_broadphasePairBuffers;
-    mutable std::mutex m_broadphaseFuturesMutex;
+    struct BroadphaseBatchBuffer {
+        std::vector<std::pair<size_t, size_t>> movableMovable;
+        std::vector<std::pair<size_t, size_t>> movableStatic;
+        void clear() { movableMovable.clear(); movableStatic.clear(); }
+    };
+    mutable std::vector<BroadphaseBatchBuffer> m_broadphaseBatchBuffers;
 
-    // Threading config and metrics (validated via benchmark: narrowphase threads at 100+ pairs, broadphase at 500+ movable)
-    static constexpr size_t MIN_PAIRS_FOR_THREADING = 100;        // Narrowphase: min pairs before threading
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 500;  // Broadphase: min movable bodies
-    mutable bool m_lastNarrowphaseWasThreaded{false};
-    mutable size_t m_lastNarrowphaseBatchCount{1};
+    // Threading config for broadphase
+    // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
+    //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 200;  // Broadphase: min movable bodies
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
 
@@ -775,9 +690,6 @@ private:
         }
     };
 
-    // Thread-safe access to collision storage (entityToIndex map and storage arrays)
-    // shared_lock for reads (AI threads), unique_lock for writes (update thread)
-    mutable std::shared_mutex m_storageMutex;
 };
 
 #endif // COLLISION_MANAGER_HPP

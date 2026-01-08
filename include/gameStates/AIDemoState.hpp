@@ -12,6 +12,7 @@
 #include "utils/Camera.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations with smart pointer types
@@ -20,11 +21,6 @@ using NPCPtr = std::shared_ptr<NPC>;
 
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
-
-// Forward declarations for cached manager pointers
-class WorldManager;
-class UIManager;
-class ParticleManager;
 
 class AIDemoState : public GameState {
 public:
@@ -51,8 +47,9 @@ private:
     void initializeCamera();
     void updateCamera(float deltaTime);
 
-    // Members
-    std::vector<NPCPtr> m_npcs{};
+    // Members - stored by handle ID for O(1) lookup
+    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
+    std::vector<NPCPtr> m_npcsByEdmIndex{};
     PlayerPtr m_player{};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory
@@ -86,11 +83,6 @@ private:
     int m_npcsPerBatch{30};        // Spawn 30 NPCs per batch
     int m_spawnInterval{10};       // Spawn every 10 frames
     int m_framesSinceLastSpawn{0}; // Frame counter for spawn timing
-
-    // Cached manager pointers for render hot path (resolved in enter())
-    WorldManager* mp_worldMgr{nullptr};
-    UIManager* mp_uiMgr{nullptr};
-    ParticleManager* mp_particleMgr{nullptr};
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};

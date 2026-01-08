@@ -7,7 +7,6 @@
 #define COLLISION_INFO_HPP
 
 #include "entities/Entity.hpp"
-#include "collisions/AABB.hpp"
 
 namespace HammerEngine {
 
@@ -18,9 +17,12 @@ struct CollisionInfo {
     float penetration{0.0f};
     bool trigger{false};
 
-    // Performance optimization: Store SOA indices to eliminate linear lookups
+    // EDM-CENTRIC: Index semantics depend on collision type
+    // - Movable-movable: both indexA and indexB are EDM indices
+    // - Movable-static: indexA is EDM index (movable), indexB is storage index (static)
     size_t indexA{SIZE_MAX};
     size_t indexB{SIZE_MAX};
+    bool isMovableMovable{true};  // false = movable-static collision
 };
 
 } // namespace HammerEngine

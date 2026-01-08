@@ -8,8 +8,8 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/Entity.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
 #include <random>
 #include <vector>
 
@@ -33,10 +33,10 @@ public:
   explicit PatrolBehavior(PatrolMode mode, float moveSpeed = 2.0f,
                           bool includeOffscreenPoints = false);
 
-  void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void init(EntityHandle handle) override;
+  void executeLogic(BehaviorContext& ctx) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Add a new waypoint to the patrol route
@@ -145,23 +145,17 @@ private:
   // Path-following settings
   void setPathFollowRadius(float r) { m_navRadius = r; }
 
-  // Path-following state (uses AIManager's grid)
-  std::vector<Vector2D> m_navPath;
-  size_t m_navIndex{0};
+  // Path-following uses EDM PathData (per-entity isolation, no race conditions)
+  // Only navRadius kept for waypoint arrival detection
   float m_navRadius{18.0f};
 
-  // Per-instance progress and refresh tracking (deltaTime accumulators)
-  float m_pathUpdateTimer{0.0f};      // Replaces m_lastPathUpdate
-  float m_progressTimer{0.0f};        // Replaces m_lastProgressTime
-  float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
-  float m_stallTimer{0.0f};           // Replaces m_stallStart (accumulates when stalled)
-  float m_backoffTimer{0.0f};         // Replaces m_backoffUntil (counts down)
-  float m_waypointCooldown{0.0f};     // Replaces m_lastWaypointTime (counts down)
-  float m_crowdCheckTimer{0.0f};      // Replaces m_lastCrowdCheck
+  // Per-instance waypoint state (behavior-specific, not per-entity path state)
+  float m_waypointCooldown{0.0f};     // Cooldown between waypoint transitions
+  float m_crowdCheckTimer{0.0f};      // Timer for crowd analysis
   // Separation decimation
-  float m_separationTimer{0.0f};      // Replaces m_lastSepTick
+  float m_separationTimer{0.0f};      // Timer for separation updates
   Vector2D m_lastSepVelocity{0, 0};
-  
+
   // Async pathfinding control
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed

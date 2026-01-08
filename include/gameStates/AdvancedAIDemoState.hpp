@@ -7,11 +7,13 @@
 #define ADVANCED_AI_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include "entities/NPC.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
 
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 // Forward declarations with smart pointer types
@@ -20,11 +22,6 @@ using NPCPtr = std::shared_ptr<NPC>;
 
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
-
-// Forward declarations for cached manager pointers
-class WorldManager;
-class UIManager;
-class ParticleManager;
 
 class AdvancedAIDemoState : public GameState {
 public:
@@ -47,13 +44,12 @@ private:
     // Methods
     void setupAdvancedAIBehaviors();
     void createAdvancedNPCs();
-    void setupCombatAttributes();
-    void updateCombatSystem(float deltaTime);
     void initializeCamera();
     void updateCamera(float deltaTime);
 
-    // Members
-    std::vector<NPCPtr> m_npcs{};
+    // Members - stored by handle ID for O(1) lookup
+    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
+    std::vector<NPCPtr> m_npcsByEdmIndex{};
     PlayerPtr m_player{};
     std::unique_ptr<HammerEngine::Camera> m_camera;
 
@@ -82,29 +78,12 @@ private:
     // Track if state is fully initialized (after returning from LoadingState)
     bool m_initialized{false};
 
-    // Combat system attributes (architecturally integrated)
-    struct CombatAttributes {
-        float health{100.0f};
-        float maxHealth{100.0f};
-        float attackDamage{10.0f};
-        float attackRange{80.0f};
-        float attackCooldown{1.0f};
-        float lastAttackTime{0.0f};
-        bool isDead{false};
-    };
-
-    // Combat state tracking
-    std::unordered_map<EntityPtr, CombatAttributes> m_combatAttributes;
-    float m_gameTime{0.0f};
+    // Controller registry (follows GamePlayState pattern)
+    ControllerRegistry m_controllers;
 
     // AI pause state
     bool m_aiPaused{false};
     bool m_previousGlobalPauseState{false};  // Store previous global pause state to restore on exit
-
-    // Cached manager pointers for render hot path (resolved in enter())
-    WorldManager* mp_worldMgr{nullptr};
-    UIManager* mp_uiMgr{nullptr};
-    ParticleManager* mp_particleMgr{nullptr};
 
     // Status display optimization - zero per-frame allocations (C++20 type-safe)
     std::string m_statusBuffer{};

@@ -14,6 +14,100 @@ The CollisionManager is a high-performance collision detection and response syst
 - **Batch Processing**: Optimized batch updates for AI entity kinematics
 - **Hybrid Threading**: Dual-path (single/multi-threaded) for both broadphase and narrowphase
 
+### EntityDataManager Integration
+
+CollisionManager coordinates with EntityDataManager (EDM) for position synchronization and tier-aware collision detection.
+
+#### EDM as Position Source
+
+Entity positions are stored in EDM's `EntityHotData`. CollisionManager reads positions from EDM during collision detection:
+
+```cpp
+// CollisionManager reads positions from EDM during broadphase
+void CollisionManager::syncPositionsFromEDM() {
+    auto& edm = EntityDataManager::Instance();
+
+    for (size_t i = 0; i < m_dynamicIndices.size(); ++i) {
+        uint32_t edmIndex = m_edmMapping[i];
+        const auto& transform = edm.getTransformByIndex(edmIndex);
+
+        // Update SOA storage from EDM
+        m_soaStorage.x[i] = transform.position.x;
+        m_soaStorage.y[i] = transform.position.y;
+    }
+}
+```
+
+#### Tier-Aware Collision Detection
+
+Only Active tier entities participate in full collision detection:
+
+```cpp
+// Build active indices filtering by tier
+void CollisionManager::buildActiveIndices() {
+    auto& edm = EntityDataManager::Instance();
+    m_activeMovableIndices.clear();
+
+    for (uint32_t edmIndex : m_registeredEntities) {
+        const auto& hot = edm.getHotDataByIndex(edmIndex);
+
+        // Skip hibernated entities entirely
+        if (hot.tier == SimulationTier::Hibernated) continue;
+
+        // Background tier: simplified collision (static only)
+        // Active tier: full collision detection
+        if (hot.tier == SimulationTier::Active) {
+            m_activeMovableIndices.push_back(edmIndex);
+        }
+    }
+}
+```
+
+#### Collision Data in EDM
+
+Collision-related data is stored in EDM's `EntityHotData`:
+
+```cpp
+// In EntityHotData (64 bytes, cache-aligned)
+struct EntityHotData {
+    TransformData transform;        // Position, velocity
+    float halfWidth, halfHeight;    // Collision dimensions
+    // Collision flags stored here for fast access during detection
+    uint8_t collisionLayer;
+    uint8_t collisionMask;
+    // ...
+};
+```
+
+#### Registration via EDM Handle
+
+Entities register collision bodies using their EDM handle:
+
+```cpp
+// Register collision body for EDM entity
+void registerCollisionBody(EntityHandle handle, const Vector2D& halfSize,
+                          BodyType type, uint32_t layer, uint32_t mask) {
+    uint32_t edmIndex = EntityDataManager::Instance().getEdmIndex(handle);
+
+    // Store collision dimensions in EDM
+    auto& hot = EntityDataManager::Instance().getHotDataByIndex(edmIndex);
+    hot.halfWidth = halfSize.x;
+    hot.halfHeight = halfSize.y;
+
+    // Add to SOA storage with EDM back-reference
+    addToSOAStorage(edmIndex, type, layer, mask);
+}
+```
+
+#### Performance Benefits
+
+| Aspect | Old Architecture | EDM Integration | Benefit |
+|--------|-----------------|-----------------|---------|
+| Position sync | Copy every frame | Read from EDM | Single source of truth |
+| Tier filtering | Distance checks | Pre-built indices | O(1) tier lookup |
+| Data locality | Scattered storage | EDM + local SOA | Cache-optimal |
+| Entity removal | Multi-manager cleanup | EDM handles lifecycle | Automatic cleanup |
+
 ### Core Components
 
 #### AABB (Axis-Aligned Bounding Box)

@@ -47,14 +47,24 @@ void TimestepManager::startFrame() {
     // Update frame time in milliseconds (for getFrameTimeMs() API)
     m_lastFrameTimeMs = static_cast<uint32_t>(deltaTimeMs);
 
-    // Convert to seconds and clamp to prevent spiral of death
+    // Convert to seconds
     double deltaTime = deltaTimeMs / 1000.0;
     m_lastDeltaSeconds = deltaTime;  // Store high precision for FPS calculation
-    deltaTime = std::min(deltaTime, static_cast<double>(MAX_ACCUMULATOR));
-    
-    // Add to accumulator for fixed timestep updates (atomic for thread safety)
-    // Use release ordering so update thread sees this write before reading
-    m_accumulator.fetch_add(deltaTime, std::memory_order_release);
+
+    // Mode-aware accumulator handling:
+    // VSync mode: Normal accumulator pattern - add delta (clamped to prevent spiral)
+    //             Allows catch-up updates under load, uses interpolation for smoothness
+    // Software mode: Force exactly one update per frame by setting accumulator = timestep
+    //                Since we control timing via SDL_DelayPrecise, no catch-up needed
+    //                This eliminates timing jitter causing 0-update or 2-update frames
+    if (m_usingSoftwareFrameLimiting) {
+        // Set to exactly one timestep - guarantees one update, alpha = 0 after
+        m_accumulator = m_fixedTimestep;
+    } else {
+        // VSync: Clamp delta to prevent spiral of death, then add to accumulator
+        deltaTime = std::min(deltaTime, MAX_ACCUMULATOR);
+        m_accumulator += deltaTime;
+    }
     
     // Always render once per frame
     m_shouldRender = true;
@@ -64,12 +74,9 @@ void TimestepManager::startFrame() {
 }
 
 bool TimestepManager::shouldUpdate() {
-    // Use a proper accumulator to allow for multiple updates per frame if needed
-    // Use acquire ordering to synchronize with release from startFrame()
-    double current = m_accumulator.load(std::memory_order_acquire);
-    if (current >= m_fixedTimestep) {
-        // Use acq_rel to synchronize both read and write with other threads
-        m_accumulator.fetch_sub(m_fixedTimestep, std::memory_order_acq_rel);
+    // Accumulator pattern: run updates until accumulator is drained below threshold
+    if (m_accumulator >= m_fixedTimestep) {
+        m_accumulator -= m_fixedTimestep;
         return true;
     }
     return false;
@@ -86,8 +93,7 @@ float TimestepManager::getUpdateDeltaTime() const {
 
 double TimestepManager::getInterpolationAlpha() const {
     if (m_fixedTimestep > 0.0f) {
-        // Use acquire ordering to get consistent accumulator value from update thread
-        double alpha = m_accumulator.load(std::memory_order_acquire) / m_fixedTimestep;
+        double alpha = m_accumulator / m_fixedTimestep;
         return std::clamp(alpha, 0.0, 1.0);  // Prevent extrapolation during frame drops
     }
     return 1.0; // Default to 1.0 to avoid division by zero
@@ -132,7 +138,7 @@ void TimestepManager::setFixedTimestep(float timestep) {
 }
 
 void TimestepManager::reset() {
-    m_accumulator.store(0.0, std::memory_order_relaxed);
+    m_accumulator = 0.0;
     m_firstFrame = true;
     m_shouldRender = true;
     m_currentFPS = 0.0f;
@@ -169,57 +175,35 @@ void TimestepManager::limitFrameRate() const {
         return;
     }
 
-    auto currentTime = std::chrono::high_resolution_clock::now();
-    auto frameTimeNs = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - m_frameStart);
-    double frameTimeMs = static_cast<double>(frameTimeNs.count()) / 1000000.0;  // Convert to milliseconds
+    // Calculate absolute target end time for this frame
+    // Using nanoseconds for maximum precision
+    int64_t targetFrameNs = static_cast<int64_t>(m_targetFrameTime * 1e9);
+    auto targetEndTime = m_frameStart + std::chrono::nanoseconds(targetFrameNs);
 
-    double targetFrameTimeMs = m_targetFrameTime * 1000.0;  // Convert seconds to ms
-    double remainingMs = targetFrameTimeMs - frameTimeMs;
+    // Calculate remaining time NOW (minimizes overhead between calculation and delay)
+    auto now = std::chrono::high_resolution_clock::now();
+    auto remainingNs = std::chrono::duration_cast<std::chrono::nanoseconds>(targetEndTime - now);
 
-    // Use hybrid sleep+spinlock for sub-millisecond precision
-    if (remainingMs > 0.0) {
-        preciseFrameWait(remainingMs);
+    // Only delay if we have time remaining
+    if (remainingNs.count() > 0) {
+        SDL_DelayPrecise(static_cast<Uint64>(remainingNs.count()));
     }
 }
 
 void TimestepManager::setSoftwareFrameLimiting(bool useSoftwareLimiting) const {
     m_usingSoftwareFrameLimiting = useSoftwareLimiting;
     m_explicitlySet = true;
+    // Mode-aware accumulator logic is handled in startFrame()
 }
 
 void TimestepManager::preciseFrameWait(double targetFrameTimeMs) const {
-    // Industry-standard hybrid sleep+spinlock for precise frame timing when VSync unavailable
-    // SDL_Delay has ~10ms granularity + OS scheduling jitter, so we:
-    // 1. Sleep for ~80% of remaining time (saves CPU, imprecise)
-    // 2. Spinlock for final ~2ms (precise sub-millisecond timing)
-
-    uint64_t startTicks = SDL_GetPerformanceCounter();
-    uint64_t frequency = SDL_GetPerformanceFrequency();
-    double targetSeconds = targetFrameTimeMs / 1000.0;
-
-    // Lambda to calculate elapsed time in seconds
-    auto getElapsed = [&]() -> double {
-        return static_cast<double>(SDL_GetPerformanceCounter() - startTicks) /
-               static_cast<double>(frequency);
-    };
-
-    double remaining = targetSeconds - getElapsed();
-
-    // Phase 1: Sleep for most of the time (imprecise but CPU-friendly)
-    // Leave 2ms buffer for spinlock phase
-    if (remaining > 0.002) {
-        uint32_t sleepMs = static_cast<uint32_t>((remaining - 0.002) * 1000.0);
-        if (sleepMs > 0) {
-            SDL_Delay(sleepMs);
-        }
-    }
-
-    // Phase 2: Spinlock for final ~2ms (precise timing)
-    // This busy-wait yields sub-millisecond accuracy
-    while (getElapsed() < targetSeconds) {
-        // Busy wait - no-op yields precise timing
-        // Some implementations use _mm_pause() or std::this_thread::yield()
-        // but plain busy-wait is most portable and accurate
-    }
+    // Use SDL3's built-in precise delay which handles hybrid sleep+busy-wait internally.
+    // This is more efficient and adaptive than our previous custom implementation:
+    // - Adaptively adjusts busy-wait buffer based on actual OS sleep behavior
+    // - Platform-optimized timing primitives
+    // - Uses CPU pause hints during busy-wait to reduce power consumption
+    // Available since SDL 3.2.0
+    Uint64 targetNs = static_cast<Uint64>(targetFrameTimeMs * 1000000.0);
+    SDL_DelayPrecise(targetNs);
 }
 

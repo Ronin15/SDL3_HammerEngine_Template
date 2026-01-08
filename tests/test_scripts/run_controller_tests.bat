@@ -1,5 +1,5 @@
 @echo off
-rem World Controller Test Runner (Weather, DayNight)
+rem Controller Test Runner (Registry, Weather, DayNight)
 rem Copyright 2025 Hammer Forged Games
 
 setlocal enabledelayedexpansion
@@ -14,6 +14,7 @@ set "NC=[0m"
 rem Process command line arguments
 set VERBOSE=false
 set RUN_ALL=true
+set RUN_REGISTRY=false
 set RUN_WEATHER=false
 set RUN_DAYNIGHT=false
 
@@ -21,6 +22,12 @@ set RUN_DAYNIGHT=false
 if "%~1"=="" goto done_parsing
 if /i "%~1"=="--verbose" (
     set VERBOSE=true
+    shift
+    goto parse_args
+)
+if /i "%~1"=="--registry" (
+    set RUN_ALL=false
+    set RUN_REGISTRY=true
     shift
     goto parse_args
 )
@@ -37,11 +44,12 @@ if /i "%~1"=="--daynight" (
     goto parse_args
 )
 if /i "%~1"=="--help" (
-    echo !BLUE!World Controller Test Runner!NC!
+    echo !BLUE!Controller Test Runner!NC!
     echo Usage: run_controller_tests.bat [options]
     echo.
     echo Options:
     echo   --verbose      Run tests with verbose output
+    echo   --registry     Run only ControllerRegistry tests
     echo   --weather      Run only WeatherController tests
     echo   --daynight     Run only DayNightController tests
     echo   --help         Show this help message
@@ -52,16 +60,18 @@ goto parse_args
 
 :done_parsing
 
-echo !BLUE!Running World Controller Tests!NC!
+echo !BLUE!Running Controller Tests!NC!
 
 rem Track overall result
 set OVERALL_RESULT=0
 
 rem Run selected tests
 if "%RUN_ALL%"=="true" (
+    call :run_single_test controller_registry_tests
     call :run_single_test weather_controller_tests
     call :run_single_test day_night_controller_tests
 ) else (
+    if "%RUN_REGISTRY%"=="true" call :run_single_test controller_registry_tests
     if "%RUN_WEATHER%"=="true" call :run_single_test weather_controller_tests
     if "%RUN_DAYNIGHT%"=="true" call :run_single_test day_night_controller_tests
 )
@@ -118,6 +128,7 @@ if !OVERALL_RESULT! neq 0 (
 ) else (
     echo.
     echo !GREEN!All controller tests completed successfully!!NC!
+    echo !GREEN!  ControllerRegistry tests!NC!
     echo !GREEN!  WeatherController tests!NC!
     echo !GREEN!  DayNightController tests!NC!
     exit /b 0

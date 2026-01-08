@@ -35,3 +35,172 @@
    ...
    obj:*/mesa/*
 }
+{
+   GLib_Thread_Pool_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create@@GLIBC_2.34
+   ...
+   obj:*/libglib*
+}
+{
+   GLib_Thread_New_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:pthread_create*
+   ...
+   fun:g_thread_new
+}
+{
+   GIO_Task_Thread_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:pthread_create*
+   ...
+   fun:g_task_get_type
+}
+{
+   GDK_Display_Manager_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:pthread_create*
+   ...
+   fun:gdk_display_manager_open_display
+}
+{
+   DConf_Settings_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:pthread_create*
+   ...
+   obj:*/libdconfsettings.so
+}
+{
+   GLib_DBus_Proxy_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:pthread_create*
+   ...
+   fun:g_dbus_proxy_new_for_bus
+}
+{
+   GLib_Internal_Thread_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   fun:allocate_dtv
+   fun:_dl_allocate_tls
+   fun:allocate_stack
+   fun:pthread_create@@GLIBC_2.34
+   obj:*/libglib*
+}
+{
+   GLib_MainLoop_Thread_TLS
+   Memcheck:Leak
+   match-leak-kinds: possible
+   fun:calloc
+   ...
+   fun:pthread_create*
+   ...
+   fun:start_thread
+}
+
+# ============================================
+# System Library Suppressions (Runtime)
+# ============================================
+
+# librsvg uninitialized value errors (known issue)
+{
+   librsvg_uninit_value_1
+   Memcheck:Cond
+   obj:*/librsvg*
+}
+{
+   librsvg_uninit_value_2
+   Memcheck:Value8
+   obj:*/librsvg*
+}
+
+# Fontconfig memory leaks (known issue in fontconfig)
+{
+   fontconfig_leak_1
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   fun:realloc
+   obj:*/libfontconfig*
+}
+{
+   fontconfig_leak_2
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   fun:malloc
+   obj:*/libfontconfig*
+}
+{
+   fontconfig_leak_3
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   fun:FcFont*
+}
+
+# Pango/PangoCairo/PangoFT2 leaks (fontconfig integration)
+{
+   pango_fontconfig_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   obj:*/libpango*
+}
+
+# Cairo font leaks
+{
+   cairo_font_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   obj:*/libcairo*
+   ...
+   obj:*/libfontconfig*
+}
+
+# GTK font/text rendering leaks
+{
+   gtk_font_leak
+   Memcheck:Leak
+   match-leak-kinds: definite,indirect
+   ...
+   obj:*/libgtk*
+   ...
+   fun:pango_context_get_metrics
+}
+
+# GDK pixbuf loader leaks
+{
+   gdk_pixbuf_loader_leak
+   Memcheck:Leak
+   ...
+   fun:gdk_pixbuf_loader*
+}
+
+# File descriptor warnings (SDL/Wayland)
+{
+   wayland_fd_close
+   Memcheck:Param
+   close(fd)
+   obj:*/libwayland*
+}

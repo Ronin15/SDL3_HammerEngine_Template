@@ -27,6 +27,7 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/WorldManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
 #include "world/WorldData.hpp"
 
 #include <iostream>
@@ -44,7 +45,8 @@ using namespace HammerEngine;
 class TestEntity : public Entity {
 public:
     TestEntity(int id, const Vector2D& pos) : m_id(id) {
-        setPosition(pos);
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
         setTextureID("test_texture");
         setWidth(32);
         setHeight(32);
@@ -67,6 +69,7 @@ public:
     }
 
     void clean() override {}
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
     int getId() const { return m_id; }
     int getUpdateCount() const { return m_updateCount.load(); }
@@ -83,32 +86,29 @@ class WeatherResponseBehavior : public AIBehavior {
 public:
     WeatherResponseBehavior(const std::string& name) : m_name(name) {}
 
-    void executeLogic(EntityPtr entity, float deltaTime) override {
-        if (!entity) return;
-        (void)deltaTime;
-
+    void executeLogic(BehaviorContext& ctx) override {
         // Check if seeking shelter
         if (m_seekingShelter.load()) {
             // Move entity toward shelter position (simplified)
-            Vector2D currentPos = entity->getPosition();
+            Vector2D currentPos = ctx.transform.position;
             Vector2D toShelter = m_shelterPosition - currentPos;
             float distance = toShelter.length();
 
             if (distance > 5.0f) {
                 toShelter.normalize();
-                entity->setPosition(currentPos + toShelter * 2.0f);
+                ctx.transform.position = currentPos + toShelter * 2.0f;
                 m_movedTowardShelter.store(true);
             }
         }
     }
 
-    void init(EntityPtr entity) override {
-        (void)entity;
+    void init(EntityHandle handle) override {
+        (void)handle;
         m_initialized = true;
     }
 
-    void clean(EntityPtr entity) override {
-        (void)entity;
+    void clean(EntityHandle handle) override {
+        (void)handle;
         m_initialized = false;
     }
 
@@ -120,8 +120,8 @@ public:
         return cloned;
     }
 
-    void onMessage(EntityPtr entity, const std::string& message) override {
-        (void)entity;
+    void onMessage(EntityHandle handle, const std::string& message) override {
+        (void)handle;
         if (message == "weather_rain_start") {
             m_seekingShelter.store(true);
             m_shelterPosition = Vector2D(100.0f, 100.0f);
@@ -152,6 +152,11 @@ struct GlobalEventCoordinationFixture {
         // Note: Use throw instead of BOOST_REQUIRE in fixture constructors
         if (!ThreadSystem::Instance().init()) {
             throw std::runtime_error("ThreadSystem initialization failed");
+        }
+
+        // EntityDataManager must be early - entities need it for registration
+        if (!EntityDataManager::Instance().init()) {
+            throw std::runtime_error("EntityDataManager initialization failed");
         }
 
         if (!ResourceTemplateManager::Instance().init()) {
@@ -247,21 +252,22 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         auto entity = TestEntity::create(i, Vector2D(50.0f + i * 10.0f, 50.0f));
         testEntities.push_back(entity);
 
-        // Register collision body (required for AIManager's syncCollisionPositions)
-        CollisionManager::Instance().addCollisionBodySOA(
-            entity->getID(),
-            entity->getPosition(),
-            Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
-            BodyType::KINEMATIC,
-            Layer_Enemy, // Using Enemy layer for AI test entities
-            0xFFFFFFFFu
-        );
+        // EDM-CENTRIC: Set collision layers directly on EDM hot data
+        {
+            auto& edm = EntityDataManager::Instance();
+            size_t idx = edm.getIndex(entity->getHandle());
+            if (idx != SIZE_MAX) {
+                auto& hot = edm.getHotDataByIndex(idx);
+                hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+                hot.collisionMask = 0xFFFF;
+                hot.setCollisionEnabled(true);
+            }
+        }
 
-        AIManager::Instance().registerEntityForUpdates(entity, 5, "WeatherResponse");
+        AIManager::Instance().registerEntity(entity->getHandle(), "WeatherResponse");
     }
 
     // Process collision body commands
-    CollisionManager::Instance().processPendingCommands();
 
     // Process queued assignments
     for (int i = 0; i < 5; ++i) {
@@ -329,7 +335,7 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
         if (particleEventReceived.load() && worldEventReceived.load()) {
             bool anyEntitySeekingShelter = false;
             for (const auto& entity : testEntities) {
-                if (AIManager::Instance().entityHasBehavior(entity)) {
+                if (AIManager::Instance().hasBehavior(entity->getHandle())) {
                     // We can't directly access behavior state in this context,
                     // but we can verify entities are being updated
                     anyEntitySeekingShelter = true;
@@ -357,11 +363,10 @@ BOOST_AUTO_TEST_CASE(TestWeatherEventCoordination) {
 
     // Cleanup
     for (auto& entity : testEntities) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
-        CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
+        AIManager::Instance().unregisterEntity(entity->getHandle());
+        AIManager::Instance().unassignBehavior(entity->getHandle());
+        CollisionManager::Instance().removeCollisionBody(entity->getID());
     }
-    CollisionManager::Instance().processPendingCommands();
     testEntities.clear();
     // Note: Don't call WorldManager.clean() here - it will be cleaned in global fixture destructor
     // Just unload the world if needed
@@ -405,21 +410,20 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
         auto entity = TestEntity::create(i, Vector2D(i * 20.0f, i * 20.0f));
         oldSceneEntities.push_back(entity);
 
-        // Register collision body (required for AIManager's syncCollisionPositions)
-        CollisionManager::Instance().addCollisionBodySOA(
-            entity->getID(),
-            entity->getPosition(),
-            Vector2D(16.0f, 16.0f), // halfSize (32x32 entity)
-            BodyType::KINEMATIC,
-            Layer_Enemy, // Using Enemy layer for AI test entities
-            0xFFFFFFFFu
-        );
-
-        AIManager::Instance().registerEntityForUpdates(entity, 5);
+        // EDM-CENTRIC: Set collision layers directly on EDM hot data
+        {
+            auto& edm = EntityDataManager::Instance();
+            size_t idx = edm.getIndex(entity->getHandle());
+            if (idx != SIZE_MAX) {
+                auto& hot = edm.getHotDataByIndex(idx);
+                hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+                hot.collisionMask = 0xFFFF;
+                hot.setCollisionEnabled(true);
+            }
+        }
     }
 
     // Process collision body commands
-    CollisionManager::Instance().processPendingCommands();
 
     // Process registrations
     for (int i = 0; i < 5; ++i) {
@@ -455,11 +459,10 @@ BOOST_AUTO_TEST_CASE(TestSceneChangeEventCoordination) {
 
     // Cleanup old scene entities
     for (auto& entity : oldSceneEntities) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
-        CollisionManager::Instance().removeCollisionBodySOA(entity->getID());
+        AIManager::Instance().unregisterEntity(entity->getHandle());
+        AIManager::Instance().unassignBehavior(entity->getHandle());
+        CollisionManager::Instance().removeCollisionBody(entity->getID());
     }
-    CollisionManager::Instance().processPendingCommands();
     oldSceneEntities.clear();
 
     // Wait for cleanup to process

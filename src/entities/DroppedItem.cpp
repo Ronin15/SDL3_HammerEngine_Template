@@ -5,7 +5,9 @@
 
 #include "entities/DroppedItem.hpp"
 #include "core/Logger.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
+#include "managers/TextureManager.hpp"
 #include "utils/Camera.hpp"
 #include <cmath>
 #include <format>
@@ -15,8 +17,13 @@ DroppedItem::DroppedItem(HammerEngine::ResourceHandle resourceHandle,
     : Entity(), m_resourceHandle(resourceHandle), m_quantity(quantity),
       m_pickupTimer(0.0f), m_bobTimer(0.0f), m_canBePickedUp(false) {
 
-  // Set position using Entity's method
-  setPosition(position);
+  // Register with EntityDataManager first - it sets up the initial transform
+  // EntityDataManager is the single source of truth for all entity data
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    EntityHandle handle = edm.registerDroppedItem(getID(), position, m_resourceHandle, m_quantity);
+    setHandle(handle);  // Enable EntityDataManager-backed accessors
+  }
 
   // Get the resource template to copy visual properties
   auto resourceTemplate = getResourceTemplate();
@@ -55,11 +62,10 @@ void DroppedItem::update(float deltaTime) {
 
   // Update animation frame (manual implementation since Entity is pure virtual)
   if (getNumFrames() > 1 && getAnimSpeed() > 0) {
-    static thread_local float animTimer = 0.0f;
-    animTimer += deltaTime * getAnimSpeed();
-    if (animTimer >= 100.0f) { // Reset at 100ms intervals
+    m_animTimer += deltaTime * getAnimSpeed();
+    if (m_animTimer >= 100.0f) { // Reset at 100ms intervals
       setCurrentFrame((getCurrentFrame() + 1) % getNumFrames());
-      animTimer = 0.0f;
+      m_animTimer = 0.0f;
     }
   }
 }
@@ -69,6 +75,12 @@ void DroppedItem::render(SDL_Renderer* renderer, float cameraX, float cameraY, f
     return; // Don't render empty stacks
   }
 
+  // Cache texture on first render (like WorldManager pattern - no hash lookup per frame)
+  if (!m_cachedTexture) {
+    m_cachedTexture = TextureManager::Instance().getTexturePtr(m_textureID);
+    if (!m_cachedTexture) return;
+  }
+
   // Get interpolated position for smooth rendering between physics updates
   Vector2D interpPos = getInterpolatedPosition(interpolationAlpha);
 
@@ -76,15 +88,22 @@ void DroppedItem::render(SDL_Renderer* renderer, float cameraX, float cameraY, f
   float bobOffset = std::sin(m_bobTimer) * 3.0f; // 3 pixel bobbing range
 
   // Convert world coords to screen coords using passed camera offset
-  // Same formula as WorldManager: screenX = worldX - cameraX
-  float renderX = interpPos.getX() - cameraX;
-  float renderY = interpPos.getY() - cameraY + bobOffset;
+  float renderX = interpPos.getX() - cameraX - (m_width / 2.0f);
+  float renderY = interpPos.getY() - cameraY - (m_height / 2.0f) + bobOffset;
 
-  // TODO: Implement actual rendering logic here using renderer and renderX/renderY
-  // For now, suppress unused parameter warning until full rendering is implemented
-  (void)renderer;
-  (void)renderX;
-  (void)renderY;
+  // Direct SDL call with cached texture - no hash lookup!
+  SDL_FRect srcRect = {
+      static_cast<float>(m_width * m_currentFrame),
+      static_cast<float>(m_height * (m_currentRow - 1)),
+      static_cast<float>(m_width),
+      static_cast<float>(m_height)
+  };
+  SDL_FRect destRect = {renderX, renderY,
+                        static_cast<float>(m_width),
+                        static_cast<float>(m_height)};
+  SDL_FPoint center = {m_width / 2.0f, m_height / 2.0f};
+
+  SDL_RenderTextureRotated(renderer, m_cachedTexture, &srcRect, &destRect, 0.0, &center, SDL_FLIP_NONE);
 }
 
 void DroppedItem::clean() {
@@ -95,6 +114,12 @@ void DroppedItem::clean() {
   m_pickupTimer = 0.0f;
   m_bobTimer = 0.0f;
   m_canBePickedUp = false;
+
+  // Unregister from EntityDataManager (Phase 1 parallel storage)
+  auto& edm = EntityDataManager::Instance();
+  if (edm.isInitialized()) {
+    edm.unregisterEntity(getID());
+  }
 
   // Clean up Entity base properties using Entity methods
   setTextureID("");

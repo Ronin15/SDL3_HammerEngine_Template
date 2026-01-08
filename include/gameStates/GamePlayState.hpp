@@ -14,15 +14,9 @@
 #include "events/WeatherEvent.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Camera.hpp"
-#include "controllers/world/WeatherController.hpp"
-#include "controllers/world/DayNightController.hpp"
-#include "controllers/combat/CombatController.hpp"
+#include "controllers/ControllerRegistry.hpp"
 #include <memory>
 #include <string>
-
-// Forward declarations for cached manager pointers
-class WorldManager;
-class UIManager;
 
 class GamePlayState : public GameState {
 public:
@@ -62,11 +56,6 @@ private:
   // Track if we need to transition to loading screen on first update
   bool m_needsLoading{false};
 
-  // Cached manager pointers for render hot path (resolved in enter())
-  ParticleManager* mp_particleMgr{nullptr};
-  WorldManager* mp_worldMgr{nullptr};
-  UIManager* mp_uiMgr{nullptr};
-
   // Render scale caching - avoid GPU state changes when zoom unchanged
   float m_lastRenderedZoom{1.0f};
 
@@ -75,10 +64,8 @@ private:
   std::string m_fpsBuffer{};
   float m_lastDisplayedFPS{-1.0f};
 
-  // --- Controllers (owned by this state) ---
-  WeatherController m_weatherController;
-  DayNightController m_dayNightController;
-  CombatController m_combatController;
+  // --- Controllers (owned by ControllerRegistry) ---
+  ControllerRegistry m_controllers;
 
   // --- Time UI display buffer ---
   std::string m_statusBuffer{};  // Reusable buffer for status text (zero allocation)

@@ -18,8 +18,6 @@
  * for multiple platforms without duplicating logic.
  */
 
-#include "utils/Vector2D.hpp"
-#include <bit>
 #include <cmath>
 
 // ============================================================================
@@ -129,6 +127,21 @@ inline Float4 load4(const float* ptr) {
 }
 
 /**
+ * @brief Load 4 floats from memory (aligned)
+ * @param ptr Pointer to 4 consecutive floats aligned to 16 bytes
+ * @return SIMD vector containing the 4 floats
+ */
+inline Float4 load4_aligned(const float* ptr) {
+#if defined(HAMMER_SIMD_SSE2)
+    return _mm_load_ps(ptr);
+#elif defined(HAMMER_SIMD_NEON)
+    return vld1q_f32(ptr);
+#else
+    return load4(ptr);
+#endif
+}
+
+/**
  * @brief Store 4 floats to memory
  * @param ptr Destination pointer
  * @param v SIMD vector to store
@@ -143,6 +156,21 @@ inline void store4(float* ptr, Float4 v) {
     ptr[1] = v.data[1];
     ptr[2] = v.data[2];
     ptr[3] = v.data[3];
+#endif
+}
+
+/**
+ * @brief Store 4 floats to memory (aligned)
+ * @param ptr Destination pointer aligned to 16 bytes
+ * @param v SIMD vector to store
+ */
+inline void store4_aligned(float* ptr, Float4 v) {
+#if defined(HAMMER_SIMD_SSE2)
+    _mm_store_ps(ptr, v);
+#elif defined(HAMMER_SIMD_NEON)
+    vst1q_f32(ptr, v);
+#else
+    store4(ptr, v);
 #endif
 }
 

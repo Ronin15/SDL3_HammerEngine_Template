@@ -6,7 +6,7 @@
 #ifndef AI_BEHAVIOR_HPP
 #define AI_BEHAVIOR_HPP
 
-#include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <cstddef>
@@ -16,37 +16,84 @@
 
 // Forward declarations
 class PathfinderManager;
+struct TransformData;
+struct EntityHotData;
+struct BehaviorData;
+struct PathData;
 
-// Forward declare separation to avoid pulling internal headers here
-namespace AIInternal {
-Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
-                         const Vector2D &intendedVelocity, float speed,
-                         float queryRadius, float strength,
-                         size_t maxNeighbors);
+/**
+ * @brief Context for behavior execution - provides lock-free access to entity data
+ *
+ * This replaces EntityPtr in the hot path. AIManager resolves the EDM index once
+ * and passes direct references to transform/hotData. No mutex per behavior call.
+ */
+struct BehaviorContext {
+    TransformData& transform;      // Direct read/write access (lock-free)
+    EntityHotData& hotData;        // Entity metadata (halfWidth, halfHeight, etc.)
+    EntityHandle::IDType entityId; // For staggering calculations
+    size_t edmIndex;               // EDM index for vector-based state storage (contention-free)
+    float deltaTime;
 
-// Overload with pre-fetched neighbor data
-Vector2D ApplySeparation(EntityPtr entity, const Vector2D &position,
-                         const Vector2D &intendedVelocity, float speed,
-                         float queryRadius, float strength,
-                         size_t maxNeighbors,
-                         const std::vector<Vector2D> &preFetchedNeighbors);
-}
+    // Player info cached once per update batch - avoids lock contention in behaviors
+    EntityHandle playerHandle;     // Cached player handle (no lock needed)
+    Vector2D playerPosition;       // Cached player position (no lock needed)
+    Vector2D playerVelocity;       // Cached player velocity (for movement detection)
+    bool playerValid{false};       // Whether player is valid this frame
+
+    // Pre-fetched EDM data - avoids repeated Instance() calls in behaviors
+    BehaviorData* behaviorData{nullptr};  // nullptr if entity has no behavior data initialized
+    PathData* pathData{nullptr};          // nullptr if entity has no path data
+
+    // World bounds cached once per frame - avoids WorldManager::Instance() calls in behaviors
+    float worldMinX{0.0f};
+    float worldMinY{0.0f};
+    float worldMaxX{0.0f};
+    float worldMaxY{0.0f};
+    bool worldBoundsValid{false};         // Whether world bounds are available
+
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt)
+        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt) {}
+
+    BehaviorContext(TransformData& t, EntityHotData& h, EntityHandle::IDType id, size_t idx, float dt,
+                    EntityHandle pHandle, const Vector2D& pPos, const Vector2D& pVel, bool pValid,
+                    BehaviorData* bData, PathData* pData,
+                    float wMinX, float wMinY, float wMaxX, float wMaxY, bool wBoundsValid)
+        : transform(t), hotData(h), entityId(id), edmIndex(idx), deltaTime(dt),
+          playerHandle(pHandle), playerPosition(pPos), playerVelocity(pVel), playerValid(pValid),
+          behaviorData(bData), pathData(pData),
+          worldMinX(wMinX), worldMinY(wMinY), worldMaxX(wMaxX), worldMaxY(wMaxY),
+          worldBoundsValid(wBoundsValid) {}
+};
+
 #include <string>
 
 class AIBehavior : public std::enable_shared_from_this<AIBehavior> {
 public:
   virtual ~AIBehavior();
 
-  // Core behavior methods - pure logic only
-  virtual void executeLogic(EntityPtr entity, float deltaTime) = 0;
-  virtual void init(EntityPtr entity) = 0;
-  virtual void clean(EntityPtr entity) = 0;
+  // =========================================================================
+  // CORE BEHAVIOR METHODS
+  // =========================================================================
+
+  /**
+   * @brief Execute behavior logic with lock-free EDM access
+   *
+   * Hot path method called every frame. Receives direct references to
+   * EntityDataManager data - no mutex acquisition per call.
+   *
+   * @param ctx BehaviorContext with transform, hotData, entityId, deltaTime
+   */
+  virtual void executeLogic(BehaviorContext& ctx) = 0;
+
+  // Initialization and cleanup (called when behavior assigned/unassigned)
+  virtual void init(EntityHandle handle) = 0;
+  virtual void clean(EntityHandle handle) = 0;
 
   // Behavior identification
   virtual std::string getName() const = 0;
 
   // Optional message handling for behavior communication
-  virtual void onMessage([[maybe_unused]] EntityPtr entity,
+  virtual void onMessage([[maybe_unused]] EntityHandle handle,
                          [[maybe_unused]] const std::string &message) {}
 
   // Behavior state access
@@ -54,12 +101,9 @@ public:
   virtual void setActive(bool active) { m_active = active; }
 
   // Entity range checks (behavior-specific logic)
-  virtual bool isEntityInRange([[maybe_unused]] EntityPtr entity) const {
+  virtual bool isEntityInRange([[maybe_unused]] EntityHandle handle) const {
     return true;
   }
-
-  // Entity cleanup
-  virtual void cleanupEntity(EntityPtr entity);
 
   // Clone method for creating unique behavior instances
   virtual std::shared_ptr<AIBehavior> clone() const = 0;
@@ -81,7 +125,7 @@ protected:
     float navRadius = 64.0f;
     float pathUpdateTimer = 0.0f;
     float progressTimer = 0.0f;
-    float lastNodeDistance = std::numeric_limits<float>::infinity();
+    float lastNodeDistance = std::numeric_limits<float>::max();
 
     // Separation state
     float separationTimer = 0.0f;
@@ -118,124 +162,27 @@ protected:
     return (lastProgressTime > 0 && (now - lastProgressTime) > STUCK_THRESHOLD_MS);
   }
 
-  // Apply separation as an additive force that blends with existing velocity
-  inline void applyAdditiveDecimatedSeparation(EntityPtr entity,
-                                       const Vector2D &position,
-                                       const Vector2D &currentVelocity,
-                                       float speed, float queryRadius,
-                                       float strength, int maxNeighbors,
-                                       float &separationTimer,
-                                       Vector2D &lastSepForce,
-                                       float deltaTime) const {
-    // Increment timer
-    separationTimer += deltaTime;
-
-    // Stagger separation intervals per-entity (2.0s base + 0-2.0s stagger)
-    float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
-    float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-    // Only recalculate separation periodically
-    if (separationTimer >= effectiveInterval) {
-      Vector2D sepVelocity = AIInternal::ApplySeparation(
-          entity, position, currentVelocity, speed, queryRadius, strength,
-          static_cast<size_t>(maxNeighbors));
-      // Store the separation FORCE (difference from intended velocity)
-      lastSepForce = sepVelocity - currentVelocity;
-      separationTimer = 0.0f;
-    }
-
-    // Only apply separation when actually moving (prevents oscillation when settling)
-    float const velocityMagnitude = currentVelocity.length();
-    const float MIN_VELOCITY_FOR_SEPARATION = 20.0f; // Only separate when moving
-
-    if (velocityMagnitude > MIN_VELOCITY_FOR_SEPARATION) {
-      // Apply the separation force additively (blend with current velocity)
-      Vector2D blendedVelocity = currentVelocity + (lastSepForce * 0.1f); // 10% separation influence
-
-      // Clamp to max speed
-      if (blendedVelocity.length() > speed) {
-        blendedVelocity.normalize();
-        blendedVelocity = blendedVelocity * speed;
-      }
-
-      entity->setVelocity(blendedVelocity);
-    } else {
-      // Not moving much - don't apply separation to avoid oscillation
-      entity->setVelocity(currentVelocity);
-    }
-  }
-
-  // Apply separation at most every 2-4 seconds, with entity-based staggering
-  inline void applyDecimatedSeparation(EntityPtr entity,
-                                       const Vector2D &position,
-                                       const Vector2D &intendedVelocity,
-                                       float speed, float queryRadius,
-                                       float strength, int maxNeighbors,
-                                       float &separationTimer,
-                                       Vector2D &lastSepVelocity,
-                                       float deltaTime) const {
-    // Increment timer
-    separationTimer += deltaTime;
-
-    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
-    // from doing expensive separation calculations on the same frame
-    float entityStaggerOffset = (entity->getID() % 200) * 0.01f; // Stagger by up to 2 seconds
-    float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-    if (separationTimer >= effectiveInterval) {
-      // Only do the expensive separation calculation when absolutely necessary
-      lastSepVelocity = AIInternal::ApplySeparation(
-          entity, position, intendedVelocity, speed, queryRadius, strength,
-          static_cast<size_t>(maxNeighbors));
-      separationTimer = 0.0f;
-    }
-    entity->setVelocity(lastSepVelocity);
-  }
-
-  // PERFORMANCE OPTIMIZATION: Apply decimated separation using pre-fetched neighbor data
-  // This version maintains the same decimation logic but uses cached collision data
-  inline void applySeparationWithCache(EntityPtr entity,
-                                       const Vector2D &position,
-                                       const Vector2D &intendedVelocity,
-                                       float speed, float queryRadius,
-                                       float strength, int maxNeighbors,
-                                       float &separationTimer,
-                                       Vector2D &lastSepVelocity,
-                                       float deltaTime,
-                                       const std::vector<Vector2D> &preFetchedNeighbors) const {
-    separationTimer += deltaTime;
-
-    // PERFORMANCE FIX: Entity-based staggered separation to prevent all entities
-    // from doing expensive separation calculations on the same frame
-    float entityStaggerOffset = (entity->getID() % 200) * 0.01f;
-    float const effectiveInterval = 2.0f + entityStaggerOffset;
-
-    if (separationTimer >= effectiveInterval) {
-      // Calculate separation using pre-fetched data (no collision query!)
-      lastSepVelocity = AIInternal::ApplySeparation(
-          entity, position, intendedVelocity, speed, queryRadius, strength,
-          static_cast<size_t>(maxNeighbors), preFetchedNeighbors);
-      separationTimer = 0.0f;
-      entity->setVelocity(lastSepVelocity);
-    } else {
-      // Use intended velocity until first separation calculation
-      entity->setVelocity(intendedVelocity);
-    }
-  }
+  // NOTE: Separation functions removed - CollisionManager handles overlap resolution
 
   // Common utility functions for behaviors
-
-  // Move entity towards target position using pathfinding
-  // Priority: 0=Low, 1=Normal, 2=High, 3=Critical (maps to PathfinderManager::Priority)
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos,
-                     float speed, float deltaTime, AIBehaviorState &state,
-                     int priority = 1); // Default to Normal priority
 
   // Vector and angle utilities
   Vector2D normalizeDirection(const Vector2D &vector) const;
   float calculateAngleToTarget(const Vector2D &from, const Vector2D &to) const;
   float normalizeAngle(float angle) const;
   Vector2D rotateVector(const Vector2D &vector, float angle) const;
+
+  /**
+   * @brief Move entity towards target using pathfinding (lock-free via BehaviorContext)
+   * @param ctx BehaviorContext with direct transform access
+   * @param targetPos Target position to move towards
+   * @param speed Movement speed
+   * @param state Behavior state for pathfinding data
+   * @param priority 0=Low, 1=Normal, 2=High, 3=Critical
+   */
+  void moveToPosition(BehaviorContext& ctx, const Vector2D &targetPos,
+                      float speed, AIBehaviorState &state,
+                      int priority = 1);
 };
 
 #endif // AI_BEHAVIOR_HPP

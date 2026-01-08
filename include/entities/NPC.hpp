@@ -8,10 +8,9 @@
 
 #include "entities/Entity.hpp"
 #include "entities/resources/InventoryComponent.hpp"
-#include "managers/EntityStateManager.hpp"
+#include "entities/EntityStateManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL_render.h>
 #include <memory>
 #include <random>
 #include <string>
@@ -43,6 +42,7 @@ public:
   void update(float) override;
   void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
   void clean() override;
+  [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
   // Animation state management
   void setAnimationState(const std::string& stateName);
@@ -90,19 +90,19 @@ public:
   // Helper method to set up loot drops during initialization
   void setLootDropRate(HammerEngine::ResourceHandle itemHandle, float dropRate);
 
-  // Combat system
+  // Combat system - all stats stored in EntityDataManager::CharacterData
   void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
   void heal(float amount);
   void die();
-  bool isAlive() const { return m_currentHealth > 0.0f; }
+  bool isAlive() const;
 
-  // Combat stat accessors
-  float getHealth() const { return m_currentHealth; }
-  float getMaxHealth() const { return m_maxHealth; }
-  float getStamina() const { return m_currentStamina; }
-  float getMaxStamina() const { return m_maxStamina; }
+  // Combat stat accessors (read from EntityDataManager)
+  float getHealth() const;
+  float getMaxHealth() const;
+  float getStamina() const;
+  float getMaxStamina() const;
 
-  // Combat stat setters
+  // Combat stat setters (write to EntityDataManager)
   void setMaxHealth(float maxHealth);
   void setMaxStamina(float maxStamina);
 
@@ -144,10 +144,6 @@ private:
   Faction m_faction{Faction::Neutral};
   NPCType m_npcType{NPCType::Standard};
 
-  // Texture flip smoothing
-  int m_lastFlipSign{1};
-  Uint64 m_lastFlipTime{0};
-
   // Loot drop RNG (member vars to avoid static in threaded code per CLAUDE.md)
   mutable std::mt19937 m_lootRng{std::random_device{}()};
   mutable std::uniform_real_distribution<float> m_lootDist{0.0f, 1.0f};
@@ -155,11 +151,9 @@ private:
   // Double-cleanup prevention (replaces thread_local set that leaked memory)
   bool m_cleaned{false};
 
-  // Combat stats
-  float m_currentHealth{100.0f};
-  float m_maxHealth{100.0f};
-  float m_currentStamina{100.0f};
-  float m_maxStamina{100.0f};
+  // Bootstrap: Initial position before EntityDataManager registration
+  // Used in ensurePhysicsBodyRegistered() then cleared
+  Vector2D m_initialPosition{0.0f, 0.0f};
 };
 
 #endif // NPC_HPP

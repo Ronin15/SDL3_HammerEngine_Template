@@ -212,7 +212,7 @@ int uiHeight = ui.getLogicalHeight(); // Auto-detected from engine
 
 **Auto-Detection Benefits:**
 - **Zero Coupling**: Game states never need to query GameEngine for dimensions
-- **Cross-Platform**: Works seamlessly on macOS letterbox and Windows/Linux native resolution
+- **Cross-Platform**: Works seamlessly across macOS (Retina), Windows, and Linux with native resolution
 - **Future-Proof**: Automatically adapts to engine coordinate system changes
 - **Simplified API**: Common positioning patterns become one-line calls
 

@@ -8,7 +8,6 @@
 
 #include <cstdint>
 #include <chrono>
-#include <atomic>
 #include <SDL3/SDL.h>
 
 /**
@@ -22,6 +21,9 @@
  */
 class TimestepManager {
 public:
+    // Performance logging interval (seconds) - used by HammerMain debug logging
+    static constexpr double PERF_LOG_INTERVAL_SECONDS = 30.0;
+
     /**
      * Constructor
      * @param targetFPS Target frames per second for rendering (e.g., 60.0f)
@@ -105,6 +107,12 @@ public:
     void setFixedTimestep(float timestep);
 
     /**
+     * Get update frequency in Hz (inverse of fixed timestep)
+     * @return update frequency in Hz (e.g., 60.0 for 60 Hz updates)
+     */
+    float getUpdateFrequencyHz() const { return 1.0f / m_fixedTimestep; }
+
+    /**
      * Reset timing state (useful when pausing/unpausing)
      */
     void reset();
@@ -120,8 +128,8 @@ private:
     std::chrono::high_resolution_clock::time_point m_lastFrameTime;
     
     // Simplified timing pattern (eliminates accumulator drift)
-    std::atomic<double> m_accumulator;   // Simple frame timing state (atomic for thread safety)
-    static constexpr double MAX_ACCUMULATOR = 0.25; // Unused (kept for compatibility)
+    double m_accumulator;                // Frame timing accumulator
+    static constexpr double MAX_ACCUMULATOR = 0.25; // Max delta clamp for VSync mode
     
     // Frame statistics
     uint32_t m_lastFrameTimeMs;         // Last frame duration in milliseconds (for getFrameTimeMs())
@@ -136,6 +144,7 @@ private:
     // Fixed timestep for software frame limiting
     mutable bool m_usingSoftwareFrameLimiting = false;
     mutable bool m_explicitlySet = false;
+
     
     // Helper methods
     void updateFPS();
@@ -147,6 +156,12 @@ public:
      * @param useSoftwareLimiting true to force fixed timestep mode
      */
     void setSoftwareFrameLimiting(bool useSoftwareLimiting) const;
+
+    /**
+     * Check if software frame limiting is active
+     * @return true if using software limiting, false if using hardware VSync
+     */
+    bool isUsingSoftwareFrameLimiting() const { return m_usingSoftwareFrameLimiting; }
 
     /**
      * High-precision frame wait using hybrid sleep+spinlock (industry standard)

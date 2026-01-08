@@ -10,15 +10,13 @@
 #include "managers/SettingsManager.hpp"
 #include <array>
 #include <chrono>
-#include <cstdlib>
 #include <format>
 #include <numeric>
-#include <string>
+#include <string_view>
 
-const int WINDOW_WIDTH{1280};
-const int WINDOW_HEIGHT{720};
-// Game Name goes here.
-const std::string GAME_NAME{"Game Template"};
+constexpr int WINDOW_WIDTH{1280};
+constexpr int WINDOW_HEIGHT{720};
+constexpr std::string_view GAME_NAME{"Game Template"};
 
 // maybe_unused is just a hint to the compiler that the variable is not used.
 // with -Wall -Wextra flags
@@ -91,8 +89,8 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   static constexpr size_t PERF_SAMPLE_COUNT = 10;
   std::array<double, PERF_SAMPLE_COUNT> updateSamples{};
   size_t sampleIndex = 0;
-  uint64_t frameCount = 0;
-  static constexpr uint64_t PERF_LOG_INTERVAL = 1800;  // Every 30s @ 60fps
+  size_t intervalUpdateIterations = 0;
+  auto lastPerfLogTime = std::chrono::high_resolution_clock::now();
 #endif
 
   // Main game loop - classic fixed timestep pattern
@@ -107,35 +105,43 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     // Fixed timestep updates - run until accumulator is drained
 #ifndef NDEBUG
     auto updateStart = std::chrono::high_resolution_clock::now();
+    size_t updateIterations = 0;
 #endif
 
     while (ts.shouldUpdate()) {
-      // Swap buffers if we have a new frame ready for rendering
-      if (gameEngine.hasNewFrameToRender()) {
-        gameEngine.swapBuffers();
-      }
-
-      // Update game logic with fixed timestep
       gameEngine.update(ts.getUpdateDeltaTime());
+#ifndef NDEBUG
+      ++updateIterations;
+#endif
     }
 
 #ifndef NDEBUG
     auto updateEnd = std::chrono::high_resolution_clock::now();
     double updateMs = std::chrono::duration<double, std::milli>(updateEnd - updateStart).count();
     updateSamples[sampleIndex++ % PERF_SAMPLE_COUNT] = updateMs;
-    ++frameCount;
+    intervalUpdateIterations += updateIterations;
 
-    if (frameCount % PERF_LOG_INTERVAL == 0 && !HammerEngine::Logger::IsBenchmarkMode()) {
+    double secondsSinceLastLog = std::chrono::duration<double>(updateEnd - lastPerfLogTime).count();
+    if (secondsSinceLastLog >= TimestepManager::PERF_LOG_INTERVAL_SECONDS) {
+      lastPerfLogTime = updateEnd;
       double avgMs = std::accumulate(updateSamples.begin(), updateSamples.end(), 0.0) / PERF_SAMPLE_COUNT;
-      double frameBudgetMs = 1000.0 / 60.0;  // 16.67ms
+      double frameBudgetMs = 1000.0 / ts.getTargetFPS();
       double utilizationPercent = (avgMs / frameBudgetMs) * 100.0;
       GAMEENGINE_DEBUG(std::format("Update performance: {:.2f}ms avg ({:.1f}% frame budget)",
                                    avgMs, utilizationPercent));
+      GAMEENGINE_DEBUG(std::format("Update stats: iterations:{}, frameMs:{}, vsync:{}, softwareLimit:{}",
+                                   intervalUpdateIterations, ts.getFrameTimeMs(),
+                                   gameEngine.isVSyncEnabled(),
+                                   ts.isUsingSoftwareFrameLimiting()));
+      intervalUpdateIterations = 0;
     }
 #endif
 
     // Render with interpolation alpha (calculated from remaining accumulator)
     gameEngine.render();
+
+    // Process background tasks during vsync wait (non-critical, async work)
+    gameEngine.processBackgroundTasks();
 
     // End frame (VSync or software frame limiting)
     ts.endFrame();

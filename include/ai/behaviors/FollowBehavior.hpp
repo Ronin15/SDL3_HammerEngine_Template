@@ -8,12 +8,14 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
+
+struct BehaviorData;
+
 #include <atomic>
 #include <mutex>
 #include <random>
-#include <unordered_map>
 #include <vector>
 
 class FollowBehavior : public AIBehavior {
@@ -37,10 +39,10 @@ public:
   explicit FollowBehavior(const HammerEngine::FollowBehaviorConfig& config,
                           FollowMode mode = FollowMode::LOOSE_FOLLOW);
 
-  void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void init(EntityHandle handle) override;
+  void executeLogic(BehaviorContext& ctx) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -73,42 +75,8 @@ public:
 
 
 private:
-  
-  struct EntityState {
-    Vector2D lastTargetPosition{0, 0};
-    Vector2D currentVelocity{0, 0};
-    Vector2D desiredPosition{0, 0};
-    Vector2D formationOffset{0, 0};
-    float currentSpeed{0.0f};
-    float currentHeading{0.0f}; // In radians
-    bool isFollowing{false};
-    bool targetMoving{false};
-    bool inFormation{true};
-    bool isStopped{false}; // Track if stopped at personal space boundary
-    int formationSlot{0}; // For escort formation
-
-    // Pathfinding state (using deltaTime accumulators instead of SDL_GetTicks)
-    std::vector<Vector2D> pathPoints;
-    size_t currentPathIndex{0};
-    float pathUpdateTimer{0.0f};     // Replaces lastPathUpdate
-    float lastNodeDistance{std::numeric_limits<float>::infinity()};
-    float progressTimer{0.0f};       // Replaces lastProgressTime
-    float backoffTimer{0.0f};        // Replaces backoffUntil (counts down)
-    // Separation decimation (stores separation FORCE, not velocity)
-    float separationTimer{0.0f};     // Replaces lastSepTick
-    Vector2D lastSepForce{0, 0};
-
-    EntityState()
-        : lastTargetPosition(0, 0), currentVelocity(0, 0),
-          desiredPosition(0, 0), formationOffset(0, 0), currentSpeed(0.0f), currentHeading(0.0f),
-          isFollowing(false), targetMoving(false), inFormation(true), isStopped(false),
-          formationSlot(0), currentPathIndex(0), pathUpdateTimer(0.0f),
-          lastNodeDistance(std::numeric_limits<float>::infinity()), progressTimer(0.0f), backoffTimer(0.0f),
-          separationTimer(0.0f) {}
-  };
-
-  // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
+  // All per-entity state accessed via edm.getBehaviorData(ctx.edmIndex).state.follow
 
   // Configuration
   HammerEngine::FollowBehaviorConfig m_config;
@@ -155,35 +123,20 @@ private:
   // bool m_useAsyncPathfinding removed
 
   // Helper methods
-  EntityPtr getTarget() const; // Gets player reference from AIManager
-  Vector2D calculateDesiredPosition(EntityPtr entity, EntityPtr target,
-                                    const EntityState &state) const;
-  Vector2D calculateFormationOffset(const EntityState &state) const;
-  Vector2D predictTargetPosition(EntityPtr target,
-                                 const EntityState &state) const;
+  EntityHandle getTargetHandle() const; // Gets player handle from AIManager
+  Vector2D calculateFormationOffset(int formationSlot) const;
 
-  bool isTargetMoving(EntityPtr target) const;
   bool shouldCatchUp(float distanceToTarget) const;
-  float calculateFollowSpeed(EntityPtr entity, const EntityState &state,
-                             float distanceToTarget) const;
+  float calculateFollowSpeed(float distanceToTarget) const;
 
-  Vector2D avoidObstacles(EntityPtr entity,
-                          const Vector2D &desiredVelocity) const;
   Vector2D smoothPath(const Vector2D &currentPos, const Vector2D &targetPos,
-                      const EntityState &state) const;
-
-  // Mode-specific updates
-  void updateCloseFollow(EntityPtr entity, EntityState &state);
-  void updateLooseFollow(EntityPtr entity, EntityState &state);
-  void updateFlankingFollow(EntityPtr entity, EntityState &state);
-  void updateRearGuard(EntityPtr entity, EntityState &state);
-  void updateEscortFormation(EntityPtr entity, EntityState &state);
+                      const Vector2D &currentVelocity) const;
 
   // Utility methods
   Vector2D normalizeVector(const Vector2D &vector) const;
 
   // OPTIMIZATION: Extracted lambda for better compiler optimization
-  bool tryFollowPathToGoal(EntityPtr entity, const Vector2D& currentPos, EntityState& state, const Vector2D& desiredPos, float speed);
+  bool tryFollowPathToGoal(BehaviorContext& ctx, const Vector2D& desiredPos, float speed);
 
   // Formation setup
   void initializeFormationOffsets();

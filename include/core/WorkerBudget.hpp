@@ -7,13 +7,10 @@
 #define WORKER_BUDGET_HPP
 
 #include <cstddef>
-#include <algorithm>
-#include <cmath>
 #include <array>
 #include <atomic>
 #include <mutex>
 #include <utility>
-#include "Logger.hpp"
 
 namespace HammerEngine {
 

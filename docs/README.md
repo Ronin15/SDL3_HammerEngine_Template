@@ -65,6 +65,7 @@ Comprehensive event management system with EventManager as the single source of 
 State-scoped event handlers that control specific behaviors without owning data. Subscribe/unsubscribe lifecycle per GameState.
 
 - **[Controllers Overview](controllers/README.md)** - Controller pattern, lifecycle, vs. Managers comparison
+- **[ControllerRegistry](controllers/ControllerRegistry.md)** - Type-erased container for batch controller management with `add<T>()`, `subscribeAll()`, `updateAll()` operations
 - **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
 - **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
 - **[CombatController](controllers/CombatController.md)** - Handles combat logic, including hit detection, damage, and status effects.
@@ -87,11 +88,20 @@ High-performance multithreading framework with priority-based task scheduling an
 - **Sequential Manager Execution** - Each manager gets ALL workers during its update window (no concurrent manager execution)
 - **Hardware Adaptive** - Detects logical cores (including SMT/hyperthreading), reserves one for main thread, scales workers accordingly
 
+### Entity Data System
+Data-Oriented Design (DoD) infrastructure for high-performance entity management.
+
+- **[EntityDataManager](managers/EntityDataManager.md)** - Central data authority using Structure-of-Arrays storage, cache-optimal 64-byte structs, and simulation tier system (Active/Background/Hibernated)
+- **[BackgroundSimulationManager](managers/BackgroundSimulationManager.md)** - Off-screen entity simulation at reduced update rate (10Hz) for power efficiency
+- **[EntityHandle](entities/EntityHandle.md)** - Lightweight 16-byte handles for type-safe entity references without RTTI
+
 ### Manager Systems
 Resource management systems for fonts, textures, audio, particles, game data, entity states, settings, and world resources.
 
 See the [Manager Documentation Index](managers/README.md) for a complete, alphabetized list of all manager docs.
 
+- **[BackgroundSimulationManager](managers/BackgroundSimulationManager.md)** – Off-screen entity simulation at 10Hz for power efficiency and world consistency.
+- **[EntityDataManager](managers/EntityDataManager.md)** – Central data authority using Structure-of-Arrays storage for cache-optimal entity management.
 - **[EntityStateManager](managers/EntityStateManager.md)** – Manages named state machines for entities (player, NPCs), supporting safe transitions and update delegation.
 - **[FontManager](managers/FontManager.md)** – Centralized font loading, management, and text rendering with DPI-aware scaling and UI integration.
 - **[GameStateManager](managers/GameStateManager.md)** – Handles the collection and switching of game states/screens, ensuring only one is active at a time.
@@ -134,6 +144,20 @@ See the [Utility Documentation Index](utils/README.md) for additional utility do
 - **[Camera](utils/Camera.md)** - 2D camera utility with smooth target following, discrete zoom levels, world bounds clamping, and coordinate transformation
 - **[Interpolation System](architecture/InterpolationSystem.md)** - Lock-free atomic interpolation for smooth rendering across threads
 - **[Power Efficiency](performance/PowerEfficiency.md)** - Race-to-idle strategy achieving 80%+ idle residency, 2-3W average during gameplay, detailed benchmarks and optimization tips
+
+### Performance Reports
+Detailed performance analysis and benchmarking reports.
+
+- **[EntityDataManager Power Analysis (2025-12-30)](performance_reports/power_profile_edm_comparison_2025-12-30.md)** - Comprehensive power profile comparison showing EDM architecture benefits: 55% P-core reduction, 52% peak power reduction, 21% lower CPU frequency
+- **[Collision Benchmark Report (2025-12-25)](performance_reports/collision_benchmark_report_2025-12-25.md)** - Collision system performance benchmarks
+
+### Valgrind Testing Suite
+Comprehensive memory, cache, and thread analysis with research-backed benchmarks.
+
+- **[Valgrind Suite Documentation](../tests/valgrind/README.md)** - Complete guide to all Valgrind analysis tools
+- **Runtime Analysis**: Memory and cache analysis with `--debug` (traditional metrics) or `--profile` (MPKI analysis) flags
+- **MPKI Analysis**: Misses Per Kilo Instructions - industry-standard metric for meaningful cache performance comparison of optimized code
+- **Profile Build**: Valgrind-compatible optimized build (`-O2`, SSE4.2, no AVX) for accurate profiling without illegal instruction crashes
 
 ## Resource System Integration
 
@@ -197,6 +221,32 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
 - Example tested environment:
   - Ubuntu 24.04.2 LTS
   - Kernel: Linux 6.11.0-26-generic
+
+### Build Types
+The engine supports multiple build configurations:
+
+| Build Type | Optimization | Debug Symbols | Use Case |
+|------------|--------------|---------------|----------|
+| **Debug** | None (`-O0`) | Full | Development, debugging |
+| **Release** | Full (`-O3`, AVX2) | None | Production deployment |
+| **Profile** | Medium (`-O2`, SSE4.2) | Full | Valgrind analysis |
+
+```bash
+# Debug build (default)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
+
+# Release build (production)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# Profile build (Valgrind-compatible optimized)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
+```
+
+**Why Profile Build?**
+- Release builds use AVX2/AVX512 SIMD instructions that Valgrind cannot emulate
+- Profile build uses SSE4.2 maximum (`-march=x86-64-v2`) for Valgrind compatibility
+- Provides meaningful optimized-code profiling without illegal instruction crashes
+- Runtime analysis scripts support `--profile` flag for MPKI (Misses Per Kilo Instructions) metrics
 
 ### macOS
 - Use Homebrew for SDL3 dependencies:

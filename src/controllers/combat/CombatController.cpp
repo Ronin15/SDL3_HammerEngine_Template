@@ -4,186 +4,273 @@
  */
 
 #include "controllers/combat/CombatController.hpp"
-#include "entities/Player.hpp"
-#include "entities/NPC.hpp"
-#include "events/CombatEvent.hpp"
-#include "managers/EventManager.hpp"
-#include "managers/AIManager.hpp"
 #include "core/Logger.hpp"
+#include "entities/NPC.hpp"
+#include "entities/Player.hpp"
+#include "events/CombatEvent.hpp"
+#include "events/EntityEvents.hpp"
+#include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp"
+#include "managers/EventManager.hpp"
 #include <format>
-#include <cmath>
 
 void CombatController::subscribe() {
-    if (checkAlreadySubscribed()) {
-        return;
-    }
+  if (checkAlreadySubscribed()) {
+    return;
+  }
 
-    // CombatController doesn't need to subscribe to any events currently
-    // It drives combat, rather than reacting to events
-    // Future: could subscribe to damage events from other sources
+  // CombatController doesn't need to subscribe to any events currently
+  // It drives combat, rather than reacting to events
+  // Future: could subscribe to damage events from other sources
 
-    setSubscribed(true);
-    COMBAT_INFO("CombatController subscribed");
+  setSubscribed(true);
+  COMBAT_INFO("CombatController subscribed");
 }
 
-void CombatController::update(float deltaTime, Player& player) {
-    // Update attack cooldown
-    if (m_attackCooldown > 0.0f) {
-        m_attackCooldown -= deltaTime;
-        if (m_attackCooldown < 0.0f) {
-            m_attackCooldown = 0.0f;
-        }
-    }
+void CombatController::update(float deltaTime) {
+  auto player = mp_player.lock();
+  if (!player) {
+    return;
+  }
 
-    // Regenerate stamina when not attacking
-    if (m_attackCooldown <= 0.0f) {
-        regenerateStamina(player, deltaTime);
+  // Update attack cooldown
+  if (m_attackCooldown > 0.0f) {
+    m_attackCooldown -= deltaTime;
+    if (m_attackCooldown < 0.0f) {
+      m_attackCooldown = 0.0f;
     }
+  }
 
-    // Update target display timer
-    updateTargetTimer(deltaTime);
+  // Regenerate stamina when not attacking
+  if (m_attackCooldown <= 0.0f) {
+    regenerateStamina(player.get(), deltaTime);
+  }
+
+  // Update target display timer
+  updateTargetTimer(deltaTime);
 }
 
-bool CombatController::tryAttack(Player& player) {
-    // Check cooldown
-    if (m_attackCooldown > 0.0f) {
-        COMBAT_DEBUG(std::format("Attack on cooldown: {:.2f}s remaining", m_attackCooldown));
-        return false;
-    }
+bool CombatController::tryAttack() {
+  auto player = mp_player.lock();
+  if (!player) {
+    return false;
+  }
 
-    // Check stamina
-    if (!player.canAttack(ATTACK_STAMINA_COST)) {
-        COMBAT_DEBUG(std::format("Not enough stamina to attack. Need {:.1f}, have {:.1f}",
-            ATTACK_STAMINA_COST, player.getStamina()));
-        return false;
-    }
+  // Check cooldown
+  if (m_attackCooldown > 0.0f) {
+    COMBAT_DEBUG(
+        std::format("Attack on cooldown: {:.2f}s remaining", m_attackCooldown));
+    return false;
+  }
 
-    // Consume stamina and start cooldown
-    float oldStamina = player.getStamina();
-    player.consumeStamina(ATTACK_STAMINA_COST);
-    m_attackCooldown = ATTACK_COOLDOWN;
+  // Check stamina
+  if (!player->canAttack(ATTACK_STAMINA_COST)) {
+    COMBAT_DEBUG(
+        std::format("Not enough stamina to attack. Need {:.1f}, have {:.1f}",
+                    ATTACK_STAMINA_COST, player->getStamina()));
+    return false;
+  }
 
-    COMBAT_INFO(std::format("Player attacking! Stamina: {:.1f} -> {:.1f}",
-        oldStamina, player.getStamina()));
+  // Consume stamina and start cooldown
+  float oldStamina = player->getStamina();
+  player->consumeStamina(ATTACK_STAMINA_COST);
+  m_attackCooldown = ATTACK_COOLDOWN;
 
-    // Transition player to attacking state
-    player.changeState("attacking");
+  COMBAT_INFO(std::format("Player attacking! Stamina: {:.1f} -> {:.1f}",
+                          oldStamina, player->getStamina()));
 
-    // Perform hit detection using AIManager
-    performAttack(player);
+  // Transition player to attacking state
+  player->changeState("attacking");
 
-    // Dispatch player attacked event
-    auto attackEvent = std::make_shared<CombatEvent>(
-        CombatEventType::PlayerAttacked, &player, nullptr, player.getAttackDamage());
-    EventManager::Instance().dispatchEvent(attackEvent, EventManager::DispatchMode::Immediate);
+  // Perform hit detection using AIManager
+  performAttack(player.get());
 
-    return true;
+  // Dispatch player attacked event
+  auto attackEvent = std::make_shared<CombatEvent>(
+      CombatEventType::PlayerAttacked, player.get(), nullptr,
+      player->getAttackDamage());
+  EventManager::Instance().dispatchEvent(attackEvent,
+                                         EventManager::DispatchMode::Immediate);
+
+  return true;
 }
 
-void CombatController::performAttack(Player& player) {
-    const Vector2D playerPos = player.getPosition();
-    const float attackRange = player.getAttackRange();
-    const float attackDamage = player.getAttackDamage();
+void CombatController::performAttack(Player *player) {
+  if (!player) {
+    return;
+  }
 
-    // Determine attack direction based on player facing
-    float attackDirX = (player.getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
+  const Vector2D playerPos = player->getPosition();
+  const float attackRange = player->getAttackRange();
+  const float attackDamage = player->getAttackDamage();
 
-    // Query nearby entities from AIManager
-    std::vector<EntityPtr> nearbyEntities;
-    AIManager::Instance().queryEntitiesInRadius(playerPos, attackRange, nearbyEntities, true);
+  // Determine attack direction based on player facing
+  float attackDirX = (player->getFlip() == SDL_FLIP_HORIZONTAL) ? -1.0f : 1.0f;
 
-    // Check all nearby entities for hits
-    std::shared_ptr<NPC> closestHit = nullptr;
-    float closestDist = attackRange + 1.0f;
+  // Query nearby entity handles from AIManager (EntityHandle-based API)
+  std::vector<EntityHandle> nearbyHandles;
+  AIManager::Instance().queryHandlesInRadius(playerPos, attackRange,
+                                             nearbyHandles, true);
 
-    for (const auto& entityPtr : nearbyEntities) {
-        // Try to cast to NPC (skip non-NPC entities)
-        auto npc = std::dynamic_pointer_cast<NPC>(entityPtr);
-        if (!npc || !npc->isAlive()) {
-            continue;
-        }
+  // Get EntityDataManager for position lookups
+  auto &edm = EntityDataManager::Instance();
 
-        const Vector2D npcPos = npc->getPosition();
-        const Vector2D diff = npcPos - playerPos;
-        const float distance = diff.length();
+  // Check all nearby entities for hits
+  EntityHandle closestHandle{}; // Invalid handle by default
+  float closestDist = attackRange + 1.0f;
 
-        // Check if in attack direction (180 degree arc in front of player)
-        // Normalize direction to player facing
-        float dotProduct = diff.getX() * attackDirX;
-        if (dotProduct < 0.0f) {
-            // NPC is behind the player
-            continue;
-        }
+  // Get player's EntityHandle for event-driven damage
+  EntityHandle playerHandle = player->getHandle();
 
-        // Hit detected
-        float oldHealth = npc->getHealth();
+  for (const auto &handle : nearbyHandles) {
+    if (!handle.isValid())
+      continue;
 
-        // Calculate knockback direction
-        Vector2D knockback = diff.normalized() * 20.0f;
-        npc->takeDamage(attackDamage, knockback);
-
-        COMBAT_INFO(std::format("Hit {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
-            npc->getName(), attackDamage, oldHealth, npc->getHealth()));
-
-        // Track closest hit for targeting
-        if (distance < closestDist) {
-            closestDist = distance;
-            closestHit = npc;
-        }
-
-        // Dispatch NPC damaged event
-        auto damageEvent = std::make_shared<CombatEvent>(
-            CombatEventType::NPCDamaged, &player, npc.get(), attackDamage);
-        damageEvent->setRemainingHealth(npc->getHealth());
-        EventManager::Instance().dispatchEvent(damageEvent, EventManager::DispatchMode::Immediate);
-
-        // Check for kill
-        if (!npc->isAlive()) {
-            COMBAT_INFO(std::format("{} killed!", npc->getName()));
-
-            auto killEvent = std::make_shared<CombatEvent>(
-                CombatEventType::NPCKilled, &player, npc.get(), attackDamage);
-            EventManager::Instance().dispatchEvent(killEvent, EventManager::DispatchMode::Immediate);
-        }
+    // Phase 2 EDM Migration: Use handle.getKind() instead of EntityPtr
+    if (handle.getKind() != EntityKind::NPC) {
+      continue;
     }
 
-    // Update target tracking
-    if (closestHit) {
-        m_targetedNPC = closestHit;
-        m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
+    size_t idx = edm.getIndex(handle);
+    if (idx == SIZE_MAX)
+      continue;
+
+    // Get entity data from EDM (single source of truth)
+    auto &hotData = edm.getHotDataByIndex(idx);
+
+    // Use EDM's isAlive() instead of Entity method
+    if (!hotData.isAlive()) {
+      continue;
     }
+
+    const Vector2D npcPos = hotData.transform.position;
+    const Vector2D diff = npcPos - playerPos;
+    const float distance = diff.length();
+
+    // Check if in attack direction (180 degree arc in front of player)
+    float dotProduct = diff.getX() * attackDirX;
+    if (dotProduct < 0.0f) {
+      // NPC is behind the player
+      continue;
+    }
+
+    // Hit detected - calculate knockback direction
+    Vector2D knockback = diff.normalized() * 20.0f;
+
+    // Phase 2 EDM Migration: Use CharacterData for health
+    auto &charData = edm.getCharacterData(handle);
+    float oldHealth = charData.health;
+
+    // Fire DamageIntent event for any observers
+    auto damageIntent = std::make_shared<DamageEvent>(
+        EntityEventType::DamageIntent, playerHandle, handle, attackDamage,
+        knockback);
+    EventManager::Instance().dispatchEvent(
+        damageIntent, EventManager::DispatchMode::Immediate);
+
+    // Apply damage directly to CharacterData
+    charData.health = std::max(0.0f, charData.health - attackDamage);
+
+    // Apply knockback via velocity
+    hotData.transform.velocity = hotData.transform.velocity + knockback;
+
+    COMBAT_INFO(
+        std::format("Hit entity {} for {:.1f} damage! HP: {:.1f} -> {:.1f}",
+                    handle.getId(), attackDamage, oldHealth, charData.health));
+
+    // Track closest hit for targeting (using handle for now)
+    if (distance < closestDist) {
+      closestDist = distance;
+      closestHandle = handle;
+    }
+
+    // Fire CombatEvent for UI/sound observers (using handles)
+    // Note: CombatEvent may need updating to use handles instead of EntityPtr
+    // For now, dispatch DamageEvent which already uses handles
+
+    // Check for kill
+    if (charData.health <= 0.0f) {
+      // Mark as dead in HotData
+      hotData.flags &= ~EntityHotData::FLAG_ALIVE;
+
+      COMBAT_INFO(std::format("Entity {} killed!", handle.getId()));
+
+      // Fire DeathEvent for entity lifecycle observers
+      auto deathEvent = std::make_shared<DeathEvent>(
+          EntityEventType::DeathCompleted, handle, playerHandle);
+      deathEvent->setDeathPosition(npcPos);
+      EventManager::Instance().dispatchEvent(
+          deathEvent, EventManager::DispatchMode::Immediate);
+    }
+  }
+
+  // Update target tracking (using handle)
+  if (closestHandle.isValid()) {
+    m_targetedHandle = closestHandle;
+    m_targetDisplayTimer = TARGET_DISPLAY_DURATION;
+  }
 }
 
-void CombatController::regenerateStamina(Player& player, float deltaTime) {
-    float currentStamina = player.getStamina();
-    float maxStamina = player.getMaxStamina();
+void CombatController::regenerateStamina(Player *player, float deltaTime) {
+  if (!player) {
+    return;
+  }
 
-    if (currentStamina < maxStamina) {
-        float regenAmount = STAMINA_REGEN_RATE * deltaTime;
-        player.restoreStamina(regenAmount);
-    }
+  float currentStamina = player->getStamina();
+  float maxStamina = player->getMaxStamina();
+
+  if (currentStamina < maxStamina) {
+    float regenAmount = STAMINA_REGEN_RATE * deltaTime;
+    player->restoreStamina(regenAmount);
+  }
 }
 
 void CombatController::updateTargetTimer(float deltaTime) {
-    if (m_targetDisplayTimer > 0.0f) {
-        m_targetDisplayTimer -= deltaTime;
-        if (m_targetDisplayTimer <= 0.0f) {
-            m_targetDisplayTimer = 0.0f;
-            m_targetedNPC.reset();
-            COMBAT_DEBUG("Target display timer expired");
-        }
+  if (m_targetDisplayTimer > 0.0f) {
+    m_targetDisplayTimer -= deltaTime;
+    if (m_targetDisplayTimer <= 0.0f) {
+      m_targetDisplayTimer = 0.0f;
+      m_targetedHandle = EntityHandle{}; // Clear handle
+      COMBAT_DEBUG("Target display timer expired");
     }
+  }
 }
 
 std::shared_ptr<NPC> CombatController::getTargetedNPC() const {
-    // Safely lock weak_ptr and verify target is still valid (alive)
-    auto target = m_targetedNPC.lock();
-    if (!target || !target->isAlive()) {
-        return nullptr;
-    }
-    return target;
+  // Phase 2 EDM Migration: Use handle-based lookup
+  if (!m_targetedHandle.isValid()) {
+    return nullptr;
+  }
+
+  // Check if target is still alive via EDM
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(m_targetedHandle);
+  if (idx == SIZE_MAX) {
+    return nullptr;
+  }
+
+  const auto &hotData = edm.getHotDataByIndex(idx);
+  if (!hotData.isAlive()) {
+    return nullptr;
+  }
+
+  // NOTE: Returning nullptr since we can't create NPC from handle alone
+  // UI should use getTargetedHandle() + EDM for data access
+  // This method is kept for backwards compatibility but should be deprecated
+  return nullptr;
 }
 
 bool CombatController::hasActiveTarget() const {
-    return m_targetDisplayTimer > 0.0f && getTargetedNPC() != nullptr;
+  // Phase 2 EDM Migration: Use handle + EDM check
+  if (m_targetDisplayTimer <= 0.0f || !m_targetedHandle.isValid()) {
+    return false;
+  }
+
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(m_targetedHandle);
+  if (idx == SIZE_MAX) {
+    return false;
+  }
+
+  return edm.getHotDataByIndex(idx).isAlive();
 }

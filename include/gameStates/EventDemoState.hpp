@@ -27,10 +27,6 @@ using NPCPtr = std::shared_ptr<NPC>;
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
-// Forward declarations for cached manager pointers
-class WorldManager;
-class UIManager;
-
 class EventDemoState : public GameState {
 public:
   EventDemoState();
@@ -53,8 +49,6 @@ private:
   void updateDemoTimer(float deltaTime);
 
   void renderUI();
-  void renderEventStatus() const;
-  void renderControls();
 
   // Event demonstration methods
   void triggerWeatherDemo();
@@ -96,8 +90,9 @@ private:
   float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
   bool m_autoMode{true}; // Auto-advance through demos - enabled by default
 
-  // Entities
-  std::vector<NPCPtr> m_spawnedNPCs{};
+  // Entities - stored by handle ID for O(1) lookup
+  std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
+  std::vector<NPCPtr> m_npcsByEdmIndex{};
   PlayerPtr m_player{};
   
   // Camera for world navigation
@@ -187,7 +182,6 @@ private:
   std::string getCurrentWeatherString() const;
   void updateInstructions();
   void cleanupSpawnedNPCs();
-  void createNPCAtPosition(const std::string &npcType, float x, float y);
   void setupResourceAchievements(); // Setup achievement demonstration
 
   // Inventory UI methods
@@ -200,10 +194,10 @@ private:
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
-  // Helper methods for NPC creation with global batched behavior assignment
+  // Unified NPC creation - always assigns behavior before making NPC available
   std::shared_ptr<NPC>
-  createNPCAtPositionWithoutBehavior(const std::string &npcType, float x,
-                                     float y);
+  createNPC(const std::string &npcType, float x, float y,
+            const std::string &behaviorOverride = "");
   std::string determineBehaviorForNPCType(const std::string &npcType);
 
   // AI behavior integration methods
@@ -236,11 +230,6 @@ private:
   // Registered handler tokens for cleanup
   std::vector<EventManager::HandlerToken> m_handlerTokens{};
 
-  // Cached manager pointers for render hot path (resolved in enter())
-  ParticleManager* mp_particleMgr{nullptr};
-  WorldManager* mp_worldMgr{nullptr};
-  UIManager* mp_uiMgr{nullptr};
-
   // Status display optimization - zero per-frame allocations (C++20 type-safe)
   std::string m_phaseBuffer{};
   std::string m_statusBuffer2{};  // Named to avoid conflict with existing m_statusText
@@ -248,6 +237,12 @@ private:
   size_t m_lastDisplayedNPCCount{0};
   std::string m_lastDisplayedWeather{};
   std::string m_lastDisplayedPhase{};
+
+  // Lazy-cached strings (computed only when underlying enum changes)
+  DemoPhase m_lastCachedPhase{DemoPhase::Complete};  // Initialize to invalid to force first compute
+  WeatherType m_lastCachedWeather{WeatherType::Custom};  // Initialize to invalid to force first compute
+  std::string m_cachedPhaseStr{};
+  std::string m_cachedWeatherStr{};
 
   // Render scale caching - avoid GPU state changes when zoom unchanged
   float m_lastRenderedZoom{1.0f};

@@ -7,10 +7,10 @@
 #define IDLE_BEHAVIOR_HPP
 
 #include "ai/AIBehavior.hpp"
+#include "entities/EntityHandle.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
-#include <SDL3/SDL.h>
 #include <random>
-#include <unordered_map>
 
 class IdleBehavior : public AIBehavior {
 public:
@@ -24,10 +24,10 @@ public:
   explicit IdleBehavior(IdleMode mode = IdleMode::STATIONARY,
                         float idleRadius = 20.0f);
 
-  void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void init(EntityHandle handle) override;
+  void executeLogic(BehaviorContext& ctx) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -45,29 +45,6 @@ public:
   std::shared_ptr<AIBehavior> clone() const override;
 
 private:
-  // Entity-specific state data
-  struct EntityState {
-    Vector2D originalPosition{0, 0};
-    Vector2D currentOffset{0, 0};
-    float movementTimer{0.0f};
-    float turnTimer{0.0f};
-    float movementInterval{0.0f};
-    float turnInterval{0.0f};
-    float currentAngle{0.0f};
-    bool initialized{false};
-    // Separation decimation (for idle crowding)
-    float separationTimer{0.0f};
-    Vector2D lastSepVelocity{0, 0};
-
-    EntityState()
-        : originalPosition(0, 0), currentOffset(0, 0), movementTimer(0.0f),
-          turnTimer(0.0f), movementInterval(0.0f), turnInterval(0.0f),
-          currentAngle(0.0f), initialized(false) {}
-  };
-
-  // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
-
   // Behavior parameters
   IdleMode m_idleMode{IdleMode::STATIONARY};
   float m_idleRadius{20.0f};
@@ -83,12 +60,12 @@ private:
   mutable std::uniform_real_distribution<float> m_frequencyVariation{0.5f,
                                                                      1.5f};
 
-  // Helper methods
-  void initializeEntityState(EntityPtr entity, EntityState &state) const;
-  void updateStationary(EntityPtr entity, EntityState &state);
-  void updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const;
-  void updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const;
-  void updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const;
+  // Helper methods (all entity state stored in EDM BehaviorData)
+  void initializeIdleState(const Vector2D& position, BehaviorData& data) const;
+  void updateStationary(BehaviorContext& ctx);
+  void updateSubtleSway(BehaviorContext& ctx, BehaviorData& data) const;
+  void updateOccasionalTurn(BehaviorContext& ctx, BehaviorData& data) const;
+  void updateLightFidget(BehaviorContext& ctx, BehaviorData& data) const;
 
   Vector2D generateRandomOffset() const;
   float getRandomMovementInterval() const;

@@ -56,6 +56,12 @@ public:
         return instance;
     }
 
+    // Initialize save game system
+    bool init();
+
+    // Check if initialized
+    bool isInitialized() const { return m_isInitialized; }
+
     // Save game data to a file
     // Returns true if save was successful
     bool save(const std::string& saveFileName, const Player& player);
@@ -111,6 +117,7 @@ public:
 
 private:
     std::string m_saveDirectory{"res"};  // Default save directory
+    bool m_isInitialized{false};
     bool m_isShutdown{false};
 
     // Helper methods

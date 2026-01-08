@@ -57,7 +57,7 @@ for arg in "$@"; do
       echo -e "  --help            Show this help message"
       echo -e "\nTest Categories:"
       echo -e "  Core Tests:       Thread, AI, Behavior, GameState, Save, Settings, Event, ParticleManager, Collision, Pathfinding,"
-      echo -e "                    GameEngine, Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,"
+      echo -e "                    Camera, InputManager, SIMD, BufferReuse, Rendering, LoadingState, UIManager,"
       echo -e "                    GameTimeManager, Controllers (Time, Weather, DayNight),"
       echo -e "                    Integration tests (AI-Collision, Event Coordination)"
       echo -e "  Benchmarks:       AI scaling, EventManager scaling, UI stress, ParticleManager, Collision system, Pathfinder,"
@@ -107,7 +107,6 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_pathfinder_ai_contention_tests.sh"
   "$SCRIPT_DIR/run_ai_collision_integration_tests.sh"
   "$SCRIPT_DIR/run_event_coordination_integration_tests.sh"
-  "$SCRIPT_DIR/run_game_engine_tests.sh"
   "$SCRIPT_DIR/run_camera_tests.sh"
   "$SCRIPT_DIR/run_input_manager_tests.sh"
   "$SCRIPT_DIR/run_simd_correctness_tests.sh"
@@ -116,6 +115,10 @@ CORE_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_loading_state_tests.sh"
   "$SCRIPT_DIR/run_ui_manager_functional_tests.sh"
   "$SCRIPT_DIR/run_entity_state_manager_tests.sh"
+  "$SCRIPT_DIR/run_entity_data_manager_tests.sh"
+  "$SCRIPT_DIR/run_ai_manager_edm_integration_tests.sh"
+  "$SCRIPT_DIR/run_collision_manager_edm_integration_tests.sh"
+  "$SCRIPT_DIR/run_pathfinder_manager_edm_integration_tests.sh"
 )
 
 # Performance scaling benchmarks (slow execution)
@@ -124,7 +127,7 @@ BENCHMARK_TEST_SCRIPTS=(
   "$SCRIPT_DIR/run_ai_benchmark.sh"
   "$SCRIPT_DIR/run_ui_stress_tests.sh"
   "$SCRIPT_DIR/run_particle_manager_benchmark.sh"
-  "$SCRIPT_DIR/run_collision_benchmark.sh"
+  "$SCRIPT_DIR/run_collision_scaling_benchmark.sh"
   "$SCRIPT_DIR/run_pathfinder_benchmark.sh"
   "$SCRIPT_DIR/run_simd_benchmark.sh"
   "$SCRIPT_DIR/run_integrated_benchmark.sh"

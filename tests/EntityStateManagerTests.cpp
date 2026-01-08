@@ -6,7 +6,7 @@
 #define BOOST_TEST_MODULE EntityStateManagerTests
 #include <boost/test/unit_test.hpp>
 
-#include "managers/EntityStateManager.hpp"
+#include "entities/EntityStateManager.hpp"
 #include "entities/EntityState.hpp"
 #include <memory>
 #include <stdexcept>

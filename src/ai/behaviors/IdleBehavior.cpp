@@ -4,14 +4,12 @@
  */
 
 #include "ai/behaviors/IdleBehavior.hpp"
-#include "managers/CollisionManager.hpp"
-#include "ai/internal/Crowd.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <cmath>
 
 IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
-    : m_entityStates(), m_idleMode(mode), m_idleRadius(idleRadius) {
-  // m_movementFrequency, m_turnFrequency, m_rng, m_angleDistribution,
-  // m_radiusDistribution, m_frequencyVariation use default initializers
+    : m_idleMode(mode), m_idleRadius(idleRadius) {
+  // Entity state now stored in EDM BehaviorData - no local allocation needed
 
   // Initialize parameters based on mode with mode-specific radii
   switch (mode) {
@@ -38,57 +36,69 @@ IdleBehavior::IdleBehavior(IdleMode mode, float idleRadius)
   }
 }
 
-void IdleBehavior::init(EntityPtr entity) {
-  if (!entity)
+void IdleBehavior::init(EntityHandle handle) {
+  if (!handle.isValid())
     return;
 
-  auto &state = m_entityStates[entity];
-  initializeEntityState(entity, state);
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx == SIZE_MAX)
+    return;
+
+  // Initialize behavior data in EDM (pre-allocated alongside hotData)
+  edm.initBehaviorData(idx, BehaviorType::Idle);
+  auto &data = edm.getBehaviorData(idx);
+  auto &hotData = edm.getHotDataByIndex(idx);
+
+  initializeIdleState(hotData.transform.position, data);
+  data.setInitialized(true);
 }
 
-void IdleBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-  if (!entity || !isActive())
+void IdleBehavior::executeLogic(BehaviorContext &ctx) {
+  if (!isActive() || !ctx.behaviorData)
     return;
 
-  auto it = m_entityStates.find(entity);
-  if (it == m_entityStates.end()) {
-    init(entity); // Initialize if not found
-    it = m_entityStates.find(entity);
-    if (it == m_entityStates.end())
-      return;
+  // Use pre-fetched behavior data from context (no Instance() call needed)
+  auto &data = *ctx.behaviorData;
+  if (!data.isValid()) {
+    return;
   }
 
-  EntityState &state = it->second;
-
-  if (!state.initialized) {
-    initializeEntityState(entity, state);
+  if (!data.isInitialized()) {
+    initializeIdleState(ctx.transform.position, data);
+    data.setInitialized(true);
   }
 
   // Execute behavior based on current mode
   switch (m_idleMode) {
   case IdleMode::STATIONARY:
-    updateStationary(entity, state);
+    updateStationary(ctx);
     break;
   case IdleMode::SUBTLE_SWAY:
-    updateSubtleSway(entity, state, deltaTime);
+    updateSubtleSway(ctx, data);
     break;
   case IdleMode::OCCASIONAL_TURN:
-    updateOccasionalTurn(entity, state, deltaTime);
+    updateOccasionalTurn(ctx, data);
     break;
   case IdleMode::LIGHT_FIDGET:
-    updateLightFidget(entity, state, deltaTime);
+    updateLightFidget(ctx, data);
     break;
   }
 }
 
-void IdleBehavior::clean(EntityPtr entity) {
-  if (entity) {
-    m_entityStates.erase(entity);
+void IdleBehavior::clean(EntityHandle handle) {
+  auto &edm = EntityDataManager::Instance();
+  if (handle.isValid()) {
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX) {
+      edm.clearBehaviorData(idx);
+    }
   }
+  // Note: Bulk cleanup handled by EDM::prepareForStateTransition()
 }
 
-void IdleBehavior::onMessage(EntityPtr entity, const std::string &message) {
-  if (!entity)
+void IdleBehavior::onMessage(EntityHandle handle, const std::string &message) {
+  if (!handle.isValid())
     return;
 
   // Handle mode changes via messages
@@ -101,10 +111,15 @@ void IdleBehavior::onMessage(EntityPtr entity, const std::string &message) {
   } else if (message == "idle_fidget") {
     setIdleMode(IdleMode::LIGHT_FIDGET);
   } else if (message == "reset_position") {
-    auto it = m_entityStates.find(entity);
-    if (it != m_entityStates.end()) {
-      it->second.originalPosition = entity->getPosition();
-      it->second.currentOffset = Vector2D(0, 0);
+    auto &edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX) {
+      auto &data = edm.getBehaviorData(idx);
+      if (data.isValid()) {
+        const auto &hotData = edm.getHotDataByIndex(idx);
+        data.state.idle.originalPosition = hotData.transform.position;
+        data.state.idle.currentOffset = Vector2D(0, 0);
+      }
     }
   }
 }
@@ -119,22 +134,22 @@ void IdleBehavior::setIdleMode(IdleMode mode) {
   case IdleMode::STATIONARY:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 0.0f;
-    m_idleRadius = 0.0f;        // No movement radius
+    m_idleRadius = 0.0f; // No movement radius
     break;
   case IdleMode::SUBTLE_SWAY:
     m_movementFrequency = 2.0f;
     m_turnFrequency = 8.0f;
-    m_idleRadius = 30.0f;       // ~1 tile subtle sway
+    m_idleRadius = 30.0f; // ~1 tile subtle sway
     break;
   case IdleMode::OCCASIONAL_TURN:
     m_movementFrequency = 0.0f;
     m_turnFrequency = 4.0f;
-    m_idleRadius = 0.0f;        // No movement radius
+    m_idleRadius = 0.0f; // No movement radius
     break;
   case IdleMode::LIGHT_FIDGET:
     m_movementFrequency = 1.5f;
     m_turnFrequency = 3.0f;
-    m_idleRadius = 50.0f;       // ~1.5 tiles moderate fidget
+    m_idleRadius = 50.0f; // ~1.5 tiles moderate fidget
     break;
   }
 }
@@ -163,81 +178,88 @@ std::shared_ptr<AIBehavior> IdleBehavior::clone() const {
   return cloned;
 }
 
-void IdleBehavior::initializeEntityState(EntityPtr entity, EntityState &state) const {
-  state.originalPosition = entity->getPosition();
-  state.currentOffset = Vector2D(0, 0);
-  state.movementTimer = 0.0f;
-  state.turnTimer = 0.0f;
-  state.movementInterval = getRandomMovementInterval();
-  state.turnInterval = getRandomTurnInterval();
-  state.currentAngle = 0.0f;
-  state.initialized = true;
+void IdleBehavior::initializeIdleState(const Vector2D &position,
+                                       BehaviorData &data) const {
+  auto &idle = data.state.idle;
+  idle.originalPosition = position;
+  idle.currentOffset = Vector2D(0, 0);
+  idle.movementTimer = 0.0f;
+  idle.turnTimer = 0.0f;
+  idle.movementInterval = getRandomMovementInterval();
+  idle.turnInterval = getRandomTurnInterval();
+  idle.currentAngle = 0.0f;
+  idle.initialized = true;
 }
 
-void IdleBehavior::updateStationary(EntityPtr entity,
-                                    EntityState & /* state */) {
+void IdleBehavior::updateStationary(BehaviorContext &ctx) {
   // Keep entity stationary with zero velocity
-  entity->setVelocity(Vector2D(0, 0));
+  ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateSubtleSway(EntityPtr entity, EntityState &state, float deltaTime) const {
-  state.movementTimer += deltaTime;
+void IdleBehavior::updateSubtleSway(BehaviorContext &ctx,
+                                    BehaviorData &data) const {
+  auto &idle = data.state.idle;
+  idle.movementTimer += ctx.deltaTime;
 
-  if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
+  if (m_movementFrequency > 0.0f &&
+      idle.movementTimer >= idle.movementInterval) {
     // Generate gentle swaying direction
     Vector2D swayDirection = generateRandomOffset();
     swayDirection.normalize();
-    entity->setVelocity(swayDirection * 35.0f); // Increased from 20px for world-scale movement
-    state.movementTimer = 0.0f;
-    state.movementInterval = getRandomMovementInterval();
+    ctx.transform.velocity =
+        swayDirection * 35.0f; // Increased from 20px for world-scale movement
+    idle.movementTimer = 0.0f;
+    idle.movementInterval = getRandomMovementInterval();
   }
-  // Keep velocity applied for smooth animation - don't reset to zero
-  // Apply very light separation (decimated) so idlers don't stack perfectly
-  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
-                           35.0f, 30.0f, 0.15f, 4, state.separationTimer,
-                           state.lastSepVelocity, deltaTime);
+  // Keep velocity applied for smooth animation
+  // CollisionManager handles overlap resolution
 }
 
-void IdleBehavior::updateOccasionalTurn(EntityPtr entity, EntityState &state, float deltaTime) const {
-  state.turnTimer += deltaTime;
+void IdleBehavior::updateOccasionalTurn(BehaviorContext &ctx,
+                                        BehaviorData &data) const {
+  auto &idle = data.state.idle;
+  idle.turnTimer += ctx.deltaTime;
 
-  if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
+  if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
     // Change facing direction
-    state.currentAngle = m_angleDistribution(m_rng);
-    state.turnTimer = 0.0f;
-    state.turnInterval = getRandomTurnInterval();
+    idle.currentAngle = m_angleDistribution(m_rng);
+    idle.turnTimer = 0.0f;
+    idle.turnInterval = getRandomTurnInterval();
 
     // Note: In a full implementation, you might set entity rotation here
-    // entity->setRotation(state.currentAngle);
+    // entity->setRotation(idle.currentAngle);
   }
 
   // Stay at original position with zero velocity
-  entity->setVelocity(Vector2D(0, 0));
+  ctx.transform.velocity = Vector2D(0, 0);
 }
 
-void IdleBehavior::updateLightFidget(EntityPtr entity, EntityState &state, float deltaTime) const {
-  state.movementTimer += deltaTime;
-  state.turnTimer += deltaTime;
+void IdleBehavior::updateLightFidget(BehaviorContext &ctx,
+                                     BehaviorData &data) const {
+  auto &idle = data.state.idle;
+  idle.movementTimer += ctx.deltaTime;
+  idle.turnTimer += ctx.deltaTime;
 
   // Handle movement fidgeting
-  if (m_movementFrequency > 0.0f && state.movementTimer >= state.movementInterval) {
+  if (m_movementFrequency > 0.0f &&
+      idle.movementTimer >= idle.movementInterval) {
     // Generate light fidgeting direction
     Vector2D fidgetDirection = generateRandomOffset();
     fidgetDirection.normalize();
-    entity->setVelocity(fidgetDirection * 40.0f); // Increased from 25px for world-scale fidgeting
-    state.movementTimer = 0.0f;
-    state.movementInterval = getRandomMovementInterval();
+    ctx.transform.velocity =
+        fidgetDirection *
+        40.0f; // Increased from 25px for world-scale fidgeting
+    idle.movementTimer = 0.0f;
+    idle.movementInterval = getRandomMovementInterval();
   }
-  // Keep velocity applied for smooth animation and apply very light separation (decimated)
-  applyDecimatedSeparation(entity, entity->getPosition(), entity->getVelocity(),
-                           40.0f, 30.0f, 0.15f, 4, state.separationTimer,
-                           state.lastSepVelocity, deltaTime);
+  // Keep velocity applied for smooth animation
+  // CollisionManager handles overlap resolution
 
   // Handle turning
-  if (m_turnFrequency > 0.0f && state.turnTimer >= state.turnInterval) {
-    state.currentAngle = m_angleDistribution(m_rng);
-    state.turnTimer = 0.0f;
-    state.turnInterval = getRandomTurnInterval();
+  if (m_turnFrequency > 0.0f && idle.turnTimer >= idle.turnInterval) {
+    idle.currentAngle = m_angleDistribution(m_rng);
+    idle.turnTimer = 0.0f;
+    idle.turnInterval = getRandomTurnInterval();
   }
 }
 

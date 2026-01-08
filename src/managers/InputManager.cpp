@@ -28,8 +28,30 @@ InputManager::InputManager()
   for (int i = 0; i < 3; i++) {
     m_mouseButtonStates.push_back(false);
   }
-  
+}
 
+bool InputManager::init() {
+  if (m_isInitialized) {
+    INPUT_WARN("InputManager already initialized");
+    return true;
+  }
+
+  INPUT_INFO("Initializing InputManager");
+
+  // Get initial keyboard state from SDL (may be null on devices without keyboard)
+  m_keystates = SDL_GetKeyboardState(nullptr);
+  if (!m_keystates) {
+    INPUT_WARN("No keyboard state available - device may not have keyboard input");
+  }
+
+  // Ensure mouse position is initialized
+  if (!m_mousePosition) {
+    m_mousePosition = std::make_unique<Vector2D>(0, 0);
+  }
+
+  m_isInitialized = true;
+  INPUT_INFO("InputManager initialized successfully");
+  return true;
 }
 
 

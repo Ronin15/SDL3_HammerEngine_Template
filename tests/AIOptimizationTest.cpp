@@ -14,25 +14,32 @@
 // Include real engine headers
 #include "core/ThreadSystem.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/PathfinderManager.hpp"
+#include "ai/AIBehavior.hpp"
 #include "entities/Entity.hpp"
+#include "entities/EntityHandle.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 #include "utils/Vector2D.hpp"
 
 // Simple test entity for optimization tests
+// NOTE: Does NOT call setPosition() in constructor - position is set via registerEntity
+// which registers with EDM first, then sets position through the valid handle.
 class OptimizationTestEntity : public Entity {
 public:
-    OptimizationTestEntity(const Vector2D& pos) {
+    OptimizationTestEntity() {
         setTextureID("test");
-        setPosition(pos);
         setWidth(32);
         setHeight(32);
+        // Don't call setPosition() here - m_handle is not set yet!
     }
 
     // Factory method for proper shared_ptr initialization
-    static std::shared_ptr<OptimizationTestEntity> create(const Vector2D& pos) {
-        return std::make_shared<OptimizationTestEntity>(pos);
+    static std::shared_ptr<OptimizationTestEntity> create([[maybe_unused]] const Vector2D& pos) {
+        // pos parameter kept for API compatibility but not used in constructor
+        return std::make_shared<OptimizationTestEntity>();
     }
 
     void update(float deltaTime) override {
@@ -49,6 +56,23 @@ public:
     void clean() override {
         // Safe cleanup - we're not calling shared_from_this() here
     }
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
+
+    // Public wrapper for protected registerWithDataManager
+    void registerEntity(const Vector2D& pos, float halfW, float halfH) {
+        registerWithDataManager(pos, halfW, halfH, EntityKind::NPC);
+    }
+};
+
+class NoOpBehavior final : public AIBehavior {
+public:
+    void executeLogic(BehaviorContext& ctx) override { (void)ctx; }
+    void init(EntityHandle) override {}
+    void clean(EntityHandle) override {}
+    std::string getName() const override { return "NoOp"; }
+    std::shared_ptr<AIBehavior> clone() const override {
+        return std::make_shared<NoOpBehavior>();
+    }
 };
 
 // Global fixture for test setup and cleanup
@@ -56,21 +80,33 @@ struct AITestFixture {
     AITestFixture() {
         // Initialize dependencies required by the real AIManager
         HammerEngine::ThreadSystem::Instance().init();
+        EntityDataManager::Instance().init();
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
+        BackgroundSimulationManager::Instance().init();
     }
 
     ~AITestFixture() {
         // Clean up in reverse order
+        BackgroundSimulationManager::Instance().clean();
         AIManager::Instance().clean();
         PathfinderManager::Instance().clean();
         CollisionManager::Instance().clean();
+        EntityDataManager::Instance().clean();
         HammerEngine::ThreadSystem::Instance().clean();
     }
 };
 
 BOOST_GLOBAL_FIXTURE(AITestFixture);
+
+// Helper to update AI with proper tier calculation
+// Tests create/destroy entities frequently, so we need to invalidate tiers each time
+void updateAI(float deltaTime, const Vector2D& referencePoint = Vector2D(500.0f, 500.0f)) {
+    BackgroundSimulationManager::Instance().invalidateTiers();
+    BackgroundSimulationManager::Instance().update(referencePoint, deltaTime);
+    AIManager::Instance().update(deltaTime);
+}
 
 // Test case for entity component caching
 BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
@@ -80,26 +116,33 @@ BOOST_AUTO_TEST_CASE(TestEntityComponentCaching)
     AIManager::Instance().registerBehavior("TestWander", wanderBehavior);
 
     // Create test entities and register them for managed updates
+    std::vector<EntityHandle> handles;
     std::vector<EntityPtr> entities;
     for (int i = 0; i < 10; ++i) {
-        entities.push_back(OptimizationTestEntity::create(Vector2D(i * 100.0f, i * 100.0f)));
-        AIManager::Instance().registerEntityForUpdates(entities.back(), 5, "TestWander");
+        Vector2D pos(i * 100.0f, i * 100.0f);
+        auto entity = OptimizationTestEntity::create(pos);
+        entities.push_back(entity);
+        // Register entity with EntityDataManager
+        entity->registerEntity(pos, 16.0f, 16.0f);
+        EntityHandle handle = entity->getHandle();
+        handles.push_back(handle);
+        AIManager::Instance().registerEntity(handle, "TestWander");
     }
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete (matches production behavior)
-    AIManager::Instance().waitForAssignmentCompletion();
-
-    // Verify entities are registered
-    BOOST_CHECK_EQUAL(AIManager::Instance().getManagedEntityCount(), 10);
+    // Assignments are now synchronous - no wait needed
 
     // Cleanup - unregister entities from managed updates
-    for (auto& entity : entities) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    auto& edm = EntityDataManager::Instance();
+    for (const auto& handle : handles) {
+        AIManager::Instance().unregisterEntity(handle);
+        AIManager::Instance().unassignBehavior(handle);
+        edm.unregisterEntity(handle.getId());
     }
+    handles.clear();
     entities.clear();
     AIManager::Instance().resetBehaviors();
 }
@@ -112,29 +155,35 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     AIManager::Instance().registerBehavior("BatchWander", wanderBehavior);
 
     // Create test entities and register them for managed updates
+    std::vector<EntityHandle> handles;
     std::vector<EntityPtr> entityPtrs;
     for (int i = 0; i < 100; ++i) {
-        auto entity = OptimizationTestEntity::create(Vector2D(i * 10.0f, i * 10.0f));
+        Vector2D pos(i * 10.0f, i * 10.0f);
+        auto entity = OptimizationTestEntity::create(pos);
         entityPtrs.push_back(entity);
-        AIManager::Instance().registerEntityForUpdates(entity, 5, "BatchWander");
+        // Register entity with EntityDataManager
+        entity->registerEntity(pos, 16.0f, 16.0f);
+        EntityHandle handle = entity->getHandle();
+        handles.push_back(handle);
+        AIManager::Instance().registerEntity(handle, "BatchWander");
     }
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete before timing updates
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Time the unified entity processing
     auto startTime = std::chrono::high_resolution_clock::now();
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
     auto endTime = std::chrono::high_resolution_clock::now();
     auto batchDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
 
     // Time multiple managed updates
     startTime = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < 5; ++i) {
-        AIManager::Instance().update(0.016f);
+        updateAI(0.016f);
     }
     endTime = std::chrono::high_resolution_clock::now();
     auto individualDuration = std::chrono::duration_cast<std::chrono::microseconds>(endTime - startTime);
@@ -149,10 +198,13 @@ BOOST_AUTO_TEST_CASE(TestBatchProcessing)
     BOOST_CHECK_GT(batchDuration.count(), 0);
 
     // Cleanup - unregister entities from managed updates
-    for (auto& entity : entityPtrs) {
-        AIManager::Instance().unregisterEntityFromUpdates(entity);
-        AIManager::Instance().unassignBehaviorFromEntity(entity);
+    auto& edm = EntityDataManager::Instance();
+    for (const auto& handle : handles) {
+        AIManager::Instance().unregisterEntity(handle);
+        AIManager::Instance().unassignBehavior(handle);
+        edm.unregisterEntity(handle.getId());
     }
+    handles.clear();
     entityPtrs.clear();
     AIManager::Instance().resetBehaviors();
 }
@@ -165,21 +217,26 @@ BOOST_AUTO_TEST_CASE(TestEarlyExitConditions)
     AIManager::Instance().registerBehavior("LazyWander", wanderBehavior);
 
     // Create test entity and register for managed updates
-    auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().registerEntityForUpdates(entity, 5, "LazyWander");
+    Vector2D pos(100.0f, 100.0f);
+    auto entity = OptimizationTestEntity::create(pos);
+    // Register entity with EntityDataManager
+    entity->registerEntity(pos, 16.0f, 16.0f);
+    EntityHandle handle = entity->getHandle();
+    AIManager::Instance().registerEntity(handle, "LazyWander");
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Test that behavior is assigned
-    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Cleanup - unregister entity from managed updates
-    AIManager::Instance().unregisterEntityFromUpdates(entity);
-    AIManager::Instance().unassignBehaviorFromEntity(entity);
+    AIManager::Instance().unregisterEntity(handle);
+    AIManager::Instance().unassignBehavior(handle);
+    EntityDataManager::Instance().unregisterEntity(handle.getId());
     AIManager::Instance().resetBehaviors();
 }
 
@@ -191,36 +248,227 @@ BOOST_AUTO_TEST_CASE(TestMessageQueueSystem)
     AIManager::Instance().registerBehavior("MsgWander", wanderBehavior);
 
     // Create test entity and register with consolidated method
-    auto entity = OptimizationTestEntity::create(Vector2D(100.0f, 100.0f));
-    AIManager::Instance().registerEntityForUpdates(entity, 5, "MsgWander");
+    Vector2D pos(100.0f, 100.0f);
+    auto entity = OptimizationTestEntity::create(pos);
+    // Register entity with EntityDataManager
+    entity->registerEntity(pos, 16.0f, 16.0f);
+    EntityHandle handle = entity->getHandle();
+    AIManager::Instance().registerEntity(handle, "MsgWander");
 
     // Process pending assignments
-    AIManager::Instance().update(0.016f);
+    updateAI(0.016f);
 
     // Wait for async assignments to complete (matches production behavior)
-    AIManager::Instance().waitForAssignmentCompletion();
+    // Assignments are now synchronous - no wait needed
 
     // Queue several messages
-    AIManager::Instance().sendMessageToEntity(entity, "test1");
-    AIManager::Instance().sendMessageToEntity(entity, "test2");
-    AIManager::Instance().sendMessageToEntity(entity, "test3");
+    AIManager::Instance().sendMessageToEntity(handle, "test1");
+    AIManager::Instance().sendMessageToEntity(handle, "test2");
+    AIManager::Instance().sendMessageToEntity(handle, "test3");
 
     // Process the message queue explicitly
     AIManager::Instance().processMessageQueue();
 
     // Test immediate delivery
-    AIManager::Instance().sendMessageToEntity(entity, "immediate", true);
+    AIManager::Instance().sendMessageToEntity(handle, "immediate", true);
 
     // Test broadcast
     AIManager::Instance().broadcastMessage("broadcast");
     AIManager::Instance().processMessageQueue();
 
     // Entity should still have behavior after all messages
-    BOOST_CHECK(AIManager::Instance().entityHasBehavior(entity));
+    BOOST_CHECK(AIManager::Instance().hasBehavior(handle));
 
     // Cleanup - unregister entity from managed updates
-    AIManager::Instance().unregisterEntityFromUpdates(entity);
-    AIManager::Instance().unassignBehaviorFromEntity(entity);
+    AIManager::Instance().unregisterEntity(handle);
+    AIManager::Instance().unassignBehavior(handle);
+    EntityDataManager::Instance().unregisterEntity(handle.getId());
+    AIManager::Instance().resetBehaviors();
+}
+
+BOOST_AUTO_TEST_CASE(TestSIMDMovementIntegrationClamp)
+{
+    auto noopBehavior = std::make_shared<NoOpBehavior>();
+    AIManager::Instance().registerBehavior("NoOp", noopBehavior);
+
+    std::vector<EntityHandle> handles;
+    std::vector<EntityPtr> entities;
+    auto& edm = EntityDataManager::Instance();
+
+    auto createEntity = [&](const Vector2D& pos) {
+        auto entity = OptimizationTestEntity::create(pos);
+        entities.push_back(entity);
+        entity->registerEntity(pos, 16.0f, 16.0f);
+        EntityHandle handle = entity->getHandle();
+        handles.push_back(handle);
+        AIManager::Instance().registerEntity(handle, "NoOp");
+    };
+
+    createEntity(Vector2D(10.0f, 10.0f));
+    createEntity(Vector2D(10.0f, 10.0f));
+    createEntity(Vector2D(10.0f, 10.0f));
+    createEntity(Vector2D(100.0f, 100.0f));
+    createEntity(Vector2D(12.0f, 12.0f));
+
+    updateAI(0.016f, Vector2D(0.0f, 0.0f));
+
+    {
+        size_t idx = edm.getIndex(handles[0]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(10.0f, 10.0f);
+        transform.velocity = Vector2D(-50.0f, 0.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[1]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(10.0f, 10.0f);
+        transform.velocity = Vector2D(0.0f, -50.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[2]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(10.0f, 10.0f);
+        transform.velocity = Vector2D(-50.0f, -50.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[3]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(100.0f, 100.0f);
+        transform.velocity = Vector2D(10.0f, 10.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[4]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(12.0f, 12.0f);
+        transform.velocity = Vector2D(-20.0f, -20.0f);
+    }
+
+    updateAI(1.0f, Vector2D(0.0f, 0.0f));
+
+    {
+        // Entity 0: pos (10, 10), vel (-50, 0) -> after 1s: (-40, 10)
+        // Both axes clamped to min=16 (halfWidth/halfHeight), velocity zeroed
+        size_t idx = edm.getIndex(handles[0]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+    {
+        // Entity 1: pos (10, 10), vel (0, -50) -> after 1s: (10, -40)
+        // Both axes clamped to min=16 (halfWidth/halfHeight), velocity zeroed
+        size_t idx = edm.getIndex(handles[1]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[2]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[3]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 110.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 110.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 10.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 10.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[4]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 16.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+
+    {
+        size_t idx = edm.getIndex(handles[0]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(31980.0f, 31980.0f);
+        transform.velocity = Vector2D(50.0f, 0.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[1]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(31980.0f, 31980.0f);
+        transform.velocity = Vector2D(0.0f, 50.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[2]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(31980.0f, 31980.0f);
+        transform.velocity = Vector2D(50.0f, 50.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[3]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(31900.0f, 31900.0f);
+        transform.velocity = Vector2D(-10.0f, -10.0f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[4]);
+        auto& transform = edm.getHotDataByIndex(idx).transform;
+        transform.position = Vector2D(31970.0f, 31970.0f);
+        transform.velocity = Vector2D(40.0f, 40.0f);
+    }
+
+    updateAI(1.0f, Vector2D(31900.0f, 31900.0f));
+
+    {
+        size_t idx = edm.getIndex(handles[0]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 31984.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 31980.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[1]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 31980.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 31984.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[2]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 31984.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 31984.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[3]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 31890.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 31890.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), -10.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), -10.0f, 0.001f);
+    }
+    {
+        size_t idx = edm.getIndex(handles[4]);
+        const auto& transform = edm.getHotDataByIndex(idx).transform;
+        BOOST_CHECK_CLOSE(transform.position.getX(), 31984.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.position.getY(), 31984.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getX(), 0.0f, 0.001f);
+        BOOST_CHECK_CLOSE(transform.velocity.getY(), 0.0f, 0.001f);
+    }
+
+    for (const auto& handle : handles) {
+        AIManager::Instance().unregisterEntity(handle);
+        AIManager::Instance().unassignBehavior(handle);
+        edm.unregisterEntity(handle.getId());
+    }
+    handles.clear();
+    entities.clear();
     AIManager::Instance().resetBehaviors();
 }
 
@@ -233,6 +481,8 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
     auto wanderBehavior = std::make_shared<WanderBehavior>(2.0f, 1000.0f, 200.0f);
     AIManager::Instance().registerBehavior("DistanceTestWander", wanderBehavior);
 
+    auto& edm = EntityDataManager::Instance();
+
     // Test with entity counts that stress the SIMD tail loop:
     // 1, 2, 3 (all scalar)
     // 4, 5, 6, 7 (SIMD + tail)
@@ -242,20 +492,26 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
     for (size_t count : testCounts) {
         // Create entities at known positions
         std::vector<std::shared_ptr<OptimizationTestEntity>> entities;
+        std::vector<EntityHandle> handles;
         for (size_t i = 0; i < count; ++i) {
             // Place entities at (100 * i, 100 * i) for predictable distances
-            auto entity = OptimizationTestEntity::create(Vector2D(100.0f * static_cast<float>(i), 100.0f * static_cast<float>(i)));
-            AIManager::Instance().registerEntityForUpdates(entity, 5, "DistanceTestWander");
+            Vector2D pos(100.0f * static_cast<float>(i), 100.0f * static_cast<float>(i));
+            auto entity = OptimizationTestEntity::create(pos);
             entities.push_back(entity);
+            // Register entity with EntityDataManager
+            entity->registerEntity(pos, 16.0f, 16.0f);
+            EntityHandle handle = entity->getHandle();
+            handles.push_back(handle);
+            AIManager::Instance().registerEntity(handle, "DistanceTestWander");
         }
 
         // Process assignments
-        AIManager::Instance().update(0.016f);
-        AIManager::Instance().waitForAssignmentCompletion();
+        updateAI(0.016f);
+        // Assignments are now synchronous - no wait needed
 
         // Run a few update cycles to ensure distance calculations run
         for (int frame = 0; frame < 3; ++frame) {
-            AIManager::Instance().update(0.016f);
+            updateAI(0.016f);
         }
 
         // Verify all entities received valid processing (no teleportation to (0,0))
@@ -274,10 +530,12 @@ BOOST_AUTO_TEST_CASE(TestDistanceCalculationCorrectness)
         }
 
         // Cleanup
-        for (auto& entity : entities) {
-            AIManager::Instance().unregisterEntityFromUpdates(entity);
-            AIManager::Instance().unassignBehaviorFromEntity(entity);
+        for (const auto& handle : handles) {
+            AIManager::Instance().unregisterEntity(handle);
+            AIManager::Instance().unassignBehavior(handle);
+            edm.unregisterEntity(handle.getId());
         }
+        handles.clear();
         entities.clear();
         AIManager::Instance().resetBehaviors();
     }

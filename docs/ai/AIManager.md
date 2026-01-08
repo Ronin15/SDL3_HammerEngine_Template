@@ -37,6 +37,100 @@ See also:
 - [Behavior Modes](BehaviorModes.md) — Detailed behavior configurations
 - [Quick Reference](BehaviorQuickReference.md) — Fast lookup for behaviors and modes
 
+## EntityDataManager Integration
+
+The AIManager is fully integrated with EntityDataManager (EDM) for centralized entity data access and behavior state storage.
+
+### EDM-Based Entity Registration
+
+Entities are registered with AIManager using EDM indices for efficient batch processing:
+
+```cpp
+// Entity registration now uses EDM handles
+EntityHandle npcHandle = EntityDataManager::Instance().createNPC(position, EntityKind::NPC);
+uint32_t edmIndex = EntityDataManager::Instance().getEdmIndex(npcHandle);
+
+// AIManager tracks entities by EDM index for cache-optimal iteration
+AIManager::Instance().registerEntityByEDMIndex(edmIndex, priority);
+```
+
+### BehaviorContext - EDM Data Access
+
+Behaviors access entity data through `BehaviorContext` which pre-fetches EDM data:
+
+```cpp
+struct BehaviorContext {
+    uint32_t edmIndex;           // EDM storage index
+    AIBehaviorData* behaviorData; // Pre-fetched from EDM
+    PathData* pathData;          // Pre-fetched from EDM
+    EntityHotData* hotData;      // Pre-fetched from EDM (position, tier, etc.)
+};
+
+// In behavior execution:
+void ChaseBehavior::execute(BehaviorContext& ctx) {
+    // Access position via pre-fetched EDM data (no map lookups)
+    Vector2D& position = ctx.hotData->transform.position;
+
+    // Store path in EDM (persists between frames)
+    PathData& pd = *ctx.pathData;
+    if (pd.pathPoints.empty()) {
+        PathfinderManager::Instance().requestPathToEDM(ctx.edmIndex, target);
+    }
+}
+```
+
+### Critical Pattern: EDM for Persistent State
+
+**IMPORTANT:** Behavior state that must survive between frames MUST use EDM storage:
+
+```cpp
+// BAD - Local variable destroyed each frame
+void WanderBehavior::execute(BehaviorContext& ctx) {
+    AIBehaviorState temp;
+    temp.wanderTarget = computeNewTarget();  // LOST next frame!
+}
+
+// GOOD - Use EDM storage directly
+void WanderBehavior::execute(BehaviorContext& ctx) {
+    AIBehaviorData& bd = *ctx.behaviorData;  // Pre-fetched from EDM
+    if (bd.wanderTimer <= 0.0f) {
+        bd.wanderTarget = computeNewTarget();  // Persists in EDM!
+        bd.wanderTimer = 3.0f;
+    }
+}
+```
+
+### Tier-Aware Processing
+
+AIManager only processes entities in the Active simulation tier:
+
+```cpp
+void AIManager::update(float dt) {
+    auto& edm = EntityDataManager::Instance();
+
+    // Only process Active tier entities (visible/near camera)
+    const auto& activeIndices = edm.getActiveTierIndices();
+
+    for (uint32_t edmIndex : activeIndices) {
+        EntityHotData& hot = edm.getHotDataByIndex(edmIndex);
+        if (hot.kind == EntityKind::NPC && hot.isAlive()) {
+            processBehavior(edmIndex, dt);
+        }
+    }
+
+    // Background tier entities processed by BackgroundSimulationManager at 10Hz
+}
+```
+
+### Performance Benefits
+
+| Aspect | Old (Manager-Owned) | New (EDM) | Improvement |
+|--------|---------------------|-----------|-------------|
+| Position storage | 4x duplication | Single source | 75% memory reduction |
+| Behavior state | Local variables (lost) | EDM persistence | No path recomputation |
+| Batch processing | Pointer chasing | Index-based | Cache-optimal |
+| Tier filtering | Manual distance checks | Pre-built indices | O(1) lookup |
+
 ## System Integration Optimizations
 
 ### CollisionManager Integration

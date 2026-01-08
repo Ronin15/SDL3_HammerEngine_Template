@@ -11,7 +11,6 @@
 #include <atomic>
 #include <future>
 #include <string>
-#include <memory>
 
 /**
  * @brief Loading screen state that handles async world generation

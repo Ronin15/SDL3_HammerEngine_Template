@@ -47,9 +47,6 @@ private:
         std::string difficulty = "normal";
         bool autosaveEnabled = true;
         int autosaveInterval = 300;
-
-        // Graphics (Advanced) - Buffer mode configuration
-        int bufferCount = 2;  // 2 = double, 3 = triple buffering (restart required)
     } m_tempSettings;
 
     /**

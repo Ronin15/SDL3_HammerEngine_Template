@@ -19,6 +19,107 @@ The PathfinderManager is a high-performance, centralized pathfinding service des
 - **Dynamic Obstacles**: Real-time integration with CollisionManager changes
 - **Priority Scheduling**: WorkerBudget integration for performance-critical requests
 
+## EntityDataManager Integration
+
+PathfinderManager integrates with EntityDataManager (EDM) to store path results directly in entity data, eliminating separate path storage and enabling persistent navigation state.
+
+### EDM Path Storage
+
+Path results are stored directly in EDM's `PathData` structure:
+
+```cpp
+// PathData stored in EDM per entity
+struct PathData {
+    std::vector<Vector2D> pathPoints;  // Computed path waypoints
+    size_t currentWaypointIndex;       // Progress along path
+    Vector2D targetPosition;           // Final destination
+    PathfindingResult lastResult;      // Success/failure status
+    float pathAge;                     // Time since computation
+    bool needsRepath;                  // Repath requested flag
+};
+```
+
+### EDM-Based Path Requests
+
+Request paths that store results directly in EDM:
+
+```cpp
+// Request path with EDM storage (recommended)
+void requestPathToEDM(uint32_t edmIndex, const Vector2D& goal, Priority priority = Priority::Normal);
+
+// Usage in AI behavior
+void ChaseBehavior::execute(BehaviorContext& ctx) {
+    PathData& pd = *ctx.pathData;  // Pre-fetched from EDM
+
+    if (pd.pathPoints.empty() || pd.needsRepath) {
+        PathfinderManager::Instance().requestPathToEDM(ctx.edmIndex, targetPos);
+    }
+
+    // Follow existing path
+    if (!pd.pathPoints.empty()) {
+        followPath(ctx, pd);
+    }
+}
+```
+
+### Path Result Delivery
+
+When path computation completes, results are written directly to EDM:
+
+```cpp
+// Internal: PathfinderManager writes results to EDM
+void PathfinderManager::deliverPathResult(uint32_t edmIndex,
+                                          const std::vector<Vector2D>& path,
+                                          PathfindingResult result) {
+    auto& edm = EntityDataManager::Instance();
+    PathData& pd = edm.getPathDataByIndex(edmIndex);
+
+    pd.pathPoints = path;
+    pd.currentWaypointIndex = 0;
+    pd.lastResult = result;
+    pd.pathAge = 0.0f;
+    pd.needsRepath = false;
+}
+```
+
+### Benefits of EDM Integration
+
+| Aspect | Old (Callback-Based) | New (EDM Storage) | Benefit |
+|--------|---------------------|-------------------|---------|
+| Path persistence | Behavior-local (lost) | EDM (persists) | No redundant recomputation |
+| Data access | Map lookup per frame | Index-based | Cache-optimal |
+| Memory location | Scattered | Contiguous in EDM | Better cache locality |
+| Thread safety | Callback dispatch | Direct write | Simpler synchronization |
+
+### Tier-Aware Pathfinding
+
+PathfinderManager respects simulation tiers:
+
+- **Active tier**: Full pathfinding with all features
+- **Background tier**: Simplified straight-line paths (no A*)
+- **Hibernated tier**: No pathfinding (entities inactive)
+
+```cpp
+// PathfinderManager checks tier before expensive computation
+void PathfinderManager::requestPathToEDM(uint32_t edmIndex, const Vector2D& goal, Priority priority) {
+    auto& edm = EntityDataManager::Instance();
+    SimulationTier tier = edm.getHotDataByIndex(edmIndex).tier;
+
+    if (tier == SimulationTier::Hibernated) {
+        return;  // No pathfinding for hibernated entities
+    }
+
+    if (tier == SimulationTier::Background) {
+        // Simplified direct path for background entities
+        deliverSimplePath(edmIndex, goal);
+        return;
+    }
+
+    // Full A* pathfinding for active entities
+    submitPathRequest(edmIndex, goal, priority);
+}
+```
+
 ## Public API Reference
 
 ### Initialization and Lifecycle
