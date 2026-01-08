@@ -6,6 +6,7 @@
 #include "gameStates/UIDemoState.hpp"
 #include "managers/UIManager.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
@@ -21,7 +22,6 @@ UIExampleState::UIExampleState() {
 bool UIExampleState::enter() {
     GAMESTATE_INFO("Entering UI Example State");
 
-    // Create UI components directly with UIManager using auto-detecting methods
     auto& ui = UIManager::Instance();
 
     // Calculate relative positioning for cross-resolution compatibility
@@ -111,11 +111,9 @@ bool UIExampleState::enter() {
     ui.addListItem("uiexample_demo_list", "Option 4: Fourth Item");
     ui.addListItem("uiexample_demo_list", "Option 5: Fifth Item");
 
-    // Set up button callbacks
-    ui.setOnClick("uiexample_back_btn", []() {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+    // Set up button callbacks - capture mp_stateManager for proper architecture
+    ui.setOnClick("uiexample_back_btn", [this]() {
+        mp_stateManager->changeState("MainMenuState");
     });
 
     ui.setOnClick("uiexample_animate_btn", [this]() {
@@ -156,10 +154,12 @@ void UIExampleState::update(float deltaTime) {
 }
 
 void UIExampleState::render(SDL_Renderer* renderer, [[maybe_unused]] float interpolationAlpha) {
-    // Update and render UI components through UIManager using cached renderer for cleaner API
+    // Cache manager reference for better performance
+    UIManager &ui = UIManager::Instance();
+
+    // Update and render UI components
     // Each state that uses UI is responsible for rendering its own UI components
     // This ensures proper render order and state-specific UI management
-    auto& ui = UIManager::Instance();
     ui.update(m_lastDeltaTime);
     ui.render(renderer);
 }
@@ -168,8 +168,7 @@ bool UIExampleState::exit() {
     GAMESTATE_INFO("Exiting UI Example State");
 
     // Clean up UI components using simplified method
-    auto& ui = UIManager::Instance();
-    ui.prepareForStateTransition();
+    UIManager::Instance().prepareForStateTransition();
 
     return true;
 }
@@ -192,22 +191,22 @@ void UIExampleState::handleInputChange(const std::string& text) {
 }
 
 void UIExampleState::handleListSelection() {
-    const auto& ui = UIManager::Instance();
-    m_selectedListItem = ui.getSelectedListItem("uiexample_demo_list");
+    m_selectedListItem = UIManager::Instance().getSelectedListItem("uiexample_demo_list");
     GAMESTATE_DEBUG(std::format("List item selected: {}", m_selectedListItem));
 }
 
 void UIExampleState::handleAnimation() {
-    auto& ui = UIManager::Instance();
+    // Cache manager reference for better performance
+    UIManager &ui = UIManager::Instance();
 
     // Animate the animation button
     UIRect currentBounds = ui.getBounds("uiexample_animate_btn");
     UIRect targetBounds = currentBounds;
     targetBounds.x += 50;
 
-    ui.animateMove("uiexample_animate_btn", targetBounds, 0.5f, [&ui, currentBounds]() {
-        // Animate back to original position
-        ui.animateMove("uiexample_animate_btn", currentBounds, 0.5f);
+    ui.animateMove("uiexample_animate_btn", targetBounds, 0.5f, [currentBounds]() {
+        // Animate back to original position (callback uses Instance() since it runs later)
+        UIManager::Instance().animateMove("uiexample_animate_btn", currentBounds, 0.5f);
     });
 
     GAMESTATE_DEBUG("Animation triggered");
@@ -223,9 +222,7 @@ void UIExampleState::handleInput() {
     // Handle B key to go back
     const auto& inputManager = InputManager::Instance();
     if (inputManager.wasKeyPressed(SDL_SCANCODE_B)) {
-        const auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+        mp_stateManager->changeState("MainMenuState");
     }
 }
 
@@ -248,27 +245,25 @@ void UIExampleState::updateProgressBar(float deltaTime) {
     }
 
     // UIManager now has built-in caching, so calling setValue() every frame is safe
-    auto& ui = UIManager::Instance();
-    ui.setValue("uiexample_demo_progress", m_progressValue);
+    UIManager::Instance().setValue("uiexample_demo_progress", m_progressValue);
 }
 
 
 
 void UIExampleState::updateSliderLabel(float value) {
-    auto& ui = UIManager::Instance();
     std::ostringstream oss;
     oss << std::fixed << std::setprecision(2) << "Slider: " << value;
-    ui.setText("uiexample_slider_label", oss.str());
+    UIManager::Instance().setText("uiexample_slider_label", oss.str());
 }
 
 void UIExampleState::updateInputLabel(const std::string& text) {
-    auto& ui = UIManager::Instance();
     std::string labelText = "Input: " + (text.empty() ? "(empty)" : text);
-    ui.setText("uiexample_input_label", labelText);
+    UIManager::Instance().setText("uiexample_input_label", labelText);
 }
 
 void UIExampleState::applyDarkTheme(bool dark) {
-    auto& ui = UIManager::Instance();
+    // Cache manager reference for better performance
+    UIManager &ui = UIManager::Instance();
 
     if (dark) {
         // Use centralized dark theme

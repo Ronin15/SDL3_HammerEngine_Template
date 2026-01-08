@@ -115,6 +115,7 @@ fi
 # Get issues by severity
 CRITICAL_ISSUES=$(echo "$PROJECT_WARNINGS" | grep -E 'bugprone-infinite-loop|bugprone-use-after-move|bugprone-null-dereference|clang-analyzer-' 2>/dev/null || true)
 HIGH_ISSUES=$(echo "$PROJECT_WARNINGS" | grep -E 'performance-|modernize-use-override|bugprone-macro' 2>/dev/null || true)
+MEDIUM_ISSUES=$(echo "$PROJECT_WARNINGS" | grep -E 'misc-const-correctness|misc-unused-parameters|readability-make-member-function-const' 2>/dev/null || true)
 
 echo -e "${BLUE}=== Summary by Severity ===${NC}"
 echo ""
@@ -148,6 +149,13 @@ fi
 if [ -n "$HIGH_ISSUES" ]; then
     echo -e "${YELLOW}=== HIGH Priority Issues (recommended fixes) ===${NC}"
     echo "$HIGH_ISSUES" | head -30
+    echo ""
+fi
+
+# Show medium priority issues
+if [ -n "$MEDIUM_ISSUES" ]; then
+    echo -e "${CYAN}=== MEDIUM Priority Issues (quality improvements) ===${NC}"
+    echo "$MEDIUM_ISSUES" | head -20
     echo ""
 fi
 

@@ -21,27 +21,41 @@ constexpr char HAMMER_SAVE_SIGNATURE[9] = {'F', 'O', 'R', 'G', 'E',
                                            'S', 'A', 'V', 'E'};
 constexpr size_t HAMMER_SAVE_SIGNATURE_SIZE = sizeof(HAMMER_SAVE_SIGNATURE);
 
+bool SaveGameManager::init() {
+  if (m_isInitialized) {
+    SAVEGAME_WARN("SaveGameManager already initialized");
+    return true;
+  }
+
+  SAVEGAME_INFO("Initializing SaveGameManager");
+
+  // Base directory (res/) assumed to exist as part of game resources
+  // SaveGameManager only manages the game_saves subdirectory
+  std::filesystem::path savePath = std::filesystem::path(m_saveDirectory) / "game_saves";
+
+  try {
+    if (!std::filesystem::exists(savePath)) {
+      if (!std::filesystem::create_directory(savePath)) {
+        SAVEGAME_ERROR("Failed to create game_saves directory");
+        return false;
+      }
+      SAVEGAME_INFO("Created game_saves directory");
+    }
+  } catch (const std::exception& e) {
+    SAVEGAME_ERROR(std::format("Error creating save directory: {}", e.what()));
+    return false;
+  }
+
+  m_isInitialized = true;
+  SAVEGAME_INFO("SaveGameManager initialized successfully");
+  return true;
+}
+
 bool SaveGameManager::save(const std::string &saveFileName,
                            const Player &player) {
   // No need for null check with references - they're always valid
 
-  // Make sure base directory exists
-  if (!std::filesystem::exists(m_saveDirectory)) {
-    SAVEGAME_WARN(std::format("Base directory doesn't exist: '{}'", m_saveDirectory));
-    try {
-      if (std::filesystem::create_directories(m_saveDirectory)) {
-        SAVEGAME_INFO(std::format("Created base directory: {}", m_saveDirectory));
-      } else {
-        SAVEGAME_ERROR("Failed to create base directory");
-        return false;
-      }
-    } catch (const std::exception &e) {
-      SAVEGAME_ERROR(std::format("Error creating base directory: {}", e.what()));
-      return false;
-    }
-  }
-
-  // Ensure the save directory exists
+  // Ensure the game_saves subdirectory exists
   if (!ensureSaveDirectoryExists()) {
     SAVEGAME_ERROR("Failed to ensure save directory exists!");
     return false;
@@ -258,7 +272,7 @@ bool SaveGameManager::deleteSlot(int slotNumber) const {
 std::vector<std::string> SaveGameManager::getSaveFiles() const {
   std::vector<std::string> saveFiles;
   saveFiles.reserve(10); // Reserve capacity for typical number of save files
-  std::string savePath = m_saveDirectory + "/game_saves";
+  std::filesystem::path savePath = std::filesystem::path(m_saveDirectory) / "game_saves";
 
   // Check if the directory exists
   if (!std::filesystem::exists(savePath) ||
@@ -361,22 +375,9 @@ bool SaveGameManager::isValidSaveFile(const std::string &saveFileName) const {
 }
 
 void SaveGameManager::setSaveDirectory(const std::string &directory) {
-  // Check if directory exists
-  if (!std::filesystem::exists(directory)) {
-    // Try to create it
-    try {
-      if (!std::filesystem::create_directories(directory)) {
-        SAVEGAME_ERROR(std::format("Failed to create directory: {}", directory));
-      }
-    } catch (const std::exception &e) {
-      SAVEGAME_ERROR(std::format("Error creating directory: {}", e.what()));
-    }
-  }
-
+  // Base directory is assumed to exist as part of game resources
+  // Just store it - game_saves subdirectory creation happens in init() or on first save
   m_saveDirectory = directory;
-
-  // Ensure the game_saves subdirectory exists right away
-  ensureSaveDirectoryExists();
 }
 
 void SaveGameManager::clean() {
@@ -397,26 +398,18 @@ std::string SaveGameManager::getSlotFileName(int slotNumber) const {
 
 std::string
 SaveGameManager::getFullSavePath(const std::string &saveFileName) const {
-  return m_saveDirectory + "/game_saves/" + saveFileName;
+  return (std::filesystem::path(m_saveDirectory) / "game_saves" / saveFileName).string();
 }
 
 bool SaveGameManager::ensureSaveDirectoryExists() const {
   try {
-    // First ensure the base directory exists (which should be "res")
-    if (!std::filesystem::exists(m_saveDirectory)) {
-      // Try to create the base directory
-      if (!std::filesystem::create_directories(m_saveDirectory)) {
-        SAVEGAME_ERROR("Failed to create base directory");
-        return false;
-      }
-    }
-
-    // Create the game_saves directory inside the base directory
-    std::string savePath = m_saveDirectory + "/game_saves";
+    // Base directory (res/) assumed to exist as part of game resources
+    // SaveGameManager only manages the game_saves subdirectory
+    std::filesystem::path savePath = std::filesystem::path(m_saveDirectory) / "game_saves";
 
     if (!std::filesystem::exists(savePath)) {
-      // Create the directory and all parent directories
-      if (!std::filesystem::create_directories(savePath)) {
+      // Create the game_saves directory (not parent directories)
+      if (!std::filesystem::create_directory(savePath)) {
         SAVEGAME_ERROR("Failed to create save directory");
         return false;
       }
@@ -430,7 +423,7 @@ bool SaveGameManager::ensureSaveDirectoryExists() const {
 
     // Verify directory is writable by attempting to create a test file
     {
-      std::string testFilePath = savePath + "/test_write.tmp";
+      std::filesystem::path testFilePath = savePath / "test_write.tmp";
       std::ofstream testFile(testFilePath);
       if (!testFile.is_open()) {
         SAVEGAME_ERROR("Directory exists but is not writable");

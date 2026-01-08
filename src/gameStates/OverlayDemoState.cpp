@@ -7,6 +7,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/UIConstants.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
@@ -389,9 +390,7 @@ void OverlayDemoState::handleInput() {
 }
 
 void OverlayDemoState::handleBackButton() {
-    auto& gameEngine = GameEngine::Instance();
-    auto* gameStateManager = gameEngine.getGameStateManager();
-    gameStateManager->changeState("MainMenuState");
+    mp_stateManager->changeState("MainMenuState");
 }
 
 // Pure UIManager implementation - no UIScreen needed

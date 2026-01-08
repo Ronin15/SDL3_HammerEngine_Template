@@ -56,7 +56,6 @@
 #include <unordered_map>
 #include <mutex>
 #include <shared_mutex>
-#include <cmath>
 
 // Forward declarations
 namespace HammerEngine {
@@ -83,6 +82,7 @@ public:
         Normal   = 2,
         Low      = 3
     };
+
     /**
      * @brief Gets the singleton instance of PathfinderManager
      * @return Reference to the PathfinderManager instance
@@ -145,13 +145,13 @@ public:
 
     /**
      * @brief Request a path asynchronously (ULTRA-HIGH-PERFORMANCE)
-     * @param entityId The entity requesting the path  
+     * @param entityId The entity requesting the path
      * @param start Starting position in world coordinates
      * @param goal Goal position in world coordinates
      * @param priority PathPriority level for request scheduling
      * @param callback Callback when path is ready (called from background thread)
      * @return Request ID for tracking (0 if failed)
-     * 
+     *
      * This method completes in <0.001ms with zero blocking operations:
      * - Lock-free request queue enqueue only
      * - No mutex locks, no hash operations, no complex math
@@ -178,6 +178,25 @@ public:
      * @return true if there are pending requests, false otherwise
      */
     bool hasPendingWork() const;
+
+    // ===== EDM-Integrated Async Pathfinding (No Callbacks) =====
+
+    /**
+     * @brief Request a path asynchronously with result written to EDM
+     *
+     * Same async performance as requestPath() but writes result directly to
+     * EntityDataManager::PathData instead of invoking a callback.
+     * Eliminates shared_from_this() and lambda allocation overhead.
+     *
+     * @param edmIndex Entity's EDM index (result written to EDM::getPathData(edmIndex))
+     * @param start Starting position in world coordinates
+     * @param goal Goal position in world coordinates
+     * @param priority Request priority (default: Normal)
+     * @return Request ID for tracking (0 if failed)
+     */
+    uint64_t requestPathToEDM(size_t edmIndex, const Vector2D& start,
+                              const Vector2D& goal,
+                              Priority priority = Priority::Normal);
 
     // ===== Grid Management =====
 
@@ -301,10 +320,10 @@ public:
         size_t queueCapacity{0};
         bool processorActive{true};
         float cacheHitRate{0.0f};
-        
+
         // Simplified cache metrics
         float totalHitRate{0.0f};
-        
+
         // Cache memory usage
         size_t cacheSize{0};
         size_t segmentCacheSize{0};
@@ -348,13 +367,12 @@ private:
         m_grid = std::move(newGrid);
     }
 
-    // Pending request coalescing
-    mutable std::mutex m_pendingMutex;
-    struct PendingCallbacks { std::vector<PathCallback> callbacks; };
-    std::unordered_map<uint64_t, PendingCallbacks> m_pending;
-
-    // Helpers
+    // Helpers - grid-passing overloads to avoid repeated getGridSnapshot() calls in hot path
     void normalizeEndpoints(Vector2D& start, Vector2D& goal) const;
+    void normalizeEndpoints(Vector2D& start, Vector2D& goal,
+                           const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const;
+    Vector2D clampToWorldBounds(const Vector2D& position, float margin,
+                                const std::shared_ptr<HammerEngine::PathfindingGrid>& grid) const;
 
     // INTERNAL ONLY: Synchronous pathfinding computation (used by async system)
     // DO NOT use directly - use requestPath() instead
@@ -365,12 +383,21 @@ private:
         bool skipNormalization = false
     );
 
+    // Grid-passing overload for hot path optimization
+    HammerEngine::PathfindingResult findPathImmediate(
+        const Vector2D& start,
+        const Vector2D& goal,
+        std::vector<Vector2D>& outPath,
+        const std::shared_ptr<HammerEngine::PathfindingGrid>& grid,
+        bool skipNormalization = false
+    );
+
     // Request management - simplified
     std::atomic<uint64_t> m_nextRequestId{1};
-    
+
     // Configuration
     bool m_allowDiagonal{true};
-    int m_maxIterations{60000};
+    int m_maxIterations{40000};
     float m_cellSize{64.0f}; // Optimized for 4x fewer pathfinding nodes
     size_t m_maxRequestsPerUpdate{10}; // Max requests to process per update
     float m_cacheExpirationTime{5.0f}; // Cache expiration time in seconds
@@ -389,8 +416,8 @@ private:
     bool m_isShutdown{false};
     std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
     std::atomic<bool> m_prewarming{false}; // Track if cache pre-warming is in progress
-    
-    // Statistics tracking 
+
+    // Statistics tracking
     mutable std::atomic<uint64_t> m_enqueuedRequests{0};
     mutable std::atomic<uint64_t> m_enqueueFailures{0};
     mutable std::atomic<uint64_t> m_completedRequests{0};
@@ -398,36 +425,36 @@ private:
     mutable std::atomic<uint64_t> m_cacheHits{0};
     mutable std::atomic<uint64_t> m_cacheMisses{0};
     mutable std::atomic<uint64_t> m_processedCount{0};
-    
+
     // Lightweight timing statistics (minimal overhead)
     mutable std::atomic<double> m_totalProcessingTimeMs{0.0};
     mutable std::chrono::steady_clock::time_point m_lastStatsUpdate{std::chrono::steady_clock::now()};
     mutable double m_lastRequestsPerSecond{0.0};
     mutable uint64_t m_lastTotalRequests{0};
-    
+
     // High-performance single-tier cache with smart quantization
     struct PathCacheEntry {
         std::vector<Vector2D> path;
         std::chrono::steady_clock::time_point lastUsed;
         uint32_t useCount{1};
     };
-    
+
     mutable std::unordered_map<uint64_t, PathCacheEntry> m_pathCache;
-    mutable std::mutex m_cacheMutex;
+    mutable std::shared_mutex m_cacheMutex;  // shared_mutex for concurrent reads
 
     // Optimized for high entity counts (2000-10K+ entities in demo states)
     // At 32K entries: ~3.5MB memory (acceptable overhead for large-scale scenarios)
     // Combined with coarser quantization (512px+), provides 70-85% cache hit rates
     static constexpr size_t MAX_CACHE_ENTRIES = 32768;
 
-    
+
 
     // Collision version tracking for cache invalidation
     std::atomic<uint64_t> m_lastCollisionVersion{0};
 
     // Statistics reporting frame counter
     int m_statsFrameCounter{0};
-    
+
     // Event subscription tracking
     std::vector<EventManager::HandlerToken> m_eventHandlerTokens;
 
@@ -441,27 +468,12 @@ private:
     std::vector<std::future<void>> m_reusableBatchFutures;  // Swap target to preserve capacity
     // No mutex needed: update and state transitions never run concurrently
 
-    // Deferred batch timing for WorkerBudget feedback (non-blocking)
-    size_t m_lastBatchCount{0};
-    size_t m_lastWorkloadSize{0};
-    std::chrono::steady_clock::time_point m_lastBatchSubmitTime{};
-
     // Incremental update configuration
     static constexpr float DIRTY_THRESHOLD_PERCENT = 0.25f; // Full rebuild if >25% of grid is dirty
 
-    // Request buffer for batching (instead of immediate submission)
-    struct BufferedRequest {
-        EntityID entityId;
-        Vector2D start;
-        Vector2D goal;
-        Priority priority;
-        PathCallback callback;
-        uint64_t requestId;
-        uint64_t cacheKey;  // Pre-computed from RAW coords before normalization
-        std::chrono::steady_clock::time_point enqueueTime;
-    };
-    std::vector<BufferedRequest> m_requestBuffer;
-    mutable std::mutex m_requestBufferMutex;
+    // DIRECT THREADSYSTEM SUBMISSION (no intermediate buffer needed)
+    // Requests are submitted directly to ThreadSystem in requestPath()
+    // This eliminates the mutex contention that was serializing AI batch threads
 
     // Internal methods - simplified
     void reportStatistics() const;
@@ -478,8 +490,7 @@ private:
     void calculateOptimalCacheSettings(); // Calculate dynamic parameters based on world size
     void prewarmPathCache(); // Seed cache with sector-based paths for fast warmup
 
-    // WorkerBudget batch processing (NEW)
-    void processPendingRequests(); // Process buffered requests with WorkerBudget coordination
+    // Batch completion synchronization
     void waitForBatchCompletion(); // Wait for all pending batch futures to complete
 
     // Event handlers

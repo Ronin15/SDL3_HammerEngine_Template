@@ -3,6 +3,14 @@
  * Licensed under the MIT License - see LICENSE file for details
  */
 
+/**
+ * @file WeatherControllerTests.cpp
+ * @brief Tests for WeatherController
+ *
+ * Common ControllerBase tests are generated via template macros.
+ * This file contains only WeatherController-specific tests.
+ */
+
 #define BOOST_TEST_MODULE WeatherControllerTests
 #include <boost/test/unit_test.hpp>
 
@@ -11,146 +19,33 @@
 #include "managers/EventManager.hpp"
 #include "events/TimeEvent.hpp"
 #include "events/WeatherEvent.hpp"
-#include "../events/EventManagerTestAccess.hpp"
 #include <string>
 
-// ============================================================================
-// Test Fixture
-// ============================================================================
-
-class WeatherControllerTestFixture {
-public:
-    WeatherControllerTestFixture() {
-        // Reset event manager to clean state
-        EventManagerTestAccess::reset();
-
-        // Initialize GameTime
-        GameTimeManager::Instance().init(12.0f, 1.0f);
-    }
-
-    ~WeatherControllerTestFixture() {
-        // Controller auto-unsubscribes on destruction via ControllerBase
-        // Clean up
-        EventManager::Instance().clean();
-    }
-
-protected:
-    // Controller owned by fixture (new ownership model)
-    WeatherController m_controller;
-};
+// Common test infrastructure
+#include "common/ControllerTestFixture.hpp"
+#include "common/ControllerOwnershipTests.hpp"
+#include "common/ControllerSubscriptionTests.hpp"
+#include "common/ControllerSuspendResumeTests.hpp"
+#include "common/ControllerGetNameTests.hpp"
 
 // ============================================================================
-// OWNERSHIP MODEL TESTS
+// Common ControllerBase Tests (generated via macros)
 // ============================================================================
 
-BOOST_AUTO_TEST_SUITE(OwnershipModelTests)
+using WeatherControllerFixture = ControllerTestFixture<WeatherController>;
 
-BOOST_AUTO_TEST_CASE(TestControllerInstantiation) {
-    // Controllers can now be instantiated directly
-    WeatherController controller1;
-    WeatherController controller2;
-
-    // Each is a separate instance
-    BOOST_CHECK(&controller1 != &controller2);
-}
-
-BOOST_AUTO_TEST_CASE(TestMoveSemantics) {
-    WeatherController controller1;
-    controller1.subscribe();
-    BOOST_CHECK(controller1.isSubscribed());
-
-    // Move constructor
-    WeatherController controller2(std::move(controller1));
-    BOOST_CHECK(controller2.isSubscribed());
-    BOOST_CHECK(!controller1.isSubscribed());  // Moved-from is unsubscribed
-}
-
-BOOST_AUTO_TEST_CASE(TestAutoUnsubscribeOnDestruction) {
-    {
-        WeatherController controller;
-        controller.subscribe();
-        BOOST_CHECK(controller.isSubscribed());
-        // Destructor should auto-unsubscribe
-    }
-    // No crash = success
-}
-
-BOOST_AUTO_TEST_SUITE_END()
+INSTANTIATE_CONTROLLER_OWNERSHIP_TESTS(WeatherController)
+INSTANTIATE_CONTROLLER_SUBSCRIPTION_TESTS(WeatherController, WeatherControllerFixture)
+INSTANTIATE_CONTROLLER_SUSPEND_RESUME_TESTS(WeatherController, WeatherControllerFixture)
+INSTANTIATE_CONTROLLER_GET_NAME_TESTS(WeatherController, WeatherControllerFixture, "WeatherController")
 
 // ============================================================================
-// SUBSCRIPTION TESTS
+// WeatherController-Specific Tests
 // ============================================================================
 
-BOOST_FIXTURE_TEST_SUITE(SubscriptionTests, WeatherControllerTestFixture)
+// --- Current Weather Tests ---
 
-BOOST_AUTO_TEST_CASE(TestInitiallyNotSubscribed) {
-    // Controller should not be subscribed initially
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestSubscribe) {
-    // Subscribe
-    m_controller.subscribe();
-
-    BOOST_CHECK(m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestUnsubscribe) {
-    // Subscribe first
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // Now unsubscribe
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestSubscribeUnsubscribeCycle) {
-    // Multiple subscribe/unsubscribe cycles
-    for (int i = 0; i < 3; ++i) {
-        m_controller.subscribe();
-        BOOST_CHECK(m_controller.isSubscribed());
-
-        m_controller.unsubscribe();
-        BOOST_CHECK(!m_controller.isSubscribed());
-    }
-}
-
-BOOST_AUTO_TEST_CASE(TestDoubleSubscribeIgnored) {
-    // First subscribe
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // Second subscribe should be ignored (no crash, still subscribed)
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // Unsubscribe once should fully unsubscribe
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_CASE(TestDoubleUnsubscribeIgnored) {
-    // Subscribe
-    m_controller.subscribe();
-    BOOST_CHECK(m_controller.isSubscribed());
-
-    // First unsubscribe
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-
-    // Second unsubscribe should be safe (no crash)
-    m_controller.unsubscribe();
-    BOOST_CHECK(!m_controller.isSubscribed());
-}
-
-BOOST_AUTO_TEST_SUITE_END()
-
-// ============================================================================
-// CURRENT WEATHER TESTS
-// ============================================================================
-
-BOOST_FIXTURE_TEST_SUITE(CurrentWeatherTests, WeatherControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(CurrentWeatherTests, WeatherControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDefault) {
     // Default weather should be Clear
@@ -172,11 +67,9 @@ BOOST_AUTO_TEST_CASE(TestWeatherStringValidity) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// WEATHER CHECK EVENT HANDLING TESTS
-// ============================================================================
+// --- Weather Check Event Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(WeatherCheckEventTests, WeatherControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(WeatherCheckEventTests, WeatherControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestWeatherCheckEventDispatch) {
     m_controller.subscribe();
@@ -272,11 +165,9 @@ BOOST_AUTO_TEST_CASE(TestAllWeatherTypes) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// TIME EVENT FILTERING TESTS
-// ============================================================================
+// --- Time Event Filtering Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(TimeEventFilteringTests, WeatherControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(TimeEventFilteringTests, WeatherControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestIgnoresNonWeatherCheckTimeEvents) {
     m_controller.subscribe();
@@ -316,11 +207,9 @@ BOOST_AUTO_TEST_CASE(TestOnlyHandlesWeatherCheckEvent) {
 
 BOOST_AUTO_TEST_SUITE_END()
 
-// ============================================================================
-// WEATHER DESCRIPTION TESTS
-// ============================================================================
+// --- Weather Description Tests ---
 
-BOOST_FIXTURE_TEST_SUITE(WeatherDescriptionTests, WeatherControllerTestFixture)
+BOOST_FIXTURE_TEST_SUITE(WeatherDescriptionTests, WeatherControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCurrentWeatherDescriptionClear) {
     m_controller.subscribe();

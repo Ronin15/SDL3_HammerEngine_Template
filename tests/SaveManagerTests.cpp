@@ -3,66 +3,22 @@
  * Licensed under the MIT License - see LICENSE file for details
 */
 
-// Define this to make Boost.Test a header-only library
 #define BOOST_TEST_MODULE SaveManagerTests
 #include <boost/test/unit_test.hpp>
 #include "utils/BinarySerializer.hpp"
 #include "mocks/MockPlayer.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <filesystem>
-#include <csignal>
-#include <chrono>
-#include <thread>
 
-// Helper function for safely cleaning up resources
-void performSafeCleanup() {
-    static std::mutex cleanupMutex;
-    static bool cleanupDone = false;
-
-    std::lock_guard<std::mutex> lock(cleanupMutex);
-
-    if (cleanupDone) {
-        return;
+// Global fixture for test setup and cleanup
+struct TestFixture {
+    TestFixture() {
+        EntityDataManager::Instance().init();
     }
 
-    std::cout << "Performing safe cleanup of save test resources..." << std::endl;
-    cleanupDone = true;
-}
-
-// Signal handler to ensure clean shutdown
-void signalHandler(int signal) {
-    std::cerr << "Signal " << signal << " received, cleaning up..." << std::endl;
-
-    // Perform safe cleanup
-    performSafeCleanup();
-
-    // Exit immediately with success to avoid any further issues
-    _exit(0);
-}
-
-// Register signal handler
-struct SignalHandlerRegistration {
-    SignalHandlerRegistration() {
-        std::signal(SIGTERM, signalHandler);
-        std::signal(SIGINT, signalHandler);
-        std::signal(SIGABRT, signalHandler);
-        std::signal(SIGSEGV, signalHandler);
-    }
-};
-
-// Global signal handler registration
-static SignalHandlerRegistration signalHandlerRegistration;
-
-// Test cleanup helper
-class SaveTestCleanup {
-public:
-    SaveTestCleanup() {
-        // Setup test environment
-    }
-
-    ~SaveTestCleanup() {
-        // Clean up test files
+    ~TestFixture() {
+        // Clean up any leftover test files
         try {
-            // Remove any test files from test_data directory
             std::filesystem::remove("tests/test_data/test_mockplayer.dat");
             std::filesystem::remove("tests/test_data/test_slot_1.dat");
             std::filesystem::remove("tests/test_data/valid_test.dat");
@@ -72,24 +28,9 @@ public:
             std::filesystem::remove("tests/test_data/test_primitives.dat");
             std::filesystem::remove("tests/test_data/test_vector_int.dat");
             std::filesystem::remove("tests/test_data/test_vector_float.dat");
-        } catch (const std::exception&) {
-            // Ignore cleanup errors
-        }
-    }
-};
+        } catch (...) {}
 
-// Global fixture for test setup and cleanup
-struct TestFixture {
-    TestFixture() {
-        // Initialize test environment
-    }
-
-    ~TestFixture() {
-        // Cleanup is handled by individual test cleanup
-        performSafeCleanup();
-
-        // Ensure clean exit
-        _exit(0);
+        EntityDataManager::Instance().clean();
     }
 };
 

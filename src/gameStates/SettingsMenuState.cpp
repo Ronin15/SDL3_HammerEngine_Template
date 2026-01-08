@@ -8,6 +8,7 @@
 #include "managers/InputManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/SettingsManager.hpp"
+#include "managers/GameStateManager.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 
@@ -20,6 +21,7 @@ bool SettingsMenuState::enter() {
     // Pause all game managers to reduce power draw while in settings
     GameEngine::Instance().setGlobalPause(true);
 
+    // Get manager references at function start
     auto& ui = UIManager::Instance();
     auto& fontMgr = FontManager::Instance();
 
@@ -83,9 +85,7 @@ void SettingsMenuState::handleInput() {
 
     // ESC to go back without saving
     if (inputManager.wasKeyPressed(SDL_SCANCODE_ESCAPE)) {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+        mp_stateManager->changeState("MainMenuState");
     }
 
     // Tab switching shortcuts
@@ -126,9 +126,6 @@ void SettingsMenuState::loadCurrentSettings() {
     m_tempSettings.difficulty = settings.get<std::string>("gameplay", "difficulty", "normal");
     m_tempSettings.autosaveEnabled = settings.get<bool>("gameplay", "autosave_enabled", true);
     m_tempSettings.autosaveInterval = settings.get<int>("gameplay", "autosave_interval", 300);
-
-    // Graphics (Advanced)
-    m_tempSettings.bufferCount = settings.get<int>("graphics", "buffer_count", 2);
 }
 
 void SettingsMenuState::applySettings() {
@@ -166,15 +163,10 @@ void SettingsMenuState::applySettings() {
     settings.set("gameplay", "autosave_enabled", m_tempSettings.autosaveEnabled);
     settings.set("gameplay", "autosave_interval", m_tempSettings.autosaveInterval);
 
-    // Graphics (Advanced)
-    settings.set("graphics", "buffer_count", m_tempSettings.bufferCount);
-
     // Save to disk
     settings.saveToFile("res/settings.json");
 
     GAMESTATE_INFO("Settings saved successfully");
-    GAMESTATE_INFO(std::format("Buffer mode changed to {} - restart required for changes to take effect",
-                   m_tempSettings.bufferCount == 2 ? "Double(2)" : "Triple(3)"));
 }
 
 
@@ -225,8 +217,7 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createCheckbox("settings_vsync_checkbox", {controlX, startY, 30, 30}, "Enabled");
     ui.setChecked("settings_vsync_checkbox", m_tempSettings.vsync);
     ui.setOnClick("settings_vsync_checkbox", [this]() {
-        const auto& ui = UIManager::Instance();
-        m_tempSettings.vsync = ui.getChecked("settings_vsync_checkbox");
+        m_tempSettings.vsync = UIManager::Instance().getChecked("settings_vsync_checkbox");
     });
 
     // Fullscreen checkbox
@@ -234,8 +225,7 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createCheckbox("settings_fullscreen_checkbox", {controlX, startY + rowHeight, 30, 30}, "Enabled");
     ui.setChecked("settings_fullscreen_checkbox", m_tempSettings.fullscreen);
     ui.setOnClick("settings_fullscreen_checkbox", [this]() {
-        const auto& ui = UIManager::Instance();
-        m_tempSettings.fullscreen = ui.getChecked("settings_fullscreen_checkbox");
+        m_tempSettings.fullscreen = UIManager::Instance().getChecked("settings_fullscreen_checkbox");
     });
 
     // Show FPS checkbox
@@ -243,28 +233,12 @@ void SettingsMenuState::createGraphicsUI() {
     ui.createCheckbox("settings_showfps_checkbox", {controlX, startY + 2 * rowHeight, 30, 30}, "Enabled");
     ui.setChecked("settings_showfps_checkbox", m_tempSettings.showFps);
     ui.setOnClick("settings_showfps_checkbox", [this]() {
-        const auto& ui = UIManager::Instance();
-        m_tempSettings.showFps = ui.getChecked("settings_showfps_checkbox");
+        m_tempSettings.showFps = UIManager::Instance().getChecked("settings_showfps_checkbox");
     });
 
     // Resolution label (informational)
     ui.createLabel("settings_resolution_label", {leftColumnX, startY + 3 * rowHeight, labelWidth + controlWidth, 40},
                    std::format("Resolution: {}x{}", m_tempSettings.resolutionWidth, m_tempSettings.resolutionHeight));
-
-    // Buffer Mode toggle (Double vs Triple buffering)
-    ui.createLabel("settings_buffer_label", {leftColumnX, startY + 4 * rowHeight, labelWidth, 40}, "Buffer Mode:");
-    ui.createButton("settings_buffer_button", {controlX, startY + 4 * rowHeight, 150, 40},
-                    m_tempSettings.bufferCount == 2 ? "Double (2)" : "Triple (3)");
-    ui.setOnClick("settings_buffer_button", [this]() {
-        // Toggle between 2 and 3
-        m_tempSettings.bufferCount = (m_tempSettings.bufferCount == 2) ? 3 : 2;
-        auto& ui = UIManager::Instance();
-        ui.setText("settings_buffer_button", m_tempSettings.bufferCount == 2 ? "Double (2)" : "Triple (3)");
-    });
-
-    // Add info label about restart requirement
-    ui.createLabel("settings_buffer_info", {controlX + 160, startY + 4 * rowHeight, 400, 40},
-                   "(Restart required)");
 }
 
 void SettingsMenuState::createAudioUI() {
@@ -283,8 +257,7 @@ void SettingsMenuState::createAudioUI() {
     ui.setValue("settings_master_volume_slider", m_tempSettings.masterVolume);
     ui.setOnValueChanged("settings_master_volume_slider", [this](float value) {
         m_tempSettings.masterVolume = value;
-        auto& ui = UIManager::Instance();
-        ui.setText("settings_master_volume_value", std::format("{}%", static_cast<int>(value * 100)));
+        UIManager::Instance().setText("settings_master_volume_value", std::format("{}%", static_cast<int>(value * 100)));
     });
     ui.createLabel("settings_master_volume_value", {sliderX + sliderWidth + 10, startY, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.masterVolume * 100)));
@@ -295,8 +268,7 @@ void SettingsMenuState::createAudioUI() {
     ui.setValue("settings_music_volume_slider", m_tempSettings.musicVolume);
     ui.setOnValueChanged("settings_music_volume_slider", [this](float value) {
         m_tempSettings.musicVolume = value;
-        auto& ui = UIManager::Instance();
-        ui.setText("settings_music_volume_value", std::format("{}%", static_cast<int>(value * 100)));
+        UIManager::Instance().setText("settings_music_volume_value", std::format("{}%", static_cast<int>(value * 100)));
     });
     ui.createLabel("settings_music_volume_value", {sliderX + sliderWidth + 10, startY + rowHeight, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.musicVolume * 100)));
@@ -307,8 +279,7 @@ void SettingsMenuState::createAudioUI() {
     ui.setValue("settings_sfx_volume_slider", m_tempSettings.sfxVolume);
     ui.setOnValueChanged("settings_sfx_volume_slider", [this](float value) {
         m_tempSettings.sfxVolume = value;
-        auto& ui = UIManager::Instance();
-        ui.setText("settings_sfx_volume_value", std::format("{}%", static_cast<int>(value * 100)));
+        UIManager::Instance().setText("settings_sfx_volume_value", std::format("{}%", static_cast<int>(value * 100)));
     });
     ui.createLabel("settings_sfx_volume_value", {sliderX + sliderWidth + 10, startY + 2 * rowHeight, 80, 40},
                    std::format("{}%", static_cast<int>(m_tempSettings.sfxVolume * 100)));
@@ -318,8 +289,7 @@ void SettingsMenuState::createAudioUI() {
     ui.createCheckbox("settings_mute_checkbox", {sliderX, startY + 3 * rowHeight, 30, 30}, "Muted");
     ui.setChecked("settings_mute_checkbox", m_tempSettings.muted);
     ui.setOnClick("settings_mute_checkbox", [this]() {
-        const auto& ui = UIManager::Instance();
-        m_tempSettings.muted = ui.getChecked("settings_mute_checkbox");
+        m_tempSettings.muted = UIManager::Instance().getChecked("settings_mute_checkbox");
     });
 
     // Hide audio UI by default
@@ -354,8 +324,7 @@ void SettingsMenuState::createGameplayUI() {
     ui.createCheckbox("settings_autosave_checkbox", {controlX, startY + rowHeight, 30, 30}, "Enabled");
     ui.setChecked("settings_autosave_checkbox", m_tempSettings.autosaveEnabled);
     ui.setOnClick("settings_autosave_checkbox", [this]() {
-        const auto& ui = UIManager::Instance();
-        m_tempSettings.autosaveEnabled = ui.getChecked("settings_autosave_checkbox");
+        m_tempSettings.autosaveEnabled = UIManager::Instance().getChecked("settings_autosave_checkbox");
     });
 
     // Autosave interval label
@@ -395,10 +364,8 @@ void SettingsMenuState::createActionButtons() {
         {backX, bottomY, buttonWidth, buttonHeight},
         "Back");
     ui.setComponentPositioning("settings_back_btn", {UIPositionMode::BOTTOM_CENTERED, buttonWidth/2 + buttonSpacing/2, bottomOffset, buttonWidth, buttonHeight});
-    ui.setOnClick("settings_back_btn", []() {
-        auto& gameEngine = GameEngine::Instance();
-        auto* gameStateManager = gameEngine.getGameStateManager();
-        gameStateManager->changeState("MainMenuState");
+    ui.setOnClick("settings_back_btn", [this]() {
+        mp_stateManager->changeState("MainMenuState");
     });
 }
 

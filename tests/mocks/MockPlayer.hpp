@@ -9,6 +9,7 @@
 #include "utils/Vector2D.hpp"
 #include "utils/BinarySerializer.hpp"
 #include "entities/Entity.hpp"
+#include "managers/EntityDataManager.hpp"
 #include <string>
 #include <memory>
 #include <SDL3/SDL.h>
@@ -22,8 +23,8 @@ namespace HammerEngine {
 class MockPlayer : public Entity, public ISerializable {
 public:
     MockPlayer() : Entity(), m_currentStateName("idle") {
-        setPosition(Vector2D(100.0f, 200.0f));
-        setVelocity(Vector2D(0.0f, 0.0f));
+        // Register with EntityDataManager FIRST (required before setPosition in DOD)
+        registerWithDataManager(Vector2D(100.0f, 200.0f), 16.0f, 16.0f, EntityKind::Player);
         setTextureID("mock_player");
     }
         
@@ -31,6 +32,7 @@ public:
     void update(float deltaTime) override { (void)deltaTime; /* Mock implementation */ }
     void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; /* Mock implementation */ }
     void clean() override { /* Mock implementation */ }
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::Player; }
     
     // Factory method for proper creation with shared_ptr
     static std::shared_ptr<MockPlayer> create() {

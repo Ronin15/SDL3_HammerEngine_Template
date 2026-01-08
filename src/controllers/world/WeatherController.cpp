@@ -33,11 +33,15 @@ void WeatherController::onTimeEvent(const EventData& data)
         return;
     }
 
-    // Check if this is a WeatherCheckEvent
-    auto weatherCheck = std::dynamic_pointer_cast<WeatherCheckEvent>(data.event);
-    if (!weatherCheck) {
+    // Use TimeEventType enum to filter (no RTTI overhead)
+    // We registered for EventTypeId::Time, so we know it's a TimeEvent
+    auto* timeEvent = static_cast<TimeEvent*>(data.event.get());
+    if (timeEvent->getTimeEventType() != TimeEventType::WeatherCheck) {
         return;  // Not a weather check event, ignore
     }
+
+    // Safe static_cast - we verified the subtype via enum
+    auto* weatherCheck = static_cast<WeatherCheckEvent*>(timeEvent);
 
     // Get recommended weather from the event (based on season probabilities)
     WeatherType recommended = weatherCheck->getRecommendedWeather();

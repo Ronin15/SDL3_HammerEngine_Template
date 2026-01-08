@@ -9,6 +9,7 @@
 #include <boost/test/data/monomorphic.hpp>
 
 #include "managers/EventManager.hpp"
+#include "core/WorkerBudget.hpp"
 #include "events/Event.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/Logger.hpp"

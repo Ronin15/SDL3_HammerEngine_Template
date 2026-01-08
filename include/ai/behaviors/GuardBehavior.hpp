@@ -8,10 +8,11 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <random>
-#include <unordered_map>
 #include <vector>
 
 class GuardBehavior : public AIBehavior {
@@ -45,10 +46,10 @@ public:
                          const Vector2D& guardPosition,
                          GuardMode mode = GuardMode::STATIC_GUARD);
 
-  void init(EntityPtr entity) override;
-  void executeLogic(EntityPtr entity, float deltaTime) override;
-  void clean(EntityPtr entity) override;
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void init(EntityHandle handle) override;
+  void executeLogic(BehaviorContext& ctx) override;
+  void clean(EntityHandle handle) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
   std::string getName() const override;
 
   // Configuration methods
@@ -69,8 +70,8 @@ public:
 
   // Alert system
   void setAlertLevel(AlertLevel level);
-  void raiseAlert(EntityPtr entity, const Vector2D &alertPosition);
-  void clearAlert(EntityPtr entity);
+  void raiseAlert(EntityHandle handle, const Vector2D &alertPosition);
+  void clearAlert(EntityHandle handle);
   void setAlertDecayTime(float seconds);
 
   // Threat detection
@@ -97,47 +98,6 @@ public:
 
 
 private:
-  
-  struct EntityState {
-    // Base AI behavior state (pathfinding, separation, cooldowns)
-    AIBehaviorState baseState;
-
-    // Guard-specific state
-    Vector2D assignedPosition{0, 0};
-    Vector2D lastKnownThreatPosition{0, 0};
-    Vector2D investigationTarget{0, 0};
-    Vector2D currentPatrolTarget{0, 0};
-
-    AlertLevel currentAlertLevel{AlertLevel::CALM};
-    GuardMode currentMode{GuardMode::STATIC_GUARD};
-
-    float threatSightingTimer{0.0f};
-    float alertTimer{0.0f};
-    float investigationTimer{0.0f};
-    float positionCheckTimer{0.0f};
-    float patrolMoveTimer{0.0f};
-    float alertDecayTimer{0.0f};
-
-    size_t currentPatrolIndex{0};
-    float currentHeading{0.0f};
-    bool hasActiveThreat{false};
-    bool isInvestigating{false};
-    bool returningToPost{false};
-    bool onDuty{true};
-    bool alertRaised{false};
-    bool helpCalled{false};
-
-    // Roaming state
-    Vector2D roamTarget{0, 0};
-    float roamTimer{0.0f};
-
-    EntityState() {
-      baseState.navRadius = 18.0f; // Guard-specific nav radius
-    }
-  };
-
-  // Map to store per-entity state
-  std::unordered_map<EntityPtr, EntityState> m_entityStates;
 
   // Configuration
   HammerEngine::GuardBehaviorConfig m_config;
@@ -192,41 +152,39 @@ private:
   // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
   // bool m_useAsyncPathfinding removed
 
-  // Helper methods
-  EntityPtr detectThreat(EntityPtr entity, const EntityState &state) const;
-  bool isThreatInRange(EntityPtr entity, EntityPtr threat) const;
-  bool isThreatInFieldOfView(EntityPtr entity, EntityPtr threat,
-                             const EntityState &state) const;
-  bool hasLineOfSight(EntityPtr entity, EntityPtr threat) const;
-  float calculateThreatDistance(EntityPtr entity, EntityPtr threat) const;
+  // Helper methods - all entity state stored in EDM BehaviorData (indexed by edmIndex)
+  EntityHandle detectThreat(const BehaviorContext& ctx, const BehaviorData& data) const;
+  bool isThreatInRange(const Vector2D& entityPos, const Vector2D& threatPos) const;
+  bool isThreatInFieldOfView(const Vector2D& entityPos, const Vector2D& threatPos,
+                             const BehaviorData& data) const;
+  bool hasLineOfSight(const Vector2D& entityPos, const Vector2D& threatPos) const;
+  float calculateThreatDistance(const Vector2D& entityPos, const Vector2D& threatPos) const;
 
-  void updateAlertLevel(EntityPtr entity, EntityState &state,
-                        bool threatPresent) const;
-  void handleThreatDetection(EntityPtr entity, EntityState &state,
-                             EntityPtr threat, float deltaTime);
-  void handleInvestigation(EntityPtr entity, EntityState &state, float deltaTime);
-  void handleReturnToPost(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateAlertLevel(BehaviorData& data, bool threatPresent) const;
+  void handleThreatDetection(BehaviorContext& ctx, BehaviorData& data, EntityHandle threat);
+  void handleInvestigation(BehaviorContext& ctx, BehaviorData& data);
+  void handleReturnToPost(BehaviorContext& ctx, BehaviorData& data);
 
   // Mode-specific updates
-  void updateStaticGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updatePatrolGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateAreaGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateRoamingGuard(EntityPtr entity, EntityState &state, float deltaTime);
-  void updateAlertGuard(EntityPtr entity, EntityState &state, float deltaTime);
+  void updateStaticGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updatePatrolGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateAreaGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateRoamingGuard(BehaviorContext& ctx, BehaviorData& data);
+  void updateAlertGuard(BehaviorContext& ctx, BehaviorData& data);
 
   // Movement and positioning
-  void moveToPosition(EntityPtr entity, const Vector2D &targetPos, float speed, float deltaTime);
-  Vector2D getNextPatrolWaypoint(const EntityState &state) const;
-  Vector2D generateRoamTarget(EntityPtr entity, const EntityState &state) const;
+  void moveToPositionDirect(BehaviorContext& ctx, const Vector2D &targetPos, float speed,
+                           int priority = 1);
+  Vector2D getNextPatrolWaypoint(const BehaviorData& data) const;
+  Vector2D generateRoamTarget() const;
   bool isAtPosition(const Vector2D &currentPos, const Vector2D &targetPos,
                     float threshold = 25.0f) const;
   bool isWithinGuardArea(const Vector2D &position) const;
   Vector2D clampToGuardArea(const Vector2D &position) const;
 
   // Communication helpers
-  void callForHelp(EntityPtr entity, const Vector2D &threatPosition);
-  void broadcastAlert(EntityPtr entity, AlertLevel level,
-                      const Vector2D &alertPosition);
+  void callForHelp(const Vector2D &threatPosition);
+  void broadcastAlert(AlertLevel level, const Vector2D &alertPosition);
 };
 
 #endif // GUARD_BEHAVIOR_HPP

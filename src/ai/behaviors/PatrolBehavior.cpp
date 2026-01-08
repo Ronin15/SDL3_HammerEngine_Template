@@ -4,13 +4,11 @@
  */
 
 #include "ai/behaviors/PatrolBehavior.hpp"
-#include "ai/internal/Crowd.hpp"
-#include "managers/PathfinderManager.hpp"
-#include "ai/internal/SpatialPriority.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"
-#include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
+#include "managers/PathfinderManager.hpp"
 #include "managers/WorldManager.hpp"
 #include <algorithm>
 #include <chrono>
@@ -30,8 +28,9 @@ std::mt19937 &getSharedRNG() {
 }
 } // namespace
 
-PatrolBehavior::PatrolBehavior(const HammerEngine::PatrolBehaviorConfig& config)
-    : m_config(config), m_waypoints(), m_currentWaypoint(0), m_moveSpeed(config.moveSpeed),
+PatrolBehavior::PatrolBehavior(const HammerEngine::PatrolBehaviorConfig &config)
+    : m_config(config), m_waypoints(), m_currentWaypoint(0),
+      m_moveSpeed(config.moveSpeed),
       m_waypointRadius(config.waypointReachedRadius),
       m_includeOffscreenPoints(false), m_needsReset(false),
       m_patrolMode(PatrolMode::FIXED_WAYPOINTS), m_rng(getSharedRNG()),
@@ -67,21 +66,33 @@ PatrolBehavior::PatrolBehavior(PatrolMode mode, float moveSpeed,
   setupModeDefaults(mode);
 }
 
-void PatrolBehavior::init(EntityPtr entity) {
-  if (!entity || m_waypoints.empty())
+void PatrolBehavior::init(EntityHandle handle) {
+  if (!handle.isValid() || m_waypoints.empty())
     return;
 
   m_currentWaypoint = 0;
 
-  if (isAtWaypoint(entity->getPosition(), m_waypoints[m_currentWaypoint])) {
-    m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+  // Get position from EDM
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = edm.getIndex(handle);
+  if (idx != SIZE_MAX) {
+    // Initialize behavior data in EDM (required for pathData access in
+    // executeLogic)
+    edm.initBehaviorData(idx, BehaviorType::Patrol);
+    auto &data = edm.getBehaviorData(idx);
+    data.setInitialized(true);
+
+    Vector2D position = edm.getHotDataByIndex(idx).transform.position;
+    if (isAtWaypoint(position, m_waypoints[m_currentWaypoint])) {
+      m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
+    }
   }
 
   // Bounds are enforced centrally by AIManager; no per-entity toggles needed
 }
 
-void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
-  if (!entity || !m_active || m_waypoints.empty()) {
+void PatrolBehavior::executeLogic(BehaviorContext &ctx) {
+  if (!m_active || m_waypoints.empty() || !ctx.pathData) {
     return;
   }
 
@@ -90,27 +101,33 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     m_currentWaypoint = 0;
   }
 
-  Vector2D position = entity->getPosition();
+  Vector2D position = ctx.transform.position;
+  float deltaTime = ctx.deltaTime;
 
-  // Increment timers (deltaTime in seconds)
-  m_pathUpdateTimer += deltaTime;
-  m_progressTimer += deltaTime;
-  if (m_backoffTimer > 0.0f) {
-    m_backoffTimer -= deltaTime; // Countdown
+  // Use pre-fetched path data from context (no Instance() call needed)
+  auto &pathData = *ctx.pathData;
+
+  // Update EDM path timers
+  pathData.pathUpdateTimer += deltaTime;
+  pathData.progressTimer += deltaTime;
+  if (pathData.pathRequestCooldown > 0.0f) {
+    pathData.pathRequestCooldown -= deltaTime;
   }
   if (m_waypointCooldown > 0.0f) {
-    m_waypointCooldown -= deltaTime; // Countdown
+    m_waypointCooldown -= deltaTime; // Countdown (waypoint cooldown stays
+                                     // per-behavior for shared routes)
   }
 
   Vector2D targetWaypoint = m_waypoints[m_currentWaypoint];
 
-  // Use behavior-defined target; managers will normalize for pathfinding
-
   // State: APPROACHING_WAYPOINT - Check if we've reached current waypoint
   if (isAtWaypoint(position, targetWaypoint)) {
-    // Enforce minimum time between waypoint transitions to prevent oscillation (750ms)
+    // Enforce minimum time between waypoint transitions to prevent oscillation
+    // (750ms)
     if (m_waypointCooldown <= 0.0f) {
-      m_waypointCooldown = m_config.waypointCooldown; // Cooldown before advancing to next waypoint
+      m_waypointCooldown =
+          m_config
+              .waypointCooldown; // Cooldown before advancing to next waypoint
 
       // Advance to next waypoint
       m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
@@ -124,16 +141,16 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
       // Update target after waypoint advance
       targetWaypoint = m_waypoints[m_currentWaypoint];
 
-      // Clear path state when changing waypoints to force new pathfinding
-      m_navPath.clear();
-      m_navIndex = 0;
-      m_pathUpdateTimer = 0.0f;
-      m_stallTimer = 0.0f; // Reset stall detection
+      // Clear EDM path state when changing waypoints to force new pathfinding
+      pathData.clear();
+      pathData.stallTimer = 0.0f; // Reset stall detection
     }
-    // If still in cooldown, continue toward current waypoint without advancing
   }
 
   // CACHE-AWARE PATROL: Smart pathfinding with cooldown system
+  const bool skipRefresh =
+      (pathData.pathRequestCooldown > 0.0f && pathData.isFollowingPath() &&
+       pathData.progressTimer < 0.8f);
   bool needsNewPath = false;
 
   // Only request new path if:
@@ -141,67 +158,70 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
   // 2. Path is completed, OR
   // 3. Path is stale (>5 seconds), OR
   // 4. We changed waypoints
-  if (m_navPath.empty() || m_navIndex >= m_navPath.size()) {
-    needsNewPath = true;
-  } else if (m_pathUpdateTimer > 5.0f) { // Path older than 5 seconds
-    needsNewPath = true;
-  } else {
-    // Check if we're targeting a different waypoint than when path was computed
-    // PERFORMANCE: Use squared distance to avoid sqrt()
-    Vector2D pathGoal = m_navPath.back();
-    float const waypointChangeSquared = (targetWaypoint - pathGoal).lengthSquared();
-    needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
+  if (!skipRefresh) {
+    if (!pathData.hasPath || pathData.navIndex >= pathData.pathLength) {
+      needsNewPath = true;
+    } else if (pathData.pathUpdateTimer > 8.0f) { // Path older than 8 seconds
+      needsNewPath = true;
+    } else {
+      // Check if we're targeting a different waypoint than when path was
+      // computed
+      auto &edm = EntityDataManager::Instance();
+      Vector2D pathGoal = edm.getPathGoal(ctx.edmIndex);
+      float const waypointChangeSquared =
+          (targetWaypoint - pathGoal).lengthSquared();
+      needsNewPath = (waypointChangeSquared > 2500.0f); // 50^2 = 2500
+    }
   }
 
   // OBSTACLE DETECTION: Force path refresh if stuck on obstacle (800ms = 0.8s)
-  bool const stuckOnObstacle = (m_progressTimer > 0.8f);
+  bool const stuckOnObstacle = (pathData.progressTimer > 0.8f);
   if (stuckOnObstacle) {
-    m_navPath.clear(); // Clear path to force refresh
-    m_navIndex = 0;
+    pathData.clear();
   }
 
-  // Per-instance cooldown via m_backoffTimer; no global static throttle
-  if ((needsNewPath || stuckOnObstacle) && m_backoffTimer <= 0.0f) {
+  // Per-entity cooldown via pathData.pathRequestCooldown
+  if ((needsNewPath || stuckOnObstacle) &&
+      pathData.pathRequestCooldown <= 0.0f) {
     // GOAL VALIDATION: Don't request path if already at waypoint
-    // PERFORMANCE: Use squared distance to avoid sqrt()
     float const distanceSquared = (targetWaypoint - position).lengthSquared();
-    if (distanceSquared < (m_waypointRadius * m_waypointRadius)) { // Already at waypoint
-      return; // Skip pathfinding request
+    if (distanceSquared < (m_waypointRadius * m_waypointRadius)) {
+      ctx.transform.velocity = Vector2D(0, 0); // Stop movement when at waypoint
+      return;
     }
-    
-    // PATHFINDING CONSOLIDATION: All requests now use PathfinderManager  
-    Vector2D clampedStart = position;
-    Vector2D clampedGoal = targetWaypoint;
-    
-    auto self = std::static_pointer_cast<PatrolBehavior>(shared_from_this());
-    pathfinder().requestPath(
-        entity->getID(), clampedStart, clampedGoal,
-        PathfinderManager::Priority::Normal,
-        [self, entity](EntityID, const std::vector<Vector2D>& path) {
-          if (!path.empty()) {
-            self->m_navPath = path;
-            self->m_navIndex = 0;
-            self->m_pathUpdateTimer = 0.0f;
-          }
-        });
-    // PERFORMANCE FIX: Long cooldown to match WanderBehavior (15-18 seconds)
-    // Reduces path requests from 1333/sec to ~120/sec with 2000 NPCs
-    m_backoffTimer = m_config.pathRequestCooldown + (entity->getID() % static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) * 0.001f;
+
+    // EDM-integrated async pathfinding - result written directly to EDM
+    pathfinder().requestPathToEDM(ctx.edmIndex, position, targetWaypoint,
+                                  PathfinderManager::Priority::Normal);
+    pathData.pathRequestCooldown =
+        m_config.pathRequestCooldown +
+        (ctx.entityId %
+         static_cast<int>(m_config.pathRequestCooldownVariation * 1000)) *
+            0.001f;
   }
 
-  // State: FOLLOWING_PATH or DIRECT_MOVEMENT
-  if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-    // Following computed path
-    using namespace AIInternal;
-    bool following =
-        pathfinder().followPathStep(entity, position, m_navPath, m_navIndex,
-                                 m_moveSpeed, m_navRadius);
-    if (following) {
-      m_progressTimer = 0.0f;
-      // Separation decimation: compute at most every 2-4 seconds
-      applyDecimatedSeparation(entity, position, entity->getVelocity(),
-                               m_moveSpeed, 24.0f, 0.20f, 4, m_separationTimer,
-                               m_lastSepVelocity, deltaTime);
+  // State: FOLLOWING_PATH or DIRECT_MOVEMENT (using EDM path state)
+  if (pathData.isFollowingPath()) {
+    // Following computed path - lock-free path following via waypoint pool
+    Vector2D waypoint = ctx.pathData->currentWaypoint;
+    Vector2D toWaypoint = waypoint - position;
+    float dist = toWaypoint.length();
+
+    if (dist < m_navRadius) {
+      auto &edm = EntityDataManager::Instance();
+      edm.advanceWaypointWithCache(ctx.edmIndex);
+      if (pathData.isFollowingPath()) {
+        waypoint = ctx.pathData->currentWaypoint;
+        toWaypoint = waypoint - position;
+        dist = toWaypoint.length();
+      }
+    }
+
+    if (dist > 0.001f) {
+      Vector2D direction = toWaypoint / dist;
+      ctx.transform.velocity = direction * m_moveSpeed;
+      pathData.progressTimer = 0.0f;
+      // CollisionManager handles overlap resolution
     }
   } else {
     // Direct movement to waypoint
@@ -212,90 +232,82 @@ void PatrolBehavior::executeLogic(EntityPtr entity, float deltaTime) {
     } else {
       direction.normalize();
     }
-    entity->setVelocity(direction * m_moveSpeed);
-    m_progressTimer = 0.0f;
+    ctx.transform.velocity = direction * m_moveSpeed;
+    pathData.progressTimer = 0.0f;
   }
 
   // State: STALL_DETECTION - Handle entities that get stuck
-  // PERFORMANCE: Use squared length to avoid sqrt()
-  float currentSpeedSquared = entity->getVelocity().lengthSquared();
-  const float stallThreshold = std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
+  float currentSpeedSquared = ctx.transform.velocity.lengthSquared();
+  const float stallThreshold =
+      std::max(1.0f, m_moveSpeed * m_config.stallSpeedMultiplier);
   const float stallThresholdSquared = stallThreshold * stallThreshold;
 
   if (currentSpeedSquared < stallThresholdSquared) {
-    m_stallTimer += deltaTime; // Accumulate stall time
-    if (m_stallTimer > 2.0f) { // 2 second stall detection
+    pathData.stallTimer += deltaTime;
+    if (pathData.stallTimer > 2.0f) {
       // Apply stall recovery: try sidestep maneuver or advance waypoint
-      if (!m_navPath.empty() && m_navIndex < m_navPath.size()) {
-        Vector2D toNode = m_navPath[m_navIndex] - position;
+      if (pathData.isFollowingPath()) {
+        Vector2D toNode = ctx.pathData->currentWaypoint - position;
         float const len = toNode.length();
         if (len > 0.01f) {
           Vector2D const dir = toNode * (1.0f / len);
           Vector2D const perp(-dir.getY(), dir.getX());
-          float side = ((entity->getID() & 1) ? 1.0f : -1.0f);
+          float side = ((ctx.entityId & 1) ? 1.0f : -1.0f);
           Vector2D sidestep = pathfinder().clampToWorldBounds(
               position + perp * (96.0f * side), 100.0f);
-          auto self = std::static_pointer_cast<PatrolBehavior>(shared_from_this());
-          pathfinder().requestPath(
-              entity->getID(), pathfinder().clampToWorldBounds(position, 100.0f), sidestep,
-              PathfinderManager::Priority::Normal,
-              [self](EntityID, const std::vector<Vector2D> &path) {
-                if (!path.empty()) {
-                  self->m_navPath = path;
-                  self->m_navIndex = 0;
-                  self->m_pathUpdateTimer = 0.0f;
-                }
-              });
 
-          if (m_navPath.empty()) {
-            // Fallback: advance waypoint and apply backoff (10-12 seconds)
-            m_backoffTimer = 10.0f + (entity->getID() % 2000) * 0.001f;
-            m_navPath.clear();
-            m_navIndex = 0;
-            if (m_waypointCooldown <= 0.0f) { // Cooldown already expired (>1.5s since last advance)
-              m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
-              m_waypointCooldown = 1.5f;
-            }
-          }
+          // EDM-integrated async pathfinding for sidestep recovery
+          pathfinder().requestPathToEDM(
+              ctx.edmIndex, pathfinder().clampToWorldBounds(position, 100.0f),
+              sidestep, PathfinderManager::Priority::Normal);
         }
       } else {
-        // No path available, advance waypoint (10-12 seconds backoff)
-        m_backoffTimer = 10.0f + (entity->getID() % 2000) * 0.001f;
-        if (m_waypointCooldown <= 0.0f) { // Cooldown already expired
+        pathData.pathRequestCooldown = 10.0f + (ctx.entityId % 2000) * 0.001f;
+        if (m_waypointCooldown <= 0.0f) {
           m_currentWaypoint = (m_currentWaypoint + 1) % m_waypoints.size();
           m_waypointCooldown = 1.5f;
         }
       }
-      m_stallTimer = 0.0f; // Reset stall timer after recovery attempt
+      pathData.stallTimer = 0.0f;
     }
   } else {
-    m_stallTimer = 0.0f; // Reset stall timer when moving normally
+    pathData.stallTimer = 0.0f;
   }
 }
 
-void PatrolBehavior::clean(EntityPtr entity) {
-  if (entity) {
-    entity->setVelocity(Vector2D(0, 0));
+void PatrolBehavior::clean(EntityHandle handle) {
+  if (handle.isValid()) {
+    // Reset velocity and clear path state via EDM
+    auto &edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(handle);
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
+      edm.clearPathData(idx); // Clear path state in EDM
+    }
   }
 
   m_needsReset = false;
 }
 
-void PatrolBehavior::onMessage(EntityPtr entity, const std::string &message) {
+void PatrolBehavior::onMessage(EntityHandle handle,
+                               const std::string &message) {
+  // Cache EDM index once for messages that need velocity access
+  auto &edm = EntityDataManager::Instance();
+  size_t idx = handle.isValid() ? edm.getIndex(handle) : SIZE_MAX;
+
   if (message == "pause") {
     setActive(false);
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
   } else if (message == "resume") {
     setActive(true);
   } else if (message == "reverse") {
     reverseWaypoints();
   } else if (message == "release_entities") {
-    if (entity) {
-      entity->setVelocity(Vector2D(0, 0));
+    if (idx != SIZE_MAX) {
+      edm.getHotDataByIndex(idx).transform.velocity = Vector2D(0, 0);
     }
-
     m_needsReset = false;
   }
 }
@@ -596,11 +608,13 @@ void PatrolBehavior::ensureRandomSeed() const {}
 void PatrolBehavior::setupModeDefaults(PatrolMode mode) {
   m_patrolMode = mode;
 
-  // Use world bounds instead of screen dimensions for true world-scale patrolling
+  // Use world bounds instead of screen dimensions for true world-scale
+  // patrolling
   float minX, minY, maxX, maxY;
   if (!WorldManager::Instance().getWorldBounds(minX, minY, maxX, maxY)) {
     // No world loaded - use fallback defaults and log warning
-    AI_WARN("PatrolBehavior: World bounds unavailable, using fallback waypoints");
+    AI_WARN(
+        "PatrolBehavior: World bounds unavailable, using fallback waypoints");
     m_waypoints.clear();
     m_waypoints.reserve(2);
     m_waypoints.emplace_back(100.0f, 100.0f);

@@ -79,6 +79,10 @@ public:
         // Mock clean - do nothing
     }
 
+    [[nodiscard]] EntityKind getKind() const override {
+        return EntityKind::NPC;
+    }
+
 private:
     WanderArea m_wanderArea;
     bool m_boundsCheckEnabled;

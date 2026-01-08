@@ -38,6 +38,7 @@ public:
     void update(float deltaTime) override;
     void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override;
     void clean() override;
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::DroppedItem; }
 
     // DroppedItem specific methods
     HammerEngine::ResourceHandle getResourceHandle() const { return m_resourceHandle; }
@@ -59,6 +60,7 @@ protected:
     int m_quantity;
     float m_pickupTimer;           // Timer for pickup availability
     float m_bobTimer;              // Timer for visual bobbing effect
+    float m_animTimer{0.0f};       // Animation frame timer (per-instance)
     bool m_canBePickedUp;          // Whether this item can be picked up
     
     // Visual effects

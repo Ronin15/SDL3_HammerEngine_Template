@@ -44,6 +44,18 @@ This directory contains documentation for all major manager systems in the Hamme
 
 ---
 
+## Entity Data Systems
+
+These managers provide the core Data-Oriented Design infrastructure for entity management:
+
+- **[EntityDataManager](EntityDataManager.md)**
+  Central data authority for all entity data using Structure-of-Arrays (SoA) storage. Provides cache-optimal 64-byte EntityHotData structs, simulation tier management (Active/Background/Hibernated), and thread-safe index-based accessors for parallel batch processing. Single source of truth eliminating 4x position duplication.
+
+- **[BackgroundSimulationManager](BackgroundSimulationManager.md)**
+  Processes off-screen (Background tier) entities with simplified simulation. Updates entity positions at 10Hz, handles tier reassignment every 60 frames, and provides power-efficient processing that scales to 100K+ entities.
+
+---
+
 ## Additional Major Managers (Documented in Subfolders)
 
 Some advanced managers have their own dedicated documentation folders:

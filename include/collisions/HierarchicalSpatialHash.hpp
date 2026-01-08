@@ -10,13 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <cstdint>
-#include <atomic>
-#include <memory>
-#include <array>
-#include <functional>
-#include <shared_mutex>
 #include "collisions/AABB.hpp"
-#include "entities/Entity.hpp"
 
 namespace HammerEngine {
 
@@ -171,8 +165,7 @@ private:
     };
     std::unordered_map<size_t, BodyLocation> m_bodyLocations;
 
-    // Thread safety - concurrent reads, exclusive writes (kept for future thread safety if needed)
-    mutable std::shared_mutex m_regionsMutex;
+    // SINGLE-THREADED: Collision runs on main thread only, no locks needed
 
     // PERFORMANCE: Persistent buffers to eliminate per-query allocations (single-threaded safe)
     mutable std::unordered_set<size_t> m_tempSeenBodies;

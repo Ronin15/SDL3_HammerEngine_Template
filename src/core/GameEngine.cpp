@@ -7,7 +7,6 @@
 #include "SDL3/SDL_render.h"
 #include "SDL3/SDL_surface.h"
 #include "SDL3/SDL_video.h"
-#include "managers/GameTimeManager.hpp"
 #include "core/Logger.hpp"
 #include "core/ThreadSystem.hpp"
 #include "gameStates/AIDemoState.hpp"
@@ -21,9 +20,13 @@
 #include "gameStates/SettingsMenuState.hpp"
 #include "gameStates/UIDemoState.hpp"
 #include "managers/AIManager.hpp"
+#include "managers/BackgroundSimulationManager.hpp"
+#include "managers/CollisionManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/FontManager.hpp"
 #include "managers/GameStateManager.hpp"
+#include "managers/GameTimeManager.hpp"
 #include "managers/InputManager.hpp"
 #include "managers/ParticleManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -35,9 +38,6 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
-#include "managers/CollisionManager.hpp"
-#include <atomic>
-#include <chrono>
 #include <cstdlib>
 #include <format>
 #include <future>
@@ -53,7 +53,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Initialize video and gamepad together to ensure proper IOKit setup on macOS
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
-    GAMEENGINE_CRITICAL(std::format("SDL initialization failed: {}", SDL_GetError()));
+    GAMEENGINE_CRITICAL(
+        std::format("SDL initialization failed: {}", SDL_GetError()));
     return false;
   }
 
@@ -72,12 +73,21 @@ bool GameEngine::init(const std::string_view title, const int width,
   SDL_SetHint("SDL_RENDER_BATCHING",
               "1"); // Enable render batching for performance
 
-  // Texture memory management and text rendering optimization
-  SDL_SetHint("SDL_HINT_RENDER_VSYNC", "1"); // Ensure VSync is properly handled
-  SDL_SetHint("SDL_HINT_VIDEO_DOUBLE_BUFFER",
-              "1"); // Enable double buffering for smoother rendering
-  SDL_SetHint("SDL_HINT_FRAMEBUFFER_ACCELERATION",
-              "1"); // Enable framebuffer acceleration
+// Prefer Vulkan backend for lower per-draw-call overhead on Linux/AMD
+// SDL3 auto-falls back to OpenGL if Vulkan unavailable
+#ifdef __linux__
+  SDL_SetHint(SDL_HINT_RENDER_DRIVER, "vulkan");
+#endif
+
+  // VSync and buffering hints
+  // VSync hint - preference before renderer creation (runtime API
+  // SDL_SetRenderVSync() also used)
+  SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+  // Double buffer hint - only supported on Raspberry Pi and Wayland (no-op on
+  // Windows/macOS)
+  SDL_SetHint(SDL_HINT_VIDEO_DOUBLE_BUFFER, "1");
+  // Framebuffer acceleration - cross-platform
+  SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");
 
 // macOS-specific hints for better fullscreen and DPI handling
 #ifdef __APPLE__
@@ -93,12 +103,14 @@ bool GameEngine::init(const std::string_view title, const int width,
     // Default to reasonable size if not specified
     m_windowWidth = 1280;
     m_windowHeight = 720;
-    GAMEENGINE_INFO(std::format("Using default window size: {}x{}", m_windowWidth, m_windowHeight));
+    GAMEENGINE_INFO(std::format("Using default window size: {}x{}",
+                                m_windowWidth, m_windowHeight));
   } else {
     // Use the provided dimensions
     m_windowWidth = width;
     m_windowHeight = height;
-    GAMEENGINE_INFO(std::format("Using requested window size: {}x{}", m_windowWidth, m_windowHeight));
+    GAMEENGINE_INFO(std::format("Using requested window size: {}x{}",
+                                m_windowWidth, m_windowHeight));
   }
 
   // Save windowed dimensions before fullscreen might override them
@@ -110,30 +122,45 @@ bool GameEngine::init(const std::string_view title, const int width,
   std::unique_ptr<SDL_DisplayID[], decltype(&SDL_free)> displays(
       SDL_GetDisplays(&displayCount), SDL_free);
 
-  const SDL_DisplayMode* displayMode = nullptr;
+  const SDL_DisplayMode *displayMode = nullptr;
   if (displays && displayCount > 0) {
     displayMode = SDL_GetDesktopDisplayMode(displays[0]);
     if (displayMode) {
       GAMEENGINE_INFO(std::format("Primary display: {}x{} @ {}Hz",
-                                  displayMode->w, displayMode->h, displayMode->refresh_rate));
+                                  displayMode->w, displayMode->h,
+                                  displayMode->refresh_rate));
 
       // If requested window size is larger than 90% of display, use fullscreen
-      // This prevents awkward oversized windows on smaller displays (handhelds, laptops)
+      // This prevents awkward oversized windows on smaller displays (handhelds,
+      // laptops)
       const float displayUsageThreshold = 0.9f;
       if (!fullscreen &&
-          (m_windowWidth > static_cast<int>(displayMode->w * displayUsageThreshold) ||
-           m_windowHeight > static_cast<int>(displayMode->h * displayUsageThreshold))) {
-        GAMEENGINE_INFO(std::format("Requested window size ({}x{}) is larger than {}% of display - enabling fullscreen for better UX",
-                                    m_windowWidth, m_windowHeight, static_cast<int>(displayUsageThreshold * 100)));
+          (m_windowWidth >
+               static_cast<int>(displayMode->w * displayUsageThreshold) ||
+           m_windowHeight >
+               static_cast<int>(displayMode->h * displayUsageThreshold))) {
+        GAMEENGINE_INFO(
+            std::format("Requested window size ({}x{}) is larger than {}% of "
+                        "display - enabling fullscreen for better UX",
+                        m_windowWidth, m_windowHeight,
+                        static_cast<int>(displayUsageThreshold * 100)));
         fullscreen = true;
       }
     }
   } else {
-    GAMEENGINE_WARN("Could not query display capabilities - proceeding with requested dimensions");
+    GAMEENGINE_WARN("Could not query display capabilities - proceeding with "
+                    "requested dimensions");
   }
   // Window handling with platform-specific optimizations
-  SDL_WindowFlags const flags =
-      fullscreen ? (SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY) : 0;
+  SDL_WindowFlags flags = 0;
+#ifdef __APPLE__
+  // Always use high pixel density on macOS for crisp Retina rendering in both
+  // windowed and fullscreen
+  flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+#endif
+  if (fullscreen) {
+    flags |= SDL_WINDOW_FULLSCREEN;
+  }
 
   if (fullscreen) {
 #ifdef __APPLE__
@@ -145,7 +172,8 @@ bool GameEngine::init(const std::string_view title, const int width,
     if (displayMode) {
       m_windowWidth = displayMode->w;
       m_windowHeight = displayMode->h;
-      GAMEENGINE_INFO(std::format("Window size set to Full Screen: {}x{}", m_windowWidth, m_windowHeight));
+      GAMEENGINE_INFO(std::format("Window size set to Full Screen: {}x{}",
+                                  m_windowWidth, m_windowHeight));
     }
 #endif
   }
@@ -157,7 +185,8 @@ bool GameEngine::init(const std::string_view title, const int width,
       SDL_CreateWindow(title.data(), m_windowWidth, m_windowHeight, flags));
 
   if (!mp_window) {
-    GAMEENGINE_ERROR(std::format("Failed to create window: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(
+        std::format("Failed to create window: {}", SDL_GetError()));
     return false;
   }
 
@@ -195,17 +224,20 @@ bool GameEngine::init(const std::string_view title, const int width,
   int logicalHeight = m_windowHeight;
 
   if (!SDL_GetWindowSizeInPixels(mp_window.get(), &pixelWidth, &pixelHeight)) {
-    GAMEENGINE_ERROR(std::format("Failed to get window pixel size: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(
+        std::format("Failed to get window pixel size: {}", SDL_GetError()));
   }
   if (!SDL_GetWindowSize(mp_window.get(), &logicalWidth, &logicalHeight)) {
-    GAMEENGINE_ERROR(std::format("Failed to get window logical size: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(
+        std::format("Failed to get window logical size: {}", SDL_GetError()));
   }
 
   // Create renderer (let SDL3 choose the best available backend)
   mp_renderer.reset(SDL_CreateRenderer(mp_window.get(), NULL));
 
   if (!mp_renderer) {
-    GAMEENGINE_ERROR(std::format("Failed to create renderer: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(
+        std::format("Failed to create renderer: {}", SDL_GetError()));
     return false;
   }
 
@@ -213,7 +245,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 #ifdef DEBUG
   auto rendererName = SDL_GetRendererName(mp_renderer.get());
   if (rendererName) {
-    GAMEENGINE_INFO(std::format("SDL3 selected renderer backend: {}", rendererName));
+    GAMEENGINE_INFO(
+        std::format("SDL3 selected renderer backend: {}", rendererName));
   } else {
     GAMEENGINE_WARN("Could not determine selected renderer backend");
   }
@@ -246,71 +279,58 @@ bool GameEngine::init(const std::string_view title, const int width,
   if (m_isWayland) {
     GAMEENGINE_INFO("Platform detected: Wayland");
   } else {
-    GAMEENGINE_INFO(std::format("Platform detected: {}", videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
+    GAMEENGINE_INFO(std::format(
+        "Platform detected: {}",
+        videoDriver.empty() ? "Unknown" : std::string(videoDriver)));
   }
 #endif
 
   // Load VSync preference from SettingsManager (defaults to enabled)
-  auto& settings = HammerEngine::SettingsManager::Instance();
+  auto &settings = HammerEngine::SettingsManager::Instance();
   bool vsyncRequested = settings.get<bool>("graphics", "vsync", true);
-  GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}", vsyncRequested ? "enabled" : "disabled"));
+  m_vsyncRequested = vsyncRequested;
+  GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}",
+                              vsyncRequested ? "enabled" : "disabled"));
 
   // Attempt to set VSync based on user preference
-  bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
+  bool vsyncSetSuccessfully =
+      SDL_SetRenderVSync(mp_renderer.get(), vsyncRequested ? 1 : 0);
 
   GAMEENGINE_WARN_IF(!vsyncSetSuccessfully,
-      std::format("Failed to {} VSync: {}",
-                  vsyncRequested ? "enable" : "disable", SDL_GetError()));
+                     std::format("Failed to {} VSync: {}",
+                                 vsyncRequested ? "enable" : "disable",
+                                 SDL_GetError()));
 
-  // Verify VSync state and update software frame limiting flag
-  // verifyVSyncState() updates m_usingSoftwareFrameLimiting as a side effect
+  // Create TimestepManager (uses default 60 FPS target and 1/60s fixed
+  // timestep)
+  m_timestepManager = std::make_unique<TimestepManager>();
+
+  // Verify VSync state and configure software frame limiting in TimestepManager
   if (vsyncSetSuccessfully) {
     verifyVSyncState(vsyncRequested);
-  }
-
-#ifdef DEBUG
-  // Log frame timing mode
-  if (m_usingSoftwareFrameLimiting) {
-    if (vsyncRequested) {
-      GAMEENGINE_INFO("Using software frame limiting (VSync unavailable or failed verification)");
-    } else {
-      GAMEENGINE_INFO("Using software frame limiting (VSync disabled by user)");
-    }
   } else {
-    GAMEENGINE_INFO("Using hardware VSync for frame timing");
+    m_timestepManager->setSoftwareFrameLimiting(true);
   }
-#endif
 
-  // Create TimestepManager with 60 FPS target and fixed timestep
-  constexpr float TARGET_FPS = 60.0f;
-  constexpr float FIXED_TIMESTEP = 1.0f / 60.0f;
-  m_timestepManager = std::make_unique<TimestepManager>(TARGET_FPS, FIXED_TIMESTEP);
-
-  // Configure software frame limiting if hardware VSync is unavailable
-  m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
-  GAMEENGINE_INFO(std::format("TimestepManager created: {} FPS, {} frame limiting",
-                              TARGET_FPS, m_usingSoftwareFrameLimiting ? "software" : "hardware"));
-
-  // Load buffer configuration from SettingsManager (graphics settings)
-  m_bufferCount = static_cast<size_t>(settings.get<int>("graphics", "buffer_count", 2));
-  // Clamp to valid range [2, 3]
-  if (m_bufferCount < 2) m_bufferCount = 2;
-  if (m_bufferCount > 3) m_bufferCount = 3;
-  GAMEENGINE_INFO(std::format("Buffer mode: {} buffering configured",
-                              m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
-
-#ifdef DEBUG
-  // Buffer telemetry is disabled by default, press F3 to enable console logging
-  GAMEENGINE_INFO("Buffer telemetry: OFF (F3 to enable console logging every 5s)");
-#endif
+  if (m_timestepManager->isUsingSoftwareFrameLimiting()) {
+    TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, {:.0f} FPS target, "
+                              "software frame limiting",
+                              m_timestepManager->getUpdateFrequencyHz(),
+                              m_timestepManager->getTargetFPS()));
+  } else {
+    TIMESTEP_INFO(std::format("Created: {:.0f} Hz updates, VSync enabled",
+                              m_timestepManager->getUpdateFrequencyHz()));
+  }
 
   if (!SDL_SetRenderDrawColor(
           mp_renderer.get(),
           HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-    GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to set initial render draw color: {}",
+                                 SDL_GetError()));
   }
   // Use native resolution rendering on all platforms for crisp, sharp text
-  // This eliminates GPU scaling blur and provides consistent cross-platform behavior
+  // This eliminates GPU scaling blur and provides consistent cross-platform
+  // behavior
   int const actualWidth = pixelWidth;
   int const actualHeight = pixelHeight;
 
@@ -323,11 +343,13 @@ bool GameEngine::init(const std::string_view title, const int width,
       SDL_LOGICAL_PRESENTATION_DISABLED;
   if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth,
                                         actualHeight, presentationMode)) {
-    GAMEENGINE_ERROR(std::format("Failed to set render logical presentation: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(std::format(
+        "Failed to set render logical presentation: {}", SDL_GetError()));
   }
 
-  GAMEENGINE_INFO(std::format("Using native resolution for crisp rendering: {}x{}",
-                              actualWidth, actualHeight));
+  GAMEENGINE_INFO(
+      std::format("Using native resolution for crisp rendering: {}x{}",
+                  actualWidth, actualHeight));
   // Render Mode.
   SDL_SetRenderDrawBlendMode(mp_renderer.get(), SDL_BLENDMODE_BLEND);
 
@@ -359,8 +381,9 @@ bool GameEngine::init(const std::string_view title, const int width,
     // On macOS, use the native display content scale for proper text rendering
     float displayScale = SDL_GetWindowDisplayScale(mp_window.get());
     dpiScale = (displayScale > 0.0f) ? displayScale : 1.0f;
-    GAMEENGINE_INFO(std::format("macOS display content scale: {} {}",
-                                dpiScale, displayScale > 0.0f ? "(detected)" : "(fallback)"));
+    GAMEENGINE_INFO(
+        std::format("macOS display content scale: {} {}", dpiScale,
+                    displayScale > 0.0f ? "(detected)" : "(fallback)"));
 #else
     // On other platforms, don't apply additional DPI scaling - SDL3 logical
     // presentation handles it
@@ -376,8 +399,8 @@ bool GameEngine::init(const std::string_view title, const int width,
   GAMEENGINE_INFO("Using display-aware font sizing - SDL3 handles DPI scaling "
                   "automatically");
 
-  GAMEENGINE_INFO(std::format("DPI scale: {}, window: {}x{}",
-                              dpiScale, m_windowWidth, m_windowHeight));
+  GAMEENGINE_INFO(std::format("DPI scale: {}, window: {}x{}", dpiScale,
+                              m_windowWidth, m_windowHeight));
 
   // Use multiple threads for initialization
   std::vector<std::future<bool>> initTasks; // Initialization tasks vector
@@ -398,6 +421,22 @@ bool GameEngine::init(const std::string_view title, const int width,
             return true;
           }));
 
+  // Initialize EntityDataManager - #1.5
+  // Central data authority for all entities (Phase 1 of Entity System Overhaul)
+  // Must be initialized before any entities are created
+  initTasks.push_back(
+      HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
+          []() -> bool {
+            GAMEENGINE_INFO("Creating Entity Data Manager");
+            EntityDataManager &edm = EntityDataManager::Instance();
+            if (!edm.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Entity Data Manager");
+              return false;
+            }
+            GAMEENGINE_INFO("Entity Data Manager initialized successfully");
+            return true;
+          }));
+
   // Initialize input manager in a background thread - #2
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
@@ -405,6 +444,10 @@ bool GameEngine::init(const std::string_view title, const int width,
             GAMEENGINE_INFO(
                 "Detecting and initializing gamepads and input handling");
             InputManager &inputMgr = InputManager::Instance();
+            if (!inputMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Input Manager");
+              return false;
+            }
             inputMgr.initializeGamePad();
             return true;
           }));
@@ -455,10 +498,12 @@ bool GameEngine::init(const std::string_view title, const int width,
 
             GAMEENGINE_INFO("Loading fonts with display-aware sizing");
 
-            // Use logical dimensions to match UI coordinate system
+            // Use logical dimensions with DPI scale for proper sizing on
+            // high-DPI displays
             constexpr std::string_view fontsPath = "res/fonts";
             if (!fontMgr.loadFontsForDisplay(std::string(fontsPath),
-                                             m_logicalWidth, m_logicalHeight)) {
+                                             m_windowWidth, m_windowHeight,
+                                             m_dpiScale)) {
               GAMEENGINE_CRITICAL("Failed to load fonts for display");
               return false;
             }
@@ -471,6 +516,10 @@ bool GameEngine::init(const std::string_view title, const int width,
           []() -> bool {
             GAMEENGINE_INFO("Creating Save Game Manager");
             SaveGameManager &saveMgr = SaveGameManager::Instance();
+            if (!saveMgr.init()) {
+              GAMEENGINE_CRITICAL("Failed to initialize Save Game Manager");
+              return false;
+            }
 
             // Set the save directory to "res" folder
             constexpr std::string_view saveDir = "res";
@@ -512,7 +561,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Wait for AIManager dependencies to complete before proceeding
   // This enforces the initialization dependency graph explicitly
-  GAMEENGINE_INFO("Waiting for AIManager dependencies (PathfinderManager, CollisionManager)");
+  GAMEENGINE_INFO("Waiting for AIManager dependencies (PathfinderManager, "
+                  "CollisionManager)");
   try {
     if (!pathfinderFuture.get()) {
       GAMEENGINE_CRITICAL("PathfinderManager initialization failed");
@@ -523,13 +573,15 @@ bool GameEngine::init(const std::string_view title, const int width,
       return false;
     }
   } catch (const std::exception &e) {
-    GAMEENGINE_CRITICAL(std::format("AIManager dependency initialization threw exception: {}", e.what()));
+    GAMEENGINE_CRITICAL(std::format(
+        "AIManager dependency initialization threw exception: {}", e.what()));
     return false;
   }
   GAMEENGINE_INFO("AIManager dependencies initialized successfully");
 
   // Initialize AI Manager - #8
-  // Dependencies satisfied: PathfinderManager and CollisionManager are now fully initialized
+  // Dependencies satisfied: PathfinderManager and CollisionManager are now
+  // fully initialized
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
           []() -> bool {
@@ -626,7 +678,8 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Setting Up initial game states
   mp_gameStateManager->addState(std::make_unique<LogoState>());
-  mp_gameStateManager->addState(std::make_unique<LoadingState>());  // Shared loading screen state
+  mp_gameStateManager->addState(
+      std::make_unique<LoadingState>()); // Shared loading screen state
   mp_gameStateManager->addState(std::make_unique<MainMenuState>());
   mp_gameStateManager->addState(std::make_unique<SettingsMenuState>());
   mp_gameStateManager->addState(std::make_unique<GamePlayState>());
@@ -660,6 +713,24 @@ bool GameEngine::init(const std::string_view title, const int width,
     return false;
   }
   GAMEENGINE_INFO("GameTime initialized (starting at noon, 60x speed)");
+
+  // Initialize BackgroundSimulationManager (depends on EntityDataManager)
+  // Handles simplified simulation for off-screen entities (Phase 5 of Entity
+  // System Overhaul)
+  GAMEENGINE_INFO("Initializing Background Simulation Manager");
+  if (!BackgroundSimulationManager::Instance().init()) {
+    GAMEENGINE_CRITICAL("Failed to initialize Background Simulation Manager");
+    return false;
+  }
+  // Configure tier radii based on logical screen size (dynamic for different
+  // devices)
+  BackgroundSimulationManager::Instance().configureForScreenSize(
+      m_logicalWidth, m_logicalHeight);
+  GAMEENGINE_INFO(std::format(
+      "Background Simulation Manager initialized (activeRadius: {:.0f}, "
+      "backgroundRadius: {:.0f})",
+      BackgroundSimulationManager::Instance().getActiveRadius(),
+      BackgroundSimulationManager::Instance().getBackgroundRadius()));
 
   // Step 2: Cache manager references for performance (after all background init
   // complete)
@@ -709,6 +780,16 @@ bool GameEngine::init(const std::string_view title, const int width,
     }
     mp_collisionManager = &collisionMgrTest;
 
+    // Validate Background Simulation Manager before caching
+    BackgroundSimulationManager &bgSimMgrTest =
+        BackgroundSimulationManager::Instance();
+    if (!bgSimMgrTest.isInitialized()) {
+      GAMEENGINE_CRITICAL("BackgroundSimulationManager not properly "
+                          "initialized before caching!");
+      return false;
+    }
+    mp_backgroundSimManager = &bgSimMgrTest;
+
     // Validate Resource Manager before caching
     ResourceTemplateManager &resourceMgrTest =
         ResourceTemplateManager::Instance();
@@ -743,26 +824,11 @@ bool GameEngine::init(const std::string_view title, const int width,
 
     // Manager references are valid (assigned above)
 
-    // Verify managers are still responding after caching
-    try {
-      // Test AI Manager responsiveness
-      size_t entityCount = mp_aiManager->getManagedEntityCount();
-      GAMEENGINE_DEBUG(std::format("AIManager cached successfully, managing {} entities", entityCount));
-
-      // Test Event Manager responsiveness (just verify it's initialized)
-      GAMEENGINE_DEBUG("EventManager cached successfully and initialized");
-
-      // Test Particle Manager responsiveness
-      size_t activeParticles = mp_particleManager->getActiveParticleCount();
-      GAMEENGINE_DEBUG(std::format("ParticleManager cached successfully, {} active particles", activeParticles));
-    } catch (const std::exception &e) {
-      GAMEENGINE_CRITICAL(std::format("Manager validation failed after caching: {}", e.what()));
-      return false;
-    }
-
-    GAMEENGINE_INFO("Manager references cached and validated successfully");
+    // Manager references cached - managers handle their own logging internally
+    GAMEENGINE_INFO("Manager references cached successfully");
   } catch (const std::exception &e) {
-    GAMEENGINE_ERROR(std::format("Error caching manager references: {}", e.what()));
+    GAMEENGINE_ERROR(
+        std::format("Error caching manager references: {}", e.what()));
     return false;
   }
   //_______________________________________________________________________________________________________________END
@@ -784,37 +850,22 @@ bool GameEngine::init(const std::string_view title, const int width,
 
     GAMEENGINE_INFO("Manager cross-dependencies setup complete");
   } catch (const std::exception &e) {
-    GAMEENGINE_ERROR(std::format("Error setting up manager cross-dependencies: {}", e.what()));
+    GAMEENGINE_ERROR(std::format(
+        "Error setting up manager cross-dependencies: {}", e.what()));
     return false;
   }
 
   GAMEENGINE_INFO(std::format("Game {} initialized successfully!", title));
   GAMEENGINE_INFO(std::format("Running {} <]==={{}}", title));
 
-  // Initialize buffer system for first frame
-  m_currentBufferIndex.store(0, std::memory_order_release);
-  m_renderBufferIndex.store(0, std::memory_order_release);
-
-  // Mark first buffer as ready to ensure render() has a valid buffer before the first
-  // update() completes. This prevents a render stall on the very first frame where
-  // hasNewFrameToRender() would otherwise return false. The initial "frame" is just
-  // the cleared screen (HAMMER_GRAY background) set up above.
-  m_bufferReady[0].store(true, std::memory_order_release);
-  m_bufferReady[1].store(false, std::memory_order_release);
-
-  // Initialize frame counters
-  m_lastUpdateFrame.store(0, std::memory_order_release);
-  m_lastRenderedFrame.store(0, std::memory_order_release);
-
-  // Set running state - main loop will start after init returns
-  m_running.store(true, std::memory_order_release);
-
+  m_running = true;
   return true;
 }
 
 void GameEngine::handleEvents() {
-  // SDL event polling - GameEngine owns the event loop as it owns the window/renderer
-  // InputManager receives input events and maintains input state
+  // SDL event polling - GameEngine owns the event loop as it owns the
+  // window/renderer InputManager receives input events and maintains input
+  // state
   InputManager &inputMgr = InputManager::Instance();
 
   // Clear previous frame's pressed keys before processing new events
@@ -826,51 +877,61 @@ void GameEngine::handleEvents() {
     SDL_ConvertEventToRenderCoordinates(mp_renderer.get(), &event);
 
     switch (event.type) {
-      case SDL_EVENT_QUIT:
-        GAMEENGINE_INFO("Shutting down! {}===]>");
-        setRunning(false);
-        break;
+    case SDL_EVENT_QUIT:
+      GAMEENGINE_INFO("Shutting down! {}===]>");
+      setRunning(false);
+      break;
 
-      // Input events -> route to InputManager
-      case SDL_EVENT_KEY_DOWN:
-        inputMgr.onKeyDown(event);
-        break;
-      case SDL_EVENT_KEY_UP:
-        inputMgr.onKeyUp(event);
-        break;
-      case SDL_EVENT_MOUSE_MOTION:
-        inputMgr.onMouseMove(event);
-        break;
-      case SDL_EVENT_MOUSE_BUTTON_DOWN:
-        inputMgr.onMouseButtonDown(event);
-        break;
-      case SDL_EVENT_MOUSE_BUTTON_UP:
-        inputMgr.onMouseButtonUp(event);
-        break;
-      case SDL_EVENT_GAMEPAD_AXIS_MOTION:
-        inputMgr.onGamepadAxisMove(event);
-        break;
-      case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-        inputMgr.onGamepadButtonDown(event);
-        break;
-      case SDL_EVENT_GAMEPAD_BUTTON_UP:
-        inputMgr.onGamepadButtonUp(event);
-        break;
+    // Input events -> route to InputManager
+    case SDL_EVENT_KEY_DOWN:
+      inputMgr.onKeyDown(event);
+      break;
+    case SDL_EVENT_KEY_UP:
+      inputMgr.onKeyUp(event);
+      break;
+    case SDL_EVENT_MOUSE_MOTION:
+      inputMgr.onMouseMove(event);
+      break;
+    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+      inputMgr.onMouseButtonDown(event);
+      break;
+    case SDL_EVENT_MOUSE_BUTTON_UP:
+      inputMgr.onMouseButtonUp(event);
+      break;
+    case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+      inputMgr.onGamepadAxisMove(event);
+      break;
+    case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+      inputMgr.onGamepadButtonDown(event);
+      break;
+    case SDL_EVENT_GAMEPAD_BUTTON_UP:
+      inputMgr.onGamepadButtonUp(event);
+      break;
 
-      // Window/Display events -> handle directly in GameEngine
-      case SDL_EVENT_WINDOW_RESIZED:
-        onWindowResize(event);
-        break;
-      case SDL_EVENT_DISPLAY_ORIENTATION:
-      case SDL_EVENT_DISPLAY_ADDED:
-      case SDL_EVENT_DISPLAY_REMOVED:
-      case SDL_EVENT_DISPLAY_MOVED:
-      case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
-        onDisplayChange(event);
-        break;
+    // Window/Display events -> handle directly in GameEngine
+    case SDL_EVENT_WINDOW_RESIZED:
+      onWindowResize(event);
+      break;
+    case SDL_EVENT_WINDOW_MINIMIZED:
+    case SDL_EVENT_WINDOW_OCCLUDED:
+    case SDL_EVENT_WINDOW_HIDDEN:
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+    case SDL_EVENT_WINDOW_RESTORED:
+    case SDL_EVENT_WINDOW_SHOWN:
+    case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_FOCUS_GAINED:
+      onWindowEvent(event);
+      break;
+    case SDL_EVENT_DISPLAY_ORIENTATION:
+    case SDL_EVENT_DISPLAY_ADDED:
+    case SDL_EVENT_DISPLAY_REMOVED:
+    case SDL_EVENT_DISPLAY_MOVED:
+    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+      onDisplayChange(event);
+      break;
 
-      default:
-        break;
+    default:
+      break;
     }
   }
 
@@ -879,29 +940,13 @@ void GameEngine::handleEvents() {
     toggleFullscreen();
   }
 
-#ifdef DEBUG
-  // Global buffer telemetry console logging toggle (F3 key) - debug builds only
-  if (inputMgr.wasKeyPressed(SDL_SCANCODE_F3)) {
-    bool currentState = m_showBufferTelemetry.load(std::memory_order_relaxed);
-    m_showBufferTelemetry.store(!currentState, std::memory_order_relaxed);
-    GAMEENGINE_INFO(std::format("Buffer telemetry console logging {} (F3 to toggle)",
-                                !currentState ? "ENABLED (every 5s)" : "DISABLED"));
-  }
-#endif
-
-  // Handle game state input on main thread where SDL events are processed (SDL3
-  // requirement) This prevents cross-thread input state access between main
-  // thread and update worker thread
+  // Handle game state input on main thread where SDL events are processed
   mp_gameStateManager->handleInput();
 }
 
-void GameEngine::setRunning(bool running) {
-  m_running.store(running, std::memory_order_relaxed);
-}
+void GameEngine::setRunning(bool running) { m_running = running; }
 
-bool GameEngine::getRunning() const {
-  return m_running.load(std::memory_order_relaxed);
-}
+bool GameEngine::getRunning() const { return m_running; }
 
 float GameEngine::getCurrentFPS() const {
   if (m_timestepManager) {
@@ -911,285 +956,101 @@ float GameEngine::getCurrentFPS() const {
 }
 
 void GameEngine::update(float deltaTime) {
-  // Main loop is single-threaded - update and render are sequential
-  m_updateRunning.store(true, std::memory_order_relaxed);
-
-  // Get the buffer for the current update
-  const size_t updateBufferIndex =
-      m_currentBufferIndex.load(std::memory_order_acquire);
-
   // OPTIMAL MANAGER UPDATE ARCHITECTURE - CLEAN DESIGN
   // ===================================================
-  // Update order optimized for both player responsiveness AND smooth NPC movement.
-  // Key design: AIManager handles batch synchronization internally (implementation detail).
+  // Update order optimized for both player responsiveness AND smooth NPC
+  // movement. Key design: AIManager handles batch synchronization internally
+  // (implementation detail).
   //
   // UPDATE STRATEGY:
   // - Events FIRST (can trigger state changes)
   // - Player movement SECOND (before heavy AI processing)
-  // - AI processes batches (parallel internally, waits for completion before returning)
+  // - AI processes batches (parallel internally, waits for completion before
+  // returning)
   // - Collision gets guaranteed-complete updates (no timing issues)
   //
   // GLOBAL SYSTEMS (Updated by GameEngine):
-  // - EventManager: Global game events (weather, scene changes), batch processing
+  // - EventManager: Global game events (weather, scene changes), batch
+  // processing
   // - GameStateManager: Player movement and state-specific logic
   // - AIManager: Parallel batch processing with internal sync (self-contained)
   // - ParticleManager: Global particle system with weather integration
-  // - PathfinderManager: Periodic pathfinding grid updates (every 300/600 frames)
+  // - PathfinderManager: Periodic pathfinding grid updates (every 300/600
+  // frames)
   // - CollisionManager: Collision detection and resolution for all entities
-  // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
+  // - InputManager: Handled in handleEvents() for proper SDL event polling
+  // architecture
   //
   // STATE-MANAGED SYSTEMS (Updated by individual states):
-  // - UIManager: Optional, state-specific, only updated when UI is actually used
+  // - UIManager: Optional, state-specific, only updated when UI is actually
+  // used
   //   See UIExampleState::update() for proper state-managed pattern
 
-  // 1. Event system - FIRST: process global events, state changes, weather triggers
-  if (mp_eventManager) {
-    mp_eventManager->update();
-  } else {
-    GAMEENGINE_ERROR("EventManager cache is null!");
-  }
+  // 1. Event system - FIRST: process global events, state changes, weather
+  // triggers
+  mp_eventManager->update();
 
   // 2. Game states - player movement and state logic
+  // MUST update BEFORE AIManager so NPCs react to current player position, not
+  // stale data Push FPS to GameStateManager so states don't need to call
+  // GameEngine::Instance()
+  mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
   mp_gameStateManager->update(deltaTime);
 
   // 3. AI system - processes NPC behaviors with internal parallelization
-  //    Batches run in parallel, waits for completion internally before returning.
-  //    From GameEngine perspective: just a regular update call (sync is internal).
-  if (mp_aiManager) {
-    mp_aiManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("AIManager cache is null!");
-  }
+  //    Batches run in parallel, waits for completion internally before
+  //    returning. From GameEngine perspective: just a regular update call (sync
+  //    is internal).
+  mp_aiManager->update(deltaTime);
 
   // 4. Particle system - global weather and effect particles
-  if (mp_particleManager) {
-    mp_particleManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("ParticleManager cache is null!");
-  }
+  mp_particleManager->update(deltaTime);
 
   // 5. Pathfinding system - periodic grid updates (every 300/600 frames)
-  // PathfinderManager initialized by AIManager, cached by GameEngine for performance
-  if (mp_pathfinderManager) {
-    mp_pathfinderManager->update();
-  } else {
-    GAMEENGINE_ERROR("PathfinderManager cache is null!");
-  }
+  // PathfinderManager initialized by AIManager, cached by GameEngine for
+  // performance
+  mp_pathfinderManager->update();
 
-  // 6. Collision system - LAST: processes complete NPC updates from AIManager
+  // 6. Collision system - processes complete NPC updates from AIManager
   //    AIManager guarantees all batches complete before returning, so collision
   //    always receives complete, consistent updates (no partial/stale data).
-  if (mp_collisionManager) {
-    mp_collisionManager->update(deltaTime);
-  } else {
-    GAMEENGINE_ERROR("CollisionManager cache is null!");
-  }
+  mp_collisionManager->update(deltaTime);
 
-  // Increment the frame counter atomically for thread-safe render
-  // synchronization
-  m_lastUpdateFrame.fetch_add(1, std::memory_order_relaxed);
-
-  // Mark this buffer as ready for rendering
-  m_bufferReady[updateBufferIndex].store(true, std::memory_order_release);
-
-#ifdef DEBUG
-  // Buffer telemetry - no mutex timing needed (single-threaded main loop)
-
-  // Periodic telemetry logging (every 300 frames ~5s @ 60fps)
-  // Only logs when F3 toggle is enabled, otherwise silent
-  uint64_t currentFrame = m_lastUpdateFrame.load(std::memory_order_relaxed);
-
-  if (m_showBufferTelemetry.load(std::memory_order_relaxed) &&
-      currentFrame - m_telemetryLogFrame >= TELEMETRY_LOG_INTERVAL) {
-    m_telemetryLogFrame = currentFrame;
-
-    GAMEENGINE_DEBUG(std::format("=== Buffer Telemetry Report (last {} frames) ===", TELEMETRY_LOG_INTERVAL));
-    GAMEENGINE_DEBUG(std::format("  Buffer Mode: {}", m_bufferCount == 2 ? "Double(2)" : "Triple(3)"));
-    GAMEENGINE_DEBUG(std::format("  Swap Success Rate: {}%", m_bufferTelemetry.getSwapSuccessRate()));
-    GAMEENGINE_DEBUG(std::format("  Swap Stats: {} success / {} blocked / {} CAS failures",
-                                 m_bufferTelemetry.swapSuccesses.load(std::memory_order_relaxed),
-                                 m_bufferTelemetry.swapBlocked.load(std::memory_order_relaxed),
-                                 m_bufferTelemetry.casFailures.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Render Stalls: {}", m_bufferTelemetry.renderStalls.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Frames Skipped: {}", m_bufferTelemetry.framesSkipped.load(std::memory_order_relaxed)));
-    GAMEENGINE_DEBUG(std::format("  Current Buffers: [Write:{} Read:{}]",
-                                 m_currentBufferIndex.load(std::memory_order_relaxed),
-                                 m_renderBufferIndex.load(std::memory_order_relaxed)));
-
-    // Reset counters for next interval
-    m_bufferTelemetry.reset();
-  }
-#endif
-
-  // Mark update as completed
-  m_updateCompleted.store(true, std::memory_order_relaxed);
-  m_updateRunning.store(false, std::memory_order_relaxed);
+  // 7. Background simulation (tier updates + entity processing)
+  // Single call handles everything: tier recalc every 60 frames,
+  // background entity processing at 10Hz when entities exist.
+  // Power-efficient: immediate return when paused or no work needed.
+  mp_backgroundSimManager->update(mp_aiManager->getPlayerPosition(), deltaTime);
 }
 
 void GameEngine::render() {
-  // Always on MAIN thread - SDL REQUIREMENT
-  // Main loop is single-threaded, no mutex needed
+  // Calculate interpolation alpha for smooth rendering between fixed updates
+  float interpolationAlpha =
+      static_cast<float>(m_timestepManager->getInterpolationAlpha());
 
-  // Calculate interpolation alpha from TimestepManager
-  // This enables smooth rendering at any refresh rate with fixed 60Hz updates
-  float interpolationAlpha = 1.0f;
-  if (m_timestepManager) {
-    interpolationAlpha = static_cast<float>(m_timestepManager->getInterpolationAlpha());
-  }
+  // Clear and render
+  SDL_SetRenderDrawColor(mp_renderer.get(), HAMMER_GRAY);
+  SDL_RenderClear(mp_renderer.get());
 
-  // Always render - optimized buffer management ensures render buffer is always
-  // valid
-  if (!SDL_SetRenderDrawColor(
-          mp_renderer.get(),
-          HAMMER_GRAY)) { // Hammer Game Engine gunmetal dark grey
-    GAMEENGINE_ERROR(std::format("Failed to set render draw color: {}", SDL_GetError()));
-  }
-  if (!SDL_RenderClear(mp_renderer.get())) {
-    GAMEENGINE_ERROR(std::format("Failed to clear renderer: {}", SDL_GetError()));
-  }
-
-  // Pass renderer and interpolation alpha to GameStateManager for state rendering
   mp_gameStateManager->render(mp_renderer.get(), interpolationAlpha);
 
-  if (!SDL_RenderPresent(mp_renderer.get())) {
-    GAMEENGINE_ERROR(std::format("Failed to present renderer: {}", SDL_GetError()));
-  }
-
-  // After presenting, mark the render buffer as consumed to avoid stale
-  // re-renders
-  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-  m_bufferReady[renderIndex].store(false, std::memory_order_release);
-
-  // Increment rendered frame counter for fast synchronization
-  m_lastRenderedFrame.fetch_add(1, std::memory_order_relaxed);
-}
-
-void GameEngine::swapBuffers() {
-  // Thread-safe buffer swap with proper synchronization
-  // Supports both double (2) and triple (3) buffering modes
-  size_t currentIndex = m_currentBufferIndex.load(std::memory_order_acquire);
-  size_t nextUpdateIndex = (currentIndex + 1) % m_bufferCount;  // Use runtime buffer count
-
-#ifdef DEBUG
-  // TELEMETRY POINT 1: Track swap attempt
-  m_bufferTelemetry.swapAttempts.fetch_add(1, std::memory_order_relaxed);
-#endif
-
-  // TRIPLE BUFFERING OPTIMIZATION:
-  // With 3 buffers, there's always a free buffer available (one for update, one for render, one free).
-  // With 2 buffers, we must check that next buffer isn't being rendered to prevent overwriting.
-
-  bool canSwap = m_bufferReady[currentIndex].load(std::memory_order_acquire);
-
-  if (m_bufferCount == 2) {
-    // Double buffering: also check that next buffer isn't being rendered
-    size_t currentRenderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-    canSwap = canSwap && (nextUpdateIndex != currentRenderIndex);
-  }
-  // Triple buffering: always has a free buffer, no additional check needed
-
-  if (canSwap) {
-    // Atomic compare-exchange to ensure no race condition
-    size_t expected = currentIndex;
-    if (m_currentBufferIndex.compare_exchange_strong(
-            expected, nextUpdateIndex, std::memory_order_acq_rel)) {
-      // Successfully swapped update buffer
-      // Make previous update buffer available for rendering
-      m_renderBufferIndex.store(currentIndex, std::memory_order_release);
-
-      // Clear the next buffer's ready state for the next update cycle
-      m_bufferReady[nextUpdateIndex].store(false, std::memory_order_release);
-
-#ifdef DEBUG
-      // TELEMETRY POINT 2: Successful swap
-      m_bufferTelemetry.swapSuccesses.fetch_add(1, std::memory_order_relaxed);
-#endif
-    } else {
-#ifdef DEBUG
-      // TELEMETRY POINT 3: CAS failure (atomic contention)
-      m_bufferTelemetry.casFailures.fetch_add(1, std::memory_order_relaxed);
-#endif
-    }
-  } else {
-#ifdef DEBUG
-    // TELEMETRY POINT 4: Swap blocked (buffer not ready or rendering conflict)
-    m_bufferTelemetry.swapBlocked.fetch_add(1, std::memory_order_relaxed);
-#endif
-  }
-}
-
-bool GameEngine::hasNewFrameToRender() const noexcept {
-  // Optimized render check with minimal atomic operations
-  size_t renderIndex = m_renderBufferIndex.load(std::memory_order_acquire);
-
-  // Single check for buffer readiness
-  if (!m_bufferReady[renderIndex].load(std::memory_order_acquire)) {
-#ifdef DEBUG
-    // TELEMETRY POINT 5: Render stall (no buffer ready)
-    m_bufferTelemetry.renderStalls.fetch_add(1, std::memory_order_relaxed);
-#endif
-    return false;
-  }
-
-  // Compare frame counters only if buffer is ready - use relaxed ordering for
-  // counters
-  uint64_t lastUpdate = m_lastUpdateFrame.load(std::memory_order_relaxed);
-  uint64_t lastRendered = m_lastRenderedFrame.load(std::memory_order_relaxed);
-
-#ifdef DEBUG
-  // TELEMETRY POINT 6: Frame skipped (update hasn't advanced)
-  if (lastUpdate == lastRendered) {
-    m_bufferTelemetry.framesSkipped.fetch_add(1, std::memory_order_relaxed);
-  }
-#endif
-
-  return lastUpdate > lastRendered;
-}
-
-bool GameEngine::isUpdateRunning() const noexcept {
-  return m_updateRunning.load(std::memory_order_relaxed);
-}
-
-size_t GameEngine::getCurrentBufferIndex() const noexcept {
-  return m_currentBufferIndex.load(std::memory_order_relaxed);
-}
-
-size_t GameEngine::getRenderBufferIndex() const noexcept {
-  return m_renderBufferIndex.load(std::memory_order_relaxed);
+  SDL_RenderPresent(mp_renderer.get());
 }
 
 void GameEngine::processBackgroundTasks() {
-  // Background task processing hook for non-critical work
+  // Background task processing hook for truly-async, non-critical work.
   //
-  // PURPOSE: Provides a designated entry point for background processing that:
-  //   - Runs on worker threads via ThreadSystem (NOT the main thread)
-  //   - Executes asynchronously while main thread handles events/rendering
-  //   - Is separate from the main update loop to avoid impacting frame timing
-  //
-  // USE CASES:
+  // Background simulation moved to update() for power efficiency.
+  // This hook remains for future truly-async background work like:
   //   - Asset pre-loading for upcoming game states
   //   - Background save game serialization
   //   - Analytics/telemetry data collection
   //   - Periodic cache cleanup or memory defragmentation
   //   - Network polling for non-latency-critical updates
   //
-  // ARCHITECTURE NOTE:
-  //   Global systems (EventManager, AIManager, etc.) are updated in the main
-  //   update loop for deterministic ordering and proper synchronization.
-  //   This method is for truly asynchronous, non-critical tasks only.
-  //
   // THREAD SAFETY:
   //   Any work added here must be thread-safe and not require main-thread
   //   resources (SDL rendering, UI state, etc.).
-
-  try {
-    // Background processing tasks can be added here
-    // Currently a placeholder - extend as needed for specific use cases
-  } catch (const std::exception &e) {
-    GAMEENGINE_ERROR(std::format("Exception in background tasks: {}", e.what()));
-  } catch (...) {
-    GAMEENGINE_ERROR("Unknown exception in background tasks");
-  }
 }
 
 void GameEngine::setLogicalPresentationMode(
@@ -1201,11 +1062,14 @@ void GameEngine::setLogicalPresentationMode(
     if (SDL_GetWindowSize(mp_window.get(), &width, &height)) {
       // width/height updated
     } else {
-      GAMEENGINE_ERROR(std::format("Failed to get window size for logical presentation: {}", SDL_GetError()));
+      GAMEENGINE_ERROR(
+          std::format("Failed to get window size for logical presentation: {}",
+                      SDL_GetError()));
     }
     if (!SDL_SetRenderLogicalPresentation(mp_renderer.get(), width, height,
                                           mode)) {
-      GAMEENGINE_ERROR(std::format("Failed to set render logical presentation: {}", SDL_GetError()));
+      GAMEENGINE_ERROR(std::format(
+          "Failed to set render logical presentation: {}", SDL_GetError()));
     }
   }
 }
@@ -1231,9 +1095,6 @@ GameEngine::getLogicalPresentationMode() const noexcept {
 
 void GameEngine::clean() {
   GAMEENGINE_INFO("Starting shutdown sequence...");
-
-  // Signal shutdown
-  m_stopRequested.store(true, std::memory_order_release);
 
   // Cache manager references for better performance
   HammerEngine::ThreadSystem &threadSystem =
@@ -1278,8 +1139,14 @@ void GameEngine::clean() {
   GAMEENGINE_INFO("Cleaning up Collision Manager...");
   CollisionManager::Instance().clean();
 
+  GAMEENGINE_INFO("Cleaning up Background Simulation Manager...");
+  BackgroundSimulationManager::Instance().clean();
+
   GAMEENGINE_INFO("Cleaning up AI Manager...");
   AIManager::Instance().clean();
+
+  GAMEENGINE_INFO("Cleaning up Entity Data Manager...");
+  EntityDataManager::Instance().clean();
 
   GAMEENGINE_INFO("Cleaning up Save Game Manager...");
   SaveGameManager::Instance().clean();
@@ -1339,49 +1206,31 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     return false;
   }
 
-  GAMEENGINE_INFO(std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
+  m_vsyncRequested = enable;
+  GAMEENGINE_INFO(
+      std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
   // Attempt to set VSync
-  bool vsyncSetSuccessfully = SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
+  bool vsyncSetSuccessfully =
+      SDL_SetRenderVSync(mp_renderer.get(), enable ? 1 : 0);
 
   if (!vsyncSetSuccessfully) {
-    GAMEENGINE_ERROR(std::format("Failed to {} VSync: {}", enable ? "enable" : "disable", SDL_GetError()));
+    GAMEENGINE_ERROR(std::format("Failed to {} VSync: {}",
+                                 enable ? "enable" : "disable",
+                                 SDL_GetError()));
     // Ensure software frame limiting is enabled if VSync enable failed
     if (enable) {
-      m_usingSoftwareFrameLimiting = true;
+      m_timestepManager->setSoftwareFrameLimiting(true);
       GAMEENGINE_INFO("Falling back to software frame limiting");
-
-      // Update TimestepManager
-      if (m_timestepManager) {
-        m_timestepManager->setSoftwareFrameLimiting(true);
-      }
     }
     return false;
   }
 
-  // Verify VSync state and update software frame limiting flag
+  // Verify VSync state - this sets TimestepManager's software limiting flag
   bool const vsyncVerified = verifyVSyncState(enable);
 
-  // Update TimestepManager
-  if (m_timestepManager) {
-    m_timestepManager->setSoftwareFrameLimiting(m_usingSoftwareFrameLimiting);
-    GAMEENGINE_DEBUG(std::format("TimestepManager updated: software frame limiting {}",
-                                 m_usingSoftwareFrameLimiting ? "enabled" : "disabled"));
-  }
-
-  // Log frame timing mode
-#ifdef DEBUG
-  if (m_usingSoftwareFrameLimiting && enable) {
-    GAMEENGINE_INFO("Using software frame limiting (VSync verification failed)");
-  } else if (!m_usingSoftwareFrameLimiting) {
-    GAMEENGINE_INFO("Using hardware VSync for frame timing");
-  } else {
-    GAMEENGINE_INFO("VSync disabled, using software frame limiting");
-  }
-#endif
-
   // Save VSync setting to SettingsManager for persistence
-  auto& settings = HammerEngine::SettingsManager::Instance();
+  auto &settings = HammerEngine::SettingsManager::Instance();
   settings.set("graphics", "vsync", enable && vsyncVerified);
   settings.saveToFile("res/settings.json");
 
@@ -1397,53 +1246,65 @@ void GameEngine::toggleFullscreen() {
   // Toggle fullscreen state
   m_isFullscreen = !m_isFullscreen;
 
-  GAMEENGINE_INFO(std::format("Toggling fullscreen mode: {} (windowed size: {}x{})",
-                              m_isFullscreen ? "ON" : "OFF", m_windowedWidth, m_windowedHeight));
+  GAMEENGINE_INFO(std::format(
+      "Toggling fullscreen mode: {} (windowed size: {}x{})",
+      m_isFullscreen ? "ON" : "OFF", m_windowedWidth, m_windowedHeight));
 
 #ifdef __APPLE__
   // macOS: Use borderless fullscreen desktop mode for better compatibility
   if (m_isFullscreen) {
     if (!SDL_SetWindowFullscreen(mp_window.get(), true)) {
-      GAMEENGINE_ERROR(std::format("Failed to enable fullscreen: {}", SDL_GetError()));
+      GAMEENGINE_ERROR(
+          std::format("Failed to enable fullscreen: {}", SDL_GetError()));
       m_isFullscreen = false; // Revert state on failure
       return;
     }
     // Set to borderless fullscreen desktop mode (nullptr = use desktop mode)
     if (!SDL_SetWindowFullscreenMode(mp_window.get(), nullptr)) {
-      GAMEENGINE_WARN(std::format("Failed to set borderless fullscreen mode: {}", SDL_GetError()));
+      GAMEENGINE_WARN(std::format(
+          "Failed to set borderless fullscreen mode: {}", SDL_GetError()));
     }
     GAMEENGINE_INFO("macOS: Enabled borderless fullscreen desktop mode");
   } else {
     if (!SDL_SetWindowFullscreen(mp_window.get(), false)) {
-      GAMEENGINE_ERROR(std::format("Failed to disable fullscreen: {}", SDL_GetError()));
+      GAMEENGINE_ERROR(
+          std::format("Failed to disable fullscreen: {}", SDL_GetError()));
       m_isFullscreen = true; // Revert state on failure
       return;
     }
     // Restore windowed size
-    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
-      GAMEENGINE_ERROR(std::format("Failed to restore window size: {}", SDL_GetError()));
+    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth,
+                           m_windowedHeight)) {
+      GAMEENGINE_ERROR(
+          std::format("Failed to restore window size: {}", SDL_GetError()));
     } else {
-      GAMEENGINE_INFO(std::format("macOS: Restored window size to {}x{}", m_windowedWidth, m_windowedHeight));
+      GAMEENGINE_INFO(std::format("macOS: Restored window size to {}x{}",
+                                  m_windowedWidth, m_windowedHeight));
     }
   }
 #else
   // Other platforms: Use standard fullscreen toggle
   if (!SDL_SetWindowFullscreen(mp_window.get(), m_isFullscreen)) {
-    GAMEENGINE_ERROR(std::format("Failed to toggle fullscreen: {}", SDL_GetError()));
+    GAMEENGINE_ERROR(
+        std::format("Failed to toggle fullscreen: {}", SDL_GetError()));
     m_isFullscreen = !m_isFullscreen; // Revert state on failure
     return;
   }
 
   // Restore windowed size when exiting fullscreen
   if (!m_isFullscreen) {
-    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth, m_windowedHeight)) {
-      GAMEENGINE_ERROR(std::format("Failed to restore window size: {}", SDL_GetError()));
+    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth,
+                           m_windowedHeight)) {
+      GAMEENGINE_ERROR(
+          std::format("Failed to restore window size: {}", SDL_GetError()));
     } else {
-      GAMEENGINE_INFO(std::format("Restored window size to {}x{}", m_windowedWidth, m_windowedHeight));
+      GAMEENGINE_INFO(std::format("Restored window size to {}x{}",
+                                  m_windowedWidth, m_windowedHeight));
     }
   }
 
-  GAMEENGINE_INFO(std::format("Fullscreen mode {}", m_isFullscreen ? "enabled" : "disabled"));
+  GAMEENGINE_INFO(std::format("Fullscreen mode {}",
+                              m_isFullscreen ? "enabled" : "disabled"));
 #endif
 
   // Note: SDL will automatically trigger SDL_EVENT_WINDOW_RESIZED
@@ -1467,32 +1328,15 @@ void GameEngine::setFullscreen(bool enabled) {
 }
 
 void GameEngine::setGlobalPause(bool paused) {
-  m_globallyPaused.store(paused, std::memory_order_release);
+  m_globallyPaused = paused;
 
-  // Pause AI Manager (already has setGlobalPause support)
-  if (mp_aiManager) {
-    mp_aiManager->setGlobalPause(paused);
-  }
-
-  // Pause Particle Manager
-  if (mp_particleManager) {
-    mp_particleManager->setGlobalPause(paused);
-  }
-
-  // Pause Collision Manager
-  if (mp_collisionManager) {
-    mp_collisionManager->setGlobalPause(paused);
-  }
-
-  // Pause Pathfinder Manager
-  if (mp_pathfinderManager) {
-    mp_pathfinderManager->setGlobalPause(paused);
-  }
-
-  // Pause GameTime Manager
+  // Pause all managers (cached pointers guaranteed valid after init)
+  mp_aiManager->setGlobalPause(paused);
+  mp_particleManager->setGlobalPause(paused);
+  mp_collisionManager->setGlobalPause(paused);
+  mp_pathfinderManager->setGlobalPause(paused);
+  mp_backgroundSimManager->setGlobalPause(paused);
   GameTimeManager::Instance().setGlobalPause(paused);
-
-  // Pause Event Manager
   EventManager::Instance().setGlobalPause(paused);
 
 #ifdef DEBUG
@@ -1504,9 +1348,7 @@ void GameEngine::setGlobalPause(bool paused) {
 #endif
 }
 
-bool GameEngine::isGloballyPaused() const {
-  return m_globallyPaused.load(std::memory_order_acquire);
-}
+bool GameEngine::isGloballyPaused() const { return m_globallyPaused; }
 
 int GameEngine::getOptimalDisplayIndex() const {
 #ifdef __APPLE__
@@ -1532,9 +1374,12 @@ bool GameEngine::verifyVSyncState(bool requested) {
       vsyncVerified = (vsyncState > 0);
 #ifdef DEBUG
       if (vsyncVerified) {
-        GAMEENGINE_INFO(std::format("VSync enabled and verified (mode: {})", vsyncState));
+        GAMEENGINE_INFO(
+            std::format("VSync enabled and verified (mode: {})", vsyncState));
       } else {
-        GAMEENGINE_WARN(std::format("VSync set but verification failed (reported mode: {})", vsyncState));
+        GAMEENGINE_WARN(
+            std::format("VSync set but verification failed (reported mode: {})",
+                        vsyncState));
       }
 #endif
     } else {
@@ -1544,28 +1389,35 @@ bool GameEngine::verifyVSyncState(bool requested) {
       if (vsyncVerified) {
         GAMEENGINE_INFO("VSync disabled and verified");
       } else {
-        GAMEENGINE_WARN(std::format("VSync disable verification failed (reported mode: {})", vsyncState));
+        GAMEENGINE_WARN(
+            std::format("VSync disable verification failed (reported mode: {})",
+                        vsyncState));
       }
 #endif
     }
   } else {
-    GAMEENGINE_WARN(std::format("Could not verify VSync state: {}", SDL_GetError()));
+    GAMEENGINE_WARN(
+        std::format("Could not verify VSync state: {}", SDL_GetError()));
     vsyncVerified = false;
   }
 
-  // Update software frame limiting flag based on verification result
-  // Use software limiting when: VSync should be on but verification failed, or VSync is intentionally disabled
-  m_usingSoftwareFrameLimiting = requested ? !vsyncVerified : true;
+  // Set software frame limiting based on verification result
+  // Use software limiting when: VSync should be on but verification failed, or
+  // VSync is intentionally disabled
+  bool useSoftwareLimiting = requested ? !vsyncVerified : true;
+  if (m_timestepManager) {
+    m_timestepManager->setSoftwareFrameLimiting(useSoftwareLimiting);
+  }
 
   return vsyncVerified;
 }
 
-void GameEngine::onWindowResize(const SDL_Event& event) {
+void GameEngine::onWindowResize(const SDL_Event &event) {
   // Centralized resize pipeline:
   // 1) Update GameEngine window size (authoritative source)
-  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others: native)
-  // 3) Reload fonts via FontManager for new display characteristics
-  // 4) UI scales from logical size; UIManager layout recalculates on next render
+  // 2) Update SDL logical presentation (macOS: 1920x1080 letterbox; others:
+  // native) 3) Reload fonts via FontManager for new display characteristics 4)
+  // UI scales from logical size; UIManager layout recalculates on next render
 
   // Update GameEngine with new window dimensions
   int const newWidth = event.window.data1;
@@ -1580,27 +1432,40 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   // This matches the initialization approach in GameEngine and ensures
   // consistent rendering whether in windowed or fullscreen mode
   int actualWidth, actualHeight;
-  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth, &actualHeight)) {
-    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}", SDL_GetError()));
+  if (!SDL_GetWindowSizeInPixels(mp_window.get(), &actualWidth,
+                                 &actualHeight)) {
+    GAMEENGINE_ERROR(std::format("Failed to get actual window pixel size: {}",
+                                 SDL_GetError()));
     actualWidth = newWidth;
     actualHeight = newHeight;
   }
 
   // Update renderer to native resolution (no scaling)
-  SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight, SDL_LOGICAL_PRESENTATION_DISABLED);
+  SDL_SetRenderLogicalPresentation(mp_renderer.get(), actualWidth, actualHeight,
+                                   SDL_LOGICAL_PRESENTATION_DISABLED);
 
   // Update GameEngine's cached logical dimensions
   setLogicalSize(actualWidth, actualHeight);
 
-  GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}", actualWidth, actualHeight));
+  GAMEENGINE_INFO(std::format("Updated to native resolution: {}x{}",
+                              actualWidth, actualHeight));
 
-  // Reload fonts for new display configuration
+  // Reconfigure tier radii for new screen size
+  mp_backgroundSimManager->configureForScreenSize(actualWidth, actualHeight);
+  GAMEENGINE_INFO(std::format(
+      "Tier radii reconfigured (active: {:.0f}, background: {:.0f})",
+      mp_backgroundSimManager->getActiveRadius(),
+      mp_backgroundSimManager->getBackgroundRadius()));
+
+  // Reload fonts for new display configuration with DPI scale
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");
-  FontManager & fontManager = FontManager::Instance();
-  if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
+  FontManager &fontManager = FontManager::Instance();
+  if (!fontManager.reloadFontsForDisplay("res/fonts", m_windowWidth,
+                                         m_windowHeight, m_dpiScale)) {
     GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
   } else {
-    GAMEENGINE_INFO("Font system reinitialized successfully after window resize");
+    GAMEENGINE_INFO(
+        "Font system reinitialized successfully after window resize");
   }
 
   // UIManager owns all UI positioning - directly call its resize handler
@@ -1608,62 +1473,102 @@ void GameEngine::onWindowResize(const SDL_Event& event) {
   GAMEENGINE_INFO("UIManager notified for UI component repositioning");
 }
 
-void GameEngine::onDisplayChange(const SDL_Event& event) {
+void GameEngine::onWindowEvent(const SDL_Event &event) {
+  switch (event.type) {
+  case SDL_EVENT_WINDOW_MINIMIZED:
+  case SDL_EVENT_WINDOW_OCCLUDED:
+  case SDL_EVENT_WINDOW_HIDDEN:
+  case SDL_EVENT_WINDOW_FOCUS_LOST:
+    if (!m_windowOccluded) {
+      m_windowOccluded = true;
+      if (m_timestepManager) {
+        m_timestepManager->setSoftwareFrameLimiting(true);
+      }
+      GAMEENGINE_DEBUG("Window occluded - enabling software frame limiting");
+    }
+    break;
+  case SDL_EVENT_WINDOW_RESTORED:
+  case SDL_EVENT_WINDOW_SHOWN:
+  case SDL_EVENT_WINDOW_EXPOSED:
+  case SDL_EVENT_WINDOW_FOCUS_GAINED:
+    if (m_windowOccluded) {
+      m_windowOccluded = false;
+      bool vsyncVerified = false;
+      if (m_timestepManager) {
+        vsyncVerified = verifyVSyncState(m_vsyncRequested);
+      }
+      GAMEENGINE_DEBUG(std::format("Window visible - VSync {} (requested: {})",
+                                   vsyncVerified ? "verified" : "not verified",
+                                   m_vsyncRequested ? "enabled" : "disabled"));
+    }
+    break;
+  default:
+    break;
+  }
+}
+
+void GameEngine::onDisplayChange(const SDL_Event &event) {
   // Centralized display-change pipeline:
   // - Log event and, on Apple, refresh fonts due to DPI/content-scale changes
   // - Normalize UI scale (UIManager::setGlobalScale(1.0f))
   // - Force UI layout refresh and reload fonts using GameEngine logical size
 
-  const char* eventName = "Unknown";
+  const char *eventName = "Unknown";
   switch (event.type) {
-    case SDL_EVENT_DISPLAY_ORIENTATION:
-      eventName = "Orientation Change";
-      break;
-    case SDL_EVENT_DISPLAY_ADDED:
-      eventName = "Display Added";
-      break;
-    case SDL_EVENT_DISPLAY_REMOVED:
-      eventName = "Display Removed";
-      break;
-    case SDL_EVENT_DISPLAY_MOVED:
-      eventName = "Display Moved";
-      break;
-    case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
-      eventName = "Content Scale Changed";
-      break;
-    default:
-      break;
+  case SDL_EVENT_DISPLAY_ORIENTATION:
+    eventName = "Orientation Change";
+    break;
+  case SDL_EVENT_DISPLAY_ADDED:
+    eventName = "Display Added";
+    break;
+  case SDL_EVENT_DISPLAY_REMOVED:
+    eventName = "Display Removed";
+    break;
+  case SDL_EVENT_DISPLAY_MOVED:
+    eventName = "Display Moved";
+    break;
+  case SDL_EVENT_DISPLAY_CONTENT_SCALE_CHANGED:
+    eventName = "Content Scale Changed";
+    break;
+  default:
+    break;
   }
 
   GAMEENGINE_INFO(std::format("Display event detected: {}", eventName));
 
-  // On Apple platforms, display changes often invalidate font textures
-  // due to different DPI scaling or context changes
-  #ifdef __APPLE__
-  GAMEENGINE_INFO("Apple platform: Reinitializing font system due to display change...");
-  #else
-  GAMEENGINE_INFO("Non-Apple platform: Display change handled by existing window resize logic");
-  #endif
+// On Apple platforms, display changes often invalidate font textures
+// due to different DPI scaling or context changes
+#ifdef __APPLE__
+  GAMEENGINE_INFO(
+      "Apple platform: Reinitializing font system due to display change...");
+#else
+  GAMEENGINE_INFO("Non-Apple platform: Display change handled by existing "
+                  "window resize logic");
+#endif
 
-  // Update UI systems with consistent scaling and reload fonts ONCE using logical dimensions
+  // Update UI systems with consistent scaling and reload fonts ONCE using
+  // logical dimensions
   try {
-    UIManager& uiManager = UIManager::Instance();
+    UIManager &uiManager = UIManager::Instance();
     uiManager.setGlobalScale(1.0f);
     GAMEENGINE_INFO("Updated UIManager with consistent 1.0 scale");
 
     uiManager.cleanupForStateTransition();
 
-    FontManager & fontManager = FontManager::Instance();
-    if (!fontManager.reloadFontsForDisplay("res/fonts", getLogicalWidth(), getLogicalHeight())) {
+    FontManager &fontManager = FontManager::Instance();
+    if (!fontManager.reloadFontsForDisplay("res/fonts", m_windowWidth,
+                                           m_windowHeight, m_dpiScale)) {
       GAMEENGINE_WARN("Failed to reload fonts for new display size");
     } else {
       GAMEENGINE_INFO("Successfully reloaded fonts for new display size");
     }
 
-    // UIManager owns all UI positioning - trigger repositioning for display change
+    // UIManager owns all UI positioning - trigger repositioning for display
+    // change
     uiManager.onWindowResize(getLogicalWidth(), getLogicalHeight());
     GAMEENGINE_INFO("UIManager notified for display change repositioning");
-  } catch (const std::exception& e) {
-    GAMEENGINE_ERROR(std::format("Error updating UI scaling after window resize: {}", e.what()));
+  } catch (const std::exception &e) {
+    GAMEENGINE_ERROR(std::format(
+        "Error updating UI scaling after window resize: {}", e.what()));
   }
 }

@@ -23,6 +23,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "managers/EventManager.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "EventManagerTestAccess.hpp"
 
@@ -62,18 +63,22 @@ private:
   bool m_conditionsMet{false};
 };
 
-// Global fixture to initialize ThreadSystem once for all tests
+// Global fixture to initialize ThreadSystem and EntityDataManager once for all tests
 struct GlobalEventTestFixture {
   GlobalEventTestFixture() {
     // Initialize ThreadSystem once for all tests
     if (!HammerEngine::ThreadSystem::Exists()) {
       HammerEngine::ThreadSystem::Instance().init();
     }
+    // Initialize EntityDataManager (required for Player entity creation in DOD)
+    EntityDataManager::Instance().init();
     // Ensure benchmark mode is disabled for regular tests
     HAMMER_DISABLE_BENCHMARK_MODE();
   }
 
   ~GlobalEventTestFixture() {
+    // Clean up EntityDataManager
+    EntityDataManager::Instance().clean();
     // Clean up ThreadSystem at the very end
     if (HammerEngine::ThreadSystem::Exists()) {
       HammerEngine::ThreadSystem::Instance().clean();
@@ -1244,11 +1249,12 @@ BOOST_FIXTURE_TEST_CASE(PerformanceMonitoringStats, EventManagerFixture) {
   BOOST_CHECK_GT(EventManager::Instance().getEventCount(EventTypeId::Weather), 0);
 }
 
-// Test double buffering functionality
+// Test double buffering functionality (debug-only - enableThreading is not available in release)
+#ifndef NDEBUG
 BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
-  
+
   // Enable threading to activate double buffering
   EventManager::Instance().enableThreading(true);
   
@@ -1284,6 +1290,7 @@ BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
   
   EventManager::Instance().enableThreading(false);
 }
+#endif // NDEBUG
 
 // Test memory management and event pools
 BOOST_FIXTURE_TEST_CASE(MemoryManagementEventPools, EventManagerFixture) {
@@ -1347,7 +1354,8 @@ BOOST_FIXTURE_TEST_CASE(StateTransitionPreparation, EventManagerFixture) {
   BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
 }
 
-// Test enabling/disabling threading dynamically
+// Test enabling/disabling threading dynamically (debug-only - enableThreading is not available in release)
+#ifndef NDEBUG
 BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
@@ -1384,6 +1392,7 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   
   int callsWithThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithThreading, 1);
-  
+
   EventManager::Instance().enableThreading(false);
 }
+#endif // NDEBUG

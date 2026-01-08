@@ -39,7 +39,6 @@ set(SIMPLE_TESTS
     settings_manager_tests
     thread_system_tests
     game_state_manager_tests
-    game_engine_tests
     ai_optimization_tests
     buffer_utilization_tests
     resource_template_manager_tests
@@ -69,6 +68,9 @@ set(SIMPLE_TESTS
     game_time_manager_calendar_tests
     game_time_manager_season_tests
     entity_state_manager_tests
+    entity_data_manager_tests
+    background_simulation_manager_tests
+    collision_manager_edm_integration_tests
 )
 
 # Complex tests (need mocks)
@@ -87,13 +89,16 @@ set(MOCK_TESTS
     weather_event_tests
     behavior_functionality_tests
     collision_pathfinding_integration_tests
-    collision_benchmark
+    collision_scaling_benchmark
     pathfinder_benchmark
     pathfinder_ai_contention_tests
     event_coordination_integration_tests
     ai_collision_integration_tests
     weather_controller_tests
     day_night_controller_tests
+    controller_registry_tests
+    ai_manager_edm_integration_tests
+    pathfinder_manager_edm_integration_tests
 )
 
 # Tests that need special mock combinations
@@ -114,8 +119,6 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "ThreadSystemTests.cpp")
     elseif(${test_name} STREQUAL "game_state_manager_tests")
         set(test_source "GameStateManagerTests.cpp")
-    elseif(${test_name} STREQUAL "game_engine_tests")
-        set(test_source "GameEngineTests.cpp")
     elseif(${test_name} STREQUAL "ai_optimization_tests")
         set(test_source "AIOptimizationTest.cpp")
     elseif(${test_name} STREQUAL "buffer_utilization_tests")
@@ -181,6 +184,12 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "managers/GameTimeManagerSeasonTests.cpp")
     elseif(${test_name} STREQUAL "entity_state_manager_tests")
         set(test_source "EntityStateManagerTests.cpp")
+    elseif(${test_name} STREQUAL "entity_data_manager_tests")
+        set(test_source "managers/EntityDataManagerTests.cpp")
+    elseif(${test_name} STREQUAL "background_simulation_manager_tests")
+        set(test_source "managers/BackgroundSimulationManagerTests.cpp")
+    elseif(${test_name} STREQUAL "collision_manager_edm_integration_tests")
+        set(test_source "collisions/CollisionManagerEDMIntegrationTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -211,8 +220,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "BehaviorFunctionalityTest.cpp")
     elseif(${test_name} STREQUAL "collision_pathfinding_integration_tests")
         set(test_source "CollisionPathfindingIntegrationTests.cpp")
-    elseif(${test_name} STREQUAL "collision_benchmark")
-        set(test_source "performance/CollisionBenchmark.cpp")
+    elseif(${test_name} STREQUAL "collision_scaling_benchmark")
+        set(test_source "performance/CollisionScalingBenchmark.cpp")
     elseif(${test_name} STREQUAL "pathfinder_benchmark")
         set(test_source "performance/PathfinderBenchmark.cpp")
     elseif(${test_name} STREQUAL "pathfinder_ai_contention_tests")
@@ -237,6 +246,12 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "controllers/WeatherControllerTests.cpp")
     elseif(${test_name} STREQUAL "day_night_controller_tests")
         set(test_source "controllers/DayNightControllerTests.cpp")
+    elseif(${test_name} STREQUAL "controller_registry_tests")
+        set(test_source "controllers/ControllerRegistryTests.cpp")
+    elseif(${test_name} STREQUAL "ai_manager_edm_integration_tests")
+        set(test_source "managers/AIManagerEDMIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "pathfinder_manager_edm_integration_tests")
+        set(test_source "managers/PathfinderManagerEDMIntegrationTests.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -273,9 +288,18 @@ target_include_directories(save_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR
 # --- CTest Registration ---
 set(ALL_TESTS ${SIMPLE_TESTS} ${MOCK_TESTS} ${INVENTORY_TESTS})
 foreach(test_name ${ALL_TESTS})
-    add_test(NAME ${test_name} COMMAND ${test_name})
+    # Benchmark tests need specific test filters to avoid running all (slow) tests
+    if(${test_name} STREQUAL "ai_scaling_benchmark")
+        # Only run the primary scaling test by default
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=AIScalingTests/AIEntityScaling)
+    elseif(${test_name} STREQUAL "collision_scaling_benchmark")
+        # Only run MM scaling test by default (fast representative test)
+        add_test(NAME ${test_name} COMMAND ${test_name} --run_test=CollisionScalingTests/MMScaling)
+    else()
+        add_test(NAME ${test_name} COMMAND ${test_name})
+    endif()
     # Set working directory to project root so tests can find res/data/
-    set_tests_properties(${test_name} PROPERTIES 
+    set_tests_properties(${test_name} PROPERTIES
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR})
 endforeach()
 # resource_factory_tests uses test access helper from tests/resources

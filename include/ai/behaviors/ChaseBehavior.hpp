@@ -8,8 +8,8 @@
 
 #include "ai/AIBehavior.hpp"
 #include "ai/BehaviorConfig.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
-#include <vector>
 
 class ChaseBehavior : public AIBehavior {
 public:
@@ -18,18 +18,18 @@ public:
   // Legacy constructor for backward compatibility
   explicit ChaseBehavior(float chaseSpeed, float maxRange, float minRange);
 
-  void init(EntityPtr entity) override;
+  void init(EntityHandle handle) override;
 
-  void executeLogic(EntityPtr entity, float deltaTime) override;
+  void executeLogic(BehaviorContext& ctx) override;
 
-  void clean(EntityPtr entity) override;
+  void clean(EntityHandle handle) override;
 
-  void onMessage(EntityPtr entity, const std::string &message) override;
+  void onMessage(EntityHandle handle, const std::string &message) override;
 
   std::string getName() const override;
 
-  // Get current target (returns AIManager::getPlayerReference())
-  EntityPtr getTarget() const;
+  // Get current target handle (player handle from AIManager)
+  EntityHandle getTargetHandle() const;
 
   // Set chase parameters
   void setChaseSpeed(float speed);
@@ -44,107 +44,45 @@ public:
   // Clone method for creating unique behavior instances
   std::shared_ptr<AIBehavior> clone() const override;
 
-  
+
 
 protected:
   // Called when target is reached (within minimum range)
-  virtual void onTargetReached(EntityPtr entity);
+  virtual void onTargetReached(EntityHandle handle);
 
   // Called when target is lost (out of max range)
-  virtual void onTargetLost(EntityPtr entity);
+  virtual void onTargetLost(EntityHandle handle);
 
 private:
-  // Configuration
+  // Configuration (per-template, not per-entity)
   HammerEngine::ChaseBehaviorConfig m_config;
 
   // Note: Target is now obtained via AIManager::getPlayerReference()
   float m_chaseSpeed{10.0f}; // Increased to 10.0 for very visible movement
-  float m_maxRange{
-      1000.0f}; // Maximum distance to chase target - increased to 1000
-  float m_minRange{50.0f}; // Minimum distance to maintain from target
+  float m_maxRange{1000.0f}; // Maximum distance to chase target
+  float m_minRange{50.0f};   // Minimum distance to maintain from target
+  float m_navRadius{18.0f};  // Waypoint arrival threshold
+  int m_maxTimeWithoutSight{60}; // Frames to chase last known position
 
-  bool m_isChasing{false};
-  bool m_hasLineOfSight{false};
-  Vector2D m_lastKnownTargetPos{0, 0};
-  int m_timeWithoutSight{0};
-  const int m_maxTimeWithoutSight{60}; // Frames to chase last known position
-  Vector2D m_currentDirection{0, 0};
+  // All per-entity runtime state is now stored in EDM:
+  // - BehaviorData.state.chase: isChasing, hasLineOfSight, lastKnownTargetPos, timeWithoutSight,
+  //                             currentDirection, cooldowns, etc.
+  // - PathData: navPath, navIndex, stallTimer, progressTimer, pathUpdateTimer
+  // - BehaviorData common: lastCrowdAnalysis, cachedNearbyCount, cachedClusterCenter
 
-  // Performance optimization: cache player reference to avoid repeated
-  // AIManager lookups
-  mutable EntityPtr m_cachedPlayerTarget{nullptr};
-  mutable bool m_playerCacheValid{false};
-
-  
-
-  // Get cached player reference - optimized for 60fps calls
-  EntityPtr getCachedPlayerTarget() const;
-
-  // Invalidate player cache (called on behavior switch or player changes)
-  void invalidatePlayerCache() const;
-
-  // Check if entity has line of sight to target (simplified)
-  bool checkLineOfSight(EntityPtr entity, EntityPtr target) const;
+  // Check if entity has line of sight to target position
+  bool checkLineOfSight(EntityHandle handle, const Vector2D& targetPos) const;
 
   // Handle behavior when line of sight is lost
-  void handleNoLineOfSight(EntityPtr entity);
+  void handleNoLineOfSight(EntityHandle handle, BehaviorData& data);
 
-  // Path-following state for chasing around obstacles
-  std::vector<Vector2D> m_navPath;
-  size_t m_navIndex{0};
-  float m_navRadius{18.0f};
-  int m_recalcCounter{0};
-  int m_recalcInterval{15}; // frames between path recalcs
-  // Improved stall detection
-  float m_lastNodeDistance{std::numeric_limits<float>::infinity()};
-  float m_progressTimer{0.0f};
-  float m_pathUpdateTimer{0.0f};
-  float m_stallTimer{0.0f};
-  Vector2D m_lastStallPosition{0, 0};
-  float m_stallPositionVariance{0.0f};
-  float m_unstickTimer{0.0f};
-  // Separation decimation
-  float m_separationTimer{0.0f};
-  Vector2D m_lastSepVelocity{0, 0};
-  // Unified cooldown management
-  struct {
-      float pathRequestCooldown{0.0f};
-      float stallRecoveryCooldown{0.0f};
-      float behaviorChangeCooldown{0.0f};
-
-      bool canRequestPath() const {
-          return pathRequestCooldown <= 0.0f && stallRecoveryCooldown <= 0.0f;
-      }
-
-      void applyPathCooldown(float cooldownSeconds = 0.6f) {
-          pathRequestCooldown = cooldownSeconds;
-      }
-
-      void applyStallCooldown(float baseSeconds = 0.2f, uint32_t stallId = 0) {
-          stallRecoveryCooldown = baseSeconds + (stallId % 300) * 0.001f;
-      }
-
-      void update(float deltaTime) {
-          if (pathRequestCooldown > 0.0f) pathRequestCooldown -= deltaTime;
-          if (stallRecoveryCooldown > 0.0f) stallRecoveryCooldown -= deltaTime;
-          if (behaviorChangeCooldown > 0.0f) behaviorChangeCooldown -= deltaTime;
-      }
-  } m_cooldowns;
-
-  // PATHFINDING CONSOLIDATION: Removed - all pathfinding now uses PathfindingScheduler
-  // bool m_useAsyncPathfinding removed
-
-  // PERFORMANCE OPTIMIZATIONS: Crowd detection throttling
-  mutable float m_crowdCheckTimer{0.0f};
-  mutable int m_cachedChaserCount{0};
-
-  // Performance optimization: cached crowd analysis to avoid expensive CollisionManager calls
-  int m_cachedNearbyCount{0};
-  std::vector<Vector2D> m_cachedNearbyPositions;
-  float m_lastCrowdAnalysis{0.0f};
+  // Cooldown helper - uses EDM chase state
+  bool canRequestPath(const BehaviorData& data) const;
+  void applyPathCooldown(BehaviorData& data, float cooldownSeconds = 0.6f);
+  void updateCooldowns(BehaviorData& data, float deltaTime);
 
 public:
-  
+
 };
 
 #endif // CHASE_BEHAVIOR_HPP

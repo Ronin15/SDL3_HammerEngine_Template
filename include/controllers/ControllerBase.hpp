@@ -15,9 +15,14 @@
  * should NOT contain UI logic.
  *
  * Key characteristics:
- * - Owned by GameState (not singletons)
+ * - Owned by GameState via ControllerRegistry
  * - Auto-unsubscribe on destruction
+ * - Support suspend/resume for pause states
  * - Minimal state (subscription tokens only)
+ *
+ * Controller types:
+ * - Frame-updatable: Inherit ControllerBase AND IUpdatable
+ * - Event-only: Inherit ControllerBase only
  *
  * Use a Controller when:
  * - Bridging one event type to another
@@ -31,6 +36,7 @@
  */
 
 #include "managers/EventManager.hpp"
+#include <string_view>
 #include <vector>
 
 class ControllerBase
@@ -48,9 +54,11 @@ public:
     // Movable
     ControllerBase(ControllerBase&& other) noexcept
         : m_subscribed(other.m_subscribed)
+        , m_suspended(other.m_suspended)
         , m_handlerTokens(std::move(other.m_handlerTokens))
     {
         other.m_subscribed = false;
+        other.m_suspended = false;
     }
 
     ControllerBase& operator=(ControllerBase&& other) noexcept
@@ -58,11 +66,21 @@ public:
         if (this != &other) {
             unsubscribe();  // Clean up current subscriptions
             m_subscribed = other.m_subscribed;
+            m_suspended = other.m_suspended;
             m_handlerTokens = std::move(other.m_handlerTokens);
             other.m_subscribed = false;
+            other.m_suspended = false;
         }
         return *this;
     }
+
+    /**
+     * @brief Subscribe to events. Must be implemented by derived classes.
+     *
+     * Called by ControllerRegistry::subscribeAll() during GameState::enter().
+     * Implementations should register event handlers via addHandlerToken().
+     */
+    virtual void subscribe() = 0;
 
     /**
      * @brief Unsubscribe from all registered event handlers
@@ -83,10 +101,53 @@ public:
     }
 
     /**
+     * @brief Suspend controller when pause state is pushed
+     *
+     * Default implementation unsubscribes from events.
+     * Override if custom suspend behavior is needed (e.g., keep listening
+     * but don't process, or pause internal timers).
+     */
+    virtual void suspend()
+    {
+        if (m_suspended) {
+            return;
+        }
+        unsubscribe();
+        m_suspended = true;
+    }
+
+    /**
+     * @brief Resume controller when pause state is popped
+     *
+     * Default implementation re-subscribes to events.
+     * Override if custom resume behavior is needed.
+     */
+    virtual void resume()
+    {
+        if (!m_suspended) {
+            return;
+        }
+        m_suspended = false;
+        subscribe();
+    }
+
+    /**
+     * @brief Get controller name for debugging and logging
+     * @return String view of controller name (e.g., "CombatController")
+     */
+    [[nodiscard]] virtual std::string_view getName() const = 0;
+
+    /**
      * @brief Check if currently subscribed to events
      * @return True if subscribed, false otherwise
      */
     [[nodiscard]] bool isSubscribed() const { return m_subscribed; }
+
+    /**
+     * @brief Check if controller is suspended (paused)
+     * @return True if suspended, false otherwise
+     */
+    [[nodiscard]] bool isSuspended() const { return m_suspended; }
 
 protected:
     ControllerBase() = default;
@@ -114,6 +175,7 @@ protected:
 
 private:
     bool m_subscribed{false};
+    bool m_suspended{false};
     std::vector<EventManager::HandlerToken> m_handlerTokens;
 };
 

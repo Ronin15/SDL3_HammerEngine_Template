@@ -20,6 +20,8 @@
 #include "managers/PathfinderManager.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/ParticleManager.hpp"
+#include "managers/EntityDataManager.hpp" // For TransformData definition
+#include "managers/BackgroundSimulationManager.hpp"
 #include "utils/Vector2D.hpp"
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
@@ -28,7 +30,8 @@
 class BenchmarkEntity : public Entity {
 public:
     BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        setPosition(pos);
+        // Register with EntityDataManager first (required before setPosition)
+        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
         setTextureID("benchmark");
         setWidth(32);
         setHeight(32);
@@ -41,6 +44,7 @@ public:
     void update(float deltaTime) override { (void)deltaTime; }
     void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
     void clean() override {}
+    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
 
     int getId() const { return m_id; }
 
@@ -53,18 +57,15 @@ class BenchmarkBehavior : public AIBehavior {
 public:
     BenchmarkBehavior(int id) : m_id(id) {}
 
-    void executeLogic(EntityPtr entity, float deltaTime) override {
-        if (!entity) return;
-        (void)deltaTime;
-
-        // Simulate some work
-        Vector2D pos = entity->getPosition();
-        pos.setX(pos.getX() + 1.0f);
-        entity->setPosition(pos);
+    // Lock-free hot path (required by pure virtual)
+    void executeLogic(BehaviorContext& ctx) override {
+        // Simulate some work directly on transform
+        ctx.transform.position.setX(ctx.transform.position.getX() + 1.0f);
     }
 
-    void init(EntityPtr entity) override { (void)entity; }
-    void clean(EntityPtr entity) override { (void)entity; }
+    void init(EntityHandle handle) override { (void)handle; }
+    void clean(EntityHandle handle) override { (void)handle; }
+    void onMessage(EntityHandle /* handle */, const std::string& /* message */) override {}
     std::string getName() const override { return "BenchmarkBehavior"; }
     std::shared_ptr<AIBehavior> clone() const override {
         return std::make_shared<BenchmarkBehavior>(m_id);
@@ -277,6 +278,9 @@ namespace {
             // Initialize in dependency order (matching GameEngine::init pattern)
             HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
+            // EntityDataManager must be early - entities need it for registration
+            EntityDataManager::Instance().init();
+
             EventManager::Instance().init();
             PathfinderManager::Instance().init();
             PathfinderManager::Instance().rebuildGrid();
@@ -285,17 +289,26 @@ namespace {
             AIManager::Instance().enableThreading(true);
             ParticleManager::Instance().init();  // Initialize without texture manager
             ParticleManager::Instance().registerBuiltInEffects();
+
+            // Initialize tier system for culling
+            BackgroundSimulationManager::Instance().init();
+            // Headless test: simulate 1920x1080 radii (half-diagonal ~1100px)
+            // Active: 1.5x = 1650, Background: 2.0x = 2200
+            BackgroundSimulationManager::Instance().setActiveRadius(1650.0f);
+            BackgroundSimulationManager::Instance().setBackgroundRadius(2200.0f);
         }
 
         void cleanupAllManagers() {
             // Cleanup in reverse order
             cleanupScenario();
 
+            BackgroundSimulationManager::Instance().clean();
             ParticleManager::Instance().clean();
             AIManager::Instance().clean();
             CollisionManager::Instance().clean();
             PathfinderManager::Instance().clean();
             EventManager::Instance().clean();
+            EntityDataManager::Instance().clean();
             HammerEngine::ThreadSystem::Instance().clean();
         }
 
@@ -303,8 +316,8 @@ namespace {
             // Remove all AI entities
             for (auto& entity : m_testEntities) {
                 if (entity) {
-                    AIManager::Instance().unregisterEntityFromUpdates(entity);
-                    AIManager::Instance().unassignBehaviorFromEntity(entity);
+                    AIManager::Instance().unregisterEntity(entity->getHandle());
+                    AIManager::Instance().unassignBehavior(entity->getHandle());
                 }
             }
             m_testEntities.clear();
@@ -328,23 +341,43 @@ namespace {
                 aiMgr.registerBehavior(behaviorNames[i], behavior);
             }
 
-            // Create AI entities
-            std::uniform_real_distribution<float> posDist(0.0f, 5000.0f);
-            Vector2D centralPosition(2500.0f, 2500.0f);
+            // Create AI entities distributed across tier zones for realistic testing
+            // Active tier: within 1650px of center (first 60%)
+            // Background tier: 1650-2200px from center (next 30%)
+            // Hibernated tier: beyond 2200px (last 10%)
+            std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+            std::uniform_real_distribution<float> distActive(0.0f, 1650.0f);
+            std::uniform_real_distribution<float> distBackground(1650.0f, 2200.0f);
+            std::uniform_real_distribution<float> distHibernated(2200.0f, 4000.0f);
 
             for (size_t i = 0; i < aiEntityCount; ++i) {
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), centralPosition);
+                float angle = angleDist(m_rng);
+                float distance;
+
+                if (i < aiEntityCount * 6 / 10) {
+                    // 60% in Active tier
+                    distance = distActive(m_rng);
+                } else if (i < aiEntityCount * 9 / 10) {
+                    // 30% in Background tier
+                    distance = distBackground(m_rng);
+                } else {
+                    // 10% in Hibernated tier
+                    distance = distHibernated(m_rng);
+                }
+
+                Vector2D pos(2500.0f + distance * std::cos(angle),
+                             2500.0f + distance * std::sin(angle));
+                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
                 // Assign behavior
                 std::string behaviorName = behaviorNames[i % behaviorNames.size()];
-                aiMgr.assignBehaviorToEntity(entity, behaviorName);
-                aiMgr.registerEntityForUpdates(entity, 9);  // Max priority
+                aiMgr.registerEntity(entity->getHandle(), behaviorName);
             }
 
             // Set player for distance optimization
             if (!m_testEntities.empty()) {
-                aiMgr.setPlayerForDistanceOptimization(m_testEntities[0]);
+                aiMgr.setPlayerHandle(m_testEntities[0]->getHandle());
             }
 
             // Create particle effects
@@ -365,18 +398,34 @@ namespace {
             m_behaviors.push_back(behavior);
             aiMgr.registerBehavior("Wander", behavior);
 
-            Vector2D centralPosition(2500.0f, 2500.0f);
+            // Distribute entities across tier zones (same as setupRealisticScenario)
+            std::uniform_real_distribution<float> angleDist(0.0f, 2.0f * 3.14159f);
+            std::uniform_real_distribution<float> distActive(0.0f, 1650.0f);
+            std::uniform_real_distribution<float> distBackground(1650.0f, 2200.0f);
+            std::uniform_real_distribution<float> distHibernated(2200.0f, 4000.0f);
 
             for (size_t i = 0; i < entityCount; ++i) {
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), centralPosition);
+                float angle = angleDist(m_rng);
+                float distance;
+
+                if (i < entityCount * 6 / 10) {
+                    distance = distActive(m_rng);
+                } else if (i < entityCount * 9 / 10) {
+                    distance = distBackground(m_rng);
+                } else {
+                    distance = distHibernated(m_rng);
+                }
+
+                Vector2D pos(2500.0f + distance * std::cos(angle),
+                             2500.0f + distance * std::sin(angle));
+                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
-                aiMgr.assignBehaviorToEntity(entity, "Wander");
-                aiMgr.registerEntityForUpdates(entity, 9);
+                aiMgr.registerEntity(entity->getHandle(), "Wander");
             }
 
             if (!m_testEntities.empty()) {
-                aiMgr.setPlayerForDistanceOptimization(m_testEntities[0]);
+                aiMgr.setPlayerHandle(m_testEntities[0]->getHandle());
             }
         }
 
@@ -394,8 +443,12 @@ namespace {
             // Simulate realistic frame update order (matching GameEngine::update pattern)
             EventManager::Instance().update();
             AIManager::Instance().update(deltaTime);
-            CollisionManager::Instance().updateSOA(deltaTime);
+            CollisionManager::Instance().update(deltaTime);
             ParticleManager::Instance().update(deltaTime);
+
+            // Tier culling update (reference point = center of spawn area)
+            Vector2D referencePoint(2500.0f, 2500.0f);
+            BackgroundSimulationManager::Instance().update(referencePoint, deltaTime);
         }
 
         FrameStats runFrameBenchmark(size_t frameCount, float deltaTime) {
