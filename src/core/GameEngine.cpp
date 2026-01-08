@@ -288,6 +288,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Load VSync preference from SettingsManager (defaults to enabled)
   auto &settings = HammerEngine::SettingsManager::Instance();
   bool vsyncRequested = settings.get<bool>("graphics", "vsync", true);
+  m_vsyncRequested = vsyncRequested;
   GAMEENGINE_INFO(std::format("VSync setting from SettingsManager: {}",
                               vsyncRequested ? "enabled" : "disabled"));
 
@@ -911,6 +912,16 @@ void GameEngine::handleEvents() {
     case SDL_EVENT_WINDOW_RESIZED:
       onWindowResize(event);
       break;
+    case SDL_EVENT_WINDOW_MINIMIZED:
+    case SDL_EVENT_WINDOW_OCCLUDED:
+    case SDL_EVENT_WINDOW_HIDDEN:
+    case SDL_EVENT_WINDOW_FOCUS_LOST:
+    case SDL_EVENT_WINDOW_RESTORED:
+    case SDL_EVENT_WINDOW_SHOWN:
+    case SDL_EVENT_WINDOW_EXPOSED:
+    case SDL_EVENT_WINDOW_FOCUS_GAINED:
+      onWindowEvent(event);
+      break;
     case SDL_EVENT_DISPLAY_ORIENTATION:
     case SDL_EVENT_DISPLAY_ADDED:
     case SDL_EVENT_DISPLAY_REMOVED:
@@ -1195,6 +1206,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
     return false;
   }
 
+  m_vsyncRequested = enable;
   GAMEENGINE_INFO(
       std::format("{} VSync...", enable ? "Enabling" : "Disabling"));
 
@@ -1459,6 +1471,40 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
   // UIManager owns all UI positioning - directly call its resize handler
   UIManager::Instance().onWindowResize(getLogicalWidth(), getLogicalHeight());
   GAMEENGINE_INFO("UIManager notified for UI component repositioning");
+}
+
+void GameEngine::onWindowEvent(const SDL_Event &event) {
+  switch (event.type) {
+  case SDL_EVENT_WINDOW_MINIMIZED:
+  case SDL_EVENT_WINDOW_OCCLUDED:
+  case SDL_EVENT_WINDOW_HIDDEN:
+  case SDL_EVENT_WINDOW_FOCUS_LOST:
+    if (!m_windowOccluded) {
+      m_windowOccluded = true;
+      if (m_timestepManager) {
+        m_timestepManager->setSoftwareFrameLimiting(true);
+      }
+      GAMEENGINE_DEBUG("Window occluded - enabling software frame limiting");
+    }
+    break;
+  case SDL_EVENT_WINDOW_RESTORED:
+  case SDL_EVENT_WINDOW_SHOWN:
+  case SDL_EVENT_WINDOW_EXPOSED:
+  case SDL_EVENT_WINDOW_FOCUS_GAINED:
+    if (m_windowOccluded) {
+      m_windowOccluded = false;
+      bool vsyncVerified = false;
+      if (m_timestepManager) {
+        vsyncVerified = verifyVSyncState(m_vsyncRequested);
+      }
+      GAMEENGINE_DEBUG(std::format("Window visible - VSync {} (requested: {})",
+                                   vsyncVerified ? "verified" : "not verified",
+                                   m_vsyncRequested ? "enabled" : "disabled"));
+    }
+    break;
+  default:
+    break;
+  }
 }
 
 void GameEngine::onDisplayChange(const SDL_Event &event) {
