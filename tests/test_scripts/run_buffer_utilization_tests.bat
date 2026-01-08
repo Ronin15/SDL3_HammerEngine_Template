@@ -1,12 +1,14 @@
 @echo off
 REM Helper script to run Buffer Utilization tests on Windows
 
+REM Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 REM Set up colored output (basic Windows support)
-set "RED=[91m"
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "BLUE=[94m"
-set "NC=[0m"
+set "RED=%ESC%[91m"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "BLUE=%ESC%[94m"
+set "NC=%ESC%[0m"
 
 REM Process command line arguments
 set VERBOSE=false

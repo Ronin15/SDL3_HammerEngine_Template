@@ -4,12 +4,14 @@ rem Copyright 2025 Hammer Forged Games
 
 setlocal enabledelayedexpansion
 
+rem Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 rem Color codes for Windows
-set "RED=[91m"
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "BLUE=[94m"
-set "NC=[0m"
+set "RED=%ESC%[91m"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "BLUE=%ESC%[94m"
+set "NC=%ESC%[0m"
 
 rem Process command line arguments
 set VERBOSE=false

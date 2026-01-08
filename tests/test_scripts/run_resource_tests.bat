@@ -4,19 +4,21 @@ REM Copyright (c) 2025 Hammer Forged Games
 
 setlocal EnableDelayedExpansion
 
+REM Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 REM Set up colored output
-set "RED=[91m"
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "BLUE=[94m"
-set "NC=[0m"
+set "RED=%ESC%[91m"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "BLUE=%ESC%[94m"
+set "NC=%ESC%[0m"
 
 echo !BLUE!==========================================!NC!
 echo !BLUE!Running Resource Manager System Tests!NC!
 echo !BLUE!==========================================!NC!
 
 REM Navigate to script directory
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 REM Set build type and verbose flag
 set "BUILD_TYPE=Debug"
@@ -138,7 +140,7 @@ for %%f in ("!TEST_EXECUTABLE!") do set "ABS_TEST_EXECUTABLE=%%~ff"
 cd /d "%~dp0..\.."
 "!ABS_TEST_EXECUTABLE!" !TEST_OPTS! > "test_results\!test_name!_output.txt" 2>&1
 set "EXECUTABLE_EXIT_CODE=!ERRORLEVEL!"
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 REM Analyze test results by examining output content rather than just exit code
 set "TEST_PASSED=false"

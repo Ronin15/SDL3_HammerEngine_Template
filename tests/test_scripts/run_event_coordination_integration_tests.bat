@@ -4,14 +4,16 @@
 
 setlocal EnableDelayedExpansion
 
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "RED=[91m"
-set "NC=[0m"
+:: Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "RED=%ESC%[91m"
+set "NC=%ESC%[0m"
 
 echo !YELLOW!Running Event Coordination Integration Tests...!NC!
 
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 if not exist "..\..\test_results" mkdir "..\..\test_results"
 
@@ -51,7 +53,7 @@ for %%f in ("!TEST_EXECUTABLE!") do set "ABS_TEST_EXECUTABLE=%%~ff"
 cd /d "%~dp0..\.."
 "!ABS_TEST_EXECUTABLE!" !TEST_OPTS! > "test_results\event_coordination_integration_tests_output.txt" 2>&1
 set TEST_RESULT=%ERRORLEVEL%
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 findstr /c:"failure" /c:"test cases failed" /c:"fatal error" "!OUTPUT_FILE!" >nul 2>&1
 if %ERRORLEVEL% equ 0 (

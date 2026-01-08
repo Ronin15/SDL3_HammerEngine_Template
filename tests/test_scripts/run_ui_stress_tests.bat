@@ -24,12 +24,14 @@ set VERBOSE=false
 set SAVE_RESULTS=true
 set BENCHMARK_MODE=false
 
+REM Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 REM Colors for output (Windows 10+ with ANSI support)
-set RED=[91m
-set GREEN=[92m
-set YELLOW=[93m
-set BLUE=[94m
-set NC=[0m
+set RED=%ESC%[91m
+set GREEN=%ESC%[92m
+set YELLOW=%ESC%[93m
+set BLUE=%ESC%[94m
+set NC=%ESC%[0m
 
 REM Function to print colored output
 goto :main
