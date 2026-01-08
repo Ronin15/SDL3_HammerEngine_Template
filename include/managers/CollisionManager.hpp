@@ -666,7 +666,7 @@ private:
     // Threading config for broadphase
     // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
     //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 100;  // Broadphase: min movable bodies
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 200;  // Broadphase: min movable bodies
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
 
