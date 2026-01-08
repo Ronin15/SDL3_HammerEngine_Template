@@ -118,6 +118,12 @@ ninja -C build
 - Function profiling: `./tests/valgrind/callgrind_profiling_analysis.sh`
 - Thread analysis: `./tests/valgrind/thread_safety_check.sh`
 - Full suite: `./tests/valgrind/run_complete_valgrind_suite.sh`
+- **Runtime analysis with Profile build** (Valgrind-compatible optimized):
+  ```bash
+  cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
+  ./tests/valgrind/runtime_cache_analysis.sh --profile 300   # MPKI analysis
+  ./tests/valgrind/runtime_memory_analysis.sh --profile 300  # Memory analysis
+  ```
 - See [tests/valgrind/README.md](tests/valgrind/README.md) for details, usage, and performance metrics
 
 ---

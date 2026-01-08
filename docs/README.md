@@ -151,6 +151,14 @@ Detailed performance analysis and benchmarking reports.
 - **[EntityDataManager Power Analysis (2025-12-30)](performance_reports/power_profile_edm_comparison_2025-12-30.md)** - Comprehensive power profile comparison showing EDM architecture benefits: 55% P-core reduction, 52% peak power reduction, 21% lower CPU frequency
 - **[Collision Benchmark Report (2025-12-25)](performance_reports/collision_benchmark_report_2025-12-25.md)** - Collision system performance benchmarks
 
+### Valgrind Testing Suite
+Comprehensive memory, cache, and thread analysis with research-backed benchmarks.
+
+- **[Valgrind Suite Documentation](../tests/valgrind/README.md)** - Complete guide to all Valgrind analysis tools
+- **Runtime Analysis**: Memory and cache analysis with `--debug` (traditional metrics) or `--profile` (MPKI analysis) flags
+- **MPKI Analysis**: Misses Per Kilo Instructions - industry-standard metric for meaningful cache performance comparison of optimized code
+- **Profile Build**: Valgrind-compatible optimized build (`-O2`, SSE4.2, no AVX) for accurate profiling without illegal instruction crashes
+
 ## Resource System Integration
 
 The HammerEngine features a comprehensive resource management system that integrates with multiple engine subsystems:
@@ -213,6 +221,32 @@ For complete integration examples, see the [JSON Resource Loading Guide](utils/J
 - Example tested environment:
   - Ubuntu 24.04.2 LTS
   - Kernel: Linux 6.11.0-26-generic
+
+### Build Types
+The engine supports multiple build configurations:
+
+| Build Type | Optimization | Debug Symbols | Use Case |
+|------------|--------------|---------------|----------|
+| **Debug** | None (`-O0`) | Full | Development, debugging |
+| **Release** | Full (`-O3`, AVX2) | None | Production deployment |
+| **Profile** | Medium (`-O2`, SSE4.2) | Full | Valgrind analysis |
+
+```bash
+# Debug build (default)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
+
+# Release build (production)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Release && ninja -C build
+
+# Profile build (Valgrind-compatible optimized)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
+```
+
+**Why Profile Build?**
+- Release builds use AVX2/AVX512 SIMD instructions that Valgrind cannot emulate
+- Profile build uses SSE4.2 maximum (`-march=x86-64-v2`) for Valgrind compatibility
+- Provides meaningful optimized-code profiling without illegal instruction crashes
+- Runtime analysis scripts support `--profile` flag for MPKI (Misses Per Kilo Instructions) metrics
 
 ### macOS
 - Use Homebrew for SDL3 dependencies:

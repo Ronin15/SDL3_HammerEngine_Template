@@ -611,9 +611,53 @@ EOF
 
 ---
 
+## Additional Updates (Post-Review)
+
+### Commit: `f7f65a03` - Release Build Compile Fixes
+
+**Purpose:** Fix release build compilation errors for debug-only code.
+
+**Files Changed:**
+- `src/ai/internal/Crowd.cpp` - Wrapped debug-only `GetCrowdStats()` and `ResetCrowdStats()` in `#ifndef NDEBUG`
+- `tests/events/EventManagerTest.cpp` - Wrapped debug-only test cases in `#ifndef NDEBUG`
+
+---
+
+### Commit: `2da5d7f3` - Valgrind Profile Testing Infrastructure
+
+**Purpose:** Add comprehensive Valgrind profiling support with Profile build type for accurate cache analysis.
+
+**Key Changes:**
+- **CMakeLists.txt**: Added new "Profile" build type (`-O2 -march=x86-64-v2 -msse4.2`, no AVX) for Valgrind-compatible optimized builds
+- **runtime_cache_analysis.sh**: New script with `--profile`/`--debug` flags, MPKI (Misses Per Kilo Instructions) analysis for optimized builds
+- **runtime_memory_analysis.sh**: New script with `--profile`/`--debug` flags for runtime memory analysis
+- **valgrind_suppressions.supp**: Added 169 lines of suppressions for SDL3, GTK, fontconfig, librsvg
+- **README.md**: Updated documentation for Profile build and MPKI analysis
+
+**Why Profile Build?**
+- Release builds use AVX2/AVX512 instructions that Valgrind cannot emulate
+- Profile build uses SSE4.2 maximum (`-march=x86-64-v2`) for Valgrind compatibility
+- Provides meaningful optimized-code profiling without crashes
+
+**Files Changed:** 11 files, +1,587 lines
+
+---
+
+### Commit: `256a084f` - Documentation Updates
+
+**Purpose:** Minor documentation updates across project files.
+
+**Files Changed:**
+- `AGENTS.md`, `docs/AGENTS.md` - Agent documentation updates
+- `README.md` - Project readme updates
+- `docs/core/GameEngine.md` - GameEngine documentation improvements
+- `docs/ui/UIManager_Guide.md` - UI manager guide updates
+
+---
+
 ## Changelog Version
 
-**Document Version:** 1.0
+**Document Version:** 1.1
 **Last Updated:** 2026-01-08
 **Status:** Final - Ready for Merge
 
