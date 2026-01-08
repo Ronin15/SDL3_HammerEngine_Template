@@ -1,6 +1,6 @@
 # SDL3 HammerEngine Template
 
-A modern, production-ready C++20 SDL3 game engine template for 2D games. Built for rapid prototyping and scalable game development, it features robust multi-threading, high-performance AI, a professional UI system, and comprehensive resource and event management. Designed for cross-platform deployment (Windows, macOS, Linux) with a focus on performance, safety, and extensibility.
+A modern, production-ready C++20 SDL3 game engine template for 2D games. Built for rapid prototyping and scalable game development, it features Data-Oriented Design with EntityDataManager as the central data authority, robust multi-threading, high-performance AI supporting 10K+ entities, a professional UI system, and comprehensive resource and event management. Designed for cross-platform deployment (Windows, macOS, Linux) with a focus on performance, safety, and extensibility.
 
 ## Key Features
 
@@ -16,9 +16,9 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
    Hardware-adaptive thread pool with intelligent WorkerBudget batch optimization. Automatically detects logical cores (including SMT/hyperthreading) and reserves one to reduce OS contention. Sequential manager execution gives each system ALL workers during its update window. Throughput-based hill-climbing converges to optimal batch sizes for your hardware. Priority-based scheduling (5 levels) with cache-line aligned atomics for minimal lock contention.
 
-- **High-Performance AI System**  
-    
-    Cache-friendly, lock-free, and batch-processed AI manager. Supports 10K+ entities at 60+ FPS with only 4-6% CPU usage. Includes dynamic behaviors (Wander, Patrol, Guard, Flee, Attack, etc.), message system, and distance-based culling.
+- **High-Performance AI System**
+
+    Data-Oriented Design with EntityDataManager as single source of truth. Cache-friendly, lock-free, batch-processed AI using Structure-of-Arrays storage. Supports 10K+ entities at 60+ FPS with only 4-6% CPU usage. Includes dynamic behaviors (Wander, Patrol, Guard, Flee, Attack, etc.), simulation tiers (Active/Background/Hibernated), and distance-based culling.
 
 - **Robust Event & State Management**  
     
@@ -38,7 +38,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Comprehensive Testing & Analysis**
 
-    60+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
+    55+ test executables with Boost.Test framework covering unit, integration, and performance testing. Includes AI+Collision integration tests, SIMD correctness validation, and comprehensive thread safety verification with documented TSAN suppressions. Static analysis (cppcheck, clang-tidy), AddressSanitizer (ASAN), ThreadSanitizer (TSAN), and Valgrind integration for production-ready quality assurance.
 
 - **Cross-Platform Optimizations**
 
@@ -129,9 +129,10 @@ ninja -C build
 - **Core:** [GameEngine](docs/core/GameEngine.md), [GameTime](docs/core/GameTime.md), [ThreadSystem](docs/core/ThreadSystem.md), [TimestepManager](docs/managers/TimestepManager.md)
 - **AI System:** [Overview](docs/ai/AIManager.md), [Optimization](docs/ai/AIManager_Optimization_Summary.md), [Behaviors](docs/ai/BehaviorModes.md), [Quick Reference](docs/ai/BehaviorQuickReference.md), [Pathfinding System](docs/ai/PathfindingSystem.md)
 - **Collision & Physics:** [CollisionManager](docs/managers/CollisionManager.md)
+- **Entity System:** [Overview](docs/entities/README.md), [EntityHandle](docs/entities/EntityHandle.md), [EntityDataManager](docs/managers/EntityDataManager.md), [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md)
 - **Event System:** [Overview](docs/events/EventManager.md), [Quick Reference](docs/events/EventManager_QuickReference.md), [Advanced](docs/events/EventManager_Advanced.md), [TimeEvents](docs/events/TimeEvents.md), [EventFactory](docs/events/EventFactory.md)
-- **Controllers:** [Overview](docs/controllers/README.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md)
-- **Managers:** [ParticleManager](docs/managers/ParticleManager.md), [FontManager](docs/managers/FontManager.md), [TextureManager](docs/managers/TextureManager.md), [SoundManager](docs/managers/SoundManager.md), [CollisionManager](docs/managers/CollisionManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
+- **Controllers:** [Overview](docs/controllers/README.md), [ControllerRegistry](docs/controllers/ControllerRegistry.md), [WeatherController](docs/controllers/WeatherController.md), [DayNightController](docs/controllers/DayNightController.md), [CombatController](docs/controllers/CombatController.md)
+- **Managers:** [BackgroundSimulationManager](docs/managers/BackgroundSimulationManager.md), [CollisionManager](docs/managers/CollisionManager.md), [EntityDataManager](docs/managers/EntityDataManager.md), [FontManager](docs/managers/FontManager.md), [ParticleManager](docs/managers/ParticleManager.md), [PathfinderManager](docs/managers/PathfinderManager.md), [ResourceFactory](docs/managers/ResourceFactory.md), [ResourceTemplateManager](docs/managers/ResourceTemplateManager.md), [SoundManager](docs/managers/SoundManager.md), [TextureManager](docs/managers/TextureManager.md), [WorldManager](docs/managers/WorldManager.md), [WorldResourceManager](docs/managers/WorldResourceManager.md)
 - **UI:** [UIManager Guide](docs/ui/UIManager_Guide.md), [UIConstants Reference](docs/ui/UIConstants.md), [Auto-Sizing](docs/ui/Auto_Sizing_System.md), [DPI-Aware Fonts](docs/ui/DPI_Aware_Font_System.md), [Minimap Implementation](docs/ui/Minimap_Implementation.md)
 - **Utilities:** [JsonReader](docs/utils/JsonReader.md), [JSON Resource Loading](docs/utils/JSON_Resource_Loading_Guide.md), [Serialization](docs/utils/SERIALIZATION.md), [ResourceHandle System](docs/utils/ResourceHandle_System.md), [Camera](docs/utils/Camera.md)
 - **Architecture:** [Interpolation System](docs/architecture/InterpolationSystem.md)
@@ -143,6 +144,7 @@ ninja -C build
 
 ## Core Design Principles
 
+- **Data-Oriented Design:** EntityDataManager as single source of truth, Structure-of-Arrays storage, cache-optimal 64-byte structs
 - **Memory Safety:** Smart pointers, RAII, no raw pointers
 - **Performance:** Cache-friendly, batch processing, optimized threading
 - **Type Safety:** Strong typing, compile-time and runtime validation

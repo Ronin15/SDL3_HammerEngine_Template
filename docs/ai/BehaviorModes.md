@@ -4,6 +4,8 @@
 - Implementation: `src/ai/behaviors/`
 - Registered and managed by: `src/managers/AIManager.cpp`
 
+**EDM Integration:** All behaviors execute via `BehaviorContext` with pre-fetched EntityDataManager data. Behavior state (timers, paths, targets) persists in EDM's `AIBehaviorData` and `PathData` structures. See [AIManager EDM Integration](AIManager.md#entitydatamanager-integration).
+
 ## Overview
 
 The Hammer Game Engine AI system includes comprehensive mode-based behavior configuration for all AI behaviors. These modes provide automatic setup for common patterns, eliminating manual configuration while ensuring consistent behavior across different NPC types. The system supports 8 distinct behavior types, each with multiple modes for specialized use cases.

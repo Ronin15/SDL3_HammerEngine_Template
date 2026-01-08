@@ -104,11 +104,15 @@ private:
 
 The GameEngine initializes and manages:
 - SDL3 Video subsystem
+- **EntityDataManager** (main thread) - Central entity data authority
+- **BackgroundSimulationManager** (main thread) - Off-screen entity simulation
 - TextureManager (main thread)
 - SoundManager (background thread)
 - FontManager (background thread)
 - InputManager (background thread)
 - AIManager (background thread)
+- CollisionManager (background thread)
+- PathfinderManager (background thread)
 - EventManager (background thread)
 - SaveGameManager (background thread)
 - UIManager (main thread)

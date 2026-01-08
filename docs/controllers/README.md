@@ -44,27 +44,62 @@ All controllers inherit from `ControllerBase` which provides:
 - Subscription state tracking
 - Move semantics (non-copyable)
 
+### ControllerRegistry
+
+The `ControllerRegistry` provides type-erased batch management of controllers.
+
+**See: [ControllerRegistry Documentation](ControllerRegistry.md)** for complete API reference.
+
+**Key features:**
+- Heterogeneous storage of controller types
+- Batch operations: `subscribeAll()`, `unsubscribeAll()`, `updateAll()`, `suspendAll()`, `resumeAll()`
+- Automatic `IUpdatable` detection for controllers that need per-frame updates
+- Type-safe retrieval via `get<T>()`
+
+**Where to find the code:**
+- Header: `include/controllers/ControllerRegistry.hpp`
+- Interface: `include/controllers/IUpdatable.hpp`
+
 ## Ownership Model
 
-Controllers are **owned by GameStates** (not singletons):
+Controllers are **owned by GameStates** via `ControllerRegistry`:
 
 ```cpp
 // GamePlayState.hpp
 class GamePlayState : public GameState {
 private:
-    WeatherController m_weatherController;      // Owned instance
-    DayNightController m_dayNightController;    // Owned instance
+    ControllerRegistry m_controllers;  // Owns all controllers
 };
 
 // GamePlayState.cpp
 bool GamePlayState::enter() {
-    // Subscribe controllers
-    m_weatherController.subscribe();
-    m_dayNightController.subscribe();
+    // Add and subscribe controllers
+    m_controllers.add<WeatherController>();
+    m_controllers.add<DayNightController>();
+    m_controllers.add<CombatController>(mp_player);  // Args forwarded
+    m_controllers.subscribeAll();
     return true;
 }
 
-// exit() - controllers auto-unsubscribe via ControllerBase destructor
+void GamePlayState::update(float dt) {
+    m_controllers.updateAll(dt);  // Updates IUpdatable controllers
+}
+
+void GamePlayState::pause() {
+    m_controllers.suspendAll();
+}
+
+void GamePlayState::resume() {
+    m_controllers.resumeAll();
+}
+
+bool GamePlayState::exit() {
+    m_controllers.unsubscribeAll();
+    return true;
+}
+
+// Access controllers for queries
+auto weather = m_controllers.get<WeatherController>()->getCurrentWeather();
 ```
 
 ## Time Display Pattern

@@ -4,6 +4,8 @@
 - Implementation: `src/ai/behaviors/`
 - Registered and managed by: `src/managers/AIManager.cpp`
 
+**EDM Integration:** All behaviors access entity data through `BehaviorContext` which pre-fetches data from EntityDataManager. Behavior state (paths, timers, targets) persists in EDM between frames. See [AIManager EDM Integration](AIManager.md#entitydatamanager-integration) for details.
+
 ## All Available Behaviors
 
 | Behavior | Modes | Complexity | Priority Range | Primary Use |

@@ -568,3 +568,9 @@ knownConditionTrueFalse:*/src/managers/AIManager.cpp:859
 # Setting minX=maxX=first, minY=maxY=first is standard bounding box init
 duplicateAssignExpression:*/src/managers/CollisionManager.cpp:424
 duplicateAssignExpression:*/src/managers/CollisionManager.cpp:426
+
+# --- Double-checked locking pattern (thread-safe shutdown guard) ---
+# Line 376 checks m_isShutdown BEFORE lock acquisition (fast path)
+# Line 378 checks m_isShutdown AFTER lock acquisition (guards against shutdown during lock wait)
+# This is intentional thread-safe double-checked locking - NOT a redundant condition
+identicalInnerCondition:*/src/managers/PathfinderManager.cpp:378

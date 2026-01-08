@@ -65,6 +65,7 @@ Comprehensive event management system with EventManager as the single source of 
 State-scoped event handlers that control specific behaviors without owning data. Subscribe/unsubscribe lifecycle per GameState.
 
 - **[Controllers Overview](controllers/README.md)** - Controller pattern, lifecycle, vs. Managers comparison
+- **[ControllerRegistry](controllers/ControllerRegistry.md)** - Type-erased container for batch controller management with `add<T>()`, `subscribeAll()`, `updateAll()` operations
 - **[WeatherController](controllers/WeatherController.md)** - Weather event coordination
 - **[DayNightController](controllers/DayNightController.md)** - Time period tracking and visual effects
 - **[CombatController](controllers/CombatController.md)** - Handles combat logic, including hit detection, damage, and status effects.
@@ -87,11 +88,20 @@ High-performance multithreading framework with priority-based task scheduling an
 - **Sequential Manager Execution** - Each manager gets ALL workers during its update window (no concurrent manager execution)
 - **Hardware Adaptive** - Detects logical cores (including SMT/hyperthreading), reserves one for main thread, scales workers accordingly
 
+### Entity Data System
+Data-Oriented Design (DoD) infrastructure for high-performance entity management.
+
+- **[EntityDataManager](managers/EntityDataManager.md)** - Central data authority using Structure-of-Arrays storage, cache-optimal 64-byte structs, and simulation tier system (Active/Background/Hibernated)
+- **[BackgroundSimulationManager](managers/BackgroundSimulationManager.md)** - Off-screen entity simulation at reduced update rate (10Hz) for power efficiency
+- **[EntityHandle](entities/EntityHandle.md)** - Lightweight 16-byte handles for type-safe entity references without RTTI
+
 ### Manager Systems
 Resource management systems for fonts, textures, audio, particles, game data, entity states, settings, and world resources.
 
 See the [Manager Documentation Index](managers/README.md) for a complete, alphabetized list of all manager docs.
 
+- **[BackgroundSimulationManager](managers/BackgroundSimulationManager.md)** – Off-screen entity simulation at 10Hz for power efficiency and world consistency.
+- **[EntityDataManager](managers/EntityDataManager.md)** – Central data authority using Structure-of-Arrays storage for cache-optimal entity management.
 - **[EntityStateManager](managers/EntityStateManager.md)** – Manages named state machines for entities (player, NPCs), supporting safe transitions and update delegation.
 - **[FontManager](managers/FontManager.md)** – Centralized font loading, management, and text rendering with DPI-aware scaling and UI integration.
 - **[GameStateManager](managers/GameStateManager.md)** – Handles the collection and switching of game states/screens, ensuring only one is active at a time.
