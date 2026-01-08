@@ -30,22 +30,29 @@ mkdir -p "${RESULTS_DIR}/summaries"
 # AI behavior, performance critical, and resource management test executables
 declare -A PROFILE_TESTS=(
     ["ai_optimization"]="ai_optimization_tests"
+    ["ai_collision_integration"]="ai_collision_integration_tests"
+    ["ai_manager_edm_integration"]="ai_manager_edm_integration_tests"
     ["behavior_functionality"]="behavior_functionality_tests"
+    ["entity_data_manager"]="entity_data_manager_tests"
+    ["entity_state_manager"]="entity_state_manager_tests"
     ["event_manager"]="event_manager_tests"
     ["event_manager_behavior"]="event_manager_behavior_tests"
     ["event_types"]="event_types_tests"
+    ["event_coordination"]="event_coordination_integration_tests"
     ["weather_events"]="weather_event_tests"
+    ["weather_controller"]="weather_controller_tests"
     ["particle_core"]="particle_manager_core_tests"
     ["particle_performance"]="particle_manager_performance_tests"
     ["particle_threading"]="particle_manager_threading_tests"
     ["particle_weather"]="particle_manager_weather_tests"
     ["buffer_utilization"]="buffer_utilization_tests"
+    ["buffer_reuse"]="buffer_reuse_tests"
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integration"]="thread_safe_ai_integration_tests"
     ["save_manager"]="save_manager_tests"
     ["settings_manager"]="settings_manager_tests"
     ["game_state_manager"]="game_state_manager_tests"
-    ["ui_stress"]="ui_stress_test"
+    ["loading_state"]="loading_state_tests"
     ["resource_architecture"]="resource_architecture_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["world_generator"]="world_generator_tests"
@@ -60,9 +67,23 @@ declare -A PROFILE_TESTS=(
     ["resource_template_json"]="resource_template_manager_json_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
     ["collision_system"]="collision_system_tests"
+    ["collision_manager_edm"]="collision_manager_edm_integration_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
     ["pathfinder_manager"]="pathfinder_manager_tests"
+    ["pathfinder_edm"]="pathfinder_manager_edm_integration_tests"
+    ["pathfinder_contention"]="pathfinder_ai_contention_tests"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
+    ["camera"]="camera_tests"
+    ["rendering_pipeline"]="rendering_pipeline_tests"
+    ["input_manager"]="input_manager_tests"
+    ["ui_manager_functional"]="ui_manager_functional_tests"
+    ["controller_registry"]="controller_registry_tests"
+    ["day_night_controller"]="day_night_controller_tests"
+    ["game_time_manager"]="game_time_manager_tests"
+    ["game_time_calendar"]="game_time_manager_calendar_tests"
+    ["game_time_season"]="game_time_manager_season_tests"
+    ["simd_correctness"]="simd_correctness_tests"
+    ["background_simulation"]="background_simulation_manager_tests"
 )
 
 # Performance tracking
@@ -602,7 +623,7 @@ run_targeted_profiling() {
     case "${category}" in
         "ai_behaviors"|"ai")
             section_header "AI BEHAVIOR PROFILING ANALYSIS"
-            for test_name in "ai_optimization" "ai_scaling" "behavior_functionality" "thread_safe_ai" "thread_safe_ai_integration"; do
+            for test_name in "ai_optimization" "ai_collision_integration" "ai_manager_edm_integration" "behavior_functionality" "entity_data_manager" "entity_state_manager" "thread_safe_ai" "thread_safe_ai_integration"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
@@ -611,7 +632,7 @@ run_targeted_profiling() {
             ;;
         "event_systems"|"events")
             section_header "EVENT SYSTEM PROFILING ANALYSIS"
-            for test_name in "event_manager" "event_scaling" "event_types" "weather_events"; do
+            for test_name in "event_manager" "event_manager_behavior" "event_types" "event_coordination" "weather_events" "weather_controller"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
@@ -620,7 +641,7 @@ run_targeted_profiling() {
             ;;
         "performance"|"perf")
             section_header "PERFORMANCE CRITICAL PROFILING ANALYSIS"
-            for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "save_manager" "ui_stress"; do
+            for test_name in "particle_core" "particle_performance" "particle_threading" "particle_weather" "buffer_utilization" "buffer_reuse" "save_manager" "simd_correctness" "rendering_pipeline" "camera" "ui_manager_functional"; do
                 if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
                     run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
@@ -629,8 +650,9 @@ run_targeted_profiling() {
             ;;
         "resource_management"|"resources")
             section_header "RESOURCE MANAGEMENT PROFILING ANALYSIS"
-            for test_name in "resource_manager" "world_resource_manager" "world_generator" "world_manager" "world_manager_events" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "resource_edge_case" "json_reader"; do
-                if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then                    run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
+            for test_name in "resource_architecture" "world_resource_manager" "world_generator" "world_manager" "world_manager_events" "resource_template_manager" "resource_integration" "resource_change_events" "inventory_components" "resource_factory" "resource_template_json" "resource_edge_case" "json_reader" "collision_system" "collision_manager_edm" "pathfinding_system" "pathfinder_manager" "pathfinder_edm" "pathfinder_contention" "collision_pathfinding_integration"; do
+                if [[ -n "${PROFILE_TESTS[$test_name]}" ]]; then
+                    run_callgrind_profiling "${test_name}" "${PROFILE_TESTS[$test_name]}"
                     echo ""
                 fi
             done

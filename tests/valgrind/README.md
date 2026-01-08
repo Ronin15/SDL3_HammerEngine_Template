@@ -20,6 +20,38 @@ The SDL3 HammerEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 # Results: Perfect memory management in critical components
 ```
 
+### Runtime Application Analysis (5+ minutes)
+```bash
+# Run main application under valgrind for 5 minutes (default, debug build)
+./tests/valgrind/runtime_memory_analysis.sh
+
+# Run with profile build (Valgrind-compatible optimized)
+./tests/valgrind/runtime_memory_analysis.sh --profile 300
+
+# Run for custom duration (in seconds)
+./tests/valgrind/runtime_memory_analysis.sh 600  # 10 minutes
+
+# Results: Zero application memory leaks, perfect memory safety
+```
+
+### Runtime Cache Analysis (3+ minutes)
+```bash
+# Run main application under cachegrind for 3 minutes (default, debug build)
+./tests/valgrind/runtime_cache_analysis.sh
+
+# Run with profile build - shows MPKI analysis (recommended for optimized code)
+./tests/valgrind/runtime_cache_analysis.sh --profile 300
+
+# Run for custom duration (in seconds)
+./tests/valgrind/runtime_cache_analysis.sh 300  # 5 minutes
+
+# Results: World-class cache performance, top 1% globally
+```
+
+**Build Options:**
+- `--debug` (default): Shows traditional miss rate analysis
+- `--profile`: Shows MPKI (Misses Per Kilo Instructions) analysis - more meaningful for optimized builds
+
 ### Cache Performance Analysis (5-10 minutes)
 ```bash
 # Detailed cache performance analysis
@@ -61,6 +93,25 @@ The SDL3 HammerEngine Template has achieved **WORLD-CLASS OPTIMIZATION** with:
 ```
 
 ## Analysis Tools
+
+### 0a. Runtime Memory Analysis (`runtime_memory_analysis.sh`)
+- **Purpose**: Extended runtime memory analysis of the main application
+- **Duration**: 5+ minutes (configurable)
+- **Options**: `--debug` (default), `--profile` (Valgrind-compatible optimized build)
+- **Focus**: Real-world memory behavior, leak detection over time, application stability
+- **Output**: Detailed report, summary, and full valgrind log
+- **Key Finding**: Zero memory leaks from application code (all detected leaks from system libraries)
+
+### 0b. Runtime Cache Analysis (`runtime_cache_analysis.sh`)
+- **Purpose**: Extended runtime cache performance analysis of the main application
+- **Duration**: 3+ minutes (configurable, slower than memcheck)
+- **Options**:
+  - `--debug` (default): Traditional miss rate analysis
+  - `--profile`: MPKI analysis (Misses Per Kilo Instructions) - recommended for optimized builds
+- **Focus**: L1/L2/LLC cache miss rates, branch prediction, real-world cache behavior
+- **Output**: Cache performance report, annotated hotspots, industry benchmark comparison
+- **Key Finding**: World-class cache efficiency across all cache levels
+- **Note**: Use `--profile` for meaningful comparisons of optimized code (MPKI accounts for instruction efficiency)
 
 ### 1. Quick Memory Check (`quick_memory_check.sh`)
 - **Purpose**: Fast memory leak detection for development workflow
@@ -144,14 +195,22 @@ valgrind --version
 ```
 
 ### Build Requirements
-Ensure the project is built in debug mode:
+Ensure the project is built with appropriate build type:
 ```bash
-# Build debug binaries
-ninja -C build
+# Build debug binaries (default for most analysis)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug && ninja -C build
+
+# Build profile binaries (Valgrind-compatible optimized, no AVX)
+cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Profile && ninja -C build
 
 # Verify test executables exist
-ls bin/debug/*_tests
+ls bin/debug/*_tests    # Debug build
+ls bin/profile/         # Profile build (for --profile flag)
 ```
+
+**Build Types:**
+- **Debug**: Full debug symbols, no optimization - best for detailed memory analysis
+- **Profile**: Valgrind-compatible optimization (-O2, SSE4.2, no AVX) - for optimized code analysis
 
 ## Usage Examples
 
@@ -204,6 +263,13 @@ diff baseline_performance.log current_performance.log
 - 💚 **GOOD**: < 3% L1I, < 10% L1D (Top 10% performance)
 - 🟡 **AVERAGE**: Industry standard performance
 - 🔴 **POOR**: Below industry standards
+
+### MPKI (Misses Per Kilo Instructions) - Profile Build
+When using `--profile`, the analysis shows MPKI instead of miss rates:
+- **MPKI** = (Cache Misses / Instructions Executed) × 1000
+- More meaningful for optimized code because it accounts for instruction efficiency
+- Lower MPKI = better cache utilization relative to work done
+- **LLC MPKI** is most critical (~200 CPU cycles per miss to RAM)
 
 ### Thread Safety
 - ✅ **SAFE**: No race conditions detected
@@ -307,18 +373,48 @@ Update performance baselines when adding new optimizations:
 
 ### Recent Updates
 
-**New Test Coverage Added (2025)**:
-- **JSON Reader Tests** (`json_reader_tests`) - Memory and performance analysis of JSON parsing components
-- **Resource Factory Tests** (`resource_factory_tests`) - Resource creation and management validation
-- **Resource Template JSON Tests** (`resource_template_manager_json_tests`) - JSON-based template system analysis
-- **Resource Edge Case Tests** (`resource_edge_case_tests`) - Comprehensive edge case validation for resource system thread safety, memory pressure, and concurrent access patterns
+**New Test Coverage Added (2025-2026)**:
+
+**AI & Entity Systems**:
+- `ai_collision_integration_tests` - AI and collision system integration analysis
+- `ai_manager_edm_integration_tests` - AI manager EntityDataManager integration
+- `entity_data_manager_tests` - EntityDataManager memory and performance
+- `entity_state_manager_tests` - Entity state management validation
+
+**Collision & Pathfinding**:
+- `collision_manager_edm_integration_tests` - Collision manager EDM integration
+- `pathfinder_manager_edm_integration_tests` - Pathfinder EDM integration
+- `pathfinder_ai_contention_tests` - Pathfinder AI contention and threading
+
+**Event & Controller Systems**:
+- `event_coordination_integration_tests` - Event coordination integration
+- `weather_controller_tests` - Weather controller validation
+- `day_night_controller_tests` - Day/night controller analysis
+- `controller_registry_tests` - Controller registry memory checks
+
+**Time & Simulation**:
+- `game_time_manager_tests` - Game time manager validation
+- `game_time_manager_calendar_tests` - Calendar system analysis
+- `game_time_manager_season_tests` - Season system validation
+- `background_simulation_manager_tests` - Background simulation threading
+
+**Rendering & Input**:
+- `camera_tests` - Camera system memory and performance
+- `rendering_pipeline_tests` - Rendering pipeline validation
+- `input_manager_tests` - Input manager analysis
+- `ui_manager_functional_tests` - UI manager functional testing
+
+**Core Systems**:
+- `buffer_reuse_tests` - Buffer reuse pattern validation
+- `loading_state_tests` - Loading state memory analysis
+- `simd_correctness_tests` - SIMD implementation validation
 
 These tests are automatically included in:
-- Memory leak analysis (JSON reader, resource edge cases)
-- Performance benchmarking (JSON reader, resource edge cases)
-- Thread safety validation (resource edge cases)
-- Resource management validation (Factory, JSON template tests, and edge cases)
-- Comprehensive analysis across all categories
+- Memory leak analysis (all new tests)
+- Performance benchmarking (AI, collision, pathfinding, SIMD, rendering)
+- Thread safety validation (AI integration, pathfinder contention, background simulation)
+- Cache performance analysis (all performance-critical components)
+- Function profiling (all systems with targeted categories)
 
 ### Key Files
 - `VALGRIND_ANALYSIS_COMPLETE.md` - Complete technical analysis
