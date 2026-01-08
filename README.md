@@ -42,7 +42,7 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 - **Cross-Platform Optimizations**
 
-    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS letterbox mode, Wayland detection, adaptive VSync, and DPI scaling.
+    Unified codebase with platform-specific enhancements: SIMD acceleration (x86-64: SSE2/AVX2, ARM64: NEON), macOS Retina support with borderless fullscreen, Wayland detection, adaptive VSync, and native DPI scaling.
 
 - **GameTime & World Simulation**
 
@@ -82,10 +82,10 @@ A modern, production-ready C++20 SDL3 game engine template for 2D games. Built f
 
 ### Prerequisites
 
-- CMake 3.28+, Ninja, C++20 compiler (GCC/Clang/MSVC) - MSVC planned
-- Platforms: Windows, macOS (Apple Silicon only), Linux
+- CMake 3.28+, Ninja, C++20 compiler (GCC/Clang) - MSVC support planned
+- Platforms: Linux, macOS (Apple Silicon optimized, Intel supported), Windows (MinGW)
 - [SDL3 dependencies](https://wiki.libsdl.org/SDL3/README-linux) (ttf, mixer)
-- Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, for profiling and memory validation)
+- Boost (for tests), cppcheck & clang-tidy (static analysis), Valgrind (optional, Linux only)
 
 **Platform notes:**  
 See [Platform Notes](docs/README.md#platform-notes) for detailed Windows, Linux, and macOS setup instructions.

@@ -165,6 +165,6 @@ This pattern has been broken multiple times. Current implementation is correct a
 
 ## Platform Support
 
-**Cross-Platform**: macOS (optimized flags, dSYM, letterbox) | Linux (Wayland, adaptive VSync) | Windows (console control, DLL planned)
+**Cross-Platform**: macOS (optimized flags, dSYM, Retina) | Linux (Wayland, adaptive VSync) | Windows (console control, DLL planned)
 
 **Build Types**: Debug (console, full symbols, no opt) | Release (optimized, LTO, platform flags)
