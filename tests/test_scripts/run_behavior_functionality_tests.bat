@@ -7,7 +7,7 @@ setlocal enabledelayedexpansion
 echo Running Behavior Functionality Tests...
 
 REM Navigate to project root directory (in case script is run from elsewhere)
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 REM Create directory for test results
 if not exist "..\..\test_results" mkdir "..\..\test_results"

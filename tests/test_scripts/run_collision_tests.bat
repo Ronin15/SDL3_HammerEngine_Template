@@ -5,7 +5,7 @@ REM This script runs comprehensive tests for the spatial hash collision system
 setlocal EnableDelayedExpansion
 
 REM Navigate to script directory
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 REM Process command line arguments
 set VERBOSE=false

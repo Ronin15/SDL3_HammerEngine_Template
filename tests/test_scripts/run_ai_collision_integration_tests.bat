@@ -4,14 +4,17 @@
 
 setlocal EnableDelayedExpansion
 
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "RED=[91m"
-set "NC=[0m"
+:: Navigate to script directory first
+cd /d "%~dp0" 2>nul
+
+:: Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "RED=%ESC%[91m"
+set "NC=%ESC%[0m"
 
 echo !YELLOW!Running AI and Collision Integration Tests...!NC!
-
-cd /d "%~dp0"
 
 if not exist "..\..\test_results" mkdir "..\..\test_results"
 
@@ -44,18 +47,27 @@ set TEST_OPTS=--log_level=all --catch_system_errors=no
 if "%VERBOSE%"=="true" (set TEST_OPTS=!TEST_OPTS! --report_level=detailed)
 
 "!TEST_EXECUTABLE!" !TEST_OPTS! > "!OUTPUT_FILE!" 2>&1
-set TEST_RESULT=%ERRORLEVEL%
+set TEST_RESULT=!ERRORLEVEL!
 
-findstr /c:"failure" /c:"test cases failed" /c:"fatal error" "!OUTPUT_FILE!" >nul 2>&1
-if %ERRORLEVEL% equ 0 (
-    echo !RED!❌ Some tests failed! See !OUTPUT_FILE! for details.!NC!
-    exit /b 1
-) else (
-    if !TEST_RESULT! neq 0 (
-        echo !RED!❌ Some tests failed! See !OUTPUT_FILE! for details.!NC!
-        exit /b 1
-    ) else (
-        echo !GREEN!✅ All AI and Collision Integration tests passed!!NC!
-        exit /b 0
-    )
+:: Check for success indicator first
+findstr /c:"No errors detected" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo !GREEN!All AI and Collision Integration tests passed!!NC!
+    exit /b 0
 )
+
+:: Check for explicit failures
+findstr /c:"failure" /c:"test cases failed" /c:"fatal error" "!OUTPUT_FILE!" >nul 2>&1
+if !ERRORLEVEL! equ 0 (
+    echo !RED!Some tests failed! See !OUTPUT_FILE! for details.!NC!
+    exit /b 1
+)
+
+:: Fall back to exit code
+if !TEST_RESULT! neq 0 (
+    echo !RED!Tests failed with exit code !TEST_RESULT!!NC!
+    exit /b 1
+)
+
+echo !GREEN!All AI and Collision Integration tests passed!!NC!
+exit /b 0

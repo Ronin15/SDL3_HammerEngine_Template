@@ -5,15 +5,17 @@
 :: Enable color output on Windows 10+ terminals
 setlocal EnableDelayedExpansion
 
+:: Enable ANSI escape sequences (Windows 10+)
+for /F %%a in ('echo prompt $E ^| cmd') do set "ESC=%%a"
 :: Color codes for Windows
-set "GREEN=[92m"
-set "YELLOW=[93m"
-set "RED=[91m"
-set "BLUE=[94m"
-set "NC=[0m"
+set "GREEN=%ESC%[92m"
+set "YELLOW=%ESC%[93m"
+set "RED=%ESC%[91m"
+set "BLUE=%ESC%[94m"
+set "NC=%ESC%[0m"
 
 :: Navigate to project root directory (in case script is run from elsewhere)
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 :: Create required directories
 if not exist "..\..\test_results" mkdir "..\..\test_results"

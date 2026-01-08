@@ -5,7 +5,7 @@ REM This script runs integration tests for WorkerBudget coordination between sys
 setlocal enabledelayedexpansion
 
 REM Navigate to script directory
-cd /d "%~dp0"
+cd /d "%~dp0" 2>nul
 
 REM Get the directory where this script is located
 set "SCRIPT_DIR=%~dp0"
