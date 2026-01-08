@@ -9,9 +9,19 @@
 
 #include "entities/Entity.hpp"
 #include "utils/Vector2D.hpp"
+#include <cstdint>
 #include <vector>
 
 namespace AIInternal {
+
+#ifndef NDEBUG
+struct CrowdStats {
+  uint64_t queryCount{0};
+  uint64_t cacheHits{0};
+  uint64_t cacheMisses{0};
+  uint64_t resultsCount{0};
+};
+#endif
 
 // Counts nearby entities within a given area, filtering for actual entities only
 // (excludes static objects, triggers, and self)
@@ -35,6 +45,12 @@ int GetNearbyEntitiesWithPositions(EntityID excludeId, const Vector2D &center, f
 // - frameNumber: current frame number for cache invalidation
 void InvalidateSpatialCache(uint64_t frameNumber);
 
+#ifndef NDEBUG
+// Crowd query stats (aggregated across worker threads)
+CrowdStats GetCrowdStats();
+void ResetCrowdStats();
+#endif
+
 // Returns reference to thread-local position buffer for crowd queries
 // Caller must call clear() before use. Avoids per-call allocations.
 std::vector<Vector2D> &GetNearbyPositionBuffer();
@@ -42,4 +58,3 @@ std::vector<Vector2D> &GetNearbyPositionBuffer();
 } // namespace AIInternal
 
 #endif // AI_INTERNAL_CROWD_HPP
-

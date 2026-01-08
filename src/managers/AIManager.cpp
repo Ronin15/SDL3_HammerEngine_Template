@@ -274,6 +274,9 @@ void AIManager::update(float deltaTime) {
     // This ensures thread-local caches are fresh and don't use stale collision
     // data
     AIInternal::InvalidateSpatialCache(currentFrame);
+#ifndef NDEBUG
+    AIInternal::ResetCrowdStats();
+#endif
 
     // OPTIMIZATION: Query world bounds ONCE per frame (not per batch)
     float worldWidth = 32000.0f;
@@ -453,17 +456,34 @@ void AIManager::update(float deltaTime) {
     if (++logFrameCounter % 300 == 0 && entityCount > 0) {
       double entitiesPerSecond =
           totalUpdateTime > 0 ? (entityCount * 1000.0 / totalUpdateTime) : 0.0;
+      const auto crowdStats = AIInternal::GetCrowdStats();
+      double crowdHitRate =
+          crowdStats.queryCount > 0
+              ? (100.0 * static_cast<double>(crowdStats.cacheHits) /
+                 static_cast<double>(crowdStats.queryCount))
+              : 0.0;
+      PathfinderManager::PathfinderStats pathStats{};
+      if (mp_pathfinderManager) {
+        pathStats = mp_pathfinderManager->getStats();
+      }
+      double pathHitRate = pathStats.cacheHitRate * 100.0;
       if (logWasThreaded) {
         AI_DEBUG(std::format(
             "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-            "[Threaded: {} batches, {}/batch]",
+            "[Threaded: {} batches, {}/batch] Crowd[q:{} hit:{:.0f}% res:{}] "
+            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
             entityCount, totalUpdateTime, entitiesPerSecond, logBatchCount,
-            entityCount / logBatchCount));
+            entityCount / logBatchCount, crowdStats.queryCount, crowdHitRate,
+            crowdStats.resultsCount, pathStats.requestsPerSecond, pathHitRate,
+            pathStats.cacheSize));
       } else {
         AI_DEBUG(std::format(
             "AI Summary - Active: {}, Update: {:.2f}ms, Throughput: {:.0f}/sec "
-            "[Single-threaded]",
-            entityCount, totalUpdateTime, entitiesPerSecond));
+            "[Single-threaded] Crowd[q:{} hit:{:.0f}% res:{}] "
+            "Path[rps:{:.1f} hit:{:.0f}% cache:{}]",
+            entityCount, totalUpdateTime, entitiesPerSecond,
+            crowdStats.queryCount, crowdHitRate, crowdStats.resultsCount,
+            pathStats.requestsPerSecond, pathHitRate, pathStats.cacheSize));
       }
     }
 #endif
