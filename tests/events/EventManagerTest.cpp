@@ -1249,11 +1249,12 @@ BOOST_FIXTURE_TEST_CASE(PerformanceMonitoringStats, EventManagerFixture) {
   BOOST_CHECK_GT(EventManager::Instance().getEventCount(EventTypeId::Weather), 0);
 }
 
-// Test double buffering functionality
+// Test double buffering functionality (debug-only - enableThreading is not available in release)
+#ifndef NDEBUG
 BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
-  
+
   // Enable threading to activate double buffering
   EventManager::Instance().enableThreading(true);
   
@@ -1289,6 +1290,7 @@ BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
   
   EventManager::Instance().enableThreading(false);
 }
+#endif // NDEBUG
 
 // Test memory management and event pools
 BOOST_FIXTURE_TEST_CASE(MemoryManagementEventPools, EventManagerFixture) {
@@ -1352,7 +1354,8 @@ BOOST_FIXTURE_TEST_CASE(StateTransitionPreparation, EventManagerFixture) {
   BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 0);
 }
 
-// Test enabling/disabling threading dynamically
+// Test enabling/disabling threading dynamically (debug-only - enableThreading is not available in release)
+#ifndef NDEBUG
 BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   EventManager::Instance().clean();
   BOOST_CHECK(EventManager::Instance().init());
@@ -1389,6 +1392,7 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   
   int callsWithThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithThreading, 1);
-  
+
   EventManager::Instance().enableThreading(false);
 }
+#endif // NDEBUG

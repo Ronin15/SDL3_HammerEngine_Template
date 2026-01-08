@@ -213,6 +213,7 @@ void InvalidateSpatialCache(uint64_t frameNumber) {
   g_spatialCache.newFrame(frameNumber);
 }
 
+#ifndef NDEBUG
 CrowdStats GetCrowdStats() {
   CrowdStats stats{};
   stats.queryCount = g_queryCount.load(std::memory_order_relaxed);
@@ -228,6 +229,7 @@ void ResetCrowdStats() {
   g_cacheMisses.store(0, std::memory_order_relaxed);
   g_resultsCount.store(0, std::memory_order_relaxed);
 }
+#endif
 
 std::vector<Vector2D> &GetNearbyPositionBuffer() { return g_nearbyPositionBuffer; }
 
