@@ -1168,6 +1168,10 @@ void PathfinderManager::reportStatistics() const {
                     stats.cacheHits, stats.cacheMisses, static_cast<int>(stats.cacheHitRate * 100),
                     stats.cacheSize, stats.averageProcessingTimeMs, static_cast<int>(stats.requestsPerSecond),
                     stats.memoryUsageKB, (stats.processorActive ? "Active" : "Inactive")));
+    PATHFIND_INFO_IF(stats.totalRequests > 0,
+        std::format("Pathfinder Summary - RPS: {:.1f}, Cache Hit: {:.0f}%, Cache Size: {}",
+                    stats.requestsPerSecond, stats.cacheHitRate * 100.0f,
+                    stats.cacheSize));
 
     // Reset per-cycle counters for next reporting window (every 600 frames / 10 seconds)
     m_enqueuedRequests.store(0, std::memory_order_relaxed);

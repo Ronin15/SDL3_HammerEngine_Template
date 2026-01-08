@@ -89,6 +89,7 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   static constexpr size_t PERF_SAMPLE_COUNT = 10;
   std::array<double, PERF_SAMPLE_COUNT> updateSamples{};
   size_t sampleIndex = 0;
+  size_t intervalUpdateIterations = 0;
   auto lastPerfLogTime = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -104,16 +105,21 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
     // Fixed timestep updates - run until accumulator is drained
 #ifndef NDEBUG
     auto updateStart = std::chrono::high_resolution_clock::now();
+    size_t updateIterations = 0;
 #endif
 
     while (ts.shouldUpdate()) {
       gameEngine.update(ts.getUpdateDeltaTime());
+#ifndef NDEBUG
+      ++updateIterations;
+#endif
     }
 
 #ifndef NDEBUG
     auto updateEnd = std::chrono::high_resolution_clock::now();
     double updateMs = std::chrono::duration<double, std::milli>(updateEnd - updateStart).count();
     updateSamples[sampleIndex++ % PERF_SAMPLE_COUNT] = updateMs;
+    intervalUpdateIterations += updateIterations;
 
     double secondsSinceLastLog = std::chrono::duration<double>(updateEnd - lastPerfLogTime).count();
     if (secondsSinceLastLog >= TimestepManager::PERF_LOG_INTERVAL_SECONDS) {
@@ -123,6 +129,11 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
       double utilizationPercent = (avgMs / frameBudgetMs) * 100.0;
       GAMEENGINE_DEBUG(std::format("Update performance: {:.2f}ms avg ({:.1f}% frame budget)",
                                    avgMs, utilizationPercent));
+      GAMEENGINE_DEBUG(std::format("Update stats: iterations:{}, frameMs:{}, vsync:{}, softwareLimit:{}",
+                                   intervalUpdateIterations, ts.getFrameTimeMs(),
+                                   gameEngine.isVSyncEnabled(),
+                                   ts.isUsingSoftwareFrameLimiting()));
+      intervalUpdateIterations = 0;
     }
 #endif
 
