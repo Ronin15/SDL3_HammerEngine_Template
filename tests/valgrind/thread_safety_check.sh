@@ -30,7 +30,10 @@ echo ""
 declare -A THREAD_TESTS=(
     ["thread_safe_ai_mgr"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integ"]="thread_safe_ai_integration_tests"
+    ["ai_collision_integ"]="ai_collision_integration_tests"
+    ["ai_mgr_edm_integ"]="ai_manager_edm_integration_tests"
     ["event_manager"]="event_manager_tests"
+    ["event_coordination"]="event_coordination_integration_tests"
     ["weather_events"]="weather_event_tests"
     ["ai_optimization"]="ai_optimization_tests"
     ["particle_threading"]="particle_manager_threading_tests"
@@ -41,8 +44,15 @@ declare -A THREAD_TESTS=(
     ["world_manager"]="world_manager_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
     ["collision_system"]="collision_system_tests"
+    ["collision_mgr_edm"]="collision_manager_edm_integration_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
+    ["pathfinder_mgr"]="pathfinder_manager_tests"
+    ["pathfinder_edm"]="pathfinder_manager_edm_integration_tests"
+    ["pathfinder_contention"]="pathfinder_ai_contention_tests"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
+    ["background_sim"]="background_simulation_manager_tests"
+    ["entity_data_mgr"]="entity_data_manager_tests"
+    ["entity_state_mgr"]="entity_state_manager_tests"
 )
 
 run_helgrind_test() {

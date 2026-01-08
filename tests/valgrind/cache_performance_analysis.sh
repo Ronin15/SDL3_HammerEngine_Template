@@ -32,13 +32,18 @@ echo ""
 # Test executables for cache analysis
 declare -A CACHE_TESTS=(
     ["buffer_utilization"]="buffer_utilization_tests"
+    ["buffer_reuse"]="buffer_reuse_tests"
     ["ai_optimization"]="ai_optimization_tests"
+    ["ai_collision_integration"]="ai_collision_integration_tests"
+    ["ai_manager_edm_integration"]="ai_manager_edm_integration_tests"
     ["event_manager"]="event_manager_tests"
     ["event_manager_behavior"]="event_manager_behavior_tests"
     ["event_types"]="event_types_tests"
+    ["event_coordination"]="event_coordination_integration_tests"
     ["save_manager"]="save_manager_tests"
     ["settings_manager"]="settings_manager_tests"
     ["weather_events"]="weather_event_tests"
+    ["weather_controller"]="weather_controller_tests"
     ["thread_safe_ai_mgr"]="thread_safe_ai_manager_tests"
     ["thread_safe_ai_integ"]="thread_safe_ai_integration_tests"
     ["particle_performance"]="particle_manager_performance_tests"
@@ -46,6 +51,8 @@ declare -A CACHE_TESTS=(
     ["particle_threading"]="particle_manager_threading_tests"
     ["particle_weather"]="particle_manager_weather_tests"
     ["behavior_functionality"]="behavior_functionality_tests"
+    ["entity_data_manager"]="entity_data_manager_tests"
+    ["entity_state_manager"]="entity_state_manager_tests"
     ["resource_architecture"]="resource_architecture_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["resource_template_manager"]="resource_template_manager_tests"
@@ -56,28 +63,47 @@ declare -A CACHE_TESTS=(
     ["resource_factory"]="resource_factory_tests"
     ["resource_template_json"]="resource_template_manager_json_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
-    ["settings_manager"]="settings_manager_tests"
     ["game_state_manager"]="game_state_manager_tests"
+    ["loading_state"]="loading_state_tests"
     ["world_generator"]="world_generator_tests"
     ["world_manager"]="world_manager_tests"
     ["world_manager_events"]="world_manager_event_integration_tests"
     ["collision_system"]="collision_system_tests"
+    ["collision_manager_edm"]="collision_manager_edm_integration_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
     ["pathfinder_manager"]="pathfinder_manager_tests"
+    ["pathfinder_edm"]="pathfinder_manager_edm_integration_tests"
+    ["pathfinder_contention"]="pathfinder_ai_contention_tests"
     ["collision_pathfinding_integration"]="collision_pathfinding_integration_tests"
+    ["camera"]="camera_tests"
+    ["rendering_pipeline"]="rendering_pipeline_tests"
+    ["input_manager"]="input_manager_tests"
+    ["ui_manager_functional"]="ui_manager_functional_tests"
+    ["controller_registry"]="controller_registry_tests"
+    ["day_night_controller"]="day_night_controller_tests"
+    ["game_time_manager"]="game_time_manager_tests"
+    ["game_time_calendar"]="game_time_manager_calendar_tests"
+    ["game_time_season"]="game_time_manager_season_tests"
+    ["simd_correctness"]="simd_correctness_tests"
+    ["background_simulation"]="background_simulation_manager_tests"
 )
 
-# Industry benchmark data for comparison
+# Industry benchmark thresholds (percentage miss rates)
+# Sources:
+#   - Intel VTune documentation (memory access analysis)
+#   - SPEC CPU2017 characterization study (NIH PMC6675054)
+#   - Modern processor latency: L1 ~3-4 cycles, L2 ~10-20 cycles,
+#     LLC ~40-70 cycles, RAM ~150-300 cycles
 declare -A INDUSTRY_BENCHMARKS=(
     ["l1i_good"]="1.0"
-    ["l1i_average"]="3.0"
+    ["l1i_average"]="2.0"
     ["l1i_poor"]="5.0"
-    ["l1d_good"]="5.0"
-    ["l1d_average"]="10.0"
-    ["l1d_poor"]="15.0"
-    ["ll_good"]="1.0"
-    ["ll_average"]="5.0"
-    ["ll_poor"]="10.0"
+    ["l1d_good"]="3.0"
+    ["l1d_average"]="5.0"
+    ["l1d_poor"]="10.0"
+    ["ll_good"]="0.5"
+    ["ll_average"]="1.0"
+    ["ll_poor"]="3.0"
 )
 
 run_cachegrind_analysis() {

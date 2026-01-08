@@ -28,25 +28,61 @@ mkdir -p "${RESULTS_DIR}"
 # Test executables to analyze
 declare -A TEST_EXECUTABLES=(
     ["buffer_utilization"]="buffer_utilization_tests"
+    ["buffer_reuse"]="buffer_reuse_tests"
     ["ai_optimization"]="ai_optimization_tests"
-    ["ai_scaling"]="ai_scaling_benchmark"
+    ["ai_collision_integration"]="ai_collision_integration_tests"
+    ["ai_manager_edm_integration"]="ai_manager_edm_integration_tests"
     ["event_manager"]="event_manager_tests"
+    ["event_manager_behavior"]="event_manager_behavior_tests"
     ["event_types"]="event_types_tests"
+    ["event_coordination"]="event_coordination_integration_tests"
     ["thread_system"]="thread_system_tests"
     ["thread_safe_ai"]="thread_safe_ai_manager_tests"
     ["thread_safe_integration"]="thread_safe_ai_integration_tests"
     ["save_manager"]="save_manager_tests"
     ["settings_manager"]="settings_manager_tests"
     ["weather_events"]="weather_event_tests"
-    ["ui_stress"]="ui_stress_test"
+    ["weather_controller"]="weather_controller_tests"
     ["world_resource_manager"]="world_resource_manager_tests"
     ["resource_template_manager"]="resource_template_manager_tests"
     ["resource_integration"]="resource_integration_tests"
     ["resource_change_event"]="resource_change_event_tests"
+    ["resource_template_json"]="resource_template_manager_json_tests"
+    ["resource_factory"]="resource_factory_tests"
     ["inventory_component"]="inventory_component_tests"
     ["resource_edge_case"]="resource_edge_case_tests"
     ["collision_system"]="collision_system_tests"
+    ["collision_manager_edm"]="collision_manager_edm_integration_tests"
     ["pathfinding_system"]="pathfinding_system_tests"
+    ["pathfinder_manager"]="pathfinder_manager_tests"
+    ["pathfinder_edm"]="pathfinder_manager_edm_integration_tests"
+    ["pathfinder_contention"]="pathfinder_ai_contention_tests"
+    ["collision_pathfinding"]="collision_pathfinding_integration_tests"
+    ["entity_data_manager"]="entity_data_manager_tests"
+    ["entity_state_manager"]="entity_state_manager_tests"
+    ["behavior_functionality"]="behavior_functionality_tests"
+    ["game_state_manager"]="game_state_manager_tests"
+    ["loading_state"]="loading_state_tests"
+    ["world_generator"]="world_generator_tests"
+    ["world_manager"]="world_manager_tests"
+    ["world_manager_events"]="world_manager_event_integration_tests"
+    ["particle_core"]="particle_manager_core_tests"
+    ["particle_performance"]="particle_manager_performance_tests"
+    ["particle_threading"]="particle_manager_threading_tests"
+    ["particle_weather"]="particle_manager_weather_tests"
+    ["camera"]="camera_tests"
+    ["rendering_pipeline"]="rendering_pipeline_tests"
+    ["input_manager"]="input_manager_tests"
+    ["ui_manager_functional"]="ui_manager_functional_tests"
+    ["controller_registry"]="controller_registry_tests"
+    ["day_night_controller"]="day_night_controller_tests"
+    ["game_time_manager"]="game_time_manager_tests"
+    ["game_time_calendar"]="game_time_manager_calendar_tests"
+    ["game_time_season"]="game_time_manager_season_tests"
+    ["simd_correctness"]="simd_correctness_tests"
+    ["background_simulation"]="background_simulation_manager_tests"
+    ["json_reader"]="json_reader_tests"
+    ["resource_architecture"]="resource_architecture_tests"
 )
 
 # Tracking variables
@@ -312,7 +348,7 @@ run_helgrind_analysis() {
     echo ""
 
     # Only run helgrind on thread-related tests to save time
-    local thread_tests=("thread_system" "thread_safe_ai" "thread_safe_integration" "event_manager")
+    local thread_tests=("thread_system" "thread_safe_ai" "thread_safe_integration" "event_manager" "event_coordination" "ai_collision_integration" "particle_threading" "background_simulation" "pathfinder_contention")
 
     local safe_count=0
     local issue_count=0
@@ -352,7 +388,7 @@ run_cachegrind_analysis() {
     echo ""
 
     # Run cachegrind on key performance tests
-    local cache_tests=("buffer_utilization" "ai_optimization" "event_manager")
+    local cache_tests=("buffer_utilization" "ai_optimization" "event_manager" "particle_performance" "simd_correctness" "collision_system" "pathfinding_system")
 
     for test_name in "${cache_tests[@]}"; do
         if [[ -n "${TEST_EXECUTABLES[$test_name]}" ]]; then
@@ -374,7 +410,7 @@ run_drd_analysis() {
     echo -e "${BOLD}${PURPLE}═══════════════════════════════════════════════════════════${NC}"
     echo ""
 
-    local thread_tests=("thread_system" "thread_safe_ai")
+    local thread_tests=("thread_system" "thread_safe_ai" "thread_safe_integration" "event_coordination" "ai_collision_integration" "particle_threading" "background_simulation")
 
     local safe_count=0
     local race_count=0

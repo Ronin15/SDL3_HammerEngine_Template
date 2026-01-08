@@ -4,22 +4,27 @@ project(SDL3_Template VERSION 1.0.0 LANGUAGES C CXX)
 # Set build configurations
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE "Debug" CACHE STRING
-        "Choose the type of build (Debug or Release)" FORCE)
+        "Choose the type of build (Debug, Release, or Profile)" FORCE)
 endif()
 
 # Define available build configurations
-set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "" FORCE)
+set(CMAKE_CONFIGURATION_TYPES "Debug;Release;Profile" CACHE STRING "" FORCE)
 
 # Set output directory paths based on build type
 set(OUTPUT_BASE_DIR "${CMAKE_SOURCE_DIR}/bin")
 set(OUTPUT_DEBUG_DIR "${OUTPUT_BASE_DIR}/debug")
 set(OUTPUT_RELEASE_DIR "${OUTPUT_BASE_DIR}/release")
+set(OUTPUT_PROFILE_DIR "${OUTPUT_BASE_DIR}/profile")
 
 # Configure output directories based on the current build type
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DEBUG_DIR})
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DEBUG_DIR})
     set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DEBUG_DIR})
+elseif(CMAKE_BUILD_TYPE STREQUAL "Profile")
+    set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_PROFILE_DIR})
+    set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_PROFILE_DIR})
+    set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_PROFILE_DIR})
 else() # Release build
     set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_RELEASE_DIR})
     set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_RELEASE_DIR})
@@ -76,6 +81,24 @@ else()
     set(HAMMER_AGGRESSIVE_CXX_FLAGS
         "-ffunction-sections -fdata-sections -Wl,--gc-sections -ffast-math -ftree-vectorize \
         -funroll-loops -march=x86-64-v3 -mtune=generic -msse4.2 -mavx -mavx2 -mfma")
+endif()
+
+# Profile build settings - Valgrind-compatible optimized build
+# Uses O2 optimization without AVX/AVX2 instructions that Valgrind struggles with
+# Keeps debug symbols for profiling annotation
+if(APPLE)
+    set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
+    set(HAMMER_PROFILE_C_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
+    set(HAMMER_PROFILE_CXX_FLAGS "-ffunction-sections -fdata-sections -ftree-vectorize")
+else()
+    # x86-64 Profile flags - SSE4.2 max (no AVX) for Valgrind compatibility
+    set(CMAKE_C_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
+    set(CMAKE_CXX_FLAGS_PROFILE "-O2 -g -fno-strict-aliasing -DNDEBUG")
+    set(HAMMER_PROFILE_C_FLAGS
+        "-ffunction-sections -fdata-sections -ftree-vectorize -march=x86-64-v2 -mtune=generic -msse4.2")
+    set(HAMMER_PROFILE_CXX_FLAGS
+        "-ffunction-sections -fdata-sections -ftree-vectorize -march=x86-64-v2 -mtune=generic -msse4.2")
 endif()
 
 # Set C++ standard
@@ -238,6 +261,10 @@ target_link_libraries(HammerEngineObjects PUBLIC
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
     separate_arguments(HAMMER_AGGRESSIVE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_AGGRESSIVE_CXX_FLAGS}")
     target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_AGGRESSIVE_CXX_FLAGS_LIST})
+elseif(CMAKE_BUILD_TYPE STREQUAL "Profile")
+    # Profile build: Valgrind-compatible optimization (no AVX, SSE4.2 max)
+    separate_arguments(HAMMER_PROFILE_CXX_FLAGS_LIST NATIVE_COMMAND "${HAMMER_PROFILE_CXX_FLAGS}")
+    target_compile_options(HammerEngineObjects PRIVATE ${HAMMER_PROFILE_CXX_FLAGS_LIST})
 endif()
 
 # Create shared library for tests
@@ -452,6 +479,7 @@ message(STATUS
     "SDL3, SDL3_ttf, and SDL3_mixer have been configured successfully")
 message(STATUS "Debug binaries will be output to: ${OUTPUT_DEBUG_DIR}")
 message(STATUS "Release binaries will be output to: ${OUTPUT_RELEASE_DIR}")
+message(STATUS "Profile binaries will be output to: ${OUTPUT_PROFILE_DIR} (Valgrind-compatible)")
 
 # Enable testing only if Boost Test is available (tests require Boost.Test framework)
 if(HAVE_BOOST_TEST)
