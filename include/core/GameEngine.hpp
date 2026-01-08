@@ -343,6 +343,13 @@ private:
   void onWindowResize(const SDL_Event& event);
 
   /**
+   * @brief Handles window focus/visibility events from SDL
+   * @param event The SDL window event (minimize, occlude, focus, etc.)
+   * @details Updates occlusion state and toggles frame limiting as needed.
+   */
+  void onWindowEvent(const SDL_Event& event);
+
+  /**
    * @brief Handles display change events from SDL
    * @param event The SDL display event (orientation, added, removed, moved, scale)
    * @details Normalizes UI scale, reloads fonts, and triggers UI repositioning.
@@ -386,6 +393,8 @@ private:
   // Platform-specific flags
   bool m_isWayland{false};
   bool m_isFullscreen{false};
+  bool m_vsyncRequested{true};
+  bool m_windowOccluded{false};
 
   // Global pause state - propagated to managers which have their own atomics
   bool m_globallyPaused{false};
