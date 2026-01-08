@@ -9,6 +9,7 @@
 #include "mocks/MockPlayer.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <filesystem>
+#include <thread>
 
 // Global fixture for test setup and cleanup
 struct TestFixture {
