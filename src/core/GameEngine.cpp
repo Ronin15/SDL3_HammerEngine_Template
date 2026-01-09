@@ -856,7 +856,7 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
 
   GAMEENGINE_INFO(std::format("Game {} initialized successfully!", title));
-  GAMEENGINE_INFO(std::format("Running {} <]==={{}}", title));
+  GAMEENGINE_INFO(std::format("Running {}", title));
 
   m_running = true;
   return true;
@@ -878,7 +878,7 @@ void GameEngine::handleEvents() {
 
     switch (event.type) {
     case SDL_EVENT_QUIT:
-      GAMEENGINE_INFO("Shutting down! {}===]>");
+      GAMEENGINE_INFO("Shutting down!");
       setRunning(false);
       break;
 
