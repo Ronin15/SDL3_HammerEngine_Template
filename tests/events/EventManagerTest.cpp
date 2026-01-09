@@ -96,7 +96,9 @@ struct EventManagerFixture {
 
   ~EventManagerFixture() {
     // Disable threading before cleanup
+    #ifndef NDEBUG
     EventManager::Instance().enableThreading(false);
+    #endif
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
 
     // Clean up the EventManager
@@ -411,7 +413,9 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
   BOOST_CHECK(EventManager::Instance().init());
 
   // Test enabling threading with ThreadSystem
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Register a test event
@@ -443,7 +447,9 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
                   ->wasExecuted());
 
   // Test disabling threading
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Reset event and test again without threading
@@ -471,7 +477,9 @@ BOOST_FIXTURE_TEST_CASE(ThreadSafety, EventManagerFixture) {
                   ->wasExecuted());
 
   // Make sure threading is disabled before cleanup
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Clean up
@@ -665,7 +673,9 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
       ->setConditionsMet(true);
 
   // Test all events execution with threading enabled
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Make sure all events are active
@@ -695,7 +705,9 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
       ->reset();
 
   // Test with threading enabled - using direct execution to avoid flaky tests
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
   // Directly execute the event to avoid test flakiness
@@ -719,7 +731,9 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
       ->reset();
 
   // Test with threading enabled - using direct execution
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(150));
 
   // Direct execution for reliability
@@ -732,7 +746,9 @@ BOOST_FIXTURE_TEST_CASE(TaskPriorityTest, EventManagerFixture) {
                   ->wasExecuted());
 
   // Cleanup
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   EventManager::Instance().removeEvent("HighPriorityEvent");
@@ -818,7 +834,9 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
 
   // Directly execute each event to test functionality without relying on
   // threading Configure the EventManager to use threading
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Directly execute events for consistent test results
@@ -850,7 +868,9 @@ BOOST_FIXTURE_TEST_CASE(ConcurrentPriorityTest, EventManagerFixture) {
                   ->wasExecuted());
 
   // Clean up
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   EventManager::Instance().removeEvent("CriticalEvent");
@@ -1060,7 +1080,9 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
   BOOST_CHECK_EQUAL(EventManager::Instance().getEventCount(), 5);
 
   // Enable threading
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(50));
 
   // Test concurrent access
@@ -1093,7 +1115,9 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventThreadSafety, EventManagerFixture) {
   BOOST_CHECK_GE(executedCount.load(), 5);
 
   // Disable threading and cleanup
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
   std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
   // Clean up events
@@ -1135,7 +1159,9 @@ BOOST_FIXTURE_TEST_CASE(DeferredDispatchThreadedUpdate, EventManagerFixture) {
   BOOST_CHECK(EventManager::Instance().init());
   
   // Enable threading
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   
   std::atomic<int> handlerCallCount{0};
   
@@ -1167,7 +1193,9 @@ BOOST_FIXTURE_TEST_CASE(DeferredDispatchThreadedUpdate, EventManagerFixture) {
   // Handlers should now be called
   BOOST_CHECK_GE(handlerCallCount.load(), 3);
   
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
 }
 
 // Test ThreadSystem integration and batch processing
@@ -1176,7 +1204,9 @@ BOOST_FIXTURE_TEST_CASE(ThreadSystemIntegrationBatchProcessing, EventManagerFixt
   BOOST_CHECK(EventManager::Instance().init());
   
   // Enable threading for batch processing
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   
   std::atomic<int> batchedEventCount{0};
   std::atomic<int> totalHandlerCalls{0};
@@ -1212,7 +1242,9 @@ BOOST_FIXTURE_TEST_CASE(ThreadSystemIntegrationBatchProcessing, EventManagerFixt
   BOOST_CHECK_GE(totalHandlerCalls.load(), 20);
   BOOST_CHECK_GE(batchedEventCount.load(), 20);
   
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
 }
 
 // Test performance monitoring and statistics
@@ -1256,7 +1288,9 @@ BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
   BOOST_CHECK(EventManager::Instance().init());
 
   // Enable threading to activate double buffering
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   
   std::atomic<int> updateCallCount{0};
   
@@ -1288,7 +1322,9 @@ BOOST_FIXTURE_TEST_CASE(DoubleBufferingSystem, EventManagerFixture) {
   // Verify events were processed through double buffering
   BOOST_CHECK_GE(updateCallCount.load(), 0); // Some events may be processed
   
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
 }
 #endif // NDEBUG
 
@@ -1367,7 +1403,9 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
       [&handlerCallCount](const EventData &) { handlerCallCount.fetch_add(1); });
   
   // Test with threading disabled
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
   
   // Trigger event with deferred dispatch
   BOOST_CHECK(EventManager::Instance().changeWeather("Clear", 1.0f));
@@ -1381,7 +1419,9 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   
   // Reset counter and enable threading
   handlerCallCount.store(0);
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(true);
+  #endif
   
   // Trigger another event
   BOOST_CHECK(EventManager::Instance().changeWeather("Rainy", 1.0f));
@@ -1393,6 +1433,8 @@ BOOST_FIXTURE_TEST_CASE(DynamicThreadingControl, EventManagerFixture) {
   int callsWithThreading = handlerCallCount.load();
   BOOST_CHECK_GE(callsWithThreading, 1);
 
+  #ifndef NDEBUG
   EventManager::Instance().enableThreading(false);
+  #endif
 }
 #endif // NDEBUG

@@ -122,7 +122,9 @@ struct GlobalTestFixture {
         CollisionManager::Instance().init();
         PathfinderManager::Instance().init();
         AIManager::Instance().init();
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
+#endif
     }
 
     ~GlobalTestFixture() {

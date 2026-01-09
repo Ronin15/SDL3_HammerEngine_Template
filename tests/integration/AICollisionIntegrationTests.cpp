@@ -148,7 +148,9 @@ struct AICollisionGlobalFixture {
         }
 
         // Enable threading for AI
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
+        #endif
 
         std::cout << "=== Global Setup Complete ===" << std::endl;
     }

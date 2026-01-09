@@ -222,11 +222,15 @@ BOOST_GLOBAL_FIXTURE(GlobalTestFixture);
 // Per-test fixture
 struct ThreadedAITestFixture {
     ThreadedAITestFixture() {
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
+#endif
     }
 
     ~ThreadedAITestFixture() {
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(false);
+#endif
         AIManager::Instance().resetBehaviors();
     }
 
