@@ -496,7 +496,9 @@ BOOST_FIXTURE_TEST_CASE(TestThreadingThreshold,
     if (manager->isInitialized()) manager->clean();
     manager->init();
     manager->registerBuiltInEffects();
+    #ifndef NDEBUG
     manager->enableThreading(false);
+    #endif
 
     createParticles(targetCount);
     size_t actualCount = manager->getActiveParticleCount();
@@ -515,7 +517,9 @@ BOOST_FIXTURE_TEST_CASE(TestThreadingThreshold,
     if (manager->isInitialized()) manager->clean();
     manager->init();
     manager->registerBuiltInEffects();
+    #ifndef NDEBUG
     manager->enableThreading(true);
+    #endif
 
     createParticles(targetCount);
 
@@ -572,7 +576,9 @@ BOOST_FIXTURE_TEST_CASE(TestThreadingThreshold,
   std::cout << "==========================================\n" << std::endl;
 
   // Restore threading
+  #ifndef NDEBUG
   manager->enableThreading(true);
+  #endif
 }
 
 // Ad-hoc high-count benchmarks for update cost at scale (Debug build)

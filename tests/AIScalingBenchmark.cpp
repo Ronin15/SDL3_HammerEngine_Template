@@ -298,7 +298,11 @@ BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
 BOOST_AUTO_TEST_CASE(PrintHeader)
 {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
+    #ifndef NDEBUG
     size_t threshold = AIManager::Instance().getThreadingThreshold();
+    #else
+    size_t threshold = 250;
+    #endif
 
     std::cout << "\n=== AI Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";
@@ -321,7 +325,11 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
               << std::setw(10) << "Status\n";
 
     std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000};
+    #ifndef NDEBUG
     size_t threshold = AIManager::Instance().getThreadingThreshold();
+    #else
+    size_t threshold = 250;
+    #endif
 
     // Track best performance for summary
     size_t bestCount = 0;
@@ -391,8 +399,14 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
               << std::setw(10) << "Speedup\n";
 
     // Save original threshold and set to 1 to force threading at all entity counts
+    #ifndef NDEBUG
     size_t originalThreshold = AIManager::Instance().getThreadingThreshold();
+    #else
+    size_t originalThreshold = 250;
+    #endif
+    #ifndef NDEBUG
     AIManager::Instance().setThreadingThreshold(1);
+    #endif
 
     std::vector<size_t> entityCounts = {500, 1000, 2000, 5000, 10000};
 
@@ -402,7 +416,9 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
 
         // Test single-threaded (disabling threading bypasses threshold check)
         prepareForTest();
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(false);
+        #endif
         createEntities(count, worldSize);
         setupWorld(worldSize);
         size_t activeCount = verifyActiveTier();
@@ -415,7 +431,9 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
 
         // Test multi-threaded (threshold=1 ensures threading is used)
         prepareForTest();
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
+        #endif
         createEntities(count, worldSize);
         setupWorld(worldSize);
         activeCount = verifyActiveTier();
@@ -435,8 +453,12 @@ BOOST_AUTO_TEST_CASE(ThreadingModeComparison)
     }
 
     // Restore original threshold and default threading mode
+    #ifndef NDEBUG
     AIManager::Instance().setThreadingThreshold(originalThreshold);
+    #endif
+    #ifndef NDEBUG
     AIManager::Instance().enableThreading(true);
+    #endif
     std::cout << std::endl;
 }
 
@@ -457,8 +479,14 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
     AIManager::Instance().registerBehavior("Synthetic", synthetic);
 
     // Force threading at all entity counts
+    #ifndef NDEBUG
     size_t originalThreshold = AIManager::Instance().getThreadingThreshold();
+    #else
+    size_t originalThreshold = 250;
+    #endif
+    #ifndef NDEBUG
     AIManager::Instance().setThreadingThreshold(1);
+    #endif
 
     std::vector<size_t> entityCounts = {500, 1000, 2000, 5000, 10000};
 
@@ -468,7 +496,9 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
 
         // Test single-threaded
         prepareForTest();
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(false);
+        #endif
         createEntitiesWithBehaviors(count, worldSize, {"Synthetic"});
         setupWorld(worldSize);
         double singleMs = runBenchmark(iterations);
@@ -476,7 +506,9 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
 
         // Test multi-threaded
         prepareForTest();
+        #ifndef NDEBUG
         AIManager::Instance().enableThreading(true);
+        #endif
         createEntitiesWithBehaviors(count, worldSize, {"Synthetic"});
         setupWorld(worldSize);
         double multiMs = runBenchmark(iterations);
@@ -490,8 +522,12 @@ BOOST_AUTO_TEST_CASE(SyntheticBehaviorThreading)
                   << std::setw(9) << std::fixed << std::setprecision(2) << speedup << "x\n";
     }
 
+    #ifndef NDEBUG
     AIManager::Instance().setThreadingThreshold(originalThreshold);
+    #endif
+    #ifndef NDEBUG
     AIManager::Instance().enableThreading(true);
+    #endif
     std::cout << std::endl;
 }
 
@@ -627,7 +663,11 @@ BOOST_AUTO_TEST_CASE(HillClimbConvergence)
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(PrintSummary)
 {
+    #ifndef NDEBUG
     size_t threshold = AIManager::Instance().getThreadingThreshold();
+    #else
+    size_t threshold = 250;
+    #endif
 
     std::cout << "SUMMARY:\n";
     std::cout << "  AI batch processing: O(n) scaling with WorkerBudget\n";
