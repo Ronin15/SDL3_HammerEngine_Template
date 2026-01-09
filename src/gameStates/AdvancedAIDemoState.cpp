@@ -297,7 +297,7 @@ bool AdvancedAIDemoState::enter() {
 
     // Log status
     GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors",
-                               EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
+                               EntityDataManager::Instance().getEntityCount(EntityKind::NPC)));
     GAMESTATE_INFO("CombatController registered");
 
     // Pre-allocate status buffer to avoid per-frame allocations
@@ -561,7 +561,7 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     // every frame
     int currentFPS =
         static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t npcCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
+    size_t npcCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
 
     if (currentFPS != m_lastDisplayedFPS ||
         npcCount != m_lastDisplayedNPCCount ||
@@ -687,7 +687,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
 
     GAMESTATE_INFO(
         std::format("AdvancedAIDemoState: Created {} NPCs",
-                    edm.getIndicesByKind(EntityKind::NPC).size()));
+                    edm.getEntityCount(EntityKind::NPC)));
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(
         std::format("Exception in createAdvancedNPCs(): {}", e.what()));

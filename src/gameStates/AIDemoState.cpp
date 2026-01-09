@@ -92,7 +92,7 @@ void AIDemoState::handleInput() {
     // Assign Patrol behavior to all NPCs
     GAMESTATE_INFO(std::format(
         "Switching {} NPCs to PATROL behavior (batched processing)...",
-        EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
+        EntityDataManager::Instance().getEntityCount(EntityKind::NPC)));
     for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
       EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
       if (handle.isValid()) {
@@ -210,13 +210,13 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
     // Spawn 2000 NPCs with random behaviors (like EventDemoState)
-    int previousCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
+    int previousCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
-    int actualSpawned = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() - previousCount;
+    int actualSpawned = EntityDataManager::Instance().getEntityCount(EntityKind::NPC) - previousCount;
     GAMESTATE_INFO(
         std::format("Spawned {} NPCs with random behaviors (Total: {})",
-                    actualSpawned, EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
+                    actualSpawned, EntityDataManager::Instance().getEntityCount(EntityKind::NPC)));
   }
 }
 
@@ -616,7 +616,7 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // every frame
     int currentFPS =
         static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t entityCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
+    size_t entityCount = EntityDataManager::Instance().getEntityCount(EntityKind::NPC);
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
