@@ -8,6 +8,7 @@
 
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "entities/Entity.hpp"  // For AnimationConfig
 #include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include <cmath>
@@ -127,7 +128,7 @@ BOOST_AUTO_TEST_CASE(TestNoUpdateWhenPaused) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000
 
     // Create a background entity
-    EntityHandle handle = edm->createNPC(Vector2D(750.0f, 0.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     // Update tiers to put it in background
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
@@ -209,8 +210,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateTiers) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000
 
     // Create entities at different distances
-    EntityHandle near = edm->createNPC(Vector2D(100.0f, 100.0f));   // Active (<500)
-    EntityHandle far = edm->createNPC(Vector2D(750.0f, 0.0f));      // Background (500-1000)
+    EntityHandle near = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});   // Active (<500)
+    EntityHandle far = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});      // Background (500-1000)
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
     bgsm->updateTiers();
@@ -249,7 +250,7 @@ BOOST_AUTO_TEST_CASE(TestHasWorkWithBackgroundEntities) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000
 
     // Create entity in background range (500-1000)
-    EntityHandle handle = edm->createNPC(Vector2D(750.0f, 0.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
     bgsm->invalidateTiers();  // Force tier recalc
@@ -344,7 +345,7 @@ BOOST_AUTO_TEST_CASE(TestUpdateWithBackgroundEntities) {
     // Create entities in background tier (500-1000)
     std::vector<EntityHandle> handles;
     for (int i = 0; i < 10; ++i) {
-        handles.push_back(edm->createNPC(Vector2D(600.0f + i * 30.0f, 0.0f)));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(600.0f + i * 30.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{}));
     }
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
@@ -373,7 +374,7 @@ BOOST_AUTO_TEST_CASE(TestUpdateWithBackgroundEntities) {
 
 BOOST_AUTO_TEST_CASE(TestTierUpdateInterval) {
     // Create entity
-    EntityHandle handle = edm->createNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     // Force tier to be dirty
     bgsm->invalidateTiers();
@@ -395,7 +396,7 @@ BOOST_AUTO_TEST_CASE(TestAccumulatorPattern) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000, Hibernated: >1000
 
     // Create entity in background tier range (between 500 and 1000)
-    EntityHandle handle = edm->createNPC(Vector2D(750.0f, 0.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
     bgsm->invalidateTiers();  // Force tier update within update()
@@ -447,7 +448,7 @@ BOOST_AUTO_TEST_CASE(TestResetPerfStats) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000
 
     // Create entity in background tier and process
-    EntityHandle handle = edm->createNPC(Vector2D(750.0f, 0.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
     bgsm->updateTiers();
 
@@ -478,7 +479,7 @@ BOOST_AUTO_TEST_CASE(TestPerfStatsUpdateAfterProcessing) {
         // Place in a ring at distance ~750 from origin (background tier)
         float angle = (i / 50.0f) * 6.28f;
         float dist = 750.0f;
-        handles.push_back(edm->createNPC(Vector2D(dist * std::cos(angle), dist * std::sin(angle))));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(dist * std::cos(angle), dist * std::sin(angle)), "test", AnimationConfig{}, AnimationConfig{}));
     }
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
@@ -516,7 +517,7 @@ BOOST_AUTO_TEST_CASE(TestBackgroundNPCVelocityDecay) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000
 
     // Create NPC in background tier range (distance 750)
-    EntityHandle handle = edm->createNPC(Vector2D(750.0f, 0.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     // Set initial velocity
     auto& transform = edm->getTransform(handle);
@@ -556,7 +557,7 @@ BOOST_AUTO_TEST_CASE(TestBackgroundNPCPositionUpdate) {
     bgsm->setBackgroundRadius(1000.0f); // Background: 500-1000
 
     // Create NPC in background tier range (distance 750)
-    EntityHandle handle = edm->createNPC(Vector2D(750.0f, 0.0f));
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     auto& transform = edm->getTransform(handle);
     float initialX = transform.position.getX();
@@ -596,10 +597,10 @@ BOOST_AUTO_TEST_CASE(TestFullWorkflow) {
     bgsm->setUpdateRate(10.0f);
 
     // Create mixed entities at appropriate distances
-    EntityHandle player = edm->createPlayer(Vector2D(0.0f, 0.0f));
-    EntityHandle nearNpc = edm->createNPC(Vector2D(100.0f, 100.0f));       // Active (<500)
-    EntityHandle farNpc = edm->createNPC(Vector2D(750.0f, 0.0f));          // Background (500-1000)
-    EntityHandle veryFarNpc = edm->createNPC(Vector2D(1500.0f, 0.0f));     // Hibernated (>1000)
+    EntityHandle player = edm->registerPlayer(1, Vector2D(0.0f, 0.0f));
+    EntityHandle nearNpc = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});       // Active (<500)
+    EntityHandle farNpc = edm->createDataDrivenNPC(Vector2D(750.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});          // Background (500-1000)
+    EntityHandle veryFarNpc = edm->createDataDrivenNPC(Vector2D(1500.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});     // Hibernated (>1000)
 
     // Force initial tier assignment
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));
@@ -646,7 +647,7 @@ BOOST_AUTO_TEST_CASE(TestManyBackgroundEntities) {
         // Place entities in a ring pattern in background tier range
         float angle = (i / 500.0f) * 6.28f * 10.0f;  // 10 revolutions
         float dist = 600.0f + (i % 50) * 7.0f;        // 600-949 (background tier)
-        handles.push_back(edm->createNPC(Vector2D(dist * std::cos(angle), dist * std::sin(angle))));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(dist * std::cos(angle), dist * std::sin(angle)), "test", AnimationConfig{}, AnimationConfig{}));
     }
 
     bgsm->setReferencePoint(Vector2D(0.0f, 0.0f));

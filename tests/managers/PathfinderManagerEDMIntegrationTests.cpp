@@ -20,7 +20,6 @@
 #include <boost/test/unit_test.hpp>
 
 #include "core/ThreadSystem.hpp"
-#include "entities/Entity.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
@@ -32,30 +31,27 @@
 
 using namespace HammerEngine;
 
-// Test entity that registers with EDM and has path data
-class PathfindingTestEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class PathfindingTestNPC {
 public:
-    PathfindingTestEntity(const Vector2D& pos) {
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
-        setTextureID("test_texture");
-        setWidth(32);
-        setHeight(32);
+    explicit PathfindingTestNPC(const Vector2D& pos) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
     }
 
-    static std::shared_ptr<PathfindingTestEntity> create(const Vector2D& pos) {
-        return std::make_shared<PathfindingTestEntity>(pos);
+    static std::shared_ptr<PathfindingTestNPC> create(const Vector2D& pos) {
+        return std::make_shared<PathfindingTestNPC>(pos);
     }
 
-    void update(float) override {}
-    void render(SDL_Renderer*, float, float, float) override {}
-    void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
 
-    size_t getEdmIndex() const {
-        auto handle = getHandle();
-        if (!handle.isValid()) return SIZE_MAX;
-        return EntityDataManager::Instance().getIndex(handle);
+    [[nodiscard]] size_t getEdmIndex() const {
+        if (!m_handle.isValid()) return SIZE_MAX;
+        return EntityDataManager::Instance().getIndex(m_handle);
     }
+
+private:
+    EntityHandle m_handle;
 };
 
 // Test fixture
@@ -94,7 +90,7 @@ struct PathfinderEDMFixture {
 BOOST_FIXTURE_TEST_SUITE(PathDataExistenceTests, PathfinderEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestPathDataExistsForNewEntity) {
-    auto entity = PathfindingTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = PathfindingTestNPC::create(Vector2D(100.0f, 100.0f));
     size_t edmIndex = entity->getEdmIndex();
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
 
@@ -103,7 +99,7 @@ BOOST_AUTO_TEST_CASE(TestPathDataExistsForNewEntity) {
 }
 
 BOOST_AUTO_TEST_CASE(TestPathDataAccessible) {
-    auto entity = PathfindingTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = PathfindingTestNPC::create(Vector2D(100.0f, 100.0f));
     size_t edmIndex = entity->getEdmIndex();
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
 
@@ -119,12 +115,12 @@ BOOST_AUTO_TEST_CASE(TestPathDataAccessible) {
 BOOST_AUTO_TEST_CASE(TestMultipleEntitiesHavePathData) {
     auto& edm = EntityDataManager::Instance();
 
-    std::vector<std::shared_ptr<PathfindingTestEntity>> entities;
+    std::vector<std::shared_ptr<PathfindingTestNPC>> entities;
     std::vector<size_t> edmIndices;
 
     for (int i = 0; i < 20; ++i) {
         auto pos = Vector2D(static_cast<float>(i * 50), 0.0f);
-        entities.push_back(PathfindingTestEntity::create(pos));
+        entities.push_back(PathfindingTestNPC::create(pos));
         edmIndices.push_back(entities.back()->getEdmIndex());
     }
 
@@ -144,7 +140,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(RequestPathToEDMTests, PathfinderEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestRequestPathToEDMDoesNotCrash) {
-    auto entity = PathfindingTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = PathfindingTestNPC::create(Vector2D(100.0f, 100.0f));
     size_t edmIndex = entity->getEdmIndex();
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
 
@@ -163,7 +159,7 @@ BOOST_AUTO_TEST_CASE(TestRequestPathToEDMDoesNotCrash) {
 }
 
 BOOST_AUTO_TEST_CASE(TestMultiplePathRequestsDoNotCrash) {
-    auto entity = PathfindingTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = PathfindingTestNPC::create(Vector2D(100.0f, 100.0f));
     size_t edmIndex = entity->getEdmIndex();
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
 
@@ -204,7 +200,7 @@ BOOST_FIXTURE_TEST_SUITE(EntityDestructionTests, PathfinderEDMFixture)
 BOOST_AUTO_TEST_CASE(TestPathDataInvalidAfterEntityDestruction) {
     auto& edm = EntityDataManager::Instance();
 
-    auto entity = PathfindingTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = PathfindingTestNPC::create(Vector2D(100.0f, 100.0f));
     EntityHandle handle = entity->getHandle();
     size_t edmIndex = entity->getEdmIndex();
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
@@ -224,9 +220,9 @@ BOOST_AUTO_TEST_CASE(TestPathRequestAfterStateTransition) {
 
     // Phase 1: Create entities
     {
-        std::vector<std::shared_ptr<PathfindingTestEntity>> entities;
+        std::vector<std::shared_ptr<PathfindingTestNPC>> entities;
         for (int i = 0; i < 10; ++i) {
-            entities.push_back(PathfindingTestEntity::create(
+            entities.push_back(PathfindingTestNPC::create(
                 Vector2D(static_cast<float>(i * 50), 0.0f)));
         }
 
@@ -237,7 +233,7 @@ BOOST_AUTO_TEST_CASE(TestPathRequestAfterStateTransition) {
     }
 
     // Phase 2: New entities should work
-    auto entity = PathfindingTestEntity::create(Vector2D(100.0f, 100.0f));
+    auto entity = PathfindingTestNPC::create(Vector2D(100.0f, 100.0f));
     size_t edmIndex = entity->getEdmIndex();
     BOOST_REQUIRE(edmIndex != SIZE_MAX);
     BOOST_CHECK(edm.hasPathData(edmIndex));

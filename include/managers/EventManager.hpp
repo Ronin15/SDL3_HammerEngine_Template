@@ -18,6 +18,7 @@
  * - Direct function calls to minimize overhead
  */
 
+#include "entities/EntityHandle.hpp"
 #include "events/EventTypeId.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -475,7 +476,7 @@ public:
                            int count = 1, float spawnRadius = 0.0f);
 
   // Resource change convenience methods
-  bool createResourceChangeEvent(const std::string &name, EntityPtr owner,
+  bool createResourceChangeEvent(const std::string &name, EntityHandle ownerHandle,
                                  HammerEngine::ResourceHandle resourceHandle,
                                  int oldQuantity, int newQuantity,
                                  const std::string &changeReason = "");
@@ -550,7 +551,7 @@ public:
   bool triggerNPCSpawn(const std::string &npcType, float x, float y) const;
 
   // Resource change convenience method
-  bool triggerResourceChange(EntityPtr owner,
+  bool triggerResourceChange(EntityHandle ownerHandle,
                              HammerEngine::ResourceHandle resourceHandle,
                              int oldQuantity, int newQuantity,
                              const std::string &changeReason = "",

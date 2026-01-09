@@ -26,29 +26,23 @@
 #include "events/Event.hpp"
 #include "events/WorldEvent.hpp"
 
-// Simple test entity for benchmark
-class BenchmarkEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class BenchmarkNPC {
 public:
-    BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        // Register with EntityDataManager first (required before setPosition)
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
-        setTextureID("benchmark");
-        setWidth(32);
-        setHeight(32);
+    explicit BenchmarkNPC(int id, const Vector2D& pos) : m_id(id) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createDataDrivenNPC(pos, "benchmark", AnimationConfig{}, AnimationConfig{});
     }
 
-    static std::shared_ptr<BenchmarkEntity> create(int id, const Vector2D& pos) {
-        return std::make_shared<BenchmarkEntity>(id, pos);
+    static std::shared_ptr<BenchmarkNPC> create(int id, const Vector2D& pos) {
+        return std::make_shared<BenchmarkNPC>(id, pos);
     }
 
-    void update(float deltaTime) override { (void)deltaTime; }
-    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override { (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha; }
-    void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
     int getId() const { return m_id; }
 
 private:
+    EntityHandle m_handle;
     int m_id;
 };
 
@@ -271,7 +265,7 @@ namespace {
 
     private:
         std::mt19937 m_rng;
-        std::vector<std::shared_ptr<BenchmarkEntity>> m_testEntities;
+        std::vector<std::shared_ptr<BenchmarkNPC>> m_testEntities;
         std::vector<std::shared_ptr<BenchmarkBehavior>> m_behaviors;
 
         void initializeAllManagers() {
@@ -369,7 +363,7 @@ namespace {
 
                 Vector2D pos(2500.0f + distance * std::cos(angle),
                              2500.0f + distance * std::sin(angle));
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
+                auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
                 // Assign behavior
@@ -420,7 +414,7 @@ namespace {
 
                 Vector2D pos(2500.0f + distance * std::cos(angle),
                              2500.0f + distance * std::sin(angle));
-                auto entity = BenchmarkEntity::create(static_cast<int>(i), pos);
+                auto entity = BenchmarkNPC::create(static_cast<int>(i), pos);
                 m_testEntities.push_back(entity);
 
                 aiMgr.registerEntity(entity->getHandle(), "Wander");

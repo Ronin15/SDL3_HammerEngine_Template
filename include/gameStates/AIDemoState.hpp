@@ -7,18 +7,15 @@
 #define AI_DEMO_STATE_HPP
 
 #include "gameStates/GameState.hpp"
-#include "entities/NPC.hpp"
+#include "controllers/render/NPCRenderController.hpp"
+#include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 // Forward declarations with smart pointer types
-class NPC;
-using NPCPtr = std::shared_ptr<NPC>;
-
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
@@ -47,9 +44,10 @@ private:
     void initializeCamera();
     void updateCamera(float deltaTime);
 
-    // Members - stored by handle ID for O(1) lookup
-    std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
-    std::vector<NPCPtr> m_npcsByEdmIndex{};
+    // Data-driven NPC rendering (velocity-based animation)
+    NPCRenderController m_npcRenderCtrl{};
+
+    // Player entity
     PlayerPtr m_player{};
 
     std::string m_textureID {""};  // Texture ID as loaded by TextureManager from res/img directory

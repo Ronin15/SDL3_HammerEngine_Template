@@ -23,38 +23,24 @@
 #include "core/WorkerBudget.hpp"
 #include "ai/behaviors/WanderBehavior.hpp"
 
-// Simple benchmark entity
-class BenchmarkEntity : public Entity {
+// Test helper for data-driven NPCs (NPCs are purely data, no Entity class)
+class BenchmarkNPC {
 public:
-    BenchmarkEntity(int id, const Vector2D& pos) : m_id(id) {
-        // Register with EntityDataManager first (required before setPosition)
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
-        setTextureID("benchmark_texture");
-        setWidth(32);
-        setHeight(32);
+    explicit BenchmarkNPC(int id, const Vector2D& pos) : m_id(id) {
+        auto& edm = EntityDataManager::Instance();
+        m_handle = edm.createDataDrivenNPC(pos, "benchmark", AnimationConfig{}, AnimationConfig{});
     }
 
-    static std::shared_ptr<BenchmarkEntity> create(int id, const Vector2D& pos) {
-        return std::make_shared<BenchmarkEntity>(id, pos);
+    static std::shared_ptr<BenchmarkNPC> create(int id, const Vector2D& pos) {
+        return std::make_shared<BenchmarkNPC>(id, pos);
     }
 
-    void update(float deltaTime) override {
-        m_updateCount++;
-        (void)deltaTime;
-    }
-
-    void render(SDL_Renderer* renderer, float cameraX, float cameraY, float interpolationAlpha = 1.0f) override {
-        (void)renderer; (void)cameraX; (void)cameraY; (void)interpolationAlpha;
-    }
-
-    void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-
+    [[nodiscard]] EntityHandle getHandle() const { return m_handle; }
     int getID() const { return m_id; }
 
 private:
+    EntityHandle m_handle;
     int m_id;
-    uint64_t m_updateCount = 0;
 };
 
 // CLI configuration
@@ -181,12 +167,12 @@ int main(int argc, char* argv[]) {
             std::cout << std::format("[SPAWN] Creating {} entities...\n", config.entityCount);
         }
 
-        std::vector<std::shared_ptr<BenchmarkEntity>> entities;
+        std::vector<std::shared_ptr<BenchmarkNPC>> entities;
         entities.reserve(config.entityCount);
 
         const Vector2D centralPos(500.0f, 500.0f);
         for (int i = 0; i < config.entityCount; ++i) {
-            auto entity = BenchmarkEntity::create(i, centralPos);
+            auto entity = BenchmarkNPC::create(i, centralPos);
             entities.push_back(entity);
             // Entity created without AI behavior for headless power profiling
         }

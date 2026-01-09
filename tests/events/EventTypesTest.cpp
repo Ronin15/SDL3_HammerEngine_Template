@@ -12,6 +12,7 @@
 #include "events/SceneChangeEvent.hpp"
 #include "events/WeatherEvent.hpp"
 #include "entities/Player.hpp"
+#include "entities/EntityHandle.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <functional>
 #include <memory>
@@ -785,11 +786,14 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
     // Create a resource handle
     HammerEngine::ResourceHandle woodHandle(1, 1);
 
+    // Get player's EntityHandle
+    EntityHandle playerHandle = player->getHandle();
+
     // Create the event
-    ResourceChangeEvent event(player, woodHandle, 100, 150, "crafted");
+    ResourceChangeEvent event(playerHandle, woodHandle, 100, 150, "crafted");
 
     // Check event properties
-    BOOST_CHECK(event.getOwner().lock() == player);
+    BOOST_CHECK(event.getOwnerHandle() == playerHandle);
     BOOST_CHECK(event.getResourceHandle() == woodHandle);
     BOOST_CHECK_EQUAL(event.getOldQuantity(), 100);
     BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
@@ -804,7 +808,7 @@ BOOST_FIXTURE_TEST_CASE(ResourceChangeEventBasics, EventTypesFixture) {
     event.reset();
     // Reset is a no-op for this event, but let's check it doesn't crash
     // and values remain
-    BOOST_CHECK(event.getOwner().lock() == player);
+    BOOST_CHECK(event.getOwnerHandle() == playerHandle);
     BOOST_CHECK_EQUAL(event.getNewQuantity(), 150);
 }
 
@@ -977,7 +981,7 @@ BOOST_FIXTURE_TEST_CASE(AllEventTypesReturnCorrectTypeId, EventTypesFixture) {
   // ResourceChange
   auto player = std::make_shared<Player>();
   HammerEngine::ResourceHandle goldHandle(2, 1);
-  ResourceChangeEvent resourceEvent(player, goldHandle, 0, 10, "looted");
+  ResourceChangeEvent resourceEvent(player->getHandle(), goldHandle, 0, 10, "looted");
   BOOST_CHECK(resourceEvent.getTypeId() == EventTypeId::ResourceChange);
 
   // World

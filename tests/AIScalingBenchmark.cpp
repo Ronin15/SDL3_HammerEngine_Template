@@ -29,6 +29,7 @@
 
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "entities/Entity.hpp"  // For AnimationConfig
 #include "managers/PathfinderManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/BackgroundSimulationManager.hpp"
@@ -141,7 +142,7 @@ public:
 
         for (size_t i = 0; i < count; ++i) {
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            EntityHandle handle = edm.createNPC(pos, 16.0f, 16.0f);
+            EntityHandle handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
 
             // Enable collision for the entity
             size_t idx = edm.getIndex(handle);
@@ -172,7 +173,7 @@ public:
 
         for (size_t i = 0; i < count; ++i) {
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            EntityHandle handle = edm.createNPC(pos, 16.0f, 16.0f);
+            EntityHandle handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
 
             aim.assignBehavior(handle, behaviors[i % behaviors.size()]);
             m_handles.push_back(handle);

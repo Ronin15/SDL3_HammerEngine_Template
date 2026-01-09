@@ -38,9 +38,8 @@ AdvancedAIDemoState::~AdvancedAIDemoState() {
     AIManager &aiMgr = AIManager::Instance();
     aiMgr.resetBehaviors();
 
-    // Clear NPCs without calling clean() on them
-    m_npcsById.clear();
-    m_npcsByEdmIndex.clear();
+    // Clear NPCs via NPCRenderController
+    m_npcRenderCtrl.clearSpawnedNPCs();
 
     // Clean up player
     m_player.reset();
@@ -84,40 +83,60 @@ void AdvancedAIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Idle behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to IDLE behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Idle");
+    EntityDataManager &edm = EntityDataManager::Instance();
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Idle");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2)) {
     // Assign Flee behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to FLEE behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Flee");
+    EntityDataManager &edm = EntityDataManager::Instance();
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Flee");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_3)) {
     // Assign Follow behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to FOLLOW behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Follow");
+    EntityDataManager &edm = EntityDataManager::Instance();
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Follow");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign Guard behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to GUARD behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Guard");
+    EntityDataManager &edm = EntityDataManager::Instance();
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Guard");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign Attack behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to ATTACK behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      aiMgr.assignBehavior(npc->getHandle(), "Attack");
+    EntityDataManager &edm = EntityDataManager::Instance();
+    for (size_t edmIdx : edm.getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = edm.getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Attack");
+      }
     }
   }
 
@@ -278,7 +297,7 @@ bool AdvancedAIDemoState::enter() {
 
     // Log status
     GAMESTATE_INFO(std::format("Created {} NPCs with advanced AI behaviors",
-                               m_npcsById.size()));
+                               EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
     GAMESTATE_INFO("CombatController registered");
 
     // Pre-allocate status buffer to avoid per-frame allocations
@@ -318,8 +337,7 @@ bool AdvancedAIDemoState::exit() {
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-    m_npcsById.clear();
-    m_npcsByEdmIndex.clear();
+    m_npcRenderCtrl.clearSpawnedNPCs();
     if (m_player) {
       m_player.reset();
     }
@@ -369,8 +387,7 @@ bool AdvancedAIDemoState::exit() {
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-  m_npcsById.clear();
-  m_npcsByEdmIndex.clear();
+  m_npcRenderCtrl.clearSpawnedNPCs();
   if (m_player) {
     m_player.reset();
   }
@@ -457,24 +474,10 @@ void AdvancedAIDemoState::update(float deltaTime) {
     }
 
     // Cache manager references for better performance
-    EntityDataManager &edm = EntityDataManager::Instance();
     UIManager &ui = UIManager::Instance();
 
-    // Update Active tier NPCs only (animations and state machine)
-    // AIManager handles behavior logic, BackgroundSimulationManager handles
-    // non-Active Use getActiveIndices() to iterate only ~500 Active entities
-    // instead of all NPCs
-    for (size_t edmIdx : edm.getActiveIndices()) {
-      const auto &hot = edm.getHotDataByIndex(edmIdx);
-      if (hot.kind != EntityKind::NPC)
-        continue;
-
-      NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx]
-                                                      : nullptr;
-      if (npc) {
-        npc->update(deltaTime);
-      }
-    }
+    // Update data-driven NPCs (animations handled by NPCRenderController)
+    m_npcRenderCtrl.update(deltaTime);
 
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
@@ -499,7 +502,6 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
                                  float interpolationAlpha) {
   // Cache manager references for better performance
   WorldManager &worldMgr = WorldManager::Instance();
-  EntityDataManager &edm = EntityDataManager::Instance();
   UIManager &ui = UIManager::Instance();
 
   // Camera offset with unified interpolation (single atomic read for sync)
@@ -532,20 +534,8 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
   }
 
-  // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
-  // This iterates ~500 Active entities instead of 50K+ total NPCs
-  for (size_t edmIdx : edm.getActiveIndices()) {
-    const auto &hot = edm.getHotDataByIndex(edmIdx);
-    if (hot.kind != EntityKind::NPC)
-      continue;
-
-    NPCPtr npc =
-        (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx] : nullptr;
-    if (npc) {
-      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-      // TODO: Health bar rendering using npc->getHealth() / npc->getMaxHealth()
-    }
-  }
+  // Render data-driven NPCs via NPCRenderController
+  m_npcRenderCtrl.renderNPCs(renderer, renderCamX, renderCamY, interpolationAlpha);
 
   // Render player at the position camera used for offset calculation
   if (m_player) {
@@ -571,7 +561,7 @@ void AdvancedAIDemoState::render(SDL_Renderer *renderer,
     // every frame
     int currentFPS =
         static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t npcCount = m_npcsById.size();
+    size_t npcCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
 
     if (currentFPS != m_lastDisplayedFPS ||
         npcCount != m_lastDisplayedNPCCount ||
@@ -648,6 +638,7 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
   // TODO: Make an event for advanced NPC's
   //  Cache AIManager reference for better performance
   AIManager &aiMgr = AIManager::Instance();
+  EntityDataManager &edm = EntityDataManager::Instance();
 
   try {
     // Random number generation for positioning near player
@@ -676,30 +667,17 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
         position = Vector2D(playerPos.getX() + distance * std::cos(angle),
                             playerPos.getY() + distance * std::sin(angle));
 
-        // First 3 NPCs are pets (pass through player), rest are regular NPCs
-        std::shared_ptr<NPC> npc;
-        if (i < 3) {
-          npc = NPC::create("npc", position, 0, 0, NPC::NPCType::Pet);
-        } else {
-          npc = NPC::create("npc", position);
+        // Create data-driven NPC via EntityDataManager type registry
+        EntityHandle handle = edm.createDataDrivenNPC(position, "Guard");
+
+        if (!handle.isValid()) {
+          GAMESTATE_ERROR(std::format("Failed to create data-driven NPC {}", i));
+          continue;
         }
 
-        // Set wander area to keep NPCs on screen
-        npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
+        // Register with AIManager (default to Follow behavior for all NPCs)
+        aiMgr.registerEntity(handle, "Follow");
 
-        // Phase 2 EDM Migration: Use EntityHandle-based registration
-        EntityHandle handle = npc->getHandle();
-        if (handle.isValid()) {
-          aiMgr.registerEntity(handle, "Follow");
-          m_npcsById[handle.getId()] = npc;
-          size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
-          if (edmIdx != SIZE_MAX) {
-            if (edmIdx >= m_npcsByEdmIndex.size()) {
-              m_npcsByEdmIndex.resize(edmIdx + 1);
-            }
-            m_npcsByEdmIndex[edmIdx] = npc;
-          }
-        }
       } catch (const std::exception &e) {
         GAMESTATE_ERROR(
             std::format("Exception creating advanced NPC {}: {}", i, e.what()));
@@ -708,7 +686,8 @@ void AdvancedAIDemoState::createAdvancedNPCs() {
     }
 
     GAMESTATE_INFO(
-        std::format("AdvancedAIDemoState: Created {} NPCs", m_npcsById.size()));
+        std::format("AdvancedAIDemoState: Created {} NPCs",
+                    edm.getIndicesByKind(EntityKind::NPC).size()));
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(
         std::format("Exception in createAdvancedNPCs(): {}", e.what()));

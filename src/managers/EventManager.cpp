@@ -1281,14 +1281,14 @@ bool EventManager::triggerParticleEffect(const std::string &effectName,
 }
 
 bool EventManager::triggerResourceChange(
-    EntityPtr owner, HammerEngine::ResourceHandle resourceHandle,
+    EntityHandle ownerHandle, HammerEngine::ResourceHandle resourceHandle,
     int oldQuantity, int newQuantity, const std::string &changeReason,
     DispatchMode mode) const {
   EventData eventData;
   eventData.typeId = EventTypeId::ResourceChange;
   eventData.setActive(true);
   eventData.event = std::make_shared<ResourceChangeEvent>(
-      owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+      ownerHandle, resourceHandle, oldQuantity, newQuantity, changeReason);
 
   return dispatchEvent(EventTypeId::ResourceChange, eventData, mode,
                        "triggerResourceChange");
@@ -1410,11 +1410,11 @@ bool EventManager::createNPCSpawnEvent(const std::string &name,
 }
 
 bool EventManager::createResourceChangeEvent(
-    const std::string &name, EntityPtr owner,
+    const std::string &name, EntityHandle ownerHandle,
     HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
     int newQuantity, const std::string &changeReason) {
   auto event = std::make_shared<ResourceChangeEvent>(
-      owner, resourceHandle, oldQuantity, newQuantity, changeReason);
+      ownerHandle, resourceHandle, oldQuantity, newQuantity, changeReason);
   return registerResourceChangeEvent(name, event);
 }
 

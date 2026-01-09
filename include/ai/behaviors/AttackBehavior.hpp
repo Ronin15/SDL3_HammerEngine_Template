@@ -95,7 +95,7 @@ public:
   float getLastAttackTime() const;
   int getCurrentCombo() const;
 
-  // Animation state notification - triggers NPC animation state changes
+  // State change notification - applies velocity lunge for attack states
   void notifyAnimationStateChange(EntityPtr entity, AttackState newState);
 
   // Clone method for creating unique behavior instances

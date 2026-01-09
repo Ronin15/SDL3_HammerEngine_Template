@@ -316,9 +316,10 @@ BOOST_AUTO_TEST_CASE(TestCollisionUsesEDMPosition) {
 }
 
 BOOST_AUTO_TEST_CASE(TestAABBComputedFromEDMHalfSize) {
-    // Create entity with specific half-size using EDM directly
+    // Create data-driven NPC - collision size derived from frame dimensions
+    // Default frame size is 32x32, giving halfWidth/halfHeight of 16
     auto& edm = EntityDataManager::Instance();
-    EntityHandle handle = edm.createNPC(Vector2D(500.0f, 500.0f), 24.0f, 32.0f);
+    EntityHandle handle = edm.createDataDrivenNPC(Vector2D(500.0f, 500.0f), "test", AnimationConfig{}, AnimationConfig{});
 
     // Enable collision
     size_t index = edm.getIndex(handle);
@@ -327,9 +328,9 @@ BOOST_AUTO_TEST_CASE(TestAABBComputedFromEDMHalfSize) {
     auto& hot = edm.getHotDataByIndex(index);
     hot.setCollisionEnabled(true);
 
-    // Verify half-sizes in EDM
-    BOOST_CHECK_CLOSE(hot.halfWidth, 24.0f, 0.01f);
-    BOOST_CHECK_CLOSE(hot.halfHeight, 32.0f, 0.01f);
+    // Verify half-sizes in EDM (derived from default 32x32 frame)
+    BOOST_CHECK_CLOSE(hot.halfWidth, 16.0f, 0.01f);
+    BOOST_CHECK_CLOSE(hot.halfHeight, 16.0f, 0.01f);
 }
 
 BOOST_AUTO_TEST_SUITE_END()

@@ -9,7 +9,6 @@
 #include "controllers/world/WeatherController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
-#include "entities/NPC.hpp"
 #include "gameStates/LoadingState.hpp"
 #include "gameStates/PauseState.hpp"
 #include "managers/AIManager.hpp"
@@ -1175,15 +1174,18 @@ void GamePlayState::updateCombatHUD() {
   ui.setValue("hud_health_bar", mp_Player->getHealth());
   ui.setValue("hud_stamina_bar", mp_Player->getStamina());
 
-  // Update target frame visibility and content
+  // Update target frame visibility and content (data-driven via EDM)
   if (combatCtrl.hasActiveTarget()) {
-    auto target = combatCtrl.getTargetedNPC();
-    if (target) {
+    EntityHandle targetHandle = combatCtrl.getTargetedHandle();
+    auto& edm = EntityDataManager::Instance();
+    size_t idx = edm.getIndex(targetHandle);
+    if (idx != SIZE_MAX) {
+      const auto& charData = edm.getCharacterDataByIndex(idx);
       ui.setComponentVisible("hud_target_panel", true);
       ui.setComponentVisible("hud_target_name", true);
       ui.setComponentVisible("hud_target_health", true);
-      ui.setText("hud_target_name", target->getName());
-      ui.setValue("hud_target_health", target->getHealth());
+      ui.setText("hud_target_name", "Target");  // Data-driven NPCs don't have names
+      ui.setValue("hud_target_health", charData.health);
     }
   } else {
     ui.setComponentVisible("hud_target_panel", false);

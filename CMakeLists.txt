@@ -223,7 +223,7 @@ file(GLOB_RECURSE SOURCES
     "src/ai/*.cpp"
     "src/world/*.cpp"
     "src/utils/*.cpp"
-    "src/controllers/*.cpp"
+    "src/controllers/**/*.cpp"
 )
 
 # Exclude HammerMain.cpp from library sources (contains main() which conflicts with test frameworks)

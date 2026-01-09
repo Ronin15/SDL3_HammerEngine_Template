@@ -358,9 +358,8 @@ bool EventDemoState::exit() {
       // Reset player
       m_player.reset();
 
-      // Clear spawned NPCs vector and reset limit flag
-      m_npcsById.clear();
-      m_npcsByEdmIndex.clear();
+      // Clear spawned NPCs (data-driven via NPCRenderController)
+      m_npcRenderCtrl.clearSpawnedNPCs();
       m_limitMessageShown = false;
 
       // Clear event log
@@ -424,9 +423,8 @@ bool EventDemoState::exit() {
     // Reset player
     m_player.reset();
 
-    // Clear spawned NPCs vector and reset limit flag
-    m_npcsById.clear();
-    m_npcsByEdmIndex.clear();
+    // Clear spawned NPCs (data-driven via NPCRenderController)
+    m_npcRenderCtrl.clearSpawnedNPCs();
     m_limitMessageShown = false;
 
     // Clear event log
@@ -553,22 +551,8 @@ void EventDemoState::update(float deltaTime) {
     m_player->update(deltaTime);
   }
 
-  // Update Active tier NPCs only (animations and state machine)
-  // AIManager handles behavior logic, BackgroundSimulationManager handles
-  // non-Active Use getActiveIndices() to iterate only ~500 Active entities
-  // instead of all NPCs
-  const auto &edm = EntityDataManager::Instance();
-  for (size_t edmIdx : edm.getActiveIndices()) {
-    const auto &hot = edm.getHotDataByIndex(edmIdx);
-    if (hot.kind != EntityKind::NPC)
-      continue;
-
-    NPCPtr npc =
-        (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx] : nullptr;
-    if (npc) {
-      npc->update(deltaTime);
-    }
-  }
+  // Update NPC animations (velocity-based, data-driven)
+  m_npcRenderCtrl.update(deltaTime);
 
   // Update camera (follows player automatically)
   updateCamera(deltaTime);
@@ -623,7 +607,7 @@ void EventDemoState::update(float deltaTime) {
 
     case DemoPhase::NPCSpawnDemo:
       if ((m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          m_npcsById.size() < 5000) {
+          EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() < 5000) {
         triggerNPCSpawnDemo();
         m_lastEventTriggerTime = m_totalDemoTime;
       }
@@ -676,7 +660,7 @@ void EventDemoState::update(float deltaTime) {
     case DemoPhase::CustomEventDemo:
       if (m_phaseTimer >= 3.0f &&
           (m_totalDemoTime - m_lastEventTriggerTime) >= m_eventFireInterval &&
-          m_npcsById.size() < 5000) {
+          EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() < 5000) {
         triggerCustomEventDemo();
         m_lastEventTriggerTime = m_totalDemoTime;
       }
@@ -712,7 +696,6 @@ void EventDemoState::update(float deltaTime) {
 
 void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   // Get manager references at function start
-  const auto &edm = EntityDataManager::Instance();
   auto &worldMgr = WorldManager::Instance();
   auto &particleMgr = ParticleManager::Instance();
   auto &uiMgr = UIManager::Instance();
@@ -761,19 +744,8 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
                                renderCamY);
   }
 
-  // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
-  // This iterates ~500 Active entities instead of 50K+ total NPCs
-  for (size_t edmIdx : edm.getActiveIndices()) {
-    const auto &hot = edm.getHotDataByIndex(edmIdx);
-    if (hot.kind != EntityKind::NPC)
-      continue;
-
-    NPCPtr npc =
-        (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx] : nullptr;
-    if (npc) {
-      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-    }
-  }
+  // Render all active NPCs via data-driven controller
+  m_npcRenderCtrl.renderNPCs(renderer, renderCamX, renderCamY, interpolationAlpha);
 
   // Render world-space and foreground particles
   if (particleMgr.isInitialized() && !particleMgr.isShutdown()) {
@@ -814,7 +786,7 @@ void EventDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     }
 
     float const currentFPS = mp_stateManager->getCurrentFPS();
-    size_t npcCount = m_npcsById.size();
+    size_t npcCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
 
     // Update if FPS changed by more than 0.05 (avoids flicker) or other values
     // changed
@@ -971,7 +943,7 @@ void EventDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_2) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      m_npcsById.size() < 5000) {
+      EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() < 5000) {
     if (m_autoMode && m_currentPhase == DemoPhase::NPCSpawnDemo) {
       m_phaseTimer = 0.0f;
     }
@@ -990,7 +962,7 @@ void EventDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
       (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-      m_npcsById.size() < 5000) {
+      EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() < 5000) {
     if (m_autoMode && m_currentPhase == DemoPhase::CustomEventDemo) {
       m_phaseTimer = 0.0f;
     }
@@ -1000,7 +972,7 @@ void EventDemoState::handleInput() {
   // Provide feedback when NPC cap reached
   else if (inputMgr.wasKeyPressed(SDL_SCANCODE_4) &&
            (m_totalDemoTime - m_lastEventTriggerTime) >= 0.2f &&
-           m_npcsById.size() >= 5000) {
+           EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() >= 5000) {
     addLogEntry("NPC limit (R to reset)");
   }
 
@@ -1169,7 +1141,7 @@ void EventDemoState::triggerNPCSpawnDemo() {
 
   Vector2D playerPos = m_player->getPosition();
 
-  size_t npcCount = m_npcsById.size();
+  size_t npcCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
   float offsetX = 200.0f + ((npcCount % 8) * 120.0f);
   float offsetY = 100.0f + ((npcCount % 5) * 80.0f);
 
@@ -1351,7 +1323,7 @@ void EventDemoState::triggerResourceDemo() {
                               newQuantity));
 
       // Trigger resource change via EventManager (deferred by default)
-      EventManager::Instance().triggerResourceChange(m_player, handle, currentQuantity,
+      EventManager::Instance().triggerResourceChange(m_player->getHandle(), handle, currentQuantity,
                                          newQuantity, "event_demo");
     } else {
       addLogEntry("Failed: " + resourceName + " (full)");
@@ -1368,7 +1340,7 @@ void EventDemoState::triggerResourceDemo() {
                                 resourceName, newQuantity));
 
         // Trigger resource change via EventManager (deferred by default)
-        EventManager::Instance().triggerResourceChange(m_player, handle, currentQuantity,
+        EventManager::Instance().triggerResourceChange(m_player->getHandle(), handle, currentQuantity,
                                            newQuantity, "event_demo");
       } else {
         addLogEntry("Failed: remove " + resourceName);
@@ -1394,7 +1366,7 @@ void EventDemoState::triggerCustomEventDemo() {
 
   triggerWeatherDemoManual();
 
-  if (m_npcsById.size() >= 5000) {
+  if (EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() >= 5000) {
     addLogEntry("NPC limit reached (5000)");
     return;
   }
@@ -1407,7 +1379,7 @@ void EventDemoState::triggerCustomEventDemo() {
 
   Vector2D playerPos = m_player->getPosition();
 
-  size_t npcCount = m_npcsById.size();
+  size_t npcCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
   float offsetX1 = 150.0f + ((npcCount % 10) * 80.0f);
   float offsetY1 = 80.0f + ((npcCount % 6) * 50.0f);
   float offsetX2 = 250.0f + (((npcCount + 1) % 10) * 80.0f);
@@ -1427,7 +1399,7 @@ void EventDemoState::triggerCustomEventDemo() {
   createNPC(npcType2, spawnX2, spawnY2);
 
   addLogEntry(std::format("Spawned: {}, {} ({} total)", npcType1, npcType2,
-                          m_npcsById.size()));
+                          EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
 }
 
 void EventDemoState::triggerConvenienceMethodsDemo() {
@@ -1542,8 +1514,8 @@ void EventDemoState::onNPCSpawned(const EventData &data) {
             std::clamp(anchor.getY() + offY, 100.0f, m_worldHeight - 100.0f);
 
         // createNPC() handles behavior assignment internally
-        auto npc = createNPC(npcType, x, y, params.aiBehavior);
-        if (npc) {
+        EntityHandle handle = createNPC(npcType, x, y, params.aiBehavior);
+        if (handle.isValid()) {
           spawned++;
         }
       }
@@ -1665,61 +1637,34 @@ void EventDemoState::setupAIBehaviors() {
   GAMESTATE_DEBUG("AI Behaviors configured for NPC integration");
 }
 
-std::shared_ptr<NPC>
+EntityHandle
 EventDemoState::createNPC(const std::string &npcType, float x, float y,
                           const std::string &behaviorOverride) {
   try {
-    std::string textureID;
-    if (npcType == "Guard") {
-      textureID = "guard";
-    } else if (npcType == "Villager") {
-      textureID = "villager";
-    } else if (npcType == "Merchant") {
-      textureID = "merchant";
-    } else if (npcType == "Warrior") {
-      textureID = "warrior";
-    } else {
-      textureID = "npc";
-    }
-
+    // Create data-driven NPC via EntityDataManager type registry
     Vector2D position(x, y);
-    auto npc = NPC::create(textureID, position);
-    if (!npc) {
-      GAMESTATE_ERROR(std::format("Failed to create NPC of type: {}", npcType));
-      return nullptr;
+    EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
+        position, npcType);
+
+    if (!handle.isValid()) {
+      GAMESTATE_ERROR(std::format("Failed to create data-driven NPC of type: {}", npcType));
+      return INVALID_ENTITY_HANDLE;
     }
 
-    npc->initializeInventory();
-    npc->setWanderArea(0.0f, 0.0f, m_worldWidth, m_worldHeight);
-
-    // Determine and assign behavior BEFORE storing in map
+    // Determine and assign behavior (demo-specific behavior rotation)
     std::string behavior = behaviorOverride.empty()
                                ? determineBehaviorForNPCType(npcType)
                                : behaviorOverride;
 
-    EntityHandle handle = npc->getHandle();
-    if (handle.isValid()) {
-      AIManager::Instance().registerEntity(handle, behavior);
-      m_npcsById[handle.getId()] = npc;
-      size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
-      if (edmIdx != SIZE_MAX) {
-        if (edmIdx >= m_npcsByEdmIndex.size()) {
-          m_npcsByEdmIndex.resize(edmIdx + 1);
-        }
-        m_npcsByEdmIndex[edmIdx] = npc;
-      }
-    } else {
-      GAMESTATE_ERROR(std::format("Invalid handle for NPC type: {}", npcType));
-      return nullptr;
-    }
+    AIManager::Instance().registerEntity(handle, behavior);
 
-    return npc;
+    return handle;
   } catch (const std::exception &e) {
     GAMESTATE_ERROR(std::format("EXCEPTION in createNPC: {}", e.what()));
-    return nullptr;
+    return INVALID_ENTITY_HANDLE;
   } catch (...) {
     GAMESTATE_ERROR("UNKNOWN EXCEPTION in createNPC");
-    return nullptr;
+    return INVALID_ENTITY_HANDLE;
   }
 }
 
@@ -1872,28 +1817,8 @@ void EventDemoState::updateInstructions() {
 }
 
 void EventDemoState::cleanupSpawnedNPCs() {
-  // Cache AIManager reference for better performance
-  AIManager &aiMgr = AIManager::Instance();
-
-  for (const auto &[id, npc] : m_npcsById) {
-    if (npc) {
-      try {
-        // Phase 2 EDM Migration: Use EntityHandle-based API
-        EntityHandle handle = npc->getHandle();
-        if (handle.isValid() && aiMgr.hasBehavior(handle)) {
-          aiMgr.unassignBehavior(handle);
-        }
-        if (handle.isValid()) {
-          aiMgr.unregisterEntity(handle);
-        }
-      } catch (...) {
-        // Ignore errors during cleanup to prevent double-free issues
-      }
-    }
-  }
-
-  m_npcsById.clear();
-  m_npcsByEdmIndex.clear();
+  // Data-driven cleanup via NPCRenderController (handles AI unregistration and EDM destruction)
+  m_npcRenderCtrl.clearSpawnedNPCs();
   m_limitMessageShown = false;
 }
 

@@ -37,8 +37,7 @@ AIDemoState::~AIDemoState() {
     // Reset AI behaviors first to clear entity references
     // Don't call unassignBehaviorFromEntity here - it uses shared_from_this()
     // Clear NPCs without calling clean() on them
-    m_npcsById.clear();
-    m_npcsByEdmIndex.clear();
+    m_npcRenderCtrl.clearSpawnedNPCs();
 
     // Clean up player
     m_player.reset();
@@ -81,10 +80,11 @@ void AIDemoState::handleInput() {
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_1)) {
     // Assign Wander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to WANDER behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "Wander");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Wander");
+      }
     }
   }
 
@@ -92,11 +92,12 @@ void AIDemoState::handleInput() {
     // Assign Patrol behavior to all NPCs
     GAMESTATE_INFO(std::format(
         "Switching {} NPCs to PATROL behavior (batched processing)...",
-        m_npcsById.size()));
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "Patrol");
+        EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Patrol");
+      }
     }
     GAMESTATE_INFO("Patrol assignments queued. Processing "
                    "instantly in parallel for optimal performance.");
@@ -108,70 +109,77 @@ void AIDemoState::handleInput() {
 
     // Chase behavior target is automatically maintained by AIManager
     // No manual target updates needed
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "Chase");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "Chase");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_4)) {
     // Assign SmallWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to SMALL WANDER behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "SmallWander");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "SmallWander");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_5)) {
     // Assign LargeWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to LARGE WANDER behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "LargeWander");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "LargeWander");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_6)) {
     // Assign EventWander behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT WANDER behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "EventWander");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "EventWander");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_7)) {
     // Assign RandomPatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to RANDOM PATROL behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "RandomPatrol");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "RandomPatrol");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_8)) {
     // Assign CirclePatrol behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to CIRCLE PATROL behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "CirclePatrol");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "CirclePatrol");
+      }
     }
   }
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_9)) {
     // Assign EventTarget behavior to all NPCs
     GAMESTATE_INFO("Switching all NPCs to EVENT TARGET behavior");
-    for (auto &[id, npc] : m_npcsById) {
-      // Queue the behavior assignment for batch processing (EntityHandle-based
-      // API)
-      aiMgr.assignBehavior(npc->getHandle(), "EventTarget");
+    for (size_t edmIdx : EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC)) {
+      EntityHandle handle = EntityDataManager::Instance().getHandle(edmIdx);
+      if (handle.isValid()) {
+        aiMgr.assignBehavior(handle, "EventTarget");
+      }
     }
   }
 
@@ -202,13 +210,13 @@ void AIDemoState::handleInput() {
 
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_M)) {
     // Spawn 2000 NPCs with random behaviors (like EventDemoState)
-    int previousCount = m_npcsById.size();
+    int previousCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
     GAMESTATE_INFO("Spawning 2000 NPCs with random behaviors...");
     createNPCBatchWithRandomBehaviors(2000);
-    int actualSpawned = m_npcsById.size() - previousCount;
+    int actualSpawned = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size() - previousCount;
     GAMESTATE_INFO(
         std::format("Spawned {} NPCs with random behaviors (Total: {})",
-                    actualSpawned, m_npcsById.size()));
+                    actualSpawned, EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size()));
   }
 }
 
@@ -383,7 +391,7 @@ bool AIDemoState::exit() {
 
     // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
     // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-    m_npcsById.clear();
+    m_npcRenderCtrl.clearSpawnedNPCs();
     if (m_player) {
       m_player.reset();
     }
@@ -432,8 +440,7 @@ bool AIDemoState::exit() {
 
   // CRITICAL: Clear NPCs and player BEFORE prepareForStateTransition()
   // NPCs hold EDM indices - must be destroyed while EDM data is still valid
-  m_npcsById.clear();
-  m_npcsByEdmIndex.clear();
+  m_npcRenderCtrl.clearSpawnedNPCs();
   if (m_player) {
     m_player.reset();
   }
@@ -525,24 +532,12 @@ void AIDemoState::update(float deltaTime) {
     }
 
     // Cache manager references for better performance
-    EntityDataManager &edm = EntityDataManager::Instance();
     UIManager &ui = UIManager::Instance();
 
     // Update Active tier NPCs only (animations and state machine)
     // AIManager handles behavior logic, BackgroundSimulationManager handles
-    // non-Active Use getActiveIndices() to iterate only ~468 Active entities
-    // instead of all 50K
-    for (size_t edmIdx : edm.getActiveIndices()) {
-      const auto &hot = edm.getHotDataByIndex(edmIdx);
-      if (hot.kind != EntityKind::NPC)
-        continue;
-
-      NPCPtr npc = (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx]
-                                                      : nullptr;
-      if (npc) {
-        npc->update(deltaTime);
-      }
-    }
+    // non-Active Data-driven NPCs are updated via NPCRenderController
+    m_npcRenderCtrl.update(deltaTime);
 
     // Update camera (follows player automatically)
     updateCamera(deltaTime);
@@ -563,7 +558,6 @@ void AIDemoState::update(float deltaTime) {
 void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   // Cache manager references for better performance
   WorldManager &worldMgr = WorldManager::Instance();
-  EntityDataManager &edm = EntityDataManager::Instance();
   UIManager &ui = UIManager::Instance();
 
   // Camera offset with unified interpolation (single atomic read for sync)
@@ -597,19 +591,9 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
   }
 
-  // Render Active tier NPCs only using getActiveIndices() for O(1) lookup
-  // This iterates ~500 Active entities instead of 50K+ total NPCs
-  for (size_t edmIdx : edm.getActiveIndices()) {
-    const auto &hot = edm.getHotDataByIndex(edmIdx);
-    if (hot.kind != EntityKind::NPC)
-      continue;
-
-    NPCPtr npc =
-        (edmIdx < m_npcsByEdmIndex.size()) ? m_npcsByEdmIndex[edmIdx] : nullptr;
-    if (npc) {
-      npc->render(renderer, renderCamX, renderCamY, interpolationAlpha);
-    }
-  }
+  // Render Active tier NPCs only using data-driven rendering
+  // NPCRenderController handles iteration and rendering for visible NPCs
+  m_npcRenderCtrl.renderNPCs(renderer, renderCamX, renderCamY, interpolationAlpha);
 
   // Render player at the position camera used for offset calculation
   if (m_player) {
@@ -632,7 +616,7 @@ void AIDemoState::render(SDL_Renderer *renderer, float interpolationAlpha) {
     // every frame
     int currentFPS =
         static_cast<int>(std::lround(mp_stateManager->getCurrentFPS()));
-    size_t entityCount = m_npcsById.size();
+    size_t entityCount = EntityDataManager::Instance().getIndicesByKind(EntityKind::NPC).size();
 
     if (currentFPS != m_lastDisplayedFPS ||
         entityCount != m_lastDisplayedEntityCount ||
@@ -778,23 +762,14 @@ void AIDemoState::createNPCBatch(int count) {
           Vector2D position(x, y);
 
           try {
-            auto npc = NPC::create("npc", position);
-            npc->initializeInventory();
-            npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
-            // Phase 2 EDM Migration: Use EntityHandle-based registration
-            EntityHandle handle = npc->getHandle();
+            // Create data-driven NPC via EntityDataManager type registry
+            EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
+                position, "Guard");
+
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, "Wander");
-              m_npcsById[handle.getId()] = npc;
-              size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
-              if (edmIdx != SIZE_MAX) {
-                if (edmIdx >= m_npcsByEdmIndex.size()) {
-                  m_npcsByEdmIndex.resize(edmIdx + 1);
-                }
-                m_npcsByEdmIndex[edmIdx] = npc;
-              }
+              created++;
             }
-            created++;
           } catch (const std::exception &e) {
             GAMESTATE_ERROR(
                 std::format("Exception creating NPC: {}", e.what()));
@@ -879,26 +854,21 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
           Vector2D position(x, y);
 
           try {
-            auto npc = NPC::create("npc", position);
-            npc->initializeInventory();
-            npc->setWanderArea(0, 0, m_worldWidth, m_worldHeight);
+            // Create data-driven NPC via EntityDataManager type registry
+            // Use random type from registered types for visual variety
+            static const std::vector<std::string> npcTypes = {"Guard", "Villager", "Merchant", "Warrior"};
+            static std::uniform_int_distribution<size_t> typeDist(0, npcTypes.size() - 1);
+            const std::string& npcType = npcTypes[typeDist(gen)];
 
-            // Assign random behavior from the list
-            std::string randomBehavior = behaviors[behaviorDist(gen)];
-            // Phase 2 EDM Migration: Use EntityHandle-based registration
-            EntityHandle handle = npc->getHandle();
+            EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
+                position, npcType);
+
             if (handle.isValid()) {
+              // Assign random behavior from the list
+              std::string randomBehavior = behaviors[behaviorDist(gen)];
               aiMgr.registerEntity(handle, randomBehavior);
-              m_npcsById[handle.getId()] = npc;
-              size_t edmIdx = EntityDataManager::Instance().getIndex(handle);
-              if (edmIdx != SIZE_MAX) {
-                if (edmIdx >= m_npcsByEdmIndex.size()) {
-                  m_npcsByEdmIndex.resize(edmIdx + 1);
-                }
-                m_npcsByEdmIndex[edmIdx] = npc;
-              }
+              created++;
             }
-            created++;
           } catch (const std::exception &e) {
             GAMESTATE_ERROR(std::format(
                 "Exception creating NPC with random behavior: {}", e.what()));

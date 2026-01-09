@@ -18,6 +18,7 @@
  */
 
 #include "Event.hpp"
+#include "entities/EntityHandle.hpp"
 #include <string>
 #include <functional>
 #include <vector>
@@ -128,9 +129,9 @@ public:
     void clearSpawnedEntities();
     bool areAllEntitiesDead() const;
 
-    // Direct spawn control (for scripting)
-    static EntityPtr forceSpawnNPC(const std::string& npcType, float x, float y);
-    static std::vector<EntityPtr> forceSpawnNPCs(const SpawnParameters& params, float x, float y);
+    // Direct spawn control (for scripting) - returns EntityHandle for data-driven NPCs
+    static EntityHandle forceSpawnNPC(const std::string& npcType, float x, float y);
+    static std::vector<EntityHandle> forceSpawnNPCs(const SpawnParameters& params, float x, float y);
     
     // Area constraint configuration for the spawn event
     void setAreaConstraints(float minX, float minY, float maxX, float maxY) {
@@ -203,9 +204,6 @@ private:
 
     // Helper to get player position
     Vector2D getPlayerPosition() const;
-
-    // Helper to map NPC type to texture ID
-    static std::string getTextureForNPCType(const std::string& npcType);
 
     // Spawn implementation
     void cleanDeadEntities();
