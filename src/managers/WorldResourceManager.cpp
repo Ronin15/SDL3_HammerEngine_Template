@@ -1011,7 +1011,7 @@ void WorldResourceManager::fireResourceChangeEvent(
     // Trigger ResourceChange via EventManager hub (no registration needed)
     const EventManager &eventMgr = EventManager::Instance();
     eventMgr.triggerResourceChange(
-        nullptr, // world-level (no specific owner)
+        EntityHandle{}, // world-level (no specific owner - invalid handle)
         resourceHandle, static_cast<int>(oldQuantity),
         static_cast<int>(newQuantity), std::format("{}_world_", reason) + worldId,
         EventManager::DispatchMode::Deferred);

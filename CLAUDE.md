@@ -20,19 +20,22 @@ cmake -B build/ -G Ninja -DCMAKE_BUILD_TYPE=Debug -DCMAKE_CXX_FLAGS="-D_GLIBCXX_
 
 ## Testing
 
-Boost.Test (58 executables). Use targeted tests during development. See `tests/TESTING.md` for comprehensive documentation.
+Boost.Test (58 executables). **Prefer direct test execution** - much faster than test scripts.
 
 ```bash
-# Use test scripts (preferred - handles output properly)
+# Direct test execution (PREFERRED for development - fast feedback)
+./bin/debug/<test_executable>                        # Run all tests in executable
+./bin/debug/<test_executable> --list_content         # List available tests
+./bin/debug/<test_executable> --run_test="TestCase*" # Run specific test
+./bin/debug/entity_data_manager_tests                # Run EDM tests directly
+./bin/debug/ai_manager_edm_integration_tests         # Run AI-EDM integration
+
+# Test scripts (use for comprehensive validation only - slow)
 ./tests/test_scripts/run_all_tests.sh --core-only --errors-only
 ./tests/test_scripts/run_controller_tests.sh --verbose
-./tests/test_scripts/run_ai_benchmark.sh
-
-# Direct test execution - list tests first, then run
-./bin/debug/<test_executable> --list_content       # List available tests
-./bin/debug/<test_executable> --run_test="TestCase*"  # Run specific test
-./bin/debug/save_manager_tests --run_test="TestSaveAndLoad*"
 ```
+
+See `tests/TESTING.md` for comprehensive documentation.
 
 **Boost.Test Notes**: Test names use the BOOST_AUTO_TEST_CASE name directly (e.g., `ThreadingModeComparison`, not `TestThreadingModeComparison`). Suite prefix is optional. Use `--list_content` to verify exact names.
 

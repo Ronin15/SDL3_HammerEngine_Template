@@ -4,7 +4,6 @@
  */
 
 #include "ai/behaviors/AttackBehavior.hpp"
-#include "entities/NPC.hpp"
 #include "managers/AIManager.hpp"
 #include "managers/EntityDataManager.hpp"
 #include <algorithm>
@@ -625,30 +624,22 @@ void AttackBehavior::changeState(BehaviorData &data, AttackState newState) {
 
 void AttackBehavior::notifyAnimationStateChange(EntityPtr entity,
                                                 AttackState newState) {
-  // Try to cast to NPC to notify animation state change
-  auto npc = std::dynamic_pointer_cast<NPC>(entity);
-  if (!npc) {
-    return; // Not an NPC (could be Player or other entity type)
+  // Data-driven NPCs: Animation handled by NPCRenderController via velocity
+  // Apply velocity burst for lunge effect on attack states
+  if (!entity) {
+    return;
   }
 
-  // Map AttackBehavior states to NPC animation states
-  switch (newState) {
-  case AttackState::ATTACKING:
-    npc->setAnimationState("Attacking");
-    break;
-  case AttackState::RECOVERING:
-    npc->setAnimationState("Recovering");
-    break;
-  case AttackState::COOLDOWN:
-    npc->setAnimationState("Idle");
-    break;
-  case AttackState::SEEKING:
-  case AttackState::APPROACHING:
-  case AttackState::POSITIONING:
-  case AttackState::RETREATING:
-  default:
-    npc->setAnimationState("Walking");
-    break;
+  // Lunge toward target when attacking (2x movement speed burst)
+  if (newState == AttackState::ATTACKING) {
+    Vector2D targetPos = getTargetPosition();
+    Vector2D entityPos = entity->getPosition();
+    Vector2D direction = (targetPos - entityPos);
+    float dist = direction.length();
+    if (dist > 1.0f) {
+      direction = direction * (1.0f / dist);  // Normalize
+      entity->setVelocity(direction * (m_movementSpeed * CHARGE_SPEED_MULTIPLIER));
+    }
   }
 }
 

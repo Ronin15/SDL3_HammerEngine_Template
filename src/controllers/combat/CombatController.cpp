@@ -5,7 +5,6 @@
 
 #include "controllers/combat/CombatController.hpp"
 #include "core/Logger.hpp"
-#include "entities/NPC.hpp"
 #include "entities/Player.hpp"
 #include "events/CombatEvent.hpp"
 #include "events/EntityEvents.hpp"

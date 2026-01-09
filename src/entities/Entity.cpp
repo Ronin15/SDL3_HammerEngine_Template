@@ -66,7 +66,7 @@ void Entity::setAcceleration(const Vector2D& acceleration) {
 }
 
 // ============================================================================
-// REGISTRATION (for test entities)
+// REGISTRATION (Player class only - NPCs use createDataDrivenNPC())
 // ============================================================================
 
 void Entity::registerWithDataManager(const Vector2D& position, float halfWidth,
@@ -76,20 +76,11 @@ void Entity::registerWithDataManager(const Vector2D& position, float halfWidth,
         return;  // EDM not ready, skip registration
     }
 
-    EntityHandle handle;
-    switch (kind) {
-        case EntityKind::NPC:
-            handle = edm.registerNPC(m_id, position, halfWidth, halfHeight);
-            break;
-        case EntityKind::Player:
-            handle = edm.registerPlayer(m_id, position, halfWidth, halfHeight);
-            break;
-        default:
-            // Use NPC registration for other kinds (test entities)
-            handle = edm.registerNPC(m_id, position, halfWidth, halfHeight);
-            break;
+    // Only Player uses Entity class - NPCs are data-driven
+    if (kind == EntityKind::Player) {
+        EntityHandle handle = edm.registerPlayer(m_id, position, halfWidth, halfHeight);
+        setHandle(handle);
     }
-    setHandle(handle);
 }
 
 // ============================================================================

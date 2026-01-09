@@ -18,7 +18,6 @@ message(STATUS "Building tests with Boost Test support")
 # --- Create TestMocks Library ---
 set(MOCK_SOURCES
     mocks/MockPlayer.cpp
-    mocks/MockNPC.cpp
     mocks/MockGameEngine.cpp
     events/EventManagerTestAccess.cpp
 )
@@ -71,6 +70,7 @@ set(SIMPLE_TESTS
     entity_data_manager_tests
     background_simulation_manager_tests
     collision_manager_edm_integration_tests
+    event_manager_tests
 )
 
 # Complex tests (need mocks)
@@ -79,7 +79,6 @@ set(MOCK_TESTS
     event_manager_scaling_benchmark
     thread_safe_ai_manager_tests
     thread_safe_ai_integration_tests
-    event_manager_tests
     event_types_tests
     event_manager_behavior_tests
     particle_manager_core_tests
@@ -190,6 +189,8 @@ foreach(test_name ${SIMPLE_TESTS})
         set(test_source "managers/BackgroundSimulationManagerTests.cpp")
     elseif(${test_name} STREQUAL "collision_manager_edm_integration_tests")
         set(test_source "collisions/CollisionManagerEDMIntegrationTests.cpp")
+    elseif(${test_name} STREQUAL "event_manager_tests")
+        set(test_source "events/EventManagerTest.cpp")
     endif()
 
     add_executable(${test_name} ${test_source})
@@ -208,8 +209,6 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "ThreadSafeAIManagerTest.cpp")
     elseif(${test_name} STREQUAL "thread_safe_ai_integration_tests")
         set(test_source "ThreadSafeAIIntegrationTest.cpp")
-    elseif(${test_name} STREQUAL "event_manager_tests")
-        set(test_source "events/EventManagerTest.cpp")
     elseif(${test_name} STREQUAL "event_types_tests")
         set(test_source "events/EventTypesTest.cpp")
     elseif(${test_name} STREQUAL "event_manager_behavior_tests")
@@ -278,6 +277,8 @@ endforeach()
 # Special configurations
 target_link_libraries(ui_stress_test PRIVATE Boost::container)
 target_compile_definitions(event_manager_tests PRIVATE RUNNING_TESTS)
+target_sources(event_manager_tests PRIVATE events/EventManagerTestAccess.cpp)
+target_include_directories(event_manager_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/events)
 target_compile_definitions(event_types_tests PRIVATE RUNNING_TESTS)
 target_compile_definitions(ui_stress_test PRIVATE UI_STRESS_TEST_BUILD)
 

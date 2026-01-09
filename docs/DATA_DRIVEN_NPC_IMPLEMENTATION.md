@@ -1207,3 +1207,42 @@ If issues arise, revert in this order:
 3. Remove NPCRenderController from GameStates
 4. Delete NPCRenderController files
 5. Remove NPCRenderData from EntityDataManager
+
+---
+
+## Removed Features
+
+The following NPC class features were intentionally removed in this implementation:
+
+- **Inventory System**: NPC inventory, trading, and shop functionality removed. Can be re-added as data-driven InventoryData component in EntityDataManager if needed.
+
+- **Loot Drops**: NPC loot drop system removed. Can be re-added as data-driven LootData component in EntityDataManager if needed.
+
+- **Extended Animation States**: Only Idle/Moving animations implemented. Attacking, Hurt, Recovering, Dying states can be added by extending NPCRenderData with:
+  ```cpp
+  struct NPCRenderData {
+      // ... existing fields ...
+      uint8_t animationState;   // Idle=0, Moving=1, Attacking=2, Hurt=3, Dying=4
+      float stateTimer;         // Time in current state
+      float stateDuration;      // Auto-transition duration (0=indefinite)
+      uint8_t attackRow, hurtRow, dyingRow;
+      uint8_t numAttackFrames, numHurtFrames, numDyingFrames;
+  };
+  ```
+
+- **NPC State Machine**: The state machine pattern (NPCIdleState, NPCWalkingState, etc.) was removed. Animation is now purely velocity-based. To add state-dependent behavior, use AIBehavior implementations instead.
+
+### Retrieving Removed Code
+
+The removed NPC class and state files are preserved in git history:
+
+```bash
+# View the deleted NPC class
+git show HEAD~1:include/entities/NPC.hpp
+
+# View deleted state files
+git show HEAD~1:include/entities/npcStates/NPCIdleState.hpp
+
+# Restore a specific file if needed
+git checkout HEAD~1 -- include/entities/NPC.hpp
+```

@@ -11,7 +11,8 @@
 #include "managers/EventManager.hpp" // For EventData
 #include "managers/ParticleManager.hpp"
 
-#include "entities/NPC.hpp"
+#include "controllers/render/NPCRenderController.hpp"
+#include "entities/EntityHandle.hpp"
 #include "entities/Player.hpp"
 #include "utils/Camera.hpp"
 
@@ -21,9 +22,6 @@
 #include <vector>
 
 // Forward declarations with smart pointer types
-class NPC;
-using NPCPtr = std::shared_ptr<NPC>;
-
 class Player;
 using PlayerPtr = std::shared_ptr<Player>;
 
@@ -90,9 +88,10 @@ private:
   float m_phaseDuration{8.0f}; // 8 seconds per phase for better pacing
   bool m_autoMode{true}; // Auto-advance through demos - enabled by default
 
-  // Entities - stored by handle ID for O(1) lookup
-  std::unordered_map<uint32_t, NPCPtr> m_npcsById{};
-  std::vector<NPCPtr> m_npcsByEdmIndex{};
+  // Data-driven NPC rendering (velocity-based animation)
+  NPCRenderController m_npcRenderCtrl{};
+
+  // Player entity
   PlayerPtr m_player{};
   
   // Camera for world navigation
@@ -194,10 +193,9 @@ private:
   void logResourceAnalytics(HammerEngine::ResourceHandle handle, int oldQty,
                             int newQty, const std::string &source);
 
-  // Unified NPC creation - always assigns behavior before making NPC available
-  std::shared_ptr<NPC>
-  createNPC(const std::string &npcType, float x, float y,
-            const std::string &behaviorOverride = "");
+  // Data-driven NPC creation via EntityDataManager
+  EntityHandle createNPC(const std::string &npcType, float x, float y,
+                         const std::string &behaviorOverride = "");
   std::string determineBehaviorForNPCType(const std::string &npcType);
 
   // AI behavior integration methods

@@ -26,6 +26,7 @@
 
 #include "managers/CollisionManager.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "entities/Entity.hpp"  // For AnimationConfig
 #include "managers/BackgroundSimulationManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
@@ -76,7 +77,7 @@ public:
                 pos = Vector2D(posDist(m_rng) + spread, posDist(m_rng) + spread);
             }
 
-            EntityHandle handle = edm.registerNPC(id, pos, 16.0f, 16.0f);
+            EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
             size_t idx = edm.getIndex(handle);
             if (idx != SIZE_MAX) {
                 auto& hot = edm.getHotDataByIndex(idx);

@@ -11,6 +11,7 @@
 #include "events/WorldEvent.hpp"
 #include "events/CameraEvent.hpp"
 #include "events/ResourceChangeEvent.hpp"
+#include "entities/EntityHandle.hpp"
 #include "utils/Vector2D.hpp"
 #include "core/Logger.hpp"
 #include <algorithm>
@@ -365,8 +366,8 @@ EventPtr EventFactory::createResourceChangeEvent(const std::string& name,
                                        const std::string& reason) {
     (void)name; // Resource events don't use name parameter
     HammerEngine::ResourceHandle handle(resourceId, resourceGen);
-    // Owner is unknown at factory-level, use nullptr
-    auto event = std::make_shared<ResourceChangeEvent>(nullptr, handle, oldQuantity, newQuantity, reason);
+    // Owner is unknown at factory-level, use invalid handle
+    auto event = std::make_shared<ResourceChangeEvent>(EntityHandle{}, handle, oldQuantity, newQuantity, reason);
     return std::static_pointer_cast<Event>(event);
 }
 

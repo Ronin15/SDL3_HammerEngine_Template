@@ -6,7 +6,7 @@
 #include "events/NPCSpawnEvent.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
-#include "entities/NPC.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/GameTimeManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -290,58 +290,40 @@ bool NPCSpawnEvent::areAllEntitiesDead() const {
       [](const auto &weakEntity) { return weakEntity.lock() != nullptr; });
 }
 
-std::string NPCSpawnEvent::getTextureForNPCType(const std::string &npcType) {
-  if (npcType == "Guard") {
-    return "guard";
-  } else if (npcType == "Villager") {
-    return "villager";
-  } else if (npcType == "Merchant") {
-    return "merchant";
-  } else if (npcType == "Warrior") {
-    return "warrior";
-  } else {
-    return "npc"; // Default fallback
-  }
-}
-
-EntityPtr NPCSpawnEvent::forceSpawnNPC(const std::string &npcType, float x,
-                                       float y) {
+EntityHandle NPCSpawnEvent::forceSpawnNPC(const std::string &npcType, float x,
+                                          float y) {
   EVENT_INFO(std::format("Forcing spawn of NPC type: {} at position ({}, {})",
                          npcType, x, y));
 
   try {
-    // Get the texture ID for this NPC type
-    std::string textureID = NPCSpawnEvent::getTextureForNPCType(npcType);
-
-    // Create the NPC
+    // Adjust spawn position to navigable tile
     Vector2D position(x, y);
     position = PathfinderManager::Instance().adjustSpawnToNavigable(
         position, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
-    auto npc = NPC::create(textureID, position);
 
-    // Bounds are enforced centrally by AIManager/PathfinderManager
+    // Create data-driven NPC using EDM type registry
+    EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
+        position, npcType);
 
     EVENT_INFO(std::format("Force-spawned {} at ({}, {})", npcType, x, y));
-    return std::static_pointer_cast<Entity>(npc);
+    return handle;
 
   } catch (const std::exception &e) {
     EVENT_ERROR(
         std::format("Exception while force-spawning NPC: {}", e.what()));
-    return nullptr;
+    return EntityHandle{};
   }
 }
 
-std::vector<EntityPtr>
+std::vector<EntityHandle>
 NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters &params, float x, float y) {
   EVENT_INFO(
       std::format("Forcing spawn of {} NPCs of type: {} at position ({}, {})",
                   params.count, params.npcType, x, y));
 
-  std::vector<EntityPtr> spawnedNPCs;
+  std::vector<EntityHandle> spawnedHandles;
 
   try {
-    std::string textureID = NPCSpawnEvent::getTextureForNPCType(params.npcType);
-
     for (int i = 0; i < params.count; ++i) {
       // Calculate spawn position with some random offset
       std::uniform_real_distribution<float> offsetDist(-params.spawnRadius,
@@ -363,15 +345,12 @@ NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters &params, float x, float y) {
         spawnPos = PathfinderManager::Instance().adjustSpawnToNavigable(
             spawnPos, HammerEngine::TILE_SIZE, HammerEngine::TILE_SIZE, 150.0f);
       }
-      auto npc = NPC::create(textureID, spawnPos);
 
-      // Bounds are enforced centrally by AIManager/PathfinderManager
+      // Create data-driven NPC using EDM type registry
+      EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
+          spawnPos, params.npcType);
 
-      // Note: For area-constrained NPCs (villages/events), create an
-      // NPCSpawnEvent with setAreaConstraints() and let the GameState handle
-      // the actual spawning
-
-      spawnedNPCs.push_back(std::static_pointer_cast<Entity>(npc));
+      spawnedHandles.push_back(handle);
       EVENT_INFO(std::format("  - NPC {} spawned successfully", i + 1));
     }
 
@@ -380,7 +359,7 @@ NPCSpawnEvent::forceSpawnNPCs(const SpawnParameters &params, float x, float y) {
         std::format("Exception while force-spawning NPCs: {}", e.what()));
   }
 
-  return spawnedNPCs;
+  return spawnedHandles;
 }
 
 bool NPCSpawnEvent::checkProximityCondition() const {

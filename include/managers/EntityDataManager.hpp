@@ -38,6 +38,7 @@
 
 #include "collisions/CollisionBody.hpp"
 #include "collisions/TriggerTag.hpp"
+#include "entities/Entity.hpp"
 #include "entities/EntityHandle.hpp"
 #include "utils/ResourceHandle.hpp"
 #include "utils/Vector2D.hpp"
@@ -47,10 +48,11 @@
 #include <limits>
 #include <mutex>
 #include <span>
+#include <string>
+#include <unordered_map>
 #include <vector>
 
-// Forward declarations
-class Entity;
+// Forward declarations - Entity and AnimationConfig now included via Entity.hpp
 
 /**
  * @brief Transform data for entity movement (32 bytes)
@@ -253,6 +255,59 @@ struct AreaEffectData {
     float elapsed{0.0f};        // Time since creation
     float lastTick{0.0f};       // Time since last damage tick
     uint8_t effectType{0};      // Poison, Fire, Heal, Slow
+};
+
+// Forward declaration for SDL texture
+struct SDL_Texture;
+
+/**
+ * @brief Render data for data-driven NPCs (velocity-based animation)
+ *
+ * Stores all rendering state for NPCs without needing the NPC class.
+ * Animation is driven by velocity: Idle when stationary, Moving when velocity > threshold.
+ * Indexed by typeLocalIndex (same as CharacterData for NPCs).
+ */
+struct NPCRenderData {
+    SDL_Texture* cachedTexture{nullptr};  // Cached at spawn from TextureManager
+    uint16_t frameWidth{32};              // Single frame width
+    uint16_t frameHeight{32};             // Single frame height
+    uint16_t idleSpeedMs{150};            // Milliseconds per frame for idle
+    uint16_t moveSpeedMs{100};            // Milliseconds per frame for moving
+    uint8_t currentFrame{0};              // Current animation frame index
+    uint8_t numIdleFrames{1};             // Number of frames in idle animation (static)
+    uint8_t numMoveFrames{2};             // Number of frames in move animation
+    uint8_t idleRow{0};                   // Sprite sheet row for idle (0-based)
+    uint8_t moveRow{0};                   // Sprite sheet row for moving (0-based, same as idle)
+    uint8_t flipMode{0};                  // SDL_FLIP_NONE (0) or SDL_FLIP_HORIZONTAL (1)
+    uint8_t padding[2]{};                 // Align to 4 bytes
+    float animationAccumulator{0.0f};     // Time accumulator for frame advancement
+
+    void clear() noexcept {
+        cachedTexture = nullptr;
+        frameWidth = 32;
+        frameHeight = 32;
+        idleSpeedMs = 150;
+        moveSpeedMs = 100;
+        currentFrame = 0;
+        numIdleFrames = 1;
+        numMoveFrames = 2;
+        idleRow = 0;
+        moveRow = 0;
+        flipMode = 0;
+        animationAccumulator = 0.0f;
+    }
+};
+
+/**
+ * @brief NPC type definition for the type registry
+ *
+ * Centralizes all configuration for an NPC type (EntityKind::NPC subtypes).
+ * Used by createDataDrivenNPC() to look up texture and animation config.
+ */
+struct NPCTypeInfo {
+    std::string textureID;        // Texture key for TextureManager lookup
+    AnimationConfig idleAnim;     // Idle animation config
+    AnimationConfig moveAnim;     // Move animation config
 };
 
 /**
@@ -636,22 +691,39 @@ public:
     // ========================================================================
 
     /**
-     * @brief Create a new NPC entity
+     * @brief Create a data-driven NPC with render data
      * @param position Initial world position
-     * @param halfWidth Collision half-width
-     * @param halfHeight Collision half-height
+     * @param textureID Texture identifier for TextureManager lookup
+     * @param idleConfig Animation config for idle state (row, frameCount, speed, loop)
+     * @param moveConfig Animation config for moving state
      * @return Handle to the created entity
+     *
+     * This creates an NPC that can be rendered by NPCRenderController without
+     * needing the NPC class. Animation is velocity-based (idle/moving).
      */
-    EntityHandle createNPC(const Vector2D& position,
-                          float halfWidth = 16.0f,
-                          float halfHeight = 16.0f);
+    EntityHandle createDataDrivenNPC(const Vector2D& position,
+                                     const std::string& textureID,
+                                     const AnimationConfig& idleConfig,
+                                     const AnimationConfig& moveConfig);
 
     /**
-     * @brief Create the player entity
-     * @param position Initial world position
-     * @return Handle to the player entity
+     * @brief Create data-driven NPC by type (uses NPC type registry)
+     * @param position World position
+     * @param npcType NPC type name (e.g., "Guard", "Villager", "Merchant", "Warrior")
+     * @return Handle to the created entity, or invalid handle if type not registered
+     *
+     * Looks up texture and animation config from the NPC type registry.
+     * Use this for spawning typed NPCs instead of specifying configs manually.
      */
-    EntityHandle createPlayer(const Vector2D& position);
+    EntityHandle createDataDrivenNPC(const Vector2D& position,
+                                     const std::string& npcType);
+
+    /**
+     * @brief Get NPC type info from the registry
+     * @param npcType NPC type name (e.g., "Guard", "Villager")
+     * @return Pointer to NPCTypeInfo, or nullptr if type not registered
+     */
+    [[nodiscard]] const NPCTypeInfo* getNPCTypeInfo(const std::string& npcType) const;
 
     /**
      * @brief Create a dropped item entity
@@ -670,23 +742,6 @@ public:
     // (Entity subclass constructors). They mirror data into EntityDataManager
     // until Phase 4 when Entity becomes a lightweight view.
     // ========================================================================
-
-    /**
-     * @brief Register an existing NPC entity with EntityDataManager
-     * @param entityId Existing entity ID from Entity::getID()
-     * @param position Current position
-     * @param halfWidth Collision half-width
-     * @param halfHeight Collision half-height
-     * @param health Current health (for CharacterData)
-     * @param maxHealth Max health
-     * @return Handle to the registered entity
-     */
-    EntityHandle registerNPC(EntityHandle::IDType entityId,
-                             const Vector2D& position,
-                             float halfWidth = 16.0f,
-                             float halfHeight = 16.0f,
-                             float health = 100.0f,
-                             float maxHealth = 100.0f);
 
     /**
      * @brief Register an existing Player entity with EntityDataManager
@@ -910,6 +965,26 @@ public:
 
     [[nodiscard]] AreaEffectData& getAreaEffectData(EntityHandle handle);
     [[nodiscard]] const AreaEffectData& getAreaEffectData(EntityHandle handle) const;
+
+    // ========================================================================
+    // NPC RENDER DATA ACCESS (for data-driven NPCs)
+    // ========================================================================
+
+    /**
+     * @brief Get NPC render data by entity handle
+     * @param handle Entity handle (must be NPC)
+     * @return Reference to NPCRenderData
+     */
+    [[nodiscard]] NPCRenderData& getNPCRenderData(EntityHandle handle);
+    [[nodiscard]] const NPCRenderData& getNPCRenderData(EntityHandle handle) const;
+
+    /**
+     * @brief Get NPC render data by type-local index (for batch processing)
+     * @param typeLocalIndex Index from EntityHotData.typeLocalIndex
+     * @return Reference to NPCRenderData
+     */
+    [[nodiscard]] NPCRenderData& getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const NPCRenderData& getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
 
     // ========================================================================
     // BY-INDEX TYPE-SPECIFIC ACCESS (for batch processing)
@@ -1147,6 +1222,21 @@ private:
     uint8_t nextGeneration(size_t index);
     void rebuildTierIndicesFromHotData();
 
+    /**
+     * @brief Allocate a character slot (CharacterData + NPCRenderData in sync)
+     * @return The allocated typeLocalIndex
+     * @note Both arrays always grow together to keep indices valid
+     */
+    uint32_t allocateCharacterSlot();
+
+    /**
+     * @brief Internal: Create NPC entity with collision data
+     * @note Use createDataDrivenNPC() for the public API
+     */
+    EntityHandle createNPC(const Vector2D& position,
+                          float halfWidth = 16.0f,
+                          float halfHeight = 16.0f);
+
     // ========================================================================
     // STORAGE (Structure of Arrays)
     // ========================================================================
@@ -1168,6 +1258,7 @@ private:
     std::vector<ContainerData> m_containerData;      // Container
     std::vector<HarvestableData> m_harvestableData;  // Harvestable
     std::vector<AreaEffectData> m_areaEffectData;    // AreaEffect
+    std::vector<NPCRenderData> m_npcRenderData;      // NPC render data (same index as CharacterData for NPCs)
 
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;
@@ -1218,6 +1309,10 @@ private:
 
     // Thread safety (destruction queue only - structural ops are main-thread-only)
     std::mutex m_destructionMutex;
+
+    // NPC Type Registry (maps type name like "Guard" to texture/animation config)
+    std::unordered_map<std::string, NPCTypeInfo> m_npcTypeRegistry;
+    void initializeNPCTypeRegistry();
 
     // State
     std::atomic<bool> m_initialized{false};
@@ -1315,6 +1410,17 @@ inline const CharacterData& EntityDataManager::getCharacterDataByIndex(size_t in
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
     assert(typeIndex < m_characterData.size() && "Type index out of bounds");
     return m_characterData[typeIndex];
+}
+
+// NPC render data accessors - O(1) access by type index
+inline NPCRenderData& EntityDataManager::getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
+    return m_npcRenderData[typeLocalIndex];
+}
+
+inline const NPCRenderData& EntityDataManager::getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
+    return m_npcRenderData[typeLocalIndex];
 }
 
 #endif // ENTITY_DATA_MANAGER_HPP

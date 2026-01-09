@@ -5,7 +5,10 @@
 
 #include "managers/EntityDataManager.hpp"
 #include "core/Logger.hpp"
+#include "entities/Entity.hpp"  // For AnimationConfig
+#include "managers/TextureManager.hpp"  // For texture lookup in createDataDrivenNPC
 #include "utils/UniqueID.hpp"
+#include <SDL3/SDL.h>  // For SDL_GetTextureSize
 #include <algorithm>
 #include <cassert>
 #include <format>
@@ -41,6 +44,7 @@ bool EntityDataManager::init() {
         m_staticIdToIndex.reserve(STATIC_CAPACITY);
 
         m_characterData.reserve(CHARACTER_CAPACITY);
+        m_npcRenderData.reserve(CHARACTER_CAPACITY);  // Same capacity as CharacterData
         m_itemData.reserve(ITEM_CAPACITY);
         m_projectileData.reserve(PROJECTILE_CAPACITY);
         m_containerData.reserve(100);
@@ -67,6 +71,9 @@ bool EntityDataManager::init() {
         m_destructionQueue.reserve(100);
         m_destroyBuffer.reserve(100);  // Match destruction queue capacity
         m_freeSlots.reserve(1000);
+
+        // Initialize NPC type registry
+        initializeNPCTypeRegistry();
 
         // Reset counters
         m_totalEntityCount.store(0, std::memory_order_relaxed);
@@ -110,6 +117,7 @@ void EntityDataManager::clean() {
     m_freeStaticSlots.clear();
 
     m_characterData.clear();
+    m_npcRenderData.clear();
     m_itemData.clear();
     m_projectileData.clear();
     m_containerData.clear();
@@ -173,6 +181,7 @@ void EntityDataManager::prepareForStateTransition() {
     m_freeStaticSlots.clear();
 
     m_characterData.clear();
+    m_npcRenderData.clear();
     m_itemData.clear();
     m_projectileData.clear();
     m_containerData.clear();
@@ -278,8 +287,14 @@ void EntityDataManager::freeSlot(size_t index) {
     // Add type-specific index to appropriate free-list for reuse
     switch (kind) {
         case EntityKind::Player:
+            m_freeCharacterSlots.push_back(typeIndex);
+            break;
         case EntityKind::NPC:
             m_freeCharacterSlots.push_back(typeIndex);
+            // Clear NPC render data (uses same index as CharacterData)
+            if (typeIndex < m_npcRenderData.size()) {
+                m_npcRenderData[typeIndex].clear();
+            }
             break;
         case EntityKind::DroppedItem:
             m_freeItemSlots.push_back(typeIndex);
@@ -310,6 +325,24 @@ uint8_t EntityDataManager::nextGeneration(size_t index) {
         return 1;
     }
     return static_cast<uint8_t>((m_generations[index] + 1) % 256);
+}
+
+uint32_t EntityDataManager::allocateCharacterSlot() {
+    uint32_t charIndex;
+    if (!m_freeCharacterSlots.empty()) {
+        charIndex = m_freeCharacterSlots.back();
+        m_freeCharacterSlots.pop_back();
+        m_characterData[charIndex] = CharacterData{};
+        // Clear render data if slot exists (reusing freed NPC slot)
+        if (charIndex < m_npcRenderData.size()) {
+            m_npcRenderData[charIndex].clear();
+        }
+    } else {
+        charIndex = static_cast<uint32_t>(m_characterData.size());
+        m_characterData.emplace_back();
+        m_npcRenderData.emplace_back();  // Always stays in sync
+    }
+    return charIndex;
 }
 
 // ============================================================================
@@ -346,16 +379,8 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
     hot.triggerTag = 0;
 
-    // Allocate character data (reuse freed slot if available)
-    uint32_t charIndex;
-    if (!m_freeCharacterSlots.empty()) {
-        charIndex = m_freeCharacterSlots.back();
-        m_freeCharacterSlots.pop_back();
-        m_characterData[charIndex] = CharacterData{};
-    } else {
-        charIndex = static_cast<uint32_t>(m_characterData.size());
-        m_characterData.emplace_back();
-    }
+    // Allocate character data (CharacterData + NPCRenderData stay in sync)
+    uint32_t charIndex = allocateCharacterSlot();
     m_characterData[charIndex].stateFlags = CharacterData::STATE_ALIVE;
     hot.typeLocalIndex = charIndex;
 
@@ -378,69 +403,89 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     return EntityHandle{id, EntityKind::NPC, generation};
 }
 
-EntityHandle EntityDataManager::createPlayer(const Vector2D& position) {
-
-    size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
-
-    // Initialize hot data
-    auto& hot = m_hotData[index];
-    hot.transform.position = position;
-    hot.transform.previousPosition = position;
-    hot.transform.velocity = Vector2D{0.0f, 0.0f};
-    hot.transform.acceleration = Vector2D{0.0f, 0.0f};
-    hot.halfWidth = 16.0f;
-    hot.halfHeight = 24.0f;
-    hot.kind = EntityKind::Player;
-    hot.tier = SimulationTier::Active;  // Player always active
-    hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
-
-    // Initialize collision data (Player collides with enemies, environment, triggers)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Player;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy |
-                        HammerEngine::CollisionLayer::Layer_Environment |
-                        HammerEngine::CollisionLayer::Layer_Trigger |
-                        HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::NEEDS_TRIGGER_DETECTION;
-    hot.triggerTag = 0;
-
-    // Allocate character data (reuse freed slot if available)
-    uint32_t charIndex;
-    if (!m_freeCharacterSlots.empty()) {
-        charIndex = m_freeCharacterSlots.back();
-        m_freeCharacterSlots.pop_back();
-    } else {
-        charIndex = static_cast<uint32_t>(m_characterData.size());
-        m_characterData.emplace_back();
+EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
+                                                     const std::string& textureID,
+                                                     const AnimationConfig& idleConfig,
+                                                     const AnimationConfig& moveConfig) {
+    // Get texture pointer from TextureManager (one-time lookup at spawn)
+    SDL_Texture* texture = TextureManager::Instance().getTexturePtr(textureID);
+    if (!texture) {
+        ENTITY_WARN(std::format("createDataDrivenNPC: Texture not found: {}", textureID));
     }
-    auto& charData = m_characterData[charIndex];
-    charData = CharacterData{};  // Reset to default
-    charData.health = 100.0f;
-    charData.maxHealth = 100.0f;
-    charData.stamina = 100.0f;
-    charData.maxStamina = 100.0f;
-    charData.attackDamage = 25.0f;
-    charData.attackRange = 50.0f;
-    charData.stateFlags = CharacterData::STATE_ALIVE;
-    hot.typeLocalIndex = charIndex;
 
-    // Store ID and mapping
-    m_entityIds[index] = id;
-    m_generations[index] = generation;
-    m_idToIndex[id] = index;
+    // Calculate frame dimensions from texture size
+    uint16_t frameWidth = 32;
+    uint16_t frameHeight = 32;
+    if (texture) {
+        float texWidth = 0.0f;
+        float texHeight = 0.0f;
+        SDL_GetTextureSize(texture, &texWidth, &texHeight);
 
-    // Update counters
-    m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
-    m_countByKind[static_cast<size_t>(EntityKind::Player)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
+        // Frame width = texture width / max frame count
+        int maxFrames = std::max(idleConfig.frameCount, moveConfig.frameCount);
+        if (maxFrames > 0 && texWidth > 0.0f) {
+            frameWidth = static_cast<uint16_t>(texWidth / static_cast<float>(maxFrames));
+        }
 
-    ENTITY_INFO(std::format("Created Player entity {} at ({}, {})",
-                           id, position.getX(), position.getY()));
+        // Frame height = texture height / number of rows (max row + 1)
+        int numRows = std::max(idleConfig.row, moveConfig.row) + 1;
+        if (numRows > 0 && texHeight > 0.0f) {
+            frameHeight = static_cast<uint16_t>(texHeight / static_cast<float>(numRows));
+        }
+    }
 
-    return EntityHandle{id, EntityKind::Player, generation};
+    // Create NPC with calculated collision dimensions (half-size for AABB)
+    EntityHandle handle = createNPC(position,
+                                    static_cast<float>(frameWidth) * 0.5f,
+                                    static_cast<float>(frameHeight) * 0.5f);
+
+    if (!handle.isValid()) {
+        ENTITY_ERROR("createDataDrivenNPC: Failed to create NPC entity");
+        return INVALID_ENTITY_HANDLE;
+    }
+
+    // Get the render data (created by createNPC alongside CharacterData)
+    size_t index = getIndex(handle);
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    auto& renderData = m_npcRenderData[typeIndex];
+
+    // Populate render data from AnimationConfig
+    renderData.cachedTexture = texture;
+    renderData.frameWidth = frameWidth;
+    renderData.frameHeight = frameHeight;
+    renderData.idleSpeedMs = static_cast<uint16_t>(idleConfig.speed);
+    renderData.moveSpeedMs = static_cast<uint16_t>(moveConfig.speed);
+    renderData.numIdleFrames = static_cast<uint8_t>(idleConfig.frameCount);
+    renderData.numMoveFrames = static_cast<uint8_t>(moveConfig.frameCount);
+    renderData.idleRow = static_cast<uint8_t>(idleConfig.row);
+    renderData.moveRow = static_cast<uint8_t>(moveConfig.row);
+    renderData.currentFrame = 0;
+    renderData.animationAccumulator = 0.0f;
+    renderData.flipMode = 0;
+
+    ENTITY_DEBUG(std::format("Created data-driven NPC {} with texture '{}' ({}x{} frames)",
+                            handle.getId(), textureID, frameWidth, frameHeight));
+
+    return handle;
+}
+
+EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
+                                                     const std::string& npcType) {
+    // Look up type in registry
+    auto it = m_npcTypeRegistry.find(npcType);
+    if (it != m_npcTypeRegistry.end()) {
+        const auto& info = it->second;
+        return createDataDrivenNPC(position, info.textureID, info.idleAnim, info.moveAnim);
+    }
+
+    // Unknown type - error, caller should use valid registered type
+    ENTITY_ERROR(std::format("Unknown NPC type '{}' - must be a registered type (Guard, Villager, Merchant, Warrior)", npcType));
+    return EntityHandle{};
+}
+
+const NPCTypeInfo* EntityDataManager::getNPCTypeInfo(const std::string& npcType) const {
+    auto it = m_npcTypeRegistry.find(npcType);
+    return (it != m_npcTypeRegistry.end()) ? &it->second : nullptr;
 }
 
 EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
@@ -722,86 +767,6 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
 // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
 // ============================================================================
 
-EntityHandle EntityDataManager::registerNPC(EntityHandle::IDType entityId,
-                                            const Vector2D& position,
-                                            float halfWidth,
-                                            float halfHeight,
-                                            float health,
-                                            float maxHealth) {
-    if (entityId == 0) {
-        ENTITY_ERROR("registerNPC: Invalid entity ID (0)");
-        return INVALID_ENTITY_HANDLE;
-    }
-
-
-    // Check if already registered
-    if (m_idToIndex.find(entityId) != m_idToIndex.end()) {
-        ENTITY_WARN(std::format("registerNPC: Entity {} already registered", entityId));
-        // Return existing handle
-        size_t existingIndex = m_idToIndex[entityId];
-        return EntityHandle{entityId, EntityKind::NPC, m_generations[existingIndex]};
-    }
-
-    size_t index = allocateSlot();
-    uint8_t generation = nextGeneration(index);
-
-    // Initialize hot data
-    auto& hot = m_hotData[index];
-    hot.transform.position = position;
-    hot.transform.previousPosition = position;
-    hot.transform.velocity = Vector2D{0.0f, 0.0f};
-    hot.transform.acceleration = Vector2D{0.0f, 0.0f};
-    hot.halfWidth = halfWidth;
-    hot.halfHeight = halfHeight;
-    hot.kind = EntityKind::NPC;
-    hot.tier = SimulationTier::Active;
-    hot.flags = EntityHotData::FLAG_ALIVE;
-    hot.generation = generation;
-
-    // Initialize collision data (NPCs collide with player, environment, other NPCs)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
-                        HammerEngine::CollisionLayer::Layer_Environment |
-                        HammerEngine::CollisionLayer::Layer_Projectile |
-                        HammerEngine::CollisionLayer::Layer_Enemy;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
-    hot.triggerTag = 0;
-
-    // Allocate character data with provided health values (reuse freed slot if available)
-    uint32_t charIndex;
-    if (!m_freeCharacterSlots.empty()) {
-        charIndex = m_freeCharacterSlots.back();
-        m_freeCharacterSlots.pop_back();
-    } else {
-        charIndex = static_cast<uint32_t>(m_characterData.size());
-        m_characterData.emplace_back();
-    }
-    auto& charData = m_characterData[charIndex];
-    charData = CharacterData{};  // Reset to default
-    charData.health = health;
-    charData.maxHealth = maxHealth;
-    charData.stamina = 100.0f;
-    charData.maxStamina = 100.0f;
-    charData.stateFlags = CharacterData::STATE_ALIVE;
-    hot.typeLocalIndex = charIndex;
-
-    // Store ID and mapping (using provided ID, not generating new)
-    m_entityIds[index] = entityId;
-    m_generations[index] = generation;
-    m_idToIndex[entityId] = index;
-
-    // Update counters
-    m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
-    m_countByKind[static_cast<size_t>(EntityKind::NPC)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
-
-    ENTITY_DEBUG(std::format("Registered NPC entity {} at ({}, {})",
-                            entityId, position.getX(), position.getY()));
-
-    return EntityHandle{entityId, EntityKind::NPC, generation};
-}
-
 EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
                                                const Vector2D& position,
                                                float halfWidth,
@@ -844,17 +809,9 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::NEEDS_TRIGGER_DETECTION;
     hot.triggerTag = 0;
 
-    // Allocate character data with player defaults (reuse freed slot if available)
-    uint32_t charIndex;
-    if (!m_freeCharacterSlots.empty()) {
-        charIndex = m_freeCharacterSlots.back();
-        m_freeCharacterSlots.pop_back();
-    } else {
-        charIndex = static_cast<uint32_t>(m_characterData.size());
-        m_characterData.emplace_back();
-    }
+    // Allocate character data (CharacterData + NPCRenderData stay in sync)
+    uint32_t charIndex = allocateCharacterSlot();
     auto& charData = m_characterData[charIndex];
-    charData = CharacterData{};  // Reset to default
     charData.health = 100.0f;
     charData.maxHealth = 100.0f;
     charData.stamina = 100.0f;
@@ -1273,6 +1230,28 @@ const AreaEffectData& EntityDataManager::getAreaEffectData(EntityHandle handle) 
 }
 
 // ============================================================================
+// NPC RENDER DATA ACCESS
+// ============================================================================
+
+NPCRenderData& EntityDataManager::getNPCRenderData(EntityHandle handle) {
+    size_t index = getIndex(handle);
+    assert(index != SIZE_MAX && "Invalid entity handle");
+    assert(handle.getKind() == EntityKind::NPC && "Entity is not an NPC");
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    assert(typeIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
+    return m_npcRenderData[typeIndex];
+}
+
+const NPCRenderData& EntityDataManager::getNPCRenderData(EntityHandle handle) const {
+    size_t index = getIndex(handle);
+    assert(index != SIZE_MAX && "Invalid entity handle");
+    assert(handle.getKind() == EntityKind::NPC && "Entity is not an NPC");
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+    assert(typeIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
+    return m_npcRenderData[typeIndex];
+}
+
+// ============================================================================
 // PATH DATA ACCESS
 // ============================================================================
 
@@ -1623,4 +1602,23 @@ EntityHandle EntityDataManager::getHandle(size_t index) const {
         m_hotData[index].kind,
         m_hotData[index].generation
     };
+}
+
+// ============================================================================
+// NPC TYPE REGISTRY
+// ============================================================================
+
+void EntityDataManager::initializeNPCTypeRegistry() {
+    // Standard animation config for all current NPC sprite sheets (64x32, 2 frames, 1 row)
+    // idle: 1 frame static, move: 2 frames walking
+    AnimationConfig idle{0, 1, 150, true};
+    AnimationConfig move{0, 2, 100, true};
+
+    // Register NPC types (EntityKind::NPC subtypes)
+    m_npcTypeRegistry["Guard"]    = {"guard", idle, move};
+    m_npcTypeRegistry["Villager"] = {"villager", idle, move};
+    m_npcTypeRegistry["Merchant"] = {"merchant", idle, move};
+    m_npcTypeRegistry["Warrior"]  = {"warrior", idle, move};
+
+    ENTITY_INFO(std::format("Initialized NPC type registry with {} types", m_npcTypeRegistry.size()));
 }

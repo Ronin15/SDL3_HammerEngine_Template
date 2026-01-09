@@ -357,7 +357,7 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
   [[maybe_unused]] const std::string resourceId = resourceHandle.toString();
   // Use EventManager hub to trigger a ResourceChange (no registration needed)
   EventManager::Instance().triggerResourceChange(
-      shared_this(), resourceHandle, oldQuantity, newQuantity, "player_action",
+      getHandle(), resourceHandle, oldQuantity, newQuantity, "player_action",
       EventManager::DispatchMode::Deferred);
 
   PLAYER_DEBUG(std::format(
