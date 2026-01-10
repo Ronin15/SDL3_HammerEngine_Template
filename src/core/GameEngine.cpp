@@ -38,6 +38,7 @@
 #include "managers/UIManager.hpp"
 #include "managers/WorldManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "utils/ResourcePath.hpp"
 #include <cstdlib>
 #include <format>
 #include <future>
@@ -47,8 +48,7 @@
 
 #define HAMMER_GRAY 31, 32, 34, 255
 
-bool GameEngine::init(const std::string_view title, const int width,
-                      const int height, bool fullscreen) {
+bool GameEngine::init(std::string_view title) {
   GAMEENGINE_INFO("Initializing SDL Video and Gamepad");
 
   // Initialize video and gamepad together to ensure proper IOKit setup on macOS
@@ -59,6 +59,29 @@ bool GameEngine::init(const std::string_view title, const int width,
   }
 
   GAMEENGINE_INFO("SDL Video online");
+
+  // Initialize resource path resolver (detects bundle vs direct execution)
+  // Must be after SDL_Init for SDL_GetBasePath() to work
+  HammerEngine::ResourcePath::init();
+
+  // Load settings from disk - window dimensions and fullscreen state
+  constexpr int DEFAULT_WIDTH = 1280;
+  constexpr int DEFAULT_HEIGHT = 720;
+  const std::string settingsPath =
+      HammerEngine::ResourcePath::resolve("res/settings.json");
+  auto &settingsManager = HammerEngine::SettingsManager::Instance();
+  if (!settingsManager.loadFromFile(settingsPath)) {
+    GAMEENGINE_WARN("Failed to load settings.json - using defaults");
+  } else {
+    GAMEENGINE_INFO(std::format("Settings loaded from {}", settingsPath));
+  }
+
+  // Get window configuration from settings
+  const int width =
+      settingsManager.get<int>("graphics", "resolution_width", DEFAULT_WIDTH);
+  const int height =
+      settingsManager.get<int>("graphics", "resolution_height", DEFAULT_HEIGHT);
+  bool fullscreen = settingsManager.get<bool>("graphics", "fullscreen", false);
 
   // Set SDL hints for better rendering quality
   SDL_SetHint(SDL_HINT_RENDER_LINE_METHOD,
@@ -89,10 +112,10 @@ bool GameEngine::init(const std::string_view title, const int width,
   // Framebuffer acceleration - cross-platform
   SDL_SetHint(SDL_HINT_FRAMEBUFFER_ACCELERATION, "1");
 
-// macOS-specific hints for better fullscreen and DPI handling
+// macOS-specific hints for fullscreen and DPI handling
 #ifdef __APPLE__
-  SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES,
-              "1"); // Use Spaces for fullscreen
+  // Use true exclusive fullscreen (not Spaces) for Game Mode support
+  SDL_SetHint(SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES, "0");
 #endif
 
   GAMEENGINE_DEBUG("SDL rendering hints configured for optimal quality");
@@ -192,20 +215,14 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   GAMEENGINE_DEBUG("Window creation system online");
 
-#ifdef __APPLE__
-  // On macOS, set fullscreen mode to null for borderless fullscreen desktop
-  // mode
-  if (fullscreen) {
-    SDL_SetWindowFullscreenMode(mp_window.get(), nullptr);
-    GAMEENGINE_INFO("Set to borderless fullscreen desktop mode on macOS");
-  }
-#endif
+  // True exclusive fullscreen is used on all platforms for Game Mode support
+  // (macOS hint SDL_HINT_VIDEO_MAC_FULLSCREEN_SPACES = "0" enables this)
 
   // Set window icon
   GAMEENGINE_INFO("Setting window icon");
 
   // Use native SDL3 PNG loading for the icon
-  constexpr std::string_view iconPath = "res/img/icon.png";
+  const std::string iconPath = HammerEngine::ResourcePath::resolve("res/img/icon.png");
 
   // Use a separate thread to load the icon
   auto iconFuture =
@@ -213,7 +230,7 @@ bool GameEngine::init(const std::string_view title, const int width,
           [iconPath]()
               -> std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)> {
             return std::unique_ptr<SDL_Surface, decltype(&SDL_DestroySurface)>(
-                SDL_LoadPNG(iconPath.data()), SDL_DestroySurface);
+                SDL_LoadPNG(iconPath.c_str()), SDL_DestroySurface);
           });
 
   // Continue with initialization while icon loads
@@ -458,15 +475,18 @@ bool GameEngine::init(const std::string_view title, const int width,
 
   // Load textures in main thread
   GAMEENGINE_INFO("Creating and loading textures");
-  constexpr std::string_view textureResPath = "res/img";
+  const std::string textureResPath = HammerEngine::ResourcePath::resolve("res/img");
   constexpr std::string_view texturePrefix = "";
-  texMgr.load(std::string(textureResPath), std::string(texturePrefix),
+  texMgr.load(textureResPath, std::string(texturePrefix),
               mp_renderer.get());
 
   // Initialize sound manager in a separate thread - #3
+  // Resolve paths before lambda capture
+  const std::string sfxPath = HammerEngine::ResourcePath::resolve("res/sfx");
+  const std::string musicPath = HammerEngine::ResourcePath::resolve("res/music");
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
+          [sfxPath, musicPath]() -> bool {
             GAMEENGINE_INFO("Creating Sound Manager");
             SoundManager &soundMgr = SoundManager::Instance();
             if (!soundMgr.init()) {
@@ -475,20 +495,18 @@ bool GameEngine::init(const std::string_view title, const int width,
             }
 
             GAMEENGINE_INFO("Loading sounds and music");
-            constexpr std::string_view sfxPath = "res/sfx";
             constexpr std::string_view sfxPrefix = "sfx";
-            constexpr std::string_view musicPath = "res/music";
             constexpr std::string_view musicPrefix = "music";
-            soundMgr.loadSFX(std::string(sfxPath), std::string(sfxPrefix));
-            soundMgr.loadMusic(std::string(musicPath),
-                               std::string(musicPrefix));
+            soundMgr.loadSFX(sfxPath, std::string(sfxPrefix));
+            soundMgr.loadMusic(musicPath, std::string(musicPrefix));
             return true;
           }));
 
   // Initialize font manager in a separate thread - #4
+  const std::string fontsPath = HammerEngine::ResourcePath::resolve("res/fonts");
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          [this]() -> bool {
+          [this, fontsPath]() -> bool {
             GAMEENGINE_INFO("Creating Font Manager");
             FontManager &fontMgr = FontManager::Instance();
             if (!fontMgr.init()) {
@@ -500,8 +518,7 @@ bool GameEngine::init(const std::string_view title, const int width,
 
             // Use logical dimensions with DPI scale for proper sizing on
             // high-DPI displays
-            constexpr std::string_view fontsPath = "res/fonts";
-            if (!fontMgr.loadFontsForDisplay(std::string(fontsPath),
+            if (!fontMgr.loadFontsForDisplay(fontsPath,
                                              m_windowWidth, m_windowHeight,
                                              m_dpiScale)) {
               GAMEENGINE_CRITICAL("Failed to load fonts for display");
@@ -511,19 +528,29 @@ bool GameEngine::init(const std::string_view title, const int width,
           }));
 
   // Initialize save game manager in a separate thread - #5
+  // Use SDL_GetPrefPath for a writable save location (works with bundles)
+  const char* prefPath = SDL_GetPrefPath("HammerForged", "SDL3_Template");
+  std::string saveDir;
+  if (prefPath) {
+    saveDir = prefPath;
+    GAMEENGINE_INFO(std::format("Using SDL pref path for saves: {}", saveDir));
+  } else {
+    saveDir = HammerEngine::ResourcePath::resolve("res");
+    GAMEENGINE_WARN(std::format("SDL_GetPrefPath failed, using: {}", saveDir));
+  }
   initTasks.push_back(
       HammerEngine::ThreadSystem::Instance().enqueueTaskWithResult(
-          []() -> bool {
+          [saveDir]() -> bool {
             GAMEENGINE_INFO("Creating Save Game Manager");
             SaveGameManager &saveMgr = SaveGameManager::Instance();
+
+            // Set save directory BEFORE init() so it creates the right path
+            saveMgr.setSaveDirectory(saveDir);
+
             if (!saveMgr.init()) {
               GAMEENGINE_CRITICAL("Failed to initialize Save Game Manager");
               return false;
             }
-
-            // Set the save directory to "res" folder
-            constexpr std::string_view saveDir = "res";
-            saveMgr.setSaveDirectory(std::string(saveDir));
             return true;
           }));
 
@@ -1229,7 +1256,7 @@ bool GameEngine::setVSyncEnabled(bool enable) {
   // Save VSync setting to SettingsManager for persistence
   auto &settings = HammerEngine::SettingsManager::Instance();
   settings.set("graphics", "vsync", enable && vsyncVerified);
-  settings.saveToFile("res/settings.json");
+  settings.saveToFile(HammerEngine::ResourcePath::resolve("res/settings.json"));
 
   return vsyncVerified;
 }
@@ -1247,40 +1274,7 @@ void GameEngine::toggleFullscreen() {
       "Toggling fullscreen mode: {} (windowed size: {}x{})",
       m_isFullscreen ? "ON" : "OFF", m_windowedWidth, m_windowedHeight));
 
-#ifdef __APPLE__
-  // macOS: Use borderless fullscreen desktop mode for better compatibility
-  if (m_isFullscreen) {
-    if (!SDL_SetWindowFullscreen(mp_window.get(), true)) {
-      GAMEENGINE_ERROR(
-          std::format("Failed to enable fullscreen: {}", SDL_GetError()));
-      m_isFullscreen = false; // Revert state on failure
-      return;
-    }
-    // Set to borderless fullscreen desktop mode (nullptr = use desktop mode)
-    if (!SDL_SetWindowFullscreenMode(mp_window.get(), nullptr)) {
-      GAMEENGINE_WARN(std::format(
-          "Failed to set borderless fullscreen mode: {}", SDL_GetError()));
-    }
-    GAMEENGINE_INFO("macOS: Enabled borderless fullscreen desktop mode");
-  } else {
-    if (!SDL_SetWindowFullscreen(mp_window.get(), false)) {
-      GAMEENGINE_ERROR(
-          std::format("Failed to disable fullscreen: {}", SDL_GetError()));
-      m_isFullscreen = true; // Revert state on failure
-      return;
-    }
-    // Restore windowed size
-    if (!SDL_SetWindowSize(mp_window.get(), m_windowedWidth,
-                           m_windowedHeight)) {
-      GAMEENGINE_ERROR(
-          std::format("Failed to restore window size: {}", SDL_GetError()));
-    } else {
-      GAMEENGINE_INFO(std::format("macOS: Restored window size to {}x{}",
-                                  m_windowedWidth, m_windowedHeight));
-    }
-  }
-#else
-  // Other platforms: Use standard fullscreen toggle
+  // Use true exclusive fullscreen on all platforms for Game Mode support
   if (!SDL_SetWindowFullscreen(mp_window.get(), m_isFullscreen)) {
     GAMEENGINE_ERROR(
         std::format("Failed to toggle fullscreen: {}", SDL_GetError()));
@@ -1302,7 +1296,6 @@ void GameEngine::toggleFullscreen() {
 
   GAMEENGINE_INFO(std::format("Fullscreen mode {}",
                               m_isFullscreen ? "enabled" : "disabled"));
-#endif
 
   // Note: SDL will automatically trigger SDL_EVENT_WINDOW_RESIZED
   // which will be handled by InputManager::onWindowResize()
@@ -1457,7 +1450,8 @@ void GameEngine::onWindowResize(const SDL_Event &event) {
   // Reload fonts for new display configuration with DPI scale
   GAMEENGINE_INFO("Reloading fonts for display configuration change...");
   FontManager &fontManager = FontManager::Instance();
-  if (!fontManager.reloadFontsForDisplay("res/fonts", m_windowWidth,
+  const std::string fontsPathReload = HammerEngine::ResourcePath::resolve("res/fonts");
+  if (!fontManager.reloadFontsForDisplay(fontsPathReload, m_windowWidth,
                                          m_windowHeight, m_dpiScale)) {
     GAMEENGINE_ERROR("Failed to reinitialize font system after window resize");
   } else {
@@ -1553,7 +1547,8 @@ void GameEngine::onDisplayChange(const SDL_Event &event) {
     uiManager.cleanupForStateTransition();
 
     FontManager &fontManager = FontManager::Instance();
-    if (!fontManager.reloadFontsForDisplay("res/fonts", m_windowWidth,
+    const std::string fontsPathDisplay = HammerEngine::ResourcePath::resolve("res/fonts");
+    if (!fontManager.reloadFontsForDisplay(fontsPathDisplay, m_windowWidth,
                                            m_windowHeight, m_dpiScale)) {
       GAMEENGINE_WARN("Failed to reload fonts for new display size");
     } else {

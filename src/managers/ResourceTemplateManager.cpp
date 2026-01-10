@@ -7,6 +7,7 @@
 #include "core/Logger.hpp"
 #include "managers/ResourceFactory.hpp"
 #include "utils/JsonReader.hpp"
+#include "utils/ResourcePath.hpp"
 #include <algorithm>
 #include <format>
 
@@ -691,9 +692,10 @@ void ResourceTemplateManager::createDefaultResources() {
 
   try {
     // Load resources from JSON files
-    bool itemsLoaded = loadResourcesFromJson("res/data/items.json");
-    bool materialsLoaded =
-        loadResourcesFromJson("res/data/materials_and_currency.json");
+    const std::string itemsPath = HammerEngine::ResourcePath::resolve("res/data/items.json");
+    const std::string materialsPath = HammerEngine::ResourcePath::resolve("res/data/materials_and_currency.json");
+    bool itemsLoaded = loadResourcesFromJson(itemsPath);
+    bool materialsLoaded = loadResourcesFromJson(materialsPath);
 
     RESOURCE_WARN_IF(!itemsLoaded || !materialsLoaded,
         "ResourceTemplateManager::createDefaultResources - Some "

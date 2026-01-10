@@ -7,15 +7,12 @@
 #include "core/ThreadSystem.hpp"
 #include "core/TimestepManager.hpp"
 #include "core/Logger.hpp"
-#include "managers/SettingsManager.hpp"
 #include <array>
 #include <chrono>
 #include <format>
 #include <numeric>
 #include <string_view>
 
-constexpr int WINDOW_WIDTH{1280};
-constexpr int WINDOW_HEIGHT{720};
 constexpr std::string_view GAME_NAME{"Game Template"};
 
 // maybe_unused is just a hint to the compiler that the variable is not used.
@@ -42,26 +39,12 @@ int main([[maybe_unused]] int argc, [[maybe_unused]] char* argv[]) {
   THREADSYSTEM_INFO(std::format("Thread system initialized with {} worker threads and capacity for {} parallel tasks",
                                 threadSystem.getThreadCount(), threadSystem.getQueueCapacity()));
 
-  // Load settings from disk before GameEngine initialization
-  // This ensures VSync and other settings are loaded before they're applied
-  auto& settingsManager = HammerEngine::SettingsManager::Instance();
-  if (!settingsManager.loadFromFile("res/settings.json")) {
-    GAMEENGINE_WARN("Failed to load settings.json - using defaults");
-  } else {
-    GAMEENGINE_INFO("Settings loaded from res/settings.json");
-  }
-
-  // Read graphics settings from SettingsManager
-  const int windowWidth = settingsManager.get<int>("graphics", "resolution_width", WINDOW_WIDTH);
-  const int windowHeight = settingsManager.get<int>("graphics", "resolution_height", WINDOW_HEIGHT);
-  const bool fullscreen = settingsManager.get<bool>("graphics", "fullscreen", false);
-
   // Cache GameEngine reference
   GameEngine& gameEngine = GameEngine::Instance();
 
-  // Initialize GameEngine (creates TimestepManager internally)
-  if (!gameEngine.init(GAME_NAME, windowWidth, windowHeight, fullscreen)) {
-    GAMEENGINE_CRITICAL(std::format("Init {} Failed: {}", GAME_NAME, SDL_GetError()));
+  // Initialize GameEngine (SDL, ResourcePath, settings, window, and all managers)
+  if (!gameEngine.init(GAME_NAME)) {
+    GAMEENGINE_CRITICAL(std::format("Init {} Failed", GAME_NAME));
 
     // CRITICAL: Always clean up on init failure to prevent memory corruption
     // during static destruction of partially initialized managers

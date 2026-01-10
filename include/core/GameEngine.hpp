@@ -40,12 +40,16 @@ public:
   /**
    * @brief Initializes the game engine, SDL subsystems, and all managers
    * @param title Window title for the game
-   * @param width Initial window width (0 for auto-sizing)
-   * @param height Initial window height (0 for auto-sizing)
-   * @param fullscreen Whether to start in fullscreen mode
    * @return true if initialization successful, false otherwise
    *
-   * @details Manager Initialization Dependency Graph:
+   * @details Initialization sequence:
+   *   1. SDL_Init (video + gamepad)
+   *   2. ResourcePath::init() (detects bundle vs direct execution)
+   *   3. Load settings from res/settings.json (window size, fullscreen, etc.)
+   *   4. Create window and renderer with loaded settings
+   *   5. Initialize all game managers (see dependency graph below)
+   *
+   * Manager Initialization Dependency Graph:
    *
    * Phase 1 (No Dependencies - Core Infrastructure):
    *   - Logger (CRITICAL: Must be first for diagnostic output)
@@ -76,8 +80,7 @@ public:
    * Note: Initialization uses ThreadSystem futures to parallelize where possible
    * while respecting the dependency constraints above.
    */
-  bool init(const std::string_view title, const int width, const int height,
-            bool fullscreen);
+  bool init(std::string_view title);
 
   /**
    * @brief Handles SDL events and input processing
