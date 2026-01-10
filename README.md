@@ -150,7 +150,7 @@ ninja -C build
 
 ## Core Design Principles
 
-- **Data-Oriented Design:** EntityDataManager as single source of truth, Structure-of-Arrays storage, cache-optimal 64-byte structs
+- **Data-Oriented Design:** EntityDataManager as single source of truth, Structure-of-Arrays (SOA) storage.
 - **Memory Safety:** Smart pointers, RAII, no raw pointers
 - **Performance:** Cache-friendly, batch processing, optimized threading
 - **Type Safety:** Strong typing, compile-time and runtime validation
