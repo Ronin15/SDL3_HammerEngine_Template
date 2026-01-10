@@ -14,13 +14,14 @@
  * @brief Event types for world-related changes
  */
 enum class WorldEventType {
-    WorldLoaded,        // New world has been loaded
-    WorldUnloaded,      // World has been unloaded
-    TileChanged,        // A specific tile has been modified
-    WorldGenerated,     // World generation completed
-    WorldSaved,         // World has been saved
-    ChunkLoaded,        // A chunk of the world has been loaded
-    ChunkUnloaded       // A chunk of the world has been unloaded
+    WorldLoaded,           // New world has been loaded
+    WorldUnloaded,         // World has been unloaded
+    TileChanged,           // A specific tile has been modified
+    WorldGenerated,        // World generation completed
+    WorldSaved,            // World has been saved
+    ChunkLoaded,           // A chunk of the world has been loaded
+    ChunkUnloaded,         // A chunk of the world has been unloaded
+    StaticCollidersReady   // Static collision bodies have been built
 };
 
 /**
@@ -178,16 +179,16 @@ private:
 class WorldSavedEvent : public WorldEvent {
 public:
     WorldSavedEvent(const std::string& worldId, const std::string& savePath)
-        : WorldEvent(WorldEventType::WorldSaved), m_worldId(worldId), 
+        : WorldEvent(WorldEventType::WorldSaved), m_worldId(worldId),
           m_savePath(savePath) {}
-    
+
     const std::string& getWorldId() const { return m_worldId; }
     const std::string& getSavePath() const { return m_savePath; }
-    
+
     std::string getTypeName() const override { return "WorldSavedEvent"; }
     std::string getName() const override { return "WorldSavedEvent"; }
     std::string getType() const override { return "WorldSavedEvent"; }
-    
+
     void reset() override {
         WorldEvent::reset();
         m_worldId.clear();
@@ -197,6 +198,39 @@ public:
 private:
     std::string m_worldId;
     std::string m_savePath;
+};
+
+/**
+ * @brief Event fired when static collision bodies have been built for the world
+ *
+ * This event signals that CollisionManager has finished creating all static
+ * collision bodies (buildings, obstacles, triggers) after a world load.
+ * Systems that depend on collision data (e.g., PathfinderManager) should wait
+ * for this event before building their data structures.
+ */
+class StaticCollidersReadyEvent : public WorldEvent {
+public:
+    StaticCollidersReadyEvent(size_t solidBodyCount, size_t triggerCount)
+        : WorldEvent(WorldEventType::StaticCollidersReady),
+          m_solidBodyCount(solidBodyCount), m_triggerCount(triggerCount) {}
+
+    size_t getSolidBodyCount() const { return m_solidBodyCount; }
+    size_t getTriggerCount() const { return m_triggerCount; }
+    size_t getTotalBodyCount() const { return m_solidBodyCount + m_triggerCount; }
+
+    std::string getTypeName() const override { return "StaticCollidersReadyEvent"; }
+    std::string getName() const override { return "StaticCollidersReadyEvent"; }
+    std::string getType() const override { return "StaticCollidersReadyEvent"; }
+
+    void reset() override {
+        WorldEvent::reset();
+        m_solidBodyCount = 0;
+        m_triggerCount = 0;
+    }
+
+private:
+    size_t m_solidBodyCount{0};
+    size_t m_triggerCount{0};
 };
 
 #endif // WORLD_EVENT_HPP
