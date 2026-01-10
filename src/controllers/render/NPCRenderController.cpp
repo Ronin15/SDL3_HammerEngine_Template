@@ -8,116 +8,72 @@
 #include "managers/EntityDataManager.hpp"
 #include "managers/AIManager.hpp"
 #include <SDL3/SDL.h>
-#include <cmath>
 
 void NPCRenderController::update(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
-    auto activeIndices = edm.getActiveIndices();
 
-    for (size_t idx : activeIndices) {
-        const auto& hotData = edm.getHotDataByIndex(idx);
+    // Only update Active tier NPCs (same as AIManager)
+    for (size_t idx : edm.getActiveIndices()) {
+        const auto& hot = edm.getHotDataByIndex(idx);
+        if (hot.kind != EntityKind::NPC) continue;
 
-        // Filter to NPCs only
-        if (hotData.kind != EntityKind::NPC || !hotData.isAlive()) {
-            continue;
+        auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
+
+        // Velocity check once - sets row, frames, speed, flip
+        float vx = hot.transform.velocity.getX();
+        float vy = hot.transform.velocity.getY();
+        bool moving = (vx * vx + vy * vy) > MOVEMENT_THRESHOLD_SQ;
+
+        r.currentRow = moving ? r.moveRow : r.idleRow;
+        uint8_t frames = moving ? r.numMoveFrames : r.numIdleFrames;
+        float speed = static_cast<float>(moving ? r.moveSpeedMs : r.idleSpeedMs) * 0.001f;
+
+        r.animationAccumulator += deltaTime;
+        if (r.animationAccumulator >= speed) {
+            r.currentFrame = (r.currentFrame + 1) % frames;
+            r.animationAccumulator -= speed;
         }
 
-        // Get render data via typeLocalIndex (same index as CharacterData)
-        auto& renderData = edm.getNPCRenderDataByTypeIndex(hotData.typeLocalIndex);
-
-        // Skip if no texture cached
-        if (!renderData.cachedTexture) {
-            continue;
-        }
-
-        // AIManager already set velocity via behaviors - just read it
-        const auto& transform = hotData.transform;
-        float velocityMag = transform.velocity.length();
-        bool isMoving = velocityMag > MOVEMENT_THRESHOLD;
-
-        // Select animation parameters based on velocity
-        uint8_t targetFrames = isMoving ? renderData.numMoveFrames : renderData.numIdleFrames;
-        float speed = static_cast<float>(isMoving ? renderData.moveSpeedMs : renderData.idleSpeedMs) / 1000.0f;
-        if (speed <= 0.0f) speed = 0.001f;  // Avoid divide-by-zero
-        if (targetFrames == 0) targetFrames = 1;
-
-        // Advance animation frame
-        renderData.animationAccumulator += deltaTime;
-        if (renderData.animationAccumulator >= speed) {
-            renderData.currentFrame = (renderData.currentFrame + 1) % targetFrames;
-            renderData.animationAccumulator -= speed;
-        }
-
-        // Update flip based on velocity X direction
-        if (std::abs(transform.velocity.getX()) > MOVEMENT_THRESHOLD) {
-            renderData.flipMode = (transform.velocity.getX() < 0)
-                ? static_cast<uint8_t>(SDL_FLIP_HORIZONTAL)
-                : static_cast<uint8_t>(SDL_FLIP_NONE);
-        }
+        if (vx < 0.0f) r.flipMode = static_cast<uint8_t>(SDL_FLIP_HORIZONTAL);
+        else if (vx > 0.0f) r.flipMode = static_cast<uint8_t>(SDL_FLIP_NONE);
     }
 }
 
 void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
-    if (!renderer) {
-        return;
-    }
-
     auto& edm = EntityDataManager::Instance();
-    auto activeIndices = edm.getActiveIndices();
 
-    for (size_t idx : activeIndices) {
-        const auto& hotData = edm.getHotDataByIndex(idx);
+    // Only render Active tier NPCs (same as AIManager)
+    for (size_t idx : edm.getActiveIndices()) {
+        const auto& hot = edm.getHotDataByIndex(idx);
+        if (hot.kind != EntityKind::NPC) continue;
 
-        // Filter to NPCs only
-        if (hotData.kind != EntityKind::NPC || !hotData.isAlive()) {
-            continue;
-        }
+        const auto& r = edm.getNPCRenderDataByTypeIndex(hot.typeLocalIndex);
 
-        // Get render data via typeLocalIndex
-        const auto& renderData = edm.getNPCRenderDataByTypeIndex(hotData.typeLocalIndex);
-        if (!renderData.cachedTexture) {
-            continue;  // Skip if texture not loaded
-        }
+        // Interpolate position
+        float interpX = hot.transform.previousPosition.getX() +
+            (hot.transform.position.getX() - hot.transform.previousPosition.getX()) * alpha;
+        float interpY = hot.transform.previousPosition.getY() +
+            (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
 
-        // Interpolate position for smooth rendering
-        const auto& transform = hotData.transform;
-        float interpX = transform.previousPosition.getX() +
-            (transform.position.getX() - transform.previousPosition.getX()) * alpha;
-        float interpY = transform.previousPosition.getY() +
-            (transform.position.getY() - transform.previousPosition.getY()) * alpha;
-
-        // Velocity determines animation row: idle vs moving
-        float velocityMag = transform.velocity.length();
-        int row = (velocityMag > MOVEMENT_THRESHOLD)
-            ? renderData.moveRow
-            : renderData.idleRow;
-
-        // Source rect (from sprite sheet)
+        // All render state set by update() - just read and draw
         SDL_FRect srcRect = {
-            static_cast<float>(renderData.currentFrame * renderData.frameWidth),
-            static_cast<float>(row * renderData.frameHeight),
-            static_cast<float>(renderData.frameWidth),
-            static_cast<float>(renderData.frameHeight)
+            static_cast<float>(r.currentFrame * r.frameWidth),
+            static_cast<float>(r.currentRow * r.frameHeight),
+            static_cast<float>(r.frameWidth),
+            static_cast<float>(r.frameHeight)
         };
 
-        // Destination rect (screen position, centered on entity)
+        float halfW = static_cast<float>(r.frameWidth) * 0.5f;
+        float halfH = static_cast<float>(r.frameHeight) * 0.5f;
         SDL_FRect destRect = {
-            interpX - cameraX - static_cast<float>(renderData.frameWidth) / 2.0f,
-            interpY - cameraY - static_cast<float>(renderData.frameHeight) / 2.0f,
-            static_cast<float>(renderData.frameWidth),
-            static_cast<float>(renderData.frameHeight)
+            interpX - cameraX - halfW,
+            interpY - cameraY - halfH,
+            static_cast<float>(r.frameWidth),
+            static_cast<float>(r.frameHeight)
         };
 
-        // Direct SDL rendering - controller owns render logic
-        SDL_RenderTextureRotated(
-            renderer,
-            renderData.cachedTexture,  // Cached from TextureManager at spawn
-            &srcRect,
-            &destRect,
-            0.0,
-            nullptr,
-            static_cast<SDL_FlipMode>(renderData.flipMode)
-        );
+        SDL_RenderTextureRotated(renderer, r.cachedTexture, &srcRect, &destRect,
+                                  0.0, nullptr, static_cast<SDL_FlipMode>(r.flipMode));
     }
 }
 

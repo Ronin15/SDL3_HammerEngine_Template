@@ -217,7 +217,7 @@ void EntityDataManager::prepareForStateTransition() {
 
     m_freeSlots.clear();
     m_tierIndicesDirty = true;
-    m_kindIndicesDirty = true;
+    markAllKindsDirty();
 
     m_totalEntityCount.store(0, std::memory_order_relaxed);
     for (auto& count : m_countByKind) {
@@ -256,7 +256,8 @@ size_t EntityDataManager::allocateSlot() {
     }
 
     m_tierIndicesDirty = true;
-    m_kindIndicesDirty = true;
+    // Note: kind dirty flag is marked when entity kind is set, not here
+    // (allocateSlot doesn't know the entity kind yet)
 
     return index;
 }
@@ -317,7 +318,7 @@ void EntityDataManager::freeSlot(size_t index) {
     }
 
     m_tierIndicesDirty = true;
-    m_kindIndicesDirty = true;
+    markKindDirty(kind);  // Only mark the freed entity's kind dirty
 }
 
 uint8_t EntityDataManager::nextGeneration(size_t index) {
@@ -366,6 +367,7 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.halfWidth = halfWidth;
     hot.halfHeight = halfHeight;
     hot.kind = EntityKind::NPC;
+    markKindDirty(EntityKind::NPC);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
@@ -505,6 +507,7 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     hot.halfWidth = 8.0f;
     hot.halfHeight = 8.0f;
     hot.kind = EntityKind::DroppedItem;
+    markKindDirty(EntityKind::DroppedItem);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
@@ -566,6 +569,7 @@ EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
     hot.halfWidth = 4.0f;
     hot.halfHeight = 4.0f;
     hot.kind = EntityKind::Projectile;
+    markKindDirty(EntityKind::Projectile);
     hot.tier = SimulationTier::Active;  // Projectiles always active
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
@@ -629,6 +633,7 @@ EntityHandle EntityDataManager::createAreaEffect(const Vector2D& position,
     hot.halfWidth = radius;
     hot.halfHeight = radius;
     hot.kind = EntityKind::AreaEffect;
+    markKindDirty(EntityKind::AreaEffect);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
@@ -696,6 +701,7 @@ EntityHandle EntityDataManager::createStaticBody(const Vector2D& position,
     hot.halfWidth = halfWidth;
     hot.halfHeight = halfHeight;
     hot.kind = EntityKind::StaticObstacle;
+    markKindDirty(EntityKind::StaticObstacle);
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
     hot.typeLocalIndex = 0;
@@ -740,6 +746,7 @@ EntityHandle EntityDataManager::createTrigger(const Vector2D& position,
     hot.halfWidth = halfWidth;
     hot.halfHeight = halfHeight;
     hot.kind = EntityKind::Trigger;
+    markKindDirty(EntityKind::Trigger);
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
     hot.typeLocalIndex = 0;
@@ -796,6 +803,7 @@ EntityHandle EntityDataManager::registerPlayer(EntityHandle::IDType entityId,
     hot.halfWidth = halfWidth;
     hot.halfHeight = halfHeight;
     hot.kind = EntityKind::Player;
+    markKindDirty(EntityKind::Player);
     hot.tier = SimulationTier::Active;  // Player always active
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
@@ -867,6 +875,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     hot.halfWidth = 8.0f;
     hot.halfHeight = 8.0f;
     hot.kind = EntityKind::DroppedItem;
+    markKindDirty(EntityKind::DroppedItem);
     hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
@@ -1513,23 +1522,24 @@ std::span<const size_t> EntityDataManager::getBackgroundIndices() const {
 }
 
 std::span<const size_t> EntityDataManager::getIndicesByKind(EntityKind kind) const {
-    if (m_kindIndicesDirty) {
-        // Rebuild kind indices (const_cast for lazy rebuild)
-        auto& self = const_cast<EntityDataManager&>(*this);
-        for (auto& kindVec : self.m_kindIndices) {
-            kindVec.clear();
-        }
+    const size_t kindIdx = static_cast<size_t>(kind);
+
+    // Only rebuild the requested kind if its dirty flag is set
+    if (m_kindIndicesDirty[kindIdx]) {
+        // Rebuild only this specific kind's indices (const_cast for lazy rebuild)
+        auto& kindVec = const_cast<std::vector<size_t>&>(m_kindIndices[kindIdx]);
+        kindVec.clear();
 
         for (size_t i = 0; i < m_hotData.size(); ++i) {
-            if (m_hotData[i].isAlive()) {
-                self.m_kindIndices[static_cast<size_t>(m_hotData[i].kind)].push_back(i);
+            if (m_hotData[i].isAlive() && m_hotData[i].kind == kind) {
+                kindVec.push_back(i);
             }
         }
 
-        self.m_kindIndicesDirty = false;
+        m_kindIndicesDirty[kindIdx] = false;
     }
 
-    return std::span<const size_t>(m_kindIndices[static_cast<size_t>(kind)]);
+    return std::span<const size_t>(m_kindIndices[kindIdx]);
 }
 
 // ============================================================================

@@ -958,49 +958,46 @@ float GameEngine::getCurrentFPS() const {
 void GameEngine::update(float deltaTime) {
   // OPTIMAL MANAGER UPDATE ARCHITECTURE - CLEAN DESIGN
   // ===================================================
-  // Update order optimized for both player responsiveness AND smooth NPC
-  // movement. Key design: AIManager handles batch synchronization internally
-  // (implementation detail).
+  // Update order optimized for correct NPC movement AND animation sync.
+  // Key design: AIManager handles batch synchronization internally.
   //
   // UPDATE STRATEGY:
   // - Events FIRST (can trigger state changes)
-  // - Player movement SECOND (before heavy AI processing)
-  // - AI processes batches (parallel internally, waits for completion before
-  // returning)
+  // - GameStates SECOND (player input/movement - AI needs current player position)
+  // - AI THIRD (NPC behaviors react to current player, sets velocities + positions)
   // - Collision gets guaranteed-complete updates (no timing issues)
   //
+  // CRITICAL ORDER RATIONALE:
+  // - GameStateManager.update() handles player input/movement FIRST
+  // - AIManager.update() then reacts to current player position (not stale)
+  // - NPCRenderController reads velocity from PREVIOUS frame (1-frame lag OK for animation)
+  // - GameStateManager.render() handles state rendering including NPCRenderController.renderNPCs()
+  //
   // GLOBAL SYSTEMS (Updated by GameEngine):
-  // - EventManager: Global game events (weather, scene changes), batch
-  // processing
-  // - GameStateManager: Player movement and state-specific logic
+  // - EventManager: Global game events (weather, scene changes), batch processing
   // - AIManager: Parallel batch processing with internal sync (self-contained)
+  // - GameStateManager: Player movement and state-specific logic (reads AI velocities)
   // - ParticleManager: Global particle system with weather integration
-  // - PathfinderManager: Periodic pathfinding grid updates (every 300/600
-  // frames)
+  // - PathfinderManager: Periodic pathfinding grid updates (every 300/600 frames)
   // - CollisionManager: Collision detection and resolution for all entities
-  // - InputManager: Handled in handleEvents() for proper SDL event polling
-  // architecture
+  // - InputManager: Handled in handleEvents() for proper SDL event polling architecture
   //
   // STATE-MANAGED SYSTEMS (Updated by individual states):
-  // - UIManager: Optional, state-specific, only updated when UI is actually
-  // used
+  // - UIManager: Optional, state-specific, only updated when UI is actually used
   //   See UIExampleState::update() for proper state-managed pattern
 
-  // 1. Event system - FIRST: process global events, state changes, weather
-  // triggers
+  // 1. Event system - FIRST: process global events, state changes, weather triggers
   mp_eventManager->update();
 
   // 2. Game states - player movement and state logic
-  // MUST update BEFORE AIManager so NPCs react to current player position, not
-  // stale data Push FPS to GameStateManager so states don't need to call
-  // GameEngine::Instance()
+  //    MUST update BEFORE AIManager so NPCs react to current player position.
+  //    Push FPS to GameStateManager so states don't need to call GameEngine::Instance()
   mp_gameStateManager->setCurrentFPS(m_timestepManager->getCurrentFPS());
   mp_gameStateManager->update(deltaTime);
 
   // 3. AI system - processes NPC behaviors with internal parallelization
-  //    Batches run in parallel, waits for completion internally before
-  //    returning. From GameEngine perspective: just a regular update call (sync
-  //    is internal).
+  //    Sets NPC velocities and applies position updates.
+  //    Batches run in parallel, waits for completion internally before returning.
   mp_aiManager->update(deltaTime);
 
   // 4. Particle system - global weather and effect particles

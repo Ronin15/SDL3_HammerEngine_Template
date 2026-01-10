@@ -330,12 +330,13 @@ void ChaseBehavior::executeLogic(BehaviorContext &ctx) {
       chase.isChasing = true;
 
       // SIMPLIFIED: Basic stall detection using PathData.stallTimer
-      float currentSpeed = ctx.transform.velocity.length();
+      float currentSpeedSq = ctx.transform.velocity.lengthSquared();
       const float stallThreshold =
           std::max(1.0f, m_chaseSpeed * m_config.stallSpeedMultiplier);
+      const float stallThresholdSq = stallThreshold * stallThreshold;
       const float stallTimeLimit = m_config.stallTimeout;
 
-      if (currentSpeed < stallThreshold) {
+      if (currentSpeedSq < stallThresholdSq) {
         pathData.stallTimer += ctx.deltaTime;
         if (pathData.stallTimer >= stallTimeLimit) {
           // Simple stall recovery: clear path in EDM and request new one

@@ -27,10 +27,18 @@
 #include "managers/WorldManager.hpp"
 #include "utils/Camera.hpp"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <ctime>
 #include <format>
+
+namespace {
+// Static lookup table for WeatherType -> string conversion
+constexpr std::array<const char*, 8> kWeatherTypeNames = {
+    "Clear", "Cloudy", "Rainy", "Stormy", "Foggy", "Snowy", "Windy", "Custom"
+};
+} // namespace
 
 EventDemoState::EventDemoState() {
   // Initialize member variables that need explicit initialization
@@ -1083,15 +1091,8 @@ void EventDemoState::triggerWeatherDemoAuto() {
     EventManager::Instance().changeWeather(customType, m_weatherTransitionTime,
                                EventManager::DispatchMode::Deferred);
   } else {
-    // Map enum to string name
-    const char *wt = (newWeather == WeatherType::Clear)    ? "Clear"
-                     : (newWeather == WeatherType::Cloudy) ? "Cloudy"
-                     : (newWeather == WeatherType::Rainy)  ? "Rainy"
-                     : (newWeather == WeatherType::Stormy) ? "Stormy"
-                     : (newWeather == WeatherType::Foggy)  ? "Foggy"
-                     : (newWeather == WeatherType::Snowy)  ? "Snowy"
-                     : (newWeather == WeatherType::Windy)  ? "Windy"
-                                                           : "Custom";
+    // Use lookup table for enum to string conversion
+    const char* wt = kWeatherTypeNames[static_cast<size_t>(newWeather)];
     EventManager::Instance().changeWeather(wt, m_weatherTransitionTime,
                                EventManager::DispatchMode::Deferred);
   }
@@ -1117,14 +1118,8 @@ void EventDemoState::triggerWeatherDemoManual() {
     EventManager::Instance().changeWeather(customType, m_weatherTransitionTime,
                                EventManager::DispatchMode::Deferred);
   } else {
-    const char *wt = (newWeather == WeatherType::Clear)    ? "Clear"
-                     : (newWeather == WeatherType::Cloudy) ? "Cloudy"
-                     : (newWeather == WeatherType::Rainy)  ? "Rainy"
-                     : (newWeather == WeatherType::Stormy) ? "Stormy"
-                     : (newWeather == WeatherType::Foggy)  ? "Foggy"
-                     : (newWeather == WeatherType::Snowy)  ? "Snowy"
-                     : (newWeather == WeatherType::Windy)  ? "Windy"
-                                                           : "Custom";
+    // Use lookup table for enum to string conversion
+    const char* wt = kWeatherTypeNames[static_cast<size_t>(newWeather)];
     EventManager::Instance().changeWeather(wt, m_weatherTransitionTime,
                                EventManager::DispatchMode::Deferred);
   }
