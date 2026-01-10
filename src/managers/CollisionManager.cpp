@@ -848,6 +848,11 @@ void CollisionManager::rebuildStaticFromWorld() {
     // Force immediate static spatial hash rebuild for world changes
     rebuildStaticSpatialHashUnlocked();
   }
+
+  // Signal that static collision bodies are ready for dependent systems
+  // PathfinderManager waits for this before building its navigation grid
+  EventManager::Instance().triggerStaticCollidersReady(
+      solidBodies, waterTriggers, EventManager::DispatchMode::Immediate);
 }
 
 void CollisionManager::onTileChanged(int x, int y) {

@@ -515,6 +515,8 @@ public:
   bool triggerWorldGenerated(const std::string &worldId, int width, int height,
                              float generationTime,
                              DispatchMode mode = DispatchMode::Deferred) const;
+  bool triggerStaticCollidersReady(size_t solidBodyCount, size_t triggerCount,
+                                   DispatchMode mode = DispatchMode::Deferred) const;
 
   // Camera event convenience methods
   bool createCameraMovedEvent(const std::string &name, const Vector2D &newPos,

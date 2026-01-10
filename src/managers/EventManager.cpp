@@ -1568,6 +1568,18 @@ bool EventManager::triggerWorldGenerated(const std::string &worldId, int width,
   return dispatchEvent(EventTypeId::World, data, mode, "triggerWorldGenerated");
 }
 
+bool EventManager::triggerStaticCollidersReady(size_t solidBodyCount,
+                                               size_t triggerCount,
+                                               DispatchMode mode) const {
+  EventData data;
+  data.typeId = EventTypeId::World;
+  data.setActive(true);
+  data.event =
+      std::make_shared<StaticCollidersReadyEvent>(solidBodyCount, triggerCount);
+  return dispatchEvent(EventTypeId::World, data, mode,
+                       "triggerStaticCollidersReady");
+}
+
 PerformanceStats EventManager::getPerformanceStats(EventTypeId typeId) const {
   std::lock_guard<std::mutex> lock(m_perfMutex);
   return m_performanceStats[static_cast<size_t>(typeId)];
