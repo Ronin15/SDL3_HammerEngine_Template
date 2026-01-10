@@ -192,7 +192,18 @@ inline std::mutex Logger::s_logMutex{};
 #define TIMESTEP_INFO(msg) HAMMER_INFO("TimestepManager", msg)
 #define TIMESTEP_DEBUG(msg) HAMMER_DEBUG("TimestepManager", msg)
 
+#define RESOURCEPATH_CRITICAL(msg) HAMMER_CRITICAL("ResourcePath", msg)
+#define RESOURCEPATH_ERROR(msg) HAMMER_ERROR("ResourcePath", msg)
+#define RESOURCEPATH_WARN(msg) HAMMER_WARN("ResourcePath", msg)
+#define RESOURCEPATH_INFO(msg) HAMMER_INFO("ResourcePath", msg)
+#define RESOURCEPATH_DEBUG(msg) HAMMER_DEBUG("ResourcePath", msg)
+
 // Manager Systems
+#define BGSIM_CRITICAL(msg) HAMMER_CRITICAL("BackgroundSim", msg)
+#define BGSIM_ERROR(msg) HAMMER_ERROR("BackgroundSim", msg)
+#define BGSIM_WARN(msg) HAMMER_WARN("BackgroundSim", msg)
+#define BGSIM_INFO(msg) HAMMER_INFO("BackgroundSim", msg)
+#define BGSIM_DEBUG(msg) HAMMER_DEBUG("BackgroundSim", msg)
 #define TEXTURE_CRITICAL(msg) HAMMER_CRITICAL("TextureManager", msg)
 #define TEXTURE_ERROR(msg) HAMMER_ERROR("TextureManager", msg)
 #define TEXTURE_WARN(msg) HAMMER_WARN("TextureManager", msg)

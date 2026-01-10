@@ -443,6 +443,20 @@ if(APPLE)
                 $<TARGET_SONAME_FILE:SDL3_mixer::SDL3_mixer>
                 "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Frameworks/"
         )
+
+        # Copy resources to app bundle
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_directory
+                "${CMAKE_SOURCE_DIR}/res"
+                "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>/Contents/Resources/res"
+            COMMENT "Copying resources to app bundle"
+        )
+
+        # Code sign the app bundle (required for Game Mode and other macOS features)
+        add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+            COMMAND codesign --force --deep --sign - "$<TARGET_BUNDLE_DIR:${PROJECT_NAME}>"
+            COMMENT "Code signing app bundle"
+        )
     endif()
 endif()
 

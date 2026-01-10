@@ -12,11 +12,6 @@
 #include <chrono>
 #include <format>
 
-// Logger macros for BackgroundSimulationManager
-#define BGSIM_DEBUG(msg) HAMMER_DEBUG("BackgroundSim", msg)
-#define BGSIM_INFO(msg) HAMMER_INFO("BackgroundSim", msg)
-#define BGSIM_WARNING(msg) HAMMER_WARN("BackgroundSim", msg)
-#define BGSIM_ERROR(msg) HAMMER_ERROR("BackgroundSim", msg)
 
 // ============================================================================
 // LIFECYCLE
@@ -24,7 +19,7 @@
 
 bool BackgroundSimulationManager::init() {
     if (m_initialized.load(std::memory_order_acquire)) {
-        BGSIM_WARNING("BackgroundSimulationManager already initialized");
+        BGSIM_WARN("BackgroundSimulationManager already initialized");
         return true;
     }
 
