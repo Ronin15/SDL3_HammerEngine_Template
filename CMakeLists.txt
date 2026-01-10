@@ -304,7 +304,7 @@ if(WIN32)
 
     # Generate a resource file that includes the icon
     configure_file(
-    "${CMAKE_SOURCE_DIR}/res/windows_icon.rc.in"
+    "${CMAKE_SOURCE_DIR}/platforms/windows/windows_icon.rc.in"
     "${CMAKE_BINARY_DIR}/windows_icon.rc"
     @ONLY
   )
@@ -410,8 +410,15 @@ if(APPLE)
             "LLDB debugging flags enabled (-glldb, -fstandalone-debug)")
     else()
         # For release builds, create a proper macOS application bundle
+        # Set bundle metadata
+        set(MACOSX_BUNDLE_BUNDLE_NAME "${PROJECT_NAME}")
+        set(MACOSX_BUNDLE_GUI_IDENTIFIER "com.hammerforged.${PROJECT_NAME}")
+        set(MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}")
+        set(MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}")
+
         set_target_properties(${PROJECT_NAME} PROPERTIES
             MACOSX_BUNDLE TRUE
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_SOURCE_DIR}/platforms/macos/Info.plist.in"
             BUILD_WITH_INSTALL_RPATH TRUE
             BUILD_RPATH "@executable_path/../Frameworks;@executable_path"
             INSTALL_RPATH "@executable_path/../Frameworks;@executable_path"
