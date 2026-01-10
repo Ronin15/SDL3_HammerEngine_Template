@@ -34,43 +34,6 @@
 
 using namespace HammerEngine;
 
-// Test entity that registers with EDM and enables collision
-class CollisionTestEntity : public Entity {
-public:
-    CollisionTestEntity(const Vector2D& pos, bool enableCollision = true) {
-        registerWithDataManager(pos, 16.0f, 16.0f, EntityKind::NPC);
-        setTextureID("test_texture");
-        setWidth(32);
-        setHeight(32);
-
-        // Set collision state in EDM hot data
-        auto& edm = EntityDataManager::Instance();
-        auto handle = getHandle();
-        if (handle.isValid()) {
-            size_t index = edm.getIndex(handle);
-            if (index != SIZE_MAX) {
-                auto& hot = edm.getHotDataByIndex(index);
-                hot.setCollisionEnabled(enableCollision);
-                if (enableCollision) {
-                    hot.collisionLayers = CollisionLayer::Layer_Default;
-                    hot.collisionMask = 0xFFFF;
-                }
-            }
-        }
-    }
-
-    static std::shared_ptr<CollisionTestEntity> create(
-            const Vector2D& pos,
-            bool enableCollision = true) {
-        return std::make_shared<CollisionTestEntity>(pos, enableCollision);
-    }
-
-    void update(float) override {}
-    void render(SDL_Renderer*, float, float, float) override {}
-    void clean() override {}
-    [[nodiscard]] EntityKind getKind() const override { return EntityKind::NPC; }
-};
-
 // Test fixture
 struct CollisionEDMFixture {
     CollisionEDMFixture() {
@@ -92,6 +55,22 @@ struct CollisionEDMFixture {
         ThreadSystem::Instance().clean();
     }
 
+    // Helper: Create test NPC with collision enabled via EDM
+    EntityHandle createTestNPC(const Vector2D& pos, bool enableCollision = true) {
+        auto& edm = EntityDataManager::Instance();
+        EntityHandle handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
+        size_t index = edm.getIndex(handle);
+        if (index != SIZE_MAX) {
+            auto& hot = edm.getHotDataByIndex(index);
+            hot.setCollisionEnabled(enableCollision);
+            if (enableCollision) {
+                hot.collisionLayers = CollisionLayer::Layer_Default;
+                hot.collisionMask = 0xFFFF;
+            }
+        }
+        return handle;
+    }
+
     // Force entities to Active tier
     void updateTiers(const Vector2D& refPoint) {
         BackgroundSimulationManager::Instance().update(refPoint, 0.016f);
@@ -106,11 +85,8 @@ BOOST_FIXTURE_TEST_SUITE(ActiveTierFilteringTests, CollisionEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestOnlyActiveTierEntitiesParticipateInCollision) {
     // Create entities at different distances from reference point
-    auto nearEntity = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
-    auto farEntity = CollisionTestEntity::create(Vector2D(15000.0f, 15000.0f));
-
-    EntityHandle nearHandle = nearEntity->getHandle();
-    EntityHandle farHandle = farEntity->getHandle();
+    EntityHandle nearHandle = createTestNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle farHandle = createTestNPC(Vector2D(15000.0f, 15000.0f));
 
     // Update tiers - near should be Active, far should be Hibernated
     EntityDataManager::Instance().updateSimulationTiers(
@@ -144,12 +120,10 @@ BOOST_AUTO_TEST_CASE(TestOnlyActiveTierEntitiesParticipateInCollision) {
 
 BOOST_AUTO_TEST_CASE(TestEntitiesWithCollisionDisabledNotInActiveList) {
     // Create entity with collision disabled
-    auto entityWithoutCollision = CollisionTestEntity::create(
-        Vector2D(100.0f, 100.0f), false);
+    EntityHandle withoutCollisionHandle = createTestNPC(Vector2D(100.0f, 100.0f), false);
 
     // Create entity with collision enabled
-    auto entityWithCollision = CollisionTestEntity::create(
-        Vector2D(200.0f, 200.0f), true);
+    EntityHandle withCollisionHandle = createTestNPC(Vector2D(200.0f, 200.0f), true);
 
     // Update tiers - both should be Active tier
     EntityDataManager::Instance().updateSimulationTiers(
@@ -158,8 +132,8 @@ BOOST_AUTO_TEST_CASE(TestEntitiesWithCollisionDisabledNotInActiveList) {
     auto& edm = EntityDataManager::Instance();
     auto activeWithCollision = edm.getActiveIndicesWithCollision();
 
-    size_t withoutCollisionIdx = edm.getIndex(entityWithoutCollision->getHandle());
-    size_t withCollisionIdx = edm.getIndex(entityWithCollision->getHandle());
+    size_t withoutCollisionIdx = edm.getIndex(withoutCollisionHandle);
+    size_t withCollisionIdx = edm.getIndex(withCollisionHandle);
 
     bool foundWithout = false;
     bool foundWith = false;
@@ -174,8 +148,7 @@ BOOST_AUTO_TEST_CASE(TestEntitiesWithCollisionDisabledNotInActiveList) {
 
 BOOST_AUTO_TEST_CASE(TestBackgroundTierEntitiesNotInCollision) {
     // Create entity that will be in Background tier
-    auto bgEntity = CollisionTestEntity::create(Vector2D(5000.0f, 5000.0f));
-    EntityHandle bgHandle = bgEntity->getHandle();
+    EntityHandle bgHandle = createTestNPC(Vector2D(5000.0f, 5000.0f));
 
     // Update tiers - should be Background
     EntityDataManager::Instance().updateSimulationTiers(
@@ -237,8 +210,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyAddedToStorage) {
 
 BOOST_AUTO_TEST_CASE(TestDynamicEntityInEDMNotInStaticStorage) {
     // Create dynamic entity via EDM
-    auto entity = CollisionTestEntity::create(Vector2D(300.0f, 300.0f));
-    EntityHandle handle = entity->getHandle();
+    EntityHandle handle = createTestNPC(Vector2D(300.0f, 300.0f));
 
     // Dynamic entity should be in EDM
     auto& edm = EntityDataManager::Instance();
@@ -270,7 +242,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyAlwaysCheckedForCollision) {
     );
 
     // Create dynamic entity near the static obstacle
-    auto entity = CollisionTestEntity::create(Vector2D(510.0f, 510.0f));
+    [[maybe_unused]] EntityHandle entityHandle = createTestNPC(Vector2D(510.0f, 510.0f));
 
     // Update tiers to make entity Active
     EntityDataManager::Instance().updateSimulationTiers(
@@ -293,8 +265,7 @@ BOOST_FIXTURE_TEST_SUITE(PositionReadingTests, CollisionEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestCollisionUsesEDMPosition) {
     // Create entity at known position
-    auto entity = CollisionTestEntity::create(Vector2D(400.0f, 400.0f));
-    EntityHandle handle = entity->getHandle();
+    EntityHandle handle = createTestNPC(Vector2D(400.0f, 400.0f));
 
     // Get EDM index
     auto& edm = EntityDataManager::Instance();
@@ -343,11 +314,8 @@ BOOST_FIXTURE_TEST_SUITE(IndexSemanticsTests, CollisionEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestMovableMovablePairIndicesAreEDMIndices) {
     // Create two overlapping entities
-    auto entity1 = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
-    auto entity2 = CollisionTestEntity::create(Vector2D(110.0f, 110.0f));
-
-    EntityHandle handle1 = entity1->getHandle();
-    EntityHandle handle2 = entity2->getHandle();
+    EntityHandle handle1 = createTestNPC(Vector2D(100.0f, 100.0f));
+    EntityHandle handle2 = createTestNPC(Vector2D(110.0f, 110.0f));
 
     auto& edm = EntityDataManager::Instance();
     size_t edmIdx1 = edm.getIndex(handle1);
@@ -397,8 +365,7 @@ BOOST_AUTO_TEST_CASE(TestMovableStaticPairMixedIndices) {
     BOOST_REQUIRE(staticStorageIdx != SIZE_MAX);
 
     // Create dynamic entity near static
-    auto entity = CollisionTestEntity::create(Vector2D(210.0f, 210.0f));
-    EntityHandle dynamicHandle = entity->getHandle();
+    EntityHandle dynamicHandle = createTestNPC(Vector2D(210.0f, 210.0f));
 
     size_t edmIdx = edm.getIndex(dynamicHandle);
     BOOST_REQUIRE(edmIdx != SIZE_MAX);
@@ -421,8 +388,8 @@ BOOST_FIXTURE_TEST_SUITE(CollisionStateTransitionTests, CollisionEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsDynamicData) {
     // Create some dynamic entities
-    auto entity1 = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
-    auto entity2 = CollisionTestEntity::create(Vector2D(200.0f, 200.0f));
+    [[maybe_unused]] EntityHandle handle1 = createTestNPC(Vector2D(100.0f, 100.0f));
+    [[maybe_unused]] EntityHandle handle2 = createTestNPC(Vector2D(200.0f, 200.0f));
 
     // Update tiers
     EntityDataManager::Instance().updateSimulationTiers(
@@ -463,7 +430,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodiesPreservedAfterDynamicClear) {
     );
 
     // Create dynamic entity
-    auto entity = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
+    [[maybe_unused]] EntityHandle entityHandle = createTestNPC(Vector2D(100.0f, 100.0f));
 
     // Clear EDM (simulating partial state transition)
     EntityDataManager::Instance().prepareForStateTransition();
@@ -495,9 +462,9 @@ BOOST_AUTO_TEST_CASE(TestActiveCollisionIndicesClearedAfterStateTransition) {
     auto& edm = EntityDataManager::Instance();
 
     // Create entities with collision enabled
-    auto entity1 = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
-    auto entity2 = CollisionTestEntity::create(Vector2D(200.0f, 200.0f));
-    auto entity3 = CollisionTestEntity::create(Vector2D(300.0f, 300.0f));
+    [[maybe_unused]] EntityHandle handle1 = createTestNPC(Vector2D(100.0f, 100.0f));
+    [[maybe_unused]] EntityHandle handle2 = createTestNPC(Vector2D(200.0f, 200.0f));
+    [[maybe_unused]] EntityHandle handle3 = createTestNPC(Vector2D(300.0f, 300.0f));
 
     // Update simulation tiers to make entities Active
     edm.updateSimulationTiers(Vector2D(150.0f, 150.0f), 1500.0f, 10000.0f);
@@ -541,13 +508,13 @@ BOOST_AUTO_TEST_CASE(TestCollisionUpdateAfterStateTransitionDoesNotCrash) {
 
     // === Phase 1: First "state" with many entities ===
     // Place all entities within active tier radius (1500 from origin)
-    std::vector<std::shared_ptr<CollisionTestEntity>> state1Entities;
+    std::vector<EntityHandle> state1Handles;
     for (int i = 0; i < 100; ++i) {
         // Grid layout within 1000x1000 area (well within 1500 radius)
         float x = static_cast<float>((i % 10) * 100);
         float y = static_cast<float>((i / 10) * 100);
         auto pos = Vector2D(x, y);
-        state1Entities.push_back(CollisionTestEntity::create(pos));
+        state1Handles.push_back(createTestNPC(pos));
     }
 
     // Update tiers and run collision
@@ -563,20 +530,20 @@ BOOST_AUTO_TEST_CASE(TestCollisionUpdateAfterStateTransitionDoesNotCrash) {
     CollisionManager::Instance().prepareForStateTransition();
     edm.prepareForStateTransition();
 
-    // Clear our entity references (they're now invalid)
-    state1Entities.clear();
+    // Clear our handle references (they're now invalid)
+    state1Handles.clear();
 
     // Verify clean state
     BOOST_CHECK_EQUAL(edm.getEntityCount(), 0);
 
     // === Phase 3: New "state" - like entering EventDemoState ===
     // Create new entities within active tier radius
-    std::vector<std::shared_ptr<CollisionTestEntity>> state2Entities;
+    std::vector<EntityHandle> state2Handles;
     for (int i = 0; i < 50; ++i) {
         float x = static_cast<float>((i % 10) * 100);
         float y = static_cast<float>((i / 10) * 100);
         auto pos = Vector2D(x, y);
-        state2Entities.push_back(CollisionTestEntity::create(pos));
+        state2Handles.push_back(createTestNPC(pos));
     }
 
     // Update tiers for new entities
@@ -602,7 +569,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleStateTransitionsClearIndicesEachTime) {
 
     for (int transition = 0; transition < 3; ++transition) {
         // Create entities for this "state" within active tier radius
-        std::vector<std::shared_ptr<CollisionTestEntity>> entities;
+        std::vector<EntityHandle> handles;
         int entityCount = 20 + transition * 10; // Vary count each iteration
 
         for (int i = 0; i < entityCount; ++i) {
@@ -610,7 +577,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleStateTransitionsClearIndicesEachTime) {
             float x = static_cast<float>((i % 10) * 50);
             float y = static_cast<float>((i / 10) * 50);
             auto pos = Vector2D(x, y);
-            entities.push_back(CollisionTestEntity::create(pos));
+            handles.push_back(createTestNPC(pos));
         }
 
         // Run simulation with reference point that keeps all entities active
@@ -624,7 +591,7 @@ BOOST_AUTO_TEST_CASE(TestMultipleStateTransitionsClearIndicesEachTime) {
         // State transition
         CollisionManager::Instance().prepareForStateTransition();
         edm.prepareForStateTransition();
-        entities.clear();
+        handles.clear();
 
         // Verify cleared
         BOOST_CHECK_EQUAL(edm.getEntityCount(), 0);
@@ -643,13 +610,13 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAccessDuringStateTransition) {
     auto& edm = EntityDataManager::Instance();
 
     // Create entities within active tier radius
-    std::vector<std::shared_ptr<CollisionTestEntity>> entities;
+    std::vector<EntityHandle> handles;
     for (int i = 0; i < 50; ++i) {
         // Grid layout within 500x500 area (well within 1500 radius)
         float x = static_cast<float>((i % 10) * 50);
         float y = static_cast<float>((i / 10) * 50);
         auto pos = Vector2D(x, y);
-        entities.push_back(CollisionTestEntity::create(pos));
+        handles.push_back(createTestNPC(pos));
     }
 
     edm.updateSimulationTiers(Vector2D(250.0f, 250.0f), 1500.0f, 10000.0f);
@@ -659,8 +626,8 @@ BOOST_AUTO_TEST_CASE(TestConcurrentAccessDuringStateTransition) {
     auto beforeIndices = edm.getActiveIndicesWithCollision();
     BOOST_CHECK_EQUAL(beforeIndices.size(), 50);
 
-    // Clear entities and transition
-    entities.clear();
+    // Clear handles and transition
+    handles.clear();
     edm.prepareForStateTransition();
 
     // Post-transition access should be safe and return empty
@@ -685,8 +652,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(LayerFilteringTests, CollisionEDMFixture)
 
 BOOST_AUTO_TEST_CASE(TestCollisionLayersReadFromEDM) {
-    auto entity = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
-    EntityHandle handle = entity->getHandle();
+    EntityHandle handle = createTestNPC(Vector2D(100.0f, 100.0f));
 
     auto& edm = EntityDataManager::Instance();
     size_t index = edm.getIndex(handle);
@@ -704,8 +670,7 @@ BOOST_AUTO_TEST_CASE(TestCollisionLayersReadFromEDM) {
 }
 
 BOOST_AUTO_TEST_CASE(TestTriggerFlagReadFromEDM) {
-    auto entity = CollisionTestEntity::create(Vector2D(100.0f, 100.0f));
-    EntityHandle handle = entity->getHandle();
+    EntityHandle handle = createTestNPC(Vector2D(100.0f, 100.0f));
 
     auto& edm = EntityDataManager::Instance();
     size_t index = edm.getIndex(handle);
