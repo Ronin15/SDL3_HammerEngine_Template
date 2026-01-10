@@ -61,7 +61,28 @@ See `tests/TESTING.md` for comprehensive documentation.
 
 **Headers**: `.hpp` C++, `.h` C | Forward declarations | Non-trivial logic in .cpp
 
-**Threading**: Main thread: Update→Render sequential | Background: ThreadSystem for AI/Particle/Pathfinding | **No static vars in threaded code**
+**Threading**: Sequential execution with parallel batching. Main thread handles SDL (events, render). Worker threads process batches.
+
+**ThreadSystem**: Pool of `hardware_concurrency - 1` workers. 5 priority levels (Critical→Idle). Use `enqueueTaskWithResult()` for futures, `batchEnqueueTasks()` for bulk submission.
+
+**WorkerBudget**: Adaptive batch sizing. `getOptimalWorkers()` returns all workers (sequential model). `getBatchStrategy()` calculates batch count/size. `reportBatchCompletion()` for throughput tuning.
+
+**Manager Pattern** (AIManager, ParticleManager):
+```cpp
+auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(SystemType::AI, count, workers);
+for (size_t i = 0; i < batchCount; ++i) {
+    m_futures.push_back(threadSystem.enqueueTaskWithResult([...] { processBatch(...); }));
+}
+for (auto& f : m_futures) { f.get(); }  // Wait before frame ends
+```
+
+**State Transitions**: Call `prepareForStateTransition()` on managers before cleanup. Pauses work, waits for pending batches, drains message queues.
+
+**Thread-Local**: Use for RNG (`thread_local std::mt19937`), reusable buffers, and spatial caches. Eliminates contention without locks.
+
+**Synchronization**: `shared_mutex` for reader-writer (entities, behaviors) | `mutex` for exclusive | `atomic<bool>` for flags | `condition_variable` for worker wake.
+
+**Rules**: NEVER static vars in threaded code | Main thread only for SDL | Futures must complete before dependent ops | Cache-line align hot atomics (`alignas(64)`)
 
 **Logging**: Use `std::format()`, never `+` concatenation. Use `AI_INFO_IF(cond, msg)` macros when condition only gates logging.
 
