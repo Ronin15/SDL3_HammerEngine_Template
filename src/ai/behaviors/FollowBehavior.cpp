@@ -199,10 +199,11 @@ void FollowBehavior::executeLogic(BehaviorContext &ctx) {
   bool hasActivePath = pathData.hasPath && pathData.pathUpdateTimer < 2.0f;
 
   if (!hasActivePath && !follow.isStopped) {
-    float speedNow = ctx.transform.velocity.length();
+    float speedNowSq = ctx.transform.velocity.lengthSquared();
     const float stallSpeed = std::max(0.5f, m_followSpeed * 0.5f);
+    const float stallSpeedSq = stallSpeed * stallSpeed;
     const float stallTime = 0.6f; // 600ms
-    if (speedNow < stallSpeed) {
+    if (speedNowSq < stallSpeedSq) {
       if (pathData.progressTimer > stallTime) {
         // Enter a brief backoff to reduce clumping; vary per-entity
         follow.backoffTimer =
@@ -212,7 +213,7 @@ void FollowBehavior::executeLogic(BehaviorContext &ctx) {
         std::uniform_real_distribution<float> jitterDist(-0.15f, 0.15f);
         float jitter = jitterDist(getThreadLocalRNG()); // ~±17deg (thread-safe)
         Vector2D v = ctx.transform.velocity;
-        if (v.length() < 0.01f)
+        if (v.lengthSquared() < 0.0001f)
           v = Vector2D(1, 0);
         float c = std::cos(jitter), s = std::sin(jitter);
         Vector2D rotated(v.getX() * c - v.getY() * s,

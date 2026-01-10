@@ -99,7 +99,7 @@ void PlayerRunningState::handleMovementInput(float deltaTime) {
     }
 
     // Normalize diagonal movement for consistent speed (only if we have input)
-    if (hasInput && velocity.length() > speed) {
+    if (hasInput && velocity.lengthSquared() > speed * speed) {
         velocity.normalize();
         velocity = velocity * speed;
     }
@@ -112,7 +112,7 @@ void PlayerRunningState::handleRunningAnimation(float deltaTime) {
     Vector2D velocity = m_player.get().getVelocity();
 
     // Only animate when player is moving
-    if (velocity.length() > 1.0f) {
+    if (velocity.lengthSquared() > 1.0f) {
         // Accumulate deltaTime (m_animSpeed is in milliseconds, convert to seconds)
         float accumulator = m_player.get().getAnimationAccumulator() + deltaTime;
         float frameTime = m_player.get().getAnimSpeed() / 1000.0f;  // ms to seconds

@@ -279,7 +279,7 @@ struct NPCRenderData {
     uint8_t idleRow{0};                   // Sprite sheet row for idle (0-based)
     uint8_t moveRow{0};                   // Sprite sheet row for moving (0-based, same as idle)
     uint8_t flipMode{0};                  // SDL_FLIP_NONE (0) or SDL_FLIP_HORIZONTAL (1)
-    uint8_t padding[2]{};                 // Align to 4 bytes
+    uint8_t currentRow{0};                // Active row (set by update from velocity)
     float animationAccumulator{0.0f};     // Time accumulator for frame advancement
 
     void clear() noexcept {
@@ -294,6 +294,7 @@ struct NPCRenderData {
         idleRow = 0;
         moveRow = 0;
         flipMode = 0;
+        currentRow = 0;
         animationAccumulator = 0.0f;
     }
 };
@@ -1291,9 +1292,17 @@ private:
     mutable std::vector<size_t> m_triggerDetectionIndices;
     mutable bool m_triggerDetectionDirty{true};
 
-    // Kind indices
+    // Kind indices (per-kind dirty flags to avoid full rebuild when querying single kind)
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
-    bool m_kindIndicesDirty{true};
+    mutable std::array<bool, static_cast<size_t>(EntityKind::COUNT)> m_kindIndicesDirty{};
+
+    // Helper to mark specific kind dirty (called when entities are created/destroyed)
+    void markKindDirty(EntityKind kind) {
+        m_kindIndicesDirty[static_cast<size_t>(kind)] = true;
+    }
+    void markAllKindsDirty() {
+        m_kindIndicesDirty.fill(true);
+    }
 
     // Destruction queue and processing buffer (avoid per-frame allocation)
     std::vector<EntityHandle> m_destructionQueue;

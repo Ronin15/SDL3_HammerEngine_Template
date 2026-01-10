@@ -60,6 +60,7 @@ public:
 
 private:
     static constexpr float MOVEMENT_THRESHOLD = 15.0f;  // Velocity threshold for Moving/Idle
+    static constexpr float MOVEMENT_THRESHOLD_SQ = MOVEMENT_THRESHOLD * MOVEMENT_THRESHOLD;  // Squared for lengthSquared() comparison
 };
 
 #endif // NPC_RENDER_CONTROLLER_HPP
