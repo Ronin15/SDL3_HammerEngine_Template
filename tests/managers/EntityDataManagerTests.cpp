@@ -1217,3 +1217,121 @@ BOOST_AUTO_TEST_CASE(TestAccessAfterClearDoesNotCrash) {
 }
 
 BOOST_AUTO_TEST_SUITE_END()
+
+// ============================================================================
+// NPC RENDER DATA TESTS
+// ============================================================================
+/**
+ * @brief Tests for NPCRenderData initialization and lifecycle.
+ *
+ * Verifies that createDataDrivenNPC() correctly populates NPCRenderData
+ * from AnimationConfig parameters, and that the data is properly cleared
+ * on entity destruction.
+ */
+BOOST_FIXTURE_TEST_SUITE(NPCRenderDataTests, EntityDataManagerTestFixture)
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataInitialization) {
+    // Create NPC with specific animation config
+    AnimationConfig idleConfig{0, 2, 150, true};   // row 0, 2 frames, 150ms
+    AnimationConfig moveConfig{1, 4, 100, true};   // row 1, 4 frames, 100ms
+
+    EntityHandle handle = edm->createDataDrivenNPC(
+        Vector2D(100.0f, 100.0f), "test", idleConfig, moveConfig);
+    BOOST_REQUIRE(handle.isValid());
+
+    // Get render data via handle
+    const auto& renderData = edm->getNPCRenderData(handle);
+
+    // Verify AnimationConfig values were stored correctly
+    BOOST_CHECK_EQUAL(renderData.idleRow, 0);
+    BOOST_CHECK_EQUAL(renderData.moveRow, 1);
+    BOOST_CHECK_EQUAL(renderData.numIdleFrames, 2);
+    BOOST_CHECK_EQUAL(renderData.numMoveFrames, 4);
+    BOOST_CHECK_EQUAL(renderData.idleSpeedMs, 150);
+    BOOST_CHECK_EQUAL(renderData.moveSpeedMs, 100);
+
+    // Verify initial state
+    BOOST_CHECK_EQUAL(renderData.currentFrame, 0);
+    BOOST_CHECK(approxEqual(renderData.animationAccumulator, 0.0f));
+    BOOST_CHECK_EQUAL(renderData.flipMode, 0);  // SDL_FLIP_NONE
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataDefaultsWithoutTexture) {
+    // Create NPC with empty texture (test environment has no TextureManager)
+    EntityHandle handle = edm->createDataDrivenNPC(
+        Vector2D(100.0f, 100.0f), "nonexistent_texture",
+        AnimationConfig{0, 1, 100, true},
+        AnimationConfig{0, 2, 100, true});
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getNPCRenderData(handle);
+
+    // cachedTexture should be nullptr (texture doesn't exist)
+    BOOST_CHECK(renderData.cachedTexture == nullptr);
+
+    // Frame dimensions should default to 32x32
+    BOOST_CHECK_EQUAL(renderData.frameWidth, 32);
+    BOOST_CHECK_EQUAL(renderData.frameHeight, 32);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataMinimumValues) {
+    // Create NPC with zero frame count and zero speed (edge case)
+    AnimationConfig zeroConfig{0, 0, 0, true};
+
+    EntityHandle handle = edm->createDataDrivenNPC(
+        Vector2D(100.0f, 100.0f), "test", zeroConfig, zeroConfig);
+    BOOST_REQUIRE(handle.isValid());
+
+    const auto& renderData = edm->getNPCRenderData(handle);
+
+    // Should be clamped to minimum 1 frame and 1ms speed
+    BOOST_CHECK_GE(renderData.numIdleFrames, 1);
+    BOOST_CHECK_GE(renderData.numMoveFrames, 1);
+    BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
+    BOOST_CHECK_GE(renderData.moveSpeedMs, 1);
+}
+
+BOOST_AUTO_TEST_CASE(TestMultipleNPCsGetSeparateRenderData) {
+    // Create two NPCs with different animation configs
+    AnimationConfig idle1{0, 1, 150, true};
+    AnimationConfig move1{1, 2, 100, true};
+    AnimationConfig idle2{2, 3, 200, true};
+    AnimationConfig move2{3, 4, 50, true};
+
+    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", idle1, move1);
+    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", idle2, move2);
+    BOOST_REQUIRE(h1.isValid());
+    BOOST_REQUIRE(h2.isValid());
+
+    const auto& rd1 = edm->getNPCRenderData(h1);
+    const auto& rd2 = edm->getNPCRenderData(h2);
+
+    // Each NPC should have its own render data
+    BOOST_CHECK_EQUAL(rd1.idleRow, 0);
+    BOOST_CHECK_EQUAL(rd1.moveRow, 1);
+    BOOST_CHECK_EQUAL(rd1.numIdleFrames, 1);
+    BOOST_CHECK_EQUAL(rd1.numMoveFrames, 2);
+
+    BOOST_CHECK_EQUAL(rd2.idleRow, 2);
+    BOOST_CHECK_EQUAL(rd2.moveRow, 3);
+    BOOST_CHECK_EQUAL(rd2.numIdleFrames, 3);
+    BOOST_CHECK_EQUAL(rd2.numMoveFrames, 4);
+}
+
+BOOST_AUTO_TEST_CASE(TestNPCRenderDataClearedOnDestroy) {
+    EntityHandle handle = edm->createDataDrivenNPC(
+        Vector2D(100.0f, 100.0f), "test",
+        AnimationConfig{0, 2, 150, true},
+        AnimationConfig{1, 4, 100, true});
+    BOOST_REQUIRE(handle.isValid());
+
+    // Destroy the entity
+    edm->destroyEntity(handle);
+    edm->processDestructionQueue();
+
+    // Handle should be invalid
+    BOOST_CHECK(!edm->isValidHandle(handle));
+    BOOST_CHECK_EQUAL(edm->getEntityCount(EntityKind::NPC), 0);
+}
+
+BOOST_AUTO_TEST_SUITE_END()
