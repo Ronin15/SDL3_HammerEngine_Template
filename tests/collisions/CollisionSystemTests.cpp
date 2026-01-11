@@ -526,7 +526,6 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
 
     // Add movable bodies (NPCs) via EDM
     for (int i = 0; i < NUM_MOVABLE_BODIES; ++i) {
-        EntityID id = 25000 + i;
         float x = 500.0f + static_cast<float>(i % 5) * 32.0f;
         float y = 500.0f + static_cast<float>(i / 5) * 32.0f;
         Vector2D pos(x, y);
