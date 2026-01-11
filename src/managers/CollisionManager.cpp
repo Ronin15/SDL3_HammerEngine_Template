@@ -1472,6 +1472,10 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
       for (size_t storageIdx : pools.staticIndices) {
         const auto &staticHot = m_storage.hotData[storageIdx];
 
+        // Skip inactive statics at cache time - avoids per-frame active checks
+        if (!staticHot.active)
+          continue;
+
         // EventOnly triggers skip broadphase entirely - detected via per-entity
         // spatial query
         if (staticHot.isTrigger != 0 &&
@@ -1619,7 +1623,7 @@ void CollisionManager::broadphaseSingleThreaded() {
               });
 
     // Sweep: for each body, only check bodies that start before this one ends
-    // (X overlap)
+    // (X overlap) - SIMD 4-wide Y-overlap + layer checks
     for (size_t i = 0; i < sorted.size(); ++i) {
       size_t poolIdxA = sorted[i];
       const auto &aabbA = movableAABBs[poolIdxA];
@@ -1627,27 +1631,66 @@ void CollisionManager::broadphaseSingleThreaded() {
       const float maxXA = aabbA.maxX + SPATIAL_QUERY_EPSILON;
       const uint32_t collidesWithA = aabbA.collidesWith;
 
-      // Check subsequent bodies until their minX > our maxX (early exit!)
-      for (size_t j = i + 1; j < sorted.size(); ++j) {
-        size_t poolIdxB = sorted[j];
-        const auto &aabbB = movableAABBs[poolIdxB];
+      // SIMD broadcasts for A's Y bounds and layer mask
+      const Float4 minYA = broadcast(aabbA.minY - SPATIAL_QUERY_EPSILON);
+      const Float4 maxYA = broadcast(aabbA.maxY + SPATIAL_QUERY_EPSILON);
+      const Int4 layerMaskA = broadcast_int(static_cast<int32_t>(collidesWithA));
 
-        // SAP early termination: if B's minX > A's maxX, no more overlaps
-        // possible
-        if (aabbB.minX > maxXA)
-          break;
+      size_t j = i + 1;
+      while (j < sorted.size()) {
+        // Check if we can batch 4 bodies with X overlap
+        if (j + 4 <= sorted.size() && movableAABBs[sorted[j + 3]].minX <= maxXA) {
+          // SIMD PATH: All 4 have X overlap, batch Y + layer check
+          const auto &b0 = movableAABBs[sorted[j]];
+          const auto &b1 = movableAABBs[sorted[j + 1]];
+          const auto &b2 = movableAABBs[sorted[j + 2]];
+          const auto &b3 = movableAABBs[sorted[j + 3]];
 
-        // X already overlaps (from SAP), check Y overlap
-        if (aabbA.maxY + SPATIAL_QUERY_EPSILON < aabbB.minY ||
-            aabbA.minY - SPATIAL_QUERY_EPSILON > aabbB.maxY)
-          continue;
+          Float4 minYB = set(b0.minY, b1.minY, b2.minY, b3.minY);
+          Float4 maxYB = set(b0.maxY, b1.maxY, b2.maxY, b3.maxY);
 
-        // Layer mask check
-        if ((collidesWithA & aabbB.layers) == 0)
-          continue;
+          // Y overlap test
+          Float4 noOverlapY1 = cmplt(maxYA, minYB);
+          Float4 noOverlapY2 = cmplt(maxYB, minYA);
+          Float4 noOverlapY = bitwise_or(noOverlapY1, noOverlapY2);
+          int noOverlapMask = movemask(noOverlapY);
 
-        // Store pool indices for movable-movable pair
-        pools.movableMovablePairs.emplace_back(poolIdxA, poolIdxB);
+          // Early-out if all 4 fail Y overlap (common in X-clustered but Y-spread)
+          if (noOverlapMask == 0xF) {
+            j += 4;
+            continue;
+          }
+
+          // Layer mask test
+          Int4 layersB = set_int4(b0.layers, b1.layers, b2.layers, b3.layers);
+          Int4 layerResult = bitwise_and(layerMaskA, layersB);
+          Int4 layerFail = cmpeq_int(layerResult, setzero_int());
+          int layerFailMask = movemask_int(layerFail);
+
+          // Process lanes that passed both tests
+          for (size_t k = 0; k < 4; ++k) {
+            if (((noOverlapMask >> k) & 1) == 0 &&
+                ((layerFailMask >> (k * 4)) & 0xF) == 0) {
+              pools.movableMovablePairs.emplace_back(poolIdxA, sorted[j + k]);
+            }
+          }
+          j += 4;
+        } else {
+          // SCALAR PATH: Check one at a time with SAP early exit
+          size_t poolIdxB = sorted[j];
+          const auto &aabbB = movableAABBs[poolIdxB];
+
+          if (aabbB.minX > maxXA)
+            break;  // SAP early termination
+
+          if (!(aabbA.maxY + SPATIAL_QUERY_EPSILON < aabbB.minY ||
+                aabbA.minY - SPATIAL_QUERY_EPSILON > aabbB.maxY)) {
+            if ((collidesWithA & aabbB.layers) != 0) {
+              pools.movableMovablePairs.emplace_back(poolIdxA, poolIdxB);
+            }
+          }
+          ++j;
+        }
       }
     }
   }
@@ -1667,24 +1710,65 @@ void CollisionManager::broadphaseSingleThreaded() {
     const uint32_t movableCollidesWith = movableAABB.collidesWith;
 
     if (useDirectPath) {
-      // DIRECT PATH: Check cached staticAABBs (contiguous memory access)
-      for (size_t si = 0; si < staticAABBs.size(); ++si) {
+      // DIRECT PATH: SIMD 4-wide check of cached staticAABBs
+      Float4 dynMinX = broadcast(movableAABB.minX - SPATIAL_QUERY_EPSILON);
+      Float4 dynMinY = broadcast(movableAABB.minY - SPATIAL_QUERY_EPSILON);
+      Float4 dynMaxX = broadcast(movableAABB.maxX + SPATIAL_QUERY_EPSILON);
+      Float4 dynMaxY = broadcast(movableAABB.maxY + SPATIAL_QUERY_EPSILON);
+      const Int4 layerMaskVec = broadcast_int(static_cast<int32_t>(movableCollidesWith));
+
+      size_t si = 0;
+      const size_t simdEnd = (staticAABBs.size() / 4) * 4;
+
+      for (; si < simdEnd; si += 4) {
+        const auto &a0 = staticAABBs[si];
+        const auto &a1 = staticAABBs[si + 1];
+        const auto &a2 = staticAABBs[si + 2];
+        const auto &a3 = staticAABBs[si + 3];
+
+        Float4 statMinX = set(a0.minX, a1.minX, a2.minX, a3.minX);
+        Float4 statMaxX = set(a0.maxX, a1.maxX, a2.maxX, a3.maxX);
+        Float4 statMinY = set(a0.minY, a1.minY, a2.minY, a3.minY);
+        Float4 statMaxY = set(a0.maxY, a1.maxY, a2.maxY, a3.maxY);
+
+        Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
+        Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
+        Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
+        Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
+        Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2),
+                                      bitwise_or(noOverlapY1, noOverlapY2));
+        int noOverlapMask = movemask(noOverlap);
+
+        if (noOverlapMask == 0xF)
+          continue;
+
+        Int4 staticLayers = set_int4(a0.layers, a1.layers, a2.layers, a3.layers);
+        Int4 layerResult = bitwise_and(staticLayers, layerMaskVec);
+        Int4 layerFail = cmpeq_int(layerResult, setzero_int());
+        int layerFailMask = movemask_int(layerFail);
+
+        for (size_t j = 0; j < 4; ++j) {
+          if (((noOverlapMask >> j) & 1) == 0 &&
+              ((layerFailMask >> (j * 4)) & 0xF) == 0) {
+            if (staticAABBs[si + j].active) {
+              pools.movableStaticPairs.emplace_back(poolIdx, staticIndices[si + j]);
+            }
+          }
+        }
+      }
+
+      // Scalar tail
+      for (; si < staticAABBs.size(); ++si) {
         const auto &staticAABB = staticAABBs[si];
         if (!staticAABB.active)
           continue;
-
-        // AABB overlap test
         if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticAABB.minX ||
             movableAABB.minX - SPATIAL_QUERY_EPSILON > staticAABB.maxX ||
             movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticAABB.minY ||
             movableAABB.minY - SPATIAL_QUERY_EPSILON > staticAABB.maxY)
           continue;
-
-        // Layer mask check
         if ((movableCollidesWith & staticAABB.layers) == 0)
           continue;
-
-        // Store (poolIdx, storageIdx) for movable-static pair
         pools.movableStaticPairs.emplace_back(poolIdx, staticIndices[si]);
       }
     } else {
@@ -2284,6 +2368,14 @@ void CollisionManager::rebuildStaticSpatialHashUnlocked() {
 
     BodyType bodyType = static_cast<BodyType>(hot.bodyType);
     if (bodyType == BodyType::STATIC) {
+      // Skip EventOnly triggers - they're detected via per-entity spatial query,
+      // not broadphase. Keeping them out of the hash avoids querying 400+ water
+      // triggers just to filter them out.
+      if (hot.isTrigger != 0 &&
+          hot.triggerType ==
+              static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
+        continue;
+      }
       AABB aabb = m_storage.computeAABB(i);
       m_staticSpatialHash.insert(i, aabb);
     }

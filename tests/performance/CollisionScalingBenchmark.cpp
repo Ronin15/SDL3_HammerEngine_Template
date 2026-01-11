@@ -30,6 +30,7 @@
 #include "managers/BackgroundSimulationManager.hpp"
 #include "core/ThreadSystem.hpp"
 #include "core/WorkerBudget.hpp"
+#include "core/Logger.hpp"  // For benchmark mode
 #include "world/WorldData.hpp"
 
 namespace {
@@ -44,6 +45,8 @@ public:
             EntityDataManager::Instance().init();
             CollisionManager::Instance().init();
             BackgroundSimulationManager::Instance().init();
+            // Enable benchmark mode to suppress verbose logging during benchmarks
+            HAMMER_ENABLE_BENCHMARK_MODE();
             s_initialized = true;
         }
         m_rng.seed(42); // Fixed seed for reproducibility
