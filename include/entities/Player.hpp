@@ -13,6 +13,8 @@
 #include <memory>
 #include <unordered_map>
 
+namespace HammerEngine { class Camera; }  // Forward declaration
+
 class Player : public Entity {
 public:
   Player();
@@ -87,6 +89,10 @@ public:
   // Cache invalidation - call when world changes (e.g., on WorldGeneratedEvent)
   void invalidateWorldBoundsCache() { m_worldBoundsCached = false; }
 
+  // Camera access for player states (non-owning, set by GamePlayState)
+  void setCamera(HammerEngine::Camera* camera) { mp_camera = camera; }
+  HammerEngine::Camera* getCamera() const { return mp_camera; }
+
   // Combat system - all stats stored in EntityDataManager::CharacterData
   void takeDamage(float damage, const Vector2D& knockback = Vector2D(0, 0));
   void heal(float amount);
@@ -146,5 +152,8 @@ private:
   // Bootstrap: Initial position before EntityDataManager registration
   // Used in ensurePhysicsBodyRegistered() then cleared
   Vector2D m_initialPosition{400.0f, 300.0f};
+
+  // Non-owning camera pointer for player states (set by GamePlayState)
+  HammerEngine::Camera* mp_camera{nullptr};
 };
 #endif // PLAYER_HPP

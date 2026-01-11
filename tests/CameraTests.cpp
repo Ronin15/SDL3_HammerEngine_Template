@@ -38,6 +38,10 @@ BOOST_AUTO_TEST_SUITE(CoordinateTransformTests)
 BOOST_AUTO_TEST_CASE(TestWorldToScreenBasicTransform) {
     // Camera at origin, 800x600 viewport, 1.0 zoom
     Camera camera(0.0f, 0.0f, 800.0f, 600.0f);
+    // Disable world bounds clamping for pure coordinate math tests
+    Camera::Config config;
+    config.clampToWorldBounds = false;
+    camera.setConfig(config);
 
     float screenX, screenY;
 
@@ -60,6 +64,10 @@ BOOST_AUTO_TEST_CASE(TestWorldToScreenBasicTransform) {
 BOOST_AUTO_TEST_CASE(TestScreenToWorldBasicTransform) {
     // Camera at origin, 800x600 viewport, 1.0 zoom
     Camera camera(0.0f, 0.0f, 800.0f, 600.0f);
+    // Disable world bounds clamping for pure coordinate math tests
+    Camera::Config config;
+    config.clampToWorldBounds = false;
+    camera.setConfig(config);
 
     float worldX, worldY;
 
@@ -107,9 +115,13 @@ BOOST_AUTO_TEST_CASE(TestRoundTripTransformAccuracy) {
 
 BOOST_AUTO_TEST_CASE(TestTransformsWithDifferentCameraPositions) {
     // Test that camera position affects transforms correctly
+    // Disable clamping for pure coordinate math tests
+    Camera::Config config;
+    config.clampToWorldBounds = false;
 
     // Camera at (100, 200)
     Camera camera1(100.0f, 200.0f, 800.0f, 600.0f);
+    camera1.setConfig(config);
     float screenX, screenY;
 
     // World point at camera center should map to screen center
@@ -119,6 +131,7 @@ BOOST_AUTO_TEST_CASE(TestTransformsWithDifferentCameraPositions) {
 
     // Camera at (-500, -500)
     Camera camera2(-500.0f, -500.0f, 800.0f, 600.0f);
+    camera2.setConfig(config);
     camera2.worldToScreen(-500.0f, -500.0f, screenX, screenY);
     BOOST_CHECK(approxEqual(screenX, 400.0f));
     BOOST_CHECK(approxEqual(screenY, 300.0f));
@@ -127,6 +140,10 @@ BOOST_AUTO_TEST_CASE(TestTransformsWithDifferentCameraPositions) {
 BOOST_AUTO_TEST_CASE(TestVector2DTransformMethods) {
     // Test the Vector2D overloads
     Camera camera(0.0f, 0.0f, 800.0f, 600.0f);
+    // Disable clamping for pure coordinate math tests
+    Camera::Config config;
+    config.clampToWorldBounds = false;
+    camera.setConfig(config);
 
     Vector2D worldPoint(100.0f, 50.0f);
     Vector2D screenPoint = camera.worldToScreen(worldPoint);
@@ -271,6 +288,10 @@ BOOST_AUTO_TEST_CASE(TestZoomNoNaNOrInfinity) {
 
 BOOST_AUTO_TEST_CASE(TestZoomEffectOnCoordinateTransforms) {
     Camera camera(0.0f, 0.0f, 800.0f, 600.0f);
+    // Disable clamping for pure coordinate math tests
+    Camera::Config config;
+    config.clampToWorldBounds = false;
+    camera.setConfig(config);
 
     // At 1.0x zoom
     float screenX1, screenY1;

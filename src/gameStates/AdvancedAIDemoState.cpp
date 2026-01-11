@@ -728,6 +728,9 @@ void AdvancedAIDemoState::initializeCamera() {
     config.clampToWorldBounds = true; // Keep camera within world
     m_camera->setConfig(config);
 
+    // Provide camera to player for screen-to-world coordinate conversion
+    m_player->setCamera(m_camera.get());
+
     // Camera auto-synchronizes world bounds on update
   }
 }

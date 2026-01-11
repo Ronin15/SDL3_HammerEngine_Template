@@ -319,18 +319,10 @@ bool Camera::isRectVisible(float x, float y, float width, float height) const {
 }
 
 void Camera::worldToScreen(float worldX, float worldY, float& screenX, float& screenY) const {
-    // For coordinate transforms, use raw camera position without world bounds clamping
-    // World bounds clamping is for rendering, not for abstract coordinate math
-    float const worldViewWidth = m_viewport.width / m_zoom;
-    float const worldViewHeight = m_viewport.height / m_zoom;
-
-    // Use current camera position
-    float const camX = m_position.getX();
-    float const camY = m_position.getY();
-
-    // Camera offset: centers camera on its position
-    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
-    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
+    // Use the same offset calculation as rendering (computeOffsetFromCenter)
+    // This ensures world-to-screen conversion matches what's actually displayed
+    float offsetX, offsetY;
+    computeOffsetFromCenter(m_position.getX(), m_position.getY(), offsetX, offsetY);
 
     // Transform world position to screen position
     screenX = worldX - offsetX;
@@ -343,17 +335,10 @@ void Camera::screenToWorld(float screenX, float screenY, float& worldX, float& w
     float const logicalX = screenX / m_zoom;
     float const logicalY = screenY / m_zoom;
 
-    // For coordinate transforms, use raw camera position without world bounds clamping
-    float const worldViewWidth = m_viewport.width / m_zoom;
-    float const worldViewHeight = m_viewport.height / m_zoom;
-
-    // Use current camera position
-    float const camX = m_position.getX();
-    float const camY = m_position.getY();
-
-    // Camera offset: centers camera on its position
-    float offsetX = std::floor(camX - (worldViewWidth * 0.5f));
-    float offsetY = std::floor(camY - (worldViewHeight * 0.5f));
+    // Use the same offset calculation as rendering (computeOffsetFromCenter)
+    // This ensures screen-to-world conversion matches what's actually displayed
+    float offsetX, offsetY;
+    computeOffsetFromCenter(m_position.getX(), m_position.getY(), offsetX, offsetY);
 
     // Inverse of worldToScreen: worldPos = screenPos + cameraOffset
     worldX = logicalX + offsetX;
