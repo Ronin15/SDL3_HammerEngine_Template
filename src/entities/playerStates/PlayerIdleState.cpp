@@ -6,6 +6,7 @@
 #include "entities/playerStates/PlayerIdleState.hpp"
 #include "entities/Player.hpp"
 #include "managers/InputManager.hpp"
+#include "managers/UIManager.hpp"
 
 PlayerIdleState::PlayerIdleState(Player& player) : m_player(player) {}
 
@@ -32,13 +33,24 @@ void PlayerIdleState::update(float deltaTime) {
 bool PlayerIdleState::hasInputDetected() const {
     // Check for any movement input
     const InputManager& input = InputManager::Instance();
-    return (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
-            input.isKeyDown(SDL_SCANCODE_LEFT) ||
-            input.isKeyDown(SDL_SCANCODE_UP) ||
-            input.isKeyDown(SDL_SCANCODE_DOWN) ||
-            input.getAxisX(0, 1) != 0 ||
-            input.getAxisY(0, 1) != 0 ||
-            input.getMouseButtonState(LEFT));
+
+    // Keyboard or controller input
+    if (input.isKeyDown(SDL_SCANCODE_RIGHT) ||
+        input.isKeyDown(SDL_SCANCODE_LEFT) ||
+        input.isKeyDown(SDL_SCANCODE_UP) ||
+        input.isKeyDown(SDL_SCANCODE_DOWN) ||
+        input.getAxisX(0, 1) != 0 ||
+        input.getAxisY(0, 1) != 0) {
+        return true;
+    }
+
+    // Mouse input - only counts if not clicking on UI
+    if (input.getMouseButtonState(LEFT)) {
+        const Vector2D& mousePos = input.getMousePosition();
+        return !UIManager::Instance().isClickOnUI(mousePos);
+    }
+
+    return false;
 }
 
 void PlayerIdleState::exit() {
