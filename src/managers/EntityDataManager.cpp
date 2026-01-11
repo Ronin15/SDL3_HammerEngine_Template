@@ -455,10 +455,11 @@ EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
     renderData.cachedTexture = texture;
     renderData.frameWidth = frameWidth;
     renderData.frameHeight = frameHeight;
-    renderData.idleSpeedMs = static_cast<uint16_t>(idleConfig.speed);
-    renderData.moveSpeedMs = static_cast<uint16_t>(moveConfig.speed);
-    renderData.numIdleFrames = static_cast<uint8_t>(idleConfig.frameCount);
-    renderData.numMoveFrames = static_cast<uint8_t>(moveConfig.frameCount);
+    // Ensure minimum 1ms speed and 1 frame to prevent division by zero in NPCRenderController
+    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, idleConfig.speed));
+    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, moveConfig.speed));
+    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, idleConfig.frameCount));
+    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, moveConfig.frameCount));
     renderData.idleRow = static_cast<uint8_t>(idleConfig.row);
     renderData.moveRow = static_cast<uint8_t>(moveConfig.row);
     renderData.currentFrame = 0;
