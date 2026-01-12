@@ -78,9 +78,8 @@ public:
     void clearAll();
 
 private:
-    // Update helpers
-    void updateItemBobbing(float deltaTime);
-    void updateItemAnimation(float deltaTime);
+    // Update helpers (combined for efficiency - single iteration per entity kind)
+    void updateDroppedItemAnimations(float deltaTime);
     void updateContainerStates(float deltaTime);
     void updateHarvestableStates(float deltaTime);
 

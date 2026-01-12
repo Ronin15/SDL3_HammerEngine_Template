@@ -14,6 +14,7 @@
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
 #include "managers/WorldResourceManager.hpp"
+#include "utils/JsonReader.hpp"
 
 #include "events/HarvestResourceEvent.hpp"
 #include <algorithm>
@@ -796,11 +797,21 @@ void WorldManager::setCurrentSeason(Season season) {
 
 HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
-  // Initialize cached texture IDs for current season
+  // Get atlas pointer and pre-load source rect coords from JSON
+  initAtlasCoords();
+
+  // Initialize cached texture pointers/coords for current season
   updateCachedTextureIDs();
 }
 
 void HammerEngine::TileRenderer::updateCachedTextureIDs() {
+  // If using atlas, just apply pre-loaded coords (no lookups)
+  if (m_useAtlas) {
+    applyCoordsToTextures(m_currentSeason);
+    return;
+  }
+
+  // Fallback: individual textures via TextureManager
   static const char *const seasonPrefixes[] = {"spring_", "summer_", "fall_",
                                                "winter_"};
   const char *const prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
@@ -972,6 +983,252 @@ void HammerEngine::TileRenderer::clearChunkCache() {
 
 HammerEngine::TileRenderer::~TileRenderer() { unsubscribeFromSeasonEvents(); }
 
+void HammerEngine::TileRenderer::initAtlasCoords() {
+  // Get atlas texture pointer from TextureManager (already loaded)
+  auto atlasTex = TextureManager::Instance().getTexture("atlas");
+  if (!atlasTex) {
+    WORLD_MANAGER_INFO("Atlas texture not found - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+  m_atlasPtr = atlasTex.get();
+
+  // Load atlas.json for source rect coordinates
+  JsonReader atlasReader;
+  if (!atlasReader.loadFromFile("res/data/atlas.json")) {
+    WORLD_MANAGER_WARN("Could not load atlas.json - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+
+  const auto& atlasRoot = atlasReader.getRoot();
+  if (!atlasRoot.isObject() || !atlasRoot.hasKey("regions")) {
+    WORLD_MANAGER_WARN("Invalid atlas.json format - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+
+  const auto& regions = atlasRoot["regions"].asObject();
+
+  // Load world_objects.json to get texture IDs for each object type
+  JsonReader worldReader;
+  if (!worldReader.loadFromFile("res/data/world_objects.json")) {
+    WORLD_MANAGER_WARN("Could not load world_objects.json - using individual textures");
+    m_useAtlas = false;
+    return;
+  }
+
+  const auto& worldRoot = worldReader.getRoot();
+
+  // Helper to get coords from atlas regions
+  auto getCoords = [&regions](const std::string& id) -> AtlasCoords {
+    auto it = regions.find(id);
+    if (it == regions.end()) {
+      return {0, 0, 0, 0};
+    }
+    const auto& r = it->second;
+    return {
+      static_cast<float>(r["x"].asNumber()),
+      static_cast<float>(r["y"].asNumber()),
+      static_cast<float>(r["w"].asNumber()),
+      static_cast<float>(r["h"].asNumber())
+    };
+  };
+
+  // Helper to get textureId from world_objects.json
+  auto getTextureId = [&worldRoot](const std::string& category, const std::string& key) -> std::string {
+    if (!worldRoot.hasKey(category)) return "";
+    const auto& cat = worldRoot[category];
+    if (!cat.isObject() || !cat.hasKey(key)) return "";
+    const auto& obj = cat[key];
+    if (!obj.hasKey("textureId")) return "";
+    return obj["textureId"].asString();
+  };
+
+  // Helper to check if object is seasonal
+  auto isSeasonal = [&worldRoot](const std::string& category, const std::string& key) -> bool {
+    if (!worldRoot.hasKey(category)) return false;
+    const auto& cat = worldRoot[category];
+    if (!cat.isObject() || !cat.hasKey(key)) return false;
+    const auto& obj = cat[key];
+    if (!obj.hasKey("seasonal")) return false;
+    return obj["seasonal"].asBool();
+  };
+
+  // Season prefixes
+  static const char* seasonPrefixes[] = {"spring_", "summer_", "fall_", "winter_"};
+
+  // Pre-load coords for all seasons
+  for (int s = 0; s < 4; ++s) {
+    const std::string prefix = seasonPrefixes[s];
+    auto& coords = m_seasonalCoords[s];
+
+    // Biomes - get textureId from JSON, apply seasonal prefix
+    auto loadBiome = [&](AtlasCoords& target, const std::string& key) {
+      std::string texId = getTextureId("biomes", key);
+      if (texId.empty()) texId = "biome_" + key;  // Fallback
+      target = isSeasonal("biomes", key) ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadBiome(coords.biome_default, "default");
+    loadBiome(coords.biome_desert, "desert");
+    loadBiome(coords.biome_forest, "forest");
+    loadBiome(coords.biome_mountain, "mountain");
+    loadBiome(coords.biome_swamp, "swamp");
+    loadBiome(coords.biome_haunted, "haunted");
+    loadBiome(coords.biome_celestial, "celestial");
+    loadBiome(coords.biome_ocean, "ocean");
+
+    // Obstacles - get textureId from JSON
+    auto loadObstacle = [&](AtlasCoords& target, const std::string& key) {
+      std::string texId = getTextureId("obstacles", key);
+      if (texId.empty()) texId = "obstacle_" + key;
+      target = isSeasonal("obstacles", key) ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadObstacle(coords.obstacle_water, "water");
+    loadObstacle(coords.obstacle_tree, "tree");
+    loadObstacle(coords.obstacle_rock, "rock");
+
+    // Buildings - get textureId from JSON
+    auto loadBuilding = [&](AtlasCoords& target, const std::string& key) {
+      std::string texId = getTextureId("buildings", key);
+      if (texId.empty()) texId = "building_" + key;
+      target = isSeasonal("buildings", key) ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadBuilding(coords.building_hut, "hut");
+    loadBuilding(coords.building_house, "house");
+    loadBuilding(coords.building_large, "large");
+    loadBuilding(coords.building_cityhall, "cityhall");
+
+    // Decorations - special handling for seasonal availability
+    auto loadDecoration = [&](AtlasCoords& target, const std::string& key) {
+      if (!worldRoot.hasKey("decorations")) {
+        target = {0, 0, 0, 0};
+        return;
+      }
+      const auto& decorations = worldRoot["decorations"];
+      if (!decorations.hasKey(key)) {
+        target = {0, 0, 0, 0};
+        return;
+      }
+      const auto& obj = decorations[key];
+
+      // Check if this decoration has season restrictions
+      if (obj.hasKey("seasons")) {
+        const auto& seasons = obj["seasons"].asArray();
+        bool availableThisSeason = false;
+        for (const auto& seasonVal : seasons) {
+          const std::string& seasonName = seasonVal.asString();
+          if ((s == 0 && seasonName == "spring") ||
+              (s == 1 && seasonName == "summer") ||
+              (s == 2 && seasonName == "fall") ||
+              (s == 3 && seasonName == "winter")) {
+            availableThisSeason = true;
+            break;
+          }
+        }
+        if (!availableThisSeason) {
+          target = {0, 0, 0, 0};
+          return;
+        }
+      }
+
+      std::string texId = obj.hasKey("textureId") ? obj["textureId"].asString() : key;
+
+      // Check for fallback seasons
+      if (obj.hasKey("fallbackSeasons")) {
+        const auto& fallbacks = obj["fallbackSeasons"];
+        const char* seasonNames[] = {"spring", "summer", "fall", "winter"};
+        if (fallbacks.hasKey(seasonNames[s])) {
+          texId = fallbacks[seasonNames[s]].asString();
+          target = getCoords(texId);
+          return;
+        }
+      }
+
+      // Check for seasonal textures override
+      if (obj.hasKey("seasonTextures")) {
+        const auto& seasonTex = obj["seasonTextures"];
+        const char* seasonNames[] = {"spring", "summer", "fall", "winter"};
+        if (seasonTex.hasKey(seasonNames[s])) {
+          texId = seasonTex[seasonNames[s]].asString();
+          target = getCoords(texId);
+          return;
+        }
+      }
+
+      // Apply seasonal prefix if marked seasonal
+      bool seasonal = obj.hasKey("seasonal") && obj["seasonal"].asBool();
+      target = seasonal ? getCoords(prefix + texId) : getCoords(texId);
+    };
+
+    loadDecoration(coords.decoration_flower_blue, "flower_blue");
+    loadDecoration(coords.decoration_flower_pink, "flower_pink");
+    loadDecoration(coords.decoration_flower_white, "flower_white");
+    loadDecoration(coords.decoration_flower_yellow, "flower_yellow");
+    loadDecoration(coords.decoration_mushroom_purple, "mushroom_purple");
+    loadDecoration(coords.decoration_mushroom_tan, "mushroom_tan");
+    loadDecoration(coords.decoration_grass_small, "grass_small");
+    loadDecoration(coords.decoration_grass_large, "grass_large");
+    loadDecoration(coords.decoration_bush, "bush");
+    loadDecoration(coords.decoration_stump_small, "stump_small");
+    loadDecoration(coords.decoration_stump_medium, "stump_medium");
+    loadDecoration(coords.decoration_rock_small, "rock_small");
+  }
+
+  m_useAtlas = true;
+  WORLD_MANAGER_INFO("TileRenderer: Atlas coords loaded from world_objects.json");
+}
+
+void HammerEngine::TileRenderer::applyCoordsToTextures(Season season) {
+  if (!m_useAtlas || !m_atlasPtr) {
+    return;
+  }
+
+  const int s = static_cast<int>(season);
+  const auto& coords = m_seasonalCoords[s];
+
+  // Helper to apply coords to cached texture
+  auto apply = [this](CachedTexture& tex, const AtlasCoords& c) {
+    tex.ptr = m_atlasPtr;
+    tex.atlasX = c.x;
+    tex.atlasY = c.y;
+    tex.w = c.w;
+    tex.h = c.h;
+  };
+
+  // Apply all coords
+  apply(m_cachedTextures.biome_default, coords.biome_default);
+  apply(m_cachedTextures.biome_desert, coords.biome_desert);
+  apply(m_cachedTextures.biome_forest, coords.biome_forest);
+  apply(m_cachedTextures.biome_mountain, coords.biome_mountain);
+  apply(m_cachedTextures.biome_swamp, coords.biome_swamp);
+  apply(m_cachedTextures.biome_haunted, coords.biome_haunted);
+  apply(m_cachedTextures.biome_celestial, coords.biome_celestial);
+  apply(m_cachedTextures.biome_ocean, coords.biome_ocean);
+  apply(m_cachedTextures.obstacle_water, coords.obstacle_water);
+  apply(m_cachedTextures.obstacle_tree, coords.obstacle_tree);
+  apply(m_cachedTextures.obstacle_rock, coords.obstacle_rock);
+  apply(m_cachedTextures.building_hut, coords.building_hut);
+  apply(m_cachedTextures.building_house, coords.building_house);
+  apply(m_cachedTextures.building_large, coords.building_large);
+  apply(m_cachedTextures.building_cityhall, coords.building_cityhall);
+  apply(m_cachedTextures.decoration_flower_blue, coords.decoration_flower_blue);
+  apply(m_cachedTextures.decoration_flower_pink, coords.decoration_flower_pink);
+  apply(m_cachedTextures.decoration_flower_white, coords.decoration_flower_white);
+  apply(m_cachedTextures.decoration_flower_yellow, coords.decoration_flower_yellow);
+  apply(m_cachedTextures.decoration_mushroom_purple, coords.decoration_mushroom_purple);
+  apply(m_cachedTextures.decoration_mushroom_tan, coords.decoration_mushroom_tan);
+  apply(m_cachedTextures.decoration_grass_small, coords.decoration_grass_small);
+  apply(m_cachedTextures.decoration_grass_large, coords.decoration_grass_large);
+  apply(m_cachedTextures.decoration_bush, coords.decoration_bush);
+  apply(m_cachedTextures.decoration_stump_small, coords.decoration_stump_small);
+  apply(m_cachedTextures.decoration_stump_medium, coords.decoration_stump_medium);
+  apply(m_cachedTextures.decoration_rock_small, coords.decoration_rock_small);
+}
+
 void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
   if (m_subscribedToSeasons) {
     return;
@@ -1096,8 +1353,12 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
       }
       // CRITICAL: Use tileSize,tileSize for biomes - NOT tex->w,tex->h
       // This ensures exact grid alignment regardless of source texture size
-      TextureManager::drawTileDirect(tex->ptr, localX, localY, tileSize,
-                                     tileSize, renderer);
+      // Use source rect for atlas-based rendering
+      if (tex->ptr) {
+        SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
+        SDL_FRect destRect = {localX, localY, static_cast<float>(tileSize), static_cast<float>(tileSize)};
+        SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
+      }
     }
   }
 
@@ -1167,9 +1428,10 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
       const float offsetX = (TILE_SIZE - tex->w) / 2.0f;
       const float offsetY = TILE_SIZE - tex->h;
 
-      TextureManager::drawTileDirect(tex->ptr, localX + offsetX,
-                                     localY + offsetY, static_cast<int>(tex->w),
-                                     static_cast<int>(tex->h), renderer);
+      // Use source rect for atlas-based rendering
+      SDL_FRect srcRect = {tex->atlasX, tex->atlasY, tex->w, tex->h};
+      SDL_FRect destRect = {localX + offsetX, localY + offsetY, tex->w, tex->h};
+      SDL_RenderTexture(renderer, tex->ptr, &srcRect, &destRect);
     }
   }
 
@@ -1264,14 +1526,15 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
       m_ySortBuffer.begin(), m_ySortBuffer.end(),
       [](const YSortedSprite &a, const YSortedSprite &b) { return a.y < b.y; });
 
-  // Render sorted sprites into chunk texture
+  // Render sorted sprites into chunk texture using source rects for atlas
   for (const auto &sprite : m_ySortBuffer) {
-    const int spriteW = sprite.isBuilding ? sprite.buildingWidth
-                                          : static_cast<int>(sprite.tex->w);
-    const int spriteH = sprite.isBuilding ? sprite.buildingHeight
-                                          : static_cast<int>(sprite.tex->h);
-    TextureManager::drawTileDirect(sprite.tex->ptr, sprite.renderX,
-                                   sprite.renderY, spriteW, spriteH, renderer);
+    const float spriteW = sprite.isBuilding ? static_cast<float>(sprite.buildingWidth)
+                                            : sprite.tex->w;
+    const float spriteH = sprite.isBuilding ? static_cast<float>(sprite.buildingHeight)
+                                            : sprite.tex->h;
+    SDL_FRect srcRect = {sprite.tex->atlasX, sprite.tex->atlasY, sprite.tex->w, sprite.tex->h};
+    SDL_FRect destRect = {sprite.renderX, sprite.renderY, spriteW, spriteH};
+    SDL_RenderTexture(renderer, sprite.tex->ptr, &srcRect, &destRect);
   }
 
   // Reset render target to default (screen)

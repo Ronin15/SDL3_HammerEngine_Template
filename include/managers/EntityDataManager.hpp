@@ -452,9 +452,11 @@ struct NPCTypeInfo {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ItemRenderData {
-    SDL_Texture* cachedTexture{nullptr};  // Cached from ResourceTemplateManager
-    uint16_t frameWidth{32};              // Single frame width
-    uint16_t frameHeight{32};             // Single frame height
+    SDL_Texture* cachedTexture{nullptr};  // Cached atlas texture pointer
+    uint16_t atlasX{0};                   // X offset in atlas (pixels)
+    uint16_t atlasY{0};                   // Y offset in atlas (pixels)
+    uint16_t frameWidth{16};              // Single frame width
+    uint16_t frameHeight{16};             // Single frame height
     uint16_t animSpeedMs{100};            // Milliseconds per frame
     uint8_t currentFrame{0};              // Current animation frame
     uint8_t numFrames{1};                 // Total animation frames
@@ -464,8 +466,10 @@ struct ItemRenderData {
 
     void clear() noexcept {
         cachedTexture = nullptr;
-        frameWidth = 32;
-        frameHeight = 32;
+        atlasX = 0;
+        atlasY = 0;
+        frameWidth = 16;
+        frameHeight = 16;
         animSpeedMs = 100;
         currentFrame = 0;
         numFrames = 1;

@@ -1,0 +1,88 @@
+{
+  "npcTypes": [
+    {
+      "id": "Guard",
+      "name": "Guard",
+      "textureId": "guard",
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150,
+        "loop": true
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100,
+        "loop": true
+      },
+      "atlasX": 99,
+      "atlasY": 723,
+      "atlasW": 64,
+      "atlasH": 32
+    },
+    {
+      "id": "Villager",
+      "name": "Villager",
+      "textureId": "villager",
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150,
+        "loop": true
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100,
+        "loop": true
+      },
+      "atlasX": 0,
+      "atlasY": 756,
+      "atlasW": 64,
+      "atlasH": 32
+    },
+    {
+      "id": "Merchant",
+      "name": "Merchant",
+      "textureId": "merchant",
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150,
+        "loop": true
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100,
+        "loop": true
+      },
+      "atlasX": 164,
+      "atlasY": 723,
+      "atlasW": 64,
+      "atlasH": 32
+    },
+    {
+      "id": "Warrior",
+      "name": "Warrior",
+      "textureId": "warrior",
+      "idleAnim": {
+        "row": 0,
+        "frameCount": 1,
+        "speed": 150,
+        "loop": true
+      },
+      "moveAnim": {
+        "row": 0,
+        "frameCount": 2,
+        "speed": 100,
+        "loop": true
+      },
+      "atlasX": 65,
+      "atlasY": 756,
+      "atlasW": 64,
+      "atlasH": 32
+    }
+  ]
+}

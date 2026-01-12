@@ -8,6 +8,7 @@
 #include "controllers/world/DayNightController.hpp"
 #include "controllers/world/ItemController.hpp"
 #include "controllers/world/WeatherController.hpp"
+#include "controllers/render/ResourceRenderController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
 #include "gameStates/LoadingState.hpp"
@@ -78,6 +79,7 @@ bool GamePlayState::enter() {
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
     m_controllers.add<ItemController>(mp_Player);
+    m_controllers.add<ResourceRenderController>();
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);
@@ -290,6 +292,13 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
 
   if (m_camera && worldMgr.isInitialized() && worldMgr.hasActiveWorld()) {
     worldMgr.render(renderer, renderCamX, renderCamY, viewWidth, viewHeight);
+  }
+
+  // Render world resources (dropped items, harvestables, containers)
+  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
+    resourceCtrl->renderDroppedItems(renderer, renderCamX, renderCamY, interpolationAlpha);
+    resourceCtrl->renderHarvestables(renderer, renderCamX, renderCamY, interpolationAlpha);
+    resourceCtrl->renderContainers(renderer, renderCamX, renderCamY, interpolationAlpha);
   }
 
   if (mp_Player) {

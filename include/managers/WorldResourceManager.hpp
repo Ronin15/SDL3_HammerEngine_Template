@@ -485,9 +485,17 @@ private:
     mutable WorldResourceStats m_stats;
     std::atomic<bool> m_initialized{false};
 
+    // Fast-path counters for active world (avoid lock acquisition when empty)
+    // These are updated on register/unregister and when active world changes
+    std::atomic<size_t> m_activeWorldItemCount{0};
+    std::atomic<size_t> m_activeWorldHarvestableCount{0};
+
     // Event handlers (internal)
     void onWorldLoaded(const std::string& worldId);
     void onWorldUnloaded(const std::string& worldId);
+
+    // Helper to recalculate active world counts (called under lock)
+    void recalculateActiveWorldCounts();
 };
 
 #endif // WORLD_RESOURCE_MANAGER_HPP

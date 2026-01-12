@@ -9,8 +9,12 @@
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
 #include "managers/TextureManager.hpp"  // For texture lookup in createDataDrivenNPC
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
+#include "utils/JsonReader.hpp"  // For loading NPC types from JSON
 #include "utils/UniqueID.hpp"
 #include <SDL3/SDL.h>  // For SDL_GetTextureSize
+
+using HammerEngine::JsonReader;
+using HammerEngine::JsonValue;
 #include <algorithm>
 #include <cassert>
 #include <format>
@@ -622,12 +626,31 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     }
     auto& renderData = m_itemRenderData[itemIndex];
     renderData.clear();
-    // Default render values - ResourceRenderController will update from RTM if available
-    renderData.frameWidth = 32;
-    renderData.frameHeight = 32;
-    renderData.animSpeedMs = 100;
-    renderData.numFrames = 1;
-    renderData.bobAmplitude = 3.0f;
+
+    // Get atlas texture (single texture for all items)
+    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
+
+    // Get atlas coords and animation data from resource template
+    auto& rtm = ResourceTemplateManager::Instance();
+    ResourcePtr resource = rtm.getResourceTemplate(resourceHandle);
+    if (resource) {
+        renderData.atlasX = static_cast<uint16_t>(resource->getAtlasX());
+        renderData.atlasY = static_cast<uint16_t>(resource->getAtlasY());
+        renderData.frameWidth = static_cast<uint16_t>(resource->getAtlasW());
+        renderData.frameHeight = static_cast<uint16_t>(resource->getAtlasH());
+        if (resource->getNumFrames() > 0) {
+            renderData.numFrames = static_cast<uint8_t>(resource->getNumFrames());
+        }
+        if (resource->getAnimSpeed() > 0) {
+            renderData.animSpeedMs = static_cast<uint16_t>(resource->getAnimSpeed());
+        }
+    }
+
+    // Fallback if no atlas texture
+    if (!renderData.cachedTexture) {
+        ENTITY_WARN(std::format("createDroppedItem: Atlas texture not found for resource {}",
+                                resourceHandle.toString()));
+    }
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -2286,16 +2309,65 @@ EntityHandle EntityDataManager::getHandle(size_t index) const {
 // ============================================================================
 
 void EntityDataManager::initializeNPCTypeRegistry() {
-    // Standard animation config for all current NPC sprite sheets (64x32, 2 frames, 1 row)
-    // idle: 1 frame static, move: 2 frames walking
+    // Try to load NPC types from JSON (data-driven)
+    const std::string jsonPath = "res/data/npc_types.json";
+    JsonReader reader;
+
+    if (reader.loadFromFile(jsonPath)) {
+        const JsonValue& root = reader.getRoot();
+
+        if (root.isObject() && root.hasKey("npcTypes") && root["npcTypes"].isArray()) {
+            const JsonValue& npcTypes = root["npcTypes"];
+
+            for (size_t i = 0; i < npcTypes.size(); ++i) {
+                const JsonValue& npc = npcTypes[i];
+
+                if (!npc.hasKey("id") || !npc["id"].isString()) {
+                    ENTITY_WARN(std::format("NPC type at index {} missing 'id'", i));
+                    continue;
+                }
+
+                std::string id = npc["id"].asString();
+                std::string textureId = npc.hasKey("textureId") ? npc["textureId"].asString() : id;
+
+                // Parse idle animation config
+                AnimationConfig idleAnim{0, 1, 150, true};  // defaults
+                if (npc.hasKey("idleAnim") && npc["idleAnim"].isObject()) {
+                    const JsonValue& idle = npc["idleAnim"];
+                    idleAnim.row = idle.hasKey("row") ? idle["row"].asInt() : 0;
+                    idleAnim.frameCount = idle.hasKey("frameCount") ? idle["frameCount"].asInt() : 1;
+                    idleAnim.speed = idle.hasKey("speed") ? idle["speed"].asInt() : 150;
+                    idleAnim.loop = idle.hasKey("loop") ? idle["loop"].asBool() : true;
+                }
+
+                // Parse move animation config
+                AnimationConfig moveAnim{0, 2, 100, true};  // defaults
+                if (npc.hasKey("moveAnim") && npc["moveAnim"].isObject()) {
+                    const JsonValue& move = npc["moveAnim"];
+                    moveAnim.row = move.hasKey("row") ? move["row"].asInt() : 0;
+                    moveAnim.frameCount = move.hasKey("frameCount") ? move["frameCount"].asInt() : 2;
+                    moveAnim.speed = move.hasKey("speed") ? move["speed"].asInt() : 100;
+                    moveAnim.loop = move.hasKey("loop") ? move["loop"].asBool() : true;
+                }
+
+                m_npcTypeRegistry[id] = {textureId, idleAnim, moveAnim};
+                ENTITY_DEBUG(std::format("Loaded NPC type '{}' -> texture '{}'", id, textureId));
+            }
+
+            ENTITY_INFO(std::format("Loaded {} NPC types from {}", m_npcTypeRegistry.size(), jsonPath));
+            return;
+        }
+    }
+
+    // Fallback to hardcoded defaults if JSON loading fails
+    ENTITY_WARN(std::format("Failed to load NPC types from {}, using defaults", jsonPath));
     AnimationConfig idle{0, 1, 150, true};
     AnimationConfig move{0, 2, 100, true};
 
-    // Register NPC types (EntityKind::NPC subtypes)
     m_npcTypeRegistry["Guard"]    = {"guard", idle, move};
     m_npcTypeRegistry["Villager"] = {"villager", idle, move};
     m_npcTypeRegistry["Merchant"] = {"merchant", idle, move};
     m_npcTypeRegistry["Warrior"]  = {"warrior", idle, move};
 
-    ENTITY_INFO(std::format("Initialized NPC type registry with {} types", m_npcTypeRegistry.size()));
+    ENTITY_INFO(std::format("Initialized NPC type registry with {} types (fallback)", m_npcTypeRegistry.size()));
 }
