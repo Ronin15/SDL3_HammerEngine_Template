@@ -6,6 +6,7 @@
 #include "gameStates/GamePlayState.hpp"
 #include "controllers/combat/CombatController.hpp"
 #include "controllers/world/DayNightController.hpp"
+#include "controllers/world/ItemController.hpp"
 #include "controllers/world/WeatherController.hpp"
 #include "core/GameEngine.hpp"
 #include "core/Logger.hpp"
@@ -76,6 +77,7 @@ bool GamePlayState::enter() {
     m_controllers.add<WeatherController>();
     m_controllers.add<DayNightController>();
     m_controllers.add<CombatController>(mp_Player);
+    m_controllers.add<ItemController>(mp_Player);
 
     // Enable automatic weather changes
     gameTimeMgr.enableAutoWeather(true);
@@ -573,6 +575,14 @@ void GamePlayState::handleInput() {
     m_controllers.get<CombatController>()->tryAttack();
   }
 
+  // Item interaction - E to pickup/harvest
+  if (inputMgr.wasKeyPressed(SDL_SCANCODE_E) && mp_Player) {
+    auto& itemCtrl = *m_controllers.get<ItemController>();
+    if (!itemCtrl.attemptPickup()) {
+      itemCtrl.attemptHarvest();
+    }
+  }
+
   // Camera zoom controls
   if (inputMgr.wasKeyPressed(SDL_SCANCODE_LEFTBRACKET) && m_camera) {
     m_camera->zoomIn(); // [ key = zoom in (objects larger)
@@ -693,13 +703,15 @@ void GamePlayState::initializeInventoryUI() {
   // --- DATA BINDING SETUP ---
   // Bind the inventory capacity label to a function that gets the data
   ui.bindText("gameplay_inventory_status", [this]() -> std::string {
-    if (!mp_Player || !mp_Player->getInventory()) {
+    if (!mp_Player) {
       return "Capacity: 0/0";
     }
-    const auto *inventory = mp_Player->getInventory();
-    int used = inventory->getUsedSlots();
-    int max = inventory->getMaxSlots();
-    return std::format("Capacity: {}/{}", used, max);
+    uint32_t invIdx = mp_Player->getInventoryIndex();
+    if (invIdx == INVALID_INVENTORY_INDEX) {
+      return "Capacity: 0/0";
+    }
+    const auto& inv = EntityDataManager::Instance().getInventoryData(invIdx);
+    return std::format("Capacity: {}/{}", inv.usedSlots, inv.maxSlots);
   });
 
   // Bind the inventory list - populates provided buffers (zero-allocation
@@ -708,13 +720,18 @@ void GamePlayState::initializeInventoryUI() {
       "gameplay_inventory_list",
       [this](std::vector<std::string> &items,
              std::vector<std::pair<std::string, int>> &sortedResources) {
-        if (!mp_Player || !mp_Player->getInventory()) {
+        if (!mp_Player) {
           items.push_back("(Empty)");
           return;
         }
 
-        const auto *inventory = mp_Player->getInventory();
-        auto allResources = inventory->getAllResources();
+        uint32_t invIdx = mp_Player->getInventoryIndex();
+        if (invIdx == INVALID_INVENTORY_INDEX) {
+          items.push_back("(Empty)");
+          return;
+        }
+
+        auto allResources = EntityDataManager::Instance().getInventoryResources(invIdx);
 
         if (allResources.empty()) {
           items.push_back("(Empty)");
@@ -766,7 +783,7 @@ void GamePlayState::addDemoResource(HammerEngine::ResourceHandle resourceHandle,
     return;
   }
 
-  mp_Player->getInventory()->addResource(resourceHandle, quantity);
+  mp_Player->addToInventory(resourceHandle, quantity);
 }
 
 void GamePlayState::removeDemoResource(
@@ -779,7 +796,7 @@ void GamePlayState::removeDemoResource(
     return;
   }
 
-  mp_Player->getInventory()->removeResource(resourceHandle, quantity);
+  mp_Player->removeFromInventory(resourceHandle, quantity);
 }
 
 void GamePlayState::initializeResourceHandles() {

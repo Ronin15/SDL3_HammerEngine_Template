@@ -6,7 +6,9 @@
 #include "managers/EntityDataManager.hpp"
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
+#include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
 #include "managers/TextureManager.hpp"  // For texture lookup in createDataDrivenNPC
+#include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/UniqueID.hpp"
 #include <SDL3/SDL.h>  // For SDL_GetTextureSize
 #include <algorithm>
@@ -46,9 +48,12 @@ bool EntityDataManager::init() {
         m_characterData.reserve(CHARACTER_CAPACITY);
         m_npcRenderData.reserve(CHARACTER_CAPACITY);  // Same capacity as CharacterData
         m_itemData.reserve(ITEM_CAPACITY);
+        m_itemRenderData.reserve(ITEM_CAPACITY);  // Same capacity as ItemData
         m_projectileData.reserve(PROJECTILE_CAPACITY);
         m_containerData.reserve(100);
+        m_containerRenderData.reserve(100);  // Same capacity as ContainerData
         m_harvestableData.reserve(500);
+        m_harvestableRenderData.reserve(500);  // Same capacity as HarvestableData
         m_areaEffectData.reserve(EFFECT_CAPACITY);
 
         // Path data (indexed by edmIndex, sparse for non-AI entities)
@@ -71,6 +76,11 @@ bool EntityDataManager::init() {
         m_destructionQueue.reserve(100);
         m_destroyBuffer.reserve(100);  // Match destruction queue capacity
         m_freeSlots.reserve(1000);
+
+        // Inventory storage
+        constexpr size_t INVENTORY_CAPACITY = 500;
+        m_inventoryData.reserve(INVENTORY_CAPACITY);
+        m_freeInventorySlots.reserve(INVENTORY_CAPACITY);
 
         // Initialize NPC type registry
         initializeNPCTypeRegistry();
@@ -119,9 +129,12 @@ void EntityDataManager::clean() {
     m_characterData.clear();
     m_npcRenderData.clear();
     m_itemData.clear();
+    m_itemRenderData.clear();
     m_projectileData.clear();
     m_containerData.clear();
+    m_containerRenderData.clear();
     m_harvestableData.clear();
+    m_harvestableRenderData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
@@ -134,6 +147,12 @@ void EntityDataManager::clean() {
     m_freeContainerSlots.clear();
     m_freeHarvestableSlots.clear();
     m_freeAreaEffectSlots.clear();
+
+    // Clear inventory storage
+    m_inventoryData.clear();
+    m_inventoryOverflow.clear();
+    m_freeInventorySlots.clear();
+    m_nextOverflowId = 1;
 
     m_activeIndices.clear();
     m_backgroundIndices.clear();
@@ -183,9 +202,12 @@ void EntityDataManager::prepareForStateTransition() {
     m_characterData.clear();
     m_npcRenderData.clear();
     m_itemData.clear();
+    m_itemRenderData.clear();
     m_projectileData.clear();
     m_containerData.clear();
+    m_containerRenderData.clear();
     m_harvestableData.clear();
+    m_harvestableRenderData.clear();
     m_areaEffectData.clear();
     m_pathData.clear();
     m_waypointSlots.clear();  // Clear per-entity waypoint slots
@@ -198,6 +220,12 @@ void EntityDataManager::prepareForStateTransition() {
     m_freeContainerSlots.clear();
     m_freeHarvestableSlots.clear();
     m_freeAreaEffectSlots.clear();
+
+    // Clear inventory storage
+    m_inventoryData.clear();
+    m_inventoryOverflow.clear();
+    m_freeInventorySlots.clear();
+    m_nextOverflowId = 1;
 
     m_activeIndices.clear();
     m_backgroundIndices.clear();
@@ -299,15 +327,43 @@ void EntityDataManager::freeSlot(size_t index) {
             break;
         case EntityKind::DroppedItem:
             m_freeItemSlots.push_back(typeIndex);
+            // Unregister from WorldResourceManager spatial index
+            if (WorldResourceManager::Instance().isInitialized()) {
+                WorldResourceManager::Instance().unregisterDroppedItem(index);
+            }
+            // Clear item render data
+            if (typeIndex < m_itemRenderData.size()) {
+                m_itemRenderData[typeIndex].clear();
+            }
             break;
         case EntityKind::Projectile:
             m_freeProjectileSlots.push_back(typeIndex);
             break;
         case EntityKind::Container:
+            // Destroy the associated inventory first
+            if (typeIndex < m_containerData.size()) {
+                uint32_t invIdx = m_containerData[typeIndex].inventoryIndex;
+                if (invIdx != INVALID_INVENTORY_INDEX) {
+                    destroyInventory(invIdx);
+                }
+            }
             m_freeContainerSlots.push_back(typeIndex);
+            // Clear container render data
+            if (typeIndex < m_containerRenderData.size()) {
+                m_containerRenderData[typeIndex].clear();
+            }
             break;
         case EntityKind::Harvestable:
             m_freeHarvestableSlots.push_back(typeIndex);
+            // Unregister from WorldResourceManager (EDM index, not typeIndex)
+            if (WorldResourceManager::Instance().isInitialized()) {
+                WorldResourceManager::Instance().unregisterHarvestable(index);
+                WorldResourceManager::Instance().unregisterHarvestableSpatial(index);
+            }
+            // Clear harvestable render data
+            if (typeIndex < m_harvestableRenderData.size()) {
+                m_harvestableRenderData[typeIndex].clear();
+            }
             break;
         case EntityKind::AreaEffect:
             m_freeAreaEffectSlots.push_back(typeIndex);
@@ -493,7 +549,26 @@ const NPCTypeInfo* EntityDataManager::getNPCTypeInfo(const std::string& npcType)
 
 EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
                                                   HammerEngine::ResourceHandle resourceHandle,
-                                                  int quantity) {
+                                                  int quantity,
+                                                  const std::string& worldId) {
+    // Validation: Invalid resource handle
+    if (!resourceHandle.isValid()) {
+        ENTITY_ERROR("createDroppedItem: Invalid resource handle");
+        return EntityHandle{};
+    }
+
+    // Validation: Quantity must be positive
+    if (quantity <= 0) {
+        ENTITY_ERROR(std::format("createDroppedItem: Invalid quantity {}", quantity));
+        return EntityHandle{};
+    }
+
+    // Validation: Clamp to reasonable max (will be refined when RTM integration is added)
+    static constexpr int MAX_STACK_SIZE = 999;
+    if (quantity > MAX_STACK_SIZE) {
+        ENTITY_WARN(std::format("createDroppedItem: Clamping quantity {} to max {}", quantity, MAX_STACK_SIZE));
+        quantity = MAX_STACK_SIZE;
+    }
 
     size_t index = allocateSlot();
     EntityHandle::IDType id = HammerEngine::UniqueID::generate();
@@ -513,13 +588,13 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data (DroppedItems only collide with player for pickup)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    // DroppedItems use WRM spatial index for pickup detection, not collision system
+    hot.collisionLayers = 0;  // No collision layers
+    hot.collisionMask = 0;    // No collision mask
+    hot.collisionFlags = 0;   // Collision disabled
     hot.triggerTag = 0;
 
-    // Allocate item data (reuse freed slot if available)
+    // Allocate item data and render data (keep indices in sync)
     uint32_t itemIndex;
     if (!m_freeItemSlots.empty()) {
         itemIndex = m_freeItemSlots.back();
@@ -527,7 +602,10 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     } else {
         itemIndex = static_cast<uint32_t>(m_itemData.size());
         m_itemData.emplace_back();
+        m_itemRenderData.emplace_back();  // Keep in sync with ItemData
     }
+
+    // Initialize ItemData
     auto& item = m_itemData[itemIndex];
     item = ItemData{};  // Reset to default
     item.resourceHandle = resourceHandle;
@@ -536,6 +614,20 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     item.bobTimer = 0.0f;
     item.flags = 0;
     hot.typeLocalIndex = itemIndex;
+
+    // Initialize ItemRenderData
+    // Ensure render data vector is sized correctly if reusing freed slot
+    if (itemIndex >= m_itemRenderData.size()) {
+        m_itemRenderData.resize(itemIndex + 1);
+    }
+    auto& renderData = m_itemRenderData[itemIndex];
+    renderData.clear();
+    // Default render values - ResourceRenderController will update from RTM if available
+    renderData.frameWidth = 32;
+    renderData.frameHeight = 32;
+    renderData.animSpeedMs = 100;
+    renderData.numFrames = 1;
+    renderData.bobAmplitude = 3.0f;
 
     // Store ID and mapping
     m_entityIds[index] = id;
@@ -548,7 +640,238 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
     m_tierIndicesDirty = true;
 
+    ENTITY_DEBUG(std::format("Created DroppedItem entity {} with resource {} qty {} at ({}, {})",
+                             id, resourceHandle.getId(), quantity, position.getX(), position.getY()));
+
+    // Auto-register with WorldResourceManager for spatial queries
+    auto& wrm = WorldResourceManager::Instance();
+    const std::string& targetWorld = worldId.empty() ? wrm.getActiveWorld() : worldId;
+    if (!targetWorld.empty()) {
+        wrm.registerDroppedItem(index, position, targetWorld);
+    } else {
+        ENTITY_WARN("createDroppedItem: No active world set, item not registered for spatial queries");
+    }
+
     return EntityHandle{id, EntityKind::DroppedItem, generation};
+}
+
+EntityHandle EntityDataManager::createContainer(const Vector2D& position,
+                                                ContainerType containerType,
+                                                uint16_t maxSlots,
+                                                uint8_t lockLevel,
+                                                const std::string& worldId) {
+    // Validation: Valid container type
+    if (static_cast<uint8_t>(containerType) >= static_cast<uint8_t>(ContainerType::COUNT)) {
+        ENTITY_ERROR(std::format("createContainer: Invalid container type {}",
+                                 static_cast<int>(containerType)));
+        return EntityHandle{};
+    }
+
+    // Validation: Valid slot count
+    if (maxSlots == 0 || maxSlots > 100) {
+        ENTITY_ERROR(std::format("createContainer: Invalid slot count {}", maxSlots));
+        return EntityHandle{};
+    }
+
+    // Validation: Clamp lock level
+    if (lockLevel > 10) {
+        ENTITY_WARN(std::format("createContainer: Clamping lock level {} to 10", lockLevel));
+        lockLevel = 10;
+    }
+
+    // Auto-create inventory for this container
+    uint32_t inventoryIndex = createInventory(maxSlots, false);  // Containers not world-tracked by default
+    if (inventoryIndex == INVALID_INVENTORY_INDEX) {
+        ENTITY_ERROR("createContainer: Failed to create inventory");
+        return EntityHandle{};
+    }
+
+    size_t index = allocateSlot();
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = nextGeneration(index);
+
+    // Initialize hot data
+    auto& hot = m_hotData[index];
+    hot.transform.position = position;
+    hot.transform.previousPosition = position;
+    hot.transform.velocity = Vector2D{0.0f, 0.0f};
+    hot.transform.acceleration = Vector2D{0.0f, 0.0f};
+    hot.halfWidth = 16.0f;
+    hot.halfHeight = 16.0f;
+    hot.kind = EntityKind::Container;
+    markKindDirty(EntityKind::Container);
+    hot.tier = SimulationTier::Active;
+    hot.flags = EntityHotData::FLAG_ALIVE;
+    hot.generation = generation;
+
+    // Container collision (interactable but not blocking)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::IS_TRIGGER;
+    hot.triggerTag = 0;
+
+    // Allocate container data (reuse freed slot if available)
+    uint32_t containerIndex;
+    if (!m_freeContainerSlots.empty()) {
+        containerIndex = m_freeContainerSlots.back();
+        m_freeContainerSlots.pop_back();
+    } else {
+        containerIndex = static_cast<uint32_t>(m_containerData.size());
+        m_containerData.emplace_back();
+        m_containerRenderData.emplace_back();  // Keep in sync
+    }
+
+    // Initialize ContainerData
+    auto& container = m_containerData[containerIndex];
+    container.inventoryIndex = inventoryIndex;
+    container.maxSlots = maxSlots;
+    container.containerType = static_cast<uint8_t>(containerType);
+    container.lockLevel = lockLevel;
+    container.flags = (lockLevel > 0) ? ContainerData::FLAG_IS_LOCKED : 0;
+    hot.typeLocalIndex = containerIndex;
+
+    // Initialize ContainerRenderData
+    if (containerIndex >= m_containerRenderData.size()) {
+        m_containerRenderData.resize(containerIndex + 1);
+    }
+    auto& renderData = m_containerRenderData[containerIndex];
+    renderData.clear();
+    renderData.frameWidth = 32;
+    renderData.frameHeight = 32;
+
+    // Store ID and mapping
+    m_entityIds[index] = id;
+    m_generations[index] = generation;
+    m_idToIndex[id] = index;
+
+    // Update counters
+    m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
+    m_countByKind[static_cast<size_t>(EntityKind::Container)].fetch_add(1, std::memory_order_relaxed);
+    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
+
+    ENTITY_DEBUG(std::format("Created Container entity {} type {} with {} slots at ({}, {})",
+                             id, static_cast<int>(containerType), maxSlots,
+                             position.getX(), position.getY()));
+
+    // Auto-register container's inventory with WorldResourceManager
+    auto& wrm = WorldResourceManager::Instance();
+    const std::string& targetWorld = worldId.empty() ? wrm.getActiveWorld() : worldId;
+    if (!targetWorld.empty()) {
+        wrm.registerInventory(inventoryIndex, targetWorld);
+    } else {
+        ENTITY_WARN("createContainer: No active world set, inventory not registered with WRM");
+    }
+
+    return EntityHandle{id, EntityKind::Container, generation};
+}
+
+EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
+                                                  HammerEngine::ResourceHandle yieldResource,
+                                                  int yieldMin,
+                                                  int yieldMax,
+                                                  float respawnTime,
+                                                  const std::string& worldId) {
+    // Validation: Valid yield resource
+    if (!yieldResource.isValid()) {
+        ENTITY_ERROR("createHarvestable: Invalid yield resource handle");
+        return EntityHandle{};
+    }
+
+    // Validation: Yield range sanity
+    if (yieldMin < 0 || yieldMax < yieldMin) {
+        ENTITY_ERROR(std::format("createHarvestable: Invalid yield range [{}, {}]",
+                                 yieldMin, yieldMax));
+        return EntityHandle{};
+    }
+
+    // Validation: Respawn time
+    if (respawnTime < 0.0f) {
+        ENTITY_WARN("createHarvestable: Negative respawn time, setting to 0");
+        respawnTime = 0.0f;
+    }
+
+    size_t index = allocateSlot();
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = nextGeneration(index);
+
+    // Initialize hot data
+    auto& hot = m_hotData[index];
+    hot.transform.position = position;
+    hot.transform.previousPosition = position;
+    hot.transform.velocity = Vector2D{0.0f, 0.0f};
+    hot.transform.acceleration = Vector2D{0.0f, 0.0f};
+    hot.halfWidth = 16.0f;
+    hot.halfHeight = 16.0f;
+    hot.kind = EntityKind::Harvestable;
+    markKindDirty(EntityKind::Harvestable);
+    hot.tier = SimulationTier::Active;
+    hot.flags = EntityHotData::FLAG_ALIVE;
+    hot.generation = generation;
+
+    // Harvestable collision (interactable but not blocking)
+    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::IS_TRIGGER;
+    hot.triggerTag = 0;
+
+    // Allocate harvestable data (reuse freed slot if available)
+    uint32_t harvestableIndex;
+    if (!m_freeHarvestableSlots.empty()) {
+        harvestableIndex = m_freeHarvestableSlots.back();
+        m_freeHarvestableSlots.pop_back();
+    } else {
+        harvestableIndex = static_cast<uint32_t>(m_harvestableData.size());
+        m_harvestableData.emplace_back();
+        m_harvestableRenderData.emplace_back();  // Keep in sync
+    }
+
+    // Initialize HarvestableData
+    auto& harvestable = m_harvestableData[harvestableIndex];
+    harvestable.yieldResource = yieldResource;
+    harvestable.yieldMin = yieldMin;
+    harvestable.yieldMax = yieldMax;
+    harvestable.respawnTime = respawnTime;
+    harvestable.currentRespawn = 0.0f;
+    harvestable.harvestType = 0;  // Will be set by caller if needed
+    harvestable.isDepleted = false;
+    hot.typeLocalIndex = harvestableIndex;
+
+    // Initialize HarvestableRenderData
+    if (harvestableIndex >= m_harvestableRenderData.size()) {
+        m_harvestableRenderData.resize(harvestableIndex + 1);
+    }
+    auto& renderData = m_harvestableRenderData[harvestableIndex];
+    renderData.clear();
+    renderData.frameWidth = 32;
+    renderData.frameHeight = 32;
+
+    // Store ID and mapping
+    m_entityIds[index] = id;
+    m_generations[index] = generation;
+    m_idToIndex[id] = index;
+
+    // Update counters
+    m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
+    m_countByKind[static_cast<size_t>(EntityKind::Harvestable)].fetch_add(1, std::memory_order_relaxed);
+    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
+    m_tierIndicesDirty = true;
+
+    ENTITY_DEBUG(std::format("Created Harvestable entity {} yielding {} [{}-{}] at ({}, {})",
+                             id, yieldResource.getId(), yieldMin, yieldMax,
+                             position.getX(), position.getY()));
+
+    // Auto-register with WorldResourceManager for both registry and spatial queries
+    auto& wrm = WorldResourceManager::Instance();
+    const std::string& targetWorld = worldId.empty() ? wrm.getActiveWorld() : worldId;
+    if (!targetWorld.empty()) {
+        wrm.registerHarvestable(index, targetWorld);
+        wrm.registerHarvestableSpatial(index, position, targetWorld);
+    } else {
+        ENTITY_WARN("createHarvestable: No active world set, harvestable not registered with WRM");
+    }
+
+    return EntityHandle{id, EntityKind::Harvestable, generation};
 }
 
 EntityHandle EntityDataManager::createProjectile(const Vector2D& position,
@@ -881,7 +1204,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Allocate item data (reuse freed slot if available)
+    // Allocate item data and render data (reuse freed slot if available)
     uint32_t itemIndex;
     if (!m_freeItemSlots.empty()) {
         itemIndex = m_freeItemSlots.back();
@@ -889,6 +1212,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     } else {
         itemIndex = static_cast<uint32_t>(m_itemData.size());
         m_itemData.emplace_back();
+        m_itemRenderData.emplace_back();  // Keep render data in sync
     }
     auto& item = m_itemData[itemIndex];
     item = ItemData{};  // Reset to default
@@ -898,6 +1222,12 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     item.bobTimer = 0.0f;
     item.flags = 0;
     hot.typeLocalIndex = itemIndex;
+
+    // Ensure render data vector is sized correctly if reusing freed slot
+    if (itemIndex >= m_itemRenderData.size()) {
+        m_itemRenderData.resize(itemIndex + 1);
+    }
+    m_itemRenderData[itemIndex].clear();
 
     // Store ID and mapping
     m_entityIds[index] = entityId;
@@ -1011,6 +1341,342 @@ void EntityDataManager::processDestructionQueue() {
     }
 
     ENTITY_DEBUG(std::format("Processed {} entity destructions", m_destroyBuffer.size()));
+}
+
+// ============================================================================
+// INVENTORY MANAGEMENT
+// ============================================================================
+
+uint32_t EntityDataManager::createInventory(uint16_t maxSlots, bool worldTracked) {
+    // Validation: maxSlots must be positive
+    if (maxSlots == 0) {
+        ENTITY_ERROR("createInventory: maxSlots cannot be 0");
+        return INVALID_INVENTORY_INDEX;
+    }
+
+    // Validation: reasonable upper bound
+    static constexpr uint16_t MAX_REASONABLE_SLOTS = 1000;
+    if (maxSlots > MAX_REASONABLE_SLOTS) {
+        ENTITY_WARN(std::format("createInventory: Clamping {} slots to max {}",
+                                maxSlots, MAX_REASONABLE_SLOTS));
+        maxSlots = MAX_REASONABLE_SLOTS;
+    }
+
+    // Allocate slot from free-list or grow vector
+    uint32_t inventoryIndex;
+    if (!m_freeInventorySlots.empty()) {
+        inventoryIndex = m_freeInventorySlots.back();
+        m_freeInventorySlots.pop_back();
+    } else {
+        inventoryIndex = static_cast<uint32_t>(m_inventoryData.size());
+        m_inventoryData.emplace_back();
+    }
+
+    auto& inv = m_inventoryData[inventoryIndex];
+    inv.clear();
+    inv.maxSlots = maxSlots;
+    inv.setValid(true);
+    inv.setWorldTracked(worldTracked);
+
+    // Allocate overflow if needed
+    if (inv.needsOverflow()) {
+        inv.overflowId = m_nextOverflowId++;
+        auto& overflow = m_inventoryOverflow[inv.overflowId];
+        overflow.extraSlots.resize(maxSlots - InventoryData::INLINE_SLOT_COUNT);
+    }
+
+    ENTITY_DEBUG(std::format("Created inventory {} with {} slots (overflow: {})",
+                             inventoryIndex, maxSlots, inv.overflowId > 0));
+    return inventoryIndex;
+}
+
+void EntityDataManager::destroyInventory(uint32_t inventoryIndex) {
+    if (!isValidInventoryIndex(inventoryIndex)) {
+        return;
+    }
+
+    auto& inv = m_inventoryData[inventoryIndex];
+
+    // Remove overflow if present
+    if (inv.overflowId > 0) {
+        m_inventoryOverflow.erase(inv.overflowId);
+    }
+
+    // Clear and mark invalid
+    inv.clear();
+
+    // Add to free-list for reuse
+    m_freeInventorySlots.push_back(inventoryIndex);
+
+    ENTITY_DEBUG(std::format("Destroyed inventory {}", inventoryIndex));
+}
+
+bool EntityDataManager::addToInventory(uint32_t inventoryIndex,
+                                       HammerEngine::ResourceHandle handle,
+                                       int quantity) {
+    // Validation: valid inventory index (outside lock for quick fail)
+    if (!isValidInventoryIndex(inventoryIndex)) {
+        ENTITY_ERROR(std::format("addToInventory: Invalid inventory index {}", inventoryIndex));
+        return false;
+    }
+
+    // Validation: valid resource handle
+    if (!handle.isValid()) {
+        ENTITY_ERROR("addToInventory: Invalid resource handle");
+        return false;
+    }
+
+    // Validation: positive quantity
+    if (quantity <= 0) {
+        ENTITY_ERROR(std::format("addToInventory: Invalid quantity {}", quantity));
+        return false;
+    }
+
+    // Get max stack size from ResourceTemplateManager (outside lock)
+    auto& rtm = ResourceTemplateManager::Instance();
+    int maxStack = rtm.isInitialized() ? rtm.getMaxStackSize(handle) : 99;
+    if (maxStack <= 0) {
+        maxStack = 99;  // Fallback for invalid stack size
+    }
+
+    // Lock for thread-safe inventory modification
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    auto& inv = m_inventoryData[inventoryIndex];
+    InventoryOverflow* overflow = (inv.overflowId > 0) ? &m_inventoryOverflow[inv.overflowId] : nullptr;
+
+    int remaining = quantity;
+
+    // First pass: try to stack with existing slots of same type
+    // Check inline slots
+    for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT && remaining > 0; ++i) {
+        auto& slot = inv.slots[i];
+        if (!slot.isEmpty() && slot.resourceHandle == handle) {
+            int canAdd = maxStack - slot.quantity;
+            if (canAdd > 0) {
+                int toAdd = std::min(canAdd, remaining);
+                slot.quantity += static_cast<int16_t>(toAdd);
+                remaining -= toAdd;
+            }
+        }
+    }
+
+    // Check overflow slots
+    if (overflow) {
+        for (auto& slot : overflow->extraSlots) {
+            if (remaining <= 0) break;
+            if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                int canAdd = maxStack - slot.quantity;
+                if (canAdd > 0) {
+                    int toAdd = std::min(canAdd, remaining);
+                    slot.quantity += static_cast<int16_t>(toAdd);
+                    remaining -= toAdd;
+                }
+            }
+        }
+    }
+
+    // Second pass: fill empty slots
+    // Check inline slots
+    for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT && remaining > 0; ++i) {
+        auto& slot = inv.slots[i];
+        if (slot.isEmpty()) {
+            int toAdd = std::min(maxStack, remaining);
+            slot.resourceHandle = handle;
+            slot.quantity = static_cast<int16_t>(toAdd);
+            remaining -= toAdd;
+            ++inv.usedSlots;
+        }
+    }
+
+    // Check overflow slots
+    if (overflow) {
+        for (auto& slot : overflow->extraSlots) {
+            if (remaining <= 0) break;
+            if (slot.isEmpty()) {
+                int toAdd = std::min(maxStack, remaining);
+                slot.resourceHandle = handle;
+                slot.quantity = static_cast<int16_t>(toAdd);
+                remaining -= toAdd;
+                ++inv.usedSlots;
+            }
+        }
+    }
+
+    if (remaining > 0) {
+        ENTITY_WARN(std::format("addToInventory: Could not add {} items (inventory full)", remaining));
+        return false;  // Couldn't fit everything
+    }
+
+    inv.flags |= InventoryData::FLAG_DIRTY;
+    return true;
+}
+
+bool EntityDataManager::removeFromInventory(uint32_t inventoryIndex,
+                                            HammerEngine::ResourceHandle handle,
+                                            int quantity) {
+    if (!isValidInventoryIndex(inventoryIndex)) {
+        return false;
+    }
+
+    if (!handle.isValid() || quantity <= 0) {
+        return false;
+    }
+
+    // Lock for thread-safe inventory modification
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    // Check if we have enough (under lock to avoid TOCTOU race)
+    int available = getInventoryQuantityLocked(inventoryIndex, handle);
+    if (available < quantity) {
+        return false;
+    }
+
+    auto& inv = m_inventoryData[inventoryIndex];
+    InventoryOverflow* overflow = (inv.overflowId > 0) ? &m_inventoryOverflow[inv.overflowId] : nullptr;
+
+    int remaining = quantity;
+
+    // Remove from inline slots first
+    for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT && remaining > 0; ++i) {
+        auto& slot = inv.slots[i];
+        if (!slot.isEmpty() && slot.resourceHandle == handle) {
+            int toRemove = std::min(static_cast<int>(slot.quantity), remaining);
+            slot.quantity -= static_cast<int16_t>(toRemove);
+            remaining -= toRemove;
+            if (slot.quantity <= 0) {
+                slot.clear();
+                --inv.usedSlots;
+            }
+        }
+    }
+
+    // Remove from overflow slots
+    if (overflow) {
+        for (auto& slot : overflow->extraSlots) {
+            if (remaining <= 0) break;
+            if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                int toRemove = std::min(static_cast<int>(slot.quantity), remaining);
+                slot.quantity -= static_cast<int16_t>(toRemove);
+                remaining -= toRemove;
+                if (slot.quantity <= 0) {
+                    slot.clear();
+                    --inv.usedSlots;
+                }
+            }
+        }
+    }
+
+    inv.flags |= InventoryData::FLAG_DIRTY;
+    return true;
+}
+
+int EntityDataManager::getInventoryQuantity(uint32_t inventoryIndex,
+                                            HammerEngine::ResourceHandle handle) const {
+    if (!isValidInventoryIndex(inventoryIndex)) {
+        return 0;
+    }
+
+    if (!handle.isValid()) {
+        return 0;
+    }
+
+    // Lock for thread-safe read
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+    return getInventoryQuantityLocked(inventoryIndex, handle);
+}
+
+int EntityDataManager::getInventoryQuantityLocked(uint32_t inventoryIndex,
+                                                   HammerEngine::ResourceHandle handle) const {
+    // Note: Caller MUST hold m_inventoryMutex
+    // No validation here - caller already validated before acquiring lock
+
+    const auto& inv = m_inventoryData[inventoryIndex];
+    int total = 0;
+
+    // Sum inline slots
+    for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT; ++i) {
+        const auto& slot = inv.slots[i];
+        if (!slot.isEmpty() && slot.resourceHandle == handle) {
+            total += slot.quantity;
+        }
+    }
+
+    // Sum overflow slots
+    if (inv.overflowId > 0) {
+        auto it = m_inventoryOverflow.find(inv.overflowId);
+        if (it != m_inventoryOverflow.end()) {
+            for (const auto& slot : it->second.extraSlots) {
+                if (!slot.isEmpty() && slot.resourceHandle == handle) {
+                    total += slot.quantity;
+                }
+            }
+        }
+    }
+
+    return total;
+}
+
+bool EntityDataManager::hasInInventory(uint32_t inventoryIndex,
+                                       HammerEngine::ResourceHandle handle,
+                                       int quantity) const {
+    return getInventoryQuantity(inventoryIndex, handle) >= quantity;
+}
+
+std::unordered_map<HammerEngine::ResourceHandle, int>
+EntityDataManager::getInventoryResources(uint32_t inventoryIndex) const {
+    std::unordered_map<HammerEngine::ResourceHandle, int> result;
+
+    if (!isValidInventoryIndex(inventoryIndex)) {
+        return result;
+    }
+
+    // Lock for thread-safe read
+    std::lock_guard<std::mutex> lock(m_inventoryMutex);
+
+    const auto& inv = m_inventoryData[inventoryIndex];
+
+    // Sum inline slots
+    for (size_t i = 0; i < InventoryData::INLINE_SLOT_COUNT; ++i) {
+        const auto& slot = inv.slots[i];
+        if (!slot.isEmpty()) {
+            result[slot.resourceHandle] += slot.quantity;
+        }
+    }
+
+    // Sum overflow slots
+    if (inv.overflowId > 0) {
+        auto it = m_inventoryOverflow.find(inv.overflowId);
+        if (it != m_inventoryOverflow.end()) {
+            for (const auto& slot : it->second.extraSlots) {
+                if (!slot.isEmpty()) {
+                    result[slot.resourceHandle] += slot.quantity;
+                }
+            }
+        }
+    }
+
+    return result;
+}
+
+InventoryData& EntityDataManager::getInventoryData(uint32_t inventoryIndex) {
+    assert(inventoryIndex < m_inventoryData.size() && "Inventory index out of bounds");
+    return m_inventoryData[inventoryIndex];
+}
+
+const InventoryData& EntityDataManager::getInventoryData(uint32_t inventoryIndex) const {
+    assert(inventoryIndex < m_inventoryData.size() && "Inventory index out of bounds");
+    return m_inventoryData[inventoryIndex];
+}
+
+InventoryOverflow* EntityDataManager::getInventoryOverflow(uint32_t overflowId) {
+    auto it = m_inventoryOverflow.find(overflowId);
+    return (it != m_inventoryOverflow.end()) ? &it->second : nullptr;
+}
+
+const InventoryOverflow* EntityDataManager::getInventoryOverflow(uint32_t overflowId) const {
+    auto it = m_inventoryOverflow.find(overflowId);
+    return (it != m_inventoryOverflow.end()) ? &it->second : nullptr;
 }
 
 // ============================================================================

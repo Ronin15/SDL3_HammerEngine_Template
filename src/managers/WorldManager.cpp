@@ -9,6 +9,7 @@
 #include "core/ThreadSystem.hpp"
 #include "events/ResourceChangeEvent.hpp"
 #include "events/TimeEvent.hpp"
+#include "managers/EntityDataManager.hpp"
 #include "managers/EventManager.hpp"
 #include "managers/ResourceTemplateManager.hpp"
 #include "managers/TextureManager.hpp"
@@ -613,112 +614,131 @@ void WorldManager::initializeWorldResources() {
   }
 
   try {
-    // Calculate base resource quantities based on world size
-    const int baseAmount =
-        std::max(10, totalTiles / 20); // Scale with world size
-    // Basic resources available everywhere
+    auto& edm = EntityDataManager::Instance();
+    const std::string& worldId = m_currentWorld->worldId;
+
+    // Helper lambda to spawn harvestables at appropriate tile positions
+    auto spawnHarvestablesInBiome = [&](HammerEngine::ResourceHandle handle,
+                                        HammerEngine::Biome targetBiome,
+                                        int count, int yieldMin, int yieldMax,
+                                        float respawnTime) {
+      if (!handle.isValid() || count <= 0) return;
+
+      int spawned = 0;
+      const size_t gridHeight = m_currentWorld->grid.size();
+      if (gridHeight == 0) return;
+      const size_t gridWidth = m_currentWorld->grid[0].size();
+
+      // Distribute harvestables across the world
+      for (size_t y = 0; y < gridHeight && spawned < count; ++y) {
+        for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
+          const auto& tile = m_currentWorld->grid[y][x];
+          if (tile.isWater) continue;
+          if (tile.biome != targetBiome) continue;
+
+          // Skip some tiles for natural distribution (every ~10 tiles)
+          if ((x + y * 7) % 10 != 0) continue;
+
+          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+
+          // createHarvestable auto-registers with WRM using worldId
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId);
+          if (h.isValid()) {
+            ++spawned;
+          }
+        }
+      }
+      WORLD_MANAGER_DEBUG(std::format("Spawned {} harvestables of type {} in {}",
+                                      spawned, handle.toString(), worldId));
+    };
+
+    // Helper for high-elevation resources
+    auto spawnHarvestablesAtElevation = [&](HammerEngine::ResourceHandle handle,
+                                            float minElevation, int count,
+                                            int yieldMin, int yieldMax,
+                                            float respawnTime) {
+      if (!handle.isValid() || count <= 0) return;
+
+      int spawned = 0;
+      const size_t gridHeight = m_currentWorld->grid.size();
+      if (gridHeight == 0) return;
+      const size_t gridWidth = m_currentWorld->grid[0].size();
+
+      for (size_t y = 0; y < gridHeight && spawned < count; ++y) {
+        for (size_t x = 0; x < gridWidth && spawned < count; ++x) {
+          const auto& tile = m_currentWorld->grid[y][x];
+          if (tile.isWater || tile.elevation < minElevation) continue;
+
+          // Skip some tiles for natural distribution
+          if ((x + y * 11) % 12 != 0) continue;
+
+          Vector2D pos(static_cast<float>(x) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f,
+                       static_cast<float>(y) * HammerEngine::TILE_SIZE + HammerEngine::TILE_SIZE * 0.5f);
+
+          // createHarvestable auto-registers with WRM using worldId
+          EntityHandle h = edm.createHarvestable(pos, handle, yieldMin, yieldMax, respawnTime, worldId);
+          if (h.isValid()) {
+            ++spawned;
+          }
+        }
+      }
+      WORLD_MANAGER_DEBUG(std::format("Spawned {} high-elevation harvestables of type {}",
+                                      spawned, handle.toString()));
+    };
+
+    // Calculate target harvestable counts based on tile counts
+    const int baseCount = std::max(5, totalTiles / 100);
+
+    // Basic resources - spawn as harvestables in appropriate biomes
     auto woodHandle = resourceMgr.getHandleById("wood");
+    spawnHarvestablesInBiome(woodHandle, HammerEngine::Biome::FOREST,
+                             baseCount + forestTiles / 20, 1, 3, 60.0f);
+
     auto ironHandle = resourceMgr.getHandleById("iron_ore");
-    auto goldHandle = resourceMgr.getHandleById("gold");
+    spawnHarvestablesInBiome(ironHandle, HammerEngine::Biome::MOUNTAIN,
+                             baseCount + mountainTiles / 25, 1, 2, 90.0f);
 
-    if (woodHandle.isValid()) {
-      const int woodAmount =
-          baseAmount + forestTiles * 2; // More wood in forests
-      WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                   woodHandle, woodAmount);
-      WORLD_MANAGER_DEBUG(std::format("Added {} wood to world", woodAmount));
-    }
+    // Gold ore - rarer than iron, found in mountains
+    auto goldHandle = resourceMgr.getHandleById("gold_ore");
+    spawnHarvestablesInBiome(goldHandle, HammerEngine::Biome::MOUNTAIN,
+                             std::max(1, mountainTiles / 40), 1, 2, 120.0f);
 
-    if (ironHandle.isValid()) {
-      const int ironAmount =
-          baseAmount + mountainTiles; // More iron in mountains
-      WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                   ironHandle, ironAmount);
-      WORLD_MANAGER_DEBUG(
-          std::format("Added {} iron ore to world", ironAmount));
-    }
-
-    if (goldHandle.isValid()) {
-      const int goldAmount = baseAmount * 3; // Basic starting gold
-      WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                   goldHandle, goldAmount);
-      WORLD_MANAGER_DEBUG(std::format("Added {} gold to world", goldAmount));
-    }
-
-    // Rare resources based on specific biomes and elevation
+    // Rare resources
     if (mountainTiles > 0) {
       auto mithrilHandle = resourceMgr.getHandleById("mithril_ore");
-      if (mithrilHandle.isValid()) {
-        const int mithrilAmount =
-            std::max(1, mountainTiles / 10); // Rare resource
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, mithrilHandle, mithrilAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} mithril ore to world", mithrilAmount));
-      }
+      spawnHarvestablesInBiome(mithrilHandle, HammerEngine::Biome::MOUNTAIN,
+                               std::max(1, mountainTiles / 50), 1, 1, 180.0f);
     }
 
     if (forestTiles > 0) {
       auto enchantedWoodHandle = resourceMgr.getHandleById("enchanted_wood");
-      if (enchantedWoodHandle.isValid()) {
-        const int enchantedAmount =
-            std::max(1, forestTiles / 15); // Rare forest resource
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, enchantedWoodHandle, enchantedAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} enchanted wood to world", enchantedAmount));
-      }
+      spawnHarvestablesInBiome(enchantedWoodHandle, HammerEngine::Biome::FOREST,
+                               std::max(1, forestTiles / 40), 1, 2, 120.0f);
     }
 
     if (celestialTiles > 0) {
       auto crystalHandle = resourceMgr.getHandleById("crystal_essence");
-      if (crystalHandle.isValid()) {
-        const int crystalAmount =
-            std::max(1, celestialTiles / 8); // Celestial biome exclusive
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, crystalHandle, crystalAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} crystal essence to world", crystalAmount));
-      }
+      spawnHarvestablesInBiome(crystalHandle, HammerEngine::Biome::CELESTIAL,
+                               std::max(1, celestialTiles / 30), 1, 2, 150.0f);
     }
 
     if (swampTiles > 0) {
       auto voidSilkHandle = resourceMgr.getHandleById("void_silk");
-      if (voidSilkHandle.isValid()) {
-        const int voidSilkAmount =
-            std::max(1, swampTiles / 20); // Very rare swamp resource
-        WorldResourceManager::Instance().addResource(
-            m_currentWorld->worldId, voidSilkHandle, voidSilkAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} void silk to world", voidSilkAmount));
-      }
+      spawnHarvestablesInBiome(voidSilkHandle, HammerEngine::Biome::SWAMP,
+                               std::max(1, swampTiles / 60), 1, 1, 200.0f);
     }
 
-    // High elevation bonuses
+    // High elevation resources
     if (highElevationTiles > 0) {
       auto stoneHandle = resourceMgr.getHandleById("enchanted_stone");
-      if (stoneHandle.isValid()) {
-        const int stoneAmount =
-            highElevationTiles / 5; // Building materials from high areas
-        WorldResourceManager::Instance().addResource(m_currentWorld->worldId,
-                                                     stoneHandle, stoneAmount);
-        WORLD_MANAGER_DEBUG(
-            std::format("Added {} enchanted stone to world", stoneAmount));
-      }
-    }
-
-    // Energy resources based on world size
-    auto arcaneEnergyHandle = resourceMgr.getHandleById("arcane_energy");
-    if (arcaneEnergyHandle.isValid()) {
-      const int energyAmount = totalTiles * 2; // Abundant energy resource
-      WorldResourceManager::Instance().addResource(
-          m_currentWorld->worldId, arcaneEnergyHandle, energyAmount);
-      WORLD_MANAGER_DEBUG(
-          std::format("Added {} arcane energy to world", energyAmount));
+      spawnHarvestablesAtElevation(stoneHandle, 0.7f,
+                                   std::max(1, highElevationTiles / 30),
+                                   1, 3, 90.0f);
     }
 
     WORLD_MANAGER_INFO(std::format(
-        "World resource initialization completed for {} ({} tiles processed)",
+        "World harvestable initialization completed for {} ({} tiles processed)",
         m_currentWorld->worldId, totalTiles));
 
   } catch (const std::exception &ex) {

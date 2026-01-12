@@ -54,6 +54,13 @@
 
 // Forward declarations - Entity and AnimationConfig now included via Entity.hpp
 
+// ============================================================================
+// CONSTANTS
+// ============================================================================
+
+/// Invalid inventory index constant (defined early for use in struct defaults)
+static constexpr uint32_t INVALID_INVENTORY_INDEX = std::numeric_limits<uint32_t>::max();
+
 /**
  * @brief Transform data for entity movement (32 bytes)
  */
@@ -222,12 +229,50 @@ struct ProjectileData {
 /**
  * @brief Container data for Container entities (chests, barrels)
  */
+/**
+ * @brief Container types for chests, barrels, corpses, etc.
+ */
+enum class ContainerType : uint8_t {
+    Chest = 0,
+    Barrel = 1,
+    Corpse = 2,
+    Crate = 3,
+    COUNT
+};
+
+/**
+ * @brief Container data for Container entities (chests, barrels)
+ */
 struct ContainerData {
-    uint32_t inventoryId{0};    // Reference to inventory storage
+    uint32_t inventoryIndex{INVALID_INVENTORY_INDEX};  // EDM inventory index
     uint16_t maxSlots{20};
-    uint8_t containerType{0};   // Chest, Barrel, Corpse
-    uint8_t lockLevel{0};       // 0 = unlocked
-    bool isOpen{false};
+    uint8_t containerType{0};   // ContainerType enum value
+    uint8_t lockLevel{0};       // 0 = unlocked, 1-10 = lock difficulty
+
+    // Container state flags
+    static constexpr uint8_t FLAG_IS_OPEN = 0x01;
+    static constexpr uint8_t FLAG_IS_LOCKED = 0x02;
+    static constexpr uint8_t FLAG_WAS_LOOTED = 0x04;
+    uint8_t flags{0};
+
+    [[nodiscard]] bool isOpen() const noexcept { return flags & FLAG_IS_OPEN; }
+    [[nodiscard]] bool isLocked() const noexcept { return flags & FLAG_IS_LOCKED; }
+    [[nodiscard]] bool wasLooted() const noexcept { return flags & FLAG_WAS_LOOTED; }
+
+    void setOpen(bool v) noexcept {
+        if (v) flags |= FLAG_IS_OPEN;
+        else flags &= ~FLAG_IS_OPEN;
+    }
+
+    void setLocked(bool v) noexcept {
+        if (v) flags |= FLAG_IS_LOCKED;
+        else flags &= ~FLAG_IS_LOCKED;
+    }
+
+    void setLooted(bool v) noexcept {
+        if (v) flags |= FLAG_WAS_LOOTED;
+        else flags &= ~FLAG_WAS_LOOTED;
+    }
 };
 
 /**
@@ -241,6 +286,91 @@ struct HarvestableData {
     float currentRespawn{0.0f}; // Time remaining
     uint8_t harvestType{0};     // Mining, Chopping, Gathering
     bool isDepleted{false};
+};
+
+// ============================================================================
+// INVENTORY DATA STRUCTURES
+// ============================================================================
+
+/**
+ * @brief Single inventory slot data (12 bytes)
+ *
+ * Compact slot for inventory storage. ResourceHandle provides type-safe
+ * resource identification via ResourceTemplateManager.
+ */
+struct InventorySlotData {
+    HammerEngine::ResourceHandle resourceHandle;  // 8 bytes: Type-safe resource reference (6 + padding)
+    int16_t quantity{0};                          // 2 bytes: Stack quantity
+    int16_t _pad{0};                              // 2 bytes: Padding for alignment
+
+    [[nodiscard]] bool isEmpty() const noexcept { return quantity <= 0 || !resourceHandle.isValid(); }
+    void clear() noexcept { resourceHandle = HammerEngine::ResourceHandle{}; quantity = 0; _pad = 0; }
+};
+
+// InventorySlotData is ~12 bytes (ResourceHandle 8 + quantity 2 + pad 2)
+
+/**
+ * @brief Inventory data with inline slots (128 bytes, 2 cache lines)
+ *
+ * Stores up to INLINE_SLOT_COUNT slots inline. Larger inventories use
+ * InventoryOverflow for additional slots beyond the inline capacity.
+ *
+ * Design: Player has 50 slots (8 inline + 42 overflow), NPC loot containers
+ * have fewer slots and often fit entirely inline.
+ */
+struct InventoryData {
+    static constexpr size_t INLINE_SLOT_COUNT = 8;
+
+    // Flags for inventory state
+    static constexpr uint8_t FLAG_VALID = 0x01;         // Slot is in use
+    static constexpr uint8_t FLAG_WORLD_TRACKED = 0x02; // Registered with WorldResourceManager
+    static constexpr uint8_t FLAG_DIRTY = 0x04;         // Needs cache rebuild
+
+    InventorySlotData slots[INLINE_SLOT_COUNT];   // 96 bytes: Inline slot storage (8 * 12)
+    uint32_t overflowId{0};                       // 4 bytes: ID into overflow map (0 = none)
+    uint16_t maxSlots{INLINE_SLOT_COUNT};         // 2 bytes: Max slots for this inventory
+    uint16_t usedSlots{0};                        // 2 bytes: Current used slot count
+    uint8_t flags{0};                             // 1 byte: State flags
+    uint8_t ownerKind{0};                         // 1 byte: EntityKind of owner (for debugging)
+    uint8_t _padding[22]{};                       // 22 bytes: Pad to 128 bytes
+
+    [[nodiscard]] bool isValid() const noexcept { return flags & FLAG_VALID; }
+    [[nodiscard]] bool isWorldTracked() const noexcept { return flags & FLAG_WORLD_TRACKED; }
+    [[nodiscard]] bool needsOverflow() const noexcept { return maxSlots > INLINE_SLOT_COUNT; }
+
+    void setValid(bool v) noexcept {
+        if (v) flags |= FLAG_VALID;
+        else flags &= ~FLAG_VALID;
+    }
+
+    void setWorldTracked(bool v) noexcept {
+        if (v) flags |= FLAG_WORLD_TRACKED;
+        else flags &= ~FLAG_WORLD_TRACKED;
+    }
+
+    void clear() noexcept {
+        for (auto& slot : slots) slot.clear();
+        overflowId = 0;
+        maxSlots = INLINE_SLOT_COUNT;
+        usedSlots = 0;
+        flags = 0;
+        ownerKind = 0;
+    }
+};
+
+// InventoryData target: ~128 bytes (may vary with compiler padding)
+
+/**
+ * @brief Overflow storage for large inventories
+ *
+ * When an inventory needs more than INLINE_SLOT_COUNT (12) slots,
+ * additional slots are stored here. The overflowId in InventoryData
+ * maps to an entry in EntityDataManager::m_inventoryOverflow.
+ */
+struct InventoryOverflow {
+    std::vector<InventorySlotData> extraSlots;  // Slots beyond inline capacity
+
+    void clear() noexcept { extraSlots.clear(); }
 };
 
 /**
@@ -309,6 +439,92 @@ struct NPCTypeInfo {
     std::string textureID;        // Texture key for TextureManager lookup
     AnimationConfig idleAnim;     // Idle animation config
     AnimationConfig moveAnim;     // Move animation config
+};
+
+// ============================================================================
+// RESOURCE RENDER DATA STRUCTURES
+// ============================================================================
+
+/**
+ * @brief Render data for dropped items (bobbing animation)
+ *
+ * Stores rendering state for DroppedItem entities.
+ * Indexed by typeLocalIndex in EntityHotData.
+ */
+struct ItemRenderData {
+    SDL_Texture* cachedTexture{nullptr};  // Cached from ResourceTemplateManager
+    uint16_t frameWidth{32};              // Single frame width
+    uint16_t frameHeight{32};             // Single frame height
+    uint16_t animSpeedMs{100};            // Milliseconds per frame
+    uint8_t currentFrame{0};              // Current animation frame
+    uint8_t numFrames{1};                 // Total animation frames
+    float animTimer{0.0f};                // Animation accumulator
+    float bobPhase{0.0f};                 // Sine-wave bob phase (0-2PI)
+    float bobAmplitude{3.0f};             // Vertical bob amplitude in pixels
+
+    void clear() noexcept {
+        cachedTexture = nullptr;
+        frameWidth = 32;
+        frameHeight = 32;
+        animSpeedMs = 100;
+        currentFrame = 0;
+        numFrames = 1;
+        animTimer = 0.0f;
+        bobPhase = 0.0f;
+        bobAmplitude = 3.0f;
+    }
+};
+
+/**
+ * @brief Render data for containers (chests, barrels)
+ *
+ * Supports open/closed states with different textures.
+ * Indexed by typeLocalIndex in EntityHotData.
+ */
+struct ContainerRenderData {
+    SDL_Texture* closedTexture{nullptr};  // Texture when closed
+    SDL_Texture* openTexture{nullptr};    // Texture when open (optional)
+    uint16_t frameWidth{32};              // Sprite width
+    uint16_t frameHeight{32};             // Sprite height
+    uint8_t currentFrame{0};              // For animated open/close
+    uint8_t numFrames{1};                 // Animation frames
+    float animTimer{0.0f};                // Animation accumulator
+
+    void clear() noexcept {
+        closedTexture = nullptr;
+        openTexture = nullptr;
+        frameWidth = 32;
+        frameHeight = 32;
+        currentFrame = 0;
+        numFrames = 1;
+        animTimer = 0.0f;
+    }
+};
+
+/**
+ * @brief Render data for harvestable resources (trees, ore nodes)
+ *
+ * Supports normal/depleted states with different textures.
+ * Indexed by typeLocalIndex in EntityHotData.
+ */
+struct HarvestableRenderData {
+    SDL_Texture* normalTexture{nullptr};    // Texture when available
+    SDL_Texture* depletedTexture{nullptr};  // Texture when harvested (optional)
+    uint16_t frameWidth{32};                // Sprite width
+    uint16_t frameHeight{32};               // Sprite height
+    uint8_t currentFrame{0};                // Animation frame
+    uint8_t numFrames{1};                   // Animation frames (e.g., swaying tree)
+    float animTimer{0.0f};                  // Animation accumulator
+
+    void clear() noexcept {
+        normalTexture = nullptr;
+        depletedTexture = nullptr;
+        frameWidth = 32;
+        frameHeight = 32;
+        currentFrame = 0;
+        numFrames = 1;
+        animTimer = 0.0f;
+    }
 };
 
 /**
@@ -731,11 +947,63 @@ public:
      * @param position World position
      * @param resourceHandle Item template reference
      * @param quantity Stack size
+     * @param worldId World to register with (empty = use active world from WRM)
      * @return Handle to the created entity
+     *
+     * Note: Auto-registers with WorldResourceManager for spatial queries.
+     *       Dropped items use WRM spatial index, not collision system.
      */
     EntityHandle createDroppedItem(const Vector2D& position,
                                    HammerEngine::ResourceHandle resourceHandle,
-                                   int quantity = 1);
+                                   int quantity = 1,
+                                   const std::string& worldId = "");
+
+    /**
+     * @brief Create a container entity with auto-inventory
+     * @param position World position
+     * @param containerType Type of container (Chest, Barrel, Corpse, Crate)
+     * @param maxSlots Maximum inventory slots (default 20)
+     * @param lockLevel Lock difficulty (0 = unlocked, 1-10 = requires skill)
+     * @param worldId World to register with (empty = use active world from WRM)
+     * @return Handle to the created entity
+     *
+     * Validation:
+     * - containerType must be valid
+     * - maxSlots must be > 0 and <= 100
+     * - lockLevel clamped to 0-10
+     *
+     * Auto-creates an inventory for the container via createInventory().
+     * Auto-registers inventory with WorldResourceManager.
+     */
+    EntityHandle createContainer(const Vector2D& position,
+                                 ContainerType containerType,
+                                 uint16_t maxSlots = 20,
+                                 uint8_t lockLevel = 0,
+                                 const std::string& worldId = "");
+
+    /**
+     * @brief Create a harvestable resource node
+     * @param position World position
+     * @param yieldResource Resource to yield when harvested
+     * @param yieldMin Minimum yield amount
+     * @param yieldMax Maximum yield amount
+     * @param respawnTime Seconds until respawn after depletion
+     * @param worldId World to register with (empty = use active world from WRM)
+     * @return Handle to the created entity
+     *
+     * Validation:
+     * - yieldResource must be valid
+     * - yieldMin/yieldMax must be positive and yieldMax >= yieldMin
+     * - respawnTime clamped to >= 0
+     *
+     * Auto-registers with WorldResourceManager for both registry and spatial queries.
+     */
+    EntityHandle createHarvestable(const Vector2D& position,
+                                   HammerEngine::ResourceHandle yieldResource,
+                                   int yieldMin = 1,
+                                   int yieldMax = 3,
+                                   float respawnTime = 60.0f,
+                                   const std::string& worldId = "");
 
     // ========================================================================
     // PHASE 1: REGISTRATION OF EXISTING ENTITIES (Parallel Storage)
@@ -851,6 +1119,148 @@ public:
     void processDestructionQueue();
 
     // ========================================================================
+    // INVENTORY MANAGEMENT
+    // ========================================================================
+
+    /**
+     * @brief Create a new inventory
+     * @param maxSlots Maximum number of slots (uses overflow for > INLINE_SLOT_COUNT)
+     * @param worldTracked If true, registers with WorldResourceManager for aggregate queries
+     * @return Inventory index, or INVALID_INVENTORY_INDEX on failure
+     *
+     * Validation:
+     * - maxSlots must be > 0 and <= 1000
+     * - Returns INVALID_INVENTORY_INDEX if allocation fails
+     */
+    uint32_t createInventory(uint16_t maxSlots, bool worldTracked = false);
+
+    /**
+     * @brief Destroy an inventory and release its resources
+     * @param inventoryIndex Index from createInventory()
+     *
+     * Clears overflow data if present, adds slot to free-list.
+     * If worldTracked, unregisters from WorldResourceManager.
+     */
+    void destroyInventory(uint32_t inventoryIndex);
+
+    /**
+     * @brief Add resources to an inventory (with stacking)
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @param quantity Amount to add (must be positive)
+     * @return true if added successfully, false on validation failure or full
+     *
+     * Validation:
+     * - inventoryIndex must be valid
+     * - handle must be valid and registered with ResourceTemplateManager
+     * - quantity must be positive
+     *
+     * Stacking: Tries to stack with existing slots of same type first,
+     * then fills empty slots. Respects maxStackSize from ResourceTemplateManager.
+     */
+    bool addToInventory(uint32_t inventoryIndex,
+                        HammerEngine::ResourceHandle handle,
+                        int quantity);
+
+    /**
+     * @brief Remove resources from an inventory
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @param quantity Amount to remove (must be positive)
+     * @return true if removed successfully, false if insufficient quantity
+     *
+     * Removes from slots in order until quantity is satisfied.
+     * Clears empty slots for reuse.
+     */
+    bool removeFromInventory(uint32_t inventoryIndex,
+                             HammerEngine::ResourceHandle handle,
+                             int quantity);
+
+    /**
+     * @brief Get total quantity of a resource in an inventory
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @return Total quantity across all slots, or 0 if not found/invalid
+     */
+    [[nodiscard]] int getInventoryQuantity(uint32_t inventoryIndex,
+                                           HammerEngine::ResourceHandle handle) const;
+
+    /**
+     * @brief Check if an inventory contains at least the specified quantity
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @param quantity Required amount
+     * @return true if inventory contains >= quantity
+     */
+    [[nodiscard]] bool hasInInventory(uint32_t inventoryIndex,
+                                      HammerEngine::ResourceHandle handle,
+                                      int quantity) const;
+
+    /**
+     * @brief Get all resources in an inventory as a map
+     * @param inventoryIndex Target inventory
+     * @return Map of resource handle to total quantity
+     *
+     * Iterates through all slots (inline and overflow) and sums quantities
+     * by resource type. Returns empty map for invalid inventory.
+     */
+    [[nodiscard]] std::unordered_map<HammerEngine::ResourceHandle, int>
+    getInventoryResources(uint32_t inventoryIndex) const;
+
+    /**
+     * @brief Get inventory data by index
+     * @param inventoryIndex Target inventory
+     * @return Reference to inventory data
+     */
+    [[nodiscard]] InventoryData& getInventoryData(uint32_t inventoryIndex);
+    [[nodiscard]] const InventoryData& getInventoryData(uint32_t inventoryIndex) const;
+
+    /**
+     * @brief Get overflow data for large inventories
+     * @param overflowId ID from InventoryData::overflowId
+     * @return Pointer to overflow data, or nullptr if not found
+     */
+    [[nodiscard]] InventoryOverflow* getInventoryOverflow(uint32_t overflowId);
+    [[nodiscard]] const InventoryOverflow* getInventoryOverflow(uint32_t overflowId) const;
+
+    /**
+     * @brief Check if inventory index is valid
+     */
+    [[nodiscard]] bool isValidInventoryIndex(uint32_t inventoryIndex) const noexcept {
+        return inventoryIndex != INVALID_INVENTORY_INDEX &&
+               inventoryIndex < m_inventoryData.size() &&
+               m_inventoryData[inventoryIndex].isValid();
+    }
+
+    // ========================================================================
+    // RESOURCE RENDER DATA ACCESS
+    // ========================================================================
+
+    /**
+     * @brief Get item render data by type index
+     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
+     * @return Reference to item render data
+     */
+    [[nodiscard]] ItemRenderData& getItemRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const ItemRenderData& getItemRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
+
+    /**
+     * @brief Get container render data by type index
+     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
+     * @return Reference to container render data
+     */
+    [[nodiscard]] ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const ContainerRenderData& getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
+
+    /**
+     * @brief Get harvestable render data by type index
+     * @param typeLocalIndex Index from EntityHotData::typeLocalIndex
+     * @return Reference to harvestable render data
+     */
+    [[nodiscard]] HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex);
+    [[nodiscard]] const HarvestableRenderData& getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const;
+
+    // ========================================================================
     // HANDLE VALIDATION
     // ========================================================================
 
@@ -960,9 +1370,13 @@ public:
 
     [[nodiscard]] ContainerData& getContainerData(EntityHandle handle);
     [[nodiscard]] const ContainerData& getContainerData(EntityHandle handle) const;
+    [[nodiscard]] ContainerData& getContainerData(uint32_t typeLocalIndex);
+    [[nodiscard]] const ContainerData& getContainerData(uint32_t typeLocalIndex) const;
 
     [[nodiscard]] HarvestableData& getHarvestableData(EntityHandle handle);
     [[nodiscard]] const HarvestableData& getHarvestableData(EntityHandle handle) const;
+    [[nodiscard]] HarvestableData& getHarvestableData(uint32_t typeLocalIndex);
+    [[nodiscard]] const HarvestableData& getHarvestableData(uint32_t typeLocalIndex) const;
 
     [[nodiscard]] AreaEffectData& getAreaEffectData(EntityHandle handle);
     [[nodiscard]] const AreaEffectData& getAreaEffectData(EntityHandle handle) const;
@@ -1260,6 +1674,16 @@ private:
     std::vector<HarvestableData> m_harvestableData;  // Harvestable
     std::vector<AreaEffectData> m_areaEffectData;    // AreaEffect
     std::vector<NPCRenderData> m_npcRenderData;      // NPC render data (same index as CharacterData for NPCs)
+    std::vector<ItemRenderData> m_itemRenderData;    // DroppedItem render data (same index as ItemData)
+    std::vector<ContainerRenderData> m_containerRenderData;  // Container render data
+    std::vector<HarvestableRenderData> m_harvestableRenderData;  // Harvestable render data
+
+    // Inventory data (indexed by inventory index from createInventory())
+    std::vector<InventoryData> m_inventoryData;
+    std::unordered_map<uint32_t, InventoryOverflow> m_inventoryOverflow;  // overflowId -> overflow data
+    std::vector<uint32_t> m_freeInventorySlots;                           // Free-list for inventory reuse
+    uint32_t m_nextOverflowId{1};                                         // Next overflow ID (0 = none)
+    mutable std::mutex m_inventoryMutex;                                  // Thread safety for inventory ops
 
     // Path data (indexed by edmIndex, sparse - grows lazily for AI entities)
     std::vector<PathData> m_pathData;
@@ -1303,6 +1727,16 @@ private:
     void markAllKindsDirty() {
         m_kindIndicesDirty.fill(true);
     }
+
+    /**
+     * @brief Internal: Get inventory quantity while already holding m_inventoryMutex
+     * @param inventoryIndex Target inventory
+     * @param handle Resource type handle
+     * @return Total quantity across all slots
+     * @note MUST be called while holding m_inventoryMutex lock
+     */
+    [[nodiscard]] int getInventoryQuantityLocked(uint32_t inventoryIndex,
+                                                  HammerEngine::ResourceHandle handle) const;
 
     // Destruction queue and processing buffer (avoid per-frame allocation)
     std::vector<EntityHandle> m_destructionQueue;
@@ -1430,6 +1864,58 @@ inline NPCRenderData& EntityDataManager::getNPCRenderDataByTypeIndex(uint32_t ty
 inline const NPCRenderData& EntityDataManager::getNPCRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
     assert(typeLocalIndex < m_npcRenderData.size() && "NPC render data type index out of bounds");
     return m_npcRenderData[typeLocalIndex];
+}
+
+// Resource render data accessors - O(1) access by type index
+inline ItemRenderData& EntityDataManager::getItemRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_itemRenderData.size() && "Item render data type index out of bounds");
+    return m_itemRenderData[typeLocalIndex];
+}
+
+inline const ItemRenderData& EntityDataManager::getItemRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_itemRenderData.size() && "Item render data type index out of bounds");
+    return m_itemRenderData[typeLocalIndex];
+}
+
+inline ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
+    return m_containerRenderData[typeLocalIndex];
+}
+
+inline const ContainerRenderData& EntityDataManager::getContainerRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_containerRenderData.size() && "Container render data type index out of bounds");
+    return m_containerRenderData[typeLocalIndex];
+}
+
+inline HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
+    return m_harvestableRenderData[typeLocalIndex];
+}
+
+inline const HarvestableRenderData& EntityDataManager::getHarvestableRenderDataByTypeIndex(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_harvestableRenderData.size() && "Harvestable render data type index out of bounds");
+    return m_harvestableRenderData[typeLocalIndex];
+}
+
+// Container/Harvestable data accessors by type index - O(1) access for batch processing
+inline ContainerData& EntityDataManager::getContainerData(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_containerData.size() && "Container type index out of bounds");
+    return m_containerData[typeLocalIndex];
+}
+
+inline const ContainerData& EntityDataManager::getContainerData(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_containerData.size() && "Container type index out of bounds");
+    return m_containerData[typeLocalIndex];
+}
+
+inline HarvestableData& EntityDataManager::getHarvestableData(uint32_t typeLocalIndex) {
+    assert(typeLocalIndex < m_harvestableData.size() && "Harvestable type index out of bounds");
+    return m_harvestableData[typeLocalIndex];
+}
+
+inline const HarvestableData& EntityDataManager::getHarvestableData(uint32_t typeLocalIndex) const {
+    assert(typeLocalIndex < m_harvestableData.size() && "Harvestable type index out of bounds");
+    return m_harvestableData[typeLocalIndex];
 }
 
 #endif // ENTITY_DATA_MANAGER_HPP

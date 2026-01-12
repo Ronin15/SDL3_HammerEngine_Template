@@ -262,21 +262,20 @@ void Player::clean() {
   // Clean up any resources
   PLAYER_DEBUG("Cleaning up player resources");
 
-  // Clean up inventory
-  if (m_inventory) {
-    m_inventory->clearInventory();
+  // Destroy EDM inventory
+  auto &edm = EntityDataManager::Instance();
+  if (edm.isInitialized() && m_inventoryIndex != INVALID_INVENTORY_INDEX) {
+    edm.destroyInventory(m_inventoryIndex);
+    m_inventoryIndex = INVALID_INVENTORY_INDEX;
   }
 
   // Clear equipped items
   m_equippedItems.clear();
 
-  // Unregister from EntityDataManager (Phase 1 parallel storage)
-  auto &edm = EntityDataManager::Instance();
+  // Unregister from EntityDataManager
   if (edm.isInitialized()) {
     edm.unregisterEntity(getID());
   }
-  // EDM-CENTRIC: No collision body in m_storage to remove
-  // Entity removal from EDM handles all cleanup
 }
 
 void Player::ensurePhysicsBodyRegistered() {
@@ -312,15 +311,14 @@ void Player::setPosition(const Vector2D &position) {
 }
 
 void Player::initializeInventory() {
-  // Create inventory with 50 slots (can be made configurable)
-  m_inventory = std::make_unique<InventoryComponent>(this, 50);
+  // Create EDM inventory with 50 slots
+  auto &edm = EntityDataManager::Instance();
+  m_inventoryIndex = edm.createInventory(50, true);  // 50 slots, world-tracked
 
-  // Set up resource change callback
-  m_inventory->setResourceChangeCallback(
-      [this](HammerEngine::ResourceHandle resourceHandle, int oldQuantity,
-             int newQuantity) {
-        onResourceChanged(resourceHandle, oldQuantity, newQuantity);
-      });
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    PLAYER_ERROR("Failed to create player inventory");
+    return;
+  }
 
   // Initialize equipment slots with invalid handles
   m_equippedItems["weapon"] = HammerEngine::ResourceHandle{};
@@ -336,20 +334,16 @@ void Player::initializeInventory() {
   const auto &templateManager = ResourceTemplateManager::Instance();
 
   auto goldResource = templateManager.getResourceByName("gold");
-  if (goldResource && m_inventory) {
-    m_inventory->addResource(goldResource->getHandle(), 100);
+  if (goldResource) {
+    edm.addToInventory(m_inventoryIndex, goldResource->getHandle(), 100);
   }
 
-  auto healthPotionResource =
-      templateManager.getResourceByName("health_potion");
-  if (healthPotionResource && m_inventory) {
-    m_inventory->addResource(healthPotionResource->getHandle(), 3);
+  auto healthPotionResource = templateManager.getResourceByName("health_potion");
+  if (healthPotionResource) {
+    edm.addToInventory(m_inventoryIndex, healthPotionResource->getHandle(), 3);
   }
-  // Note: mana_potion doesn't exist in default resources
 
-  PLAYER_DEBUG_IF(m_inventory,
-                  std::format("Player inventory initialized with {} slots",
-                              m_inventory->getMaxSlots()));
+  PLAYER_DEBUG(std::format("Player EDM inventory initialized with index {}", m_inventoryIndex));
 }
 
 void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
@@ -365,12 +359,52 @@ void Player::onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
       resourceId, oldQuantity, newQuantity));
 }
 
-// Resource management methods - removed, use getInventory() directly with
-// ResourceHandle
+// Resource management - delegates to EntityDataManager
+bool Player::addToInventory(HammerEngine::ResourceHandle handle, int quantity) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    PLAYER_WARN("Player::addToInventory - Inventory not initialized");
+    return false;
+  }
+  int oldQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+  bool result = EntityDataManager::Instance().addToInventory(m_inventoryIndex, handle, quantity);
+  if (result) {
+    int newQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+    onResourceChanged(handle, oldQty, newQty);
+  }
+  return result;
+}
+
+bool Player::removeFromInventory(HammerEngine::ResourceHandle handle, int quantity) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    PLAYER_WARN("Player::removeFromInventory - Inventory not initialized");
+    return false;
+  }
+  int oldQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+  bool result = EntityDataManager::Instance().removeFromInventory(m_inventoryIndex, handle, quantity);
+  if (result) {
+    int newQty = EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+    onResourceChanged(handle, oldQty, newQty);
+  }
+  return result;
+}
+
+int Player::getInventoryQuantity(HammerEngine::ResourceHandle handle) const {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    return 0;
+  }
+  return EntityDataManager::Instance().getInventoryQuantity(m_inventoryIndex, handle);
+}
+
+bool Player::hasInInventory(HammerEngine::ResourceHandle handle, int quantity) const {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
+    return false;
+  }
+  return EntityDataManager::Instance().hasInInventory(m_inventoryIndex, handle, quantity);
+}
 
 // Equipment management
 bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
-  if (!m_inventory) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::equipItem - Inventory not initialized");
     return false;
   }
@@ -380,7 +414,8 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
     return false;
   }
 
-  if (!m_inventory->hasResource(itemHandle, 1)) {
+  auto &edm = EntityDataManager::Instance();
+  if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
     PLAYER_WARN("Player::equipItem - Item not available (handle: " +
                 itemHandle.toString() + ")");
     return false;
@@ -412,7 +447,7 @@ bool Player::equipItem(HammerEngine::ResourceHandle itemHandle) {
   }
 
   // Remove item from inventory and equip it
-  if (m_inventory->removeResource(itemHandle, 1)) {
+  if (edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
     m_equippedItems[slotName] = itemHandle;
     PLAYER_DEBUG(std::format("Equipped item (handle: {}) in slot: {}",
                              itemHandle.toString(), slotName));
@@ -438,7 +473,8 @@ bool Player::unequipItem(const std::string &slotName) {
   HammerEngine::ResourceHandle itemHandle = it->second;
 
   // Try to add back to inventory
-  if (m_inventory->addResource(itemHandle, 1)) {
+  auto &edm = EntityDataManager::Instance();
+  if (edm.addToInventory(m_inventoryIndex, itemHandle, 1)) {
     it->second = HammerEngine::ResourceHandle{}; // Set to invalid handle
     PLAYER_DEBUG(std::format("Unequipped item (handle: {}) from slot: {}",
                              itemHandle.toString(), slotName));
@@ -478,7 +514,7 @@ bool Player::craftItem(const std::string &recipeId) {
 }
 
 bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
-  if (!m_inventory) {
+  if (m_inventoryIndex == INVALID_INVENTORY_INDEX) {
     PLAYER_WARN("Player::consumeItem - Inventory not initialized");
     return false;
   }
@@ -488,7 +524,8 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
     return false;
   }
 
-  if (!m_inventory->hasResource(itemHandle, 1)) {
+  auto &edm = EntityDataManager::Instance();
+  if (!edm.hasInInventory(m_inventoryIndex, itemHandle, 1)) {
     PLAYER_WARN("Player::consumeItem - Item not available (handle: " +
                 itemHandle.toString() + ")");
     return false;
@@ -503,7 +540,7 @@ bool Player::consumeItem(HammerEngine::ResourceHandle itemHandle) {
   }
 
   // Remove the item and apply its effects
-  if (m_inventory->removeResource(itemHandle, 1)) {
+  if (edm.removeFromInventory(m_inventoryIndex, itemHandle, 1)) {
     PLAYER_DEBUG(
         std::format("Consumed item (handle: {})", itemHandle.toString()));
     // Here you would apply the item's effects (healing, buffs, etc.)

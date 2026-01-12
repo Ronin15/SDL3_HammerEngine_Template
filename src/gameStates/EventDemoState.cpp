@@ -266,13 +266,15 @@ bool EventDemoState::enter() {
     // --- DATA BINDING SETUP ---
     // Bind the inventory capacity label to a function that gets the data
     ui.bindText("inventory_status", [this]() -> std::string {
-      if (!m_player || !m_player->getInventory()) {
+      if (!m_player) {
         return "Capacity: 0/0";
       }
-      const auto *inventory = m_player->getInventory();
-      int used = inventory->getUsedSlots();
-      int max = inventory->getMaxSlots();
-      return std::format("Capacity: {}/{}", used, max);
+      uint32_t invIdx = m_player->getInventoryIndex();
+      if (invIdx == INVALID_INVENTORY_INDEX) {
+        return "Capacity: 0/0";
+      }
+      const auto& inv = EntityDataManager::Instance().getInventoryData(invIdx);
+      return std::format("Capacity: {}/{}", inv.usedSlots, inv.maxSlots);
     });
 
     // Bind the inventory list - populates provided buffers (zero-allocation
@@ -281,13 +283,18 @@ bool EventDemoState::enter() {
         "inventory_list",
         [this](std::vector<std::string> &items,
                std::vector<std::pair<std::string, int>> &sortedResources) {
-          if (!m_player || !m_player->getInventory()) {
+          if (!m_player) {
             items.push_back("(Empty)");
             return;
           }
 
-          const auto *inventory = m_player->getInventory();
-          auto allResources = inventory->getAllResources();
+          uint32_t invIdx = m_player->getInventoryIndex();
+          if (invIdx == INVALID_INVENTORY_INDEX) {
+            items.push_back("(Empty)");
+            return;
+          }
+
+          auto allResources = EntityDataManager::Instance().getInventoryResources(invIdx);
 
           if (allResources.empty()) {
             items.push_back("(Empty)");
@@ -1193,13 +1200,19 @@ void EventDemoState::triggerParticleEffectDemo() {
 }
 
 void EventDemoState::triggerResourceDemo() {
-  if (!m_player || !m_player->getInventory()) {
+  if (!m_player) {
+    addLogEntry("Resource: no player");
+    return;
+  }
+
+  uint32_t invIdx = m_player->getInventoryIndex();
+  if (invIdx == INVALID_INVENTORY_INDEX) {
     addLogEntry("Resource: no inventory");
     return;
   }
 
   // Cache manager references for better performance
-  auto *inventory = m_player->getInventory();
+  auto& edm = EntityDataManager::Instance();
   const auto &templateManager = ResourceTemplateManager::Instance();
 
   if (!templateManager.isInitialized()) {
@@ -1307,13 +1320,13 @@ void EventDemoState::triggerResourceDemo() {
   // Use the discovered resource
   auto handle = selectedResource->getHandle();
   std::string resourceName = selectedResource->getName();
-  int currentQuantity = inventory->getResourceQuantity(handle);
+  int currentQuantity = edm.getInventoryQuantity(invIdx, handle);
 
   if (m_resourceIsAdding) {
     // Add resources to player inventory
-    bool success = inventory->addResource(handle, quantity);
+    bool success = edm.addToInventory(invIdx, handle, quantity);
     if (success) {
-      int newQuantity = inventory->getResourceQuantity(handle);
+      int newQuantity = edm.getInventoryQuantity(invIdx, handle);
       addLogEntry(std::format("+{} {} ({} total)", quantity, resourceName,
                               newQuantity));
 
@@ -1328,9 +1341,9 @@ void EventDemoState::triggerResourceDemo() {
     int removeQuantity = std::min(quantity, currentQuantity);
 
     if (removeQuantity > 0) {
-      bool success = inventory->removeResource(handle, removeQuantity);
+      bool success = edm.removeFromInventory(invIdx, handle, removeQuantity);
       if (success) {
-        int newQuantity = inventory->getResourceQuantity(handle);
+        int newQuantity = edm.getInventoryQuantity(invIdx, handle);
         addLogEntry(std::format("-{} {} ({} left)", removeQuantity,
                                 resourceName, newQuantity));
 

@@ -7,10 +7,9 @@
 #define PLAYER_HPP
 
 #include "entities/Entity.hpp"
-#include "entities/resources/InventoryComponent.hpp"
 #include "entities/EntityStateManager.hpp"
 #include "utils/ResourceHandle.hpp"
-#include <memory>
+#include <cstdint>
 #include <unordered_map>
 
 namespace HammerEngine { class Camera; }  // Forward declaration
@@ -63,11 +62,14 @@ public:
   // Movement speed accessor
   float getMovementSpeed() const { return m_movementSpeed; }
 
-  // Inventory management
-  InventoryComponent *getInventory() { return m_inventory.get(); }
-  const InventoryComponent *getInventory() const { return m_inventory.get(); }
+  // Inventory management - uses EDM inventory directly
+  [[nodiscard]] uint32_t getInventoryIndex() const { return m_inventoryIndex; }
 
-  // Player-specific resource operations (use ResourceHandle via getInventory())
+  // Resource operations (delegate to EntityDataManager)
+  bool addToInventory(HammerEngine::ResourceHandle handle, int quantity);
+  bool removeFromInventory(HammerEngine::ResourceHandle handle, int quantity);
+  [[nodiscard]] int getInventoryQuantity(HammerEngine::ResourceHandle handle) const;
+  [[nodiscard]] bool hasInInventory(HammerEngine::ResourceHandle handle, int quantity = 1) const;
 
   // Equipment management
   bool equipItem(HammerEngine::ResourceHandle itemHandle);
@@ -126,7 +128,7 @@ private:
   void onResourceChanged(HammerEngine::ResourceHandle resourceHandle,
                          int oldQuantity, int newQuantity);
   EntityStateManager m_stateManager;
-  std::unique_ptr<InventoryComponent> m_inventory; // Player inventory
+  uint32_t m_inventoryIndex{0};       // EDM inventory index (0 = not created yet)
   int m_frameWidth{0};                // Width of a single animation frame
   int m_spriteSheetRows{0};           // Number of rows in the sprite sheet
   SDL_FlipMode m_flip{SDL_FLIP_NONE}; // Default flip direction
