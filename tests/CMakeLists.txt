@@ -103,7 +103,6 @@ set(MOCK_TESTS
 
 # Tests that need special mock combinations
 set(INVENTORY_TESTS
-    inventory_component_tests
     resource_integration_tests
     resource_architecture_tests
 )
@@ -263,9 +262,7 @@ endforeach()
 
 # Create inventory tests (need specific mock combination)
 foreach(test_name ${INVENTORY_TESTS})
-    if(${test_name} STREQUAL "inventory_component_tests")
-        set(test_source "resources/InventoryComponentTests.cpp")
-    elseif(${test_name} STREQUAL "resource_integration_tests")
+    if(${test_name} STREQUAL "resource_integration_tests")
         set(test_source "resources/ResourceIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "resource_architecture_tests")
         set(test_source "resources/ResourceArchitectureTests.cpp")

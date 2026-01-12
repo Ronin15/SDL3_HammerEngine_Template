@@ -159,6 +159,17 @@
       "iconTextureId": "iron_ore_icon"
     },
     {
+      "id": "gold_ore",
+      "name": "Gold Ore",
+      "category": "Material",
+      "type": "RawResource",
+      "description": "Precious gold ore that can be smelted into gold ingots or coins.",
+      "value": 50,
+      "maxStackSize": 100,
+      "consumable": false,
+      "iconTextureId": "gold_ore_icon"
+    },
+    {
       "id": "wood",
       "name": "Wood",
       "category": "Material",
