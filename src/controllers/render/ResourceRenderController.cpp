@@ -10,16 +10,15 @@
 #include <vector>
 
 void ResourceRenderController::update(float deltaTime) {
-    updateItemBobbing(deltaTime);
-    updateItemAnimation(deltaTime);
+    updateDroppedItemAnimations(deltaTime);
     updateContainerStates(deltaTime);
     updateHarvestableStates(deltaTime);
 }
 
-void ResourceRenderController::updateItemBobbing(float deltaTime) {
+void ResourceRenderController::updateDroppedItemAnimations(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
 
-    // Use getIndicesByKind for O(N) filtered iteration instead of O(total) with filtering
+    // Single iteration over DroppedItem indices for both bobbing and frame animation
     for (size_t idx : edm.getIndicesByKind(EntityKind::DroppedItem)) {
         const auto& hot = edm.getHotDataByIndex(idx);
         if (hot.tier != SimulationTier::Active) continue;  // Only update Active tier
@@ -31,26 +30,15 @@ void ResourceRenderController::updateItemBobbing(float deltaTime) {
         if (r.bobPhase >= TWO_PI) {
             r.bobPhase -= TWO_PI;
         }
-    }
-}
 
-void ResourceRenderController::updateItemAnimation(float deltaTime) {
-    auto& edm = EntityDataManager::Instance();
-
-    // Use getIndicesByKind for efficient filtered iteration
-    for (size_t idx : edm.getIndicesByKind(EntityKind::DroppedItem)) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.tier != SimulationTier::Active) continue;
-
-        auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
-
-        if (r.numFrames <= 1) continue;  // No animation needed
-
-        float speed = static_cast<float>(r.animSpeedMs) * 0.001f;
-        r.animTimer += deltaTime;
-        if (r.animTimer >= speed) {
-            r.currentFrame = (r.currentFrame + 1) % r.numFrames;
-            r.animTimer -= speed;
+        // Update frame animation (if multi-frame)
+        if (r.numFrames > 1) {
+            float speed = static_cast<float>(r.animSpeedMs) * 0.001f;
+            r.animTimer += deltaTime;
+            if (r.animTimer >= speed) {
+                r.currentFrame = (r.currentFrame + 1) % r.numFrames;
+                r.animTimer -= speed;
+            }
         }
     }
 }
@@ -87,10 +75,10 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, float 
         // Add bobbing offset
         float bobOffset = std::sin(r.bobPhase) * r.bobAmplitude;
 
-        // Calculate source rect (for animation frames)
+        // Source rect from pre-calculated atlas coords
         SDL_FRect srcRect = {
-            static_cast<float>(r.currentFrame * r.frameWidth),
-            0.0f,  // Items typically use single-row spritesheets
+            static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth),
+            static_cast<float>(r.atlasY),
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };

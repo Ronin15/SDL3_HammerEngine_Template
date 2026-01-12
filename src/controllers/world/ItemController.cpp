@@ -12,60 +12,8 @@
 #include <random>
 
 void ItemController::subscribe() {
-    // No event subscriptions needed currently
-    // Could subscribe to input events if we want controller to handle input directly
+    // No event subscriptions needed - purely on-demand queries
     ITEM_DEBUG("ItemController subscribed");
-}
-
-void ItemController::update(float /*deltaTime*/) {
-    auto player = mp_player.lock();
-    if (!player) {
-        m_closestItemIdx = INVALID_INDEX;
-        m_closestHarvestableIdx = INVALID_INDEX;
-        return;
-    }
-
-    auto& wrm = WorldResourceManager::Instance();
-    Vector2D playerPos = player->getPosition();
-
-    // Update closest item
-    if (!wrm.findClosestDroppedItem(playerPos, PICKUP_RADIUS, m_closestItemIdx)) {
-        m_closestItemIdx = INVALID_INDEX;
-    }
-
-    // Update closest harvestable
-    std::vector<size_t> harvestables;
-    harvestables.reserve(8);
-    if (wrm.queryHarvestablesInRadius(playerPos, HARVEST_RADIUS, harvestables) > 0) {
-        // Find closest non-depleted harvestable
-        auto& edm = EntityDataManager::Instance();
-        float closestDistSq = std::numeric_limits<float>::max();
-        m_closestHarvestableIdx = INVALID_INDEX;
-
-        for (size_t idx : harvestables) {
-            const auto& hot = edm.getHotDataByIndex(idx);
-            if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
-                continue;
-            }
-
-            const auto& harvestData = edm.getHarvestableData(hot.typeLocalIndex);
-            if (harvestData.isDepleted) {
-                continue;
-            }
-
-            const auto& pos = hot.transform.position;
-            float dx = pos.getX() - playerPos.getX();
-            float dy = pos.getY() - playerPos.getY();
-            float distSq = dx * dx + dy * dy;
-
-            if (distSq < closestDistSq) {
-                closestDistSq = distSq;
-                m_closestHarvestableIdx = idx;
-            }
-        }
-    } else {
-        m_closestHarvestableIdx = INVALID_INDEX;
-    }
 }
 
 bool ItemController::attemptPickup() {
@@ -79,7 +27,7 @@ bool ItemController::attemptPickup() {
 
     Vector2D playerPos = player->getPosition();
 
-    // Find closest item
+    // Find closest item on-demand
     size_t itemIdx;
     if (!wrm.findClosestDroppedItem(playerPos, PICKUP_RADIUS, itemIdx)) {
         return false;
@@ -120,9 +68,6 @@ bool ItemController::attemptPickup() {
 
     ITEM_INFO(std::format("Picked up {} x{}", itemData.resourceHandle.toString(), itemData.quantity));
 
-    // Clear cached index since item is gone
-    m_closestItemIdx = INVALID_INDEX;
-
     return true;
 }
 
@@ -132,16 +77,50 @@ bool ItemController::attemptHarvest() {
         return false;
     }
 
-    if (m_closestHarvestableIdx == INVALID_INDEX) {
+    auto& wrm = WorldResourceManager::Instance();
+    auto& edm = EntityDataManager::Instance();
+
+    Vector2D playerPos = player->getPosition();
+
+    // Query harvestables on-demand
+    std::vector<size_t> harvestables;
+    if (wrm.queryHarvestablesInRadius(playerPos, HARVEST_RADIUS, harvestables) == 0) {
         return false;
     }
 
-    auto& edm = EntityDataManager::Instance();
+    // Find closest non-depleted harvestable
+    float closestDistSq = std::numeric_limits<float>::max();
+    size_t closestIdx = std::numeric_limits<size_t>::max();
+
+    for (size_t idx : harvestables) {
+        const auto& hot = edm.getHotDataByIndex(idx);
+        if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
+            continue;
+        }
+
+        const auto& harvestData = edm.getHarvestableData(hot.typeLocalIndex);
+        if (harvestData.isDepleted) {
+            continue;
+        }
+
+        const auto& pos = hot.transform.position;
+        float dx = pos.getX() - playerPos.getX();
+        float dy = pos.getY() - playerPos.getY();
+        float distSq = dx * dx + dy * dy;
+
+        if (distSq < closestDistSq) {
+            closestDistSq = distSq;
+            closestIdx = idx;
+        }
+    }
+
+    if (closestIdx == std::numeric_limits<size_t>::max()) {
+        return false;
+    }
 
     // Validate harvestable still valid
-    const auto& hot = edm.getHotDataByIndex(m_closestHarvestableIdx);
+    const auto& hot = edm.getHotDataByIndex(closestIdx);
     if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
-        m_closestHarvestableIdx = INVALID_INDEX;
         return false;
     }
 
@@ -173,7 +152,6 @@ bool ItemController::attemptHarvest() {
         Vector2D spawnPos = hot.transform.position;
         spawnPos.setX(spawnPos.getX() + 16.0f);
 
-        auto& wrm = WorldResourceManager::Instance();
         const std::string& worldId = wrm.getActiveWorld();
 
         edm.createDroppedItem(spawnPos, harvestData.yieldResource, yield, worldId);
@@ -186,11 +164,5 @@ bool ItemController::attemptHarvest() {
     harvestData.isDepleted = true;
     harvestData.currentRespawn = harvestData.respawnTime;
 
-    m_closestHarvestableIdx = INVALID_INDEX;
-
     return true;
-}
-
-bool ItemController::hasNearbyInteractable() const {
-    return hasNearbyItem() || hasNearbyHarvestable();
 }

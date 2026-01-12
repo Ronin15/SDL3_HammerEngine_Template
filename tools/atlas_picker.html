@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Atlas Sprite Picker - HammerEngine</title>
+    <style>
+        body { font-family: monospace; background: #1a1a2e; color: #eee; margin: 20px; }
+        h1 { color: #0f9; }
+        .container { display: flex; gap: 20px; }
+        .atlas-wrapper { position: relative; border: 2px solid #333; overflow: auto; max-height: 80vh; }
+        #atlas { image-rendering: pixelated; cursor: crosshair; }
+        .selection { position: absolute; border: 2px solid #0f9; background: rgba(0,255,153,0.2); pointer-events: none; }
+        .panel { background: #252540; padding: 15px; border-radius: 8px; min-width: 350px; }
+        .coords { font-size: 14px; margin: 10px 0; }
+        .coords span { color: #0f9; }
+        #output { background: #1a1a2e; color: #0f9; border: 1px solid #333; padding: 10px; width: 100%; height: 150px; font-family: monospace; }
+        .zoom-controls { margin: 10px 0; }
+        .zoom-controls button { padding: 5px 15px; margin-right: 5px; cursor: pointer; }
+        .instructions { color: #888; font-size: 12px; margin-top: 15px; }
+        #resourceList { margin: 15px 0; }
+        #resourceList div { padding: 5px; cursor: pointer; border-radius: 4px; }
+        #resourceList div:hover { background: #333; }
+        #resourceList div.selected { background: #0f9; color: #000; }
+        .copy-btn { background: #0f9; color: #000; border: none; padding: 8px 16px; cursor: pointer; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <h1>Atlas Sprite Picker</h1>
+    <div class="container">
+        <div>
+            <div class="zoom-controls">
+                <button onclick="setZoom(1)">1x</button>
+                <button onclick="setZoom(2)">2x</button>
+                <button onclick="setZoom(4)">4x</button>
+                <button onclick="setZoom(8)">8x</button>
+            </div>
+            <div class="atlas-wrapper">
+                <img id="atlas" src="../res/img/atlas.png" onload="initAtlas()">
+                <div id="selection" class="selection" style="display:none;"></div>
+            </div>
+        </div>
+        <div class="panel">
+            <h3>Select Resource to Map:</h3>
+            <div id="resourceList"></div>
+
+            <div class="coords">
+                Position: <span id="posX">-</span>, <span id="posY">-</span><br>
+                Selection: <span id="selInfo">Click and drag to select</span>
+            </div>
+
+            <h3>JSON Output:</h3>
+            <textarea id="output" readonly></textarea>
+            <button class="copy-btn" onclick="copyOutput()">Copy to Clipboard</button>
+
+            <div class="instructions">
+                <p>Instructions:</p>
+                <ol>
+                    <li>Click a resource ID above</li>
+                    <li>Click and drag on atlas to select sprite region</li>
+                    <li>Copy JSON and paste into items.json</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const resourceIds = [
+            'magic_sword_world',
+            'dragon_armor_world',
+            'health_potion_world',
+            'mana_elixir_world',
+            'ancient_key_world',
+            'mysterious_artifact_world',
+            'mithril_ore_world',
+            'enchanted_wood_world',
+            'crystal_essence_world',
+            'dragon_gems_world',
+            'arcane_energy_world',
+            'item_placeholder'
+        ];
+
+        let zoom = 4;
+        let selecting = false;
+        let startX, startY;
+        let currentResource = null;
+        let mappings = {};
+
+        const atlas = document.getElementById('atlas');
+        const selection = document.getElementById('selection');
+        const output = document.getElementById('output');
+
+        function initAtlas() {
+            atlas.style.width = (atlas.naturalWidth * zoom) + 'px';
+
+            // Populate resource list
+            const list = document.getElementById('resourceList');
+            resourceIds.forEach(id => {
+                const div = document.createElement('div');
+                div.textContent = id;
+                div.onclick = () => selectResource(id);
+                list.appendChild(div);
+            });
+        }
+
+        function setZoom(z) {
+            zoom = z;
+            atlas.style.width = (atlas.naturalWidth * zoom) + 'px';
+        }
+
+        function selectResource(id) {
+            currentResource = id;
+            document.querySelectorAll('#resourceList div').forEach(d => d.classList.remove('selected'));
+            event.target.classList.add('selected');
+        }
+
+        atlas.addEventListener('mousedown', (e) => {
+            if (!currentResource) { alert('Select a resource first!'); return; }
+            selecting = true;
+            const rect = atlas.getBoundingClientRect();
+            startX = Math.floor((e.clientX - rect.left) / zoom);
+            startY = Math.floor((e.clientY - rect.top) / zoom);
+            selection.style.display = 'block';
+            updateSelection(e);
+        });
+
+        atlas.addEventListener('mousemove', (e) => {
+            const rect = atlas.getBoundingClientRect();
+            const x = Math.floor((e.clientX - rect.left) / zoom);
+            const y = Math.floor((e.clientY - rect.top) / zoom);
+            document.getElementById('posX').textContent = x;
+            document.getElementById('posY').textContent = y;
+
+            if (selecting) updateSelection(e);
+        });
+
+        function updateSelection(e) {
+            const rect = atlas.getBoundingClientRect();
+            const endX = Math.floor((e.clientX - rect.left) / zoom);
+            const endY = Math.floor((e.clientY - rect.top) / zoom);
+
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX) + 1;
+            const h = Math.abs(endY - startY) + 1;
+
+            selection.style.left = (x * zoom) + 'px';
+            selection.style.top = (y * zoom) + 'px';
+            selection.style.width = (w * zoom) + 'px';
+            selection.style.height = (h * zoom) + 'px';
+
+            document.getElementById('selInfo').textContent = `x:${x} y:${y} w:${w} h:${h}`;
+        }
+
+        document.addEventListener('mouseup', (e) => {
+            if (!selecting) return;
+            selecting = false;
+
+            const rect = atlas.getBoundingClientRect();
+            const endX = Math.floor((e.clientX - rect.left) / zoom);
+            const endY = Math.floor((e.clientY - rect.top) / zoom);
+
+            const x = Math.min(startX, endX);
+            const y = Math.min(startY, endY);
+            const w = Math.abs(endX - startX) + 1;
+            const h = Math.abs(endY - startY) + 1;
+
+            if (currentResource && w > 1 && h > 1) {
+                mappings[currentResource] = { x, y, w, h };
+                updateOutput();
+            }
+        });
+
+        function updateOutput() {
+            const json = JSON.stringify({ regions: mappings }, null, 2);
+            output.value = json;
+        }
+
+        function copyOutput() {
+            output.select();
+            document.execCommand('copy');
+            alert('Copied!');
+        }
+    </script>
+</body>
+</html>

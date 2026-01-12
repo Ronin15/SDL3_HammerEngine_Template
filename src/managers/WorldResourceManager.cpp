@@ -446,12 +446,21 @@ void WorldResourceManager::registerDroppedItem(size_t edmIndex, const Vector2D& 
         // Unregister from old world first
         auto& oldIndex = m_itemSpatialIndices[existingIt->second];
         oldIndex.remove(edmIndex);
+        // Update counter if unregistering from active world
+        if (existingIt->second == m_activeWorld) {
+            m_activeWorldItemCount.fetch_sub(1, std::memory_order_relaxed);
+        }
     }
 
     // Ensure world spatial index exists
     auto& spatialIndex = m_itemSpatialIndices[worldId];
     spatialIndex.insert(edmIndex, position);
     m_itemToWorld[edmIndex] = worldId;
+
+    // Update counter if registering to active world
+    if (worldId == m_activeWorld) {
+        m_activeWorldItemCount.fetch_add(1, std::memory_order_relaxed);
+    }
 
     WORLD_RESOURCE_DEBUG(std::format("Registered dropped item {} at ({:.1f}, {:.1f}) to world {}",
                                       edmIndex, position.getX(), position.getY(), worldId));
@@ -463,6 +472,11 @@ void WorldResourceManager::unregisterDroppedItem(size_t edmIndex) {
     auto it = m_itemToWorld.find(edmIndex);
     if (it == m_itemToWorld.end()) {
         return;  // Not registered
+    }
+
+    // Update counter if unregistering from active world
+    if (it->second == m_activeWorld) {
+        m_activeWorldItemCount.fetch_sub(1, std::memory_order_relaxed);
     }
 
     auto& spatialIndex = m_itemSpatialIndices[it->second];
@@ -484,12 +498,21 @@ void WorldResourceManager::registerHarvestableSpatial(size_t edmIndex, const Vec
         // Unregister from old world
         auto& oldIndex = m_harvestableSpatialIndices[existingIt->second];
         oldIndex.remove(edmIndex);
+        // Update counter if unregistering from active world
+        if (existingIt->second == m_activeWorld) {
+            m_activeWorldHarvestableCount.fetch_sub(1, std::memory_order_relaxed);
+        }
     }
 
     // Add to spatial index
     auto& spatialIndex = m_harvestableSpatialIndices[worldId];
     spatialIndex.insert(edmIndex, position);
     m_harvestableSpatialToWorld[edmIndex] = worldId;
+
+    // Update counter if registering to active world
+    if (worldId == m_activeWorld) {
+        m_activeWorldHarvestableCount.fetch_add(1, std::memory_order_relaxed);
+    }
 
     WORLD_RESOURCE_DEBUG(std::format("Registered harvestable spatial {} at ({:.1f}, {:.1f}) to world {}",
                                       edmIndex, position.getX(), position.getY(), worldId));
@@ -501,6 +524,11 @@ void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
     auto it = m_harvestableSpatialToWorld.find(edmIndex);
     if (it == m_harvestableSpatialToWorld.end()) {
         return;  // Not registered
+    }
+
+    // Update counter if unregistering from active world
+    if (it->second == m_activeWorld) {
+        m_activeWorldHarvestableCount.fetch_sub(1, std::memory_order_relaxed);
     }
 
     auto& spatialIndex = m_harvestableSpatialIndices[it->second];
@@ -516,6 +544,11 @@ void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
 
 size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, float radius,
                                                         std::vector<size_t>& outIndices) const {
+    // Fast path: skip lock acquisition if no items in active world
+    if (m_activeWorldItemCount.load(std::memory_order_relaxed) == 0) {
+        return 0;
+    }
+
     std::shared_lock lock(m_registryMutex);
 
     if (m_activeWorld.empty()) {
@@ -552,6 +585,11 @@ size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, f
 
 size_t WorldResourceManager::queryHarvestablesInRadius(const Vector2D& center, float radius,
                                                         std::vector<size_t>& outIndices) const {
+    // Fast path: skip lock acquisition if no harvestables in active world
+    if (m_activeWorldHarvestableCount.load(std::memory_order_relaxed) == 0) {
+        return 0;
+    }
+
     std::shared_lock lock(m_registryMutex);
 
     if (m_activeWorld.empty()) {
@@ -626,11 +664,37 @@ bool WorldResourceManager::findClosestDroppedItem(const Vector2D& center, float 
 void WorldResourceManager::setActiveWorld(const WorldId& worldId) {
     std::unique_lock lock(m_registryMutex);
     m_activeWorld = worldId;
+    recalculateActiveWorldCounts();
     WORLD_RESOURCE_INFO(std::format("Active world set to: {}", worldId.empty() ? "(none)" : worldId));
+}
+
+void WorldResourceManager::recalculateActiveWorldCounts() {
+    // Called under lock - recalculate counts for the active world
+    if (m_activeWorld.empty()) {
+        m_activeWorldItemCount.store(0, std::memory_order_relaxed);
+        m_activeWorldHarvestableCount.store(0, std::memory_order_relaxed);
+        return;
+    }
+
+    // Count items in active world
+    auto itemIt = m_itemSpatialIndices.find(m_activeWorld);
+    size_t itemCount = (itemIt != m_itemSpatialIndices.end()) ? itemIt->second.size() : 0;
+    m_activeWorldItemCount.store(itemCount, std::memory_order_relaxed);
+
+    // Count harvestables in active world
+    auto harvIt = m_harvestableSpatialIndices.find(m_activeWorld);
+    size_t harvCount = (harvIt != m_harvestableSpatialIndices.end()) ? harvIt->second.size() : 0;
+    m_activeWorldHarvestableCount.store(harvCount, std::memory_order_relaxed);
 }
 
 void WorldResourceManager::clearSpatialDataForWorld(const WorldId& worldId) {
     std::unique_lock lock(m_registryMutex);
+
+    // Reset counters if clearing active world
+    if (worldId == m_activeWorld) {
+        m_activeWorldItemCount.store(0, std::memory_order_relaxed);
+        m_activeWorldHarvestableCount.store(0, std::memory_order_relaxed);
+    }
 
     // Clear item spatial index
     auto itemIt = m_itemSpatialIndices.find(worldId);

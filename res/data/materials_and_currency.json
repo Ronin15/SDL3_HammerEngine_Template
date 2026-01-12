@@ -12,7 +12,11 @@
       "iconTextureId": "mithril_ore_icon",
       "worldTextureId": "mithril_ore_world",
       "numFrames": 2,
-      "animSpeed": 100
+      "animSpeed": 100,
+      "atlasX": 170,
+      "atlasY": 3956,
+      "atlasW": 12,
+      "atlasH": 12
     },
     {
       "id": "enchanted_wood",
@@ -26,7 +30,11 @@
       "iconTextureId": "enchanted_wood_icon",
       "worldTextureId": "enchanted_wood_world",
       "numFrames": 2,
-      "animSpeed": 100
+      "animSpeed": 100,
+      "atlasX": 5,
+      "atlasY": 3936,
+      "atlasW": 23,
+      "atlasH": 18
     },
     {
       "id": "crystal_essence",
@@ -40,7 +48,11 @@
       "iconTextureId": "crystal_essence_icon",
       "worldTextureId": "crystal_essence_world",
       "numFrames": 2,
-      "animSpeed": 100
+      "animSpeed": 100,
+      "atlasX": 38,
+      "atlasY": 3942,
+      "atlasW": 11,
+      "atlasH": 11
     },
     {
       "id": "void_silk",
@@ -76,7 +88,11 @@
       "iconTextureId": "dragon_gems_icon",
       "worldTextureId": "dragon_gems_world",
       "numFrames": 2,
-      "animSpeed": 100
+      "animSpeed": 100,
+      "atlasX": 50,
+      "atlasY": 3942,
+      "atlasW": 11,
+      "atlasH": 11
     },
     {
       "id": "guild_tokens",
@@ -101,7 +117,11 @@
       "iconTextureId": "arcane_energy_icon",
       "worldTextureId": "arcane_energy_world",
       "numFrames": 2,
-      "animSpeed": 100
+      "animSpeed": 100,
+      "atlasX": 129,
+      "atlasY": 3940,
+      "atlasW": 29,
+      "atlasH": 28
     },
     {
       "id": "soul_essence",

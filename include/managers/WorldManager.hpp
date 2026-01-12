@@ -92,10 +92,12 @@ private:
         std::string decoration_rock_small;
     } m_cachedTextureIDs;
 
-    // Cached texture with dimensions - keeps pointer and size together
+    // Cached texture with dimensions and atlas source coords
+    // When using atlas: ptr points to shared atlas, atlasX/Y are source rect origin
     struct CachedTexture {
         SDL_Texture* ptr{nullptr};
         float w{0}, h{0};
+        float atlasX{0}, atlasY{0};  // Source rect origin in atlas (0,0 = full texture)
     };
 
     // Y-sorted sprite data for unified chunk rendering (obstacles rendered into chunks)
@@ -190,6 +192,51 @@ private:
     // Deferred cache invalidation - set by update thread, cleared by render thread
     // Ensures textures are only destroyed when not in use by Metal command encoder
     std::atomic<bool> m_cachePendingClear{false};
+
+    // Atlas-based rendering (single texture, source rects from JSON)
+    // Pre-loaded seasonal coords - eliminates runtime lookups on season change
+    struct AtlasCoords {
+        float x{0}, y{0}, w{0}, h{0};
+    };
+
+    // All tile type coords per season (indexed by Season enum)
+    struct SeasonalTileCoords {
+        AtlasCoords biome_default;
+        AtlasCoords biome_desert;
+        AtlasCoords biome_forest;
+        AtlasCoords biome_mountain;
+        AtlasCoords biome_swamp;
+        AtlasCoords biome_haunted;
+        AtlasCoords biome_celestial;
+        AtlasCoords biome_ocean;
+        AtlasCoords obstacle_water;
+        AtlasCoords obstacle_tree;
+        AtlasCoords obstacle_rock;
+        AtlasCoords building_hut;
+        AtlasCoords building_house;
+        AtlasCoords building_large;
+        AtlasCoords building_cityhall;
+        AtlasCoords decoration_flower_blue;
+        AtlasCoords decoration_flower_pink;
+        AtlasCoords decoration_flower_white;
+        AtlasCoords decoration_flower_yellow;
+        AtlasCoords decoration_mushroom_purple;
+        AtlasCoords decoration_mushroom_tan;
+        AtlasCoords decoration_grass_small;
+        AtlasCoords decoration_grass_large;
+        AtlasCoords decoration_bush;
+        AtlasCoords decoration_stump_small;
+        AtlasCoords decoration_stump_medium;
+        AtlasCoords decoration_rock_small;
+    };
+
+    SeasonalTileCoords m_seasonalCoords[4];  // Indexed by Season enum (Spring=0, Summer=1, Fall=2, Winter=3)
+    SDL_Texture* m_atlasPtr{nullptr};        // Single shared atlas texture
+    bool m_useAtlas{false};                  // True if atlas loaded successfully
+
+    // Get atlas pointer from TextureManager and pre-load source rect coords from JSON
+    void initAtlasCoords();
+    void applyCoordsToTextures(Season season);
 };
 
 }

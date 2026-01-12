@@ -626,6 +626,20 @@ void ResourceFactory::setCommonProperties(ResourcePtr resource,
   if (json.hasKey("animSpeed")) {
     resource->setAnimSpeed(json["animSpeed"].tryAsInt().value_or(0));
   }
+
+  // Atlas coordinates for sprite atlas rendering
+  if (json.hasKey("atlasX")) {
+    resource->setAtlasX(json["atlasX"].tryAsInt().value_or(0));
+  }
+  if (json.hasKey("atlasY")) {
+    resource->setAtlasY(json["atlasY"].tryAsInt().value_or(0));
+  }
+  if (json.hasKey("atlasW")) {
+    resource->setAtlasW(json["atlasW"].tryAsInt().value_or(16));
+  }
+  if (json.hasKey("atlasH")) {
+    resource->setAtlasH(json["atlasH"].tryAsInt().value_or(16));
+  }
 }
 
 } // namespace HammerEngine

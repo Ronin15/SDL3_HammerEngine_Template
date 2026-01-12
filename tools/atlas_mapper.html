@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HammerEngine Atlas Mapper</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e; color: #eee; min-height: 100vh;
+        }
+        .header {
+            background: #16213e; padding: 12px 20px;
+            display: flex; align-items: center; gap: 20px;
+            border-bottom: 2px solid #0f3460;
+        }
+        .header h1 { font-size: 1.4em; color: #e94560; }
+        .btn {
+            padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer;
+            font-size: 0.9em; transition: all 0.2s;
+        }
+        .btn-primary { background: #e94560; color: white; }
+        .btn-primary:hover { background: #ff6b6b; }
+        .btn-secondary { background: #0f3460; color: #eee; }
+        .btn-secondary:hover { background: #1a4a7a; }
+        .btn-success { background: #28a745; color: white; }
+        .btn-success:hover { background: #34ce57; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .main-container { display: flex; height: calc(100vh - 60px); }
+
+        /* Left Panel - Sprites Grid */
+        .sprites-panel {
+            flex: 1; overflow-y: auto; background: #0f0f1a; padding: 15px;
+        }
+        .sprites-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 10px;
+        }
+        .sprite-card {
+            background: #1a1a2e; border: 2px solid #333; border-radius: 6px;
+            padding: 8px; cursor: pointer; transition: all 0.15s;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        .sprite-card:hover { border-color: #e94560; background: #252540; }
+        .sprite-card.selected { border-color: #00ff88; box-shadow: 0 0 10px rgba(0, 255, 136, 0.4); }
+        .sprite-card.mapped { border-color: #4ecdc4; }
+        .sprite-card.mapped .sprite-name { color: #4ecdc4; }
+        .sprite-preview {
+            width: 80px; height: 80px; display: flex;
+            align-items: center; justify-content: center;
+            background: #0a0a15; border-radius: 4px; margin-bottom: 6px;
+        }
+        .sprite-preview img {
+            max-width: 76px; max-height: 76px;
+            image-rendering: pixelated;
+        }
+        .sprite-name {
+            font-size: 0.75em; color: #888; text-align: center;
+            word-break: break-all; max-width: 100%;
+        }
+        .sprite-id {
+            font-size: 0.8em; color: #4ecdc4; margin-top: 4px;
+            font-weight: bold; text-align: center;
+        }
+
+        /* Right Panel */
+        .control-panel {
+            width: 350px; background: #16213e;
+            display: flex; flex-direction: column;
+            border-left: 2px solid #0f3460;
+        }
+        .panel-section {
+            padding: 12px; border-bottom: 1px solid #0f3460;
+        }
+        .panel-section h3 {
+            font-size: 0.9em; color: #e94560; margin-bottom: 8px;
+            text-transform: uppercase; letter-spacing: 1px;
+        }
+
+        /* Selected sprite info */
+        .selected-preview {
+            width: 100%; max-height: 150px; display: flex;
+            align-items: center; justify-content: center;
+            background: #0a0a15; border-radius: 4px; margin-bottom: 10px;
+        }
+        .selected-preview img {
+            max-width: 100%; max-height: 140px;
+            image-rendering: pixelated;
+        }
+
+        /* Expected IDs List */
+        .id-list-container { flex: 1; overflow-y: auto; }
+        .id-category { margin-bottom: 8px; }
+        .id-category-header {
+            font-size: 0.8em; color: #888; padding: 6px 10px;
+            background: #0f3460; cursor: pointer;
+            display: flex; justify-content: space-between;
+        }
+        .id-category-header:hover { background: #1a4a7a; }
+        .id-category-items { display: none; }
+        .id-category.expanded .id-category-items { display: block; }
+        .id-item {
+            padding: 6px 12px; cursor: pointer; font-size: 0.85em;
+            border-bottom: 1px solid #0a0a1a;
+        }
+        .id-item:hover { background: #1a2a4e; }
+        .id-item.mapped { color: #4ecdc4; }
+        .id-item.mapped::after { content: ' ✓'; }
+
+        /* Search */
+        .search-input {
+            width: 100%; padding: 8px; background: #0f0f1a;
+            border: 1px solid #333; color: #eee; border-radius: 4px;
+            margin-bottom: 8px;
+        }
+        .search-input:focus { outline: none; border-color: #e94560; }
+
+        /* Custom ID */
+        .custom-id-row { display: flex; gap: 5px; margin-top: 8px; }
+        .custom-id-row input {
+            flex: 1; padding: 6px; background: #0f0f1a;
+            border: 1px solid #333; color: #eee; border-radius: 4px;
+        }
+
+        /* Status */
+        .status-bar {
+            padding: 10px 12px; background: #0f0f1a;
+            font-size: 0.85em; display: flex; justify-content: space-between;
+        }
+        .status-mapped { color: #4ecdc4; }
+
+        /* Modal */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0;
+            width: 100%; height: 100%; background: rgba(0,0,0,0.85);
+            z-index: 1000; align-items: center; justify-content: center;
+        }
+        .modal-overlay.active { display: flex; }
+        .modal-content {
+            background: #16213e; border-radius: 8px; max-width: 90%;
+            max-height: 90%; overflow: auto; padding: 20px; min-width: 600px;
+        }
+        .modal-header {
+            display: flex; justify-content: space-between;
+            align-items: center; margin-bottom: 15px;
+        }
+        .modal-header h2 { color: #e94560; }
+        .modal-close {
+            background: none; border: none; color: #888;
+            font-size: 24px; cursor: pointer;
+        }
+        .preview-section { margin-bottom: 15px; }
+        .preview-section h4 { color: #4ecdc4; margin-bottom: 6px; }
+        .preview-code {
+            background: #0f0f1a; padding: 10px; border-radius: 4px;
+            font-family: monospace; font-size: 0.8em;
+            max-height: 180px; overflow: auto; white-space: pre;
+        }
+        .download-buttons { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 15px; }
+
+        /* Instructions */
+        .instructions {
+            background: #0f3460; padding: 15px; border-radius: 6px;
+            margin-bottom: 15px; font-size: 0.9em; line-height: 1.5;
+        }
+        .instructions h4 { color: #e94560; margin-bottom: 8px; }
+        .instructions ol { padding-left: 20px; }
+        .instructions li { margin-bottom: 5px; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>HammerEngine Atlas Mapper</h1>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <label style="font-size: 0.85em;">Min size:</label>
+            <select id="minSizeFilter" onchange="applyFilters()" style="padding: 6px; background: #0f3460; color: #eee; border: none; border-radius: 4px;">
+                <option value="0">All</option>
+                <option value="8">8px+</option>
+                <option value="16" selected>16px+</option>
+                <option value="24">24px+</option>
+                <option value="32">32px+</option>
+                <option value="64">64px+</option>
+            </select>
+            <label style="font-size: 0.85em; margin-left: 10px;">Show:</label>
+            <select id="mappedFilter" onchange="applyFilters()" style="padding: 6px; background: #0f3460; color: #eee; border: none; border-radius: 4px;">
+                <option value="all">All</option>
+                <option value="unmapped">Unmapped only</option>
+                <option value="mapped">Mapped only</option>
+            </select>
+            <span id="visibleCount" style="font-size: 0.85em; color: #888; margin-left: 10px;"></span>
+            <button class="btn btn-success" onclick="showPreview()" id="exportBtn" disabled style="margin-left: auto;">
+                Preview & Export
+            </button>
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="sprites-panel">
+            <div class="instructions" id="instructions">
+                <h4>How to use:</h4>
+                <ol>
+                    <li>Run <code>python3 tools/atlas_tool.py extract</code> first (extracts sprites to res/sprites/)</li>
+                    <li>Click "Load Sprites Folder" and select the <code>res/sprites</code> folder</li>
+                    <li>Click a sprite, then click a texture ID on the right to assign it</li>
+                    <li>Use arrow keys to navigate between sprites</li>
+                    <li>Click "Preview & Export" to download JSON files</li>
+                </ol>
+            </div>
+            <div class="sprites-grid" id="spritesGrid"></div>
+        </div>
+
+        <div class="control-panel">
+            <div class="panel-section">
+                <h3>Selected Sprite</h3>
+                <div class="selected-preview" id="selectedPreview">
+                    <span style="color: #555;">Select a sprite</span>
+                </div>
+                <div id="selectedInfo" style="font-size: 0.9em; color: #888;">
+                    Click a sprite to select
+                </div>
+            </div>
+
+            <div class="panel-section" style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                <h3>Assign Texture ID</h3>
+                <input type="text" class="search-input" placeholder="Search IDs..." oninput="filterIDs(this.value)">
+                <div class="id-list-container" id="idList"></div>
+                <div class="custom-id-row">
+                    <input type="text" id="customIdInput" placeholder="Custom ID...">
+                    <button class="btn btn-secondary" onclick="assignCustomID()">Assign</button>
+                </div>
+            </div>
+
+            <div class="status-bar">
+                <span id="statusText">Load sprites folder to begin</span>
+                <span class="status-mapped"><span id="mappedCount">0</span> / <span id="totalCount">0</span> mapped</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div class="modal-overlay" id="previewModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Export Preview</h2>
+                <button class="modal-close" onclick="closePreview()">&times;</button>
+            </div>
+            <div id="previewContent"></div>
+            <div class="download-buttons">
+                <button class="btn btn-success" onclick="downloadAtlasJson()">atlas.json</button>
+                <button class="btn btn-success" onclick="downloadWorldObjects()">world_objects.json</button>
+                <button class="btn btn-primary" onclick="downloadRenameScript()">rename_sprites.sh</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Expected texture IDs
+        const EXPECTED_IDS = {
+            'Biomes (8 + seasonal)': {
+                seasonal: true,
+                ids: ['biome_default', 'biome_forest', 'biome_desert', 'biome_mountain',
+                      'biome_swamp', 'biome_haunted', 'biome_celestial', 'biome_ocean']
+            },
+            'Obstacles': {
+                seasonal: true,
+                seasonalIds: ['obstacle_tree'],
+                ids: ['obstacle_tree', 'obstacle_rock', 'obstacle_water']
+            },
+            'Buildings (4 + seasonal)': {
+                seasonal: true,
+                ids: ['building_hut', 'building_house', 'building_large', 'building_cityhall']
+            },
+            'Decorations': {
+                seasonal: false,
+                ids: ['flower_blue', 'flower_pink', 'flower_white', 'flower_yellow',
+                      'mushroom_tan', 'mushroom_purple', 'grass_small', 'grass_large',
+                      'bush', 'stump_small', 'stump_medium', 'rock_small']
+            },
+            'Items': {
+                seasonal: false,
+                ids: ['magic_sword_world', 'dragon_armor_world', 'health_potion_world',
+                      'mana_elixir_world', 'ancient_key_world', 'mysterious_artifact_world',
+                      'item_placeholder']
+            },
+            'Materials': {
+                seasonal: false,
+                ids: ['mithril_ore_world', 'enchanted_wood_world', 'crystal_essence_world',
+                      'dragon_gems_world', 'arcane_energy_world']
+            },
+            'NPCs': {
+                seasonal: false,
+                ids: ['guard', 'villager', 'merchant', 'warrior']
+            }
+        };
+        const SEASONS = ['spring', 'summer', 'fall', 'winter'];
+
+        // State
+        let sprites = [];  // {filename, dataUrl, width, height, textureId}
+        let selectedIndex = -1;
+        let mappings = {};  // textureId -> spriteIndex
+
+        // Load sprites from folder
+        document.getElementById('folderInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files).filter(f => f.name.endsWith('.png'));
+            if (files.length === 0) {
+                alert('No PNG files found in selected folder');
+                return;
+            }
+
+            sprites = [];
+            mappings = {};
+
+            // Sort by name
+            files.sort((a, b) => a.name.localeCompare(b.name, undefined, {numeric: true}));
+
+            for (const file of files) {
+                const dataUrl = await readFileAsDataUrl(file);
+                const dims = await getImageDimensions(dataUrl);
+                sprites.push({
+                    filename: file.name.replace('.png', ''),
+                    dataUrl: dataUrl,
+                    width: dims.width,
+                    height: dims.height,
+                    textureId: null
+                });
+            }
+
+            document.getElementById('instructions').style.display = 'none';
+            renderSprites();
+            renderIDList();
+            updateStatus(`Loaded ${sprites.length} sprites`);
+            document.getElementById('totalCount').textContent = sprites.length;
+            document.getElementById('exportBtn').disabled = false;
+        });
+
+        function readFileAsDataUrl(file) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.readAsDataURL(file);
+            });
+        }
+
+        function getImageDimensions(dataUrl) {
+            return new Promise((resolve) => {
+                const img = new Image();
+                img.onload = () => resolve({width: img.width, height: img.height});
+                img.src = dataUrl;
+            });
+        }
+
+        let filteredIndices = [];  // Indices of sprites passing current filter
+
+        function applyFilters() {
+            const minSize = parseInt(document.getElementById('minSizeFilter').value);
+            const mappedFilter = document.getElementById('mappedFilter').value;
+
+            filteredIndices = [];
+            sprites.forEach((sprite, idx) => {
+                const size = Math.min(sprite.width, sprite.height);
+                if (size < minSize) return;
+                if (mappedFilter === 'unmapped' && sprite.textureId) return;
+                if (mappedFilter === 'mapped' && !sprite.textureId) return;
+                filteredIndices.push(idx);
+            });
+
+            document.getElementById('visibleCount').textContent =
+                `Showing ${filteredIndices.length} of ${sprites.length}`;
+            renderSprites();
+        }
+
+        function renderSprites() {
+            const grid = document.getElementById('spritesGrid');
+            grid.innerHTML = '';
+
+            filteredIndices.forEach(idx => {
+                const sprite = sprites[idx];
+                const card = document.createElement('div');
+                card.className = 'sprite-card';
+                if (idx === selectedIndex) card.classList.add('selected');
+                if (sprite.textureId) card.classList.add('mapped');
+
+                card.innerHTML = `
+                    <div class="sprite-preview">
+                        <img src="${sprite.dataUrl}" alt="${sprite.filename}">
+                    </div>
+                    <div class="sprite-name">${sprite.filename} (${sprite.width}x${sprite.height})</div>
+                    ${sprite.textureId ? `<div class="sprite-id">${sprite.textureId}</div>` : ''}
+                `;
+
+                card.onclick = () => selectSprite(idx);
+                grid.appendChild(card);
+            });
+        }
+
+        function selectSprite(idx) {
+            selectedIndex = idx;
+            const sprite = sprites[idx];
+
+            document.getElementById('selectedPreview').innerHTML =
+                `<img src="${sprite.dataUrl}" alt="${sprite.filename}">`;
+            document.getElementById('selectedInfo').innerHTML = `
+                <div><strong>${sprite.filename}</strong></div>
+                <div>Size: ${sprite.width} x ${sprite.height}</div>
+                <div>Assigned: ${sprite.textureId || '<em>none</em>'}</div>
+            `;
+
+            renderSprites();
+
+            // Scroll selected into view
+            const cards = document.querySelectorAll('.sprite-card');
+            if (cards[idx]) {
+                cards[idx].scrollIntoView({behavior: 'smooth', block: 'nearest'});
+            }
+        }
+
+        function renderIDList() {
+            const container = document.getElementById('idList');
+            container.innerHTML = '';
+
+            for (const [category, info] of Object.entries(EXPECTED_IDS)) {
+                const catDiv = document.createElement('div');
+                catDiv.className = 'id-category expanded';
+
+                let allIds = [...info.ids];
+                if (info.seasonal) {
+                    const seasonalBase = info.seasonalIds || info.ids;
+                    for (const baseId of seasonalBase) {
+                        for (const season of SEASONS) {
+                            allIds.push(`${season}_${baseId}`);
+                        }
+                    }
+                }
+
+                const mappedCount = allIds.filter(id => mappings[id] !== undefined).length;
+
+                const header = document.createElement('div');
+                header.className = 'id-category-header';
+                header.innerHTML = `<span>${category}</span><span>${mappedCount}/${allIds.length}</span>`;
+                header.onclick = (e) => { e.stopPropagation(); catDiv.classList.toggle('expanded'); };
+                catDiv.appendChild(header);
+
+                const items = document.createElement('div');
+                items.className = 'id-category-items';
+
+                for (const id of allIds) {
+                    const item = document.createElement('div');
+                    item.className = 'id-item';
+                    if (mappings[id] !== undefined) item.classList.add('mapped');
+                    item.textContent = id;
+                    item.onclick = () => assignID(id);
+                    items.appendChild(item);
+                }
+
+                catDiv.appendChild(items);
+                container.appendChild(catDiv);
+            }
+        }
+
+        function filterIDs(query) {
+            const q = query.toLowerCase();
+            document.querySelectorAll('.id-item').forEach(item => {
+                item.style.display = item.textContent.toLowerCase().includes(q) ? 'block' : 'none';
+            });
+        }
+
+        function assignID(textureId) {
+            if (selectedIndex < 0) {
+                alert('Select a sprite first!');
+                return;
+            }
+
+            // Remove old mapping
+            if (mappings[textureId] !== undefined) {
+                sprites[mappings[textureId]].textureId = null;
+            }
+
+            const sprite = sprites[selectedIndex];
+            if (sprite.textureId) {
+                delete mappings[sprite.textureId];
+            }
+
+            sprite.textureId = textureId;
+            mappings[textureId] = selectedIndex;
+
+            applyFilters();
+            renderIDList();
+            updateMappedCount();
+
+            // Auto-advance to next unmapped in filtered list
+            const currentPos = filteredIndices.indexOf(selectedIndex);
+            for (let i = currentPos + 1; i < filteredIndices.length; i++) {
+                if (!sprites[filteredIndices[i]].textureId) {
+                    selectSprite(filteredIndices[i]);
+                    return;
+                }
+            }
+        }
+
+        function assignCustomID() {
+            const input = document.getElementById('customIdInput');
+            const id = input.value.trim();
+            if (id) {
+                assignID(id);
+                input.value = '';
+            }
+        }
+
+        function updateMappedCount() {
+            document.getElementById('mappedCount').textContent =
+                sprites.filter(s => s.textureId).length;
+        }
+
+        function updateStatus(text) {
+            document.getElementById('statusText').textContent = text;
+        }
+
+        // Keyboard navigation (within filtered list)
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT') return;
+            const currentFilteredPos = filteredIndices.indexOf(selectedIndex);
+
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (currentFilteredPos < filteredIndices.length - 1) {
+                    selectSprite(filteredIndices[currentFilteredPos + 1]);
+                }
+            } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+                e.preventDefault();
+                if (currentFilteredPos > 0) {
+                    selectSprite(filteredIndices[currentFilteredPos - 1]);
+                }
+            }
+        });
+
+        // Export
+        function generateAtlasJson() {
+            const regions = {};
+            // Note: actual coordinates come from pack command
+            // This just records which sprites map to which IDs
+            sprites.forEach(s => {
+                if (s.textureId) {
+                    regions[s.textureId] = {
+                        sourceFile: s.filename + '.png',
+                        w: s.width,
+                        h: s.height
+                    };
+                }
+            });
+            return { atlasId: 'atlas', regions };
+        }
+
+        function generateWorldObjects() {
+            const world = { biomes: {}, obstacles: {}, buildings: {}, decorations: {} };
+
+            for (const baseId of EXPECTED_IDS['Biomes (8 + seasonal)'].ids) {
+                const key = baseId.replace('biome_', '');
+                if (mappings[baseId] === undefined) continue;
+
+                const entry = { textureId: baseId, seasonal: true, seasonalAtlas: {} };
+                for (const season of SEASONS) {
+                    const sid = `${season}_${baseId}`;
+                    if (mappings[sid] !== undefined) {
+                        entry.seasonalAtlas[season] = { sourceFile: sprites[mappings[sid]].filename + '.png' };
+                    }
+                }
+                world.biomes[key] = entry;
+            }
+
+            for (const baseId of EXPECTED_IDS['Obstacles'].ids) {
+                const key = baseId.replace('obstacle_', '');
+                if (mappings[baseId] === undefined) continue;
+
+                const isSeasonal = EXPECTED_IDS['Obstacles'].seasonalIds?.includes(baseId);
+                const entry = { textureId: baseId, seasonal: isSeasonal };
+                if (isSeasonal) {
+                    entry.seasonalAtlas = {};
+                    for (const season of SEASONS) {
+                        const sid = `${season}_${baseId}`;
+                        if (mappings[sid] !== undefined) {
+                            entry.seasonalAtlas[season] = { sourceFile: sprites[mappings[sid]].filename + '.png' };
+                        }
+                    }
+                }
+                world.obstacles[key] = entry;
+            }
+
+            for (const baseId of EXPECTED_IDS['Buildings (4 + seasonal)'].ids) {
+                const key = baseId.replace('building_', '');
+                if (mappings[baseId] === undefined) continue;
+
+                const entry = { textureId: baseId, seasonal: true, seasonalAtlas: {} };
+                for (const season of SEASONS) {
+                    const sid = `${season}_${baseId}`;
+                    if (mappings[sid] !== undefined) {
+                        entry.seasonalAtlas[season] = { sourceFile: sprites[mappings[sid]].filename + '.png' };
+                    }
+                }
+                world.buildings[key] = entry;
+            }
+
+            for (const baseId of EXPECTED_IDS['Decorations'].ids) {
+                if (mappings[baseId] === undefined) continue;
+                const entry = { textureId: baseId, seasonal: false };
+                if (baseId.startsWith('flower_')) entry.seasons = ['spring', 'summer'];
+                world.decorations[baseId] = entry;
+            }
+
+            return world;
+        }
+
+        function generateRenameScript() {
+            let script = '#!/bin/bash\n# Rename sprites to their texture IDs\ncd "$(dirname "$0")/../res/sprites"\n\n';
+            sprites.forEach(s => {
+                if (s.textureId && s.filename !== s.textureId) {
+                    script += `mv "${s.filename}.png" "${s.textureId}.png"\n`;
+                }
+            });
+            script += '\necho "Done! Now run: python3 tools/atlas_tool.py pack --update"\n';
+            return script;
+        }
+
+        function showPreview() {
+            const atlas = generateAtlasJson();
+            const world = generateWorldObjects();
+            const mapped = sprites.filter(s => s.textureId).length;
+
+            document.getElementById('previewContent').innerHTML = `
+                <div class="preview-section">
+                    <h4>Summary: ${mapped} sprites mapped</h4>
+                </div>
+                <div class="preview-section">
+                    <h4>atlas.json (mapping file)</h4>
+                    <div class="preview-code">${JSON.stringify(atlas, null, 2)}</div>
+                </div>
+                <div class="preview-section">
+                    <h4>world_objects.json</h4>
+                    <div class="preview-code">${JSON.stringify(world, null, 2)}</div>
+                </div>
+            `;
+            document.getElementById('previewModal').classList.add('active');
+        }
+
+        function closePreview() {
+            document.getElementById('previewModal').classList.remove('active');
+        }
+
+        function download(content, filename, type = 'application/json') {
+            const blob = new Blob([typeof content === 'string' ? content : JSON.stringify(content, null, 2)], {type});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+        }
+
+        function downloadAtlasJson() { download(generateAtlasJson(), 'atlas_mappings.json'); }
+        function downloadWorldObjects() { download(generateWorldObjects(), 'world_objects.json'); }
+        function downloadRenameScript() { download(generateRenameScript(), 'rename_sprites.sh', 'text/plain'); }
+
+        // Init
+        renderIDList();
+        // filteredIndices initialized when sprites load via applyFilters()
+    </script>
+</body>
+</html>

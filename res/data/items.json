@@ -20,7 +20,11 @@
         "speedBonus": 0,
         "durability": 150,
         "maxDurability": 150
-      }
+      },
+      "atlasX": 236,
+      "atlasY": 802,
+      "atlasW": 13,
+      "atlasH": 27
     },
     {
       "id": "dragon_scale_armor",
@@ -42,7 +46,11 @@
         "speedBonus": -5,
         "durability": 200,
         "maxDurability": 200
-      }
+      },
+      "atlasX": 68,
+      "atlasY": 896,
+      "atlasW": 27,
+      "atlasH": 31
     },
     {
       "id": "super_health_potion",
@@ -61,7 +69,11 @@
         "effect": "HealHP",
         "effectPower": 100,
         "effectDuration": 0
-      }
+      },
+      "atlasX": 40,
+      "atlasY": 3968,
+      "atlasW": 17,
+      "atlasH": 19
     },
     {
       "id": "mana_elixir",
@@ -80,7 +92,11 @@
         "effect": "RestoreMP",
         "effectPower": 80,
         "effectDuration": 0
-      }
+      },
+      "atlasX": 193,
+      "atlasY": 3956,
+      "atlasW": 30,
+      "atlasH": 31
     },
     {
       "id": "ancient_key",
@@ -97,7 +113,11 @@
       "animSpeed": 100,
       "properties": {
         "questId": "ancient_temple_quest"
-      }
+      },
+      "atlasX": 136,
+      "atlasY": 3808,
+      "atlasW": 17,
+      "atlasH": 19
     },
     {
       "id": "mysterious_artifact",
@@ -114,7 +134,11 @@
       "animSpeed": 100,
       "properties": {
         "questId": ""
-      }
+      },
+      "atlasX": 99,
+      "atlasY": 3936,
+      "atlasW": 26,
+      "atlasH": 20
     },
     {
       "id": "health_potion",
@@ -133,7 +157,11 @@
         "effect": "HealHP",
         "effectPower": 50,
         "effectDuration": 0
-      }
+      },
+      "atlasX": 40,
+      "atlasY": 3968,
+      "atlasW": 17,
+      "atlasH": 19
     }
   ]
 }
