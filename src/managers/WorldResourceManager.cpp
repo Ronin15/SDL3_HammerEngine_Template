@@ -93,6 +93,17 @@ void WorldResourceManager::clean() {
     WORLD_RESOURCE_INFO("WorldResourceManager cleaned up");
 }
 
+void WorldResourceManager::prepareForStateTransition() {
+    // Clear fast-path counters to stop queries immediately
+    m_activeWorldItemCount.store(0, std::memory_order_release);
+    m_activeWorldHarvestableCount.store(0, std::memory_order_release);
+
+    // Acquire exclusive lock to wait for any in-flight queries to complete
+    std::unique_lock lock(m_registryMutex);
+
+    WORLD_RESOURCE_DEBUG("Prepared for state transition");
+}
+
 // ============================================================================
 // WORLD MANAGEMENT
 // ============================================================================
@@ -544,6 +555,11 @@ void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
 
 size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, float radius,
                                                         std::vector<size_t>& outIndices) const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        outIndices.clear();
+        return 0;
+    }
+
     // Fast path: skip lock acquisition if no items in active world
     if (m_activeWorldItemCount.load(std::memory_order_relaxed) == 0) {
         return 0;
@@ -585,6 +601,11 @@ size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, f
 
 size_t WorldResourceManager::queryHarvestablesInRadius(const Vector2D& center, float radius,
                                                         std::vector<size_t>& outIndices) const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        outIndices.clear();
+        return 0;
+    }
+
     // Fast path: skip lock acquisition if no harvestables in active world
     if (m_activeWorldHarvestableCount.load(std::memory_order_relaxed) == 0) {
         return 0;
@@ -751,10 +772,15 @@ void WorldResourceManager::subscribeWorldEvents() {
 }
 
 void WorldResourceManager::onWorldLoaded(const std::string& worldId) {
-    setActiveWorld(worldId);
+    // Single lock acquisition - setActiveWorld() also uses m_registryMutex internally,
+    // and std::shared_mutex is not recursive, so inline its logic here
+    std::unique_lock lock(m_registryMutex);
+
+    // Set active world (inlined from setActiveWorld to avoid deadlock)
+    m_activeWorld = worldId;
+    recalculateActiveWorldCounts();
 
     // Ensure spatial indices exist for this world
-    std::unique_lock lock(m_registryMutex);
     if (m_itemSpatialIndices.find(worldId) == m_itemSpatialIndices.end()) {
         m_itemSpatialIndices[worldId] = SpatialIndex();
     }
