@@ -417,12 +417,12 @@ private:
     CollisionStorage m_storage;
     mutable std::mutex m_staticRebuildMutex;
 
-    /* ========== DUAL SPATIAL HASH ARCHITECTURE ==========
+    /* ========== TRIPLE SPATIAL HASH ARCHITECTURE ==========
      *
-     * The collision system uses TWO separate spatial hashes for optimal performance:
+     * The collision system uses THREE separate spatial hashes for optimal performance:
      *
      * 1. STATIC SPATIAL HASH (m_staticSpatialHash):
-     *    - Contains: World geometry (buildings, obstacles, water triggers)
+     *    - Contains: World geometry (buildings, obstacles) - excludes EventOnly triggers
      *    - Rebuilt: Only when world changes (tile edits, building placement)
      *    - Queried: By dynamic/kinematic bodies during broadphase
      *    - Optimization: Coarse-grid region cache (128×128 cells) reduces redundant queries
@@ -435,11 +435,19 @@ private:
      *    - Optimization: Only includes bodies within culling area (player-centered)
      *    - Benefit: Fast dynamic collision detection without static world overhead
      *
+     * 3. EVENTONLY SPATIAL HASH (m_eventOnlySpatialHash):
+     *    - Contains: EventOnly triggers (water, lava, portals) - no physics response
+     *    - Rebuilt: Only when world changes (same as static)
+     *    - Queried: Per-entity spatial query for trigger detection
+     *    - Optimization: Separated from static hash to avoid polluting broadphase
+     *    - Benefit: Fast O(k) trigger detection without 400+ water triggers in broadphase
+     *
      * WHY SEPARATION:
      * - Avoids rebuilding thousands of static tiles every frame
      * - Static bodies never initiate collision checks (optimization)
      * - Cache remains valid across frames for static geometry
      * - Culling only applies to dynamic hash, not static (prevents missing collisions)
+     * - EventOnly triggers separated to keep broadphase fast
      *
      * BROADPHASE FLOW:
      * 1. Rebuild dynamic hash with active movable bodies (line ~1180)
@@ -447,9 +455,11 @@ private:
      *    a. Query dynamic hash → movable-vs-movable pairs
      *    b. Query static cache → movable-vs-static pairs
      * 3. Narrowphase filters pairs and computes collision details
+     * 4. EventOnly detection queries m_eventOnlySpatialHash separately
      * ===================================================== */
-    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;   // Static world geometry
-    HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash;  // Moving entities
+    HammerEngine::HierarchicalSpatialHash m_staticSpatialHash;     // Static world geometry
+    HammerEngine::HierarchicalSpatialHash m_dynamicSpatialHash;    // Moving entities
+    HammerEngine::HierarchicalSpatialHash m_eventOnlySpatialHash;  // EventOnly triggers (water, etc.)
 
     // Current culling area for spatial queries
     mutable CullingArea m_currentCullingArea{0.0f, 0.0f, 0.0f, 0.0f};

@@ -12,6 +12,136 @@
 
 namespace HammerEngine {
 
+// ============================================================================
+// WORLD GENERATION SPAWN CONFIGURATION
+// ============================================================================
+// All spawn rates and parameters in one place for easy tuning.
+// Higher values = more frequent spawning (where applicable)
+
+namespace WorldSpawnConfig {
+
+// ----------------------------------------------------------------------------
+// BIOME ASSIGNMENT THRESHOLDS
+// ----------------------------------------------------------------------------
+namespace Biome {
+    // Humidity thresholds (0.0 = dry, 1.0 = wet)
+    constexpr float DESERT_HUMIDITY_MAX = 0.3f;
+    constexpr float SWAMP_HUMIDITY_MIN = 0.7f;
+    constexpr float SWAMP_ELEVATION_MAX = 0.4f;
+    constexpr float FOREST_HUMIDITY_MIN = 0.5f;
+    constexpr float FOREST_ELEVATION_MIN = 0.6f;
+
+    // Special biome spawn chances (applied when no other biome matches)
+    constexpr float HAUNTED_CHANCE = 0.05f;    // 5%
+    constexpr float CELESTIAL_CHANCE = 0.05f;  // 5% (cumulative with haunted = 10% total special)
+}
+
+// ----------------------------------------------------------------------------
+// RIVER/WATER GENERATION
+// ----------------------------------------------------------------------------
+namespace Water {
+    constexpr int RIVER_DENSITY_DIVISOR = 1000;       // Rivers = area / this
+    constexpr float RIVER_START_ELEVATION_OFFSET = 0.2f;  // Min elevation above water level to start river
+    constexpr int RIVER_MAX_FLOW_STEPS = 50;          // Max river length in tiles
+}
+
+// ----------------------------------------------------------------------------
+// OBSTACLE SPAWN RATES (Trees, Rocks, Water obstacles)
+// ----------------------------------------------------------------------------
+namespace Obstacles {
+    // Per-biome spawn chances (0.0 - 1.0)
+    constexpr float FOREST_CHANCE = 0.40f;
+    constexpr float MOUNTAIN_CHANCE = 0.30f;
+    constexpr float SWAMP_CHANCE = 0.20f;
+    constexpr float DESERT_CHANCE = 0.10f;
+    constexpr float HAUNTED_CHANCE = 0.30f;
+    constexpr float CELESTIAL_CHANCE = 0.15f;
+
+    // Swamp obstacle type distribution
+    constexpr float SWAMP_TREE_RATIO = 0.70f;   // 70% trees, 30% water
+
+    // Haunted obstacle type distribution
+    constexpr float HAUNTED_TREE_RATIO = 0.60f; // 60% trees, 40% rocks
+
+    // Clustering behavior (prevents dense blobs)
+    constexpr int MAX_NEIGHBORS_ALLOWED = 2;     // Block if more than this many neighbors
+    constexpr float CLUSTER_GROWTH_FOREST = 0.50f;  // Chance to extend cluster in forest
+    constexpr float CLUSTER_GROWTH_OTHER = 0.20f;   // Chance to extend cluster in other biomes
+}
+
+// ----------------------------------------------------------------------------
+// BUILDING SPAWN RATES
+// ----------------------------------------------------------------------------
+namespace Buildings {
+    // Per-biome spawn chances (0.0 - 1.0)
+    constexpr float FOREST_CHANCE = 0.025f;    // 2.5%
+    constexpr float HAUNTED_CHANCE = 0.030f;   // 3.0%
+    constexpr float DESERT_CHANCE = 0.015f;    // 1.5%
+    constexpr float SWAMP_CHANCE = 0.015f;     // 1.5%
+    constexpr float CELESTIAL_CHANCE = 0.020f; // 2.0%
+    constexpr float DEFAULT_CHANCE = 0.015f;   // 1.5%
+
+    constexpr int BUILDING_SIZE = 2;           // 2x2 tiles per building
+    constexpr int MAX_CONNECTED_SIZE = 4;      // Max connected building size (hut->house->large->cityhall)
+}
+
+// ----------------------------------------------------------------------------
+// DECORATION SPAWN RATES & WEIGHTS
+// ----------------------------------------------------------------------------
+namespace Decorations {
+    // Per-biome spawn chances (0.0 - 1.0)
+    constexpr float FOREST_CHANCE = 0.25f;
+    constexpr float CELESTIAL_CHANCE = 0.20f;
+    constexpr float SWAMP_CHANCE = 0.30f;
+    constexpr float HAUNTED_CHANCE = 0.25f;
+    constexpr float MOUNTAIN_CHANCE = 0.15f;
+    constexpr float WATER_CHANCE = 0.15f;      // Water decorations (lily pads, water flowers)
+    constexpr float DEFAULT_CHANCE = 0.15f;
+
+    // Decoration type weights (relative frequency within biome)
+    // Higher weight = more likely to be selected
+    constexpr float FLOWER_WEIGHT = 10.0f;
+    constexpr float GRASS_WEIGHT = 15.0f;
+    constexpr float MUSHROOM_WEIGHT = 8.0f;
+    constexpr float BUSH_WEIGHT = 8.0f;
+    constexpr float STUMP_WEIGHT = 5.0f;
+    constexpr float ROCK_WEIGHT = 5.0f;
+    constexpr float DEAD_LOG_WEIGHT = 2.0f;      // Rare - large decorations
+    constexpr float LILY_PAD_WEIGHT = 10.0f;
+    constexpr float WATER_FLOWER_WEIGHT = 8.0f;
+}
+
+} // namespace WorldSpawnConfig
+
+// Weighted decoration entry
+struct WeightedDecoration {
+    DecorationType type;
+    float weight;
+};
+
+// Select decoration based on weights
+inline DecorationType selectWeightedDecoration(
+    const std::vector<WeightedDecoration>& decorations,
+    std::default_random_engine& rng) {
+
+    float totalWeight = 0.0f;
+    for (const auto& d : decorations) {
+        totalWeight += d.weight;
+    }
+
+    std::uniform_real_distribution<float> dist(0.0f, totalWeight);
+    float roll = dist(rng);
+
+    float cumulative = 0.0f;
+    for (const auto& d : decorations) {
+        cumulative += d.weight;
+        if (roll < cumulative) {
+            return d.type;
+        }
+    }
+    return decorations.back().type;
+}
+
 WorldGenerator::PerlinNoise::PerlinNoise(int seed) {
   permutation.resize(256);
   std::iota(permutation.begin(), permutation.end(), 0);
@@ -171,6 +301,8 @@ void WorldGenerator::assignBiomes(
 
       Biome biome;
 
+      namespace BiomeCfg = WorldSpawnConfig::Biome;
+
       if (elevation < config.waterLevel) {
         biome = Biome::OCEAN;
         world.grid[y][x].isWater = true;
@@ -178,11 +310,11 @@ void WorldGenerator::assignBiomes(
         biome = Biome::MOUNTAIN;
       } else {
         // Assign biome based on humidity and elevation
-        if (humidity < 0.3f) {
+        if (humidity < BiomeCfg::DESERT_HUMIDITY_MAX) {
           biome = Biome::DESERT;
-        } else if (humidity > 0.7f && elevation < 0.4f) {
+        } else if (humidity > BiomeCfg::SWAMP_HUMIDITY_MIN && elevation < BiomeCfg::SWAMP_ELEVATION_MAX) {
           biome = Biome::SWAMP;
-        } else if (elevation > 0.6f && humidity > 0.5f) {
+        } else if (elevation > BiomeCfg::FOREST_ELEVATION_MIN && humidity > BiomeCfg::FOREST_HUMIDITY_MIN) {
           biome = Biome::FOREST;
         } else {
           // Special biomes with lower probability
@@ -190,9 +322,9 @@ void WorldGenerator::assignBiomes(
           std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
           float special = dist(rng);
-          if (special < 0.05f) {
+          if (special < BiomeCfg::HAUNTED_CHANCE) {
             biome = Biome::HAUNTED;
-          } else if (special < 0.1f) {
+          } else if (special < BiomeCfg::HAUNTED_CHANCE + BiomeCfg::CELESTIAL_CHANCE) {
             biome = Biome::CELESTIAL;
           } else {
             biome = Biome::FOREST;
@@ -222,22 +354,24 @@ void WorldGenerator::createWaterBodies(
   }
 
   // Create rivers by connecting low elevation areas
+  namespace WaterCfg = WorldSpawnConfig::Water;
+
   std::default_random_engine rng(config.seed + 5000);
   std::uniform_int_distribution<int> xDist(0, width - 1);
   std::uniform_int_distribution<int> yDist(0, height - 1);
 
-  int riverCount = std::max(1, (width * height) / 1000);
+  int riverCount = std::max(1, (width * height) / WaterCfg::RIVER_DENSITY_DIVISOR);
 
   for (int i = 0; i < riverCount; ++i) {
     int startX = xDist(rng);
     int startY = yDist(rng);
 
-    if (elevationMap[startY][startX] > config.waterLevel + 0.2f) {
+    if (elevationMap[startY][startX] > config.waterLevel + WaterCfg::RIVER_START_ELEVATION_OFFSET) {
       int currentX = startX;
       int currentY = startY;
 
-      // Flow downhill for up to 50 steps
-      for (int step = 0; step < 50; ++step) {
+      // Flow downhill for up to configured steps
+      for (int step = 0; step < WaterCfg::RIVER_MAX_FLOW_STEPS; ++step) {
         float currentElevation = elevationMap[currentY][currentX];
 
         // Find lowest neighboring tile
@@ -268,7 +402,7 @@ void WorldGenerator::createWaterBodies(
         if (bestX != currentX || bestY != currentY) {
           if (!world.grid[currentY][currentX].isWater) {
             world.grid[currentY][currentX].isWater = true;
-            world.grid[currentY][currentX].biome = Biome::OCEAN;
+            // Preserve original biome so rivers get biome-appropriate decorations
             world.grid[currentY][currentX].obstacleType = ObstacleType::NONE;
           }
           currentX = bestX;
@@ -283,6 +417,8 @@ void WorldGenerator::createWaterBodies(
 
 void WorldGenerator::distributeObstacles(WorldData &world,
                                          const WorldGenerationConfig &config) {
+  namespace ObsCfg = WorldSpawnConfig::Obstacles;
+
   int height = static_cast<int>(world.grid.size());
   int width = static_cast<int>(world.grid[0].size());
 
@@ -319,29 +455,29 @@ void WorldGenerator::distributeObstacles(WorldData &world,
 
       switch (tile.biome) {
       case Biome::FOREST:
-        obstacleChance = 0.4f;
+        obstacleChance = ObsCfg::FOREST_CHANCE;
         obstacleType = ObstacleType::TREE;
         break;
       case Biome::MOUNTAIN:
-        obstacleChance = 0.3f;
+        obstacleChance = ObsCfg::MOUNTAIN_CHANCE;
         obstacleType = ObstacleType::ROCK;
         break;
       case Biome::SWAMP:
-        obstacleChance = 0.2f;
+        obstacleChance = ObsCfg::SWAMP_CHANCE;
         obstacleType =
-            dist(rng) < 0.7f ? ObstacleType::TREE : ObstacleType::WATER;
+            dist(rng) < ObsCfg::SWAMP_TREE_RATIO ? ObstacleType::TREE : ObstacleType::WATER;
         break;
       case Biome::DESERT:
-        obstacleChance = 0.1f;
+        obstacleChance = ObsCfg::DESERT_CHANCE;
         obstacleType = ObstacleType::ROCK;
         break;
       case Biome::HAUNTED:
-        obstacleChance = 0.3f;
+        obstacleChance = ObsCfg::HAUNTED_CHANCE;
         obstacleType =
-            dist(rng) < 0.6f ? ObstacleType::TREE : ObstacleType::ROCK;
+            dist(rng) < ObsCfg::HAUNTED_TREE_RATIO ? ObstacleType::TREE : ObstacleType::ROCK;
         break;
       case Biome::CELESTIAL:
-        obstacleChance = 0.15f;
+        obstacleChance = ObsCfg::CELESTIAL_CHANCE;
         obstacleType = ObstacleType::ROCK;
         break;
       default:
@@ -356,12 +492,14 @@ void WorldGenerator::distributeObstacles(WorldData &world,
         if (nearbyCount == 0) {
           // No neighbors - always allow (start new cluster or isolated tree)
           canPlace = true;
-        } else if (nearbyCount <= 2) {
-          // 1-2 neighbors - chance to extend cluster (organic growth)
-          float clusterChance = (tile.biome == Biome::FOREST) ? 0.5f : 0.2f;
+        } else if (nearbyCount <= ObsCfg::MAX_NEIGHBORS_ALLOWED) {
+          // Within limit - chance to extend cluster (organic growth)
+          float clusterChance = (tile.biome == Biome::FOREST)
+              ? ObsCfg::CLUSTER_GROWTH_FOREST
+              : ObsCfg::CLUSTER_GROWTH_OTHER;
           canPlace = dist(rng) < clusterChance;
         }
-        // 3+ neighbors - too dense, skip (prevents blob formations)
+        // Too many neighbors - skip (prevents blob formations)
 
         if (canPlace) {
           tile.obstacleType = obstacleType;
@@ -376,101 +514,120 @@ void WorldGenerator::distributeObstacles(WorldData &world,
 
 void WorldGenerator::distributeDecorations(WorldData& world,
                                            const WorldGenerationConfig& config) {
+  namespace DecoCfg = WorldSpawnConfig::Decorations;
+
   int height = static_cast<int>(world.grid.size());
   int width = static_cast<int>(world.grid[0].size());
 
-  std::default_random_engine rng(config.seed + 20000);  // Different seed offset
+  std::default_random_engine rng(config.seed + 20000);
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
-  // Pre-allocated vector for possible decorations (avoids per-tile allocations)
-  std::vector<DecorationType> possibleDecorations;
-  possibleDecorations.reserve(12);  // Max decoration types per biome
+  // Pre-allocated vector for weighted decorations
+  std::vector<WeightedDecoration> weightedDecorations;
+  weightedDecorations.reserve(16);
 
   for (int y = 0; y < height; ++y) {
     for (int x = 0; x < width; ++x) {
       Tile& tile = world.grid[y][x];
 
-      // Skip tiles with water, obstacles, or buildings
-      if (tile.isWater ||
-          tile.obstacleType != ObstacleType::NONE ||
-          tile.buildingId > 0) {
+      // Skip tiles with buildings
+      if (tile.buildingId > 0) {
         continue;
       }
 
       float decorationChance = 0.0f;
-      possibleDecorations.clear();
+      weightedDecorations.clear();
 
-      switch (tile.biome) {
-        case Biome::FOREST:
-          decorationChance = 0.25f;
-          possibleDecorations = {
-              DecorationType::FLOWER_BLUE,
-              DecorationType::FLOWER_PINK,
-              DecorationType::FLOWER_WHITE,
-              DecorationType::FLOWER_YELLOW,
-              DecorationType::GRASS_SMALL,
-              DecorationType::GRASS_LARGE,
-              DecorationType::BUSH,
-              DecorationType::STUMP_SMALL,
-              DecorationType::STUMP_MEDIUM
-          };
-          break;
+      // Water tiles get water-specific decorations
+      // Check both isWater flag AND water obstacles in swamp (puddles)
+      bool isWaterTile = tile.isWater || tile.obstacleType == ObstacleType::WATER;
+      if (isWaterTile && (tile.biome == Biome::SWAMP || tile.biome == Biome::FOREST)) {
+        decorationChance = DecoCfg::WATER_CHANCE;
+        weightedDecorations = {
+            {DecorationType::LILY_PAD, DecoCfg::LILY_PAD_WEIGHT},
+            {DecorationType::WATER_FLOWER, DecoCfg::WATER_FLOWER_WEIGHT}
+        };
+      } else if (tile.obstacleType != ObstacleType::NONE) {
+        // Skip land tiles with obstacles (trees, rocks)
+        continue;
+      } else {
+        // Land decorations by biome
+        switch (tile.biome) {
+          case Biome::FOREST:
+            decorationChance = DecoCfg::FOREST_CHANCE;
+            weightedDecorations = {
+                {DecorationType::FLOWER_BLUE, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::FLOWER_PINK, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::FLOWER_WHITE, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::FLOWER_YELLOW, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::GRASS_SMALL, DecoCfg::GRASS_WEIGHT},
+                {DecorationType::GRASS_LARGE, DecoCfg::GRASS_WEIGHT},
+                {DecorationType::BUSH, DecoCfg::BUSH_WEIGHT},
+                {DecorationType::STUMP_SMALL, DecoCfg::STUMP_WEIGHT},
+                {DecorationType::STUMP_MEDIUM, DecoCfg::STUMP_WEIGHT},
+                {DecorationType::DEAD_LOG_HZ, DecoCfg::DEAD_LOG_WEIGHT},
+                {DecorationType::DEAD_LOG_VERTICAL, DecoCfg::DEAD_LOG_WEIGHT}
+            };
+            break;
 
-        case Biome::CELESTIAL:
-          decorationChance = 0.20f;
-          possibleDecorations = {
-              DecorationType::FLOWER_BLUE,
-              DecorationType::FLOWER_WHITE,
-              DecorationType::GRASS_SMALL
-          };
-          break;
+          case Biome::CELESTIAL:
+            decorationChance = DecoCfg::CELESTIAL_CHANCE;
+            weightedDecorations = {
+                {DecorationType::FLOWER_BLUE, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::FLOWER_WHITE, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::GRASS_SMALL, DecoCfg::GRASS_WEIGHT}
+            };
+            break;
 
-        case Biome::SWAMP:
-          decorationChance = 0.30f;
-          possibleDecorations = {
-              DecorationType::MUSHROOM_PURPLE,
-              DecorationType::MUSHROOM_TAN,
-              DecorationType::GRASS_LARGE,
-              DecorationType::STUMP_SMALL
-          };
-          break;
+          case Biome::SWAMP:
+            decorationChance = DecoCfg::SWAMP_CHANCE;
+            weightedDecorations = {
+                {DecorationType::MUSHROOM_PURPLE, DecoCfg::MUSHROOM_WEIGHT},
+                {DecorationType::MUSHROOM_TAN, DecoCfg::MUSHROOM_WEIGHT},
+                {DecorationType::GRASS_LARGE, DecoCfg::GRASS_WEIGHT},
+                {DecorationType::STUMP_SMALL, DecoCfg::STUMP_WEIGHT},
+                {DecorationType::DEAD_LOG_HZ, DecoCfg::DEAD_LOG_WEIGHT},
+                {DecorationType::DEAD_LOG_VERTICAL, DecoCfg::DEAD_LOG_WEIGHT}
+            };
+            break;
 
-        case Biome::HAUNTED:
-          decorationChance = 0.25f;
-          possibleDecorations = {
-              DecorationType::MUSHROOM_PURPLE,
-              DecorationType::MUSHROOM_TAN,
-              DecorationType::STUMP_SMALL,
-              DecorationType::STUMP_MEDIUM
-          };
-          break;
+          case Biome::HAUNTED:
+            decorationChance = DecoCfg::HAUNTED_CHANCE;
+            weightedDecorations = {
+                {DecorationType::MUSHROOM_PURPLE, DecoCfg::MUSHROOM_WEIGHT},
+                {DecorationType::MUSHROOM_TAN, DecoCfg::MUSHROOM_WEIGHT},
+                {DecorationType::STUMP_SMALL, DecoCfg::STUMP_WEIGHT},
+                {DecorationType::STUMP_MEDIUM, DecoCfg::STUMP_WEIGHT},
+                {DecorationType::DEAD_LOG_HZ, DecoCfg::DEAD_LOG_WEIGHT},
+                {DecorationType::DEAD_LOG_VERTICAL, DecoCfg::DEAD_LOG_WEIGHT}
+            };
+            break;
 
-        case Biome::MOUNTAIN:
-          decorationChance = 0.15f;
-          possibleDecorations = {
-              DecorationType::GRASS_SMALL,
-              DecorationType::FLOWER_WHITE,
-              DecorationType::ROCK_SMALL
-          };
-          break;
+          case Biome::MOUNTAIN:
+            decorationChance = DecoCfg::MOUNTAIN_CHANCE;
+            weightedDecorations = {
+                {DecorationType::GRASS_SMALL, DecoCfg::GRASS_WEIGHT},
+                {DecorationType::FLOWER_WHITE, DecoCfg::FLOWER_WEIGHT},
+                {DecorationType::ROCK_SMALL, DecoCfg::ROCK_WEIGHT}
+            };
+            break;
 
-        case Biome::DESERT:
-        case Biome::OCEAN:
-          // No decorations in desert or ocean
-          continue;
+          case Biome::DESERT:
+          case Biome::OCEAN:
+            continue;
 
-        default:
-          decorationChance = 0.15f;
-          possibleDecorations = {
-              DecorationType::GRASS_SMALL,
-              DecorationType::GRASS_LARGE
-          };
-          break;
+          default:
+            decorationChance = DecoCfg::DEFAULT_CHANCE;
+            weightedDecorations = {
+                {DecorationType::GRASS_SMALL, DecoCfg::GRASS_WEIGHT},
+                {DecorationType::GRASS_LARGE, DecoCfg::GRASS_WEIGHT}
+            };
+            break;
+        }
       }
 
-      if (!possibleDecorations.empty() && dist(rng) < decorationChance) {
-        std::uniform_int_distribution<size_t> typeDist(0, possibleDecorations.size() - 1);
-        tile.decorationType = possibleDecorations[typeDist(rng)];
+      if (!weightedDecorations.empty() && dist(rng) < decorationChance) {
+        tile.decorationType = selectWeightedDecoration(weightedDecorations, rng);
       }
     }
   }
@@ -506,11 +663,13 @@ void WorldGenerator::calculateInitialResources(const WorldData &world) {
 }
 
 void WorldGenerator::generateBuildings(WorldData& world, std::default_random_engine& rng) {
+  namespace BldgCfg = WorldSpawnConfig::Buildings;
+
   int height = static_cast<int>(world.grid.size());
   int width = height > 0 ? static_cast<int>(world.grid[0].size()) : 0;
-  
-  if (width <= 2 || height <= 2) return; // Need at least 3x3 to place 2x2 buildings
-  
+
+  if (width <= BldgCfg::BUILDING_SIZE || height <= BldgCfg::BUILDING_SIZE) return;
+
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
   uint32_t nextBuildingId = 1;
 
@@ -530,29 +689,29 @@ void WorldGenerator::generateBuildings(WorldData& world, std::default_random_eng
       // Determine building chance based on biome
       float buildingChance = 0.0f;
       const Tile& tile = world.grid[y][x];
-      
+
       switch (tile.biome) {
       case Biome::FOREST:
-        buildingChance = 0.025f; // Increased for better visibility
+        buildingChance = BldgCfg::FOREST_CHANCE;
         break;
       case Biome::HAUNTED:
-        buildingChance = 0.03f; // Increased for better visibility
+        buildingChance = BldgCfg::HAUNTED_CHANCE;
         break;
       case Biome::DESERT:
-        buildingChance = 0.015f; // Increased for better visibility
+        buildingChance = BldgCfg::DESERT_CHANCE;
         break;
       case Biome::SWAMP:
-        buildingChance = 0.015f; // Increased for better visibility
+        buildingChance = BldgCfg::SWAMP_CHANCE;
         break;
       case Biome::CELESTIAL:
-        buildingChance = 0.02f; // Increased for better visibility
+        buildingChance = BldgCfg::CELESTIAL_CHANCE;
         break;
       case Biome::MOUNTAIN:
       case Biome::OCEAN:
         // No buildings in these biomes
         continue;
       default:
-        buildingChance = 0.015f; // Increased default chance
+        buildingChance = BldgCfg::DEFAULT_CHANCE;
         break;
       }
 
@@ -653,6 +812,8 @@ uint32_t WorldGenerator::createBuilding(WorldData& world, int x, int y, uint32_t
 }
 
 void WorldGenerator::tryConnectBuildings(WorldData& world, int x, int y, uint32_t buildingId) {
+  namespace BldgCfg = WorldSpawnConfig::Buildings;
+
   int height = static_cast<int>(world.grid.size());
   int width = height > 0 ? static_cast<int>(world.grid[0].size()) : 0;
 
@@ -719,7 +880,9 @@ void WorldGenerator::tryConnectBuildings(WorldData& world, int x, int y, uint32_
   }
 
   // Update building sizes for all connected buildings
-  uint8_t newSize = static_cast<uint8_t>(std::min(4u, static_cast<uint32_t>(connectedBuildings.size())));
+  uint8_t newSize = static_cast<uint8_t>(std::min(
+      static_cast<uint32_t>(BldgCfg::MAX_CONNECTED_SIZE),
+      static_cast<uint32_t>(connectedBuildings.size())));
   
   for (uint32_t connectedId : connectedBuildings) {
     // Update all tiles belonging to each connected building

@@ -1015,19 +1015,29 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
     m_cachedTextureIDs.decoration_grass_large = "dead_grass_obstacle_large";
   }
 
-  // Bushes - seasonal variants
+  // Bushes - seasonal variants (prefix pattern: season_bush)
   if (m_currentSeason == Season::Fall) {
-    m_cachedTextureIDs.decoration_bush = "bush_fall";
+    m_cachedTextureIDs.decoration_bush = "fall_bush";
   } else if (m_currentSeason == Season::Winter) {
-    m_cachedTextureIDs.decoration_bush = "bush_winter";
+    m_cachedTextureIDs.decoration_bush = "winter_bush";
+  } else if (m_currentSeason == Season::Spring) {
+    m_cachedTextureIDs.decoration_bush = "spring_bush";
   } else {
-    m_cachedTextureIDs.decoration_bush = "bush_spring";
+    m_cachedTextureIDs.decoration_bush = "summer_bush";
   }
 
   // Stumps and rocks - no seasonal variants
   m_cachedTextureIDs.decoration_stump_small = "stump_obstacle_small";
   m_cachedTextureIDs.decoration_stump_medium = "stump_obstacle_medium";
   m_cachedTextureIDs.decoration_rock_small = "obstacle_rock";
+
+  // Logs - no seasonal variants
+  m_cachedTextureIDs.decoration_dead_log_hz = "dead_log_hz";
+  m_cachedTextureIDs.decoration_dead_log_vertical = "dead_log_vertical";
+
+  // Water decorations - no seasonal variants
+  m_cachedTextureIDs.decoration_lily_pad = "small_lily_pad";
+  m_cachedTextureIDs.decoration_water_flower = "blue_water_flower";
 
   // Cache decoration texture pointers
   cacheTexture(m_cachedTextures.decoration_flower_blue,
@@ -1054,6 +1064,14 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                m_cachedTextureIDs.decoration_stump_medium);
   cacheTexture(m_cachedTextures.decoration_rock_small,
                m_cachedTextureIDs.decoration_rock_small);
+  cacheTexture(m_cachedTextures.decoration_dead_log_hz,
+               m_cachedTextureIDs.decoration_dead_log_hz);
+  cacheTexture(m_cachedTextures.decoration_dead_log_vertical,
+               m_cachedTextureIDs.decoration_dead_log_vertical);
+  cacheTexture(m_cachedTextures.decoration_lily_pad,
+               m_cachedTextureIDs.decoration_lily_pad);
+  cacheTexture(m_cachedTextures.decoration_water_flower,
+               m_cachedTextureIDs.decoration_water_flower);
 
   // Validate critical textures to catch missing seasonal assets early
   if (!m_cachedTextures.biome_default.ptr) {
@@ -1289,6 +1307,10 @@ void HammerEngine::TileRenderer::initAtlasCoords() {
     loadDecoration(coords.decoration_stump_small, "stump_small");
     loadDecoration(coords.decoration_stump_medium, "stump_medium");
     loadDecoration(coords.decoration_rock_small, "rock_small");
+    loadDecoration(coords.decoration_dead_log_hz, "dead_log_hz");
+    loadDecoration(coords.decoration_dead_log_vertical, "dead_log_vertical");
+    loadDecoration(coords.decoration_lily_pad, "lily_pad");
+    loadDecoration(coords.decoration_water_flower, "water_flower");
   }
 
   m_useAtlas = true;
@@ -1340,6 +1362,10 @@ void HammerEngine::TileRenderer::applyCoordsToTextures(Season season) {
   apply(m_cachedTextures.decoration_stump_small, coords.decoration_stump_small);
   apply(m_cachedTextures.decoration_stump_medium, coords.decoration_stump_medium);
   apply(m_cachedTextures.decoration_rock_small, coords.decoration_rock_small);
+  apply(m_cachedTextures.decoration_dead_log_hz, coords.decoration_dead_log_hz);
+  apply(m_cachedTextures.decoration_dead_log_vertical, coords.decoration_dead_log_vertical);
+  apply(m_cachedTextures.decoration_lily_pad, coords.decoration_lily_pad);
+  apply(m_cachedTextures.decoration_water_flower, coords.decoration_water_flower);
 }
 
 void HammerEngine::TileRenderer::subscribeToSeasonEvents() {
@@ -1435,7 +1461,8 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
           static_cast<float>((y - startTileY) * tileSize + SPRITE_OVERHANG);
 
       const CachedTexture *tex = &m_cachedTextures.biome_default;
-      if (tile.isWater) {
+      // Render water for both true water (rivers/ocean) AND water obstacles (swamp puddles)
+      if (tile.isWater || tile.obstacleType == HammerEngine::ObstacleType::WATER) {
         tex = &m_cachedTextures.obstacle_water;
       } else {
         switch (tile.biome) {
@@ -1476,11 +1503,24 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
   }
 
   // LAYER 2: Decorations (ground-level, rendered before Y-sorted obstacles)
-  for (int y = startTileY; y < endTileY; ++y) {
-    for (int x = startTileX; x < endTileX; ++x) {
+  // Extended range to capture decorations that overhang into this chunk
+  const int decoStartX = std::max(0, startTileX - 2);  // 2 tiles for wide decorations
+  const int decoStartY = std::max(0, startTileY - 2);  // 2 tiles for tall decorations
+  const int decoEndX = std::min(worldWidth, endTileX + 2);
+  const int decoEndY = std::min(worldHeight, endTileY + 2);
+
+  for (int y = decoStartY; y < decoEndY; ++y) {
+    for (int x = decoStartX; x < decoEndX; ++x) {
       const HammerEngine::Tile &tile = world.grid[y][x];
 
       if (tile.decorationType == HammerEngine::DecorationType::NONE) {
+        continue;
+      }
+
+      // Skip decorations on land obstacle tiles (trees, rocks have visual priority)
+      // Allow water decorations on WATER obstacle tiles
+      if (tile.obstacleType != HammerEngine::ObstacleType::NONE &&
+          tile.obstacleType != HammerEngine::ObstacleType::WATER) {
         continue;
       }
 
@@ -1526,6 +1566,18 @@ void HammerEngine::TileRenderer::renderChunkToTexture(
         break;
       case HammerEngine::DecorationType::ROCK_SMALL:
         tex = &m_cachedTextures.decoration_rock_small;
+        break;
+      case HammerEngine::DecorationType::DEAD_LOG_HZ:
+        tex = &m_cachedTextures.decoration_dead_log_hz;
+        break;
+      case HammerEngine::DecorationType::DEAD_LOG_VERTICAL:
+        tex = &m_cachedTextures.decoration_dead_log_vertical;
+        break;
+      case HammerEngine::DecorationType::LILY_PAD:
+        tex = &m_cachedTextures.decoration_lily_pad;
+        break;
+      case HammerEngine::DecorationType::WATER_FLOWER:
+        tex = &m_cachedTextures.decoration_water_flower;
         break;
       default:
         continue;
