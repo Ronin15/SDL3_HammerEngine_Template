@@ -89,15 +89,247 @@ def detect_sprite_regions(atlas: Image.Image) -> list:
                 min_x, min_y, max_x, max_y = flood_fill(x, y)
                 w = max_x - min_x + 1
                 h = max_y - min_y + 1
-                # Filter out tiny sprites (shadows, noise) - minimum 4x4
-                if w >= 4 and h >= 4:
+                # Filter out tiny sprites (shadows, noise) - minimum 1x1
+                if w >= 1 and h >= 1:
                     regions.append({'x': min_x, 'y': min_y, 'w': w, 'h': h})
 
     regions.sort(key=lambda r: (r['y'], r['x']))
     return regions
 
 
-def cmd_extract(paths: dict):
+def split_by_gaps(region: dict, atlas: Image.Image, max_size: int = 64) -> list:
+    """Split a region using transparency gaps, or grid-based splitting as fallback."""
+    if region['w'] <= max_size and region['h'] <= max_size:
+        return [region]
+
+    # Extract sub-image
+    sub_img = atlas.crop((region['x'], region['y'],
+                          region['x'] + region['w'], region['y'] + region['h']))
+    pixels = sub_img.load()
+
+    # Find horizontal gaps (rows of full transparency)
+    h_splits = [0]
+    for y in range(sub_img.height):
+        if all(pixels[x, y][3] == 0 for x in range(sub_img.width)):
+            if h_splits[-1] != y:
+                h_splits.append(y)
+    h_splits.append(sub_img.height)
+
+    # Find vertical gaps (columns of full transparency)
+    v_splits = [0]
+    for x in range(sub_img.width):
+        if all(pixels[x, y][3] == 0 for y in range(sub_img.height)):
+            if v_splits[-1] != x:
+                v_splits.append(x)
+    v_splits.append(sub_img.width)
+
+    # If no gaps found, fall back to grid-based splitting
+    if len(h_splits) <= 2 and len(v_splits) <= 2:
+        return split_by_grid(region, atlas, grid_size=32)
+
+    # Split by gaps and process each cell
+    result = []
+    for i in range(len(h_splits) - 1):
+        for j in range(len(v_splits) - 1):
+            y1, y2 = h_splits[i], h_splits[i + 1]
+            x1, x2 = v_splits[j], v_splits[j + 1]
+
+            if x2 - x1 < 2 or y2 - y1 < 2:
+                continue
+
+            cell = sub_img.crop((x1, y1, x2, y2))
+            cell_regions = detect_sprite_regions(cell)
+
+            for cr in cell_regions:
+                cr['x'] += region['x'] + x1
+                cr['y'] += region['y'] + y1
+                result.append(cr)
+
+    return result if result else [region]
+
+
+def split_by_grid(region: dict, atlas: Image.Image, grid_size: int = 32) -> list:
+    """Force split a region into grid cells, then find tight bounds in each."""
+    result = []
+
+    for gy in range(0, region['h'], grid_size):
+        for gx in range(0, region['w'], grid_size):
+            cell_x = region['x'] + gx
+            cell_y = region['y'] + gy
+            cell_w = min(grid_size, region['w'] - gx)
+            cell_h = min(grid_size, region['h'] - gy)
+
+            # Extract cell and run flood fill to find sprites within
+            cell = atlas.crop((cell_x, cell_y, cell_x + cell_w, cell_y + cell_h))
+            cell_regions = detect_sprite_regions(cell)
+
+            for cr in cell_regions:
+                cr['x'] += cell_x
+                cr['y'] += cell_y
+                result.append(cr)
+
+    # Merge sprites that were split at grid boundaries
+    if result:
+        result = merge_adjacent_sprites(result, atlas)
+
+    return result if result else [region]
+
+
+def merge_adjacent_sprites(regions: list, atlas: Image.Image, min_overlap_ratio: float = 0.5) -> list:
+    """Merge sprites that share a significant boundary (were split by grid)."""
+    if not regions:
+        return regions
+
+    # Build adjacency: check which sprites actually touch in the atlas
+    pixels = atlas.load()
+    width, height = atlas.size
+
+    def count_shared_pixels(r1: dict, r2: dict) -> tuple:
+        """Count pixels where two sprites touch and return (count, edge_length)."""
+        shared = 0
+        edge_len = 0
+
+        # Horizontal adjacency (r1 left of r2)
+        if r1['x'] + r1['w'] == r2['x']:
+            y_start = max(r1['y'], r2['y'])
+            y_end = min(r1['y'] + r1['h'], r2['y'] + r2['h'])
+            edge_len = y_end - y_start
+            for y in range(y_start, y_end):
+                x1 = r1['x'] + r1['w'] - 1
+                x2 = r2['x']
+                if (0 <= x1 < width and 0 <= x2 < width and
+                    pixels[x1, y][3] > 0 and pixels[x2, y][3] > 0):
+                    shared += 1
+            if shared > 0:
+                return shared, edge_len
+
+        # Horizontal adjacency (r2 left of r1)
+        if r2['x'] + r2['w'] == r1['x']:
+            y_start = max(r1['y'], r2['y'])
+            y_end = min(r1['y'] + r1['h'], r2['y'] + r2['h'])
+            edge_len = y_end - y_start
+            for y in range(y_start, y_end):
+                x1 = r1['x']
+                x2 = r2['x'] + r2['w'] - 1
+                if (0 <= x1 < width and 0 <= x2 < width and
+                    pixels[x1, y][3] > 0 and pixels[x2, y][3] > 0):
+                    shared += 1
+            if shared > 0:
+                return shared, edge_len
+
+        # Vertical adjacency (r1 above r2)
+        if r1['y'] + r1['h'] == r2['y']:
+            x_start = max(r1['x'], r2['x'])
+            x_end = min(r1['x'] + r1['w'], r2['x'] + r2['w'])
+            edge_len = x_end - x_start
+            for x in range(x_start, x_end):
+                y1 = r1['y'] + r1['h'] - 1
+                y2 = r2['y']
+                if (0 <= y1 < height and 0 <= y2 < height and
+                    pixels[x, y1][3] > 0 and pixels[x, y2][3] > 0):
+                    shared += 1
+            if shared > 0:
+                return shared, edge_len
+
+        # Vertical adjacency (r2 above r1)
+        if r2['y'] + r2['h'] == r1['y']:
+            x_start = max(r1['x'], r2['x'])
+            x_end = min(r1['x'] + r1['w'], r2['x'] + r2['w'])
+            edge_len = x_end - x_start
+            for x in range(x_start, x_end):
+                y1 = r1['y']
+                y2 = r2['y'] + r2['h'] - 1
+                if (0 <= y1 < height and 0 <= y2 < height and
+                    pixels[x, y1][3] > 0 and pixels[x, y2][3] > 0):
+                    shared += 1
+            if shared > 0:
+                return shared, edge_len
+
+        return 0, 0
+
+    def should_merge(r1: dict, r2: dict) -> bool:
+        """Merge only if sprites share significant boundary (>50% of edge)."""
+        # Quick bounding box check
+        if (r1['x'] + r1['w'] < r2['x'] - 1 or r2['x'] + r2['w'] < r1['x'] - 1 or
+            r1['y'] + r1['h'] < r2['y'] - 1 or r2['y'] + r2['h'] < r1['y'] - 1):
+            return False
+
+        shared, edge_len = count_shared_pixels(r1, r2)
+        if edge_len == 0:
+            return False
+
+        # Require significant overlap (>50% of shared edge has content on both sides)
+        ratio = shared / edge_len
+        return ratio >= min_overlap_ratio
+
+    # Union-Find to group touching sprites
+    parent = list(range(len(regions)))
+
+    def find(x):
+        if parent[x] != x:
+            parent[x] = find(parent[x])
+        return parent[x]
+
+    def union(x, y):
+        px, py = find(x), find(y)
+        if px != py:
+            parent[px] = py
+
+    # Find all pairs that should merge (significant boundary overlap)
+    for i in range(len(regions)):
+        for j in range(i + 1, len(regions)):
+            if should_merge(regions[i], regions[j]):
+                union(i, j)
+
+    # Group regions by their root
+    groups = {}
+    for i, r in enumerate(regions):
+        root = find(i)
+        if root not in groups:
+            groups[root] = []
+        groups[root].append(r)
+
+    # Merge each group into a single bounding box (but limit max merged size)
+    max_merged_size = 96  # Don't merge if result would be larger than this
+    result = []
+    for group in groups.values():
+        if len(group) == 1:
+            result.append(group[0])
+        else:
+            # Calculate merged bounding box
+            min_x = min(r['x'] for r in group)
+            min_y = min(r['y'] for r in group)
+            max_x = max(r['x'] + r['w'] for r in group)
+            max_y = max(r['y'] + r['h'] for r in group)
+            merged_w = max_x - min_x
+            merged_h = max_y - min_y
+
+            # If merged would be too large, keep sprites separate
+            if merged_w > max_merged_size or merged_h > max_merged_size:
+                result.extend(group)
+            else:
+                result.append({
+                    'x': min_x,
+                    'y': min_y,
+                    'w': merged_w,
+                    'h': merged_h
+                })
+
+    return result
+
+
+def split_oversized_regions(regions: list, atlas: Image.Image, max_size: int = 64) -> list:
+    """Process all regions, splitting oversized ones."""
+    result = []
+    for region in regions:
+        if region['w'] > max_size or region['h'] > max_size:
+            result.extend(split_by_gaps(region, atlas, max_size))
+        else:
+            result.append(region)
+    return result
+
+
+def cmd_extract(paths: dict, max_size: int = 64):
     """Extract sprites from atlas.png to res/sprites/."""
     atlas_path = paths['atlas_png']
     sprites_dir = paths['sprites_dir']
@@ -133,9 +365,18 @@ def cmd_extract(paths: dict):
     if not regions:
         print("Detecting sprite regions (flood fill)...")
         regions = detect_sprite_regions(atlas)
+        print(f"Found {len(regions)} regions")
+
+        # Split oversized regions using gap detection
+        oversized = sum(1 for r in regions if r['w'] > max_size or r['h'] > max_size)
+        if oversized > 0:
+            print(f"Splitting {oversized} oversized regions (max_size={max_size})...")
+            regions = split_oversized_regions(regions, atlas, max_size=max_size)
+            print(f"After splitting: {len(regions)} regions")
+
+        # Assign names after splitting
         for i, r in enumerate(regions):
             r['name'] = f"sprite_{i+1:03d}"
-        print(f"Found {len(regions)} regions")
 
     regions.sort(key=lambda r: (r['y'], r['x']))
 
@@ -1029,7 +1270,9 @@ Example:
 ''')
 
     subparsers = parser.add_subparsers(dest='command', help='Commands')
-    subparsers.add_parser('extract', help='Extract sprites from atlas.png')
+    extract_parser = subparsers.add_parser('extract', help='Extract sprites from atlas.png')
+    extract_parser.add_argument('--max-size', type=int, default=64,
+                                help='Split regions larger than this (default: 64)')
     subparsers.add_parser('map', help='Visual tool to assign texture IDs')
     subparsers.add_parser('pack', help='Pack sprites and export JSON files')
     subparsers.add_parser('list', help='List current sprites')
@@ -1038,7 +1281,7 @@ Example:
     paths = get_paths()
 
     if args.command == 'extract':
-        cmd_extract(paths)
+        cmd_extract(paths, max_size=args.max_size)
     elif args.command == 'map':
         cmd_map(paths)
     elif args.command == 'pack':
