@@ -155,6 +155,7 @@ void CollisionManager::prepareForStateTransition() {
   m_storage.clear();
   m_staticSpatialHash.clear();
   m_dynamicSpatialHash.clear();
+  m_eventOnlySpatialHash.clear();
 
   // Clear collision buffers to prevent dangling references to deleted bodies
   m_collisionPool.resetFrame();
@@ -2360,6 +2361,7 @@ void CollisionManager::rebuildStaticSpatialHash() {
 void CollisionManager::rebuildStaticSpatialHashUnlocked() {
   // Only called when static objects are added/removed
   m_staticSpatialHash.clear();
+  m_eventOnlySpatialHash.clear();
 
   for (size_t i = 0; i < m_storage.hotData.size(); ++i) {
     const auto &hot = m_storage.hotData[i];
@@ -2368,16 +2370,16 @@ void CollisionManager::rebuildStaticSpatialHashUnlocked() {
 
     BodyType bodyType = static_cast<BodyType>(hot.bodyType);
     if (bodyType == BodyType::STATIC) {
-      // Skip EventOnly triggers - they're detected via per-entity spatial query,
-      // not broadphase. Keeping them out of the hash avoids querying 400+ water
-      // triggers just to filter them out.
+      AABB aabb = m_storage.computeAABB(i);
+
+      // EventOnly triggers go to separate hash (keeps broadphase fast)
       if (hot.isTrigger != 0 &&
           hot.triggerType ==
               static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
-        continue;
+        m_eventOnlySpatialHash.insert(i, aabb);
+      } else {
+        m_staticSpatialHash.insert(i, aabb);
       }
-      AABB aabb = m_storage.computeAABB(i);
-      m_staticSpatialHash.insert(i, aabb);
     }
   }
 }
@@ -2508,7 +2510,7 @@ void CollisionManager::detectEventOnlyTriggersSpatial(
     AABB entityAABB(px, py, hw, hh);
 
     m_triggerCandidates.clear();
-    m_staticSpatialHash.queryRegion(entityAABB, m_triggerCandidates);
+    m_eventOnlySpatialHash.queryRegion(entityAABB, m_triggerCandidates);
 
     // Find pool index
     size_t poolIdx = findPoolIndex(edmIdx);

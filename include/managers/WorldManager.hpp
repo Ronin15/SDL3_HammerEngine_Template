@@ -114,6 +114,10 @@ private:
         std::string decoration_stump_small;
         std::string decoration_stump_medium;
         std::string decoration_rock_small;
+        std::string decoration_dead_log_hz;
+        std::string decoration_dead_log_vertical;
+        std::string decoration_lily_pad;
+        std::string decoration_water_flower;
     } m_cachedTextureIDs;
 
     // Cached texture with dimensions and atlas source coords
@@ -165,6 +169,10 @@ private:
         CachedTexture decoration_stump_small;
         CachedTexture decoration_stump_medium;
         CachedTexture decoration_rock_small;
+        CachedTexture decoration_dead_log_hz;
+        CachedTexture decoration_dead_log_vertical;
+        CachedTexture decoration_lily_pad;
+        CachedTexture decoration_water_flower;
     } m_cachedTextures;
 
     // Chunk texture cache - pre-rendered tile chunks to reduce draw calls
@@ -255,6 +263,10 @@ private:
         AtlasCoords decoration_stump_small;
         AtlasCoords decoration_stump_medium;
         AtlasCoords decoration_rock_small;
+        AtlasCoords decoration_dead_log_hz;
+        AtlasCoords decoration_dead_log_vertical;
+        AtlasCoords decoration_lily_pad;
+        AtlasCoords decoration_water_flower;
     };
 
     SeasonalTileCoords m_seasonalCoords[4];  // Indexed by Season enum (Spring=0, Summer=1, Fall=2, Winter=3)

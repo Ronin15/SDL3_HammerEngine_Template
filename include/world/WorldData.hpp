@@ -57,7 +57,11 @@ enum class DecorationType : uint8_t {
     BUSH,
     STUMP_SMALL,
     STUMP_MEDIUM,
-    ROCK_SMALL
+    ROCK_SMALL,
+    DEAD_LOG_HZ,
+    DEAD_LOG_VERTICAL,
+    LILY_PAD,
+    WATER_FLOWER
 };
 
 // Stream operators for test output
@@ -100,6 +104,10 @@ inline std::ostream& operator<<(std::ostream& os, const DecorationType& decorati
         case DecorationType::STUMP_SMALL: return os << "STUMP_SMALL";
         case DecorationType::STUMP_MEDIUM: return os << "STUMP_MEDIUM";
         case DecorationType::ROCK_SMALL: return os << "ROCK_SMALL";
+        case DecorationType::DEAD_LOG_HZ: return os << "DEAD_LOG_HZ";
+        case DecorationType::DEAD_LOG_VERTICAL: return os << "DEAD_LOG_VERTICAL";
+        case DecorationType::LILY_PAD: return os << "LILY_PAD";
+        case DecorationType::WATER_FLOWER: return os << "WATER_FLOWER";
         default: return os << "UNKNOWN";
     }
 }
