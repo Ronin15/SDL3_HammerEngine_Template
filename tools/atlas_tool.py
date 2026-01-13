@@ -175,6 +175,40 @@ def cmd_extract(paths: dict):
 # MAP - Visual tool to assign texture IDs to sprites
 # =============================================================================
 
+def guess_category(width: int, height: int, atlas_y: int) -> str:
+    """Guess sprite category based on size and atlas position."""
+    # 32x32 in top area = likely biome tiles
+    if width == 32 and height == 32 and atlas_y < 100:
+        return 'Biomes'
+
+    # Tall sprites (trees, buildings)
+    if height > 50:
+        if width > 40:
+            return 'Buildings'
+        return 'Obstacles'  # Trees
+
+    # NPC region - sprite sheets are typically wide (multiple frames)
+    if 600 < atlas_y < 900 and width >= 32:
+        return 'NPCs'
+
+    # Lower atlas region = items and materials
+    if atlas_y > 3500:
+        if width <= 15 and height <= 15:
+            return 'Materials & Currency'
+        if width <= 30 and height <= 30:
+            return 'Items'
+
+    # Small square-ish sprites in upper regions = decorations
+    if width <= 20 and height <= 20:
+        return 'Decorations'
+
+    # Small-medium = likely decorations (flowers, mushrooms, etc)
+    if width <= 32 and height <= 32:
+        return 'Decorations'
+
+    return 'Unknown'
+
+
 def cmd_map(paths: dict):
     """Open visual mapper to assign texture IDs to sprites."""
     import base64
@@ -199,6 +233,15 @@ def cmd_map(paths: dict):
         with open(manifest_path, 'r') as f:
             manifest = json.load(f)
 
+    # Load manifest for position info
+    manifest_path = sprites_dir / "_manifest.json"
+    manifest_sprites = {}
+    if manifest_path.exists():
+        with open(manifest_path, 'r') as f:
+            mdata = json.load(f)
+        for s in mdata.get('sprites', []):
+            manifest_sprites[s['name']] = s
+
     # Build sprite data with base64 images
     sprite_data = []
     for png_file in sprite_files:
@@ -209,12 +252,21 @@ def cmd_map(paths: dict):
         with open(png_file, 'rb') as f:
             b64 = base64.b64encode(f.read()).decode('utf-8')
 
+        # Get position from manifest
+        minfo = manifest_sprites.get(png_file.stem, {})
+        atlas_y = minfo.get('y', 0)
+
+        # Guess category based on size and position
+        suggested_category = guess_category(img.width, img.height, atlas_y)
+
         sprite_data.append({
             'filename': png_file.stem,
             'dataUrl': f'data:image/png;base64,{b64}',
             'width': img.width,
             'height': img.height,
-            'mapped': not png_file.stem.startswith('sprite_')
+            'atlasY': atlas_y,
+            'mapped': not png_file.stem.startswith('sprite_'),
+            'suggestedCategory': suggested_category
         })
 
     # Load expected texture IDs from JSON files
@@ -375,6 +427,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
         .sprite-card img {{ max-width: 80px; max-height: 60px; image-rendering: pixelated; }}
         .sprite-card .name {{ font-size: 10px; color: #888; margin-top: 4px; word-break: break-all; }}
         .sprite-card.mapped .name {{ color: #4ecdc4; }}
+        .sprite-card .guess {{ font-size: 9px; color: #666; background: #252540; padding: 2px 5px; border-radius: 3px; margin-top: 3px; display: inline-block; }}
 
         .ids-panel {{ width: 320px; background: #16213e; border-left: 2px solid #0f3460; display: flex; flex-direction: column; }}
         .ids-panel h3 {{ padding: 10px; background: #0f3460; font-size: 0.9em; }}
@@ -422,6 +475,16 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
             <div class="custom-input">
                 <input type="text" id="customId" placeholder="Texture ID (e.g. my_sword_world)">
                 <input type="text" id="customName" placeholder="Name (e.g. My Sword)" style="margin-top:5px;">
+                <select id="customCategory" style="margin-top:5px; width:100%; padding:8px; background:#1a1a2e; border:1px solid #333; color:#eee; border-radius:4px;">
+                    <option value="Custom">Custom (no category)</option>
+                    <option value="Items">Items</option>
+                    <option value="Materials">Materials & Currency</option>
+                    <option value="NPCs">NPCs</option>
+                    <option value="Biomes">Biomes</option>
+                    <option value="Obstacles">Obstacles</option>
+                    <option value="Decorations">Decorations</option>
+                    <option value="Buildings">Buildings</option>
+                </select>
                 <div style="display:flex; gap:5px; margin-top:5px;">
                     <button class="btn" style="flex:1; background:#2a4a2a; color:#0f9;" onclick="addCustomIdOnly()">Add to List</button>
                     <button class="btn" style="flex:1; background:#0f9; color:#000;" onclick="assignCustomId()">Assign</button>
@@ -439,7 +502,7 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
 
         let selectedSprite = null;
         let mappings = {{}};  // filename -> textureId
-        let customIds = [];   // user-added custom texture IDs [{id, name}]
+        let customIds = [];   // user-added custom texture IDs (objects with id and name)
 
         // Initialize mappings from already-named sprites
         sprites.forEach(s => {{
@@ -463,9 +526,12 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
                     (mappings[sprite.filename] ? ' mapped' : '');
 
                 const displayName = mappings[sprite.filename] || sprite.filename;
+                const guessHtml = !mappings[sprite.filename] && sprite.suggestedCategory ?
+                    `<div class="guess">${{sprite.suggestedCategory}}</div>` : '';
                 card.innerHTML = `
                     <img src="${{sprite.dataUrl}}" alt="${{sprite.filename}}">
                     <div class="name">${{displayName}}</div>
+                    ${{guessHtml}}
                 `;
                 card.onclick = () => selectSprite(sprite.filename);
                 grid.appendChild(card);
@@ -478,19 +544,73 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
 
             const usedIds = new Set(Object.values(mappings));
 
-            // Render all categories from expectedIds (keys are already display names)
-            Object.entries(expectedIds).forEach(([categoryName, ids]) => {{
+            // Get suggested category for selected sprite
+            const selectedSpriteData = sprites.find(s => s.filename === selectedSprite);
+            const suggestedCat = selectedSpriteData?.suggestedCategory;
+
+            // Merge custom IDs into their categories
+            const allCategories = {{}};
+
+            // Start with expected IDs
+            Object.entries(expectedIds).forEach(([cat, ids]) => {{
+                allCategories[cat] = [...ids];
+            }});
+
+            // Add custom IDs to their categories
+            customIds.forEach(item => {{
+                if (item.category === 'Custom') {{
+                    if (!allCategories['Custom']) allCategories['Custom'] = [];
+                    allCategories['Custom'].push({{id: item.id, name: item.name, isCustom: true}});
+                }} else {{
+                    if (!allCategories[item.category]) allCategories[item.category] = [];
+                    allCategories[item.category].push({{id: item.id, name: item.name, isCustom: true}});
+                }}
+            }});
+
+            // Show suggested matches first if we have a suggestion
+            if (suggestedCat && suggestedCat !== 'Unknown' && allCategories[suggestedCat]) {{
+                const suggestedIds = allCategories[suggestedCat].filter(x => !usedIds.has(x.id));
+                if (suggestedIds.length > 0) {{
+                    const suggestCat = document.createElement('div');
+                    suggestCat.className = 'id-category';
+                    suggestCat.innerHTML = `<div class="id-category-header" style="background:#4a3a00;color:#f90;">Suggested: ${{suggestedCat}} (${{suggestedIds.length}} available)</div>`;
+
+                    suggestedIds.forEach(item => {{
+                        const div = document.createElement('div');
+                        div.className = 'id-item';
+                        div.style.borderLeftColor = '#f90';
+                        const customBadge = item.isCustom ? ' <span style="color:#2a4a2a;background:#0f9;padding:1px 4px;border-radius:3px;font-size:9px;">NEW</span>' : '';
+                        div.innerHTML = `
+                            <div class="id-name">${{item.id}}${{customBadge}}</div>
+                            <div class="id-desc">${{item.name}}</div>
+                        `;
+                        div.onclick = () => assignId(item.id);
+                        suggestCat.appendChild(div);
+                    }});
+
+                    list.appendChild(suggestCat);
+                }}
+            }}
+
+            // Define category order
+            const categoryOrder = ['Items', 'Materials & Currency', 'NPCs', 'Biomes', 'Obstacles', 'Decorations', 'Buildings', 'Custom'];
+
+            // Render categories in order
+            categoryOrder.forEach(categoryName => {{
+                const ids = allCategories[categoryName];
                 if (!ids || ids.length === 0) return;
 
                 const cat = document.createElement('div');
                 cat.className = 'id-category';
-                cat.innerHTML = `<div class="id-category-header">${{categoryName}} (${{ids.length}})</div>`;
+                const headerStyle = categoryName === 'Custom' ? ' style="background:#2a4a2a;"' : '';
+                cat.innerHTML = `<div class="id-category-header"${{headerStyle}}>${{categoryName}} (${{ids.length}})</div>`;
 
                 ids.forEach(item => {{
                     const div = document.createElement('div');
                     div.className = 'id-item' + (usedIds.has(item.id) ? ' used' : '');
+                    const customBadge = item.isCustom ? ' <span style="color:#2a4a2a;background:#0f9;padding:1px 4px;border-radius:3px;font-size:9px;">NEW</span>' : '';
                     div.innerHTML = `
-                        <div class="id-name">${{item.id}}</div>
+                        <div class="id-name">${{item.id}}${{customBadge}}</div>
                         <div class="id-desc">${{item.name}}</div>
                     `;
                     div.onclick = () => assignId(item.id);
@@ -499,39 +619,28 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
 
                 list.appendChild(cat);
             }});
-
-            // Add custom IDs category if any exist
-            if (customIds.length > 0) {{
-                const cat = document.createElement('div');
-                cat.className = 'id-category';
-                cat.innerHTML = `<div class="id-category-header" style="background:#2a4a2a;">Custom IDs (${{customIds.length}})</div>`;
-
-                customIds.forEach(id => {{
-                    const div = document.createElement('div');
-                    div.className = 'id-item' + (usedIds.has(id) ? ' used' : '');
-                    div.innerHTML = `
-                        <div class="id-name">${{id}}</div>
-                        <div class="id-desc">(custom)</div>
-                    `;
-                    div.onclick = () => assignId(id);
-                    cat.appendChild(div);
-                }});
-
-                list.appendChild(cat);
-            }}
         }}
 
         function selectSprite(filename) {{
             selectedSprite = filename;
             const sprite = sprites.find(s => s.filename === filename);
 
+            const guessLine = sprite.suggestedCategory ?
+                `<div class="label">Suggested: <span style="color:#f90">${{sprite.suggestedCategory}}</span></div>` : '';
+
             document.getElementById('selectedInfo').innerHTML = `
                 <img src="${{sprite.dataUrl}}">
                 <div class="label">File: ${{sprite.filename}}.png</div>
                 <div class="label">Size: ${{sprite.width}}x${{sprite.height}}</div>
+                ${{guessLine}}
                 <div class="label">Mapped to:</div>
                 <div class="value">${{mappings[filename] || '(unmapped)'}}</div>
             `;
+
+            // Pre-select the suggested category in dropdown
+            if (sprite.suggestedCategory && sprite.suggestedCategory !== 'Unknown') {{
+                document.getElementById('customCategory').value = sprite.suggestedCategory;
+            }}
 
             render();
         }}
@@ -563,29 +672,41 @@ def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
         }}
 
         function assignCustomId() {{
-            const input = document.getElementById('customId');
-            const id = input.value.trim();
+            const idInput = document.getElementById('customId');
+            const nameInput = document.getElementById('customName');
+            const catSelect = document.getElementById('customCategory');
+            const id = idInput.value.trim();
+            const name = nameInput.value.trim() || id;
+            const category = catSelect.value;
             if (id) {{
                 // Check if this is a new custom ID (not in expected lists)
                 const allExpectedIds = Object.values(expectedIds).flat().map(x => x.id);
-                if (!allExpectedIds.includes(id) && !customIds.includes(id)) {{
-                    customIds.push(id);
+                const existingCustom = customIds.find(x => x.id === id);
+                if (!allExpectedIds.includes(id) && !existingCustom) {{
+                    customIds.push({{id, name, category}});
                 }}
                 assignId(id);
-                input.value = '';
+                idInput.value = '';
+                nameInput.value = '';
             }}
         }}
 
         function addCustomIdOnly() {{
-            const input = document.getElementById('customId');
-            const id = input.value.trim();
+            const idInput = document.getElementById('customId');
+            const nameInput = document.getElementById('customName');
+            const catSelect = document.getElementById('customCategory');
+            const id = idInput.value.trim();
+            const name = nameInput.value.trim() || id;
+            const category = catSelect.value;
             if (id) {{
                 const allExpectedIds = Object.values(expectedIds).flat().map(x => x.id);
-                if (!allExpectedIds.includes(id) && !customIds.includes(id)) {{
-                    customIds.push(id);
+                const existingCustom = customIds.find(x => x.id === id);
+                if (!allExpectedIds.includes(id) && !existingCustom) {{
+                    customIds.push({{id, name, category}});
                     render();
                 }}
-                input.value = '';
+                idInput.value = '';
+                nameInput.value = '';
             }}
         }}
 
