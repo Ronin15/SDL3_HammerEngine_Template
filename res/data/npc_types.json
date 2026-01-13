@@ -16,8 +16,8 @@
         "speed": 100,
         "loop": true
       },
-      "atlasX": 297,
-      "atlasY": 1137,
+      "atlasX": 198,
+      "atlasY": 1126,
       "atlasW": 64,
       "atlasH": 32
     },
@@ -37,8 +37,8 @@
         "speed": 100,
         "loop": true
       },
-      "atlasX": 390,
-      "atlasY": 1170,
+      "atlasX": 196,
+      "atlasY": 1159,
       "atlasW": 64,
       "atlasH": 32
     },
@@ -58,8 +58,8 @@
         "speed": 100,
         "loop": true
       },
-      "atlasX": 362,
-      "atlasY": 1137,
+      "atlasX": 263,
+      "atlasY": 1126,
       "atlasW": 64,
       "atlasH": 32
     },
@@ -79,8 +79,8 @@
         "speed": 100,
         "loop": true
       },
-      "atlasX": 0,
-      "atlasY": 1170,
+      "atlasX": 261,
+      "atlasY": 1159,
       "atlasW": 64,
       "atlasH": 32
     }

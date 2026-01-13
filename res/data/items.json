@@ -21,8 +21,8 @@
         "durability": 150,
         "maxDurability": 150
       },
-      "atlasX": 125,
-      "atlasY": 2390,
+      "atlasX": 459,
+      "atlasY": 2347,
       "atlasW": 16,
       "atlasH": 30
     },
@@ -47,8 +47,8 @@
         "durability": 200,
         "maxDurability": 200
       },
-      "atlasX": 29,
-      "atlasY": 1093,
+      "atlasX": 350,
+      "atlasY": 1033,
       "atlasW": 28,
       "atlasH": 42
     },
@@ -70,8 +70,8 @@
         "effectPower": 100,
         "effectDuration": 0
       },
-      "atlasX": 66,
-      "atlasY": 2773,
+      "atlasX": 426,
+      "atlasY": 2738,
       "atlasW": 11,
       "atlasH": 11
     },
@@ -93,8 +93,8 @@
         "effectPower": 80,
         "effectDuration": 0
       },
-      "atlasX": 78,
-      "atlasY": 2773,
+      "atlasX": 438,
+      "atlasY": 2738,
       "atlasW": 11,
       "atlasH": 11
     },
@@ -114,8 +114,8 @@
       "properties": {
         "questId": "ancient_temple_quest"
       },
-      "atlasX": 288,
-      "atlasY": 2757,
+      "atlasX": 146,
+      "atlasY": 2738,
       "atlasW": 12,
       "atlasH": 13
     },
@@ -135,8 +135,8 @@
       "properties": {
         "questId": ""
       },
-      "atlasX": 458,
-      "atlasY": 2655,
+      "atlasX": 315,
+      "atlasY": 2638,
       "atlasW": 26,
       "atlasH": 20
     },
@@ -158,8 +158,8 @@
         "effectPower": 50,
         "effectDuration": 0
       },
-      "atlasX": 66,
-      "atlasY": 2773,
+      "atlasX": 426,
+      "atlasY": 2738,
       "atlasW": 11,
       "atlasH": 11
     }
