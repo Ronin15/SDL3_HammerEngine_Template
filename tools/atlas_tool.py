@@ -19,6 +19,7 @@ Requires: pip install pillow
 """
 
 import argparse
+import hashlib
 import json
 import sys
 import webbrowser
@@ -46,6 +47,11 @@ def get_paths():
         'world_objects_json': project_root / "res" / "data" / "world_objects.json",
         'mapper_session': script_dir / "atlas_mapper_session.html",
     }
+
+
+def get_image_hash(img: Image.Image) -> str:
+    """Get hash of image pixel data for duplicate detection."""
+    return hashlib.md5(img.tobytes()).hexdigest()
 
 
 # =============================================================================
@@ -595,10 +601,10 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                         if tex_id:
                             is_seasonal = obj.get('seasonal', False)
                             if is_seasonal:
-                                # Generate all 4 seasonal variants
+                                # Generate all 4 seasonal variants (prefix pattern: season_base)
                                 for season in seasons:
                                     found.append({
-                                        'id': f"{tex_id}_{season}",
+                                        'id': f"{season}_{tex_id}",
                                         'name': f"{obj.get('name', key)} ({season.title()})",
                                         'source': 'world_objects.json',
                                         'seasonal': True,
@@ -1045,7 +1051,7 @@ def cmd_pack(paths: dict):
         print("No sprites found")
         return False
 
-    print(f"Packing {len(sprite_files)} sprites...")
+    print(f"Loading {len(sprite_files)} sprites...")
 
     # Load sprites
     sprites = []
@@ -1057,6 +1063,56 @@ def cmd_pack(paths: dict):
             'width': img.width,
             'height': img.height
         })
+
+    # =========================================================================
+    # Smart duplicate detection - prioritize named sprites over unnamed
+    # =========================================================================
+    hash_to_sprite = {}
+    duplicates = []
+
+    # First pass: add named sprites (priority)
+    for sprite in sprites:
+        if not sprite['id'].startswith('sprite_'):
+            img_hash = get_image_hash(sprite['image'])
+            hash_to_sprite[img_hash] = sprite
+
+    # Second pass: add unnamed only if unique
+    for sprite in sprites:
+        if sprite['id'].startswith('sprite_'):
+            img_hash = get_image_hash(sprite['image'])
+            if img_hash in hash_to_sprite:
+                # Duplicate of a named sprite - skip it
+                duplicates.append((sprite['id'], hash_to_sprite[img_hash]['id']))
+            else:
+                hash_to_sprite[img_hash] = sprite
+
+    # Use deduplicated sprites for packing
+    sprites = list(hash_to_sprite.values())
+
+    if duplicates:
+        # Separate duplicates into two categories
+        named_dupes = [(u, k) for u, k in duplicates if not k.startswith('sprite_')]
+        unnamed_dupes = [(u, k) for u, k in duplicates if k.startswith('sprite_')]
+
+        print(f"\nDuplicate detection: found {len(duplicates)} duplicates")
+
+        if named_dupes:
+            print(f"\n  {len(named_dupes)} unnamed sprites match named sprites (keeping named):")
+            for unnamed, named in named_dupes[:10]:
+                print(f"    {unnamed} → {named}")
+            if len(named_dupes) > 10:
+                print(f"    ... and {len(named_dupes) - 10} more")
+
+        if unnamed_dupes:
+            print(f"\n  {len(unnamed_dupes)} duplicate unnamed sprites (keeping first):")
+            for dup, kept in unnamed_dupes[:5]:
+                print(f"    {dup} → {kept}")
+            if len(unnamed_dupes) > 5:
+                print(f"    ... and {len(unnamed_dupes) - 5} more")
+
+        print(f"\nPacking {len(sprites)} unique sprites (removed {len(duplicates)} duplicates)")
+    else:
+        print(f"No duplicates found, packing {len(sprites)} sprites")
 
     # Sort by height for efficient packing
     sprites.sort(key=lambda s: s['height'], reverse=True)
