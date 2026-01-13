@@ -38,7 +38,7 @@ class AITestNPC {
 public:
     explicit AITestNPC(const Vector2D& pos = Vector2D(0, 0)) {
         auto& edm = EntityDataManager::Instance();
-        m_handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
+        m_handle = edm.createDataDrivenNPC(pos, "Guard");
         m_initialPosition = pos;
     }
 

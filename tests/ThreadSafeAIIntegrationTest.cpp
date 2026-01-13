@@ -24,7 +24,7 @@ class IntegrationTestNPC {
 public:
     explicit IntegrationTestNPC(int id = 0, const Vector2D& pos = Vector2D(0, 0)) : m_id(id) {
         auto& edm = EntityDataManager::Instance();
-        m_handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
+        m_handle = edm.createDataDrivenNPC(pos, "Guard");
         m_initialPosition = pos;
     }
 

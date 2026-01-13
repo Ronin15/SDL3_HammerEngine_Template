@@ -398,7 +398,9 @@ struct SDL_Texture;
  * Indexed by typeLocalIndex (same as CharacterData for NPCs).
  */
 struct NPCRenderData {
-    SDL_Texture* cachedTexture{nullptr};  // Cached at spawn from TextureManager
+    SDL_Texture* cachedTexture{nullptr};  // Cached atlas texture pointer
+    uint16_t atlasX{0};                   // X offset in atlas (pixels)
+    uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{32};              // Single frame width
     uint16_t frameHeight{32};             // Single frame height
     uint16_t idleSpeedMs{150};            // Milliseconds per frame for idle
@@ -414,6 +416,8 @@ struct NPCRenderData {
 
     void clear() noexcept {
         cachedTexture = nullptr;
+        atlasX = 0;
+        atlasY = 0;
         frameWidth = 32;
         frameHeight = 32;
         idleSpeedMs = 150;
@@ -436,9 +440,13 @@ struct NPCRenderData {
  * Used by createDataDrivenNPC() to look up texture and animation config.
  */
 struct NPCTypeInfo {
-    std::string textureID;        // Texture key for TextureManager lookup
+    std::string textureID;        // Texture key (retained for logging/debug)
     AnimationConfig idleAnim;     // Idle animation config
     AnimationConfig moveAnim;     // Move animation config
+    uint16_t atlasX{0};           // X offset in atlas (pixels)
+    uint16_t atlasY{0};           // Y offset in atlas (pixels)
+    uint16_t atlasW{32};          // Width in atlas (total sprite width)
+    uint16_t atlasH{32};          // Height in atlas (single frame height)
 };
 
 // ============================================================================
@@ -912,29 +920,13 @@ public:
     // ========================================================================
 
     /**
-     * @brief Create a data-driven NPC with render data
-     * @param position Initial world position
-     * @param textureID Texture identifier for TextureManager lookup
-     * @param idleConfig Animation config for idle state (row, frameCount, speed, loop)
-     * @param moveConfig Animation config for moving state
-     * @return Handle to the created entity
-     *
-     * This creates an NPC that can be rendered by NPCRenderController without
-     * needing the NPC class. Animation is velocity-based (idle/moving).
-     */
-    EntityHandle createDataDrivenNPC(const Vector2D& position,
-                                     const std::string& textureID,
-                                     const AnimationConfig& idleConfig,
-                                     const AnimationConfig& moveConfig);
-
-    /**
-     * @brief Create data-driven NPC by type (uses NPC type registry)
+     * @brief Create a data-driven NPC from the type registry
      * @param position World position
      * @param npcType NPC type name (e.g., "Guard", "Villager", "Merchant", "Warrior")
      * @return Handle to the created entity, or invalid handle if type not registered
      *
-     * Looks up texture and animation config from the NPC type registry.
-     * Use this for spawning typed NPCs instead of specifying configs manually.
+     * Looks up texture, animation config, and atlas coordinates from the NPC type registry.
+     * NPCs are rendered from the atlas texture using NPCRenderController.
      */
     EntityHandle createDataDrivenNPC(const Vector2D& position,
                                      const std::string& npcType);

@@ -43,17 +43,21 @@ struct AnimationConfig {
     int row;           // Sprite sheet row (0-based)
     int frameCount;    // Number of frames in animation
     int speed;         // Milliseconds per frame
-    bool loop;         // Whether animation loops
+    bool loop{true};   // Whether animation loops (default true, Player uses false for attacks)
 };
 ```
 
-**Current NPC usage:**
+**NPC usage (data-driven from JSON):**
+- NPCs always loop animations (loop defaults to true)
+- Config loaded from `npc_types.json` - no loop field needed
+
+**Player usage:**
 ```cpp
-m_animationMap["idle"] = AnimationConfig{0, 2, 150, true};     // Row 0, 2 frames
-m_animationMap["walking"] = AnimationConfig{1, 4, 100, true};  // Row 1, 4 frames
+m_animationMap["idle"] = AnimationConfig{0, 2, 150};           // Row 0, 2 frames (loops)
+m_animationMap["attacking"] = AnimationConfig{0, 2, 80, false}; // Play once
 ```
 
-**Data-driven usage:** Pass AnimationConfig at spawn time → values extracted into NPCRenderData.
+**Data-driven usage:** NPC types defined in `npc_types.json` → values extracted into NPCRenderData.
 
 **Note:** NPC/Entity `playAnimation()` adds +1 to `row` for `TextureManager`'s 1-based rows.  
 `NPCRenderController` renders via SDL directly, so keep rows 0-based.

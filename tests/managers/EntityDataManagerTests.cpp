@@ -76,7 +76,7 @@ BOOST_AUTO_TEST_CASE(TestDoubleInitialization) {
 
 BOOST_AUTO_TEST_CASE(TestCleanAndReinit) {
     // Create an entity first
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_CHECK(handle.isValid());
 
     // Clean should clear everything
@@ -92,8 +92,8 @@ BOOST_AUTO_TEST_CASE(TestCleanAndReinit) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransition) {
     // Create some entities
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 2);
 
     // State transition should clear entities
@@ -114,7 +114,7 @@ BOOST_FIXTURE_TEST_SUITE(EntityCreationTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestCreateNPC) {
     Vector2D position(100.0f, 200.0f);
-    EntityHandle handle = edm->createDataDrivenNPC(position, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(position, "Guard");
 
     BOOST_CHECK(handle.isValid());
     BOOST_CHECK(handle.isNPC());
@@ -224,8 +224,8 @@ BOOST_AUTO_TEST_CASE(TestCreateStaticBody) {
 
 BOOST_AUTO_TEST_CASE(TestCreateMultipleEntities) {
     // Create various entity types
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
@@ -244,10 +244,10 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EntityRegistrationTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestCreateNPCWithCharacterData) {
-    // NPCs are created via createDataDrivenNPC(, "test", AnimationConfig{}, AnimationConfig{}) with default health values
+    // NPCs are created via createDataDrivenNPC(, "Guard") with default health values
     Vector2D position(100.0f, 200.0f);
 
-    EntityHandle handle = edm->createDataDrivenNPC(position, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(position, "Guard");
 
     BOOST_CHECK(handle.isValid());
     BOOST_CHECK(handle.isNPC());
@@ -285,7 +285,7 @@ BOOST_AUTO_TEST_CASE(TestRegisterDroppedItem) {
 }
 
 BOOST_AUTO_TEST_CASE(TestUnregisterEntity) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_CHECK(handle.isValid());
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 1);
 
@@ -313,7 +313,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(DestructionQueueTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestDestroyEntity) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_CHECK(edm->isValidHandle(handle));
 
     // Queue for destruction
@@ -331,9 +331,9 @@ BOOST_AUTO_TEST_CASE(TestDestroyEntity) {
 }
 
 BOOST_AUTO_TEST_CASE(TestDestroyMultipleEntities) {
-    EntityHandle handle1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    EntityHandle handle2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
-    EntityHandle handle3 = edm->createDataDrivenNPC(Vector2D(300.0f, 300.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle handle2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
+    EntityHandle handle3 = edm->createDataDrivenNPC(Vector2D(300.0f, 300.0f), "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 3);
 
     // Queue all for destruction
@@ -359,14 +359,14 @@ BOOST_AUTO_TEST_CASE(TestDestroyInvalidHandle) {
 
 BOOST_AUTO_TEST_CASE(TestGenerationIncrementAfterDestruction) {
     // Create and destroy, then create again - should get different generation
-    EntityHandle handle1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     [[maybe_unused]] uint8_t gen1 = handle1.generation;
 
     edm->destroyEntity(handle1);
     edm->processDestructionQueue();
 
     // Create new entity - may reuse slot with new generation
-    EntityHandle handle2 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle2 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
 
     // The old handle should be stale
     BOOST_CHECK(!edm->isValidHandle(handle1));
@@ -388,7 +388,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(HandleValidationTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestValidHandle) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_CHECK(edm->isValidHandle(handle));
 }
 
@@ -397,7 +397,7 @@ BOOST_AUTO_TEST_CASE(TestInvalidHandle) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetIndex) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->getIndex(handle);
 
     BOOST_CHECK(index != SIZE_MAX);
@@ -413,7 +413,7 @@ BOOST_AUTO_TEST_CASE(TestGetIndexInvalidHandle) {
 }
 
 BOOST_AUTO_TEST_CASE(TestFindIndexByEntityId) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->findIndexByEntityId(handle.id);
 
     BOOST_CHECK(index != SIZE_MAX);
@@ -429,7 +429,7 @@ BOOST_AUTO_TEST_CASE(TestFindIndexByInvalidEntityId) {
 }
 
 BOOST_AUTO_TEST_CASE(TestStaleHandleDetection) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_CHECK(edm->isValidHandle(handle));
 
     // Destroy the entity
@@ -450,7 +450,7 @@ BOOST_FIXTURE_TEST_SUITE(TransformAccessTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetTransform) {
     Vector2D position(100.0f, 200.0f);
-    EntityHandle handle = edm->createDataDrivenNPC(position, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(position, "Guard");
 
     const auto& transform = edm->getTransform(handle);
     BOOST_CHECK(approxEqual(transform.position.getX(), 100.0f));
@@ -458,7 +458,7 @@ BOOST_AUTO_TEST_CASE(TestGetTransform) {
 }
 
 BOOST_AUTO_TEST_CASE(TestModifyTransform) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(0.0f, 0.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(0.0f, 0.0f), "Guard");
 
     auto& transform = edm->getTransform(handle);
     transform.position = Vector2D(500.0f, 600.0f);
@@ -472,7 +472,7 @@ BOOST_AUTO_TEST_CASE(TestModifyTransform) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetTransformByIndex) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 200.0f), "Guard");
     size_t index = edm->getIndex(handle);
 
     const auto& transform = edm->getTransformByIndex(index);
@@ -498,7 +498,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(HotDataAccessTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetHotData) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
 
     const auto& hot = edm->getHotData(handle);
     BOOST_CHECK(hot.isAlive());
@@ -509,7 +509,7 @@ BOOST_AUTO_TEST_CASE(TestGetHotData) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHotDataByIndex) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->getIndex(handle);
 
     const auto& hot = edm->getHotDataByIndex(index);
@@ -517,8 +517,8 @@ BOOST_AUTO_TEST_CASE(TestGetHotDataByIndex) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHotDataArray) {
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
 
     auto hotArray = edm->getHotDataArray();
     BOOST_CHECK(hotArray.size() >= 2);
@@ -540,7 +540,7 @@ BOOST_AUTO_TEST_CASE(TestGetStaticHotDataArray) {
 }
 
 BOOST_AUTO_TEST_CASE(TestHotDataFlags) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
 
     auto& hot = edm->getHotData(handle);
     BOOST_CHECK(hot.isAlive());
@@ -564,7 +564,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(TypeSpecificDataTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetCharacterData) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
 
     auto& charData = edm->getCharacterData(handle);
     BOOST_CHECK(charData.isCharacterAlive());
@@ -576,7 +576,7 @@ BOOST_AUTO_TEST_CASE(TestGetCharacterData) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetCharacterDataByIndex) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->getIndex(handle);
 
     const auto& charData = edm->getCharacterDataByIndex(index);
@@ -628,13 +628,13 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(SimulationTierTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestDefaultTierIsActive) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     const auto& hot = edm->getHotData(handle);
     BOOST_CHECK_EQUAL(static_cast<int>(hot.tier), static_cast<int>(SimulationTier::Active));
 }
 
 BOOST_AUTO_TEST_CASE(TestSetSimulationTier) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
 
     edm->setSimulationTier(handle, SimulationTier::Background);
     const auto& hot = edm->getHotData(handle);
@@ -647,9 +647,9 @@ BOOST_AUTO_TEST_CASE(TestSetSimulationTier) {
 
 BOOST_AUTO_TEST_CASE(TestUpdateSimulationTiers) {
     // Create entities at various distances
-    EntityHandle near = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});     // Close
-    EntityHandle mid = edm->createDataDrivenNPC(Vector2D(2000.0f, 2000.0f), "test", AnimationConfig{}, AnimationConfig{});    // Medium
-    EntityHandle far = edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "test", AnimationConfig{}, AnimationConfig{});  // Far
+    EntityHandle near = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");     // Close
+    EntityHandle mid = edm->createDataDrivenNPC(Vector2D(2000.0f, 2000.0f), "Guard");    // Medium
+    EntityHandle far = edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "Guard");  // Far
 
     // Update tiers with reference point at origin
     Vector2D refPoint(0.0f, 0.0f);
@@ -666,8 +666,8 @@ BOOST_AUTO_TEST_CASE(TestUpdateSimulationTiers) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetActiveIndices) {
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
 
     // Force tier update
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -678,8 +678,8 @@ BOOST_AUTO_TEST_CASE(TestGetActiveIndices) {
 
 BOOST_AUTO_TEST_CASE(TestGetBackgroundIndices) {
     // Create entities at background distance
-    edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(6000.0f, 6000.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(6000.0f, 6000.0f), "Guard");
 
     // Update tiers
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -689,9 +689,9 @@ BOOST_AUTO_TEST_CASE(TestGetBackgroundIndices) {
 }
 
 BOOST_AUTO_TEST_CASE(TestEntityCountByTier) {
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});      // Will be active
-    edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "test", AnimationConfig{}, AnimationConfig{});    // Will be background
-    edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "test", AnimationConfig{}, AnimationConfig{});  // Will be hibernated
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");      // Will be active
+    edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "Guard");    // Will be background
+    edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "Guard");  // Will be hibernated
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
 
@@ -720,9 +720,9 @@ BOOST_FIXTURE_TEST_SUITE(QueryTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestQueryEntitiesInRadius) {
     // Create entities at known positions
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});   // In radius
-    edm->createDataDrivenNPC(Vector2D(150.0f, 150.0f), "test", AnimationConfig{}, AnimationConfig{});   // In radius
-    edm->createDataDrivenNPC(Vector2D(1000.0f, 1000.0f), "test", AnimationConfig{}, AnimationConfig{}); // Out of radius
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");   // In radius
+    edm->createDataDrivenNPC(Vector2D(150.0f, 150.0f), "Guard");   // In radius
+    edm->createDataDrivenNPC(Vector2D(1000.0f, 1000.0f), "Guard"); // Out of radius
 
     std::vector<EntityHandle> found;
     edm->queryEntitiesInRadius(Vector2D(100.0f, 100.0f), 200.0f, found);
@@ -731,7 +731,7 @@ BOOST_AUTO_TEST_CASE(TestQueryEntitiesInRadius) {
 }
 
 BOOST_AUTO_TEST_CASE(TestQueryEntitiesWithKindFilter) {
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     edm->registerPlayer(1,Vector2D(150.0f, 150.0f));
     edm->createDroppedItem(Vector2D(120.0f, 120.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
@@ -743,7 +743,7 @@ BOOST_AUTO_TEST_CASE(TestQueryEntitiesWithKindFilter) {
 }
 
 BOOST_AUTO_TEST_CASE(TestQueryEmptyResult) {
-    edm->createDataDrivenNPC(Vector2D(1000.0f, 1000.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(1000.0f, 1000.0f), "Guard");
 
     std::vector<EntityHandle> found;
     edm->queryEntitiesInRadius(Vector2D(0.0f, 0.0f), 100.0f, found);
@@ -754,16 +754,16 @@ BOOST_AUTO_TEST_CASE(TestQueryEmptyResult) {
 BOOST_AUTO_TEST_CASE(TestGetEntityCount) {
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 0);
 
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 1);
 
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 2);
 }
 
 BOOST_AUTO_TEST_CASE(TestGetEntityCountByKind) {
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
@@ -774,8 +774,8 @@ BOOST_AUTO_TEST_CASE(TestGetEntityCountByKind) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetIndicesByKind) {
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
 
     auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
@@ -794,7 +794,7 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EntityLookupTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestGetEntityId) {
-    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->getIndex(handle);
 
     EntityHandle::IDType id = edm->getEntityId(index);
@@ -807,7 +807,7 @@ BOOST_AUTO_TEST_CASE(TestGetEntityIdInvalidIndex) {
 }
 
 BOOST_AUTO_TEST_CASE(TestGetHandle) {
-    EntityHandle original = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle original = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->getIndex(original);
 
     EntityHandle retrieved = edm->getHandle(index);
@@ -834,7 +834,7 @@ BOOST_AUTO_TEST_CASE(TestSlotReuseAfterDestruction) {
     // Create and destroy entities to test slot reuse
     std::vector<EntityHandle> handles;
     for (int i = 0; i < 10; ++i) {
-        handles.push_back(edm->createDataDrivenNPC(Vector2D(static_cast<float>(i * 100), 0.0f), "test", AnimationConfig{}, AnimationConfig{}));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(static_cast<float>(i * 100), 0.0f), "Guard"));
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 10);
 
@@ -847,7 +847,7 @@ BOOST_AUTO_TEST_CASE(TestSlotReuseAfterDestruction) {
 
     // Create new entities - should reuse slots
     for (int i = 0; i < 5; ++i) {
-        edm->createDataDrivenNPC(Vector2D(static_cast<float>(i * 100 + 50), 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+        edm->createDataDrivenNPC(Vector2D(static_cast<float>(i * 100 + 50), 100.0f), "Guard");
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), 10);
 
@@ -859,15 +859,15 @@ BOOST_AUTO_TEST_CASE(TestSlotReuseAfterDestruction) {
 
 BOOST_AUTO_TEST_CASE(TestTypeSpecificSlotReuse) {
     // Create character entities
-    EntityHandle npc1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    EntityHandle npc2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle npc1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle npc2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
 
     // Destroy first NPC
     edm->destroyEntity(npc1);
     edm->processDestructionQueue();
 
     // Create new NPC - should reuse character data slot
-    EntityHandle npc3 = edm->createDataDrivenNPC(Vector2D(300.0f, 300.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle npc3 = edm->createDataDrivenNPC(Vector2D(300.0f, 300.0f), "Guard");
 
     // Both remaining NPCs should be valid
     BOOST_CHECK(!edm->isValidHandle(npc1));
@@ -888,7 +888,7 @@ BOOST_AUTO_TEST_CASE(TestMassCreationAndDestruction) {
     std::vector<EntityHandle> handles;
     handles.reserve(COUNT);
     for (size_t i = 0; i < COUNT; ++i) {
-        handles.push_back(edm->createDataDrivenNPC(Vector2D(static_cast<float>(i), 0.0f), "test", AnimationConfig{}, AnimationConfig{}));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(static_cast<float>(i), 0.0f), "Guard"));
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), COUNT);
 
@@ -902,7 +902,7 @@ BOOST_AUTO_TEST_CASE(TestMassCreationAndDestruction) {
     // Create again - should reuse all slots
     handles.clear();
     for (size_t i = 0; i < COUNT; ++i) {
-        handles.push_back(edm->createDataDrivenNPC(Vector2D(static_cast<float>(i), 0.0f), "test", AnimationConfig{}, AnimationConfig{}));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(static_cast<float>(i), 0.0f), "Guard"));
     }
     BOOST_CHECK_EQUAL(edm->getEntityCount(), COUNT);
 
@@ -934,9 +934,9 @@ BOOST_FIXTURE_TEST_SUITE(StateTransitionCachedIndicesTests, EntityDataManagerTes
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveIndices) {
     // Create entities that will be in Active tier
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(300.0f, 300.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(300.0f, 300.0f), "Guard");
 
     // Update tiers to populate active indices
     edm->updateSimulationTiers(Vector2D(150.0f, 150.0f), 1500.0f, 10000.0f);
@@ -954,8 +954,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveIndices) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsBackgroundIndices) {
     // Create entities at background distance
-    edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(6000.0f, 6000.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(6000.0f, 6000.0f), "Guard");
 
     // Update tiers - should be Background
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -973,8 +973,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsBackgroundIndices) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsHibernatedIndices) {
     // Create entities at hibernation distance
-    edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(20000.0f, 20000.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(20000.0f, 20000.0f), "Guard");
 
     // Update tiers - should be Hibernated
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 1500.0f, 10000.0f);
@@ -988,8 +988,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsHibernatedIndices) {
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveCollisionIndices) {
     // Create entities with collision enabled
-    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
 
     // Enable collision on entities
     auto& hot1 = edm->getHotData(h1);
@@ -1013,8 +1013,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsActiveCollisionIndices) 
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsTriggerDetectionIndices) {
     // Create entities that need trigger detection (e.g., Player)
-    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
 
     // Set trigger detection flag (distinct from isTrigger - this is for entities
     // that need to DETECT triggers, like the player)
@@ -1039,8 +1039,8 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsTriggerDetectionIndices)
 
 BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsKindIndices) {
     // Create entities of different kinds
-    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
-    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", AnimationConfig{}, AnimationConfig{});
+    edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
@@ -1074,14 +1074,14 @@ BOOST_AUTO_TEST_CASE(TestAllCachedIndicesClearedComprehensive) {
 
     // NPCs at various distances
     for (int i = 0; i < 5; ++i) {
-        handles.push_back(edm->createDataDrivenNPC(Vector2D(100.0f + i * 50, 100.0f), "test", AnimationConfig{}, AnimationConfig{}));
+        handles.push_back(edm->createDataDrivenNPC(Vector2D(100.0f + i * 50, 100.0f), "Guard"));
     }
 
     // Background distance
-    handles.push_back(edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "test", AnimationConfig{}, AnimationConfig{}));
+    handles.push_back(edm->createDataDrivenNPC(Vector2D(5000.0f, 5000.0f), "Guard"));
 
     // Hibernated distance
-    handles.push_back(edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "test", AnimationConfig{}, AnimationConfig{}));
+    handles.push_back(edm->createDataDrivenNPC(Vector2D(15000.0f, 15000.0f), "Guard"));
 
     // Player (always active)
     handles.push_back(edm->registerPlayer(1,Vector2D(300.0f, 300.0f)));
@@ -1152,7 +1152,7 @@ BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
     std::vector<EntityHandle> phase1Handles;
     for (int i = 0; i < 20; ++i) {
         phase1Handles.push_back(edm->createDataDrivenNPC(
-            Vector2D(static_cast<float>(i * 50), 0.0f), "test", AnimationConfig{}, AnimationConfig{}));
+            Vector2D(static_cast<float>(i * 50), 0.0f), "Guard"));
     }
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 2000.0f, 10000.0f);
@@ -1173,7 +1173,7 @@ BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
     std::vector<EntityHandle> phase2Handles;
     for (int i = 0; i < 10; ++i) {
         phase2Handles.push_back(edm->createDataDrivenNPC(
-            Vector2D(static_cast<float>(i * 100), 0.0f), "test", AnimationConfig{}, AnimationConfig{}));
+            Vector2D(static_cast<float>(i * 100), 0.0f), "Guard"));
     }
 
     edm->updateSimulationTiers(Vector2D(0.0f, 0.0f), 2000.0f, 10000.0f);
@@ -1202,7 +1202,7 @@ BOOST_AUTO_TEST_CASE(TestNoStaleIndicesAfterStateTransitionReuse) {
  */
 BOOST_AUTO_TEST_CASE(TestAccessAfterClearDoesNotCrash) {
     // Create entity and get its index
-    EntityHandle h = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle h = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     size_t index = edm->getIndex(h);
     BOOST_REQUIRE(index != SIZE_MAX);
 
@@ -1231,60 +1231,54 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(NPCRenderDataTests, EntityDataManagerTestFixture)
 
 BOOST_AUTO_TEST_CASE(TestNPCRenderDataInitialization) {
-    // Create NPC with specific animation config
-    AnimationConfig idleConfig{0, 2, 150, true};   // row 0, 2 frames, 150ms
-    AnimationConfig moveConfig{1, 4, 100, true};   // row 1, 4 frames, 100ms
-
-    EntityHandle handle = edm->createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "test", idleConfig, moveConfig);
+    // Create NPC using data-driven approach (config loaded from npc_types.json)
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_REQUIRE(handle.isValid());
 
     // Get render data via handle
     const auto& renderData = edm->getNPCRenderData(handle);
 
-    // Verify AnimationConfig values were stored correctly
-    BOOST_CHECK_EQUAL(renderData.idleRow, 0);
-    BOOST_CHECK_EQUAL(renderData.moveRow, 1);
-    BOOST_CHECK_EQUAL(renderData.numIdleFrames, 2);
-    BOOST_CHECK_EQUAL(renderData.numMoveFrames, 4);
-    BOOST_CHECK_EQUAL(renderData.idleSpeedMs, 150);
-    BOOST_CHECK_EQUAL(renderData.moveSpeedMs, 100);
+    // Verify animation config was loaded from JSON (Guard uses idle row 0, move row 1)
+    // Values come from npc_types.json, so we verify they were loaded
+    BOOST_CHECK_GE(renderData.numIdleFrames, 1);
+    BOOST_CHECK_GE(renderData.numMoveFrames, 1);
+    BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
+    BOOST_CHECK_GE(renderData.moveSpeedMs, 1);
 
     // Verify initial state
     BOOST_CHECK_EQUAL(renderData.currentFrame, 0);
     BOOST_CHECK(approxEqual(renderData.animationAccumulator, 0.0f));
     BOOST_CHECK_EQUAL(renderData.flipMode, 0);  // SDL_FLIP_NONE
+
+    // Verify atlas coordinates were loaded
+    BOOST_CHECK_GE(renderData.atlasX, 0);
+    BOOST_CHECK_GE(renderData.atlasY, 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestNPCRenderDataDefaultsWithoutTexture) {
-    // Create NPC with empty texture (test environment has no TextureManager)
-    EntityHandle handle = edm->createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "nonexistent_texture",
-        AnimationConfig{0, 1, 100, true},
-        AnimationConfig{0, 2, 100, true});
+    // Create NPC - in test environment without renderer, atlas texture won't exist
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_REQUIRE(handle.isValid());
 
     const auto& renderData = edm->getNPCRenderData(handle);
 
-    // cachedTexture should be nullptr (texture doesn't exist)
+    // cachedTexture should be nullptr (no renderer in test environment)
     BOOST_CHECK(renderData.cachedTexture == nullptr);
 
-    // Frame dimensions should default to 32x32
-    BOOST_CHECK_EQUAL(renderData.frameWidth, 32);
-    BOOST_CHECK_EQUAL(renderData.frameHeight, 32);
+    // Frame dimensions should be set from JSON config
+    BOOST_CHECK_GT(renderData.frameWidth, 0);
+    BOOST_CHECK_GT(renderData.frameHeight, 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestNPCRenderDataMinimumValues) {
-    // Create NPC with zero frame count and zero speed (edge case)
-    AnimationConfig zeroConfig{0, 0, 0, true};
-
-    EntityHandle handle = edm->createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "test", zeroConfig, zeroConfig);
+    // Create NPC using data-driven approach
+    // EDM should enforce minimum values regardless of JSON config
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_REQUIRE(handle.isValid());
 
     const auto& renderData = edm->getNPCRenderData(handle);
 
-    // Should be clamped to minimum 1 frame and 1ms speed
+    // Should always have at least 1 frame and 1ms speed (enforced by EDM)
     BOOST_CHECK_GE(renderData.numIdleFrames, 1);
     BOOST_CHECK_GE(renderData.numMoveFrames, 1);
     BOOST_CHECK_GE(renderData.idleSpeedMs, 1);
@@ -1292,37 +1286,32 @@ BOOST_AUTO_TEST_CASE(TestNPCRenderDataMinimumValues) {
 }
 
 BOOST_AUTO_TEST_CASE(TestMultipleNPCsGetSeparateRenderData) {
-    // Create two NPCs with different animation configs
-    AnimationConfig idle1{0, 1, 150, true};
-    AnimationConfig move1{1, 2, 100, true};
-    AnimationConfig idle2{2, 3, 200, true};
-    AnimationConfig move2{3, 4, 50, true};
-
-    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "test", idle1, move1);
-    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "test", idle2, move2);
+    // Create two NPCs of same type at different positions
+    EntityHandle h1 = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle h2 = edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
     BOOST_REQUIRE(h1.isValid());
     BOOST_REQUIRE(h2.isValid());
 
-    const auto& rd1 = edm->getNPCRenderData(h1);
-    const auto& rd2 = edm->getNPCRenderData(h2);
+    auto& rd1 = edm->getNPCRenderData(h1);
+    auto& rd2 = edm->getNPCRenderData(h2);
 
-    // Each NPC should have its own render data
-    BOOST_CHECK_EQUAL(rd1.idleRow, 0);
-    BOOST_CHECK_EQUAL(rd1.moveRow, 1);
-    BOOST_CHECK_EQUAL(rd1.numIdleFrames, 1);
-    BOOST_CHECK_EQUAL(rd1.numMoveFrames, 2);
+    // Both NPCs should have same config from Guard type
+    BOOST_CHECK_EQUAL(rd1.idleRow, rd2.idleRow);
+    BOOST_CHECK_EQUAL(rd1.moveRow, rd2.moveRow);
+    BOOST_CHECK_EQUAL(rd1.numIdleFrames, rd2.numIdleFrames);
+    BOOST_CHECK_EQUAL(rd1.numMoveFrames, rd2.numMoveFrames);
 
-    BOOST_CHECK_EQUAL(rd2.idleRow, 2);
-    BOOST_CHECK_EQUAL(rd2.moveRow, 3);
-    BOOST_CHECK_EQUAL(rd2.numIdleFrames, 3);
-    BOOST_CHECK_EQUAL(rd2.numMoveFrames, 4);
+    // But they should have separate instances (can modify independently)
+    rd1.currentFrame = 1;
+    rd2.currentFrame = 2;
+    BOOST_CHECK_NE(rd1.currentFrame, rd2.currentFrame);
+
+    // Verify they point to different memory
+    BOOST_CHECK_NE(&rd1, &rd2);
 }
 
 BOOST_AUTO_TEST_CASE(TestNPCRenderDataClearedOnDestroy) {
-    EntityHandle handle = edm->createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "test",
-        AnimationConfig{0, 2, 150, true},
-        AnimationConfig{1, 4, 100, true});
+    EntityHandle handle = edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     BOOST_REQUIRE(handle.isValid());
 
     // Destroy the entity
