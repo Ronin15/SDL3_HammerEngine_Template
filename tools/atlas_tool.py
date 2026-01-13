@@ -580,6 +580,7 @@ def collect_expected_texture_ids(paths: dict) -> dict:
 
     # Process world_objects.json - break into subcategories
     world_path = data_dir / "world_objects.json"
+    seasons = ['spring', 'summer', 'fall', 'winter']
     if world_path.exists():
         try:
             with open(world_path, 'r') as f:
@@ -592,11 +593,23 @@ def collect_expected_texture_ids(paths: dict) -> dict:
                     for key, obj in data[subcat].items():
                         tex_id = obj.get('textureId')
                         if tex_id:
-                            found.append({
-                                'id': tex_id,
-                                'name': obj.get('name', key),
-                                'source': 'world_objects.json'
-                            })
+                            is_seasonal = obj.get('seasonal', False)
+                            if is_seasonal:
+                                # Generate all 4 seasonal variants
+                                for season in seasons:
+                                    found.append({
+                                        'id': f"{tex_id}_{season}",
+                                        'name': f"{obj.get('name', key)} ({season.title()})",
+                                        'source': 'world_objects.json',
+                                        'seasonal': True,
+                                        'baseName': obj.get('name', key)
+                                    })
+                            else:
+                                found.append({
+                                    'id': tex_id,
+                                    'name': obj.get('name', key),
+                                    'source': 'world_objects.json'
+                                })
                     if found:
                         categories[subcat.title()] = found
         except Exception:
