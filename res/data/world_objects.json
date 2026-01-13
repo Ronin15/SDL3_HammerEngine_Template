@@ -1,0 +1,188 @@
+{
+  "version": "1.0",
+  "biomes": {
+    "default": {
+      "name": "Default",
+      "textureId": "biome_default",
+      "seasonal": true
+    },
+    "desert": {
+      "name": "Desert",
+      "textureId": "biome_desert",
+      "seasonal": true
+    },
+    "forest": {
+      "name": "Forest",
+      "textureId": "biome_forest",
+      "seasonal": true
+    },
+    "mountain": {
+      "name": "Mountain",
+      "textureId": "biome_mountain",
+      "seasonal": true
+    },
+    "swamp": {
+      "name": "Swamp",
+      "textureId": "biome_swamp",
+      "seasonal": true
+    },
+    "haunted": {
+      "name": "Haunted",
+      "textureId": "biome_haunted",
+      "seasonal": true
+    },
+    "celestial": {
+      "name": "Celestial",
+      "textureId": "biome_celestial",
+      "seasonal": true
+    },
+    "ocean": {
+      "name": "Ocean",
+      "textureId": "biome_ocean",
+      "seasonal": true
+    }
+  },
+  "obstacles": {
+    "none": {
+      "name": "None",
+      "textureId": null,
+      "blocking": false,
+      "harvestable": false
+    },
+    "rock": {
+      "name": "Rock",
+      "textureId": "obstacle_rock",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": false
+    },
+    "tree": {
+      "name": "Tree",
+      "textureId": "obstacle_tree",
+      "blocking": true,
+      "harvestable": true,
+      "seasonal": true
+    },
+    "water": {
+      "name": "Water",
+      "textureId": "obstacle_water",
+      "blocking": true,
+      "harvestable": false,
+      "seasonal": false
+    },
+    "building": {
+      "name": "Building",
+      "textureId": null,
+      "blocking": true,
+      "harvestable": false
+    }
+  },
+  "decorations": {
+    "none": {
+      "name": "None",
+      "textureId": null
+    },
+    "flower_blue": {
+      "name": "Blue Flower",
+      "textureId": "flower_blue",
+      "seasonal": false
+    },
+    "flower_pink": {
+      "name": "Pink Flower",
+      "textureId": "flower_pink",
+      "seasonal": false
+    },
+    "flower_white": {
+      "name": "White Flower",
+      "textureId": "flower_white",
+      "seasonal": false
+    },
+    "flower_yellow": {
+      "name": "Yellow Flower",
+      "textureId": "flower_yellow",
+      "seasonal": false
+    },
+    "mushroom_purple": {
+      "name": "Purple Mushroom",
+      "textureId": "mushroom_purple",
+      "seasonal": false
+    },
+    "mushroom_tan": {
+      "name": "Tan Mushroom",
+      "textureId": "mushroom_tan",
+      "seasonal": false
+    },
+    "grass_small": {
+      "name": "Small Grass",
+      "textureId": "obstacle_grass",
+      "seasonal": true
+    },
+    "grass_large": {
+      "name": "Large Grass",
+      "textureId": "obstacle_grass",
+      "seasonal": true
+    },
+    "bush": {
+      "name": "Bush",
+      "textureId": "bush",
+      "seasonal": true
+    },
+    "stump_small": {
+      "name": "Small Stump",
+      "textureId": "stump_obstacle_small",
+      "seasonal": false
+    },
+    "stump_medium": {
+      "name": "Medium Stump",
+      "textureId": "stump_obstacle_medium",
+      "seasonal": false
+    },
+    "rock_small": {
+      "name": "Small Rock",
+      "textureId": "obstacle_rock",
+      "seasonal": false
+    }
+  },
+  "buildings": {
+    "hut": {
+      "name": "Hut",
+      "textureId": "building_hut",
+      "size": [
+        2,
+        2
+      ],
+      "buildingSize": 1,
+      "seasonal": true
+    },
+    "house": {
+      "name": "House",
+      "textureId": "building_house",
+      "size": [
+        2,
+        2
+      ],
+      "buildingSize": 2,
+      "seasonal": true
+    },
+    "large": {
+      "name": "Large Building",
+      "textureId": "building_large",
+      "size": [
+        2,
+        2
+      ],
+      "buildingSize": 3,
+      "seasonal": true
+    },
+    "cityhall": {
+      "name": "City Hall",
+      "textureId": "building_cityhall",
+      "size": [
+        2,
+        2
+      ],
+      "buildingSize": 4,
+      "seasonal": true
+    }
+  }
+}

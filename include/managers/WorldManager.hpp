@@ -21,9 +21,28 @@
 struct SDL_Renderer;
 struct SDL_Texture;
 
-struct SDL_Renderer;
-
 namespace HammerEngine {
+
+// World object definition loaded from JSON
+struct WorldObjectDef {
+    std::string id;
+    std::string name;
+    std::string textureId;
+    bool seasonal{false};
+    bool blocking{false};
+    bool harvestable{false};
+    int buildingSize{0};  // For buildings: 1=hut, 2=house, 3=large, 4=cityhall
+};
+
+// World objects data loaded from world_objects.json
+struct WorldObjectsData {
+    std::string version;
+    std::unordered_map<std::string, WorldObjectDef> biomes;
+    std::unordered_map<std::string, WorldObjectDef> obstacles;
+    std::unordered_map<std::string, WorldObjectDef> decorations;
+    std::unordered_map<std::string, WorldObjectDef> buildings;
+    bool loaded{false};
+};
 
 class TileRenderer {
 private:
@@ -56,7 +75,12 @@ public:
     Season getCurrentSeason() const { return m_currentSeason; }
     void setCurrentSeason(Season season);
 
+    // World objects data access
+    const WorldObjectsData& getWorldObjectsData() const { return m_worldObjects; }
+
 private:
+    // Load world object definitions from JSON
+    void loadWorldObjects();
     // Update cached texture IDs when season changes (eliminates per-frame string allocations)
     void updateCachedTextureIDs();
 
@@ -188,6 +212,9 @@ private:
     Season m_currentSeason{Season::Spring};
     EventManager::HandlerToken m_seasonToken{};
     bool m_subscribedToSeasons{false};
+
+    // World object definitions loaded from JSON
+    WorldObjectsData m_worldObjects;
 
     // Deferred cache invalidation - set by update thread, cleared by render thread
     // Ensures textures are only destroyed when not in use by Metal command encoder

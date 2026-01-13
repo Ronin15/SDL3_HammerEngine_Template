@@ -797,11 +797,89 @@ void WorldManager::setCurrentSeason(Season season) {
 
 HammerEngine::TileRenderer::TileRenderer()
     : m_currentSeason(Season::Spring), m_subscribedToSeasons(false) {
+  // Load world object definitions from JSON
+  loadWorldObjects();
+
   // Get atlas pointer and pre-load source rect coords from JSON
   initAtlasCoords();
 
   // Initialize cached texture pointers/coords for current season
   updateCachedTextureIDs();
+}
+
+void HammerEngine::TileRenderer::loadWorldObjects() {
+  JsonReader reader;
+  if (!reader.loadFromFile("res/data/world_objects.json")) {
+    WORLD_MANAGER_WARN(std::format(
+        "Could not load world_objects.json: {} - using hardcoded defaults",
+        reader.getLastError()));
+    return;
+  }
+
+  const auto& root = reader.getRoot();
+  if (!root.isObject()) {
+    WORLD_MANAGER_WARN("world_objects.json root is not an object");
+    return;
+  }
+
+  // Parse version
+  if (root.hasKey("version") && root["version"].isString()) {
+    m_worldObjects.version = root["version"].asString();
+  }
+
+  // Helper to parse a single object definition from a key-value pair
+  auto parseObjectDef = [](const std::string& id, const JsonValue& obj) -> WorldObjectDef {
+    WorldObjectDef def;
+    def.id = id;
+    if (obj.hasKey("name") && obj["name"].isString()) {
+      def.name = obj["name"].asString();
+    }
+    if (obj.hasKey("textureId") && obj["textureId"].isString()) {
+      def.textureId = obj["textureId"].asString();
+    }
+    if (obj.hasKey("seasonal") && obj["seasonal"].isBool()) {
+      def.seasonal = obj["seasonal"].asBool();
+    }
+    if (obj.hasKey("blocking") && obj["blocking"].isBool()) {
+      def.blocking = obj["blocking"].asBool();
+    }
+    if (obj.hasKey("harvestable") && obj["harvestable"].isBool()) {
+      def.harvestable = obj["harvestable"].asBool();
+    }
+    if (obj.hasKey("buildingSize") && obj["buildingSize"].isNumber()) {
+      def.buildingSize = obj["buildingSize"].asInt();
+    }
+    return def;
+  };
+
+  // Helper to parse a category (object format: { "key": { ... }, ... })
+  auto parseCategory = [&parseObjectDef](const JsonValue& root, const std::string& category,
+                                          std::unordered_map<std::string, WorldObjectDef>& target) {
+    if (!root.hasKey(category) || !root[category].isObject()) {
+      return;
+    }
+    const auto& catObj = root[category].asObject();
+    for (const auto& [key, value] : catObj) {
+      if (value.isObject()) {
+        target[key] = parseObjectDef(key, value);
+      }
+    }
+  };
+
+  // Parse all categories (object format for tool compatibility)
+  parseCategory(root, "biomes", m_worldObjects.biomes);
+  parseCategory(root, "obstacles", m_worldObjects.obstacles);
+  parseCategory(root, "decorations", m_worldObjects.decorations);
+  parseCategory(root, "buildings", m_worldObjects.buildings);
+
+  m_worldObjects.loaded = true;
+  WORLD_MANAGER_INFO(std::format(
+      "Loaded world_objects.json v{}: {} biomes, {} obstacles, {} decorations, {} buildings",
+      m_worldObjects.version,
+      m_worldObjects.biomes.size(),
+      m_worldObjects.obstacles.size(),
+      m_worldObjects.decorations.size(),
+      m_worldObjects.buildings.size()));
 }
 
 void HammerEngine::TileRenderer::updateCachedTextureIDs() {
@@ -816,24 +894,59 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
                                                "winter_"};
   const char *const prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
 
+  // Helper to get texture ID from JSON or use default, with optional seasonal prefix
+  auto getTextureId = [this, prefix](
+      const std::unordered_map<std::string, WorldObjectDef>& map,
+      const std::string& id,
+      const std::string& defaultTexture) -> std::string {
+    auto it = map.find(id);
+    if (it != map.end() && !it->second.textureId.empty()) {
+      if (it->second.seasonal) {
+        return std::string(prefix) + it->second.textureId;
+      }
+      return it->second.textureId;
+    }
+    // Default: assume seasonal
+    return std::string(prefix) + defaultTexture;
+  };
+
   // Pre-compute all seasonal texture IDs once (eliminates ~24,000 heap
   // allocations/frame at 4K)
-  m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
-  m_cachedTextureIDs.biome_desert = std::string(prefix) + "biome_desert";
-  m_cachedTextureIDs.biome_forest = std::string(prefix) + "biome_forest";
-  m_cachedTextureIDs.biome_mountain = std::string(prefix) + "biome_mountain";
-  m_cachedTextureIDs.biome_swamp = std::string(prefix) + "biome_swamp";
-  m_cachedTextureIDs.biome_haunted = std::string(prefix) + "biome_haunted";
-  m_cachedTextureIDs.biome_celestial = std::string(prefix) + "biome_celestial";
-  m_cachedTextureIDs.biome_ocean = std::string(prefix) + "biome_ocean";
-  m_cachedTextureIDs.obstacle_water = std::string(prefix) + "obstacle_water";
-  m_cachedTextureIDs.obstacle_tree = std::string(prefix) + "obstacle_tree";
-  m_cachedTextureIDs.obstacle_rock = std::string(prefix) + "obstacle_rock";
-  m_cachedTextureIDs.building_hut = std::string(prefix) + "building_hut";
-  m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
-  m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
-  m_cachedTextureIDs.building_cityhall =
-      std::string(prefix) + "building_cityhall";
+  // Use JSON data when loaded, otherwise fall back to hardcoded defaults
+  if (m_worldObjects.loaded) {
+    m_cachedTextureIDs.biome_default = getTextureId(m_worldObjects.biomes, "default", "biome_default");
+    m_cachedTextureIDs.biome_desert = getTextureId(m_worldObjects.biomes, "desert", "biome_desert");
+    m_cachedTextureIDs.biome_forest = getTextureId(m_worldObjects.biomes, "forest", "biome_forest");
+    m_cachedTextureIDs.biome_mountain = getTextureId(m_worldObjects.biomes, "mountain", "biome_mountain");
+    m_cachedTextureIDs.biome_swamp = getTextureId(m_worldObjects.biomes, "swamp", "biome_swamp");
+    m_cachedTextureIDs.biome_haunted = getTextureId(m_worldObjects.biomes, "haunted", "biome_haunted");
+    m_cachedTextureIDs.biome_celestial = getTextureId(m_worldObjects.biomes, "celestial", "biome_celestial");
+    m_cachedTextureIDs.biome_ocean = getTextureId(m_worldObjects.biomes, "ocean", "biome_ocean");
+    m_cachedTextureIDs.obstacle_water = getTextureId(m_worldObjects.obstacles, "water", "obstacle_water");
+    m_cachedTextureIDs.obstacle_tree = getTextureId(m_worldObjects.obstacles, "tree", "obstacle_tree");
+    m_cachedTextureIDs.obstacle_rock = getTextureId(m_worldObjects.obstacles, "rock", "obstacle_rock");
+    m_cachedTextureIDs.building_hut = getTextureId(m_worldObjects.buildings, "hut", "building_hut");
+    m_cachedTextureIDs.building_house = getTextureId(m_worldObjects.buildings, "house", "building_house");
+    m_cachedTextureIDs.building_large = getTextureId(m_worldObjects.buildings, "large", "building_large");
+    m_cachedTextureIDs.building_cityhall = getTextureId(m_worldObjects.buildings, "cityhall", "building_cityhall");
+  } else {
+    // Hardcoded defaults when JSON not loaded
+    m_cachedTextureIDs.biome_default = std::string(prefix) + "biome_default";
+    m_cachedTextureIDs.biome_desert = std::string(prefix) + "biome_desert";
+    m_cachedTextureIDs.biome_forest = std::string(prefix) + "biome_forest";
+    m_cachedTextureIDs.biome_mountain = std::string(prefix) + "biome_mountain";
+    m_cachedTextureIDs.biome_swamp = std::string(prefix) + "biome_swamp";
+    m_cachedTextureIDs.biome_haunted = std::string(prefix) + "biome_haunted";
+    m_cachedTextureIDs.biome_celestial = std::string(prefix) + "biome_celestial";
+    m_cachedTextureIDs.biome_ocean = std::string(prefix) + "biome_ocean";
+    m_cachedTextureIDs.obstacle_water = std::string(prefix) + "obstacle_water";
+    m_cachedTextureIDs.obstacle_tree = std::string(prefix) + "obstacle_tree";
+    m_cachedTextureIDs.obstacle_rock = std::string(prefix) + "obstacle_rock";
+    m_cachedTextureIDs.building_hut = std::string(prefix) + "building_hut";
+    m_cachedTextureIDs.building_house = std::string(prefix) + "building_house";
+    m_cachedTextureIDs.building_large = std::string(prefix) + "building_large";
+    m_cachedTextureIDs.building_cityhall = std::string(prefix) + "building_cityhall";
+  }
 
   // Cache raw texture pointers for direct rendering (eliminates ~8,000 hash
   // lookups/frame at 4K)

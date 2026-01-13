@@ -2,26 +2,18 @@
 """
 Atlas Tool for HammerEngine
 
-Manages the sprite atlas workflow:
-1. map      - Open visual mapper to define sprite regions in atlas.png
-2. extract  - Extract sprites from atlas using atlas.json regions
-3. pack     - Pack individual sprites into atlas.png + atlas.json
-4. update   - Update all JSON files with coordinates from atlas.json
+Coherent workflow for managing sprite atlases:
 
-Workflow:
-  # First time: map sprites in atlas.png
-  python3 tools/atlas_tool.py map
-  # (Use visual tool to define regions, save atlas.json)
+1. EXTRACT  - Extract sprites from atlas.png → res/sprites/
+2. EDIT     - Add/modify sprites in res/sprites/ (manual step)
+3. MAP      - Assign texture IDs to sprites (visual tool)
+4. PACK     - Pack sprites into atlas.png + export all JSON files
 
-  # Extract sprites from atlas
-  python3 tools/atlas_tool.py extract
-
-  # After adding/editing sprites in res/sprites/:
-  python3 tools/atlas_tool.py pack
-  python3 tools/atlas_tool.py update
-
-  # Or do both:
-  python3 tools/atlas_tool.py pack --update
+Usage:
+    python3 tools/atlas_tool.py extract    # Extract sprites from atlas.png
+    python3 tools/atlas_tool.py map        # Open visual mapper to assign IDs
+    python3 tools/atlas_tool.py pack       # Pack and export all JSON files
+    python3 tools/atlas_tool.py list       # List current sprites
 
 Requires: pip install pillow
 """
@@ -44,6 +36,7 @@ def get_paths():
     script_dir = Path(__file__).parent
     project_root = script_dir.parent
     return {
+        'project_root': project_root,
         'sprites_dir': project_root / "res" / "sprites",
         'atlas_png': project_root / "res" / "img" / "atlas.png",
         'atlas_json': project_root / "res" / "data" / "atlas.json",
@@ -51,88 +44,16 @@ def get_paths():
         'materials_json': project_root / "res" / "data" / "materials_and_currency.json",
         'npc_types_json': project_root / "res" / "data" / "npc_types.json",
         'world_objects_json': project_root / "res" / "data" / "world_objects.json",
-        'mapper_html': script_dir / "atlas_mapper.html",  # Unified mapper tool
+        'mapper_session': script_dir / "atlas_mapper_session.html",
     }
 
 
-def cmd_map(paths: dict):
-    """Open visual mapper to assign texture IDs to extracted sprites."""
-    import base64
-
-    mapper_html = paths['mapper_html']
-    sprites_dir = paths['sprites_dir']
-
-    if not mapper_html.exists():
-        print(f"Error: Mapper not found: {mapper_html}")
-        return False
-
-    if not sprites_dir.exists() or not list(sprites_dir.glob("*.png")):
-        print(f"Error: No sprites found in {sprites_dir}")
-        print(f"Run 'extract' first: python3 tools/atlas_tool.py extract")
-        return False
-
-    # Read sprites and convert to base64
-    sprite_data = []
-    for png_file in sorted(sprites_dir.glob("*.png")):
-        img = Image.open(png_file)
-        with open(png_file, 'rb') as f:
-            b64 = base64.b64encode(f.read()).decode('utf-8')
-        sprite_data.append({
-            'filename': png_file.stem,
-            'dataUrl': f'data:image/png;base64,{b64}',
-            'width': img.width,
-            'height': img.height
-        })
-
-    print(f"Loading {len(sprite_data)} sprites into mapper...")
-
-    # Generate HTML with embedded sprite data
-    sprite_json = json.dumps(sprite_data)
-
-    # Read template and inject data
-    with open(mapper_html, 'r') as f:
-        html_content = f.read()
-
-    # Inject sprite data before closing </script> of init
-    inject_code = f'''
-        // Auto-loaded sprites from res/sprites/
-        const PRELOADED_SPRITES = {sprite_json};
-
-        function autoLoadSprites() {{
-            sprites = PRELOADED_SPRITES.map(s => ({{...s, textureId: null}}));
-            document.getElementById('instructions').style.display = 'none';
-            applyFilters();
-            renderIDList();
-            updateStatus(`Loaded ${{sprites.length}} sprites`);
-            document.getElementById('totalCount').textContent = sprites.length;
-            document.getElementById('exportBtn').disabled = false;
-        }}
-
-        // Auto-load on page ready
-        autoLoadSprites();
-    '''
-
-    # Insert before the closing </script> tag (before "// Init")
-    html_content = html_content.replace('// Init\n        renderIDList();', inject_code)
-
-    # Write to temp file and open
-    temp_html = sprites_dir.parent.parent / "tools" / "atlas_mapper_session.html"
-    with open(temp_html, 'w') as f:
-        f.write(html_content)
-
-    print(f"Opening mapper with {len(sprite_data)} sprites pre-loaded...")
-    print(f"\nIn the browser:")
-    print(f"  1. Click a sprite, then click a texture ID to assign it")
-    print(f"  2. Use arrow keys to navigate between sprites")
-    print(f"  3. Click 'Preview & Export' when done")
-    print(f"\nAfter export, run the rename script, then: python3 tools/atlas_tool.py pack --update")
-
-    webbrowser.open(f"file://{temp_html.resolve()}")
-    return True
-
+# =============================================================================
+# EXTRACT - Pull sprites from atlas.png
+# =============================================================================
 
 def detect_sprite_regions(atlas: Image.Image) -> list:
-    """Auto-detect sprite regions by finding non-transparent bounded areas."""
+    """Auto-detect sprite regions using simple flood fill."""
     width, height = atlas.size
     pixels = atlas.load()
     visited = set()
@@ -141,26 +62,20 @@ def detect_sprite_regions(atlas: Image.Image) -> list:
     def is_transparent(x, y):
         if x < 0 or x >= width or y < 0 or y >= height:
             return True
-        return pixels[x, y][3] == 0  # Alpha channel
+        return pixels[x, y][3] == 0
 
     def flood_fill(start_x, start_y):
-        """Find bounding box of connected non-transparent pixels."""
         stack = [(start_x, start_y)]
         min_x, min_y = start_x, start_y
         max_x, max_y = start_x, start_y
 
         while stack:
             x, y = stack.pop()
-            if (x, y) in visited:
+            if (x, y) in visited or is_transparent(x, y):
                 continue
-            if is_transparent(x, y):
-                continue
-
             visited.add((x, y))
             min_x, min_y = min(min_x, x), min(min_y, y)
             max_x, max_y = max(max_x, x), max(max_y, y)
-
-            # Check 4-connected neighbors
             for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
                 nx, ny = x + dx, y + dy
                 if (nx, ny) not in visited:
@@ -168,115 +83,612 @@ def detect_sprite_regions(atlas: Image.Image) -> list:
 
         return min_x, min_y, max_x, max_y
 
-    # Scan for non-transparent pixels
     for y in range(height):
         for x in range(width):
             if (x, y) not in visited and not is_transparent(x, y):
                 min_x, min_y, max_x, max_y = flood_fill(x, y)
                 w = max_x - min_x + 1
                 h = max_y - min_y + 1
-                if w > 1 and h > 1:  # Skip single pixels
-                    regions.append({
-                        'x': min_x,
-                        'y': min_y,
-                        'w': w,
-                        'h': h
-                    })
+                # Filter out tiny sprites (shadows, noise) - minimum 4x4
+                if w >= 4 and h >= 4:
+                    regions.append({'x': min_x, 'y': min_y, 'w': w, 'h': h})
 
-    # Sort by position (top-to-bottom, left-to-right)
     regions.sort(key=lambda r: (r['y'], r['x']))
     return regions
 
 
 def cmd_extract(paths: dict):
-    """Extract sprites from atlas - auto-detects regions if no atlas.json."""
+    """Extract sprites from atlas.png to res/sprites/."""
     atlas_path = paths['atlas_png']
     sprites_dir = paths['sprites_dir']
-    atlas_json = paths['atlas_json']
+    atlas_json_path = paths['atlas_json']
 
     if not atlas_path.exists():
         print(f"Error: Atlas not found: {atlas_path}")
         return False
 
-    # Load atlas image
     atlas = Image.open(atlas_path).convert('RGBA')
+    print(f"Loaded atlas: {atlas.width}x{atlas.height}")
 
-    # Try to load atlas.json, otherwise auto-detect
-    regions = {}
-    if atlas_json.exists():
-        with open(atlas_json, 'r') as f:
-            atlas_data = json.load(f)
-        regions = atlas_data.get('regions', {})
-        print(f"Using atlas.json ({len(regions)} regions)")
+    regions = []
 
+    # If atlas.json exists, use its coordinates directly
+    if atlas_json_path.exists():
+        try:
+            with open(atlas_json_path, 'r') as f:
+                data = json.load(f)
+            for name, coords in data.get('regions', {}).items():
+                regions.append({
+                    'name': name,
+                    'x': coords['x'],
+                    'y': coords['y'],
+                    'w': coords['w'],
+                    'h': coords['h']
+                })
+            print(f"Using atlas.json: {len(regions)} regions")
+        except Exception as e:
+            print(f"Warning: Could not load atlas.json: {e}")
+
+    # Fall back to flood fill detection if no atlas.json
     if not regions:
-        print("No atlas.json found - auto-detecting sprite regions...")
-        detected = detect_sprite_regions(atlas)
-        print(f"  Detected {len(detected)} sprites")
+        print("Detecting sprite regions (flood fill)...")
+        regions = detect_sprite_regions(atlas)
+        for i, r in enumerate(regions):
+            r['name'] = f"sprite_{i+1:03d}"
+        print(f"Found {len(regions)} regions")
 
-        # Name them sprite_001, sprite_002, etc. (user will rename via mapper)
-        for i, r in enumerate(detected):
-            regions[f"sprite_{i+1:03d}"] = r
-
-    if not regions:
-        print("No sprites found in atlas")
-        return False
+    regions.sort(key=lambda r: (r['y'], r['x']))
 
     # Create sprites directory
     sprites_dir.mkdir(parents=True, exist_ok=True)
 
-    # Extract each region
-    count = 0
-    for sprite_id, coords in regions.items():
-        x, y, w, h = coords['x'], coords['y'], coords['w'], coords['h']
-        sprite = atlas.crop((x, y, x + w, y + h))
+    # Clear existing sprites
+    for old_file in sprites_dir.glob("*.png"):
+        old_file.unlink()
 
-        output_path = sprites_dir / f"{sprite_id}.png"
+    # Extract sprites
+    extracted = []
+    for r in regions:
+        name = r['name']
+        sprite = atlas.crop((r['x'], r['y'], r['x'] + r['w'], r['y'] + r['h']))
+        output_path = sprites_dir / f"{name}.png"
         sprite.save(output_path)
-        print(f"  Extracted: {sprite_id}.png ({w}x{h})")
-        count += 1
 
-    print(f"\nExtracted {count} sprites to {sprites_dir}")
+        extracted.append({
+            'name': name,
+            'x': r['x'], 'y': r['y'], 'w': r['w'], 'h': r['h']
+        })
+
+    # Save extraction manifest
+    manifest = {'sprites': extracted}
+    manifest_path = sprites_dir / "_manifest.json"
+    with open(manifest_path, 'w') as f:
+        json.dump(manifest, f, indent=2)
+
+    print(f"\nExtracted {len(extracted)} sprites to {sprites_dir}")
+    print(f"\nNext step: Run 'python3 tools/atlas_tool.py map' to assign texture IDs")
+
     return True
 
 
-def cmd_pack(paths: dict, update: bool = False):
-    """Pack individual sprites into atlas.png + atlas.json."""
+# =============================================================================
+# MAP - Visual tool to assign texture IDs to sprites
+# =============================================================================
+
+def cmd_map(paths: dict):
+    """Open visual mapper to assign texture IDs to sprites."""
+    import base64
+
+    sprites_dir = paths['sprites_dir']
+    output_html = paths['mapper_session']
+
+    if not sprites_dir.exists():
+        print(f"Error: No sprites directory. Run 'extract' first.")
+        return False
+
+    # Load sprites
+    sprite_files = sorted(sprites_dir.glob("*.png"))
+    if not sprite_files:
+        print(f"Error: No sprites found in {sprites_dir}")
+        return False
+
+    # Load manifest if exists
+    manifest_path = sprites_dir / "_manifest.json"
+    manifest = {}
+    if manifest_path.exists():
+        with open(manifest_path, 'r') as f:
+            manifest = json.load(f)
+
+    # Build sprite data with base64 images
+    sprite_data = []
+    for png_file in sprite_files:
+        if png_file.name.startswith('_'):
+            continue
+
+        img = Image.open(png_file)
+        with open(png_file, 'rb') as f:
+            b64 = base64.b64encode(f.read()).decode('utf-8')
+
+        sprite_data.append({
+            'filename': png_file.stem,
+            'dataUrl': f'data:image/png;base64,{b64}',
+            'width': img.width,
+            'height': img.height,
+            'mapped': not png_file.stem.startswith('sprite_')
+        })
+
+    # Load expected texture IDs from JSON files
+    expected_ids = collect_expected_texture_ids(paths)
+
+    total_ids = sum(len(v) for v in expected_ids.values())
+    print(f"Loaded {len(sprite_data)} sprites")
+    print(f"Found {total_ids} expected texture IDs from JSON files")
+    categories_str = ", ".join(f"{k}: {len(v)}" for k, v in expected_ids.items())
+    print(f"  {categories_str}")
+
+    # Generate the mapper HTML
+    html = generate_mapper_html(sprite_data, expected_ids, paths)
+
+    with open(output_html, 'w') as f:
+        f.write(html)
+
+    print(f"\nOpening mapper: {output_html}")
+    print("\nWorkflow:")
+    print("  1. Click a sprite on the left")
+    print("  2. Click a texture ID on the right (or type custom)")
+    print("  3. Repeat for all unmapped sprites")
+    print("  4. Click 'Export & Rename' to save")
+    print("\nAfter mapping, run: python3 tools/atlas_tool.py pack")
+
+    webbrowser.open(f"file://{output_html.resolve()}")
+    return True
+
+
+def collect_expected_texture_ids(paths: dict) -> dict:
+    """Collect all expected texture IDs by scanning JSON files in res/data/."""
+    categories = {}
+    data_dir = paths['project_root'] / "res" / "data"
+
+    # Process items.json
+    items_path = data_dir / "items.json"
+    if items_path.exists():
+        try:
+            with open(items_path, 'r') as f:
+                data = json.load(f)
+            found = scan_for_texture_ids(data, 'items.json')
+            if found:
+                categories['Items'] = found
+        except Exception:
+            pass
+
+    # Process materials_and_currency.json
+    materials_path = data_dir / "materials_and_currency.json"
+    if materials_path.exists():
+        try:
+            with open(materials_path, 'r') as f:
+                data = json.load(f)
+            found = scan_for_texture_ids(data, 'materials_and_currency.json')
+            if found:
+                categories['Materials & Currency'] = found
+        except Exception:
+            pass
+
+    # Process npc_types.json
+    npc_path = data_dir / "npc_types.json"
+    if npc_path.exists():
+        try:
+            with open(npc_path, 'r') as f:
+                data = json.load(f)
+            found = scan_for_texture_ids(data, 'npc_types.json')
+            if found:
+                categories['NPCs'] = found
+        except Exception:
+            pass
+
+    # Process world_objects.json - break into subcategories
+    world_path = data_dir / "world_objects.json"
+    if world_path.exists():
+        try:
+            with open(world_path, 'r') as f:
+                data = json.load(f)
+
+            # Extract each subcategory separately
+            for subcat in ['biomes', 'obstacles', 'decorations', 'buildings']:
+                if subcat in data:
+                    found = []
+                    for key, obj in data[subcat].items():
+                        tex_id = obj.get('textureId')
+                        if tex_id:
+                            found.append({
+                                'id': tex_id,
+                                'name': obj.get('name', key),
+                                'source': 'world_objects.json'
+                            })
+                    if found:
+                        categories[subcat.title()] = found
+        except Exception:
+            pass
+
+    return categories
+
+
+def scan_for_texture_ids(data, source: str, parent_name: str = None) -> list:
+    """Recursively scan data structure for texture ID fields."""
+    found = []
+    texture_keys = ('textureId', 'worldTextureId', 'iconTextureId')
+
+    if isinstance(data, dict):
+        # Check if this dict has a texture ID
+        for key in texture_keys:
+            if key in data and data[key]:
+                name = data.get('name') or data.get('id') or parent_name or data[key]
+                found.append({
+                    'id': data[key],
+                    'name': name,
+                    'source': source
+                })
+
+        # Recurse into values
+        for k, v in data.items():
+            found.extend(scan_for_texture_ids(v, source, k))
+
+    elif isinstance(data, list):
+        for item in data:
+            found.extend(scan_for_texture_ids(item, source, parent_name))
+
+    return found
+
+
+def generate_mapper_html(sprites: list, expected_ids: dict, paths: dict) -> str:
+    """Generate the visual mapper HTML."""
+    sprites_json = json.dumps(sprites)
+    ids_json = json.dumps(expected_ids)
+    sprites_dir = str(paths['sprites_dir'])
+
+    return f'''<!DOCTYPE html>
+<html>
+<head>
+    <title>Atlas Mapper - HammerEngine</title>
+    <style>
+        * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+        body {{ font-family: 'Segoe UI', sans-serif; background: #1a1a2e; color: #eee; height: 100vh; overflow: hidden; }}
+
+        .header {{ background: #16213e; padding: 12px 20px; display: flex; align-items: center; gap: 20px; border-bottom: 2px solid #0f3460; }}
+        .header h1 {{ font-size: 1.3em; color: #0f9; }}
+        .header .stats {{ color: #888; font-size: 0.9em; }}
+        .header .stats span {{ color: #0f9; font-weight: bold; }}
+
+        .btn {{ padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; }}
+        .btn-primary {{ background: #0f9; color: #000; }}
+        .btn-primary:hover {{ background: #0da; }}
+        .btn-danger {{ background: #e94560; color: #fff; }}
+
+        .container {{ display: flex; height: calc(100vh - 56px); }}
+
+        .sprites-panel {{ flex: 1; overflow-y: auto; padding: 15px; background: #0f0f1a; }}
+        .sprites-grid {{ display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }}
+
+        .sprite-card {{ background: #1a1a2e; border: 2px solid #333; border-radius: 6px; padding: 6px; cursor: pointer; text-align: center; }}
+        .sprite-card:hover {{ border-color: #0f9; }}
+        .sprite-card.selected {{ border-color: #0f9; box-shadow: 0 0 10px rgba(0,255,136,0.4); }}
+        .sprite-card.mapped {{ border-color: #4ecdc4; background: #1a2a2e; }}
+        .sprite-card img {{ max-width: 80px; max-height: 60px; image-rendering: pixelated; }}
+        .sprite-card .name {{ font-size: 10px; color: #888; margin-top: 4px; word-break: break-all; }}
+        .sprite-card.mapped .name {{ color: #4ecdc4; }}
+
+        .ids-panel {{ width: 320px; background: #16213e; border-left: 2px solid #0f3460; display: flex; flex-direction: column; }}
+        .ids-panel h3 {{ padding: 10px; background: #0f3460; font-size: 0.9em; }}
+
+        .custom-input {{ padding: 10px; border-bottom: 1px solid #333; }}
+        .custom-input input {{ width: 100%; padding: 8px; background: #1a1a2e; border: 1px solid #333; color: #eee; border-radius: 4px; }}
+        .custom-input input:focus {{ border-color: #0f9; outline: none; }}
+
+        .id-list {{ flex: 1; overflow-y: auto; }}
+        .id-category {{ border-bottom: 1px solid #333; }}
+        .id-category-header {{ padding: 8px 10px; background: #0f3460; font-size: 0.8em; color: #888; cursor: pointer; }}
+        .id-category-header:hover {{ background: #1a4a7a; }}
+        .id-item {{ padding: 8px 15px; cursor: pointer; font-size: 0.85em; border-left: 3px solid transparent; }}
+        .id-item:hover {{ background: #252540; border-left-color: #0f9; }}
+        .id-item.used {{ opacity: 0.4; text-decoration: line-through; }}
+        .id-item .id-name {{ color: #0f9; }}
+        .id-item .id-desc {{ color: #666; font-size: 0.8em; }}
+
+        .selected-info {{ padding: 15px; background: #0a0a15; border-bottom: 1px solid #333; }}
+        .selected-info img {{ max-width: 100%; max-height: 100px; image-rendering: pixelated; }}
+        .selected-info .label {{ color: #888; font-size: 0.8em; margin-top: 8px; }}
+        .selected-info .value {{ color: #0f9; font-weight: bold; }}
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Atlas Mapper</h1>
+        <div class="stats">
+            Mapped: <span id="mappedCount">0</span> / <span id="totalCount">0</span>
+        </div>
+        <button class="btn btn-primary" onclick="exportAndRename()">Export & Rename</button>
+        <button class="btn btn-danger" onclick="clearMappings()">Clear All</button>
+    </div>
+
+    <div class="container">
+        <div class="sprites-panel">
+            <div class="sprites-grid" id="spritesGrid"></div>
+        </div>
+
+        <div class="ids-panel">
+            <div class="selected-info" id="selectedInfo">
+                <div style="color: #666; text-align: center;">Select a sprite</div>
+            </div>
+
+            <div class="custom-input">
+                <input type="text" id="customId" placeholder="Texture ID (e.g. my_sword_world)">
+                <input type="text" id="customName" placeholder="Name (e.g. My Sword)" style="margin-top:5px;">
+                <div style="display:flex; gap:5px; margin-top:5px;">
+                    <button class="btn" style="flex:1; background:#2a4a2a; color:#0f9;" onclick="addCustomIdOnly()">Add to List</button>
+                    <button class="btn" style="flex:1; background:#0f9; color:#000;" onclick="assignCustomId()">Assign</button>
+                </div>
+            </div>
+
+            <div class="id-list" id="idList"></div>
+        </div>
+    </div>
+
+    <script>
+        const sprites = {sprites_json};
+        const expectedIds = {ids_json};
+        const spritesDir = "{sprites_dir}";
+
+        let selectedSprite = null;
+        let mappings = {{}};  // filename -> textureId
+        let customIds = [];   // user-added custom texture IDs [{id, name}]
+
+        // Initialize mappings from already-named sprites
+        sprites.forEach(s => {{
+            if (s.mapped) mappings[s.filename] = s.filename;
+        }});
+
+        function render() {{
+            renderSprites();
+            renderIdList();
+            updateStats();
+        }}
+
+        function renderSprites() {{
+            const grid = document.getElementById('spritesGrid');
+            grid.innerHTML = '';
+
+            sprites.forEach(sprite => {{
+                const card = document.createElement('div');
+                card.className = 'sprite-card' +
+                    (selectedSprite === sprite.filename ? ' selected' : '') +
+                    (mappings[sprite.filename] ? ' mapped' : '');
+
+                const displayName = mappings[sprite.filename] || sprite.filename;
+                card.innerHTML = `
+                    <img src="${{sprite.dataUrl}}" alt="${{sprite.filename}}">
+                    <div class="name">${{displayName}}</div>
+                `;
+                card.onclick = () => selectSprite(sprite.filename);
+                grid.appendChild(card);
+            }});
+        }}
+
+        function renderIdList() {{
+            const list = document.getElementById('idList');
+            list.innerHTML = '';
+
+            const usedIds = new Set(Object.values(mappings));
+
+            // Render all categories from expectedIds (keys are already display names)
+            Object.entries(expectedIds).forEach(([categoryName, ids]) => {{
+                if (!ids || ids.length === 0) return;
+
+                const cat = document.createElement('div');
+                cat.className = 'id-category';
+                cat.innerHTML = `<div class="id-category-header">${{categoryName}} (${{ids.length}})</div>`;
+
+                ids.forEach(item => {{
+                    const div = document.createElement('div');
+                    div.className = 'id-item' + (usedIds.has(item.id) ? ' used' : '');
+                    div.innerHTML = `
+                        <div class="id-name">${{item.id}}</div>
+                        <div class="id-desc">${{item.name}}</div>
+                    `;
+                    div.onclick = () => assignId(item.id);
+                    cat.appendChild(div);
+                }});
+
+                list.appendChild(cat);
+            }});
+
+            // Add custom IDs category if any exist
+            if (customIds.length > 0) {{
+                const cat = document.createElement('div');
+                cat.className = 'id-category';
+                cat.innerHTML = `<div class="id-category-header" style="background:#2a4a2a;">Custom IDs (${{customIds.length}})</div>`;
+
+                customIds.forEach(id => {{
+                    const div = document.createElement('div');
+                    div.className = 'id-item' + (usedIds.has(id) ? ' used' : '');
+                    div.innerHTML = `
+                        <div class="id-name">${{id}}</div>
+                        <div class="id-desc">(custom)</div>
+                    `;
+                    div.onclick = () => assignId(id);
+                    cat.appendChild(div);
+                }});
+
+                list.appendChild(cat);
+            }}
+        }}
+
+        function selectSprite(filename) {{
+            selectedSprite = filename;
+            const sprite = sprites.find(s => s.filename === filename);
+
+            document.getElementById('selectedInfo').innerHTML = `
+                <img src="${{sprite.dataUrl}}">
+                <div class="label">File: ${{sprite.filename}}.png</div>
+                <div class="label">Size: ${{sprite.width}}x${{sprite.height}}</div>
+                <div class="label">Mapped to:</div>
+                <div class="value">${{mappings[filename] || '(unmapped)'}}</div>
+            `;
+
+            render();
+        }}
+
+        function assignId(textureId) {{
+            if (!selectedSprite) {{
+                alert('Select a sprite first');
+                return;
+            }}
+
+            // Remove this ID from any other sprite
+            Object.keys(mappings).forEach(k => {{
+                if (mappings[k] === textureId) delete mappings[k];
+            }});
+
+            mappings[selectedSprite] = textureId;
+
+            // Auto-advance to next unmapped sprite
+            const currentIdx = sprites.findIndex(s => s.filename === selectedSprite);
+            for (let i = 1; i < sprites.length; i++) {{
+                const nextIdx = (currentIdx + i) % sprites.length;
+                if (!mappings[sprites[nextIdx].filename]) {{
+                    selectSprite(sprites[nextIdx].filename);
+                    return;
+                }}
+            }}
+
+            render();
+        }}
+
+        function assignCustomId() {{
+            const input = document.getElementById('customId');
+            const id = input.value.trim();
+            if (id) {{
+                // Check if this is a new custom ID (not in expected lists)
+                const allExpectedIds = Object.values(expectedIds).flat().map(x => x.id);
+                if (!allExpectedIds.includes(id) && !customIds.includes(id)) {{
+                    customIds.push(id);
+                }}
+                assignId(id);
+                input.value = '';
+            }}
+        }}
+
+        function addCustomIdOnly() {{
+            const input = document.getElementById('customId');
+            const id = input.value.trim();
+            if (id) {{
+                const allExpectedIds = Object.values(expectedIds).flat().map(x => x.id);
+                if (!allExpectedIds.includes(id) && !customIds.includes(id)) {{
+                    customIds.push(id);
+                    render();
+                }}
+                input.value = '';
+            }}
+        }}
+
+        function updateStats() {{
+            const total = sprites.length;
+            const mapped = Object.keys(mappings).length;
+            document.getElementById('totalCount').textContent = total;
+            document.getElementById('mappedCount').textContent = mapped;
+        }}
+
+        function clearMappings() {{
+            if (confirm('Clear all mappings?')) {{
+                mappings = {{}};
+                render();
+            }}
+        }}
+
+        function exportAndRename() {{
+            // Generate rename script
+            let script = '#!/bin/bash\\n# Auto-generated rename script\\ncd "' + spritesDir + '"\\n\\n';
+
+            Object.entries(mappings).forEach(([oldName, newName]) => {{
+                if (oldName !== newName) {{
+                    script += `mv "${{oldName}}.png" "${{newName}}.png" 2>/dev/null\\n`;
+                }}
+            }});
+
+            script += '\\necho "Renamed sprites. Run: python3 tools/atlas_tool.py pack"\\n';
+
+            // Also generate mappings JSON
+            const mappingsJson = JSON.stringify(mappings, null, 2);
+
+            // Show export dialog
+            const output = `RENAME SCRIPT (save as rename_sprites.sh and run):\\n${{'-'.repeat(50)}}\\n${{script}}\\n\\nMAPPINGS JSON (for reference):\\n${{'-'.repeat(50)}}\\n${{mappingsJson}}`;
+
+            const blob = new Blob([script], {{type: 'text/plain'}});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'rename_sprites.sh';
+            a.click();
+
+            alert('Downloaded rename_sprites.sh\\n\\nRun it with: bash rename_sprites.sh\\nThen run: python3 tools/atlas_tool.py pack');
+        }}
+
+        // Keyboard navigation
+        document.addEventListener('keydown', e => {{
+            if (!selectedSprite) return;
+            const idx = sprites.findIndex(s => s.filename === selectedSprite);
+
+            if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {{
+                selectSprite(sprites[(idx + 1) % sprites.length].filename);
+            }} else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {{
+                selectSprite(sprites[(idx - 1 + sprites.length) % sprites.length].filename);
+            }}
+        }});
+
+        render();
+    </script>
+</body>
+</html>'''
+
+
+# =============================================================================
+# PACK - Pack sprites into atlas and export all JSON files
+# =============================================================================
+
+def cmd_pack(paths: dict):
+    """Pack sprites into atlas.png and export all JSON files."""
     sprites_dir = paths['sprites_dir']
     atlas_png = paths['atlas_png']
-    atlas_json = paths['atlas_json']
+    atlas_json_path = paths['atlas_json']
 
     if not sprites_dir.exists():
         print(f"Error: Sprites directory not found: {sprites_dir}")
-        print("Run 'extract' first or create sprites manually")
         return False
 
-    # Collect all PNG files
+    # Collect all PNG files (excluding manifest)
+    sprite_files = [f for f in sorted(sprites_dir.glob("*.png")) if not f.name.startswith('_')]
+
+    if not sprite_files:
+        print("No sprites found")
+        return False
+
+    print(f"Packing {len(sprite_files)} sprites...")
+
+    # Load sprites
     sprites = []
-    for png_file in sorted(sprites_dir.glob("*.png")):
+    for png_file in sprite_files:
         img = Image.open(png_file).convert('RGBA')
-        world_id = png_file.stem  # filename without extension
         sprites.append({
-            'id': world_id,
+            'id': png_file.stem,
             'image': img,
             'width': img.width,
             'height': img.height
         })
 
-    if not sprites:
-        print("No PNG files found in sprites directory")
-        return False
-
-    print(f"Packing {len(sprites)} sprites...")
-
-    # Simple packing: sort by height, pack in rows
+    # Sort by height for efficient packing
     sprites.sort(key=lambda s: s['height'], reverse=True)
 
-    # Calculate atlas dimensions (power of 2 for GPU efficiency)
+    # Pack into rows
     max_width = 512
     padding = 1
-
-    # Pack sprites into rows
     rows = []
     current_row = {'sprites': [], 'width': 0, 'height': 0}
 
@@ -293,11 +705,10 @@ def cmd_pack(paths: dict, update: bool = False):
     if current_row['sprites']:
         rows.append(current_row)
 
-    # Calculate total atlas size
+    # Calculate atlas size
     atlas_width = max_width
     atlas_height = sum(row['height'] + padding for row in rows)
 
-    # Round up to power of 2
     def next_power_of_2(n):
         p = 1
         while p < n:
@@ -306,10 +717,8 @@ def cmd_pack(paths: dict, update: bool = False):
 
     atlas_height = next_power_of_2(atlas_height)
 
-    # Create atlas image
+    # Create atlas
     atlas = Image.new('RGBA', (atlas_width, atlas_height), (0, 0, 0, 0))
-
-    # Place sprites and record coordinates
     regions = {}
     y_offset = 0
 
@@ -326,38 +735,61 @@ def cmd_pack(paths: dict, update: bool = False):
             x_offset += sprite['width'] + padding
         y_offset += row['height'] + padding
 
-    # Save atlas image
+    # Save atlas.png
     atlas.save(atlas_png)
     print(f"Saved: {atlas_png} ({atlas_width}x{atlas_height})")
 
     # Save atlas.json
-    atlas_data = {
-        'atlasId': 'atlas',
-        'regions': regions
-    }
-    with open(atlas_json, 'w') as f:
+    atlas_data = {'atlasId': 'atlas', 'regions': regions}
+    with open(atlas_json_path, 'w') as f:
         json.dump(atlas_data, f, indent=2)
-    print(f"Saved: {atlas_json}")
+    print(f"Saved: {atlas_json_path} ({len(regions)} regions)")
 
-    if update:
-        cmd_update(paths)
+    # Export to all JSON files
+    print("\nUpdating JSON files...")
+    export_to_json_files(paths, regions)
 
     return True
 
 
-def update_items_json(json_path: Path, regions: dict) -> int:
-    """Update items.json or materials.json with atlas coordinates."""
-    if not json_path.exists():
-        return 0
+def export_to_json_files(paths: dict, regions: dict):
+    """Export atlas coordinates to all JSON files."""
 
+    # Update items.json
+    if paths['items_json'].exists():
+        count = update_resources_json(paths['items_json'], regions, 'worldTextureId')
+        if count > 0:
+            print(f"  Updated {count} items in items.json")
+
+    # Update materials.json
+    if paths['materials_json'].exists():
+        count = update_resources_json(paths['materials_json'], regions, 'worldTextureId')
+        if count > 0:
+            print(f"  Updated {count} materials in materials_and_currency.json")
+
+    # Update npc_types.json
+    if paths['npc_types_json'].exists():
+        count = update_npc_json(paths['npc_types_json'], regions)
+        if count > 0:
+            print(f"  Updated {count} NPCs in npc_types.json")
+
+    # Update world_objects.json
+    if paths['world_objects_json'].exists():
+        count = update_world_objects_json(paths['world_objects_json'], regions)
+        if count > 0:
+            print(f"  Updated {count} world objects in world_objects.json")
+
+
+def update_resources_json(json_path: Path, regions: dict, texture_key: str) -> int:
+    """Update a resources JSON file with atlas coordinates."""
     with open(json_path, 'r') as f:
         data = json.load(f)
 
     updated = 0
     for resource in data.get('resources', []):
-        world_id = resource.get('worldTextureId')
-        if world_id and world_id in regions:
-            coords = regions[world_id]
+        texture_id = resource.get(texture_key)
+        if texture_id and texture_id in regions:
+            coords = regions[texture_id]
             resource['atlasX'] = coords['x']
             resource['atlasY'] = coords['y']
             resource['atlasW'] = coords['w']
@@ -370,11 +802,8 @@ def update_items_json(json_path: Path, regions: dict) -> int:
     return updated
 
 
-def update_npc_types_json(json_path: Path, regions: dict) -> int:
-    """Update npc_types.json with atlas coordinates if sprites are in atlas."""
-    if not json_path.exists():
-        return 0
-
+def update_npc_json(json_path: Path, regions: dict) -> int:
+    """Update npc_types.json with atlas coordinates."""
     with open(json_path, 'r') as f:
         data = json.load(f)
 
@@ -396,17 +825,13 @@ def update_npc_types_json(json_path: Path, regions: dict) -> int:
 
 
 def update_world_objects_json(json_path: Path, regions: dict) -> int:
-    """Update world_objects.json with atlas coordinates if sprites are in atlas."""
-    if not json_path.exists():
-        return 0
-
+    """Update world_objects.json with atlas coordinates."""
     with open(json_path, 'r') as f:
         data = json.load(f)
 
     updated = 0
     for category in ['biomes', 'obstacles', 'buildings', 'decorations']:
-        cat_data = data.get(category, {})
-        for key, obj in cat_data.items():
+        for key, obj in data.get(category, {}).items():
             texture_id = obj.get('textureId')
             if texture_id and texture_id in regions:
                 obj['atlasX'] = regions[texture_id]['x']
@@ -415,113 +840,88 @@ def update_world_objects_json(json_path: Path, regions: dict) -> int:
                 obj['atlasH'] = regions[texture_id]['h']
                 updated += 1
 
-            # Also check for seasonal variants
-            if obj.get('seasonal', False):
-                for prefix in ['spring_', 'summer_', 'fall_', 'winter_']:
-                    seasonal_id = prefix + texture_id
-                    if seasonal_id in regions:
-                        season_key = prefix.rstrip('_')
-                        if 'seasonalAtlas' not in obj:
-                            obj['seasonalAtlas'] = {}
-                        obj['seasonalAtlas'][season_key] = {
-                            'x': regions[seasonal_id]['x'],
-                            'y': regions[seasonal_id]['y'],
-                            'w': regions[seasonal_id]['w'],
-                            'h': regions[seasonal_id]['h']
-                        }
-
     with open(json_path, 'w') as f:
         json.dump(data, f, indent=2)
 
     return updated
 
 
-def cmd_update(paths: dict):
-    """Update all JSON files with coordinates from atlas.json."""
-    atlas_json = paths['atlas_json']
-
-    if not atlas_json.exists():
-        print(f"Error: atlas.json not found: {atlas_json}")
-        return False
-
-    with open(atlas_json, 'r') as f:
-        atlas_data = json.load(f)
-
-    regions = atlas_data.get('regions', {})
-    print(f"Found {len(regions)} regions in atlas.json")
-
-    # Update items.json
-    count = update_items_json(paths['items_json'], regions)
-    if count > 0:
-        print(f"  Updated {count} items in items.json")
-
-    # Update materials.json
-    count = update_items_json(paths['materials_json'], regions)
-    if count > 0:
-        print(f"  Updated {count} materials in materials_and_currency.json")
-
-    # Update npc_types.json
-    count = update_npc_types_json(paths['npc_types_json'], regions)
-    if count > 0:
-        print(f"  Updated {count} NPCs in npc_types.json")
-
-    # Update world_objects.json
-    count = update_world_objects_json(paths['world_objects_json'], regions)
-    if count > 0:
-        print(f"  Updated {count} world objects in world_objects.json")
-
-    print("Done!")
-    return True
-
+# =============================================================================
+# LIST - Show current sprites
+# =============================================================================
 
 def cmd_list(paths: dict):
-    """List all sprites that would be packed."""
+    """List sprites in res/sprites/."""
     sprites_dir = paths['sprites_dir']
 
     if not sprites_dir.exists():
         print(f"Sprites directory not found: {sprites_dir}")
+        print("Run 'extract' first")
         return
 
-    sprites = sorted(sprites_dir.glob("*.png"))
-    print(f"\nSprites in {sprites_dir}:")
-    for s in sprites:
-        img = Image.open(s)
-        print(f"  {s.stem} ({img.width}x{img.height})")
-    print(f"\nTotal: {len(sprites)} sprites")
+    sprite_files = sorted([f for f in sprites_dir.glob("*.png") if not f.name.startswith('_')])
 
+    named = [f for f in sprite_files if not f.stem.startswith('sprite_')]
+    unnamed = [f for f in sprite_files if f.stem.startswith('sprite_')]
+
+    print(f"\nSprites in {sprites_dir}:")
+    print(f"  Total: {len(sprite_files)}")
+    print(f"  Named: {len(named)}")
+    print(f"  Unnamed: {len(unnamed)}")
+
+    if named:
+        print(f"\nNamed sprites:")
+        for f in named[:20]:
+            img = Image.open(f)
+            print(f"  {f.stem} ({img.width}x{img.height})")
+        if len(named) > 20:
+            print(f"  ... and {len(named) - 20} more")
+
+    if unnamed:
+        print(f"\nUnnamed sprites (need mapping):")
+        for f in unnamed[:10]:
+            img = Image.open(f)
+            print(f"  {f.stem} ({img.width}x{img.height})")
+        if len(unnamed) > 10:
+            print(f"  ... and {len(unnamed) - 10} more")
+
+
+# =============================================================================
+# MAIN
+# =============================================================================
 
 def main():
-    parser = argparse.ArgumentParser(description='Atlas Tool for HammerEngine')
+    parser = argparse.ArgumentParser(
+        description='Atlas Tool for HammerEngine',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
+Workflow:
+  1. extract  - Extract sprites from atlas.png
+  2. map      - Assign texture IDs to sprites (visual tool)
+  3. pack     - Pack sprites and export all JSON files
+
+Example:
+  python3 tools/atlas_tool.py extract
+  python3 tools/atlas_tool.py map
+  # (assign IDs in browser, download rename script, run it)
+  python3 tools/atlas_tool.py pack
+''')
+
     subparsers = parser.add_subparsers(dest='command', help='Commands')
-
-    # Map command
-    subparsers.add_parser('map', help='Open visual mapper to define sprite regions')
-
-    # Extract command
-    subparsers.add_parser('extract', help='Extract sprites from atlas using atlas.json')
-
-    # Pack command
-    pack_parser = subparsers.add_parser('pack', help='Pack sprites into atlas')
-    pack_parser.add_argument('--update', action='store_true',
-                            help='Also update all JSON files after packing')
-
-    # Update command
-    subparsers.add_parser('update', help='Update all JSON files from atlas.json')
-
-    # List command
-    subparsers.add_parser('list', help='List sprites that would be packed')
+    subparsers.add_parser('extract', help='Extract sprites from atlas.png')
+    subparsers.add_parser('map', help='Visual tool to assign texture IDs')
+    subparsers.add_parser('pack', help='Pack sprites and export JSON files')
+    subparsers.add_parser('list', help='List current sprites')
 
     args = parser.parse_args()
     paths = get_paths()
 
-    if args.command == 'map':
-        cmd_map(paths)
-    elif args.command == 'extract':
+    if args.command == 'extract':
         cmd_extract(paths)
+    elif args.command == 'map':
+        cmd_map(paths)
     elif args.command == 'pack':
-        cmd_pack(paths, update=args.update)
-    elif args.command == 'update':
-        cmd_update(paths)
+        cmd_pack(paths)
     elif args.command == 'list':
         cmd_list(paths)
     else:
