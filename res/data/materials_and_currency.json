@@ -49,8 +49,8 @@
       "worldTextureId": "crystal_essence_world",
       "numFrames": 2,
       "animSpeed": 100,
-      "atlasX": 316,
-      "atlasY": 2786,
+      "atlasX": 187,
+      "atlasY": 2765,
       "atlasW": 4,
       "atlasH": 3
     },
