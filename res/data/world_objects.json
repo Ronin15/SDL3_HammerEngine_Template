@@ -4,42 +4,74 @@
     "default": {
       "name": "Default",
       "textureId": "biome_default",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 149,
+      "atlasY": 265,
+      "atlasW": 74,
+      "atlasH": 75
     },
     "desert": {
       "name": "Desert",
       "textureId": "biome_desert",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 257,
+      "atlasY": 97,
+      "atlasW": 80,
+      "atlasH": 77
     },
     "forest": {
       "name": "Forest",
       "textureId": "biome_forest",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 224,
+      "atlasY": 265,
+      "atlasW": 74,
+      "atlasH": 75
     },
     "mountain": {
       "name": "Mountain",
       "textureId": "biome_mountain",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 462,
+      "atlasY": 1093,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "swamp": {
       "name": "Swamp",
       "textureId": "biome_swamp",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 162,
+      "atlasY": 187,
+      "atlasW": 72,
+      "atlasH": 76
     },
     "haunted": {
       "name": "Haunted",
       "textureId": "biome_haunted",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 188,
+      "atlasY": 570,
+      "atlasW": 72,
+      "atlasH": 70
     },
     "celestial": {
       "name": "Celestial",
       "textureId": "biome_celestial",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 73,
+      "atlasY": 265,
+      "atlasW": 75,
+      "atlasH": 75
     },
     "ocean": {
       "name": "Ocean",
       "textureId": "biome_ocean",
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 299,
+      "atlasY": 265,
+      "atlasW": 73,
+      "atlasH": 75
     }
   },
   "obstacles": {
@@ -54,21 +86,33 @@
       "textureId": "obstacle_rock",
       "blocking": true,
       "harvestable": true,
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 65,
+      "atlasY": 1170,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "tree": {
       "name": "Tree",
       "textureId": "obstacle_tree",
       "blocking": true,
       "harvestable": true,
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 98,
+      "atlasY": 1170,
+      "atlasW": 31,
+      "atlasH": 32
     },
     "water": {
       "name": "Water",
       "textureId": "obstacle_water",
       "blocking": true,
       "harvestable": false,
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 296,
+      "atlasY": 494,
+      "atlasW": 71,
+      "atlasH": 73
     },
     "building": {
       "name": "Building",
@@ -85,32 +129,56 @@
     "flower_blue": {
       "name": "Blue Flower",
       "textureId": "flower_blue",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 165,
+      "atlasY": 1137,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "flower_pink": {
       "name": "Pink Flower",
       "textureId": "flower_pink",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 198,
+      "atlasY": 1137,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "flower_white": {
       "name": "White Flower",
       "textureId": "flower_white",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 231,
+      "atlasY": 1137,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "flower_yellow": {
       "name": "Yellow Flower",
       "textureId": "flower_yellow",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 264,
+      "atlasY": 1137,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "mushroom_purple": {
       "name": "Purple Mushroom",
       "textureId": "mushroom_purple",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 427,
+      "atlasY": 1137,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "mushroom_tan": {
       "name": "Tan Mushroom",
       "textureId": "mushroom_tan",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 460,
+      "atlasY": 1137,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "grass_small": {
       "name": "Small Grass",
@@ -130,17 +198,29 @@
     "stump_small": {
       "name": "Small Stump",
       "textureId": "stump_obstacle_small",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 260,
+      "atlasY": 1170,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "stump_medium": {
       "name": "Medium Stump",
       "textureId": "stump_obstacle_medium",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 227,
+      "atlasY": 1170,
+      "atlasW": 32,
+      "atlasH": 32
     },
     "rock_small": {
       "name": "Small Rock",
       "textureId": "obstacle_rock",
-      "seasonal": false
+      "seasonal": false,
+      "atlasX": 65,
+      "atlasY": 1170,
+      "atlasW": 32,
+      "atlasH": 32
     }
   },
   "buildings": {
@@ -152,7 +232,11 @@
         2
       ],
       "buildingSize": 1,
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 266,
+      "atlasY": 644,
+      "atlasW": 64,
+      "atlasH": 64
     },
     "house": {
       "name": "House",
@@ -162,7 +246,11 @@
         2
       ],
       "buildingSize": 2,
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 201,
+      "atlasY": 644,
+      "atlasW": 64,
+      "atlasH": 64
     },
     "large": {
       "name": "Large Building",
@@ -172,7 +260,11 @@
         2
       ],
       "buildingSize": 3,
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 331,
+      "atlasY": 644,
+      "atlasW": 64,
+      "atlasH": 64
     },
     "cityhall": {
       "name": "City Hall",
@@ -182,7 +274,11 @@
         2
       ],
       "buildingSize": 4,
-      "seasonal": true
+      "seasonal": true,
+      "atlasX": 136,
+      "atlasY": 644,
+      "atlasW": 64,
+      "atlasH": 64
     }
   }
 }

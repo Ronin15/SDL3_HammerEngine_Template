@@ -49,10 +49,10 @@
       "worldTextureId": "crystal_essence_world",
       "numFrames": 2,
       "animSpeed": 100,
-      "atlasX": 38,
-      "atlasY": 3942,
-      "atlasW": 11,
-      "atlasH": 11
+      "atlasX": 316,
+      "atlasY": 2786,
+      "atlasW": 4,
+      "atlasH": 3
     },
     {
       "id": "void_silk",
