@@ -398,7 +398,8 @@ struct SDL_Texture;
  * Indexed by typeLocalIndex (same as CharacterData for NPCs).
  */
 struct NPCRenderData {
-    SDL_Texture* cachedTexture{nullptr};  // Cached atlas texture pointer
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* cachedTexture{nullptr};
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{32};              // Single frame width
@@ -460,7 +461,8 @@ struct NPCTypeInfo {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ItemRenderData {
-    SDL_Texture* cachedTexture{nullptr};  // Cached atlas texture pointer
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* cachedTexture{nullptr};
     uint16_t atlasX{0};                   // X offset in atlas (pixels)
     uint16_t atlasY{0};                   // Y offset in atlas (pixels)
     uint16_t frameWidth{16};              // Single frame width
@@ -494,8 +496,9 @@ struct ItemRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct ContainerRenderData {
-    SDL_Texture* closedTexture{nullptr};  // Texture when closed
-    SDL_Texture* openTexture{nullptr};    // Texture when open (optional)
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* closedTexture{nullptr};
+    SDL_Texture* openTexture{nullptr};
     uint16_t frameWidth{32};              // Sprite width
     uint16_t frameHeight{32};             // Sprite height
     uint8_t currentFrame{0};              // For animated open/close
@@ -520,8 +523,9 @@ struct ContainerRenderData {
  * Indexed by typeLocalIndex in EntityHotData.
  */
 struct HarvestableRenderData {
-    SDL_Texture* normalTexture{nullptr};    // Texture when available
-    SDL_Texture* depletedTexture{nullptr};  // Texture when harvested (optional)
+    // NON-OWNING: Managed by TextureManager, may become invalid on state transition
+    SDL_Texture* normalTexture{nullptr};
+    SDL_Texture* depletedTexture{nullptr};
     uint16_t frameWidth{32};                // Sprite width
     uint16_t frameHeight{32};               // Sprite height
     uint8_t currentFrame{0};                // Animation frame
@@ -1713,6 +1717,7 @@ private:
     mutable bool m_triggerDetectionDirty{true};
 
     // Kind indices (per-kind dirty flags to avoid full rebuild when querying single kind)
+    // NOTE: Entity creation/destruction is main-thread-only, so these don't need atomics.
     std::array<std::vector<size_t>, static_cast<size_t>(EntityKind::COUNT)> m_kindIndices;
     mutable std::array<bool, static_cast<size_t>(EntityKind::COUNT)> m_kindIndicesDirty{};
 

@@ -200,6 +200,14 @@ public:
     [[nodiscard]] bool isInitialized() const { return m_initialized.load(); }
     void clean();
 
+    /**
+     * @brief Prepare for game state transition
+     *
+     * Clears fast-path counters to immediately stop spatial queries.
+     * Call before state cleanup to ensure no queries are in flight.
+     */
+    void prepareForStateTransition();
+
     // ========================================================================
     // WORLD MANAGEMENT
     // ========================================================================
