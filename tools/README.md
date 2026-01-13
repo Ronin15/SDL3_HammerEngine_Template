@@ -1,138 +1,123 @@
 # HammerEngine Tools
 
-Tools for managing textures and sprite atlases.
+Tools for managing sprite atlases and texture mappings.
 
-## Quick Reference
+## Atlas Tool - Coherent Workflow
 
-| Tool | Purpose |
-|------|---------|
-| `texture_mapper.py` | Map entity IDs → texture IDs (visual browser) |
-| `atlas_tool.py` | Extract/pack/update atlas sprites |
-| `atlas_picker.html` | Select atlas regions by clicking (x,y,w,h coords) |
+The atlas tool manages the complete sprite atlas lifecycle:
 
----
+```
+atlas.png → EXTRACT → res/sprites/ → MAP → rename → PACK → atlas.png + all JSON files
+```
 
-## Texture Mapping Workflow
-
-### For Items/Materials (atlas-based)
-
-Items use `atlas.png` with coordinates. The JSON stores `atlasX`, `atlasY`, `atlasW`, `atlasH`.
+### Quick Start
 
 ```bash
-# 1. See what's in the atlas
+# 1. Extract sprites from atlas
 python3 tools/atlas_tool.py extract
-# Extracts sprites to res/sprites/ so you can see them
 
-# 2. Map items to atlas regions
-open tools/atlas_picker.html
-# Click and drag to select sprite region
-# Copy the x,y,w,h coordinates to items.json
-```
+# 2. Map sprites to texture IDs (opens browser)
+python3 tools/atlas_tool.py map
+# → Click sprite, click texture ID, repeat
+# → Export & Rename → downloads rename_sprites.sh
 
-### For NPCs/World Objects (individual textures)
+# 3. Run the rename script
+bash rename_sprites.sh
 
-These use individual PNG files. The JSON stores `textureId` which maps to a filename.
-
-```bash
-# Visual mapper - browse textures by folder, map to entities
-python3 tools/texture_mapper.py
-# Opens in browser automatically
-```
-
----
-
-## Tool Details
-
-### texture_mapper.py
-
-Visual tool to map entity IDs to texture IDs.
-
-```bash
-python3 tools/texture_mapper.py          # Generate HTML and open in browser
-python3 tools/texture_mapper.py --no-open # Generate only, don't open
-```
-
-**Features:**
-- Browse all textures by folder (root, buildings, obstacles, biomes, etc.)
-- Shows seasonal variants with orange badge
-- Map Items, Materials, or Custom entities
-- Export JSON mappings
-
-**Output:** `tools/texture_mapper.html`
-
----
-
-### atlas_tool.py
-
-Manage sprite atlas workflow.
-
-```bash
-# Extract sprites from atlas.png to individual files
-python3 tools/atlas_tool.py extract
-# Output: res/sprites/*.png
-
-# Pack individual sprites back into atlas
+# 4. Pack and export all JSON files
 python3 tools/atlas_tool.py pack
-# Output: res/img/atlas.png + res/data/atlas.json
-
-# Pack AND update items.json with new coordinates
-python3 tools/atlas_tool.py pack --update
-
-# Just update items.json from existing atlas.json
-python3 tools/atlas_tool.py update
 ```
 
-**Workflow for adding new item sprites:**
-1. Add sprite to `res/sprites/<name>.png`
-2. Run `python3 tools/atlas_tool.py pack --update`
-3. Atlas repacked, items.json updated with coordinates
+### Commands
 
----
+| Command | Description |
+|---------|-------------|
+| `extract` | Extract sprites from atlas.png → res/sprites/ |
+| `map` | Visual tool to assign texture IDs to sprites |
+| `pack` | Pack sprites into atlas.png + export all JSON |
+| `list` | Show current sprites status |
 
-### atlas_picker.html
+### Workflow Details
 
-Simple HTML tool to select regions from atlas.png.
-
+**1. EXTRACT** - Pull sprites from atlas.png
 ```bash
-open tools/atlas_picker.html
+python3 tools/atlas_tool.py extract
 ```
+- Auto-detects sprite regions in atlas.png
+- Extracts to res/sprites/ as individual PNGs
+- Uses existing atlas.json names if available
+- Unnamed sprites get `sprite_001.png`, `sprite_002.png`, etc.
 
-**Usage:**
-1. Select a resource ID from the list
-2. Click and drag on atlas to select sprite region
-3. Copy JSON output with x, y, w, h coordinates
+**2. MAP** - Assign texture IDs
+```bash
+python3 tools/atlas_tool.py map
+```
+- Opens visual mapper in browser
+- Left panel: all sprites (click to select)
+- Right panel: expected texture IDs from JSON files
+- Click sprite → click ID to assign
+- Arrow keys to navigate sprites
+- Export & Rename downloads a bash script
 
----
+**3. RENAME** - Apply mappings
+```bash
+bash rename_sprites.sh
+```
+- Renames sprite files to their texture IDs
+- e.g., `sprite_042.png` → `magic_sword_world.png`
 
-## File Locations
+**4. PACK** - Build atlas and export JSON
+```bash
+python3 tools/atlas_tool.py pack
+```
+- Packs all sprites into new atlas.png
+- Creates atlas.json with all regions
+- Updates items.json, materials.json, npc_types.json, world_objects.json
+- Adds atlasX, atlasY, atlasW, atlasH to matching entries
 
-**Textures:**
-- `res/img/atlas.png` - Sprite atlas (items)
-- `res/img/*.png` - Individual textures (NPCs, player, logos)
-- `res/img/buildings/` - Building textures (seasonal)
-- `res/img/obstacles/` - Obstacle textures (seasonal)
-- `res/img/biomes/` - Biome tiles (seasonal)
+### File Locations
 
-**Data:**
-- `res/data/items.json` - Item definitions with atlas coords
-- `res/data/materials_and_currency.json` - Material definitions
+**Input/Output:**
+- `res/img/atlas.png` - Sprite atlas image
+- `res/sprites/` - Individual sprite files (working directory)
 - `res/data/atlas.json` - Atlas region definitions
 
-**Extracted:**
-- `res/sprites/` - Individual sprites extracted from atlas
+**JSON files updated by pack:**
+- `res/data/items.json` - Items (matches worldTextureId)
+- `res/data/materials_and_currency.json` - Materials (matches worldTextureId)
+- `res/data/npc_types.json` - NPCs (matches textureId)
+- `res/data/world_objects.json` - World objects (matches textureId)
+
+### Adding New Sprites
+
+1. Add PNG to `res/sprites/` with the texture ID as filename
+   - e.g., `res/sprites/new_item_world.png`
+2. Run `python3 tools/atlas_tool.py pack`
+3. Atlas rebuilt, JSON files updated automatically
+
+### Modifying Existing Sprites
+
+1. Edit the sprite in `res/sprites/`
+2. Run `python3 tools/atlas_tool.py pack`
+3. Atlas rebuilt with updated sprite
+
+### Requirements
+
+```bash
+# Install pillow for image processing
+pip install pillow
+# or on Ubuntu/Debian:
+sudo apt-get install python3-pil
+```
 
 ---
 
-## How Textures Work at Runtime
+## Texture Mapper (Legacy)
 
-```
-JSON (defines texture ID)
-    ↓ Load time
-TextureManager.getTexturePtr(textureId) → SDL_Texture*
-    ↓ Cache in
-RenderData.cachedTexture (stored in EDM)
-    ↓ Runtime
-Render directly from cached pointer - NO LOOKUPS
+For mapping entities to textures without atlas workflow:
+
+```bash
+python3 tools/texture_mapper.py
 ```
 
-JSON files just define mappings. Code resolves to cached pointers at load time.
+Opens a visual browser showing all textures organized by category (biomes, obstacles, buildings, etc.) and allows mapping to items, materials, NPCs, and world objects.
