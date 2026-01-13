@@ -7,14 +7,12 @@
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
-        "speed": 150,
-        "loop": true
+        "speed": 150
       },
       "moveAnim": {
         "row": 0,
         "frameCount": 2,
-        "speed": 100,
-        "loop": true
+        "speed": 100
       },
       "atlasX": 165,
       "atlasY": 1126,
@@ -28,14 +26,12 @@
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
-        "speed": 150,
-        "loop": true
+        "speed": 150
       },
       "moveAnim": {
         "row": 0,
         "frameCount": 2,
-        "speed": 100,
-        "loop": true
+        "speed": 100
       },
       "atlasX": 163,
       "atlasY": 1159,
@@ -49,14 +45,12 @@
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
-        "speed": 150,
-        "loop": true
+        "speed": 150
       },
       "moveAnim": {
         "row": 0,
         "frameCount": 2,
-        "speed": 100,
-        "loop": true
+        "speed": 100
       },
       "atlasX": 230,
       "atlasY": 1126,
@@ -70,14 +64,12 @@
       "idleAnim": {
         "row": 0,
         "frameCount": 1,
-        "speed": 150,
-        "loop": true
+        "speed": 150
       },
       "moveAnim": {
         "row": 0,
         "frameCount": 2,
-        "speed": 100,
-        "loop": true
+        "speed": 100
       },
       "atlasX": 228,
       "atlasY": 1159,

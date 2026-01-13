@@ -56,9 +56,10 @@ void NPCRenderController::renderNPCs(SDL_Renderer* renderer, float cameraX, floa
             (hot.transform.position.getY() - hot.transform.previousPosition.getY()) * alpha;
 
         // All render state set by update() - just read and draw
+        // Add atlas offset to source rect for atlas-based rendering
         SDL_FRect srcRect = {
-            static_cast<float>(r.currentFrame * r.frameWidth),
-            static_cast<float>(r.currentRow * r.frameHeight),
+            static_cast<float>(r.atlasX + r.currentFrame * r.frameWidth),
+            static_cast<float>(r.atlasY + r.currentRow * r.frameHeight),
             static_cast<float>(r.frameWidth),
             static_cast<float>(r.frameHeight)
         };

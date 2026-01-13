@@ -61,17 +61,9 @@ public:
 protected:
     NPCRenderController m_controller;
 
-    // Helper to create NPC with specific animation config
-    EntityHandle createTestNPC(const Vector2D& pos,
-                               int idleFrames = 1,
-                               int moveFrames = 2,
-                               int idleSpeed = 150,
-                               int moveSpeed = 100,
-                               int idleRow = 0,
-                               int moveRow = 1) {
-        AnimationConfig idle{idleRow, idleFrames, idleSpeed, true};
-        AnimationConfig move{moveRow, moveFrames, moveSpeed, true};
-        return EntityDataManager::Instance().createDataDrivenNPC(pos, "test", idle, move);
+    // Helper to create NPC from registry (uses Guard type config)
+    EntityHandle createTestNPC(const Vector2D& pos) {
+        return EntityDataManager::Instance().createDataDrivenNPC(pos, "Guard");
     }
 
     // Helper to set NPC velocity in EDM
@@ -111,16 +103,19 @@ BOOST_AUTO_TEST_CASE(TestAnimationAccumulatorAdvances) {
 }
 
 BOOST_AUTO_TEST_CASE(TestFrameCyclesOnSpeedThreshold) {
-    // Need 2+ idle frames since NPC is stationary (uses idle animation)
-    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f), 4, 4, 100, 100);  // 4 frames, 100ms each
+    // Guard has 2 move frames at 100ms each - need to trigger move animation
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
 
+    // Set velocity to trigger move animation (which has 2 frames)
+    setNPCVelocity(npc, 20.0f, 0.0f);
+
     auto& rd = getRenderData(npc);
     BOOST_CHECK_EQUAL(rd.currentFrame, 0);
 
-    // Update past the speed threshold (100ms = 0.1s)
+    // Update past the move speed threshold (100ms = 0.1s for Guard)
     m_controller.update(0.11f);
 
     // Frame should have advanced
@@ -128,23 +123,28 @@ BOOST_AUTO_TEST_CASE(TestFrameCyclesOnSpeedThreshold) {
 }
 
 BOOST_AUTO_TEST_CASE(TestFrameWrapsToZero) {
-    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f), 2, 2, 50, 50);  // 2 frames, 50ms each
+    // Guard has 2 move frames at 100ms each
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
 
+    // Set velocity to trigger move animation (which has 2 frames)
+    setNPCVelocity(npc, 20.0f, 0.0f);
+
     auto& rd = getRenderData(npc);
 
-    // Update to advance through all frames (2 frames at 50ms each = 100ms total)
-    m_controller.update(0.06f);  // Frame 0 -> 1
+    // Update to advance through all frames (2 frames at 100ms each)
+    m_controller.update(0.11f);  // Frame 0 -> 1
     BOOST_CHECK_EQUAL(rd.currentFrame, 1);
 
-    m_controller.update(0.06f);  // Frame 1 -> 0 (wrap)
+    m_controller.update(0.11f);  // Frame 1 -> 0 (wrap)
     BOOST_CHECK_EQUAL(rd.currentFrame, 0);
 }
 
 BOOST_AUTO_TEST_CASE(TestIdleRowSelectedWhenStationary) {
-    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f), 1, 2, 100, 100, 0, 1);  // idleRow=0, moveRow=1
+    // Guard: idleRow=0, moveRow=0 (same row, different frame counts)
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
@@ -155,11 +155,12 @@ BOOST_AUTO_TEST_CASE(TestIdleRowSelectedWhenStationary) {
     m_controller.update(0.01f);
 
     auto& rd = getRenderData(npc);
-    BOOST_CHECK_EQUAL(rd.currentRow, 0);  // Should be idle row
+    BOOST_CHECK_EQUAL(rd.currentRow, rd.idleRow);  // Should match idle row from config
 }
 
 BOOST_AUTO_TEST_CASE(TestMoveRowSelectedWhenMoving) {
-    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f), 1, 2, 100, 100, 0, 1);  // idleRow=0, moveRow=1
+    // Guard: idleRow=0, moveRow=0 (same row, different frame counts)
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
@@ -171,7 +172,7 @@ BOOST_AUTO_TEST_CASE(TestMoveRowSelectedWhenMoving) {
     m_controller.update(0.01f);
 
     auto& rd = getRenderData(npc);
-    BOOST_CHECK_EQUAL(rd.currentRow, 1);  // Should be move row
+    BOOST_CHECK_EQUAL(rd.currentRow, rd.moveRow);  // Should match move row from config
 }
 
 BOOST_AUTO_TEST_CASE(TestFlipHorizontalWhenMovingLeft) {
@@ -235,10 +236,9 @@ BOOST_AUTO_TEST_SUITE_END()
 BOOST_FIXTURE_TEST_SUITE(EdgeCaseTests, NPCRenderControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestZeroFrameCountHandled) {
-    // Create NPC - the EDM should clamp to minimum 1 frame
-    AnimationConfig zeroFrameConfig{0, 0, 100, true};
+    // Create NPC - the EDM clamps to minimum 1 frame from npc_types.json
     EntityHandle npc = EntityDataManager::Instance().createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "test", zeroFrameConfig, zeroFrameConfig);
+        Vector2D(100.0f, 100.0f), "Guard");
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
@@ -253,22 +253,22 @@ BOOST_AUTO_TEST_CASE(TestZeroFrameCountHandled) {
 }
 
 BOOST_AUTO_TEST_CASE(TestZeroSpeedHandled) {
-    // Create NPC - the EDM should clamp to minimum 1ms speed
-    AnimationConfig zeroSpeedConfig{0, 2, 0, true};
+    // Create NPC - the EDM clamps animation speed to minimum 1ms
     EntityHandle npc = EntityDataManager::Instance().createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "test", zeroSpeedConfig, zeroSpeedConfig);
+        Vector2D(100.0f, 100.0f), "Guard");
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
 
-    // This should NOT cause infinite frame cycling (EDM clamps to minimum 1ms)
+    // Verify speed was clamped to at least 1ms (loaded from npc_types.json)
     auto& rd = getRenderData(npc);
-    uint8_t initialFrame = rd.currentFrame;
+    BOOST_CHECK_GE(rd.idleSpeedMs, 1);
+    BOOST_CHECK_GE(rd.moveSpeedMs, 1);
 
+    uint8_t initialFrame = rd.currentFrame;
     m_controller.update(0.001f);  // Very small delta
 
     // Should not cycle through all frames instantly
-    // With 1ms minimum speed and 0.001s delta, might advance 1 frame max
     BOOST_CHECK_LE(rd.currentFrame - initialFrame, 1);
 }
 
@@ -302,7 +302,7 @@ BOOST_AUTO_TEST_CASE(TestOnlyActiveNPCsUpdated) {
 }
 
 BOOST_AUTO_TEST_CASE(TestVerySmallDeltaTimeAccumulates) {
-    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f), 1, 2, 100, 100);
+    EntityHandle npc = createTestNPC(Vector2D(100.0f, 100.0f));
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);

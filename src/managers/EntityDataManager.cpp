@@ -466,37 +466,22 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
 }
 
 EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
-                                                     const std::string& textureID,
-                                                     const AnimationConfig& idleConfig,
-                                                     const AnimationConfig& moveConfig) {
-    // Get texture pointer from TextureManager (one-time lookup at spawn)
-    SDL_Texture* texture = TextureManager::Instance().getTexturePtr(textureID);
-    if (!texture) {
-        ENTITY_WARN(std::format("createDataDrivenNPC: Texture not found: {}", textureID));
+                                                     const std::string& npcType) {
+    // Look up type in registry
+    auto it = m_npcTypeRegistry.find(npcType);
+    if (it == m_npcTypeRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown NPC type '{}' - must be registered in npc_types.json", npcType));
+        return EntityHandle{};
     }
 
-    // Calculate frame dimensions from texture size
-    uint16_t frameWidth = 32;
-    uint16_t frameHeight = 32;
-    if (texture) {
-        float texWidth = 0.0f;
-        float texHeight = 0.0f;
-        SDL_GetTextureSize(texture, &texWidth, &texHeight);
+    const auto& info = it->second;
 
-        // Frame width = texture width / max frame count
-        int maxFrames = std::max(idleConfig.frameCount, moveConfig.frameCount);
-        if (maxFrames > 0 && texWidth > 0.0f) {
-            frameWidth = static_cast<uint16_t>(texWidth / static_cast<float>(maxFrames));
-        }
+    // Calculate frame dimensions from atlas region
+    int maxFrames = std::max(info.idleAnim.frameCount, info.moveAnim.frameCount);
+    uint16_t frameWidth = (maxFrames > 0) ? static_cast<uint16_t>(info.atlasW / maxFrames) : info.atlasW;
+    uint16_t frameHeight = info.atlasH;
 
-        // Frame height = texture height / number of rows (max row + 1)
-        int numRows = std::max(idleConfig.row, moveConfig.row) + 1;
-        if (numRows > 0 && texHeight > 0.0f) {
-            frameHeight = static_cast<uint16_t>(texHeight / static_cast<float>(numRows));
-        }
-    }
-
-    // Create NPC with calculated collision dimensions (half-size for AABB)
+    // Create NPC with collision dimensions (half-size for AABB)
     EntityHandle handle = createNPC(position,
                                     static_cast<float>(frameWidth) * 0.5f,
                                     static_cast<float>(frameHeight) * 0.5f);
@@ -506,44 +491,39 @@ EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
         return INVALID_ENTITY_HANDLE;
     }
 
-    // Get the render data (created by createNPC alongside CharacterData)
+    // Get render data (created by createNPC alongside CharacterData)
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
     auto& renderData = m_npcRenderData[typeIndex];
 
-    // Populate render data from AnimationConfig
-    renderData.cachedTexture = texture;
+    // Use atlas texture
+    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
+    if (!renderData.cachedTexture) {
+        ENTITY_ERROR("createDataDrivenNPC: Atlas texture not loaded");
+    }
+
+    // Set atlas coordinates and frame dimensions
+    renderData.atlasX = info.atlasX;
+    renderData.atlasY = info.atlasY;
     renderData.frameWidth = frameWidth;
     renderData.frameHeight = frameHeight;
-    // Ensure minimum 1ms speed and 1 frame to prevent division by zero in NPCRenderController
-    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, idleConfig.speed));
-    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, moveConfig.speed));
-    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, idleConfig.frameCount));
-    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, moveConfig.frameCount));
-    renderData.idleRow = static_cast<uint8_t>(idleConfig.row);
-    renderData.moveRow = static_cast<uint8_t>(moveConfig.row);
+
+    // Animation config
+    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, info.idleAnim.speed));
+    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, info.moveAnim.speed));
+    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, info.idleAnim.frameCount));
+    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, info.moveAnim.frameCount));
+    renderData.idleRow = static_cast<uint8_t>(info.idleAnim.row);
+    renderData.moveRow = static_cast<uint8_t>(info.moveAnim.row);
     renderData.currentFrame = 0;
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
 
-    ENTITY_DEBUG(std::format("Created data-driven NPC {} with texture '{}' ({}x{} frames)",
-                            handle.getId(), textureID, frameWidth, frameHeight));
+    ENTITY_DEBUG(std::format("Created NPC '{}' at ({},{}) atlas({},{}) {}x{}",
+                            npcType, position.getX(), position.getY(),
+                            info.atlasX, info.atlasY, frameWidth, frameHeight));
 
     return handle;
-}
-
-EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
-                                                     const std::string& npcType) {
-    // Look up type in registry
-    auto it = m_npcTypeRegistry.find(npcType);
-    if (it != m_npcTypeRegistry.end()) {
-        const auto& info = it->second;
-        return createDataDrivenNPC(position, info.textureID, info.idleAnim, info.moveAnim);
-    }
-
-    // Unknown type - error, caller should use valid registered type
-    ENTITY_ERROR(std::format("Unknown NPC type '{}' - must be a registered type (Guard, Villager, Merchant, Warrior)", npcType));
-    return EntityHandle{};
 }
 
 const NPCTypeInfo* EntityDataManager::getNPCTypeInfo(const std::string& npcType) const {
@@ -2331,27 +2311,31 @@ void EntityDataManager::initializeNPCTypeRegistry() {
                 std::string textureId = npc.hasKey("textureId") ? npc["textureId"].asString() : id;
 
                 // Parse idle animation config
-                AnimationConfig idleAnim{0, 1, 150, true};  // defaults
+                AnimationConfig idleAnim{0, 1, 150};  // defaults
                 if (npc.hasKey("idleAnim") && npc["idleAnim"].isObject()) {
                     const JsonValue& idle = npc["idleAnim"];
                     idleAnim.row = idle.hasKey("row") ? idle["row"].asInt() : 0;
                     idleAnim.frameCount = idle.hasKey("frameCount") ? idle["frameCount"].asInt() : 1;
                     idleAnim.speed = idle.hasKey("speed") ? idle["speed"].asInt() : 150;
-                    idleAnim.loop = idle.hasKey("loop") ? idle["loop"].asBool() : true;
                 }
 
                 // Parse move animation config
-                AnimationConfig moveAnim{0, 2, 100, true};  // defaults
+                AnimationConfig moveAnim{0, 2, 100};  // defaults
                 if (npc.hasKey("moveAnim") && npc["moveAnim"].isObject()) {
                     const JsonValue& move = npc["moveAnim"];
                     moveAnim.row = move.hasKey("row") ? move["row"].asInt() : 0;
                     moveAnim.frameCount = move.hasKey("frameCount") ? move["frameCount"].asInt() : 2;
                     moveAnim.speed = move.hasKey("speed") ? move["speed"].asInt() : 100;
-                    moveAnim.loop = move.hasKey("loop") ? move["loop"].asBool() : true;
                 }
 
-                m_npcTypeRegistry[id] = {textureId, idleAnim, moveAnim};
-                ENTITY_DEBUG(std::format("Loaded NPC type '{}' -> texture '{}'", id, textureId));
+                // Parse atlas coordinates
+                uint16_t atlasX = npc.hasKey("atlasX") ? static_cast<uint16_t>(npc["atlasX"].asInt()) : 0;
+                uint16_t atlasY = npc.hasKey("atlasY") ? static_cast<uint16_t>(npc["atlasY"].asInt()) : 0;
+                uint16_t atlasW = npc.hasKey("atlasW") ? static_cast<uint16_t>(npc["atlasW"].asInt()) : 32;
+                uint16_t atlasH = npc.hasKey("atlasH") ? static_cast<uint16_t>(npc["atlasH"].asInt()) : 32;
+
+                m_npcTypeRegistry[id] = {textureId, idleAnim, moveAnim, atlasX, atlasY, atlasW, atlasH};
+                ENTITY_DEBUG(std::format("Loaded NPC type '{}' atlas ({},{}) {}x{}", id, atlasX, atlasY, atlasW, atlasH));
             }
 
             ENTITY_INFO(std::format("Loaded {} NPC types from {}", m_npcTypeRegistry.size(), jsonPath));
@@ -2361,13 +2345,14 @@ void EntityDataManager::initializeNPCTypeRegistry() {
 
     // Fallback to hardcoded defaults if JSON loading fails
     ENTITY_WARN(std::format("Failed to load NPC types from {}, using defaults", jsonPath));
-    AnimationConfig idle{0, 1, 150, true};
-    AnimationConfig move{0, 2, 100, true};
+    AnimationConfig idle{0, 1, 150};
+    AnimationConfig move{0, 2, 100};
 
-    m_npcTypeRegistry["Guard"]    = {"guard", idle, move};
-    m_npcTypeRegistry["Villager"] = {"villager", idle, move};
-    m_npcTypeRegistry["Merchant"] = {"merchant", idle, move};
-    m_npcTypeRegistry["Warrior"]  = {"warrior", idle, move};
+    // Fallback atlas coords from npc_types.json defaults
+    m_npcTypeRegistry["Guard"]    = {"guard", idle, move, 165, 1126, 64, 32};
+    m_npcTypeRegistry["Villager"] = {"villager", idle, move, 163, 1159, 64, 32};
+    m_npcTypeRegistry["Merchant"] = {"merchant", idle, move, 230, 1126, 64, 32};
+    m_npcTypeRegistry["Warrior"]  = {"warrior", idle, move, 228, 1159, 64, 32};
 
     ENTITY_INFO(std::format("Initialized NPC type registry with {} types (fallback)", m_npcTypeRegistry.size()));
 }

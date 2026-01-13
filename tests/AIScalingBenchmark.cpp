@@ -142,7 +142,7 @@ public:
 
         for (size_t i = 0; i < count; ++i) {
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            EntityHandle handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
+            EntityHandle handle = edm.createDataDrivenNPC(pos, "Guard");
 
             // Enable collision for the entity
             size_t idx = edm.getIndex(handle);
@@ -173,7 +173,7 @@ public:
 
         for (size_t i = 0; i < count; ++i) {
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            EntityHandle handle = edm.createDataDrivenNPC(pos, "test", AnimationConfig{}, AnimationConfig{});
+            EntityHandle handle = edm.createDataDrivenNPC(pos, "Guard");
 
             aim.assignBehavior(handle, behaviors[i % behaviors.size()]);
             m_handles.push_back(handle);

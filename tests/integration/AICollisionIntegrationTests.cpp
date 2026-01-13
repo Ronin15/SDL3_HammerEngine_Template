@@ -50,19 +50,10 @@
 // Data-driven test entity helper
 // Creates entities via EntityDataManager for collision testing
 struct TestEntityHelper {
-    // Default animation configs for test entities
-    static AnimationConfig getIdleConfig() {
-        return AnimationConfig{0, 2, 150, true};
-    }
-
-    static AnimationConfig getMoveConfig() {
-        return AnimationConfig{1, 4, 100, true};
-    }
-
     // Create a data-driven NPC for testing
     static EntityHandle createTestEntity(const Vector2D& pos) {
         auto& edm = EntityDataManager::Instance();
-        return edm.createDataDrivenNPC(pos, "test_texture", getIdleConfig(), getMoveConfig());
+        return edm.createDataDrivenNPC(pos, "Guard");
     }
 
     // Get entity position from EDM

@@ -471,7 +471,7 @@ BOOST_AUTO_TEST_CASE(TestStaticMovableSeparation)
 
     // Create movable entity via EDM (NPCs)
     Vector2D npcPos(150.0f, 150.0f);
-    EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "Guard");
     size_t npcIdx = edm.getIndex(npcHandle);
     auto& npcHot = edm.getHotDataByIndex(npcIdx);
     npcHot.setCollisionEnabled(true);
@@ -530,7 +530,7 @@ BOOST_AUTO_TEST_CASE(TestBroadphasePerformanceWithDualHashes)
         float y = 500.0f + static_cast<float>(i / 5) * 32.0f;
         Vector2D pos(x, y);
 
-        EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+        EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
         size_t idx = edm.getIndex(handle);
         auto& hot = edm.getHotDataByIndex(idx);
         hot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -602,7 +602,7 @@ BOOST_AUTO_TEST_CASE(TestMovableBatchUpdateWithEDM)
         EntityID id = 30000 + i;
         Vector2D pos(i * 20.0f, i * 20.0f);
 
-        EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+        EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
         size_t idx = edm.getIndex(handle);
         auto& hot = edm.getHotDataByIndex(idx);
         hot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -682,7 +682,7 @@ BOOST_AUTO_TEST_CASE(TestStaticBodyCacheInvalidation)
     // Add a movable body near the static body via EDM
     EntityID movableId = 40001;
     Vector2D movablePos(220.0f, 220.0f);
-    EntityHandle movableHandle = edm.createDataDrivenNPC( movablePos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle movableHandle = edm.createDataDrivenNPC( movablePos, "Guard");
     size_t movableIdx = edm.getIndex(movableHandle);
     auto& movableHot = edm.getHotDataByIndex(movableIdx);
     movableHot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -804,7 +804,7 @@ BOOST_AUTO_TEST_CASE(TestBodyLayerFiltering)
 
     // Add movables via EDM
     EntityHandle playerHandle = edm.registerPlayer(playerId, pos, 16.0f, 16.0f);
-    EntityHandle npcHandle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle npcHandle = edm.createDataDrivenNPC( pos, "Guard");
 
     // Set layers on EDM hot data - Player collides with NPCs and environment
     size_t playerIdx = edm.getIndex(playerHandle);
@@ -853,7 +853,7 @@ BOOST_AUTO_TEST_CASE(TestBodyEnableDisable)
     Vector2D pos(150.0f, 150.0f);
 
     // Create movable via EDM
-    EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
     size_t idx = edm.getIndex(handle);
     auto& hot = edm.getHotDataByIndex(idx);
     hot.collisionLayers = CollisionLayer::Layer_Player;
@@ -887,7 +887,7 @@ BOOST_AUTO_TEST_CASE(TestBodyResize)
     Vector2D originalPos(200.0f, 200.0f);
 
     // Create movable via EDM (default frame 32x32 -> halfSize 16)
-    EntityHandle handle = edm.createDataDrivenNPC(originalPos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm.createDataDrivenNPC(originalPos, "Guard");
     size_t idx = edm.getIndex(handle);
     auto& hot = edm.getHotDataByIndex(idx);
     hot.collisionLayers = CollisionLayer::Layer_Player;
@@ -928,7 +928,7 @@ BOOST_AUTO_TEST_CASE(TestVelocityManagement)
     Vector2D velocity(15.0f, 10.0f);
 
     // Register with EDM (the single source of truth for movables)
-    EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
     size_t idx = edm.getIndex(handle);
     auto& hot = edm.getHotDataByIndex(idx);
     hot.collisionLayers = CollisionLayer::Layer_Player;
@@ -981,8 +981,8 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     Vector2D posA(100.0f, 100.0f);
     Vector2D posB(120.0f, 120.0f);  // Overlapping
     // Create NPCs with data-driven API (default frame 32x32 -> halfSize 16)
-    EntityHandle handleA = edm.createDataDrivenNPC(posA, "test", AnimationConfig{}, AnimationConfig{});
-    EntityHandle handleB = edm.createDataDrivenNPC(posB, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handleA = edm.createDataDrivenNPC(posA, "Guard");
+    EntityHandle handleB = edm.createDataDrivenNPC(posB, "Guard");
 
     // EDM-CENTRIC: Use BackgroundSimulationManager to update tiers
     // This populates m_activeIndices for collision detection
@@ -1138,7 +1138,7 @@ BOOST_FIXTURE_TEST_CASE(TestCollisionManagerEventNotification, CollisionIntegrat
     Vector2D movablePos(150.0f, 250.0f);
     int previousEventCount = eventCount.load();
 
-    EntityHandle handle = edm.createDataDrivenNPC( movablePos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm.createDataDrivenNPC( movablePos, "Guard");
     size_t idx = edm.getIndex(handle);
     auto& hot = edm.getHotDataByIndex(idx);
     hot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -1342,7 +1342,7 @@ BOOST_AUTO_TEST_CASE(TestWorldBounds)
     EntityID bodyId = 9000;
     Vector2D validPosition(500.0f, 400.0f);
 
-    EntityHandle handle = edm.createDataDrivenNPC( validPosition, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle = edm.createDataDrivenNPC( validPosition, "Guard");
     size_t idx = edm.getIndex(handle);
     auto& hot = edm.getHotDataByIndex(idx);
     hot.collisionLayers = CollisionLayer::Layer_Player;
@@ -1372,7 +1372,7 @@ BOOST_AUTO_TEST_CASE(TestLayerCollisionFiltering)
     Vector2D overlappingPos(400.0f, 400.0f);
 
     EntityHandle handle1 = edm.registerPlayer(player1Id, overlappingPos, 16.0f, 16.0f);
-    EntityHandle handle2 = edm.createDataDrivenNPC( overlappingPos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle handle2 = edm.createDataDrivenNPC( overlappingPos, "Guard");
 
     // Set both as players with masks that exclude Layer_Player
     size_t idx1 = edm.getIndex(handle1);
@@ -1425,7 +1425,7 @@ BOOST_AUTO_TEST_CASE(TestMixedBodyTypeInteractions)
                                                 false, 0, static_cast<uint8_t>(HammerEngine::TriggerType::Physical), staticEdmIndex);
 
     // Add movable body via EDM
-    EntityHandle movableHandle = edm.createDataDrivenNPC( position, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle movableHandle = edm.createDataDrivenNPC( position, "Guard");
     size_t movableIdx = edm.getIndex(movableHandle);
     auto& movableHot = edm.getHotDataByIndex(movableIdx);
     movableHot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -1622,7 +1622,7 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchPositionUpdate)
         entityIds.push_back(id);
         Vector2D pos(100.0f + i * 10.0f, 100.0f + i * 10.0f);
 
-        EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+        EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
         size_t idx = edm.getIndex(handle);
         auto& hot = edm.getHotDataByIndex(idx);
         hot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -1679,7 +1679,7 @@ BOOST_AUTO_TEST_CASE(TestEDMMultiBatchUpdates)
             batchEntityIds[batch].push_back(id);
             Vector2D pos(50.0f + batch * 200.0f + i * 5.0f, 50.0f + i * 5.0f);
 
-            EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+            EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
             size_t idx = edm.getIndex(handle);
             auto& hot = edm.getHotDataByIndex(idx);
             hot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -1742,7 +1742,7 @@ BOOST_AUTO_TEST_CASE(TestEDMBatchUpdatePerformance)
         entityIds.push_back(id);
         Vector2D pos(static_cast<float>(i % 50) * 20.0f, static_cast<float>(i / 50) * 20.0f);
 
-        EntityHandle handle = edm.createDataDrivenNPC( pos, "test", AnimationConfig{}, AnimationConfig{});
+        EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
         size_t idx = edm.getIndex(handle);
         auto& hot = edm.getHotDataByIndex(idx);
         hot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -1809,7 +1809,7 @@ BOOST_AUTO_TEST_CASE(TestTriggerDetectionFlag)
     // Create NPC - should NOT have NEEDS_TRIGGER_DETECTION flag by default
     EntityID npcId = 50001;
     Vector2D npcPos(200.0f, 200.0f);
-    EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "Guard");
     size_t npcIdx = edm.getIndex(npcHandle);
     auto& npcHot = edm.getHotDataByIndex(npcIdx);
 
@@ -1927,7 +1927,7 @@ BOOST_AUTO_TEST_CASE(TestNPCTriggerDetection)
     // Create NPC with NEEDS_TRIGGER_DETECTION enabled
     EntityID npcId = 52000;
     Vector2D npcPos(150.0f, 150.0f);
-    EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "test", AnimationConfig{}, AnimationConfig{});
+    EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "Guard");
     size_t npcIdx = edm.getIndex(npcHandle);
     auto& npcHot = edm.getHotDataByIndex(npcIdx);
     npcHot.collisionLayers = CollisionLayer::Layer_Enemy;
@@ -2012,7 +2012,7 @@ BOOST_AUTO_TEST_CASE(TestSweepAndPruneTriggerDetection)
         float y = static_cast<float>(i / 10) * 100.0f + 50.0f;
         Vector2D npcPos(x, y);
 
-        EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "test", AnimationConfig{}, AnimationConfig{});
+        EntityHandle npcHandle = edm.createDataDrivenNPC( npcPos, "Guard");
         size_t npcIdx = edm.getIndex(npcHandle);
         auto& npcHot = edm.getHotDataByIndex(npcIdx);
         npcHot.collisionLayers = CollisionLayer::Layer_Enemy;
