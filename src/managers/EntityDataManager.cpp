@@ -432,18 +432,29 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Initialize collision data (NPCs collide with player, environment, projectiles)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
-                        HammerEngine::CollisionLayer::Layer_Environment |
-                        HammerEngine::CollisionLayer::Layer_Projectile |
-                        HammerEngine::CollisionLayer::Layer_Enemy;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
-    hot.triggerTag = 0;
-
-    // Allocate character data (CharacterData + NPCRenderData stay in sync)
+    // Allocate character data first (needed for faction-based collision setup)
     uint32_t charIndex = allocateCharacterSlot();
     m_characterData[charIndex].stateFlags = CharacterData::STATE_ALIVE;
+    // faction defaults to 0 (Friendly) in CharacterData
+
+    // Initialize collision data based on faction
+    // Friendly/Neutral NPCs: Layer_Default, don't collide with other NPCs
+    // Enemy NPCs: Layer_Enemy, can collide with other enemies
+    uint8_t faction = m_characterData[charIndex].faction;
+    if (faction == 1) {  // Enemy
+        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
+                            HammerEngine::CollisionLayer::Layer_Environment |
+                            HammerEngine::CollisionLayer::Layer_Projectile |
+                            HammerEngine::CollisionLayer::Layer_Enemy;
+    } else {  // Friendly (0) or Neutral (2)
+        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
+                            HammerEngine::CollisionLayer::Layer_Environment |
+                            HammerEngine::CollisionLayer::Layer_Projectile;
+    }
+    hot.collisionFlags = EntityHotData::COLLISION_ENABLED;
+    hot.triggerTag = 0;
     hot.typeLocalIndex = charIndex;
 
     // Store ID and mapping
