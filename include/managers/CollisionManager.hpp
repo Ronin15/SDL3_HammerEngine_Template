@@ -94,6 +94,19 @@ public:
      */
     bool isGloballyPaused() const;
 
+    /**
+     * @brief Enable or disable threading for collision processing (debug/benchmark only)
+     * @param enable true to enable threading, false for single-threaded
+     */
+#ifndef NDEBUG
+    void enableThreading(bool enable) {
+        m_useThreading.store(enable, std::memory_order_release);
+    }
+    bool isThreadingEnabled() const {
+        return m_useThreading.load(std::memory_order_acquire);
+    }
+#endif
+
     // Tick: run collision detection/resolution only (no movement integration)
     void update(float dt);
 
@@ -311,6 +324,7 @@ private:
     bool m_initialized{false};
     bool m_isShutdown{false};
     std::atomic<bool> m_globallyPaused{false}; // Global pause state for update() early exit
+    std::atomic<bool> m_useThreading{true};    // Threading control for benchmarking
     AABB m_worldBounds{0,0, 100000.0f, 100000.0f}; // large default box (centered at 0,0)
 
     // NEW SOA STORAGE SYSTEM: Following AIManager pattern for better cache performance
@@ -683,9 +697,8 @@ private:
     mutable std::vector<BroadphaseBatchBuffer> m_broadphaseBatchBuffers;
 
     // Threading config for broadphase
-    // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
-    //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 150;  // Broadphase: min movable bodies
+    // Uses WorkerBudget's adaptive threading threshold which learns optimal
+    // cutoff based on measured throughput (adapts to hardware, Debug/Release, etc.)
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
 

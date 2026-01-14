@@ -611,7 +611,7 @@ public:
 #ifndef NDEBUG
   // Threading configuration (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
-  void setThreadingThreshold(size_t threshold);
+  // Threshold now managed by WorkerBudget - this delegates to it
   size_t getThreadingThreshold() const;
 #endif
 
@@ -917,7 +917,7 @@ private:
   std::atomic<bool> m_globallyVisible{true};
   std::atomic<bool> m_useThreading{true};
   std::atomic<bool> m_useWorkerBudget{true};
-  std::atomic<size_t> m_threadingThreshold{2000};  // Optimal threshold from benchmark
+  // Threading threshold now managed by WorkerBudget adaptive system
 
 
   std::atomic<size_t> m_activeCount{0};

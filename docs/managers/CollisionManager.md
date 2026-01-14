@@ -227,7 +227,11 @@ auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
     movableIndices.size(),
     optimalWorkers);
 
-if (batchCount <= 1 || movableIndices.size() < MIN_MOVABLE_FOR_BROADPHASE_THREADING) {
+// Adaptive threshold learns optimal cutoff based on measured throughput
+bool useThreading = batchCount > 1 &&
+    budgetMgr.shouldUseThreading(HammerEngine::SystemType::Collision, movableIndices.size());
+
+if (!useThreading) {
     broadphaseSingleThreaded(indexPairs);
 } else {
     broadphaseMultiThreaded(indexPairs, batchCount, batchSize);

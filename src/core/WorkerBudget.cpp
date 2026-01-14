@@ -9,9 +9,21 @@
 
 namespace HammerEngine {
 
-// Static singleton instance
+// Static singleton instance with per-system threshold initialization
 WorkerBudgetManager& WorkerBudgetManager::Instance() {
     static WorkerBudgetManager instance;
+    static std::once_flag initFlag;
+    std::call_once(initFlag, []() {
+        // Initialize per-system thresholds based on workload characteristics:
+        // - Collision: Heavy per-item work (spatial hash, narrow phase) - benefits at lower counts
+        // - AI: Medium work (behavior execution, pathfinding) - standard threshold
+        // - Particle: Light per-item work - needs higher counts for threading benefit
+        // - Event: Variable work - standard threshold
+        instance.m_threadingState[static_cast<size_t>(SystemType::Collision)].threshold.store(150, std::memory_order_relaxed);
+        instance.m_threadingState[static_cast<size_t>(SystemType::AI)].threshold.store(200, std::memory_order_relaxed);
+        instance.m_threadingState[static_cast<size_t>(SystemType::Particle)].threshold.store(500, std::memory_order_relaxed);
+        instance.m_threadingState[static_cast<size_t>(SystemType::Event)].threshold.store(200, std::memory_order_relaxed);
+    });
     return instance;
 }
 
@@ -142,6 +154,134 @@ void WorkerBudgetManager::reportBatchCompletion(SystemType system,
                             BatchTuningState::MAX_MULTIPLIER);
 
     state.multiplier.store(multiplier, std::memory_order_relaxed);
+}
+
+ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, size_t entityCount) {
+    // ThreadSystem must exist for threading to be possible
+    if (!ThreadSystem::Exists()) {
+        return {false, 0};
+    }
+
+    // Single-core hardware: no parallelism possible, always single-threaded
+    // (ThreadSystem with 0-1 workers means no benefit from threading)
+    if (ThreadSystem::Instance().getThreadCount() <= 1) {
+        return {false, 0};
+    }
+
+    auto& state = m_threadingState[static_cast<size_t>(system)];
+
+    // Always single-threaded for very small counts
+    if (entityCount < ThreadingTuningState::MIN_THRESHOLD) {
+        return {false, 0};
+    }
+
+    size_t threshold = state.threshold.load(std::memory_order_relaxed);
+    bool lastWasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+    int phase = state.probePhase.load(std::memory_order_relaxed);
+
+    // Two-phase probing: force specific mode during probe frames
+    if (phase == 1) {
+        // Phase 1: Force single-threaded for this frame
+        return {false, 1};
+    }
+    if (phase == 2) {
+        // Phase 2: Force multi-threaded for this frame
+        return {true, 2};
+    }
+
+    // Check if it's time to start a new probe cycle
+    size_t framesSinceProbe = state.framesSinceProbe.fetch_add(1, std::memory_order_relaxed);
+    if (framesSinceProbe >= ThreadingTuningState::PROBE_INTERVAL) {
+        // Start two-phase probe: phase 1 = single-threaded
+        state.framesSinceProbe.store(0, std::memory_order_relaxed);
+        state.probePhase.store(1, std::memory_order_relaxed);
+        state.probeEntityCount.store(entityCount, std::memory_order_relaxed);
+        return {false, 1};  // Force single-threaded for phase 1
+    }
+
+    // Normal operation: use learned threshold with hysteresis band
+    // Hysteresis prevents flip-flopping when entity count hovers near threshold
+    bool shouldThread;
+    if (lastWasThreaded) {
+        // Was threaded - stay threaded unless count drops well below threshold
+        shouldThread = entityCount >= (threshold - ThreadingTuningState::HYSTERESIS_BAND);
+    } else {
+        // Was single-threaded - stay single unless count rises well above threshold
+        shouldThread = entityCount >= (threshold + ThreadingTuningState::HYSTERESIS_BAND);
+    }
+    return {shouldThread, 0};
+}
+
+void WorkerBudgetManager::reportThreadingResult(SystemType system, size_t entityCount,
+                                                 bool wasThreaded, double throughputItemsPerMs) {
+    if (entityCount == 0 || throughputItemsPerMs <= 0.0) {
+        return;
+    }
+
+    auto& state = m_threadingState[static_cast<size_t>(system)];
+    int phase = state.probePhase.load(std::memory_order_relaxed);
+
+    // Two-phase probing: handle probe results
+    if (phase == 1) {
+        // Phase 1 complete: store single-threaded measurement, advance to phase 2
+        state.probeSingleThroughput.store(throughputItemsPerMs, std::memory_order_relaxed);
+        state.probePhase.store(2, std::memory_order_relaxed);
+        return;
+    }
+
+    if (phase == 2) {
+        // Phase 2 complete: store multi-threaded measurement, compare, adjust threshold
+        state.probeMultiThroughput.store(throughputItemsPerMs, std::memory_order_relaxed);
+        state.probePhase.store(0, std::memory_order_relaxed);  // Back to normal
+
+        // Compare FRESH back-to-back measurements (both from last 2 frames)
+        double singleThroughput = state.probeSingleThroughput.load(std::memory_order_relaxed);
+        double multiThroughput = state.probeMultiThroughput.load(std::memory_order_relaxed);
+        size_t probeCount = state.probeEntityCount.load(std::memory_order_relaxed);
+        size_t currentThreshold = state.threshold.load(std::memory_order_relaxed);
+
+        // Skip if measurements are invalid
+        if (singleThroughput <= 0.0 || multiThroughput <= 0.0) {
+            return;
+        }
+
+        // Determine if threshold should change based on which mode performed better
+        size_t newThreshold = currentThreshold;
+
+        if (multiThroughput > singleThroughput * ThreadingTuningState::IMPROVEMENT_THRESHOLD) {
+            // Multi-threading was significantly better (30%+)
+            // Lower threshold to enable threading at lower counts
+            if (currentThreshold > probeCount) {
+                // Threshold too high - lower to where threading helps
+                newThreshold = probeCount;
+            } else if (probeCount <= currentThreshold * 2) {
+                // Probing near threshold - explore lower
+                newThreshold = (currentThreshold > 25) ? currentThreshold - 25 : ThreadingTuningState::MIN_THRESHOLD;
+            }
+            // else: well above threshold, threading confirmed working, hold steady
+        } else if (singleThroughput > multiThroughput * ThreadingTuningState::IMPROVEMENT_THRESHOLD) {
+            // Single-threaded was significantly better (30%+)
+            // Raise threshold above probeCount
+            newThreshold = std::max(currentThreshold, probeCount + 50);
+        }
+        // Within 30% of each other - threshold is roughly correct, hold steady
+
+        // Clamp to valid range
+        newThreshold = std::clamp(newThreshold,
+                                  ThreadingTuningState::MIN_THRESHOLD,
+                                  ThreadingTuningState::MAX_THRESHOLD);
+
+        state.threshold.store(newThreshold, std::memory_order_relaxed);
+        return;
+    }
+
+    // Phase 0: Normal operation - just track state for hysteresis
+    state.lastWasThreaded.store(wasThreaded, std::memory_order_relaxed);
+    state.lastEntityCount.store(entityCount, std::memory_order_relaxed);
+}
+
+size_t WorkerBudgetManager::getThreadingThreshold(SystemType system) const {
+    return m_threadingState[static_cast<size_t>(system)].threshold.load(std::memory_order_relaxed);
 }
 
 void WorkerBudgetManager::invalidateCache() {

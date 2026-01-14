@@ -30,6 +30,17 @@ enum class SystemType : uint8_t {
 };
 
 /**
+ * @brief Threading decision result from WorkerBudgetManager
+ *
+ * WorkerBudget is the authoritative source for threading decisions.
+ * Managers should use shouldThread directly without additional overrides.
+ */
+struct ThreadingDecision {
+    bool shouldThread;  // true = use multi-threading, false = single-threaded
+    int probePhase;     // 0=normal, 1=forced-single, 2=forced-multi (for debugging)
+};
+
+/**
  * @brief Worker budget allocation for game engine subsystems
  *
  * Simplified for sequential execution model: each manager gets ALL workers
@@ -119,6 +130,43 @@ public:
                                size_t batchCount, double totalTimeMs);
 
     /**
+     * @brief Determine if threading should be used for current workload
+     *
+     * WorkerBudget is the AUTHORITATIVE source for threading decisions.
+     * Managers should use decision.shouldThread directly without overrides.
+     *
+     * Uses adaptive threshold that learns optimal point based on measured
+     * throughput. Periodically probes opposite mode to gather data.
+     * Includes hysteresis to prevent flip-flopping near threshold.
+     *
+     * @param system The system type
+     * @param entityCount Number of entities to process
+     * @return ThreadingDecision with shouldThread and probePhase
+     */
+    ThreadingDecision shouldUseThreading(SystemType system, size_t entityCount);
+
+    /**
+     * @brief Report threading result for threshold tuning
+     *
+     * Call after processing completes to update the adaptive threshold.
+     * Compares single vs multi-threaded throughput during probing phase.
+     *
+     * @param system The system type
+     * @param entityCount Number of entities that were processed
+     * @param wasThreaded true if multi-threading was used
+     * @param throughputItemsPerMs Measured throughput (items per millisecond)
+     */
+    void reportThreadingResult(SystemType system, size_t entityCount,
+                               bool wasThreaded, double throughputItemsPerMs);
+
+    /**
+     * @brief Get current threading threshold for a system (for debugging/logging)
+     * @param system The system type
+     * @return Current adaptive threshold value
+     */
+    size_t getThreadingThreshold(SystemType system) const;
+
+    /**
      * @brief Invalidate cached budget (call when ThreadSystem changes)
      */
     void invalidateCache();
@@ -159,6 +207,42 @@ private:
         static constexpr size_t MIN_ITEMS_PER_BATCH = 8;  // Prevent trivial batches
     };
 
+    /**
+     * @brief Per-system threading threshold tuning state
+     *
+     * Adapts the entity count threshold for enabling multi-threading based on
+     * measured throughput. Uses periodic probing to discover optimal threshold.
+     *
+     * Thread-safe via atomics.
+     */
+    struct ThreadingTuningState {
+        // Adaptive threshold (entity count above which threading is enabled)
+        std::atomic<size_t> threshold{200};  // Start conservative
+
+        // Two-phase probing mechanism:
+        // Phase 0: Normal operation
+        // Phase 1: Force single-threaded, measure throughput
+        // Phase 2: Force multi-threaded, measure throughput, then compare both
+        std::atomic<size_t> framesSinceProbe{0};
+        std::atomic<int> probePhase{0};  // 0=normal, 1=single, 2=multi
+
+        // Probe measurements (fresh, back-to-back)
+        std::atomic<double> probeSingleThroughput{0.0};
+        std::atomic<double> probeMultiThroughput{0.0};
+        std::atomic<size_t> probeEntityCount{0};
+
+        // State tracking
+        std::atomic<bool> lastWasThreaded{false};
+        std::atomic<size_t> lastEntityCount{0};
+
+        // Constants
+        static constexpr size_t PROBE_INTERVAL = 500;     // Frames between probes
+        static constexpr size_t HYSTERESIS_BAND = 20;     // Prevent flip-flopping
+        static constexpr size_t MIN_THRESHOLD = 50;       // Never go below this
+        static constexpr size_t MAX_THRESHOLD = 10000;    // Allow learning to disable threading
+        static constexpr double IMPROVEMENT_THRESHOLD = 1.5;  // 50% improvement required
+    };
+
     // Cached budget (protected by double-checked locking)
     WorkerBudget m_cachedBudget{};
     std::atomic<bool> m_budgetValid{false};
@@ -166,6 +250,9 @@ private:
 
     // Per-system batch tuning (uses atomics, thread-safe)
     std::array<BatchTuningState, static_cast<size_t>(SystemType::COUNT)> m_batchState{};
+
+    // Per-system threading threshold tuning (uses atomics, thread-safe)
+    std::array<ThreadingTuningState, static_cast<size_t>(SystemType::COUNT)> m_threadingState{};
 
     /**
      * @brief Get current queue pressure from ThreadSystem (0.0 to 1.0)

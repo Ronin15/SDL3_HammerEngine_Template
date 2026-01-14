@@ -77,6 +77,7 @@ set(SIMPLE_TESTS
 set(MOCK_TESTS
     ai_scaling_benchmark
     event_manager_scaling_benchmark
+    background_simulation_manager_benchmark
     thread_safe_ai_manager_tests
     thread_safe_ai_integration_tests
     event_types_tests
@@ -89,6 +90,7 @@ set(MOCK_TESTS
     behavior_functionality_tests
     collision_pathfinding_integration_tests
     collision_scaling_benchmark
+    adaptive_threading_analysis
     pathfinder_benchmark
     pathfinder_ai_contention_tests
     event_coordination_integration_tests
@@ -205,6 +207,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "AIScalingBenchmark.cpp")
     elseif(${test_name} STREQUAL "event_manager_scaling_benchmark")
         set(test_source "EventManagerScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "background_simulation_manager_benchmark")
+        set(test_source "managers/BackgroundSimulationManagerBenchmark.cpp")
     elseif(${test_name} STREQUAL "thread_safe_ai_manager_tests")
         set(test_source "ThreadSafeAIManagerTest.cpp")
     elseif(${test_name} STREQUAL "thread_safe_ai_integration_tests")
@@ -221,6 +225,8 @@ foreach(test_name ${MOCK_TESTS})
         set(test_source "CollisionPathfindingIntegrationTests.cpp")
     elseif(${test_name} STREQUAL "collision_scaling_benchmark")
         set(test_source "performance/CollisionScalingBenchmark.cpp")
+    elseif(${test_name} STREQUAL "adaptive_threading_analysis")
+        set(test_source "performance/AdaptiveThreadingAnalysis.cpp")
     elseif(${test_name} STREQUAL "pathfinder_benchmark")
         set(test_source "performance/PathfinderBenchmark.cpp")
     elseif(${test_name} STREQUAL "pathfinder_ai_contention_tests")

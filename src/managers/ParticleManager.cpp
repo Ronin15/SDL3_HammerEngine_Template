@@ -773,10 +773,11 @@ void ParticleManager::update(float deltaTime) {
     m_windPhase += deltaTime * 0.5f;
 
     // Phase 4: Update particle physics with optimal threading strategy
-    // Gate threading on ACTIVE particle count, not buffer size
-    bool useThreading = (activeCount >= m_threadingThreshold &&
-                         m_useThreading.load(std::memory_order_acquire) &&
-                         HammerEngine::ThreadSystem::Exists());
+    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::Particle, activeCount);
+    bool useThreading = decision.shouldThread;
 
     // Track threading decision for interval logging (local vars, zero overhead in release)
     ParticleThreadingInfo threadingInfo;
@@ -862,10 +863,20 @@ void ParticleManager::update(float deltaTime) {
     auto updateEndTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
 
-    // Report batch completion for adaptive tuning (only if threaded with WorkerBudget)
-    if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
-      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-          HammerEngine::SystemType::Particle, activeCount, threadingInfo.batchCount, totalUpdateTime);
+    // Report threading result for adaptive threshold learning
+    if (activeCount > 0) {
+      auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+      double throughputItemsPerMs = (totalUpdateTime > 0.0)
+          ? static_cast<double>(activeCount) / totalUpdateTime
+          : 0.0;
+      budgetMgr.reportThreadingResult(HammerEngine::SystemType::Particle,
+                                      activeCount, threadingInfo.wasThreaded,
+                                      throughputItemsPerMs);
+      // Report batch completion for adaptive batch sizing (only if threaded with WorkerBudget)
+      if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
+        budgetMgr.reportBatchCompletion(
+            HammerEngine::SystemType::Particle, activeCount, threadingInfo.batchCount, totalUpdateTime);
+      }
     }
 
   } catch (const std::exception &e) {
@@ -2630,9 +2641,11 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
    * @param particleCount Current number of active particles
    * @param outThreadingInfo Output struct for threading info (zero overhead in release)
    */
-  if (!m_useWorkerBudget.load(std::memory_order_acquire) ||
-      particleCount < m_threadingThreshold ||
-      !HammerEngine::ThreadSystem::Exists()) {
+  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto decision = budgetMgr.shouldUseThreading(
+      HammerEngine::SystemType::Particle, particleCount);
+  if (!decision.shouldThread) {
     // Fall back to regular single-threaded update
     // outThreadingInfo stays at defaults (wasThreaded=false, batchCount=1)
     updateParticlesSingleThreaded(deltaTime, particleCount);
@@ -2649,13 +2662,9 @@ void ParticleManager::enableThreading(bool enable) {
   PARTICLE_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
 }
 
-void ParticleManager::setThreadingThreshold(size_t threshold) {
-  m_threadingThreshold = threshold;
-  PARTICLE_INFO(std::format("Threading threshold set to {} particles", threshold));
-}
-
 size_t ParticleManager::getThreadingThreshold() const {
-  return m_threadingThreshold;
+  return HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(
+      HammerEngine::SystemType::Particle);
 }
 #endif
 
