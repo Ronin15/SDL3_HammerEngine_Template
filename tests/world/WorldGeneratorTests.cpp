@@ -143,20 +143,23 @@ BOOST_AUTO_TEST_CASE(TestWaterConsistency) {
     config.humidityFrequency = 0.1f;
     config.waterLevel = 0.4f;
     config.mountainLevel = 0.8f;
-    
+
     auto world = WorldGenerator::generateWorld(config);
     BOOST_REQUIRE(world != nullptr);
-    
-    // Check that all water tiles have OCEAN biome and no obstacles
+
+    // Check water tile consistency
+    // Note: Rivers have isWater=true but preserve original biome for decorations
+    // Only ocean tiles have both isWater=true AND biome=OCEAN
     for (int y = 0; y < config.height; ++y) {
         for (int x = 0; x < config.width; ++x) {
             const Tile& tile = world->grid[y][x];
-            
+
+            // Water tiles should have no blocking obstacles
             if (tile.isWater) {
-                BOOST_CHECK_EQUAL(tile.biome, Biome::OCEAN);
                 BOOST_CHECK_EQUAL(tile.obstacleType, ObstacleType::NONE);
             }
-            
+
+            // OCEAN biome tiles must be water (but water isn't always OCEAN - rivers keep original biome)
             if (tile.biome == Biome::OCEAN) {
                 BOOST_CHECK(tile.isWater);
             }

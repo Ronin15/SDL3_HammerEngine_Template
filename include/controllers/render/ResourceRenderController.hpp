@@ -23,8 +23,13 @@
 
 #include "controllers/ControllerBase.hpp"
 #include "controllers/IUpdatable.hpp"
+#include <vector>
 
 struct SDL_Renderer;
+
+namespace HammerEngine {
+class Camera;
+}
 
 class ResourceRenderController : public ControllerBase, public IUpdatable {
 public:
@@ -45,31 +50,28 @@ public:
     void update(float deltaTime) override;
 
     /**
-     * @brief Render all active dropped items
+     * @brief Render all visible dropped items using spatial query
      * @param renderer SDL renderer from GameState::render()
-     * @param cameraX Camera X offset for world-to-screen conversion
-     * @param cameraY Camera Y offset for world-to-screen conversion
+     * @param camera Camera for viewport and position info
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
-    void renderDroppedItems(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha);
+    void renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha);
 
     /**
-     * @brief Render all active containers
+     * @brief Render all visible containers using spatial query
      * @param renderer SDL renderer from GameState::render()
-     * @param cameraX Camera X offset for world-to-screen conversion
-     * @param cameraY Camera Y offset for world-to-screen conversion
+     * @param camera Camera for viewport and position info
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
-    void renderContainers(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha);
+    void renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha);
 
     /**
-     * @brief Render all active harvestables
+     * @brief Render all visible harvestables using spatial query
      * @param renderer SDL renderer from GameState::render()
-     * @param cameraX Camera X offset for world-to-screen conversion
-     * @param cameraY Camera Y offset for world-to-screen conversion
+     * @param camera Camera for viewport and position info
      * @param alpha Interpolation alpha for smooth rendering (0.0-1.0)
      */
-    void renderHarvestables(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha);
+    void renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha);
 
     /**
      * @brief Clear all spawned resources (cleanup for state transitions)
@@ -82,6 +84,11 @@ private:
     void updateDroppedItemAnimations(float deltaTime);
     void updateContainerStates(float deltaTime);
     void updateHarvestableStates(float deltaTime);
+
+    // Reusable buffers for spatial queries (avoid per-frame allocations)
+    std::vector<size_t> m_visibleItemIndices;
+    std::vector<size_t> m_visibleContainerIndices;
+    std::vector<size_t> m_visibleHarvestableIndices;
 
     // Animation constants
     static constexpr float BOB_SPEED = 3.0f;           // Radians per second for bobbing

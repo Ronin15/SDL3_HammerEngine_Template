@@ -554,12 +554,23 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
         quantity = MAX_STACK_SIZE;
     }
 
-    size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    // Allocate in STATIC pool (resources don't move, not in tier system)
+    size_t index;
+    if (!m_freeStaticSlots.empty()) {
+        index = m_freeStaticSlots.back();
+        m_freeStaticSlots.pop_back();
+    } else {
+        index = m_staticHotData.size();
+        m_staticHotData.emplace_back();
+        m_staticEntityIds.push_back(0);
+        m_staticGenerations.push_back(0);
+    }
 
-    // Initialize hot data
-    auto& hot = m_hotData[index];
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = ++m_staticGenerations[index];
+
+    // Initialize hot data in STATIC pool
+    auto& hot = m_staticHotData[index];
     hot.transform.position = position;
     hot.transform.previousPosition = position;
     hot.transform.velocity = Vector2D{0.0f, 0.0f};
@@ -568,7 +579,6 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
     hot.halfHeight = 8.0f;
     hot.kind = EntityKind::DroppedItem;
     markKindDirty(EntityKind::DroppedItem);
-    hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
@@ -632,18 +642,15 @@ EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
                                 resourceHandle.toString()));
     }
 
-    // Store ID and mapping
-    m_entityIds[index] = id;
-    m_generations[index] = generation;
-    m_idToIndex[id] = index;
+    // Store ID and mapping in STATIC pool structures
+    m_staticEntityIds[index] = id;
+    m_staticIdToIndex[id] = index;
 
-    // Update counters
+    // Update counters (NO tier count - statics not in tier system)
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::DroppedItem)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
 
-    ENTITY_DEBUG(std::format("Created DroppedItem entity {} with resource {} qty {} at ({}, {})",
+    ENTITY_DEBUG(std::format("Created DroppedItem (static) entity {} with resource {} qty {} at ({}, {})",
                              id, resourceHandle.getId(), quantity, position.getX(), position.getY()));
 
     // Auto-register with WorldResourceManager for spatial queries
@@ -689,12 +696,23 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
         return EntityHandle{};
     }
 
-    size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    // Allocate in STATIC pool (resources don't move, not in tier system)
+    size_t index;
+    if (!m_freeStaticSlots.empty()) {
+        index = m_freeStaticSlots.back();
+        m_freeStaticSlots.pop_back();
+    } else {
+        index = m_staticHotData.size();
+        m_staticHotData.emplace_back();
+        m_staticEntityIds.push_back(0);
+        m_staticGenerations.push_back(0);
+    }
 
-    // Initialize hot data
-    auto& hot = m_hotData[index];
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = ++m_staticGenerations[index];
+
+    // Initialize hot data in STATIC pool
+    auto& hot = m_staticHotData[index];
     hot.transform.position = position;
     hot.transform.previousPosition = position;
     hot.transform.velocity = Vector2D{0.0f, 0.0f};
@@ -703,14 +721,13 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     hot.halfHeight = 16.0f;
     hot.kind = EntityKind::Container;
     markKindDirty(EntityKind::Container);
-    hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Container collision (interactable but not blocking)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::IS_TRIGGER;
+    // Container - no collision (use WRM spatial queries for interaction)
+    hot.collisionLayers = 0;
+    hot.collisionMask = 0;
+    hot.collisionFlags = 0;
     hot.triggerTag = 0;
 
     // Allocate container data (reuse freed slot if available)
@@ -742,18 +759,15 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     renderData.frameWidth = 32;
     renderData.frameHeight = 32;
 
-    // Store ID and mapping
-    m_entityIds[index] = id;
-    m_generations[index] = generation;
-    m_idToIndex[id] = index;
+    // Store ID and mapping in STATIC pool structures
+    m_staticEntityIds[index] = id;
+    m_staticIdToIndex[id] = index;
 
-    // Update counters
+    // Update counters (NO tier count - statics not in tier system)
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Container)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
 
-    ENTITY_DEBUG(std::format("Created Container entity {} type {} with {} slots at ({}, {})",
+    ENTITY_DEBUG(std::format("Created Container (static) entity {} type {} with {} slots at ({}, {})",
                              id, static_cast<int>(containerType), maxSlots,
                              position.getX(), position.getY()));
 
@@ -762,6 +776,8 @@ EntityHandle EntityDataManager::createContainer(const Vector2D& position,
     const std::string& targetWorld = worldId.empty() ? wrm.getActiveWorld() : worldId;
     if (!targetWorld.empty()) {
         wrm.registerInventory(inventoryIndex, targetWorld);
+        // Also register container spatially for rendering queries
+        wrm.registerContainerSpatial(index, position, targetWorld);
     } else {
         ENTITY_WARN("createContainer: No active world set, inventory not registered with WRM");
     }
@@ -794,12 +810,23 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
         respawnTime = 0.0f;
     }
 
-    size_t index = allocateSlot();
-    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
-    uint8_t generation = nextGeneration(index);
+    // Allocate in STATIC pool (resources don't move, not in tier system)
+    size_t index;
+    if (!m_freeStaticSlots.empty()) {
+        index = m_freeStaticSlots.back();
+        m_freeStaticSlots.pop_back();
+    } else {
+        index = m_staticHotData.size();
+        m_staticHotData.emplace_back();
+        m_staticEntityIds.push_back(0);
+        m_staticGenerations.push_back(0);
+    }
 
-    // Initialize hot data
-    auto& hot = m_hotData[index];
+    EntityHandle::IDType id = HammerEngine::UniqueID::generate();
+    uint8_t generation = ++m_staticGenerations[index];
+
+    // Initialize hot data in STATIC pool
+    auto& hot = m_staticHotData[index];
     hot.transform.position = position;
     hot.transform.previousPosition = position;
     hot.transform.velocity = Vector2D{0.0f, 0.0f};
@@ -808,14 +835,13 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     hot.halfHeight = 16.0f;
     hot.kind = EntityKind::Harvestable;
     markKindDirty(EntityKind::Harvestable);
-    hot.tier = SimulationTier::Active;
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
-    // Harvestable collision (interactable but not blocking)
-    hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
-    hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player;
-    hot.collisionFlags = EntityHotData::COLLISION_ENABLED | EntityHotData::IS_TRIGGER;
+    // Harvestable - no collision (use WRM spatial queries for interaction)
+    hot.collisionLayers = 0;
+    hot.collisionMask = 0;
+    hot.collisionFlags = 0;
     hot.triggerTag = 0;
 
     // Allocate harvestable data (reuse freed slot if available)
@@ -849,18 +875,15 @@ EntityHandle EntityDataManager::createHarvestable(const Vector2D& position,
     renderData.frameWidth = 32;
     renderData.frameHeight = 32;
 
-    // Store ID and mapping
-    m_entityIds[index] = id;
-    m_generations[index] = generation;
-    m_idToIndex[id] = index;
+    // Store ID and mapping in STATIC pool structures
+    m_staticEntityIds[index] = id;
+    m_staticIdToIndex[id] = index;
 
-    // Update counters
+    // Update counters (NO tier count - statics not in tier system)
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::Harvestable)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
 
-    ENTITY_DEBUG(std::format("Created Harvestable entity {} yielding {} [{}-{}] at ({}, {})",
+    ENTITY_DEBUG(std::format("Created Harvestable (static) entity {} yielding {} [{}-{}] at ({}, {})",
                              id, yieldResource.getId(), yieldMin, yieldMax,
                              position.getX(), position.getY()));
 
@@ -1182,19 +1205,32 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
         return INVALID_ENTITY_HANDLE;
     }
 
-
-    // Check if already registered
-    if (m_idToIndex.find(entityId) != m_idToIndex.end()) {
+    // Check if already registered in static pool
+    if (m_staticIdToIndex.find(entityId) != m_staticIdToIndex.end()) {
         ENTITY_WARN(std::format("registerDroppedItem: Entity {} already registered", entityId));
-        size_t existingIndex = m_idToIndex[entityId];
-        return EntityHandle{entityId, EntityKind::DroppedItem, m_generations[existingIndex]};
+        size_t existingIndex = m_staticIdToIndex[entityId];
+        return EntityHandle{entityId, EntityKind::DroppedItem, m_staticGenerations[existingIndex]};
     }
 
-    size_t index = allocateSlot();
-    uint8_t generation = nextGeneration(index);
+    // Allocate in STATIC pool (resources are static entities)
+    size_t index;
+    if (!m_freeStaticSlots.empty()) {
+        index = m_freeStaticSlots.back();
+        m_freeStaticSlots.pop_back();
+    } else {
+        index = m_staticHotData.size();
+        m_staticHotData.emplace_back();
+        m_staticEntityIds.push_back(0);
+        m_staticGenerations.push_back(0);
+    }
 
-    // Initialize hot data
-    auto& hot = m_hotData[index];
+    uint8_t generation = m_staticGenerations[index];
+    ++generation;
+    if (generation == 0) generation = 1;
+    m_staticGenerations[index] = generation;
+
+    // Initialize hot data in static pool
+    auto& hot = m_staticHotData[index];
     hot.transform.position = position;
     hot.transform.previousPosition = position;
     hot.transform.velocity = Vector2D{0.0f, 0.0f};
@@ -1202,8 +1238,7 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     hot.halfWidth = 8.0f;
     hot.halfHeight = 8.0f;
     hot.kind = EntityKind::DroppedItem;
-    markKindDirty(EntityKind::DroppedItem);
-    hot.tier = SimulationTier::Active;
+    hot.tier = SimulationTier::Active;  // Not used for static, but set for consistency
     hot.flags = EntityHotData::FLAG_ALIVE;
     hot.generation = generation;
 
@@ -1215,10 +1250,10 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     } else {
         itemIndex = static_cast<uint32_t>(m_itemData.size());
         m_itemData.emplace_back();
-        m_itemRenderData.emplace_back();  // Keep render data in sync
+        m_itemRenderData.emplace_back();
     }
     auto& item = m_itemData[itemIndex];
-    item = ItemData{};  // Reset to default
+    item = ItemData{};
     item.resourceHandle = resourceHandle;
     item.quantity = quantity;
     item.pickupTimer = 0.5f;
@@ -1226,24 +1261,21 @@ EntityHandle EntityDataManager::registerDroppedItem(EntityHandle::IDType entityI
     item.flags = 0;
     hot.typeLocalIndex = itemIndex;
 
-    // Ensure render data vector is sized correctly if reusing freed slot
+    // Ensure render data vector is sized correctly
     if (itemIndex >= m_itemRenderData.size()) {
         m_itemRenderData.resize(itemIndex + 1);
     }
     m_itemRenderData[itemIndex].clear();
 
-    // Store ID and mapping
-    m_entityIds[index] = entityId;
-    m_generations[index] = generation;
-    m_idToIndex[entityId] = index;
+    // Store ID and mapping in static pool
+    m_staticEntityIds[index] = entityId;
+    m_staticIdToIndex[entityId] = index;
 
-    // Update counters
+    // Update counters (NO tier count for static entities)
     m_totalEntityCount.fetch_add(1, std::memory_order_relaxed);
     m_countByKind[static_cast<size_t>(EntityKind::DroppedItem)].fetch_add(1, std::memory_order_relaxed);
-    m_countByTier[static_cast<size_t>(SimulationTier::Active)].fetch_add(1, std::memory_order_relaxed);
-    m_tierIndicesDirty = true;
 
-    ENTITY_DEBUG(std::format("Registered DroppedItem entity {} at ({}, {})",
+    ENTITY_DEBUG(std::format("Registered DroppedItem (static) entity {} at ({}, {})",
                             entityId, position.getX(), position.getY()));
 
     return EntityHandle{entityId, EntityKind::DroppedItem, generation};
@@ -1289,8 +1321,70 @@ void EntityDataManager::destroyEntity(EntityHandle handle) {
         return;
     }
 
+    // Route static resources to static destruction path (immediate, not queued)
+    if (handle.kind == EntityKind::DroppedItem ||
+        handle.kind == EntityKind::Container ||
+        handle.kind == EntityKind::Harvestable) {
+        destroyStaticResource(handle);
+        return;
+    }
+
+    // Dynamic pool destruction (deferred queue)
     std::lock_guard<std::mutex> lock(m_destructionMutex);
     m_destructionQueue.push_back(handle);
+}
+
+void EntityDataManager::destroyStaticResource(EntityHandle handle) {
+    // Find entity in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    if (it == m_staticIdToIndex.end()) {
+        ENTITY_WARN(std::format("destroyStaticResource: Entity {} not found in static pool", handle.id));
+        return;
+    }
+
+    size_t index = it->second;
+    if (index >= m_staticHotData.size()) {
+        ENTITY_ERROR(std::format("destroyStaticResource: Invalid static index {} for entity {}", index, handle.id));
+        return;
+    }
+
+    // Verify generation matches
+    if (m_staticGenerations[index] != handle.generation) {
+        ENTITY_DEBUG(std::format("destroyStaticResource: Stale handle for entity {}", handle.id));
+        return;
+    }
+
+    // Unregister from WorldResourceManager
+    auto& wrm = WorldResourceManager::Instance();
+    switch (handle.kind) {
+        case EntityKind::DroppedItem:
+            wrm.unregisterDroppedItem(index);
+            m_freeItemSlots.push_back(m_staticHotData[index].typeLocalIndex);
+            break;
+        case EntityKind::Harvestable:
+            wrm.unregisterHarvestableSpatial(index);
+            wrm.unregisterHarvestable(index);
+            m_freeHarvestableSlots.push_back(m_staticHotData[index].typeLocalIndex);
+            break;
+        case EntityKind::Container:
+            wrm.unregisterContainerSpatial(index);
+            m_freeContainerSlots.push_back(m_staticHotData[index].typeLocalIndex);
+            break;
+        default:
+            break;
+    }
+
+    // Mark slot free
+    m_staticHotData[index].flags = 0;  // Clear FLAG_ALIVE
+    m_freeStaticSlots.push_back(index);
+    m_staticIdToIndex.erase(it);
+    markKindDirty(handle.kind);
+
+    // Update counters
+    m_totalEntityCount.fetch_sub(1, std::memory_order_relaxed);
+    m_countByKind[static_cast<size_t>(handle.kind)].fetch_sub(1, std::memory_order_relaxed);
+
+    ENTITY_DEBUG(std::format("Destroyed static resource entity {} (kind {})", handle.id, static_cast<int>(handle.kind)));
 }
 
 void EntityDataManager::processDestructionQueue() {
@@ -1691,7 +1785,25 @@ bool EntityDataManager::isValidHandle(EntityHandle handle) const {
         return false;
     }
 
+    // Check if this is a static pool entity (resources)
+    if (handle.kind == EntityKind::DroppedItem ||
+        handle.kind == EntityKind::Container ||
+        handle.kind == EntityKind::Harvestable) {
+        auto it = m_staticIdToIndex.find(handle.id);
+        if (it == m_staticIdToIndex.end()) {
+            return false;
+        }
 
+        size_t index = it->second;
+        if (index >= m_staticHotData.size()) {
+            return false;
+        }
+
+        return m_staticGenerations[index] == handle.generation &&
+               m_staticHotData[index].isAlive();
+    }
+
+    // Dynamic pool lookup
     auto it = m_idToIndex.find(handle.id);
     if (it == m_idToIndex.end()) {
         return false;
@@ -1711,7 +1823,26 @@ size_t EntityDataManager::getIndex(EntityHandle handle) const {
         return SIZE_MAX;
     }
 
+    // Route to correct pool based on entity kind
+    if (handle.kind == EntityKind::DroppedItem ||
+        handle.kind == EntityKind::Container ||
+        handle.kind == EntityKind::Harvestable) {
+        // Static pool lookup
+        auto it = m_staticIdToIndex.find(handle.id);
+        if (it == m_staticIdToIndex.end()) {
+            return SIZE_MAX;
+        }
 
+        size_t index = it->second;
+        if (index >= m_staticHotData.size() ||
+            m_staticGenerations[index] != handle.generation) {
+            return SIZE_MAX;
+        }
+
+        return index;
+    }
+
+    // Dynamic pool lookup
     auto it = m_idToIndex.find(handle.id);
     if (it == m_idToIndex.end()) {
         return SIZE_MAX;
@@ -1729,13 +1860,23 @@ size_t EntityDataManager::getIndex(EntityHandle handle) const {
 // TRANSFORM ACCESS
 // ============================================================================
 
+// For dynamic pool entities only (Player, NPC, Projectile, AreaEffect)
+// Resources use getStaticHotDataByIndex().transform
 TransformData& EntityDataManager::getTransform(EntityHandle handle) {
+    assert(handle.kind != EntityKind::DroppedItem &&
+           handle.kind != EntityKind::Container &&
+           handle.kind != EntityKind::Harvestable &&
+           "Resources use getStaticHotDataByIndex().transform");
     size_t index = getIndex(handle);
     assert(index != SIZE_MAX && "Invalid entity handle");
     return m_hotData[index].transform;
 }
 
 const TransformData& EntityDataManager::getTransform(EntityHandle handle) const {
+    assert(handle.kind != EntityKind::DroppedItem &&
+           handle.kind != EntityKind::Container &&
+           handle.kind != EntityKind::Harvestable &&
+           "Resources use getStaticHotDataByIndex().transform");
     size_t index = getIndex(handle);
     assert(index != SIZE_MAX && "Invalid entity handle");
     return m_hotData[index].transform;
@@ -1755,12 +1896,26 @@ const TransformData& EntityDataManager::getStaticTransformByIndex(size_t index) 
 EntityHotData& EntityDataManager::getHotData(EntityHandle handle) {
     size_t index = getIndex(handle);
     assert(index != SIZE_MAX && "Invalid entity handle");
+
+    // Route to correct pool based on entity kind
+    if (handle.kind == EntityKind::DroppedItem ||
+        handle.kind == EntityKind::Container ||
+        handle.kind == EntityKind::Harvestable) {
+        return m_staticHotData[index];
+    }
     return m_hotData[index];
 }
 
 const EntityHotData& EntityDataManager::getHotData(EntityHandle handle) const {
     size_t index = getIndex(handle);
     assert(index != SIZE_MAX && "Invalid entity handle");
+
+    // Route to correct pool based on entity kind
+    if (handle.kind == EntityKind::DroppedItem ||
+        handle.kind == EntityKind::Container ||
+        handle.kind == EntityKind::Harvestable) {
+        return m_staticHotData[index];
+    }
     return m_hotData[index];
 }
 
@@ -1794,6 +1949,23 @@ size_t EntityDataManager::getStaticIndex(EntityHandle handle) const {
     return index;
 }
 
+EntityHandle EntityDataManager::getStaticHandle(size_t staticIndex) const {
+    if (staticIndex >= m_staticHotData.size()) {
+        return EntityHandle{};  // Invalid
+    }
+
+    const auto& hot = m_staticHotData[staticIndex];
+    if (!hot.isAlive()) {
+        return EntityHandle{};
+    }
+
+    return EntityHandle{
+        m_staticEntityIds[staticIndex],
+        hot.kind,
+        hot.generation
+    };
+}
+
 // ============================================================================
 // TYPE-SPECIFIC DATA ACCESS
 // ============================================================================
@@ -1819,19 +1991,29 @@ const CharacterData& EntityDataManager::getCharacterData(EntityHandle handle) co
 // getCharacterDataByIndex() is now inline in EntityDataManager.hpp
 
 ItemData& EntityDataManager::getItemData(EntityHandle handle) {
-    size_t index = getIndex(handle);
-    assert(index != SIZE_MAX && "Invalid entity handle");
     assert(handle.isItem() && "Entity is not an item");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Items are in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    assert(it != m_staticIdToIndex.end() && "Invalid item handle");
+    size_t index = it->second;
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+
+    uint32_t typeIndex = m_staticHotData[index].typeLocalIndex;
     assert(typeIndex < m_itemData.size() && "Type index out of bounds");
     return m_itemData[typeIndex];
 }
 
 const ItemData& EntityDataManager::getItemData(EntityHandle handle) const {
-    size_t index = getIndex(handle);
-    assert(index != SIZE_MAX && "Invalid entity handle");
     assert(handle.isItem() && "Entity is not an item");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Items are in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    assert(it != m_staticIdToIndex.end() && "Invalid item handle");
+    size_t index = it->second;
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+
+    uint32_t typeIndex = m_staticHotData[index].typeLocalIndex;
     assert(typeIndex < m_itemData.size() && "Type index out of bounds");
     return m_itemData[typeIndex];
 }
@@ -1855,37 +2037,57 @@ const ProjectileData& EntityDataManager::getProjectileData(EntityHandle handle) 
 }
 
 ContainerData& EntityDataManager::getContainerData(EntityHandle handle) {
-    size_t index = getIndex(handle);
-    assert(index != SIZE_MAX && "Invalid entity handle");
     assert(handle.getKind() == EntityKind::Container && "Entity is not a container");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Containers are in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    assert(it != m_staticIdToIndex.end() && "Invalid container handle");
+    size_t index = it->second;
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+
+    uint32_t typeIndex = m_staticHotData[index].typeLocalIndex;
     assert(typeIndex < m_containerData.size() && "Type index out of bounds");
     return m_containerData[typeIndex];
 }
 
 const ContainerData& EntityDataManager::getContainerData(EntityHandle handle) const {
-    size_t index = getIndex(handle);
-    assert(index != SIZE_MAX && "Invalid entity handle");
     assert(handle.getKind() == EntityKind::Container && "Entity is not a container");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Containers are in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    assert(it != m_staticIdToIndex.end() && "Invalid container handle");
+    size_t index = it->second;
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+
+    uint32_t typeIndex = m_staticHotData[index].typeLocalIndex;
     assert(typeIndex < m_containerData.size() && "Type index out of bounds");
     return m_containerData[typeIndex];
 }
 
 HarvestableData& EntityDataManager::getHarvestableData(EntityHandle handle) {
-    size_t index = getIndex(handle);
-    assert(index != SIZE_MAX && "Invalid entity handle");
     assert(handle.getKind() == EntityKind::Harvestable && "Entity is not harvestable");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Harvestables are in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    assert(it != m_staticIdToIndex.end() && "Invalid harvestable handle");
+    size_t index = it->second;
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+
+    uint32_t typeIndex = m_staticHotData[index].typeLocalIndex;
     assert(typeIndex < m_harvestableData.size() && "Type index out of bounds");
     return m_harvestableData[typeIndex];
 }
 
 const HarvestableData& EntityDataManager::getHarvestableData(EntityHandle handle) const {
-    size_t index = getIndex(handle);
-    assert(index != SIZE_MAX && "Invalid entity handle");
     assert(handle.getKind() == EntityKind::Harvestable && "Entity is not harvestable");
-    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Harvestables are in static pool
+    auto it = m_staticIdToIndex.find(handle.id);
+    assert(it != m_staticIdToIndex.end() && "Invalid harvestable handle");
+    size_t index = it->second;
+    assert(index < m_staticHotData.size() && "Static index out of bounds");
+
+    uint32_t typeIndex = m_staticHotData[index].typeLocalIndex;
     assert(typeIndex < m_harvestableData.size() && "Type index out of bounds");
     return m_harvestableData[typeIndex];
 }

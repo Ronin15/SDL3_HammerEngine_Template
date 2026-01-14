@@ -1041,22 +1041,23 @@ BOOST_AUTO_TEST_CASE(TestPrepareForStateTransitionClearsKindIndices) {
     // Create entities of different kinds
     edm->createDataDrivenNPC(Vector2D(100.0f, 100.0f), "Guard");
     edm->createDataDrivenNPC(Vector2D(200.0f, 200.0f), "Guard");
-    edm->registerPlayer(1,Vector2D(300.0f, 300.0f));
+    edm->registerPlayer(99999, Vector2D(300.0f, 300.0f));  // Use unique ID to avoid collision
+    // Note: DroppedItems are now in static pool, not tracked by getIndicesByKind()
     edm->createDroppedItem(Vector2D(400.0f, 400.0f), HammerEngine::ResourceHandle{1, 1}, 1);
 
-    // Get kind indices - this populates the cache
+    // Get kind indices - this populates the cache (dynamic pool only)
     auto npcIndices = edm->getIndicesByKind(EntityKind::NPC);
     auto playerIndices = edm->getIndicesByKind(EntityKind::Player);
-    auto itemIndices = edm->getIndicesByKind(EntityKind::DroppedItem);
 
     BOOST_CHECK_EQUAL(npcIndices.size(), 2);
     BOOST_CHECK_EQUAL(playerIndices.size(), 1);
-    BOOST_CHECK_EQUAL(itemIndices.size(), 1);
+    // DroppedItems are in static pool - getIndicesByKind returns 0 for them
+    BOOST_CHECK(edm->getIndicesByKind(EntityKind::DroppedItem).empty());
 
     // State transition
     edm->prepareForStateTransition();
 
-    // All kind indices should be empty
+    // All dynamic pool kind indices should be empty
     BOOST_CHECK(edm->getIndicesByKind(EntityKind::NPC).empty());
     BOOST_CHECK(edm->getIndicesByKind(EntityKind::Player).empty());
     BOOST_CHECK(edm->getIndicesByKind(EntityKind::DroppedItem).empty());

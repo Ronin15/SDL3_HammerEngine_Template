@@ -347,7 +347,7 @@ WorldResourceManager::Quantity WorldResourceManager::queryHarvestableTotal(
     for (size_t edmIdx : worldIt->second) {
         // Get hot data and verify it's still a harvestable
         // Note: Registry should be kept clean via unregisterHarvestable on entity destruction
-        const auto& hot = edm.getHotDataByIndex(edmIdx);
+        const auto& hot = edm.getStaticHotDataByIndex(edmIdx);
         if (hot.kind != EntityKind::Harvestable) {
             continue;  // Entity was destroyed or changed type
         }
@@ -404,7 +404,7 @@ WorldResourceManager::getWorldResources(const WorldId& worldId) const {
     if (harvIt != m_harvestableRegistry.end()) {
         for (size_t edmIdx : harvIt->second) {
             // Registry is kept clean via unregisterHarvestable on entity destruction
-            const auto& hot = edm.getHotDataByIndex(edmIdx);
+            const auto& hot = edm.getStaticHotDataByIndex(edmIdx);
             if (hot.kind != EntityKind::Harvestable) {
                 continue;  // Entity was destroyed or changed type
             }
@@ -550,6 +550,73 @@ void WorldResourceManager::unregisterHarvestableSpatial(size_t edmIndex) {
 }
 
 // ============================================================================
+// CONTAINER SPATIAL REGISTRATION
+// ============================================================================
+
+void WorldResourceManager::registerContainerSpatial(size_t edmIndex, const Vector2D& position, const WorldId& worldId) {
+    std::unique_lock lock(m_registryMutex);
+
+    // Check if already registered
+    auto existingIt = m_containerToWorld.find(edmIndex);
+    if (existingIt != m_containerToWorld.end()) {
+        if (existingIt->second == worldId) {
+            return;  // Already registered
+        }
+        // Unregister from old world
+        auto& oldIndex = m_containerSpatialIndices[existingIt->second];
+        oldIndex.remove(edmIndex);
+    }
+
+    // Add to spatial index
+    auto& spatialIndex = m_containerSpatialIndices[worldId];
+    spatialIndex.insert(edmIndex, position);
+    m_containerToWorld[edmIndex] = worldId;
+
+    WORLD_RESOURCE_DEBUG(std::format("Registered container spatial {} at ({:.1f}, {:.1f}) to world {}",
+                                      edmIndex, position.getX(), position.getY(), worldId));
+}
+
+void WorldResourceManager::unregisterContainerSpatial(size_t edmIndex) {
+    std::unique_lock lock(m_registryMutex);
+
+    auto it = m_containerToWorld.find(edmIndex);
+    if (it == m_containerToWorld.end()) {
+        return;  // Not registered
+    }
+
+    auto& spatialIndex = m_containerSpatialIndices[it->second];
+    spatialIndex.remove(edmIndex);
+    m_containerToWorld.erase(it);
+
+    WORLD_RESOURCE_DEBUG(std::format("Unregistered container spatial {}", edmIndex));
+}
+
+size_t WorldResourceManager::queryContainersInRadius(const Vector2D& center, float radius,
+                                                      std::vector<size_t>& outIndices) const {
+    if (!m_initialized.load(std::memory_order_acquire)) {
+        outIndices.clear();
+        return 0;
+    }
+
+    std::shared_lock lock(m_registryMutex);
+
+    if (m_activeWorld.empty()) {
+        outIndices.clear();
+        return 0;
+    }
+
+    auto it = m_containerSpatialIndices.find(m_activeWorld);
+    if (it == m_containerSpatialIndices.end()) {
+        outIndices.clear();
+        return 0;
+    }
+
+    outIndices.clear();
+    it->second.queryRadius(center, radius, outIndices);
+    return outIndices.size();
+}
+
+// ============================================================================
 // SPATIAL QUERIES
 // ============================================================================
 
@@ -585,7 +652,7 @@ size_t WorldResourceManager::queryDroppedItemsInRadius(const Vector2D& center, f
 
     auto newEnd = std::remove_if(outIndices.begin(), outIndices.end(),
         [&](size_t idx) {
-            const auto& hot = edm.getHotDataByIndex(idx);
+            const auto& hot = edm.getStaticHotDataByIndex(idx);
             if (!hot.isAlive()) {
                 return true;  // Remove stale entries
             }
@@ -631,7 +698,7 @@ size_t WorldResourceManager::queryHarvestablesInRadius(const Vector2D& center, f
 
     auto newEnd = std::remove_if(outIndices.begin(), outIndices.end(),
         [&](size_t idx) {
-            const auto& hot = edm.getHotDataByIndex(idx);
+            const auto& hot = edm.getStaticHotDataByIndex(idx);
             if (!hot.isAlive()) {
                 return true;  // Remove stale entries
             }
@@ -659,7 +726,7 @@ bool WorldResourceManager::findClosestDroppedItem(const Vector2D& center, float 
     bool found = false;
 
     for (size_t idx : candidates) {
-        const auto& hot = edm.getHotDataByIndex(idx);
+        const auto& hot = edm.getStaticHotDataByIndex(idx);
         const auto& pos = hot.transform.position;
         float dx = pos.getX() - center.getX();
         float dy = pos.getY() - center.getY();
