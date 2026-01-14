@@ -895,7 +895,7 @@ void HammerEngine::TileRenderer::updateCachedTextureIDs() {
   const char *const prefix = seasonPrefixes[static_cast<int>(m_currentSeason)];
 
   // Helper to get texture ID from JSON or use default, with optional seasonal prefix
-  auto getTextureId = [this, prefix](
+  auto getTextureId = [prefix](
       const std::unordered_map<std::string, WorldObjectDef>& map,
       const std::string& id,
       const std::string& defaultTexture) -> std::string {
