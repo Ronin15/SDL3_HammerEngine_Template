@@ -1441,12 +1441,15 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
   size_t totalKinematic = 0;
 
   // Query m_staticSpatialHash for statics in culling area
-  // OPTIMIZATION: Cache result when culling area unchanged
+  // OPTIMIZATION: Cache result when culling area is approximately unchanged
+  // Use epsilon tolerance to prevent thrashing with small camera movements
+  constexpr float CULLING_EPSILON = 16.0f;  // Half tile - prevents per-frame re-query
+  auto absDiff = [](float a, float b) { return std::abs(a - b); };
   bool cullingChanged = m_staticQueryCacheDirty ||
-                        cullingArea.minX != m_lastStaticQueryCullingArea.minX ||
-                        cullingArea.maxX != m_lastStaticQueryCullingArea.maxX ||
-                        cullingArea.minY != m_lastStaticQueryCullingArea.minY ||
-                        cullingArea.maxY != m_lastStaticQueryCullingArea.maxY;
+                        absDiff(cullingArea.minX, m_lastStaticQueryCullingArea.minX) > CULLING_EPSILON ||
+                        absDiff(cullingArea.maxX, m_lastStaticQueryCullingArea.maxX) > CULLING_EPSILON ||
+                        absDiff(cullingArea.minY, m_lastStaticQueryCullingArea.minY) > CULLING_EPSILON ||
+                        absDiff(cullingArea.maxY, m_lastStaticQueryCullingArea.maxY) > CULLING_EPSILON;
 
   if (cullingChanged) {
     pools.staticIndices.clear();
@@ -2533,15 +2536,13 @@ void CollisionManager::detectEventOnlyTriggersSweep(
     std::span<const size_t> triggerIndices) {
   auto &edm = EntityDataManager::Instance();
 
-  // Build sorted edge list (entities + eventOnly triggers)
-  struct Edge {
-    float x;
-    size_t idx; // edmIdx for entities, storageIdx for triggers
-    bool isStart;
-    bool isTrigger;
-  };
-  std::vector<Edge> edges;
-  edges.reserve((triggerIndices.size() + m_storage.size()) * 2);
+  // Build sorted edge list using pre-allocated member buffer
+  m_triggerSweepEdges.clear();
+  // Reserve capacity on first use or if grown (keeps capacity between frames)
+  size_t estimatedEdges = (triggerIndices.size() + m_storage.size()) * 2;
+  if (m_triggerSweepEdges.capacity() < estimatedEdges) {
+    m_triggerSweepEdges.reserve(estimatedEdges);
+  }
 
   // Add entity edges
   for (size_t edmIdx : triggerIndices) {
@@ -2549,8 +2550,8 @@ void CollisionManager::detectEventOnlyTriggersSweep(
     const auto &transform = edm.getTransformByIndex(edmIdx);
     float px = transform.position.getX();
     float hw = hot.halfWidth;
-    edges.push_back({px - hw, edmIdx, true, false});
-    edges.push_back({px + hw, edmIdx, false, false});
+    m_triggerSweepEdges.push_back({px - hw, edmIdx, true, false});
+    m_triggerSweepEdges.push_back({px + hw, edmIdx, false, false});
   }
 
   // Add EventOnly trigger edges (scan storage once)
@@ -2561,20 +2562,21 @@ void CollisionManager::detectEventOnlyTriggersSweep(
             static_cast<uint8_t>(HammerEngine::TriggerType::EventOnly)) {
       continue;
     }
-    edges.push_back({hot.aabbMinX, i, true, true});
-    edges.push_back({hot.aabbMaxX, i, false, true});
+    m_triggerSweepEdges.push_back({hot.aabbMinX, i, true, true});
+    m_triggerSweepEdges.push_back({hot.aabbMaxX, i, false, true});
   }
 
   // Sort by X coordinate
-  std::sort(edges.begin(), edges.end(), [](const Edge &a, const Edge &b) {
-    return a.x < b.x || (a.x == b.x && a.isStart > b.isStart);
-  });
+  std::sort(m_triggerSweepEdges.begin(), m_triggerSweepEdges.end(),
+            [](const TriggerSweepEdge &a, const TriggerSweepEdge &b) {
+              return a.x < b.x || (a.x == b.x && a.isStart > b.isStart);
+            });
 
   // Sweep: track active entities and triggers
   std::unordered_set<size_t> activeEntities;
   std::unordered_set<size_t> activeTriggers;
 
-  for (const auto &edge : edges) {
+  for (const auto &edge : m_triggerSweepEdges) {
     if (edge.isStart) {
       if (edge.isTrigger) {
         // Trigger starting - test against all active entities
