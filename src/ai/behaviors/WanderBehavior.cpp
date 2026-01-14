@@ -368,6 +368,14 @@ void WanderBehavior::handleMovement(BehaviorContext &ctx, BehaviorData &data) {
     }
   }
 
+  // Apply crowd-based soft slowdown (replaces hard NPC-vs-NPC collision)
+  // NPCs slow down when near other NPCs instead of physically pushing
+  int nearbyCount = data.cachedNearbyCount;
+  if (nearbyCount > 5) {
+    float slowdownMultiplier = (nearbyCount > 10) ? 0.5f : 0.7f;
+    ctx.transform.velocity = ctx.transform.velocity * slowdownMultiplier;
+  }
+
   wander.previousVelocity = ctx.transform.velocity;
 }
 
