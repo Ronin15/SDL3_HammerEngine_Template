@@ -2204,8 +2204,9 @@ void CollisionManager::update(float dt) {
   auto &edm = EntityDataManager::Instance();
   size_t activeMovableCount = edm.getActiveIndices().size();
 
-  // Early exit if no bodies to process (neither statics nor active movables)
-  if (staticBodyCount == 0 && activeMovableCount == 0) {
+  // Early exit if no active movables - collision detection only matters for moving entities
+  // Static-vs-static collision is meaningless since statics never move
+  if (activeMovableCount == 0) {
     return;
   }
 
