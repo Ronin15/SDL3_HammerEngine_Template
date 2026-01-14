@@ -155,10 +155,11 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     auto [batchCount, batchSize] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, entityCount, optimalWorkerCount);
 
-    // Decide threading strategy
-    bool useThreading = entityCount >= MIN_ENTITIES_FOR_THREADING &&
-                        batchCount > 1 &&
-                        batchSize >= MIN_BATCH_SIZE;
+    // Decide threading strategy using adaptive threshold from WorkerBudget
+    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::AI, entityCount);
+    bool useThreading = decision.shouldThread;
 
     if (useThreading) {
         processMultiThreaded(fixedDeltaTime, m_backgroundIndices, batchCount, batchSize);
@@ -176,6 +177,21 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_perf.lastEntitiesProcessed = entityCount;
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.updateAverage(elapsedMs);
+
+    // Report threading result for adaptive threshold learning (uses AI system type)
+    if (entityCount > 0) {
+        double throughputItemsPerMs = (elapsedMs > 0.0)
+            ? static_cast<double>(entityCount) / elapsedMs
+            : 0.0;
+        budgetMgr.reportThreadingResult(HammerEngine::SystemType::AI,
+                                        entityCount, useThreading,
+                                        throughputItemsPerMs);
+        // Report batch completion for adaptive batch sizing (only if threaded)
+        if (useThreading) {
+            budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI,
+                                            entityCount, batchCount, elapsedMs);
+        }
+    }
 
 #ifndef NDEBUG
     // Rolling log every 60 seconds (600 updates at 10Hz)

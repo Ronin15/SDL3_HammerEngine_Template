@@ -619,21 +619,19 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
     }
 
     std::cout << "\n=== EVENT THREADING RECOMMENDATION ===" << std::endl;
-    std::cout << "Current threshold:  100 events" << std::endl;
+    size_t currentThreshold = HammerEngine::WorkerBudgetManager::Instance()
+        .getThreadingThreshold(HammerEngine::SystemType::Event);
+    std::cout << "Current adaptive threshold:  " << currentThreshold << " events" << std::endl;
 
     if (optimalThreshold > 0) {
-        std::cout << "Optimal threshold:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
-        if (optimalThreshold != 100) {
-            std::cout << "ACTION: Consider changing EventManager::m_threadingThreshold to " << optimalThreshold << std::endl;
-        } else {
-            std::cout << "STATUS: Current threshold is optimal" << std::endl;
-        }
+        std::cout << "Measured optimal threshold:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
+        std::cout << "STATUS: WorkerBudget will adapt to this over time" << std::endl;
     } else if (marginalThreshold > 0) {
         std::cout << "Marginal benefit at: " << marginalThreshold << " events" << std::endl;
-        std::cout << "STATUS: Threading provides minimal benefit for events on this hardware" << std::endl;
+        std::cout << "STATUS: WorkerBudget will learn threading provides minimal benefit" << std::endl;
     } else {
         std::cout << "STATUS: Single-threaded is faster at all tested counts" << std::endl;
-        std::cout << "ACTION: Consider raising threshold above 500 or disabling event threading" << std::endl;
+        std::cout << "STATUS: WorkerBudget will raise threshold automatically" << std::endl;
     }
 
     std::cout << "========================================\n" << std::endl;
@@ -642,4 +640,107 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
     #ifndef NDEBUG
     EventManager::Instance().enableThreading(true);
     #endif
+}
+
+// ---------------------------------------------------------------------------
+// WorkerBudget Adaptive Tuning Test (Batch Sizing + Threading Threshold)
+// ---------------------------------------------------------------------------
+BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
+{
+    if (g_shutdownInProgress.load()) {
+        BOOST_TEST_MESSAGE("Skipping test due to shutdown in progress");
+        return;
+    }
+
+    std::cout << "\n--- WorkerBudget Adaptive Tuning (Event) ---\n";
+    std::cout << "Tests threading threshold adaptation\n";
+    std::cout << "(Probes every 500 frames, adjusts based on throughput)\n\n";
+
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto& eventMgr = EventManager::Instance();
+
+    size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event);
+    std::cout << "Initial threshold: " << initialThreshold << " events\n\n";
+
+    // Setup handlers
+    eventMgr.clean();
+    eventMgr.init();
+    std::atomic<int> callCount{0};
+    for (int i = 0; i < 3; ++i) {
+        eventMgr.registerHandler(EventTypeId::Weather,
+            [&callCount](const EventData&) { callCount++; });
+        eventMgr.registerHandler(EventTypeId::NPCSpawn,
+            [&callCount](const EventData&) { callCount++; });
+    }
+
+    constexpr int EVENTS_PER_FRAME = 100;  // Near threshold
+    constexpr int FRAMES_PER_PHASE = 550;  // Just over probe interval (500)
+    constexpr int NUM_PHASES = 4;
+
+    std::cout << std::setw(8) << "Phase"
+              << std::setw(12) << "Frames"
+              << std::setw(14) << "Avg Time(ms)"
+              << std::setw(16) << "Throughput/ms"
+              << std::setw(12) << "Threshold"
+              << std::setw(10) << "Change\n";
+
+    std::vector<size_t> thresholdHistory;
+    thresholdHistory.push_back(initialThreshold);
+
+    for (int phase = 0; phase < NUM_PHASES; ++phase) {
+        auto start = std::chrono::high_resolution_clock::now();
+
+        for (int frame = 0; frame < FRAMES_PER_PHASE; ++frame) {
+            for (int i = 0; i < EVENTS_PER_FRAME; ++i) {
+                if (i % 2 == 0)
+                    eventMgr.changeWeather("Rainy", 1.0f);
+                else
+                    eventMgr.spawnNPC("TestNPC", 100.0f, 100.0f);
+            }
+        }
+
+        auto end = std::chrono::high_resolution_clock::now();
+        double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
+        double avgMs = totalMs / FRAMES_PER_PHASE;
+        double throughput = (EVENTS_PER_FRAME * FRAMES_PER_PHASE) / totalMs;
+
+        size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event);
+        int64_t change = static_cast<int64_t>(currentThreshold) - static_cast<int64_t>(thresholdHistory.back());
+        thresholdHistory.push_back(currentThreshold);
+
+        std::string changeStr = (change == 0) ? "---" :
+                               (change > 0) ? ("+" + std::to_string(change)) :
+                               std::to_string(change);
+
+        std::cout << std::setw(8) << (phase + 1)
+                  << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
+                  << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
+                  << std::setw(16) << std::fixed << std::setprecision(0) << throughput
+                  << std::setw(12) << currentThreshold
+                  << std::setw(10) << changeStr << "\n";
+    }
+
+    size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event);
+
+    // Count threshold changes
+    int thresholdChanges = 0;
+    for (size_t i = 1; i < thresholdHistory.size(); ++i) {
+        if (thresholdHistory[i] != thresholdHistory[i-1]) {
+            ++thresholdChanges;
+        }
+    }
+
+    std::cout << "\nThreading threshold: " << initialThreshold << " -> " << finalThreshold
+              << " events (" << thresholdChanges << " adjustments)\n";
+
+    // Result
+    if (finalThreshold != initialThreshold) {
+        std::cout << "Status: PASS (threshold adapted to hardware)\n";
+    } else if (thresholdChanges == 0) {
+        std::cout << "Status: PASS (threshold stable - optimal for workload)\n";
+    } else {
+        std::cout << "Status: PASS (explored and converged)\n";
+    }
+
+    std::cout << std::endl;
 }

@@ -6,14 +6,14 @@
 /* ARCHITECTURAL NOTE: CollisionManager Threading Strategy
  *
  * CollisionManager uses HYBRID threading:
- * - Broadphase: Multi-threaded via WorkerBudget (when >150 movables)
+ * - Broadphase: Multi-threaded via WorkerBudget (adaptive threshold)
  * - Narrowphase: Single-threaded scalar processing
  *
  * Broadphase parallelization:
  * - Sweep-and-prune with early termination
  * - Per-batch output buffers eliminate lock contention
  * - SIMD used for movable-vs-static checks (4-wide)
- * - Threshold (MIN_MOVABLE_FOR_BROADPHASE_THREADING) prevents overhead
+ * - Adaptive threshold via WorkerBudget::shouldUseThreading() (learns optimal cutoff)
  *
  * Narrowphase is single-threaded because:
  * - Observed workloads don't benefit from threading overhead
@@ -1583,9 +1583,13 @@ void CollisionManager::broadphase() {
       budgetMgr.getBatchStrategy(HammerEngine::SystemType::Collision,
                                  movableIndices.size(), optimalWorkers);
 
-  // Threshold: multi-thread only if WorkerBudget recommends it
-  if (batchCount <= 1 ||
-      movableIndices.size() < MIN_MOVABLE_FOR_BROADPHASE_THREADING) {
+  // Use adaptive threading threshold from WorkerBudget (learns optimal cutoff)
+  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+  auto decision = budgetMgr.shouldUseThreading(
+      HammerEngine::SystemType::Collision, movableIndices.size());
+  bool useThreading = decision.shouldThread;
+
+  if (!useThreading) {
     m_lastBroadphaseWasThreaded = false;
     m_lastBroadphaseBatchCount = 1;
     broadphaseSingleThreaded();
@@ -2278,15 +2282,27 @@ void CollisionManager::update(float dt) {
   broadphase();
   auto t2 = clock::now();
 
-  // Report broadphase batch completion for adaptive tuning (WorkerBudget hill
-  // climb)
-  if (m_lastBroadphaseWasThreaded && activeMovableBodies > 0) {
+  // Report broadphase results for adaptive tuning
+  if (activeMovableBodies > 0) {
     auto &budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     double broadphaseMs =
         std::chrono::duration<double, std::milli>(t2 - t1).count();
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::Collision,
+
+    // Report threading result for adaptive threshold (always called)
+    double throughputItemsPerMs = (broadphaseMs > 0.0)
+        ? static_cast<double>(activeMovableBodies) / broadphaseMs
+        : 0.0;
+    budgetMgr.reportThreadingResult(HammerEngine::SystemType::Collision,
                                     activeMovableBodies,
-                                    m_lastBroadphaseBatchCount, broadphaseMs);
+                                    m_lastBroadphaseWasThreaded,
+                                    throughputItemsPerMs);
+
+    // Report batch completion for batch size tuning (threaded only)
+    if (m_lastBroadphaseWasThreaded) {
+      budgetMgr.reportBatchCompletion(HammerEngine::SystemType::Collision,
+                                      activeMovableBodies,
+                                      m_lastBroadphaseBatchCount, broadphaseMs);
+    }
   }
 
   // NARROWPHASE: Detailed collision detection and response calculation

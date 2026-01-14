@@ -217,8 +217,8 @@ public:
 #ifndef NDEBUG
   // Threading configuration (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
-  void setThreadingThreshold(size_t threshold);
-  size_t getThreadingThreshold() const;
+  // Threshold now managed by WorkerBudget - these delegate to it
+  size_t getThreadingThreshold() const;  // Returns current adaptive threshold
 #endif
 
   // Performance monitoring
@@ -345,11 +345,9 @@ private:
   static constexpr size_t CACHE_LINE_SIZE = 64; // Standard cache line size
   static constexpr size_t BATCH_SIZE =
       256; // Larger batches for better throughput
-  // Threading threshold: Entities below this use single-threaded processing.
-  // WorkerBudget hill climb tunes batch count for optimal throughput.
-  // Default 500 - post-contention fix shows 1.21x+ speedup at all entity counts.
-  // Benchmark results: 500=1.21x, 1000=1.32x, 2000=1.41x, 5000=1.36x, 10000=1.34x
-  std::atomic<size_t> m_threadingThreshold{250};
+  // Threading threshold now managed by WorkerBudget adaptive system.
+  // WorkerBudget::shouldUseThreading() decides based on learned optimal threshold.
+  // Threshold adapts to hardware, Debug/Release builds, and runtime conditions.
 
   // Optimized helper methods
   BehaviorType inferBehaviorType(const std::string &behaviorName) const;

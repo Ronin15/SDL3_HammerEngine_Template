@@ -433,7 +433,7 @@ public:
   // Threading control (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
   bool isThreadingEnabled() const;
-  void setThreadingThreshold(size_t threshold);
+  // Threshold now managed by WorkerBudget - this delegates to it
   size_t getThreadingThreshold() const;
 #endif
 
@@ -637,8 +637,8 @@ private:
   std::atomic<bool> m_threadingEnabled{true};
   std::atomic<bool> m_initialized{false};
   std::atomic<bool> m_globallyPaused{false};
-  size_t m_threadingThreshold{
-      500}; // Global threshold: Thread when total events > 500 (optimal from benchmark)
+  // Global threading threshold now managed by WorkerBudget adaptive system.
+  // WorkerBudget::shouldUseThreading() decides based on learned optimal threshold.
   static constexpr size_t PER_TYPE_THREAD_THRESHOLD = 20; // Per-type minimum: Only thread types with 20+ events
 
   // Performance monitoring

@@ -310,11 +310,12 @@ void AIManager::update(float deltaTime) {
       }
     }
 
-    // Determine threading strategy based on threshold and WorkerBudget
-    bool useThreading =
-        (entityCount >= m_threadingThreshold.load(std::memory_order_acquire) &&
-         m_useThreading.load(std::memory_order_acquire) &&
-         HammerEngine::ThreadSystem::Exists());
+    // Determine threading strategy using adaptive threshold from WorkerBudget
+    // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    auto decision = budgetMgr.shouldUseThreading(
+        HammerEngine::SystemType::AI, entityCount);
+    bool useThreading = decision.shouldThread;
 
     // Track threading decision for interval logging (local vars, no storage
     // overhead)
@@ -437,11 +438,24 @@ void AIManager::update(float deltaTime) {
     double totalUpdateTime =
         std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
-    // Report batch completion for adaptive tuning (only if threading was used)
-    if (logWasThreaded) {
-      HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-          HammerEngine::SystemType::AI, entityCount, logBatchCount,
-          totalUpdateTime);
+    // Report results for adaptive tuning
+    if (entityCount > 0) {
+      auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+
+      // Report threading result for adaptive threshold (always called)
+      double throughputItemsPerMs = (totalUpdateTime > 0.0)
+          ? static_cast<double>(entityCount) / totalUpdateTime
+          : 0.0;
+      budgetMgr.reportThreadingResult(HammerEngine::SystemType::AI,
+                                      entityCount, logWasThreaded,
+                                      throughputItemsPerMs);
+
+      // Report batch completion for batch size tuning (threaded only)
+      if (logWasThreaded) {
+        budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI,
+                                        entityCount, logBatchCount,
+                                        totalUpdateTime);
+      }
     }
 
     // Periodic frame tracking (balanced frequency)
@@ -807,14 +821,10 @@ void AIManager::enableThreading(bool enable) {
   AI_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
 }
 
-void AIManager::setThreadingThreshold(size_t threshold) {
-  threshold = std::max(static_cast<size_t>(1), threshold);
-  m_threadingThreshold.store(threshold, std::memory_order_release);
-  AI_INFO(std::format("AI threading threshold set to {} entities", threshold));
-}
-
 size_t AIManager::getThreadingThreshold() const {
-  return m_threadingThreshold.load(std::memory_order_acquire);
+  // Delegate to WorkerBudget's adaptive threshold
+  return HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(
+      HammerEngine::SystemType::AI);
 }
 #endif
 

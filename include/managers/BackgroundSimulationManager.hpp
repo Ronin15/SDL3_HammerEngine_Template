@@ -276,8 +276,7 @@ private:
     // Performance tracking
     PerfStats m_perf;
 
-    // Threading thresholds (tuned for background simulation)
-    static constexpr size_t MIN_ENTITIES_FOR_THREADING = 500;
+    // Minimum batch size for threading (threading threshold is adaptive via WorkerBudget)
     static constexpr size_t MIN_BATCH_SIZE = 64;
 };
 

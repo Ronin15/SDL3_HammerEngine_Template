@@ -630,3 +630,103 @@ BOOST_FIXTURE_TEST_CASE(HighCountBenchmarks,
     BOOST_CHECK_GT(manager->getActiveParticleCount(), 0);
   }
 }
+
+// WorkerBudget Adaptive Tuning test - verifies both batch sizing and threading
+// threshold adapt correctly over time
+BOOST_FIXTURE_TEST_CASE(WorkerBudgetAdaptiveTuning,
+                        ParticleManagerPerformanceFixture) {
+  std::cout << "\n===== WORKERBUDGET ADAPTIVE TUNING TEST =====" << std::endl;
+  std::cout << "Testing both batch sizing hill-climb and threading threshold adaptation\n" << std::endl;
+
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+
+  // Fresh state
+  if (manager->isInitialized()) manager->clean();
+  manager->init();
+  manager->registerBuiltInEffects();
+
+  // Part 1: Batch Sizing Hill-Climb Convergence
+  std::cout << "--- Part 1: Batch Sizing Hill-Climb ---" << std::endl;
+  size_t initialBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::Particle, 5000, 4).first;
+  std::cout << "Initial batch count for 5000 particles: " << initialBatch << std::endl;
+
+  // Create particles for sustained update
+  createParticles(5000);
+
+  // Run updates to let hill-climb converge
+  const int CONVERGENCE_FRAMES = 200;
+  std::vector<size_t> batchHistory;
+
+  for (int frame = 0; frame < CONVERGENCE_FRAMES; ++frame) {
+    manager->update(0.016f);
+
+    // Sample every 20 frames
+    if (frame % 20 == 0) {
+      size_t currentBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::Particle, 5000, 4).first;
+      batchHistory.push_back(currentBatch);
+    }
+  }
+
+  size_t finalBatch = budgetMgr.getBatchStrategy(HammerEngine::SystemType::Particle, 5000, 4).first;
+  std::cout << "Final batch count after " << CONVERGENCE_FRAMES << " frames: " << finalBatch << std::endl;
+
+  // Check convergence: batch count should stabilize (low variance in last few samples)
+  bool batchConverged = false;
+  if (batchHistory.size() >= 4) {
+    size_t lastVariance = 0;
+    size_t baseVal = batchHistory[batchHistory.size() - 4];
+    for (size_t i = batchHistory.size() - 3; i < batchHistory.size(); ++i) {
+      size_t diff = (batchHistory[i] > baseVal) ? batchHistory[i] - baseVal : baseVal - batchHistory[i];
+      lastVariance = std::max(lastVariance, diff);
+    }
+    batchConverged = (lastVariance <= 2); // Within 2 batches of stable
+    std::cout << "Batch variance in last 4 samples: " << lastVariance << std::endl;
+  }
+
+  std::cout << "Batch sizing status: " << (batchConverged ? "CONVERGED" : "ADAPTING") << std::endl;
+
+  // Part 2: Threading Threshold Adaptation
+  std::cout << "\n--- Part 2: Threading Threshold Adaptation ---" << std::endl;
+  size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Particle);
+  std::cout << "Initial threading threshold: " << initialThreshold << " particles" << std::endl;
+
+  // Run additional frames to allow threshold probing (probes every ~500 frames)
+  const int THRESHOLD_FRAMES = 600;
+  std::vector<size_t> thresholdHistory;
+  thresholdHistory.push_back(initialThreshold);
+
+  for (int frame = 0; frame < THRESHOLD_FRAMES; ++frame) {
+    manager->update(0.016f);
+
+    // Sample threshold every 100 frames
+    if (frame % 100 == 0) {
+      size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Particle);
+      if (thresholdHistory.empty() || currentThreshold != thresholdHistory.back()) {
+        thresholdHistory.push_back(currentThreshold);
+        std::cout << "Frame " << frame << ": threshold = " << currentThreshold << std::endl;
+      }
+    }
+  }
+
+  size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Particle);
+  std::cout << "Final threading threshold: " << finalThreshold << " particles" << std::endl;
+
+  // Check if threshold has been probed (may or may not have changed)
+  bool thresholdProbed = (thresholdHistory.size() > 1) ||
+                          (finalThreshold != initialThreshold);
+
+  std::cout << "Threading threshold status: " << (thresholdProbed ? "PROBED/ADAPTED" : "STABLE") << std::endl;
+
+  // Summary
+  std::cout << "\n=== ADAPTIVE TUNING SUMMARY ===" << std::endl;
+  std::cout << "Batch sizing:       " << (batchConverged ? "PASS" : "IN_PROGRESS") << std::endl;
+  std::cout << "Threading threshold: " << (thresholdProbed ? "PASS" : "STABLE (may need more frames)") << std::endl;
+  std::cout << "Final batch count:  " << finalBatch << std::endl;
+  std::cout << "Final threshold:    " << finalThreshold << " particles" << std::endl;
+  std::cout << "================================\n" << std::endl;
+
+  // Test passes if batch sizing converged OR threshold was probed
+  // (both systems are working, just may be at different stages)
+  BOOST_CHECK_MESSAGE(batchConverged || thresholdProbed,
+                      "At least one adaptive system should show activity");
+}

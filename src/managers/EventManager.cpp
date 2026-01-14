@@ -70,12 +70,10 @@ bool EventManager::isThreadingEnabled() const {
   return m_threadingEnabled.load();
 }
 
-void EventManager::setThreadingThreshold(size_t threshold) {
-  m_threadingThreshold = threshold;
-}
-
 size_t EventManager::getThreadingThreshold() const {
-  return m_threadingThreshold;
+  // Delegate to WorkerBudget's adaptive threshold
+  return HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(
+      HammerEngine::SystemType::Event);
 }
 #endif
 
@@ -344,9 +342,11 @@ void EventManager::update() {
   EventThreadingInfo threadingInfo;
 
   // Update all event types in optimized batches with per-type threading
-  // decision Global check: Only consider threading if total events > threshold
-  bool useThreadingGlobal =
-      m_threadingEnabled.load() && totalEventCount > m_threadingThreshold;
+  // WorkerBudget is the AUTHORITATIVE source - no manager overrides
+  auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+  auto decision = budgetMgr.shouldUseThreading(
+      HammerEngine::SystemType::Event, totalEventCount);
+  bool useThreadingGlobal = decision.shouldThread;
 
   // Helper lambda to decide threading per type (uses cached counts - no mutex!)
   auto updateEventType = [this, useThreadingGlobal, &eventCountsByType,
@@ -394,11 +394,22 @@ void EventManager::update() {
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-  // Report batch completion for adaptive tuning (only if threading was used)
-  if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
-    HammerEngine::WorkerBudgetManager::Instance().reportBatchCompletion(
-        HammerEngine::SystemType::Event, totalEventCount,
-        threadingInfo.batchCount, totalTimeMs);
+  // Report results for adaptive tuning
+  if (totalEventCount > 0) {
+    // Report threading result for adaptive threshold (always called)
+    double throughputItemsPerMs = (totalTimeMs > 0.0)
+        ? static_cast<double>(totalEventCount) / totalTimeMs
+        : 0.0;
+    budgetMgr.reportThreadingResult(HammerEngine::SystemType::Event,
+                                    totalEventCount, threadingInfo.wasThreaded,
+                                    throughputItemsPerMs);
+
+    // Report batch completion for batch size tuning (threaded only)
+    if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
+      budgetMgr.reportBatchCompletion(HammerEngine::SystemType::Event,
+                                      totalEventCount, threadingInfo.batchCount,
+                                      totalTimeMs);
+    }
   }
 
   // Update rolling average for DEBUG logging
