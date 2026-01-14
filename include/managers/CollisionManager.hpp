@@ -591,6 +591,15 @@ private:
     mutable std::vector<size_t> m_triggerCandidates;  // For detectEventOnlyTriggers() spatial queries
     // Note: buildActiveIndices() uses pools.staticIndices directly (already a reusable buffer)
 
+    // Trigger sweep edge buffer (avoids per-frame allocation in detectEventOnlyTriggersSweep)
+    struct TriggerSweepEdge {
+        float x;
+        size_t idx;     // edmIdx for entities, storageIdx for triggers
+        bool isStart;
+        bool isTrigger;
+    };
+    mutable std::vector<TriggerSweepEdge> m_triggerSweepEdges;
+
     // Performance metrics
     struct PerfStats {
         double lastBroadphaseMs{0.0};
@@ -676,7 +685,7 @@ private:
     // Threading config for broadphase
     // Broadphase: With SIMD direct iteration, workload = M×M/2 + M×S AABB checks
     //             150 movables × 150/2 = 11K checks, plus 150 × statics - worth threading
-    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 200;  // Broadphase: min movable bodies
+    static constexpr size_t MIN_MOVABLE_FOR_BROADPHASE_THREADING = 150;  // Broadphase: min movable bodies
     mutable bool m_lastBroadphaseWasThreaded{false};
     mutable size_t m_lastBroadphaseBatchCount{1};
 
