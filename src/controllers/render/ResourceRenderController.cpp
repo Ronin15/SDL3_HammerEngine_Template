@@ -5,6 +5,9 @@
 
 #include "controllers/render/ResourceRenderController.hpp"
 #include "managers/EntityDataManager.hpp"
+#include "managers/WorldResourceManager.hpp"
+#include "utils/Camera.hpp"
+#include "utils/Vector2D.hpp"
 #include <SDL3/SDL.h>
 #include <cmath>
 #include <vector>
@@ -17,11 +20,19 @@ void ResourceRenderController::update(float deltaTime) {
 
 void ResourceRenderController::updateDroppedItemAnimations(float deltaTime) {
     auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
 
-    // Single iteration over DroppedItem indices for both bobbing and frame animation
-    for (size_t idx : edm.getIndicesByKind(EntityKind::DroppedItem)) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.tier != SimulationTier::Active) continue;  // Only update Active tier
+    // Query all dropped items in active world
+    // Use large radius to capture all items for animation updates
+    constexpr float LARGE_RADIUS = 100000.0f;
+    Vector2D center(0.0f, 0.0f);
+
+    m_visibleItemIndices.clear();
+    wrm.queryDroppedItemsInRadius(center, LARGE_RADIUS, m_visibleItemIndices);
+
+    for (size_t idx : m_visibleItemIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
+        if (!hot.isAlive()) continue;
 
         auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
 
@@ -53,13 +64,27 @@ void ResourceRenderController::updateHarvestableStates([[maybe_unused]] float de
     // For now, harvestables are static
 }
 
-void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
+void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha) {
     auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
 
-    // Use getIndicesByKind for efficient filtered iteration
-    for (size_t idx : edm.getIndicesByKind(EntityKind::DroppedItem)) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.tier != SimulationTier::Active) continue;  // Only render Active tier
+    // Get visibility info from Camera (clean - no reaching into other managers)
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float visibleRadius = std::sqrt(viewport.width * viewport.width +
+                                    viewport.height * viewport.height) * 0.5f;
+
+    // Query only visible items - O(k) where k = cells in view
+    m_visibleItemIndices.clear();
+    wrm.queryDroppedItemsInRadius(cameraCenter, visibleRadius, m_visibleItemIndices);
+
+    // Get camera offset for world-to-screen conversion
+    float cameraX = cameraCenter.getX() - viewport.width * 0.5f;
+    float cameraY = cameraCenter.getY() - viewport.height * 0.5f;
+
+    for (size_t idx : m_visibleItemIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
+        if (!hot.isAlive()) continue;
 
         const auto& r = edm.getItemRenderDataByTypeIndex(hot.typeLocalIndex);
 
@@ -97,13 +122,27 @@ void ResourceRenderController::renderDroppedItems(SDL_Renderer* renderer, float 
     }
 }
 
-void ResourceRenderController::renderContainers(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
+void ResourceRenderController::renderContainers(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha) {
     auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
 
-    // Use getIndicesByKind for efficient filtered iteration
-    for (size_t idx : edm.getIndicesByKind(EntityKind::Container)) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.tier != SimulationTier::Active) continue;  // Only render Active tier
+    // Get visibility info from Camera
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float visibleRadius = std::sqrt(viewport.width * viewport.width +
+                                    viewport.height * viewport.height) * 0.5f;
+
+    // Query only visible containers - O(k) where k = cells in view
+    m_visibleContainerIndices.clear();
+    wrm.queryContainersInRadius(cameraCenter, visibleRadius, m_visibleContainerIndices);
+
+    // Get camera offset for world-to-screen conversion
+    float cameraX = cameraCenter.getX() - viewport.width * 0.5f;
+    float cameraY = cameraCenter.getY() - viewport.height * 0.5f;
+
+    for (size_t idx : m_visibleContainerIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
+        if (!hot.isAlive()) continue;
 
         const auto& containerData = edm.getContainerData(hot.typeLocalIndex);
         const auto& r = edm.getContainerRenderDataByTypeIndex(hot.typeLocalIndex);
@@ -140,13 +179,27 @@ void ResourceRenderController::renderContainers(SDL_Renderer* renderer, float ca
     }
 }
 
-void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, float cameraX, float cameraY, float alpha) {
+void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, const HammerEngine::Camera& camera, float alpha) {
     auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
 
-    // Use getIndicesByKind for efficient filtered iteration
-    for (size_t idx : edm.getIndicesByKind(EntityKind::Harvestable)) {
-        const auto& hot = edm.getHotDataByIndex(idx);
-        if (hot.tier != SimulationTier::Active) continue;  // Only render Active tier
+    // Get visibility info from Camera
+    Vector2D cameraCenter = camera.getPosition();
+    const auto& viewport = camera.getViewport();
+    float visibleRadius = std::sqrt(viewport.width * viewport.width +
+                                    viewport.height * viewport.height) * 0.5f;
+
+    // Query only visible harvestables - O(k) where k = cells in view
+    m_visibleHarvestableIndices.clear();
+    wrm.queryHarvestablesInRadius(cameraCenter, visibleRadius, m_visibleHarvestableIndices);
+
+    // Get camera offset for world-to-screen conversion
+    float cameraX = cameraCenter.getX() - viewport.width * 0.5f;
+    float cameraY = cameraCenter.getY() - viewport.height * 0.5f;
+
+    for (size_t idx : m_visibleHarvestableIndices) {
+        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool accessor
+        if (!hot.isAlive()) continue;
 
         const auto& harvData = edm.getHarvestableData(hot.typeLocalIndex);
         const auto& r = edm.getHarvestableRenderDataByTypeIndex(hot.typeLocalIndex);
@@ -186,29 +239,30 @@ void ResourceRenderController::renderHarvestables(SDL_Renderer* renderer, float 
 
 void ResourceRenderController::clearAll() {
     auto& edm = EntityDataManager::Instance();
+    auto& wrm = WorldResourceManager::Instance();
 
-    // Copy indices to local buffer to avoid span invalidation during iteration
-    // (getIndicesByKind returns a span that could be invalidated if kind indices are rebuilt)
+    // Collect all resource indices from all worlds using WRM queries
+    // Use large radius to capture all resources in loaded worlds
     std::vector<size_t> toDestroy;
+    constexpr float LARGE_RADIUS = 100000.0f;
+    Vector2D center(0.0f, 0.0f);
 
-    // Collect dropped item indices
-    for (size_t idx : edm.getIndicesByKind(EntityKind::DroppedItem)) {
-        toDestroy.push_back(idx);
-    }
+    // Collect dropped items
+    wrm.queryDroppedItemsInRadius(center, LARGE_RADIUS, toDestroy);
 
-    // Collect container indices
-    for (size_t idx : edm.getIndicesByKind(EntityKind::Container)) {
-        toDestroy.push_back(idx);
-    }
+    // Collect containers
+    std::vector<size_t> containers;
+    wrm.queryContainersInRadius(center, LARGE_RADIUS, containers);
+    toDestroy.insert(toDestroy.end(), containers.begin(), containers.end());
 
-    // Collect harvestable indices
-    for (size_t idx : edm.getIndicesByKind(EntityKind::Harvestable)) {
-        toDestroy.push_back(idx);
-    }
+    // Collect harvestables
+    std::vector<size_t> harvestables;
+    wrm.queryHarvestablesInRadius(center, LARGE_RADIUS, harvestables);
+    toDestroy.insert(toDestroy.end(), harvestables.begin(), harvestables.end());
 
-    // Now destroy all collected entities
+    // Now destroy all collected entities (using static handle accessor)
     for (size_t idx : toDestroy) {
-        EntityHandle handle = edm.getHandle(idx);
+        EntityHandle handle = edm.getStaticHandle(idx);
         if (handle.isValid()) {
             edm.destroyEntity(handle);
         }

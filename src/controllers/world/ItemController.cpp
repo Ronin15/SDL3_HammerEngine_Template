@@ -33,14 +33,14 @@ bool ItemController::attemptPickup() {
         return false;
     }
 
-    // Get entity handle for item
-    EntityHandle itemHandle = edm.getHandle(itemIdx);
+    // Get entity handle for item (static pool for resources)
+    EntityHandle itemHandle = edm.getStaticHandle(itemIdx);
     if (!itemHandle.isValid()) {
         return false;
     }
 
-    // Validate item still alive
-    const auto& hot = edm.getHotDataByIndex(itemIdx);
+    // Validate item still alive (static pool accessor)
+    const auto& hot = edm.getStaticHotDataByIndex(itemIdx);
     if (!hot.isAlive() || hot.kind != EntityKind::DroppedItem) {
         return false;
     }
@@ -93,7 +93,7 @@ bool ItemController::attemptHarvest() {
     size_t closestIdx = std::numeric_limits<size_t>::max();
 
     for (size_t idx : harvestables) {
-        const auto& hot = edm.getHotDataByIndex(idx);
+        const auto& hot = edm.getStaticHotDataByIndex(idx);  // Static pool
         if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
             continue;
         }
@@ -118,8 +118,8 @@ bool ItemController::attemptHarvest() {
         return false;
     }
 
-    // Validate harvestable still valid
-    const auto& hot = edm.getHotDataByIndex(closestIdx);
+    // Validate harvestable still valid (static pool)
+    const auto& hot = edm.getStaticHotDataByIndex(closestIdx);
     if (!hot.isAlive() || hot.kind != EntityKind::Harvestable) {
         return false;
     }

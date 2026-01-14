@@ -1355,6 +1355,14 @@ public:
      */
     [[nodiscard]] size_t getStaticIndex(EntityHandle handle) const;
 
+    /**
+     * @brief Get handle for static pool entity by index
+     * @param staticIndex Index in m_staticHotData
+     * @return EntityHandle with correct kind and generation
+     * @note Used for resources (DroppedItem, Container, Harvestable) which are in static pool
+     */
+    [[nodiscard]] EntityHandle getStaticHandle(size_t staticIndex) const;
+
     // ========================================================================
     // TYPE-SPECIFIC DATA ACCESS
     // ========================================================================
@@ -1738,6 +1746,13 @@ private:
      */
     [[nodiscard]] int getInventoryQuantityLocked(uint32_t inventoryIndex,
                                                   HammerEngine::ResourceHandle handle) const;
+
+    /**
+     * @brief Internal: Destroy a static resource entity (DroppedItem, Container, Harvestable)
+     * @param handle Entity handle to destroy
+     * @note Static resources are destroyed immediately (no deferred queue)
+     */
+    void destroyStaticResource(EntityHandle handle);
 
     // Destruction queue and processing buffer (avoid per-frame allocation)
     std::vector<EntityHandle> m_destructionQueue;

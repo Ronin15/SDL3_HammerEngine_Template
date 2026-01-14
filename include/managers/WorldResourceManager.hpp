@@ -308,6 +308,36 @@ public:
     void unregisterHarvestableSpatial(size_t edmIndex);
 
     // ========================================================================
+    // CONTAINER SPATIAL REGISTRATION
+    // ========================================================================
+
+    /**
+     * @brief Register a container with spatial tracking
+     * @param edmIndex EDM static entity index
+     * @param position World position
+     * @param worldId World to register with
+     *
+     * Note: Called automatically by EDM::createContainer()
+     */
+    void registerContainerSpatial(size_t edmIndex, const Vector2D& position, const WorldId& worldId);
+
+    /**
+     * @brief Unregister a container from spatial tracking
+     * @param edmIndex EDM static entity index
+     */
+    void unregisterContainerSpatial(size_t edmIndex);
+
+    /**
+     * @brief Query containers near a position in active world
+     * @param center Query center position
+     * @param radius Search radius
+     * @param outIndices Output: EDM static indices of nearby containers
+     * @return Number of containers found
+     */
+    size_t queryContainersInRadius(const Vector2D& center, float radius,
+                                   std::vector<size_t>& outIndices) const;
+
+    // ========================================================================
     // SPATIAL QUERIES (O(k) where k = cells in radius)
     // ========================================================================
 
@@ -476,6 +506,12 @@ private:
 
     // Reverse lookup: harvestable EDM index -> WorldId (for spatial unregistration)
     std::unordered_map<size_t, WorldId> m_harvestableSpatialToWorld;
+
+    // Per-world spatial indices for containers
+    std::unordered_map<WorldId, SpatialIndex> m_containerSpatialIndices;
+
+    // Reverse lookup: container EDM index -> WorldId (for spatial unregistration)
+    std::unordered_map<size_t, WorldId> m_containerToWorld;
 
     // Currently active world (set via event or explicit call)
     WorldId m_activeWorld;

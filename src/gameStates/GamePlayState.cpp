@@ -295,10 +295,11 @@ void GamePlayState::render(SDL_Renderer *renderer, float interpolationAlpha) {
   }
 
   // Render world resources (dropped items, harvestables, containers)
-  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>()) {
-    resourceCtrl->renderDroppedItems(renderer, renderCamX, renderCamY, interpolationAlpha);
-    resourceCtrl->renderHarvestables(renderer, renderCamX, renderCamY, interpolationAlpha);
-    resourceCtrl->renderContainers(renderer, renderCamX, renderCamY, interpolationAlpha);
+  // Uses Camera for spatial queries - only renders visible items
+  if (auto* resourceCtrl = m_controllers.get<ResourceRenderController>(); resourceCtrl && m_camera) {
+    resourceCtrl->renderDroppedItems(renderer, *m_camera, interpolationAlpha);
+    resourceCtrl->renderHarvestables(renderer, *m_camera, interpolationAlpha);
+    resourceCtrl->renderContainers(renderer, *m_camera, interpolationAlpha);
   }
 
   if (mp_Player) {
