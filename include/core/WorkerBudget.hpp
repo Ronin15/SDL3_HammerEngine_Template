@@ -37,7 +37,7 @@ enum class SystemType : uint8_t {
  */
 struct ThreadingDecision {
     bool shouldThread;  // true = use multi-threading, false = single-threaded
-    int probePhase;     // 0=normal, 1=forced-single, 2=forced-multi (for debugging)
+    int probePhase;     // 0=normal, non-zero=exploration (for debugging)
 };
 
 /**
@@ -56,20 +56,24 @@ struct WorkerBudget {
  */
 static constexpr float QUEUE_PRESSURE_CRITICAL = 0.90f;
 
-// Note: MIN_ITEMS_PER_BATCH is defined locally in WorkerBudget.cpp (= 8)
-// This keeps the batch logic simple and in one place.
-
 /**
- * @brief Centralized worker budget manager with adaptive batch tuning
+ * @brief Centralized worker budget manager with unified adaptive tuning
  *
  * Optimized for sequential execution model: since managers execute one at a time
  * in the main loop, each manager gets ALL available workers during its window.
  * Pre-allocated ThreadSystem eliminates threading overhead.
  *
+ * Unified Tuning Design:
+ * - Both single-threaded and multi-threaded modes report throughput
+ * - Threading decision based on throughput comparison (no forced probing)
+ * - Batch tuning hill-climbs to find optimal granularity
+ * - Exploration triggered by signals (multiplier trend, stale data), not timer
+ *
  * Provides:
  * 1. Full worker allocation per manager (sequential execution = no contention)
  * 2. Adaptive batch sizing via timing feedback (auto-converges to optimal)
- * 3. Queue pressure monitoring (prevents ThreadSystem overload)
+ * 3. Unified throughput tracking for informed threading decisions
+ * 4. Queue pressure monitoring (prevents ThreadSystem overload)
  *
  * Thread Safety:
  * - All mutable state uses atomics
@@ -101,10 +105,10 @@ public:
     size_t getOptimalWorkers(SystemType system, size_t workloadSize);
 
     /**
-     * @brief Get adaptive batch strategy using optimal sqrt formula
+     * @brief Get adaptive batch strategy
      *
-     * Uses mathematically derived optimal: batches = sqrt(work_time / overhead)
-     * Both work_time and overhead are learned from actual execution.
+     * Uses hill-climbing tuned multiplier to find optimal batch count.
+     * Balances parallelism benefit against scheduling overhead.
      *
      * @param system The system type
      * @param workloadSize Total items to process
@@ -116,55 +120,59 @@ public:
                                                 size_t optimalWorkers);
 
     /**
-     * @brief Report batch completion for learning and fine-tuning
-     *
-     * Updates learned parameters (per-item time, overhead) and hill-climbs
-     * multiplier based on throughput to find true optimal.
-     *
-     * @param system The system type
-     * @param workloadSize Number of items that were processed
-     * @param batchCount Number of batches that were executed
-     * @param totalTimeMs Total time for all batches to complete
-     */
-    void reportBatchCompletion(SystemType system, size_t workloadSize,
-                               size_t batchCount, double totalTimeMs);
-
-    /**
      * @brief Determine if threading should be used for current workload
      *
      * WorkerBudget is the AUTHORITATIVE source for threading decisions.
      * Managers should use decision.shouldThread directly without overrides.
      *
-     * Uses adaptive threshold that learns optimal point based on measured
-     * throughput. Periodically probes opposite mode to gather data.
-     * Includes hysteresis to prevent flip-flopping near threshold.
+     * Decision based on throughput comparison between modes:
+     * - Tracks smoothed throughput for both single and multi-threaded
+     * - Switches mode when other mode shows 15%+ improvement
+     * - Exploration triggered by signals, not periodic forced probing
      *
      * @param system The system type
-     * @param entityCount Number of entities to process
+     * @param workloadSize Number of items to process
      * @return ThreadingDecision with shouldThread and probePhase
      */
-    ThreadingDecision shouldUseThreading(SystemType system, size_t entityCount);
+    ThreadingDecision shouldUseThreading(SystemType system, size_t workloadSize);
 
     /**
-     * @brief Report threading result for threshold tuning
+     * @brief Report execution result for unified tuning
      *
-     * Call after processing completes to update the adaptive threshold.
-     * Compares single vs multi-threaded throughput during probing phase.
+     * Call after processing completes to update throughput tracking
+     * and tune batch multiplier. Replaces separate reportBatchCompletion
+     * and reportThreadingResult calls.
      *
      * @param system The system type
-     * @param entityCount Number of entities that were processed
+     * @param workloadSize Number of items that were processed
      * @param wasThreaded true if multi-threading was used
-     * @param throughputItemsPerMs Measured throughput (items per millisecond)
+     * @param batchCount Number of batches (0 if single-threaded)
+     * @param totalTimeMs Total time for processing to complete
      */
-    void reportThreadingResult(SystemType system, size_t entityCount,
-                               bool wasThreaded, double throughputItemsPerMs);
+    void reportExecution(SystemType system, size_t workloadSize,
+                         bool wasThreaded, size_t batchCount, double totalTimeMs);
 
     /**
-     * @brief Get current threading threshold for a system (for debugging/logging)
+     * @brief Get expected throughput for a mode (for debugging/logging)
      * @param system The system type
-     * @return Current adaptive threshold value
+     * @param threaded true for multi-threaded, false for single-threaded
+     * @return Smoothed throughput value (items per ms)
      */
-    size_t getThreadingThreshold(SystemType system) const;
+    double getExpectedThroughput(SystemType system, bool threaded) const;
+
+    /**
+     * @brief Get current batch multiplier for a system (for debugging/logging)
+     * @param system The system type
+     * @return Current multiplier value
+     */
+    float getBatchMultiplier(SystemType system) const;
+
+    /**
+     * @brief Check if system is currently in exploration mode
+     * @param system The system type
+     * @return true if exploring alternate mode
+     */
+    bool isExploring(SystemType system) const;
 
     /**
      * @brief Invalidate cached budget (call when ThreadSystem changes)
@@ -180,67 +188,50 @@ private:
     WorkerBudgetManager& operator=(const WorkerBudgetManager&) = delete;
 
     /**
-     * @brief Per-system batch tuning state with throughput-based hill-climbing
+     * @brief Unified per-system tuning state
      *
-     * Simple and robust: starts at max parallelism (workers), adjusts multiplier
-     * based on measured throughput. No model assumptions - just measures what works.
-     *
-     * Thread-safe via atomics.
-     */
-    struct BatchTuningState {
-        // Multiplier applied to worker count
-        std::atomic<float> multiplier{1.0f};
-
-        // Throughput tracking for hill-climbing
-        std::atomic<double> smoothedThroughput{0.0};  // Items per ms
-        std::atomic<double> prevThroughput{0.0};      // Previous smoothed value
-        std::atomic<int8_t> direction{1};             // Hill-climb direction (+1 or -1)
-
-        // Constants
-        static constexpr float MIN_MULTIPLIER = 0.25f;  // Allow 4x consolidation
-        static constexpr float MAX_MULTIPLIER = 2.5f;   // Allow 2.5x expansion
-        static constexpr float ADJUST_RATE = 0.02f;     // 2% adjustment - very stable
-
-        static constexpr double THROUGHPUT_TOLERANCE = 0.06;   // 6% dead band - ignore more noise
-        static constexpr double THROUGHPUT_SMOOTHING = 0.12;   // 12% weight - heavier smoothing
-
-        static constexpr size_t MIN_ITEMS_PER_BATCH = 8;  // Prevent trivial batches
-    };
-
-    /**
-     * @brief Per-system threading threshold tuning state
-     *
-     * Adapts the entity count threshold for enabling multi-threading based on
-     * measured throughput. Uses periodic probing to discover optimal threshold.
+     * Combines threading decision and batch tuning into one cohesive system.
+     * Both modes report throughput, enabling informed mode selection.
+     * Batch multiplier trend signals when to explore alternate mode.
      *
      * Thread-safe via atomics.
      */
-    struct ThreadingTuningState {
-        // Adaptive threshold (entity count above which threading is enabled)
-        std::atomic<size_t> threshold{200};  // Start conservative
+    struct SystemTuningState {
+        // Throughput tracking for BOTH modes
+        std::atomic<double> singleSmoothedThroughput{0.0};  // Items per ms when single-threaded
+        std::atomic<double> multiSmoothedThroughput{0.0};   // Items per ms when multi-threaded
 
-        // Two-phase probing mechanism:
-        // Phase 0: Normal operation
-        // Phase 1: Force single-threaded, measure throughput
-        // Phase 2: Force multi-threaded, measure throughput, then compare both
-        std::atomic<size_t> framesSinceProbe{0};
-        std::atomic<int> probePhase{0};  // 0=normal, 1=single, 2=multi
+        // Batch tuning (hill-climbing)
+        std::atomic<float> multiplier{1.0f};                // Applied to worker count
+        std::atomic<double> prevMultiThroughput{0.0};       // Previous multi-threaded throughput for hill-climb
+        std::atomic<int8_t> direction{1};                   // Hill-climb direction (+1 or -1)
 
-        // Probe measurements (fresh, back-to-back)
-        std::atomic<double> probeSingleThroughput{0.0};
-        std::atomic<double> probeMultiThroughput{0.0};
-        std::atomic<size_t> probeEntityCount{0};
+        // Mode tracking
+        std::atomic<bool> lastWasThreaded{false};           // What mode was used last frame
+        std::atomic<size_t> framesSinceOtherMode{0};        // Frames since we tried the other mode
 
-        // State tracking
-        std::atomic<bool> lastWasThreaded{false};
-        std::atomic<size_t> lastEntityCount{0};
+        // Exploration state (replaces forced probing)
+        std::atomic<bool> explorationPending{false};        // Currently exploring?
+        std::atomic<size_t> explorationWorkloadSize{0};     // Workload size during exploration
 
-        // Constants
-        static constexpr size_t PROBE_INTERVAL = 500;     // Frames between probes
-        static constexpr size_t HYSTERESIS_BAND = 20;     // Prevent flip-flopping
-        static constexpr size_t MIN_THRESHOLD = 50;       // Never go below this
-        static constexpr size_t MAX_THRESHOLD = 10000;    // Allow learning to disable threading
-        static constexpr double IMPROVEMENT_THRESHOLD = 1.5;  // 50% improvement required
+        // Batch tuning constants
+        static constexpr float MIN_MULTIPLIER = 0.4f;       // Allow 2.5x consolidation (was 0.25)
+        static constexpr float MAX_MULTIPLIER = 2.0f;       // Allow 2x expansion (was 2.5)
+        static constexpr float ADJUST_RATE = 0.01f;         // 1% adjustment per frame (was 2%)
+
+        static constexpr double THROUGHPUT_TOLERANCE = 0.10;    // 10% dead band (was 6%)
+        static constexpr double THROUGHPUT_SMOOTHING = 0.15;    // 15% weight for new data
+
+        static constexpr size_t MIN_ITEMS_PER_BATCH = 8;    // Prevent trivial batches
+
+        // Mode selection constants
+        static constexpr size_t MIN_WORKLOAD = 50;              // Always single-threaded below this
+        static constexpr size_t DEFAULT_THREADING_THRESHOLD = 200;  // Start with threading above this (until data collected)
+        static constexpr double MODE_SWITCH_THRESHOLD = 1.15;   // 15% improvement to switch modes
+        static constexpr size_t INITIAL_EXPLORATION_FRAMES = 30;    // Try other mode quickly when missing data
+        static constexpr size_t SAMPLE_INTERVAL = 300;          // Max frames before reconsidering mode
+        static constexpr double CROSSOVER_BAND_LOW = 0.7;       // Near crossover = ratio > 0.7
+        static constexpr double CROSSOVER_BAND_HIGH = 1.4;      // Near crossover = ratio < 1.4
     };
 
     // Cached budget (protected by double-checked locking)
@@ -248,11 +239,22 @@ private:
     std::atomic<bool> m_budgetValid{false};
     mutable std::mutex m_cacheMutex;
 
-    // Per-system batch tuning (uses atomics, thread-safe)
-    std::array<BatchTuningState, static_cast<size_t>(SystemType::COUNT)> m_batchState{};
+    // Per-system unified tuning state
+    std::array<SystemTuningState, static_cast<size_t>(SystemType::COUNT)> m_systemState{};
 
-    // Per-system threading threshold tuning (uses atomics, thread-safe)
-    std::array<ThreadingTuningState, static_cast<size_t>(SystemType::COUNT)> m_threadingState{};
+    /**
+     * @brief Check if exploration of alternate mode should be triggered
+     * @param system The system type
+     * @return true if should try the other mode
+     */
+    bool shouldExploreOtherMode(SystemType system) const;
+
+    /**
+     * @brief Update batch multiplier via hill-climbing
+     * @param state The system's tuning state
+     * @param throughput Current measured throughput
+     */
+    void updateBatchMultiplier(SystemTuningState& state, double throughput);
 
     /**
      * @brief Get current queue pressure from ThreadSystem (0.0 to 1.0)

@@ -178,19 +178,11 @@ void BackgroundSimulationManager::processBackgroundEntities(float fixedDeltaTime
     m_perf.lastUpdateMs = elapsedMs;
     m_perf.updateAverage(elapsedMs);
 
-    // Report threading result for adaptive threshold learning (uses AI system type)
+    // Report results for unified adaptive tuning (uses AI system type)
     if (entityCount > 0) {
-        double throughputItemsPerMs = (elapsedMs > 0.0)
-            ? static_cast<double>(entityCount) / elapsedMs
-            : 0.0;
-        budgetMgr.reportThreadingResult(HammerEngine::SystemType::AI,
-                                        entityCount, useThreading,
-                                        throughputItemsPerMs);
-        // Report batch completion for adaptive batch sizing (only if threaded)
-        if (useThreading) {
-            budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI,
-                                            entityCount, batchCount, elapsedMs);
-        }
+        budgetMgr.reportExecution(HammerEngine::SystemType::AI,
+                                  entityCount, useThreading,
+                                  batchCount, elapsedMs);
     }
 
 #ifndef NDEBUG

@@ -264,11 +264,15 @@ BOOST_AUTO_TEST_CASE(ThreadingThresholdDetection) {
     }
 
     std::cout << "\n=== THREADING RECOMMENDATION ===" << std::endl;
-    size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-    std::cout << "Current adaptive threshold: " << currentThreshold << " entities" << std::endl;
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms" << std::endl;
+    std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
+    std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
     if (optimalThreshold > 0) {
-        std::cout << "Optimal threshold detected: " << optimalThreshold << " entities" << std::endl;
+        std::cout << "Optimal crossover detected: " << optimalThreshold << " entities" << std::endl;
     } else if (marginalThreshold > 0) {
         std::cout << "Marginal benefit at: " << marginalThreshold << " entities" << std::endl;
     } else {
@@ -333,49 +337,54 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning) {
 
     std::cout << "Batch sizing status: " << (batchConverged ? "CONVERGED" : "ADAPTING") << std::endl;
 
-    // Part 2: Threading Threshold Adaptation
-    std::cout << "\n--- Part 2: Threading Threshold Adaptation ---" << std::endl;
-    size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-    std::cout << "Initial threading threshold: " << initialThreshold << " entities" << std::endl;
+    // Part 2: Throughput Tracking (replaces threshold adaptation)
+    std::cout << "\n--- Part 2: Throughput Tracking ---" << std::endl;
+    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
+    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
-    // Run additional frames to allow threshold probing (probes every ~500 frames)
-    const int THRESHOLD_FRAMES = 600;
-    std::vector<size_t> thresholdHistory;
-    thresholdHistory.push_back(initialThreshold);
+    // Run additional frames to allow throughput tracking
+    const int TRACKING_FRAMES = 600;
 
-    for (int frame = 0; frame < THRESHOLD_FRAMES; ++frame) {
+    for (int frame = 0; frame < TRACKING_FRAMES; ++frame) {
         bgsim.update(Vector2D(0.0f, 0.0f), DELTA_TIME);
 
-        // Sample threshold every 100 frames
+        // Sample throughput every 100 frames
         if (frame % 100 == 0) {
-            size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-            if (thresholdHistory.empty() || currentThreshold != thresholdHistory.back()) {
-                thresholdHistory.push_back(currentThreshold);
-                std::cout << "Frame " << frame << ": threshold = " << currentThreshold << std::endl;
-            }
+            double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+            double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+            float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+            std::cout << "Frame " << frame << ": singleTP=" << std::fixed << std::setprecision(2) << singleTP
+                      << " multiTP=" << multiTP << " batchMult=" << batchMultNow << std::endl;
         }
     }
 
-    size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-    std::cout << "Final threading threshold: " << finalThreshold << " entities" << std::endl;
+    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
+    std::cout << "Final single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
+    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
+    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << std::endl;
 
-    // Check if threshold has been probed (may or may not have changed)
-    bool thresholdProbed = (thresholdHistory.size() > 1) ||
-                            (finalThreshold != initialThreshold);
+    // Check if throughput has been collected
+    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
 
-    std::cout << "Threading threshold status: " << (thresholdProbed ? "PROBED/ADAPTED" : "STABLE") << std::endl;
+    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
+                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
+    std::cout << "Threading mode preference: " << modePreferred << std::endl;
 
     // Summary
     std::cout << "\n=== ADAPTIVE TUNING SUMMARY ===" << std::endl;
     std::cout << "Batch sizing:       " << (batchConverged ? "PASS" : "IN_PROGRESS") << std::endl;
-    std::cout << "Threading threshold: " << (thresholdProbed ? "PASS" : "STABLE (may need more frames)") << std::endl;
+    std::cout << "Throughput tracking: " << (throughputCollected ? "PASS" : "NO_DATA") << std::endl;
     std::cout << "Final batch count:  " << finalBatch << std::endl;
-    std::cout << "Final threshold:    " << finalThreshold << " entities" << std::endl;
+    std::cout << "Mode preference:    " << modePreferred << std::endl;
     std::cout << "================================\n" << std::endl;
 
-    // Test passes if batch sizing converged OR threshold was probed
+    // Test passes if batch sizing converged OR throughput was collected
     // (both systems are working, just may be at different stages)
-    BOOST_CHECK_MESSAGE(batchConverged || thresholdProbed,
+    BOOST_CHECK_MESSAGE(batchConverged || throughputCollected,
                         "At least one adaptive system should show activity");
 }
 

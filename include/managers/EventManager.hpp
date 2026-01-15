@@ -433,8 +433,6 @@ public:
   // Threading control (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
   bool isThreadingEnabled() const;
-  // Threshold now managed by WorkerBudget - this delegates to it
-  size_t getThreadingThreshold() const;
 #endif
 
   // Global pause control (for menu states)

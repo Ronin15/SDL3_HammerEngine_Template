@@ -2249,21 +2249,11 @@ void CollisionManager::update(float dt) {
     double broadphaseMs =
         std::chrono::duration<double, std::milli>(t2 - t1).count();
 
-    // Report threading result for adaptive threshold (always called)
-    double throughputItemsPerMs = (broadphaseMs > 0.0)
-        ? static_cast<double>(activeMovableBodies) / broadphaseMs
-        : 0.0;
-    budgetMgr.reportThreadingResult(HammerEngine::SystemType::Collision,
-                                    activeMovableBodies,
-                                    m_lastBroadphaseWasThreaded,
-                                    throughputItemsPerMs);
-
-    // Report batch completion for batch size tuning (threaded only)
-    if (m_lastBroadphaseWasThreaded) {
-      budgetMgr.reportBatchCompletion(HammerEngine::SystemType::Collision,
-                                      activeMovableBodies,
-                                      m_lastBroadphaseBatchCount, broadphaseMs);
-    }
+    // Report results for unified adaptive tuning
+    budgetMgr.reportExecution(HammerEngine::SystemType::Collision,
+                              activeMovableBodies,
+                              m_lastBroadphaseWasThreaded,
+                              m_lastBroadphaseBatchCount, broadphaseMs);
   }
 
   // NARROWPHASE: Detailed collision detection and response calculation

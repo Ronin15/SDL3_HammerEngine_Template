@@ -291,11 +291,14 @@ BOOST_AUTO_TEST_CASE(AI_ThreadingCrossover) {
         }
     }
 
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     std::cout << "\n=== AI RESULT ===" << std::endl;
     std::cout << "Crossover point (speedup > 1.1x): " << crossoverPoint << " entities" << std::endl;
-    std::cout << "Current adaptive threshold: "
-              << HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(HammerEngine::SystemType::AI)
-              << " entities" << std::endl;
+    std::cout << "Throughput single: " << std::fixed << std::setprecision(2)
+              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false) << " items/ms" << std::endl;
+    std::cout << "Throughput multi:  " << std::fixed << std::setprecision(2)
+              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true) << " items/ms" << std::endl;
+    std::cout << "Batch multiplier:  " << budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI) << std::endl;
     std::cout << "================\n" << std::endl;
 }
 
@@ -318,18 +321,21 @@ BOOST_AUTO_TEST_CASE(Collision_ThreadingCrossover) {
         }
     }
 
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     std::cout << "\n=== COLLISION RESULT ===" << std::endl;
     std::cout << "Crossover point (speedup > 1.1x): " << crossoverPoint << " entities" << std::endl;
-    std::cout << "Current adaptive threshold: "
-              << HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(HammerEngine::SystemType::Collision)
-              << " entities" << std::endl;
+    std::cout << "Throughput single: " << std::fixed << std::setprecision(2)
+              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false) << " items/ms" << std::endl;
+    std::cout << "Throughput multi:  " << std::fixed << std::setprecision(2)
+              << budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true) << " items/ms" << std::endl;
+    std::cout << "Batch multiplier:  " << budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision) << std::endl;
     std::cout << "========================\n" << std::endl;
 }
 
-// Test if adaptive system learns correctly over time
+// Test if adaptive system learns correctly over time (throughput-based)
 BOOST_AUTO_TEST_CASE(AI_AdaptiveLearning) {
     std::cout << "\n===== AI ADAPTIVE LEARNING TEST =====\n" << std::endl;
-    std::cout << "Running 3000 frames with 5000 entities to see if threshold adapts\n" << std::endl;
+    std::cout << "Running 3000 frames with 5000 entities to see if throughput tracking works\n" << std::endl;
 
     reset();
     createEntities(5000);
@@ -337,11 +343,13 @@ BOOST_AUTO_TEST_CASE(AI_AdaptiveLearning) {
     auto& aim = AIManager::Instance();
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-    std::cout << "Initial threshold: " << initialThreshold << std::endl;
+    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
+    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
-    std::cout << "\n   Frame  Threshold  Avg Time(ms)  Throughput" << std::endl;
-    std::cout << std::string(50, '-') << std::endl;
+    std::cout << "\n   Frame  BatchMult  SingleTP    MultiTP   Avg Time(ms)" << std::endl;
+    std::cout << std::string(60, '-') << std::endl;
 
     double totalTime = 0;
     int sampleCount = 0;
@@ -355,16 +363,18 @@ BOOST_AUTO_TEST_CASE(AI_AdaptiveLearning) {
         totalTime += ms;
         sampleCount++;
 
-        // Report every 500 frames (when probes happen)
+        // Report every 500 frames
         if ((frame + 1) % 500 == 0) {
-            size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
+            double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+            double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+            float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
             double avgMs = totalTime / sampleCount;
-            double throughput = 1000.0 / avgMs;
 
             std::cout << std::setw(8) << (frame + 1)
-                      << std::setw(10) << currentThreshold
+                      << std::setw(10) << std::fixed << std::setprecision(2) << batchMult
+                      << std::setw(10) << std::fixed << std::setprecision(2) << singleTP
+                      << std::setw(10) << std::fixed << std::setprecision(2) << multiTP
                       << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                      << std::setw(12) << std::fixed << std::setprecision(0) << throughput
                       << std::endl;
 
             totalTime = 0;
@@ -372,23 +382,28 @@ BOOST_AUTO_TEST_CASE(AI_AdaptiveLearning) {
         }
     }
 
-    size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-    std::cout << "\nFinal threshold: " << finalThreshold << std::endl;
+    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
-    if (finalThreshold > initialThreshold) {
-        std::cout << "Result: Threshold INCREASED (learned threading hurts)" << std::endl;
-    } else if (finalThreshold < initialThreshold) {
-        std::cout << "Result: Threshold DECREASED (learned threading helps)" << std::endl;
+    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
+    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
+    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << std::endl;
+
+    if (finalMultiTP > finalSingleTP * 1.15) {
+        std::cout << "Result: Multi-threaded mode preferred (15%+ faster)" << std::endl;
+    } else if (finalSingleTP > finalMultiTP * 1.15) {
+        std::cout << "Result: Single-threaded mode preferred (15%+ faster)" << std::endl;
     } else {
-        std::cout << "Result: Threshold UNCHANGED (no learning occurred)" << std::endl;
+        std::cout << "Result: Modes are comparable (within 15%)" << std::endl;
     }
     std::cout << "=====================================\n" << std::endl;
 }
 
-// Test if collision adaptive system learns correctly
+// Test if collision adaptive system learns correctly (throughput-based)
 BOOST_AUTO_TEST_CASE(Collision_AdaptiveLearning) {
     std::cout << "\n===== COLLISION ADAPTIVE LEARNING TEST =====\n" << std::endl;
-    std::cout << "Running 3000 frames with 300 entities (where single-threaded wins)\n" << std::endl;
+    std::cout << "Running 3000 frames with 300 entities to see if throughput tracking works\n" << std::endl;
 
     reset();
     createEntities(300);
@@ -396,17 +411,16 @@ BOOST_AUTO_TEST_CASE(Collision_AdaptiveLearning) {
     auto& colMgr = CollisionManager::Instance();
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Collision);
-    std::cout << "Initial threshold: " << initialThreshold << " entities" << std::endl;
-    std::cout << "Entity count: 300 (above threshold 150, but single-threaded is faster here)" << std::endl;
-    std::cout << "Expected: Threshold should INCREASE since single-threaded wins\n" << std::endl;
+    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
+    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms" << std::endl;
+    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms" << std::endl;
 
-    std::cout << "   Frame  Threshold  Avg Time(ms)  Throughput  Learning" << std::endl;
-    std::cout << std::string(60, '-') << std::endl;
+    std::cout << "\n   Frame  BatchMult  SingleTP    MultiTP   Avg Time(ms)  Mode" << std::endl;
+    std::cout << std::string(70, '-') << std::endl;
 
     double totalTime = 0;
     int sampleCount = 0;
-    size_t lastThreshold = initialThreshold;
 
     for (int frame = 0; frame < 3000; ++frame) {
         auto t0 = std::chrono::high_resolution_clock::now();
@@ -418,59 +432,76 @@ BOOST_AUTO_TEST_CASE(Collision_AdaptiveLearning) {
         sampleCount++;
 
         if ((frame + 1) % 500 == 0) {
-            size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Collision);
+            double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
+            double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
+            float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
             double avgMs = totalTime / sampleCount;
-            double throughput = 300.0 / avgMs;
 
-            std::string learning = "---";
-            if (currentThreshold > lastThreshold) {
-                learning = "UP (single better)";
-            } else if (currentThreshold < lastThreshold) {
-                learning = "DOWN (multi better)";
-            }
-            lastThreshold = currentThreshold;
+            std::string mode = (multiTP > singleTP * 1.15) ? "MULTI" :
+                              (singleTP > multiTP * 1.15) ? "SINGLE" : "---";
 
             std::cout << std::setw(8) << (frame + 1)
-                      << std::setw(10) << currentThreshold
+                      << std::setw(10) << std::fixed << std::setprecision(2) << batchMult
+                      << std::setw(10) << std::fixed << std::setprecision(2) << singleTP
+                      << std::setw(10) << std::fixed << std::setprecision(2) << multiTP
                       << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                      << std::setw(12) << std::fixed << std::setprecision(0) << throughput
-                      << "  " << learning << std::endl;
+                      << "  " << mode << std::endl;
 
             totalTime = 0;
             sampleCount = 0;
         }
     }
 
-    size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Collision);
-    std::cout << "\nFinal threshold: " << finalThreshold << std::endl;
+    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, false);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Collision, true);
+    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Collision);
 
-    if (finalThreshold > initialThreshold) {
-        std::cout << "Result: Threshold INCREASED (learned single-threaded is faster)" << std::endl;
-    } else if (finalThreshold < initialThreshold) {
-        std::cout << "Result: Threshold DECREASED (learned multi-threaded is faster)" << std::endl;
-        std::cout << "Status: ALGORITHM WORKING - correctly identified threading benefit" << std::endl;
+    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms" << std::endl;
+    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms" << std::endl;
+    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << std::endl;
+
+    if (finalMultiTP > finalSingleTP * 1.15) {
+        std::cout << "Result: Multi-threaded mode preferred (15%+ faster)" << std::endl;
+    } else if (finalSingleTP > finalMultiTP * 1.15) {
+        std::cout << "Result: Single-threaded mode preferred (15%+ faster)" << std::endl;
     } else {
-        std::cout << "Result: Threshold UNCHANGED (no clear 30%+ winner)" << std::endl;
-        std::cout << "Status: STABLE - system held steady without clear evidence" << std::endl;
+        std::cout << "Result: Modes are comparable (within 15%)" << std::endl;
     }
     std::cout << "============================================\n" << std::endl;
 }
 
 // Summary comparison
 BOOST_AUTO_TEST_CASE(Summary) {
-    std::cout << "\n===== ADAPTIVE THRESHOLD SUMMARY =====\n" << std::endl;
+    std::cout << "\n===== ADAPTIVE THROUGHPUT SUMMARY =====\n" << std::endl;
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    std::cout << "Current Adaptive Thresholds:" << std::endl;
-    std::cout << "  AI:        " << budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI) << std::endl;
-    std::cout << "  Collision: " << budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Collision) << std::endl;
-    std::cout << "  Particle:  " << budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Particle) << std::endl;
-    std::cout << "  Event:     " << budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event) << std::endl;
+    std::cout << "Per-System Throughput (items/ms):" << std::endl;
+    std::cout << "                   Single      Multi    BatchMult" << std::endl;
+    std::cout << std::string(55, '-') << std::endl;
 
-    std::cout << "\nCompare crossover points above to these thresholds." << std::endl;
-    std::cout << "If crossover > threshold: threshold too low (threading used when it shouldn't be)" << std::endl;
-    std::cout << "If crossover < threshold: threshold too high (missing threading benefit)" << std::endl;
+    auto printSystem = [&](const char* name, HammerEngine::SystemType type) {
+        double singleTP = budgetMgr.getExpectedThroughput(type, false);
+        double multiTP = budgetMgr.getExpectedThroughput(type, true);
+        float batchMult = budgetMgr.getBatchMultiplier(type);
+        std::string preferred = (multiTP > singleTP * 1.15) ? "[MULTI]" :
+                               (singleTP > multiTP * 1.15) ? "[SINGLE]" : "[~]";
+        std::cout << "  " << std::setw(12) << std::left << name
+                  << std::setw(10) << std::right << std::fixed << std::setprecision(2) << singleTP
+                  << std::setw(10) << multiTP
+                  << std::setw(10) << batchMult
+                  << "  " << preferred << std::endl;
+    };
+
+    printSystem("AI", HammerEngine::SystemType::AI);
+    printSystem("Collision", HammerEngine::SystemType::Collision);
+    printSystem("Particle", HammerEngine::SystemType::Particle);
+    printSystem("Event", HammerEngine::SystemType::Event);
+
+    std::cout << "\nLegend:" << std::endl;
+    std::cout << "  [MULTI]  = Multi-threaded mode 15%+ faster" << std::endl;
+    std::cout << "  [SINGLE] = Single-threaded mode 15%+ faster" << std::endl;
+    std::cout << "  [~]      = Modes are comparable (within 15%)" << std::endl;
     std::cout << "======================================\n" << std::endl;
 }
 

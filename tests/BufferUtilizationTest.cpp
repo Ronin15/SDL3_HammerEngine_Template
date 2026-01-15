@@ -108,31 +108,31 @@ BOOST_AUTO_TEST_CASE(TestBatchStrategy) {
     BOOST_CHECK_GE(batchCount, 1);
 }
 
-BOOST_AUTO_TEST_CASE(TestBatchCompletionReporting) {
-    std::cout << "\n=== Testing Batch Completion Reporting ===\n";
+BOOST_AUTO_TEST_CASE(TestExecutionReporting) {
+    std::cout << "\n=== Testing Execution Reporting ===\n";
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
-    // Report some batch completions (workload, batchCount, timeMs)
+    // Report some executions (workload, wasThreaded, batchCount, timeMs)
     size_t workload = 1000;
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 4, 0.5);  // 0.125ms per batch
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 4, 0.5);
+    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 4, 0.5);  // 0.5ms total
+    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 4, 0.5);
 
     // Get batch strategy after reporting
     size_t workers = 4;
     auto [batchCount1, batchSize1] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, workload, workers);
 
-    std::cout << "After fast batches (0.125ms/batch): " << batchCount1 << " batches\n";
+    std::cout << "After fast execution (0.5ms total): " << batchCount1 << " batches\n";
 
-    // Report slow batches
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 2, 10.0);  // 5ms per batch
-    budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI, workload, 2, 10.0);
+    // Report slow execution
+    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 2, 10.0);  // 10ms total
+    budgetMgr.reportExecution(HammerEngine::SystemType::AI, workload, true, 2, 10.0);
 
     auto [batchCount2, batchSize2] = budgetMgr.getBatchStrategy(
         HammerEngine::SystemType::AI, workload, workers);
 
-    std::cout << "After slow batches (5ms/batch): " << batchCount2 << " batches\n";
+    std::cout << "After slow execution (10ms total): " << batchCount2 << " batches\n";
 
     // Both should produce valid batch strategies
     BOOST_CHECK_GE(batchCount1, 1);
@@ -358,8 +358,8 @@ BOOST_AUTO_TEST_CASE(TestBatchTuningStability) {
         // Simulate frame execution
         double frameTimeMs = simulateFrameTime(batchCount);
 
-        // Report completion
-        budgetMgr.reportBatchCompletion(systemType, workload, batchCount, frameTimeMs);
+        // Report execution (unified API)
+        budgetMgr.reportExecution(systemType, workload, true, batchCount, frameTimeMs);
 
         // Log every 20 frames
         if (frame < 10 || frame % 20 == 0) {
