@@ -15,6 +15,7 @@
 #include <random>
 
 #include "core/ThreadSystem.hpp"
+#include "core/Logger.hpp"  // For benchmark mode
 #include "managers/EventManager.hpp"
 #include "managers/CollisionManager.hpp"
 #include "managers/PathfinderManager.hpp"
@@ -269,6 +270,9 @@ namespace {
         std::vector<std::shared_ptr<BenchmarkBehavior>> m_behaviors;
 
         void initializeAllManagers() {
+            // Enable benchmark mode to suppress verbose logging during benchmarks
+            HAMMER_ENABLE_BENCHMARK_MODE();
+
             // Initialize in dependency order (matching GameEngine::init pattern)
             HammerEngine::ThreadSystem::Instance().init(); // Auto-detect system threads
 
