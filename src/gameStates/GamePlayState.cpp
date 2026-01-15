@@ -68,6 +68,9 @@ bool GamePlayState::enter() {
                                 gameEngine.getLogicalHeight() / 2.0);
     mp_Player->setPosition(screenCenter);
 
+    // Set player handle in AIManager for collision culling reference point
+    AIManager::Instance().setPlayerHandle(mp_Player->getHandle());
+
     // Initialize the inventory UI
     initializeInventoryUI();
 
@@ -188,8 +191,8 @@ void GamePlayState::update(float deltaTime) {
 
     // Create world configuration for gameplay
     HammerEngine::WorldGenerationConfig config;
-    config.width = 100; // Standard gameplay world
-    config.height = 100;
+    config.width = 200; // Standard gameplay world
+    config.height = 200;
     config.seed = static_cast<int>(std::time(nullptr));
     config.elevationFrequency = 0.05f;
     config.humidityFrequency = 0.03f;
