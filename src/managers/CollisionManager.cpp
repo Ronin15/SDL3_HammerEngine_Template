@@ -58,10 +58,6 @@ using ::HammerEngine::ObstacleType;
 // Building collision body limits
 constexpr uint16_t MAX_BUILDING_SUB_BODIES = 1000;
 
-// Broadphase optimization thresholds
-// Below this static count, direct SIMD iteration is faster than spatial hash queries
-constexpr size_t DIRECT_STATIC_PATH_THRESHOLD = 100;
-
 // Fibonacci hash for pair<int,int> - excellent for sequential tile coordinates
 // Uses golden ratio multiplier for even distribution of consecutive values
 struct PairHash {
@@ -1484,11 +1480,23 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
 
       // Replace staticIndices with filtered physics-only indices
       pools.staticIndices = std::move(physicsIndices);
+
+      // PERF: Sort static pool indices by minX for SAP (Sweep-and-Prune)
+      // This enables O(n + k) movable-vs-static instead of O(n × spatial_query)
+      // Amortized: Only sorted when culling area changes, not every frame
+      pools.sortedStaticIndices.resize(pools.staticAABBs.size());
+      for (size_t i = 0; i < pools.staticAABBs.size(); ++i) {
+        pools.sortedStaticIndices[i] = i;
+      }
+      std::sort(pools.sortedStaticIndices.begin(), pools.sortedStaticIndices.end(),
+                [&pools](size_t a, size_t b) {
+                  return pools.staticAABBs[a].minX < pools.staticAABBs[b].minX;
+                });
     }
     m_lastStaticQueryCullingArea = cullingArea;
     m_staticQueryCacheDirty = false;
   }
-  // else: reuse pools.staticIndices and pools.staticAABBs from previous frame
+  // else: reuse pools.staticIndices, pools.staticAABBs, and pools.sortedStaticIndices from previous frame
   totalStatic = pools.staticIndices.size();
 
   // EDM-CENTRIC: Get Active tier entities with collision enabled
@@ -1701,109 +1709,64 @@ void CollisionManager::broadphaseSingleThreaded() {
   }
 
   // ========================================================================
-  // 2. MOVABLE-VS-STATIC: Iterate each movable against statics
-  //    Movables use pools.movableAABBs, statics use cached pools.staticAABBs
+  // 2. MOVABLE-VS-STATIC: SAP (Sweep-and-Prune) using pre-sorted statics
+  //    Uses sortedStaticIndices (sorted by minX when culling area changes)
+  //    O(movables × k) where k << statics due to SAP early termination
   // ========================================================================
-  // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
-  // Direct path: O(movables × statics) comparisons but no query overhead.
-  // Spatial hash: O(movables × nearby_statics) with query + overlap test.
-  const bool useDirectPath = (staticIndices.size() < DIRECT_STATIC_PATH_THRESHOLD);
   const auto &staticAABBs = pools.staticAABBs;
+  const auto &sortedStaticIndices = pools.sortedStaticIndices;
+
+  if (sortedStaticIndices.empty()) {
+    return; // No statics to check
+  }
 
   for (size_t poolIdx = 0; poolIdx < movableIndices.size(); ++poolIdx) {
     const auto &movableAABB = movableAABBs[poolIdx];
     const uint32_t movableCollidesWith = movableAABB.collidesWith;
+    const float movMinX = movableAABB.minX - SPATIAL_QUERY_EPSILON;
+    const float movMaxX = movableAABB.maxX + SPATIAL_QUERY_EPSILON;
+    const float movMinY = movableAABB.minY - SPATIAL_QUERY_EPSILON;
+    const float movMaxY = movableAABB.maxY + SPATIAL_QUERY_EPSILON;
 
-    if (useDirectPath) {
-      // DIRECT PATH: SIMD 4-wide check of cached staticAABBs
-      Float4 dynMinX = broadcast(movableAABB.minX - SPATIAL_QUERY_EPSILON);
-      Float4 dynMinY = broadcast(movableAABB.minY - SPATIAL_QUERY_EPSILON);
-      Float4 dynMaxX = broadcast(movableAABB.maxX + SPATIAL_QUERY_EPSILON);
-      Float4 dynMaxY = broadcast(movableAABB.maxY + SPATIAL_QUERY_EPSILON);
-      const Int4 layerMaskVec = broadcast_int(static_cast<int32_t>(movableCollidesWith));
-
-      size_t si = 0;
-      const size_t simdEnd = (staticAABBs.size() / 4) * 4;
-
-      for (; si < simdEnd; si += 4) {
-        const auto &a0 = staticAABBs[si];
-        const auto &a1 = staticAABBs[si + 1];
-        const auto &a2 = staticAABBs[si + 2];
-        const auto &a3 = staticAABBs[si + 3];
-
-        Float4 statMinX = set(a0.minX, a1.minX, a2.minX, a3.minX);
-        Float4 statMaxX = set(a0.maxX, a1.maxX, a2.maxX, a3.maxX);
-        Float4 statMinY = set(a0.minY, a1.minY, a2.minY, a3.minY);
-        Float4 statMaxY = set(a0.maxY, a1.maxY, a2.maxY, a3.maxY);
-
-        Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
-        Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
-        Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
-        Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
-        Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2),
-                                      bitwise_or(noOverlapY1, noOverlapY2));
-        int noOverlapMask = movemask(noOverlap);
-
-        if (noOverlapMask == 0xF)
-          continue;
-
-        Int4 staticLayers = set_int4(a0.layers, a1.layers, a2.layers, a3.layers);
-        Int4 layerResult = bitwise_and(staticLayers, layerMaskVec);
-        Int4 layerFail = cmpeq_int(layerResult, setzero_int());
-        int layerFailMask = movemask_int(layerFail);
-
-        for (size_t j = 0; j < 4; ++j) {
-          if (((noOverlapMask >> j) & 1) == 0 &&
-              ((layerFailMask >> (j * 4)) & 0xF) == 0) {
-            if (staticAABBs[si + j].active) {
-              pools.movableStaticPairs.emplace_back(poolIdx, staticIndices[si + j]);
-            }
-          }
-        }
+    // Binary search: find first static whose minX could overlap movable
+    // We want first static where staticAABB.maxX >= movMinX
+    // Since sorted by minX, we find first where minX <= movMaxX and sweep
+    size_t left = 0;
+    size_t right = sortedStaticIndices.size();
+    while (left < right) {
+      size_t mid = left + (right - left) / 2;
+      const auto &midAABB = staticAABBs[sortedStaticIndices[mid]];
+      // Find leftmost static that could overlap: maxX >= movMinX
+      if (midAABB.maxX < movMinX) {
+        left = mid + 1;
+      } else {
+        right = mid;
       }
+    }
 
-      // Scalar tail
-      for (; si < staticAABBs.size(); ++si) {
-        const auto &staticAABB = staticAABBs[si];
-        if (!staticAABB.active)
-          continue;
-        if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticAABB.minX ||
-            movableAABB.minX - SPATIAL_QUERY_EPSILON > staticAABB.maxX ||
-            movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticAABB.minY ||
-            movableAABB.minY - SPATIAL_QUERY_EPSILON > staticAABB.maxY)
-          continue;
-        if ((movableCollidesWith & staticAABB.layers) == 0)
-          continue;
-        pools.movableStaticPairs.emplace_back(poolIdx, staticIndices[si]);
-      }
-    } else {
-      // SPATIAL HASH PATH: Query for nearby statics only
-      float queryMinX = movableAABB.minX - SPATIAL_QUERY_EPSILON;
-      float queryMinY = movableAABB.minY - SPATIAL_QUERY_EPSILON;
-      float queryMaxX = movableAABB.maxX + SPATIAL_QUERY_EPSILON;
-      float queryMaxY = movableAABB.maxY + SPATIAL_QUERY_EPSILON;
+    // SAP sweep: iterate from 'left' until static.minX > movMaxX
+    for (size_t si = left; si < sortedStaticIndices.size(); ++si) {
+      size_t staticPoolIdx = sortedStaticIndices[si];
+      const auto &staticAABB = staticAABBs[staticPoolIdx];
 
-      auto &staticCandidates = getPooledVector();
-      m_staticSpatialHash.queryRegionBounds(queryMinX, queryMinY, queryMaxX,
-                                            queryMaxY, staticCandidates);
+      // SAP early termination: if static.minX > movMaxX, no more overlaps
+      if (staticAABB.minX > movMaxX)
+        break;
 
-      for (size_t si = 0; si < staticCandidates.size(); ++si) {
-        size_t staticIdx = staticCandidates[si];
-        const auto &staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active)
-          continue;
-        if ((movableCollidesWith & staticHot.layers) == 0)
-          continue;
-        // AABB overlap test - spatial hash returns region candidates, not
-        // guaranteed overlaps
-        if (movableAABB.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-            movableAABB.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-            movableAABB.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-            movableAABB.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY)
-          continue;
-        pools.movableStaticPairs.emplace_back(poolIdx, staticIdx);
-      }
-      returnPooledVector(staticCandidates);
+      // Skip inactive statics (pre-filtered but double-check)
+      if (!staticAABB.active)
+        continue;
+
+      // X overlap confirmed by SAP, check Y overlap
+      if (movMaxY < staticAABB.minY || movMinY > staticAABB.maxY)
+        continue;
+
+      // Layer mask check
+      if ((movableCollidesWith & staticAABB.layers) == 0)
+        continue;
+
+      // Collision pair found - use staticIndices[staticPoolIdx] for storage index
+      pools.movableStaticPairs.emplace_back(poolIdx, staticIndices[staticPoolIdx]);
     }
   }
 }
@@ -1957,107 +1920,57 @@ void CollisionManager::broadphaseBatch(
     }
 
     // ========================================================================
-    // 2. MOVABLE-VS-STATIC: Check against statics in m_storage
+    // 2. MOVABLE-VS-STATIC: SAP using pre-sorted statics (thread-safe)
+    //    Uses sortedStaticIndices (sorted by minX when culling area changes)
+    //    O(k) per movable where k << statics due to SAP early termination
     // ========================================================================
-    // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
-    // Direct path: O(batch × statics) SIMD comparisons but no query overhead.
-    // Spatial hash: O(batch × nearby_statics) with query + overlap test.
-    const bool useDirectPath = (staticIndices.size() < DIRECT_STATIC_PATH_THRESHOLD);
     const auto &staticAABBs = pools.staticAABBs;
+    const auto &sortedStaticIndices = pools.sortedStaticIndices;
 
-    if (useDirectPath) {
-      // DIRECT PATH: Iterate cached staticAABBs with SIMD (contiguous memory
-      // access) Setup SIMD broadcasts for this movable
-      Float4 dynMinX = broadcast(aabbA.minX - SPATIAL_QUERY_EPSILON);
-      Float4 dynMinY = broadcast(aabbA.minY - SPATIAL_QUERY_EPSILON);
-      Float4 dynMaxX = broadcast(aabbA.maxX + SPATIAL_QUERY_EPSILON);
-      Float4 dynMaxY = broadcast(aabbA.maxY + SPATIAL_QUERY_EPSILON);
-      const Int4 staticMaskVec = broadcast_int(collidesWithA);
+    if (sortedStaticIndices.empty())
+      continue;
 
-      size_t si = 0;
-      const size_t staticSimdEnd = (staticAABBs.size() / 4) * 4;
+    const float movMinX = aabbA.minX - SPATIAL_QUERY_EPSILON;
+    const float movMaxX = aabbA.maxX + SPATIAL_QUERY_EPSILON;
+    const float movMinY = aabbA.minY - SPATIAL_QUERY_EPSILON;
+    const float movMaxY = aabbA.maxY + SPATIAL_QUERY_EPSILON;
 
-      for (; si < staticSimdEnd; si += 4) {
-        // Contiguous access to cached staticAABBs - no scattered memory reads
-        const auto &a0 = staticAABBs[si];
-        const auto &a1 = staticAABBs[si + 1];
-        const auto &a2 = staticAABBs[si + 2];
-        const auto &a3 = staticAABBs[si + 3];
-
-        Float4 statMinX = set(a0.minX, a1.minX, a2.minX, a3.minX);
-        Float4 statMaxX = set(a0.maxX, a1.maxX, a2.maxX, a3.maxX);
-        Float4 statMinY = set(a0.minY, a1.minY, a2.minY, a3.minY);
-        Float4 statMaxY = set(a0.maxY, a1.maxY, a2.maxY, a3.maxY);
-
-        Float4 noOverlapX1 = cmplt(dynMaxX, statMinX);
-        Float4 noOverlapX2 = cmplt(statMaxX, dynMinX);
-        Float4 noOverlapY1 = cmplt(dynMaxY, statMinY);
-        Float4 noOverlapY2 = cmplt(statMaxY, dynMinY);
-        Float4 noOverlap = bitwise_or(bitwise_or(noOverlapX1, noOverlapX2),
-                                      bitwise_or(noOverlapY1, noOverlapY2));
-        int noOverlapMask = movemask(noOverlap);
-
-        if (noOverlapMask == 0xF)
-          continue;
-
-        Int4 staticLayers =
-            set_int4(a0.layers, a1.layers, a2.layers, a3.layers);
-        Int4 staticResult = bitwise_and(staticLayers, staticMaskVec);
-        Int4 staticCmp = cmpeq_int(staticResult, setzero_int());
-        int layerFailMask = movemask_int(staticCmp);
-
-        for (size_t j = 0; j < 4; ++j) {
-          if (((noOverlapMask >> j) & 1) == 0 &&
-              ((layerFailMask >> (j * 4)) & 0xF) == 0) {
-            if (staticAABBs[si + j].active) {
-              outMovableStatic.emplace_back(poolIdxA, staticIndices[si + j]);
-            }
-          }
-        }
+    // Binary search: find first static whose maxX >= movMinX
+    size_t left = 0;
+    size_t right = sortedStaticIndices.size();
+    while (left < right) {
+      size_t mid = left + (right - left) / 2;
+      const auto &midAABB = staticAABBs[sortedStaticIndices[mid]];
+      if (midAABB.maxX < movMinX) {
+        left = mid + 1;
+      } else {
+        right = mid;
       }
+    }
 
-      // Scalar tail using cached AABBs
-      for (; si < staticAABBs.size(); ++si) {
-        const auto &staticAABB = staticAABBs[si];
-        if (!staticAABB.active)
-          continue;
-        if (aabbA.maxX + SPATIAL_QUERY_EPSILON < staticAABB.minX ||
-            aabbA.minX - SPATIAL_QUERY_EPSILON > staticAABB.maxX ||
-            aabbA.maxY + SPATIAL_QUERY_EPSILON < staticAABB.minY ||
-            aabbA.minY - SPATIAL_QUERY_EPSILON > staticAABB.maxY)
-          continue;
-        if ((collidesWithA & staticAABB.layers) == 0)
-          continue;
-        outMovableStatic.emplace_back(poolIdxA, staticIndices[si]);
-      }
-    } else {
-      // SPATIAL HASH PATH: Query for nearby statics (thread-safe)
-      float queryMinX = aabbA.minX - SPATIAL_QUERY_EPSILON;
-      float queryMinY = aabbA.minY - SPATIAL_QUERY_EPSILON;
-      float queryMaxX = aabbA.maxX + SPATIAL_QUERY_EPSILON;
-      float queryMaxY = aabbA.maxY + SPATIAL_QUERY_EPSILON;
+    // SAP sweep: iterate from 'left' until static.minX > movMaxX
+    for (size_t si = left; si < sortedStaticIndices.size(); ++si) {
+      size_t staticPoolIdx = sortedStaticIndices[si];
+      const auto &staticAABB = staticAABBs[staticPoolIdx];
 
-      thread_local std::vector<size_t> staticCandidates;
-      thread_local HammerEngine::HierarchicalSpatialHash::QueryBuffers
-          queryBuffers;
-      staticCandidates.clear();
-      m_staticSpatialHash.queryRegionBoundsThreadSafe(
-          queryMinX, queryMinY, queryMaxX, queryMaxY, staticCandidates,
-          queryBuffers);
+      // SAP early termination
+      if (staticAABB.minX > movMaxX)
+        break;
 
-      for (size_t staticIdx : staticCandidates) {
-        const auto &staticHot = m_storage.hotData[staticIdx];
-        if (!staticHot.active || (collidesWithA & staticHot.layers) == 0)
-          continue;
-        // AABB overlap test - spatial hash returns region candidates, not
-        // guaranteed overlaps
-        if (aabbA.maxX + SPATIAL_QUERY_EPSILON < staticHot.aabbMinX ||
-            aabbA.minX - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxX ||
-            aabbA.maxY + SPATIAL_QUERY_EPSILON < staticHot.aabbMinY ||
-            aabbA.minY - SPATIAL_QUERY_EPSILON > staticHot.aabbMaxY)
-          continue;
-        outMovableStatic.emplace_back(poolIdxA, staticIdx);
-      }
+      // Skip inactive
+      if (!staticAABB.active)
+        continue;
+
+      // Y overlap check
+      if (movMaxY < staticAABB.minY || movMinY > staticAABB.maxY)
+        continue;
+
+      // Layer mask check
+      if ((collidesWithA & staticAABB.layers) == 0)
+        continue;
+
+      // Collision pair found
+      outMovableStatic.emplace_back(poolIdxA, staticIndices[staticPoolIdx]);
     }
   }
 }

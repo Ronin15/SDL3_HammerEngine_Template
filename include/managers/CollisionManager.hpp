@@ -489,6 +489,7 @@ private:
         std::vector<size_t> movableIndices;       // EDM indices of Active tier entities with collision
         std::vector<size_t> staticIndices;        // m_storage indices of static bodies in culling area
         std::vector<size_t> sortedMovableIndices; // Pool indices sorted by X for Sweep-and-Prune
+        std::vector<size_t> sortedStaticIndices;  // Pool indices into staticAABBs sorted by X for SAP
 
         // EDM-CENTRIC: Cached AABBs for movables, computed from EDM each frame
         // Parallel to movableIndices: movableAABBs[i] corresponds to movableIndices[i]
@@ -558,6 +559,7 @@ private:
                 movableAABBs.reserve(bodyCount / 4);    // Parallel to movableIndices
                 staticIndices.reserve(bodyCount);
                 sortedMovableIndices.reserve(bodyCount / 4);
+                sortedStaticIndices.reserve(bodyCount);  // For SAP on statics
                 movableMovablePairs.reserve(expectedPairs / 4);
                 movableStaticPairs.reserve(expectedPairs);
 
