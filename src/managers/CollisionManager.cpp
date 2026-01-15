@@ -39,7 +39,6 @@
 #include <chrono>
 #include <format>
 #include <map>
-#include <numeric>
 #include <queue>
 #include <unordered_map>
 #include <unordered_set>
@@ -58,6 +57,10 @@ using ::HammerEngine::ObstacleType;
 
 // Building collision body limits
 constexpr uint16_t MAX_BUILDING_SUB_BODIES = 1000;
+
+// Broadphase optimization thresholds
+// Below this static count, direct SIMD iteration is faster than spatial hash queries
+constexpr size_t DIRECT_STATIC_PATH_THRESHOLD = 100;
 
 // Fibonacci hash for pair<int,int> - excellent for sequential tile coordinates
 // Uses golden ratio multiplier for even distribution of consecutive values
@@ -154,7 +157,6 @@ void CollisionManager::prepareForStateTransition() {
   // Clear all collision bodies and spatial hashes
   m_storage.clear();
   m_staticSpatialHash.clear();
-  m_dynamicSpatialHash.clear();
   m_eventOnlySpatialHash.clear();
 
   // Clear collision buffers to prevent dangling references to deleted bodies
@@ -943,33 +945,21 @@ void CollisionManager::onTileChanged(int x, int y) {
       }
 
       if (isTopLeft) {
-        // REMOVE OLD COLLISION BODIES: Handle BOTH old and new EntityID formats
-        // OLD format (single body): (3ull << 61) | buildingId
-        // NEW format (multi-body): (3ull << 61) | (buildingId << 16) |
-        // subBodyIndex
-
-        // First, remove OLD format single bounding box (if it exists)
-        EntityID oldSingleBodyId =
-            (static_cast<EntityID>(3ull) << 61) |
-            static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-        removeCollisionBody(oldSingleBodyId);
-
-        // Then, remove all NEW format multi-body collision bodies
+        // Remove existing multi-body collision bodies for this building
+        // EntityID format: (3ull << 61) | (buildingId << 16) | subBodyIndex
         uint16_t subBodyIndex = 0;
-        while (
-            subBodyIndex <
-            MAX_BUILDING_SUB_BODIES) { // Safety limit to prevent infinite loop
-          EntityID newMultiBodyId =
+        while (subBodyIndex < MAX_BUILDING_SUB_BODIES) {
+          EntityID bodyId =
               (static_cast<EntityID>(3ull) << 61) |
               (static_cast<EntityID>(tile.buildingId) << 16) |
               static_cast<EntityID>(subBodyIndex);
 
-          auto it = m_storage.entityToIndex.find(newMultiBodyId);
+          auto it = m_storage.entityToIndex.find(bodyId);
           if (it == m_storage.entityToIndex.end()) {
             break; // No more sub-bodies for this building
           }
 
-          removeCollisionBody(newMultiBodyId);
+          removeCollisionBody(bodyId);
           ++subBodyIndex;
         }
 
@@ -1038,29 +1028,21 @@ void CollisionManager::onTileChanged(int x, int y) {
       }
     } else if (tile.obstacleType != ObstacleType::BUILDING &&
                tile.buildingId > 0) {
-      // Tile was a building but no longer is - remove ALL building collision
-      // bodies Handle BOTH old and new EntityID formats
-
-      // Remove OLD format single bounding box (if it exists)
-      EntityID oldSingleBodyId =
-          (static_cast<EntityID>(3ull) << 61) |
-          static_cast<EntityID>(static_cast<uint32_t>(tile.buildingId));
-      removeCollisionBody(oldSingleBodyId);
-
-      // Remove all NEW format multi-body collision bodies
+      // Tile was a building but no longer is - remove all building collision bodies
+      // EntityID format: (3ull << 61) | (buildingId << 16) | subBodyIndex
       uint16_t subBodyIndex = 0;
-      while (subBodyIndex < 1000) { // Safety limit to prevent infinite loop
-        EntityID newMultiBodyId =
+      while (subBodyIndex < MAX_BUILDING_SUB_BODIES) {
+        EntityID bodyId =
             (static_cast<EntityID>(3ull) << 61) |
             (static_cast<EntityID>(tile.buildingId) << 16) |
             static_cast<EntityID>(subBodyIndex);
 
-        auto it = m_storage.entityToIndex.find(newMultiBodyId);
+        auto it = m_storage.entityToIndex.find(bodyId);
         if (it == m_storage.entityToIndex.end()) {
           break; // No more sub-bodies for this building
         }
 
-        removeCollisionBody(newMultiBodyId);
+        removeCollisionBody(bodyId);
         ++subBodyIndex;
       }
     }
@@ -1555,6 +1537,21 @@ CollisionManager::buildActiveIndices(const CullingArea &cullingArea) const {
     pools.movableAABBs.push_back(aabb);
   }
 
+  // Build reverse mapping: EDM index → pool index for O(1) lookup in trigger detection
+  // This replaces the O(N) linear search in findPoolIndex()
+  // Find max EDM index to size the vector appropriately
+  size_t maxEdmIdx = 0;
+  for (size_t edmIdx : pools.movableIndices) {
+    if (edmIdx > maxEdmIdx) {
+      maxEdmIdx = edmIdx;
+    }
+  }
+  pools.edmToPoolIndex.assign(maxEdmIdx + 1, SIZE_MAX);
+  for (size_t poolIdx = 0; poolIdx < pools.movableIndices.size(); ++poolIdx) {
+    size_t edmIdx = pools.movableIndices[poolIdx];
+    pools.edmToPoolIndex[edmIdx] = poolIdx;
+  }
+
   return {totalStatic, totalDynamic, totalKinematic};
 }
 
@@ -1710,7 +1707,7 @@ void CollisionManager::broadphaseSingleThreaded() {
   // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
   // Direct path: O(movables × statics) comparisons but no query overhead.
   // Spatial hash: O(movables × nearby_statics) with query + overlap test.
-  const bool useDirectPath = (staticIndices.size() < 100);
+  const bool useDirectPath = (staticIndices.size() < DIRECT_STATIC_PATH_THRESHOLD);
   const auto &staticAABBs = pools.staticAABBs;
 
   for (size_t poolIdx = 0; poolIdx < movableIndices.size(); ++poolIdx) {
@@ -1965,7 +1962,7 @@ void CollisionManager::broadphaseBatch(
     // DYNAMIC THRESHOLD: Use spatial hash when it filters significantly.
     // Direct path: O(batch × statics) SIMD comparisons but no query overhead.
     // Spatial hash: O(batch × nearby_statics) with query + overlap test.
-    const bool useDirectPath = (staticIndices.size() < 100);
+    const bool useDirectPath = (staticIndices.size() < DIRECT_STATIC_PATH_THRESHOLD);
     const auto &staticAABBs = pools.staticAABBs;
 
     if (useDirectPath) {
@@ -2252,8 +2249,7 @@ void CollisionManager::update(float dt) {
 
   auto cullingEnd = clock::now();
 
-  // Sync spatial hashes after culling, only for active bodies
-  syncSpatialHashesWithActiveIndices();
+  // NOTE: Dynamic spatial hash removed - movables use direct AABB iteration with sweep-and-prune
 
   // Reset static culling counter for this frame
   m_perf.lastStaticBodiesCulled = 0;
@@ -2361,17 +2357,6 @@ void CollisionManager::update(float dt) {
 
 // ========== SOA UPDATE HELPER METHODS ==========
 
-// Sync spatial hash for active bodies after culling
-void CollisionManager::syncSpatialHashesWithActiveIndices() {
-  // OPTIMIZATION: Dynamic spatial hash no longer needed!
-  // The optimized broadphase uses:
-  // - pools.movableIndices for movable-vs-movable (direct SIMD iteration)
-  // - pools.staticIndices or m_staticSpatialHash for movable-vs-static
-  // This eliminates ~160 hash insert calls per frame (each with allocation +
-  // mutex overhead)
-
-  // Static hash is managed separately via rebuildStaticSpatialHash()
-}
 
 void CollisionManager::rebuildStaticSpatialHash() {
   std::lock_guard<std::mutex> lock(m_staticRebuildMutex);
@@ -2643,13 +2628,11 @@ void CollisionManager::testTriggerOverlapAndRecord(size_t edmIdx,
   }
 }
 
-// Helper: Find the pool index for a given EDM index
+/// Helper: Find the pool index for a given EDM index - O(1) lookup via edmToPoolIndex cache
 size_t CollisionManager::findPoolIndex(size_t edmIdx) const {
   const auto &pools = m_collisionPool;
-  for (size_t i = 0; i < pools.movableIndices.size(); ++i) {
-    if (pools.movableIndices[i] == edmIdx) {
-      return i;
-    }
+  if (edmIdx < pools.edmToPoolIndex.size()) {
+    return pools.edmToPoolIndex[edmIdx];
   }
   return SIZE_MAX;
 }
@@ -2960,104 +2943,65 @@ void CollisionManager::updatePerformanceMetrics(
 #endif // DEBUG
 }
 
-void CollisionManager::updateKinematicBatch(
-    const std::vector<KinematicUpdate> &updates) {
-  if (updates.empty())
+// Helper: Apply a single kinematic update to EDM and cached AABB
+void CollisionManager::applyKinematicUpdate(const KinematicUpdate& update) {
+  auto it = m_storage.entityToIndex.find(update.id);
+  if (it == m_storage.entityToIndex.end() || it->second >= m_storage.size()) {
     return;
+  }
 
-  // Batch update all kinematic bodies - update EDM (single source of truth)
-  auto &edm = EntityDataManager::Instance();
-  for (const auto &bodyUpdate : updates) {
-    auto it = m_storage.entityToIndex.find(bodyUpdate.id);
-    if (it != m_storage.entityToIndex.end() && it->second < m_storage.size()) {
-      size_t index = it->second;
-      auto &hot = m_storage.hotData[index];
-      if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC &&
-          hot.edmIndex != SIZE_MAX) {
-        // Update EDM - it owns position/velocity
-        auto &transform = edm.getTransformByIndex(hot.edmIndex);
-        transform.position = bodyUpdate.position;
-        transform.velocity = bodyUpdate.velocity;
+  size_t index = it->second;
+  auto& hot = m_storage.hotData[index];
 
-        // Update cached AABB immediately for spatial queries
-        const auto &edmHot = edm.getHotDataByIndex(hot.edmIndex);
-        float px = bodyUpdate.position.getX();
-        float py = bodyUpdate.position.getY();
-        float hw = edmHot.halfWidth;
-        float hh = edmHot.halfHeight;
+  if (static_cast<BodyType>(hot.bodyType) != BodyType::KINEMATIC ||
+      hot.edmIndex == SIZE_MAX) {
+    return;
+  }
 
-        hot.aabbMinX = px - hw;
-        hot.aabbMinY = py - hh;
-        hot.aabbMaxX = px + hw;
-        hot.aabbMaxY = py + hh;
-        hot.active = true;
-      }
-    }
+  // Update EDM - it owns position/velocity
+  auto& edm = EntityDataManager::Instance();
+  auto& transform = edm.getTransformByIndex(hot.edmIndex);
+  transform.position = update.position;
+  transform.velocity = update.velocity;
+
+  // Update cached AABB immediately for spatial queries
+  const auto& edmHot = edm.getHotDataByIndex(hot.edmIndex);
+  float px = update.position.getX();
+  float py = update.position.getY();
+  float hw = edmHot.halfWidth;
+  float hh = edmHot.halfHeight;
+
+  hot.aabbMinX = px - hw;
+  hot.aabbMinY = py - hh;
+  hot.aabbMaxX = px + hw;
+  hot.aabbMaxY = py + hh;
+  hot.active = true;
+}
+
+void CollisionManager::updateKinematicBatch(
+    const std::vector<KinematicUpdate>& updates) {
+  for (const auto& update : updates) {
+    applyKinematicUpdate(update);
   }
 }
 
 void CollisionManager::applyBatchedKinematicUpdates(
-    const std::vector<std::vector<KinematicUpdate>> &batchUpdates) {
+    const std::vector<std::vector<KinematicUpdate>>& batchUpdates) {
   // PER-BATCH COLLISION UPDATES: Zero contention approach
   // Each AI batch has its own buffer, we merge them here with no mutex needed.
-  // This eliminates the serialization bottleneck that caused frame jitter.
-
-  if (batchUpdates.empty())
-    return;
-
-  // Count total updates for efficiency
-  size_t totalUpdates = std::accumulate(
-      batchUpdates.begin(), batchUpdates.end(), size_t{0},
-      [](size_t sum, const auto &batch) { return sum + batch.size(); });
-
-  if (totalUpdates == 0)
-    return;
-
-  // Merge all batch updates into EDM (single source of truth)
-  auto &edm = EntityDataManager::Instance();
-  for (const auto &batchBuffer : batchUpdates) {
-    for (const auto &bodyUpdate : batchBuffer) {
-      auto it = m_storage.entityToIndex.find(bodyUpdate.id);
-      if (it != m_storage.entityToIndex.end() &&
-          it->second < m_storage.size()) {
-        size_t index = it->second;
-        auto &hot = m_storage.hotData[index];
-        if (static_cast<BodyType>(hot.bodyType) == BodyType::KINEMATIC &&
-            hot.edmIndex != SIZE_MAX) {
-          // Update EDM - it owns position/velocity
-          auto &transform = edm.getTransformByIndex(hot.edmIndex);
-          transform.position = bodyUpdate.position;
-          transform.velocity = bodyUpdate.velocity;
-
-          // Update cached AABB immediately for spatial queries
-          const auto &edmHot = edm.getHotDataByIndex(hot.edmIndex);
-          float px = bodyUpdate.position.getX();
-          float py = bodyUpdate.position.getY();
-          float hw = edmHot.halfWidth;
-          float hh = edmHot.halfHeight;
-
-          hot.aabbMinX = px - hw;
-          hot.aabbMinY = py - hh;
-          hot.aabbMaxX = px + hw;
-          hot.aabbMaxY = py + hh;
-          hot.active = true;
-        }
-      }
+  for (const auto& batch : batchUpdates) {
+    for (const auto& update : batch) {
+      applyKinematicUpdate(update);
     }
   }
 }
 
 void CollisionManager::applyKinematicUpdates(
-    std::vector<KinematicUpdate> &updates) {
-  // Convenience wrapper for single-vector updates (avoids allocation in caller)
-  // Just wrap in a single-element batch and call the batched version
-  if (updates.empty())
-    return;
-
-  std::vector<std::vector<KinematicUpdate>> singleBatch(1);
-  singleBatch[0] = std::move(updates); // Move to avoid copy
-  applyBatchedKinematicUpdates(singleBatch);
-  updates = std::move(singleBatch[0]); // Move back to preserve buffer for reuse
+    std::vector<KinematicUpdate>& updates) {
+  // Apply updates directly - no wrapper allocation needed
+  for (const auto& update : updates) {
+    applyKinematicUpdate(update);
+  }
 }
 
 // ========== SOA BODY MANAGEMENT METHODS ==========

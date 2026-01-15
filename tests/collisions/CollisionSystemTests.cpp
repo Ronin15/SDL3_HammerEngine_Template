@@ -984,6 +984,18 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     EntityHandle handleA = edm.createDataDrivenNPC(posA, "Guard");
     EntityHandle handleB = edm.createDataDrivenNPC(posB, "Guard");
 
+    // Get EDM indices and set up collision layers for testing
+    // NPCs are created with Layer_Default by default (faction=Friendly), which doesn't
+    // collide with other Layer_Default entities. Set Layer_Enemy for this test.
+    size_t edmIdxA = edm.findIndexByEntityId(handleA.getId());
+    size_t edmIdxB = edm.findIndexByEntityId(handleB.getId());
+    auto& hotA = edm.getHotDataByIndex(edmIdxA);
+    auto& hotB = edm.getHotDataByIndex(edmIdxB);
+    hotA.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+    hotA.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy;
+    hotB.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+    hotB.collisionMask = HammerEngine::CollisionLayer::Layer_Enemy;
+
     // EDM-CENTRIC: Use BackgroundSimulationManager to update tiers
     // This populates m_activeIndices for collision detection
     auto& bgm = BackgroundSimulationManager::Instance();
@@ -997,12 +1009,7 @@ BOOST_AUTO_TEST_CASE(TestCollisionInfoIndicesIntegrity)
     BOOST_REQUIRE_MESSAGE(activeIndices.size() >= 2,
         "Expected at least 2 entities in active tier, got " + std::to_string(activeIndices.size()));
 
-    // NPCs are created with Layer_Enemy and mask includes Layer_Enemy, so NPC-NPC should collide
     // Verify collision is enabled for both entities
-    size_t edmIdxA = edm.findIndexByEntityId(handleA.getId());
-    size_t edmIdxB = edm.findIndexByEntityId(handleB.getId());
-    const auto& hotA = edm.getHotDataByIndex(edmIdxA);
-    const auto& hotB = edm.getHotDataByIndex(edmIdxB);
     BOOST_REQUIRE_MESSAGE(hotA.hasCollision(), "Entity A should have collision enabled");
     BOOST_REQUIRE_MESSAGE(hotB.hasCollision(), "Entity B should have collision enabled");
 
