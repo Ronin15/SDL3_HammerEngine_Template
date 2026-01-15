@@ -5,7 +5,9 @@
 
 #include "core/WorkerBudget.hpp"
 #include "core/ThreadSystem.hpp"
+#include "core/Logger.hpp"
 #include <algorithm>
+#include <format>
 
 namespace HammerEngine {
 
@@ -120,6 +122,23 @@ ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, siz
     double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
     double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
 
+#ifndef NDEBUG
+    // Debug: Threading decision (every 300 frames)
+    if (system == SystemType::Collision || system == SystemType::AI) {
+        static thread_local uint64_t debugCounterColl = 0;
+        static thread_local uint64_t debugCounterAI = 0;
+        uint64_t& counter = (system == SystemType::Collision) ? debugCounterColl : debugCounterAI;
+        if (++counter % 300 == 0) {
+            size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
+            bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+            const char* name = (system == SystemType::Collision) ? "Collision" : "AI";
+            HAMMER_DEBUG("WorkerBudget", std::format(
+                "{}: wl={}, sTP={:.0f}, mTP={:.0f}, was={}, frames={}",
+                name, workloadSize, singleTP, multiTP, wasThreaded, framesSince));
+        }
+    }
+#endif
+
     // No data yet - use default behavior based on workload size
     if (singleTP <= 0.0 && multiTP <= 0.0) {
         // Start with threading for larger workloads until we have data
@@ -187,8 +206,9 @@ void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize
         state.multiSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
 
         // Run batch tuning (only when multi-threaded)
+        // Use smoothed throughput to filter noise from frame-to-frame variance
         if (batchCount > 0) {
-            updateBatchMultiplier(state, throughput);
+            updateBatchMultiplier(state, smoothed);
         }
 
         // Reset frames counter for single-threaded sampling
@@ -236,9 +256,17 @@ bool WorkerBudgetManager::shouldExploreOtherMode(SystemType system) const {
 
     // Signal 1: Multiplier hitting floor suggests less parallelism wanted
     // If we're threading and multiplier is very low, single-threaded might be better
+    // BUT: don't explore if threading is already confirmed better
     if (wasThreaded) {
         float mult = state.multiplier.load(std::memory_order_relaxed);
         if (mult <= SystemTuningState::MIN_MULTIPLIER * 1.5f) {
+            // Check if threading is clearly better before exploring
+            double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+            double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+            if (singleTP > 0.0 && multiTP > singleTP * SystemTuningState::MODE_SWITCH_THRESHOLD) {
+                // Threading confirmed better, don't waste time exploring single
+                return false;
+            }
             return true;  // Try single-threaded
         }
     }
