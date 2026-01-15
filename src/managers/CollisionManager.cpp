@@ -1630,10 +1630,17 @@ void CollisionManager::broadphaseSingleThreaded() {
     for (size_t i = 0; i < movableIndices.size(); ++i) {
       sorted[i] = i; // Pool index
     }
-    std::sort(sorted.begin(), sorted.end(),
-              [&movableAABBs](size_t a, size_t b) {
-                return movableAABBs[a].minX < movableAABBs[b].minX;
-              });
+
+    // ADAPTIVE SORT: Use insertion sort for nearly-sorted data (NPCs moving slowly),
+    // fall back to std::sort when disorder is high (many fast-moving projectiles)
+    if (isNearlySorted(sorted, movableAABBs)) {
+      insertionSortByMinX(sorted, movableAABBs);
+    } else {
+      std::sort(sorted.begin(), sorted.end(),
+                [&movableAABBs](size_t a, size_t b) {
+                  return movableAABBs[a].minX < movableAABBs[b].minX;
+                });
+    }
 
     // Sweep: for each body, only check bodies that start before this one ends
     // (X overlap) - SIMD 4-wide Y-overlap + layer checks
@@ -1792,9 +1799,16 @@ void CollisionManager::broadphaseMultiThreaded(size_t batchCount,
   for (size_t i = 0; i < movableIndices.size(); ++i) {
     sorted[i] = i; // Pool index
   }
-  std::sort(sorted.begin(), sorted.end(), [&movableAABBs](size_t a, size_t b) {
-    return movableAABBs[a].minX < movableAABBs[b].minX;
-  });
+
+  // ADAPTIVE SORT: Use insertion sort for nearly-sorted data (NPCs moving slowly),
+  // fall back to std::sort when disorder is high (many fast-moving projectiles)
+  if (isNearlySorted(sorted, movableAABBs)) {
+    insertionSortByMinX(sorted, movableAABBs);
+  } else {
+    std::sort(sorted.begin(), sorted.end(), [&movableAABBs](size_t a, size_t b) {
+      return movableAABBs[a].minX < movableAABBs[b].minX;
+    });
+  }
 
   // Resize batch buffers if needed (keeps capacity, avoids allocations)
   if (m_broadphaseBatchBuffers.size() < batchCount) {
@@ -1972,6 +1986,44 @@ void CollisionManager::broadphaseBatch(
       // Collision pair found
       outMovableStatic.emplace_back(poolIdxA, staticIndices[staticPoolIdx]);
     }
+  }
+}
+
+// ============================================================================
+// ADAPTIVE SORT HELPERS for SAP (Sweep-and-Prune)
+// Uses insertion sort for nearly-sorted data (O(n)), falls back to std::sort
+// when disorder is high (many fast-moving projectiles).
+// ============================================================================
+
+bool CollisionManager::isNearlySorted(
+    const std::vector<size_t>& indices,
+    const std::vector<CollisionPool::MovableAABB>& aabbs,
+    size_t sampleSize) const {
+  if (indices.size() < 2) return true;
+  size_t inversions = 0;
+  size_t step = std::max(size_t(1), indices.size() / sampleSize);
+  float prevMinX = aabbs[indices[0]].minX;
+  for (size_t i = step; i < indices.size(); i += step) {
+    float minX = aabbs[indices[i]].minX;
+    if (minX < prevMinX) inversions++;
+    prevMinX = minX;
+  }
+  // If <10% of samples are inversions, consider nearly sorted
+  return inversions < (sampleSize / 10);
+}
+
+void CollisionManager::insertionSortByMinX(
+    std::vector<size_t>& indices,
+    const std::vector<CollisionPool::MovableAABB>& aabbs) const {
+  for (size_t i = 1; i < indices.size(); ++i) {
+    size_t key = indices[i];
+    float keyMinX = aabbs[key].minX;
+    size_t j = i;
+    while (j > 0 && aabbs[indices[j - 1]].minX > keyMinX) {
+      indices[j] = indices[j - 1];
+      --j;
+    }
+    indices[j] = key;
   }
 }
 

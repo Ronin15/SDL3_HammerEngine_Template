@@ -590,6 +590,13 @@ private:
 
     mutable CollisionPool m_collisionPool;
 
+    // Adaptive sort helpers for SAP - uses insertion sort for nearly-sorted data
+    bool isNearlySorted(const std::vector<size_t>& indices,
+                        const std::vector<CollisionPool::MovableAABB>& aabbs,
+                        size_t sampleSize = 100) const;
+    void insertionSortByMinX(std::vector<size_t>& indices,
+                             const std::vector<CollisionPool::MovableAABB>& aabbs) const;
+
     // PERFORMANCE: Vector pool for temporary allocations in hot paths
     mutable std::vector<std::vector<size_t>> m_vectorPool;
     mutable std::atomic<size_t> m_nextPoolIndex{0};
