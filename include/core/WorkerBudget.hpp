@@ -230,6 +230,7 @@ private:
         static constexpr double MODE_SWITCH_THRESHOLD = 1.15;   // 15% improvement to switch modes
         static constexpr size_t INITIAL_EXPLORATION_FRAMES = 30;    // Try other mode quickly when missing data
         static constexpr size_t SAMPLE_INTERVAL = 300;          // Max frames before reconsidering mode
+        static constexpr size_t MAX_STALE_FRAMES = 600;         // Force exploration regardless of crossover band (~10 sec)
         static constexpr double CROSSOVER_BAND_LOW = 0.7;       // Near crossover = ratio > 0.7
         static constexpr double CROSSOVER_BAND_HIGH = 1.4;      // Near crossover = ratio < 1.4
     };

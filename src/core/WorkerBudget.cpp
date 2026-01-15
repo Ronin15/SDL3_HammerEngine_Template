@@ -271,8 +271,17 @@ bool WorkerBudgetManager::shouldExploreOtherMode(SystemType system) const {
         }
     }
 
-    // Signal 2: Haven't sampled other mode in a while AND near crossover point
+    // Signal 2: Stale data - haven't sampled other mode in a while
     size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
+
+    // CRITICAL: Force exploration if data is too stale, regardless of crossover band
+    // Throughput characteristics change with hardware, workload, and game state
+    // Don't let the system get stuck with old assumptions
+    if (framesSince >= SystemTuningState::MAX_STALE_FRAMES) {
+        return true;  // Must re-validate - we might be wrong
+    }
+
+    // Near crossover point - explore more frequently to maintain accurate data
     if (framesSince >= SystemTuningState::SAMPLE_INTERVAL) {
         double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
         double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
