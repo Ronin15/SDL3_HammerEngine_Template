@@ -438,24 +438,11 @@ void AIManager::update(float deltaTime) {
     double totalUpdateTime =
         std::chrono::duration<double, std::milli>(endTime - startTime).count();
 
-    // Report results for adaptive tuning
+    // Report results for unified adaptive tuning
     if (entityCount > 0) {
-      auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-
-      // Report threading result for adaptive threshold (always called)
-      double throughputItemsPerMs = (totalUpdateTime > 0.0)
-          ? static_cast<double>(entityCount) / totalUpdateTime
-          : 0.0;
-      budgetMgr.reportThreadingResult(HammerEngine::SystemType::AI,
-                                      entityCount, logWasThreaded,
-                                      throughputItemsPerMs);
-
-      // Report batch completion for batch size tuning (threaded only)
-      if (logWasThreaded) {
-        budgetMgr.reportBatchCompletion(HammerEngine::SystemType::AI,
-                                        entityCount, logBatchCount,
-                                        totalUpdateTime);
-      }
+      budgetMgr.reportExecution(HammerEngine::SystemType::AI,
+                                entityCount, logWasThreaded,
+                                logBatchCount, totalUpdateTime);
     }
 
     // Periodic frame tracking (balanced frequency)
@@ -819,12 +806,6 @@ void AIManager::resetBehaviors() {
 void AIManager::enableThreading(bool enable) {
   m_useThreading.store(enable, std::memory_order_release);
   AI_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
-}
-
-size_t AIManager::getThreadingThreshold() const {
-  // Delegate to WorkerBudget's adaptive threshold
-  return HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(
-      HammerEngine::SystemType::AI);
 }
 #endif
 

@@ -9,21 +9,9 @@
 
 namespace HammerEngine {
 
-// Static singleton instance with per-system threshold initialization
+// Static singleton instance
 WorkerBudgetManager& WorkerBudgetManager::Instance() {
     static WorkerBudgetManager instance;
-    static std::once_flag initFlag;
-    std::call_once(initFlag, []() {
-        // Initialize per-system thresholds based on workload characteristics:
-        // - Collision: Heavy per-item work (spatial hash, narrow phase) - benefits at lower counts
-        // - AI: Medium work (behavior execution, pathfinding) - standard threshold
-        // - Particle: Light per-item work - needs higher counts for threading benefit
-        // - Event: Variable work - standard threshold
-        instance.m_threadingState[static_cast<size_t>(SystemType::Collision)].threshold.store(150, std::memory_order_relaxed);
-        instance.m_threadingState[static_cast<size_t>(SystemType::AI)].threshold.store(200, std::memory_order_relaxed);
-        instance.m_threadingState[static_cast<size_t>(SystemType::Particle)].threshold.store(500, std::memory_order_relaxed);
-        instance.m_threadingState[static_cast<size_t>(SystemType::Event)].threshold.store(200, std::memory_order_relaxed);
-    });
     return instance;
 }
 
@@ -69,7 +57,7 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
         return {1, workloadSize};  // Single batch with all items
     }
 
-    auto& state = m_batchState[static_cast<size_t>(system)];
+    auto& state = m_systemState[static_cast<size_t>(system)];
 
     // =======================================================================
     // Simple and robust: base = workers, adjusted by throughput-tuned multiplier
@@ -84,11 +72,16 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
     size_t batchCount = static_cast<size_t>(std::max(1.0, adjustedBatches));
 
     // Cap based on minimum items per batch (prevent trivial batches)
-    size_t maxBatches = std::max(size_t{1}, workloadSize / BatchTuningState::MIN_ITEMS_PER_BATCH);
+    size_t maxBatches = std::max(size_t{1}, workloadSize / SystemTuningState::MIN_ITEMS_PER_BATCH);
     batchCount = std::min(batchCount, maxBatches);
 
-    // Ensure at least 1 batch
-    batchCount = std::max(batchCount, size_t{1});
+    // Ensure minimum batches: at least 2 when we have multiple workers
+    // This guarantees actual parallelism when threading is decided
+    if (optimalWorkers >= 2 && workloadSize >= SystemTuningState::MIN_ITEMS_PER_BATCH * 2) {
+        batchCount = std::max(batchCount, size_t{2});
+    } else {
+        batchCount = std::max(batchCount, size_t{1});
+    }
 
     // Calculate batch size (round up to ensure all items are processed)
     size_t batchSize = (workloadSize + batchCount - 1) / batchCount;
@@ -96,192 +89,234 @@ std::pair<size_t, size_t> WorkerBudgetManager::getBatchStrategy(
     return {batchCount, batchSize};
 }
 
-void WorkerBudgetManager::reportBatchCompletion(SystemType system,
-                                                 size_t workloadSize,
-                                                 size_t batchCount,
-                                                 double totalTimeMs) {
-    if (batchCount == 0 || workloadSize == 0 || totalTimeMs <= 0.0) {
-        return;
-    }
-
-    auto& state = m_batchState[static_cast<size_t>(system)];
-
-    // =======================================================================
-    // THROUGHPUT-BASED HILL-CLIMBING
-    // Simple and robust: measure throughput, adjust multiplier to maximize it
-    // No model assumptions - just finds what works best experimentally
-    // =======================================================================
-
-    // Calculate current throughput (items per ms)
-    double currentThroughput = static_cast<double>(workloadSize) / totalTimeMs;
-
-    // Get previous values
-    double prev = state.smoothedThroughput.load(std::memory_order_relaxed);
-    double prevSmoothed = state.prevThroughput.load(std::memory_order_relaxed);
-
-    // Update smoothed throughput
-    double smoothed = prev * (1.0 - BatchTuningState::THROUGHPUT_SMOOTHING)
-                    + currentThroughput * BatchTuningState::THROUGHPUT_SMOOTHING;
-    state.smoothedThroughput.store(smoothed, std::memory_order_relaxed);
-    state.prevThroughput.store(prev, std::memory_order_relaxed);
-
-    // Skip first two frames (need history to compare)
-    if (prevSmoothed <= 0.0) {
-        return;
-    }
-
-    // Calculate relative change from previous smoothed value
-    double change = (smoothed - prevSmoothed) / prevSmoothed;
-
-    // Hill-climb multiplier
-    float multiplier = state.multiplier.load(std::memory_order_relaxed);
-    int8_t direction = state.direction.load(std::memory_order_relaxed);
-
-    if (change > BatchTuningState::THROUGHPUT_TOLERANCE) {
-        // Throughput improved - continue in same direction
-        multiplier += static_cast<float>(direction) * BatchTuningState::ADJUST_RATE;
-    } else if (change < -BatchTuningState::THROUGHPUT_TOLERANCE) {
-        // Throughput degraded - reverse direction
-        direction = static_cast<int8_t>(-direction);
-        state.direction.store(direction, std::memory_order_relaxed);
-        multiplier += static_cast<float>(direction) * BatchTuningState::ADJUST_RATE;
-    }
-    // Within tolerance: at equilibrium, hold steady
-
-    // Clamp multiplier
-    multiplier = std::clamp(multiplier,
-                            BatchTuningState::MIN_MULTIPLIER,
-                            BatchTuningState::MAX_MULTIPLIER);
-
-    state.multiplier.store(multiplier, std::memory_order_relaxed);
-}
-
-ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, size_t entityCount) {
+ThreadingDecision WorkerBudgetManager::shouldUseThreading(SystemType system, size_t workloadSize) {
     // ThreadSystem must exist for threading to be possible
     if (!ThreadSystem::Exists()) {
         return {false, 0};
     }
 
     // Single-core hardware: no parallelism possible, always single-threaded
-    // (ThreadSystem with 0-1 workers means no benefit from threading)
     if (ThreadSystem::Instance().getThreadCount() <= 1) {
         return {false, 0};
     }
 
-    auto& state = m_threadingState[static_cast<size_t>(system)];
-
-    // Always single-threaded for very small counts
-    if (entityCount < ThreadingTuningState::MIN_THRESHOLD) {
+    // Always single-threaded for very small workloads
+    if (workloadSize < SystemTuningState::MIN_WORKLOAD) {
         return {false, 0};
     }
 
-    size_t threshold = state.threshold.load(std::memory_order_relaxed);
-    bool lastWasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
-    int phase = state.probePhase.load(std::memory_order_relaxed);
+    auto& state = m_systemState[static_cast<size_t>(system)];
 
-    // Two-phase probing: force specific mode during probe frames
-    if (phase == 1) {
-        // Phase 1: Force single-threaded for this frame
-        return {false, 1};
-    }
-    if (phase == 2) {
-        // Phase 2: Force multi-threaded for this frame
-        return {true, 2};
+    // Check if exploration of alternate mode should be triggered
+    if (shouldExploreOtherMode(system)) {
+        bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+        state.explorationPending.store(true, std::memory_order_relaxed);
+        state.explorationWorkloadSize.store(workloadSize, std::memory_order_relaxed);
+        // Try the opposite mode
+        return {!wasThreaded, 1};  // probePhase=1 indicates exploration
     }
 
-    // Check if it's time to start a new probe cycle
-    size_t framesSinceProbe = state.framesSinceProbe.fetch_add(1, std::memory_order_relaxed);
-    if (framesSinceProbe >= ThreadingTuningState::PROBE_INTERVAL) {
-        // Start two-phase probe: phase 1 = single-threaded
-        state.framesSinceProbe.store(0, std::memory_order_relaxed);
-        state.probePhase.store(1, std::memory_order_relaxed);
-        state.probeEntityCount.store(entityCount, std::memory_order_relaxed);
-        return {false, 1};  // Force single-threaded for phase 1
+    // Get throughput data for both modes
+    double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+    double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+
+    // No data yet - use default behavior based on workload size
+    if (singleTP <= 0.0 && multiTP <= 0.0) {
+        // Start with threading for larger workloads until we have data
+        bool shouldThread = workloadSize >= SystemTuningState::DEFAULT_THREADING_THRESHOLD;
+        return {shouldThread, 0};
     }
 
-    // Normal operation: use learned threshold with hysteresis band
-    // Hysteresis prevents flip-flopping when entity count hovers near threshold
-    bool shouldThread;
-    if (lastWasThreaded) {
-        // Was threaded - stay threaded unless count drops well below threshold
-        shouldThread = entityCount >= (threshold - ThreadingTuningState::HYSTERESIS_BAND);
+    // Only one mode has data - we MUST try the other mode to collect data
+    // This is critical: don't get stuck in one mode just because we started there
+    if (singleTP <= 0.0) {
+        // Only have multi-threaded data
+        // Try single-threaded periodically to get comparison data
+        size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
+        if (framesSince >= SystemTuningState::INITIAL_EXPLORATION_FRAMES) {
+            state.explorationPending.store(true, std::memory_order_relaxed);
+            return {false, 1};  // Try single-threaded
+        }
+        return {true, 0};  // Stay multi-threaded
+    }
+    if (multiTP <= 0.0) {
+        // Only have single-threaded data - we NEED multi-threaded data
+        // For large workloads, try threading immediately to get comparison data
+        if (workloadSize >= SystemTuningState::DEFAULT_THREADING_THRESHOLD) {
+            state.explorationPending.store(true, std::memory_order_relaxed);
+            return {true, 1};  // Try multi-threaded to collect data
+        }
+        return {false, 0};  // Small workload, stay single
+    }
+
+    // Both modes have data - decide based on throughput comparison
+    bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+    double currentTP = wasThreaded ? multiTP : singleTP;
+    double otherTP = wasThreaded ? singleTP : multiTP;
+
+    // Switch mode if other mode is significantly better (15% improvement)
+    if (otherTP > currentTP * SystemTuningState::MODE_SWITCH_THRESHOLD) {
+        return {!wasThreaded, 0};
+    }
+
+    // Stay in current mode
+    return {wasThreaded, 0};
+}
+
+void WorkerBudgetManager::reportExecution(SystemType system, size_t workloadSize,
+                                           bool wasThreaded, size_t batchCount,
+                                           double totalTimeMs) {
+    if (workloadSize == 0 || totalTimeMs <= 0.0) {
+        return;
+    }
+
+    auto& state = m_systemState[static_cast<size_t>(system)];
+    double throughput = static_cast<double>(workloadSize) / totalTimeMs;
+
+    // Update appropriate throughput tracker
+    if (wasThreaded) {
+        // Update multi-threaded throughput
+        double prev = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+        double smoothed;
+        if (prev <= 0.0) {
+            smoothed = throughput;  // First sample
+        } else {
+            smoothed = prev * (1.0 - SystemTuningState::THROUGHPUT_SMOOTHING)
+                     + throughput * SystemTuningState::THROUGHPUT_SMOOTHING;
+        }
+        state.multiSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
+
+        // Run batch tuning (only when multi-threaded)
+        if (batchCount > 0) {
+            updateBatchMultiplier(state, throughput);
+        }
+
+        // Reset frames counter for single-threaded sampling
+        // (we're in multi mode, so count frames until we sample single again)
     } else {
-        // Was single-threaded - stay single unless count rises well above threshold
-        shouldThread = entityCount >= (threshold + ThreadingTuningState::HYSTERESIS_BAND);
-    }
-    return {shouldThread, 0};
-}
-
-void WorkerBudgetManager::reportThreadingResult(SystemType system, size_t entityCount,
-                                                 bool wasThreaded, double throughputItemsPerMs) {
-    if (entityCount == 0 || throughputItemsPerMs <= 0.0) {
-        return;
-    }
-
-    auto& state = m_threadingState[static_cast<size_t>(system)];
-    int phase = state.probePhase.load(std::memory_order_relaxed);
-
-    // Two-phase probing: handle probe results
-    if (phase == 1) {
-        // Phase 1 complete: store single-threaded measurement, advance to phase 2
-        state.probeSingleThroughput.store(throughputItemsPerMs, std::memory_order_relaxed);
-        state.probePhase.store(2, std::memory_order_relaxed);
-        return;
-    }
-
-    if (phase == 2) {
-        // Phase 2 complete: store multi-threaded measurement, compare, adjust threshold
-        state.probeMultiThroughput.store(throughputItemsPerMs, std::memory_order_relaxed);
-        state.probePhase.store(0, std::memory_order_relaxed);  // Back to normal
-
-        // Compare FRESH back-to-back measurements (both from last 2 frames)
-        double singleThroughput = state.probeSingleThroughput.load(std::memory_order_relaxed);
-        double multiThroughput = state.probeMultiThroughput.load(std::memory_order_relaxed);
-        size_t probeCount = state.probeEntityCount.load(std::memory_order_relaxed);
-        size_t currentThreshold = state.threshold.load(std::memory_order_relaxed);
-
-        // Skip if measurements are invalid
-        if (singleThroughput <= 0.0 || multiThroughput <= 0.0) {
-            return;
+        // Update single-threaded throughput
+        double prev = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+        double smoothed;
+        if (prev <= 0.0) {
+            smoothed = throughput;  // First sample
+        } else {
+            smoothed = prev * (1.0 - SystemTuningState::THROUGHPUT_SMOOTHING)
+                     + throughput * SystemTuningState::THROUGHPUT_SMOOTHING;
         }
-
-        // Determine if threshold should change based on which mode performed better
-        size_t newThreshold = currentThreshold;
-
-        if (multiThroughput > singleThroughput * ThreadingTuningState::IMPROVEMENT_THRESHOLD) {
-            // Multi-threading was significantly better (30%+)
-            // Lower threshold to enable threading at lower counts
-            if (currentThreshold > probeCount) {
-                // Threshold too high - lower to where threading helps
-                newThreshold = probeCount;
-            } else if (probeCount <= currentThreshold * 2) {
-                // Probing near threshold - explore lower
-                newThreshold = (currentThreshold > 25) ? currentThreshold - 25 : ThreadingTuningState::MIN_THRESHOLD;
-            }
-            // else: well above threshold, threading confirmed working, hold steady
-        } else if (singleThroughput > multiThroughput * ThreadingTuningState::IMPROVEMENT_THRESHOLD) {
-            // Single-threaded was significantly better (30%+)
-            // Raise threshold above probeCount
-            newThreshold = std::max(currentThreshold, probeCount + 50);
-        }
-        // Within 30% of each other - threshold is roughly correct, hold steady
-
-        // Clamp to valid range
-        newThreshold = std::clamp(newThreshold,
-                                  ThreadingTuningState::MIN_THRESHOLD,
-                                  ThreadingTuningState::MAX_THRESHOLD);
-
-        state.threshold.store(newThreshold, std::memory_order_relaxed);
-        return;
+        state.singleSmoothedThroughput.store(smoothed, std::memory_order_relaxed);
+        // Counter management handled at lines 212-216 (reset on mode change, increment otherwise)
     }
 
-    // Phase 0: Normal operation - just track state for hysteresis
+    // Update mode tracking
+    bool prevWasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
     state.lastWasThreaded.store(wasThreaded, std::memory_order_relaxed);
-    state.lastEntityCount.store(entityCount, std::memory_order_relaxed);
+
+    // Increment frames since other mode if we stayed in same mode
+    if (wasThreaded == prevWasThreaded) {
+        state.framesSinceOtherMode.fetch_add(1, std::memory_order_relaxed);
+    } else {
+        state.framesSinceOtherMode.store(0, std::memory_order_relaxed);
+    }
+
+    // Clear exploration flag
+    if (state.explorationPending.load(std::memory_order_relaxed)) {
+        state.explorationPending.store(false, std::memory_order_relaxed);
+    }
 }
 
-size_t WorkerBudgetManager::getThreadingThreshold(SystemType system) const {
-    return m_threadingState[static_cast<size_t>(system)].threshold.load(std::memory_order_relaxed);
+bool WorkerBudgetManager::shouldExploreOtherMode(SystemType system) const {
+    const auto& state = m_systemState[static_cast<size_t>(system)];
+
+    // Already exploring, don't start another exploration
+    if (state.explorationPending.load(std::memory_order_relaxed)) {
+        return false;
+    }
+
+    bool wasThreaded = state.lastWasThreaded.load(std::memory_order_relaxed);
+
+    // Signal 1: Multiplier hitting floor suggests less parallelism wanted
+    // If we're threading and multiplier is very low, single-threaded might be better
+    if (wasThreaded) {
+        float mult = state.multiplier.load(std::memory_order_relaxed);
+        if (mult <= SystemTuningState::MIN_MULTIPLIER * 1.5f) {
+            return true;  // Try single-threaded
+        }
+    }
+
+    // Signal 2: Haven't sampled other mode in a while AND near crossover point
+    size_t framesSince = state.framesSinceOtherMode.load(std::memory_order_relaxed);
+    if (framesSince >= SystemTuningState::SAMPLE_INTERVAL) {
+        double singleTP = state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+        double multiTP = state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+
+        // If we don't have data for the other mode, explore to get some
+        if ((wasThreaded && singleTP <= 0.0) || (!wasThreaded && multiTP <= 0.0)) {
+            return true;
+        }
+
+        // Near crossover = neither mode is clearly better
+        if (singleTP > 0.0 && multiTP > 0.0) {
+            double ratio = multiTP / singleTP;
+            if (ratio > SystemTuningState::CROSSOVER_BAND_LOW &&
+                ratio < SystemTuningState::CROSSOVER_BAND_HIGH) {
+                return true;  // Explore to refine our knowledge
+            }
+        }
+    }
+
+    return false;
+}
+
+void WorkerBudgetManager::updateBatchMultiplier(SystemTuningState& state, double throughput) {
+    // Get previous throughput for comparison
+    double prevTP = state.prevMultiThroughput.load(std::memory_order_relaxed);
+    state.prevMultiThroughput.store(throughput, std::memory_order_relaxed);
+
+    // Skip first sample (need history to compare)
+    if (prevTP <= 0.0) {
+        return;
+    }
+
+    // Calculate relative change
+    double change = (throughput - prevTP) / prevTP;
+
+    // Hill-climb multiplier
+    float multiplier = state.multiplier.load(std::memory_order_relaxed);
+    int8_t direction = state.direction.load(std::memory_order_relaxed);
+
+    if (change > SystemTuningState::THROUGHPUT_TOLERANCE) {
+        // Throughput improved - continue in same direction
+        multiplier += static_cast<float>(direction) * SystemTuningState::ADJUST_RATE;
+    } else if (change < -SystemTuningState::THROUGHPUT_TOLERANCE) {
+        // Throughput degraded - reverse direction
+        direction = static_cast<int8_t>(-direction);
+        state.direction.store(direction, std::memory_order_relaxed);
+        multiplier += static_cast<float>(direction) * SystemTuningState::ADJUST_RATE;
+    }
+    // Within tolerance: at equilibrium, hold steady
+
+    // Clamp multiplier
+    multiplier = std::clamp(multiplier,
+                            SystemTuningState::MIN_MULTIPLIER,
+                            SystemTuningState::MAX_MULTIPLIER);
+
+    state.multiplier.store(multiplier, std::memory_order_relaxed);
+}
+
+double WorkerBudgetManager::getExpectedThroughput(SystemType system, bool threaded) const {
+    const auto& state = m_systemState[static_cast<size_t>(system)];
+    if (threaded) {
+        return state.multiSmoothedThroughput.load(std::memory_order_relaxed);
+    }
+    return state.singleSmoothedThroughput.load(std::memory_order_relaxed);
+}
+
+float WorkerBudgetManager::getBatchMultiplier(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].multiplier.load(std::memory_order_relaxed);
+}
+
+bool WorkerBudgetManager::isExploring(SystemType system) const {
+    return m_systemState[static_cast<size_t>(system)].explorationPending.load(std::memory_order_relaxed);
 }
 
 void WorkerBudgetManager::invalidateCache() {

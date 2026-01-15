@@ -619,19 +619,23 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
     }
 
     std::cout << "\n=== EVENT THREADING RECOMMENDATION ===" << std::endl;
-    size_t currentThreshold = HammerEngine::WorkerBudgetManager::Instance()
-        .getThreadingThreshold(HammerEngine::SystemType::Event);
-    std::cout << "Current adaptive threshold:  " << currentThreshold << " events" << std::endl;
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
+    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms" << std::endl;
+    std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms" << std::endl;
+    std::cout << "Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << std::endl;
 
     if (optimalThreshold > 0) {
-        std::cout << "Measured optimal threshold:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
-        std::cout << "STATUS: WorkerBudget will adapt to this over time" << std::endl;
+        std::cout << "Measured optimal crossover:  " << optimalThreshold << " events (speedup > 1.5x)" << std::endl;
+        std::cout << "STATUS: WorkerBudget will adapt throughput tracking over time" << std::endl;
     } else if (marginalThreshold > 0) {
         std::cout << "Marginal benefit at: " << marginalThreshold << " events" << std::endl;
         std::cout << "STATUS: WorkerBudget will learn threading provides minimal benefit" << std::endl;
     } else {
         std::cout << "STATUS: Single-threaded is faster at all tested counts" << std::endl;
-        std::cout << "STATUS: WorkerBudget will raise threshold automatically" << std::endl;
+        std::cout << "STATUS: WorkerBudget will prefer single-threaded mode" << std::endl;
     }
 
     std::cout << "========================================\n" << std::endl;
@@ -643,7 +647,7 @@ BOOST_AUTO_TEST_CASE(TestThreadingThreshold) {
 }
 
 // ---------------------------------------------------------------------------
-// WorkerBudget Adaptive Tuning Test (Batch Sizing + Threading Threshold)
+// WorkerBudget Adaptive Tuning Test (Batch Sizing + Throughput Tracking)
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
 {
@@ -653,14 +657,16 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     }
 
     std::cout << "\n--- WorkerBudget Adaptive Tuning (Event) ---\n";
-    std::cout << "Tests threading threshold adaptation\n";
-    std::cout << "(Probes every 500 frames, adjusts based on throughput)\n\n";
+    std::cout << "Tests throughput tracking and mode selection\n";
+    std::cout << "(Tracks single/multi throughput for optimal mode selection)\n\n";
 
     auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
     auto& eventMgr = EventManager::Instance();
 
-    size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event);
-    std::cout << "Initial threshold: " << initialThreshold << " events\n\n";
+    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms\n";
+    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
     // Setup handlers
     eventMgr.clean();
@@ -673,19 +679,16 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
             [&callCount](const EventData&) { callCount++; });
     }
 
-    constexpr int EVENTS_PER_FRAME = 100;  // Near threshold
-    constexpr int FRAMES_PER_PHASE = 550;  // Just over probe interval (500)
+    constexpr int EVENTS_PER_FRAME = 100;
+    constexpr int FRAMES_PER_PHASE = 550;
     constexpr int NUM_PHASES = 4;
 
     std::cout << std::setw(8) << "Phase"
               << std::setw(12) << "Frames"
               << std::setw(14) << "Avg Time(ms)"
-              << std::setw(16) << "Throughput/ms"
-              << std::setw(12) << "Threshold"
-              << std::setw(10) << "Change\n";
-
-    std::vector<size_t> thresholdHistory;
-    thresholdHistory.push_back(initialThreshold);
+              << std::setw(14) << "SingleTP"
+              << std::setw(14) << "MultiTP"
+              << std::setw(12) << "BatchMult\n";
 
     for (int phase = 0; phase < NUM_PHASES; ++phase) {
         auto start = std::chrono::high_resolution_clock::now();
@@ -702,44 +705,37 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         auto end = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
-        double throughput = (EVENTS_PER_FRAME * FRAMES_PER_PHASE) / totalMs;
 
-        size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event);
-        int64_t change = static_cast<int64_t>(currentThreshold) - static_cast<int64_t>(thresholdHistory.back());
-        thresholdHistory.push_back(currentThreshold);
-
-        std::string changeStr = (change == 0) ? "---" :
-                               (change > 0) ? ("+" + std::to_string(change)) :
-                               std::to_string(change);
+        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+        double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+        float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
                   << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                  << std::setw(16) << std::fixed << std::setprecision(0) << throughput
-                  << std::setw(12) << currentThreshold
-                  << std::setw(10) << changeStr << "\n";
+                  << std::setw(14) << std::fixed << std::setprecision(2) << singleTP
+                  << std::setw(14) << std::fixed << std::setprecision(2) << multiTP
+                  << std::setw(12) << std::fixed << std::setprecision(2) << batchMult << "\n";
     }
 
-    size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::Event);
+    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, false);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::Event, true);
+    float finalBatchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::Event);
 
-    // Count threshold changes
-    int thresholdChanges = 0;
-    for (size_t i = 1; i < thresholdHistory.size(); ++i) {
-        if (thresholdHistory[i] != thresholdHistory[i-1]) {
-            ++thresholdChanges;
-        }
-    }
+    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
+                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
 
-    std::cout << "\nThreading threshold: " << initialThreshold << " -> " << finalThreshold
-              << " events (" << thresholdChanges << " adjustments)\n";
+    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms\n";
+    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
+    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMult << "\n";
+    std::cout << "Mode preference:         " << modePreferred << "\n";
 
-    // Result
-    if (finalThreshold != initialThreshold) {
-        std::cout << "Status: PASS (threshold adapted to hardware)\n";
-    } else if (thresholdChanges == 0) {
-        std::cout << "Status: PASS (threshold stable - optimal for workload)\n";
+    // Result - throughput tracking is working if we have any collected data
+    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
+    if (throughputCollected) {
+        std::cout << "Status: PASS (throughput tracking active)\n";
     } else {
-        std::cout << "Status: PASS (explored and converged)\n";
+        std::cout << "Status: PASS (system initialized, awaiting workload)\n";
     }
 
     std::cout << std::endl;

@@ -299,17 +299,16 @@ BOOST_FIXTURE_TEST_SUITE(AIScalingTests, AIScalingFixture)
 BOOST_AUTO_TEST_CASE(PrintHeader)
 {
     const auto& budget = HammerEngine::WorkerBudgetManager::Instance().getBudget();
-    #ifndef NDEBUG
-    size_t threshold = AIManager::Instance().getThreadingThreshold();
-    #else
-    size_t threshold = 250;
-    #endif
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
 
     std::cout << "\n=== AI Scaling Benchmark ===\n";
     std::cout << "Date: " << __DATE__ << " " << __TIME__ << "\n";
     std::cout << "System: " << std::thread::hardware_concurrency() << " hardware threads\n";
     std::cout << "WorkerBudget: " << budget.totalWorkers << " workers\n";
-    std::cout << "Threading threshold: " << threshold << " entities\n";
+    std::cout << "Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms\n";
+    std::cout << "Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms\n";
     std::cout << std::endl;
 }
 
@@ -326,11 +325,7 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
               << std::setw(10) << "Status\n";
 
     std::vector<size_t> entityCounts = {100, 500, 1000, 2000, 5000, 10000};
-    #ifndef NDEBUG
-    size_t threshold = AIManager::Instance().getThreadingThreshold();
-    #else
-    size_t threshold = 250;
-    #endif
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
 
     // Track best performance for summary
     size_t bestCount = 0;
@@ -362,7 +357,9 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
             ? (static_cast<double>(totalUpdates) / (avgMs * iterations)) * 1000.0
             : 0.0;
 
-        const char* threading = (count >= threshold) ? "multi" : "single";
+        // Check threading decision from WorkerBudget
+        auto decision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::AI, count);
+        const char* threading = decision.shouldThread ? "multi" : "single";
         const char* status = (activeCount == count && totalUpdates > 0) ? "OK" : "FAIL";
 
         // Track best
@@ -384,7 +381,8 @@ BOOST_AUTO_TEST_CASE(AIEntityScaling)
     std::cout << "\nSCALABILITY SUMMARY:\n";
     std::cout << "Entity updates per second: " << std::fixed << std::setprecision(0)
               << bestUpdatesPerSec << " (at " << bestCount << " entities)\n";
-    std::cout << "Threading mode: " << (bestCount >= threshold ? "WorkerBudget Multi-threaded" : "Single-threaded") << "\n";
+    auto finalDecision = budgetMgr.shouldUseThreading(HammerEngine::SystemType::AI, bestCount);
+    std::cout << "Threading mode: " << (finalDecision.shouldThread ? "WorkerBudget Multi-threaded" : "Single-threaded") << "\n";
     std::cout << std::endl;
 }
 
@@ -624,32 +622,31 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
     cleanup();
 
     // =========================================================================
-    // PART 2: Threading Threshold Adaptation (slow convergence, ~500 frames/probe)
+    // PART 2: Throughput Tracking (replaces threshold adaptation)
     // =========================================================================
-    std::cout << "\nPART 2: Threading Threshold Adaptation\n";
-    std::cout << "(Probes every 500 frames, adjusts based on throughput)\n\n";
+    std::cout << "\nPART 2: Throughput Tracking\n";
+    std::cout << "(Tracks single/multi throughput for mode selection)\n\n";
 
-    size_t initialThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-    std::cout << "Initial threshold: " << initialThreshold << " entities\n\n";
+    double initialSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double initialMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    std::cout << "Initial single throughput: " << std::fixed << std::setprecision(2) << initialSingleTP << " items/ms\n";
+    std::cout << "Initial multi throughput:  " << std::fixed << std::setprecision(2) << initialMultiTP << " items/ms\n\n";
 
-    constexpr size_t THRESH_ENTITY_COUNT = 300;  // Near default threshold of 200
-    constexpr float THRESH_WORLD_SIZE = 3000.0f;
-    constexpr int FRAMES_PER_PHASE = 550;  // Just over probe interval (500)
-    constexpr int NUM_PHASES = 4;          // Run multiple probe cycles
+    constexpr size_t TRACKING_ENTITY_COUNT = 300;
+    constexpr float TRACKING_WORLD_SIZE = 3000.0f;
+    constexpr int FRAMES_PER_PHASE = 550;
+    constexpr int NUM_PHASES = 4;
 
     prepareForTest();
-    createEntities(THRESH_ENTITY_COUNT, THRESH_WORLD_SIZE);
-    setupWorld(THRESH_WORLD_SIZE);
+    createEntities(TRACKING_ENTITY_COUNT, TRACKING_WORLD_SIZE);
+    setupWorld(TRACKING_WORLD_SIZE);
 
     std::cout << std::setw(8) << "Phase"
               << std::setw(12) << "Frames"
               << std::setw(14) << "Avg Time(ms)"
-              << std::setw(16) << "Throughput/ms"
-              << std::setw(12) << "Threshold"
-              << std::setw(10) << "Change\n";
-
-    std::vector<size_t> thresholdHistory;
-    thresholdHistory.push_back(initialThreshold);
+              << std::setw(12) << "SingleTP"
+              << std::setw(12) << "MultiTP"
+              << std::setw(12) << "BatchMult\n";
 
     for (int phase = 0; phase < NUM_PHASES; ++phase) {
         auto start = std::chrono::high_resolution_clock::now();
@@ -662,36 +659,30 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         auto end = std::chrono::high_resolution_clock::now();
         double totalMs = std::chrono::duration<double, std::milli>(end - start).count();
         double avgMs = totalMs / FRAMES_PER_PHASE;
-        double throughput = THRESH_ENTITY_COUNT / avgMs;
 
-        size_t currentThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
-        int64_t change = static_cast<int64_t>(currentThreshold) - static_cast<int64_t>(thresholdHistory.back());
-        thresholdHistory.push_back(currentThreshold);
-
-        std::string changeStr = (change == 0) ? "---" :
-                               (change > 0) ? ("+" + std::to_string(change)) :
-                               std::to_string(change);
+        double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+        double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+        float batchMultNow = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
         std::cout << std::setw(8) << (phase + 1)
                   << std::setw(12) << ((phase + 1) * FRAMES_PER_PHASE)
                   << std::setw(14) << std::fixed << std::setprecision(3) << avgMs
-                  << std::setw(16) << std::fixed << std::setprecision(0) << throughput
-                  << std::setw(12) << currentThreshold
-                  << std::setw(10) << changeStr << "\n";
+                  << std::setw(12) << std::fixed << std::setprecision(2) << singleTP
+                  << std::setw(12) << std::fixed << std::setprecision(2) << multiTP
+                  << std::setw(12) << std::fixed << std::setprecision(2) << batchMultNow << "\n";
     }
 
-    size_t finalThreshold = budgetMgr.getThreadingThreshold(HammerEngine::SystemType::AI);
+    double finalSingleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double finalMultiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    float finalBatchMultTP = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
-    // Count threshold changes
-    int thresholdChanges = 0;
-    for (size_t i = 1; i < thresholdHistory.size(); ++i) {
-        if (thresholdHistory[i] != thresholdHistory[i-1]) {
-            ++thresholdChanges;
-        }
-    }
+    std::string modePreferred = (finalMultiTP > finalSingleTP * 1.15) ? "MULTI" :
+                               (finalSingleTP > finalMultiTP * 1.15) ? "SINGLE" : "COMPARABLE";
 
-    std::cout << "\nThreading threshold: " << initialThreshold << " -> " << finalThreshold
-              << " entities (" << thresholdChanges << " adjustments)\n";
+    std::cout << "\nFinal single throughput: " << std::fixed << std::setprecision(2) << finalSingleTP << " items/ms\n";
+    std::cout << "Final multi throughput:  " << std::fixed << std::setprecision(2) << finalMultiTP << " items/ms\n";
+    std::cout << "Final batch multiplier:  " << std::fixed << std::setprecision(2) << finalBatchMultTP << "\n";
+    std::cout << "Mode preference:         " << modePreferred << "\n";
 
     cleanup();
 
@@ -709,13 +700,12 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
         std::cout << "  Batch sizing: WARNING (throughput degraded)\n";
     }
 
-    // Threading threshold result
-    if (finalThreshold != initialThreshold) {
-        std::cout << "  Threading threshold: PASS (adapted to hardware)\n";
-    } else if (thresholdChanges == 0) {
-        std::cout << "  Threading threshold: PASS (stable - optimal for workload)\n";
+    // Throughput tracking result
+    bool throughputCollected = (finalSingleTP > 0 || finalMultiTP > 0);
+    if (throughputCollected) {
+        std::cout << "  Throughput tracking: PASS (data collected, mode=" << modePreferred << ")\n";
     } else {
-        std::cout << "  Threading threshold: PASS (explored and converged)\n";
+        std::cout << "  Throughput tracking: PASS (system initialized)\n";
     }
 
     std::cout << std::endl;
@@ -726,17 +716,21 @@ BOOST_AUTO_TEST_CASE(WorkerBudgetAdaptiveTuning)
 // ---------------------------------------------------------------------------
 BOOST_AUTO_TEST_CASE(PrintSummary)
 {
-    size_t threshold = HammerEngine::WorkerBudgetManager::Instance()
-        .getThreadingThreshold(HammerEngine::SystemType::AI);
+    auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
+    double singleTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, false);
+    double multiTP = budgetMgr.getExpectedThroughput(HammerEngine::SystemType::AI, true);
+    float batchMult = budgetMgr.getBatchMultiplier(HammerEngine::SystemType::AI);
 
     std::cout << "SUMMARY:\n";
     std::cout << "  AI batch processing: O(n) scaling with WorkerBudget\n";
-    std::cout << "  Threading threshold: " << threshold << " entities (adaptive)\n";
+    std::cout << "  Single throughput: " << std::fixed << std::setprecision(2) << singleTP << " items/ms\n";
+    std::cout << "  Multi throughput:  " << std::fixed << std::setprecision(2) << multiTP << " items/ms\n";
+    std::cout << "  Batch multiplier:  " << std::fixed << std::setprecision(2) << batchMult << "\n";
     std::cout << "  Entity iteration: Active tier only (via getActiveIndices)\n";
     std::cout << "  Behavior execution: Type-indexed O(1) lookup\n";
     std::cout << "  WorkerBudget adaptive tuning:\n";
-    std::cout << "    - Batch sizing: ~100 frames to converge\n";
-    std::cout << "    - Threading threshold: Probes every 500 frames, adapts to hardware\n";
+    std::cout << "    - Batch sizing: ~100 frames to converge via hill-climbing\n";
+    std::cout << "    - Throughput tracking: Both modes tracked, 15% threshold to switch\n";
     std::cout << std::endl;
 }
 

@@ -217,8 +217,6 @@ public:
 #ifndef NDEBUG
   // Threading configuration (benchmarking only - compiles out in release)
   void enableThreading(bool enable);
-  // Threshold now managed by WorkerBudget - these delegate to it
-  size_t getThreadingThreshold() const;  // Returns current adaptive threshold
 #endif
 
   // Performance monitoring

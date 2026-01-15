@@ -863,20 +863,12 @@ void ParticleManager::update(float deltaTime) {
     auto updateEndTime = std::chrono::high_resolution_clock::now();
     double totalUpdateTime = std::chrono::duration<double, std::milli>(updateEndTime - startTime).count();
 
-    // Report threading result for adaptive threshold learning
+    // Report results for unified adaptive tuning
     if (activeCount > 0) {
       auto& budgetMgr = HammerEngine::WorkerBudgetManager::Instance();
-      double throughputItemsPerMs = (totalUpdateTime > 0.0)
-          ? static_cast<double>(activeCount) / totalUpdateTime
-          : 0.0;
-      budgetMgr.reportThreadingResult(HammerEngine::SystemType::Particle,
-                                      activeCount, threadingInfo.wasThreaded,
-                                      throughputItemsPerMs);
-      // Report batch completion for adaptive batch sizing (only if threaded with WorkerBudget)
-      if (threadingInfo.wasThreaded && m_useWorkerBudget.load(std::memory_order_acquire)) {
-        budgetMgr.reportBatchCompletion(
-            HammerEngine::SystemType::Particle, activeCount, threadingInfo.batchCount, totalUpdateTime);
-      }
+      budgetMgr.reportExecution(HammerEngine::SystemType::Particle,
+                                activeCount, threadingInfo.wasThreaded,
+                                threadingInfo.batchCount, totalUpdateTime);
     }
 
   } catch (const std::exception &e) {
@@ -2660,11 +2652,6 @@ void ParticleManager::updateWithWorkerBudget(float deltaTime,
 void ParticleManager::enableThreading(bool enable) {
   m_useThreading.store(enable, std::memory_order_release);
   PARTICLE_INFO(std::format("Threading {}", enable ? "enabled" : "disabled"));
-}
-
-size_t ParticleManager::getThreadingThreshold() const {
-  return HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(
-      HammerEngine::SystemType::Particle);
 }
 #endif
 

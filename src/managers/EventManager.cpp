@@ -69,12 +69,6 @@ void EventManager::enableThreading(bool enable) {
 bool EventManager::isThreadingEnabled() const {
   return m_threadingEnabled.load();
 }
-
-size_t EventManager::getThreadingThreshold() const {
-  // Delegate to WorkerBudget's adaptive threshold
-  return HammerEngine::WorkerBudgetManager::Instance().getThreadingThreshold(
-      HammerEngine::SystemType::Event);
-}
 #endif
 
 void EventManager::setGlobalPause(bool paused) {
@@ -394,22 +388,11 @@ void EventManager::update() {
   auto endTime = getCurrentTimeNanos();
   double totalTimeMs = (endTime - startTime) / 1000000.0;
 
-  // Report results for adaptive tuning
+  // Report results for unified adaptive tuning
   if (totalEventCount > 0) {
-    // Report threading result for adaptive threshold (always called)
-    double throughputItemsPerMs = (totalTimeMs > 0.0)
-        ? static_cast<double>(totalEventCount) / totalTimeMs
-        : 0.0;
-    budgetMgr.reportThreadingResult(HammerEngine::SystemType::Event,
-                                    totalEventCount, threadingInfo.wasThreaded,
-                                    throughputItemsPerMs);
-
-    // Report batch completion for batch size tuning (threaded only)
-    if (threadingInfo.wasThreaded && threadingInfo.batchCount > 0) {
-      budgetMgr.reportBatchCompletion(HammerEngine::SystemType::Event,
-                                      totalEventCount, threadingInfo.batchCount,
-                                      totalTimeMs);
-    }
+    budgetMgr.reportExecution(HammerEngine::SystemType::Event,
+                              totalEventCount, threadingInfo.wasThreaded,
+                              threadingInfo.batchCount, totalTimeMs);
   }
 
   // Update rolling average for DEBUG logging
