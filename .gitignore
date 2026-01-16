@@ -8,3 +8,4 @@ compile_commands.json
 .vscode/
 res/sprites/
 *.plist
+bin/
