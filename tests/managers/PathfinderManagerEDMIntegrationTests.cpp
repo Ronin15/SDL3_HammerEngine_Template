@@ -36,7 +36,7 @@ class PathfindingTestNPC {
 public:
     explicit PathfindingTestNPC(const Vector2D& pos) {
         auto& edm = EntityDataManager::Instance();
-        m_handle = edm.createDataDrivenNPC(pos, "Guard");
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
     static std::shared_ptr<PathfindingTestNPC> create(const Vector2D& pos) {

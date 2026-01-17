@@ -1,0 +1,48 @@
+{
+    "variants": [
+        {
+            "id": "Scout",
+            "name": "Scout",
+            "healthMult": 0.7,
+            "staminaMult": 1.3,
+            "moveSpeedMult": 1.4,
+            "attackDamageMult": 0.8,
+            "attackRangeMult": 1.0,
+            "suggestedBehavior": "Chase",
+            "basePriority": 4
+        },
+        {
+            "id": "Brute",
+            "name": "Brute",
+            "healthMult": 1.5,
+            "staminaMult": 0.8,
+            "moveSpeedMult": 0.7,
+            "attackDamageMult": 1.8,
+            "attackRangeMult": 1.2,
+            "suggestedBehavior": "Attack",
+            "basePriority": 6
+        },
+        {
+            "id": "Shaman",
+            "name": "Shaman",
+            "healthMult": 0.8,
+            "staminaMult": 1.5,
+            "moveSpeedMult": 0.9,
+            "attackDamageMult": 1.5,
+            "attackRangeMult": 2.0,
+            "suggestedBehavior": "Attack",
+            "basePriority": 7
+        },
+        {
+            "id": "Boss",
+            "name": "Boss",
+            "healthMult": 3.0,
+            "staminaMult": 2.0,
+            "moveSpeedMult": 1.0,
+            "attackDamageMult": 2.5,
+            "attackRangeMult": 1.5,
+            "suggestedBehavior": "Attack",
+            "basePriority": 10
+        }
+    ]
+}

@@ -7,7 +7,7 @@
 #include "core/Logger.hpp"
 #include "entities/Entity.hpp"  // For AnimationConfig
 #include "managers/ResourceTemplateManager.hpp"  // For getMaxStackSize in inventory
-#include "managers/TextureManager.hpp"  // For texture lookup in createDataDrivenNPC
+#include "managers/TextureManager.hpp"  // For texture lookup in creature creation
 #include "managers/WorldResourceManager.hpp"  // For unregister on harvestable destruction
 #include "utils/JsonReader.hpp"  // For loading NPC types from JSON
 #include "utils/UniqueID.hpp"
@@ -86,8 +86,13 @@ bool EntityDataManager::init() {
         m_inventoryData.reserve(INVENTORY_CAPACITY);
         m_freeInventorySlots.reserve(INVENTORY_CAPACITY);
 
-        // Initialize NPC type registry
-        initializeNPCTypeRegistry();
+        // Initialize creature composition registries
+        initializeRaceRegistry();
+        initializeClassRegistry();
+        initializeMonsterTypeRegistry();
+        initializeMonsterVariantRegistry();
+        initializeSpeciesRegistry();
+        initializeAnimalRoleRegistry();
 
         // Reset counters
         m_totalEntityCount.store(0, std::memory_order_relaxed);
@@ -476,70 +481,299 @@ EntityHandle EntityDataManager::createNPC(const Vector2D& position,
     return EntityHandle{id, EntityKind::NPC, generation};
 }
 
-EntityHandle EntityDataManager::createDataDrivenNPC(const Vector2D& position,
-                                                     const std::string& npcType) {
-    // Look up type in registry
-    auto it = m_npcTypeRegistry.find(npcType);
-    if (it == m_npcTypeRegistry.end()) {
-        ENTITY_ERROR(std::format("Unknown NPC type '{}' - must be registered in npc_types.json", npcType));
+// ============================================================================
+// CREATURE COMPOSITION CREATION
+// ============================================================================
+
+EntityHandle EntityDataManager::createNPCWithRaceClass(const Vector2D& position,
+                                                        const std::string& race,
+                                                        const std::string& charClass,
+                                                        uint8_t factionOverride) {
+    // Look up race and class in registries
+    auto raceIt = m_raceRegistry.find(race);
+    if (raceIt == m_raceRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown race '{}' - must be registered in races.json", race));
         return EntityHandle{};
     }
 
-    const auto& info = it->second;
+    auto classIt = m_classRegistry.find(charClass);
+    if (classIt == m_classRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown class '{}' - must be registered in classes.json", charClass));
+        return EntityHandle{};
+    }
+
+    const RaceInfo& raceInfo = raceIt->second;
+    const ClassInfo& classInfo = classIt->second;
 
     // Calculate frame dimensions from atlas region
-    int maxFrames = std::max(info.idleAnim.frameCount, info.moveAnim.frameCount);
-    uint16_t frameWidth = (maxFrames > 0) ? static_cast<uint16_t>(info.atlasW / maxFrames) : info.atlasW;
-    uint16_t frameHeight = info.atlasH;
+    int maxFrames = std::max(raceInfo.idleAnim.frameCount, raceInfo.moveAnim.frameCount);
+    uint16_t frameWidth = (maxFrames > 0) ? static_cast<uint16_t>(raceInfo.atlasW / maxFrames) : raceInfo.atlasW;
+    uint16_t frameHeight = raceInfo.atlasH;
 
-    // Create NPC with collision dimensions (half-size for AABB)
-    EntityHandle handle = createNPC(position,
-                                    static_cast<float>(frameWidth) * 0.5f,
-                                    static_cast<float>(frameHeight) * 0.5f);
+    // Calculate collision dimensions with size multiplier
+    float halfWidth = static_cast<float>(frameWidth) * 0.5f * raceInfo.sizeMultiplier;
+    float halfHeight = static_cast<float>(frameHeight) * 0.5f * raceInfo.sizeMultiplier;
 
+    // Create NPC entity
+    EntityHandle handle = createNPC(position, halfWidth, halfHeight);
     if (!handle.isValid()) {
-        ENTITY_ERROR("createDataDrivenNPC: Failed to create NPC entity");
+        ENTITY_ERROR("createNPCWithRaceClass: Failed to create NPC entity");
         return INVALID_ENTITY_HANDLE;
     }
 
-    // Get render data (created by createNPC alongside CharacterData)
+    // Get data indices
     size_t index = getIndex(handle);
     uint32_t typeIndex = m_hotData[index].typeLocalIndex;
-    auto& renderData = m_npcRenderData[typeIndex];
 
-    // Use atlas texture
+    // Set up CharacterData with computed stats (race base × class multiplier)
+    auto& charData = m_characterData[typeIndex];
+    charData.category = CreatureCategory::NPC;
+    charData.typeId = m_raceNameToId.count(race) ? m_raceNameToId[race] : 0;
+    charData.subtypeId = m_classNameToId.count(charClass) ? m_classNameToId[charClass] : 0;
+    charData.maxHealth = raceInfo.baseHealth * classInfo.healthMult;
+    charData.health = charData.maxHealth;
+    charData.maxStamina = raceInfo.baseStamina * classInfo.staminaMult;
+    charData.stamina = charData.maxStamina;
+    charData.attackDamage = raceInfo.baseAttackDamage * classInfo.attackDamageMult;
+    charData.attackRange = raceInfo.baseAttackRange * classInfo.attackRangeMult;
+    charData.moveSpeed = raceInfo.baseMoveSpeed * classInfo.moveSpeedMult;
+    charData.priority = classInfo.basePriority;
+    charData.faction = (factionOverride != 0xFF) ? factionOverride : classInfo.defaultFaction;
+
+    // Apply faction-based collision layers
+    applyFactionCollision(index, charData.faction);
+
+    // Set up NPCRenderData from race info
+    auto& renderData = m_npcRenderData[typeIndex];
     renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
     if (!renderData.cachedTexture) {
-        ENTITY_ERROR("createDataDrivenNPC: Atlas texture not loaded");
+        ENTITY_ERROR("createNPCWithRaceClass: Atlas texture not loaded");
     }
 
-    // Set atlas coordinates and frame dimensions
-    renderData.atlasX = info.atlasX;
-    renderData.atlasY = info.atlasY;
+    renderData.atlasX = raceInfo.atlasX;
+    renderData.atlasY = raceInfo.atlasY;
     renderData.frameWidth = frameWidth;
     renderData.frameHeight = frameHeight;
-
-    // Animation config
-    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, info.idleAnim.speed));
-    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, info.moveAnim.speed));
-    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, info.idleAnim.frameCount));
-    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, info.moveAnim.frameCount));
-    renderData.idleRow = static_cast<uint8_t>(info.idleAnim.row);
-    renderData.moveRow = static_cast<uint8_t>(info.moveAnim.row);
+    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, raceInfo.idleAnim.speed));
+    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, raceInfo.moveAnim.speed));
+    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, raceInfo.idleAnim.frameCount));
+    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, raceInfo.moveAnim.frameCount));
+    renderData.idleRow = static_cast<uint8_t>(raceInfo.idleAnim.row);
+    renderData.moveRow = static_cast<uint8_t>(raceInfo.moveAnim.row);
     renderData.currentFrame = 0;
     renderData.animationAccumulator = 0.0f;
     renderData.flipMode = 0;
 
-    ENTITY_DEBUG(std::format("Created NPC '{}' at ({},{}) atlas({},{}) {}x{}",
-                            npcType, position.getX(), position.getY(),
-                            info.atlasX, info.atlasY, frameWidth, frameHeight));
+    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f} SPD:{:.0f}",
+                            race, charClass, position.getX(), position.getY(),
+                            charData.maxHealth, charData.attackDamage, charData.moveSpeed));
 
     return handle;
 }
 
-const NPCTypeInfo* EntityDataManager::getNPCTypeInfo(const std::string& npcType) const {
-    auto it = m_npcTypeRegistry.find(npcType);
-    return (it != m_npcTypeRegistry.end()) ? &it->second : nullptr;
+EntityHandle EntityDataManager::createMonster(const Vector2D& position,
+                                               const std::string& monsterType,
+                                               const std::string& variant,
+                                               uint8_t factionOverride) {
+    // Look up type and variant in registries
+    auto typeIt = m_monsterTypeRegistry.find(monsterType);
+    if (typeIt == m_monsterTypeRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown monster type '{}' - must be registered in monster_types.json", monsterType));
+        return EntityHandle{};
+    }
+
+    auto variantIt = m_monsterVariantRegistry.find(variant);
+    if (variantIt == m_monsterVariantRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown monster variant '{}' - must be registered in monster_variants.json", variant));
+        return EntityHandle{};
+    }
+
+    const MonsterTypeInfo& typeInfo = typeIt->second;
+    const MonsterVariantInfo& variantInfo = variantIt->second;
+
+    // Calculate frame dimensions
+    int maxFrames = std::max(typeInfo.idleAnim.frameCount, typeInfo.moveAnim.frameCount);
+    uint16_t frameWidth = (maxFrames > 0) ? static_cast<uint16_t>(typeInfo.atlasW / maxFrames) : typeInfo.atlasW;
+    uint16_t frameHeight = typeInfo.atlasH;
+
+    float halfWidth = static_cast<float>(frameWidth) * 0.5f * typeInfo.sizeMultiplier;
+    float halfHeight = static_cast<float>(frameHeight) * 0.5f * typeInfo.sizeMultiplier;
+
+    // Create NPC entity (monsters use same underlying entity type)
+    EntityHandle handle = createNPC(position, halfWidth, halfHeight);
+    if (!handle.isValid()) {
+        ENTITY_ERROR("createMonster: Failed to create entity");
+        return INVALID_ENTITY_HANDLE;
+    }
+
+    size_t index = getIndex(handle);
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Set up CharacterData
+    auto& charData = m_characterData[typeIndex];
+    charData.category = CreatureCategory::Monster;
+    charData.typeId = m_monsterTypeNameToId.count(monsterType) ? m_monsterTypeNameToId[monsterType] : 0;
+    charData.subtypeId = m_monsterVariantNameToId.count(variant) ? m_monsterVariantNameToId[variant] : 0;
+    charData.maxHealth = typeInfo.baseHealth * variantInfo.healthMult;
+    charData.health = charData.maxHealth;
+    charData.maxStamina = typeInfo.baseStamina * variantInfo.staminaMult;
+    charData.stamina = charData.maxStamina;
+    charData.attackDamage = typeInfo.baseAttackDamage * variantInfo.attackDamageMult;
+    charData.attackRange = typeInfo.baseAttackRange * variantInfo.attackRangeMult;
+    charData.moveSpeed = typeInfo.baseMoveSpeed * variantInfo.moveSpeedMult;
+    charData.priority = variantInfo.basePriority;
+    charData.faction = (factionOverride != 0xFF) ? factionOverride : typeInfo.defaultFaction;
+
+    applyFactionCollision(index, charData.faction);
+
+    // Set up render data
+    auto& renderData = m_npcRenderData[typeIndex];
+    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
+    renderData.atlasX = typeInfo.atlasX;
+    renderData.atlasY = typeInfo.atlasY;
+    renderData.frameWidth = frameWidth;
+    renderData.frameHeight = frameHeight;
+    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, typeInfo.idleAnim.speed));
+    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, typeInfo.moveAnim.speed));
+    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, typeInfo.idleAnim.frameCount));
+    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, typeInfo.moveAnim.frameCount));
+    renderData.idleRow = static_cast<uint8_t>(typeInfo.idleAnim.row);
+    renderData.moveRow = static_cast<uint8_t>(typeInfo.moveAnim.row);
+    renderData.currentFrame = 0;
+    renderData.animationAccumulator = 0.0f;
+    renderData.flipMode = 0;
+
+    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} DMG:{:.1f}",
+                            monsterType, variant, position.getX(), position.getY(),
+                            charData.maxHealth, charData.attackDamage));
+
+    return handle;
+}
+
+EntityHandle EntityDataManager::createAnimal(const Vector2D& position,
+                                              const std::string& species,
+                                              const std::string& role,
+                                              uint8_t factionOverride) {
+    // Look up species and role in registries
+    auto speciesIt = m_speciesRegistry.find(species);
+    if (speciesIt == m_speciesRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown species '{}' - must be registered in species.json", species));
+        return EntityHandle{};
+    }
+
+    auto roleIt = m_animalRoleRegistry.find(role);
+    if (roleIt == m_animalRoleRegistry.end()) {
+        ENTITY_ERROR(std::format("Unknown animal role '{}' - must be registered in animal_roles.json", role));
+        return EntityHandle{};
+    }
+
+    const SpeciesInfo& speciesInfo = speciesIt->second;
+    const AnimalRoleInfo& roleInfo = roleIt->second;
+
+    // Calculate frame dimensions
+    int maxFrames = std::max(speciesInfo.idleAnim.frameCount, speciesInfo.moveAnim.frameCount);
+    uint16_t frameWidth = (maxFrames > 0) ? static_cast<uint16_t>(speciesInfo.atlasW / maxFrames) : speciesInfo.atlasW;
+    uint16_t frameHeight = speciesInfo.atlasH;
+
+    float halfWidth = static_cast<float>(frameWidth) * 0.5f * speciesInfo.sizeMultiplier;
+    float halfHeight = static_cast<float>(frameHeight) * 0.5f * speciesInfo.sizeMultiplier;
+
+    // Create NPC entity (animals use same underlying entity type)
+    EntityHandle handle = createNPC(position, halfWidth, halfHeight);
+    if (!handle.isValid()) {
+        ENTITY_ERROR("createAnimal: Failed to create entity");
+        return INVALID_ENTITY_HANDLE;
+    }
+
+    size_t index = getIndex(handle);
+    uint32_t typeIndex = m_hotData[index].typeLocalIndex;
+
+    // Set up CharacterData
+    auto& charData = m_characterData[typeIndex];
+    charData.category = CreatureCategory::Animal;
+    charData.typeId = m_speciesNameToId.count(species) ? m_speciesNameToId[species] : 0;
+    charData.subtypeId = m_animalRoleNameToId.count(role) ? m_animalRoleNameToId[role] : 0;
+    charData.maxHealth = speciesInfo.baseHealth * roleInfo.healthMult;
+    charData.health = charData.maxHealth;
+    charData.maxStamina = speciesInfo.baseStamina * roleInfo.staminaMult;
+    charData.stamina = charData.maxStamina;
+    charData.attackDamage = speciesInfo.baseAttackDamage * roleInfo.attackDamageMult;
+    charData.attackRange = speciesInfo.baseAttackRange;  // Animals don't have range multiplier
+    charData.moveSpeed = speciesInfo.baseMoveSpeed * roleInfo.moveSpeedMult;
+    charData.priority = roleInfo.basePriority;
+    charData.faction = (factionOverride != 0xFF) ? factionOverride : roleInfo.defaultFaction;
+
+    applyFactionCollision(index, charData.faction);
+
+    // Set up render data
+    auto& renderData = m_npcRenderData[typeIndex];
+    renderData.cachedTexture = TextureManager::Instance().getTexturePtr("atlas");
+    renderData.atlasX = speciesInfo.atlasX;
+    renderData.atlasY = speciesInfo.atlasY;
+    renderData.frameWidth = frameWidth;
+    renderData.frameHeight = frameHeight;
+    renderData.idleSpeedMs = static_cast<uint16_t>(std::max(1, speciesInfo.idleAnim.speed));
+    renderData.moveSpeedMs = static_cast<uint16_t>(std::max(1, speciesInfo.moveAnim.speed));
+    renderData.numIdleFrames = static_cast<uint8_t>(std::max(1, speciesInfo.idleAnim.frameCount));
+    renderData.numMoveFrames = static_cast<uint8_t>(std::max(1, speciesInfo.moveAnim.frameCount));
+    renderData.idleRow = static_cast<uint8_t>(speciesInfo.idleAnim.row);
+    renderData.moveRow = static_cast<uint8_t>(speciesInfo.moveAnim.row);
+    renderData.currentFrame = 0;
+    renderData.animationAccumulator = 0.0f;
+    renderData.flipMode = 0;
+
+    ENTITY_DEBUG(std::format("Created {} {} at ({},{}) HP:{:.0f} SPD:{:.0f}",
+                            species, role, position.getX(), position.getY(),
+                            charData.maxHealth, charData.moveSpeed));
+
+    return handle;
+}
+
+void EntityDataManager::applyFactionCollision(size_t index, uint8_t faction) {
+    auto& hot = m_hotData[index];
+    if (faction == 1) {  // Enemy
+        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Enemy;
+        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
+                            HammerEngine::CollisionLayer::Layer_Environment |
+                            HammerEngine::CollisionLayer::Layer_Projectile |
+                            HammerEngine::CollisionLayer::Layer_Enemy;
+    } else {  // Friendly (0) or Neutral (2)
+        hot.collisionLayers = HammerEngine::CollisionLayer::Layer_Default;
+        hot.collisionMask = HammerEngine::CollisionLayer::Layer_Player |
+                            HammerEngine::CollisionLayer::Layer_Environment |
+                            HammerEngine::CollisionLayer::Layer_Projectile;
+    }
+}
+
+// Registry getters
+const RaceInfo* EntityDataManager::getRaceInfo(const std::string& race) const {
+    auto it = m_raceRegistry.find(race);
+    return (it != m_raceRegistry.end()) ? &it->second : nullptr;
+}
+
+const ClassInfo* EntityDataManager::getClassInfo(const std::string& charClass) const {
+    auto it = m_classRegistry.find(charClass);
+    return (it != m_classRegistry.end()) ? &it->second : nullptr;
+}
+
+const MonsterTypeInfo* EntityDataManager::getMonsterTypeInfo(const std::string& monsterType) const {
+    auto it = m_monsterTypeRegistry.find(monsterType);
+    return (it != m_monsterTypeRegistry.end()) ? &it->second : nullptr;
+}
+
+const MonsterVariantInfo* EntityDataManager::getMonsterVariantInfo(const std::string& variant) const {
+    auto it = m_monsterVariantRegistry.find(variant);
+    return (it != m_monsterVariantRegistry.end()) ? &it->second : nullptr;
+}
+
+const SpeciesInfo* EntityDataManager::getSpeciesInfo(const std::string& species) const {
+    auto it = m_speciesRegistry.find(species);
+    return (it != m_speciesRegistry.end()) ? &it->second : nullptr;
+}
+
+const AnimalRoleInfo* EntityDataManager::getAnimalRoleInfo(const std::string& role) const {
+    auto it = m_animalRoleRegistry.find(role);
+    return (it != m_animalRoleRegistry.end()) ? &it->second : nullptr;
 }
 
 EntityHandle EntityDataManager::createDroppedItem(const Vector2D& position,
@@ -2513,74 +2747,393 @@ EntityHandle EntityDataManager::getHandle(size_t index) const {
 }
 
 // ============================================================================
-// NPC TYPE REGISTRY
+// CREATURE COMPOSITION REGISTRY INITIALIZATION
 // ============================================================================
 
-void EntityDataManager::initializeNPCTypeRegistry() {
-    // Try to load NPC types from JSON (data-driven)
-    const std::string jsonPath = "res/data/npc_types.json";
+void EntityDataManager::initializeRaceRegistry() {
+    const std::string jsonPath = "res/data/races.json";
     JsonReader reader;
 
     if (reader.loadFromFile(jsonPath)) {
         const JsonValue& root = reader.getRoot();
 
-        if (root.isObject() && root.hasKey("npcTypes") && root["npcTypes"].isArray()) {
-            const JsonValue& npcTypes = root["npcTypes"];
+        if (root.isObject() && root.hasKey("races") && root["races"].isArray()) {
+            const JsonValue& races = root["races"];
 
-            for (size_t i = 0; i < npcTypes.size(); ++i) {
-                const JsonValue& npc = npcTypes[i];
+            for (size_t i = 0; i < races.size(); ++i) {
+                const JsonValue& r = races[i];
 
-                if (!npc.hasKey("id") || !npc["id"].isString()) {
-                    ENTITY_WARN(std::format("NPC type at index {} missing 'id'", i));
+                if (!r.hasKey("id") || !r["id"].isString()) {
+                    ENTITY_WARN(std::format("Race at index {} missing 'id'", i));
                     continue;
                 }
 
-                std::string id = npc["id"].asString();
-                std::string textureId = npc.hasKey("textureId") ? npc["textureId"].asString() : id;
+                std::string id = r["id"].asString();
+                RaceInfo info;
+                info.name = r.hasKey("name") ? r["name"].asString() : id;
 
-                // Parse idle animation config
-                AnimationConfig idleAnim{0, 1, 150};  // defaults
-                if (npc.hasKey("idleAnim") && npc["idleAnim"].isObject()) {
-                    const JsonValue& idle = npc["idleAnim"];
-                    idleAnim.row = idle.hasKey("row") ? idle["row"].asInt() : 0;
-                    idleAnim.frameCount = idle.hasKey("frameCount") ? idle["frameCount"].asInt() : 1;
-                    idleAnim.speed = idle.hasKey("speed") ? idle["speed"].asInt() : 150;
+                // Base stats
+                info.baseHealth = r.hasKey("baseHealth") ? static_cast<float>(r["baseHealth"].asNumber()) : 100.0f;
+                info.baseStamina = r.hasKey("baseStamina") ? static_cast<float>(r["baseStamina"].asNumber()) : 100.0f;
+                info.baseMoveSpeed = r.hasKey("baseMoveSpeed") ? static_cast<float>(r["baseMoveSpeed"].asNumber()) : 100.0f;
+                info.baseAttackDamage = r.hasKey("baseAttackDamage") ? static_cast<float>(r["baseAttackDamage"].asNumber()) : 10.0f;
+                info.baseAttackRange = r.hasKey("baseAttackRange") ? static_cast<float>(r["baseAttackRange"].asNumber()) : 50.0f;
+
+                // Visual
+                info.atlasX = r.hasKey("atlasX") ? static_cast<uint16_t>(r["atlasX"].asInt()) : 0;
+                info.atlasY = r.hasKey("atlasY") ? static_cast<uint16_t>(r["atlasY"].asInt()) : 0;
+                info.atlasW = r.hasKey("atlasW") ? static_cast<uint16_t>(r["atlasW"].asInt()) : 64;
+                info.atlasH = r.hasKey("atlasH") ? static_cast<uint16_t>(r["atlasH"].asInt()) : 32;
+
+                // Animations
+                info.idleAnim = {0, 1, 150};
+                if (r.hasKey("idleAnim") && r["idleAnim"].isObject()) {
+                    const JsonValue& idle = r["idleAnim"];
+                    info.idleAnim.row = idle.hasKey("row") ? idle["row"].asInt() : 0;
+                    info.idleAnim.frameCount = idle.hasKey("frameCount") ? idle["frameCount"].asInt() : 1;
+                    info.idleAnim.speed = idle.hasKey("speed") ? idle["speed"].asInt() : 150;
+                }
+                info.moveAnim = {0, 2, 100};
+                if (r.hasKey("moveAnim") && r["moveAnim"].isObject()) {
+                    const JsonValue& move = r["moveAnim"];
+                    info.moveAnim.row = move.hasKey("row") ? move["row"].asInt() : 0;
+                    info.moveAnim.frameCount = move.hasKey("frameCount") ? move["frameCount"].asInt() : 2;
+                    info.moveAnim.speed = move.hasKey("speed") ? move["speed"].asInt() : 100;
                 }
 
-                // Parse move animation config
-                AnimationConfig moveAnim{0, 2, 100};  // defaults
-                if (npc.hasKey("moveAnim") && npc["moveAnim"].isObject()) {
-                    const JsonValue& move = npc["moveAnim"];
-                    moveAnim.row = move.hasKey("row") ? move["row"].asInt() : 0;
-                    moveAnim.frameCount = move.hasKey("frameCount") ? move["frameCount"].asInt() : 2;
-                    moveAnim.speed = move.hasKey("speed") ? move["speed"].asInt() : 100;
-                }
+                info.sizeMultiplier = r.hasKey("sizeMultiplier") ? static_cast<float>(r["sizeMultiplier"].asNumber()) : 1.0f;
 
-                // Parse atlas coordinates
-                uint16_t atlasX = npc.hasKey("atlasX") ? static_cast<uint16_t>(npc["atlasX"].asInt()) : 0;
-                uint16_t atlasY = npc.hasKey("atlasY") ? static_cast<uint16_t>(npc["atlasY"].asInt()) : 0;
-                uint16_t atlasW = npc.hasKey("atlasW") ? static_cast<uint16_t>(npc["atlasW"].asInt()) : 32;
-                uint16_t atlasH = npc.hasKey("atlasH") ? static_cast<uint16_t>(npc["atlasH"].asInt()) : 32;
+                // Store and create ID mapping
+                uint8_t raceId = static_cast<uint8_t>(m_raceIdToName.size());
+                m_raceRegistry[id] = info;
+                m_raceNameToId[id] = raceId;
+                m_raceIdToName.push_back(id);
 
-                m_npcTypeRegistry[id] = {textureId, idleAnim, moveAnim, atlasX, atlasY, atlasW, atlasH};
-                ENTITY_DEBUG(std::format("Loaded NPC type '{}' atlas ({},{}) {}x{}", id, atlasX, atlasY, atlasW, atlasH));
+                ENTITY_DEBUG(std::format("Loaded race '{}' HP:{} SPD:{}", id, info.baseHealth, info.baseMoveSpeed));
             }
 
-            ENTITY_INFO(std::format("Loaded {} NPC types from {}", m_npcTypeRegistry.size(), jsonPath));
+            ENTITY_INFO(std::format("Loaded {} races from {}", m_raceRegistry.size(), jsonPath));
             return;
         }
     }
 
-    // Fallback to hardcoded defaults if JSON loading fails
-    ENTITY_WARN(std::format("Failed to load NPC types from {}, using defaults", jsonPath));
+    // Fallback defaults
+    ENTITY_WARN(std::format("Failed to load races from {}, using defaults", jsonPath));
     AnimationConfig idle{0, 1, 150};
     AnimationConfig move{0, 2, 100};
 
-    // Fallback atlas coords from npc_types.json defaults
-    m_npcTypeRegistry["Guard"]    = {"guard", idle, move, 165, 1126, 64, 32};
-    m_npcTypeRegistry["Villager"] = {"villager", idle, move, 163, 1159, 64, 32};
-    m_npcTypeRegistry["Merchant"] = {"merchant", idle, move, 230, 1126, 64, 32};
-    m_npcTypeRegistry["Warrior"]  = {"warrior", idle, move, 228, 1159, 64, 32};
+    m_raceRegistry["Human"] = {"Human", 100, 100, 100, 10, 50, 165, 1126, 64, 32, idle, move, 1.0f};
+    m_raceNameToId["Human"] = 0; m_raceIdToName.push_back("Human");
 
-    ENTITY_INFO(std::format("Initialized NPC type registry with {} types (fallback)", m_npcTypeRegistry.size()));
+    m_raceRegistry["Elf"] = {"Elf", 80, 120, 120, 8, 60, 163, 1159, 64, 32, idle, move, 0.9f};
+    m_raceNameToId["Elf"] = 1; m_raceIdToName.push_back("Elf");
+
+    m_raceRegistry["Orc"] = {"Orc", 150, 80, 80, 15, 45, 228, 1159, 64, 32, idle, move, 1.2f};
+    m_raceNameToId["Orc"] = 2; m_raceIdToName.push_back("Orc");
+
+    ENTITY_INFO(std::format("Initialized race registry with {} races (fallback)", m_raceRegistry.size()));
+}
+
+void EntityDataManager::initializeClassRegistry() {
+    const std::string jsonPath = "res/data/classes.json";
+    JsonReader reader;
+
+    if (reader.loadFromFile(jsonPath)) {
+        const JsonValue& root = reader.getRoot();
+
+        if (root.isObject() && root.hasKey("classes") && root["classes"].isArray()) {
+            const JsonValue& classes = root["classes"];
+
+            for (size_t i = 0; i < classes.size(); ++i) {
+                const JsonValue& c = classes[i];
+
+                if (!c.hasKey("id") || !c["id"].isString()) {
+                    ENTITY_WARN(std::format("Class at index {} missing 'id'", i));
+                    continue;
+                }
+
+                std::string id = c["id"].asString();
+                ClassInfo info;
+                info.name = c.hasKey("name") ? c["name"].asString() : id;
+
+                // Multipliers
+                info.healthMult = c.hasKey("healthMult") ? static_cast<float>(c["healthMult"].asNumber()) : 1.0f;
+                info.staminaMult = c.hasKey("staminaMult") ? static_cast<float>(c["staminaMult"].asNumber()) : 1.0f;
+                info.moveSpeedMult = c.hasKey("moveSpeedMult") ? static_cast<float>(c["moveSpeedMult"].asNumber()) : 1.0f;
+                info.attackDamageMult = c.hasKey("attackDamageMult") ? static_cast<float>(c["attackDamageMult"].asNumber()) : 1.0f;
+                info.attackRangeMult = c.hasKey("attackRangeMult") ? static_cast<float>(c["attackRangeMult"].asNumber()) : 1.0f;
+
+                // AI
+                info.suggestedBehavior = c.hasKey("suggestedBehavior") ? c["suggestedBehavior"].asString() : "Idle";
+                info.basePriority = c.hasKey("basePriority") ? static_cast<uint8_t>(c["basePriority"].asInt()) : 5;
+                info.defaultFaction = c.hasKey("defaultFaction") ? static_cast<uint8_t>(c["defaultFaction"].asInt()) : 0;
+
+                uint8_t classId = static_cast<uint8_t>(m_classIdToName.size());
+                m_classRegistry[id] = info;
+                m_classNameToId[id] = classId;
+                m_classIdToName.push_back(id);
+
+                ENTITY_DEBUG(std::format("Loaded class '{}' HP:{}x DMG:{}x", id, info.healthMult, info.attackDamageMult));
+            }
+
+            ENTITY_INFO(std::format("Loaded {} classes from {}", m_classRegistry.size(), jsonPath));
+            return;
+        }
+    }
+
+    // Fallback defaults
+    ENTITY_WARN(std::format("Failed to load classes from {}, using defaults", jsonPath));
+
+    m_classRegistry["Warrior"] = {"Warrior", 1.3f, 1.0f, 0.9f, 1.5f, 1.0f, "Chase", 7, 1};
+    m_classNameToId["Warrior"] = 0; m_classIdToName.push_back("Warrior");
+
+    m_classRegistry["Guard"] = {"Guard", 1.2f, 1.1f, 0.8f, 1.2f, 1.0f, "Guard", 6, 0};
+    m_classNameToId["Guard"] = 1; m_classIdToName.push_back("Guard");
+
+    m_classRegistry["Merchant"] = {"Merchant", 0.7f, 0.8f, 0.9f, 0.3f, 0.5f, "Idle", 2, 0};
+    m_classNameToId["Merchant"] = 2; m_classIdToName.push_back("Merchant");
+
+    m_classRegistry["Rogue"] = {"Rogue", 0.8f, 1.3f, 1.3f, 1.2f, 0.8f, "Chase", 8, 1};
+    m_classNameToId["Rogue"] = 3; m_classIdToName.push_back("Rogue");
+
+    m_classRegistry["Mage"] = {"Mage", 0.6f, 1.5f, 0.85f, 1.8f, 2.5f, "Attack", 7, 2};
+    m_classNameToId["Mage"] = 4; m_classIdToName.push_back("Mage");
+
+    m_classRegistry["Villager"] = {"Villager", 0.8f, 0.9f, 1.0f, 0.5f, 0.5f, "Wander", 3, 0};
+    m_classNameToId["Villager"] = 5; m_classIdToName.push_back("Villager");
+
+    ENTITY_INFO(std::format("Initialized class registry with {} classes (fallback)", m_classRegistry.size()));
+}
+
+void EntityDataManager::initializeMonsterTypeRegistry() {
+    const std::string jsonPath = "res/data/monster_types.json";
+    JsonReader reader;
+
+    if (reader.loadFromFile(jsonPath)) {
+        const JsonValue& root = reader.getRoot();
+
+        if (root.isObject() && root.hasKey("monsterTypes") && root["monsterTypes"].isArray()) {
+            const JsonValue& types = root["monsterTypes"];
+
+            for (size_t i = 0; i < types.size(); ++i) {
+                const JsonValue& t = types[i];
+
+                if (!t.hasKey("id") || !t["id"].isString()) continue;
+
+                std::string id = t["id"].asString();
+                MonsterTypeInfo info;
+                info.name = t.hasKey("name") ? t["name"].asString() : id;
+                info.baseHealth = t.hasKey("baseHealth") ? static_cast<float>(t["baseHealth"].asNumber()) : 100.0f;
+                info.baseStamina = t.hasKey("baseStamina") ? static_cast<float>(t["baseStamina"].asNumber()) : 100.0f;
+                info.baseMoveSpeed = t.hasKey("baseMoveSpeed") ? static_cast<float>(t["baseMoveSpeed"].asNumber()) : 100.0f;
+                info.baseAttackDamage = t.hasKey("baseAttackDamage") ? static_cast<float>(t["baseAttackDamage"].asNumber()) : 10.0f;
+                info.baseAttackRange = t.hasKey("baseAttackRange") ? static_cast<float>(t["baseAttackRange"].asNumber()) : 50.0f;
+                info.atlasX = t.hasKey("atlasX") ? static_cast<uint16_t>(t["atlasX"].asInt()) : 0;
+                info.atlasY = t.hasKey("atlasY") ? static_cast<uint16_t>(t["atlasY"].asInt()) : 0;
+                info.atlasW = t.hasKey("atlasW") ? static_cast<uint16_t>(t["atlasW"].asInt()) : 64;
+                info.atlasH = t.hasKey("atlasH") ? static_cast<uint16_t>(t["atlasH"].asInt()) : 32;
+                info.idleAnim = {0, 1, 150};
+                info.moveAnim = {0, 2, 100};
+                info.sizeMultiplier = t.hasKey("sizeMultiplier") ? static_cast<float>(t["sizeMultiplier"].asNumber()) : 1.0f;
+                info.defaultFaction = t.hasKey("defaultFaction") ? static_cast<uint8_t>(t["defaultFaction"].asInt()) : 1;
+
+                uint8_t typeId = static_cast<uint8_t>(m_monsterTypeIdToName.size());
+                m_monsterTypeRegistry[id] = info;
+                m_monsterTypeNameToId[id] = typeId;
+                m_monsterTypeIdToName.push_back(id);
+            }
+
+            ENTITY_INFO(std::format("Loaded {} monster types from {}", m_monsterTypeRegistry.size(), jsonPath));
+            return;
+        }
+    }
+
+    // Fallback defaults
+    ENTITY_WARN(std::format("Failed to load monster types from {}, using defaults", jsonPath));
+    AnimationConfig idle{0, 1, 150};
+    AnimationConfig move{0, 2, 100};
+
+    m_monsterTypeRegistry["Goblin"] = {"Goblin", 40, 80, 90, 8, 40, 0, 0, 64, 32, idle, move, 0.8f, 1};
+    m_monsterTypeNameToId["Goblin"] = 0; m_monsterTypeIdToName.push_back("Goblin");
+
+    m_monsterTypeRegistry["Skeleton"] = {"Skeleton", 60, 60, 70, 12, 50, 0, 32, 64, 32, idle, move, 1.0f, 1};
+    m_monsterTypeNameToId["Skeleton"] = 1; m_monsterTypeIdToName.push_back("Skeleton");
+
+    m_monsterTypeRegistry["Slime"] = {"Slime", 30, 100, 50, 5, 30, 0, 64, 64, 32, idle, move, 0.6f, 1};
+    m_monsterTypeNameToId["Slime"] = 2; m_monsterTypeIdToName.push_back("Slime");
+
+    m_monsterTypeRegistry["Dragon"] = {"Dragon", 500, 200, 60, 50, 100, 0, 96, 128, 64, idle, move, 2.0f, 1};
+    m_monsterTypeNameToId["Dragon"] = 3; m_monsterTypeIdToName.push_back("Dragon");
+
+    ENTITY_INFO(std::format("Initialized monster type registry with {} types (fallback)", m_monsterTypeRegistry.size()));
+}
+
+void EntityDataManager::initializeMonsterVariantRegistry() {
+    const std::string jsonPath = "res/data/monster_variants.json";
+    JsonReader reader;
+
+    if (reader.loadFromFile(jsonPath)) {
+        const JsonValue& root = reader.getRoot();
+
+        if (root.isObject() && root.hasKey("variants") && root["variants"].isArray()) {
+            const JsonValue& variants = root["variants"];
+
+            for (size_t i = 0; i < variants.size(); ++i) {
+                const JsonValue& v = variants[i];
+
+                if (!v.hasKey("id") || !v["id"].isString()) continue;
+
+                std::string id = v["id"].asString();
+                MonsterVariantInfo info;
+                info.name = v.hasKey("name") ? v["name"].asString() : id;
+                info.healthMult = v.hasKey("healthMult") ? static_cast<float>(v["healthMult"].asNumber()) : 1.0f;
+                info.staminaMult = v.hasKey("staminaMult") ? static_cast<float>(v["staminaMult"].asNumber()) : 1.0f;
+                info.moveSpeedMult = v.hasKey("moveSpeedMult") ? static_cast<float>(v["moveSpeedMult"].asNumber()) : 1.0f;
+                info.attackDamageMult = v.hasKey("attackDamageMult") ? static_cast<float>(v["attackDamageMult"].asNumber()) : 1.0f;
+                info.attackRangeMult = v.hasKey("attackRangeMult") ? static_cast<float>(v["attackRangeMult"].asNumber()) : 1.0f;
+                info.suggestedBehavior = v.hasKey("suggestedBehavior") ? v["suggestedBehavior"].asString() : "Chase";
+                info.basePriority = v.hasKey("basePriority") ? static_cast<uint8_t>(v["basePriority"].asInt()) : 5;
+
+                uint8_t variantId = static_cast<uint8_t>(m_monsterVariantIdToName.size());
+                m_monsterVariantRegistry[id] = info;
+                m_monsterVariantNameToId[id] = variantId;
+                m_monsterVariantIdToName.push_back(id);
+            }
+
+            ENTITY_INFO(std::format("Loaded {} monster variants from {}", m_monsterVariantRegistry.size(), jsonPath));
+            return;
+        }
+    }
+
+    // Fallback defaults
+    ENTITY_WARN(std::format("Failed to load monster variants from {}, using defaults", jsonPath));
+
+    m_monsterVariantRegistry["Scout"] = {"Scout", 0.7f, 1.0f, 1.3f, 0.8f, 1.0f, "Chase", 5};
+    m_monsterVariantNameToId["Scout"] = 0; m_monsterVariantIdToName.push_back("Scout");
+
+    m_monsterVariantRegistry["Brute"] = {"Brute", 1.5f, 0.8f, 0.8f, 1.4f, 1.0f, "Chase", 6};
+    m_monsterVariantNameToId["Brute"] = 1; m_monsterVariantIdToName.push_back("Brute");
+
+    m_monsterVariantRegistry["Shaman"] = {"Shaman", 0.8f, 1.5f, 0.9f, 1.6f, 2.0f, "Attack", 7};
+    m_monsterVariantNameToId["Shaman"] = 2; m_monsterVariantIdToName.push_back("Shaman");
+
+    m_monsterVariantRegistry["Boss"] = {"Boss", 3.0f, 2.0f, 1.0f, 2.0f, 1.2f, "Attack", 9};
+    m_monsterVariantNameToId["Boss"] = 3; m_monsterVariantIdToName.push_back("Boss");
+
+    ENTITY_INFO(std::format("Initialized monster variant registry with {} variants (fallback)", m_monsterVariantRegistry.size()));
+}
+
+void EntityDataManager::initializeSpeciesRegistry() {
+    const std::string jsonPath = "res/data/species.json";
+    JsonReader reader;
+
+    if (reader.loadFromFile(jsonPath)) {
+        const JsonValue& root = reader.getRoot();
+
+        if (root.isObject() && root.hasKey("species") && root["species"].isArray()) {
+            const JsonValue& speciesList = root["species"];
+
+            for (size_t i = 0; i < speciesList.size(); ++i) {
+                const JsonValue& s = speciesList[i];
+
+                if (!s.hasKey("id") || !s["id"].isString()) continue;
+
+                std::string id = s["id"].asString();
+                SpeciesInfo info;
+                info.name = s.hasKey("name") ? s["name"].asString() : id;
+                info.baseHealth = s.hasKey("baseHealth") ? static_cast<float>(s["baseHealth"].asNumber()) : 50.0f;
+                info.baseStamina = s.hasKey("baseStamina") ? static_cast<float>(s["baseStamina"].asNumber()) : 100.0f;
+                info.baseMoveSpeed = s.hasKey("baseMoveSpeed") ? static_cast<float>(s["baseMoveSpeed"].asNumber()) : 80.0f;
+                info.baseAttackDamage = s.hasKey("baseAttackDamage") ? static_cast<float>(s["baseAttackDamage"].asNumber()) : 5.0f;
+                info.baseAttackRange = s.hasKey("baseAttackRange") ? static_cast<float>(s["baseAttackRange"].asNumber()) : 30.0f;
+                info.atlasX = s.hasKey("atlasX") ? static_cast<uint16_t>(s["atlasX"].asInt()) : 0;
+                info.atlasY = s.hasKey("atlasY") ? static_cast<uint16_t>(s["atlasY"].asInt()) : 0;
+                info.atlasW = s.hasKey("atlasW") ? static_cast<uint16_t>(s["atlasW"].asInt()) : 64;
+                info.atlasH = s.hasKey("atlasH") ? static_cast<uint16_t>(s["atlasH"].asInt()) : 32;
+                info.idleAnim = {0, 1, 150};
+                info.moveAnim = {0, 2, 100};
+                info.sizeMultiplier = s.hasKey("sizeMultiplier") ? static_cast<float>(s["sizeMultiplier"].asNumber()) : 1.0f;
+                info.predator = s.hasKey("predator") ? s["predator"].asBool() : false;
+
+                uint8_t speciesId = static_cast<uint8_t>(m_speciesIdToName.size());
+                m_speciesRegistry[id] = info;
+                m_speciesNameToId[id] = speciesId;
+                m_speciesIdToName.push_back(id);
+            }
+
+            ENTITY_INFO(std::format("Loaded {} species from {}", m_speciesRegistry.size(), jsonPath));
+            return;
+        }
+    }
+
+    // Fallback defaults
+    ENTITY_WARN(std::format("Failed to load species from {}, using defaults", jsonPath));
+    AnimationConfig idle{0, 1, 150};
+    AnimationConfig move{0, 2, 100};
+
+    m_speciesRegistry["Wolf"] = {"Wolf", 60, 100, 120, 10, 40, 0, 128, 64, 32, idle, move, 1.0f, true};
+    m_speciesNameToId["Wolf"] = 0; m_speciesIdToName.push_back("Wolf");
+
+    m_speciesRegistry["Bear"] = {"Bear", 150, 80, 70, 25, 50, 0, 160, 96, 48, idle, move, 1.5f, true};
+    m_speciesNameToId["Bear"] = 1; m_speciesIdToName.push_back("Bear");
+
+    m_speciesRegistry["Deer"] = {"Deer", 40, 120, 130, 5, 30, 0, 208, 64, 32, idle, move, 1.1f, false};
+    m_speciesNameToId["Deer"] = 2; m_speciesIdToName.push_back("Deer");
+
+    m_speciesRegistry["Rabbit"] = {"Rabbit", 15, 150, 150, 2, 20, 0, 240, 32, 16, idle, move, 0.4f, false};
+    m_speciesNameToId["Rabbit"] = 3; m_speciesIdToName.push_back("Rabbit");
+
+    ENTITY_INFO(std::format("Initialized species registry with {} species (fallback)", m_speciesRegistry.size()));
+}
+
+void EntityDataManager::initializeAnimalRoleRegistry() {
+    const std::string jsonPath = "res/data/animal_roles.json";
+    JsonReader reader;
+
+    if (reader.loadFromFile(jsonPath)) {
+        const JsonValue& root = reader.getRoot();
+
+        if (root.isObject() && root.hasKey("roles") && root["roles"].isArray()) {
+            const JsonValue& roles = root["roles"];
+
+            for (size_t i = 0; i < roles.size(); ++i) {
+                const JsonValue& r = roles[i];
+
+                if (!r.hasKey("id") || !r["id"].isString()) continue;
+
+                std::string id = r["id"].asString();
+                AnimalRoleInfo info;
+                info.name = r.hasKey("name") ? r["name"].asString() : id;
+                info.healthMult = r.hasKey("healthMult") ? static_cast<float>(r["healthMult"].asNumber()) : 1.0f;
+                info.staminaMult = r.hasKey("staminaMult") ? static_cast<float>(r["staminaMult"].asNumber()) : 1.0f;
+                info.moveSpeedMult = r.hasKey("moveSpeedMult") ? static_cast<float>(r["moveSpeedMult"].asNumber()) : 1.0f;
+                info.attackDamageMult = r.hasKey("attackDamageMult") ? static_cast<float>(r["attackDamageMult"].asNumber()) : 1.0f;
+                info.suggestedBehavior = r.hasKey("suggestedBehavior") ? r["suggestedBehavior"].asString() : "Wander";
+                info.basePriority = r.hasKey("basePriority") ? static_cast<uint8_t>(r["basePriority"].asInt()) : 5;
+                info.defaultFaction = r.hasKey("defaultFaction") ? static_cast<uint8_t>(r["defaultFaction"].asInt()) : 2;
+
+                uint8_t roleId = static_cast<uint8_t>(m_animalRoleIdToName.size());
+                m_animalRoleRegistry[id] = info;
+                m_animalRoleNameToId[id] = roleId;
+                m_animalRoleIdToName.push_back(id);
+            }
+
+            ENTITY_INFO(std::format("Loaded {} animal roles from {}", m_animalRoleRegistry.size(), jsonPath));
+            return;
+        }
+    }
+
+    // Fallback defaults
+    ENTITY_WARN(std::format("Failed to load animal roles from {}, using defaults", jsonPath));
+
+    m_animalRoleRegistry["Pup"] = {"Pup", 0.5f, 0.8f, 1.1f, 0.4f, "Wander", 3, 2};
+    m_animalRoleNameToId["Pup"] = 0; m_animalRoleIdToName.push_back("Pup");
+
+    m_animalRoleRegistry["Adult"] = {"Adult", 1.0f, 1.0f, 1.0f, 1.0f, "Wander", 5, 2};
+    m_animalRoleNameToId["Adult"] = 1; m_animalRoleIdToName.push_back("Adult");
+
+    m_animalRoleRegistry["Alpha"] = {"Alpha", 1.5f, 1.2f, 1.1f, 1.5f, "Guard", 7, 2};
+    m_animalRoleNameToId["Alpha"] = 2; m_animalRoleIdToName.push_back("Alpha");
+
+    ENTITY_INFO(std::format("Initialized animal role registry with {} roles (fallback)", m_animalRoleRegistry.size()));
 }

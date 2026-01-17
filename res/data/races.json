@@ -1,0 +1,52 @@
+{
+    "races": [
+        {
+            "id": "Human",
+            "name": "Human",
+            "baseHealth": 100,
+            "baseStamina": 100,
+            "baseMoveSpeed": 100,
+            "baseAttackDamage": 10,
+            "baseAttackRange": 50,
+            "atlasX": 165,
+            "atlasY": 1126,
+            "atlasW": 64,
+            "atlasH": 32,
+            "idleAnim": { "row": 0, "frameCount": 1, "speed": 150 },
+            "moveAnim": { "row": 0, "frameCount": 2, "speed": 100 },
+            "sizeMultiplier": 1.0
+        },
+        {
+            "id": "Elf",
+            "name": "Elf",
+            "baseHealth": 80,
+            "baseStamina": 120,
+            "baseMoveSpeed": 120,
+            "baseAttackDamage": 8,
+            "baseAttackRange": 60,
+            "atlasX": 163,
+            "atlasY": 1159,
+            "atlasW": 64,
+            "atlasH": 32,
+            "idleAnim": { "row": 0, "frameCount": 1, "speed": 150 },
+            "moveAnim": { "row": 0, "frameCount": 2, "speed": 100 },
+            "sizeMultiplier": 0.9
+        },
+        {
+            "id": "Orc",
+            "name": "Orc",
+            "baseHealth": 150,
+            "baseStamina": 80,
+            "baseMoveSpeed": 80,
+            "baseAttackDamage": 15,
+            "baseAttackRange": 45,
+            "atlasX": 228,
+            "atlasY": 1159,
+            "atlasW": 64,
+            "atlasH": 32,
+            "idleAnim": { "row": 0, "frameCount": 1, "speed": 150 },
+            "moveAnim": { "row": 0, "frameCount": 2, "speed": 100 },
+            "sizeMultiplier": 1.2
+        }
+    ]
+}

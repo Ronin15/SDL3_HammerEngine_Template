@@ -80,7 +80,7 @@ public:
                 pos = Vector2D(posDist(m_rng) + spread, posDist(m_rng) + spread);
             }
 
-            EntityHandle handle = edm.createDataDrivenNPC( pos, "Guard");
+            EntityHandle handle = edm.createNPCWithRaceClass( pos, "Human", "Guard");
             size_t idx = edm.getIndex(handle);
             if (idx != SIZE_MAX) {
                 auto& hot = edm.getHotDataByIndex(idx);

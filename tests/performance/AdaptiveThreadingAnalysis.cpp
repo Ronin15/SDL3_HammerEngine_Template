@@ -110,7 +110,7 @@ public:
         EntityHandle firstHandle;
         for (size_t i = 0; i < count; ++i) {
             Vector2D pos(posDist(m_rng), posDist(m_rng));
-            EntityHandle handle = edm.createDataDrivenNPC(pos, "Guard");
+            EntityHandle handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
             if (handle.isValid()) {
                 if (i == 0) firstHandle = handle;
                 // Assign random behavior from the mix

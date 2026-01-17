@@ -169,15 +169,39 @@ static_assert(sizeof(EntityHotData) == 64, "EntityHotData should be 64 bytes (on
 // ============================================================================
 
 /**
- * @brief Character data for Player and NPC entities
+ * @brief Creature category for distinguishing NPCs, Monsters, and Animals
+ *
+ * Used by CharacterData to identify the creature composition system in use.
+ */
+enum class CreatureCategory : uint8_t {
+    NPC = 0,      // Humanoid characters (race + class)
+    Monster = 1,  // Hostile creatures (type + variant)
+    Animal = 2    // Wildlife (species + role)
+};
+
+/**
+ * @brief Character data for Player, NPC, Monster, and Animal entities
+ *
+ * Unified character data for all creature types. The category field
+ * distinguishes NPCs (race+class), Monsters (type+variant), and Animals (species+role).
+ * typeId and subtypeId reference the appropriate registries based on category.
  */
 struct CharacterData {
+    // Stats (computed from base × modifier at creation)
     float health{100.0f};
     float maxHealth{100.0f};
     float stamina{100.0f};
     float maxStamina{100.0f};
     float attackDamage{10.0f};
     float attackRange{50.0f};
+    float moveSpeed{100.0f};   // Base movement speed (NEW)
+
+    // Identity (NEW - creature composition)
+    CreatureCategory category{CreatureCategory::NPC};  // NPC, Monster, or Animal
+    uint8_t typeId{0};         // raceId / monsterTypeId / speciesId
+    uint8_t subtypeId{0};      // classId / variantId / roleId
+
+    // Faction and AI
     uint8_t faction{0};        // 0=Friendly, 1=Enemy, 2=Neutral
     uint8_t behaviorType{0};   // BehaviorType enum
     uint8_t priority{5};       // AI priority (0-9)
@@ -434,20 +458,172 @@ struct NPCRenderData {
     }
 };
 
+// ============================================================================
+// CREATURE COMPOSITION SYSTEM (Race/Class, MonsterType/Variant, Species/Role)
+// ============================================================================
+
 /**
- * @brief NPC type definition for the type registry
+ * @brief Race definition for NPC composition
  *
- * Centralizes all configuration for an NPC type (EntityKind::NPC subtypes).
- * Used by createDataDrivenNPC() to look up texture and animation config.
+ * Races define BASE stats and visual appearance. Combined with ClassInfo
+ * at creation to produce final NPC stats (race.base * class.multiplier).
  */
-struct NPCTypeInfo {
-    std::string textureID;        // Texture key (retained for logging/debug)
-    AnimationConfig idleAnim;     // Idle animation config
-    AnimationConfig moveAnim;     // Move animation config
-    uint16_t atlasX{0};           // X offset in atlas (pixels)
-    uint16_t atlasY{0};           // Y offset in atlas (pixels)
-    uint16_t atlasW{32};          // Width in atlas (total sprite width)
-    uint16_t atlasH{32};          // Height in atlas (single frame height)
+struct RaceInfo {
+    std::string name;
+
+    // Base stats (before class modifiers)
+    float baseHealth{100.0f};
+    float baseStamina{100.0f};
+    float baseMoveSpeed{100.0f};
+    float baseAttackDamage{10.0f};
+    float baseAttackRange{50.0f};
+
+    // Visual (atlas region for this race's sprites)
+    uint16_t atlasX{0};
+    uint16_t atlasY{0};
+    uint16_t atlasW{64};
+    uint16_t atlasH{32};
+
+    // Animations
+    AnimationConfig idleAnim;
+    AnimationConfig moveAnim;
+
+    // Size (affects collision)
+    float sizeMultiplier{1.0f};
+};
+
+/**
+ * @brief Class definition for NPC composition
+ *
+ * Classes define stat MULTIPLIERS and behavior tendencies.
+ * Applied to RaceInfo base stats at creation.
+ */
+struct ClassInfo {
+    std::string name;
+
+    // Stat multipliers (applied to race base)
+    float healthMult{1.0f};
+    float staminaMult{1.0f};
+    float moveSpeedMult{1.0f};
+    float attackDamageMult{1.0f};
+    float attackRangeMult{1.0f};
+
+    // AI hints (not auto-applied, for reference)
+    std::string suggestedBehavior;
+    uint8_t basePriority{5};
+
+    // Default faction (can be overridden at spawn)
+    uint8_t defaultFaction{0};
+};
+
+/**
+ * @brief Monster type definition for monster composition
+ *
+ * Monster types define BASE stats and visual appearance.
+ * Combined with MonsterVariantInfo at creation.
+ */
+struct MonsterTypeInfo {
+    std::string name;
+
+    // Base stats
+    float baseHealth{100.0f};
+    float baseStamina{100.0f};
+    float baseMoveSpeed{100.0f};
+    float baseAttackDamage{10.0f};
+    float baseAttackRange{50.0f};
+
+    // Visual
+    uint16_t atlasX{0};
+    uint16_t atlasY{0};
+    uint16_t atlasW{64};
+    uint16_t atlasH{32};
+
+    // Animations
+    AnimationConfig idleAnim;
+    AnimationConfig moveAnim;
+
+    // Size
+    float sizeMultiplier{1.0f};
+
+    // Monsters are enemies by default
+    uint8_t defaultFaction{1};
+};
+
+/**
+ * @brief Monster variant definition for monster composition
+ *
+ * Variants define stat MULTIPLIERS for monster types.
+ * E.g., "Scout" is fast/weak, "Boss" is strong/slow.
+ */
+struct MonsterVariantInfo {
+    std::string name;
+
+    // Stat multipliers
+    float healthMult{1.0f};
+    float staminaMult{1.0f};
+    float moveSpeedMult{1.0f};
+    float attackDamageMult{1.0f};
+    float attackRangeMult{1.0f};
+
+    // AI hints
+    std::string suggestedBehavior;
+    uint8_t basePriority{5};
+};
+
+/**
+ * @brief Species definition for animal composition
+ *
+ * Species define BASE stats and visual appearance for animals.
+ * Combined with AnimalRoleInfo at creation.
+ */
+struct SpeciesInfo {
+    std::string name;
+
+    // Base stats
+    float baseHealth{50.0f};
+    float baseStamina{100.0f};
+    float baseMoveSpeed{80.0f};
+    float baseAttackDamage{5.0f};
+    float baseAttackRange{30.0f};
+
+    // Visual
+    uint16_t atlasX{0};
+    uint16_t atlasY{0};
+    uint16_t atlasW{64};
+    uint16_t atlasH{32};
+
+    // Animations
+    AnimationConfig idleAnim;
+    AnimationConfig moveAnim;
+
+    // Size
+    float sizeMultiplier{1.0f};
+
+    // Behavior hint
+    bool predator{false};
+};
+
+/**
+ * @brief Animal role definition for animal composition
+ *
+ * Roles define stat MULTIPLIERS and behavior for animals.
+ * E.g., "Pup" is weak, "Alpha" is strong/aggressive.
+ */
+struct AnimalRoleInfo {
+    std::string name;
+
+    // Stat multipliers
+    float healthMult{1.0f};
+    float staminaMult{1.0f};
+    float moveSpeedMult{1.0f};
+    float attackDamageMult{1.0f};
+
+    // AI hints
+    std::string suggestedBehavior;
+    uint8_t basePriority{5};
+
+    // Animals are neutral by default
+    uint8_t defaultFaction{2};
 };
 
 // ============================================================================
@@ -920,27 +1096,92 @@ public:
     void prepareForStateTransition();
 
     // ========================================================================
-    // ENTITY CREATION
+    // ENTITY CREATION (Creature Composition System)
     // ========================================================================
 
     /**
-     * @brief Create a data-driven NPC from the type registry
+     * @brief Create an NPC with race and class composition
      * @param position World position
-     * @param npcType NPC type name (e.g., "Guard", "Villager", "Merchant", "Warrior")
-     * @return Handle to the created entity, or invalid handle if type not registered
+     * @param race Race name (e.g., "Human", "Elf", "Orc")
+     * @param charClass Class name (e.g., "Warrior", "Guard", "Merchant")
+     * @param factionOverride Optional faction override (0xFF = use class default)
+     * @return Handle to the created entity, or invalid handle if race/class not found
      *
-     * Looks up texture, animation config, and atlas coordinates from the NPC type registry.
-     * NPCs are rendered from the atlas texture using NPCRenderController.
+     * Final stats computed as: raceBase * classMultiplier
+     * Example: Human (100 HP) + Warrior (1.3x) = 130 HP
      */
-    EntityHandle createDataDrivenNPC(const Vector2D& position,
-                                     const std::string& npcType);
+    EntityHandle createNPCWithRaceClass(const Vector2D& position,
+                                        const std::string& race,
+                                        const std::string& charClass,
+                                        uint8_t factionOverride = 0xFF);
 
     /**
-     * @brief Get NPC type info from the registry
-     * @param npcType NPC type name (e.g., "Guard", "Villager")
-     * @return Pointer to NPCTypeInfo, or nullptr if type not registered
+     * @brief Create a monster with type and variant composition
+     * @param position World position
+     * @param monsterType Monster type name (e.g., "Goblin", "Skeleton", "Dragon")
+     * @param variant Variant name (e.g., "Scout", "Brute", "Boss")
+     * @param factionOverride Optional faction override (0xFF = use type default, usually Enemy)
+     * @return Handle to the created entity, or invalid handle if type/variant not found
      */
-    [[nodiscard]] const NPCTypeInfo* getNPCTypeInfo(const std::string& npcType) const;
+    EntityHandle createMonster(const Vector2D& position,
+                               const std::string& monsterType,
+                               const std::string& variant,
+                               uint8_t factionOverride = 0xFF);
+
+    /**
+     * @brief Create an animal with species and role composition
+     * @param position World position
+     * @param species Species name (e.g., "Wolf", "Bear", "Deer")
+     * @param role Role name (e.g., "Pup", "Adult", "Alpha")
+     * @param factionOverride Optional faction override (0xFF = use role default, usually Neutral)
+     * @return Handle to the created entity, or invalid handle if species/role not found
+     */
+    EntityHandle createAnimal(const Vector2D& position,
+                              const std::string& species,
+                              const std::string& role,
+                              uint8_t factionOverride = 0xFF);
+
+    /**
+     * @brief Get race info from registry
+     * @param race Race name
+     * @return Pointer to RaceInfo, or nullptr if not found
+     */
+    [[nodiscard]] const RaceInfo* getRaceInfo(const std::string& race) const;
+
+    /**
+     * @brief Get class info from registry
+     * @param charClass Class name
+     * @return Pointer to ClassInfo, or nullptr if not found
+     */
+    [[nodiscard]] const ClassInfo* getClassInfo(const std::string& charClass) const;
+
+    /**
+     * @brief Get monster type info from registry
+     * @param monsterType Monster type name
+     * @return Pointer to MonsterTypeInfo, or nullptr if not found
+     */
+    [[nodiscard]] const MonsterTypeInfo* getMonsterTypeInfo(const std::string& monsterType) const;
+
+    /**
+     * @brief Get monster variant info from registry
+     * @param variant Variant name
+     * @return Pointer to MonsterVariantInfo, or nullptr if not found
+     */
+    [[nodiscard]] const MonsterVariantInfo* getMonsterVariantInfo(const std::string& variant) const;
+
+    /**
+     * @brief Get species info from registry
+     * @param species Species name
+     * @return Pointer to SpeciesInfo, or nullptr if not found
+     */
+    [[nodiscard]] const SpeciesInfo* getSpeciesInfo(const std::string& species) const;
+
+    /**
+     * @brief Get animal role info from registry
+     * @param role Role name
+     * @return Pointer to AnimalRoleInfo, or nullptr if not found
+     */
+    [[nodiscard]] const AnimalRoleInfo* getAnimalRoleInfo(const std::string& role) const;
 
     /**
      * @brief Create a dropped item entity
@@ -1654,7 +1895,7 @@ private:
 
     /**
      * @brief Internal: Create NPC entity with collision data
-     * @note Use createDataDrivenNPC() for the public API
+     * @note Use createNPCWithRaceClass() for the public API
      */
     EntityHandle createNPC(const Vector2D& position,
                           float halfWidth = 16.0f,
@@ -1769,9 +2010,42 @@ private:
     // Thread safety (destruction queue only - structural ops are main-thread-only)
     std::mutex m_destructionMutex;
 
-    // NPC Type Registry (maps type name like "Guard" to texture/animation config)
-    std::unordered_map<std::string, NPCTypeInfo> m_npcTypeRegistry;
-    void initializeNPCTypeRegistry();
+    // ========================================================================
+    // CREATURE COMPOSITION REGISTRIES
+    // ========================================================================
+
+    // NPC Race/Class registries
+    std::unordered_map<std::string, RaceInfo> m_raceRegistry;
+    std::unordered_map<std::string, ClassInfo> m_classRegistry;
+    std::unordered_map<std::string, uint8_t> m_raceNameToId;
+    std::unordered_map<std::string, uint8_t> m_classNameToId;
+    std::vector<std::string> m_raceIdToName;
+    std::vector<std::string> m_classIdToName;
+    void initializeRaceRegistry();
+    void initializeClassRegistry();
+
+    // Monster Type/Variant registries
+    std::unordered_map<std::string, MonsterTypeInfo> m_monsterTypeRegistry;
+    std::unordered_map<std::string, MonsterVariantInfo> m_monsterVariantRegistry;
+    std::unordered_map<std::string, uint8_t> m_monsterTypeNameToId;
+    std::unordered_map<std::string, uint8_t> m_monsterVariantNameToId;
+    std::vector<std::string> m_monsterTypeIdToName;
+    std::vector<std::string> m_monsterVariantIdToName;
+    void initializeMonsterTypeRegistry();
+    void initializeMonsterVariantRegistry();
+
+    // Animal Species/Role registries
+    std::unordered_map<std::string, SpeciesInfo> m_speciesRegistry;
+    std::unordered_map<std::string, AnimalRoleInfo> m_animalRoleRegistry;
+    std::unordered_map<std::string, uint8_t> m_speciesNameToId;
+    std::unordered_map<std::string, uint8_t> m_animalRoleNameToId;
+    std::vector<std::string> m_speciesIdToName;
+    std::vector<std::string> m_animalRoleIdToName;
+    void initializeSpeciesRegistry();
+    void initializeAnimalRoleRegistry();
+
+    // Helper for faction-based collision layers
+    void applyFactionCollision(size_t index, uint8_t faction);
 
     // State
     std::atomic<bool> m_initialized{false};

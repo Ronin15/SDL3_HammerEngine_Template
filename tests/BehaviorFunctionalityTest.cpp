@@ -26,7 +26,7 @@ class TestNPC {
 public:
     explicit TestNPC(float x = 0.0f, float y = 0.0f) {
         auto& edm = EntityDataManager::Instance();
-        m_handle = edm.createDataDrivenNPC(Vector2D(x, y), "Guard");
+        m_handle = edm.createNPCWithRaceClass(Vector2D(x, y), "Human", "Guard");
         m_initialPosition = Vector2D(x, y);
     }
 

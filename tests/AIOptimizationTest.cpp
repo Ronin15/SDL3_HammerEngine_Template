@@ -28,7 +28,7 @@ class OptimizationTestNPC {
 public:
     explicit OptimizationTestNPC(const Vector2D& pos = Vector2D(0, 0)) {
         auto& edm = EntityDataManager::Instance();
-        m_handle = edm.createDataDrivenNPC(pos, "Guard");
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
     static std::shared_ptr<OptimizationTestNPC> create(const Vector2D& pos = Vector2D(0, 0)) {

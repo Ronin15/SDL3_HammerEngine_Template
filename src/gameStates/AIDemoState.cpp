@@ -771,9 +771,9 @@ void AIDemoState::createNPCBatch(int count) {
           Vector2D position(x, y);
 
           try {
-            // Create data-driven NPC via EntityDataManager type registry
-            EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
-                position, "Guard");
+            // Create NPC using race/class composition system
+            EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
+                position, "Human", "Guard");
 
             if (handle.isValid()) {
               aiMgr.registerEntity(handle, "Wander");
@@ -863,14 +863,14 @@ void AIDemoState::createNPCBatchWithRandomBehaviors(int count) {
           Vector2D position(x, y);
 
           try {
-            // Create data-driven NPC via EntityDataManager type registry
-            // Use random type from registered types for visual variety
-            static const std::vector<std::string> npcTypes = {"Guard", "Villager", "Merchant", "Warrior"};
-            static std::uniform_int_distribution<size_t> typeDist(0, npcTypes.size() - 1);
-            const std::string& npcType = npcTypes[typeDist(gen)];
+            // Create NPC using race/class composition system
+            // Use random class from registered classes for variety
+            static const std::vector<std::string> npcClasses = {"Guard", "Villager", "Merchant", "Warrior"};
+            static std::uniform_int_distribution<size_t> classDist(0, npcClasses.size() - 1);
+            const std::string& npcClass = npcClasses[classDist(gen)];
 
-            EntityHandle handle = EntityDataManager::Instance().createDataDrivenNPC(
-                position, npcType);
+            EntityHandle handle = EntityDataManager::Instance().createNPCWithRaceClass(
+                position, "Human", npcClass);
 
             if (handle.isValid()) {
               // Assign random behavior from the list

@@ -28,7 +28,7 @@ class BenchmarkNPC {
 public:
     explicit BenchmarkNPC(int id, const Vector2D& pos) : m_id(id) {
         auto& edm = EntityDataManager::Instance();
-        m_handle = edm.createDataDrivenNPC(pos, "Guard");
+        m_handle = edm.createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
     static std::shared_ptr<BenchmarkNPC> create(int id, const Vector2D& pos) {

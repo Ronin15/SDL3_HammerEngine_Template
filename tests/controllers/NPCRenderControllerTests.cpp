@@ -63,7 +63,7 @@ protected:
 
     // Helper to create NPC from registry (uses Guard type config)
     EntityHandle createTestNPC(const Vector2D& pos) {
-        return EntityDataManager::Instance().createDataDrivenNPC(pos, "Guard");
+        return EntityDataManager::Instance().createNPCWithRaceClass(pos, "Human", "Guard");
     }
 
     // Helper to set NPC velocity in EDM
@@ -237,8 +237,8 @@ BOOST_FIXTURE_TEST_SUITE(EdgeCaseTests, NPCRenderControllerFixture)
 
 BOOST_AUTO_TEST_CASE(TestZeroFrameCountHandled) {
     // Create NPC - the EDM clamps to minimum 1 frame from npc_types.json
-    EntityHandle npc = EntityDataManager::Instance().createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle npc = EntityDataManager::Instance().createNPCWithRaceClass(
+        Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
@@ -254,8 +254,8 @@ BOOST_AUTO_TEST_CASE(TestZeroFrameCountHandled) {
 
 BOOST_AUTO_TEST_CASE(TestZeroSpeedHandled) {
     // Create NPC - the EDM clamps animation speed to minimum 1ms
-    EntityHandle npc = EntityDataManager::Instance().createDataDrivenNPC(
-        Vector2D(100.0f, 100.0f), "Guard");
+    EntityHandle npc = EntityDataManager::Instance().createNPCWithRaceClass(
+        Vector2D(100.0f, 100.0f), "Human", "Guard");
     BOOST_REQUIRE(npc.isValid());
 
     EntityDataManager::Instance().updateSimulationTiers(Vector2D(100.0f, 100.0f), 1500.0f, 10000.0f);
